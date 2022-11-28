@@ -22,6 +22,8 @@ fn main() {
         .add_startup_system(setup)
         .add_system(crate::systems::input::keyboard_input)
         .add_system(crate::systems::input::mouse_input)
+        .add_system(crate::systems::input::transform_system)
+        .add_system(crate::systems::input::sync_player_camera)
         .run();
 }
 

@@ -82,7 +82,7 @@ pub fn keyboard_input(
 
             // camera.translation.z -= vec.y;
             // camera.translation.x -= vec.x;
-            update_player_position(&mut player, &mut camera, *camera_position, vec);
+            player.translation += vec;
         }
 
         if input.pressed(KeyCode::D) {
@@ -90,7 +90,7 @@ pub fn keyboard_input(
 
             // camera.translation.z -= vec.y;
             // camera.translation.x -= vec.x;
-            update_player_position(&mut player, &mut camera, *camera_position, vec);
+            player.translation += vec;
         }
 
         if input.pressed(KeyCode::S) {
@@ -98,12 +98,12 @@ pub fn keyboard_input(
 
             // camera.translation.z += vec.y;
             // camera.translation.x += vec.x;
-            update_player_position(&mut player, &mut camera, *camera_position, vec);
+            player.translation += vec;
         }
 
         if input.pressed(KeyCode::W) {
             let vec = rotation.movement_vec() * 0.2;
-            update_player_position(&mut player, &mut camera, *camera_position, vec);
+            player.translation += vec;
         }
 
         if input.just_pressed(KeyCode::V) {
@@ -148,8 +148,18 @@ pub fn mouse_input(
 
             // player.rotation = rotation.to_quat();
 
+            *camera_rot = camera_rot
+                .add_yaw(Degrees(yaw))
+                .saturating_add_pitch(Degrees(pitch));
+
+            // camera.rotation = camera_rot.to_quat();
+
+            // The entity doesn't change pitch.
+            *rotation = camera_rot.with_pitch(Radians(0.0));
+
             match camera_pos {
                 CameraPosition::ThirdPerson => {
+                    // *rotation = camera_rot.with_pitch(Radians(0.0));
                     // camera.rotation = player.rotation;
                     // camera.translation = player.translation;
                     // camera.translation.y += 5.0;
@@ -171,15 +181,7 @@ pub fn mouse_input(
                 }
                 // Player rotation is Camera rotation with y offset.
                 CameraPosition::FirstPerson => {
-                    *camera_rot = camera_rot
-                        .add_yaw(Degrees(yaw))
-                        .saturating_add_pitch(Degrees(pitch));
-
-                    camera.rotation = camera_rot.to_quat();
-
-                    // The entity doesn't change pitch.
-                    *rotation = camera_rot.with_pitch(Radians(0.0));
-                    player.rotation = rotation.to_quat();
+                    // player.rotation = rotation.to_quat();
 
                     // camera_rot = camera_rot.camera_rot.yaw -= yaw * 0.2;
                     // camera_rot.pitch += pitch * 0.2;
@@ -242,18 +244,43 @@ pub fn mouse_input(
     }
 }
 
-fn update_player_position(
-    player: &mut Transform,
-    camera: &mut Transform,
-    camera_position: CameraPosition,
-    vec: Vec3,
-) {
-    player.translation += vec;
+pub fn transform_system(mut entities: Query<(&Rotation, &mut Transform)>) {
+    for (rotation, mut transform) in entities.iter_mut() {
+        transform.rotation = rotation.to_quat();
+    }
+}
 
-    match camera_position {
-        CameraPosition::FirstPerson => {
-            camera.translation += vec;
+pub fn sync_player_camera(
+    mut players: Query<&Transform, With<PlayerCharacter>>,
+    mut cameras: Query<(&mut Transform, &CameraPosition), Without<PlayerCharacter>>,
+) {
+    for player in &mut players {
+        for (mut camera, pos) in &mut cameras {
+            update_player_camera(&mut camera, player, *pos);
         }
-        CameraPosition::ThirdPerson => {}
+    }
+}
+
+/// Update the player camera using the players position.
+fn update_player_camera(camera: &mut Transform, player: &Transform, pos: CameraPosition) {
+    match pos {
+        CameraPosition::FirstPerson => {
+            // Camera is slightly higher than player feet.
+            let offset = Vec3 {
+                x: 0.0,
+                y: 1.8,
+                z: 0.0,
+            };
+
+            camera.translation = player.translation + offset;
+        }
+        CameraPosition::ThirdPerson => {
+            let distance = 5.0;
+
+            let rotation_matrix = Mat3::from_quat(camera.rotation);
+
+            camera.translation =
+                player.translation + rotation_matrix * Vec3::new(0.0, 0.0, distance);
+        }
     }
 }
