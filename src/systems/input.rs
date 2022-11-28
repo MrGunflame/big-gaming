@@ -2,10 +2,9 @@ use bevy::input::mouse::MouseMotion;
 use bevy::prelude::*;
 use bevy_rapier3d::prelude::*;
 
-use crate::{
-    entities::player::{CameraPosition, PlayerCharacter},
-    Position, Rotation,
-};
+use crate::components::Rotation;
+use crate::entities::player::{CameraPosition, PlayerCharacter};
+use crate::utils::{Degrees, Radians};
 
 pub fn keyboard_input(
     input: Res<Input<KeyCode>>,
@@ -79,19 +78,19 @@ pub fn keyboard_input(
         // println!("CAMERA {:?}", camera);
 
         if input.pressed(KeyCode::A) {
-            let vec = rotation.left(90.0).movement_vec() * 0.2;
+            let vec = rotation.left(Degrees(90.0)).movement_vec() * 0.2;
 
             // camera.translation.z -= vec.y;
             // camera.translation.x -= vec.x;
-            update_player_position(&mut player, &mut camera, *camera_position, -vec);
+            // update_player_position(&mut player, &mut camera, *camera_position, -vec);
         }
 
         if input.pressed(KeyCode::D) {
-            let vec = rotation.right(90.0).movement_vec() * 0.2;
+            let vec = rotation.right(Degrees(90.0)).movement_vec() * 0.2;
 
             // camera.translation.z -= vec.y;
             // camera.translation.x -= vec.x;
-            update_player_position(&mut player, &mut camera, *camera_position, -vec);
+            // update_player_position(&mut player, &mut camera, *camera_position, vec);
         }
 
         if input.pressed(KeyCode::S) {
@@ -99,15 +98,22 @@ pub fn keyboard_input(
 
             // camera.translation.z += vec.y;
             // camera.translation.x += vec.x;
-            update_player_position(&mut player, &mut camera, *camera_position, vec);
+            // update_player_position(&mut player, &mut camera, *camera_position, vec);
         }
 
         if input.pressed(KeyCode::W) {
             let vec = rotation.movement_vec() * 0.2;
 
+            dbg!(vec);
+
             // camera.translation.z -= vec.y;
             // camera.translation.x -= vec.x;
-            update_player_position(&mut player, &mut camera, *camera_position, -vec);
+            // update_player_position(&mut player, &mut camera, *camera_position, -vec);
+            player.translation.z += vec.z;
+            player.translation.x += vec.x;
+
+            camera.translation.z += vec.z;
+            camera.translation.x += vec.x;
         }
 
         if input.just_pressed(KeyCode::V) {
@@ -145,9 +151,6 @@ pub fn mouse_input(
             let yaw = event.delta.x;
             let pitch = event.delta.y;
 
-            println!("YAW: {:?}", camera_rot.yaw);
-            println!("PIT: {:?}", camera_rot.pitch);
-
             // camera_rot.yaw -= yaw * 0.2;
             // camera_rot.pitch += pitch * 0.2;
 
@@ -178,33 +181,41 @@ pub fn mouse_input(
                 }
                 // Player rotation is Camera rotation with y offset.
                 CameraPosition::FirstPerson => {
-                    camera_rot.yaw -= yaw * 0.2;
-                    camera_rot.pitch += pitch * 0.2;
+                    *camera_rot = camera_rot.add_yaw(Degrees(yaw)).add_pitch(Degrees(pitch));
 
-                    rotation.yaw -= yaw * 0.2;
-                    rotation.pitch += pitch * 0.2;
+                    camera.rotation = camera_rot.to_quat();
 
-                    println!("{:?}", camera.rotation);
+                    // The entity doesn't change pitch.
+                    *rotation = camera_rot.with_pitch(Radians(0.0));
+                    player.rotation = rotation.to_quat();
 
-                    // camera.rotation =
-                    //     camera.rotation * Quat::from_axis_angle(-Vec3::X, pitch.to_radians() * 0.2);
-                    println!("{:?}", camera.rotation);
+                    // camera_rot = camera_rot.camera_rot.yaw -= yaw * 0.2;
+                    // camera_rot.pitch += pitch * 0.2;
 
-                    println!("Rotation {:?}", camera_rot);
+                    // rotation.yaw -= yaw * 0.2;
+                    // rotation.pitch += pitch * 0.2;
+
+                    // println!("{:?}", camera.rotation);
+
+                    // // camera.rotation =
+                    // //     camera.rotation * Quat::from_axis_angle(-Vec3::X, pitch.to_radians() * 0.2);
+                    // println!("{:?}", camera.rotation);
+
+                    // println!("Rotation {:?}", camera_rot);
 
                     // let mat = Mat3::from_axis_angle(-Vec3::X, camera_rot.pitch.to_radians())
                     //     * Mat3::from_axis_angle(-Vec3::Y, camera_rot.yaw.to_radians());
 
                     // camera.rotation = Quat::from_mat3(&mat);
 
-                    let mat = Mat3::from_euler(
-                        EulerRot::YXZ,
-                        camera_rot.yaw.to_radians(),
-                        -camera_rot.pitch.to_radians(),
-                        0.0,
-                    );
+                    // let mat = Mat3::from_euler(
+                    //     EulerRot::YXZ,
+                    //     camera_rot.yaw.to_radians(),
+                    //     -camera_rot.pitch.to_radians(),
+                    //     0.0,
+                    // );
 
-                    camera.rotation = Quat::from_mat3(&mat);
+                    // camera.rotation = Quat::from_mat3(&mat);
 
                     // camera.rotation = Quat::from_euler(
                     //     EulerRot::XYZ,
@@ -245,6 +256,8 @@ fn update_player_position(
     camera_position: CameraPosition,
     mut vec: Vec2,
 ) {
+    dbg!(vec);
+
     player.translation.z += vec.y;
     player.translation.x += vec.x;
 

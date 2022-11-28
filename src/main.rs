@@ -1,6 +1,7 @@
 mod components;
 mod entities;
 mod systems;
+mod utils;
 
 use std::{f32::consts::PI, ops::Deref};
 

@@ -5,7 +5,7 @@ use bevy::{
 };
 use bevy_rapier3d::prelude::*;
 
-use crate::{Position, Rotation};
+use crate::components::Rotation;
 
 #[derive(Component)]
 pub struct PlayerCharacter;
