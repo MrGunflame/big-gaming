@@ -1,3 +1,4 @@
+mod components;
 mod entities;
 mod systems;
 

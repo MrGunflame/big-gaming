@@ -75,8 +75,8 @@ pub fn keyboard_input(
     for ((mut camera, mut camera_position), (mut player, rotation, velocity)) in
         camera.iter_mut().zip(players.iter_mut())
     {
-        println!("PLAYER {:?}", player);
-        println!("CAMERA {:?}", camera);
+        // println!("PLAYER {:?}", player);
+        // println!("CAMERA {:?}", camera);
 
         if input.pressed(KeyCode::A) {
             let vec = rotation.left(90.0).movement_vec() * 0.2;
@@ -167,30 +167,69 @@ pub fn mouse_input(
                     let pitch = Quat::from_rotation_x(event.delta.y.to_radians() * 0.1);
 
                     // camera.rotation = yaw * camera.rotation;
-                    camera.rotation =
-                        camera.rotation * Quat::from_axis_angle(-Vec3::Y, yaw.to_radians() * 0.2);
+                    // camera.rotation =
+                    //     camera.rotation * Quat::from_axis_angle(-Vec3::Y, yaw.to_radians() * 0.2);
 
-                    camera.rotation = pitch * camera.rotation;
+                    // camera.rotation = pitch * camera.rotation;
 
-                    let rotation_matrix = Mat3::from_quat(camera.rotation);
-                    camera.translation =
-                        player.translation + rotation_matrix.mul_vec3(Vec3::new(0.0, 0.0, 5.0));
+                    // let rotation_matrix = Mat3::from_quat(camera.rotation);
+                    // camera.translation =
+                    //     player.translation + rotation_matrix.mul_vec3(Vec3::new(0.0, 0.0, 5.0));
                 }
                 // Player rotation is Camera rotation with y offset.
                 CameraPosition::FirstPerson => {
-                    //camera_rot.yaw -= yaw * 0.2;
-                    //camera_rot.pitch += pitch * 0.2;
+                    camera_rot.yaw -= yaw * 0.2;
+                    camera_rot.pitch += pitch * 0.2;
 
-                    //rotation.yaw -= yaw * 0.2;
-                    //rotation.pitch += pitch * 0.2;
+                    rotation.yaw -= yaw * 0.2;
+                    rotation.pitch += pitch * 0.2;
 
-                    camera.rotation =
-                        camera.rotation * Quat::from_axis_angle(-Vec3::X, pitch.to_radians() * 0.2);
-                    camera.rotation =
-                        camera.rotation * Quat::from_axis_angle(-Vec3::Y, yaw.to_radians() * 0.2);
+                    println!("{:?}", camera.rotation);
 
-                    player.rotation =
-                        player.rotation * Quat::from_axis_angle(-Vec3::Y, yaw.to_radians() * 0.2);
+                    // camera.rotation =
+                    //     camera.rotation * Quat::from_axis_angle(-Vec3::X, pitch.to_radians() * 0.2);
+                    println!("{:?}", camera.rotation);
+
+                    println!("Rotation {:?}", camera_rot);
+
+                    // let mat = Mat3::from_axis_angle(-Vec3::X, camera_rot.pitch.to_radians())
+                    //     * Mat3::from_axis_angle(-Vec3::Y, camera_rot.yaw.to_radians());
+
+                    // camera.rotation = Quat::from_mat3(&mat);
+
+                    let mat = Mat3::from_euler(
+                        EulerRot::YXZ,
+                        camera_rot.yaw.to_radians(),
+                        -camera_rot.pitch.to_radians(),
+                        0.0,
+                    );
+
+                    camera.rotation = Quat::from_mat3(&mat);
+
+                    // camera.rotation = Quat::from_euler(
+                    //     EulerRot::XYZ,
+                    //     camera_rot.pitch.to_radians(),
+                    //     camera_rot.yaw.to_radians(),
+                    //     0.0,
+                    // );
+
+                    // camera.rotation =
+                    //     Quat::from_axis_angle(-Vec3::X, camera_rot.pitch.to_radians())
+                    //         * Quat::from_axis_angle(-Vec3::Y, camera_rot.yaw.to_radians());
+
+                    // camera.rotation =
+                    //     camera.rotation * Quat::from_axis_angle(-Vec3::Y, yaw.to_radians() * 0.2);
+
+                    // camera.rotation =
+                    //     camera.rotation * Quat::from_axis_angle(-Vec3::Y, yaw.to_radians());
+
+                    // camera.rotation =
+                    //     camera.rotation * Quat::from_axis_angle(-Vec3::X, pitch.to_radians() * 0.2);
+                    // camera.rotation =
+                    //     camera.rotation * Quat::from_axis_angle(-Vec3::Y, yaw.to_radians() * 0.2);
+
+                    // player.rotation =
+                    //     player.rotation * Quat::from_axis_angle(-Vec3::Y, yaw.to_radians() * 0.2);
 
                     //player.rotation = rotation.to_quat();
                     //camera.rotation = camera_rot.to_quat();

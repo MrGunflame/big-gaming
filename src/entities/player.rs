@@ -42,7 +42,7 @@ impl PlayerCharacterBundle {
                     max_z: 1.0,
                 })),
                 material: materials.add(Color::rgb(0.0, 0.0, 1.0).into()),
-                transform: Transform::from_xyz(0.0, 0.0, 0.0),
+                transform: Transform::from_xyz(0.0, 0.0, 0.0).looking_at(Vec3::X, Vec3::Y),
                 ..Default::default()
             },
             velocity: Velocity {
