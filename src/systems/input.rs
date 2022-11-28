@@ -82,7 +82,7 @@ pub fn keyboard_input(
 
             // camera.translation.z -= vec.y;
             // camera.translation.x -= vec.x;
-            // update_player_position(&mut player, &mut camera, *camera_position, -vec);
+            update_player_position(&mut player, &mut camera, *camera_position, vec);
         }
 
         if input.pressed(KeyCode::D) {
@@ -90,30 +90,20 @@ pub fn keyboard_input(
 
             // camera.translation.z -= vec.y;
             // camera.translation.x -= vec.x;
-            // update_player_position(&mut player, &mut camera, *camera_position, vec);
+            update_player_position(&mut player, &mut camera, *camera_position, vec);
         }
 
         if input.pressed(KeyCode::S) {
-            let vec = rotation.movement_vec() * 0.2;
+            let vec = rotation.left(Degrees(180.0)).movement_vec() * 0.2;
 
             // camera.translation.z += vec.y;
             // camera.translation.x += vec.x;
-            // update_player_position(&mut player, &mut camera, *camera_position, vec);
+            update_player_position(&mut player, &mut camera, *camera_position, vec);
         }
 
         if input.pressed(KeyCode::W) {
             let vec = rotation.movement_vec() * 0.2;
-
-            dbg!(vec);
-
-            // camera.translation.z -= vec.y;
-            // camera.translation.x -= vec.x;
-            // update_player_position(&mut player, &mut camera, *camera_position, -vec);
-            player.translation.z += vec.z;
-            player.translation.x += vec.x;
-
-            camera.translation.z += vec.z;
-            camera.translation.x += vec.x;
+            update_player_position(&mut player, &mut camera, *camera_position, vec);
         }
 
         if input.just_pressed(KeyCode::V) {
@@ -181,7 +171,9 @@ pub fn mouse_input(
                 }
                 // Player rotation is Camera rotation with y offset.
                 CameraPosition::FirstPerson => {
-                    *camera_rot = camera_rot.add_yaw(Degrees(yaw)).add_pitch(Degrees(pitch));
+                    *camera_rot = camera_rot
+                        .add_yaw(Degrees(yaw))
+                        .saturating_add_pitch(Degrees(pitch));
 
                     camera.rotation = camera_rot.to_quat();
 
@@ -254,21 +246,14 @@ fn update_player_position(
     player: &mut Transform,
     camera: &mut Transform,
     camera_position: CameraPosition,
-    mut vec: Vec2,
+    vec: Vec3,
 ) {
-    dbg!(vec);
-
-    player.translation.z += vec.y;
-    player.translation.x += vec.x;
-
-    camera.translation.z += vec.y;
-    camera.translation.x += vec.x;
+    player.translation += vec;
 
     match camera_position {
-        CameraPosition::FirstPerson => {}
+        CameraPosition::FirstPerson => {
+            camera.translation += vec;
+        }
         CameraPosition::ThirdPerson => {}
     }
-
-    //    camera.translation.z += vec.y;
-    //camera.translation.x += vec.x;
 }

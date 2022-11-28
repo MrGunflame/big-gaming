@@ -1,4 +1,6 @@
-use bevy::prelude::{Component, EulerRot, Mat3, Quat, Vec2, Vec3};
+use std::f32::consts::PI;
+
+use bevy::prelude::{Component, EulerRot, Mat3, Quat, Vec3};
 
 use crate::utils::Radians;
 
@@ -56,12 +58,28 @@ impl Rotation {
         self
     }
 
+    /// Add pitch to the `Rotation`, saturating at the min/max ranges of [`-(PI/2)`:`PI/2`] (excl).
+    pub fn saturating_add_pitch<T>(mut self, pitch: T) -> Self
+    where
+        T: Into<Radians>,
+    {
+        self = self.add_pitch(pitch);
+
+        if self.pitch < -(PI / 2.0) {
+            self.pitch = -(PI / 2.0);
+        } else if self.pitch > PI / 2.0 {
+            self.pitch = PI / 2.0;
+        };
+
+        self
+    }
+
     /// Returns a new `Rotation` rotated the the left.
     pub fn left<T>(self, rot: T) -> Self
     where
         T: Into<Radians>,
     {
-        self.with_yaw(Radians(self.yaw().to_f32() + rot.into().to_f32()))
+        self.with_yaw(Radians(self.yaw().to_f32() - rot.into().to_f32()))
     }
 
     /// Returns a new `Rotation` rotated to the right.
@@ -69,7 +87,7 @@ impl Rotation {
     where
         T: Into<Radians>,
     {
-        self.with_yaw(Radians(-self.yaw().to_f32() + rot.into().to_f32()))
+        self.with_yaw(Radians(self.yaw().to_f32() + rot.into().to_f32()))
     }
 
     pub fn to_mat3(self) -> Mat3 {
@@ -130,8 +148,8 @@ mod tests {
 
         assert_eq!(vec.x, 1.0);
         assert_eq!(vec.y, 0.0);
-        // assert!(vec.z >= 0.0 && vec.z < 0.000001);
-        assert_eq!(vec.z, 0.0);
+        // FP inaccuracy
+        assert!(vec.z >= 0.0 && vec.z < 0.000001);
 
         let rot = Rotation::new().with_yaw(Radians(FRAC_PI_4));
         let vec = rot.movement_vec();
