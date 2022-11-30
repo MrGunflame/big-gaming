@@ -1,7 +1,10 @@
 mod components;
 mod entities;
+mod hotkeys;
+mod plugins;
 mod systems;
 mod utils;
+mod world;
 
 use std::{f32::consts::PI, ops::Deref};
 
@@ -12,6 +15,8 @@ use bevy_rapier3d::{
     render::RapierDebugRenderPlugin,
 };
 use entities::player::{PlayerCameraBundle, PlayerCharacterBundle};
+use hotkeys::HotkeyStore;
+use plugins::CameraPlugin;
 
 fn main() {
     App::new()
@@ -20,10 +25,8 @@ fn main() {
         .add_plugin(RapierPhysicsPlugin::<NoUserData>::default())
         .add_plugin(RapierDebugRenderPlugin::default())
         .add_startup_system(setup)
-        .add_system(crate::systems::input::keyboard_input)
-        .add_system(crate::systems::input::mouse_input)
-        .add_system(crate::systems::input::transform_system)
-        .add_system(crate::systems::input::sync_player_camera)
+        .add_plugin(CameraPlugin)
+        .insert_resource(HotkeyStore::default())
         .run();
 }
 
@@ -162,7 +165,8 @@ fn setup(
                 //     .insert(Restitution::coefficient(0.7))
                 //     .insert(ColliderMassProperties::Density(1.0));
 
-                let scene = asset_server.load("WaterBottle.gltf#Scene0");
+                // let scene = asset_server.load("WaterBottle.gltf#Scene0");
+                let scene = asset_server.load("thing.glb#Scene0");
 
                 // let collider = AsyncSceneCollider {
                 //     handle: scene.clone_weak(),

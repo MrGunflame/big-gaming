@@ -4,6 +4,16 @@ use bevy::prelude::{Component, EulerRot, Mat3, Quat, Vec3};
 
 use crate::utils::Radians;
 
+/// A entitiy that can act within a world.
+///
+/// Unlike static props, `Actor` is a marker component for all entities that may act on its own,
+/// or be acted upon. This most notably includes player characters and NPCs.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Component)]
+pub struct Actor;
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Component)]
+pub struct Player;
+
 #[derive(Copy, Clone, Debug, PartialEq, Component)]
 pub struct Rotation {
     yaw: f32,

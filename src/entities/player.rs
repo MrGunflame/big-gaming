@@ -1,11 +1,11 @@
 use bevy::{
     math::Vec3,
     pbr::PbrBundle,
-    prelude::{Bundle, Camera3d, Camera3dBundle, Component, Transform, *},
+    prelude::{Bundle, Camera3dBundle, Component, Transform, *},
 };
 use bevy_rapier3d::prelude::*;
 
-use crate::components::Rotation;
+use crate::components::{Actor, Rotation};
 
 #[derive(Component)]
 pub struct PlayerCharacter;
@@ -24,6 +24,8 @@ pub struct PlayerCharacterBundle {
     /// Lock rotation to prevent tilting the player character.
     pub locked_axes: LockedAxes,
     pub rotation: Rotation,
+    pub mass: AdditionalMassProperties,
+    pub actor: Actor,
 }
 
 impl PlayerCharacterBundle {
@@ -56,6 +58,8 @@ impl PlayerCharacterBundle {
             ccd: Ccd::enabled(),
             collider: Collider::cuboid(1.0, 1.0, 1.0),
             rigid_body: RigidBody::Dynamic,
+            mass: AdditionalMassProperties::Mass(100.0),
+            actor: Actor,
         }
     }
 }

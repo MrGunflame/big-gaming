@@ -4,104 +4,38 @@ use bevy_rapier3d::prelude::*;
 
 use crate::components::Rotation;
 use crate::entities::player::{CameraPosition, PlayerCharacter};
+use crate::hotkeys::{HotkeyStore, MoveBackward, MoveForward, MoveLeft, MoveRight};
 use crate::utils::{Degrees, Radians};
 
 pub fn keyboard_input(
+    rapier_ctx: Res<RapierContext>,
+    hotkeys: Res<HotkeyStore>,
     input: Res<Input<KeyCode>>,
     mut camera: Query<(&mut Transform, &mut CameraPosition), With<Camera3d>>,
     mut players: Query<
-        (&mut Transform, &Rotation, &Velocity),
+        (Entity, &mut Transform, &Rotation, &mut Velocity),
         (With<PlayerCharacter>, Without<Camera3d>),
     >,
 ) {
-    // let mut movement_vec = Vec3::ZERO;
-
-    // if input.pressed(KeyCode::A) {
-    //     let vec = rotation.left(90.0).movement_vec() * velocity.as_f32();
-
-    //     // camera.translation.z -= vec.y;
-    //     // camera.translation.x -= vec.x;
-
-    //     movement_vec += vec;
-    // }
-
-    // if input.pressed(KeyCode::D) {
-    //     let vec = rotation.right(90.0).movement_vec() * velocity.as_f32();
-
-    //     // camera.translation.z -= vec.y;
-    //     // camera.translation.x -= vec.x;
-
-    //     movement_vec -= vec;
-    // }
-
-    // if input.pressed(KeyCode::S) {
-    //     let vec = rotation.movement_vec() * velocity.as_f32();
-
-    //     // camera.translation.z += vec.y;
-    //     // camera.translation.x += vec.x;
-
-    //     movement_vec += vec;
-    // }
-
-    // if input.pressed(KeyCode::W) {
-    //     let vec = rotation.movement_vec() * velocity.as_f32();
-
-    //     // camera.translation.z -= vec.y;
-    //     // camera.translation.x -= vec.x;
-
-    //     movement_vec -= vec;
-    // }
-
-    // for mut player in set.p0().iter_mut() {
-    //     player.translation = movement_vec;
-    // }
-
-    // for (mut camera, rotation, velocity, camera_position) in set.p1().iter_mut() {
-    //     match camera_position {
-    //         CameraPosition::FirstPerson => {
-    //             camera.translation = movement_vec;
-    //         }
-    //         CameraPosition::ThirdPerson => {
-    //             movement_vec.x += 5.0;
-    //             movement_vec.y += 5.0;
-    //             movement_vec.z += 5.0;
-
-    //             camera.translation = movement_vec;
-    //         }
-    //     }
-    // }
-
-    for ((mut camera, mut camera_position), (mut player, rotation, velocity)) in
+    for ((mut camera, mut camera_position), (entity, mut player, rotation, mut velocity)) in
         camera.iter_mut().zip(players.iter_mut())
     {
-        // println!("PLAYER {:?}", player);
-        // println!("CAMERA {:?}", camera);
-
-        if input.pressed(KeyCode::A) {
+        if hotkeys.pressed::<MoveLeft>(&input) {
             let vec = rotation.left(Degrees(90.0)).movement_vec() * 0.2;
-
-            // camera.translation.z -= vec.y;
-            // camera.translation.x -= vec.x;
             player.translation += vec;
         }
 
-        if input.pressed(KeyCode::D) {
+        if hotkeys.pressed::<MoveRight>(&input) {
             let vec = rotation.right(Degrees(90.0)).movement_vec() * 0.2;
-
-            // camera.translation.z -= vec.y;
-            // camera.translation.x -= vec.x;
             player.translation += vec;
         }
 
-        if input.pressed(KeyCode::S) {
+        if hotkeys.pressed::<MoveBackward>(&input) {
             let vec = rotation.left(Degrees(180.0)).movement_vec() * 0.2;
-
-            // camera.translation.z += vec.y;
-            // camera.translation.x += vec.x;
             player.translation += vec;
         }
 
-        if input.pressed(KeyCode::W) {
+        if hotkeys.pressed::<MoveForward>(&input) {
             let vec = rotation.movement_vec() * 0.2;
             player.translation += vec;
         }
@@ -125,6 +59,26 @@ pub fn keyboard_input(
                     CameraPosition::FirstPerson
                 }
             };
+        }
+
+        if input.just_pressed(KeyCode::Space) {
+            let ray_origin = player.translation;
+            let ray_dir = -Vec3::Y;
+            let max_toi = 2.0;
+            let solid = true;
+            let filter = QueryFilter::new().exclude_collider(entity);
+
+            if let Some((entity, toi)) =
+                rapier_ctx.cast_ray(ray_origin, ray_dir, max_toi, solid, filter)
+            {
+                if toi < 1.5 {
+                    velocity.linvel.y += 10.0;
+                }
+                dbg!(toi);
+                let hit_point = ray_origin + ray_dir * toi;
+
+                println!("Entity {:?} hit at point {}", entity, hit_point);
+            }
         }
     }
 }
