@@ -1,6 +1,6 @@
-use bevy::prelude::{Input, KeyCode};
+use bevy::prelude::{Input, KeyCode, Resource};
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Resource)]
 pub struct HotkeyStore {
     // Movement
     pub move_foward: KeyCode,
