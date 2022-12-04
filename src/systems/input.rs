@@ -1,9 +1,12 @@
+use std::sync::atomic::{AtomicUsize, Ordering};
+
 use bevy::input::mouse::MouseMotion;
 use bevy::prelude::*;
 use bevy_rapier3d::prelude::*;
 
 use crate::components::Rotation;
 use crate::entities::player::{CameraPosition, PlayerCharacter};
+use crate::entities::projectile::ProjectileBundle;
 use crate::hotkeys::{HotkeyStore, MoveBackward, MoveForward, MoveLeft, MoveRight};
 use crate::utils::{Degrees, Radians};
 
@@ -20,6 +23,19 @@ pub fn keyboard_input(
     for ((mut camera, mut camera_position), (entity, mut player, rotation, mut velocity)) in
         camera.iter_mut().zip(players.iter_mut())
     {
+        let ray_origin = player.translation;
+        let is_on_ground = || {
+            let ray_origin = ray_origin;
+            let ray_dir = -Vec3::Y;
+            let max_toi = 2.0;
+            let solid = true;
+            let filter = QueryFilter::new().exclude_collider(entity);
+
+            rapier_ctx
+                .cast_ray(ray_origin, ray_dir, max_toi, solid, filter)
+                .is_some()
+        };
+
         if hotkeys.pressed::<MoveLeft>(&input) {
             let vec = rotation.left(Degrees(90.0)).movement_vec() * 0.2;
             player.translation += vec;
@@ -62,22 +78,8 @@ pub fn keyboard_input(
         }
 
         if input.just_pressed(KeyCode::Space) {
-            let ray_origin = player.translation;
-            let ray_dir = -Vec3::Y;
-            let max_toi = 2.0;
-            let solid = true;
-            let filter = QueryFilter::new().exclude_collider(entity);
-
-            if let Some((entity, toi)) =
-                rapier_ctx.cast_ray(ray_origin, ray_dir, max_toi, solid, filter)
-            {
-                if toi < 1.5 {
-                    velocity.linvel.y += 10.0;
-                }
-                dbg!(toi);
-                let hit_point = ray_origin + ray_dir * toi;
-
-                println!("Entity {:?} hit at point {}", entity, hit_point);
+            if is_on_ground() {
+                velocity.linvel.y += 10.0;
             }
         }
     }
@@ -195,6 +197,20 @@ pub fn mouse_input(
                 }
             }
         }
+    }
+}
+
+static COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+pub fn mouse_button_input(
+    mut commands: Commands,
+    assets: Res<AssetServer>,
+    input: Res<Input<MouseButton>>,
+) {
+    if input.pressed(MouseButton::Left) {
+        let entity = ProjectileBundle::new(assets);
+        commands.spawn_bundle(entity);
+        COUNTER.fetch_add(1, Ordering::Relaxed);
     }
 }
 

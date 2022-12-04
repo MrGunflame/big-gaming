@@ -7,7 +7,7 @@ use bevy_rapier3d::prelude::*;
 
 use crate::components::{Actor, Rotation};
 
-#[derive(Component)]
+#[derive(Debug, Component)]
 pub struct PlayerCharacter;
 
 #[derive(Bundle)]
@@ -26,6 +26,7 @@ pub struct PlayerCharacterBundle {
     pub rotation: Rotation,
     pub mass: AdditionalMassProperties,
     pub actor: Actor,
+    pub restitution: Restitution,
 }
 
 impl PlayerCharacterBundle {
@@ -60,6 +61,7 @@ impl PlayerCharacterBundle {
             rigid_body: RigidBody::Dynamic,
             mass: AdditionalMassProperties::Mass(100.0),
             actor: Actor,
+            restitution: Restitution::new(0.0),
         }
     }
 }

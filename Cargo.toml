@@ -6,12 +6,22 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-bevy = { version = "0.8.0", features = ["dynamic"] }
+bevy = { version = "0.8.0" }
 bevy_rapier3d = { version = "0.16.2", features = ["debug-render"]}
 
 [features]
-default = ["simd"]
-simd = []
+default = ["dynamic"]
+
+# dylib bevy for dev
+dynamic = ["bevy/dynamic"]
+
+simd = ["bevy_rapier3d/simd-nightly"]
+
+[profile.release]
+debug-assertions = true
+opt-level = 3
+lto = "fat"
+codegen-units = 1
 
 [profile.dev.package.bevy]
 opt-level = 3

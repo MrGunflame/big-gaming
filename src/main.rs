@@ -1,3 +1,4 @@
+mod assets;
 mod components;
 mod entities;
 mod hotkeys;
@@ -10,11 +11,13 @@ use std::{f32::consts::PI, ops::Deref};
 
 use bevy::{input::mouse::MouseMotion, prelude::*};
 use bevy_rapier3d::prelude::*;
+use bevy_rapier3d::rapier::prelude::RigidBodyVelocity;
 use bevy_rapier3d::{
     prelude::{DebugRenderMode, DebugRenderStyle},
     render::RapierDebugRenderPlugin,
 };
-use entities::player::{PlayerCameraBundle, PlayerCharacterBundle};
+use components::Player;
+use entities::player::{PlayerCameraBundle, PlayerCharacter, PlayerCharacterBundle};
 use hotkeys::HotkeyStore;
 use plugins::CameraPlugin;
 
@@ -27,6 +30,7 @@ fn main() {
         .add_startup_system(setup)
         .add_plugin(CameraPlugin)
         .insert_resource(HotkeyStore::default())
+        .add_system(debug_player)
         .run();
 }
 
@@ -44,7 +48,7 @@ fn setup(
             ..Default::default()
         })
         .insert(RigidBody::Fixed)
-        .insert(Collider::cuboid(100.0, 0.1, 100.0));
+        .insert(Collider::cuboid(1000.0, 0.1, 1000.0));
 
     // THE BALL
     commands
@@ -166,7 +170,7 @@ fn setup(
                 //     .insert(ColliderMassProperties::Density(1.0));
 
                 // let scene = asset_server.load("WaterBottle.gltf#Scene0");
-                let scene = asset_server.load("thing.glb#Scene0");
+                let scene = asset_server.load("thing2.glb#Scene0");
 
                 // let collider = AsyncSceneCollider {
                 //     handle: scene.clone_weak(),
@@ -253,19 +257,17 @@ impl Position {
     }
 }
 
-#[derive(Copy, Clone, Debug, Default, PartialEq, Component)]
-pub struct Velocity(pub f32);
-
-impl Velocity {
-    fn as_f32(self) -> f32 {
-        self.0
-    }
-}
-
 #[derive(Bundle)]
 pub struct PlayerCamera {
     #[bundle]
     camera: Camera3dBundle,
     rotation: Rotation,
     velocity: Velocity,
+}
+
+fn debug_player(players: Query<(&Transform, &Velocity), With<PlayerCharacter>>) {
+    // dbg!(players.is_empty());
+    for (transform, velocity) in &players {
+        // println!("POS {:?}, VEL: {:?}", transform, velocity);
+    }
 }
