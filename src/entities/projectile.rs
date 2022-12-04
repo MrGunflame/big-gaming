@@ -21,10 +21,7 @@ pub struct ProjectileBundle {
 impl ProjectileBundle {
     pub fn new(assets: Res<AssetServer>) -> Self {
         let scene = assets.load("thing.glb#Scene0");
-        let velocity = Velocity {
-            linvel: Vec3::new(0.0, 0.0, 0.0),
-            angvel: Vec3::new(0.0, 0.0, 0.0),
-        };
+        let velocity = Velocity::zero();
         let mass = AdditionalMassProperties::Mass(3.56);
         let ccd = Ccd::enabled();
         let collider = Collider::cuboid(1.0, 1.0, 1.0);

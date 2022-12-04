@@ -1,6 +1,6 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use bevy::input::mouse::MouseMotion;
+use bevy::input::mouse::{MouseMotion, MouseWheel};
 use bevy::prelude::*;
 use bevy_rapier3d::prelude::*;
 
@@ -64,9 +64,9 @@ pub fn keyboard_input(
                     camera.translation.y += 5.0;
                     camera.rotation = Quat::from_axis_angle(Vec3::Y, 0.0);
 
-                    CameraPosition::ThirdPerson
+                    CameraPosition::ThirdPerson { distance: 5.0 }
                 }
-                CameraPosition::ThirdPerson => {
+                CameraPosition::ThirdPerson { distance: _ } => {
                     camera.translation = player.translation;
 
                     camera.translation.z += 0.5;
@@ -114,7 +114,7 @@ pub fn mouse_input(
             *rotation = camera_rot.with_pitch(Radians(0.0));
 
             match camera_pos {
-                CameraPosition::ThirdPerson => {
+                CameraPosition::ThirdPerson { distance: _ } => {
                     // *rotation = camera_rot.with_pitch(Radians(0.0));
                     // camera.rotation = player.rotation;
                     // camera.translation = player.translation;
@@ -200,17 +200,37 @@ pub fn mouse_input(
     }
 }
 
-static COUNTER: AtomicUsize = AtomicUsize::new(0);
-
 pub fn mouse_button_input(
     mut commands: Commands,
     assets: Res<AssetServer>,
+    players: Query<(&Transform, &Rotation), With<PlayerCharacter>>,
     input: Res<Input<MouseButton>>,
 ) {
+    let (player, rot) = players.single();
+
     if input.pressed(MouseButton::Left) {
-        let entity = ProjectileBundle::new(assets);
-        commands.spawn_bundle(entity);
-        COUNTER.fetch_add(1, Ordering::Relaxed);
+        let mut entity = ProjectileBundle::new(assets);
+
+        // Create a new entity at the same position as the player,
+        // pointing at the same direction as the player and a positive velocity
+        // into the direction of the player.
+        entity.scene.transform = *player;
+        entity.velocity.linvel = rot.movement_vec() * Vec3::splat(1.0);
+
+        commands.spawn(entity);
+    }
+}
+
+pub fn mouse_scroll(
+    mut events: EventReader<MouseWheel>,
+    mut players: Query<(&mut CameraPosition), With<Camera3d>>,
+) {
+    if let Ok(mut position) = players.get_single_mut() {
+        if let CameraPosition::ThirdPerson { distance } = &mut *position {
+            for event in events.iter() {
+                *distance -= event.y;
+            }
+        }
     }
 }
 
@@ -244,9 +264,7 @@ fn update_player_camera(camera: &mut Transform, player: &Transform, pos: CameraP
 
             camera.translation = player.translation + offset;
         }
-        CameraPosition::ThirdPerson => {
-            let distance = 5.0;
-
+        CameraPosition::ThirdPerson { distance } => {
             let rotation_matrix = Mat3::from_quat(camera.rotation);
 
             camera.translation =

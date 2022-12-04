@@ -87,9 +87,11 @@ impl PlayerCameraBundle {
     }
 }
 
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash, Component)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Component)]
 pub enum CameraPosition {
     #[default]
     FirstPerson,
-    ThirdPerson,
+    ThirdPerson {
+        distance: f32,
+    },
 }

@@ -2,6 +2,7 @@ mod assets;
 mod components;
 mod entities;
 mod hotkeys;
+mod inventory;
 mod plugins;
 mod systems;
 mod utils;
@@ -28,8 +29,8 @@ fn main() {
         .add_plugin(RapierPhysicsPlugin::<NoUserData>::default())
         .add_plugin(RapierDebugRenderPlugin::default())
         .add_startup_system(setup)
-        .add_plugin(CameraPlugin)
         .insert_resource(HotkeyStore::default())
+        .add_plugin(CameraPlugin)
         .add_system(debug_player)
         .run();
 }
