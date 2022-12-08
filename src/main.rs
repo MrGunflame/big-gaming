@@ -45,7 +45,7 @@ fn setup(
 ) {
     // THE FLOOOR
     commands
-        .spawn_bundle(PbrBundle {
+        .spawn(PbrBundle {
             mesh: meshes.add(Mesh::from(shape::Plane { size: 100.0 })),
             material: materials.add(Color::rgb(1.0, 0.0, 0.0).into()),
             ..Default::default()
@@ -55,7 +55,7 @@ fn setup(
 
     // THE BALL
     commands
-        .spawn_bundle(PbrBundle {
+        .spawn(PbrBundle {
             mesh: meshes.add(Mesh::from(shape::Icosphere {
                 radius: 5.0,
                 subdivisions: 69,
@@ -78,7 +78,7 @@ fn setup(
 
     // THE GAMER
     commands
-        .spawn_bundle(PbrBundle {
+        .spawn(PbrBundle {
             mesh: meshes.add(Mesh::from(shape::Box {
                 min_x: 0.0,
                 max_x: 1.0,
@@ -98,7 +98,7 @@ fn setup(
         .insert(Restitution::coefficient(0.7))
         .insert(ColliderMassProperties::Density(100.0));
 
-    commands.spawn_bundle(PbrBundle {
+    commands.spawn(PbrBundle {
         mesh: meshes.add(Mesh::from(shape::Quad {
             size: Vec2::new(5.0, 1.0),
             flip: false,
@@ -107,7 +107,7 @@ fn setup(
         ..Default::default()
     });
 
-    commands.spawn_bundle(PbrBundle {
+    commands.spawn(PbrBundle {
         mesh: meshes.add(Mesh::from(shape::Box {
             min_x: 0.0,
             max_x: 1.0,
@@ -120,7 +120,7 @@ fn setup(
         ..Default::default()
     });
 
-    commands.spawn_bundle(PbrBundle {
+    commands.spawn(PbrBundle {
         mesh: meshes.add(Mesh::from(shape::Quad {
             size: Vec2::new(5.0, 1.0),
             flip: false,
@@ -129,7 +129,7 @@ fn setup(
         ..Default::default()
     });
 
-    commands.spawn_bundle(PbrBundle {
+    commands.spawn(PbrBundle {
         mesh: meshes.add(Mesh::from(shape::Box {
             min_x: -100.0,
             max_x: 100.0,
@@ -187,7 +187,7 @@ fn setup(
                 //     Collider::from_bevy_mesh(&scene, &ComputedColliderShape::TriMesh).unwrap();
 
                 commands
-                    .spawn_bundle(SceneBundle {
+                    .spawn(SceneBundle {
                         scene,
                         transform: Transform::from_xyz(10.0, 5.0, 10.0),
                         ..default()
@@ -206,8 +206,8 @@ fn setup(
         }
     }
 
-    commands.spawn_bundle(PlayerCameraBundle::new());
-    commands.spawn_bundle(PlayerCharacterBundle::new(meshes, materials));
+    commands.spawn(PlayerCameraBundle::new());
+    commands.spawn(PlayerCharacterBundle::new(meshes, materials));
 }
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Component)]
