@@ -38,7 +38,7 @@ impl Add<u32> for Resistance {
 impl AddAssign<u32> for Resistance {
     #[inline]
     fn add_assign(&mut self, rhs: u32) {
-        self.0.saturating_add(rhs);
+        *self = *self + rhs;
     }
 }
 
@@ -54,6 +54,6 @@ impl Sub<u32> for Resistance {
 impl SubAssign<u32> for Resistance {
     #[inline]
     fn sub_assign(&mut self, rhs: u32) {
-        self.0.saturating_sub(rhs);
+        *self = *self + rhs;
     }
 }
