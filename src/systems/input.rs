@@ -2,6 +2,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use bevy::input::mouse::{MouseMotion, MouseWheel};
 use bevy::prelude::*;
+use bevy::window::CursorGrabMode;
 use bevy_rapier3d::prelude::*;
 
 use crate::components::Rotation;
@@ -10,29 +11,37 @@ use crate::entities::projectile::ProjectileBundle;
 use crate::hotkeys::{HotkeyStore, MoveBackward, MoveForward, MoveLeft, MoveRight};
 use crate::utils::{Degrees, Radians};
 
+pub fn grab_mouse(mut windows: ResMut<Windows>) {
+    let window = windows.primary_mut();
+
+    window.set_cursor_visibility(false);
+    window.set_cursor_grab_mode(CursorGrabMode::Locked);
+}
+
 pub fn keyboard_input(
     rapier_ctx: Res<RapierContext>,
     hotkeys: Res<HotkeyStore>,
     input: Res<Input<KeyCode>>,
     mut camera: Query<(&mut Transform, &mut CameraPosition), With<Camera3d>>,
     mut players: Query<
-        (Entity, &mut Transform, &Rotation, &mut Velocity),
+        (Entity, &mut Transform, &Rotation, &mut Velocity, &Collider),
         (With<PlayerCharacter>, Without<Camera3d>),
     >,
 ) {
-    for ((mut camera, mut camera_position), (entity, mut player, rotation, mut velocity)) in
-        camera.iter_mut().zip(players.iter_mut())
+    for (
+        (mut camera, mut camera_position),
+        (entity, mut player, rotation, mut velocity, collider),
+    ) in camera.iter_mut().zip(players.iter_mut())
     {
-        let ray_origin = player.translation;
+        let shape_pos = player.translation;
+        let shape_rot = player.rotation;
         let is_on_ground = || {
-            let ray_origin = ray_origin;
-            let ray_dir = -Vec3::Y;
+            let shape_vel = -Vec3::Y;
             let max_toi = 2.0;
-            let solid = true;
             let filter = QueryFilter::new().exclude_collider(entity);
 
             rapier_ctx
-                .cast_ray(ray_origin, ray_dir, max_toi, solid, filter)
+                .cast_shape(shape_pos, shape_rot, shape_vel, &collider, max_toi, filter)
                 .is_some()
         };
 
@@ -87,115 +96,21 @@ pub fn keyboard_input(
 
 pub fn mouse_input(
     mut events: EventReader<MouseMotion>,
-    mut camera: Query<(&mut Transform, &mut Rotation, &CameraPosition), With<Camera3d>>,
+    mut camera: Query<(&mut Rotation, &CameraPosition), With<Camera3d>>,
     mut players: Query<(&mut Transform, &mut Rotation), (With<PlayerCharacter>, Without<Camera3d>)>,
 ) {
     for event in events.iter() {
-        for ((mut camera, mut camera_rot, camera_pos), (mut player, mut rotation)) in
+        for ((mut camera_rot, camera_pos), (mut player, mut rotation)) in
             camera.iter_mut().zip(players.iter_mut())
         {
             let yaw = event.delta.x;
             let pitch = event.delta.y;
 
-            // camera_rot.yaw -= yaw * 0.2;
-            // camera_rot.pitch += pitch * 0.2;
-
-            // rotation.yaw -= yaw * 0.2;
-
-            // player.rotation = rotation.to_quat();
-
             *camera_rot = camera_rot
                 .add_yaw(Degrees(yaw))
                 .saturating_add_pitch(Degrees(pitch));
 
-            // camera.rotation = camera_rot.to_quat();
-
-            // The entity doesn't change pitch.
             *rotation = camera_rot.with_pitch(Radians(0.0));
-
-            match camera_pos {
-                CameraPosition::ThirdPerson { distance: _ } => {
-                    // *rotation = camera_rot.with_pitch(Radians(0.0));
-                    // camera.rotation = player.rotation;
-                    // camera.translation = player.translation;
-                    // camera.translation.y += 5.0;
-                    //camera.rotate_around(player.translation, camera_rot.to_quat());
-
-                    // let yaw = Quat::from_rotation_y(-event.delta.x.to_radians() * 0.1);
-                    // let yaw = Quat::from_rotation_y(-yaw * 0.2);
-                    let pitch = Quat::from_rotation_x(event.delta.y.to_radians() * 0.1);
-
-                    // camera.rotation = yaw * camera.rotation;
-                    // camera.rotation =
-                    //     camera.rotation * Quat::from_axis_angle(-Vec3::Y, yaw.to_radians() * 0.2);
-
-                    // camera.rotation = pitch * camera.rotation;
-
-                    // let rotation_matrix = Mat3::from_quat(camera.rotation);
-                    // camera.translation =
-                    //     player.translation + rotation_matrix.mul_vec3(Vec3::new(0.0, 0.0, 5.0));
-                }
-                // Player rotation is Camera rotation with y offset.
-                CameraPosition::FirstPerson => {
-                    // player.rotation = rotation.to_quat();
-
-                    // camera_rot = camera_rot.camera_rot.yaw -= yaw * 0.2;
-                    // camera_rot.pitch += pitch * 0.2;
-
-                    // rotation.yaw -= yaw * 0.2;
-                    // rotation.pitch += pitch * 0.2;
-
-                    // println!("{:?}", camera.rotation);
-
-                    // // camera.rotation =
-                    // //     camera.rotation * Quat::from_axis_angle(-Vec3::X, pitch.to_radians() * 0.2);
-                    // println!("{:?}", camera.rotation);
-
-                    // println!("Rotation {:?}", camera_rot);
-
-                    // let mat = Mat3::from_axis_angle(-Vec3::X, camera_rot.pitch.to_radians())
-                    //     * Mat3::from_axis_angle(-Vec3::Y, camera_rot.yaw.to_radians());
-
-                    // camera.rotation = Quat::from_mat3(&mat);
-
-                    // let mat = Mat3::from_euler(
-                    //     EulerRot::YXZ,
-                    //     camera_rot.yaw.to_radians(),
-                    //     -camera_rot.pitch.to_radians(),
-                    //     0.0,
-                    // );
-
-                    // camera.rotation = Quat::from_mat3(&mat);
-
-                    // camera.rotation = Quat::from_euler(
-                    //     EulerRot::XYZ,
-                    //     camera_rot.pitch.to_radians(),
-                    //     camera_rot.yaw.to_radians(),
-                    //     0.0,
-                    // );
-
-                    // camera.rotation =
-                    //     Quat::from_axis_angle(-Vec3::X, camera_rot.pitch.to_radians())
-                    //         * Quat::from_axis_angle(-Vec3::Y, camera_rot.yaw.to_radians());
-
-                    // camera.rotation =
-                    //     camera.rotation * Quat::from_axis_angle(-Vec3::Y, yaw.to_radians() * 0.2);
-
-                    // camera.rotation =
-                    //     camera.rotation * Quat::from_axis_angle(-Vec3::Y, yaw.to_radians());
-
-                    // camera.rotation =
-                    //     camera.rotation * Quat::from_axis_angle(-Vec3::X, pitch.to_radians() * 0.2);
-                    // camera.rotation =
-                    //     camera.rotation * Quat::from_axis_angle(-Vec3::Y, yaw.to_radians() * 0.2);
-
-                    // player.rotation =
-                    //     player.rotation * Quat::from_axis_angle(-Vec3::Y, yaw.to_radians() * 0.2);
-
-                    //player.rotation = rotation.to_quat();
-                    //camera.rotation = camera_rot.to_quat();
-                }
-            }
         }
     }
 }
@@ -214,7 +129,9 @@ pub fn mouse_button_input(
         // Create a new entity at the same position as the player,
         // pointing at the same direction as the player and a positive velocity
         // into the direction of the player.
-        entity.scene.transform = *player;
+        entity.scene.transform.translation = player.translation;
+        entity.scene.transform.rotation = player.rotation;
+        entity.scene.transform.translation += rot.movement_vec() * Vec3::splat(5.0);
         entity.velocity.linvel = rot.movement_vec() * Vec3::splat(1.0);
 
         commands.spawn(entity);
