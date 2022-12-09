@@ -120,9 +120,11 @@ pub fn mouse_button_input(
     mut commands: Commands,
     assets: Res<AssetServer>,
     players: Query<(&Transform, &Rotation), With<PlayerCharacter>>,
+    cameras: Query<&Rotation, With<Camera3d>>,
     input: Res<Input<MouseButton>>,
 ) {
     let (player, rot) = players.single();
+    let camera_rot = cameras.single();
 
     if input.pressed(MouseButton::Left) {
         let mut entity = ProjectileBundle::new(assets);
@@ -132,8 +134,8 @@ pub fn mouse_button_input(
         // into the direction of the player.
         entity.scene.transform.translation = player.translation;
         entity.scene.transform.rotation = player.rotation;
-        entity.scene.transform.translation += rot.movement_vec() * Vec3::splat(5.0);
-        entity.velocity.linvel = rot.movement_vec() * Vec3::splat(1000.0);
+        entity.scene.transform.translation += camera_rot.movement_vec() * Vec3::splat(5.0);
+        entity.velocity.linvel = camera_rot.movement_vec() * Vec3::splat(1000.0);
 
         commands.spawn(entity).insert(Damage::new(1));
     }

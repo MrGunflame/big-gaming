@@ -120,9 +120,8 @@ impl Rotation {
     /// Up: Y
     /// Right: X
     pub fn movement_vec(self) -> Vec3 {
-        // We don't want the entity to go flying, so disregard pitch here.
         let x = self.yaw.sin();
-        let y = 0.0;
+        let y = -self.pitch.sin();
         let z = -self.yaw.cos();
 
         Vec3 { x, y, z }
