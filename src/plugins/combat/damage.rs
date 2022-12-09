@@ -23,6 +23,18 @@ pub struct IncomingDamage {
 }
 
 impl IncomingDamage {
+    pub const fn new() -> Self {
+        Self {
+            incoming: Vec::new(),
+        }
+    }
+
+    /// Clears the list of incoming damage.
+    pub fn clear(&mut self) {
+        self.incoming.clear();
+        self.incoming.shrink_to_fit();
+    }
+
     pub fn push(&mut self, damage: Damage) {
         self.incoming.push(damage);
     }

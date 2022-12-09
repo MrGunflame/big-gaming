@@ -6,6 +6,12 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, Component)]
 pub struct Resistances {}
 
+impl Resistances {
+    pub fn new() -> Self {
+        Self {}
+    }
+}
+
 /// A damage resistance value.
 ///
 /// A `Resistance` reduces the incoming received damage. A value should be kept for every class of

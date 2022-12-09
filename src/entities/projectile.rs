@@ -9,39 +9,6 @@ use bevy_rapier3d::prelude::{AdditionalMassProperties, Ccd, Collider, RigidBody,
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Component)]
 pub struct Projectile;
 
-/// A list of incoming damage to an actor.
-pub struct IncomingDamage {
-    incoming: Vec<Damage>,
-}
-
-impl IncomingDamage {
-    pub fn push(&mut self, damage: Damage) {
-        self.incoming.push(damage);
-    }
-
-    pub fn pop(&mut self) -> Option<Damage> {
-        self.incoming.pop()
-    }
-}
-
-#[derive(Copy, Clone, Debug)]
-pub struct Damage {
-    // placeholder
-    pub class: Option<()>,
-    /// The amount of damage applied.
-    pub amount: u32,
-}
-
-impl Damage {
-    #[inline]
-    pub fn new(amount: u32) -> Self {
-        Self {
-            class: None,
-            amount,
-        }
-    }
-}
-
 #[derive(Bundle)]
 pub struct ProjectileBundle {
     #[bundle]

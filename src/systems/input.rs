@@ -9,6 +9,7 @@ use crate::components::Rotation;
 use crate::entities::player::{CameraPosition, PlayerCharacter};
 use crate::entities::projectile::ProjectileBundle;
 use crate::hotkeys::{HotkeyStore, MoveBackward, MoveForward, MoveLeft, MoveRight};
+use crate::plugins::combat::Damage;
 use crate::utils::{Degrees, Radians};
 
 pub fn grab_mouse(mut windows: ResMut<Windows>) {
@@ -132,9 +133,9 @@ pub fn mouse_button_input(
         entity.scene.transform.translation = player.translation;
         entity.scene.transform.rotation = player.rotation;
         entity.scene.transform.translation += rot.movement_vec() * Vec3::splat(5.0);
-        entity.velocity.linvel = rot.movement_vec() * Vec3::splat(1.0);
+        entity.velocity.linvel = rot.movement_vec() * Vec3::splat(1000.0);
 
-        commands.spawn(entity);
+        commands.spawn(entity).insert(Damage::new(1));
     }
 }
 

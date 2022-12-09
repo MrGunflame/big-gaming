@@ -12,6 +12,12 @@ use crate::utils::Radians;
 pub struct Actor;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Component)]
+pub enum ActorState {
+    Alive,
+    Dead,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Component)]
 pub struct Player;
 
 #[derive(Copy, Clone, Debug, PartialEq, Component)]

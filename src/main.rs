@@ -18,10 +18,12 @@ use bevy_rapier3d::{
     render::RapierDebugRenderPlugin,
 };
 use components::Player;
+use entities::actor::ActorBundle;
 use entities::player::{PlayerCameraBundle, PlayerCharacter, PlayerCharacterBundle};
 use entities::projectile::Projectile;
 use hotkeys::HotkeyStore;
-use plugins::CameraPlugin;
+use plugins::combat::CombatPlugin;
+use plugins::{CameraPlugin, ProjectilePlugin};
 
 fn main() {
     App::new()
@@ -32,8 +34,9 @@ fn main() {
         .add_startup_system(setup)
         .insert_resource(HotkeyStore::default())
         .add_plugin(CameraPlugin)
+        .add_plugin(ProjectilePlugin)
+        .add_plugin(CombatPlugin)
         .add_system(debug_player)
-        .add_system(display_events)
         .run();
 }
 
@@ -206,6 +209,8 @@ fn setup(
         }
     }
 
+    commands.spawn(ActorBundle::new(&mut meshes, &mut materials));
+
     commands.spawn(PlayerCameraBundle::new());
     commands.spawn(PlayerCharacterBundle::new(meshes, materials));
 }
@@ -272,25 +277,5 @@ fn debug_player(players: Query<(&Transform, &Velocity), With<PlayerCharacter>>) 
     // dbg!(players.is_empty());
     for (transform, velocity) in &players {
         // println!("POS {:?}, VEL: {:?}", transform, velocity);
-    }
-}
-
-fn display_events(
-    mut commands: Commands,
-    rapier_ctx: Res<RapierContext>,
-    mut entities: Query<(Entity, &Transform), With<Projectile>>,
-) {
-    for (entity, _) in &mut entities {
-        for contact_pair in rapier_ctx.contacts_with(entity) {
-            if contact_pair.has_any_active_contacts() {
-                let other_collider = if contact_pair.collider1() == entity {
-                    contact_pair.collider2()
-                } else {
-                    contact_pair.collider1()
-                };
-
-                commands.entity(entity).despawn_recursive();
-            }
-        }
     }
 }
