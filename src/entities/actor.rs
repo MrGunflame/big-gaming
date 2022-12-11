@@ -6,7 +6,7 @@ use bevy_rapier3d::prelude::{
 };
 use bevy_rapier3d::rapier::prelude::Shape;
 
-use crate::components::{Actor, ActorState};
+use crate::components::{Actor, ActorState, Rotation};
 use crate::plugins::combat::{CombatBundle, Health, IncomingDamage};
 
 #[derive(Bundle)]
@@ -15,6 +15,8 @@ pub struct ActorBundle {
     pub pbr: PbrBundle,
     #[bundle]
     pub combat: CombatBundle,
+
+    pub rotation: Rotation,
 
     pub rigid_body: RigidBody,
     pub velocity: Velocity,
@@ -43,6 +45,7 @@ impl ActorBundle {
                 transform: Transform::from_xyz(10.0, 0.0, 10.0).looking_at(Vec3::X, Vec3::Y),
                 ..Default::default()
             },
+            rotation: Rotation::new(),
             velocity: Velocity {
                 linvel: Vec3::new(0.0, 0.0, 0.0),
                 angvel: Vec3::new(0.0, 0.0, 0.0),

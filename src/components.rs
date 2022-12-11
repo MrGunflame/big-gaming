@@ -4,6 +4,13 @@ use bevy::prelude::{Component, EulerRot, Mat3, Quat, Vec3};
 
 use crate::utils::Radians;
 
+/// A entity that exists within the game world.
+///
+/// This only includes that exist within the world, i.e. excludes components like cameras, markers,
+/// etc...
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Component)]
+pub struct WorldObject;
+
 /// A entitiy that can act within a world.
 ///
 /// Unlike static props, `Actor` is a marker component for all entities that may act on its own,

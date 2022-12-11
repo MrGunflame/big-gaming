@@ -15,85 +15,85 @@ use crate::utils::{Degrees, Radians};
 pub fn grab_mouse(mut windows: ResMut<Windows>) {
     let window = windows.primary_mut();
 
-    window.set_cursor_visibility(false);
-    window.set_cursor_grab_mode(CursorGrabMode::Locked);
+    // window.set_cursor_visibility(false);
+    // window.set_cursor_grab_mode(CursorGrabMode::Locked);
 }
 
-pub fn keyboard_input(
-    rapier_ctx: Res<RapierContext>,
-    hotkeys: Res<HotkeyStore>,
-    input: Res<Input<KeyCode>>,
-    mut camera: Query<(&mut Transform, &mut CameraPosition), With<Camera3d>>,
-    mut players: Query<
-        (Entity, &mut Transform, &Rotation, &mut Velocity, &Collider),
-        (With<PlayerCharacter>, Without<Camera3d>),
-    >,
-) {
-    for (
-        (mut camera, mut camera_position),
-        (entity, mut player, rotation, mut velocity, collider),
-    ) in camera.iter_mut().zip(players.iter_mut())
-    {
-        let shape_pos = player.translation;
-        let shape_rot = player.rotation;
-        let is_on_ground = || {
-            let shape_vel = -Vec3::Y;
-            let max_toi = 2.0;
-            let filter = QueryFilter::new().exclude_collider(entity);
+// pub fn keyboard_input(
+//     rapier_ctx: Res<RapierContext>,
+//     hotkeys: Res<HotkeyStore>,
+//     input: Res<Input<KeyCode>>,
+//     mut camera: Query<(&mut Transform, &mut CameraPosition), With<Camera3d>>,
+//     mut players: Query<
+//         (Entity, &mut Transform, &Rotation, &mut Velocity, &Collider),
+//         (With<PlayerCharacter>, Without<Camera3d>),
+//     >,
+// ) {
+//     for (
+//         (mut camera, mut camera_position),
+//         (entity, mut player, rotation, mut velocity, collider),
+//     ) in camera.iter_mut().zip(players.iter_mut())
+//     {
+//         let shape_pos = player.translation;
+//         let shape_rot = player.rotation;
+//         let is_on_ground = || {
+//             let shape_vel = -Vec3::Y;
+//             let max_toi = 2.0;
+//             let filter = QueryFilter::new().exclude_collider(entity);
 
-            rapier_ctx
-                .cast_shape(shape_pos, shape_rot, shape_vel, &collider, max_toi, filter)
-                .is_some()
-        };
+//             rapier_ctx
+//                 .cast_shape(shape_pos, shape_rot, shape_vel, &collider, max_toi, filter)
+//                 .is_some()
+//         };
 
-        if hotkeys.pressed::<MoveLeft>(&input) {
-            let vec = rotation.left(Degrees(90.0)).movement_vec() * 0.2;
-            player.translation += vec;
-        }
+//         if hotkeys.pressed::<MoveLeft>(&input) {
+//             let vec = rotation.left(Degrees(90.0)).movement_vec() * 0.2;
+//             player.translation += vec;
+//         }
 
-        if hotkeys.pressed::<MoveRight>(&input) {
-            let vec = rotation.right(Degrees(90.0)).movement_vec() * 0.2;
-            player.translation += vec;
-        }
+//         if hotkeys.pressed::<MoveRight>(&input) {
+//             let vec = rotation.right(Degrees(90.0)).movement_vec() * 0.2;
+//             player.translation += vec;
+//         }
 
-        if hotkeys.pressed::<MoveBackward>(&input) {
-            let vec = rotation.left(Degrees(180.0)).movement_vec() * 0.2;
-            player.translation += vec;
-        }
+//         if hotkeys.pressed::<MoveBackward>(&input) {
+//             let vec = rotation.left(Degrees(180.0)).movement_vec() * 0.2;
+//             player.translation += vec;
+//         }
 
-        if hotkeys.pressed::<MoveForward>(&input) {
-            let vec = rotation.movement_vec() * 0.2;
-            player.translation += vec;
-        }
+//         if hotkeys.pressed::<MoveForward>(&input) {
+//             let vec = rotation.movement_vec() * 0.2;
+//             player.translation += vec;
+//         }
 
-        if input.just_pressed(KeyCode::V) {
-            println!("swapped");
+//         if input.just_pressed(KeyCode::V) {
+//             println!("swapped");
 
-            *camera_position = match *camera_position {
-                CameraPosition::FirstPerson => {
-                    camera.translation.y += 5.0;
-                    camera.rotation = Quat::from_axis_angle(Vec3::Y, 0.0);
+//             *camera_position = match *camera_position {
+//                 CameraPosition::FirstPerson => {
+//                     camera.translation.y += 5.0;
+//                     camera.rotation = Quat::from_axis_angle(Vec3::Y, 0.0);
 
-                    CameraPosition::ThirdPerson { distance: 5.0 }
-                }
-                CameraPosition::ThirdPerson { distance: _ } => {
-                    camera.translation = player.translation;
+//                     CameraPosition::ThirdPerson { distance: 5.0 }
+//                 }
+//                 CameraPosition::ThirdPerson { distance: _ } => {
+//                     camera.translation = player.translation;
 
-                    camera.translation.z += 0.5;
-                    camera.translation.y += 1.8;
+//                     camera.translation.z += 0.5;
+//                     camera.translation.y += 1.8;
 
-                    CameraPosition::FirstPerson
-                }
-            };
-        }
+//                     CameraPosition::FirstPerson
+//                 }
+//             };
+//         }
 
-        if input.just_pressed(KeyCode::Space) {
-            if is_on_ground() {
-                velocity.linvel.y += 10.0;
-            }
-        }
-    }
-}
+//         if input.just_pressed(KeyCode::Space) {
+//             if is_on_ground() {
+//                 velocity.linvel.y += 10.0;
+//             }
+//         }
+//     }
+// }
 
 pub fn mouse_input(
     mut events: EventReader<MouseMotion>,

@@ -5,25 +5,28 @@ mod hotkeys;
 mod inventory;
 mod plugins;
 mod systems;
+mod ui;
 mod utils;
 mod world;
 
 use std::{f32::consts::PI, ops::Deref};
 
 use bevy::{input::mouse::MouseMotion, prelude::*};
+use bevy_egui::{egui, EguiContext, EguiPlugin};
 use bevy_rapier3d::prelude::*;
 use bevy_rapier3d::rapier::prelude::RigidBodyVelocity;
 use bevy_rapier3d::{
     prelude::{DebugRenderMode, DebugRenderStyle},
     render::RapierDebugRenderPlugin,
 };
-use components::Player;
+use components::{Player, Rotation};
 use entities::actor::ActorBundle;
 use entities::player::{PlayerCameraBundle, PlayerCharacter, PlayerCharacterBundle};
 use entities::projectile::Projectile;
 use hotkeys::HotkeyStore;
 use plugins::combat::CombatPlugin;
-use plugins::{CameraPlugin, ProjectilePlugin};
+use plugins::{CameraPlugin, HotkeyPlugin, MovementPlugin, ProjectilePlugin};
+use ui::UiPlugin;
 
 fn main() {
     App::new()
@@ -36,7 +39,9 @@ fn main() {
         .add_plugin(CameraPlugin)
         .add_plugin(ProjectilePlugin)
         .add_plugin(CombatPlugin)
-        .add_system(debug_player)
+        .add_plugin(UiPlugin)
+        .add_plugin(HotkeyPlugin)
+        .add_plugin(MovementPlugin)
         .run();
 }
 
@@ -212,44 +217,7 @@ fn setup(
     commands.spawn(ActorBundle::new(&mut meshes, &mut materials));
 
     commands.spawn(PlayerCameraBundle::new());
-    commands.spawn(PlayerCharacterBundle::new(meshes, materials));
-}
-
-#[derive(Copy, Clone, Debug, Default, PartialEq, Component)]
-pub struct Rotation {
-    pub yaw: f32,
-    pub pitch: f32,
-}
-
-impl Rotation {
-    pub fn new() -> Self {
-        Self {
-            yaw: 0.0,
-            pitch: 0.0,
-        }
-    }
-
-    pub fn left(mut self, deg: f32) -> Self {
-        self.yaw += deg;
-        self
-    }
-
-    pub fn right(mut self, deg: f32) -> Self {
-        self.yaw -= deg;
-        self
-    }
-
-    pub fn to_quat(self) -> Quat {
-        Quat::from_axis_angle(Vec3::Y, self.yaw.to_radians())
-            * Quat::from_axis_angle(-Vec3::X, self.pitch.to_radians())
-    }
-
-    pub fn movement_vec(self) -> Vec2 {
-        let x = self.yaw.to_radians().sin();
-        let y = self.yaw.to_radians().cos();
-
-        Vec2::new(x, y)
-    }
+    commands.spawn(PlayerCharacterBundle::new(&mut meshes, &mut materials));
 }
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Component)]
@@ -271,11 +239,4 @@ pub struct PlayerCamera {
     camera: Camera3dBundle,
     rotation: Rotation,
     velocity: Velocity,
-}
-
-fn debug_player(players: Query<(&Transform, &Velocity), With<PlayerCharacter>>) {
-    // dbg!(players.is_empty());
-    for (transform, velocity) in &players {
-        // println!("POS {:?}, VEL: {:?}", transform, velocity);
-    }
 }

@@ -4,7 +4,7 @@ mod resistances;
 
 use bevy::prelude::{Bundle, Plugin, Query};
 pub use damage::{Damage, IncomingDamage};
-pub use health::Health;
+pub use health::{Health, MaxHealth};
 pub use resistances::{Resistance, Resistances};
 
 use crate::components::ActorState;
@@ -42,6 +42,7 @@ fn apply_incoming_damage(
 pub struct CombatBundle {
     pub incoming_damage: IncomingDamage,
     pub health: Health,
+    pub max_health: MaxHealth,
     pub resistances: Resistances,
 }
 
@@ -50,6 +51,7 @@ impl CombatBundle {
         Self {
             incoming_damage: IncomingDamage::new(),
             health: Health::new(50),
+            max_health: MaxHealth::new(50),
             resistances: Resistances::new(),
         }
     }
