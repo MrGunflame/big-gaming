@@ -3,14 +3,15 @@ use std::fmt::{self, Display, Formatter};
 use std::ops::{Div, Sub, SubAssign};
 
 use bevy::prelude::Component;
+
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
 /// The health value of an actor.
-#[derive(
-    Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Component,
-)]
-#[serde(transparent)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Component)]
 #[repr(transparent)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(transparent))]
 pub struct Health(u32);
 
 impl Health {

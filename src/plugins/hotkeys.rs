@@ -11,7 +11,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 
 use bevy::input::keyboard::KeyboardInput;
 use bevy::input::ButtonState;
-use bevy::prelude::{EventReader, Input, KeyCode, Plugin, Res, ResMut, Resource};
+use bevy::prelude::{EventReader, KeyCode, Plugin, ResMut, Resource};
 
 static EVENT_ID_COUNTER: AtomicU32 = AtomicU32::new(1);
 

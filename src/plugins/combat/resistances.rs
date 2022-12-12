@@ -1,15 +1,77 @@
+use std::borrow::Borrow;
+use std::collections::HashMap;
+use std::num::NonZeroU32;
 use std::ops::{Add, AddAssign, Sub, SubAssign};
 
 use bevy::prelude::Component;
+
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Component)]
-pub struct Resistances {}
+pub struct Resistances {
+    classes: HashMap<ResistanceId, Resistance>,
+}
 
 impl Resistances {
     pub fn new() -> Self {
-        Self {}
+        Self {
+            classes: HashMap::new(),
+        }
     }
+
+    pub fn get<T>(&self, class: T) -> Option<Resistance>
+    where
+        T: Borrow<ResistanceId>,
+    {
+        self.classes.get(class.borrow()).copied()
+    }
+
+    pub fn get_mut<T>(&mut self, class: T) -> Option<&mut Resistance>
+    where
+        T: Borrow<ResistanceId>,
+    {
+        self.classes.get_mut(class.borrow())
+    }
+
+    /// Adds `value` to the specified resistance. Returns the new resistance.
+    pub fn add<T>(&mut self, class: T, value: u32) -> Option<Resistance>
+    where
+        T: Borrow<ResistanceId>,
+    {
+        match self.get_mut(class.borrow()) {
+            Some(res) => {
+                *res += value;
+                Some(*res)
+            }
+            None => None,
+        }
+    }
+
+    pub fn sub<T>(&mut self, class: T, value: u32) -> Option<Resistance>
+    where
+        T: Borrow<ResistanceId>,
+    {
+        match self.get_mut(class.borrow()) {
+            Some(res) => {
+                *res -= value;
+                Some(*res)
+            }
+            None => None,
+        }
+    }
+}
+
+/// A globally unique identifier for a [`Resistance`].
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[repr(transparent)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(transparent))]
+pub struct ResistanceId(NonZeroU32);
+
+impl ResistanceId {
+    pub const BALLISTIC: Self = Self(NonZeroU32::new(2).unwrap());
+    pub const ENERGY: Self = Self(NonZeroU32::new(3).unwrap());
 }
 
 /// A damage resistance value.
@@ -19,8 +81,7 @@ impl Resistances {
 ///
 /// `Resistance` implements [`Add`] and [`Sub`], saturating at the bounds of `u32::MAX` instead of
 /// overflowing or panicking.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-#[serde(transparent)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]
 pub struct Resistance(u32);
 

@@ -1,3 +1,5 @@
+#![feature(const_option)]
+
 mod assets;
 mod components;
 mod entities;
@@ -9,20 +11,12 @@ mod ui;
 mod utils;
 mod world;
 
-use std::{f32::consts::PI, ops::Deref};
-
-use bevy::{input::mouse::MouseMotion, prelude::*};
-use bevy_egui::{egui, EguiContext, EguiPlugin};
+use bevy::prelude::*;
 use bevy_rapier3d::prelude::*;
-use bevy_rapier3d::rapier::prelude::RigidBodyVelocity;
-use bevy_rapier3d::{
-    prelude::{DebugRenderMode, DebugRenderStyle},
-    render::RapierDebugRenderPlugin,
-};
-use components::{Player, Rotation};
+use bevy_rapier3d::render::RapierDebugRenderPlugin;
+use components::Rotation;
 use entities::actor::ActorBundle;
-use entities::player::{PlayerCameraBundle, PlayerCharacter, PlayerCharacterBundle};
-use entities::projectile::Projectile;
+use entities::player::{PlayerCameraBundle, PlayerCharacterBundle};
 use hotkeys::HotkeyStore;
 use plugins::combat::CombatPlugin;
 use plugins::{CameraPlugin, HotkeyPlugin, MovementPlugin, ProjectilePlugin};
