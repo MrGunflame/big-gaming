@@ -10,6 +10,7 @@ use std::num::NonZeroU32;
 use std::sync::atomic::{AtomicU32, Ordering};
 
 use bevy::input::keyboard::KeyboardInput;
+use bevy::input::ButtonState;
 use bevy::prelude::{EventReader, Input, KeyCode, Plugin, Res, ResMut, Resource};
 
 static EVENT_ID_COUNTER: AtomicU32 = AtomicU32::new(1);
@@ -162,11 +163,16 @@ impl HotkeyStore {
 }
 
 fn keyboard_input(mut hotkeys: ResMut<HotkeyStore>, mut events: EventReader<KeyboardInput>) {
-    hotkeys.keyboard.clear();
-
     for event in events.iter() {
         if let Some(key_code) = event.key_code {
-            hotkeys.keyboard.insert(key_code);
+            match event.state {
+                ButtonState::Pressed => {
+                    hotkeys.keyboard.insert(key_code);
+                }
+                ButtonState::Released => {
+                    hotkeys.keyboard.remove(&key_code);
+                }
+            }
         }
     }
 
