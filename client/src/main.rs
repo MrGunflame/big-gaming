@@ -40,7 +40,7 @@ fn setup(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    mut asset_server: Res<AssetServer>,
+    asset_server: Res<AssetServer>,
 ) {
     // THE FLOOOR
     commands

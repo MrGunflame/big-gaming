@@ -5,7 +5,7 @@ use bevy_rapier3d::prelude::{
 };
 
 use crate::components::{Actor, ActorState, Rotation};
-use crate::plugins::combat::{CombatBundle, Health, IncomingDamage};
+use crate::plugins::combat::CombatBundle;
 use crate::plugins::movement::MovementSpeed;
 
 #[derive(Bundle)]
@@ -33,7 +33,7 @@ impl ActorBundle {
     pub fn new(assets: &AssetServer) -> Self {
         Self {
             scene: SceneBundle {
-                scene: assets.load("person.glb#Scene0"),
+                scene: assets.load("thing.glb#Scene0"),
                 ..Default::default()
             },
             rotation: Rotation::new(),
@@ -48,7 +48,7 @@ impl ActorBundle {
             mass: AdditionalMassProperties::Mass(100.0),
             actor: Actor,
             combat: CombatBundle::new(),
-            actor_state: ActorState::DEAD,
+            actor_state: ActorState::NORMAL,
             movement_speed: MovementSpeed(3.0),
         }
     }

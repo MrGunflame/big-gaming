@@ -1,6 +1,8 @@
 use std::mem::MaybeUninit;
 
-use bevy::prelude::{KeyCode, Query, Res, ResMut};
+use bevy::input::mouse::MouseWheel;
+use bevy::prelude::{EventReader, KeyCode, Query, Res, ResMut};
+use bevy::time::Time;
 
 use crate::entities::player::CameraPosition;
 use crate::plugins::hotkeys::{Event, EventId, HotkeyStore, TriggerKind};
@@ -38,5 +40,27 @@ pub(super) fn toggle_camera_position(
             CameraPosition::FirstPerson => CameraPosition::ThirdPerson { distance: 5.0 },
             CameraPosition::ThirdPerson { distance: _ } => CameraPosition::FirstPerson,
         };
+    }
+}
+
+pub(super) fn adjust_camera_distance(
+    time: Res<Time>,
+    mut cameras: Query<&mut CameraPosition>,
+    mut events: EventReader<MouseWheel>,
+) {
+    let mut position = cameras.single_mut();
+
+    let delta = time.delta_seconds();
+
+    if let CameraPosition::ThirdPerson { distance } = &mut *position {
+        for event in events.iter() {
+            *distance -= event.y * delta * 5.0;
+
+            if *distance < 1.0 {
+                *distance = 1.0;
+            } else if *distance > 10.0 {
+                *distance = 10.0;
+            }
+        }
     }
 }

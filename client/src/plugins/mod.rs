@@ -1,7 +1,6 @@
 mod camera;
 pub mod combat;
 pub mod hotkeys;
-mod input;
 pub mod movement;
 mod projectile;
 

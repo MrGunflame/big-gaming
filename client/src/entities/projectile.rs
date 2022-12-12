@@ -1,6 +1,6 @@
 use bevy::prelude::{
-    AssetServer, Bundle, Commands, Component, ComputedVisibility, GlobalTransform, Handle,
-    PbrBundle, Res, Transform, Vec3, Visibility,
+    AssetServer, Bundle, Commands, Component, ComputedVisibility, GlobalTransform, Handle, Res,
+    Transform, Visibility,
 };
 use bevy::scene::{Scene, SceneBundle};
 use bevy_rapier3d::prelude::{AdditionalMassProperties, Ccd, Collider, RigidBody, Velocity};

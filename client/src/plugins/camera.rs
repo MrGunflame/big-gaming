@@ -4,7 +4,7 @@ use bevy::prelude::{Mat3, Plugin, Query, Transform, Vec3, With, Without};
 
 use crate::entities::player::{CameraPosition, PlayerCharacter};
 
-use self::events::{register_events, toggle_camera_position};
+use self::events::{adjust_camera_distance, register_events, toggle_camera_position};
 
 pub struct CameraPlugin;
 
@@ -13,11 +13,11 @@ impl Plugin for CameraPlugin {
         app.add_startup_system(register_events)
             .add_system(crate::systems::input::grab_mouse)
             .add_system(crate::systems::input::mouse_input)
-            .add_system(crate::systems::input::mouse_scroll)
             .add_system(crate::systems::input::transform_system)
             .add_system(crate::systems::input::mouse_button_input)
             .add_system(synchronize_player_camera)
-            .add_system(toggle_camera_position);
+            .add_system(toggle_camera_position)
+            .add_system(adjust_camera_distance);
     }
 }
 
