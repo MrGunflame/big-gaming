@@ -8,7 +8,6 @@ use bevy_rapier3d::prelude::*;
 use crate::components::Rotation;
 use crate::entities::player::{CameraPosition, PlayerCharacter};
 use crate::entities::projectile::ProjectileBundle;
-use crate::hotkeys::{HotkeyStore, MoveBackward, MoveForward, MoveLeft, MoveRight};
 use crate::plugins::combat::Damage;
 use crate::utils::{Degrees, Radians};
 

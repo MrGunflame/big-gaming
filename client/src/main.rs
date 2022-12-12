@@ -3,7 +3,6 @@
 mod assets;
 mod components;
 mod entities;
-mod hotkeys;
 mod inventory;
 mod plugins;
 mod systems;
@@ -17,7 +16,6 @@ use bevy_rapier3d::render::RapierDebugRenderPlugin;
 use components::Rotation;
 use entities::actor::ActorBundle;
 use entities::player::{PlayerCameraBundle, PlayerCharacterBundle};
-use hotkeys::HotkeyStore;
 use plugins::combat::CombatPlugin;
 use plugins::{CameraPlugin, HotkeyPlugin, MovementPlugin, ProjectilePlugin};
 use ui::UiPlugin;
@@ -29,7 +27,6 @@ fn main() {
         .add_plugin(RapierPhysicsPlugin::<NoUserData>::default())
         .add_plugin(RapierDebugRenderPlugin::default())
         .add_startup_system(setup)
-        .insert_resource(HotkeyStore::default())
         .add_plugin(CameraPlugin)
         .add_plugin(ProjectilePlugin)
         .add_plugin(CombatPlugin)
@@ -208,10 +205,10 @@ fn setup(
         }
     }
 
-    commands.spawn(ActorBundle::new(&mut meshes, &mut materials));
+    commands.spawn(ActorBundle::new(&asset_server));
 
     commands.spawn(PlayerCameraBundle::new());
-    commands.spawn(PlayerCharacterBundle::new(&mut meshes, &mut materials));
+    commands.spawn(PlayerCharacterBundle::new(&asset_server));
 }
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Component)]

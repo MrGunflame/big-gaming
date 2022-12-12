@@ -1,10 +1,8 @@
-use bevy::prelude::{
-    shape, Assets, Bundle, Color, Mesh, PbrBundle, StandardMaterial, Transform, Vec3,
-};
+use bevy::prelude::{AssetServer, Bundle, Vec3};
+use bevy::scene::SceneBundle;
 use bevy_rapier3d::prelude::{
     AdditionalMassProperties, Ccd, Collider, LockedAxes, RigidBody, Velocity,
 };
-use bevy_rapier3d::rapier::prelude::Shape;
 
 use crate::components::{Actor, ActorState, Rotation};
 use crate::plugins::combat::{CombatBundle, Health, IncomingDamage};
@@ -13,7 +11,7 @@ use crate::plugins::movement::MovementSpeed;
 #[derive(Bundle)]
 pub struct ActorBundle {
     #[bundle]
-    pub pbr: PbrBundle,
+    pub scene: SceneBundle,
     #[bundle]
     pub combat: CombatBundle,
 
@@ -32,19 +30,10 @@ pub struct ActorBundle {
 }
 
 impl ActorBundle {
-    pub fn new(meshes: &mut Assets<Mesh>, materials: &mut Assets<StandardMaterial>) -> Self {
+    pub fn new(assets: &AssetServer) -> Self {
         Self {
-            pbr: PbrBundle {
-                mesh: meshes.add(Mesh::from(shape::Box {
-                    min_x: 0.0,
-                    max_x: 1.0,
-                    min_y: 0.0,
-                    max_y: 3.0,
-                    min_z: 0.0,
-                    max_z: 1.0,
-                })),
-                material: materials.add(Color::rgb(0.0, 0.0, 1.0).into()),
-                transform: Transform::from_xyz(10.0, 0.0, 10.0).looking_at(Vec3::X, Vec3::Y),
+            scene: SceneBundle {
+                scene: assets.load("person.glb#Scene0"),
                 ..Default::default()
             },
             rotation: Rotation::new(),

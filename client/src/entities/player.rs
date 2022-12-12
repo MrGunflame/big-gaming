@@ -21,13 +21,10 @@ pub struct PlayerCharacterBundle {
 }
 
 impl PlayerCharacterBundle {
-    pub fn new(
-        mut meshes: &mut Assets<Mesh>,
-        mut materials: &mut Assets<StandardMaterial>,
-    ) -> Self {
+    pub fn new(assets: &AssetServer) -> Self {
         Self {
             player_character: PlayerCharacter,
-            actor: ActorBundle::new(meshes, materials),
+            actor: ActorBundle::new(assets),
         }
     }
 }
