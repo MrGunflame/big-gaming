@@ -1,9 +1,11 @@
 use bevy::prelude::Component;
 
+use super::resistances::ResistanceId;
+
 /// A raw receiving damage.
-#[derive(Clone, Debug, Component)]
+#[derive(Copy, Clone, Debug, Component)]
 pub struct Damage {
-    pub class: Option<()>,
+    pub class: Option<ResistanceId>,
     pub amount: u32,
 }
 
@@ -13,6 +15,11 @@ impl Damage {
             class: None,
             amount,
         }
+    }
+
+    pub const fn with_class(mut self, class: ResistanceId) -> Self {
+        self.class = Some(class);
+        self
     }
 }
 

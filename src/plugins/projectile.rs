@@ -35,7 +35,7 @@ fn despawn_collided_projectiles(
 
                 if let Some(damage) = damage {
                     if let Ok(mut inc) = actors.get_mut(other_collider) {
-                        inc.push(damage.clone());
+                        inc.push(*damage);
                     }
                 }
 
