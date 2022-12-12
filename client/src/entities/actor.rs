@@ -1,7 +1,8 @@
 use bevy::prelude::{AssetServer, Bundle, Vec3};
 use bevy::scene::SceneBundle;
 use bevy_rapier3d::prelude::{
-    AdditionalMassProperties, Ccd, Collider, LockedAxes, RigidBody, Velocity,
+    AdditionalMassProperties, Ccd, CharacterAutostep, CharacterLength, Collider,
+    KinematicCharacterController, LockedAxes, RigidBody, Velocity,
 };
 
 use crate::components::{Actor, ActorState, Rotation};
@@ -27,6 +28,7 @@ pub struct ActorBundle {
     pub actor: Actor,
     pub actor_state: ActorState,
     pub movement_speed: MovementSpeed,
+    pub character_controller: KinematicCharacterController,
 }
 
 impl ActorBundle {
@@ -50,6 +52,19 @@ impl ActorBundle {
             combat: CombatBundle::new(),
             actor_state: ActorState::NORMAL,
             movement_speed: MovementSpeed(3.0),
+            character_controller: KinematicCharacterController {
+                offset: CharacterLength::Absolute(0.01),
+                up: Vec3::Y,
+                max_slope_climb_angle: 45.0f32.to_radians(),
+                min_slope_slide_angle: 30.0f32.to_radians(),
+                autostep: Some(CharacterAutostep {
+                    max_height: CharacterLength::Absolute(0.5),
+                    min_width: CharacterLength::Absolute(0.2),
+                    include_dynamic_bodies: true,
+                }),
+                snap_to_ground: Some(CharacterLength::Relative(0.2)),
+                ..Default::default()
+            },
         }
     }
 }
