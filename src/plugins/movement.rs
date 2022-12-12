@@ -1,6 +1,7 @@
 use std::mem::MaybeUninit;
 
-use bevy::prelude::{Entity, KeyCode, Plugin, Query, Res, ResMut, Transform, With};
+use bevy::prelude::{Entity, KeyCode, Plugin, Query, Res, ResMut, Transform, Vec3, With};
+use bevy::time::Time;
 use bevy_rapier3d::prelude::{QueryFilter, RapierContext, Velocity};
 
 use crate::components::Rotation;
@@ -55,33 +56,36 @@ fn register_events(mut hotkeys: ResMut<HotkeyStore>) {
 }
 
 fn movement_events(
+    time: Res<Time>,
     rapier: Res<RapierContext>,
     hotkeys: Res<HotkeyStore>,
     mut players: Query<(Entity, &mut Transform, &Rotation, &mut Velocity), With<PlayerCharacter>>,
 ) {
+    let delta = time.delta_seconds();
+
     let events = unsafe { EVENTS.assume_init_ref() };
 
     let (entity, mut transform, rotation, mut velocity) = players.single_mut();
 
+    let mut vec = Vec3::ZERO;
+
     if hotkeys.triggered(events.forward) {
-        let vec = rotation.movement_vec() * 0.2;
-        transform.translation += vec;
+        vec += rotation.movement_vec();
     }
 
     if hotkeys.triggered(events.backward) {
-        let vec = rotation.left(Degrees(180.0)).movement_vec() * 0.2;
-        transform.translation += vec;
+        vec += rotation.left(Degrees(180.0)).movement_vec();
     }
 
     if hotkeys.triggered(events.left) {
-        let vec = rotation.left(Degrees(90.0)).movement_vec() * 0.2;
-        transform.translation += vec;
+        vec += rotation.left(Degrees(90.0)).movement_vec();
     }
 
     if hotkeys.triggered(events.right) {
-        let vec = rotation.right(Degrees(90.0)).movement_vec() * 0.2;
-        transform.translation += vec;
+        vec += rotation.right(Degrees(90.0)).movement_vec();
     }
+
+    transform.translation += vec * delta * 3.0;
 
     if hotkeys.triggered(events.jump) {
         velocity.linvel.y += 10.0;
