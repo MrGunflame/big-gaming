@@ -2,19 +2,21 @@ mod damage;
 mod health;
 mod resistances;
 
-use bevy::prelude::{Bundle, Plugin, Query};
+use bevy::prelude::{Bundle, Entity, Plugin, Query, Res, With};
+use bevy_rapier3d::prelude::{RapierContext, Velocity};
 pub use damage::{Damage, IncomingDamage};
 pub use health::{Health, MaxHealth};
 pub use resistances::{Resistance, Resistances};
 
-use crate::components::ActorState;
+use crate::components::{Actor, ActorState};
 
 #[derive(Copy, Clone, Debug)]
 pub struct CombatPlugin;
 
 impl Plugin for CombatPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
-        app.add_system(apply_incoming_damage);
+        app.add_system(apply_incoming_damage)
+            .add_system(fall_damage);
     }
 }
 
@@ -33,6 +35,27 @@ fn apply_incoming_damage(
             if health.is_zero() {
                 *state = ActorState::Dead;
                 inc.clear();
+            }
+        }
+    }
+}
+
+fn fall_damage(
+    rapier: Res<RapierContext>,
+    mut entities: Query<(Entity, &mut IncomingDamage, &Velocity), With<Actor>>,
+) {
+    for (entity, mut inc, velocity) in &mut entities {
+        if velocity.linvel.y < -5.0 {
+            for contact_pair in rapier.contacts_with(entity) {
+                if contact_pair.has_any_active_contacts() {
+                    let other_collider = if contact_pair.collider1() == entity {
+                        contact_pair.collider2()
+                    } else {
+                        contact_pair.collider1()
+                    };
+
+                    inc.push(Damage::new(velocity.linvel.y as u32));
+                }
             }
         }
     }

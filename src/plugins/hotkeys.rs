@@ -4,7 +4,7 @@
 //! optimized for fast read access.
 use std::borrow::Borrow;
 use std::cell::UnsafeCell;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 use std::num::NonZeroU32;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -25,11 +25,21 @@ impl Plugin for HotkeyPlugin {
     }
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum TriggerKind {
+    /// The event is constanly triggered while an action is true.
+    Constant,
+    /// The event is triggered once the action is triggered.
+    Trigger,
+    Release,
+}
+
 #[derive(Clone, Debug)]
 pub struct Event {
     pub id: EventId,
     pub name: &'static str,
     pub trigger: Option<KeyCode>,
+    pub kind: TriggerKind,
     pub state: bool,
 }
 
@@ -39,6 +49,7 @@ impl Event {
             id: EventId::new(),
             name: "",
             trigger: None,
+            kind: TriggerKind::Constant,
             state: false,
         }
     }
@@ -48,6 +59,11 @@ impl Event {
         T: Into<KeyCode>,
     {
         self.trigger = Some(trigger.into());
+        self
+    }
+
+    pub const fn kind(mut self, kind: TriggerKind) -> Self {
+        self.kind = kind;
         self
     }
 }
@@ -128,14 +144,14 @@ impl EventId {
 
 #[derive(Debug, Resource)]
 pub struct HotkeyStore {
-    keyboard: HashSet<KeyCode>,
+    keyboard: TriggerMap<KeyCode>,
     events: HashSet<EventCell>,
 }
 
 impl HotkeyStore {
     pub fn new() -> Self {
         Self {
-            keyboard: HashSet::new(),
+            keyboard: TriggerMap::new(),
             events: HashSet::new(),
         }
     }
@@ -148,6 +164,7 @@ impl HotkeyStore {
     }
 
     /// Returns `true` if an [`Event`] is triggered.
+    // FIXME: Might rename to `active`.
     pub fn triggered<T>(&self, id: T) -> bool
     where
         T: Borrow<EventId>,
@@ -163,14 +180,16 @@ impl HotkeyStore {
 }
 
 fn keyboard_input(mut hotkeys: ResMut<HotkeyStore>, mut events: EventReader<KeyboardInput>) {
+    hotkeys.keyboard.clear();
+
     for event in events.iter() {
         if let Some(key_code) = event.key_code {
             match event.state {
                 ButtonState::Pressed => {
-                    hotkeys.keyboard.insert(key_code);
+                    hotkeys.keyboard.trigger(key_code);
                 }
                 ButtonState::Released => {
-                    hotkeys.keyboard.remove(&key_code);
+                    hotkeys.keyboard.release(key_code);
                 }
             }
         }
@@ -180,7 +199,58 @@ fn keyboard_input(mut hotkeys: ResMut<HotkeyStore>, mut events: EventReader<Keyb
         let event = unsafe { event.get_mut() };
 
         if let Some(trigger) = event.trigger {
-            event.state = hotkeys.keyboard.get(&trigger).is_some();
+            event.state = match event.kind {
+                TriggerKind::Constant => hotkeys.keyboard.triggered.get(&trigger).is_some(),
+                TriggerKind::Trigger => hotkeys.keyboard.just_triggered.get(&trigger).is_some(),
+                TriggerKind::Release => hotkeys.keyboard.just_released.get(&trigger).is_some(),
+            };
         }
+    }
+}
+
+#[derive(Clone, Debug)]
+struct TriggerMap<K>
+where
+    K: Hash + Eq + Copy,
+{
+    triggered: HashSet<K>,
+    just_triggered: HashSet<K>,
+    just_released: HashSet<K>,
+}
+
+impl<K> TriggerMap<K>
+where
+    K: Hash + Eq + Copy,
+{
+    fn new() -> Self {
+        Self {
+            triggered: HashSet::new(),
+            just_triggered: HashSet::new(),
+            just_released: HashSet::new(),
+        }
+    }
+
+    fn trigger(&mut self, key: K) {
+        self.triggered.insert(key);
+        self.just_triggered.insert(key);
+    }
+
+    fn release(&mut self, key: K) {
+        self.triggered.remove(&key);
+        self.just_released.insert(key);
+    }
+
+    fn clear(&mut self) {
+        self.just_triggered.clear();
+        self.just_released.clear();
+    }
+}
+
+impl<K> Default for TriggerMap<K>
+where
+    K: Hash + Eq + Copy,
+{
+    fn default() -> Self {
+        Self::new()
     }
 }
