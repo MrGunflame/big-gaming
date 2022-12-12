@@ -1,4 +1,5 @@
 use std::f32::consts::PI;
+use std::num::NonZeroU32;
 
 use bevy::prelude::{Component, EulerRot, Mat3, Quat, Vec3};
 
@@ -19,9 +20,11 @@ pub struct WorldObject;
 pub struct Actor;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Component)]
-pub enum ActorState {
-    Alive,
-    Dead,
+pub struct ActorState(NonZeroU32);
+
+impl ActorState {
+    pub const NORMAL: Self = Self(NonZeroU32::new(1).unwrap());
+    pub const DEAD: Self = Self(NonZeroU32::new(2).unwrap());
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Component)]

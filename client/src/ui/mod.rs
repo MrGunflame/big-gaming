@@ -16,6 +16,7 @@ impl Plugin for UiPlugin {
             .add_system(crosshair::crosshair)
             .add_system(health::health)
             .add_system(debug::debug)
-            .add_system(menu::gamemenu::gamemenu);
+            .add_system(menu::gamemenu::gamemenu)
+            .add_system(menu::death::death);
     }
 }

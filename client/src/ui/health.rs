@@ -1,6 +1,7 @@
 use bevy::prelude::{Query, ResMut, With};
 use bevy_egui::egui::{
-    Area, Color32, NumExt, Order, Pos2, Rect, Response, Rounding, Sense, Stroke, Ui, Vec2, Widget,
+    Align2, Area, Color32, NumExt, Order, Pos2, Rect, Response, Rounding, Sense, Stroke, Ui, Vec2,
+    Widget,
 };
 use bevy_egui::EguiContext;
 
@@ -20,7 +21,7 @@ pub fn health(
     };
 
     Area::new("health")
-        .fixed_pos(Pos2::new(0.0, 0.0))
+        .anchor(Align2::LEFT_BOTTOM, Vec2::new(5.0, -5.0))
         .order(Order::Background)
         .show(egui.ctx_mut(), |ui| {
             ui.add(HealthWidget {

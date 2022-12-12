@@ -6,7 +6,7 @@ use bevy::prelude::{
 use bevy::time::Time;
 use bevy_rapier3d::prelude::{Collider, QueryFilter, RapierContext, Velocity};
 
-use crate::components::Rotation;
+use crate::components::{ActorState, Rotation};
 use crate::entities::player::PlayerCharacter;
 use crate::utils::Degrees;
 
@@ -69,6 +69,7 @@ fn movement_events(
             &mut Velocity,
             &MovementSpeed,
             &Collider,
+            &ActorState,
         ),
         With<PlayerCharacter>,
     >,
@@ -77,7 +78,13 @@ fn movement_events(
 
     let events = unsafe { EVENTS.assume_init_ref() };
 
-    let (entity, mut transform, rotation, mut velocity, speed, collider) = players.single_mut();
+    let (entity, mut transform, rotation, mut velocity, speed, collider, state) =
+        players.single_mut();
+
+    // Only process movement events while the actor in the default state.
+    if *state != ActorState::NORMAL {
+        return;
+    }
 
     let mut vec = Vec3::ZERO;
 

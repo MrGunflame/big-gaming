@@ -59,7 +59,7 @@ impl ActorBundle {
             mass: AdditionalMassProperties::Mass(100.0),
             actor: Actor,
             combat: CombatBundle::new(),
-            actor_state: ActorState::Alive,
+            actor_state: ActorState::DEAD,
             movement_speed: MovementSpeed(3.0),
         }
     }

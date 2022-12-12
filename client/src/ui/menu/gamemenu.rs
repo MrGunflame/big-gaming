@@ -9,9 +9,9 @@ pub fn gamemenu(mut egui: ResMut<EguiContext>) {
         .show(egui.ctx_mut(), |ui| {
             ui.label("x");
 
-            if ui.button("Exit Game").clicked() {
-                dbg!("exit game");
-            }
+            // if ui.button("Exit Game").clicked() {
+            //     dbg!("exit game");
+            // }
         });
 }
 

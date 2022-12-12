@@ -33,7 +33,7 @@ fn apply_incoming_damage(
             *health -= damage.amount;
 
             if health.is_zero() {
-                *state = ActorState::Dead;
+                *state = ActorState::DEAD;
                 inc.clear();
             }
         }
