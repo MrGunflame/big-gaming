@@ -2,7 +2,7 @@ mod camera;
 pub mod combat;
 pub mod hotkeys;
 mod input;
-mod movement;
+pub mod movement;
 mod projectile;
 
 pub use camera::CameraPlugin;

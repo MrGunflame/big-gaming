@@ -1,8 +1,10 @@
 use std::mem::MaybeUninit;
 
-use bevy::prelude::{Entity, KeyCode, Plugin, Query, Res, ResMut, Transform, Vec3, With};
+use bevy::prelude::{
+    Component, Entity, KeyCode, Plugin, Query, Res, ResMut, Transform, Vec3, With,
+};
 use bevy::time::Time;
-use bevy_rapier3d::prelude::{QueryFilter, RapierContext, Velocity};
+use bevy_rapier3d::prelude::{Collider, QueryFilter, RapierContext, Velocity};
 
 use crate::components::Rotation;
 use crate::entities::player::PlayerCharacter;
@@ -59,15 +61,37 @@ fn movement_events(
     time: Res<Time>,
     rapier: Res<RapierContext>,
     hotkeys: Res<HotkeyStore>,
-    mut players: Query<(Entity, &mut Transform, &Rotation, &mut Velocity), With<PlayerCharacter>>,
+    mut players: Query<
+        (
+            Entity,
+            &mut Transform,
+            &Rotation,
+            &mut Velocity,
+            &MovementSpeed,
+            &Collider,
+        ),
+        With<PlayerCharacter>,
+    >,
 ) {
     let delta = time.delta_seconds();
 
     let events = unsafe { EVENTS.assume_init_ref() };
 
-    let (entity, mut transform, rotation, mut velocity) = players.single_mut();
+    let (entity, mut transform, rotation, mut velocity, speed, collider) = players.single_mut();
 
     let mut vec = Vec3::ZERO;
+
+    let shape_pos = transform.translation;
+    let shape_rot = transform.rotation;
+    let is_on_ground = || {
+        let shape_vel = -Vec3::Y;
+        let max_toi = 2.0;
+        let filter = QueryFilter::new().exclude_collider(entity);
+
+        rapier
+            .cast_shape(shape_pos, shape_rot, shape_vel, &collider, max_toi, filter)
+            .is_some()
+    };
 
     if hotkeys.triggered(events.forward) {
         vec += rotation.movement_vec();
@@ -85,9 +109,15 @@ fn movement_events(
         vec += rotation.right(Degrees(90.0)).movement_vec();
     }
 
-    transform.translation += vec * delta * 3.0;
+    transform.translation += vec * delta * speed.0;
 
     if hotkeys.triggered(events.jump) {
-        velocity.linvel.y += 10.0;
+        if is_on_ground() {
+            velocity.linvel.y += 10.0;
+        }
     }
 }
+
+#[derive(Copy, Clone, Debug, PartialEq, PartialOrd, Component)]
+#[repr(transparent)]
+pub struct MovementSpeed(pub f32);

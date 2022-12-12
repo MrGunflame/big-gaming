@@ -8,6 +8,7 @@ use bevy_rapier3d::rapier::prelude::Shape;
 
 use crate::components::{Actor, ActorState, Rotation};
 use crate::plugins::combat::{CombatBundle, Health, IncomingDamage};
+use crate::plugins::movement::MovementSpeed;
 
 #[derive(Bundle)]
 pub struct ActorBundle {
@@ -27,6 +28,7 @@ pub struct ActorBundle {
 
     pub actor: Actor,
     pub actor_state: ActorState,
+    pub movement_speed: MovementSpeed,
 }
 
 impl ActorBundle {
@@ -58,6 +60,7 @@ impl ActorBundle {
             actor: Actor,
             combat: CombatBundle::new(),
             actor_state: ActorState::Alive,
+            movement_speed: MovementSpeed(3.0),
         }
     }
 }
