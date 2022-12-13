@@ -120,7 +120,7 @@ fn movement_events(
 
     if hotkeys.triggered(events.jump) {
         if is_on_ground() {
-            velocity.linvel.y += 10.0;
+            velocity.linvel.y += 1.0;
         }
     }
 }
