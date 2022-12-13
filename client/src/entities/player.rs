@@ -1,11 +1,9 @@
 use bevy::{
     math::Vec3,
-    pbr::PbrBundle,
     prelude::{Bundle, Camera3dBundle, Component, Transform, *},
 };
-use bevy_rapier3d::prelude::*;
 
-use crate::components::{Actor, Rotation};
+use crate::components::Rotation;
 
 use super::actor::ActorBundle;
 

@@ -1,4 +1,4 @@
-use bevy::prelude::{AssetServer, Bundle, Vec3};
+use bevy::prelude::{AssetServer, Bundle, Component, Vec3};
 use bevy::scene::SceneBundle;
 use bevy_rapier3d::prelude::{
     AdditionalMassProperties, Ccd, CharacterAutostep, CharacterLength, Collider,
@@ -29,13 +29,14 @@ pub struct ActorBundle {
     pub actor_state: ActorState,
     pub movement_speed: MovementSpeed,
     pub character_controller: KinematicCharacterController,
+    pub actor_figure: ActorFigure,
 }
 
 impl ActorBundle {
     pub fn new(assets: &AssetServer) -> Self {
         Self {
             scene: SceneBundle {
-                scene: assets.load("thing.glb#Scene0"),
+                scene: assets.load("bricks.glb#Scene0"),
                 ..Default::default()
             },
             rotation: Rotation::new(),
@@ -65,6 +66,15 @@ impl ActorBundle {
                 snap_to_ground: Some(CharacterLength::Relative(0.2)),
                 ..Default::default()
             },
+            actor_figure: ActorFigure {
+                eyes: Vec3::new(0.0, 2.0, 0.0),
+            },
         }
     }
+}
+
+#[derive(Clone, Debug, Component)]
+pub struct ActorFigure {
+    /// The offset to the eyes.
+    pub eyes: Vec3,
 }

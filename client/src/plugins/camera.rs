@@ -2,6 +2,7 @@ mod events;
 
 use bevy::prelude::{Mat3, Plugin, Query, Transform, Vec3, With, Without};
 
+use crate::entities::actor::ActorFigure;
 use crate::entities::player::{CameraPosition, PlayerCharacter};
 
 use self::events::{adjust_camera_distance, register_events, toggle_camera_position};
@@ -22,22 +23,15 @@ impl Plugin for CameraPlugin {
 }
 
 fn synchronize_player_camera(
-    players: Query<&Transform, With<PlayerCharacter>>,
+    players: Query<(&Transform, &ActorFigure), With<PlayerCharacter>>,
     mut cameras: Query<(&mut Transform, &CameraPosition), Without<PlayerCharacter>>,
 ) {
-    let player = players.single();
+    let (player, figure) = players.single();
     let (mut camera, position) = cameras.single_mut();
 
     match position {
         CameraPosition::FirstPerson => {
-            // Camera is slightly higher than player feet.
-            let offset = Vec3 {
-                x: 0.0,
-                y: 1.8,
-                z: 0.0,
-            };
-
-            camera.translation = player.translation + offset;
+            camera.translation = player.translation + figure.eyes;
         }
         CameraPosition::ThirdPerson { distance } => {
             let rotation_matrix = Mat3::from_quat(camera.rotation);
