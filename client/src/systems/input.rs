@@ -13,6 +13,7 @@ pub fn grab_mouse(mut windows: ResMut<Windows>) {
 
     window.set_cursor_visibility(false);
     window.set_cursor_grab_mode(CursorGrabMode::Locked);
+    window.set_cursor_position(Vec2::new(500.0, 500.0));
 }
 
 // pub fn keyboard_input(
@@ -98,8 +99,8 @@ pub fn mouse_input(
 ) {
     for event in events.iter() {
         for (mut camera_rot, mut rotation) in camera.iter_mut().zip(players.iter_mut()) {
-            let yaw = event.delta.x;
-            let pitch = event.delta.y;
+            let yaw = event.delta.x * 0.1;
+            let pitch = event.delta.y * 0.1;
 
             *camera_rot = camera_rot
                 .add_yaw(Degrees(yaw))
