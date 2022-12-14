@@ -6,7 +6,7 @@ use bevy_rapier3d::prelude::{QueryFilter, RapierContext};
 use crate::components::Rotation;
 use crate::entities::actor::ActorFigure;
 use crate::entities::player::PlayerCharacter;
-use crate::entities::projectile::ProjectileBundle;
+use crate::entities::projectile::{Projectile, ProjectileBundle};
 use crate::plugins::combat::Damage;
 use crate::utils::{Degrees, Radians};
 
@@ -119,6 +119,7 @@ pub fn mouse_button_input(
     assets: Res<AssetServer>,
     players: Query<(&Transform, &ActorFigure), With<PlayerCharacter>>,
     cameras: Query<&Rotation, With<Camera3d>>,
+    projectiles: Query<(), With<Projectile>>,
     input: Res<Input<MouseButton>>,
 ) {
     let (player, figure) = players.single();
@@ -131,7 +132,11 @@ pub fn mouse_button_input(
         let ray_dir = camera_rot.movement_vec();
         let max_toi = 1000.0;
         let solid = true;
-        let filter = QueryFilter::default();
+        let predicate = |entity| match projectiles.get(entity) {
+            Ok(_) => false,
+            Err(_) => true,
+        };
+        let filter = QueryFilter::new().predicate(&predicate);
 
         let target = match rapier.cast_ray(ray_origin, ray_dir, max_toi, solid, filter) {
             Some((_, toi)) => ray_origin + toi * ray_dir,
