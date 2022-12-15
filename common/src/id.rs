@@ -1,0 +1,37 @@
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct NamespacedId<T>(pub T);
+
+impl NamespacedId<u32> {
+    /// Creates a new `NamespacedId` using the given parts.
+    #[inline]
+    pub const fn new(namespace: u16, id: u16) -> Self {
+        let namespace = (namespace as u32) << 16;
+        let id = id as u32;
+
+        Self(namespace | id)
+    }
+
+    /// Returns the namespace component of this `NamespacedId`.
+    #[inline]
+    pub const fn namespace(self) -> u16 {
+        (self.0 >> 16) as u16
+    }
+
+    #[inline]
+    pub const fn id(self) -> u16 {
+        self.0 as u16
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::NamespacedId;
+
+    #[test]
+    fn namespaced_id_u32() {
+        let id = NamespacedId::new(15, 31);
+        assert_eq!(id.0, 983040 + 31);
+        assert_eq!(id.namespace(), 15);
+        assert_eq!(id.id(), 31);
+    }
+}
