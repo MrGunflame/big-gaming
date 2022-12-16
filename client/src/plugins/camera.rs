@@ -12,8 +12,6 @@ pub struct CameraPlugin;
 impl Plugin for CameraPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
         app.add_startup_system(register_events)
-            .add_system(crate::systems::input::grab_mouse)
-            .add_system(crate::systems::input::mouse_input)
             .add_system(crate::systems::input::transform_system)
             .add_system(crate::systems::input::mouse_button_input)
             .add_system(synchronize_player_camera)

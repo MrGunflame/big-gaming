@@ -1,10 +1,10 @@
 use bevy::prelude::{Res, ResMut};
-use bevy_egui::egui::{Area, Button, Color32, Order, Pos2, Ui};
+use bevy_egui::egui::{Area, Order, Pos2, Ui};
 use bevy_egui::EguiContext;
 
 use crate::ui::interfaces::MENU_GAME;
 use crate::ui::widgets::UiExt;
-use crate::ui::{InterfaceId, InterfaceState};
+use crate::ui::InterfaceState;
 
 pub fn gamemenu(mut egui: ResMut<EguiContext>, state: Res<InterfaceState>) {
     let state = unsafe {

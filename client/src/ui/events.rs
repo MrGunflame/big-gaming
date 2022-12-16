@@ -1,11 +1,13 @@
 use std::mem::MaybeUninit;
 
-use bevy::prelude::{KeyCode, Res, ResMut};
+use bevy::prelude::{KeyCode, Query, Res, ResMut};
+use bevy::window::Windows;
 
 use crate::plugins::hotkeys::{Event, EventId, HotkeyStore, TriggerKind};
 
+use super::cursor::Cursor;
 use super::interfaces::{MENU_DEATH, MENU_GAME};
-use super::{menu, InterfaceState};
+use super::{menu, Focus, InterfaceState};
 
 const DEFAULT_TRIGGER_GAMEMENU: KeyCode = KeyCode::Escape;
 
@@ -27,7 +29,15 @@ pub(super) fn register_events(mut hotkeys: ResMut<HotkeyStore>) {
     }
 }
 
-pub(super) fn handle_events(mut hotkeys: Res<HotkeyStore>, mut state: ResMut<InterfaceState>) {
+pub(super) fn handle_events(
+    mut windows: ResMut<Windows>,
+    hotkeys: Res<HotkeyStore>,
+    mut state: ResMut<InterfaceState>,
+    mut players: Query<&mut Focus>,
+) {
+    let window = windows.primary_mut();
+    let mut focus = players.single_mut();
+
     let events = unsafe { EVENTS.assume_init_ref() };
 
     if hotkeys.triggered(events.game_menu) {
@@ -35,8 +45,14 @@ pub(super) fn handle_events(mut hotkeys: Res<HotkeyStore>, mut state: ResMut<Int
             unsafe {
                 state.remove::<_, menu::gamemenu::State>(MENU_GAME);
             }
+
+            *focus = Focus::World;
+            Cursor::lock(window);
         } else {
             state.insert(MENU_GAME, Some(menu::gamemenu::State::default()));
+
+            *focus = Focus::Interface;
+            Cursor::unlock(window);
         }
     }
 }

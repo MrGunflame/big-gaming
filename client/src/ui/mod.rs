@@ -1,3 +1,4 @@
+mod cursor;
 mod events;
 mod interfaces;
 mod menu;
@@ -7,13 +8,20 @@ pub mod crosshair;
 pub mod debug;
 pub mod health;
 
-use std::any::Any;
 use std::borrow::Borrow;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::ptr::NonNull;
 
-use bevy::prelude::{Plugin, Resource};
+use bevy::prelude::{Component, Plugin, Resource};
 use bevy_egui::EguiPlugin;
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Component)]
+pub enum Focus {
+    /// The focus is on the game world.
+    World,
+    /// The focus is on an interface.
+    Interface,
+}
 
 /// The user interface plugin.
 pub struct UiPlugin;

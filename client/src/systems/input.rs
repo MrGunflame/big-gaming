@@ -1,6 +1,4 @@
-use bevy::input::mouse::MouseMotion;
 use bevy::prelude::*;
-use bevy::window::CursorGrabMode;
 use bevy_rapier3d::prelude::{QueryFilter, RapierContext};
 
 use crate::components::Rotation;
@@ -8,22 +6,6 @@ use crate::entities::actor::ActorFigure;
 use crate::entities::player::PlayerCharacter;
 use crate::entities::projectile::{Projectile, ProjectileBundle};
 use crate::plugins::combat::Damage;
-use crate::utils::{Degrees, Radians};
-
-pub fn grab_mouse(mut windows: ResMut<Windows>, events: Res<Input<KeyCode>>) {
-    let window = windows.primary_mut();
-
-    if events.just_pressed(KeyCode::Escape) {
-        window.set_cursor_visibility(true);
-        window.set_cursor_grab_mode(CursorGrabMode::None);
-    }
-
-    if events.just_pressed(KeyCode::F1) {
-        window.set_cursor_visibility(false);
-        window.set_cursor_grab_mode(CursorGrabMode::Locked);
-        window.set_cursor_position(Vec2::new(500.0, 500.0));
-    }
-}
 
 // pub fn keyboard_input(
 //     rapier_ctx: Res<RapierContext>,
@@ -101,24 +83,24 @@ pub fn grab_mouse(mut windows: ResMut<Windows>, events: Res<Input<KeyCode>>) {
 //     }
 // }
 
-pub fn mouse_input(
-    mut events: EventReader<MouseMotion>,
-    mut camera: Query<&mut Rotation, With<Camera3d>>,
-    mut players: Query<&mut Rotation, (With<PlayerCharacter>, Without<Camera3d>)>,
-) {
-    for event in events.iter() {
-        for (mut camera_rot, mut rotation) in camera.iter_mut().zip(players.iter_mut()) {
-            let yaw = event.delta.x * 0.1;
-            let pitch = event.delta.y * 0.1;
+// pub fn mouse_input(
+//     mut events: EventReader<MouseMotion>,
+//     mut camera: Query<&mut Rotation, With<Camera3d>>,
+//     mut players: Query<&mut Rotation, (With<PlayerCharacter>, Without<Camera3d>)>,
+// ) {
+//     for event in events.iter() {
+//         for (mut camera_rot, mut rotation) in camera.iter_mut().zip(players.iter_mut()) {
+//             let yaw = event.delta.x * 0.1;
+//             let pitch = event.delta.y * 0.1;
 
-            *camera_rot = camera_rot
-                .add_yaw(Degrees(yaw))
-                .saturating_add_pitch(Degrees(pitch));
+//             *camera_rot = camera_rot
+//                 .add_yaw(Degrees(yaw))
+//                 .saturating_add_pitch(Degrees(pitch));
 
-            *rotation = camera_rot.with_pitch(Radians(0.0));
-        }
-    }
-}
+//             *rotation = camera_rot.with_pitch(Radians(0.0));
+//         }
+//     }
+// }
 
 pub fn mouse_button_input(
     mut commands: Commands,

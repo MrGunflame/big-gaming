@@ -1,14 +1,17 @@
 use std::mem::MaybeUninit;
 
+use bevy::input::mouse::MouseMotion;
 use bevy::prelude::{
-    Component, Entity, KeyCode, Plugin, Query, Res, ResMut, Transform, Vec3, With,
+    Camera3d, Component, Entity, EventReader, KeyCode, Plugin, Query, Res, ResMut, Transform, Vec3,
+    With, Without,
 };
 use bevy::time::Time;
 use bevy_rapier3d::prelude::{Collider, QueryFilter, RapierContext, Velocity};
 
 use crate::components::{ActorState, Rotation};
 use crate::entities::player::PlayerCharacter;
-use crate::utils::Degrees;
+use crate::ui::Focus;
+use crate::utils::{Degrees, Radians};
 
 use super::hotkeys::{Event, EventId, HotkeyStore};
 
@@ -26,7 +29,8 @@ pub struct MovementPlugin;
 impl Plugin for MovementPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
         app.add_startup_system(register_events)
-            .add_system(movement_events);
+            .add_system(movement_events)
+            .add_system(mouse_movement);
     }
 }
 
@@ -70,6 +74,7 @@ fn movement_events(
             &MovementSpeed,
             &Collider,
             &ActorState,
+            &Focus,
         ),
         With<PlayerCharacter>,
     >,
@@ -78,11 +83,11 @@ fn movement_events(
 
     let events = unsafe { EVENTS.assume_init_ref() };
 
-    let (entity, mut transform, rotation, mut velocity, speed, collider, state) =
+    let (entity, mut transform, rotation, mut velocity, speed, collider, state, focus) =
         players.single_mut();
 
     // Only process movement events while the actor in the default state.
-    if *state != ActorState::NORMAL {
+    if *state != ActorState::NORMAL || *focus != Focus::World {
         return;
     }
 
@@ -122,6 +127,33 @@ fn movement_events(
         if is_on_ground() {
             velocity.linvel.y += 1.0;
         }
+    }
+}
+
+fn mouse_movement(
+    mut events: EventReader<MouseMotion>,
+    mut cameras: Query<&mut Rotation, With<Camera3d>>,
+    mut players: Query<
+        (&mut Rotation, &ActorState, &Focus),
+        (With<PlayerCharacter>, Without<Camera3d>),
+    >,
+) {
+    let mut camera_rot = cameras.single_mut();
+    let (mut player_rot, state, focus) = players.single_mut();
+
+    if *state != ActorState::NORMAL || *focus != Focus::World {
+        return;
+    }
+
+    for event in events.iter() {
+        let yaw = event.delta.x * 0.1;
+        let pitch = event.delta.y * 0.1;
+
+        *camera_rot = camera_rot
+            .add_yaw(Degrees(yaw))
+            .saturating_add_pitch(Degrees(pitch));
+
+        *player_rot = camera_rot.with_pitch(Radians(0.0));
     }
 }
 

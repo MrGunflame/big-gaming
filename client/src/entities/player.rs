@@ -3,7 +3,7 @@ use bevy::{
     prelude::{Bundle, Camera3dBundle, Component, Transform, *},
 };
 
-use crate::components::Rotation;
+use crate::{components::Rotation, ui::Focus};
 
 use super::actor::ActorBundle;
 
@@ -16,6 +16,7 @@ pub struct PlayerCharacterBundle {
     pub actor: ActorBundle,
 
     pub player_character: PlayerCharacter,
+    pub focus: Focus,
 }
 
 impl PlayerCharacterBundle {
@@ -23,6 +24,7 @@ impl PlayerCharacterBundle {
         Self {
             player_character: PlayerCharacter,
             actor: ActorBundle::new(assets),
+            focus: Focus::World,
         }
     }
 }
