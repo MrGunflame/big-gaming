@@ -1,4 +1,4 @@
-use bevy::prelude::{Camera3d, Entity, Query, ResMut, Transform, With};
+use bevy::prelude::{Camera3d, Entity, Query, Res, ResMut, Transform, With};
 use bevy_egui::egui::Window;
 use bevy_egui::EguiContext;
 use bevy_rapier3d::prelude::Velocity;
@@ -6,12 +6,20 @@ use bevy_rapier3d::prelude::Velocity;
 use crate::components::Rotation;
 use crate::entities::player::PlayerCharacter;
 
+use super::interfaces::MENU_DEBUG;
+use super::InterfaceState;
+
 pub fn debug(
     mut egui: ResMut<EguiContext>,
     entities: Query<Entity>,
+    state: Res<InterfaceState>,
     players: Query<(&Transform, &Rotation, &Velocity), With<PlayerCharacter>>,
     cameras: Query<(&Transform, &Rotation), With<Camera3d>>,
 ) {
+    if !state.is_open(MENU_DEBUG) {
+        return;
+    }
+
     let (player, rotation, velocity) = players.single();
     let (camera, camera_rot) = cameras.single();
 
