@@ -16,7 +16,7 @@ pub fn debug(
     players: Query<(&Transform, &Rotation, &Velocity), With<PlayerCharacter>>,
     cameras: Query<(&Transform, &Rotation), With<Camera3d>>,
 ) {
-    if !state.is_open(MENU_DEBUG) {
+    if !state.contains(MENU_DEBUG) {
         return;
     }
 

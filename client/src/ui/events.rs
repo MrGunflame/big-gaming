@@ -5,7 +5,7 @@ use bevy::prelude::{KeyCode, Res, ResMut};
 use crate::plugins::hotkeys::{Event, EventId, HotkeyStore, TriggerKind};
 
 use super::interfaces::{MENU_DEATH, MENU_GAME};
-use super::InterfaceState;
+use super::{menu, InterfaceState};
 
 const DEFAULT_TRIGGER_GAMEMENU: KeyCode = KeyCode::Escape;
 
@@ -31,6 +31,12 @@ pub(super) fn handle_events(mut hotkeys: Res<HotkeyStore>, mut state: ResMut<Int
     let events = unsafe { EVENTS.assume_init_ref() };
 
     if hotkeys.triggered(events.game_menu) {
-        state.toggle(MENU_GAME);
+        if state.contains(MENU_GAME) {
+            unsafe {
+                state.remove::<_, menu::gamemenu::State>(MENU_GAME);
+            }
+        } else {
+            state.insert(MENU_GAME, Some(menu::gamemenu::State::default()));
+        }
     }
 }

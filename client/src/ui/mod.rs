@@ -7,7 +7,10 @@ pub mod crosshair;
 pub mod debug;
 pub mod health;
 
-use std::collections::HashSet;
+use std::any::Any;
+use std::borrow::Borrow;
+use std::collections::{HashMap, HashSet};
+use std::ptr::NonNull;
 
 use bevy::prelude::{Plugin, Resource};
 use bevy_egui::EguiPlugin;
@@ -34,33 +37,123 @@ pub struct InterfaceId(u32);
 
 #[derive(Debug, Resource)]
 pub struct InterfaceState {
-    interfaces: HashSet<InterfaceId>,
+    interfaces: HashMap<InterfaceId, Option<NonNull<()>>>,
+    /// Does any interface capture mouse/keyboard inputs?
+    capture: bool,
 }
 
 impl InterfaceState {
     pub fn new() -> Self {
         Self {
-            interfaces: HashSet::from([InterfaceId(0x01)]),
+            interfaces: HashMap::new(),
+            capture: false,
         }
     }
 
-    pub fn open(&mut self, id: InterfaceId) {
-        self.interfaces.insert(id);
+    pub fn contains<T>(&self, id: T) -> bool
+    where
+        T: Borrow<InterfaceId>,
+    {
+        self.interfaces.contains_key(id.borrow())
     }
 
-    pub fn close(&mut self, id: InterfaceId) {
-        self.interfaces.remove(&id);
+    // FIXME: The `Sized` type requirement can be removed.
+    pub fn insert<U>(&mut self, id: InterfaceId, data: Option<U>)
+    where
+        U: Send + Sync + 'static,
+    {
+        let ptr = data.map(|data| {
+            let boxed = Box::new(data);
+
+            // SAFETY: The pointer returned by `Box::into_raw` is always non-null.
+            unsafe { NonNull::new_unchecked(Box::into_raw(boxed)).cast() }
+        });
+
+        self.interfaces.insert(id, ptr);
     }
 
-    pub fn toggle(&mut self, id: InterfaceId) {
-        if self.is_open(id) {
-            self.close(id);
-        } else {
-            self.open(id);
+    /// # Safety
+    ///
+    /// `U` must be the same type, or a type with the same ABI as `U`, as the type `U` when
+    /// [`insert`] was called.
+    ///
+    /// [`insert`]: Self::insert
+    pub unsafe fn remove<T, U>(&mut self, id: T) -> Option<Box<U>>
+    where
+        T: Borrow<InterfaceId>,
+    {
+        let ptr = self.interfaces.remove(id.borrow())?;
+
+        match ptr {
+            Some(ptr) => {
+                // SAFETY: The caller guarantees that `U` has the same ABI as the
+                // type behind `ptr`.
+                Some(unsafe { Box::from_raw(ptr.cast().as_ptr()) })
+            }
+            None => None,
         }
     }
 
-    pub fn is_open(&self, id: InterfaceId) -> bool {
-        self.interfaces.contains(&id)
+    /// Returns a reference to the data of the given [`InterfaceId`].
+    ///
+    /// # Safety
+    ///
+    /// `U` must be the same type, or a type with the same ABI as `U`, as the type `U` when
+    /// [`insert`] was called.
+    ///
+    /// [`insert`]: Self::insert
+    pub unsafe fn get<T, U>(&self, id: T) -> Option<&U>
+    where
+        T: Borrow<InterfaceId>,
+        U: Send + Sync + 'static,
+    {
+        let ptr = self.interfaces.get(id.borrow())?;
+
+        match ptr {
+            Some(ptr) => {
+                // SAFETY: The caller guarantees that `U` has the same ABI as the
+                // type behind `ptr`.
+                Some(unsafe { ptr.cast().as_ref() })
+            }
+            None => None,
+        }
+    }
+
+    /// Returns the data of the given [`InterfaceId`].
+    ///
+    /// # Safety
+    ///
+    /// `U` must be the same type, or a type with the same ABI as `U`, as the type `U` when
+    /// [`insert`] was called.
+    ///
+    /// [`insert`]: Self::insert
+    pub unsafe fn get_mut<T, U>(&self, id: T) -> Option<&mut U>
+    where
+        T: Borrow<InterfaceId>,
+        U: Send + Sync + 'static,
+    {
+        let ptr = self.interfaces.get(id.borrow())?;
+
+        match ptr {
+            Some(ptr) => {
+                // SAFETY: The caller guarantees that `U` has the same ABI as the
+                // type behind `ptr`.
+                Some(unsafe { ptr.cast().as_mut() })
+            }
+            None => None,
+        }
+    }
+
+    pub fn get_raw<T>(&self, id: T) -> Option<NonNull<()>>
+    where
+        T: Borrow<InterfaceId>,
+    {
+        let ptr = self.interfaces.get(id.borrow())?;
+        *ptr
     }
 }
+
+// SAFETY: As long as the contained data is `Send + Sync` as required in the
+// `insert` function signature, `InterfaceState` is also `Send + Sync`.
+unsafe impl Send for InterfaceState {}
+unsafe impl Sync for InterfaceState {}
