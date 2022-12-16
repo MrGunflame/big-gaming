@@ -4,6 +4,7 @@ use bevy_rapier3d::prelude::{
     AdditionalMassProperties, Ccd, CharacterAutostep, CharacterLength, Collider,
     KinematicCharacterController, LockedAxes, RigidBody, Velocity,
 };
+use common::inventory::{Equipment, Inventory};
 
 use crate::components::{Actor, ActorState, Rotation};
 use crate::plugins::combat::CombatBundle;
@@ -30,6 +31,8 @@ pub struct ActorBundle {
     pub movement_speed: MovementSpeed,
     pub character_controller: KinematicCharacterController,
     pub actor_figure: ActorFigure,
+    pub inventory: Inventory,
+    pub equipment: Equipment,
 }
 
 impl ActorBundle {
@@ -69,6 +72,8 @@ impl ActorBundle {
             actor_figure: ActorFigure {
                 eyes: Vec3::new(0.0, 2.0, 0.0),
             },
+            inventory: Inventory::new(),
+            equipment: Equipment::new(),
         }
     }
 }
@@ -76,5 +81,7 @@ impl ActorBundle {
 #[derive(Clone, Debug, Component)]
 pub struct ActorFigure {
     /// The offset to the eyes.
+    ///
+    /// This is where the first-person camera should be placed.
     pub eyes: Vec3,
 }

@@ -12,6 +12,20 @@ use crate::utils::Radians;
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Component)]
 pub struct WorldObject;
 
+/// A temporary [`WorldObject`] that does not consist between runs.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Component)]
+pub struct TemporaryObject;
+
+/// A permanent [`WorldObject`] that should be resumed between runs.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Component)]
+pub struct PermanentObject;
+
+/// An object that can be interacted with.
+#[derive(Clone, Debug)]
+pub struct Interactable {
+    pub name: Option<String>,
+}
+
 /// A entitiy that can act within a world.
 ///
 /// Unlike static props, `Actor` is a marker component for all entities that may act on its own,

@@ -3,7 +3,6 @@
 mod assets;
 mod components;
 mod entities;
-mod inventory;
 mod plugins;
 mod systems;
 mod ui;
@@ -205,10 +204,34 @@ fn setup(
         }
     }
 
+    let scene = asset_server.load("wall_1x5x3.glb#Scene0");
+    let collider = Collider::cuboid(1.0, 5.0, 3.0);
+
+    commands
+        .spawn(SceneBundle {
+            scene,
+            transform: Transform::from_xyz(-10.0, 0.0, 10.0),
+            ..default()
+        })
+        .insert(RigidBody::Fixed)
+        .insert(collider);
+
     commands.spawn(ActorBundle::new(&asset_server));
 
     commands.spawn(PlayerCameraBundle::new());
-    commands.spawn(PlayerCharacterBundle::new(&asset_server));
+
+    commands
+        .spawn(PlayerCharacterBundle::new(&asset_server))
+        .with_children(|builder| {
+            builder.spawn(PbrBundle {
+                mesh: meshes.add(Mesh::from(shape::Quad {
+                    size: Vec2::new(5.0, 1.0),
+                    flip: false,
+                })),
+                material: materials.add(Color::rgb(1.0, 0.0, 0.0).into()),
+                ..Default::default()
+            });
+        });
 }
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Component)]

@@ -1,7 +1,8 @@
 use std::borrow::Borrow;
 use std::cell::UnsafeCell;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
+use std::num::NonZeroU8;
 
 use ahash::RandomState;
 use bevy_ecs::component::Component;
@@ -168,6 +169,51 @@ impl Borrow<ItemId> for Item {
     }
 }
 
-/// A list of items currently equipped by a player.
-#[derive(Clone, Debug)]
-pub struct Equipment(Inventory);
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct EquipmentSlot(NonZeroU8);
+
+impl EquipmentSlot {
+    pub const HAND: Self = Self(NonZeroU8::new(1).unwrap());
+
+    pub const TORSO: Self = Self(NonZeroU8::new(64).unwrap());
+    pub const PANTS: Self = Self(NonZeroU8::new(65).unwrap());
+}
+
+/// Inventory of items currently equipped.
+#[derive(Clone, Debug, Component)]
+pub struct Equipment {
+    slots: HashMap<EquipmentSlot, Item>,
+}
+
+impl Equipment {
+    pub fn new() -> Self {
+        Self {
+            slots: HashMap::new(),
+        }
+    }
+
+    /// Returns the equipped [`Item`] at the given `slot`. Returns `None` if no [`Item`] is
+    /// equipped.
+    pub fn get(&self, slot: EquipmentSlot) -> Option<&Item> {
+        self.slots.get(&slot)
+    }
+
+    /// Removes and returns the equipeed [`Item`] at the given `slot`. Returns `None` if no [`Item`]
+    /// is equipped.
+    pub fn remove(&mut self, slot: EquipmentSlot) -> Option<Item> {
+        self.slots.remove(&slot)
+    }
+
+    /// Inserts a new [`Item`] into the given `slot`. Returns the previously equipped [`Item`] at
+    /// that slot if present.
+    pub fn insert(&mut self, slot: EquipmentSlot, item: Item) -> Option<Item> {
+        self.slots.insert(slot, item)
+    }
+}
+
+impl Default for Equipment {
+    #[inline]
+    fn default() -> Self {
+        Self::new()
+    }
+}

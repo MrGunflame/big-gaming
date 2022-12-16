@@ -10,12 +10,19 @@ use crate::entities::projectile::{Projectile, ProjectileBundle};
 use crate::plugins::combat::Damage;
 use crate::utils::{Degrees, Radians};
 
-pub fn grab_mouse(mut windows: ResMut<Windows>) {
+pub fn grab_mouse(mut windows: ResMut<Windows>, events: Res<Input<KeyCode>>) {
     let window = windows.primary_mut();
 
-    window.set_cursor_visibility(false);
-    window.set_cursor_grab_mode(CursorGrabMode::Locked);
-    window.set_cursor_position(Vec2::new(500.0, 500.0));
+    if events.just_pressed(KeyCode::Escape) {
+        window.set_cursor_visibility(true);
+        window.set_cursor_grab_mode(CursorGrabMode::None);
+    }
+
+    if events.just_pressed(KeyCode::F1) {
+        window.set_cursor_visibility(false);
+        window.set_cursor_grab_mode(CursorGrabMode::Locked);
+        window.set_cursor_position(Vec2::new(500.0, 500.0));
+    }
 }
 
 // pub fn keyboard_input(
@@ -117,6 +124,7 @@ pub fn mouse_button_input(
     mut commands: Commands,
     rapier: Res<RapierContext>,
     assets: Res<AssetServer>,
+    audio: Res<Audio>,
     players: Query<(&Transform, &ActorFigure), With<PlayerCharacter>>,
     cameras: Query<&Rotation, With<Camera3d>>,
     projectiles: Query<(), With<Projectile>>,
@@ -126,6 +134,11 @@ pub fn mouse_button_input(
     let camera_rot = cameras.single();
 
     if input.pressed(MouseButton::Left) {
+        audio.play_with_settings(
+            assets.load("sounds/weapons/fire.wav"),
+            PlaybackSettings::default().with_volume(0.03),
+        );
+
         // Do a ray cast from the players camera position to figure out where to
         // shoot the projectile.
         let ray_origin = player.translation + figure.eyes;
@@ -163,3 +176,5 @@ pub fn transform_system(mut entities: Query<(&Rotation, &mut Transform)>) {
         transform.rotation = rotation.to_quat();
     }
 }
+
+pub fn focus_target(entities: Query<()>) {}
