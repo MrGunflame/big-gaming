@@ -8,6 +8,7 @@ mod plugins;
 mod systems;
 mod ui;
 mod utils;
+mod window;
 mod world;
 
 use bevy::prelude::*;
