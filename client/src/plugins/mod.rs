@@ -3,6 +3,7 @@ pub mod combat;
 pub mod hotkeys;
 pub mod movement;
 mod projectile;
+pub mod respawn;
 
 pub use camera::CameraPlugin;
 pub use hotkeys::HotkeyPlugin;

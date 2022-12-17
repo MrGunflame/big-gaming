@@ -4,6 +4,7 @@
 mod assets;
 mod components;
 mod entities;
+mod log;
 mod plugins;
 mod systems;
 mod ui;
@@ -18,10 +19,13 @@ use components::Rotation;
 use entities::actor::ActorBundle;
 use entities::player::{PlayerCameraBundle, PlayerCharacterBundle};
 use plugins::combat::CombatPlugin;
+use plugins::respawn::RespawnPlugin;
 use plugins::{CameraPlugin, HotkeyPlugin, MovementPlugin, ProjectilePlugin};
 use ui::UiPlugin;
 
 fn main() {
+    // log::Logger::new().init();
+
     App::new()
         .insert_resource(Msaa { samples: 4 })
         .add_plugins(DefaultPlugins)
@@ -34,6 +38,7 @@ fn main() {
         .add_plugin(UiPlugin)
         .add_plugin(HotkeyPlugin)
         .add_plugin(MovementPlugin)
+        .add_plugin(RespawnPlugin)
         .run();
 }
 

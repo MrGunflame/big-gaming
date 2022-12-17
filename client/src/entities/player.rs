@@ -3,7 +3,7 @@ use bevy::{
     prelude::{Bundle, Camera3dBundle, Component, Transform, *},
 };
 
-use crate::{components::Rotation, ui::Focus};
+use crate::{components::Rotation, plugins::respawn::RespawnPoint, ui::Focus};
 
 use super::actor::ActorBundle;
 
@@ -17,6 +17,7 @@ pub struct PlayerCharacterBundle {
 
     pub player_character: PlayerCharacter,
     pub focus: Focus,
+    pub respawn_point: RespawnPoint,
 }
 
 impl PlayerCharacterBundle {
@@ -25,6 +26,7 @@ impl PlayerCharacterBundle {
             player_character: PlayerCharacter,
             actor: ActorBundle::new(assets),
             focus: Focus::World,
+            respawn_point: RespawnPoint(Vec3::new(0.0, 0.0, 0.0)),
         }
     }
 }
