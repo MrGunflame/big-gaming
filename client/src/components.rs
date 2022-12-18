@@ -18,7 +18,7 @@ pub struct TemporaryObject;
 
 /// A permanent [`WorldObject`] that should be resumed between runs.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Component)]
-pub struct PermanentObject;
+pub struct PersistentObject;
 
 /// An object that can be interacted with.
 #[derive(Clone, Debug)]
@@ -144,9 +144,9 @@ impl Rotation {
     /// Up: Y
     /// Right: X
     pub fn movement_vec(self) -> Vec3 {
-        let x = self.yaw.sin();
+        let x = self.yaw.sin() * self.pitch.cos();
         let y = -self.pitch.sin();
-        let z = -self.yaw.cos();
+        let z = -self.yaw.cos() * self.pitch.cos();
 
         Vec3 { x, y, z }
     }
