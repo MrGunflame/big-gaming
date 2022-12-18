@@ -6,6 +6,7 @@ use crate::entities::actor::ActorFigure;
 use crate::entities::player::PlayerCharacter;
 use crate::entities::projectile::{Projectile, ProjectileBundle};
 use crate::plugins::combat::Damage;
+use crate::ui::Focus;
 
 // pub fn keyboard_input(
 //     rapier_ctx: Res<RapierContext>,
@@ -107,13 +108,17 @@ pub fn mouse_button_input(
     rapier: Res<RapierContext>,
     assets: Res<AssetServer>,
     audio: Res<Audio>,
-    players: Query<(&Transform, &ActorFigure), With<PlayerCharacter>>,
+    players: Query<(&Transform, &ActorFigure, &Focus), With<PlayerCharacter>>,
     cameras: Query<&Rotation, With<Camera3d>>,
     projectiles: Query<(), With<Projectile>>,
     input: Res<Input<MouseButton>>,
 ) {
-    let (player, figure) = players.single();
+    let (player, figure, focus) = players.single();
     let camera_rot = cameras.single();
+
+    if *focus != Focus::World {
+        return;
+    }
 
     if input.pressed(MouseButton::Left) {
         audio.play_with_settings(
