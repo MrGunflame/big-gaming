@@ -1,4 +1,9 @@
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(transparent))]
 pub struct NamespacedId<T>(pub T);
 
 impl NamespacedId<u32> {
@@ -9,6 +14,10 @@ impl NamespacedId<u32> {
         let id = id as u32;
 
         Self(namespace | id)
+    }
+
+    pub const fn core(id: u16) -> Self {
+        Self::new(0, id)
     }
 
     /// Returns the namespace component of this `NamespacedId`.

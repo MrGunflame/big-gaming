@@ -7,4 +7,5 @@ pub mod inventory;
 pub mod localization;
 pub mod module;
 pub mod savefile;
+pub mod uuid;
 pub mod world;
