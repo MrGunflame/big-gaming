@@ -1,6 +1,7 @@
 use bevy::prelude::{Commands, Component, Entity, Plugin, Query, Transform, Vec3};
 
 use crate::components::ActorState;
+use crate::plugins::combat::Health;
 
 pub struct RespawnPlugin;
 
@@ -35,16 +36,18 @@ fn respawn(
     mut actors: Query<(
         Entity,
         &mut Transform,
+        &mut Health,
         &mut ActorState,
         &RespawnPoint,
         &Respawn,
     )>,
 ) {
-    for (entity, mut transform, mut state, respawn_point, respawn) in &mut actors {
+    for (entity, mut transform, mut health, mut state, respawn_point, respawn) in &mut actors {
         if respawn.is_normal() {
             transform.translation = respawn_point.0;
         }
 
+        *health = Health::new(50);
         *state = ActorState::NORMAL;
         commands.entity(entity).remove::<Respawn>();
     }

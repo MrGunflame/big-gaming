@@ -6,13 +6,14 @@ use crate::components::ActorState;
 use crate::entities::player::PlayerCharacter;
 use crate::plugins::respawn::Respawn;
 use crate::ui::widgets::UiExt;
+use crate::ui::Focus;
 
 pub fn death(
     mut commands: Commands,
     mut egui: ResMut<EguiContext>,
-    mut players: Query<(Entity, &ActorState), With<PlayerCharacter>>,
+    mut players: Query<(Entity, &ActorState, &mut Focus), With<PlayerCharacter>>,
 ) {
-    let (entity, state) = players.single_mut();
+    let (entity, state, focus) = players.single_mut();
 
     if *state != ActorState::DEAD {
         return;

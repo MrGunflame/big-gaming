@@ -2,13 +2,14 @@ mod damage;
 mod health;
 mod resistances;
 
-use bevy::prelude::{Bundle, Entity, Plugin, Query, Res, With};
+use bevy::prelude::{Bundle, Entity, EventWriter, Plugin, Query, Res, Transform, With};
 use bevy_rapier3d::prelude::{RapierContext, Velocity};
 pub use damage::{Damage, IncomingDamage};
 pub use health::{Health, MaxHealth};
 pub use resistances::{Resistance, Resistances};
 
 use crate::components::{Actor, ActorState};
+use crate::ui::Focus;
 
 #[derive(Copy, Clone, Debug)]
 pub struct CombatPlugin;
@@ -16,7 +17,8 @@ pub struct CombatPlugin;
 impl Plugin for CombatPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
         app.add_system(apply_incoming_damage)
-            .add_system(fall_damage);
+            .add_system(fall_damage)
+            .add_system(kill_out_of_bounds);
     }
 }
 
@@ -27,6 +29,7 @@ fn apply_incoming_damage(
         &Resistances,
         &mut ActorState,
     )>,
+    mut focus: EventWriter<Focus>,
 ) {
     for (mut inc, mut health, resistances, mut state) in &mut entities {
         while let Some(damage) = inc.pop() {
@@ -34,6 +37,7 @@ fn apply_incoming_damage(
 
             if health.is_zero() {
                 *state = ActorState::DEAD;
+                focus.send(Focus::Interface);
                 inc.clear();
             }
         }
@@ -57,6 +61,15 @@ fn fall_damage(
                     inc.push(Damage::new(velocity.linvel.y as u32));
                 }
             }
+        }
+    }
+}
+
+fn kill_out_of_bounds(mut entities: Query<(&Transform, &ActorState, &mut IncomingDamage)>) {
+    for (transform, state, mut inc) in &mut entities {
+        // IncomingDamage::push might allocate, so we only push if the actor is still alive.
+        if transform.translation.y < -1000.0 && *state != ActorState::DEAD {
+            inc.push(Damage::new(u32::MAX));
         }
     }
 }

@@ -30,8 +30,10 @@ impl Plugin for UiPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
         app.add_plugin(EguiPlugin)
             .insert_resource(InterfaceState::new())
+            .add_event::<Focus>()
             .add_startup_system(events::register_events)
             .add_system(events::handle_events)
+            .add_system(events::toggle_focus)
             .add_system(crosshair::crosshair)
             .add_system(health::health)
             .add_system(debug::debug)

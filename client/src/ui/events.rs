@@ -1,6 +1,6 @@
 use std::mem::MaybeUninit;
 
-use bevy::prelude::{KeyCode, Query, Res, ResMut};
+use bevy::prelude::{EventReader, EventWriter, KeyCode, Query, Res, ResMut};
 use bevy::window::Windows;
 
 use crate::plugins::hotkeys::{Event, EventId, HotkeyStore, TriggerKind};
@@ -41,14 +41,10 @@ pub(super) fn register_events(mut hotkeys: ResMut<HotkeyStore>) {
 }
 
 pub(super) fn handle_events(
-    mut windows: ResMut<Windows>,
     hotkeys: Res<HotkeyStore>,
     mut state: ResMut<InterfaceState>,
-    mut players: Query<&mut Focus>,
+    mut focus: EventWriter<Focus>,
 ) {
-    let window = windows.primary_mut();
-    let mut focus = players.single_mut();
-
     let events = unsafe { EVENTS.assume_init_ref() };
 
     if hotkeys.triggered(events.game_menu) {
@@ -57,13 +53,11 @@ pub(super) fn handle_events(
                 state.remove::<_, menu::gamemenu::State>(MENU_GAME);
             }
 
-            *focus = Focus::World;
-            Cursor::lock(window);
+            focus.send(Focus::World);
         } else {
             state.insert(MENU_GAME, Some(menu::gamemenu::State::default()));
 
-            *focus = Focus::Interface;
-            Cursor::unlock(window);
+            focus.send(Focus::Interface);
         }
     }
 
@@ -74,6 +68,25 @@ pub(super) fn handle_events(
             }
         } else {
             state.insert::<()>(MENU_DEBUG, None);
+        }
+    }
+}
+
+/// Toggle [`Focus`].
+pub(super) fn toggle_focus(
+    mut windows: ResMut<Windows>,
+    mut players: Query<&mut Focus>,
+    mut events: EventReader<Focus>,
+) {
+    let window = windows.primary_mut();
+    let mut focus = players.single_mut();
+
+    for event in events.iter() {
+        *focus = *event;
+
+        match event {
+            Focus::World => Cursor::lock(window),
+            Focus::Interface => Cursor::unlock(window),
         }
     }
 }
