@@ -226,6 +226,11 @@ impl Resistance {
     pub const fn new(val: u32) -> Self {
         Self(val)
     }
+
+    #[inline]
+    pub const fn to_u32(self) -> u32 {
+        self.0
+    }
 }
 
 impl Add<u32> for Resistance {
