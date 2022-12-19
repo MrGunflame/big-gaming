@@ -1,3 +1,5 @@
+//! Container inventories
+
 use std::borrow::Borrow;
 use std::cell::UnsafeCell;
 use std::collections::{HashMap, HashSet};
@@ -13,6 +15,7 @@ use crate::localization::LocalizedString;
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ItemId(pub u64);
 
+/// A container for storing items. This may be a player inventory or a container in the world.
 #[derive(Clone, Debug, Component)]
 pub struct Inventory {
     items: HashSet<ItemCell, RandomState>,
