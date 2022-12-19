@@ -1,4 +1,4 @@
-mod chunk;
+pub mod chunk;
 
 #[derive(Copy, Clone, Debug)]
 pub struct ChunkId(i32);

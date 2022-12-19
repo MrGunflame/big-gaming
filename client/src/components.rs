@@ -1,7 +1,7 @@
 use std::f32::consts::PI;
 use std::num::NonZeroU32;
 
-use bevy::prelude::{Component, EulerRot, Mat3, Quat, Vec3};
+use bevy::prelude::{Component, EulerRot, Mat3, Quat, Transform, Vec3};
 
 use crate::utils::Radians;
 
@@ -151,6 +151,9 @@ impl Rotation {
         Vec3 { x, y, z }
     }
 }
+
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub struct PreviousTransform(pub Transform);
 
 #[cfg(test)]
 mod tests {

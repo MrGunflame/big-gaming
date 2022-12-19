@@ -2,10 +2,12 @@
 #![deny(unsafe_op_in_unsafe_fn)]
 
 mod assets;
+mod bundles;
 mod components;
 mod entities;
 mod log;
 mod plugins;
+mod prev_transform;
 mod systems;
 mod ui;
 mod utils;
@@ -22,6 +24,7 @@ use plugins::combat::CombatPlugin;
 use plugins::respawn::RespawnPlugin;
 use plugins::{CameraPlugin, HotkeyPlugin, MovementPlugin, ProjectilePlugin};
 use ui::UiPlugin;
+use world::chunk::ChunkPlugin;
 
 fn main() {
     // log::Logger::new().init();
@@ -39,6 +42,8 @@ fn main() {
         .add_plugin(HotkeyPlugin)
         .add_plugin(MovementPlugin)
         .add_plugin(RespawnPlugin)
+        .add_plugin(ChunkPlugin)
+        .add_system_to_stage(CoreStage::Update, prev_transform::update_previous_transform)
         .run();
 }
 

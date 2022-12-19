@@ -1,5 +1,6 @@
 use bevy::prelude::{AssetServer, Bundle, Component, Vec3};
 use bevy::scene::SceneBundle;
+use bevy::transform::TransformBundle;
 use bevy_rapier3d::prelude::{
     AdditionalMassProperties, Ccd, CharacterAutostep, CharacterLength, Collider,
     KinematicCharacterController, LockedAxes, RigidBody, Velocity,
@@ -12,6 +13,8 @@ use crate::plugins::movement::MovementSpeed;
 
 #[derive(Bundle)]
 pub struct ActorBundle {
+    #[bundle]
+    pub transform: crate::bundles::TransformBundle,
     #[bundle]
     pub scene: SceneBundle,
     #[bundle]
@@ -38,6 +41,7 @@ pub struct ActorBundle {
 impl ActorBundle {
     pub fn new(assets: &AssetServer) -> Self {
         Self {
+            transform: crate::bundles::TransformBundle::from_translation(Vec3::new(0.0, 0.0, 0.0)),
             scene: SceneBundle {
                 scene: assets.load("bricks.glb#Scene0"),
                 ..Default::default()

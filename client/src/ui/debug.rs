@@ -2,6 +2,7 @@ use bevy::prelude::{Camera3d, Entity, Query, Res, ResMut, Transform, With};
 use bevy_egui::egui::Window;
 use bevy_egui::EguiContext;
 use bevy_rapier3d::prelude::Velocity;
+use common::world::chunk::ChunkId;
 
 use crate::components::Rotation;
 use crate::entities::player::PlayerCharacter;
@@ -37,6 +38,7 @@ pub fn debug(
 
             ui.label(format!("Player at: X: {:.2} Y: {:.2} Z: {:.2}", x, y, z));
             ui.label(format!("Looking at: Yaw: {} Pitch: {}", yaw, pitch));
+            ui.label(format!("Chunk {:?}", ChunkId::new(x, y, z).as_parts()));
 
             let linvel = velocity.linvel;
             let angvel = velocity.angvel;

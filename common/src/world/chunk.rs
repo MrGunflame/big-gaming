@@ -8,8 +8,10 @@
 
 use std::borrow::Borrow;
 use std::collections::HashMap;
+use std::fmt::{self, Display, Formatter};
 
 use bevy_ecs::entity::Entity;
+use bevy_ecs::system::Resource;
 use glam::{Vec3, Vec3A};
 
 /// The size of a chunk.
@@ -32,6 +34,19 @@ impl ChunkId {
         let y = (y / CHUNK_SIZE.y) as i32;
         let z = (z / CHUNK_SIZE.z) as i32;
 
+        Self::from_parts(x as u32, y as u32, z as u32)
+    }
+
+    pub const fn as_parts(self) -> (u32, u32, u32) {
+        (
+            ((self.0 & Self::MASK_X) >> 64) as u32,
+            ((self.0 & Self::MASK_Y) >> 32) as u32,
+            (self.0 & Self::MASK_Z) as u32,
+        )
+    }
+
+    #[inline]
+    pub const fn from_parts(x: u32, y: u32, z: u32) -> Self {
         let x = (x as u128) << 64;
         let y = (y as u128) << 32;
         let z = z as u128;
@@ -60,6 +75,13 @@ impl ChunkId {
     pub fn z(self) -> f32 {
         let z = self.0 & Self::MASK_Z;
         z as f32 * CHUNK_SIZE.z
+    }
+}
+
+impl Display for ChunkId {
+    #[inline]
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        Display::fmt(&self.0, f)
     }
 }
 
@@ -143,12 +165,18 @@ impl Chunk {
 }
 
 /// A registry for [`Chunk`]s.
-#[derive(Clone, Debug)]
-pub struct ChunkHandler {
+#[derive(Clone, Debug, Resource)]
+pub struct ChunkRegistry {
     active: HashMap<ChunkId, Chunk>,
 }
 
-impl ChunkHandler {
+impl ChunkRegistry {
+    pub fn new() -> Self {
+        Self {
+            active: HashMap::new(),
+        }
+    }
+
     /// Returns the [`Chunk`] with the given [`ChunkId`].
     ///
     /// If the requested chunk is not loaded currently, it is loaded.
@@ -173,6 +201,7 @@ impl ChunkHandler {
             return true;
         }
 
+        tracing::trace!("Loading chunk {}", id.borrow());
         false
     }
 }
