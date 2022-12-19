@@ -5,6 +5,7 @@ pub struct Item {
     pub id: u64,
     pub name: LocalizedString,
     pub mass: Mass,
+    // TODO: These should probably not be hardcoded onto an item.
 }
 
 /// The mass/weight of an [`Item`].

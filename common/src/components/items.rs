@@ -1,7 +1,7 @@
 use bevy_ecs::component::Component;
 
 use crate::id::NamespacedId;
-use crate::localization::LocalizedString;
+use crate::types::Mass;
 
 use super::combat::Resistances;
 
@@ -11,8 +11,14 @@ use super::combat::Resistances;
 /// inventories), or as a [`Component`] representing items in the world.
 #[derive(Clone, Debug, Component)]
 pub struct ItemStack {
-    pub id: Item,
+    pub item: Item,
     pub quantity: u32,
+}
+
+impl ItemStack {
+    pub fn mass(&self) -> Mass {
+        self.item.mass * self.quantity
+    }
 }
 
 /// A single item.
@@ -22,14 +28,16 @@ pub struct ItemStack {
 #[derive(Clone, Debug, Component)]
 pub struct Item {
     pub id: ItemId,
-    pub name: LocalizedString,
     // FIXME: Should better be kv map.
     pub components: Option<Vec<ItemComponentId>>,
     // TODO: Should these really be hardcoded here?
     pub resistances: Option<Resistances>,
     pub ammo: Option<ItemId>,
     pub damage: Option<u32>,
+    /// The number of bullets currently in the magazine.
     pub magazine: Option<u32>,
+    // pub properties: Properties,
+    pub mass: Mass,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -44,3 +52,32 @@ pub struct ItemComponentId(NamespacedId<u32>);
 pub struct ItemComponent {}
 
 impl ItemId {}
+
+/// A type that can be converted into a [`ItemStack`].
+pub trait IntoItemStack {
+    fn into_item_stack(self) -> ItemStack;
+}
+
+impl IntoItemStack for ItemStack {
+    fn into_item_stack(self) -> ItemStack {
+        self
+    }
+}
+
+impl IntoItemStack for Item {
+    fn into_item_stack(self) -> ItemStack {
+        ItemStack {
+            item: self,
+            quantity: 1,
+        }
+    }
+}
+
+impl From<Item> for ItemStack {
+    fn from(value: Item) -> Self {
+        Self {
+            item: value,
+            quantity: 1,
+        }
+    }
+}

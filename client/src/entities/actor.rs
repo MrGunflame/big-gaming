@@ -5,7 +5,7 @@ use bevy_rapier3d::prelude::{
     AdditionalMassProperties, Ccd, CharacterAutostep, CharacterLength, Collider,
     KinematicCharacterController, LockedAxes, RigidBody, Velocity,
 };
-use common::inventory::{Equipment, Inventory};
+use common::components::inventory::{Equipment, Inventory};
 
 use crate::components::{Actor, ActorState, Rotation};
 use crate::plugins::combat::CombatBundle;
