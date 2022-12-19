@@ -1,7 +1,7 @@
 use bevy::prelude::{Commands, Component, Entity, Plugin, Query, Transform, Vec3};
+use common::components::combat::Health;
 
 use crate::components::ActorState;
-use crate::plugins::combat::Health;
 
 pub struct RespawnPlugin;
 

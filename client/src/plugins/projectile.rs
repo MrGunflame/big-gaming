@@ -1,12 +1,10 @@
 use bevy::prelude::{
-    App, Commands, CoreStage, DespawnRecursiveExt, Entity, Plugin, Query, Res, ResMut, With,
-    Without, World,
+    App, Commands, DespawnRecursiveExt, Entity, Plugin, Query, Res, With, Without,
 };
 use bevy_rapier3d::prelude::RapierContext;
+use common::components::combat::{Damage, IncomingDamage};
 
 use crate::entities::projectile::Projectile;
-
-use super::combat::{Damage, IncomingDamage};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct ProjectilePlugin;

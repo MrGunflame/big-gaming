@@ -1,11 +1,11 @@
 use bevy::prelude::*;
 use bevy_rapier3d::prelude::{QueryFilter, RapierContext};
+use common::components::combat::Damage;
 
 use crate::components::Rotation;
 use crate::entities::actor::ActorFigure;
 use crate::entities::player::PlayerCharacter;
 use crate::entities::projectile::{Projectile, ProjectileBundle};
-use crate::plugins::combat::Damage;
 use crate::ui::Focus;
 
 // pub fn keyboard_input(

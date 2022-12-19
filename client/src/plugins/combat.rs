@@ -1,12 +1,6 @@
-mod damage;
-mod health;
-mod resistances;
-
 use bevy::prelude::{Bundle, Entity, EventWriter, Plugin, Query, Res, Transform, With};
 use bevy_rapier3d::prelude::{RapierContext, Velocity};
-pub use damage::{Damage, IncomingDamage};
-pub use health::{Health, MaxHealth};
-pub use resistances::{Resistance, Resistances};
+use common::components::combat::{Damage, Health, IncomingDamage, Resistances};
 
 use crate::components::{Actor, ActorState};
 use crate::ui::Focus;
@@ -78,7 +72,6 @@ fn kill_out_of_bounds(mut entities: Query<(&Transform, &ActorState, &mut Incomin
 pub struct CombatBundle {
     pub incoming_damage: IncomingDamage,
     pub health: Health,
-    pub max_health: MaxHealth,
     pub resistances: Resistances,
 }
 
@@ -87,7 +80,6 @@ impl CombatBundle {
         Self {
             incoming_damage: IncomingDamage::new(),
             health: Health::new(50),
-            max_health: MaxHealth::new(50),
             resistances: Resistances::new(),
         }
     }

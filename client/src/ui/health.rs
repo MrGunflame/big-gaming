@@ -4,20 +4,17 @@ use bevy_egui::egui::{
     Widget,
 };
 use bevy_egui::EguiContext;
+use common::components::combat::Health;
 
 use crate::entities::player::PlayerCharacter;
-use crate::plugins::combat::{Health, MaxHealth};
 
-pub fn health(
-    mut egui: ResMut<EguiContext>,
-    players: Query<(&Health, &MaxHealth), With<PlayerCharacter>>,
-) {
-    let (health, max_health) = players.single();
+pub fn health(mut egui: ResMut<EguiContext>, players: Query<&Health, With<PlayerCharacter>>) {
+    let health = players.single();
 
-    let health_percentage = if max_health.is_zero() {
+    let health_percentage = if health.max_health == 0 {
         0.0
     } else {
-        *health / *max_health
+        health.health as f32 / health.max_health as f32
     };
 
     Area::new("health")

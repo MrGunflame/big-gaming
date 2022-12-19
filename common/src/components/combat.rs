@@ -126,7 +126,7 @@ impl Damage {
 /// [`push`] when damage should be taken instead of manually modifying the [`Health`] value.
 ///
 /// [`push`]: Self::push
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Component)]
 pub struct IncomingDamage {
     incoming: VecDeque<Damage>,
 }
