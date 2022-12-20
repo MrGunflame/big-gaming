@@ -14,7 +14,19 @@ mod utils;
 mod window;
 mod world;
 
+use bevy::audio::AudioPlugin;
+use bevy::core_pipeline::CorePipelinePlugin;
+use bevy::diagnostic::DiagnosticsPlugin;
+use bevy::gltf::GltfPlugin;
+use bevy::input::InputPlugin;
+use bevy::pbr::PbrPlugin;
 use bevy::prelude::*;
+use bevy::render::RenderPlugin;
+use bevy::scene::ScenePlugin;
+use bevy::sprite::SpritePlugin;
+use bevy::text::TextPlugin;
+use bevy::time::TimePlugin;
+use bevy::winit::WinitPlugin;
 use bevy_rapier3d::prelude::*;
 use bevy_rapier3d::render::RapierDebugRenderPlugin;
 use common::archive::GameArchive;
@@ -28,14 +40,33 @@ use ui::UiPlugin;
 use world::chunk::ChunkPlugin;
 
 fn main() {
-    // log::Logger::new().init();
+    log::Logger::new().init();
 
     let archive = GameArchive::new();
     archive.load("../core/data/items.json");
 
     App::new()
         .insert_resource(Msaa { samples: 4 })
-        .add_plugins(DefaultPlugins)
+        .add_plugin(CorePlugin::default())
+        .add_plugin(TimePlugin)
+        .add_plugin(TransformPlugin)
+        .add_plugin(HierarchyPlugin)
+        .add_plugin(DiagnosticsPlugin)
+        .add_plugin(InputPlugin)
+        .add_plugin(WindowPlugin::default())
+        .add_plugin(AssetPlugin::default())
+        .add_plugin(ScenePlugin)
+        .add_plugin(RenderPlugin)
+        .add_plugin(ImagePlugin::default())
+        .add_plugin(CorePipelinePlugin::default())
+        .add_plugin(PbrPlugin)
+        .add_plugin(SpritePlugin)
+        .add_plugin(TextPlugin)
+        .add_plugin(bevy::ui::UiPlugin)
+        .add_plugin(AudioPlugin)
+        .add_plugin(GilrsPlugin)
+        .add_plugin(GltfPlugin)
+        .add_plugin(WinitPlugin)
         .add_plugin(RapierPhysicsPlugin::<NoUserData>::default())
         .add_plugin(RapierDebugRenderPlugin::default())
         .add_startup_system(setup)

@@ -23,13 +23,14 @@ impl Logger {
         let _ = set_global_default(self);
     }
 
-    fn log<T>(&self, level: LevelFilter, content: T)
+    fn log<T, L>(&self, level: L, content: T)
     where
         T: Display,
+        L: Into<LevelFilter>,
     {
         let now = Local::now().format("%Y-%m-%d %H:%M:%S");
 
-        let level = match level {
+        let level = match level.into() {
             LevelFilter::ERROR => "ERROR",
             LevelFilter::WARN => "WARN",
             LevelFilter::INFO => "INFO",
@@ -63,7 +64,16 @@ impl Subscriber for Logger {
 
     fn record_follows_from(&self, span: &Id, follows: &Id) {}
 
-    fn event(&self, event: &Event<'_>) {}
+    fn event(&self, event: &Event<'_>) {
+        if event.metadata().target().starts_with("bevy") {
+            return;
+        }
+
+        let mut visitor = Visitor::new();
+        event.record(&mut visitor);
+
+        self.log(*event.metadata().level(), visitor);
+    }
 
     fn enter(&self, span: &Id) {}
 
