@@ -13,12 +13,12 @@ pub fn inventory(
     state: Res<InterfaceState>,
     mut players: Query<&Inventory, With<PlayerCharacter>>,
 ) {
-    // let state = unsafe {
-    //     match state.get_mut::<_, State>(MENU_INVENTORY) {
-    //         Some(state) => state,
-    //         None => return,
-    //     }
-    // };
+    let state = unsafe {
+        match state.get_mut::<_, ()>(MENU_INVENTORY) {
+            Some(state) => state,
+            None => return,
+        }
+    };
 
     let inventory = players.single_mut();
 

@@ -5,7 +5,8 @@ use bevy_rapier3d::prelude::{
     AdditionalMassProperties, Ccd, CharacterAutostep, CharacterLength, Collider,
     KinematicCharacterController, LockedAxes, RigidBody, Velocity,
 };
-use common::components::inventory::{Equipment, Inventory};
+use common::components::inventory::{Equipment, EquipmentSlot, Inventory};
+use common::components::items::{Item, ItemId};
 
 use crate::components::{Actor, ActorState, Rotation};
 use crate::plugins::combat::CombatBundle;
@@ -40,6 +41,20 @@ pub struct ActorBundle {
 
 impl ActorBundle {
     pub fn new(assets: &AssetServer) -> Self {
+        let mut equipment = Equipment::new();
+        equipment.insert(
+            EquipmentSlot::HAND,
+            Item {
+                id: ItemId(0.into()),
+                resistances: None,
+                damage: None,
+                components: None,
+                magazine: Some(31),
+                mass: Default::default(),
+                ammo: None,
+            },
+        );
+
         Self {
             transform: crate::bundles::TransformBundle::from_translation(Vec3::new(0.0, 0.0, 0.0)),
             scene: SceneBundle {
@@ -77,7 +92,7 @@ impl ActorBundle {
                 eyes: Vec3::new(0.0, 2.0, 0.0),
             },
             inventory: Inventory::new(),
-            equipment: Equipment::new(),
+            equipment,
         }
     }
 }

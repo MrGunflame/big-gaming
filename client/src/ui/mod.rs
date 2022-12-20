@@ -1,5 +1,6 @@
 mod cursor;
 mod events;
+mod gun;
 mod interfaces;
 mod menu;
 mod widgets;
@@ -39,7 +40,8 @@ impl Plugin for UiPlugin {
             .add_system(debug::debug)
             .add_system(menu::gamemenu::gamemenu)
             .add_system(menu::death::death)
-            .add_system(menu::inventory::inventory);
+            .add_system(menu::inventory::inventory)
+            .add_system(gun::gun);
     }
 }
 

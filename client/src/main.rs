@@ -46,6 +46,7 @@ fn main() {
     archive.load("../core/data/items.json");
 
     App::new()
+        .insert_resource(archive)
         .insert_resource(Msaa { samples: 4 })
         .add_plugin(CorePlugin::default())
         .add_plugin(TimePlugin)

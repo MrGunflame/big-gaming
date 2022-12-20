@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 use bevy_rapier3d::prelude::{QueryFilter, RapierContext};
 use common::components::combat::Damage;
+use common::components::inventory::{Equipment, EquipmentSlot};
 
 use crate::components::Rotation;
 use crate::entities::actor::ActorFigure;
@@ -108,19 +109,34 @@ pub fn mouse_button_input(
     rapier: Res<RapierContext>,
     assets: Res<AssetServer>,
     audio: Res<Audio>,
-    players: Query<(&Transform, &ActorFigure, &Focus), With<PlayerCharacter>>,
+    mut players: Query<(&Transform, &mut Equipment, &ActorFigure, &Focus), With<PlayerCharacter>>,
     cameras: Query<&Rotation, With<Camera3d>>,
     projectiles: Query<(), With<Projectile>>,
     input: Res<Input<MouseButton>>,
 ) {
-    let (player, figure, focus) = players.single();
+    let (player, mut equipment, figure, focus) = players.single_mut();
     let camera_rot = cameras.single();
 
     if *focus != Focus::World {
         return;
     }
 
+    let item = match equipment.get_mut(EquipmentSlot::HAND) {
+        Some(item) => item,
+        None => return,
+    };
+
     if input.pressed(MouseButton::Left) {
+        if let Some(mag) = &mut item.magazine {
+            if *mag == 0 {
+                return;
+            }
+
+            *mag -= 1;
+        } else {
+            return;
+        }
+
         audio.play_with_settings(
             assets.load("sounds/weapons/fire.wav"),
             PlaybackSettings::default().with_volume(0.03),
