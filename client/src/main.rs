@@ -17,6 +17,7 @@ mod world;
 use bevy::prelude::*;
 use bevy_rapier3d::prelude::*;
 use bevy_rapier3d::render::RapierDebugRenderPlugin;
+use common::archive::GameArchive;
 use components::Rotation;
 use entities::actor::ActorBundle;
 use entities::player::{PlayerCameraBundle, PlayerCharacterBundle};
@@ -28,6 +29,9 @@ use world::chunk::ChunkPlugin;
 
 fn main() {
     // log::Logger::new().init();
+
+    let archive = GameArchive::new();
+    archive.load("../core/data/items.json");
 
     App::new()
         .insert_resource(Msaa { samples: 4 })

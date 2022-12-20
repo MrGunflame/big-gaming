@@ -1,6 +1,6 @@
 use bevy_ecs::component::Component;
 
-use crate::id::NamespacedId;
+use crate::id::{NamespacedId, WeakId};
 use crate::types::Mass;
 
 use super::combat::Resistances;
@@ -41,7 +41,7 @@ pub struct Item {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ItemId(NamespacedId<u32>);
+pub struct ItemId(pub WeakId<u32>);
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ItemComponentId(NamespacedId<u32>);
@@ -50,8 +50,6 @@ pub struct ItemComponentId(NamespacedId<u32>);
 ///
 /// Some items (e.g weapons)
 pub struct ItemComponent {}
-
-impl ItemId {}
 
 /// A type that can be converted into a [`ItemStack`].
 pub trait IntoItemStack {

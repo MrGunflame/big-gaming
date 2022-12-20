@@ -6,17 +6,19 @@ use bevy::window::Windows;
 use crate::plugins::hotkeys::{Event, EventId, HotkeyStore, TriggerKind};
 
 use super::cursor::Cursor;
-use super::interfaces::{MENU_DEATH, MENU_DEBUG, MENU_GAME};
+use super::interfaces::{MENU_DEATH, MENU_DEBUG, MENU_GAME, MENU_INVENTORY};
 use super::{menu, Focus, InterfaceState};
 
 const DEFAULT_TRIGGER_GAMEMENU: KeyCode = KeyCode::Escape;
 const DEFAULT_TRIGGER_DEBUGMENU: KeyCode = KeyCode::F3;
+const DEFAULT_TRIGGER_INVENTORY: KeyCode = KeyCode::I;
 
 static mut EVENTS: MaybeUninit<Events> = MaybeUninit::uninit();
 
 struct Events {
     game_menu: EventId,
     debug_menu: EventId,
+    inventory: EventId,
 }
 
 pub(super) fn register_events(mut hotkeys: ResMut<HotkeyStore>) {
@@ -32,10 +34,17 @@ pub(super) fn register_events(mut hotkeys: ResMut<HotkeyStore>) {
             .kind(TriggerKind::Trigger),
     );
 
+    let inventory = hotkeys.register(
+        Event::new()
+            .trigger(DEFAULT_TRIGGER_INVENTORY)
+            .kind(TriggerKind::Trigger),
+    );
+
     unsafe {
         EVENTS.write(Events {
             game_menu,
             debug_menu,
+            inventory,
         });
     }
 }
@@ -68,6 +77,16 @@ pub(super) fn handle_events(
             }
         } else {
             state.insert::<()>(MENU_DEBUG, None);
+        }
+    }
+
+    if hotkeys.triggered(events.inventory) {
+        if state.contains(MENU_INVENTORY) {
+            unsafe {
+                state.remove::<_, ()>(MENU_INVENTORY);
+            }
+        } else {
+            state.insert::<()>(MENU_INVENTORY, None);
         }
     }
 }

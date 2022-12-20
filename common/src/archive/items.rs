@@ -1,31 +1,30 @@
+use crate::id::StrongId;
 use crate::localization::LocalizedString;
+use crate::types::Mass;
+
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Item {
-    pub id: u64,
+    pub id: StrongId<u32>,
     pub name: LocalizedString,
     pub mass: Mass,
+    #[serde(default)]
+    pub keywords: Keywords,
     // TODO: These should probably not be hardcoded onto an item.
 }
 
-/// The mass/weight of an [`Item`].
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Mass(u32);
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[repr(transparent)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(transparent))]
+pub struct Keyword(Box<str>);
 
-impl Mass {
-    pub const fn grams(g: u32) -> Self {
-        Self(g)
-    }
-
-    pub const fn kilograms(kg: u32) -> Self {
-        Self(kg * 1000)
-    }
-
-    pub const fn as_grams(self) -> u32 {
-        self.0
-    }
-
-    pub fn as_kilograms_f32(self) -> f32 {
-        self.0 as f32 / 1000.0
-    }
+#[derive(Clone, Debug, Default)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(transparent))]
+pub struct Keywords {
+    keywords: Vec<Keyword>,
 }

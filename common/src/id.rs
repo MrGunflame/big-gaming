@@ -1,3 +1,9 @@
+mod strong;
+mod weak;
+
+pub use strong::StrongId;
+pub use weak::WeakId;
+
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
@@ -29,6 +35,12 @@ impl NamespacedId<u32> {
     #[inline]
     pub const fn id(self) -> u16 {
         self.0 as u16
+    }
+}
+
+impl<T> From<T> for NamespacedId<T> {
+    fn from(value: T) -> Self {
+        Self(value)
     }
 }
 

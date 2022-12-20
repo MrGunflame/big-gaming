@@ -3,6 +3,7 @@
 use std::borrow::{Borrow, Cow};
 use std::collections::HashMap;
 use std::hash::Hash;
+use std::iter::FusedIterator;
 use std::num::NonZeroU8;
 
 use ahash::RandomState;
@@ -13,6 +14,9 @@ use crate::types::Mass;
 use super::items::{IntoItemStack, Item, ItemId, ItemStack};
 
 /// A container for storing items. This may be a player inventory or a container in the world.
+///
+/// Note that the hard limit for a `Inventory` is `usize::MAX` items or total combined mass of
+/// `Mass::MAX`, whichever is reached first.
 #[derive(Clone, Debug, Component)]
 pub struct Inventory {
     items: HashMap<ItemId, ItemStack, RandomState>,
@@ -23,6 +27,7 @@ pub struct Inventory {
 }
 
 impl Inventory {
+    /// Creates a new, empty `Inventory`.
     pub fn new() -> Self {
         Self {
             items: HashMap::with_hasher(RandomState::new()),
@@ -37,6 +42,7 @@ impl Inventory {
         self.items.len()
     }
 
+    /// Returns `true` if the `Inventory` is emtpy, i.e. contains no [`Item`]s.
     #[inline]
     pub fn is_empty(&self) -> bool {
         self.len() == 0
@@ -67,10 +73,11 @@ impl Inventory {
     }
 
     /// Inserts a new [`Item`] or [`ItemStack`] into the `Inventory`.
-    pub fn insert<T>(&mut self, items: T)
+    pub fn insert<T>(&mut self, items: T) -> Result<(), InsertionError>
     where
         T: IntoItemStack,
     {
+        // TODO: Implement the actual error handling.
         let items = items.into_item_stack();
 
         // Update the mass sum
@@ -85,6 +92,8 @@ impl Inventory {
                 self.items.insert(items.item.id, items);
             }
         }
+
+        Ok(())
     }
 
     /// Removes and returns a single [`Item`] from this `Inventory`. Returns `None` if the item
@@ -132,6 +141,28 @@ impl Inventory {
 
         Some(stack)
     }
+
+    pub fn iter(&self) -> Iter<'_> {
+        Iter {
+            iter: self.items.iter(),
+        }
+    }
+}
+
+impl<'a> IntoIterator for &'a Inventory {
+    type Item = &'a ItemStack;
+    type IntoIter = Iter<'a>;
+
+    #[inline]
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum InsertionError {
+    MaxItems(ItemStack),
+    MaxMass(ItemStack),
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -144,7 +175,12 @@ impl EquipmentSlot {
     pub const PANTS: Self = Self(NonZeroU8::new(65).unwrap());
 }
 
-/// Inventory of items currently equipped.
+/// An inventory equipped [`Item`]s.
+///
+/// `Equipment` is very similar to [`Inventory`] with a few key differences:
+/// - `Equipment` is indexed by a [`EquipmentSlot`].
+/// - `Equipment` can only contain a single [`Item`] in a cell (unlike [`Inventory`], which can
+/// contain an [`ItemStack`]).
 #[derive(Clone, Debug, Component)]
 pub struct Equipment {
     slots: HashMap<EquipmentSlot, Item>,
@@ -155,6 +191,14 @@ impl Equipment {
         Self {
             slots: HashMap::new(),
         }
+    }
+
+    pub fn len(&self) -> usize {
+        self.slots.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 
     /// Returns the equipped [`Item`] at the given `slot`. Returns `None` if no [`Item`] is
@@ -182,3 +226,31 @@ impl Default for Equipment {
         Self::new()
     }
 }
+
+#[derive(Clone, Debug)]
+pub struct Iter<'a> {
+    iter: std::collections::hash_map::Iter<'a, ItemId, ItemStack>,
+}
+
+impl<'a> Iterator for Iter<'a> {
+    type Item = &'a ItemStack;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next().map(|(_, v)| v)
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.iter.size_hint()
+    }
+}
+
+impl<'a> ExactSizeIterator for Iter<'a> {
+    #[inline]
+    fn len(&self) -> usize {
+        self.iter.len()
+    }
+}
+
+impl<'a> FusedIterator for Iter<'a> {}
