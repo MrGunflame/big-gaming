@@ -12,6 +12,10 @@ use super::Interface;
 pub struct Debug {}
 
 impl Interface for Debug {
+    fn kind(&self) -> super::InterfaceKind {
+        super::InterfaceKind::Widget
+    }
+
     fn create(&mut self) {}
 
     fn render(&mut self, ctx: &bevy_egui::egui::Context, world: &mut bevy::prelude::World) {

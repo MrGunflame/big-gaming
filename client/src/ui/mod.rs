@@ -59,12 +59,14 @@ pub struct InterfaceId(u32);
 pub struct InterfaceState {
     /// The stack of rendered interfaces, rendered in the order they are.
     interfaces: Vec<InterfaceCell>,
+    widgets: Vec<InterfaceCell>,
 }
 
 impl InterfaceState {
     pub fn new() -> Self {
         Self {
             interfaces: Vec::new(),
+            widgets: Vec::new(),
         }
     }
 
@@ -88,6 +90,12 @@ impl InterfaceState {
         T: 'static,
     {
         for cell in &self.interfaces {
+            if TypeId::of::<T>() == cell.id {
+                return true;
+            }
+        }
+
+        for cell in &self.widgets {
             if TypeId::of::<T>() == cell.id {
                 return true;
             }
@@ -119,6 +127,18 @@ impl InterfaceState {
             }
         }
 
+        for (i, cell) in self.widgets.iter().enumerate() {
+            if TypeId::of::<T>() == cell.id {
+                let mut cell = self.widgets.remove(i);
+
+                if cell.created {
+                    cell.boxed.destroy();
+                }
+
+                return Some(cell.boxed);
+            }
+        }
+
         None
     }
 
@@ -133,20 +153,36 @@ impl InterfaceState {
     }
 
     pub fn render(&mut self, world: &mut World) {
-        for cell in &mut self.interfaces {
-            if !cell.created {
-                cell.boxed.create();
-                cell.created = true;
+        world.resource_scope::<EguiContext, ()>(|world, mut ctx| {
+            for cell in &mut self.widgets {
+                if !cell.created {
+                    cell.boxed.create();
+                    cell.created = true;
+                }
+
+                cell.boxed.render(ctx.ctx_mut(), world);
             }
 
-            world.resource_scope::<EguiContext, ()>(|world, mut ctx| {
+            for cell in &mut self.interfaces {
+                if !cell.created {
+                    cell.boxed.create();
+                    cell.created = true;
+                }
+
                 cell.boxed.render(ctx.ctx_mut(), world);
-            });
-        }
+            }
+        });
     }
 
     fn push_boxed(&mut self, boxed: Box<dyn Interface>, type_id: TypeId) {
-        self.interfaces.push(InterfaceCell::new(boxed, type_id));
+        match boxed.kind() {
+            InterfaceKind::Interface => {
+                self.interfaces.push(InterfaceCell::new(boxed, type_id));
+            }
+            InterfaceKind::Widget => {
+                self.widgets.push(InterfaceCell::new(boxed, type_id));
+            }
+        }
     }
 }
 
@@ -156,6 +192,10 @@ unsafe impl Send for InterfaceState {}
 unsafe impl Sync for InterfaceState {}
 
 pub trait Interface: Any {
+    fn kind(&self) -> InterfaceKind {
+        InterfaceKind::Interface
+    }
+
     fn create(&mut self);
     fn render(&mut self, ctx: &Context, world: &mut World);
     fn destroy(&mut self);
@@ -175,4 +215,11 @@ impl InterfaceCell {
             created: false,
         }
     }
+}
+
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
+pub enum InterfaceKind {
+    #[default]
+    Interface,
+    Widget,
 }
