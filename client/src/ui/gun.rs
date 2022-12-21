@@ -1,5 +1,5 @@
 use bevy::prelude::{Query, ResMut, With};
-use bevy_egui::egui::{Align2, Area, Order, Pos2, Response, Ui, Vec2, Widget};
+use bevy_egui::egui::{Align2, Area, Order, Response, Ui, Vec2, Widget};
 use bevy_egui::EguiContext;
 use common::components::inventory::{Equipment, EquipmentSlot};
 

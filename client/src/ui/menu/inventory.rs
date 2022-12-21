@@ -1,39 +1,37 @@
-use bevy::prelude::{Query, Res, ResMut, With};
+use bevy::prelude::With;
 use bevy_egui::egui::{Area, Order, Pos2};
-use bevy_egui::EguiContext;
 use common::components::inventory::Inventory;
 
 use crate::entities::player::PlayerCharacter;
-use crate::ui::interfaces::MENU_INVENTORY;
 use crate::ui::widgets::UiExt;
-use crate::ui::InterfaceState;
+use crate::ui::Interface;
 
-pub fn inventory(
-    mut egui: ResMut<EguiContext>,
-    state: Res<InterfaceState>,
-    mut players: Query<&Inventory, With<PlayerCharacter>>,
-) {
-    let state = unsafe {
-        match state.get_mut::<_, ()>(MENU_INVENTORY) {
-            Some(state) => state,
-            None => return,
-        }
-    };
+#[derive(Debug, Default)]
+pub struct InventoryMenu {}
 
-    let inventory = players.single_mut();
+impl Interface for InventoryMenu {
+    fn create(&mut self) {}
 
-    Area::new("inventory")
-        .fixed_pos(Pos2::new(0.0, 0.0))
-        .order(Order::Foreground)
-        .show(egui.ctx_mut(), |ui| {
-            ui.transparent_background(|ui| {
-                ui.heading("Inventory");
-                ui.label(format!("{} items", inventory.items()));
-                for stack in inventory {
-                    ui.label(format!("{:?}", stack.item.id));
-                }
+    fn render(&mut self, ctx: &bevy_egui::egui::Context, world: &mut bevy::prelude::World) {
+        let inventory = world
+            .query_filtered::<&Inventory, With<PlayerCharacter>>()
+            .single(world);
+
+        Area::new("inventory")
+            .fixed_pos(Pos2::new(0.0, 0.0))
+            .order(Order::Foreground)
+            .show(ctx, |ui| {
+                ui.transparent_background(|ui| {
+                    ui.heading("Inventory");
+
+                    ui.label(format!("{} items", inventory.items()));
+
+                    for stack in inventory {
+                        ui.label(format!("{:?}", stack.item.id));
+                    }
+                });
             });
-        });
-}
+    }
 
-enum State {}
+    fn destroy(&mut self) {}
+}

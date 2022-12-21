@@ -1,36 +1,42 @@
 use bevy::prelude::{Commands, Entity, Query, ResMut, With};
-use bevy_egui::egui::{Area, Order, Pos2};
+use bevy_egui::egui::{Area, Context, Order, Pos2};
 use bevy_egui::EguiContext;
 
 use crate::components::ActorState;
 use crate::entities::player::PlayerCharacter;
 use crate::plugins::respawn::Respawn;
 use crate::ui::widgets::UiExt;
-use crate::ui::Focus;
+use crate::ui::{Focus, Interface};
 
-pub fn death(
-    mut commands: Commands,
-    mut egui: ResMut<EguiContext>,
-    mut players: Query<(Entity, &ActorState, &mut Focus), With<PlayerCharacter>>,
-) {
-    let (entity, state, focus) = players.single_mut();
+pub struct Death {}
 
-    if *state != ActorState::DEAD {
-        return;
-    }
+impl Interface for Death {
+    fn create(&mut self) {}
 
-    Area::new("death")
-        .fixed_pos(Pos2::new(0.0, 0.0))
-        .order(Order::Foreground)
-        .show(egui.ctx_mut(), |ui| {
-            ui.transparent_background(|ui| {
-                ui.vertical_centered(|ui| {
-                    ui.label("You ded, unlucky");
+    fn render(&mut self, ctx: &Context, world: &mut bevy::prelude::World) {
+        let (entity, state) = world
+            .query_filtered::<(Entity, &ActorState), With<PlayerCharacter>>()
+            .single(world);
 
-                    if ui.button("Respawn").clicked() {
-                        commands.entity(entity).insert(Respawn::Normal);
-                    }
+        if *state != ActorState::DEAD {
+            return;
+        }
+
+        Area::new("death")
+            .fixed_pos(Pos2::new(0.0, 0.0))
+            .order(Order::Foreground)
+            .show(ctx, |ui| {
+                ui.transparent_background(|ui| {
+                    ui.vertical_centered(|ui| {
+                        ui.label("You ded, unlucky");
+
+                        if ui.button("Respawn").clicked() {
+                            world.entity_mut(entity).insert(Respawn::Normal);
+                        }
+                    });
                 });
             });
-        });
+    }
+
+    fn destroy(&mut self) {}
 }

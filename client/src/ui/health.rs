@@ -1,7 +1,6 @@
 use bevy::prelude::{Query, ResMut, With};
 use bevy_egui::egui::{
-    Align2, Area, Color32, NumExt, Order, Pos2, Rect, Response, Rounding, Sense, Stroke, Ui, Vec2,
-    Widget,
+    Align2, Area, Color32, Order, Pos2, Rect, Response, Rounding, Sense, Stroke, Ui, Vec2, Widget,
 };
 use bevy_egui::EguiContext;
 use common::components::combat::Health;
@@ -71,7 +70,7 @@ impl Widget for HealthWidget {
                 .rect(outer_rect, Rounding::none(), Color32::RED, Stroke::none());
 
             let mut rect = outer_rect;
-            let mut width = self.width * self.health_percentage;
+            let width = self.width * self.health_percentage;
             rect.max.x = width;
 
             ui.painter()

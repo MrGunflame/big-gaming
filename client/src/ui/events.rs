@@ -6,8 +6,10 @@ use bevy::window::Windows;
 use crate::plugins::hotkeys::{Event, EventId, HotkeyStore, TriggerKind};
 
 use super::cursor::Cursor;
-use super::interfaces::{MENU_DEATH, MENU_DEBUG, MENU_GAME, MENU_INVENTORY};
-use super::{menu, Focus, InterfaceState};
+use super::debug::Debug;
+use super::menu::gamemenu::GameMenu;
+use super::menu::inventory::InventoryMenu;
+use super::{Focus, InterfaceState};
 
 const DEFAULT_TRIGGER_GAMEMENU: KeyCode = KeyCode::Escape;
 const DEFAULT_TRIGGER_DEBUGMENU: KeyCode = KeyCode::F3;
@@ -56,37 +58,33 @@ pub(super) fn handle_events(
 ) {
     let events = unsafe { EVENTS.assume_init_ref() };
 
+    let previous = state.is_empty();
+
     if hotkeys.triggered(events.game_menu) {
-        if state.contains(MENU_GAME) {
-            unsafe {
-                state.remove::<_, menu::gamemenu::State>(MENU_GAME);
-            }
-
-            focus.send(Focus::World);
+        if state.is_empty() {
+            state.push_default::<GameMenu>();
         } else {
-            state.insert(MENU_GAME, Some(menu::gamemenu::State::default()));
-
-            focus.send(Focus::Interface);
+            let _ = state.pop();
         }
     }
 
     if hotkeys.triggered(events.debug_menu) {
-        if state.contains(MENU_DEBUG) {
-            unsafe {
-                state.remove::<_, ()>(MENU_DEBUG);
-            }
-        } else {
-            state.insert::<()>(MENU_DEBUG, None);
+        if state.remove::<Debug>().is_none() {
+            state.push_default::<Debug>();
         }
     }
 
     if hotkeys.triggered(events.inventory) {
-        if state.contains(MENU_INVENTORY) {
-            unsafe {
-                state.remove::<_, ()>(MENU_INVENTORY);
-            }
+        if state.remove::<InventoryMenu>().is_none() {
+            state.push_default::<InventoryMenu>();
+        }
+    }
+
+    if previous != state.is_empty() {
+        if state.is_empty() {
+            focus.send(Focus::World);
         } else {
-            state.insert::<()>(MENU_INVENTORY, None);
+            focus.send(Focus::Interface);
         }
     }
 }

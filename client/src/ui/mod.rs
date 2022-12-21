@@ -9,12 +9,22 @@ pub mod crosshair;
 pub mod debug;
 pub mod health;
 
-use std::borrow::Borrow;
-use std::collections::HashMap;
-use std::ptr::NonNull;
+use std::any::{Any, TypeId};
 
-use bevy::prelude::{Component, Plugin, Resource};
-use bevy_egui::EguiPlugin;
+use bevy::ecs::schedule::Stage;
+use bevy::prelude::{Component, Plugin, Resource, World};
+use bevy_egui::egui::Context;
+use bevy_egui::{EguiContext, EguiPlugin};
+
+pub struct UiStage;
+
+impl Stage for UiStage {
+    fn run(&mut self, world: &mut bevy::prelude::World) {
+        world.resource_scope::<InterfaceState, ()>(|world, mut state| {
+            state.render(world);
+        });
+    }
+}
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Component)]
 pub enum Focus {
@@ -37,132 +47,106 @@ impl Plugin for UiPlugin {
             .add_system(events::toggle_focus)
             .add_system(crosshair::crosshair)
             .add_system(health::health)
-            .add_system(debug::debug)
-            .add_system(menu::gamemenu::gamemenu)
-            .add_system(menu::death::death)
-            .add_system(menu::inventory::inventory)
-            .add_system(gun::gun);
+            .add_system(gun::gun)
+            .add_stage("RenderInterface", UiStage);
     }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct InterfaceId(u32);
 
-#[derive(Debug, Resource)]
+#[derive(Resource)]
 pub struct InterfaceState {
-    interfaces: HashMap<InterfaceId, Option<NonNull<()>>>,
-    /// Does any interface capture mouse/keyboard inputs?
-    capture: bool,
+    /// The stack of rendered interfaces, rendered in the order they are.
+    interfaces: Vec<InterfaceCell>,
 }
 
 impl InterfaceState {
     pub fn new() -> Self {
         Self {
-            interfaces: HashMap::new(),
-            capture: false,
+            interfaces: Vec::new(),
         }
     }
 
-    pub fn contains<T>(&self, id: T) -> bool
-    where
-        T: Borrow<InterfaceId>,
-    {
-        self.interfaces.contains_key(id.borrow())
+    pub fn len(&self) -> usize {
+        self.interfaces.len()
     }
 
-    // FIXME: The `Sized` type requirement can be removed.
-    pub fn insert<U>(&mut self, id: InterfaceId, data: Option<U>)
-    where
-        U: Send + Sync + 'static,
-    {
-        let ptr = data.map(|data| {
-            let boxed = Box::new(data);
-
-            // SAFETY: The pointer returned by `Box::into_raw` is always non-null.
-            unsafe { NonNull::new_unchecked(Box::into_raw(boxed)).cast() }
-        });
-
-        self.interfaces.insert(id, ptr);
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 
-    /// # Safety
-    ///
-    /// `U` must be the same type, or a type with the same ABI as `U`, as the type `U` when
-    /// [`insert`] was called.
-    ///
-    /// [`insert`]: Self::insert
-    pub unsafe fn remove<T, U>(&mut self, id: T) -> Option<Box<U>>
+    pub fn push<T>(&mut self, interface: T)
     where
-        T: Borrow<InterfaceId>,
+        T: Interface + 'static,
     {
-        let ptr = self.interfaces.remove(id.borrow())?;
+        self.push_boxed(Box::new(interface), TypeId::of::<T>());
+    }
 
-        match ptr {
-            Some(ptr) => {
-                // SAFETY: The caller guarantees that `U` has the same ABI as the
-                // type behind `ptr`.
-                Some(unsafe { Box::from_raw(ptr.cast().as_ptr()) })
+    pub fn contains<T>(&mut self) -> bool
+    where
+        T: 'static,
+    {
+        for cell in &self.interfaces {
+            if TypeId::of::<T>() == cell.id {
+                return true;
             }
-            None => None,
         }
+
+        false
     }
 
-    /// Returns a reference to the data of the given [`InterfaceId`].
-    ///
-    /// # Safety
-    ///
-    /// `U` must be the same type, or a type with the same ABI as `U`, as the type `U` when
-    /// [`insert`] was called.
-    ///
-    /// [`insert`]: Self::insert
-    pub unsafe fn get<T, U>(&self, id: T) -> Option<&U>
+    pub fn push_default<T>(&mut self)
     where
-        T: Borrow<InterfaceId>,
-        U: Send + Sync + 'static,
+        T: Interface + Default,
     {
-        let ptr = self.interfaces.get(id.borrow())?;
+        self.push(T::default());
+    }
 
-        match ptr {
-            Some(ptr) => {
-                // SAFETY: The caller guarantees that `U` has the same ABI as the
-                // type behind `ptr`.
-                Some(unsafe { ptr.cast().as_ref() })
+    pub fn remove<T>(&mut self) -> Option<Box<dyn Interface>>
+    where
+        T: 'static,
+    {
+        for (i, cell) in self.interfaces.iter().enumerate() {
+            if TypeId::of::<T>() == cell.id {
+                let mut cell = self.interfaces.remove(i);
+
+                if cell.created {
+                    cell.boxed.destroy();
+                }
+
+                return Some(cell.boxed);
             }
-            None => None,
         }
+
+        None
     }
 
-    /// Returns the data of the given [`InterfaceId`].
-    ///
-    /// # Safety
-    ///
-    /// `U` must be the same type, or a type with the same ABI as `U`, as the type `U` when
-    /// [`insert`] was called.
-    ///
-    /// [`insert`]: Self::insert
-    pub unsafe fn get_mut<T, U>(&self, id: T) -> Option<&mut U>
-    where
-        T: Borrow<InterfaceId>,
-        U: Send + Sync + 'static,
-    {
-        let ptr = self.interfaces.get(id.borrow())?;
-
-        match ptr {
-            Some(ptr) => {
-                // SAFETY: The caller guarantees that `U` has the same ABI as the
-                // type behind `ptr`.
-                Some(unsafe { ptr.cast().as_mut() })
+    pub fn pop(&mut self) -> Option<Box<dyn Interface>> {
+        self.interfaces.pop().map(|mut cell| {
+            if cell.created {
+                cell.boxed.destroy();
             }
-            None => None,
+
+            cell.boxed
+        })
+    }
+
+    pub fn render(&mut self, world: &mut World) {
+        for cell in &mut self.interfaces {
+            if !cell.created {
+                cell.boxed.create();
+                cell.created = true;
+            }
+
+            world.resource_scope::<EguiContext, ()>(|world, mut ctx| {
+                cell.boxed.render(ctx.ctx_mut(), world);
+            });
         }
     }
 
-    pub fn get_raw<T>(&self, id: T) -> Option<NonNull<()>>
-    where
-        T: Borrow<InterfaceId>,
-    {
-        let ptr = self.interfaces.get(id.borrow())?;
-        *ptr
+    fn push_boxed(&mut self, boxed: Box<dyn Interface>, type_id: TypeId) {
+        self.interfaces.push(InterfaceCell::new(boxed, type_id));
     }
 }
 
@@ -170,3 +154,25 @@ impl InterfaceState {
 // `insert` function signature, `InterfaceState` is also `Send + Sync`.
 unsafe impl Send for InterfaceState {}
 unsafe impl Sync for InterfaceState {}
+
+pub trait Interface: Any {
+    fn create(&mut self);
+    fn render(&mut self, ctx: &Context, world: &mut World);
+    fn destroy(&mut self);
+}
+
+struct InterfaceCell {
+    id: TypeId,
+    boxed: Box<dyn Interface>,
+    created: bool,
+}
+
+impl InterfaceCell {
+    fn new(boxed: Box<dyn Interface>, type_id: TypeId) -> Self {
+        Self {
+            id: type_id,
+            boxed,
+            created: false,
+        }
+    }
+}
