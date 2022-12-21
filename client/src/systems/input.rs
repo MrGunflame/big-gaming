@@ -1,7 +1,8 @@
 use bevy::prelude::*;
 use bevy_rapier3d::prelude::{QueryFilter, RapierContext};
 use common::components::combat::Damage;
-use common::components::inventory::{Equipment, EquipmentSlot};
+use common::components::inventory::{Equipment, EquipmentSlot, Inventory};
+use common::components::items::Item;
 
 use crate::components::Rotation;
 use crate::entities::actor::ActorFigure;
@@ -180,4 +181,36 @@ pub fn transform_system(mut entities: Query<(&Rotation, &mut Transform)>) {
     }
 }
 
-pub fn focus_target(entities: Query<()>) {}
+// TODO: This should scan for all entities `Interaction`s.
+pub fn interact_target(
+    mut commands: Commands,
+    rapier: Res<RapierContext>,
+    mut players: Query<&mut Inventory, With<PlayerCharacter>>,
+    cameras: Query<(Entity, &Transform, &Rotation), With<Camera3d>>,
+    mut entities: Query<(Entity, &Item)>,
+    input: Res<Input<KeyCode>>,
+) {
+    let mut inventory = players.single_mut();
+    let (player, pos, rot) = cameras.single();
+
+    let ray_pos = pos.translation;
+    let ray_dir = rot.movement_vec();
+    let max_toi = 4.0;
+    let solid = true;
+    let filter = QueryFilter::new().exclude_collider(player);
+    if let Some((entity, toi)) = rapier.cast_ray(ray_pos, ray_dir, max_toi, solid, filter) {
+        dbg!(entity);
+
+        if let Ok((entity, item)) = entities.get(entity) {
+            dbg!("item");
+
+            if input.pressed(KeyCode::F) {
+                commands.entity(entity).despawn_recursive();
+                inventory.insert(item.clone());
+                dbg!("pick up");
+            }
+        } else {
+            dbg!("no item");
+        }
+    }
+}

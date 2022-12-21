@@ -40,6 +40,7 @@ pub struct Item {
     pub mass: Mass,
 }
 
+/// A weak identifer for an item.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ItemId(pub WeakId<u32>);
 

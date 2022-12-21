@@ -5,6 +5,7 @@
 
 pub mod archive;
 pub mod components;
+pub mod ecs;
 pub mod id;
 pub mod localization;
 pub mod module;

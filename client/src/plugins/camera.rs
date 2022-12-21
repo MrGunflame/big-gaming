@@ -14,6 +14,7 @@ impl Plugin for CameraPlugin {
         app.add_startup_system(register_events)
             .add_system(crate::systems::input::transform_system)
             .add_system(crate::systems::input::mouse_button_input)
+            .add_system(crate::systems::input::interact_target)
             .add_system(synchronize_player_camera)
             .add_system(toggle_camera_position)
             .add_system(adjust_camera_distance);

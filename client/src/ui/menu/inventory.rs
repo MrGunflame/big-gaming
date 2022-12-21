@@ -1,5 +1,6 @@
 use bevy::prelude::With;
 use bevy_egui::egui::{Area, Order, Pos2};
+use common::archive::GameArchive;
 use common::components::inventory::Inventory;
 
 use crate::entities::player::PlayerCharacter;
@@ -17,6 +18,8 @@ impl Interface for InventoryMenu {
             .query_filtered::<&Inventory, With<PlayerCharacter>>()
             .single(world);
 
+        let archive = world.resource::<GameArchive>();
+
         Area::new("inventory")
             .fixed_pos(Pos2::new(0.0, 0.0))
             .order(Order::Foreground)
@@ -27,7 +30,8 @@ impl Interface for InventoryMenu {
                     ui.label(format!("{} items", inventory.items()));
 
                     for stack in inventory {
-                        ui.label(format!("{:?}", stack.item.id));
+                        let item = archive.item(stack.item.id).unwrap();
+                        ui.label(format!("{:?} x{}", item.name, stack.quantity));
                     }
                 });
             });

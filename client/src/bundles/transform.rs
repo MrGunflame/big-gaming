@@ -9,6 +9,15 @@ pub struct TransformBundle {
 }
 
 impl TransformBundle {
+    pub fn new() -> Self {
+        Self {
+            previous_transform: PreviousTransform(Transform {
+                translation: Vec3::new(0.0, 0.0, 0.0),
+                ..Default::default()
+            }),
+        }
+    }
+
     pub fn from_translation<T>(pos: T) -> Self
     where
         T: Into<Vec3>,

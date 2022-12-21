@@ -51,15 +51,52 @@ impl GameArchive {
 
         let items = JsonLoader::new(path.as_ref());
 
-        let mut map = self.items.write();
         for item in items {
-            let id = self.item_id.fetch_add(1, Ordering::Relaxed);
-            assert!(id != u32::MAX);
-
-            map.insert(ItemId(WeakId(id)), Arc::new(item));
+            self.items().insert(item);
         }
 
         tracing::info!("Loaded {:?}", path.as_ref());
+    }
+
+    #[inline]
+    pub fn items(&self) -> Items<'_> {
+        Items { archive: self }
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct Items<'a> {
+    archive: &'a GameArchive,
+}
+
+impl<'a> Items<'a> {
+    pub fn get(&self, id: ItemId) -> Option<Ref<'_, Item>> {
+        let items = self.archive.items.read();
+        items.get(&id).map(|item| Ref {
+            archive: self.archive,
+            item: item.clone(),
+        })
+    }
+
+    pub fn insert(&self, item: Item) -> ItemId {
+        let mut items = self.archive.items.write();
+
+        let id = self.id();
+        items.insert(id, Arc::new(item));
+        id
+    }
+
+    pub fn remove(&self, id: ItemId) {
+        let mut items = self.archive.items.write();
+        items.remove(&id);
+    }
+
+    /// Generates and returns a new weak [`ItemId`].
+    #[inline]
+    fn id(&self) -> ItemId {
+        let id = self.archive.item_id.fetch_add(1, Ordering::Relaxed);
+        assert!(id != u32::MAX);
+        ItemId(WeakId(id))
     }
 }
 

@@ -207,6 +207,10 @@ impl Equipment {
         self.slots.get(&slot)
     }
 
+    pub fn get_mut(&mut self, slot: EquipmentSlot) -> Option<&mut Item> {
+        self.slots.get_mut(&slot)
+    }
+
     /// Removes and returns the equipeed [`Item`] at the given `slot`. Returns `None` if no [`Item`]
     /// is equipped.
     pub fn remove(&mut self, slot: EquipmentSlot) -> Option<Item> {

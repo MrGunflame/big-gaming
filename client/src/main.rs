@@ -30,8 +30,10 @@ use bevy::winit::WinitPlugin;
 use bevy_rapier3d::prelude::*;
 use bevy_rapier3d::render::RapierDebugRenderPlugin;
 use common::archive::GameArchive;
+use common::components::items::{Item, ItemId};
 use components::Rotation;
 use entities::actor::ActorBundle;
+use entities::item::ItemBundle;
 use entities::player::{PlayerCameraBundle, PlayerCharacterBundle};
 use plugins::combat::CombatPlugin;
 use plugins::respawn::RespawnPlugin;
@@ -100,93 +102,93 @@ fn setup(
         .insert(Collider::cuboid(1000.0, 0.1, 1000.0));
 
     // THE BALL
-    commands
-        .spawn(PbrBundle {
-            mesh: meshes.add(Mesh::from(shape::Icosphere {
-                radius: 5.0,
-                subdivisions: 69,
-            })),
-            material: materials.add(Color::rgb(1.0, 0.0, 0.0).into()),
-            transform: Transform::from_xyz(0.0, 20.0, 0.0),
-            ..Default::default()
-        })
-        .insert(RigidBody::Dynamic)
-        .insert(bevy_rapier3d::prelude::Velocity {
-            linvel: Vec3::new(0.0, 0.0, 0.0),
-            angvel: Vec3::new(0.2, 0.0, 0.0),
-        })
-        .insert(GravityScale(2.0))
-        .insert(Sleeping::disabled())
-        .insert(Ccd::enabled())
-        .insert(Collider::ball(5.0))
-        .insert(Restitution::coefficient(0.7))
-        .insert(ColliderMassProperties::Density(69.0));
+    // commands
+    //     .spawn(PbrBundle {
+    //         mesh: meshes.add(Mesh::from(shape::Icosphere {
+    //             radius: 5.0,
+    //             subdivisions: 69,
+    //         })),
+    //         material: materials.add(Color::rgb(1.0, 0.0, 0.0).into()),
+    //         transform: Transform::from_xyz(0.0, 20.0, 0.0),
+    //         ..Default::default()
+    //     })
+    //     .insert(RigidBody::Dynamic)
+    //     .insert(bevy_rapier3d::prelude::Velocity {
+    //         linvel: Vec3::new(0.0, 0.0, 0.0),
+    //         angvel: Vec3::new(0.2, 0.0, 0.0),
+    //     })
+    //     .insert(GravityScale(2.0))
+    //     .insert(Sleeping::disabled())
+    //     .insert(Ccd::enabled())
+    //     .insert(Collider::ball(5.0))
+    //     .insert(Restitution::coefficient(0.7))
+    //     .insert(ColliderMassProperties::Density(69.0));
 
     // THE GAMER
-    commands
-        .spawn(PbrBundle {
-            mesh: meshes.add(Mesh::from(shape::Box {
-                min_x: 0.0,
-                max_x: 1.0,
-                min_y: 0.0,
-                max_y: 2.0,
-                min_z: 0.0,
-                max_z: 1.0,
-            })),
-            material: materials.add(Color::rgb(1.0, 1.0, 1.0).into()),
-            ..Default::default()
-        })
-        .insert(RigidBody::Dynamic)
-        .insert(GravityScale(1.0))
-        .insert(Sleeping::disabled())
-        .insert(Ccd::enabled())
-        .insert(Collider::cuboid(1.0, 2.0, 1.0))
-        .insert(Restitution::coefficient(0.7))
-        .insert(ColliderMassProperties::Density(100.0));
+    // commands
+    //     .spawn(PbrBundle {
+    //         mesh: meshes.add(Mesh::from(shape::Box {
+    //             min_x: 0.0,
+    //             max_x: 1.0,
+    //             min_y: 0.0,
+    //             max_y: 2.0,
+    //             min_z: 0.0,
+    //             max_z: 1.0,
+    //         })),
+    //         material: materials.add(Color::rgb(1.0, 1.0, 1.0).into()),
+    //         ..Default::default()
+    //     })
+    //     .insert(RigidBody::Dynamic)
+    //     .insert(GravityScale(1.0))
+    //     .insert(Sleeping::disabled())
+    //     .insert(Ccd::enabled())
+    //     .insert(Collider::cuboid(1.0, 2.0, 1.0))
+    //     .insert(Restitution::coefficient(0.7))
+    //     .insert(ColliderMassProperties::Density(100.0));
 
-    commands.spawn(PbrBundle {
-        mesh: meshes.add(Mesh::from(shape::Quad {
-            size: Vec2::new(5.0, 1.0),
-            flip: false,
-        })),
-        material: materials.add(Color::rgb(1.0, 0.0, 0.0).into()),
-        ..Default::default()
-    });
+    // commands.spawn(PbrBundle {
+    //     mesh: meshes.add(Mesh::from(shape::Quad {
+    //         size: Vec2::new(5.0, 1.0),
+    //         flip: false,
+    //     })),
+    //     material: materials.add(Color::rgb(1.0, 0.0, 0.0).into()),
+    //     ..Default::default()
+    // });
 
-    commands.spawn(PbrBundle {
-        mesh: meshes.add(Mesh::from(shape::Box {
-            min_x: 0.0,
-            max_x: 1.0,
-            min_y: 0.0,
-            max_y: 1.0,
-            min_z: 0.0,
-            max_z: 1.0,
-        })),
-        material: materials.add(Color::rgb(1.0, 1.0, 1.0).into()),
-        ..Default::default()
-    });
+    // commands.spawn(PbrBundle {
+    //     mesh: meshes.add(Mesh::from(shape::Box {
+    //         min_x: 0.0,
+    //         max_x: 1.0,
+    //         min_y: 0.0,
+    //         max_y: 1.0,
+    //         min_z: 0.0,
+    //         max_z: 1.0,
+    //     })),
+    //     material: materials.add(Color::rgb(1.0, 1.0, 1.0).into()),
+    //     ..Default::default()
+    // });
 
-    commands.spawn(PbrBundle {
-        mesh: meshes.add(Mesh::from(shape::Quad {
-            size: Vec2::new(5.0, 1.0),
-            flip: false,
-        })),
-        material: materials.add(Color::rgb(1.0, 0.0, 0.0).into()),
-        ..Default::default()
-    });
+    // commands.spawn(PbrBundle {
+    //     mesh: meshes.add(Mesh::from(shape::Quad {
+    //         size: Vec2::new(5.0, 1.0),
+    //         flip: false,
+    //     })),
+    //     material: materials.add(Color::rgb(1.0, 0.0, 0.0).into()),
+    //     ..Default::default()
+    // });
 
-    commands.spawn(PbrBundle {
-        mesh: meshes.add(Mesh::from(shape::Box {
-            min_x: -100.0,
-            max_x: 100.0,
-            min_y: -0.1,
-            max_y: 0.1,
-            min_z: -0.1,
-            max_z: 0.1,
-        })),
-        material: materials.add(Color::rgb(1.0, 0.0, 0.0).into()),
-        ..Default::default()
-    });
+    // commands.spawn(PbrBundle {
+    //     mesh: meshes.add(Mesh::from(shape::Box {
+    //         min_x: -100.0,
+    //         max_x: 100.0,
+    //         min_y: -0.1,
+    //         max_y: 0.1,
+    //         min_z: -0.1,
+    //         max_z: 0.1,
+    //     })),
+    //     material: materials.add(Color::rgb(1.0, 0.0, 0.0).into()),
+    //     ..Default::default()
+    // });
 
     // INITIATE THE WALL
     for x in 0..1 {
@@ -219,7 +221,7 @@ fn setup(
                 //     .insert(ColliderMassProperties::Density(1.0));
 
                 // let scene = asset_server.load("WaterBottle.gltf#Scene0");
-                let scene = asset_server.load("thing2.glb#Scene0");
+                // let scene = asset_server.load("thing2.glb#Scene0");
 
                 // let collider = AsyncSceneCollider {
                 //     handle: scene.clone_weak(),
@@ -232,20 +234,20 @@ fn setup(
                 // let collider =
                 //     Collider::from_bevy_mesh(&scene, &ComputedColliderShape::TriMesh).unwrap();
 
-                commands
-                    .spawn(SceneBundle {
-                        scene,
-                        transform: Transform::from_xyz(10.0, 5.0, 10.0),
-                        ..default()
-                    })
-                    .insert(RigidBody::Dynamic)
-                    .insert(GravityScale(1.0))
-                    .insert(Sleeping::disabled())
-                    .insert(Ccd::enabled())
-                    .insert(collider)
-                    // .insert(Collider::cuboid(1.0, 1.0, 1.0))
-                    .insert(Restitution::coefficient(0.7))
-                    .insert(ColliderMassProperties::Density(1.0));
+                // commands
+                //     .spawn(SceneBundle {
+                //         scene,
+                //         transform: Transform::from_xyz(10.0, 5.0, 10.0),
+                //         ..default()
+                //     })
+                //     .insert(RigidBody::Dynamic)
+                //     .insert(GravityScale(1.0))
+                //     .insert(Sleeping::disabled())
+                //     .insert(Ccd::enabled())
+                //     .insert(collider)
+                //     // .insert(Collider::cuboid(1.0, 1.0, 1.0))
+                //     .insert(Restitution::coefficient(0.7))
+                //     .insert(ColliderMassProperties::Density(1.0));
 
                 println!("spawned {x} {y} {z}");
             }
@@ -267,6 +269,19 @@ fn setup(
     commands.spawn(ActorBundle::new(&asset_server));
 
     commands.spawn(PlayerCameraBundle::new());
+
+    commands.spawn(ItemBundle::new(
+        &asset_server,
+        Item {
+            id: ItemId(0.into()),
+            components: None,
+            resistances: None,
+            ammo: None,
+            damage: None,
+            magazine: None,
+            mass: Default::default(),
+        },
+    ));
 
     commands
         .spawn(PlayerCharacterBundle::new(&asset_server))
