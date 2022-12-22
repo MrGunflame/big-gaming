@@ -43,7 +43,7 @@ impl ActorBundle {
     pub fn new(assets: &AssetServer) -> Self {
         let mut equipment = Equipment::new();
         equipment.insert(
-            EquipmentSlot::HAND,
+            EquipmentSlot::MAIN_HAND,
             Item {
                 id: ItemId(0.into()),
                 resistances: None,

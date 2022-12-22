@@ -80,7 +80,7 @@ impl InterfaceState {
 
     pub fn push<T>(&mut self, interface: T)
     where
-        T: Interface + 'static,
+        T: Interface + Send + Sync + 'static,
     {
         self.push_boxed(Box::new(interface), TypeId::of::<T>());
     }
@@ -106,7 +106,7 @@ impl InterfaceState {
 
     pub fn push_default<T>(&mut self)
     where
-        T: Interface + Default,
+        T: Interface + Send + Sync + 'static + Default,
     {
         self.push(T::default());
     }
@@ -142,7 +142,7 @@ impl InterfaceState {
         None
     }
 
-    pub fn pop(&mut self) -> Option<Box<dyn Interface>> {
+    pub fn pop(&mut self) -> Option<Box<dyn Interface + Send + Sync + 'static>> {
         self.interfaces.pop().map(|mut cell| {
             if cell.created {
                 cell.boxed.destroy();
@@ -174,7 +174,7 @@ impl InterfaceState {
         });
     }
 
-    fn push_boxed(&mut self, boxed: Box<dyn Interface>, type_id: TypeId) {
+    fn push_boxed(&mut self, boxed: Box<dyn Interface + Send + Sync + 'static>, type_id: TypeId) {
         match boxed.kind() {
             InterfaceKind::Interface => {
                 self.interfaces.push(InterfaceCell::new(boxed, type_id));
@@ -185,11 +185,6 @@ impl InterfaceState {
         }
     }
 }
-
-// SAFETY: As long as the contained data is `Send + Sync` as required in the
-// `insert` function signature, `InterfaceState` is also `Send + Sync`.
-unsafe impl Send for InterfaceState {}
-unsafe impl Sync for InterfaceState {}
 
 pub trait Interface: Any {
     fn kind(&self) -> InterfaceKind {
@@ -203,12 +198,12 @@ pub trait Interface: Any {
 
 struct InterfaceCell {
     id: TypeId,
-    boxed: Box<dyn Interface>,
+    boxed: Box<dyn Interface + Send + Sync + 'static>,
     created: bool,
 }
 
 impl InterfaceCell {
-    fn new(boxed: Box<dyn Interface>, type_id: TypeId) -> Self {
+    fn new(boxed: Box<dyn Interface + Send + Sync + 'static>, type_id: TypeId) -> Self {
         Self {
             id: type_id,
             boxed,

@@ -114,6 +114,7 @@ pub fn mouse_button_input(
     cameras: Query<&Rotation, With<Camera3d>>,
     projectiles: Query<(), With<Projectile>>,
     input: Res<Input<MouseButton>>,
+    kb_input: Res<Input<KeyCode>>,
 ) {
     let (player, mut equipment, figure, focus) = players.single_mut();
     let camera_rot = cameras.single();
@@ -122,10 +123,20 @@ pub fn mouse_button_input(
         return;
     }
 
-    let item = match equipment.get_mut(EquipmentSlot::HAND) {
+    let item = match equipment.get_mut(EquipmentSlot::MAIN_HAND) {
         Some(item) => item,
         None => return,
     };
+
+    if kb_input.just_pressed(KeyCode::R) {
+        if let Some(mag) = &mut item.magazine {
+            if *mag == 0 {
+                *mag = 30;
+            } else {
+                *mag = 31;
+            }
+        }
+    }
 
     if input.pressed(MouseButton::Left) {
         if let Some(mag) = &mut item.magazine {

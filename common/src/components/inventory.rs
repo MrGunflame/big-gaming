@@ -189,7 +189,7 @@ impl InsertionError {
 pub struct EquipmentSlot(NonZeroU8);
 
 impl EquipmentSlot {
-    pub const HAND: Self = Self(NonZeroU8::new(1).unwrap());
+    pub const MAIN_HAND: Self = Self(NonZeroU8::new(1).unwrap());
 
     pub const TORSO: Self = Self(NonZeroU8::new(64).unwrap());
     pub const PANTS: Self = Self(NonZeroU8::new(65).unwrap());

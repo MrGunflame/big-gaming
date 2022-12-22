@@ -8,7 +8,7 @@ use crate::entities::player::PlayerCharacter;
 pub fn gun(mut egui: ResMut<EguiContext>, players: Query<&Equipment, With<PlayerCharacter>>) {
     let equipment = players.single();
 
-    let Some(item) = equipment.get(EquipmentSlot::HAND) else {
+    let Some(item) = equipment.get(EquipmentSlot::MAIN_HAND) else {
         return;
     };
 
