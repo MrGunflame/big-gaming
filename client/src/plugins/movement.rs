@@ -7,6 +7,7 @@ use bevy::prelude::{
 };
 use bevy::time::Time;
 use bevy_rapier3d::prelude::{Collider, QueryFilter, RapierContext, Velocity};
+use common::components::actor::MovementSpeed;
 
 use crate::components::{ActorState, Rotation};
 use crate::entities::player::PlayerCharacter;
@@ -20,6 +21,7 @@ const DEFAULT_TRIGGER_BACKWARD: KeyCode = KeyCode::S;
 const DEFAULT_TRIGGER_LEFT: KeyCode = KeyCode::A;
 const DEFAULT_TRIGGER_RIGHT: KeyCode = KeyCode::D;
 const DEFAULT_TRIGGER_JUMP: KeyCode = KeyCode::Space;
+const DEFAULT_TRIGGER_SPRINT: KeyCode = KeyCode::LShift;
 
 static mut EVENTS: MaybeUninit<Events> = MaybeUninit::uninit();
 
@@ -30,7 +32,8 @@ impl Plugin for MovementPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
         app.add_startup_system(register_events)
             .add_system(movement_events)
-            .add_system(mouse_movement);
+            .add_system(mouse_movement)
+            .add_system(toggle_sprint);
     }
 }
 
@@ -41,6 +44,7 @@ struct Events {
     left: EventId,
     right: EventId,
     jump: EventId,
+    sprint: EventId,
 }
 
 fn register_events(mut hotkeys: ResMut<HotkeyStore>) {
@@ -49,6 +53,7 @@ fn register_events(mut hotkeys: ResMut<HotkeyStore>) {
     let left = hotkeys.register(Event::new().trigger(DEFAULT_TRIGGER_LEFT));
     let right = hotkeys.register(Event::new().trigger(DEFAULT_TRIGGER_RIGHT));
     let jump = hotkeys.register(Event::new().trigger(DEFAULT_TRIGGER_JUMP));
+    let sprint = hotkeys.register(Event::new().trigger(DEFAULT_TRIGGER_SPRINT));
 
     unsafe {
         EVENTS.write(Events {
@@ -57,7 +62,23 @@ fn register_events(mut hotkeys: ResMut<HotkeyStore>) {
             left,
             right,
             jump,
+            sprint,
         });
+    }
+}
+
+fn toggle_sprint(
+    hotkeys: Res<HotkeyStore>,
+    mut players: Query<&mut MovementSpeed, With<PlayerCharacter>>,
+) {
+    let events = unsafe { EVENTS.assume_init_ref() };
+
+    let mut speed = players.single_mut();
+
+    if hotkeys.triggered(events.sprint) {
+        **speed = 5.0;
+    } else {
+        **speed = 3.0;
     }
 }
 
@@ -156,7 +177,3 @@ fn mouse_movement(
         *player_rot = camera_rot.with_pitch(Radians(0.0));
     }
 }
-
-#[derive(Copy, Clone, Debug, PartialEq, PartialOrd, Component)]
-#[repr(transparent)]
-pub struct MovementSpeed(pub f32);

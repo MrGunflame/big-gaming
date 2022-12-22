@@ -5,12 +5,12 @@ use bevy_rapier3d::prelude::{
     AdditionalMassProperties, Ccd, CharacterAutostep, CharacterLength, Collider,
     KinematicCharacterController, LockedAxes, RigidBody, Velocity,
 };
+use common::components::actor::MovementSpeed;
 use common::components::inventory::{Equipment, EquipmentSlot, Inventory};
 use common::components::items::{Item, ItemId};
 
 use crate::components::{Actor, ActorState, Rotation};
 use crate::plugins::combat::CombatBundle;
-use crate::plugins::movement::MovementSpeed;
 
 #[derive(Bundle)]
 pub struct ActorBundle {

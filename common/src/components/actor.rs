@@ -1,6 +1,7 @@
 //! Actor components
 
 use std::num::NonZeroU32;
+use std::ops::{Deref, DerefMut};
 
 use bevy_ecs::component::Component;
 
@@ -24,5 +25,26 @@ impl Default for ActorState {
     #[inline]
     fn default() -> Self {
         Self::DEFAULT
+    }
+}
+
+/// The movement speed of an actor, in meter/second.
+#[derive(Copy, Clone, Debug, PartialEq, PartialOrd, Component)]
+#[repr(transparent)]
+pub struct MovementSpeed(pub f32);
+
+impl Deref for MovementSpeed {
+    type Target = f32;
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for MovementSpeed {
+    #[inline]
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
     }
 }
