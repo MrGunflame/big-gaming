@@ -35,11 +35,7 @@ impl GameArchive {
     }
 
     pub fn item(&self, id: ItemId) -> Option<Ref<'_, Item>> {
-        let items = self.items.read();
-        items.get(&id).map(|item| Ref {
-            archive: self,
-            item: item.clone(),
-        })
+        self.items().get(id)
     }
 
     /// Loads an archive.
@@ -70,7 +66,7 @@ pub struct Items<'a> {
 }
 
 impl<'a> Items<'a> {
-    pub fn get(&self, id: ItemId) -> Option<Ref<'_, Item>> {
+    pub fn get(&self, id: ItemId) -> Option<Ref<'a, Item>> {
         let items = self.archive.items.read();
         items.get(&id).map(|item| Ref {
             archive: self.archive,
