@@ -1,13 +1,11 @@
 use bevy_egui::egui::{Area, Order, Pos2};
 
-use super::{Interface, InterfaceKind};
+use super::super::{Interface, InterfaceKind};
 
-pub mod console;
-pub mod death;
-pub mod gamemenu;
-pub mod inventory;
-
-pub struct Console {}
+#[derive(Debug, Default)]
+pub struct Console {
+    input_line: String,
+}
 
 impl Interface for Console {
     fn kind(&self) -> InterfaceKind {

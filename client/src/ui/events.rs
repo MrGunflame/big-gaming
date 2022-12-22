@@ -7,6 +7,7 @@ use crate::plugins::hotkeys::{Event, EventId, HotkeyStore, TriggerKind};
 
 use super::cursor::Cursor;
 use super::debug::Debug;
+use super::menu::console::Console;
 use super::menu::gamemenu::GameMenu;
 use super::menu::inventory::InventoryMenu;
 use super::{Focus, InterfaceState};
@@ -14,6 +15,7 @@ use super::{Focus, InterfaceState};
 const DEFAULT_TRIGGER_GAMEMENU: KeyCode = KeyCode::Escape;
 const DEFAULT_TRIGGER_DEBUGMENU: KeyCode = KeyCode::F3;
 const DEFAULT_TRIGGER_INVENTORY: KeyCode = KeyCode::I;
+const DEFAULT_TRIGGER_CONSOLE: KeyCode = KeyCode::Return;
 
 static mut EVENTS: MaybeUninit<Events> = MaybeUninit::uninit();
 
@@ -21,6 +23,7 @@ struct Events {
     game_menu: EventId,
     debug_menu: EventId,
     inventory: EventId,
+    console: EventId,
 }
 
 pub(super) fn register_events(mut hotkeys: ResMut<HotkeyStore>) {
@@ -42,11 +45,18 @@ pub(super) fn register_events(mut hotkeys: ResMut<HotkeyStore>) {
             .kind(TriggerKind::Trigger),
     );
 
+    let console = hotkeys.register(
+        Event::new()
+            .trigger(DEFAULT_TRIGGER_CONSOLE)
+            .kind(TriggerKind::Trigger),
+    );
+
     unsafe {
         EVENTS.write(Events {
             game_menu,
             debug_menu,
             inventory,
+            console,
         });
     }
 }
@@ -77,6 +87,12 @@ pub(super) fn handle_events(
     if hotkeys.triggered(events.inventory) {
         if state.remove::<InventoryMenu>().is_none() {
             state.push_default::<InventoryMenu>();
+        }
+    }
+
+    if hotkeys.triggered(events.console) {
+        if state.remove::<Console>().is_none() {
+            state.push_default::<Console>();
         }
     }
 
