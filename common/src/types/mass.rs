@@ -42,9 +42,33 @@ impl Mass {
     pub fn to_kilograms_f32(self) -> f32 {
         self.0 as f32 / 1000.0
     }
+
+    #[inline]
+    pub const fn checked_add(self, rhs: Mass) -> Option<Mass> {
+        match self.0.checked_add(rhs.0) {
+            Some(res) => Some(Self(res)),
+            None => None,
+        }
+    }
+
+    #[inline]
+    pub const fn checked_sub(self, rhs: Mass) -> Option<Mass> {
+        match self.0.checked_sub(rhs.0) {
+            Some(res) => Some(Self(res)),
+            None => None,
+        }
+    }
+
+    #[inline]
+    pub const fn checked_mul(self, rhs: u32) -> Option<Mass> {
+        match self.0.checked_mul(rhs) {
+            Some(res) => Some(Self(res)),
+            None => None,
+        }
+    }
 }
 
-impl Add for Mass {
+impl const Add for Mass {
     type Output = Self;
 
     #[inline]
@@ -53,14 +77,14 @@ impl Add for Mass {
     }
 }
 
-impl AddAssign for Mass {
+impl const AddAssign for Mass {
     #[inline]
     fn add_assign(&mut self, rhs: Self) {
         *self = *self + rhs;
     }
 }
 
-impl Sub for Mass {
+impl const Sub for Mass {
     type Output = Self;
 
     #[inline]
@@ -69,14 +93,14 @@ impl Sub for Mass {
     }
 }
 
-impl SubAssign for Mass {
+impl const SubAssign for Mass {
     #[inline]
     fn sub_assign(&mut self, rhs: Self) {
         *self = *self - rhs;
     }
 }
 
-impl Mul<u32> for Mass {
+impl const Mul<u32> for Mass {
     type Output = Self;
 
     #[inline]
@@ -85,7 +109,7 @@ impl Mul<u32> for Mass {
     }
 }
 
-impl MulAssign<u32> for Mass {
+impl const MulAssign<u32> for Mass {
     #[inline]
     fn mul_assign(&mut self, rhs: u32) {
         *self = *self * rhs;

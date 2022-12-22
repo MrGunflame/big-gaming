@@ -77,12 +77,19 @@ impl Inventory {
     where
         T: IntoItemStack,
     {
-        // TODO: Implement the actual error handling.
         let items = items.into_item_stack();
 
-        // Update the mass sum
-        self.count += items.quantity as usize;
-        self.mass += items.mass();
+        // Update inventory item quantity.
+        match self.count.checked_add(items.quantity as usize) {
+            Some(count) => self.count = count,
+            None => return Err(InsertionError::MaxItems(items)),
+        }
+
+        // Update inventory mass.
+        match self.mass.checked_add(items.mass()) {
+            Some(mass) => self.mass = mass,
+            None => return Err(InsertionError::MaxMass(items)),
+        }
 
         match self.get_mut(items.item.id) {
             Some(stack) => {
@@ -161,8 +168,21 @@ impl<'a> IntoIterator for &'a Inventory {
 
 #[derive(Clone, Debug)]
 pub enum InsertionError {
+    /// The insertion failed because the [`Inventory`] already contains the maximum number of
+    /// total items.
     MaxItems(ItemStack),
+    /// The insertion failed because the [`Inventory`] already carries the maximum combined
+    /// [`Mass`].
     MaxMass(ItemStack),
+}
+
+impl InsertionError {
+    pub fn into_inner(self) -> ItemStack {
+        match self {
+            Self::MaxItems(inner) => inner,
+            Self::MaxMass(inner) => inner,
+        }
+    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -183,13 +203,15 @@ impl EquipmentSlot {
 /// contain an [`ItemStack`]).
 #[derive(Clone, Debug, Component)]
 pub struct Equipment {
-    slots: HashMap<EquipmentSlot, Item>,
+    slots: HashMap<EquipmentSlot, Item, RandomState>,
+    mass: Mass,
 }
 
 impl Equipment {
     pub fn new() -> Self {
         Self {
-            slots: HashMap::new(),
+            slots: HashMap::with_hasher(RandomState::new()),
+            mass: Mass::new(),
         }
     }
 
@@ -199,6 +221,10 @@ impl Equipment {
 
     pub fn is_empty(&self) -> bool {
         self.len() == 0
+    }
+
+    pub fn mass(&self) -> Mass {
+        self.mass
     }
 
     /// Returns the equipped [`Item`] at the given `slot`. Returns `None` if no [`Item`] is
