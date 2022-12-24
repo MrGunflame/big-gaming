@@ -3,7 +3,7 @@ use std::io::{self, Write};
 
 use bytes::{Buf, BufMut};
 
-use crate::components::combat::{Damage, Health, Resistance, ResistanceId};
+use crate::components::combat::{Health, Resistance};
 
 use super::{Decode, Encode};
 
@@ -12,8 +12,8 @@ impl Encode for Health {
     where
         B: BufMut,
     {
-        buf.put_u32(self.health);
-        buf.put_u32(self.max_health);
+        self.health.encode(&mut buf);
+        self.max_health.encode(&mut buf);
     }
 }
 
@@ -24,8 +24,8 @@ impl Decode for Health {
     where
         B: Buf,
     {
-        let health = buf.get_u32();
-        let max_health = buf.get_u32();
+        let health = u32::decode(&mut buf)?;
+        let max_health = u32::decode(&mut buf)?;
 
         Ok(Self { health, max_health })
     }
