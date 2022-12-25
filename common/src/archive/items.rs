@@ -13,6 +13,10 @@ pub struct Item {
     pub mass: Mass,
     #[serde(default)]
     pub keywords: Keywords,
+    /// The equipment slots that this item occupies if it can be equipped.
+    ///
+    /// `None` if the `Item` can not be equipped.
+    pub equipment: Option<Vec<String>>,
     // TODO: These should probably not be hardcoded onto an item.
 }
 

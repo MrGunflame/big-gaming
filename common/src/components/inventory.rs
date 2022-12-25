@@ -8,6 +8,7 @@ use std::num::NonZeroU8;
 
 use ahash::RandomState;
 use bevy_ecs::component::Component;
+use indexmap::IndexMap;
 
 use crate::types::Mass;
 
@@ -19,7 +20,7 @@ use super::items::{IntoItemStack, Item, ItemId, ItemStack};
 /// `Mass::MAX`, whichever is reached first.
 #[derive(Clone, Debug, Component)]
 pub struct Inventory {
-    items: HashMap<ItemId, ItemStack, RandomState>,
+    items: IndexMap<ItemId, ItemStack, RandomState>,
     /// The count of all items in this `Inventory`.
     count: usize,
     /// The sum of all items in this inventory.
@@ -30,7 +31,7 @@ impl Inventory {
     /// Creates a new, empty `Inventory`.
     pub fn new() -> Self {
         Self {
-            items: HashMap::with_hasher(RandomState::new()),
+            items: IndexMap::with_hasher(RandomState::new()),
             count: 0,
             mass: Mass::new(),
         }
@@ -191,8 +192,24 @@ pub struct EquipmentSlot(NonZeroU8);
 impl EquipmentSlot {
     pub const MAIN_HAND: Self = Self(NonZeroU8::new(1).unwrap());
 
-    pub const TORSO: Self = Self(NonZeroU8::new(64).unwrap());
-    pub const PANTS: Self = Self(NonZeroU8::new(65).unwrap());
+    pub const HEAD: Self = Self(NonZeroU8::new(64).unwrap());
+    pub const EYES: Self = Self(NonZeroU8::new(65).unwrap());
+    pub const MASK: Self = Self(NonZeroU8::new(66).unwrap());
+
+    pub const LEFT_ARM: Self = Self(NonZeroU8::new(67).unwrap());
+    pub const LEFT_HAND: Self = Self(NonZeroU8::new(68).unwrap());
+
+    pub const RIGHT_ARM: Self = Self(NonZeroU8::new(69).unwrap());
+    pub const RIGHT_HAND: Self = Self(NonZeroU8::new(70).unwrap());
+
+    pub const TORSO: Self = Self(NonZeroU8::new(71).unwrap());
+    pub const PANTS: Self = Self(NonZeroU8::new(72).unwrap());
+
+    pub const LEFT_LEG: Self = Self(NonZeroU8::new(73).unwrap());
+    pub const LEFT_FOOT: Self = Self(NonZeroU8::new(74).unwrap());
+
+    pub const RIGHT_LEG: Self = Self(NonZeroU8::new(75).unwrap());
+    pub const RIGHT_FOOT: Self = Self(NonZeroU8::new(76).unwrap());
 }
 
 /// An inventory equipped [`Item`]s.
@@ -259,7 +276,7 @@ impl Default for Equipment {
 
 #[derive(Clone, Debug)]
 pub struct Iter<'a> {
-    iter: std::collections::hash_map::Iter<'a, ItemId, ItemStack>,
+    iter: indexmap::map::Iter<'a, ItemId, ItemStack>,
 }
 
 impl<'a> Iterator for Iter<'a> {
@@ -284,3 +301,39 @@ impl<'a> ExactSizeIterator for Iter<'a> {
 }
 
 impl<'a> FusedIterator for Iter<'a> {}
+
+#[cfg(test)]
+mod tests {
+    use super::EquipmentSlot;
+
+    #[test]
+    fn test_equipment_slot_consts() {
+        // EquipmentSlot constants are guaranteed to be stable.
+        macro_rules! assert_equipment_slot_const {
+            ($($lhs:expr => $rhs:expr),*,) => {
+                $(
+                    {
+                        assert_eq!($lhs.0.get(), $rhs);
+                    }
+                )*
+            };
+        }
+
+        assert_equipment_slot_const! {
+            EquipmentSlot::MAIN_HAND => 1,
+            EquipmentSlot::HEAD => 64,
+            EquipmentSlot::EYES => 65,
+            EquipmentSlot::MASK => 66,
+            EquipmentSlot::LEFT_ARM => 67,
+            EquipmentSlot::LEFT_HAND => 68,
+            EquipmentSlot::RIGHT_ARM => 69,
+            EquipmentSlot::RIGHT_HAND => 70,
+            EquipmentSlot::TORSO => 71,
+            EquipmentSlot::PANTS => 72,
+            EquipmentSlot::LEFT_LEG => 73,
+            EquipmentSlot::LEFT_FOOT => 74,
+            EquipmentSlot::RIGHT_LEG => 75,
+            EquipmentSlot::RIGHT_FOOT => 76,
+        }
+    }
+}

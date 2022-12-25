@@ -27,3 +27,4 @@ serde_json = { version = "1.0.91", optional = true }
 parking_lot = "0.12.1"
 bevy_transform = "0.9.1"
 bevy_rapier3d = "0.19.0"
+indexmap = "1.9.2"

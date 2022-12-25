@@ -29,6 +29,7 @@ use bevy::time::TimePlugin;
 use bevy::winit::WinitPlugin;
 use bevy_rapier3d::prelude::*;
 use bevy_rapier3d::render::RapierDebugRenderPlugin;
+use bundles::ObjectBundle;
 use common::archive::GameArchive;
 use common::components::items::{Item, ItemId};
 use components::Rotation;
@@ -100,6 +101,8 @@ fn setup(
         })
         .insert(RigidBody::Fixed)
         .insert(Collider::cuboid(1000.0, 0.1, 1000.0));
+
+    commands.spawn(ObjectBundle::new(&asset_server));
 
     // THE BALL
     // commands

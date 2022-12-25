@@ -14,7 +14,7 @@ mod transform;
 
 pub struct Error {}
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Clone, Debug)]
 pub struct Header {
     pub version: u8,
     pub checksum: u32,

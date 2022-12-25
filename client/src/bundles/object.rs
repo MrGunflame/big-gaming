@@ -1,0 +1,29 @@
+use bevy::prelude::{AssetServer, Bundle, PbrBundle, Transform, Vec3};
+use bevy::render::texture::TranscodeFormat;
+use bevy::scene::SceneBundle;
+use bevy_rapier3d::prelude::{Collider, RigidBody};
+
+#[derive(Bundle)]
+pub struct ObjectBundle {
+    pub rigid_body: RigidBody,
+    pub collider: Collider,
+    #[bundle]
+    pub scene: SceneBundle,
+}
+
+impl ObjectBundle {
+    pub fn new(assets: &AssetServer) -> Self {
+        Self {
+            rigid_body: RigidBody::Fixed,
+            collider: Collider::cuboid(1.0, 5.0, 5.0),
+            scene: SceneBundle {
+                scene: assets.load("bigwall.glb#Scene0"),
+                transform: Transform {
+                    translation: Vec3::new(5.0, 0.0, 5.0),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+        }
+    }
+}
