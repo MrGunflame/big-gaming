@@ -4,6 +4,7 @@ use common::components::combat::Damage;
 use common::components::interaction::{InteractionQueue, Interactions};
 use common::components::inventory::{Equipment, EquipmentSlot, Inventory};
 use common::components::items::Item;
+use common::components::player::FocusedEntity;
 
 use crate::components::Rotation;
 use crate::entities::actor::ActorFigure;
@@ -197,12 +198,12 @@ pub fn transform_system(mut entities: Query<(&Rotation, &mut Transform)>) {
 pub fn interact_target(
     mut queue: ResMut<InteractionQueue>,
     rapier: Res<RapierContext>,
-    players: Query<Entity, With<PlayerCharacter>>,
+    mut players: Query<(Entity, &mut FocusedEntity), With<PlayerCharacter>>,
     cameras: Query<(Entity, &Transform, &Rotation), With<Camera3d>>,
     entities: Query<(Entity, &Interactions)>,
     input: Res<Input<KeyCode>>,
 ) {
-    let player = players.single();
+    let (player, mut focused_ent) = players.single_mut();
     let (cam, pos, rot) = cameras.single();
 
     let ray_pos = pos.translation;
@@ -212,9 +213,16 @@ pub fn interact_target(
     let filter = QueryFilter::new().exclude_collider(cam);
     if let Some((entity, toi)) = rapier.cast_ray(ray_pos, ray_dir, max_toi, solid, filter) {
         if let Ok((entity, interactions)) = entities.get(entity) {
+            *focused_ent = FocusedEntity::Some {
+                entity,
+                distance: toi,
+            };
+
             if input.pressed(KeyCode::F) {
                 queue.push(interactions.iter().nth(0).unwrap(), entity, player);
             }
         }
+    } else {
+        *focused_ent = FocusedEntity::None;
     }
 }

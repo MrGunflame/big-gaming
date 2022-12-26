@@ -1,6 +1,7 @@
 //! Player components
 
 use bevy_ecs::component::Component;
+use bevy_ecs::entity::Entity;
 
 /// A marker component for a player.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Component)]
@@ -13,3 +14,9 @@ pub struct Player;
 /// be no entity with the `HostPlayer` component when running the game in a server context.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Component)]
 pub struct HostPlayer;
+
+#[derive(Copy, Clone, Debug, Component)]
+pub enum FocusedEntity {
+    Some { entity: Entity, distance: f32 },
+    None,
+}

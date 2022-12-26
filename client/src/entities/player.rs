@@ -2,6 +2,7 @@ use bevy::{
     math::Vec3,
     prelude::{Bundle, Camera3dBundle, Component, Transform, *},
 };
+use common::components::player::FocusedEntity;
 
 use crate::{components::Rotation, plugins::respawn::RespawnPoint, ui::Focus};
 
@@ -18,6 +19,7 @@ pub struct PlayerCharacterBundle {
     pub player_character: PlayerCharacter,
     pub focus: Focus,
     pub respawn_point: RespawnPoint,
+    pub focused_entity: FocusedEntity,
 }
 
 impl PlayerCharacterBundle {
@@ -27,6 +29,7 @@ impl PlayerCharacterBundle {
             actor: ActorBundle::new(assets),
             focus: Focus::World,
             respawn_point: RespawnPoint(Vec3::new(0.0, 0.0, 0.0)),
+            focused_entity: FocusedEntity::None,
         }
     }
 }

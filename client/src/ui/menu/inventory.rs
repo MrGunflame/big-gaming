@@ -1,17 +1,17 @@
 use bevy::prelude::With;
 use bevy_egui::egui::{
-    Align, Area, Color32, Layout, Order, PointerButton, Pos2, Rect, Response, Rounding, Sense,
-    Stroke, Ui, Vec2, Widget,
+    Align, Area, Color32, Layout, Order, Pos2, Rect, Response, Rounding, Sense, Stroke, Ui, Vec2,
+    Widget,
 };
 use common::archive::GameArchive;
 use common::components::inventory::Inventory;
-use common::components::items::{ItemId, ItemStack};
+use common::components::items::ItemStack;
 
 use crate::entities::player::PlayerCharacter;
 use crate::ui::widgets::UiExt;
 use crate::ui::Interface;
 
-const CATEGORIES: &[&'static str] = &["Weapons", "Armor", "Utility", "Scrap", "Ammo"];
+const CATEGORIES: &[&'static str] = &["Weapons", "Armor", "Utility", "Scrap", "Ammo", "Other"];
 
 const EMPTY_VEC: Vec<&ItemStack> = Vec::new();
 
@@ -69,6 +69,8 @@ impl Interface for InventoryMenu {
                             categories[3].push(stack);
                         } else if item.keywords.contains("category:ammo") {
                             categories[4].push(stack);
+                        } else {
+                            categories[5].push(stack);
                         }
                     }
 

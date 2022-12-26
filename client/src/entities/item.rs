@@ -38,7 +38,7 @@ impl ItemBundle {
         Self {
             transform: crate::bundles::TransformBundle::new(),
             scene: SceneBundle {
-                scene: assets.load("bricks.glb#Scene0"),
+                scene: assets.load("barrel.glb#Scene0"),
                 ..Default::default()
             },
             physics: PhysicsBundle::new(),

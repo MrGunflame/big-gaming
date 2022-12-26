@@ -14,3 +14,19 @@ pub struct TemporaryObject;
 /// A [`WorldObject`] of high importance that should be saved between runs.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Component)]
 pub struct PersistentObject;
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Component)]
+pub struct EntityName(String);
+
+impl EntityName {
+    #[inline]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl From<&str> for EntityName {
+    fn from(value: &str) -> Self {
+        Self(value.to_owned())
+    }
+}

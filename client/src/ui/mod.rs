@@ -1,6 +1,7 @@
 mod cursor;
 mod events;
 mod gun;
+mod interaction;
 mod interfaces;
 mod menu;
 mod widgets;
@@ -15,6 +16,8 @@ use bevy::ecs::schedule::Stage;
 use bevy::prelude::{Component, Plugin, Resource, World};
 use bevy_egui::egui::{Context, Sense};
 use bevy_egui::{EguiContext, EguiPlugin};
+
+use self::interaction::Interaction;
 
 pub struct UiStage;
 
@@ -39,8 +42,11 @@ pub struct UiPlugin;
 
 impl Plugin for UiPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
+        let mut state = InterfaceState::new();
+        state.push_default::<Interaction>();
+
         app.add_plugin(EguiPlugin)
-            .insert_resource(InterfaceState::new())
+            .insert_resource(state)
             .add_event::<Focus>()
             .add_startup_system(events::register_events)
             .add_system(events::handle_events)
