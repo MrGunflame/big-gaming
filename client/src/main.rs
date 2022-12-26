@@ -31,12 +31,14 @@ use bevy_rapier3d::prelude::*;
 use bevy_rapier3d::render::RapierDebugRenderPlugin;
 use bundles::ObjectBundle;
 use common::archive::GameArchive;
+use common::components::interaction::InteractionQueue;
 use common::components::items::{Item, ItemId};
 use components::Rotation;
 use entities::actor::ActorBundle;
 use entities::item::ItemBundle;
 use entities::player::{PlayerCameraBundle, PlayerCharacterBundle};
 use plugins::combat::CombatPlugin;
+use plugins::interactions::InteractionsPlugin;
 use plugins::respawn::RespawnPlugin;
 use plugins::{CameraPlugin, HotkeyPlugin, MovementPlugin, ProjectilePlugin};
 use ui::UiPlugin;
@@ -83,6 +85,7 @@ fn main() {
         .add_plugin(RespawnPlugin)
         .add_plugin(ChunkPlugin)
         .add_system_to_stage(CoreStage::Update, prev_transform::update_previous_transform)
+        .add_plugin(InteractionsPlugin)
         .run();
 }
 

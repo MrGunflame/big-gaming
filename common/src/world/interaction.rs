@@ -16,7 +16,7 @@ pub struct Interactable {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct InteractionId(NamespacedId<u32>);
+pub struct InteractionId();
 
 #[derive(Debug)]
 pub struct Interactions {

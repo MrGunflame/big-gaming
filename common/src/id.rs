@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(transparent))]
+#[deprecated = "Use `StrongId`/`WeakId` instead"]
 pub struct NamespacedId<T>(pub T);
 
 impl NamespacedId<u32> {

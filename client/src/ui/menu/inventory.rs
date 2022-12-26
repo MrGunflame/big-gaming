@@ -202,3 +202,13 @@ impl<'a> Widget for Tile<'a> {
 }
 
 pub struct CategoryLabel {}
+
+struct ConextMenu {}
+
+impl ConextMenu {}
+
+impl Widget for ConextMenu {
+    fn ui(self, ui: &mut Ui) -> Response {
+        ui.label("Drop")
+    }
+}

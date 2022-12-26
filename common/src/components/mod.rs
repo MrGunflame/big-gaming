@@ -3,6 +3,7 @@
 pub mod actor;
 pub mod combat;
 pub mod entity;
+pub mod interaction;
 pub mod inventory;
 pub mod items;
 pub mod player;
