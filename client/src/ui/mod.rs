@@ -13,7 +13,7 @@ use std::any::{Any, TypeId};
 
 use bevy::ecs::schedule::Stage;
 use bevy::prelude::{Component, Plugin, Resource, World};
-use bevy_egui::egui::Context;
+use bevy_egui::egui::{Context, Sense};
 use bevy_egui::{EguiContext, EguiPlugin};
 
 pub struct UiStage;
@@ -217,4 +217,25 @@ pub enum InterfaceKind {
     #[default]
     Interface,
     Widget,
+}
+
+pub trait SenseExt: private::Sealed {
+    fn none() -> Sense;
+}
+
+impl SenseExt for Sense {
+    fn none() -> Sense {
+        Sense {
+            click: false,
+            drag: false,
+            focusable: false,
+        }
+    }
+}
+
+#[doc(hidden)]
+impl private::Sealed for Sense {}
+
+mod private {
+    pub trait Sealed {}
 }

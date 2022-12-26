@@ -1,7 +1,7 @@
 use bevy::prelude::With;
 use bevy_egui::egui::{
-    Align, Area, Color32, Layout, Order, Pos2, Rect, Response, Rounding, Sense, Stroke, Ui, Vec2,
-    Widget,
+    Align, Area, Color32, Layout, Order, PointerButton, Pos2, Rect, Response, Rounding, Sense,
+    Stroke, Ui, Vec2, Widget,
 };
 use common::archive::GameArchive;
 use common::components::inventory::Inventory;
@@ -9,7 +9,7 @@ use common::components::items::{ItemId, ItemStack};
 
 use crate::entities::player::PlayerCharacter;
 use crate::ui::widgets::UiExt;
-use crate::ui::Interface;
+use crate::ui::{Interface, SenseExt};
 
 const CATEGORIES: &[&'static str] = &["Weapons", "Armor", "Utility", "Scrap", "Ammo"];
 
@@ -131,16 +131,16 @@ where
 /// A tile/cell for a single item.
 struct Tile<'a> {
     archive: &'a GameArchive,
-    item: &'a ItemStack,
+    stack: &'a ItemStack,
     width: f32,
     height: f32,
 }
 
 impl<'a> Tile<'a> {
-    pub const fn new(archive: &'a GameArchive, item: &'a ItemStack) -> Self {
+    pub const fn new(archive: &'a GameArchive, stack: &'a ItemStack) -> Self {
         Self {
             archive,
-            item,
+            stack,
             width: 0.0,
             height: 0.0,
         }
@@ -155,6 +155,8 @@ impl<'a> Tile<'a> {
 
 impl<'a> Widget for Tile<'a> {
     fn ui(self, ui: &mut Ui) -> Response {
+        let item = self.archive.items().get(self.stack.item.id);
+
         // let rect = Rect {
         //     min: start,
         //     max: Pos2::new(self.width + start.x, self.height + start.y),
@@ -183,6 +185,13 @@ impl<'a> Widget for Tile<'a> {
             painter.rect(resp.rect, Rounding::none(), Color32::RED, Stroke::none());
         }
 
+        if let Some(pos) = resp.hover_pos() {
+            TileHover {
+                title: item.unwrap().name.as_str(),
+            }
+            .show(ui, pos);
+        }
+
         // let (resp, painter) = ui.allocate_painter(
         //     Vec2::new(self.width, self.height),
         //     Sense {
@@ -203,12 +212,36 @@ impl<'a> Widget for Tile<'a> {
 
 pub struct CategoryLabel {}
 
-struct ConextMenu {}
+struct ContextMenu {}
 
-impl ConextMenu {}
+impl ContextMenu {
+    fn show(self, ui: &mut Ui, cursor: Pos2) {
+        let rect = Rect {
+            min: cursor,
+            max: Pos2::new(cursor.x + 32.0, cursor.y + 32.0),
+        };
 
-impl Widget for ConextMenu {
-    fn ui(self, ui: &mut Ui) -> Response {
-        ui.label("Drop")
+        let mut ui = ui.child_ui(rect, Layout::left_to_right(Align::TOP));
+
+        ui.label("Test");
+    }
+}
+
+/// The component displayed on hovering of a [`Tile`].
+struct TileHover<'a> {
+    /// The name of the item.
+    title: &'a str,
+}
+
+impl<'a> TileHover<'a> {
+    fn show(self, ui: &mut Ui, cursor: Pos2) {
+        let rect = Rect {
+            min: cursor,
+            max: Pos2::new(cursor.x + 32.0, cursor.y + 32.0),
+        };
+
+        let mut ui = ui.child_ui(rect, Layout::left_to_right(Align::TOP));
+
+        ui.label(self.title);
     }
 }
