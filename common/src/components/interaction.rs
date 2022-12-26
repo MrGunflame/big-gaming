@@ -4,7 +4,6 @@ use std::borrow::Borrow;
 use std::collections::VecDeque;
 use std::fmt::{self, Debug, Formatter};
 use std::iter::FusedIterator;
-use std::rc::Rc;
 use std::sync::Arc;
 
 use ahash::RandomState;
@@ -28,8 +27,14 @@ pub struct InteractionQueue {
 
 impl InteractionQueue {
     pub fn new() -> Self {
+        // Interaction happen very often, we start with a preallocated
+        // buffer to prevent tiny reallocation.
+        Self::with_capacity(32)
+    }
+
+    pub fn with_capacity(capacity: usize) -> Self {
         Self {
-            queue: VecDeque::new(),
+            queue: VecDeque::with_capacity(capacity),
         }
     }
 

@@ -1,5 +1,4 @@
 use std::convert::Infallible;
-use std::io::{self, Write};
 
 use bytes::{Buf, BufMut};
 

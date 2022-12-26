@@ -1,16 +1,20 @@
 //! The binary format used for savegames.
 //!
 
-use std::convert::Infallible;
-use std::mem::{self, MaybeUninit};
-use std::ptr;
-
-use bytes::{Buf, BufMut};
+mod character;
 mod combat;
 mod items;
 mod math;
 mod physics;
 mod transform;
+
+use std::convert::Infallible;
+use std::fs::File;
+use std::mem::{self, MaybeUninit};
+use std::path::Path;
+use std::{io, ptr};
+
+use bytes::{Buf, BufMut};
 
 pub struct Error {}
 
@@ -100,5 +104,20 @@ where
         // Note that this has the same effect as `std::mem::transmute`, but works with const
         // generics.
         Ok(unsafe { ptr::read(array.as_ptr() as *const _) })
+    }
+}
+
+#[derive(Debug)]
+pub struct SaveFile {
+    file: File,
+}
+
+impl SaveFile {
+    pub fn open<P>(path: P) -> io::Result<Self>
+    where
+        P: AsRef<Path>,
+    {
+        let file = File::open(path)?;
+        Ok(Self { file })
     }
 }
