@@ -32,3 +32,9 @@ pub struct Keyword(Box<str>);
 pub struct Keywords {
     keywords: Vec<Keyword>,
 }
+
+impl Keywords {
+    pub fn contains(&self, keyword: &str) -> bool {
+        self.keywords.iter().any(|kv| kv.0.as_ref() == keyword)
+    }
+}

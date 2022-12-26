@@ -1,6 +1,7 @@
 //! Container inventories
 
 use std::borrow::{Borrow, Cow};
+use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::iter::FusedIterator;
@@ -148,6 +149,13 @@ impl Inventory {
         self.mass -= stack.mass();
 
         Some(stack)
+    }
+
+    pub fn sort_by<F>(&mut self, mut f: F)
+    where
+        F: FnMut(&ItemStack, &ItemStack) -> Ordering,
+    {
+        self.items.sort_by(|_, lhs, _, rhs| f(lhs, rhs))
     }
 
     pub fn iter(&self) -> Iter<'_> {

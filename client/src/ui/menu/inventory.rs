@@ -9,9 +9,11 @@ use common::components::items::{ItemId, ItemStack};
 
 use crate::entities::player::PlayerCharacter;
 use crate::ui::widgets::UiExt;
-use crate::ui::{Interface, SenseExt};
+use crate::ui::Interface;
 
 const CATEGORIES: &[&'static str] = &["Weapons", "Armor", "Utility", "Scrap", "Ammo"];
+
+const EMPTY_VEC: Vec<&ItemStack> = Vec::new();
 
 #[derive(Debug, Default)]
 pub struct InventoryMenu {}
@@ -52,14 +54,30 @@ impl Interface for InventoryMenu {
                         Layout::top_down(Align::TOP),
                     );
 
-                    for title in CATEGORIES {
-                        let mut iter = inventory.iter();
+                    let mut categories = [EMPTY_VEC; CATEGORIES.len()];
 
-                        for stack in inventory {
+                    for stack in inventory {
+                        let item = archive.items().get(stack.item.id).unwrap();
+
+                        if item.keywords.contains("category:weapon") {
+                            categories[0].push(stack);
+                        } else if item.keywords.contains("category:armor") {
+                            categories[1].push(stack);
+                        } else if item.keywords.contains("category:utility") {
+                            categories[2].push(stack);
+                        } else if item.keywords.contains("category:scrap") {
+                            categories[3].push(stack);
+                        } else if item.keywords.contains("category:ammo") {
+                            categories[4].push(stack);
+                        }
+                    }
+
+                    for (items, title) in categories.iter().zip(CATEGORIES) {
+                        if !items.is_empty() {
                             inventory_ui.add(Category {
-                                archive,
+                                archive: &archive,
                                 title,
-                                items: inventory.iter(),
+                                items: &items,
                             });
                         }
                     }
@@ -77,19 +95,13 @@ impl Interface for InventoryMenu {
 }
 
 #[derive(Debug)]
-struct Category<'a, I>
-where
-    I: Iterator<Item = &'a ItemStack>,
-{
+struct Category<'a> {
     archive: &'a GameArchive,
     title: &'a str,
-    items: I,
+    items: &'a [&'a ItemStack],
 }
 
-impl<'a, I> Widget for Category<'a, I>
-where
-    I: Iterator<Item = &'a ItemStack>,
-{
+impl<'a> Widget for Category<'a> {
     fn ui(self, ui: &mut Ui) -> Response {
         // let rect = Rect {
         //     min: Pos2::new(0.0, 0.0),
