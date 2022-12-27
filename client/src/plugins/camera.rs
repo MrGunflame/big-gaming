@@ -1,7 +1,8 @@
 mod events;
 
-use bevy::prelude::{Mat3, Plugin, Query, Transform, Vec3, With, Without};
+use bevy::prelude::{EulerRot, Mat3, Plugin, Query, Transform, Vec3, With, Without};
 
+use crate::components::Rotation;
 use crate::entities::actor::ActorFigure;
 use crate::entities::player::{CameraPosition, PlayerCharacter};
 
@@ -30,7 +31,8 @@ fn synchronize_player_camera(
 
     match position {
         CameraPosition::FirstPerson => {
-            camera.translation = player.translation + figure.eyes;
+            let rotation_matrix = Mat3::from_quat(player.rotation);
+            camera.translation = player.translation + rotation_matrix * figure.eyes;
         }
         CameraPosition::ThirdPerson { distance } => {
             let rotation_matrix = Mat3::from_quat(camera.rotation);

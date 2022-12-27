@@ -58,7 +58,7 @@ impl ActorBundle {
         Self {
             transform: crate::bundles::TransformBundle::from_translation(Vec3::new(0.0, 0.0, 0.0)),
             scene: SceneBundle {
-                scene: assets.load("bricks.glb#Scene0"),
+                scene: assets.load("person.glb#Scene0"),
                 ..Default::default()
             },
             rotation: Rotation::new(),
@@ -89,7 +89,7 @@ impl ActorBundle {
                 ..Default::default()
             },
             actor_figure: ActorFigure {
-                eyes: Vec3::new(0.0, 2.0, 0.0),
+                eyes: Vec3::new(0.0, 2.0, -1.0),
             },
             inventory: Inventory::new(),
             equipment,
