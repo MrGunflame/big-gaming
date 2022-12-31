@@ -18,10 +18,10 @@ pub struct Head {
 impl Head {
     pub(super) fn new(assets: &AssetServer, template: &HumanTemplate) -> Self {
         let scene = SceneBundle {
-            scene: assets.load("person.glb#Scene0"),
+            scene: assets.load("actor/human/head.glb#Scene0"),
             ..Default::default()
         };
-        let collider = Collider::cuboid(1.0, 1.0, 1.0);
+        let collider = Collider::cuboid(0.2, 0.2, 0.2);
         let actor_limb = ActorLimb {
             actor: template.actor,
             limb: LIMB_HEAD,

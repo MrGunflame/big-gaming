@@ -21,7 +21,7 @@ pub struct UpperLeftLeg {
 impl UpperLeftLeg {
     pub(super) fn new(assets: &AssetServer, template: &HumanTemplate) -> Self {
         let scene = SceneBundle {
-            scene: assets.load("person.glb#Scene0"),
+            scene: assets.load("actor/human/upper_left_leg.glb#Scene0"),
             ..Default::default()
         };
         let collider = Collider::cuboid(1.0, 1.0, 1.0);
@@ -49,7 +49,7 @@ pub struct LowerLeftLeg {
 impl LowerLeftLeg {
     pub(super) fn new(assets: &AssetServer, template: &HumanTemplate) -> Self {
         let scene = SceneBundle {
-            scene: assets.load("person.glb#Scene0"),
+            scene: assets.load("actor/human/lower_left_leg.glb#Scene0"),
             ..Default::default()
         };
         let collider = Collider::cuboid(1.0, 1.0, 1.0);
@@ -77,7 +77,7 @@ pub struct UpperRightLeg {
 impl UpperRightLeg {
     pub(super) fn new(assets: &AssetServer, template: &HumanTemplate) -> Self {
         let scene = SceneBundle {
-            scene: assets.load("person.glb#Scene0"),
+            scene: assets.load("actor/human/upper_right_leg.glb#Scene0"),
             ..Default::default()
         };
         let collider = Collider::cuboid(1.0, 1.0, 1.0);
@@ -105,7 +105,7 @@ pub struct LowerRightLeg {
 impl LowerRightLeg {
     pub(super) fn new(assets: &AssetServer, template: &HumanTemplate) -> Self {
         let scene = SceneBundle {
-            scene: assets.load("person.glb#Scene0"),
+            scene: assets.load("actor/human/lower_right_leg.glb#Scene0"),
             ..Default::default()
         };
         let collider = Collider::cuboid(1.0, 1.0, 1.0);

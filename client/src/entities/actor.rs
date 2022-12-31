@@ -11,6 +11,7 @@ use common::components::actor::MovementSpeed;
 use common::components::inventory::{Equipment, EquipmentSlot, Inventory};
 use common::components::items::{Item, ItemId};
 
+use crate::bundles::VisibilityBundle;
 use crate::components::{Actor, ActorState, Rotation};
 use crate::plugins::combat::CombatBundle;
 
@@ -19,7 +20,9 @@ pub struct ActorBundle {
     #[bundle]
     pub transform: crate::bundles::TransformBundle,
     #[bundle]
-    pub scene: SceneBundle,
+    pub visibility: VisibilityBundle,
+    // #[bundle]
+    // pub scene: SceneBundle,
     #[bundle]
     pub combat: CombatBundle,
 
@@ -59,10 +62,11 @@ impl ActorBundle {
 
         Self {
             transform: crate::bundles::TransformBundle::from_translation(Vec3::new(0.0, 0.0, 0.0)),
-            scene: SceneBundle {
-                scene: assets.load("person.glb#Scene0"),
-                ..Default::default()
-            },
+            // scene: SceneBundle {
+            //     scene: assets.load("person.glb#Scene0"),
+            //     ..Default::default()
+            // },
+            visibility: VisibilityBundle::new(),
             rotation: Rotation::new(),
             velocity: Velocity {
                 linvel: Vec3::new(0.0, 0.0, 0.0),

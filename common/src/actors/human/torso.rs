@@ -17,7 +17,7 @@ pub struct Torso {
 impl Torso {
     pub(super) fn new(assets: &AssetServer, template: &HumanTemplate) -> Self {
         let scene = SceneBundle {
-            scene: assets.load("person.glb#Scene0"),
+            scene: assets.load("actor/human/torso.glb#Scene0"),
             ..Default::default()
         };
         let collider = Collider::cuboid(1.0, 1.0, 1.0);

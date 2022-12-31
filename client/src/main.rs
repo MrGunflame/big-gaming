@@ -19,6 +19,7 @@ use bevy::core_pipeline::CorePipelinePlugin;
 use bevy::diagnostic::DiagnosticsPlugin;
 use bevy::gltf::GltfPlugin;
 use bevy::input::InputPlugin;
+use bevy::log::LogPlugin;
 use bevy::pbr::PbrPlugin;
 use bevy::prelude::*;
 use bevy::render::RenderPlugin;
@@ -46,12 +47,13 @@ use ui::UiPlugin;
 use world::chunk::ChunkPlugin;
 
 fn main() {
-    log::Logger::new().init();
+    // log::Logger::new().init();
 
     let archive = GameArchive::new();
     archive.load("../core/data/items.json");
 
     App::new()
+        .add_plugin(LogPlugin::default())
         .insert_resource(archive)
         .insert_resource(Msaa { samples: 4 })
         .add_plugin(CorePlugin::default())

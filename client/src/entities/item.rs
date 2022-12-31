@@ -5,20 +5,23 @@
 
 use std::sync::Arc;
 
-use bevy::prelude::{AssetServer, Bundle, DespawnRecursiveExt, Entity, World};
-use bevy::scene::SceneBundle;
+use bevy::prelude::{AssetServer, Bundle, DespawnRecursiveExt, Entity, Handle, World};
+use bevy::scene::{Scene, SceneBundle};
 use common::components::interaction::{Interaction, InteractionId, Interactions};
 use common::components::inventory::Inventory;
 use common::components::items::Item;
 
-use crate::bundles::PhysicsBundle;
+use crate::bundles::{PhysicsBundle, VisibilityBundle};
 
 #[derive(Bundle)]
 pub struct ItemBundle {
     #[bundle]
     pub transform: crate::bundles::TransformBundle,
     #[bundle]
-    pub scene: SceneBundle,
+    pub visibility: VisibilityBundle,
+    // #[bundle]
+    // pub scene: SceneBundle,
+    scene: Handle<Scene>,
     #[bundle]
     pub physics: PhysicsBundle,
 
@@ -37,10 +40,12 @@ impl ItemBundle {
 
         Self {
             transform: crate::bundles::TransformBundle::new(),
-            scene: SceneBundle {
-                scene: assets.load("barrel.glb#Scene0"),
-                ..Default::default()
-            },
+            // scene: SceneBundle {
+            //     scene: assets.load("barrel.glb#Scene0"),
+            //     ..Default::default()
+            // },
+            visibility: VisibilityBundle::new(),
+            scene: assets.load("barrel.glb#Scene0"),
             physics: PhysicsBundle::new(),
             item,
             interactions: interaction.into(),
