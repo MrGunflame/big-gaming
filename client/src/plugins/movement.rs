@@ -93,7 +93,7 @@ fn movement_events(
             &Rotation,
             &mut Velocity,
             &MovementSpeed,
-            &Collider,
+            // &Collider,
             &ActorState,
             &Focus,
         ),
@@ -104,8 +104,7 @@ fn movement_events(
 
     let events = unsafe { EVENTS.assume_init_ref() };
 
-    let (entity, mut transform, rotation, mut velocity, speed, collider, state, focus) =
-        players.single_mut();
+    let (entity, mut transform, rotation, mut velocity, speed, state, focus) = players.single_mut();
 
     // Only process movement events while the actor in the default state.
     if *state != ActorState::NORMAL || *focus != Focus::World {
@@ -114,17 +113,17 @@ fn movement_events(
 
     let mut vec = Vec3::ZERO;
 
-    let shape_pos = transform.translation;
-    let shape_rot = transform.rotation;
-    let is_on_ground = || {
-        let shape_vel = -Vec3::Y;
-        let max_toi = 2.0;
-        let filter = QueryFilter::new().exclude_collider(entity);
+    // let shape_pos = transform.translation;
+    // let shape_rot = transform.rotation;
+    // let is_on_ground = || {
+    //     let shape_vel = -Vec3::Y;
+    //     let max_toi = 2.0;
+    //     let filter = QueryFilter::new().exclude_collider(entity);
 
-        rapier
-            .cast_shape(shape_pos, shape_rot, shape_vel, &collider, max_toi, filter)
-            .is_some()
-    };
+    //     rapier
+    //         .cast_shape(shape_pos, shape_rot, shape_vel, &collider, max_toi, filter)
+    //         .is_some()
+    // };
 
     if hotkeys.triggered(events.forward) {
         vec += rotation.movement_vec();
@@ -145,9 +144,7 @@ fn movement_events(
     transform.translation += vec * delta * speed.0;
 
     if hotkeys.triggered(events.jump) {
-        if is_on_ground() {
-            velocity.linvel.y += 1.0;
-        }
+        velocity.linvel.y += 1.0;
     }
 }
 
