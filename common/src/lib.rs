@@ -5,6 +5,7 @@
 #![feature(const_option)]
 #![feature(const_mut_refs)]
 
+pub mod actors;
 pub mod archive;
 pub mod components;
 pub mod ecs;

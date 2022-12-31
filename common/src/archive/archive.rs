@@ -10,3 +10,20 @@ pub enum FileFormat {
 }
 
 impl FileFormat {}
+
+#[derive(Clone, Debug)]
+pub struct FileHeader {
+    /// The type of data contained in this file.
+    kind: FileKind,
+}
+
+/// The type of items presented in a file.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct FileKind(u16);
+
+impl FileKind {
+    /// The file contains a list of [`Item`]s.
+    ///
+    /// [`Item`]: super::items::Item
+    pub const ITEMS: Self = Self(1);
+}
