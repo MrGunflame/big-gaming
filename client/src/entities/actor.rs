@@ -96,7 +96,7 @@ impl ActorBundle {
                 ..Default::default()
             },
             actor_figure: ActorFigure {
-                eyes: Vec3::new(0.0, 2.0, -1.0),
+                eyes: Vec3::new(0.0, 1.65, -0.3),
             },
             inventory: Inventory::new(),
             equipment,
