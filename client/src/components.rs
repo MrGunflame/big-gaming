@@ -152,9 +152,6 @@ impl Rotation {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub struct PreviousTransform(pub Transform);
-
 #[cfg(test)]
 mod tests {
     use std::f32::consts::{FRAC_PI_2, FRAC_PI_4, PI};

@@ -30,6 +30,7 @@ use bevy::winit::WinitPlugin;
 use bevy_rapier3d::prelude::*;
 use bevy_rapier3d::render::RapierDebugRenderPlugin;
 use bundles::ObjectBundle;
+use common::actors::human::Human;
 use common::archive::GameArchive;
 use common::components::interaction::InteractionQueue;
 use common::components::items::{Item, ItemId};
@@ -289,18 +290,8 @@ fn setup(
         },
     ));
 
-    commands
-        .spawn(PlayerCharacterBundle::new(&asset_server))
-        .with_children(|builder| {
-            builder.spawn(PbrBundle {
-                mesh: meshes.add(Mesh::from(shape::Quad {
-                    size: Vec2::new(5.0, 1.0),
-                    flip: false,
-                })),
-                material: materials.add(Color::rgb(1.0, 0.0, 0.0).into()),
-                ..Default::default()
-            });
-        });
+    let mut cmd = commands.spawn(PlayerCharacterBundle::new(&asset_server));
+    Human::default().spawn(&asset_server, &mut cmd);
 }
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Component)]

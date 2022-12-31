@@ -1,10 +1,12 @@
 use bevy::prelude::{AssetServer, Bundle, Component, Vec3};
 use bevy::scene::SceneBundle;
 use bevy::transform::TransformBundle;
+use bevy_rapier3d::na::vector;
 use bevy_rapier3d::prelude::{
-    AdditionalMassProperties, Ccd, CharacterAutostep, CharacterLength, Collider,
+    AdditionalMassProperties, AsyncCollider, Ccd, CharacterAutostep, CharacterLength, Collider,
     KinematicCharacterController, LockedAxes, RigidBody, Velocity,
 };
+use bevy_rapier3d::rapier::prelude::ColliderBuilder;
 use common::components::actor::MovementSpeed;
 use common::components::inventory::{Equipment, EquipmentSlot, Inventory};
 use common::components::items::{Item, ItemId};
@@ -68,7 +70,8 @@ impl ActorBundle {
             },
             locked_axes: LockedAxes::ROTATION_LOCKED,
             ccd: Ccd::enabled(),
-            collider: Collider::cuboid(1.0, 1.0, 1.0),
+            collider: Collider::cuboid(1.0, 0.5, 1.0),
+            // collider,
             rigid_body: RigidBody::Dynamic,
             mass: AdditionalMassProperties::Mass(100.0),
             actor: Actor,
