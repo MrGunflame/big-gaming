@@ -1,5 +1,22 @@
+//! Loading definitions of game data
+//!
+//! The [`GameArchive`] serves as a central point for loading any game data.
+//!
+//! # Data types
+//!
+//! - [`Item`]: An item which may be picked up and dropped into the world by actors. Examples
+//! include weapons, armor, ammo, Scrap and resources.
+//!
+//! - [`Object`]: Static and dynamic objects placed into the game world. Common examples for static
+//! objects include walls, roads or rubble. This also includes static but interactable objects,
+//! like doors and gates. Dynamic objects include objects that are affected by physics, but cannot
+//! be picked up by an actor, i.e. they are not an [`Item`].
+//!
+//! [`Item`]: items::Item
+//! [`Object`]: objects::Object
 mod archive;
 mod items;
+mod objects;
 
 #[cfg(feature = "json")]
 mod json;

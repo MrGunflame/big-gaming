@@ -26,4 +26,8 @@ impl FileKind {
     ///
     /// [`Item`]: super::items::Item
     pub const ITEMS: Self = Self(1);
+    /// The file contains a list of [`Object`]s.
+    ///
+    /// [`Object`]: super::objects::Object
+    pub const OBJECTS: Self = Self(2);
 }
