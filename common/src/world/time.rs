@@ -2,6 +2,7 @@ use std::ops::{Add, AddAssign, Sub, SubAssign};
 use std::time::Duration;
 
 use bevy_ecs::component::Component;
+use bevy_ecs::system::Resource;
 
 const NANOS_PER_SEC: u32 = 1_000_000_000;
 
@@ -27,7 +28,7 @@ const NANOS_PER_SEC: u32 = 1_000_000_000;
 /// There are not leap years or leap seconds, every year is repeated as is.
 ///
 /// The time should be constantly advanced using the `Add<Duration>` impl.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Component)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Component, Resource)]
 pub struct DateTime {
     nsecs: u128,
 }
@@ -255,5 +256,28 @@ impl Month {
             Self::November => 30,
             Self::December => 31,
         }
+    }
+}
+
+/// How fast time elapses relative to real time.
+///
+/// The default scale is 5x, i.e. 5 ingame seconds take 1 real second.
+#[derive(Copy, Clone, Debug, PartialEq, PartialOrd, Component, Resource)]
+#[repr(transparent)]
+pub struct TimeScale(pub f32);
+
+impl TimeScale {
+    /// Creates a new `TimeScale` with a factor of `n`. In other words, how many ingame seconds
+    /// elapse for every real second.
+    #[inline]
+    pub fn new(n: f32) -> Self {
+        Self(n)
+    }
+}
+
+impl Default for TimeScale {
+    #[inline]
+    fn default() -> Self {
+        Self::new(5.0)
     }
 }
