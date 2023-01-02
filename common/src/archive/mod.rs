@@ -16,6 +16,7 @@
 //! [`Object`]: objects::Object
 mod archive;
 mod items;
+mod loader;
 mod objects;
 
 #[cfg(feature = "json")]
