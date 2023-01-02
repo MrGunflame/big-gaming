@@ -9,3 +9,4 @@ pub mod inventory;
 pub mod items;
 pub mod player;
 pub mod properties;
+pub mod faction;
