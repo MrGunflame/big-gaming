@@ -1,3 +1,3 @@
 //! The core game systems.
 
-mod world;
+pub mod world;

@@ -87,6 +87,7 @@ fn main() {
         .add_plugin(MovementPlugin)
         .add_plugin(RespawnPlugin)
         .add_plugin(ChunkPlugin)
+        .add_plugin(base::world::TimePlugin::default())
         .add_system_to_stage(CoreStage::Update, prev_transform::update_previous_transform)
         .add_plugin(InteractionsPlugin)
         .run();
@@ -108,7 +109,8 @@ fn setup(
         .insert(RigidBody::Fixed)
         .insert(Collider::cuboid(1000.0, 0.1, 1000.0));
 
-    commands.spawn(ObjectBundle::new(&asset_server));
+    commands.spawn(ObjectBundle::new(&asset_server).at(Vec3::new(5.0, 0.0, 5.0)));
+    commands.spawn(ObjectBundle::new(&asset_server).at(Vec3::new(-5.0, 0.0, -5.0)));
 
     // THE BALL
     // commands

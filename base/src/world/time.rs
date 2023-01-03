@@ -6,13 +6,17 @@ use bevy::time::Time;
 use common::world::time::{DateTime, TimeScale};
 
 /// Driver for the ingame clock.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct TimePlugin {
-    start: DateTime,
-    scale: TimeScale,
+    /// The starting [`DateTime`] when the time system is first initialized.
+    pub start: DateTime,
+    /// The scale at which time passes.
+    pub scale: TimeScale,
 }
 
 impl TimePlugin {
+    /// Creates a new `TimePlugin` starting at the given starting [`DateTime`] and using the
+    /// default [`TimeScale`].
     #[inline]
     pub fn new(start: DateTime) -> Self {
         Self {

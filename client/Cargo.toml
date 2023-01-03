@@ -7,6 +7,7 @@ edition = "2021"
 
 [dependencies]
 common = { version = "0.1.0", path = "../common" }
+base = { version = "*", path = "../base" }
 
 ahash = "0.8.2"
 bevy = { version = "0.9.0", features = ["wav"] }
@@ -19,11 +20,11 @@ chrono = "0.4.23"
 nalgebra = "0.31.4"
 
 [features]
-default = ["dynamic"]
+default = []
 
 
 # dylib bevy for dev
-dynamic = ["bevy/dynamic"]
+#dynamic = ["bevy/dynamic"]
 
 serde = ["dep:serde"]
 simd = ["bevy_rapier3d/simd-nightly"]
