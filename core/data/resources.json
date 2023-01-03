@@ -1,0 +1,71 @@
+{
+    "type": "item",
+    "content": [
+        {
+            "id": 0,
+            "name": "Steel",
+            "mass": 1,
+            "keywords": [
+                "category:scrap"
+            ]
+        },
+        {
+            "id": 1,
+            "name": "Wood",
+            "mass": 1,
+            "keywords": [
+                "category:scrap"
+            ]
+        },
+        {
+            "id": 2,
+            "name": "Rubber",
+            "mass": 1,
+            "keywords": [
+                "category:scrap"
+            ]
+        },
+        {
+            "id": 3,
+            "name": "Copper",
+            "mass": 1,
+            "keywords": [
+                "category:scrap"
+            ]
+        },
+        {
+            "id": 4,
+            "name": "Aluminum",
+            "mass": 1,
+            "keywords": [
+                "category:scrap"
+            ]
+        },
+        {
+            "id": 5,
+            "name": "Oil",
+            "mass": 1,
+            "keywords": [
+                "category:scrap"
+            ]
+        },
+        {
+            "id": 6,
+            "name": "Cloth",
+            "mass": 1,
+            "keywords": [
+                "category:scrap"
+            ]
+        },
+        {
+            "id": 7,
+            "name": "",
+            "mass": 1,
+            "keywords": [
+                "category:scrap"
+            ]
+        },
+        {
+        }
+    ]
+}
