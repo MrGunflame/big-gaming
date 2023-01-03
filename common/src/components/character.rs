@@ -13,23 +13,29 @@ use serde::{Deserialize, Serialize};
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Attributes {
     strength: u8,
+    endurance: u8,
 }
 
 impl Attributes {
+    #[inline]
     pub fn new() -> Self {
-        Self { strength: 0 }
+        Self { strength: 0, endurance: 0 }
     }
 
+    #[inline]
     pub fn get(&self, attribute: Attribute) -> u8 {
         match attribute {
             Attribute::STRENGTH => self.strength,
+            Attribute::ENDURANCE => self.endurance,
             _ => unreachable!(),
         }
     }
 
+    #[inline]
     pub fn set(&mut self, attribute: Attribute, value: u8) {
         match attribute {
             Attribute::STRENGTH => self.strength = value,
+            Attribute::ENDURANCE => self.endurance = value,
             _ => unreachable!(),
         }
     }
@@ -40,6 +46,7 @@ pub struct Attribute(NonZeroU8);
 
 impl Attribute {
     pub const STRENGTH: Self = Self(NonZeroU8::new(1).unwrap());
+    pub const ENDURANCE: Self = Self(NonZeroU8::new(2).unwrap());
 }
 
 /// A unique identifer for a [`Trait`].
