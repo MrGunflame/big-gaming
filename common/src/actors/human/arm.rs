@@ -122,6 +122,7 @@ impl LowerRightArm {
             scene: assets.load("actor/human/lower_right_arm.glb#Scene0"),
             transform: Transform {
                 translation: Vec3::new(-0.282336, 0.780438, 0.022348),
+                rotation: Quat::from_axis_angle(Vec3::X, 90.0f32.to_radians()),
                 ..Default::default()
             },
             ..Default::default()

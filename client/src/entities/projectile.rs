@@ -23,11 +23,11 @@ pub struct ProjectileBundle {
 
 impl ProjectileBundle {
     pub fn new(assets: Res<AssetServer>) -> Self {
-        let scene = assets.load("bricks.glb#Scene0");
+        let scene = assets.load("bullet.glb#Scene0");
         let velocity = Velocity::zero();
         let mass = AdditionalMassProperties::Mass(3.56);
         let ccd = Ccd::enabled();
-        let collider = Collider::cuboid(1.0, 1.0, 1.0);
+        let collider = Collider::cuboid(0.1, 0.1, 0.1);
 
         Self {
             scene: SceneBundle {

@@ -14,6 +14,7 @@ mod utils;
 mod window;
 mod world;
 
+use base::world::ChunkPlugin;
 use bevy::audio::AudioPlugin;
 use bevy::core_pipeline::CorePipelinePlugin;
 use bevy::diagnostic::DiagnosticsPlugin;
@@ -35,6 +36,7 @@ use common::actors::human::Human;
 use common::archive::GameArchive;
 use common::components::interaction::InteractionQueue;
 use common::components::items::{Item, ItemId};
+use common::world::chunk::ChunkRegistry;
 use components::Rotation;
 use entities::actor::ActorBundle;
 use entities::item::ItemBundle;
@@ -44,7 +46,6 @@ use plugins::interactions::InteractionsPlugin;
 use plugins::respawn::RespawnPlugin;
 use plugins::{CameraPlugin, HotkeyPlugin, MovementPlugin, ProjectilePlugin};
 use ui::UiPlugin;
-use world::chunk::ChunkPlugin;
 
 fn main() {
     // log::Logger::new().init();
@@ -86,7 +87,7 @@ fn main() {
         .add_plugin(HotkeyPlugin)
         .add_plugin(MovementPlugin)
         .add_plugin(RespawnPlugin)
-        .add_plugin(ChunkPlugin)
+        .add_plugin(ChunkPlugin::new(ChunkRegistry::new()))
         .add_plugin(base::world::TimePlugin::default())
         .add_system_to_stage(CoreStage::Update, prev_transform::update_previous_transform)
         .add_plugin(InteractionsPlugin)
@@ -111,6 +112,7 @@ fn setup(
 
     commands.spawn(ObjectBundle::new(&asset_server).at(Vec3::new(5.0, 0.0, 5.0)));
     commands.spawn(ObjectBundle::new(&asset_server).at(Vec3::new(-5.0, 0.0, -5.0)));
+    commands.spawn(ObjectBundle::new(&asset_server).at(Vec3::new(10.0, 0.0, 5.0)));
 
     // THE BALL
     // commands

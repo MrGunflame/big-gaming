@@ -8,6 +8,7 @@ use bevy_rapier3d::prelude::{
 };
 use bevy_rapier3d::rapier::prelude::ColliderBuilder;
 use common::components::actor::MovementSpeed;
+use common::components::animation::AnimationQueue;
 use common::components::inventory::{Equipment, EquipmentSlot, Inventory};
 use common::components::items::{Item, ItemId};
 
@@ -42,6 +43,7 @@ pub struct ActorBundle {
     pub actor_figure: ActorFigure,
     pub inventory: Inventory,
     pub equipment: Equipment,
+    pub animation_queue: AnimationQueue,
 }
 
 impl ActorBundle {
@@ -100,6 +102,7 @@ impl ActorBundle {
             },
             inventory: Inventory::new(),
             equipment,
+            animation_queue: AnimationQueue::new(),
         }
     }
 }

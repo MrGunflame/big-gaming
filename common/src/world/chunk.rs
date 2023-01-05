@@ -12,6 +12,7 @@ use std::fmt::{self, Display, Formatter};
 
 use bevy_ecs::entity::Entity;
 use bevy_ecs::system::Resource;
+use bevy_ecs::world::World;
 use glam::{Vec3, Vec3A};
 
 /// The size of a chunk.
@@ -76,6 +77,27 @@ impl ChunkId {
         let z = self.0 & Self::MASK_Z;
         z as f32 * CHUNK_SIZE.z
     }
+
+    /// Creates a [`ChunkIdRange`] over all adjacent `ChunkId`s in the given `radius`. The
+    /// returned range includes the current `ChunkId`.
+    pub fn radius(self, radius: u32) -> Radius {
+        Radius {
+            center: self,
+            radius,
+            x: 0,
+            y: 0,
+            z: 0,
+        }
+
+        // ChunkIdRange {
+        //     x: x - radius,
+        //     x_end: x + radius,
+        //     y: y - radius,
+        //     y_end: y + radius,
+        //     z: z - radius,
+        //     z_end: z + radius,
+        // }
+    }
 }
 
 impl Display for ChunkId {
@@ -96,6 +118,39 @@ impl From<Vec3A> for ChunkId {
     #[inline]
     fn from(value: Vec3A) -> Self {
         Self::new(value.x, value.y, value.z)
+    }
+}
+
+/// An `Iterator` of [`ChunkId`]s.
+///
+/// Note that the returned order is unspecified.
+#[derive(Copy, Clone, Debug)]
+pub struct Radius {
+    center: ChunkId,
+    radius: u32,
+    x: u32,
+    y: u32,
+    z: u32,
+}
+
+impl Iterator for Radius {
+    type Item = ChunkId;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        None
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.len(), Some(self.len()))
+    }
+}
+
+impl ExactSizeIterator for Radius {
+    #[inline]
+    fn len(&self) -> usize {
+        let factor = (self.radius * 2 + 1) as usize;
+        factor * factor * factor
     }
 }
 
@@ -206,6 +261,26 @@ impl ChunkRegistry {
     }
 }
 
+/// A delta of entities that have become active or inactive since the last chunk tick.
+#[derive(Clone, Debug, Default)]
+pub struct ChunkTransition {
+    pub activated: Vec<Entity>,
+    pub deactivated: Vec<Entity>,
+}
+
+impl ChunkTransition {
+    pub fn apply(&self, world: &mut World) {
+        for entity in &self.deactivated {
+            tracing::trace!("Despawning {:?}", entity);
+            world.entity_mut(*entity).despawn();
+        }
+
+        for entity in &self.activated {
+            tracing::trace!("Spawning new entity");
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::ChunkId;
@@ -235,5 +310,55 @@ mod tests {
         assert_eq!(id.x(), 1472.0);
         assert_eq!(id.y(), 36288.0);
         assert_eq!(id.z(), 48384.0);
+    }
+
+    #[test]
+    fn chunk_id_radius() {
+        let mut iter = ChunkId::new(0.0, 0.0, 0.0).radius(0);
+        assert_eq!(iter.len(), 1);
+
+        assert_eq!(iter.next(), Some(ChunkId::new(0.0, 0.0, 0.0)));
+        assert_eq!(iter.next(), None);
+
+        let mut iter = ChunkId::new(32.0, 32.0, 32.0).radius(1);
+        assert_eq!(iter.len(), 27);
+
+        assert_eq!(iter.next(), Some(ChunkId::new(0.0, 0.0, 0.0)));
+        assert_eq!(iter.next(), Some(ChunkId::new(0.0, 0.0, 32.0)));
+        assert_eq!(iter.next(), Some(ChunkId::new(0.0, 0.0, 64.0)));
+
+        assert_eq!(iter.next(), Some(ChunkId::new(0.0, 32.0, 0.0)));
+        assert_eq!(iter.next(), Some(ChunkId::new(0.0, 32.0, 32.0)));
+        assert_eq!(iter.next(), Some(ChunkId::new(0.0, 32.0, 64.0)));
+
+        assert_eq!(iter.next(), Some(ChunkId::new(0.0, 64.0, 0.0)));
+        assert_eq!(iter.next(), Some(ChunkId::new(0.0, 64.0, 32.0)));
+        assert_eq!(iter.next(), Some(ChunkId::new(0.0, 64.0, 64.0)));
+
+        assert_eq!(iter.next(), Some(ChunkId::new(32.0, 0.0, 0.0)));
+        assert_eq!(iter.next(), Some(ChunkId::new(32.0, 0.0, 32.0)));
+        assert_eq!(iter.next(), Some(ChunkId::new(32.0, 0.0, 64.0)));
+
+        assert_eq!(iter.next(), Some(ChunkId::new(32.0, 32.0, 0.0)));
+        assert_eq!(iter.next(), Some(ChunkId::new(32.0, 32.0, 32.0)));
+        assert_eq!(iter.next(), Some(ChunkId::new(32.0, 32.0, 64.0)));
+
+        assert_eq!(iter.next(), Some(ChunkId::new(32.0, 64.0, 0.0)));
+        assert_eq!(iter.next(), Some(ChunkId::new(32.0, 64.0, 32.0)));
+        assert_eq!(iter.next(), Some(ChunkId::new(32.0, 64.0, 64.0)));
+
+        assert_eq!(iter.next(), Some(ChunkId::new(64.0, 0.0, 0.0)));
+        assert_eq!(iter.next(), Some(ChunkId::new(64.0, 0.0, 32.0)));
+        assert_eq!(iter.next(), Some(ChunkId::new(64.0, 0.0, 64.0)));
+
+        assert_eq!(iter.next(), Some(ChunkId::new(64.0, 32.0, 0.0)));
+        assert_eq!(iter.next(), Some(ChunkId::new(64.0, 32.0, 32.0)));
+        assert_eq!(iter.next(), Some(ChunkId::new(64.0, 32.0, 64.0)));
+
+        assert_eq!(iter.next(), Some(ChunkId::new(64.0, 64.0, 0.0)));
+        assert_eq!(iter.next(), Some(ChunkId::new(64.0, 64.0, 32.0)));
+        assert_eq!(iter.next(), Some(ChunkId::new(64.0, 64.0, 64.0)));
+
+        assert_eq!(iter.next(), None);
     }
 }
