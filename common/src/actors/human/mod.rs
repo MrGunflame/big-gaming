@@ -8,7 +8,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::system::EntityCommands;
 use bevy_hierarchy::BuildChildren;
 
-use crate::components::actor::Limb;
+use crate::components::actor::{ActorModel, Limb};
 
 use self::arm::{LowerLeftArm, LowerRightArm, UpperLeftArm, UpperRightArm};
 use self::head::Head;
@@ -43,17 +43,27 @@ impl Human {
             actor: commands.id(),
         };
 
+        let mut entities = Vec::new();
+
         commands.add_children(|cmd| {
-            cmd.spawn(Head::new(assets, &template));
-            cmd.spawn(Torso::new(assets, &template));
-            cmd.spawn(UpperLeftArm::new(assets, &template));
-            cmd.spawn(LowerLeftArm::new(assets, &template));
-            cmd.spawn(UpperRightArm::new(assets, &template));
-            cmd.spawn(LowerRightArm::new(assets, &template));
-            cmd.spawn(UpperLeftLeg::new(assets, &template));
-            cmd.spawn(LowerLeftLeg::new(assets, &template));
-            cmd.spawn(UpperRightLeg::new(assets, &template));
-            cmd.spawn(LowerRightLeg::new(assets, &template));
+            for entity in [
+                cmd.spawn(Head::new(assets, &template)).id(),
+                cmd.spawn(Torso::new(assets, &template)).id(),
+                cmd.spawn(UpperLeftArm::new(assets, &template)).id(),
+                cmd.spawn(LowerLeftArm::new(assets, &template)).id(),
+                cmd.spawn(UpperRightArm::new(assets, &template)).id(),
+                cmd.spawn(LowerRightArm::new(assets, &template)).id(),
+                cmd.spawn(UpperLeftLeg::new(assets, &template)).id(),
+                cmd.spawn(LowerLeftLeg::new(assets, &template)).id(),
+                cmd.spawn(UpperRightLeg::new(assets, &template)).id(),
+                cmd.spawn(LowerRightLeg::new(assets, &template)).id(),
+            ] {
+                entities.push(entity);
+            }
+        });
+
+        commands.insert(ActorModel {
+            entities: entities.into_boxed_slice(),
         });
     }
 }

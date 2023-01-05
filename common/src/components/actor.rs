@@ -50,6 +50,15 @@ impl DerefMut for MovementSpeed {
     }
 }
 
+/// A model of an [`Actor`], including multi-entity meshes and animations.
+///
+/// **Note that not every [`Actor`] has this component.**
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Component)]
+pub struct ActorModel {
+    /// The entities that make up the actor model.
+    pub entities: Box<[Entity]>,
+}
+
 /// A [`Limb`] of an [`Actor`].
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Component)]
 pub struct ActorLimb {

@@ -296,6 +296,9 @@ fn setup(
 
     let mut cmd = commands.spawn(PlayerCharacterBundle::new(&asset_server));
     Human::default().spawn(&asset_server, &mut cmd);
+
+    let mut cmd = commands.spawn(ActorBundle::new(&asset_server));
+    Human::default().spawn(&asset_server, &mut cmd);
 }
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Component)]
