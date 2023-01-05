@@ -1,5 +1,4 @@
-use bevy::prelude::{AssetServer, Bundle, PbrBundle, Transform, Vec3};
-use bevy::render::texture::TranscodeFormat;
+use bevy::prelude::{AssetServer, Bundle, Transform, Vec3};
 use bevy::scene::SceneBundle;
 use bevy_rapier3d::prelude::{Collider, RigidBody};
 
@@ -25,5 +24,11 @@ impl ObjectBundle {
                 ..Default::default()
             },
         }
+    }
+
+    #[inline]
+    pub fn at(mut self, translation: Vec3) -> Self {
+        self.scene.transform.translation = translation;
+        self
     }
 }
