@@ -1,6 +1,6 @@
 use bevy::prelude::{Bundle, Entity, EventWriter, Plugin, Query, Res, Transform, With};
 use bevy_rapier3d::prelude::{RapierContext, Velocity};
-use common::components::actor::ActorModel;
+use common::components::animation::{AnimationId, AnimationQueue};
 use common::components::combat::{Damage, Health, IncomingDamage, Resistances};
 
 use crate::components::{Actor, ActorState};
@@ -23,11 +23,11 @@ fn apply_incoming_damage(
         &mut Health,
         &Resistances,
         &mut ActorState,
-        Option<&mut ActorModel>,
+        Option<&mut AnimationQueue>,
     )>,
     mut focus: EventWriter<Focus>,
 ) {
-    for (mut inc, mut health, resistances, mut state, mut model) in &mut entities {
+    for (mut inc, mut health, resistances, mut state, mut queue) in &mut entities {
         while let Some(damage) = inc.pop() {
             *health -= damage.amount;
 
@@ -36,8 +36,8 @@ fn apply_incoming_damage(
                 focus.send(Focus::Interface);
                 inc.clear();
 
-                if let Some(model) = &mut model {
-                    // FIXME: Call death animation
+                if let Some(queue) = &mut queue {
+                    queue.push(AnimationId::DEATH);
                 }
             }
         }

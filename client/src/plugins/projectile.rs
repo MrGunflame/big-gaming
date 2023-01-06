@@ -2,6 +2,7 @@ use bevy::prelude::{
     App, Commands, DespawnRecursiveExt, Entity, Plugin, Query, Res, With, Without,
 };
 use bevy_rapier3d::prelude::RapierContext;
+use common::components::actor::{Actor, ActorLimb};
 use common::components::combat::{Damage, IncomingDamage};
 
 use crate::entities::projectile::Projectile;
@@ -20,23 +21,28 @@ fn despawn_collided_projectiles(
     mut commands: Commands,
     rapier: Res<RapierContext>,
     mut projectiles: Query<(Entity, Option<&Damage>), With<Projectile>>,
-    mut actors: Query<&mut IncomingDamage, Without<Projectile>>,
+    limbs: Query<&ActorLimb>,
+    mut actors: Query<&mut IncomingDamage, With<Actor>>,
 ) {
     for (entity, damage) in &mut projectiles {
         for contact_pair in rapier.contacts_with(entity) {
             if contact_pair.has_any_active_contacts() {
-                let other_collider = if contact_pair.collider1() == entity {
+                let target = if contact_pair.collider1() == entity {
                     contact_pair.collider2()
                 } else {
                     contact_pair.collider1()
                 };
 
                 if let Some(damage) = damage {
-                    if let Ok(mut inc) = actors.get_mut(other_collider) {
-                        inc.push(*damage);
+                    if let Ok(limb) = limbs.get(target) {
+                        actors
+                            .get_mut(limb.actor)
+                            .expect("actor without IncomingDamage")
+                            .push(*damage);
                     }
                 }
 
+                // Despawn the projectile.
                 // Prevent the entity being despawned multiple times when colliding with multiple
                 // entities.
                 if let Some(entity) = commands.get_entity(entity) {

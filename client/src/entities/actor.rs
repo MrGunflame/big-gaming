@@ -6,14 +6,13 @@ use bevy_rapier3d::prelude::{
     AdditionalMassProperties, AsyncCollider, Ccd, CharacterAutostep, CharacterLength, Collider,
     KinematicCharacterController, LockedAxes, RigidBody, Velocity,
 };
-use bevy_rapier3d::rapier::prelude::ColliderBuilder;
-use common::components::actor::MovementSpeed;
+use common::components::actor::{Actor, MovementSpeed};
 use common::components::animation::AnimationQueue;
 use common::components::inventory::{Equipment, EquipmentSlot, Inventory};
 use common::components::items::{Item, ItemId};
 
 use crate::bundles::VisibilityBundle;
-use crate::components::{Actor, ActorState, Rotation};
+use crate::components::{ActorState, Rotation};
 use crate::plugins::combat::CombatBundle;
 
 #[derive(Bundle)]

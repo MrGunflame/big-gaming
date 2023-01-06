@@ -91,6 +91,7 @@ fn main() {
         .add_plugin(base::world::TimePlugin::default())
         .add_system_to_stage(CoreStage::Update, prev_transform::update_previous_transform)
         .add_plugin(InteractionsPlugin)
+        .add_plugin(base::animation::AnimationPlugin)
         .run();
 }
 

@@ -27,5 +27,9 @@ impl AnimationQueue {
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct AnimationId(pub WeakId<u32>);
 
+impl AnimationId {
+    pub const DEATH: Self = Self(WeakId(1));
+}
+
 #[derive(Clone, Debug)]
 pub struct Animation {}
