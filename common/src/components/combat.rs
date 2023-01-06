@@ -126,7 +126,7 @@ impl Damage {
 /// [`push`] when damage should be taken instead of manually modifying the [`Health`] value.
 ///
 /// [`push`]: Self::push
-#[derive(Clone, Debug, Component)]
+#[derive(Clone, Debug, Default, Component)]
 pub struct IncomingDamage {
     incoming: VecDeque<Damage>,
 }
@@ -161,7 +161,7 @@ impl Extend<Damage> for IncomingDamage {
     }
 }
 
-#[derive(Clone, Debug, Component)]
+#[derive(Clone, Debug, Default, Component)]
 pub struct Resistances {
     classes: HashMap<ResistanceId, Resistance>,
 }

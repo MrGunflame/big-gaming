@@ -7,10 +7,10 @@ edition = "2021"
 default = ["serde", "json"]
 
 # Enable serde impls
-"serde" = ["dep:serde"]
+serde = ["dep:serde"]
 
 # Archive loading of json files.
-"json" = ["serde", "dep:serde_json"]
+json = ["serde", "dep:serde_json"]
 
 [dependencies]
 ahash = "0.8.2"
@@ -31,3 +31,5 @@ indexmap = "1.9.2"
 bevy_scene = "0.9.1"
 bevy_asset = "0.9.1"
 bevy_hierarchy = "0.9.1"
+bevy_render = "0.9.1"
+

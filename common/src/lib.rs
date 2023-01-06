@@ -7,6 +7,7 @@
 
 pub mod actors;
 pub mod archive;
+pub mod bundles;
 pub mod components;
 pub mod ecs;
 pub mod id;

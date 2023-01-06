@@ -7,7 +7,7 @@ use bevy_transform::components::Transform;
 ///
 /// This can be used to calculate delta movement. It should only be added to components than can
 /// move.
-#[derive(Copy, Clone, Debug, Component)]
+#[derive(Copy, Clone, Debug, Default, Component)]
 pub struct PreviousTransform(pub Transform);
 
 impl Deref for PreviousTransform {
