@@ -32,4 +32,3 @@ bevy_scene = "0.9.1"
 bevy_asset = "0.9.1"
 bevy_hierarchy = "0.9.1"
 bevy_render = "0.9.1"
-

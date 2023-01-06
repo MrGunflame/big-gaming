@@ -10,12 +10,6 @@ use crate::entities::player::PlayerCharacter;
 pub fn health(mut egui: ResMut<EguiContext>, players: Query<&Health, With<PlayerCharacter>>) {
     let health = players.single();
 
-    let health_percentage = if health.max_health == 0 {
-        0.0
-    } else {
-        health.health as f32 / health.max_health as f32
-    };
-
     Area::new("health")
         .anchor(Align2::LEFT_BOTTOM, Vec2::new(5.0, -5.0))
         .order(Order::Background)
@@ -23,7 +17,7 @@ pub fn health(mut egui: ResMut<EguiContext>, players: Query<&Health, With<Player
             ui.add(HealthWidget {
                 width: 100.,
                 height: 100.,
-                health_percentage,
+                health: *health,
             });
         });
 }
@@ -32,7 +26,7 @@ pub fn health(mut egui: ResMut<EguiContext>, players: Query<&Health, With<Player
 pub struct HealthWidget {
     pub width: f32,
     pub height: f32,
-    pub health_percentage: f32,
+    pub health: Health,
 }
 
 impl HealthWidget {
@@ -40,7 +34,7 @@ impl HealthWidget {
         Self {
             width: 0.0,
             height: 0.0,
-            health_percentage: 0.0,
+            health: Health::new(0),
         }
     }
 }
@@ -70,11 +64,13 @@ impl Widget for HealthWidget {
                 .rect(outer_rect, Rounding::none(), Color32::RED, Stroke::none());
 
             let mut rect = outer_rect;
-            let width = self.width * self.health_percentage;
+            let width = self.width * self.health.health as f32 / self.health.max_health as f32;
             rect.max.x = width;
 
             ui.painter()
                 .rect(rect, Rounding::none(), Color32::GREEN, Stroke::none());
+
+            ui.label(format!("{}/{}", self.health.health, self.health.max_health));
         }
 
         resp

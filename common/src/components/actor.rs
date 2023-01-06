@@ -1,7 +1,8 @@
 //! Actor components
 
 use std::num::{NonZeroU32, NonZeroU8};
-use std::ops::{Deref, DerefMut};
+use std::ops::{Deref, DerefMut, Mul};
+use std::time::Duration;
 
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
@@ -47,6 +48,14 @@ impl DerefMut for MovementSpeed {
     #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
+    }
+}
+
+impl Mul<Duration> for MovementSpeed {
+    type Output = f32;
+
+    fn mul(self, rhs: Duration) -> Self::Output {
+        self.0 * rhs.as_secs_f32()
     }
 }
 

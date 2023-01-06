@@ -1,4 +1,6 @@
 //! The core game systems.
 
-pub mod world;
+pub mod ai;
 pub mod animation;
+pub mod combat;
+pub mod world;

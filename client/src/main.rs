@@ -14,6 +14,9 @@ mod utils;
 mod window;
 mod world;
 
+use ai::bundles::AiBundle;
+use ai::components::AiController;
+use ai::AiPlugin;
 use base::world::ChunkPlugin;
 use bevy::audio::AudioPlugin;
 use bevy::core_pipeline::CorePipelinePlugin;
@@ -92,6 +95,7 @@ fn main() {
         .add_system_to_stage(CoreStage::Update, prev_transform::update_previous_transform)
         .add_plugin(InteractionsPlugin)
         .add_plugin(base::animation::AnimationPlugin)
+        .add_plugin(AiPlugin)
         .run();
 }
 
@@ -302,6 +306,7 @@ fn setup(
 
     let mut cmd = commands.spawn(ActorBundle::new(&asset_server));
     Human::default().spawn(&asset_server, &mut cmd);
+    cmd.insert(AiBundle::default());
 }
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Component)]
