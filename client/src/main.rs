@@ -26,6 +26,8 @@ use bevy::input::InputPlugin;
 use bevy::log::LogPlugin;
 use bevy::pbr::PbrPlugin;
 use bevy::prelude::*;
+use bevy::render::mesh::Indices;
+use bevy::render::render_resource::PrimitiveTopology;
 use bevy::render::RenderPlugin;
 use bevy::scene::ScenePlugin;
 use bevy::sprite::SpritePlugin;

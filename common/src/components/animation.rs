@@ -1,6 +1,8 @@
 use std::collections::VecDeque;
 
 use bevy_ecs::component::Component;
+use bevy_ecs::entity::Entity;
+use bevy_transform::prelude::Transform;
 
 use crate::id::WeakId;
 
@@ -33,3 +35,20 @@ impl AnimationId {
 
 #[derive(Clone, Debug)]
 pub struct Animation {}
+
+/// A animation skeleton, consisting of multiple connected [`Bone`]s.
+#[derive(Copy, Clone, Debug, Component)]
+pub struct Skeleton {
+    /// The entity that is the root bone of the skeleton.
+    ///
+    /// The root entity must have [`Bone`] component.
+    pub root: Entity,
+}
+
+#[derive(Clone, Debug, Default, Component)]
+pub struct Bone {
+    /// A list of other bones that are attached to the end of this bone.
+    pub children: Box<[Entity]>,
+    /// Offset from the parent.
+    pub offset: Transform,
+}
