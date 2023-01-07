@@ -1,3 +1,9 @@
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
+use super::items::Item;
+use super::objects::Object;
+
 /// ustar only
 const MAGIC_TAR: &[u8] = &[0x75, 0x73, 0x74, 0x61, 0x72, 0x00, 0x30, 0x30];
 
@@ -9,25 +15,12 @@ pub enum FileFormat {
     _7z,
 }
 
-impl FileFormat {}
-
 #[derive(Clone, Debug)]
-pub struct FileHeader {
-    /// The type of data contained in this file.
-    kind: FileKind,
-}
-
-/// The type of items presented in a file.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct FileKind(u16);
-
-impl FileKind {
-    /// The file contains a list of [`Item`]s.
-    ///
-    /// [`Item`]: super::items::Item
-    pub const ITEMS: Self = Self(1);
-    /// The file contains a list of [`Object`]s.
-    ///
-    /// [`Object`]: super::objects::Object
-    pub const OBJECTS: Self = Self(2);
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(tag = "type", content = "content"))]
+pub enum ArchiveFile {
+    #[cfg_attr(feature = "serde", serde(rename = "item"))]
+    Items(Vec<Item>),
+    #[cfg_attr(feature = "serde", serde(rename = "object"))]
+    Objects(Vec<Object>),
 }

@@ -17,10 +17,8 @@
 mod archive;
 mod items;
 mod loader;
+mod module;
 mod objects;
-
-#[cfg(feature = "json")]
-mod json;
 
 use std::collections::HashMap;
 use std::ops::Deref;
@@ -32,23 +30,28 @@ use bevy_ecs::system::Resource;
 use parking_lot::RwLock;
 
 use self::items::Item;
-use self::json::JsonLoader;
+use self::objects::Object;
 use crate::components::items::ItemId;
+use crate::components::object::ObjectId;
 use crate::id::WeakId;
 
 /// The entrypoint of loading external data.
 #[derive(Debug, Resource)]
 pub struct GameArchive {
     items: RwLock<HashMap<ItemId, Arc<Item>>>,
+    objects: RwLock<HashMap<ObjectId, Arc<Object>>>,
     /// The id of the next item.
     item_id: AtomicU32,
+    object_id: AtomicU32,
 }
 
 impl GameArchive {
     pub fn new() -> Self {
         Self {
             items: RwLock::new(HashMap::new()),
+            objects: RwLock::new(HashMap::new()),
             item_id: AtomicU32::new(0),
+            object_id: AtomicU32::new(0),
         }
     }
 
@@ -56,25 +59,30 @@ impl GameArchive {
         self.items().get(id)
     }
 
-    /// Loads an archive.
-    pub fn load<P>(&self, path: P)
-    where
-        P: AsRef<Path>,
-    {
-        tracing::info!("Loading {:?}", path.as_ref());
+    // /// Loads an archive.
+    // pub fn load<P>(&self, path: P)
+    // where
+    //     P: AsRef<Path>,
+    // {
+    //     tracing::info!("Loading {:?}", path.as_ref());
 
-        let items = JsonLoader::new(path.as_ref());
+    //     let items = JsonLoader::new(path.as_ref());
 
-        for item in items {
-            self.items().insert(item);
-        }
+    //     for item in items {
+    //         self.items().insert(item);
+    //     }
 
-        tracing::info!("Loaded {:?}", path.as_ref());
-    }
+    //     tracing::info!("Loaded {:?}", path.as_ref());
+    // }
 
     #[inline]
     pub fn items(&self) -> Items<'_> {
         Items { archive: self }
+    }
+
+    #[inline]
+    pub fn objects(&self) -> Objects<'_> {
+        Objects { archive: self }
     }
 }
 
@@ -111,6 +119,28 @@ impl<'a> Items<'a> {
         let id = self.archive.item_id.fetch_add(1, Ordering::Relaxed);
         assert!(id != u32::MAX);
         ItemId(WeakId(id))
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct Objects<'a> {
+    archive: &'a GameArchive,
+}
+
+impl<'a> Objects<'a> {
+    pub fn insert(&self, object: Object) -> ObjectId {
+        let mut objects = self.archive.objects.write();
+
+        let id = self.id();
+        objects.insert(id, Arc::new(object));
+        id
+    }
+
+    #[inline]
+    fn id(&self) -> ObjectId {
+        let id = self.archive.object_id.fetch_add(1, Ordering::Relaxed);
+        assert!(id != u32::MAX);
+        ObjectId(WeakId(id))
     }
 }
 
