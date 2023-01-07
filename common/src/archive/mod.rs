@@ -16,7 +16,7 @@
 //! [`Object`]: objects::Object
 mod archive;
 mod items;
-mod loader;
+pub mod loader;
 mod module;
 mod objects;
 
@@ -30,6 +30,7 @@ use bevy_ecs::system::Resource;
 use parking_lot::RwLock;
 
 use self::items::Item;
+use self::module::Module;
 use self::objects::Object;
 use crate::components::items::ItemId;
 use crate::components::object::ObjectId;
@@ -128,7 +129,17 @@ pub struct Objects<'a> {
 }
 
 impl<'a> Objects<'a> {
-    pub fn insert(&self, object: Object) -> ObjectId {
+    pub fn insert(&self, mut object: Object, module: &Module) -> ObjectId {
+        if let Some(handle) = &mut object.handle {
+            let base = module.root.to_str().expect("path has non-unicode chars");
+
+            *handle = if handle.ends_with("/") {
+                format!("{}{}", base, handle)
+            } else {
+                format!("{}{}", base, handle)
+            }
+        }
+
         let mut objects = self.archive.objects.write();
 
         let id = self.id();

@@ -1,5 +1,4 @@
 use std::fs::{self, File};
-use std::io;
 use std::path::{Path, PathBuf};
 
 use crate::archive::module::Module;
@@ -42,12 +41,13 @@ impl<'a> DirectoryLoader<'a> {
                 msg: err.to_string(),
             })?;
 
-            if !metadata.is_file() {
-                unimplemented!();
-            }
-
             let path = entry.path();
-            FileLoader::new(self.archive, self.root).load(path)?;
+
+            if metadata.is_dir() {
+                DirectoryLoader::new(self.archive, self.root).load(path)?;
+            } else {
+                FileLoader::new(self.archive, self.root).load(path)?;
+            }
         }
 
         Ok(())

@@ -28,8 +28,13 @@ impl<'a> ModuleLoader<'a> {
         P: AsRef<Path>,
     {
         let path = path.as_ref();
+        tracing::info!("Loading module {:?}", path);
 
-        todo!()
+        let module = Module {
+            root: path.to_owned(),
+        };
+
+        DirectoryLoader::new(self.archive, &module).load(path)
     }
 }
 

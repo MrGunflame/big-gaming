@@ -49,7 +49,7 @@ impl<'a> JsonLoader<'a> {
             }
             ArchiveFile::Objects(objects) => {
                 for object in objects {
-                    self.archive.objects().insert(object);
+                    self.archive.objects().insert(object, self.root);
                 }
             }
         }
