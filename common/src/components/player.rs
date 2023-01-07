@@ -18,5 +18,6 @@ pub struct HostPlayer;
 #[derive(Copy, Clone, Debug, Component)]
 pub enum FocusedEntity {
     Some { entity: Entity, distance: f32 },
+    Container { entity: Entity },
     None,
 }

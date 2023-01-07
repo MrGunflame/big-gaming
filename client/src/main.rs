@@ -38,6 +38,7 @@ use bevy_rapier3d::prelude::*;
 use bevy_rapier3d::render::RapierDebugRenderPlugin;
 use bundles::ObjectBundle;
 use common::actors::human::Human;
+use common::archive::loader::ModuleLoader;
 use common::archive::GameArchive;
 use common::components::interaction::InteractionQueue;
 use common::components::items::{Item, ItemId};
@@ -56,7 +57,9 @@ fn main() {
     // log::Logger::new().init();
 
     let archive = GameArchive::new();
-    archive.load("../core/data/items.json");
+
+    let loader = ModuleLoader::new(&archive);
+    loader.load("../mods/core").unwrap();
 
     App::new()
         .add_plugin(LogPlugin::default())
@@ -117,9 +120,9 @@ fn setup(
         .insert(RigidBody::Fixed)
         .insert(Collider::cuboid(1000.0, 0.1, 1000.0));
 
-    commands.spawn(ObjectBundle::new(&asset_server).at(Vec3::new(5.0, 0.0, 5.0)));
-    commands.spawn(ObjectBundle::new(&asset_server).at(Vec3::new(-5.0, 0.0, -5.0)));
-    commands.spawn(ObjectBundle::new(&asset_server).at(Vec3::new(10.0, 0.0, 5.0)));
+    commands.spawn(ObjectBundle::new(&asset_server).at(Vec3::new(5.0, 0.5, 5.0)));
+    commands.spawn(ObjectBundle::new(&asset_server).at(Vec3::new(-5.0, 0.5, -5.0)));
+    commands.spawn(ObjectBundle::new(&asset_server).at(Vec3::new(10.0, 0.5, 5.0)));
 
     // THE BALL
     // commands
