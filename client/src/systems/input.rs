@@ -178,7 +178,9 @@ pub fn mouse_button_input(
         // Create a new entity at the same position as the player,
         // pointing at the same direction as the player and a positive velocity
         // into the direction of the player.
-        entity.scene.transform = player.looking_at(target, Vec3::Y);
+        let mut origin = *player;
+        origin.translation.y += 1.0;
+        entity.scene.transform = origin.looking_at(target, Vec3::Y);
         entity.scene.transform.translation += camera_rot.movement_vec() * Vec3::splat(5.0);
 
         let dir = target - player.translation;
@@ -221,6 +223,8 @@ pub fn interact_target(
             if input.pressed(KeyCode::F) {
                 queue.push(interactions.iter().nth(0).unwrap(), entity, player);
             }
+        } else {
+            *focused_ent = FocusedEntity::None;
         }
     } else {
         *focused_ent = FocusedEntity::None;
