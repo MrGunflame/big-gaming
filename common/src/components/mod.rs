@@ -9,6 +9,7 @@ pub mod faction;
 pub mod interaction;
 pub mod inventory;
 pub mod items;
+pub mod object;
 pub mod player;
 pub mod properties;
 pub mod transform;
