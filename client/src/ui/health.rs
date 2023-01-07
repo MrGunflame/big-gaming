@@ -50,7 +50,7 @@ impl Widget for HealthWidget {
             },
         };
 
-        let (outer_rect, resp) = ui.allocate_exact_size(
+        let (mut rect, resp) = ui.allocate_exact_size(
             Vec2::new(rect.min.x, rect.min.y),
             Sense {
                 click: false,
@@ -61,11 +61,13 @@ impl Widget for HealthWidget {
 
         if ui.is_rect_visible(resp.rect) {
             ui.painter()
-                .rect(outer_rect, Rounding::none(), Color32::RED, Stroke::none());
+                .rect(rect, Rounding::none(), Color32::RED, Stroke::none());
 
-            let mut rect = outer_rect;
-            let width = self.width * self.health.health as f32 / self.health.max_health as f32;
-            rect.max.x = width;
+            // let mut rect = outer_rect;
+            // let width = self.width * self.health.health as f32 / self.health.max_health as f32;
+            // rect.max.x = width;
+            let factor = self.health.health as f32 / self.health.max_health as f32;
+            rect.max.x = rect.min.x + ((rect.max.x - rect.min.x) * factor);
 
             ui.painter()
                 .rect(rect, Rounding::none(), Color32::GREEN, Stroke::none());
