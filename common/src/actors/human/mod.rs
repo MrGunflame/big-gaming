@@ -95,9 +95,7 @@ impl Human {
                 .insert(Bone {
                     children: vec![].into_boxed_slice(),
                     offset: Transform {
-                        translation: Vec3::new(0.29221, 0.781748, 0.020128)
-                            - (Vec3::new(0.234187, 1.2659, -0.064555)
-                                - Vec3::new(0.001521, 1.22746, -0.020366)),
+                        translation: Vec3::new(0.0, -0.5, 0.0),
                         ..Default::default()
                     },
                 })
@@ -119,8 +117,7 @@ impl Human {
                 .insert(Bone {
                     children: vec![].into_boxed_slice(),
                     offset: Transform {
-                        translation: Vec3::new(-0.282336, 0.780438, 0.022348)
-                            - Vec3::new(0.001521, 1.22746, -0.020366),
+                        translation: Vec3::new(0.0, -0.5, 0.0),
                         ..Default::default()
                     },
                 })
@@ -142,8 +139,7 @@ impl Human {
                 .insert(Bone {
                     children: vec![].into_boxed_slice(),
                     offset: Transform {
-                        translation: Vec3::new(0.124872, 0.087127, 0.092178)
-                            - Vec3::new(0.001521, 1.22746, -0.020366),
+                        translation: Vec3::new(0.0, -0.4, 0.0),
                         ..Default::default()
                     },
                 })
@@ -165,8 +161,7 @@ impl Human {
                 .insert(Bone {
                     children: vec![].into_boxed_slice(),
                     offset: Transform {
-                        translation: Vec3::new(-0.125781, 0.071524, 0.094625)
-                            - Vec3::new(0.001521, 1.22746, -0.020366),
+                        translation: Vec3::new(0.0, -0.4, 0.0),
                         ..Default::default()
                     },
                 })
