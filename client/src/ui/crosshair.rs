@@ -20,7 +20,10 @@ pub fn crosshair(
         .order(Order::Background);
 
     match focus {
-        FocusedEntity::Some { entity, distance } => {
+        FocusedEntity::Some {
+            entity: _,
+            distance: _,
+        } => {
             area.show(egui.ctx_mut(), |ui| {
                 ui.add(ItemCrosshair {
                     radius: 24.0,
@@ -33,6 +36,7 @@ pub fn crosshair(
                 ui.add(CrosshairWidget {});
             });
         }
+        _ => (),
     }
 }
 
