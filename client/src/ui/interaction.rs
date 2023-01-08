@@ -3,7 +3,8 @@
 use bevy::ecs::world::EntityRef;
 use bevy::prelude::With;
 use bevy_egui::egui::{
-    Align2, Area, Color32, Context, FontFamily, FontId, Pos2, Response, Sense, Ui, Vec2, Widget,
+    Align, Align2, Area, Color32, Context, FontFamily, FontId, Layout, Pos2, Rect, Response,
+    RichText, Sense, Ui, Vec2, Widget,
 };
 use common::components::entity::EntityName;
 use common::components::interaction::Interactions;
@@ -60,13 +61,20 @@ impl<'a> InteractionBox<'a> {
     }
 
     fn show(&self, ui: &mut Ui) {
+        let rect = Rect {
+            min: Pos2::new(500.0, 100.0),
+            max: Pos2::new(1000.0, 200.0),
+        };
+
+        let mut child = ui.child_ui(rect, Layout::right_to_left(Align::LEFT));
+
         if let Some(name) = self.name {
-            ui.label(name);
+            child.label(RichText::new(name).color(Color32::RED).size(20.0));
         }
 
         for interaction in self.interactions.iter() {
             if let Some(text) = &interaction.text {
-                ui.label(text);
+                child.label(RichText::new(text).color(Color32::RED).size(20.0));
             }
         }
     }

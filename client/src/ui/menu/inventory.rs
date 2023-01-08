@@ -8,7 +8,7 @@ use common::components::inventory::Inventory;
 use common::components::items::ItemStack;
 
 use crate::entities::player::PlayerCharacter;
-use crate::ui::widgets::UiExt;
+use crate::ui::widgets::{Banner, UiExt};
 use crate::ui::Interface;
 
 const CATEGORIES: &[&'static str] = &["Weapons", "Armor", "Utility", "Scrap", "Ammo", "Other"];
@@ -120,7 +120,11 @@ impl<'a> Widget for Category<'a> {
         // );
 
         // if ui.is_rect_visible(resp.rect) {
-        ui.label(self.title);
+        // ui.label(self.title);
+        ui.add(Banner {
+            label: self.title,
+            height: 32.0,
+        });
 
         // let mut ui = ui.child_ui(
         //     Rect {
