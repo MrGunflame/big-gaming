@@ -1,8 +1,8 @@
 use bevy::prelude::{Commands, Entity, Query, ResMut, With};
 use bevy_egui::egui::{Area, Context, Order, Pos2};
 use bevy_egui::EguiContext;
+use common::components::actor::ActorState;
 
-use crate::components::ActorState;
 use crate::entities::player::PlayerCharacter;
 use crate::plugins::respawn::Respawn;
 use crate::ui::widgets::UiExt;

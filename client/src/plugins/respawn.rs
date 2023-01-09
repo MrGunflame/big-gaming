@@ -1,7 +1,6 @@
 use bevy::prelude::{Commands, Component, Entity, Plugin, Query, Transform, Vec3};
+use common::components::actor::ActorState;
 use common::components::combat::Health;
-
-use crate::components::ActorState;
 
 pub struct RespawnPlugin;
 
@@ -48,7 +47,7 @@ fn respawn(
         }
 
         *health = Health::new(50);
-        *state = ActorState::NORMAL;
+        *state = ActorState::DEFAULT;
         commands.entity(entity).remove::<Respawn>();
     }
 }

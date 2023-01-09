@@ -1,6 +1,6 @@
 use std::mem::MaybeUninit;
 
-use bevy::prelude::{EventReader, EventWriter, KeyCode, Query, Res, ResMut};
+use bevy::prelude::{KeyCode, Query, Res, ResMut};
 use bevy::window::Windows;
 
 use crate::plugins::hotkeys::{Event, EventId, HotkeyStore, TriggerKind};
@@ -10,7 +10,7 @@ use super::debug::Debug;
 use super::menu::console::Console;
 use super::menu::gamemenu::GameMenu;
 use super::menu::inventory::InventoryMenu;
-use super::{Focus, InterfaceState};
+use super::{Focus, FocusKind, InterfaceState};
 
 const DEFAULT_TRIGGER_GAMEMENU: KeyCode = KeyCode::Escape;
 const DEFAULT_TRIGGER_DEBUGMENU: KeyCode = KeyCode::F3;
@@ -64,7 +64,7 @@ pub(super) fn register_events(mut hotkeys: ResMut<HotkeyStore>) {
 pub(super) fn handle_events(
     hotkeys: Res<HotkeyStore>,
     mut state: ResMut<InterfaceState>,
-    mut focus: EventWriter<Focus>,
+    mut players: Query<&mut Focus>,
 ) {
     let events = unsafe { EVENTS.assume_init_ref() };
 
@@ -96,30 +96,31 @@ pub(super) fn handle_events(
         }
     }
 
+    let mut focus = players.single_mut();
     if previous != state.is_empty() {
         if state.is_empty() {
-            focus.send(Focus::World);
+            *focus = Focus {
+                kind: FocusKind::World,
+                changed: true,
+            };
         } else {
-            focus.send(Focus::Interface);
+            *focus = Focus {
+                kind: FocusKind::Interface,
+                changed: true,
+            };
         }
     }
 }
 
 /// Toggle [`Focus`].
-pub(super) fn toggle_focus(
-    mut windows: ResMut<Windows>,
-    mut players: Query<&mut Focus>,
-    mut events: EventReader<Focus>,
-) {
+pub(super) fn toggle_focus(mut windows: ResMut<Windows>, mut players: Query<&mut Focus>) {
     let window = windows.primary_mut();
     let mut focus = players.single_mut();
 
-    for event in events.iter() {
-        *focus = *event;
-
-        match event {
-            Focus::World => Cursor::lock(window),
-            Focus::Interface => Cursor::unlock(window),
+    if focus.changed {
+        match focus.kind {
+            FocusKind::World => Cursor::lock(window),
+            FocusKind::Interface => Cursor::unlock(window),
         }
     }
 }

@@ -4,7 +4,11 @@ use bevy::{
 };
 use common::components::player::FocusedEntity;
 
-use crate::{components::Rotation, plugins::respawn::RespawnPoint, ui::Focus};
+use crate::{
+    components::Rotation,
+    plugins::respawn::RespawnPoint,
+    ui::{Focus, FocusKind},
+};
 
 use super::actor::ActorBundle;
 
@@ -27,7 +31,10 @@ impl PlayerCharacterBundle {
         Self {
             player_character: PlayerCharacter,
             actor: ActorBundle::new(assets),
-            focus: Focus::World,
+            focus: Focus {
+                kind: FocusKind::World,
+                changed: false,
+            },
             respawn_point: RespawnPoint(Vec3::new(0.0, 0.0, 0.0)),
             focused_entity: FocusedEntity::None,
         }

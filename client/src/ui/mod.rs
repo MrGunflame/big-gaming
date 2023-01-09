@@ -30,7 +30,13 @@ impl Stage for UiStage {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Component)]
-pub enum Focus {
+pub struct Focus {
+    pub kind: FocusKind,
+    pub changed: bool,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum FocusKind {
     /// The focus is on the game world.
     World,
     /// The focus is on an interface.
@@ -47,7 +53,6 @@ impl Plugin for UiPlugin {
 
         app.add_plugin(EguiPlugin)
             .insert_resource(state)
-            .add_event::<Focus>()
             .add_startup_system(events::register_events)
             .add_system(events::handle_events)
             .add_system(events::toggle_focus)

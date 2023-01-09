@@ -34,14 +34,6 @@ pub struct Interactable {
 pub struct Actor;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Component)]
-pub struct ActorState(NonZeroU32);
-
-impl ActorState {
-    pub const NORMAL: Self = Self(NonZeroU32::new(1).unwrap());
-    pub const DEAD: Self = Self(NonZeroU32::new(2).unwrap());
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Component)]
 pub struct Player;
 
 #[derive(Copy, Clone, Debug, PartialEq, Component)]

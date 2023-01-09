@@ -7,11 +7,11 @@ use bevy::prelude::{
 };
 use bevy::time::Time;
 use bevy_rapier3d::prelude::{Collider, QueryFilter, RapierContext, Velocity};
-use common::components::actor::MovementSpeed;
+use common::components::actor::{ActorState, MovementSpeed};
 
-use crate::components::{ActorState, Rotation};
+use crate::components::Rotation;
 use crate::entities::player::PlayerCharacter;
-use crate::ui::Focus;
+use crate::ui::{Focus, FocusKind};
 use crate::utils::{Degrees, Radians};
 
 use super::hotkeys::{Event, EventId, HotkeyStore};
@@ -107,7 +107,7 @@ fn movement_events(
     let (entity, mut transform, rotation, mut velocity, speed, state, focus) = players.single_mut();
 
     // Only process movement events while the actor in the default state.
-    if *state != ActorState::NORMAL || *focus != Focus::World {
+    if *state != ActorState::DEFAULT || focus.kind != FocusKind::World {
         return;
     }
 
@@ -159,7 +159,7 @@ fn mouse_movement(
     let mut camera_rot = cameras.single_mut();
     let (mut player_rot, state, focus) = players.single_mut();
 
-    if *state != ActorState::NORMAL || *focus != Focus::World {
+    if *state != ActorState::DEFAULT || focus.kind != FocusKind::World {
         return;
     }
 

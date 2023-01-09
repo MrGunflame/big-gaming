@@ -14,11 +14,11 @@ impl ObjectBundle {
     pub fn new(assets: &AssetServer) -> Self {
         Self {
             rigid_body: RigidBody::Fixed,
-            collider: Collider::cuboid(1.0, 5.0, 5.0),
+            collider: Collider::cuboid(0.05, 0.5, 0.5),
             scene: SceneBundle {
-                scene: assets.load("bigwall.glb#Scene0"),
+                scene: assets.load("wall.glb#Scene0"),
                 transform: Transform {
-                    translation: Vec3::new(5.0, 0.0, 5.0),
+                    translation: Vec3::new(0.0, 0.0, 0.0),
                     ..Default::default()
                 },
                 ..Default::default()

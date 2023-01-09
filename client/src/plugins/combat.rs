@@ -1,9 +1,10 @@
 use bevy::prelude::{Bundle, Entity, EventWriter, Plugin, Query, Res, Transform, With};
 use bevy_rapier3d::prelude::{RapierContext, Velocity};
+use common::components::actor::ActorState;
 use common::components::animation::{AnimationId, AnimationQueue};
 use common::components::combat::{Damage, Health, IncomingDamage, Resistances};
 
-use crate::components::{Actor, ActorState};
+use crate::components::Actor;
 use crate::ui::Focus;
 
 #[derive(Copy, Clone, Debug)]
@@ -25,7 +26,6 @@ fn apply_incoming_damage(
         &mut ActorState,
         Option<&mut AnimationQueue>,
     )>,
-    mut focus: EventWriter<Focus>,
 ) {
     for (mut inc, mut health, resistances, mut state, mut queue) in &mut entities {
         while let Some(damage) = inc.pop() {
@@ -33,7 +33,6 @@ fn apply_incoming_damage(
 
             if health.is_zero() {
                 *state = ActorState::DEAD;
-                focus.send(Focus::Interface);
                 inc.clear();
 
                 if let Some(queue) = &mut queue {

@@ -6,13 +6,13 @@ use bevy_rapier3d::prelude::{
     AdditionalMassProperties, AsyncCollider, Ccd, CharacterAutostep, CharacterLength, Collider,
     KinematicCharacterController, LockedAxes, RigidBody, Velocity,
 };
-use common::components::actor::{Actor, MovementSpeed};
+use common::components::actor::{Actor, ActorState, MovementSpeed};
 use common::components::animation::AnimationQueue;
 use common::components::inventory::{Equipment, EquipmentSlot, Inventory};
 use common::components::items::{Item, ItemId};
 
 use crate::bundles::VisibilityBundle;
-use crate::components::{ActorState, Rotation};
+use crate::components::Rotation;
 use crate::plugins::combat::CombatBundle;
 
 #[derive(Bundle)]
@@ -81,7 +81,7 @@ impl ActorBundle {
             // mass: AdditionalMassProperties::Mass(100.0),
             actor: Actor,
             combat: CombatBundle::new(),
-            actor_state: ActorState::NORMAL,
+            actor_state: ActorState::DEFAULT,
             movement_speed: MovementSpeed(3.0),
             character_controller: KinematicCharacterController {
                 offset: CharacterLength::Absolute(0.01),

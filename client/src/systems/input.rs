@@ -10,7 +10,7 @@ use crate::components::Rotation;
 use crate::entities::actor::ActorFigure;
 use crate::entities::player::PlayerCharacter;
 use crate::entities::projectile::{Projectile, ProjectileBundle};
-use crate::ui::Focus;
+use crate::ui::{Focus, FocusKind};
 
 // pub fn keyboard_input(
 //     rapier_ctx: Res<RapierContext>,
@@ -121,7 +121,7 @@ pub fn mouse_button_input(
     let (player, mut equipment, figure, focus) = players.single_mut();
     let camera_rot = cameras.single();
 
-    if *focus != Focus::World {
+    if focus.kind != FocusKind::World {
         return;
     }
 
