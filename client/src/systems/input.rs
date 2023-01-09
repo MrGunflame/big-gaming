@@ -190,9 +190,12 @@ pub fn mouse_button_input(
     }
 }
 
-pub fn transform_system(mut entities: Query<(&Rotation, &mut Transform)>) {
-    for (rotation, mut transform) in entities.iter_mut() {
-        transform.rotation = rotation.to_quat();
+pub fn transform_system(mut entities: Query<(&mut Rotation, &mut Transform)>) {
+    for (mut rotation, mut transform) in entities.iter_mut() {
+        if rotation.modified {
+            transform.rotation = rotation.to_quat();
+            rotation.modified = false;
+        }
     }
 }
 

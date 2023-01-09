@@ -40,6 +40,7 @@ pub struct Player;
 pub struct Rotation {
     yaw: f32,
     pitch: f32,
+    pub modified: bool,
 }
 
 impl Rotation {
@@ -47,6 +48,7 @@ impl Rotation {
         Self {
             yaw: 0.0,
             pitch: 0.0,
+            modified: true,
         }
     }
 
@@ -63,6 +65,7 @@ impl Rotation {
         T: Into<Radians>,
     {
         self.yaw = yaw.into().to_f32();
+        self.modified = true;
         self
     }
 
@@ -71,6 +74,7 @@ impl Rotation {
         T: Into<Radians>,
     {
         self.pitch = pitch.into().to_f32();
+        self.modified = true;
         self
     }
 
@@ -79,6 +83,7 @@ impl Rotation {
         T: Into<Radians>,
     {
         self.yaw += yaw.into().to_f32();
+        self.modified = true;
         self
     }
 
