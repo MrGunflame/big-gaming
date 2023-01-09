@@ -2,9 +2,12 @@ use bevy::prelude::{App, Query, Transform, With};
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use common::components::actor::Actor;
+use common::components::combat::Resistances;
+use common::components::inventory::{Equipment, EquipmentSlot};
+use common::components::items::Item;
 
 pub(super) fn senses(app: &mut App) {
-    app.add_system(vision_sense);
+    app.add_system(vision_sense).add_system(equipment_sense);
 }
 
 #[derive(Clone, Debug, Default, Component)]
@@ -13,11 +16,18 @@ pub struct Vision {
 }
 
 impl Vision {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             entities: Vec::new(),
         }
     }
+}
+
+/// Equipment of the AI host.
+#[derive(Clone, Debug, Default, Component)]
+pub struct HostEquipment {
+    pub resistances: Resistances,
+    pub weapons: Vec<Item>,
 }
 
 fn vision_sense(
@@ -38,6 +48,28 @@ fn vision_sense(
             if distance.length() < 10.0 {
                 vision.entities.push(*actor_transform);
             }
+        }
+    }
+}
+
+fn equipment_sense(mut hosts: Query<(&Equipment, &mut HostEquipment)>) {
+    for (equipment, mut host_equipment) in &mut hosts {
+        let mut resistances = Resistances::new();
+        let weapons = equipment
+            .get(EquipmentSlot::MAIN_HAND)
+            .map(|item| vec![item.clone()])
+            .unwrap_or_default();
+
+        for item in equipment {
+            // Collect all resistances from all equipped items.
+            if let Some(res) = &item.resistances {
+                resistances += res;
+            }
+        }
+
+        *host_equipment = HostEquipment {
+            resistances,
+            weapons,
         }
     }
 }

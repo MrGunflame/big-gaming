@@ -1,6 +1,7 @@
 use std::borrow::Borrow;
 use std::collections::{HashMap, VecDeque};
 use std::fmt::{self, Display, Formatter};
+use std::iter::FusedIterator;
 use std::ops::{Add, AddAssign, Sub, SubAssign};
 
 use bevy_ecs::component::Component;
@@ -188,16 +189,30 @@ impl Resistances {
         self.classes.get_mut(class.borrow())
     }
 
-    pub fn add<T>(&mut self, class: T, value: u32) -> Option<Resistance>
+    pub fn add<T>(&mut self, class: T, value: Resistance) -> Resistance
     where
         T: Borrow<ResistanceId>,
     {
-        let res = self.get_mut(class)?;
-        *res += value;
-        Some(*res)
+        match self.get_mut(class.borrow()) {
+            Some(res) => {
+                *res += value;
+                *res
+            }
+            None => {
+                self.set(class, value);
+                value
+            }
+        }
     }
 
-    pub fn sub<T>(&mut self, class: T, value: u32) -> Option<Resistance>
+    pub fn set<T>(&mut self, class: T, value: Resistance)
+    where
+        T: Borrow<ResistanceId>,
+    {
+        self.classes.insert(*class.borrow(), value);
+    }
+
+    pub fn sub<T>(&mut self, class: T, value: Resistance) -> Option<Resistance>
     where
         T: Borrow<ResistanceId>,
     {
@@ -205,7 +220,86 @@ impl Resistances {
         *res -= value;
         Some(*res)
     }
+
+    #[inline]
+    pub fn iter(&self) -> Iter<'_> {
+        Iter {
+            iter: self.classes.iter(),
+        }
+    }
 }
+
+impl Add for Resistances {
+    type Output = Self;
+
+    fn add(mut self, rhs: Self) -> Self::Output {
+        self += rhs;
+        self
+    }
+}
+
+impl<'a> Add<&'a Self> for Resistances {
+    type Output = Self;
+
+    fn add(mut self, rhs: &'a Self) -> Self::Output {
+        self += rhs;
+        self
+    }
+}
+
+impl AddAssign for Resistances {
+    fn add_assign(&mut self, rhs: Self) {
+        for (class, value) in &rhs {
+            self.add(class, value);
+        }
+    }
+}
+
+impl<'a> AddAssign<&'a Self> for Resistances {
+    fn add_assign(&mut self, rhs: &'a Self) {
+        for (class, value) in rhs {
+            self.add(class, value);
+        }
+    }
+}
+
+impl<'a> IntoIterator for &'a Resistances {
+    type Item = (ResistanceId, Resistance);
+    type IntoIter = Iter<'a>;
+
+    #[inline]
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Iter<'a> {
+    iter: std::collections::hash_map::Iter<'a, ResistanceId, Resistance>,
+}
+
+impl<'a> Iterator for Iter<'a> {
+    type Item = (ResistanceId, Resistance);
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next().map(|(a, b)| (*a, *b))
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.iter.size_hint()
+    }
+}
+
+impl<'a> ExactSizeIterator for Iter<'a> {
+    #[inline]
+    fn len(&self) -> usize {
+        self.iter.len()
+    }
+}
+
+impl<'a> FusedIterator for Iter<'a> {}
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
@@ -233,34 +327,34 @@ impl Resistance {
     }
 }
 
-impl Add<u32> for Resistance {
+impl Add for Resistance {
     type Output = Self;
 
     #[inline]
-    fn add(self, rhs: u32) -> Self::Output {
-        Self(self.0.saturating_add(rhs))
+    fn add(self, rhs: Self) -> Self::Output {
+        Self(self.0.saturating_add(rhs.0))
     }
 }
 
-impl AddAssign<u32> for Resistance {
+impl AddAssign for Resistance {
     #[inline]
-    fn add_assign(&mut self, rhs: u32) {
+    fn add_assign(&mut self, rhs: Self) {
         *self = *self + rhs;
     }
 }
 
-impl Sub<u32> for Resistance {
+impl Sub for Resistance {
     type Output = Self;
 
     #[inline]
-    fn sub(self, rhs: u32) -> Self::Output {
-        Self(self.0.saturating_sub(rhs))
+    fn sub(self, rhs: Self) -> Self::Output {
+        Self(self.0.saturating_sub(rhs.0))
     }
 }
 
-impl SubAssign<u32> for Resistance {
+impl SubAssign for Resistance {
     #[inline]
-    fn sub_assign(&mut self, rhs: u32) {
+    fn sub_assign(&mut self, rhs: Self) {
         *self = *self - rhs;
     }
 }

@@ -12,4 +12,34 @@ pub struct AiController;
 /// weapon = higher threat on long range, melee = very low threat on high range)
 /// - Distance (lower range = higher threat generally)
 #[derive(Copy, Clone, Debug, PartialEq, PartialOrd, Component)]
+#[repr(transparent)]
 pub struct Threat(pub f32);
+
+/// The perception factor of an AI actor.
+///
+/// The perception of an actor describes how good an actors senses are.
+///
+/// The percention is modified by several factors:
+/// - Light/Darkness
+/// - Weather effects (e.g. mist)
+#[derive(Copy, Clone, Debug, PartialEq, PartialOrd, Component)]
+#[repr(transparent)]
+pub struct Perception(pub f32);
+
+impl Default for Perception {
+    #[inline]
+    fn default() -> Self {
+        Self(1.0)
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, PartialOrd, Component)]
+#[repr(transparent)]
+pub struct Accuracy(pub f32);
+
+impl Default for Accuracy {
+    #[inline]
+    fn default() -> Self {
+        Self(1.0)
+    }
+}

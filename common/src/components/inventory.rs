@@ -273,6 +273,23 @@ impl Equipment {
     pub fn insert(&mut self, slot: EquipmentSlot, item: Item) -> Option<Item> {
         self.slots.insert(slot, item)
     }
+
+    #[inline]
+    pub fn iter(&self) -> EquipmentIter<'_> {
+        EquipmentIter {
+            iter: self.slots.iter(),
+        }
+    }
+}
+
+impl<'a> IntoIterator for &'a Equipment {
+    type Item = &'a Item;
+    type IntoIter = EquipmentIter<'a>;
+
+    #[inline]
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
 }
 
 impl Default for Equipment {
@@ -281,6 +298,33 @@ impl Default for Equipment {
         Self::new()
     }
 }
+
+pub struct EquipmentIter<'a> {
+    iter: std::collections::hash_map::Iter<'a, EquipmentSlot, Item>,
+}
+
+impl<'a> Iterator for EquipmentIter<'a> {
+    type Item = &'a Item;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next().map(|(_, v)| v)
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.iter.size_hint()
+    }
+}
+
+impl<'a> ExactSizeIterator for EquipmentIter<'a> {
+    #[inline]
+    fn len(&self) -> usize {
+        self.iter.len()
+    }
+}
+
+impl<'a> FusedIterator for EquipmentIter<'a> {}
 
 #[derive(Clone, Debug)]
 pub struct Iter<'a> {
