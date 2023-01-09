@@ -113,14 +113,22 @@ pub(super) fn handle_events(
 }
 
 /// Toggle [`Focus`].
-pub(super) fn toggle_focus(mut windows: ResMut<Windows>, mut players: Query<&mut Focus>) {
+pub(super) fn toggle_focus(
+    mut windows: ResMut<Windows>,
+    mut cursor: ResMut<Cursor>,
+    mut players: Query<&mut Focus>,
+) {
     let window = windows.primary_mut();
     let mut focus = players.single_mut();
 
     if focus.changed {
         match focus.kind {
-            FocusKind::World => Cursor::lock(window),
-            FocusKind::Interface => Cursor::unlock(window),
+            FocusKind::World => cursor.lock(window),
+            FocusKind::Interface => cursor.unlock(window),
         }
+
+        focus.changed = false;
     }
+
+    cursor.reset(window);
 }

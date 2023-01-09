@@ -17,6 +17,7 @@ use bevy::prelude::{Component, Plugin, Resource, World};
 use bevy_egui::egui::{Context, Sense};
 use bevy_egui::{EguiContext, EguiPlugin};
 
+use self::cursor::Cursor;
 use self::interaction::Interaction;
 
 pub struct UiStage;
@@ -53,6 +54,7 @@ impl Plugin for UiPlugin {
 
         app.add_plugin(EguiPlugin)
             .insert_resource(state)
+            .insert_resource(Cursor::new())
             .add_startup_system(events::register_events)
             .add_system(events::handle_events)
             .add_system(events::toggle_focus)
