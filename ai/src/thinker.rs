@@ -1,4 +1,4 @@
-use bevy::prelude::{App, Commands, Quat, Query, Transform, Vec3};
+use bevy::prelude::{App, Commands, Query, Transform, Vec3};
 use bevy_ecs::entity::Entity;
 
 use crate::actions::Rotate;
@@ -8,14 +8,23 @@ pub(super) fn thinkers(app: &mut App) {
     app.add_system(think);
 }
 
-fn think(mut commands: Commands, hosts: Query<(Entity, &Vision)>) {
-    for (entity, vision) in &hosts {
+fn think(mut commands: Commands, hosts: Query<(Entity, &Transform, &Vision)>) {
+    for (entity, transform, vision) in &hosts {
         let Some(target) = vision.entities.first() else {
             continue;
         };
 
+        // If both source and target rotations are equal, only bad things will happen (NaNs).
+        // This is essentially unreachable for normal gameplay purposes (as actors can
+        // cannot stack).
+        if transform.rotation == target.rotation {
+            continue;
+        }
+
+        let new = transform.looking_at(target.translation, Vec3::Y);
+
         commands.entity(entity).insert(Rotate {
-            rotation: target.rotation,
+            target: new.rotation,
         });
     }
 }
