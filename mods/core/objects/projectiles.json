@@ -1,0 +1,17 @@
+{
+    "type": "object",
+    "content": [
+        {
+            "id": 64,
+            "name": "projectile: 5.56",
+            "handle": "/assets/projectiles/5.56.glb#Scene0",
+            "collider": {
+                "cuboid": [
+                    0.1,
+                    0.1,
+                    0.1
+                ]
+            }
+        }
+    ]
+}

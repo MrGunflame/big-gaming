@@ -11,6 +11,7 @@ pub mod inventory;
 pub mod items;
 pub mod object;
 pub mod player;
+pub mod projectile;
 pub mod properties;
 pub mod transform;
 pub mod weapon;

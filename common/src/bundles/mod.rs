@@ -2,6 +2,8 @@
 
 mod actor;
 mod combat;
+mod physics;
+mod projectile;
 mod transform;
 mod visibility;
 

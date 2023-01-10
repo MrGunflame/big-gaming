@@ -18,6 +18,7 @@ use ai::bundles::AiBundle;
 use ai::components::AiController;
 use ai::AiPlugin;
 use base::combat::CombatPlugin;
+use base::projectile::ProjectilePlugin;
 use base::world::ChunkPlugin;
 use bevy::audio::AudioPlugin;
 use bevy::core_pipeline::CorePipelinePlugin;
@@ -50,7 +51,7 @@ use entities::item::ItemBundle;
 use entities::player::{PlayerCameraBundle, PlayerCharacterBundle};
 use plugins::interactions::InteractionsPlugin;
 use plugins::respawn::RespawnPlugin;
-use plugins::{CameraPlugin, HotkeyPlugin, MovementPlugin, ProjectilePlugin};
+use plugins::{CameraPlugin, HotkeyPlugin, MovementPlugin};
 use ui::UiPlugin;
 
 fn main() {
