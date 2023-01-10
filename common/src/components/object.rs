@@ -16,8 +16,7 @@ pub struct ObjectId(pub WeakId<u32>);
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Component)]
 pub struct Object;
 
-#[derive(Clone, Debug, Component)]
+#[derive(Clone, Default, Debug, Component)]
 pub struct ObjectChildren {
-    pub object: Entity,
     pub children: Vec<Entity>,
 }

@@ -1,6 +1,7 @@
 use bevy::prelude::{AssetServer, Bundle, Transform, Vec3};
 use bevy::scene::SceneBundle;
 use bevy_rapier3d::prelude::{Collider, RigidBody};
+use common::components::object::ObjectChildren;
 
 #[derive(Bundle)]
 pub struct ObjectBundle {
@@ -8,6 +9,7 @@ pub struct ObjectBundle {
     pub collider: Collider,
     #[bundle]
     pub scene: SceneBundle,
+    pub children: ObjectChildren,
 }
 
 impl ObjectBundle {
@@ -23,6 +25,7 @@ impl ObjectBundle {
                 },
                 ..Default::default()
             },
+            children: ObjectChildren::default(),
         }
     }
 

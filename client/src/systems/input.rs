@@ -2,14 +2,14 @@ use bevy::prelude::*;
 use bevy_rapier3d::prelude::{QueryFilter, RapierContext};
 use common::components::combat::Damage;
 use common::components::interaction::{InteractionQueue, Interactions};
-use common::components::inventory::{Equipment, EquipmentSlot, Inventory};
-use common::components::items::Item;
+use common::components::inventory::{Equipment, EquipmentSlot};
 use common::components::player::FocusedEntity;
+use common::components::projectile::Projectile;
 
 use crate::components::Rotation;
 use crate::entities::actor::ActorFigure;
 use crate::entities::player::PlayerCharacter;
-use crate::entities::projectile::{Projectile, ProjectileBundle};
+use crate::entities::projectile::ProjectileBundle;
 use crate::ui::{Focus, FocusKind};
 
 // pub fn keyboard_input(

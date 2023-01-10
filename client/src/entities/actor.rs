@@ -57,7 +57,7 @@ impl ActorBundle {
                 components: None,
                 magazine: Some(31),
                 mass: Default::default(),
-                ammo: None,
+                ammo: Some(ItemId(64.into())),
             },
         );
 

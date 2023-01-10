@@ -4,10 +4,7 @@ use bevy::prelude::{
 };
 use bevy::scene::{Scene, SceneBundle};
 use bevy_rapier3d::prelude::{AdditionalMassProperties, Ccd, Collider, RigidBody, Velocity};
-
-/// A marker component for damage-carrying projectile.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Component)]
-pub struct Projectile;
+use common::components::projectile::Projectile;
 
 #[derive(Bundle)]
 pub struct ProjectileBundle {

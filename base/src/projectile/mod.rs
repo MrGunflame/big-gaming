@@ -22,12 +22,13 @@ fn projectile_collision(
     mut projectiles: Query<(Entity, &Transform, Option<&Damage>), With<Projectile>>,
     limbs: Query<&ActorLimb>,
     mut actors: Query<&mut IncomingDamage, With<Actor>>,
-    mut objects: Query<&mut ObjectChildren>,
+    mut objects: Query<(&Transform, &mut ObjectChildren)>,
     assets: Res<AssetServer>,
 ) {
     for (entity, transform, damage) in &mut projectiles {
         // If a projectile collides with multiple entities we apply the
         // damage to all entities.
+        let mut despawn = false;
         for contact_pair in rapier.contacts_with(entity) {
             let target = if contact_pair.collider1() == entity {
                 contact_pair.collider2()
@@ -41,21 +42,27 @@ fn projectile_collision(
                         .get_mut(limb.actor)
                         .expect("actor without IncomingDamage")
                         .push(*damage);
-                } else if let Ok(mut children) = objects.get_mut(entity) {
-                    let id = commands
-                        .spawn(SceneBundle {
-                            scene: assets.load("impact.glb#Scene0"),
-                            transform: *transform,
-                            ..Default::default()
-                        })
-                        .id();
-
-                    children.children.push(id);
                 }
             }
+
+            if let Ok((object, mut children)) = objects.get_mut(target) {
+                let id = commands
+                    .spawn(SceneBundle {
+                        scene: assets.load("impact.glb#Scene0"),
+                        transform: transform.with_rotation(object.rotation),
+                        ..Default::default()
+                    })
+                    .id();
+
+                children.children.push(id);
+            }
+
+            despawn = true;
         }
 
         // Despawn the projectile.
-        commands.entity(entity).despawn_recursive();
+        if despawn {
+            commands.entity(entity).despawn_recursive();
+        }
     }
 }
