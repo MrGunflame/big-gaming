@@ -1,9 +1,14 @@
 mod events;
 
-use bevy::prelude::{EulerRot, Mat3, Plugin, Query, Res, Transform, Vec3, With, Without};
+use std::f32::consts::PI;
+
+use bevy::prelude::{
+    IntoSystemDescriptor, Mat3, Plugin, Query, Res, Transform, Vec3, With, Without,
+};
+use bevy::time::Time;
+use common::components::movement::Movement;
 
 use crate::components::settings::CameraSettings;
-use crate::components::Rotation;
 use crate::entities::actor::ActorFigure;
 use crate::entities::player::{CameraPosition, PlayerCharacter};
 
@@ -19,6 +24,7 @@ impl Plugin for CameraPlugin {
             .add_system(crate::systems::input::mouse_button_input)
             .add_system(crate::systems::input::interact_target)
             .add_system(synchronize_player_camera)
+            .add_system(head_bumping.after(synchronize_player_camera))
             .add_system(toggle_camera_position)
             .add_system(adjust_camera_distance);
     }
@@ -49,4 +55,32 @@ fn synchronize_player_camera(
                     );
         }
     }
+}
+
+/// Apply a periodic head bumping effect while the player is moving.
+fn head_bumping(
+    time: Res<Time>,
+    settings: Res<CameraSettings>,
+    players: Query<(&Transform, &Movement), With<PlayerCharacter>>,
+    mut cameras: Query<(&mut Transform, &CameraPosition), Without<PlayerCharacter>>,
+) {
+    // Only apply head bumping when the player is moving.
+    let Ok((player, movement)) = players.get_single() else {
+        return;
+    };
+
+    let (mut camera, position) = cameras.single_mut();
+
+    if position.is_third() {
+        return;
+    }
+
+    // Relative distance between current and next frame.
+    let distance = player.translation.distance(movement.desination).abs();
+
+    // F
+    let sc = time.elapsed_seconds() * PI * 2.0 * distance;
+    let offset = sc.sin() * 0.1 * settings.head_bumping;
+
+    camera.translation += Vec3::new(0.0, offset, 0.0);
 }

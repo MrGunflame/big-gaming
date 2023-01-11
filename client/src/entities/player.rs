@@ -70,3 +70,15 @@ pub enum CameraPosition {
         distance: f32,
     },
 }
+
+impl CameraPosition {
+    #[inline]
+    pub const fn is_first(self) -> bool {
+        matches!(self, Self::FirstPerson)
+    }
+
+    #[inline]
+    pub const fn is_third(self) -> bool {
+        matches!(self, Self::ThirdPerson { distance: _ })
+    }
+}
