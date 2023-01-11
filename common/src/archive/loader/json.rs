@@ -52,6 +52,9 @@ impl<'a> JsonLoader<'a> {
                     self.archive.objects().insert(object, self.root);
                 }
             }
+            ArchiveFile::Components(components) => {
+                unimplemented!()
+            }
         }
 
         Ok(())

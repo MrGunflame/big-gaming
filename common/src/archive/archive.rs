@@ -1,6 +1,7 @@
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
+use super::component::Component;
 use super::items::Item;
 use super::objects::Object;
 
@@ -23,4 +24,6 @@ pub enum ArchiveFile {
     Items(Vec<Item>),
     #[cfg_attr(feature = "serde", serde(rename = "object"))]
     Objects(Vec<Object>),
+    #[cfg_attr(feature = "serde", serde(rename = "component"))]
+    Components(Vec<Component>),
 }

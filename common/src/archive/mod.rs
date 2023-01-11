@@ -15,6 +15,7 @@
 //! [`Item`]: items::Item
 //! [`Object`]: objects::Object
 mod archive;
+mod component;
 mod items;
 pub mod loader;
 mod module;
@@ -22,7 +23,6 @@ mod objects;
 
 use std::collections::HashMap;
 use std::ops::Deref;
-use std::path::Path;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 
