@@ -1,3 +1,5 @@
+pub mod settings;
+
 use std::f32::consts::PI;
 use std::num::NonZeroU32;
 
