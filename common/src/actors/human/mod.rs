@@ -1,19 +1,23 @@
 pub mod arm;
+mod hand;
 pub mod head;
 pub mod leg;
 pub mod torso;
+
+use std::f32::consts::PI;
 
 use bevy_asset::AssetServer;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::system::EntityCommands;
 use bevy_hierarchy::BuildChildren;
 use bevy_transform::prelude::Transform;
-use glam::Vec3;
+use glam::{Quat, Vec3};
 
 use crate::components::actor::{ActorModel, Limb};
 use crate::components::animation::{Bone, Skeleton};
 
 use self::arm::{LowerLeftArm, LowerRightArm, UpperLeftArm, UpperRightArm};
+use self::hand::RightHandItem;
 use self::head::Head;
 use self::leg::{LowerLeftLeg, LowerRightLeg, UpperLeftLeg, UpperRightLeg};
 use self::torso::Torso;
@@ -79,6 +83,8 @@ impl Human {
             let upper_right_leg = UpperRightLeg::new(assets, &template);
             let lower_right_leg = LowerRightLeg::new(assets, &template);
 
+            let right_arm_item = RightHandItem::new(assets, &template);
+
             let head = cmd
                 .spawn(head)
                 .insert(Bone {
@@ -112,10 +118,21 @@ impl Human {
                 })
                 .id();
 
+            let rai = cmd
+                .spawn(right_arm_item)
+                .insert(Bone {
+                    children: vec![].into_boxed_slice(),
+                    offset: Transform {
+                        translation: Vec3::new(0.1, 0.5, 0.5),
+                        ..Default::default()
+                    },
+                })
+                .id();
+
             let lra = cmd
                 .spawn(lower_right_arm)
                 .insert(Bone {
-                    children: vec![].into_boxed_slice(),
+                    children: vec![rai].into_boxed_slice(),
                     offset: Transform {
                         translation: Vec3::new(0.0, -0.5, 0.0),
                         ..Default::default()
@@ -184,6 +201,7 @@ impl Human {
                     children: vec![head, ula, ura, ull, url].into_boxed_slice(),
                     offset: Transform {
                         translation: Vec3::new(0.001521, 1.22746, -0.020366),
+                        rotation: Quat::from_axis_angle(Vec3::Y, PI),
                         ..Default::default()
                     },
                 })
