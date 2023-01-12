@@ -242,6 +242,7 @@ dependencies = [
  "ai",
  "bevy",
  "bevy_ecs",
+ "bevy_rapier3d",
  "common",
  "tracing",
 ]
