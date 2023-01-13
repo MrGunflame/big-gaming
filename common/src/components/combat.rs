@@ -358,3 +358,11 @@ impl SubAssign for Resistance {
         *self = *self - rhs;
     }
 }
+
+/// An attack event.
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Component)]
+pub struct Attack;
+
+/// A reload event.
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Component)]
+pub struct Reload;

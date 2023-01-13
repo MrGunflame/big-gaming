@@ -9,5 +9,6 @@ mod visibility;
 
 pub use actor::ActorBundle;
 pub use combat::CombatBundle;
+pub use projectile::ProjectileBundle;
 pub use transform::TransformBundle;
 pub use visibility::VisibilityBundle;

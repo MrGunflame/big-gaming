@@ -1,13 +1,12 @@
 use bevy::prelude::*;
 use bevy_rapier3d::prelude::{QueryFilter, RapierContext};
-use common::components::combat::Damage;
+use common::components::combat::{Attack, Damage, Reload};
 use common::components::interaction::{InteractionQueue, Interactions};
 use common::components::inventory::{Equipment, EquipmentSlot};
 use common::components::player::FocusedEntity;
 use common::components::projectile::Projectile;
 
 use crate::components::Rotation;
-use crate::entities::actor::ActorFigure;
 use crate::entities::player::PlayerCharacter;
 use crate::entities::projectile::ProjectileBundle;
 use crate::ui::{Focus, FocusKind};
@@ -112,82 +111,92 @@ pub fn mouse_button_input(
     rapier: Res<RapierContext>,
     assets: Res<AssetServer>,
     audio: Res<Audio>,
-    mut players: Query<(&Transform, &mut Equipment, &ActorFigure, &Focus), With<PlayerCharacter>>,
+    mut players: Query<Entity, With<PlayerCharacter>>,
     cameras: Query<&Rotation, With<Camera3d>>,
     projectiles: Query<(), With<Projectile>>,
     input: Res<Input<MouseButton>>,
     kb_input: Res<Input<KeyCode>>,
 ) {
-    let (player, mut equipment, figure, focus) = players.single_mut();
-    let camera_rot = cameras.single();
-
-    if focus.kind != FocusKind::World {
-        return;
-    }
-
-    let item = match equipment.get_mut(EquipmentSlot::MAIN_HAND) {
-        Some(item) => item,
-        None => return,
-    };
+    let player = players.single();
 
     if kb_input.just_pressed(KeyCode::R) {
-        if let Some(mag) = &mut item.magazine {
-            if *mag == 0 {
-                *mag = 30;
-            } else {
-                *mag = 31;
-            }
-        }
+        commands.entity(player).insert(Reload);
     }
 
     if input.pressed(MouseButton::Left) {
-        if let Some(mag) = &mut item.magazine {
-            if *mag == 0 {
-                return;
-            }
-
-            *mag -= 1;
-        } else {
-            return;
-        }
-
-        audio.play_with_settings(
-            assets.load("sounds/weapons/fire.wav"),
-            PlaybackSettings::default().with_volume(0.03),
-        );
-
-        // Do a ray cast from the players camera position to figure out where to
-        // shoot the projectile.
-        let ray_origin = player.translation + figure.eyes;
-        let ray_dir = camera_rot.movement_vec();
-        let max_toi = 1000.0;
-        let solid = true;
-        let predicate = |entity| match projectiles.get(entity) {
-            Ok(_) => false,
-            Err(_) => true,
-        };
-        let filter = QueryFilter::new().predicate(&predicate);
-
-        let target = match rapier.cast_ray(ray_origin, ray_dir, max_toi, solid, filter) {
-            Some((_, toi)) => ray_origin + toi * ray_dir,
-            None => ray_origin + max_toi * ray_dir,
-        };
-
-        let mut entity = ProjectileBundle::new(assets);
-
-        // Create a new entity at the same position as the player,
-        // pointing at the same direction as the player and a positive velocity
-        // into the direction of the player.
-        let mut origin = *player;
-        origin.translation.y += 1.0;
-        entity.scene.transform = origin.looking_at(target, Vec3::Y);
-        entity.scene.transform.translation += camera_rot.movement_vec() * Vec3::splat(5.0);
-
-        let dir = target - player.translation;
-        entity.velocity.linvel = dir.normalize() * Vec3::splat(1000.0);
-
-        commands.spawn(entity).insert(Damage::new(1));
+        commands.entity(player).insert(Attack);
     }
+
+    //  let (player, mut equipment, figure, focus) = players.single_mut();
+    //  let camera_rot = cameras.single();
+
+    // if focus.kind != FocusKind::World {
+    //     return;
+    // }
+
+    // let item = match equipment.get_mut(EquipmentSlot::MAIN_HAND) {
+    //     Some(item) => item,
+    //     None => return,
+    // };
+
+    // if kb_input.just_pressed(KeyCode::R) {
+    //     if let Some(mag) = &mut item.magazine {
+    //         if *mag == 0 {
+    //             *mag = 30;
+    //         } else {
+    //             *mag = 31;
+    //         }
+    //     }
+    // }
+
+    // if input.pressed(MouseButton::Left) {
+    //     if let Some(mag) = &mut item.magazine {
+    //         if *mag == 0 {
+    //             return;
+    //         }
+
+    //         *mag -= 1;
+    //     } else {
+    //         return;
+    //     }
+
+    //     audio.play_with_settings(
+    //         assets.load("sounds/weapons/fire.wav"),
+    //         PlaybackSettings::default().with_volume(0.03),
+    //     );
+
+    //     // Do a ray cast from the players camera position to figure out where to
+    //     // shoot the projectile.
+    //     let ray_origin = player.translation + figure.eyes;
+    //     let ray_dir = camera_rot.movement_vec();
+    //     let max_toi = 1000.0;
+    //     let solid = true;
+    //     let predicate = |entity| match projectiles.get(entity) {
+    //         Ok(_) => false,
+    //         Err(_) => true,
+    //     };
+    //     let filter = QueryFilter::new().predicate(&predicate);
+
+    //     let target = match rapier.cast_ray(ray_origin, ray_dir, max_toi, solid, filter) {
+    //         Some((_, toi)) => ray_origin + toi * ray_dir,
+    //         None => ray_origin + max_toi * ray_dir,
+    //     };
+
+    //     let mut entity = ProjectileBundle::new(assets);
+
+    //     // Create a new entity at the same position as the player,
+    //     // pointing at the same direction as the player and a positive velocity
+    //     // into the direction of the player.
+    //     let mut origin = *player;
+    //     origin.translation.y += 1.0;
+    //     entity.scene.transform = origin.looking_at(target, Vec3::Y);
+    //     entity.scene.transform.translation += camera_rot.movement_vec() * Vec3::splat(5.0);
+
+    //     let dir = target - player.translation;
+    //     entity.velocity.linvel = dir.normalize() * Vec3::splat(1000.0);
+
+    //     commands.spawn(entity).insert(Damage::new(1));
+    // }
 }
 
 pub fn transform_system(mut entities: Query<(&mut Rotation, &mut Transform)>) {

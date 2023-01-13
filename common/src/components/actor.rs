@@ -6,6 +6,7 @@ use std::time::Duration;
 
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
+use glam::Vec3;
 
 /// An entity that may act on its own within the world, i.e. players and NPCs.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Component)]
@@ -89,4 +90,12 @@ impl Limb {
     pub const unsafe fn new_unchecked(id: u8) -> Self {
         unsafe { Self(NonZeroU8::new_unchecked(id)) }
     }
+}
+
+#[derive(Copy, Clone, Debug, Component)]
+pub struct ActorFigure {
+    /// The offset to the eyes.
+    ///
+    /// This is where the first-person camera should be placed.
+    pub eyes: Vec3,
 }

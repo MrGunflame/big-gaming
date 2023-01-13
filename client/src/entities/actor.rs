@@ -1,15 +1,12 @@
-use bevy::prelude::{AssetServer, Bundle, Component, Vec3};
-use bevy::scene::SceneBundle;
-use bevy::transform::TransformBundle;
-use bevy_rapier3d::na::vector;
+use bevy::prelude::{AssetServer, Bundle, Vec3};
 use bevy_rapier3d::prelude::{
-    AdditionalMassProperties, AsyncCollider, Ccd, CharacterAutostep, CharacterLength, Collider,
-    KinematicCharacterController, LockedAxes, RigidBody, Velocity,
+    Ccd, CharacterAutostep, CharacterLength, KinematicCharacterController, LockedAxes, RigidBody,
+    Velocity,
 };
-use common::components::actor::{Actor, ActorState, MovementSpeed};
+use common::components::actor::{Actor, ActorFigure, ActorState, MovementSpeed};
 use common::components::animation::AnimationQueue;
 use common::components::inventory::{Equipment, EquipmentSlot, Inventory};
-use common::components::items::{Item, ItemId};
+use common::components::items::{Item, ItemId, Magazine};
 
 use crate::bundles::VisibilityBundle;
 use crate::components::Rotation;
@@ -55,7 +52,7 @@ impl ActorBundle {
                 resistances: None,
                 damage: None,
                 components: None,
-                magazine: Some(31),
+                magazine: Magazine::new(30),
                 mass: Default::default(),
                 ammo: Some(ItemId(64.into())),
             },
@@ -104,12 +101,4 @@ impl ActorBundle {
             animation_queue: AnimationQueue::new(),
         }
     }
-}
-
-#[derive(Clone, Debug, Component)]
-pub struct ActorFigure {
-    /// The offset to the eyes.
-    ///
-    /// This is where the first-person camera should be placed.
-    pub eyes: Vec3,
 }

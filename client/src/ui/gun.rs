@@ -12,7 +12,7 @@ pub fn gun(mut egui: ResMut<EguiContext>, players: Query<&Equipment, With<Player
         return;
     };
 
-    let current = item.magazine.unwrap();
+    let current = item.magazine.0.unwrap();
 
     Area::new("ammo")
         .anchor(Align2::RIGHT_BOTTOM, Vec2::new(0.0, 0.0))
@@ -25,7 +25,7 @@ pub fn gun(mut egui: ResMut<EguiContext>, players: Query<&Equipment, With<Player
 /// The current ammo widget.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Ammo {
-    current: u32,
+    current: u16,
 }
 
 impl Widget for Ammo {

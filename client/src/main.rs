@@ -43,7 +43,7 @@ use common::actors::human::Human;
 use common::archive::loader::ModuleLoader;
 use common::archive::GameArchive;
 use common::components::interaction::InteractionQueue;
-use common::components::items::{Item, ItemId};
+use common::components::items::{Item, ItemId, Magazine};
 use common::world::chunk::ChunkRegistry;
 use components::Rotation;
 use entities::actor::ActorBundle;
@@ -278,19 +278,19 @@ fn setup(
         }
     }
 
-    let scene = asset_server.load("wall_1x5x3.glb#Scene0");
-    let collider = Collider::cuboid(1.0, 5.0, 3.0);
+    // let scene = asset_server.load("wall_1x5x3.glb#Scene0");
+    // let collider = Collider::cuboid(1.0, 5.0, 3.0);
 
-    commands
-        .spawn(SceneBundle {
-            scene,
-            transform: Transform::from_xyz(-10.0, 0.0, 10.0),
-            ..default()
-        })
-        .insert(RigidBody::Fixed)
-        .insert(collider);
+    // commands
+    //     .spawn(SceneBundle {
+    //         scene,
+    //         transform: Transform::from_xyz(-10.0, 0.0, 10.0),
+    //         ..default()
+    //     })
+    //     .insert(RigidBody::Fixed)
+    //     .insert(collider);
 
-    commands.spawn(ActorBundle::new(&asset_server));
+    // commands.spawn(ActorBundle::new(&asset_server));
 
     commands.spawn(PlayerCameraBundle::new());
 
@@ -302,7 +302,7 @@ fn setup(
             resistances: None,
             ammo: None,
             damage: None,
-            magazine: None,
+            magazine: Magazine::default(),
             mass: Default::default(),
         },
     ));
@@ -310,9 +310,9 @@ fn setup(
     let mut cmd = commands.spawn(PlayerCharacterBundle::new(&asset_server));
     Human::default().spawn(&asset_server, &mut cmd);
 
-    let mut cmd = commands.spawn(ActorBundle::new(&asset_server));
-    Human::default().spawn(&asset_server, &mut cmd);
-    cmd.insert(AiBundle::default());
+    // let mut cmd = commands.spawn(ActorBundle::new(&asset_server));
+    // Human::default().spawn(&asset_server, &mut cmd);
+    // cmd.insert(AiBundle::default());
 }
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Component)]
