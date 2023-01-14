@@ -14,6 +14,8 @@ mod utils;
 mod window;
 mod world;
 
+use std::time::Duration;
+
 use ai::bundles::AiBundle;
 use ai::components::AiController;
 use ai::AiPlugin;
@@ -43,7 +45,7 @@ use common::actors::human::Human;
 use common::archive::loader::ModuleLoader;
 use common::archive::GameArchive;
 use common::components::interaction::InteractionQueue;
-use common::components::items::{Item, ItemId, Magazine};
+use common::components::items::{Cooldown, Item, ItemId, Magazine};
 use common::world::chunk::ChunkRegistry;
 use components::Rotation;
 use entities::actor::ActorBundle;
@@ -304,6 +306,7 @@ fn setup(
             damage: None,
             magazine: Magazine::default(),
             mass: Default::default(),
+            cooldown: Cooldown::new(Duration::ZERO),
         },
     ));
 

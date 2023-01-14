@@ -1,3 +1,5 @@
+use std::time::{Duration, Instant};
+
 use bevy_ecs::component::Component;
 
 use crate::id::{NamespacedId, WeakId};
@@ -38,6 +40,7 @@ pub struct Item {
     pub magazine: Magazine,
     // pub properties: Properties,
     pub mass: Mass,
+    pub cooldown: Cooldown,
 }
 
 // FIXME: Can the size of this be reduced to 2?
@@ -119,6 +122,62 @@ impl From<Item> for ItemStack {
         Self {
             item: value,
             quantity: 1,
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct Cooldown {
+    pub cooldown: Duration,
+    pub until: Instant,
+}
+
+impl Cooldown {
+    #[inline]
+    pub fn new(cooldown: Duration) -> Self {
+        Self {
+            cooldown,
+            until: Instant::now(),
+        }
+    }
+
+    /// Returns `true` whether this cooldown is ready.
+    #[inline]
+    pub fn is_ready(&mut self) -> bool {
+        self.is_ready_in(Instant::now())
+    }
+
+    /// Ticks this `Cooldown`, returning whether the cooldown is ready.
+    #[inline]
+    pub fn tick(&mut self) -> bool {
+        // FIXME: This should rather be updated once per ECS tick,
+        // rather than for each Cooldown::tick call.
+
+        let now = Instant::now();
+        if self.is_ready_in(now) {
+            self.until = now + self.cooldown;
+            true
+        } else {
+            false
+        }
+    }
+
+    #[inline]
+    fn is_ready_in(&self, now: Instant) -> bool {
+        // Zero cooldown is always ready.
+        if self.cooldown.is_zero() {
+            true
+        } else {
+            now > self.until
+        }
+    }
+}
+
+impl Default for Cooldown {
+    fn default() -> Self {
+        Self {
+            cooldown: Duration::ZERO,
+            until: Instant::now(),
         }
     }
 }

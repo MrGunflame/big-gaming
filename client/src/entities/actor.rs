@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use bevy::prelude::{AssetServer, Bundle, Vec3};
 use bevy_rapier3d::prelude::{
     Ccd, CharacterAutostep, CharacterLength, KinematicCharacterController, LockedAxes, RigidBody,
@@ -6,7 +8,7 @@ use bevy_rapier3d::prelude::{
 use common::components::actor::{Actor, ActorFigure, ActorState, MovementSpeed};
 use common::components::animation::AnimationQueue;
 use common::components::inventory::{Equipment, EquipmentSlot, Inventory};
-use common::components::items::{Item, ItemId, Magazine};
+use common::components::items::{Cooldown, Item, ItemId, Magazine};
 
 use crate::bundles::VisibilityBundle;
 use crate::components::Rotation;
@@ -55,6 +57,7 @@ impl ActorBundle {
                 magazine: Magazine::new(30),
                 mass: Default::default(),
                 ammo: Some(ItemId(64.into())),
+                cooldown: Cooldown::new(Duration::new(0, 200)),
             },
         );
 

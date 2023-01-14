@@ -55,6 +55,10 @@ fn handle_attack_events(
             None => continue,
         };
 
+        if !item.cooldown.tick() {
+            continue;
+        }
+
         // Out of ammo, cannot attack.
         if !item.magazine.decrement() {
             continue;
