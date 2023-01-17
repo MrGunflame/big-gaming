@@ -1,15 +1,12 @@
 use bevy::prelude::*;
 use bevy_rapier3d::prelude::{QueryFilter, RapierContext};
-use common::components::combat::{Attack, Damage, Reload};
+use common::components::actor::ActorFigure;
+use common::components::combat::{Attack, Reload};
 use common::components::interaction::{InteractionQueue, Interactions};
-use common::components::inventory::{Equipment, EquipmentSlot};
 use common::components::player::FocusedEntity;
-use common::components::projectile::Projectile;
 
 use crate::components::Rotation;
 use crate::entities::player::PlayerCharacter;
-use crate::entities::projectile::ProjectileBundle;
-use crate::ui::{Focus, FocusKind};
 
 // pub fn keyboard_input(
 //     rapier_ctx: Res<RapierContext>,
@@ -109,22 +106,32 @@ use crate::ui::{Focus, FocusKind};
 pub fn mouse_button_input(
     mut commands: Commands,
     rapier: Res<RapierContext>,
-    assets: Res<AssetServer>,
-    audio: Res<Audio>,
-    mut players: Query<Entity, With<PlayerCharacter>>,
-    cameras: Query<&Rotation, With<Camera3d>>,
-    projectiles: Query<(), With<Projectile>>,
+    players: Query<(Entity, &Transform, &ActorFigure), With<PlayerCharacter>>,
+    cameras: Query<&Transform, With<Camera3d>>,
     input: Res<Input<MouseButton>>,
     kb_input: Res<Input<KeyCode>>,
 ) {
-    let player = players.single();
+    let (player, player_transform, figure) = players.single();
+    let cam_transform = cameras.single();
 
     if kb_input.just_pressed(KeyCode::R) {
         commands.entity(player).insert(Reload);
     }
 
     if input.pressed(MouseButton::Left) {
-        commands.entity(player).insert(Attack);
+        let ray_origin = player_transform.translation + figure.eyes;
+        let (y, x, _) = cam_transform.rotation.to_euler(EulerRot::YXZ);
+        let ray_dir = Vec3::new(-y.sin() * x.cos(), x.sin(), -y.cos() * x.cos());
+        let max_toi = 1000.0;
+
+        let toi = match rapier.cast_ray(ray_origin, ray_dir, max_toi, true, QueryFilter::new()) {
+            Some((_, toi)) => toi,
+            None => max_toi,
+        };
+
+        commands.entity(player).insert(Attack {
+            target: ray_origin + toi * ray_dir,
+        });
     }
 
     //  let (player, mut equipment, figure, focus) = players.single_mut();

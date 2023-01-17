@@ -5,6 +5,7 @@ use std::iter::FusedIterator;
 use std::ops::{Add, AddAssign, Sub, SubAssign};
 
 use bevy_ecs::component::Component;
+use glam::Vec3;
 
 use crate::id::NamespacedId;
 
@@ -360,8 +361,11 @@ impl SubAssign for Resistance {
 }
 
 /// An attack event.
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Component)]
-pub struct Attack;
+#[derive(Copy, Clone, Debug, Default, PartialEq, Component)]
+pub struct Attack {
+    /// The target (point) of the attack.
+    pub target: Vec3,
+}
 
 /// A reload event.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Component)]
