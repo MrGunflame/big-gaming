@@ -134,6 +134,8 @@ pub fn mouse_button_input(
         });
     }
 
+    if input.pressed(MouseButton::Right) {}
+
     //  let (player, mut equipment, figure, focus) = players.single_mut();
     //  let camera_rot = cameras.single();
 

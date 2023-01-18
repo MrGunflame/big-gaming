@@ -2,12 +2,13 @@ use std::mem::MaybeUninit;
 
 use bevy::input::mouse::MouseMotion;
 use bevy::prelude::{
-    Camera3d, Component, Entity, EventReader, KeyCode, Plugin, Query, Res, ResMut, Transform, Vec3,
-    With, Without,
+    Camera3d, Commands, Component, CoreStage, Entity, EventReader, KeyCode, Plugin, Query, Res,
+    ResMut, Transform, Vec3, With, Without,
 };
 use bevy::time::Time;
 use bevy_rapier3d::prelude::{Collider, QueryFilter, RapierContext, Velocity};
 use common::components::actor::{ActorState, MovementSpeed};
+use common::components::movement::Jump;
 
 use crate::components::Rotation;
 use crate::entities::player::PlayerCharacter;
@@ -31,7 +32,8 @@ pub struct MovementPlugin;
 impl Plugin for MovementPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
         app.add_startup_system(register_events)
-            .add_system(movement_events)
+            // Run in PreUpdate before camera is updated.
+            .add_system_to_stage(CoreStage::PreUpdate, movement_events)
             .add_system(mouse_movement)
             .add_system(toggle_sprint);
     }
@@ -83,6 +85,7 @@ fn toggle_sprint(
 }
 
 fn movement_events(
+    mut commands: Commands,
     time: Res<Time>,
     rapier: Res<RapierContext>,
     hotkeys: Res<HotkeyStore>,
@@ -144,7 +147,8 @@ fn movement_events(
     transform.translation += vec * delta * speed.0;
 
     if hotkeys.triggered(events.jump) {
-        velocity.linvel.y += 1.0;
+        // velocity.linvel.y += 1.0;
+        commands.entity(entity).insert(Jump);
     }
 }
 

@@ -23,9 +23,7 @@ impl Plugin for CameraPlugin {
             .add_system(crate::systems::input::transform_system)
             .add_system(crate::systems::input::mouse_button_input)
             .add_system(crate::systems::input::interact_target)
-            // Need to update after CoreStage::PostUpdate when player transform
-            // updates.
-            .add_system_to_stage(CoreStage::Last, synchronize_player_camera)
+            .add_system(synchronize_player_camera)
             .add_system(head_bumping.after(synchronize_player_camera))
             .add_system(toggle_camera_position)
             .add_system(adjust_camera_distance);
