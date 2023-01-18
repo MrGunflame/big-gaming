@@ -2,13 +2,11 @@ use std::mem::MaybeUninit;
 
 use bevy::input::mouse::MouseMotion;
 use bevy::prelude::{
-    Camera3d, Commands, Component, CoreStage, Entity, EventReader, KeyCode, Plugin, Query, Res,
-    ResMut, Transform, Vec3, With, Without,
+    Camera3d, Commands, CoreStage, Entity, EventReader, KeyCode, Plugin, Quat, Query, Res, ResMut,
+    Vec3, With, Without,
 };
-use bevy::time::Time;
-use bevy_rapier3d::prelude::{Collider, QueryFilter, RapierContext, Velocity};
 use common::components::actor::{ActorState, MovementSpeed};
-use common::components::movement::Jump;
+use common::components::movement::{Jump, Movement};
 
 use crate::components::Rotation;
 use crate::entities::player::PlayerCharacter;
@@ -86,35 +84,17 @@ fn toggle_sprint(
 
 fn movement_events(
     mut commands: Commands,
-    time: Res<Time>,
-    rapier: Res<RapierContext>,
     hotkeys: Res<HotkeyStore>,
-    mut players: Query<
-        (
-            Entity,
-            &mut Transform,
-            &Rotation,
-            &mut Velocity,
-            &MovementSpeed,
-            // &Collider,
-            &ActorState,
-            &Focus,
-        ),
-        With<PlayerCharacter>,
-    >,
+    mut players: Query<(Entity, &ActorState, &Focus), With<PlayerCharacter>>,
 ) {
-    let delta = time.delta_seconds();
-
     let events = unsafe { EVENTS.assume_init_ref() };
 
-    let (entity, mut transform, rotation, mut velocity, speed, state, focus) = players.single_mut();
+    let (entity, state, focus) = players.single_mut();
 
     // Only process movement events while the actor in the default state.
     if *state != ActorState::DEFAULT || focus.kind != FocusKind::World {
         return;
     }
-
-    let mut vec = Vec3::ZERO;
 
     // let shape_pos = transform.translation;
     // let shape_rot = transform.rotation;
@@ -128,27 +108,97 @@ fn movement_events(
     //         .is_some()
     // };
 
+    let mut angle = Angle::default();
+
     if hotkeys.triggered(events.forward) {
-        vec += rotation.movement_vec();
+        angle.front();
     }
 
     if hotkeys.triggered(events.backward) {
-        vec += rotation.left(Degrees(180.0)).movement_vec();
-    }
-
-    if hotkeys.triggered(events.left) {
-        vec += rotation.left(Degrees(90.0)).movement_vec();
+        angle.back();
     }
 
     if hotkeys.triggered(events.right) {
-        vec += rotation.right(Degrees(90.0)).movement_vec();
+        angle.right();
     }
 
-    transform.translation += vec * delta * speed.0;
+    if hotkeys.triggered(events.left) {
+        angle.left();
+    }
+
+    if let Some(angle) = angle.to_radians() {
+        commands.entity(entity).insert(Movement {
+            direction: Quat::from_axis_angle(Vec3::Y, angle),
+        });
+    }
 
     if hotkeys.triggered(events.jump) {
         // velocity.linvel.y += 1.0;
         commands.entity(entity).insert(Jump);
+    }
+}
+
+/// The movement angle based on four input directions.
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+struct Angle(u8);
+
+impl Angle {
+    const FRONT: Self = Self(1);
+    const BACK: Self = Self(1 << 1);
+    const LEFT: Self = Self(1 << 2);
+    const RIGHT: Self = Self(1 << 3);
+
+    fn front(&mut self) {
+        self.0 |= Self::FRONT.0;
+    }
+
+    fn back(&mut self) {
+        self.0 |= Self::BACK.0;
+    }
+
+    fn left(&mut self) {
+        self.0 |= Self::LEFT.0;
+    }
+
+    fn right(&mut self) {
+        self.0 |= Self::RIGHT.0;
+    }
+
+    fn to_degrees(self) -> Option<f32> {
+        let (front, back, left, right) = (
+            self.0 & Self::FRONT.0 != 0,
+            self.0 & Self::BACK.0 != 0,
+            self.0 & Self::LEFT.0 != 0,
+            self.0 & Self::RIGHT.0 != 0,
+        );
+
+        match (front, back, left, right) {
+            // Single
+            (true, false, false, false) => Some(0.0),
+            (false, true, false, false) => Some(180.0),
+            (false, false, true, false) => Some(90.0),
+            (false, false, false, true) => Some(270.0),
+            // Front
+            (true, false, true, false) => Some(45.0),
+            (true, false, false, true) => Some(315.0),
+            (true, false, true, true) => Some(0.0),
+            // Back
+            (false, true, true, false) => Some(135.0),
+            (false, true, false, true) => Some(225.0),
+            (false, true, true, true) => Some(180.0),
+            // Locked
+            (true, true, false, false) => None,
+            (true, true, true, false) => Some(90.0),
+            (true, true, false, true) => Some(270.0),
+            (true, true, true, true) => None,
+
+            (false, false, true, true) => None,
+            (false, false, false, false) => None,
+        }
+    }
+
+    fn to_radians(self) -> Option<f32> {
+        self.to_degrees().map(f32::to_radians)
     }
 }
 

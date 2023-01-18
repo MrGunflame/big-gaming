@@ -6,7 +6,7 @@ use bevy::prelude::{
     CoreStage, IntoSystemDescriptor, Mat3, Plugin, Query, Res, Transform, Vec3, With, Without,
 };
 use bevy::time::Time;
-use common::components::actor::ActorFigure;
+use common::components::actor::{ActorFigure, MovementSpeed};
 use common::components::movement::Movement;
 
 use crate::components::settings::CameraSettings;
@@ -61,11 +61,11 @@ fn synchronize_player_camera(
 fn head_bumping(
     time: Res<Time>,
     settings: Res<CameraSettings>,
-    players: Query<(&Transform, &Movement), With<PlayerCharacter>>,
+    players: Query<(&Transform, &MovementSpeed), (With<PlayerCharacter>, With<Movement>)>,
     mut cameras: Query<(&mut Transform, &CameraPosition), Without<PlayerCharacter>>,
 ) {
     // Only apply head bumping when the player is moving.
-    let Ok((player, movement)) = players.get_single() else {
+    let Ok((player, speed)) = players.get_single() else {
         return;
     };
 
@@ -76,7 +76,8 @@ fn head_bumping(
     }
 
     // Relative distance between current and next frame.
-    let distance = player.translation.distance(movement.desination).abs();
+    // let distance = player.translation.distance(movement.desination).abs();
+    let distance = speed.0;
 
     // F
     let sc = time.elapsed_seconds() * PI * 2.0 * distance;

@@ -5,7 +5,7 @@ use glam::{Quat, Vec3};
 #[derive(Copy, Clone, Debug, Default, Component)]
 pub struct Movement {
     /// The point the entity is moving to.
-    pub desination: Vec3,
+    pub direction: Quat,
 }
 
 #[derive(Copy, Clone, Debug, Component)]

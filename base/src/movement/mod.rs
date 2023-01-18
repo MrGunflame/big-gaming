@@ -1,7 +1,11 @@
 use std::time::Duration;
 
-use bevy::prelude::{Commands, Component, Entity, Plugin, Query, Transform, With};
+use bevy::prelude::{
+    Commands, Component, Entity, EulerRot, Plugin, Query, Res, Transform, Vec3, With,
+};
+use bevy::time::Time;
 use bevy_rapier3d::prelude::Velocity;
+use common::components::actor::MovementSpeed;
 use common::components::items::Cooldown;
 use common::components::movement::{Jump, Movement, Rotate, Teleport};
 
@@ -20,10 +24,17 @@ impl Plugin for MovementPlugin {
 
 fn handle_movement_events(
     mut commands: Commands,
-    mut actors: Query<(Entity, &mut Transform, &Movement)>,
+    time: Res<Time>,
+    mut actors: Query<(Entity, &mut Transform, &MovementSpeed, &Movement)>,
 ) {
-    for (entity, mut transform, movement) in &mut actors {
-        transform.translation = movement.desination;
+    let delta = time.delta_seconds();
+
+    for (entity, mut transform, speed, movement) in &mut actors {
+        let rotation = transform.rotation * movement.direction;
+        let (y, x, _) = rotation.to_euler(EulerRot::YXZ);
+        let dir = Vec3::new(-y.sin() * x.cos(), x.sin(), -y.cos() * x.cos()).normalize();
+
+        transform.translation += dir * speed.0 * delta;
 
         commands.entity(entity).remove::<Movement>();
     }
