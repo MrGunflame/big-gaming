@@ -17,3 +17,6 @@ pub struct Rotate {
 pub struct Teleport {
     pub destination: Vec3,
 }
+
+#[derive(Copy, Clone, Debug, Default, Component)]
+pub struct Jump;

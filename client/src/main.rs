@@ -97,6 +97,7 @@ fn main() {
         .add_plugin(UiPlugin)
         .add_plugin(HotkeyPlugin)
         .add_plugin(MovementPlugin)
+        .add_plugin(base::movement::MovementPlugin)
         .add_plugin(RespawnPlugin)
         .add_plugin(ChunkPlugin::new(ChunkRegistry::new()))
         .add_plugin(base::world::TimePlugin::default())
@@ -140,6 +141,16 @@ fn setup(
 
     commands.spawn(ObjectBundle::new(&asset_server).at(Vec3::new(-5.0, 0.5, -5.0)));
     commands.spawn(ObjectBundle::new(&asset_server).at(Vec3::new(10.0, 0.5, 5.0)));
+
+    commands.spawn(DirectionalLightBundle {
+        directional_light: DirectionalLight {
+            color: Color::WHITE,
+            illuminance: 10_000.0,
+            shadows_enabled: true,
+            ..Default::default()
+        },
+        ..Default::default()
+    });
 
     // THE BALL
     // commands
