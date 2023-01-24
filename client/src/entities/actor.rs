@@ -5,7 +5,9 @@ use bevy_rapier3d::prelude::{
     Ccd, CharacterAutostep, CharacterLength, KinematicCharacterController, LockedAxes, RigidBody,
     Velocity,
 };
-use common::components::actor::{Actor, ActorFigure, ActorState, MovementSpeed};
+use common::components::actor::{
+    Actor, ActorFigure, ActorFlag, ActorFlags, ActorState, MovementSpeed, SpawnPoint, SpawnPoints,
+};
 use common::components::animation::AnimationQueue;
 use common::components::inventory::{Equipment, EquipmentSlot, Inventory};
 use common::components::items::{Cooldown, Item, ItemId, Magazine};
@@ -35,13 +37,14 @@ pub struct ActorBundle {
     pub locked_axes: LockedAxes,
 
     pub actor: Actor,
-    pub actor_state: ActorState,
+    pub actor_state: ActorFlags,
     pub movement_speed: MovementSpeed,
     pub character_controller: KinematicCharacterController,
     pub actor_figure: ActorFigure,
     pub inventory: Inventory,
     pub equipment: Equipment,
     pub animation_queue: AnimationQueue,
+    pub spawn_points: SpawnPoints,
 }
 
 impl ActorBundle {
@@ -81,7 +84,7 @@ impl ActorBundle {
             // mass: AdditionalMassProperties::Mass(100.0),
             actor: Actor,
             combat: CombatBundle::new(),
-            actor_state: ActorState::DEFAULT,
+            actor_state: ActorFlags::default(),
             movement_speed: MovementSpeed(3.0),
             character_controller: KinematicCharacterController {
                 offset: CharacterLength::Absolute(0.01),
@@ -102,6 +105,10 @@ impl ActorBundle {
             inventory: Inventory::new(),
             equipment,
             animation_queue: AnimationQueue::new(),
+            spawn_points: SpawnPoints::from(SpawnPoint {
+                translation: Vec3::splat(0.0),
+                weight: 0,
+            }),
         }
     }
 }

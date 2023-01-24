@@ -3,7 +3,7 @@ use bevy::prelude::{
 };
 use bevy_rapier3d::prelude::{QueryFilter, RapierContext};
 use common::bundles::ProjectileBundle;
-use common::components::actor::{ActorFigure, ActorState};
+use common::components::actor::{ActorFigure, ActorFlag, ActorFlags, ActorState};
 use common::components::animation::{Bone, Skeleton};
 use common::components::combat::{Attack, Damage, Health, IncomingDamage, Reload, Resistances};
 use common::components::faction::ActorFactions;
@@ -25,15 +25,24 @@ fn apply_incoming_damage(
         &mut IncomingDamage,
         &mut Health,
         &Resistances,
-        &mut ActorState,
+        &mut ActorFlags,
     )>,
 ) {
-    for (mut incoming_damage, mut health, resistances, mut state) in actors.iter_mut() {
+    for (mut incoming_damage, mut health, resistances, mut flags) in actors.iter_mut() {
         while let Some(damage) = incoming_damage.pop() {
             *health -= damage.amount;
 
             if health.health == 0 {
-                *state = ActorState::DEAD;
+                flags.insert(ActorFlag::DEAD);
+
+                for flag in [
+                    ActorFlag::CAN_MOVE,
+                    ActorFlag::CAN_ROTATE,
+                    ActorFlag::CAN_ATTACK,
+                ] {
+                    flags.remove(flag);
+                }
+
                 incoming_damage.clear();
 
                 // The actor is already dead, no need to process any more damage events.

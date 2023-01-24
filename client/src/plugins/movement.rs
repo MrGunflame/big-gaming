@@ -85,16 +85,11 @@ fn toggle_sprint(
 fn movement_events(
     mut commands: Commands,
     hotkeys: Res<HotkeyStore>,
-    mut players: Query<(Entity, &ActorState, &Focus), With<HostPlayer>>,
+    mut players: Query<(Entity, &Focus), With<HostPlayer>>,
 ) {
     let events = unsafe { EVENTS.assume_init_ref() };
 
-    let (entity, state, focus) = players.single_mut();
-
-    // Only process movement events while the actor in the default state.
-    if *state != ActorState::DEFAULT || focus.kind != FocusKind::World {
-        return;
-    }
+    let (entity, focus) = players.single_mut();
 
     // let shape_pos = transform.translation;
     // let shape_rot = transform.rotation;
@@ -205,14 +200,10 @@ impl Angle {
 fn mouse_movement(
     mut events: EventReader<MouseMotion>,
     mut cameras: Query<&mut Rotation, With<Camera3d>>,
-    mut players: Query<(&mut Rotation, &ActorState, &Focus), (With<HostPlayer>, Without<Camera3d>)>,
+    mut players: Query<(&mut Rotation, &Focus), (With<HostPlayer>, Without<Camera3d>)>,
 ) {
     let mut camera_rot = cameras.single_mut();
-    let (mut player_rot, state, focus) = players.single_mut();
-
-    if *state != ActorState::DEFAULT || focus.kind != FocusKind::World {
-        return;
-    }
+    let (mut player_rot, focus) = players.single_mut();
 
     for event in events.iter() {
         let yaw = event.delta.x * 0.1;

@@ -5,7 +5,7 @@ use bevy::prelude::{
 };
 use bevy::time::Time;
 use bevy_rapier3d::prelude::Velocity;
-use common::components::actor::MovementSpeed;
+use common::components::actor::{ActorFlag, ActorFlags, MovementSpeed};
 use common::components::items::Cooldown;
 use common::components::movement::{Jump, Movement, Rotate, Teleport};
 
@@ -25,11 +25,21 @@ impl Plugin for MovementPlugin {
 fn handle_movement_events(
     mut commands: Commands,
     time: Res<Time>,
-    mut actors: Query<(Entity, &mut Transform, &MovementSpeed, &Movement)>,
+    mut actors: Query<(
+        Entity,
+        &ActorFlags,
+        &mut Transform,
+        &MovementSpeed,
+        &Movement,
+    )>,
 ) {
     let delta = time.delta_seconds();
 
-    for (entity, mut transform, speed, movement) in &mut actors {
+    for (entity, flags, mut transform, speed, movement) in &mut actors {
+        if !flags.contains(ActorFlag::CAN_MOVE) {
+            continue;
+        }
+
         let rotation = transform.rotation * movement.direction;
         let (y, x, _) = rotation.to_euler(EulerRot::YXZ);
         let dir = Vec3::new(-y.sin() * x.cos(), x.sin(), -y.cos() * x.cos()).normalize();
@@ -42,9 +52,13 @@ fn handle_movement_events(
 
 fn handle_rotate_events(
     mut commands: Commands,
-    mut actors: Query<(Entity, &mut Transform, &Rotate)>,
+    mut actors: Query<(Entity, &ActorFlags, &mut Transform, &Rotate)>,
 ) {
-    for (entity, mut transform, rotate) in &mut actors {
+    for (entity, flags, mut transform, rotate) in &mut actors {
+        if !flags.contains(ActorFlag::CAN_ROTATE) {
+            continue;
+        }
+
         transform.rotation = rotate.destination;
 
         commands.entity(entity).remove::<Rotate>();
@@ -64,9 +78,22 @@ fn handle_teleport_events(
 
 fn handle_jump_events(
     mut commands: Commands,
-    mut actors: Query<(Entity, &mut Velocity, Option<&mut JumpCooldown>), With<Jump>>,
+    mut actors: Query<
+        (
+            Entity,
+            &ActorFlags,
+            &mut Velocity,
+            Option<&mut JumpCooldown>,
+        ),
+        With<Jump>,
+    >,
 ) {
-    for (entity, mut velocity, cooldown) in &mut actors {
+    for (entity, flags, mut velocity, cooldown) in &mut actors {
+        // Jumping is also handled with the `CAN_MOVE` flag.
+        if !flags.contains(ActorFlag::CAN_MOVE) {
+            continue;
+        }
+
         // FIXME: Maybe the actor should always have the JumpCooldown already
         // to avoid this extra check.
         if let Some(mut cooldown) = cooldown {

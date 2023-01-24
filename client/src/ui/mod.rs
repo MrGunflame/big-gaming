@@ -252,3 +252,13 @@ impl private::Sealed for Sense {}
 mod private {
     pub trait Sealed {}
 }
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct InterfaceFlags(u16);
+
+// impl InterfaceFlags {
+//     /// Whether the interface may be closed by the user.
+//     ///
+//     /// If this flag is not given, the interface must destroy itself.
+//     pub const CLOSE: Self = Self(1);
+// }

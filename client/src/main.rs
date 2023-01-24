@@ -21,7 +21,7 @@ use ai::components::AiController;
 use ai::AiPlugin;
 use base::combat::CombatPlugin;
 use base::projectile::ProjectilePlugin;
-use base::world::ChunkPlugin;
+use base::world::{ChunkPlugin, SpawnPlugin};
 use bevy::audio::AudioPlugin;
 use bevy::core_pipeline::CorePipelinePlugin;
 use bevy::diagnostic::DiagnosticsPlugin;
@@ -105,6 +105,7 @@ fn main() {
         .add_plugin(InteractionsPlugin)
         .add_plugin(base::animation::AnimationPlugin)
         .add_plugin(AiPlugin)
+        .add_plugin(SpawnPlugin)
         .run();
 }
 

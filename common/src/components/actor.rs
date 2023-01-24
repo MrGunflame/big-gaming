@@ -1,5 +1,6 @@
 //! Actor components
 
+use std::collections::HashSet;
 use std::num::{NonZeroU32, NonZeroU8};
 use std::ops::{Deref, DerefMut, Mul};
 use std::time::Duration;
@@ -13,6 +14,7 @@ use glam::Vec3;
 pub struct Actor;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Component)]
+#[deprecated(note = "Use ActorFlags instead")]
 pub struct ActorState(NonZeroU32);
 
 impl ActorState {
@@ -28,6 +30,61 @@ impl Default for ActorState {
     #[inline]
     fn default() -> Self {
         Self::DEFAULT
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[repr(transparent)]
+pub struct ActorFlag(NonZeroU32);
+
+impl ActorFlag {
+    /// Is the [`Actor`] dead?
+    pub const DEAD: Self = Self(NonZeroU32::new(1).unwrap());
+
+    /// Can the [`Actor`] move?
+    pub const CAN_MOVE: Self = Self(NonZeroU32::new(16).unwrap());
+
+    /// Can the [`Actor`] rotate?
+    pub const CAN_ROTATE: Self = Self(NonZeroU32::new(17).unwrap());
+
+    /// Can the [`Actor`] attack?
+    pub const CAN_ATTACK: Self = Self(NonZeroU32::new(18).unwrap());
+}
+
+#[derive(Clone, Debug, Component)]
+pub struct ActorFlags {
+    flags: HashSet<ActorFlag>,
+}
+
+impl ActorFlags {
+    #[inline]
+    pub fn new() -> Self {
+        Self {
+            flags: HashSet::new(),
+        }
+    }
+
+    pub fn contains(&self, flag: ActorFlag) -> bool {
+        self.flags.contains(&flag)
+    }
+
+    pub fn insert(&mut self, flag: ActorFlag) {
+        self.flags.insert(flag);
+    }
+
+    pub fn remove(&mut self, flag: ActorFlag) {
+        self.flags.remove(&flag);
+    }
+}
+
+impl Default for ActorFlags {
+    fn default() -> Self {
+        // FIXME: These "default" flags should probably come from somewhere different.
+        let mut flags = Self::new();
+        flags.insert(ActorFlag::CAN_MOVE);
+        flags.insert(ActorFlag::CAN_ROTATE);
+        flags.insert(ActorFlag::CAN_ATTACK);
+        flags
     }
 }
 
@@ -104,7 +161,7 @@ pub struct ActorFigure {
 #[derive(Copy, Clone, Debug)]
 pub struct SpawnPoint {
     /// The point that this `SpawnPoint` refers to.
-    pub location: Vec3,
+    pub translation: Vec3,
     /// The weight that this `SpawnPoint` has. An actor usually spawns at the point with the
     /// heighest weight.
     pub weight: u32,
@@ -134,7 +191,20 @@ impl SpawnPoints {
 
     /// Returns the heighest rated [`SpawnPoint`].
     #[inline]
-    pub fn highest(&self) -> Option<SpawnPoint> {
+    pub fn best(&self) -> Option<SpawnPoint> {
         self.points.first().copied()
     }
 }
+
+impl From<SpawnPoint> for SpawnPoints {
+    #[inline]
+    fn from(value: SpawnPoint) -> Self {
+        let mut this = Self::new();
+        this.push(value);
+        this
+    }
+}
+
+/// An actor wants to spawn. This component is also used for respawns.
+#[derive(Copy, Clone, Debug, Component)]
+pub struct Spawn;
