@@ -363,7 +363,7 @@ impl SubAssign for Resistance {
 /// An attack event.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Component)]
 pub struct Attack {
-    /// The target (point) of the attack.
+    /// The target (point) that the attack is targeted at.
     pub target: Vec3,
 }
 

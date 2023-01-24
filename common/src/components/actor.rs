@@ -99,3 +99,42 @@ pub struct ActorFigure {
     /// This is where the first-person camera should be placed.
     pub eyes: Vec3,
 }
+
+/// A spawning point for an actor.
+#[derive(Copy, Clone, Debug)]
+pub struct SpawnPoint {
+    /// The point that this `SpawnPoint` refers to.
+    pub location: Vec3,
+    /// The weight that this `SpawnPoint` has. An actor usually spawns at the point with the
+    /// heighest weight.
+    pub weight: u32,
+}
+
+/// A list of [`SpawnPoint`]s.
+#[derive(Clone, Debug, Component)]
+pub struct SpawnPoints {
+    // FIXME: This might better be a BTree.
+    points: Vec<SpawnPoint>,
+}
+
+impl SpawnPoints {
+    #[inline]
+    pub fn new() -> Self {
+        Self { points: Vec::new() }
+    }
+
+    /// Pushes a new [`SpawnPoint`] into the collection.
+    pub fn push(&mut self, point: SpawnPoint) {
+        self.points.push(point);
+
+        // The point with the highest weight at the front.
+        self.points
+            .sort_by(|a, b| a.weight.cmp(&b.weight).reverse());
+    }
+
+    /// Returns the heighest rated [`SpawnPoint`].
+    #[inline]
+    pub fn highest(&self) -> Option<SpawnPoint> {
+        self.points.first().copied()
+    }
+}

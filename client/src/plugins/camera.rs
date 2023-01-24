@@ -81,7 +81,7 @@ fn head_bumping(
 
     // F
     let sc = time.elapsed_seconds() * PI * 2.0 * distance;
-    let offset = sc.sin() * 0.1 * settings.head_bumping;
+    let offset = sc.sin() * 0.05 * settings.head_bumping;
 
     camera.translation += Vec3::new(0.0, offset, 0.0);
 }
