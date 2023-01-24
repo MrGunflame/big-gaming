@@ -3,15 +3,13 @@ use bevy_egui::egui::{
     Area, Color32, Order, Pos2, Rect, Response, Rounding, Sense, Stroke, Ui, Vec2, Widget,
 };
 use bevy_egui::EguiContext;
-use common::components::player::FocusedEntity;
-
-use crate::entities::player::PlayerCharacter;
+use common::components::player::{FocusedEntity, HostPlayer};
 
 use super::SenseExt;
 
 pub fn crosshair(
     mut egui: ResMut<EguiContext>,
-    mut focus: Query<&FocusedEntity, With<PlayerCharacter>>,
+    mut focus: Query<&FocusedEntity, With<HostPlayer>>,
 ) {
     let mut focus = focus.single();
 

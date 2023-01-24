@@ -2,7 +2,7 @@ use bevy::{
     math::Vec3,
     prelude::{Bundle, Camera3dBundle, Component, Transform, *},
 };
-use common::components::player::FocusedEntity;
+use common::components::player::{FocusedEntity, HostPlayer};
 
 use crate::{
     components::Rotation,
@@ -12,15 +12,12 @@ use crate::{
 
 use super::actor::ActorBundle;
 
-#[derive(Debug, Component)]
-pub struct PlayerCharacter;
-
 #[derive(Bundle)]
 pub struct PlayerCharacterBundle {
     #[bundle]
     pub actor: ActorBundle,
 
-    pub player_character: PlayerCharacter,
+    pub player_character: HostPlayer,
     pub focus: Focus,
     pub respawn_point: RespawnPoint,
     pub focused_entity: FocusedEntity,
@@ -29,7 +26,7 @@ pub struct PlayerCharacterBundle {
 impl PlayerCharacterBundle {
     pub fn new(assets: &AssetServer) -> Self {
         Self {
-            player_character: PlayerCharacter,
+            player_character: HostPlayer,
             actor: ActorBundle::new(assets),
             focus: Focus {
                 kind: FocusKind::World,

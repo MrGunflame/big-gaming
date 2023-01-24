@@ -3,10 +3,9 @@ use bevy_rapier3d::prelude::{QueryFilter, RapierContext};
 use common::components::actor::ActorFigure;
 use common::components::combat::{Attack, Reload};
 use common::components::interaction::{InteractionQueue, Interactions};
-use common::components::player::FocusedEntity;
+use common::components::player::{FocusedEntity, HostPlayer};
 
 use crate::components::Rotation;
-use crate::entities::player::PlayerCharacter;
 
 // pub fn keyboard_input(
 //     rapier_ctx: Res<RapierContext>,
@@ -106,7 +105,7 @@ use crate::entities::player::PlayerCharacter;
 pub fn mouse_button_input(
     mut commands: Commands,
     rapier: Res<RapierContext>,
-    players: Query<(Entity, &Transform, &ActorFigure), With<PlayerCharacter>>,
+    players: Query<(Entity, &Transform, &ActorFigure), With<HostPlayer>>,
     cameras: Query<&Transform, With<Camera3d>>,
     input: Res<Input<MouseButton>>,
     kb_input: Res<Input<KeyCode>>,
@@ -221,7 +220,7 @@ pub fn transform_system(mut entities: Query<(&mut Rotation, &mut Transform)>) {
 pub fn interact_target(
     mut queue: ResMut<InteractionQueue>,
     rapier: Res<RapierContext>,
-    mut players: Query<(Entity, &mut FocusedEntity), With<PlayerCharacter>>,
+    mut players: Query<(Entity, &mut FocusedEntity), With<HostPlayer>>,
     cameras: Query<(Entity, &Transform, &Rotation), With<Camera3d>>,
     entities: Query<(Entity, &Interactions)>,
     input: Res<Input<KeyCode>>,

@@ -2,8 +2,8 @@ use bevy::prelude::{Commands, Entity, Query, ResMut, With};
 use bevy_egui::egui::{Area, Context, Order, Pos2};
 use bevy_egui::EguiContext;
 use common::components::actor::ActorState;
+use common::components::player::HostPlayer;
 
-use crate::entities::player::PlayerCharacter;
 use crate::plugins::respawn::Respawn;
 use crate::ui::widgets::UiExt;
 use crate::ui::{Focus, Interface};
@@ -15,7 +15,7 @@ impl Interface for Death {
 
     fn render(&mut self, ctx: &Context, world: &mut bevy::prelude::World) {
         let (entity, state) = world
-            .query_filtered::<(Entity, &ActorState), With<PlayerCharacter>>()
+            .query_filtered::<(Entity, &ActorState), With<HostPlayer>>()
             .single(world);
 
         if *state != ActorState::DEAD {

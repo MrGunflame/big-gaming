@@ -1,10 +1,10 @@
 use bevy::prelude::{Camera3d, Transform, With};
 use bevy_egui::egui::Window;
 use bevy_rapier3d::prelude::Velocity;
+use common::components::player::HostPlayer;
 use common::world::chunk::ChunkId;
 
 use crate::components::Rotation;
-use crate::entities::player::PlayerCharacter;
 
 use super::Interface;
 
@@ -25,7 +25,7 @@ impl Interface for Debug {
             ui.label(format!("Entity count: {}", entities));
 
             let (player, rotation, velocity) = world
-                .query_filtered::<(&Transform, &Rotation, &Velocity), With<PlayerCharacter>>()
+                .query_filtered::<(&Transform, &Rotation, &Velocity), With<HostPlayer>>()
                 .single(world);
 
             let x = player.translation.x;

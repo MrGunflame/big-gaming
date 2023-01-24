@@ -2,10 +2,9 @@ use bevy::prelude::{Query, ResMut, With};
 use bevy_egui::egui::{Align2, Area, Order, Response, Ui, Vec2, Widget};
 use bevy_egui::EguiContext;
 use common::components::inventory::{Equipment, EquipmentSlot};
+use common::components::player::HostPlayer;
 
-use crate::entities::player::PlayerCharacter;
-
-pub fn gun(mut egui: ResMut<EguiContext>, players: Query<&Equipment, With<PlayerCharacter>>) {
+pub fn gun(mut egui: ResMut<EguiContext>, players: Query<&Equipment, With<HostPlayer>>) {
     let equipment = players.single();
 
     let Some(item) = equipment.get(EquipmentSlot::MAIN_HAND) else {

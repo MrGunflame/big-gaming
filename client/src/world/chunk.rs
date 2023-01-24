@@ -1,7 +1,6 @@
 use bevy::prelude::{Entity, Plugin, Query, ResMut, Transform, With};
 use common::world::chunk::{ChunkId, ChunkRegistry};
 
-use crate::entities::player::PlayerCharacter;
 use crate::prev_transform::PreviousTransform;
 
 // pub struct ChunkPlugin;

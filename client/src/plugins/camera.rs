@@ -8,9 +8,10 @@ use bevy::prelude::{
 use bevy::time::Time;
 use common::components::actor::{ActorFigure, MovementSpeed};
 use common::components::movement::Movement;
+use common::components::player::HostPlayer;
 
 use crate::components::settings::CameraSettings;
-use crate::entities::player::{CameraPosition, PlayerCharacter};
+use crate::entities::player::CameraPosition;
 
 use self::events::{adjust_camera_distance, register_events, toggle_camera_position};
 
@@ -32,8 +33,8 @@ impl Plugin for CameraPlugin {
 
 fn synchronize_player_camera(
     settings: Res<CameraSettings>,
-    players: Query<(&Transform, &ActorFigure), With<PlayerCharacter>>,
-    mut cameras: Query<(&mut Transform, &CameraPosition), Without<PlayerCharacter>>,
+    players: Query<(&Transform, &ActorFigure), With<HostPlayer>>,
+    mut cameras: Query<(&mut Transform, &CameraPosition), Without<HostPlayer>>,
 ) {
     let (player, figure) = players.single();
     let (mut camera, position) = cameras.single_mut();
@@ -61,8 +62,8 @@ fn synchronize_player_camera(
 fn head_bumping(
     time: Res<Time>,
     settings: Res<CameraSettings>,
-    players: Query<(&Transform, &MovementSpeed), (With<PlayerCharacter>, With<Movement>)>,
-    mut cameras: Query<(&mut Transform, &CameraPosition), Without<PlayerCharacter>>,
+    players: Query<(&Transform, &MovementSpeed), (With<HostPlayer>, With<Movement>)>,
+    mut cameras: Query<(&mut Transform, &CameraPosition), Without<HostPlayer>>,
 ) {
     // Only apply head bumping when the player is moving.
     let Ok((player, speed)) = players.get_single() else {

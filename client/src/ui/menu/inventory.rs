@@ -6,8 +6,8 @@ use bevy_egui::egui::{
 use common::archive::GameArchive;
 use common::components::inventory::Inventory;
 use common::components::items::ItemStack;
+use common::components::player::HostPlayer;
 
-use crate::entities::player::PlayerCharacter;
 use crate::ui::widgets::{Banner, UiExt};
 use crate::ui::Interface;
 
@@ -23,7 +23,7 @@ impl Interface for InventoryMenu {
 
     fn render(&mut self, ctx: &bevy_egui::egui::Context, world: &mut bevy::prelude::World) {
         let inventory = world
-            .query_filtered::<&Inventory, With<PlayerCharacter>>()
+            .query_filtered::<&Inventory, With<HostPlayer>>()
             .single(world);
 
         let archive = world.resource::<GameArchive>();

@@ -8,9 +8,7 @@ use bevy_egui::egui::{
 };
 use common::components::entity::EntityName;
 use common::components::interaction::Interactions;
-use common::components::player::FocusedEntity;
-
-use crate::entities::player::PlayerCharacter;
+use common::components::player::{FocusedEntity, HostPlayer};
 
 use super::{Interface, InterfaceKind, SenseExt};
 
@@ -26,7 +24,7 @@ impl Interface for Interaction {
 
     fn render(&mut self, ctx: &Context, world: &mut bevy::prelude::World) {
         let focused_entity = world
-            .query_filtered::<&FocusedEntity, With<PlayerCharacter>>()
+            .query_filtered::<&FocusedEntity, With<HostPlayer>>()
             .single(world);
 
         let FocusedEntity::Some { entity, distance } = *focused_entity else {

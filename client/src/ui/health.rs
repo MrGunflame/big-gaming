@@ -4,10 +4,9 @@ use bevy_egui::egui::{
 };
 use bevy_egui::EguiContext;
 use common::components::combat::Health;
+use common::components::player::HostPlayer;
 
-use crate::entities::player::PlayerCharacter;
-
-pub fn health(mut egui: ResMut<EguiContext>, players: Query<&Health, With<PlayerCharacter>>) {
+pub fn health(mut egui: ResMut<EguiContext>, players: Query<&Health, With<HostPlayer>>) {
     let health = players.single();
 
     Area::new("health")

@@ -7,9 +7,9 @@ use bevy::prelude::{
 };
 use common::components::actor::{ActorState, MovementSpeed};
 use common::components::movement::{Jump, Movement};
+use common::components::player::HostPlayer;
 
 use crate::components::Rotation;
-use crate::entities::player::PlayerCharacter;
 use crate::ui::{Focus, FocusKind};
 use crate::utils::{Degrees, Radians};
 
@@ -69,7 +69,7 @@ fn register_events(mut hotkeys: ResMut<HotkeyStore>) {
 
 fn toggle_sprint(
     hotkeys: Res<HotkeyStore>,
-    mut players: Query<&mut MovementSpeed, With<PlayerCharacter>>,
+    mut players: Query<&mut MovementSpeed, With<HostPlayer>>,
 ) {
     let events = unsafe { EVENTS.assume_init_ref() };
 
@@ -85,7 +85,7 @@ fn toggle_sprint(
 fn movement_events(
     mut commands: Commands,
     hotkeys: Res<HotkeyStore>,
-    mut players: Query<(Entity, &ActorState, &Focus), With<PlayerCharacter>>,
+    mut players: Query<(Entity, &ActorState, &Focus), With<HostPlayer>>,
 ) {
     let events = unsafe { EVENTS.assume_init_ref() };
 
@@ -205,10 +205,7 @@ impl Angle {
 fn mouse_movement(
     mut events: EventReader<MouseMotion>,
     mut cameras: Query<&mut Rotation, With<Camera3d>>,
-    mut players: Query<
-        (&mut Rotation, &ActorState, &Focus),
-        (With<PlayerCharacter>, Without<Camera3d>),
-    >,
+    mut players: Query<(&mut Rotation, &ActorState, &Focus), (With<HostPlayer>, Without<Camera3d>)>,
 ) {
     let mut camera_rot = cameras.single_mut();
     let (mut player_rot, state, focus) = players.single_mut();
