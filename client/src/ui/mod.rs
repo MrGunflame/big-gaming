@@ -49,19 +49,19 @@ pub struct UiPlugin;
 
 impl Plugin for UiPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
-        let mut state = InterfaceState::new();
-        state.push_default::<Interaction>();
+        // let mut state = InterfaceState::new();
+        // state.push_default::<Interaction>();
 
-        app.add_plugin(EguiPlugin)
-            .insert_resource(state)
-            .insert_resource(Cursor::new())
-            .add_startup_system(events::register_events)
-            .add_system(events::handle_events)
-            .add_system(events::toggle_focus)
-            .add_system(crosshair::crosshair)
-            .add_system(health::health)
-            .add_system(gun::gun)
-            .add_stage("RenderInterface", UiStage);
+        // app.add_plugin(EguiPlugin)
+        //     .insert_resource(state)
+        //     .insert_resource(Cursor::new())
+        app.add_startup_system(events::register_events)
+            .add_system(events::handle_events);
+        // .add_system(events::toggle_focus)
+        // .add_system(crosshair::crosshair)
+        // .add_system(health::health)
+        // .add_system(gun::gun)
+        // .add_stage("RenderInterface", UiStage);
     }
 }
 

@@ -2,7 +2,8 @@
 mod cursor;
 mod interface;
 mod systems;
-mod widgets;
+
+pub mod widgets;
 
 use bevy::prelude::{Plugin, Stage};
 

@@ -78,9 +78,32 @@ impl InterfaceState {
         self.push_boxed(Box::new(widget));
     }
 
-    pub fn pop(&mut self) {
-        // FIXME: Respect flags
-        self.widgets.pop().map(|w| w.destroy());
+    /// Removes the last [`Widget`]. Returns `true` if a widget was removed.
+    ///
+    /// Note that this ignores [`Widget`]s with the [`IGNORE_CLOSE`] flag.
+    ///
+    /// [`IGNORE_CLOSE`]: WidgetFlags::IGNORE_CLOSE
+    pub fn pop(&mut self) -> bool {
+        dbg!(self.widgets.len());
+        let mut index = self.widgets.len().saturating_sub(1);
+
+        loop {
+            let Some(widget) = self.widgets.get(index) else {
+                return false;
+            };
+
+            // Ignore widgets with the IGNORE_CLOSE flag.
+            if !widget.flags.intersects(WidgetFlags::IGNORE_CLOSE) {
+                self.remove_in(index);
+                return true;
+            }
+
+            if index == 0 {
+                return false;
+            }
+
+            index -= 1;
+        }
     }
 
     fn push_boxed(&mut self, widget: Box<dyn Widget>) {

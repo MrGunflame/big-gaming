@@ -2,6 +2,7 @@ use std::mem::MaybeUninit;
 
 use bevy::prelude::{KeyCode, Query, Res, ResMut};
 use bevy::window::Windows;
+use ui::InterfaceState;
 
 use crate::plugins::hotkeys::{Event, EventId, HotkeyStore, TriggerKind};
 
@@ -10,7 +11,7 @@ use super::debug::Debug;
 use super::menu::console::Console;
 use super::menu::gamemenu::GameMenu;
 use super::menu::inventory::InventoryMenu;
-use super::{Focus, FocusKind, InterfaceState};
+use super::{Focus, FocusKind};
 
 const DEFAULT_TRIGGER_GAMEMENU: KeyCode = KeyCode::Escape;
 const DEFAULT_TRIGGER_DEBUGMENU: KeyCode = KeyCode::F3;
@@ -71,30 +72,32 @@ pub(super) fn handle_events(
     let previous = state.is_empty();
 
     if hotkeys.triggered(events.game_menu) {
-        if state.is_empty() {
-            state.push_default::<GameMenu>();
-        } else {
-            let _ = state.pop();
+        if !state.pop() {
+            state.push(ui::widgets::GameMenu::default());
         }
+        // if state.is_empty() {
+        // } else {
+        //     let _ = state.pop();
+        // }
     }
 
-    if hotkeys.triggered(events.debug_menu) {
-        if state.remove::<Debug>().is_none() {
-            state.push_default::<Debug>();
-        }
-    }
+    // if hotkeys.triggered(events.debug_menu) {
+    //     if state.remove::<Debug>().is_none() {
+    //         state.push_default::<Debug>();
+    //     }
+    // }
 
-    if hotkeys.triggered(events.inventory) {
-        if state.remove::<InventoryMenu>().is_none() {
-            state.push_default::<InventoryMenu>();
-        }
-    }
+    // if hotkeys.triggered(events.inventory) {
+    //     if state.remove::<InventoryMenu>().is_none() {
+    //         state.push_default::<InventoryMenu>();
+    //     }
+    // }
 
-    if hotkeys.triggered(events.console) {
-        if state.remove::<Console>().is_none() {
-            state.push_default::<Console>();
-        }
-    }
+    // if hotkeys.triggered(events.console) {
+    //     if state.remove::<Console>().is_none() {
+    //         state.push_default::<Console>();
+    //     }
+    // }
 
     let mut focus = players.single_mut();
     if previous != state.is_empty() {
@@ -112,23 +115,23 @@ pub(super) fn handle_events(
     }
 }
 
-/// Toggle [`Focus`].
-pub(super) fn toggle_focus(
-    mut windows: ResMut<Windows>,
-    mut cursor: ResMut<Cursor>,
-    mut players: Query<&mut Focus>,
-) {
-    let window = windows.primary_mut();
-    let mut focus = players.single_mut();
+// / Toggle [`Focus`].
+// pub(super) fn toggle_focus(
+//     mut windows: ResMut<Windows>,
+//     mut cursor: ResMut<Cursor>,
+//     mut players: Query<&mut Focus>,
+// ) {
+//     let window = windows.primary_mut();
+//     let mut focus = players.single_mut();
 
-    if focus.changed {
-        match focus.kind {
-            FocusKind::World => cursor.lock(window),
-            FocusKind::Interface => cursor.unlock(window),
-        }
+//     if focus.changed {
+//         match focus.kind {
+//             FocusKind::World => cursor.lock(window),
+//             FocusKind::Interface => cursor.unlock(window),
+//         }
 
-        focus.changed = false;
-    }
+//         focus.changed = false;
+//     }
 
-    cursor.reset(window);
-}
+//     cursor.reset(window);
+// }

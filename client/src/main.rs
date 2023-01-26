@@ -16,6 +16,7 @@ mod world;
 
 use std::time::Duration;
 
+use ::ui::UiPlugin;
 use ai::bundles::AiBundle;
 use ai::components::AiController;
 use ai::AiPlugin;
@@ -54,7 +55,6 @@ use entities::player::{PlayerCameraBundle, PlayerCharacterBundle};
 use plugins::interactions::InteractionsPlugin;
 use plugins::respawn::RespawnPlugin;
 use plugins::{CameraPlugin, HotkeyPlugin, MovementPlugin};
-use ::ui::UiPlugin;
 
 fn main() {
     // log::Logger::new().init();
@@ -106,6 +106,7 @@ fn main() {
         .add_plugin(base::animation::AnimationPlugin)
         .add_plugin(AiPlugin)
         .add_plugin(SpawnPlugin)
+        .add_plugin(crate::ui::UiPlugin)
         .run();
 }
 
