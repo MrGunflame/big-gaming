@@ -1,13 +1,10 @@
 use bevy::prelude::{
-    AssetServer, Commands, Entity, EulerRot, Plugin, Query, Res, Transform, Vec3, With,
+    AssetServer, Commands, CoreStage, Entity, Plugin, Query, Res, Transform, Vec3, With,
 };
-use bevy_rapier3d::prelude::{QueryFilter, RapierContext};
 use common::bundles::ProjectileBundle;
-use common::components::actor::{ActorFigure, ActorFlag, ActorFlags, ActorState};
-use common::components::animation::{Bone, Skeleton};
+use common::components::actor::{ActorFigure, ActorFlag, ActorFlags, Death};
 use common::components::combat::{Attack, Damage, Health, IncomingDamage, Reload, Resistances};
-use common::components::faction::ActorFactions;
-use common::components::inventory::{Equipment, EquipmentSlot, Inventory};
+use common::components::inventory::{Equipment, EquipmentSlot};
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct CombatPlugin;
@@ -17,18 +14,21 @@ impl Plugin for CombatPlugin {
         app.add_system(apply_incoming_damage)
             .add_system(handle_attack_events)
             .add_system(handle_reload_events);
+        // .add_system_to_stage(CoreStage::Last, remove_death);
     }
 }
 
 fn apply_incoming_damage(
+    mut commands: Commands,
     mut actors: Query<(
+        Entity,
         &mut IncomingDamage,
         &mut Health,
         &Resistances,
         &mut ActorFlags,
     )>,
 ) {
-    for (mut incoming_damage, mut health, resistances, mut flags) in actors.iter_mut() {
+    for (entity, mut incoming_damage, mut health, resistances, mut flags) in actors.iter_mut() {
         while let Some(damage) = incoming_damage.pop() {
             *health -= damage.amount;
 
@@ -44,6 +44,8 @@ fn apply_incoming_damage(
                 }
 
                 incoming_damage.clear();
+
+                commands.entity(entity).insert(Death);
 
                 // The actor is already dead, no need to process any more damage events.
                 break;
@@ -113,3 +115,10 @@ fn handle_reload_events(
         commands.entity(entity).remove::<Reload>();
     }
 }
+
+// Remove the death event from all actors.
+// fn remove_death(mut commands: Commands, mut actors: Query<Entity, With<Death>>) {
+//     for entity in &mut actors {
+//         commands.entity(entity).remove::<Death>();
+//     }
+// }

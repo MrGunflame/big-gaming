@@ -1,6 +1,5 @@
 //! The public interface API
 
-use std::any::{Any, TypeId};
 use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign};
 
 use bevy::prelude::Resource;
@@ -39,17 +38,30 @@ impl InterfaceState {
                 close: false,
             };
 
-            for widget in &mut self.widgets {
+            let mut index = 0;
+            while index < self.widgets.len() {
+                let widget = &mut self.widgets[index];
+
                 widget.create();
 
                 widget.boxed.render(&mut ctx);
+
+                if ctx.close {
+                    self.remove_in(index);
+                    index -= 1;
+
+                    // Reset for next widget.
+                    ctx.close = false;
+                }
+
+                index += 1;
             }
         });
     }
 
     pub fn push<T>(&mut self, widget: T)
     where
-        T: Widget + Any,
+        T: Widget,
     {
         let flags = widget.flags();
         let captures_pointer = flags.intersects(WidgetFlags::CAPTURE_POINTER);
@@ -63,7 +75,7 @@ impl InterfaceState {
             self.capture_keys = true;
         }
 
-        self.push_boxed(Box::new(widget), TypeId::of::<T>());
+        self.push_boxed(Box::new(widget));
     }
 
     pub fn pop(&mut self) {
@@ -71,9 +83,9 @@ impl InterfaceState {
         self.widgets.pop().map(|w| w.destroy());
     }
 
-    fn push_boxed(&mut self, widget: Box<dyn Widget>, type_id: TypeId) {
+    fn push_boxed(&mut self, widget: Box<dyn Widget>) {
         self.widgets.push(WidgetCell {
-            id: type_id,
+            flags: widget.flags(),
             boxed: widget,
             is_created: false,
         });
@@ -85,6 +97,24 @@ impl InterfaceState {
 
     pub fn captures_keys(&self) -> bool {
         self.capture_keys
+    }
+
+    /// Removes the [`Widget`] at the given `index` and recalculate flags.
+    fn remove_in(&mut self, index: usize) {
+        self.widgets.remove(index).destroy();
+
+        self.capture_pointer = false;
+        self.capture_keys = false;
+
+        for widget in &self.widgets {
+            if widget.flags.intersects(WidgetFlags::CAPTURE_POINTER) {
+                self.capture_pointer = true;
+            }
+
+            if widget.flags.intersects(WidgetFlags::CAPTURE_KEYS) {
+                self.capture_keys = true;
+            }
+        }
     }
 }
 
@@ -102,7 +132,7 @@ pub trait Widget: Send + Sync + 'static {
 }
 
 struct WidgetCell {
-    id: TypeId,
+    flags: WidgetFlags,
     boxed: Box<dyn Widget>,
     is_created: bool,
 }
@@ -181,6 +211,7 @@ impl BitAndAssign for WidgetFlags {
     }
 }
 
+/// The context passed to [`Widget`]s for rendering.
 pub struct Context<'a> {
     pub ctx: &'a bevy_egui::egui::Context,
     pub world: &'a mut World,
@@ -189,6 +220,7 @@ pub struct Context<'a> {
 }
 
 impl<'a> Context<'a> {
+    /// Closes the widget.
     pub fn close(&mut self) {
         self.close = true;
     }

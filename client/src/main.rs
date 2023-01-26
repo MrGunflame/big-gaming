@@ -54,7 +54,7 @@ use entities::player::{PlayerCameraBundle, PlayerCharacterBundle};
 use plugins::interactions::InteractionsPlugin;
 use plugins::respawn::RespawnPlugin;
 use plugins::{CameraPlugin, HotkeyPlugin, MovementPlugin};
-use ui::UiPlugin;
+use ::ui::UiPlugin;
 
 fn main() {
     // log::Logger::new().init();

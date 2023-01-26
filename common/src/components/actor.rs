@@ -206,5 +206,9 @@ impl From<SpawnPoint> for SpawnPoints {
 }
 
 /// An actor wants to spawn. This component is also used for respawns.
-#[derive(Copy, Clone, Debug, Component)]
+#[derive(Copy, Clone, Debug, Default, Component)]
 pub struct Spawn;
+
+/// A death event.
+#[derive(Copy, Clone, Debug, Default, Component)]
+pub struct Death;
