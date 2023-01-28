@@ -2,14 +2,13 @@ use std::mem::MaybeUninit;
 
 use bevy::prelude::{KeyCode, Query, Res, ResMut};
 use bevy::window::Windows;
-use ui::widgets::Inventory;
+use ui::widgets::{Console, Inventory};
 use ui::InterfaceState;
 
 use crate::plugins::hotkeys::{Event, EventId, HotkeyStore, TriggerKind};
 
 use super::cursor::Cursor;
 use super::debug::Debug;
-use super::menu::console::Console;
 use super::menu::gamemenu::GameMenu;
 use super::menu::inventory::InventoryMenu;
 use super::{Focus, FocusKind};
@@ -96,6 +95,10 @@ pub(super) fn handle_events(
 
     if hotkeys.triggered(events.inventory) {
         state.push(Inventory::default());
+    }
+
+    if hotkeys.triggered(events.console) {
+        state.push(Console::default());
     }
 
     // if hotkeys.triggered(events.console) {
