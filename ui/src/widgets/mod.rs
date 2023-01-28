@@ -10,3 +10,4 @@ pub use crosshair::Crosshair;
 pub use death::Death;
 pub use gamemenu::GameMenu;
 pub use health::Health;
+pub use inventory::Inventory;

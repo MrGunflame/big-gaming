@@ -2,6 +2,7 @@ use std::mem::MaybeUninit;
 
 use bevy::prelude::{KeyCode, Query, Res, ResMut};
 use bevy::window::Windows;
+use ui::widgets::Inventory;
 use ui::InterfaceState;
 
 use crate::plugins::hotkeys::{Event, EventId, HotkeyStore, TriggerKind};
@@ -92,6 +93,10 @@ pub(super) fn handle_events(
     //         state.push_default::<InventoryMenu>();
     //     }
     // }
+
+    if hotkeys.triggered(events.inventory) {
+        state.push(Inventory::default());
+    }
 
     // if hotkeys.triggered(events.console) {
     //     if state.remove::<Console>().is_none() {
