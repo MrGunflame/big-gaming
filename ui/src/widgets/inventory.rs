@@ -27,8 +27,6 @@ impl Widget for Inventory {
         WidgetFlags::CAPTURE_POINTER | WidgetFlags::CAPTURE_KEYS
     }
 
-    fn create(&mut self) {}
-
     fn render(&mut self, ctx: &mut Context) {
         let inventory = ctx
             .world
@@ -43,8 +41,6 @@ impl Widget for Inventory {
                 render(self, ui, archive, inventory);
             });
     }
-
-    fn destroy(&mut self) {}
 }
 
 fn render(state: &mut Inventory, ui: &mut Ui, archive: &GameArchive, inventory: &InventoryComp) {

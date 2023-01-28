@@ -17,8 +17,6 @@ impl Widget for Death {
         WidgetFlags::CAPTURE_POINTER | WidgetFlags::CAPTURE_KEYS | WidgetFlags::IGNORE_CLOSE
     }
 
-    fn create(&mut self) {}
-
     fn render(&mut self, ctx: &mut Context) {
         let (entity, flags) = ctx
             .world
@@ -42,6 +40,4 @@ impl Widget for Death {
                 });
             });
     }
-
-    fn destroy(&mut self) {}
 }

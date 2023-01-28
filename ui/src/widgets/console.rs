@@ -16,8 +16,6 @@ impl Widget for Console {
         WidgetFlags::CAPTURE_KEYS | WidgetFlags::CAPTURE_POINTER
     }
 
-    fn create(&mut self) {}
-
     fn render(&mut self, ctx: &mut Context) {
         Area::new("console")
             .fixed_pos(Pos2::new(0.0, 0.0))
@@ -27,6 +25,4 @@ impl Widget for Console {
                 ui.add(input);
             });
     }
-
-    fn destroy(&mut self) {}
 }

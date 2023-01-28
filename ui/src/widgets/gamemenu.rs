@@ -14,8 +14,6 @@ impl Widget for GameMenu {
         WidgetFlags::CAPTURE_POINTER | WidgetFlags::CAPTURE_KEYS
     }
 
-    fn create(&mut self) {}
-
     fn render(&mut self, ctx: &mut Context) {
         Area::new("gamemenu")
             .fixed_pos(Pos2::new(0.0, 0.0))
@@ -26,6 +24,4 @@ impl Widget for GameMenu {
                 }
             });
     }
-
-    fn destroy(&mut self) {}
 }

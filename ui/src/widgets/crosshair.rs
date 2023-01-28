@@ -16,8 +16,6 @@ impl Widget for Crosshair {
         WidgetFlags::IGNORE_CLOSE
     }
 
-    fn create(&mut self) {}
-
     fn render(&mut self, ctx: &mut Context) {
         let focus = ctx
             .world
@@ -46,8 +44,6 @@ impl Widget for Crosshair {
             _ => (),
         }
     }
-
-    fn destroy(&mut self) {}
 }
 
 pub struct CrosshairWidget {}
@@ -72,7 +68,7 @@ impl bevy_egui::egui::Widget for CrosshairWidget {
 
         if ui.is_rect_visible(resp.rect) {
             ui.painter()
-                .rect(rect, Rounding::none(), Color32::BLUE, Stroke::none());
+                .rect(rect, Rounding::none(), Color32::BLUE, Stroke::NONE);
         }
 
         resp

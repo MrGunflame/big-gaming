@@ -189,9 +189,11 @@ pub trait Widget: Send + Sync + 'static {
         WidgetFlags(0)
     }
 
-    fn create(&mut self);
+    fn create(&mut self) {}
+
     fn render(&mut self, ctx: &mut Context);
-    fn destroy(&mut self);
+
+    fn destroy(&mut self) {}
 }
 
 // FIXME: Find a better name.

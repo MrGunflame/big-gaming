@@ -17,8 +17,6 @@ impl Widget for Health {
         WidgetFlags::IGNORE_CLOSE
     }
 
-    fn create(&mut self) {}
-
     fn render(&mut self, ctx: &mut Context) {
         let health = ctx
             .world
@@ -35,8 +33,6 @@ impl Widget for Health {
                 })
             });
     }
-
-    fn destroy(&mut self) {}
 }
 
 struct HealthWidget {
@@ -67,7 +63,7 @@ impl bevy_egui::egui::Widget for HealthWidget {
 
         if ui.is_rect_visible(resp.rect) {
             ui.painter()
-                .rect(rect, Rounding::none(), Color32::RED, Stroke::none());
+                .rect(rect, Rounding::none(), Color32::RED, Stroke::NONE);
 
             // let mut rect = outer_rect;
             // let width = self.width * self.health.health as f32 / self.health.max_health as f32;
@@ -76,7 +72,7 @@ impl bevy_egui::egui::Widget for HealthWidget {
             rect.max.x = rect.min.x + ((rect.max.x - rect.min.x) * factor);
 
             ui.painter()
-                .rect(rect, Rounding::none(), Color32::GREEN, Stroke::none());
+                .rect(rect, Rounding::none(), Color32::GREEN, Stroke::NONE);
 
             ui.label(format!("{}/{}", self.health.health, self.health.max_health));
         }
