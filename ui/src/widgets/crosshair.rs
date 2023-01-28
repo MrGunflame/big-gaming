@@ -8,6 +8,10 @@ use crate::{Context, Widget, WidgetFlags};
 pub struct Crosshair;
 
 impl Widget for Crosshair {
+    fn name(&self) -> &'static str {
+        "core::crosshair"
+    }
+
     fn flags(&self) -> WidgetFlags {
         WidgetFlags::IGNORE_CLOSE
     }

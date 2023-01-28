@@ -13,8 +13,8 @@ impl Plugin for CombatPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
         app.add_system(apply_incoming_damage)
             .add_system(handle_attack_events)
-            .add_system(handle_reload_events);
-        // .add_system_to_stage(CoreStage::Last, remove_death);
+            .add_system(handle_reload_events)
+            .add_system(remove_death);
     }
 }
 
@@ -117,8 +117,8 @@ fn handle_reload_events(
 }
 
 // Remove the death event from all actors.
-// fn remove_death(mut commands: Commands, mut actors: Query<Entity, With<Death>>) {
-//     for entity in &mut actors {
-//         commands.entity(entity).remove::<Death>();
-//     }
-// }
+fn remove_death(mut commands: Commands, mut actors: Query<Entity, With<Death>>) {
+    for entity in &mut actors {
+        commands.entity(entity).remove::<Death>();
+    }
+}

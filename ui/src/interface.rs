@@ -51,7 +51,7 @@ impl InterfaceState {
                     index -= 1;
 
                     // Reset for next widget.
-                    ctx.close = false;
+                    ctx.reset();
                 }
 
                 index += 1;
@@ -84,7 +84,6 @@ impl InterfaceState {
     ///
     /// [`IGNORE_CLOSE`]: WidgetFlags::IGNORE_CLOSE
     pub fn pop(&mut self) -> bool {
-        dbg!(self.widgets.len());
         let mut index = self.widgets.len().saturating_sub(1);
 
         loop {
@@ -122,6 +121,14 @@ impl InterfaceState {
         self.capture_keys
     }
 
+    #[inline]
+    pub fn iter(&self) -> Iter<'_> {
+        Iter {
+            inner: self,
+            next: 0,
+        }
+    }
+
     /// Removes the [`Widget`] at the given `index` and recalculate flags.
     fn remove_in(&mut self, index: usize) {
         self.widgets.remove(index).destroy();
@@ -141,10 +148,43 @@ impl InterfaceState {
     }
 }
 
+#[derive(Clone)]
+pub struct Iter<'a> {
+    inner: &'a InterfaceState,
+    next: usize,
+}
+
+impl<'a> Iterator for Iter<'a> {
+    type Item = &'a WidgetCell;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        let elem = self.inner.widgets.get(self.next)?;
+        self.next += 1;
+        Some(elem)
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.len(), Some(self.len()))
+    }
+}
+
+impl<'a> ExactSizeIterator for Iter<'a> {
+    #[inline]
+    fn len(&self) -> usize {
+        self.inner.widgets.len() - self.next
+    }
+}
+
 /// A standalone component of the user interface. It may be an interactive window, or a simple
 /// non-interctive overlay.
 // FIXME: Replace with a raw vtable for external use.
 pub trait Widget: Send + Sync + 'static {
+    fn name(&self) -> &'static str {
+        "<unknown>"
+    }
+
     fn flags(&self) -> WidgetFlags {
         WidgetFlags(0)
     }
@@ -154,13 +194,19 @@ pub trait Widget: Send + Sync + 'static {
     fn destroy(&mut self);
 }
 
-struct WidgetCell {
+// FIXME: Find a better name.
+pub struct WidgetCell {
     flags: WidgetFlags,
     boxed: Box<dyn Widget>,
     is_created: bool,
 }
 
 impl WidgetCell {
+    #[inline]
+    pub fn name(&self) -> &str {
+        self.boxed.name()
+    }
+
     /// Creates the [`Widget`] if it wasn't already created.
     #[inline]
     fn create(&mut self) {
@@ -246,5 +292,9 @@ impl<'a> Context<'a> {
     /// Closes the widget.
     pub fn close(&mut self) {
         self.close = true;
+    }
+
+    fn reset(&mut self) {
+        self.close = false;
     }
 }

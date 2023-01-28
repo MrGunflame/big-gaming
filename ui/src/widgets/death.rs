@@ -9,6 +9,10 @@ use crate::{Context, Widget, WidgetFlags};
 pub struct Death {}
 
 impl Widget for Death {
+    fn name(&self) -> &'static str {
+        "core::death"
+    }
+
     fn flags(&self) -> WidgetFlags {
         WidgetFlags::CAPTURE_POINTER | WidgetFlags::CAPTURE_KEYS | WidgetFlags::IGNORE_CLOSE
     }

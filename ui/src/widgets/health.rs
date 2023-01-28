@@ -9,6 +9,10 @@ use crate::{Context, Widget, WidgetFlags};
 pub struct Health;
 
 impl Widget for Health {
+    fn name(&self) -> &'static str {
+        "core::health"
+    }
+
     fn flags(&self) -> WidgetFlags {
         WidgetFlags::IGNORE_CLOSE
     }
