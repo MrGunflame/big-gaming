@@ -1,6 +1,6 @@
 use bevy::prelude::With;
 use bevy_egui::egui::{
-    Align, Area, Color32, Layout, Pos2, Rect, Rounding, Sense, Stroke, Ui, Vec2,
+    Align, Area, Color32, Layout, PointerButton, Pos2, Rect, Rounding, Sense, Stroke, Ui, Vec2,
 };
 use common::archive::GameArchive;
 use common::components::inventory::Inventory as InventoryComp;
@@ -10,7 +10,13 @@ use common::components::player::HostPlayer;
 use crate::{Context, Widget, WidgetFlags};
 
 #[derive(Clone, Debug, Default)]
-pub struct Inventory {}
+pub struct Inventory {
+    /// The index of the selected [`Tile`], if any.
+    ///
+    /// If a tile is selected, hover tooltips for other tiles are disabled and the context menu
+    /// for the selected tile is shown.
+    selected_tile: Option<(usize, Pos2)>,
+}
 
 impl Widget for Inventory {
     fn name(&self) -> &'static str {
@@ -34,17 +40,18 @@ impl Widget for Inventory {
         Area::new("inventory")
             .fixed_pos(Pos2::new(0.0, 0.0))
             .show(ctx.ctx, |ui| {
-                render(ui, archive, inventory);
+                render(self, ui, archive, inventory);
             });
     }
 
     fn destroy(&mut self) {}
 }
 
-fn render(ui: &mut Ui, archive: &GameArchive, inventory: &InventoryComp) {
+fn render(state: &mut Inventory, ui: &mut Ui, archive: &GameArchive, inventory: &InventoryComp) {
     let items: Vec<&ItemStack> = inventory.iter().collect();
 
     ui.add(Category {
+        state,
         archive,
         title: "test",
         items: &items,
@@ -53,6 +60,7 @@ fn render(ui: &mut Ui, archive: &GameArchive, inventory: &InventoryComp) {
 
 #[derive(Debug)]
 struct Category<'a> {
+    state: &'a mut Inventory,
     archive: &'a GameArchive,
     title: &'a str,
     items: &'a [&'a ItemStack],
@@ -61,8 +69,8 @@ struct Category<'a> {
 impl<'a> bevy_egui::egui::Widget for Category<'a> {
     fn ui(self, ui: &mut Ui) -> bevy_egui::egui::Response {
         let resp = ui.horizontal_wrapped(|ui| {
-            for stack in self.items {
-                ui.add(Tile::new(self.archive, stack).square(64.0));
+            for (index, stack) in self.items.iter().enumerate() {
+                ui.add(Tile::new(index, self.state, self.archive, stack).square(64.0));
             }
         });
 
@@ -71,6 +79,8 @@ impl<'a> bevy_egui::egui::Widget for Category<'a> {
 }
 
 struct Tile<'a> {
+    index: usize,
+    state: &'a mut Inventory,
     archive: &'a GameArchive,
     stack: &'a ItemStack,
     width: f32,
@@ -78,8 +88,15 @@ struct Tile<'a> {
 }
 
 impl<'a> Tile<'a> {
-    const fn new(archive: &'a GameArchive, stack: &'a ItemStack) -> Self {
+    fn new(
+        index: usize,
+        state: &'a mut Inventory,
+        archive: &'a GameArchive,
+        stack: &'a ItemStack,
+    ) -> Self {
         Self {
+            index,
+            state,
             archive,
             stack: stack,
             width: 0.0,
@@ -98,25 +115,36 @@ impl<'a> bevy_egui::egui::Widget for Tile<'a> {
     fn ui(self, ui: &mut Ui) -> bevy_egui::egui::Response {
         let item = self.archive.items().get(self.stack.item.id);
 
-        let resp = ui.allocate_response(
-            Vec2::new(self.width, self.height),
-            Sense {
-                click: false,
-                focusable: false,
-                drag: false,
-            },
-        );
+        let resp = ui.allocate_response(Vec2::new(self.width, self.height), Sense::click());
 
         if ui.is_rect_visible(resp.rect) {
             let painter = ui.painter();
             painter.rect(resp.rect, Rounding::none(), Color32::RED, Stroke::NONE);
         }
 
-        if let Some(cursor) = resp.hover_pos() {
-            TileHover {
-                title: item.unwrap().name.as_str(),
+        if let Some((index, pos)) = self.state.selected_tile {
+            if self.index == index {
+                ContextMenu {
+                    state: self.state,
+                    rect: Rect {
+                        min: pos,
+                        max: Pos2::new(pos.x + 32.0, pos.y + 32.0),
+                    },
+                }
+                .show(ui);
             }
-            .show(ui, cursor);
+        // Only show hover when NO tile is selected.
+        } else {
+            if let Some(cursor) = resp.hover_pos() {
+                if resp.clicked_by(PointerButton::Secondary) {
+                    self.state.selected_tile = Some((self.index, cursor));
+                } else {
+                    TileHover {
+                        title: item.unwrap().name.as_str(),
+                    }
+                    .show(ui, cursor);
+                }
+            }
         }
 
         resp
@@ -136,5 +164,21 @@ impl<'a> TileHover<'a> {
 
         let mut ui = ui.child_ui(rect, Layout::left_to_right(Align::TOP));
         ui.label(self.title);
+    }
+}
+
+/// The (right-click) context menu for a tile.
+struct ContextMenu<'a> {
+    state: &'a mut Inventory,
+    rect: Rect,
+}
+
+impl<'a> ContextMenu<'a> {
+    fn show(self, ui: &mut Ui) {
+        let mut ui = ui.child_ui(self.rect, Layout::left_to_right(Align::TOP));
+
+        if ui.label("Drop").clicked_elsewhere() {
+            self.state.selected_tile = None;
+        }
     }
 }
