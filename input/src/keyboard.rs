@@ -1,9 +1,9 @@
 use bevy::input::ButtonState;
-use bevy::prelude::{Input, KeyCode, ResMut, ScanCode};
+use bevy::prelude::{EventReader, EventWriter, Input, KeyCode, ResMut, ScanCode};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct KeyboardInput {
-    pub scan_code: u32,
+    pub scan_code: ScanCode,
     pub key_code: Option<KeyCode>,
     pub state: ButtonState,
 }
@@ -45,4 +45,17 @@ impl Qwertz {
     pub const W: ScanCode = ScanCode(18);
     pub const E: ScanCode = ScanCode(19);
     pub const R: ScanCode = ScanCode(20);
+}
+
+pub fn keyboard_input(
+    mut reader: EventReader<bevy::input::keyboard::KeyboardInput>,
+    mut writer: EventWriter<KeyboardInput>,
+) {
+    for event in reader.iter() {
+        writer.send(KeyboardInput {
+            scan_code: ScanCode(event.scan_code),
+            key_code: event.key_code,
+            state: event.state,
+        });
+    }
 }
