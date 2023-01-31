@@ -1,7 +1,8 @@
-use std::borrow::Cow;
-use std::collections::HashSet;
+use std::borrow::{Borrow, Cow};
+use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
-use std::sync::atomic::AtomicU32;
+use std::marker::PhantomData;
+use std::sync::atomic::{AtomicU32, Ordering};
 
 use bevy::input::ButtonState;
 use bevy::prelude::{EventReader, KeyCode, Plugin, ResMut, Resource, ScanCode};
@@ -30,6 +31,81 @@ impl Hotkeys {
     pub fn new() -> Self {
         Self {
             inputs: InputMap::new(),
+        }
+    }
+
+    pub fn register<T>(&self, hotkey: T) -> HotkeyId
+    where
+        T: Into<Hotkey>,
+    {
+        let id = EVENT_ID.fetch_add(1, Ordering::Relaxed);
+        if id == 0 {
+            panic!("Overflown HotkeyId");
+        }
+
+        HotkeyId(id)
+    }
+}
+
+/// A `HotkeyMap` may be indexed by both [`HotkeyId`] and [`ScanCode`].
+struct HotkeyMap {
+    hotkeys: Vec<Hotkey>,
+    ids: HashMap<HotkeyId, usize>,
+    scan_codes: HashMap<ScanCode, Vec<usize>>,
+}
+
+impl HotkeyMap {
+    pub fn new() -> Self {
+        Self {
+            hotkeys: Vec::new(),
+            ids: HashMap::new(),
+            scan_codes: HashMap::new(),
+        }
+    }
+
+    pub fn insert(&mut self, hotkey: Hotkey) {
+        if self.hotkeys.len() == self.hotkeys.capacity() {
+            self.insert_slow(hotkey);
+        } else {
+            unsafe {
+                self.insert_fast(hotkey);
+            }
+        }
+    }
+
+    pub fn remove<T>(&mut self, id: T) -> Option<Hotkey>
+    where
+        T: Borrow<HotkeyId>,
+    {
+        let index = self.ids.remove(id.borrow())?;
+
+        // FIXME: The bounds check can be avoided.
+        Some(self.hotkeys.remove(index))
+    }
+
+    pub fn get_by_id(&self, id: HotkeyId) -> Option<&Hotkey> {
+        let index = *self.ids.get(&id)?;
+
+        Some(unsafe { self.hotkeys.get_unchecked(index) })
+    }
+
+    #[inline]
+    unsafe fn insert_fast(&mut self, hotkey: Hotkey) {
+        let id = hotkey.id;
+
+        let index = self.hotkeys.len();
+        self.hotkeys.push(hotkey);
+
+        self.ids.insert(id, index);
+    }
+
+    fn insert_slow(&mut self, hotkey: Hotkey) {
+        self.ids.clear();
+
+        self.hotkeys.push(hotkey);
+
+        for (index, hotkey) in self.hotkeys.iter().enumerate() {
+            self.ids.insert(hotkey.id, index);
         }
     }
 }
@@ -66,36 +142,44 @@ impl InputMap {
 }
 
 #[derive(SystemParam)]
-pub struct HotkeyReader<'w, 's, E>
+pub struct HotkeyReader<'w, 's, H>
 where
-    E: Send + Sync + 'static,
+    H: AsHotkey,
 {
-    reader: EventReader<'w, 's, E>,
+    reader: EventReader<'w, 's, Hotkey>,
+    #[system_param(ignore)]
+    _marker: PhantomData<&'static H>,
 }
 
-impl<'w, 's, E> HotkeyReader<'w, 's, E>
+impl<'w, 's, H> HotkeyReader<'w, 's, H>
 where
-    E: Send + Sync + 'static,
+    H: AsHotkey,
 {
-    // pub fn iter(&self) -> Iter {
-    //     Iter {}
-    // }
-    pub fn iter(&mut self) -> impl Iterator<Item = &E> {
-        self.reader.iter()
+    pub fn iter(&mut self) -> impl Iterator<Item = &Hotkey> {
+        self.reader.iter().filter(|event| event.id == H::ID)
     }
 }
 
 // pub struct Iter {}
 
-pub trait IntoHotkey {
-    fn into_hotkey(self) -> Hotkey;
+/// A [`Hotkey`] registered at compile time.
+pub trait AsHotkey: Send + Sync + 'static {
+    const ID: HotkeyId;
 }
 
 #[derive(Clone, Debug)]
 pub struct Hotkey {
+    pub id: HotkeyId,
     pub name: Cow<'static, str>,
     pub trigger: TriggerKind,
     pub default: HotkeyKind,
+}
+
+impl AsRef<HotkeyId> for Hotkey {
+    #[inline]
+    fn as_ref(&self) -> &HotkeyId {
+        &self.id
+    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -127,7 +211,8 @@ fn keyboard_input(mut hotkeys: ResMut<Hotkeys>, mut events: EventReader<Keyboard
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-struct EventId(u32);
+#[repr(transparent)]
+pub struct HotkeyId(pub u32);
 
 #[cfg(test)]
 mod tests {
@@ -135,9 +220,13 @@ mod tests {
     use bevy_ecs::system::{ResMut, Resource};
     use bevy_ecs::world::World;
 
-    use super::HotkeyReader;
+    use super::{AsHotkey, HotkeyId, HotkeyReader};
 
     struct Inventory;
+
+    impl AsHotkey for Inventory {
+        const ID: super::HotkeyId = HotkeyId(0);
+    }
 
     #[derive(Resource)]
     struct State(bool);
