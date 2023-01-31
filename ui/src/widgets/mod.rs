@@ -7,7 +7,7 @@ mod inventory;
 
 use std::borrow::Cow;
 
-use bevy::prelude::{App, KeyCode, ResMut};
+use bevy::prelude::{App, Input, KeyCode, Res, ResMut};
 pub use console::Console;
 pub use crosshair::Crosshair;
 pub use death::Death;
@@ -50,13 +50,21 @@ pub(super) fn register_hotkeys(mut hotkeys: ResMut<Hotkeys>) {
 }
 
 pub(super) fn register_hotkey_systems(app: &mut App) {
-    app.add_system(toggle_inventory);
+    app.add_system(escape).add_system(toggle_inventory);
+}
+
+fn escape(mut state: ResMut<InterfaceState>, inputs: Res<Input<KeyCode>>) {
+    if !inputs.pressed(KeyCode::Escape) {
+        return;
+    }
+
+    if !state.pop() {
+        state.push(GameMenu::default());
+    }
 }
 
 fn toggle_inventory(mut state: ResMut<InterfaceState>, mut events: HotkeyReader<InventoryHotkey>) {
     for _ in events.iter() {
-        dbg!("inv");
-
         state.push(Inventory::default());
     }
 }
