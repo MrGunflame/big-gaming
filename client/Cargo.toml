@@ -8,6 +8,7 @@ ai = { version = "*", path = "../ai" }
 common = { version = "0.1.0", path = "../common" }
 base = { version = "*", path = "../base" }
 ui = { version = "*", path = "../ui" }
+input = { version = "*", path = "../input" }
 
 ahash = "0.8.2"
 bevy = { version = "0.9.0", features = ["wav"] }

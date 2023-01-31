@@ -22,9 +22,12 @@ impl Plugin for UiPlugin {
         app.add_plugin(bevy_egui::EguiPlugin)
             .insert_resource(state)
             .insert_resource(Cursor::new())
+            .add_startup_system(widgets::register_hotkeys)
             .add_system(systems::capture_pointer_keys)
             .add_system(systems::death)
             .add_stage("InterfaceStage", InterfaceStage);
+
+        widgets::register_hotkey_systems(app);
     }
 }
 

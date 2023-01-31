@@ -106,7 +106,8 @@ fn main() {
         .add_plugin(base::animation::AnimationPlugin)
         .add_plugin(AiPlugin)
         .add_plugin(SpawnPlugin)
-        .add_plugin(crate::ui::UiPlugin)
+        // .add_plugin(crate::ui::UiPlugin)
+        .add_plugin(input::InputPlugin)
         .run();
 }
 
