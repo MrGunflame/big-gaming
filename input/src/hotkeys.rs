@@ -1,6 +1,11 @@
+//! Hotkey handling
+//!
+//!
+
 use std::borrow::{Borrow, Cow};
 use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
+use std::iter::FusedIterator;
 use std::marker::PhantomData;
 use std::sync::atomic::{AtomicU32, Ordering};
 
@@ -24,6 +29,7 @@ impl Plugin for HotkeyPlugin {
     }
 }
 
+/// The global registry managing hotkeys.
 #[derive(Debug, Resource)]
 pub struct Hotkeys {
     inputs: InputMap,
@@ -31,6 +37,7 @@ pub struct Hotkeys {
 }
 
 impl Hotkeys {
+    /// Creates a new `Hotkeys`.
     pub fn new() -> Self {
         Self {
             inputs: InputMap::new(),
@@ -38,6 +45,10 @@ impl Hotkeys {
         }
     }
 
+    /// Registers a new [`Hotkey`]. Returns the [`HotkeyId`] assigned to the registered [`Hotkey`].
+    ///
+    /// The returned [`HotkeyId`] can be used to filter hotkey events to only the registered
+    /// hotkey.
     pub fn register<T>(&mut self, hotkey: T) -> HotkeyId
     where
         T: Into<Hotkey>,
@@ -55,6 +66,8 @@ impl Hotkeys {
         HotkeyId(id)
     }
 
+    /// Unregisters and returns the [`Hotkey`] with the given `id`. Returns `None` if no [`Hotkey`]
+    /// with the given `id` was registered.
     pub fn unregister<T>(&mut self, id: T) -> Option<Hotkey>
     where
         T: Borrow<HotkeyId>,
@@ -79,6 +92,10 @@ impl HotkeyMap {
         }
     }
 
+    /// Inserts a new [`Hotkey`] into the `HotkeyMap`.
+    ///
+    /// Note that the [`HotkeyId`] should be set to unique value before calling this function.
+    /// `insert` will overwrite the existing [`Hotkey`] with the same `id` if one exists.
     pub fn insert(&mut self, hotkey: Hotkey) {
         let state = HotkeyState::new(&hotkey);
 
@@ -86,6 +103,8 @@ impl HotkeyMap {
         self.rebuild();
     }
 
+    /// Removes and returns a [`Hotkey`] with the given `id`. Returns `None` if no [`Hotkey`] with
+    /// the given `id` exists.
     pub fn remove<T>(&mut self, id: T) -> Option<Hotkey>
     where
         T: Borrow<HotkeyId>,
@@ -101,34 +120,30 @@ impl HotkeyMap {
         Some(hotkey)
     }
 
-    pub fn get_by_id(&self, id: HotkeyId) -> Option<&Hotkey> {
-        let index = *self.ids.get(&id)?;
-
-        #[cfg(debug_assertions)]
-        let _ = &self.hotkeys[index];
-
-        Some(unsafe { &self.hotkeys.get_unchecked(index).0 })
-    }
-
     /// Rebuild the internal maps.
     fn rebuild(&mut self) {
         self.ids.clear();
         self.keys.clear();
 
-        for (index, (hotkey, state)) in self.hotkeys.iter().enumerate() {
+        for (index, (hotkey, _)) in self.hotkeys.iter().enumerate() {
             self.ids.insert(hotkey.id, index);
 
-            let mut indices = self.keys.entry(hotkey.default).or_insert(Vec::new());
+            let indices = self.keys.entry(hotkey.default).or_insert(Vec::new());
             indices.push(index);
         }
     }
 
+    /// Clears the inputs from the last tick.
     fn clear(&mut self) {
         for (_, state) in self.hotkeys.iter_mut() {
             state.clear();
         }
     }
 
+    /// Signals that `key` was *just pressed*.
+    ///
+    /// This should only be called *once* when a key is first pressed. It should **not** be called
+    /// continuously.
     fn press(&mut self, key: HotkeyCode) {
         let Some(hotkeys) = self.keys.get(&key) else {
             return;
@@ -140,6 +155,10 @@ impl HotkeyMap {
         }
     }
 
+    /// Signals that `key` was *just released*.
+    ///
+    /// This should only be called *once* when a key is first released. It should **not** be called
+    /// continuously.
     fn release(&mut self, key: HotkeyCode) {
         let Some(hotkeys) = self.keys.get(&key) else {
             return;
@@ -151,6 +170,8 @@ impl HotkeyMap {
         }
     }
 
+    /// Returns an iterator over all [`HotkeyState`]s in this `HotkeyMap`.
+    #[inline]
     fn states(&self) -> States<'_> {
         States {
             inner: self,
@@ -159,6 +180,11 @@ impl HotkeyMap {
     }
 }
 
+/// An iterator over all [`HotkeyState`]s in a [`HotkeyMap`].
+///
+/// Returned by [`states`].
+///
+/// [`states`]: HotkeyMap::states
 #[derive(Clone, Debug)]
 struct States<'a> {
     inner: &'a HotkeyMap,
@@ -187,6 +213,8 @@ impl<'a> ExactSizeIterator for States<'a> {
         self.inner.hotkeys.len() - self.next
     }
 }
+
+impl<'a> FusedIterator for States<'a> {}
 
 #[derive(Debug)]
 struct InputMap {
