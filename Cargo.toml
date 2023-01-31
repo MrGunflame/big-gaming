@@ -1,3 +1,3 @@
 [workspace]
-members = ["ai", "base", "common", "client", "server", "ui", "net", "input"]
+members = ["ai", "base", "common", "client", "server", "ui", "net", "input", "macros"]
 resolver = "2"
