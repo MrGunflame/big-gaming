@@ -8,6 +8,7 @@ mod entities;
 mod log;
 mod plugins;
 mod prev_transform;
+mod sky;
 mod systems;
 mod ui;
 mod utils;
@@ -108,6 +109,7 @@ fn main() {
         .add_plugin(SpawnPlugin)
         // .add_plugin(crate::ui::UiPlugin)
         .add_plugin(input::InputPlugin)
+        .add_plugin(sky::SkyPlugin)
         .run();
 }
 
