@@ -1,9 +1,10 @@
+use std::f32::consts::PI;
 use std::mem::MaybeUninit;
 
 use bevy::input::mouse::MouseMotion;
 use bevy::prelude::{
-    Camera3d, Commands, CoreStage, Entity, EventReader, KeyCode, Plugin, Quat, Query, Res, ResMut,
-    Vec3, With, Without,
+    Camera3d, Commands, CoreStage, Entity, EulerRot, EventReader, KeyCode, Plugin, Quat, Query,
+    Res, ResMut, Transform, Vec3, With, Without,
 };
 use common::components::actor::{ActorState, MovementSpeed};
 use common::components::movement::{Jump, Movement};
@@ -199,20 +200,38 @@ impl Angle {
 
 fn mouse_movement(
     mut events: EventReader<MouseMotion>,
-    mut cameras: Query<&mut Rotation, With<Camera3d>>,
-    mut players: Query<(&mut Rotation, &Focus), (With<HostPlayer>, Without<Camera3d>)>,
+    mut cameras: Query<&mut Transform, With<Camera3d>>,
+    mut players: Query<(&mut Transform, &Focus), (With<HostPlayer>, Without<Camera3d>)>,
 ) {
-    let mut camera_rot = cameras.single_mut();
-    let (mut player_rot, focus) = players.single_mut();
+    let mut camera = cameras.single_mut();
+    let (mut player, _) = players.single_mut();
 
     for event in events.iter() {
-        let yaw = event.delta.x * 0.1;
-        let pitch = event.delta.y * 0.1;
+        let yaw = event.delta.x * 0.001;
+        let pitch = event.delta.y * 0.001;
 
-        *camera_rot = camera_rot
-            .add_yaw(Degrees(yaw))
-            .saturating_add_pitch(Degrees(pitch));
+        let (y, x, z) = camera.rotation.to_euler(EulerRot::YXZ);
 
-        *player_rot = camera_rot.with_pitch(Radians(0.0));
+        let mut pitch = x - pitch;
+
+        if pitch < -(PI / 2.0) {
+            pitch = -(PI / 2.0);
+        } else if pitch > PI / 2.0 {
+            pitch = PI / 2.0;
+        }
+
+        let quat = Quat::from_euler(EulerRot::YXZ, y - yaw, pitch, z);
+
+        // camera.rotation.to_axis_angle();
+        // camera.rotate_axis(-Vec3::Y, yaw);
+        // camera.rotate(quat);
+        camera.rotation = quat;
+
+        // *camera_rot = camera_rot
+        //     .add_yaw(Degrees(yaw))
+        //     .saturating_add_pitch(Degrees(pitch));
+
+        // *player_rot = camera_rot.with_pitch(Radians(0.0));
+        player.rotation = Quat::from_euler(EulerRot::YXZ, y - yaw, 0.0, 0.0);
     }
 }
