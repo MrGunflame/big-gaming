@@ -128,7 +128,7 @@ impl HotkeyMap {
         for (index, (hotkey, _)) in self.hotkeys.iter().enumerate() {
             self.ids.insert(hotkey.id, index);
 
-            let indices = self.keys.entry(hotkey.default).or_insert(Vec::new());
+            let indices = self.keys.entry(hotkey.default.code).or_insert(Vec::new());
             indices.push(index);
         }
     }
@@ -253,7 +253,7 @@ impl InputMap {
 /// Since [`Hotkey`]s may include multiple key, it is not sufficient to use a simple `bool`.
 #[derive(Clone, Debug)]
 struct HotkeyState {
-    states: Box<[(HotkeyCode, bool)]>,
+    states: Box<[(Key, bool)]>,
 }
 
 impl HotkeyState {
@@ -279,7 +279,7 @@ impl HotkeyState {
     fn clear(&mut self) {
         for (code, state) in self.states.iter_mut() {
             if matches!(
-                code.trigger(),
+                code.trigger,
                 TriggerKind::JustPressed | TriggerKind::JustReleased
             ) {
                 *state = false;
@@ -289,12 +289,12 @@ impl HotkeyState {
 
     fn press(&mut self, key: HotkeyCode) {
         for (code, state) in self.states.iter_mut() {
-            if *code != key {
+            if code.code != key {
                 continue;
             }
 
             if matches!(
-                code.trigger(),
+                code.trigger,
                 TriggerKind::Pressed | TriggerKind::JustPressed
             ) {
                 *state = true;
@@ -304,11 +304,11 @@ impl HotkeyState {
 
     fn release(&mut self, key: HotkeyCode) {
         for (code, state) in self.states.iter_mut() {
-            if *code != key {
+            if code.code != key {
                 continue;
             }
 
-            if matches!(code.trigger(), TriggerKind::JustReleased) {
+            if matches!(code.trigger, TriggerKind::JustReleased) {
                 *state = true;
             } else {
                 *state = false;
@@ -347,8 +347,7 @@ pub trait HotkeyFilter: Send + Sync + 'static {
 pub struct Hotkey {
     pub id: HotkeyId,
     pub name: Cow<'static, str>,
-    pub trigger: TriggerKind,
-    pub default: HotkeyCode,
+    pub default: Key,
 }
 
 impl HotkeyFilter for Hotkey {
@@ -381,10 +380,10 @@ pub enum HotkeyCode {
     ScanCode { scan_code: ScanCode },
 }
 
-impl HotkeyCode {
-    fn trigger(self) -> TriggerKind {
-        TriggerKind::Pressed
-    }
+#[derive(Copy, Clone, Debug)]
+pub struct Key {
+    pub trigger: TriggerKind,
+    pub code: HotkeyCode,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -409,7 +408,11 @@ fn keyboard_input(mut hotkeys: ResMut<Hotkeys>, mut events: EventReader<Keyboard
 }
 
 fn send_hotkey_events(hotkeys: Res<Hotkeys>, mut writer: EventWriter<Hotkey>) {
+    dbg!(&hotkeys);
+
     for (hotkey, state) in &hotkeys.hotkeys.hotkeys {
+        // dbg!(hotkey, state);
+
         if state.is_active() {
             writer.send(hotkey.clone());
         }

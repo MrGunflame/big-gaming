@@ -16,17 +16,19 @@ pub use health::Health;
 pub use inventory::Inventory;
 
 use input::hotkeys::{
-    Hotkey, HotkeyCode, HotkeyFilter, HotkeyId, HotkeyReader, Hotkeys, TriggerKind,
+    Hotkey, HotkeyCode, HotkeyFilter, HotkeyId, HotkeyReader, Hotkeys, Key, TriggerKind,
 };
 
 use crate::InterfaceState;
 
 static mut INVENTORY: Hotkey = Hotkey {
     id: HotkeyId(0),
-    name: Cow::Borrowed(""),
-    trigger: TriggerKind::JustPressed,
-    default: HotkeyCode::KeyCode {
-        key_code: KeyCode::I,
+    name: Cow::Borrowed("inventory"),
+    default: Key {
+        trigger: TriggerKind::JustPressed,
+        code: HotkeyCode::KeyCode {
+            key_code: KeyCode::I,
+        },
     },
 };
 
@@ -34,8 +36,6 @@ struct InventoryHotkey;
 
 impl HotkeyFilter for InventoryHotkey {
     fn filter(id: HotkeyId) -> bool {
-        dbg!(id);
-
         let want = unsafe { &INVENTORY }.id;
         want == id
     }
@@ -54,7 +54,7 @@ pub(super) fn register_hotkey_systems(app: &mut App) {
 }
 
 fn escape(mut state: ResMut<InterfaceState>, inputs: Res<Input<KeyCode>>) {
-    if !inputs.pressed(KeyCode::Escape) {
+    if !inputs.just_pressed(KeyCode::Escape) {
         return;
     }
 
