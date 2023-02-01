@@ -408,11 +408,7 @@ fn keyboard_input(mut hotkeys: ResMut<Hotkeys>, mut events: EventReader<Keyboard
 }
 
 fn send_hotkey_events(hotkeys: Res<Hotkeys>, mut writer: EventWriter<Hotkey>) {
-    dbg!(&hotkeys);
-
     for (hotkey, state) in &hotkeys.hotkeys.hotkeys {
-        // dbg!(hotkey, state);
-
         if state.is_active() {
             writer.send(hotkey.clone());
         }

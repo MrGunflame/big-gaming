@@ -1,7 +1,6 @@
 use std::f32::consts::PI;
 use std::mem::MaybeUninit;
 
-use bevy::input::mouse::MouseMotion;
 use bevy::prelude::{
     Camera3d, Commands, CoreStage, Entity, EulerRot, EventReader, KeyCode, Plugin, Quat, Query,
     Res, ResMut, Transform, Vec3, With, Without,
@@ -9,6 +8,7 @@ use bevy::prelude::{
 use common::components::actor::{ActorState, MovementSpeed};
 use common::components::movement::{Jump, Movement};
 use common::components::player::HostPlayer;
+use input::mouse::MouseMotion;
 
 use crate::components::Rotation;
 use crate::ui::{Focus, FocusKind};

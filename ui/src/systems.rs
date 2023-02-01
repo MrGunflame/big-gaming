@@ -4,11 +4,13 @@ use bevy::prelude::{Query, Res, ResMut, With};
 use bevy::window::Windows;
 use common::components::actor::{ActorFlag, ActorFlags, Death};
 use common::components::player::HostPlayer;
+use input::CanMouseMove;
 
 use crate::cursor::Cursor;
 use crate::{widgets, InterfaceState};
 
 pub fn capture_pointer_keys(
+    mut mouse_move: ResMut<CanMouseMove>,
     mut windows: ResMut<Windows>,
     mut cursor: ResMut<Cursor>,
     state: Res<InterfaceState>,
@@ -22,10 +24,14 @@ pub fn capture_pointer_keys(
         flags.remove(ActorFlag::CAN_ROTATE);
         flags.remove(ActorFlag::CAN_ATTACK);
 
+        mouse_move.0 = false;
+
         cursor.unlock(&mut window);
     } else {
         flags.insert(ActorFlag::CAN_ROTATE);
         flags.insert(ActorFlag::CAN_ATTACK);
+
+        mouse_move.0 = true;
 
         cursor.lock(&mut window);
     }
