@@ -39,6 +39,7 @@ pub struct Actor;
 pub struct Player;
 
 #[derive(Copy, Clone, Debug, PartialEq, Component)]
+#[deprecated = "Use Quat instead"]
 pub struct Rotation {
     yaw: f32,
     pitch: f32,

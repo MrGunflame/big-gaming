@@ -207,15 +207,6 @@ pub fn mouse_button_input(
     // }
 }
 
-pub fn transform_system(mut entities: Query<(&mut Rotation, &mut Transform)>) {
-    for (mut rotation, mut transform) in entities.iter_mut() {
-        if rotation.modified {
-            transform.rotation = rotation.to_quat();
-            rotation.modified = false;
-        }
-    }
-}
-
 // TODO: This should scan for all entities `Interaction`s.
 pub fn interact_target(
     mut queue: ResMut<InteractionQueue>,

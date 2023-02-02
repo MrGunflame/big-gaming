@@ -52,7 +52,7 @@ use common::world::chunk::ChunkRegistry;
 use components::Rotation;
 use entities::actor::ActorBundle;
 use entities::item::ItemBundle;
-use entities::player::{PlayerCameraBundle, PlayerCharacterBundle};
+use entities::player::PlayerCharacterBundle;
 use plugins::interactions::InteractionsPlugin;
 use plugins::respawn::RespawnPlugin;
 use plugins::{CameraPlugin, HotkeyPlugin, MovementPlugin};
@@ -323,8 +323,6 @@ fn setup(
     //     .insert(collider);
 
     // commands.spawn(ActorBundle::new(&asset_server));
-
-    commands.spawn(PlayerCameraBundle::new());
 
     commands.spawn(ItemBundle::new(
         &asset_server,

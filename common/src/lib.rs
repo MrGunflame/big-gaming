@@ -12,6 +12,7 @@ pub mod components;
 pub mod ecs;
 pub mod id;
 pub mod localization;
+pub mod math;
 pub mod module;
 pub mod net;
 pub mod savefile;

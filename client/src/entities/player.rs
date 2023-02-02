@@ -38,27 +38,6 @@ impl PlayerCharacterBundle {
     }
 }
 
-#[derive(Bundle)]
-pub struct PlayerCameraBundle {
-    #[bundle]
-    pub camera: Camera3dBundle,
-    pub rotation: Rotation,
-    pub camera_position: CameraPosition,
-}
-
-impl PlayerCameraBundle {
-    pub fn new() -> Self {
-        Self {
-            camera: Camera3dBundle {
-                transform: Transform::from_xyz(2.0, 2.0, 2.0).looking_at(Vec3::ZERO, Vec3::ZERO),
-                ..Default::default()
-            },
-            rotation: Rotation::new(),
-            camera_position: CameraPosition::FirstPerson,
-        }
-    }
-}
-
 #[derive(Copy, Clone, Debug, Default, PartialEq, Component)]
 pub enum CameraPosition {
     #[default]

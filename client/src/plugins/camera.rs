@@ -3,7 +3,8 @@ mod events;
 use std::f32::consts::PI;
 
 use bevy::prelude::{
-    CoreStage, IntoSystemDescriptor, Mat3, Plugin, Query, Res, Transform, Vec3, With, Without,
+    Camera3dBundle, Commands, CoreStage, IntoSystemDescriptor, Mat3, Plugin, Quat, Query, Res,
+    Transform, Vec3, With, Without,
 };
 use bevy::time::Time;
 use common::components::actor::{ActorFigure, MovementSpeed};
@@ -11,6 +12,7 @@ use common::components::movement::Movement;
 use common::components::player::HostPlayer;
 
 use crate::components::settings::CameraSettings;
+use crate::components::Rotation;
 use crate::entities::player::CameraPosition;
 
 use self::events::{adjust_camera_distance, register_events, toggle_camera_position};
@@ -19,9 +21,9 @@ pub struct CameraPlugin;
 
 impl Plugin for CameraPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
-        app.add_startup_system(register_events)
+        app.add_startup_system(setup_camera)
+            .add_startup_system(register_events)
             .insert_resource(CameraSettings::default())
-            .add_system(crate::systems::input::transform_system)
             .add_system(crate::systems::input::mouse_button_input)
             .add_system(crate::systems::input::interact_target)
             .add_system(synchronize_player_camera)
@@ -29,6 +31,22 @@ impl Plugin for CameraPlugin {
             .add_system(toggle_camera_position)
             .add_system(adjust_camera_distance);
     }
+}
+
+fn setup_camera(mut commands: Commands) {
+    // Spawn the camera at any positon. It will be moved to the
+    // correct location at the first call to synchronize_player_camera.
+    commands
+        .spawn(Camera3dBundle {
+            transform: Transform {
+                translation: Vec3::splat(0.0),
+                rotation: Quat::IDENTITY,
+                scale: Vec3::splat(1.0),
+            },
+            ..Default::default()
+        })
+        .insert(CameraPosition::FirstPerson)
+        .insert(Rotation::new());
 }
 
 fn synchronize_player_camera(
