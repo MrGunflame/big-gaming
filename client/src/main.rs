@@ -110,6 +110,7 @@ fn main() {
         // .add_plugin(crate::ui::UiPlugin)
         .add_plugin(input::InputPlugin)
         .add_plugin(sky::SkyPlugin)
+        .add_plugin(base::world::ObjectPlugin)
         .run();
 }
 

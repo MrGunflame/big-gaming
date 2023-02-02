@@ -211,8 +211,8 @@ fn mouse_movement(
         let yaw = event.delta.x * 0.001;
         let pitch = event.delta.y * 0.001;
 
-        let yaw = camera.rotation.yaw() + yaw;
-        let mut pitch = camera.rotation.pitch() + pitch;
+        let yaw = camera.rotation.yaw() - yaw;
+        let mut pitch = camera.rotation.pitch() - pitch;
 
         if pitch < -(PI / 2.0) {
             pitch = -(PI / 2.0);
@@ -220,11 +220,8 @@ fn mouse_movement(
             pitch = PI / 2.0;
         }
 
-        dbg!(camera.rotation.to_euler(EulerRot::YXZ));
-
         // let quat = camera.rotation.with_yaw(yaw).with_pitch(pitch);
         let quat = Quat::from_euler(EulerRot::YXZ, yaw, pitch, 0.0);
-        dbg!(quat.to_euler(EulerRot::YXZ));
 
         // let quat = Quat::from_euler(EulerRot::YXZ, y - yaw, pitch, z);
 

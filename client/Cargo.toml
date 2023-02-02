@@ -25,7 +25,7 @@ default = []
 
 
 # dylib bevy for dev
-#dynamic = ["bevy/dynamic"]
+dynamic = ["bevy/dynamic"]
 
 serde = ["dep:serde"]
 simd = ["bevy_rapier3d/simd-nightly"]

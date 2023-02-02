@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use bevy::prelude::{
     AssetServer, Commands, DespawnRecursiveExt, Entity, Plugin, Query, Res, Transform, With,
 };
@@ -5,7 +7,7 @@ use bevy::scene::SceneBundle;
 use bevy_rapier3d::prelude::RapierContext;
 use common::components::actor::{Actor, ActorLimb};
 use common::components::combat::{Damage, IncomingDamage};
-use common::components::object::ObjectChildren;
+use common::components::object::{Lifetime, ObjectChildren};
 use common::components::projectile::Projectile;
 
 pub struct ProjectilePlugin;
@@ -52,6 +54,7 @@ fn projectile_collision(
                         transform: transform.with_rotation(object.rotation),
                         ..Default::default()
                     })
+                    .insert(Lifetime::new(Duration::from_secs(15)))
                     .id();
 
                 children.children.push(id);
