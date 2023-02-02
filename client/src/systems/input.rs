@@ -219,8 +219,10 @@ pub fn interact_target(
     let (player, mut focused_ent) = players.single_mut();
     let (cam, pos, rot) = cameras.single();
 
+    let (y, x, z) = pos.rotation.to_euler(EulerRot::YXZ);
+
     let ray_pos = pos.translation;
-    let ray_dir = rot.movement_vec();
+    let ray_dir = Vec3::normalize(pos.rotation.mul_vec3(pos.translation));
     let max_toi = 4.0;
     let solid = true;
     let filter = QueryFilter::new().exclude_collider(cam);

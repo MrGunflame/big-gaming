@@ -8,6 +8,7 @@ use bevy::prelude::{
 use common::components::actor::{ActorState, MovementSpeed};
 use common::components::movement::{Jump, Movement};
 use common::components::player::HostPlayer;
+use common::math::RotationExt;
 use input::mouse::MouseMotion;
 
 use crate::components::Rotation;
@@ -210,9 +211,8 @@ fn mouse_movement(
         let yaw = event.delta.x * 0.001;
         let pitch = event.delta.y * 0.001;
 
-        let (y, x, z) = camera.rotation.to_euler(EulerRot::YXZ);
-
-        let mut pitch = x - pitch;
+        let yaw = camera.rotation.yaw() + yaw;
+        let mut pitch = camera.rotation.pitch() + pitch;
 
         if pitch < -(PI / 2.0) {
             pitch = -(PI / 2.0);
@@ -220,7 +220,13 @@ fn mouse_movement(
             pitch = PI / 2.0;
         }
 
-        let quat = Quat::from_euler(EulerRot::YXZ, y - yaw, pitch, z);
+        dbg!(camera.rotation.to_euler(EulerRot::YXZ));
+
+        // let quat = camera.rotation.with_yaw(yaw).with_pitch(pitch);
+        let quat = Quat::from_euler(EulerRot::YXZ, yaw, pitch, 0.0);
+        dbg!(quat.to_euler(EulerRot::YXZ));
+
+        // let quat = Quat::from_euler(EulerRot::YXZ, y - yaw, pitch, z);
 
         // camera.rotation.to_axis_angle();
         // camera.rotate_axis(-Vec3::Y, yaw);
@@ -232,6 +238,6 @@ fn mouse_movement(
         //     .saturating_add_pitch(Degrees(pitch));
 
         // *player_rot = camera_rot.with_pitch(Radians(0.0));
-        player.rotation = Quat::from_euler(EulerRot::YXZ, y - yaw, 0.0, 0.0);
+        player.rotation = camera.rotation;
     }
 }
