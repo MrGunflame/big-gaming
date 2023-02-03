@@ -111,6 +111,7 @@ fn main() {
         .add_plugin(input::InputPlugin)
         .add_plugin(sky::SkyPlugin)
         .add_plugin(base::world::ObjectPlugin)
+        .add_plugin(crate::plugins::combat::CombatPlugin)
         .run();
 }
 

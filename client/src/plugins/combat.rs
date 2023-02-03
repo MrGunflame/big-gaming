@@ -1,76 +1,80 @@
-use bevy::prelude::{Bundle, Entity, EventWriter, Plugin, Query, Res, Transform, With};
-use bevy_rapier3d::prelude::{RapierContext, Velocity};
-use common::components::actor::ActorState;
-use common::components::animation::{AnimationId, AnimationQueue};
-use common::components::combat::{Damage, Health, IncomingDamage, Resistances};
+use std::borrow::Cow;
 
-use crate::components::Actor;
-use crate::ui::Focus;
+use bevy::prelude::{
+    Bundle, Camera3d, Commands, Entity, EulerRot, MouseButton, Plugin, Query, Res, ResMut,
+    Transform, Vec3, With,
+};
+use bevy_rapier3d::prelude::{QueryFilter, RapierContext};
+use common::components::actor::ActorFigure;
+use common::components::combat::{Attack, Health, IncomingDamage, Resistances};
+use common::components::player::HostPlayer;
+use input::hotkeys::{
+    Hotkey, HotkeyCode, HotkeyFilter, HotkeyId, HotkeyReader, Hotkeys, Key, TriggerKind,
+};
 
 #[derive(Copy, Clone, Debug)]
 pub struct CombatPlugin;
 
+static mut ATTACK: Hotkey = Hotkey {
+    id: HotkeyId(0),
+    name: Cow::Borrowed("attack"),
+    default: Key {
+        trigger: TriggerKind::Pressed,
+        code: HotkeyCode::MouseButton {
+            button: MouseButton::Left,
+        },
+    },
+};
+
 impl Plugin for CombatPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
-        app.add_system(apply_incoming_damage)
-            .add_system(fall_damage)
-            .add_system(kill_out_of_bounds);
+        app.add_startup_system(register_events)
+            .add_system(attack_events);
     }
 }
 
-fn apply_incoming_damage(
-    mut entities: Query<(
-        &mut IncomingDamage,
-        &mut Health,
-        &Resistances,
-        &mut ActorState,
-        Option<&mut AnimationQueue>,
-    )>,
-) {
-    for (mut inc, mut health, resistances, mut state, mut queue) in &mut entities {
-        while let Some(damage) = inc.pop() {
-            *health -= damage.amount;
+fn register_events(mut hotkeys: ResMut<Hotkeys>) {
+    let mut attack = unsafe { &mut ATTACK };
+    let id = hotkeys.register(attack.clone());
+    attack.id = id;
+    drop(attack);
+}
 
-            if health.is_zero() {
-                *state = ActorState::DEAD;
-                inc.clear();
+struct AttackEvent;
 
-                if let Some(queue) = &mut queue {
-                    queue.push(AnimationId::DEATH);
-                }
-            }
-        }
+impl HotkeyFilter for AttackEvent {
+    fn filter(id: HotkeyId) -> bool {
+        id == unsafe { ATTACK.id }
     }
 }
 
-fn fall_damage(
+fn attack_events(
+    mut commands: Commands,
     rapier: Res<RapierContext>,
-    mut entities: Query<(Entity, &mut IncomingDamage, &Velocity), With<Actor>>,
+    players: Query<(Entity, &Transform, &ActorFigure), With<HostPlayer>>,
+    cameras: Query<&Transform, With<Camera3d>>,
+    mut events: HotkeyReader<AttackEvent>,
 ) {
-    for (entity, mut inc, velocity) in &mut entities {
-        if velocity.linvel.y < -5.0 {
-            for contact_pair in rapier.contacts_with(entity) {
-                if contact_pair.has_any_active_contacts() {
-                    let other_collider = if contact_pair.collider1() == entity {
-                        contact_pair.collider2()
-                    } else {
-                        contact_pair.collider1()
-                    };
-
-                    inc.push(Damage::new(velocity.linvel.y as u32));
-                }
-            }
-        }
+    if events.iter().count() == 0 {
+        return;
     }
-}
 
-fn kill_out_of_bounds(mut entities: Query<(&Transform, &ActorState, &mut IncomingDamage)>) {
-    for (transform, state, mut inc) in &mut entities {
-        // IncomingDamage::push might allocate, so we only push if the actor is still alive.
-        if transform.translation.y < -1000.0 && *state != ActorState::DEAD {
-            inc.push(Damage::new(u32::MAX));
-        }
-    }
+    let (entity, player, figure) = players.single();
+    let cam = cameras.single();
+
+    let ray_origin = player.translation + figure.eyes;
+    let (y, x, _) = cam.rotation.to_euler(EulerRot::YXZ);
+    let ray_dir = Vec3::new(-y.sin() * x.cos(), x.sin(), -y.cos() * x.cos());
+    let max_toi = 1000.0;
+
+    let toi = match rapier.cast_ray(ray_origin, ray_dir, max_toi, true, QueryFilter::new()) {
+        Some((_, toi)) => toi,
+        None => max_toi,
+    };
+
+    let target = ray_origin + toi * ray_dir;
+
+    commands.entity(entity).insert(Attack { target });
 }
 
 #[derive(Bundle)]

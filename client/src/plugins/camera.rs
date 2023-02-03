@@ -24,7 +24,6 @@ impl Plugin for CameraPlugin {
         app.add_startup_system(setup_camera)
             .add_startup_system(register_events)
             .insert_resource(CameraSettings::default())
-            .add_system(crate::systems::input::mouse_button_input)
             .add_system(crate::systems::input::interact_target)
             .add_system(synchronize_player_camera)
             .add_system(head_bumping.after(synchronize_player_camera))
