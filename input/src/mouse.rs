@@ -1,10 +1,17 @@
-use bevy::prelude::{EventReader, EventWriter, Res, Vec2};
+use bevy::input::ButtonState;
+use bevy::prelude::{EventReader, EventWriter, MouseButton, Res, Vec2};
 
 use crate::CanMouseMove;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct MouseMotion {
     pub delta: Vec2,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct MouseButtonInput {
+    pub button: MouseButton,
+    pub state: ButtonState,
 }
 
 pub(super) fn mouse_motion(
@@ -16,5 +23,17 @@ pub(super) fn mouse_motion(
         if can_move.0 {
             writer.send(MouseMotion { delta: event.delta });
         }
+    }
+}
+
+pub(super) fn mouse_buttons(
+    mut reader: EventReader<bevy::input::mouse::MouseButtonInput>,
+    mut writer: EventWriter<MouseButtonInput>,
+) {
+    for event in reader.iter() {
+        writer.send(MouseButtonInput {
+            button: event.button,
+            state: event.state,
+        });
     }
 }

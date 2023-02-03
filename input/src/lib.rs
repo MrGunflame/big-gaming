@@ -16,8 +16,10 @@ impl Plugin for InputPlugin {
         app.add_plugin(HotkeyPlugin)
             .add_event::<keyboard::KeyboardInput>()
             .add_event::<mouse::MouseMotion>()
+            .add_event::<mouse::MouseButtonInput>()
             .add_system(keyboard::keyboard_input)
             .add_system(mouse::mouse_motion)
+            .add_system(mouse::mouse_buttons)
             .insert_resource(CanMouseMove(true));
     }
 }

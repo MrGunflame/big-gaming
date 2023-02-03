@@ -10,10 +10,14 @@ use std::marker::PhantomData;
 use std::sync::atomic::{AtomicU32, Ordering};
 
 use bevy::input::ButtonState;
-use bevy::prelude::{EventReader, EventWriter, KeyCode, Plugin, Res, ResMut, Resource, ScanCode};
+use bevy::prelude::{
+    EventReader, EventWriter, IntoSystemDescriptor, KeyCode, MouseButton, Plugin, Res, ResMut,
+    Resource, ScanCode,
+};
 use bevy_ecs::system::SystemParam;
 
 use crate::keyboard::KeyboardInput;
+use crate::mouse::MouseButtonInput;
 
 static EVENT_ID: AtomicU32 = AtomicU32::new(1);
 
@@ -25,6 +29,9 @@ impl Plugin for HotkeyPlugin {
         app.insert_resource(Hotkeys::new())
             .add_event::<Hotkey>()
             .add_system(keyboard_input)
+            // keyboard_input currently resets the previous states.
+            // All other systems need to come after and not reset the state.
+            .add_system(mouse_input.after(keyboard_input))
             .add_system(send_hotkey_events);
     }
 }
@@ -378,6 +385,7 @@ pub enum TriggerKind {
 pub enum HotkeyCode {
     KeyCode { key_code: KeyCode },
     ScanCode { scan_code: ScanCode },
+    MouseButton { button: MouseButton },
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -390,6 +398,7 @@ pub struct Key {
 pub enum HotkeyKind {
     KeyCode { key_code: KeyCode },
     ScanCode { scan_code: ScanCode },
+    MouseButton { button: MouseButton },
 }
 
 fn keyboard_input(mut hotkeys: ResMut<Hotkeys>, mut events: EventReader<KeyboardInput>) {
@@ -403,6 +412,19 @@ fn keyboard_input(mut hotkeys: ResMut<Hotkeys>, mut events: EventReader<Keyboard
         match event.state {
             ButtonState::Pressed => hotkeys.hotkeys.press(HotkeyCode::KeyCode { key_code }),
             ButtonState::Released => hotkeys.hotkeys.release(HotkeyCode::KeyCode { key_code }),
+        }
+    }
+}
+
+fn mouse_input(mut hotkeys: ResMut<Hotkeys>, mut events: EventReader<MouseButtonInput>) {
+    for event in events.iter() {
+        match event.state {
+            ButtonState::Pressed => hotkeys.hotkeys.press(HotkeyCode::MouseButton {
+                button: event.button,
+            }),
+            ButtonState::Released => hotkeys.hotkeys.release(HotkeyCode::MouseButton {
+                button: event.button,
+            }),
         }
     }
 }

@@ -59,16 +59,14 @@ impl RotationExt for Quat {
 
     #[inline]
     fn set_yaw(&mut self, yaw: f32) {
-        let (mut y, x, z) = self.to_euler(EulerRot::YXZ);
-        y += yaw;
-        *self = Self::from_euler(EulerRot::YXZ, y, x, z);
+        let (_, x, z) = self.to_euler(EulerRot::YXZ);
+        *self = Self::from_euler(EulerRot::YXZ, yaw, x, z);
     }
 
     #[inline]
     fn set_pitch(&mut self, pitch: f32) {
-        let (y, mut x, z) = self.to_euler(EulerRot::YXZ);
-        x += pitch;
-        *self = Self::from_euler(EulerRot::YXZ, y, x, z);
+        let (y, _, z) = self.to_euler(EulerRot::YXZ);
+        *self = Self::from_euler(EulerRot::YXZ, y, pitch, z);
     }
 }
 
