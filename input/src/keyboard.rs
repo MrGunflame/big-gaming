@@ -1,5 +1,7 @@
 use bevy::input::ButtonState;
-use bevy::prelude::{EventReader, EventWriter, Input, KeyCode, ResMut, ScanCode};
+use bevy::prelude::{EventReader, EventWriter, Input, ResMut};
+
+pub use bevy::prelude::{KeyCode, ScanCode};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct KeyboardInput {

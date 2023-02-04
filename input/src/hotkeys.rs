@@ -1,5 +1,54 @@
-//! Hotkey handling
+//! Dynamic input hotkey handling
 //!
+//! # What is a *Hotkey*?
+//!
+//! A *Hotkey* is a action triggered by a user input. Hotkeys provide additional capabilites that
+//! make them work better than simply listening for events from an input device.
+//!
+//! - A hotkey allows rebinding of the hotkey by the user.
+//! - A hotkey allows any number of combined inputs of any input device.
+//! - A hotkey allows to check for changes on a hotkey.
+//!
+//! # Hotkey triggers
+//!
+//! Every [`Hotkey`] comes with at least one [`TriggerKind`] condition. Whenever an input occurs
+//! that triggers a defined [`TriggerKind`] a [`Event`] is dispatched at to all listeners. When
+//! multiple [`TriggerKind`]s are defined on a single [`Hotkey`], each input that triggers a
+//! [`TriggerKind`] dispatches its own [`Event`].
+//!
+//! Note that when a [`Hotkey`] was registered on multiple inputs, the triggers are still treated
+//! as one. This means that `JUST_PRESSED` triggers when the combination of inputs was first
+//! pressed, in any order. `JUST_RELEASE` triggers when any input from the combination was
+//! released.
+//!
+//! # Hotkey rebinding
+//!
+//! Registered [`Hotkey`]s define a default input. The input sequence of the [`Hotkey`] may be
+//! changed dynamically at runtime. Multiple nputs across input devices are allowed.
+//!
+//! # The Escape key
+//!
+//! The escape key ([`KeyCode::Escape`]) is not allowed in any [`Hotkey`]. If you register one on
+//! said key (or associated [`ScanCode`]) you will never see it trigger.
+//!
+//! The escape key is hardcoded to access the game menu or close UI widgets. This behavior is on
+//! purpose as the `Escape` key is typically used as a "escape" action. It can purposefully not be
+//! assigned to a [`Hotkey`] to prevent unintuitive behavior.
+//!
+//! If it is absolutely necessary the access the `Escape` key, it can still be accessed via the
+//! lower-level [`Input`] resource, thought it is heavily discouraged to do so.
+//!
+//! # "Best practice" usage notes
+//!
+//! To make use of the full feature set that the hotkey library provides, it is recommended to
+//! follow a few guidelines.
+//!
+//! - **Do not register any [`Hotkey`]s on the `Escape` key.** It will never trigger.
+//! - Register multiple [`Hotkey`]s for each action instead of re-using the same [`Hotkey`] for
+//! multiple actions depending on the context.
+//! - Don't register multiple [`Hotkey`]s for "start-stop" style events (events with an
+//! `JUST_PRESSED` and `JUST_RELEASED` trigger, but no `PRESSED` trigger). Instead register a
+//! single [`Hotkey`] with both the `JUST_PRESSED` and `JUST_RELEASED` triggers.
 //!
 
 use std::borrow::{Borrow, Cow};
@@ -7,6 +56,7 @@ use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
 use std::iter::FusedIterator;
 use std::marker::PhantomData;
+use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign};
 use std::sync::atomic::{AtomicU32, Ordering};
 
 use bevy::input::ButtonState;
@@ -27,7 +77,7 @@ pub struct HotkeyPlugin;
 impl Plugin for HotkeyPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
         app.insert_resource(Hotkeys::new())
-            .add_event::<Hotkey>()
+            .add_event::<Event>()
             .add_system(keyboard_input)
             // keyboard_input currently resets the previous states.
             // All other systems need to come after and not reset the state.
@@ -260,66 +310,82 @@ impl InputMap {
 /// Since [`Hotkey`]s may include multiple key, it is not sufficient to use a simple `bool`.
 #[derive(Clone, Debug)]
 struct HotkeyState {
-    states: Box<[(Key, bool)]>,
+    trigger: TriggerKind,
+    states: HashMap<HotkeyCode, bool>,
+    just_pressed: bool,
+    just_released: bool,
 }
 
 impl HotkeyState {
     fn new(hotkey: &Hotkey) -> Self {
-        let mut states = Vec::with_capacity(1);
-        states.push((hotkey.default, false));
+        let mut states = HashMap::with_capacity(1);
+        states.insert(hotkey.default.code, false);
 
         Self {
-            states: states.into_boxed_slice(),
+            trigger: hotkey.default.trigger,
+            states,
+            just_pressed: false,
+            just_released: false,
         }
     }
 
     fn is_active(&self) -> bool {
-        for (_, state) in self.states.iter() {
-            if !state {
-                return false;
-            }
-        }
+        match self.trigger {
+            TriggerKind::PRESSED => {
+                for (_, state) in self.states.iter() {
+                    if !state {
+                        return false;
+                    }
+                }
 
-        true
+                true
+            }
+            TriggerKind::JUST_PRESSED => self.just_pressed,
+            TriggerKind::JUST_RELEASED => self.just_released,
+            _ => false,
+        }
     }
 
     fn clear(&mut self) {
-        for (code, state) in self.states.iter_mut() {
-            if matches!(
-                code.trigger,
-                TriggerKind::JustPressed | TriggerKind::JustReleased
-            ) {
-                *state = false;
-            }
-        }
+        self.just_pressed = false;
+        self.just_released = false;
     }
 
     fn press(&mut self, key: HotkeyCode) {
-        for (code, state) in self.states.iter_mut() {
-            if code.code != key {
-                continue;
+        let Some(state) = self.states.get_mut(&key) else {
+            return;
+        };
+
+        if !*state {
+            *state = true;
+
+            for state in self.states.values() {
+                if !state {
+                    return;
+                }
             }
 
-            if matches!(
-                code.trigger,
-                TriggerKind::Pressed | TriggerKind::JustPressed
-            ) {
-                *state = true;
-            }
+            self.just_pressed = true;
         }
     }
 
     fn release(&mut self, key: HotkeyCode) {
-        for (code, state) in self.states.iter_mut() {
-            if code.code != key {
-                continue;
+        let mut is_pressed = true;
+        for state in self.states.values() {
+            if !state {
+                is_pressed = false;
+                break;
             }
+        }
 
-            if matches!(code.trigger, TriggerKind::JustReleased) {
-                *state = true;
-            } else {
-                *state = false;
-            }
+        let Some(state)  = self.states.get_mut(&key) else {
+            return;
+        };
+
+        *state = false;
+
+        if is_pressed {
+            self.just_released = true;
         }
     }
 }
@@ -329,7 +395,7 @@ pub struct HotkeyReader<'w, 's, H>
 where
     H: HotkeyFilter,
 {
-    reader: EventReader<'w, 's, Hotkey>,
+    reader: EventReader<'w, 's, Event>,
     #[system_param(ignore)]
     _marker: PhantomData<&'static H>,
 }
@@ -338,7 +404,7 @@ impl<'w, 's, H> HotkeyReader<'w, 's, H>
 where
     H: HotkeyFilter,
 {
-    pub fn iter(&mut self) -> impl Iterator<Item = &Hotkey> {
+    pub fn iter(&mut self) -> impl Iterator<Item = &Event> {
         self.reader.iter().filter(|event| H::filter(event.id))
     }
 }
@@ -357,6 +423,69 @@ pub struct Hotkey {
     pub default: Key,
 }
 
+impl Hotkey {
+    /// Creates a new `HotkeyBuilder`.
+    #[inline]
+    pub const fn builder() -> HotkeyBuilder {
+        HotkeyBuilder::new()
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct HotkeyBuilder {
+    inner: Hotkey,
+}
+
+impl HotkeyBuilder {
+    pub const fn new() -> Self {
+        Self {
+            inner: Hotkey {
+                id: HotkeyId(0),
+                name: Cow::Borrowed("<unknown>"),
+                default: Key {
+                    trigger: TriggerKind::JUST_PRESSED,
+                    code: HotkeyCode::KeyCode {
+                        key_code: KeyCode::Escape,
+                    },
+                },
+            },
+        }
+    }
+
+    pub fn name<T>(mut self, name: T) -> Self
+    where
+        T: Into<Cow<'static, str>>,
+    {
+        self.inner.name = name.into();
+        self
+    }
+
+    pub fn trigger(mut self, trigger: TriggerKind) -> Self {
+        self.inner.default.trigger = trigger;
+        self
+    }
+
+    pub fn input<T>(mut self, input: T) -> Self
+    where
+        T: Into<HotkeyCode>,
+    {
+        self.inner.default.code = input.into();
+        self
+    }
+
+    #[inline]
+    pub fn build(self) -> Hotkey {
+        self.inner
+    }
+}
+
+impl From<HotkeyBuilder> for Hotkey {
+    #[inline]
+    fn from(value: HotkeyBuilder) -> Self {
+        value.build()
+    }
+}
+
 impl HotkeyFilter for Hotkey {
     #[inline]
     fn filter(_: HotkeyId) -> bool {
@@ -371,11 +500,72 @@ impl AsRef<HotkeyId> for Hotkey {
     }
 }
 
+/// What triggers should a [`Hotkey`] react to.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub enum TriggerKind {
-    Pressed,
-    JustPressed,
-    JustReleased,
+pub struct TriggerKind(u8);
+
+impl TriggerKind {
+    /// A trigger that corresponds to no action.
+    ///
+    /// Note that `NONE` is never sent by an [`Event`].
+    pub const NONE: Self = Self(0);
+
+    /// Triggers an action **while** a hotkey is pressed.
+    pub const PRESSED: Self = Self(1);
+
+    /// Triggers an action when a hotkey is first pressed.
+    pub const JUST_PRESSED: Self = Self(1 << 1);
+
+    /// Triggers an action when the hotkey is released.
+    pub const JUST_RELEASED: Self = Self(1 << 2);
+
+    #[inline]
+    pub fn intersects(self, other: Self) -> bool {
+        self & other != Self::NONE
+    }
+}
+
+impl BitOr for TriggerKind {
+    type Output = Self;
+
+    #[inline]
+    fn bitor(mut self, rhs: Self) -> Self::Output {
+        self |= rhs;
+        self
+    }
+}
+
+impl BitOrAssign for TriggerKind {
+    #[inline]
+    fn bitor_assign(&mut self, rhs: Self) {
+        self.0 |= rhs.0;
+    }
+}
+
+impl BitAnd for TriggerKind {
+    type Output = Self;
+
+    #[inline]
+    fn bitand(mut self, rhs: Self) -> Self::Output {
+        self &= rhs;
+        self
+    }
+}
+
+impl BitAndAssign for TriggerKind {
+    #[inline]
+    fn bitand_assign(&mut self, rhs: Self) {
+        self.0 &= rhs.0;
+    }
+}
+
+/// An event dispatched when a [`Hotkey`] was activated.
+#[derive(Copy, Clone, Debug)]
+pub struct Event {
+    /// The id of the [`Hotkey`] that triggered this `Event`.
+    pub id: HotkeyId,
+    /// The action that triggered the [`Hotkey`].
+    pub trigger: TriggerKind,
 }
 
 // TOOD: Better name? HotkeyDescriptor?
@@ -386,6 +576,27 @@ pub enum HotkeyCode {
     KeyCode { key_code: KeyCode },
     ScanCode { scan_code: ScanCode },
     MouseButton { button: MouseButton },
+}
+
+impl From<KeyCode> for HotkeyCode {
+    #[inline]
+    fn from(value: KeyCode) -> Self {
+        Self::KeyCode { key_code: value }
+    }
+}
+
+impl From<ScanCode> for HotkeyCode {
+    #[inline]
+    fn from(value: ScanCode) -> Self {
+        Self::ScanCode { scan_code: value }
+    }
+}
+
+impl From<MouseButton> for HotkeyCode {
+    #[inline]
+    fn from(value: MouseButton) -> Self {
+        Self::MouseButton { button: value }
+    }
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -429,10 +640,13 @@ fn mouse_input(mut hotkeys: ResMut<Hotkeys>, mut events: EventReader<MouseButton
     }
 }
 
-fn send_hotkey_events(hotkeys: Res<Hotkeys>, mut writer: EventWriter<Hotkey>) {
+fn send_hotkey_events(hotkeys: Res<Hotkeys>, mut writer: EventWriter<Event>) {
     for (hotkey, state) in &hotkeys.hotkeys.hotkeys {
         if state.is_active() {
-            writer.send(hotkey.clone());
+            writer.send(Event {
+                id: hotkey.id,
+                trigger: TriggerKind::PRESSED,
+            });
         }
     }
 }
@@ -443,42 +657,40 @@ pub struct HotkeyId(pub u32);
 
 #[cfg(test)]
 mod tests {
-    use bevy_ecs::schedule::{Schedule, StageLabel, SystemStage};
-    use bevy_ecs::system::{ResMut, Resource};
-    use bevy_ecs::world::World;
-
-    use super::{HotkeyFilter, HotkeyId, HotkeyReader};
-
-    struct Inventory;
-
-    impl HotkeyFilter for Inventory {
-        fn filter(id: HotkeyId) -> bool {
-            true
-        }
-    }
-
-    #[derive(Resource)]
-    struct State(bool);
-
-    #[derive(StageLabel)]
-    struct TestStage;
+    use super::{Hotkey, HotkeyMap, TriggerKind};
+    use crate::keyboard::KeyCode;
 
     #[test]
-    fn test_hotkeys() {
-        let mut world = World::new();
-
-        let mut schedule = Schedule::default();
-        schedule.add_stage(
-            TestStage,
-            SystemStage::parallel().with_system(toggle_inventory),
+    fn test_hotkeymap() {
+        let mut hotkeys = HotkeyMap::new();
+        hotkeys.insert(
+            Hotkey::builder()
+                .trigger(TriggerKind::JUST_PRESSED)
+                .input(KeyCode::Space)
+                .build(),
         );
 
-        schedule.run_once(&mut world);
-    }
+        let hotkey = hotkeys.states().nth(0).unwrap();
+        assert!(!hotkey.is_active());
 
-    fn toggle_inventory(mut state: ResMut<State>, mut events: HotkeyReader<Inventory>) {
-        for _ in events.iter() {
-            state.0 ^= true;
-        }
+        hotkeys.press(KeyCode::Space.into());
+        let hotkey = hotkeys.states().nth(0).unwrap();
+        assert!(hotkey.is_active());
+
+        hotkeys.clear();
+        let hotkey = hotkeys.states().nth(0).unwrap();
+        assert!(!hotkey.is_active());
+
+        hotkeys.release(KeyCode::Space.into());
+        let hotkey = hotkeys.states().nth(0).unwrap();
+        assert!(!hotkey.is_active());
+
+        hotkeys.clear();
+        let hotkey = hotkeys.states().nth(0).unwrap();
+        assert!(!hotkey.is_active());
+
+        hotkeys.press(KeyCode::Space.into());
+        let hotkey = hotkeys.states().nth(0).unwrap();
+        assert!(hotkey.is_active());
     }
 }
