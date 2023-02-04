@@ -329,26 +329,26 @@ impl HotkeyState {
         }
     }
 
-    fn is_active(&self) -> bool {
+    fn get(&self) -> Option<TriggerKind> {
         if self.trigger.intersects(TriggerKind::JUST_PRESSED) && self.just_pressed {
-            return true;
+            return Some(TriggerKind::JUST_PRESSED);
         }
 
         if self.trigger.intersects(TriggerKind::JUST_RELEASED) && self.just_released {
-            return true;
+            return Some(TriggerKind::JUST_RELEASED);
         }
 
         if self.trigger.intersects(TriggerKind::PRESSED) {
             for (_, state) in self.states.iter() {
                 if !state {
-                    return false;
+                    return None;
                 }
             }
 
-            return true;
+            return Some(TriggerKind::PRESSED);
         }
 
-        false
+        None
     }
 
     fn clear(&mut self) {
@@ -660,10 +660,10 @@ fn mouse_input(mut hotkeys: ResMut<Hotkeys>, mut events: EventReader<MouseButton
 
 fn send_hotkey_events(hotkeys: Res<Hotkeys>, mut writer: EventWriter<Event>) {
     for (hotkey, state) in &hotkeys.hotkeys.hotkeys {
-        if state.is_active() {
+        if let Some(trigger) = state.get() {
             writer.send(Event {
                 id: hotkey.id,
-                trigger: TriggerKind::PRESSED,
+                trigger,
             });
         }
     }
@@ -689,27 +689,27 @@ mod tests {
         );
 
         let hotkey = hotkeys.states().nth(0).unwrap();
-        assert!(!hotkey.is_active());
+        assert!(hotkey.get().is_none());
 
         hotkeys.press(KeyCode::Space.into());
         let hotkey = hotkeys.states().nth(0).unwrap();
-        assert!(hotkey.is_active());
+        assert_eq!(hotkey.get(), Some(TriggerKind::JUST_PRESSED));
 
         hotkeys.clear();
         let hotkey = hotkeys.states().nth(0).unwrap();
-        assert!(!hotkey.is_active());
+        assert!(hotkey.get().is_none());
 
         hotkeys.release(KeyCode::Space.into());
         let hotkey = hotkeys.states().nth(0).unwrap();
-        assert!(!hotkey.is_active());
+        assert!(hotkey.get().is_none());
 
         hotkeys.clear();
         let hotkey = hotkeys.states().nth(0).unwrap();
-        assert!(!hotkey.is_active());
+        assert!(hotkey.get().is_none());
 
         hotkeys.press(KeyCode::Space.into());
         let hotkey = hotkeys.states().nth(0).unwrap();
-        assert!(hotkey.is_active());
+        assert_eq!(hotkey.get(), Some(TriggerKind::JUST_PRESSED));
     }
 
     #[test]
@@ -723,26 +723,26 @@ mod tests {
         );
 
         let hotkey = hotkeys.states().nth(0).unwrap();
-        assert!(!hotkey.is_active());
+        assert_eq!(hotkey.get(), None);
 
         hotkeys.press(KeyCode::Space.into());
         let hotkey = hotkeys.states().nth(0).unwrap();
-        assert!(hotkey.is_active());
+        assert_eq!(hotkey.get(), Some(TriggerKind::JUST_PRESSED));
 
         hotkeys.clear();
         let hotkey = hotkeys.states().nth(0).unwrap();
-        assert!(!hotkey.is_active());
+        assert_eq!(hotkey.get(), None);
 
         hotkeys.release(KeyCode::Space.into());
         let hotkey = hotkeys.states().nth(0).unwrap();
-        assert!(hotkey.is_active());
+        assert_eq!(hotkey.get(), Some(TriggerKind::JUST_RELEASED));
 
         hotkeys.clear();
         let hotkey = hotkeys.states().nth(0).unwrap();
-        assert!(!hotkey.is_active());
+        assert_eq!(hotkey.get(), None);
 
         hotkeys.press(KeyCode::Space.into());
         let hotkey = hotkeys.states().nth(0).unwrap();
-        assert!(hotkey.is_active());
+        assert_eq!(hotkey.get(), Some(TriggerKind::JUST_PRESSED));
     }
 }

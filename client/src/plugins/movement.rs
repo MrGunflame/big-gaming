@@ -64,7 +64,7 @@ static mut SPRINT: Hotkey = Hotkey {
     id: HotkeyId(0),
     name: Cow::Borrowed("sprint"),
     default: Key {
-        trigger: TriggerKind::PRESSED,
+        trigger: TriggerKind::JUST_PRESSED | TriggerKind::JUST_RELEASED,
         code: HotkeyCode::KeyCode {
             key_code: KeyCode::LShift,
         },
@@ -184,18 +184,13 @@ fn toggle_sprint(
 ) {
     let mut speed = players.single_mut();
 
-    // FIXME: Hotkeys should be able to register an start-press/end-press
-    // events. This hack is not necessary then.
-    let mut is_empty = true;
-
-    for _ in events.iter() {
-        is_empty = true;
-
-        **speed = 5.0;
-    }
-
-    if is_empty {
-        **speed = 3.0;
+    for event in events.iter() {
+        dbg!(event);
+        if event.trigger.just_pressed() {
+            **speed = 5.0;
+        } else {
+            **speed = 3.0;
+        }
     }
 }
 
