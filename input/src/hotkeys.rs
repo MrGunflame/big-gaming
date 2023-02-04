@@ -64,6 +64,7 @@ use bevy::prelude::{
     EventReader, EventWriter, IntoSystemDescriptor, KeyCode, MouseButton, Plugin, Res, ResMut,
     Resource, ScanCode,
 };
+use bevy::utils::tracing::Instrument;
 use bevy_ecs::system::SystemParam;
 
 use crate::keyboard::KeyboardInput;
@@ -330,20 +331,25 @@ impl HotkeyState {
     }
 
     fn is_active(&self) -> bool {
-        match self.trigger {
-            TriggerKind::PRESSED => {
-                for (_, state) in self.states.iter() {
-                    if !state {
-                        return false;
-                    }
-                }
-
-                true
-            }
-            TriggerKind::JUST_PRESSED => self.just_pressed,
-            TriggerKind::JUST_RELEASED => self.just_released,
-            _ => false,
+        if self.trigger.intersects(TriggerKind::JUST_PRESSED) && self.just_pressed {
+            return true;
         }
+
+        if self.trigger.intersects(TriggerKind::JUST_RELEASED) && self.just_released {
+            return true;
+        }
+
+        if self.trigger.intersects(TriggerKind::PRESSED) {
+            for (_, state) in self.states.iter() {
+                if !state {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        false
     }
 
     fn clear(&mut self) {
@@ -684,6 +690,40 @@ mod tests {
         hotkeys.release(KeyCode::Space.into());
         let hotkey = hotkeys.states().nth(0).unwrap();
         assert!(!hotkey.is_active());
+
+        hotkeys.clear();
+        let hotkey = hotkeys.states().nth(0).unwrap();
+        assert!(!hotkey.is_active());
+
+        hotkeys.press(KeyCode::Space.into());
+        let hotkey = hotkeys.states().nth(0).unwrap();
+        assert!(hotkey.is_active());
+    }
+
+    #[test]
+    fn test_hotkeys_multi() {
+        let mut hotkeys = HotkeyMap::new();
+        hotkeys.insert(
+            Hotkey::builder()
+                .trigger(TriggerKind::JUST_PRESSED | TriggerKind::JUST_RELEASED)
+                .input(KeyCode::Space)
+                .build(),
+        );
+
+        let hotkey = hotkeys.states().nth(0).unwrap();
+        assert!(!hotkey.is_active());
+
+        hotkeys.press(KeyCode::Space.into());
+        let hotkey = hotkeys.states().nth(0).unwrap();
+        assert!(hotkey.is_active());
+
+        hotkeys.clear();
+        let hotkey = hotkeys.states().nth(0).unwrap();
+        assert!(!hotkey.is_active());
+
+        hotkeys.release(KeyCode::Space.into());
+        let hotkey = hotkeys.states().nth(0).unwrap();
+        assert!(hotkey.is_active());
 
         hotkeys.clear();
         let hotkey = hotkeys.states().nth(0).unwrap();
