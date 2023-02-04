@@ -4,7 +4,7 @@
 //! optimized for fast read access.
 use std::borrow::Borrow;
 use std::cell::UnsafeCell;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
 use std::num::NonZeroU32;
 use std::sync::atomic::{AtomicU32, Ordering};

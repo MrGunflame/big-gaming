@@ -25,7 +25,7 @@ static mut INVENTORY: Hotkey = Hotkey {
     id: HotkeyId(0),
     name: Cow::Borrowed("inventory"),
     default: Key {
-        trigger: TriggerKind::JustPressed,
+        trigger: TriggerKind::JUST_PRESSED,
         code: HotkeyCode::KeyCode {
             key_code: KeyCode::I,
         },
@@ -36,7 +36,7 @@ static mut CONSOLE: Hotkey = Hotkey {
     id: HotkeyId(0),
     name: Cow::Borrowed("console"),
     default: Key {
-        trigger: TriggerKind::JustPressed,
+        trigger: TriggerKind::JUST_PRESSED,
         code: HotkeyCode::KeyCode {
             key_code: KeyCode::Return,
         },

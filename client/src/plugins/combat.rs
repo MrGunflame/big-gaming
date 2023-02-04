@@ -19,7 +19,7 @@ static mut ATTACK: Hotkey = Hotkey {
     id: HotkeyId(0),
     name: Cow::Borrowed("attack"),
     default: Key {
-        trigger: TriggerKind::Pressed,
+        trigger: TriggerKind::PRESSED,
         code: HotkeyCode::MouseButton {
             button: MouseButton::Left,
         },

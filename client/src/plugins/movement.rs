@@ -10,7 +10,7 @@ use common::components::movement::{Jump, Movement};
 use common::components::player::HostPlayer;
 use common::math::RotationExt;
 use input::hotkeys::{
-    Hotkey, HotkeyCode, HotkeyFilter, HotkeyId, HotkeyReader, Hotkeys, Key, TriggerKind,
+    Event, Hotkey, HotkeyCode, HotkeyFilter, HotkeyId, HotkeyReader, Hotkeys, Key, TriggerKind,
 };
 use input::mouse::MouseMotion;
 
@@ -20,7 +20,7 @@ static mut MOVE_FORWARD: Hotkey = Hotkey {
     id: HotkeyId(0),
     name: Cow::Borrowed("move_forward"),
     default: Key {
-        trigger: TriggerKind::Pressed,
+        trigger: TriggerKind::PRESSED,
         code: HotkeyCode::KeyCode {
             key_code: KeyCode::W,
         },
@@ -31,7 +31,7 @@ static mut MOVE_LEFT: Hotkey = Hotkey {
     id: HotkeyId(0),
     name: Cow::Borrowed("move_left"),
     default: Key {
-        trigger: TriggerKind::Pressed,
+        trigger: TriggerKind::PRESSED,
         code: HotkeyCode::KeyCode {
             key_code: KeyCode::A,
         },
@@ -42,7 +42,7 @@ static mut MOVE_RIGHT: Hotkey = Hotkey {
     id: HotkeyId(0),
     name: Cow::Borrowed("move_right"),
     default: Key {
-        trigger: TriggerKind::Pressed,
+        trigger: TriggerKind::PRESSED,
         code: HotkeyCode::KeyCode {
             key_code: KeyCode::D,
         },
@@ -53,7 +53,7 @@ static mut MOVE_BACK: Hotkey = Hotkey {
     id: HotkeyId(0),
     name: Cow::Borrowed("move_back"),
     default: Key {
-        trigger: TriggerKind::Pressed,
+        trigger: TriggerKind::PRESSED,
         code: HotkeyCode::KeyCode {
             key_code: KeyCode::S,
         },
@@ -64,7 +64,7 @@ static mut SPRINT: Hotkey = Hotkey {
     id: HotkeyId(0),
     name: Cow::Borrowed("sprint"),
     default: Key {
-        trigger: TriggerKind::Pressed,
+        trigger: TriggerKind::PRESSED,
         code: HotkeyCode::KeyCode {
             key_code: KeyCode::LShift,
         },
@@ -75,7 +75,7 @@ static mut JUMP: Hotkey = Hotkey {
     id: HotkeyId(0),
     name: Cow::Borrowed("jump"),
     default: Key {
-        trigger: TriggerKind::JustPressed,
+        trigger: TriggerKind::JUST_PRESSED,
         code: HotkeyCode::KeyCode {
             key_code: KeyCode::Space,
         },
@@ -85,19 +85,19 @@ static mut JUMP: Hotkey = Hotkey {
 pub struct MovementEvent;
 
 impl MovementEvent {
-    fn forward(event: &Hotkey) -> bool {
+    fn forward(event: &Event) -> bool {
         event.id == unsafe { MOVE_FORWARD.id }
     }
 
-    fn back(event: &Hotkey) -> bool {
+    fn back(event: &Event) -> bool {
         event.id == unsafe { MOVE_BACK.id }
     }
 
-    fn left(event: &Hotkey) -> bool {
+    fn left(event: &Event) -> bool {
         event.id == unsafe { MOVE_LEFT.id }
     }
 
-    fn right(event: &Hotkey) -> bool {
+    fn right(event: &Event) -> bool {
         event.id == unsafe { MOVE_RIGHT.id }
     }
 }
