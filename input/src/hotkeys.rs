@@ -64,7 +64,6 @@ use bevy::prelude::{
     EventReader, EventWriter, IntoSystemDescriptor, KeyCode, MouseButton, Plugin, Res, ResMut,
     Resource, ScanCode,
 };
-use bevy::utils::tracing::Instrument;
 use bevy_ecs::system::SystemParam;
 
 use crate::keyboard::KeyboardInput;
@@ -526,18 +525,32 @@ impl TriggerKind {
     pub const JUST_RELEASED: Self = Self(1 << 2);
 
     #[inline]
+    pub fn pressed(self) -> bool {
+        self & Self::PRESSED != Self::NONE
+    }
+
+    #[inline]
+    pub fn just_pressed(self) -> bool {
+        self & Self::JUST_PRESSED != Self::NONE
+    }
+
+    #[inline]
+    pub fn just_released(self) -> bool {
+        self & Self::JUST_RELEASED != Self::NONE
+    }
+
+    #[inline]
     pub fn intersects(self, other: Self) -> bool {
         self & other != Self::NONE
     }
 }
 
-impl BitOr for TriggerKind {
+impl const BitOr for TriggerKind {
     type Output = Self;
 
     #[inline]
-    fn bitor(mut self, rhs: Self) -> Self::Output {
-        self |= rhs;
-        self
+    fn bitor(self, rhs: Self) -> Self::Output {
+        Self(self.0 | rhs.0)
     }
 }
 
@@ -552,9 +565,8 @@ impl BitAnd for TriggerKind {
     type Output = Self;
 
     #[inline]
-    fn bitand(mut self, rhs: Self) -> Self::Output {
-        self &= rhs;
-        self
+    fn bitand(self, rhs: Self) -> Self::Output {
+        Self(self.0 & rhs.0)
     }
 }
 
