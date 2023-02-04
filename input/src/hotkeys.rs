@@ -317,6 +317,7 @@ struct HotkeyState {
 }
 
 impl HotkeyState {
+    /// Returns a new `HotkeyState` from the given [`Hotkey`].
     fn new(hotkey: &Hotkey) -> Self {
         let mut states = HashMap::with_capacity(1);
         states.insert(hotkey.default.code, false);
@@ -436,12 +437,14 @@ impl Hotkey {
     }
 }
 
+/// A builder for a [`Hotkey`].
 #[derive(Clone, Debug)]
 pub struct HotkeyBuilder {
     inner: Hotkey,
 }
 
 impl HotkeyBuilder {
+    /// Creates a new `HotkeyBuilder`.
     pub const fn new() -> Self {
         Self {
             inner: Hotkey {
@@ -457,6 +460,8 @@ impl HotkeyBuilder {
         }
     }
 
+    /// Sets the name of the [`Hotkey`].
+    #[inline]
     pub fn name<T>(mut self, name: T) -> Self
     where
         T: Into<Cow<'static, str>>,
@@ -465,11 +470,15 @@ impl HotkeyBuilder {
         self
     }
 
+    /// Sets the trigger for the [`Hotkey`].
+    #[inline]
     pub fn trigger(mut self, trigger: TriggerKind) -> Self {
         self.inner.default.trigger = trigger;
         self
     }
 
+    /// Sets the input for the [`Hotkey`].
+    #[inline]
     pub fn input<T>(mut self, input: T) -> Self
     where
         T: Into<HotkeyCode>,
@@ -478,9 +487,17 @@ impl HotkeyBuilder {
         self
     }
 
+    /// Consumes this `HotkeyBuilder` returning the constructed [`Hotkey`].
     #[inline]
     pub fn build(self) -> Hotkey {
         self.inner
+    }
+}
+
+impl Default for HotkeyBuilder {
+    #[inline]
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -506,6 +523,17 @@ impl AsRef<HotkeyId> for Hotkey {
 }
 
 /// What triggers should a [`Hotkey`] react to.
+///
+/// `TriggerKind` can be combined using the [`BitOr`] implementation:
+///
+/// ```
+/// # use input::hotkeys::TriggerKind;
+/// #
+/// let just_pressed = TriggerKind::JUST_PRESSED;
+/// let just_released = TriggerKind::JUST_RELEASED;
+///
+/// let just_pressed_or_released = just_pressed | just_released;
+/// ```
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct TriggerKind(u8);
 
@@ -524,16 +552,25 @@ impl TriggerKind {
     /// Triggers an action when the hotkey is released.
     pub const JUST_RELEASED: Self = Self(1 << 2);
 
+    /// Returns `true` if `self` contains [`PRESSED`].
+    ///
+    /// [`PRESSED`]: Self::PRESSED
     #[inline]
     pub fn pressed(self) -> bool {
         self & Self::PRESSED != Self::NONE
     }
 
+    /// Returns `true` if `self` contains [`JUST_PRESSED`].
+    ///
+    /// [`JUST_PRESSED`]: Self::JUST_PRESSED
     #[inline]
     pub fn just_pressed(self) -> bool {
         self & Self::JUST_PRESSED != Self::NONE
     }
 
+    /// Returns `true` if `self` contains [`JUST_RELEASED`].
+    ///
+    /// [`JUST_RELEASED`]: Self::JUST_RELEASED
     #[inline]
     pub fn just_released(self) -> bool {
         self & Self::JUST_RELEASED != Self::NONE
@@ -561,7 +598,7 @@ impl BitOrAssign for TriggerKind {
     }
 }
 
-impl BitAnd for TriggerKind {
+impl const BitAnd for TriggerKind {
     type Output = Self;
 
     #[inline]
