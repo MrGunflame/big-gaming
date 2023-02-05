@@ -5,8 +5,6 @@ use common::components::combat::{Attack, Reload};
 use common::components::interaction::{InteractionQueue, Interactions};
 use common::components::player::{FocusedEntity, HostPlayer};
 
-use crate::components::Rotation;
-
 // pub fn keyboard_input(
 //     rapier_ctx: Res<RapierContext>,
 //     hotkeys: Res<HotkeyStore>,
@@ -212,17 +210,18 @@ pub fn interact_target(
     mut queue: ResMut<InteractionQueue>,
     rapier: Res<RapierContext>,
     mut players: Query<(Entity, &mut FocusedEntity), With<HostPlayer>>,
-    cameras: Query<(Entity, &Transform, &Rotation), With<Camera3d>>,
+    cameras: Query<(Entity, &Transform), With<Camera3d>>,
     entities: Query<(Entity, &Interactions)>,
     input: Res<Input<KeyCode>>,
 ) {
     let (player, mut focused_ent) = players.single_mut();
-    let (cam, pos, rot) = cameras.single();
+    let (cam, pos) = cameras.single();
 
-    let (y, x, z) = pos.rotation.to_euler(EulerRot::YXZ);
+    // TODO: Needs revisiting
+    let (y, x, _) = pos.rotation.to_euler(EulerRot::YXZ);
+    let ray_dir = Vec3::new(-y.sin() * x.cos(), x.sin(), -y.cos() * x.cos()).normalize();
 
     let ray_pos = pos.translation;
-    let ray_dir = Vec3::normalize(pos.rotation.mul_vec3(pos.translation));
     let max_toi = 4.0;
     let solid = true;
     let filter = QueryFilter::new().exclude_collider(cam);
