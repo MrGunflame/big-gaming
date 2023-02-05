@@ -2,6 +2,7 @@
 
 mod event;
 
+pub mod emulator;
 pub mod hotkeys;
 pub mod keyboard;
 pub mod mouse;

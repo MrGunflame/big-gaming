@@ -1,5 +1,7 @@
-use bevy::input::ButtonState;
-use bevy::prelude::{EventReader, EventWriter, MouseButton, Res, Vec2};
+use bevy::prelude::{EventReader, EventWriter, Res, Vec2};
+
+pub use bevy::input::mouse::MouseButton;
+pub use bevy::input::ButtonState;
 
 use crate::CanMouseMove;
 

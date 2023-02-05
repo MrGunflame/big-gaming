@@ -1,6 +1,6 @@
-use bevy::input::ButtonState;
-use bevy::prelude::{EventReader, EventWriter, Input, ResMut};
+use bevy::prelude::{EventReader, EventWriter};
 
+pub use bevy::input::ButtonState;
 pub use bevy::prelude::{KeyCode, ScanCode};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
