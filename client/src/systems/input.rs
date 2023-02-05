@@ -120,7 +120,7 @@ pub fn mouse_button_input(
     if input.pressed(MouseButton::Left) {
         let ray_origin = player_transform.translation + figure.eyes;
         let (y, x, _) = cam_transform.rotation.to_euler(EulerRot::YXZ);
-        let ray_dir = Vec3::new(-y.sin() * x.cos(), x.sin(), -y.cos() * x.cos());
+        let ray_dir = Vec3::new(-y.sin() * x.cos(), x.sin(), -y.cos() * x.cos()).normalize();
         let max_toi = 1000.0;
 
         let toi = match rapier.cast_ray(ray_origin, ray_dir, max_toi, true, QueryFilter::new()) {

@@ -2,8 +2,8 @@ use std::borrow::Cow;
 use std::f32::consts::PI;
 
 use bevy::prelude::{
-    Camera3d, Commands, CoreStage, Entity, EulerRot, EventReader, KeyCode, Plugin, Quat, Query,
-    ResMut, Transform, Vec3, With, Without,
+    Camera3d, Commands, CoreStage, Entity, EulerRot, EventReader, KeyCode, Mat3, Plugin, Quat,
+    Query, ResMut, Transform, Vec3, With, Without,
 };
 use common::components::actor::MovementSpeed;
 use common::components::movement::{Jump, Movement};
@@ -316,24 +316,29 @@ fn mouse_movement(
         let yaw = event.delta.x * 0.001;
         let pitch = event.delta.y * 0.001;
 
-        let yaw = camera.rotation.yaw() - yaw;
-        let mut pitch = camera.rotation.pitch() - pitch;
+        // let yaw = camera.rotation.yaw() - yaw;
+        // let mut pitch = camera.rotation.pitch() - pitch;
 
-        if pitch < -(PI / 2.0) {
-            pitch = -(PI / 2.0);
-        } else if pitch > PI / 2.0 {
-            pitch = PI / 2.0;
-        }
+        // if pitch < -(PI / 2.0) {
+        //     pitch = -(PI / 2.0);
+        // } else if pitch > PI / 2.0 {
+        //     pitch = PI / 2.0;
+        // }
 
         // let quat = camera.rotation.with_yaw(yaw).with_pitch(pitch);
-        let quat = Quat::from_euler(EulerRot::YXZ, yaw, pitch, 0.0);
+        // let quat = Quat::from_euler(EulerRot::YXZ, yaw, pitch, 0.0);
+
+        let q1 = Quat::from_axis_angle(Vec3::Y, -yaw);
+        let q2 = Quat::from_axis_angle(Vec3::X, -pitch);
 
         // let quat = Quat::from_euler(EulerRot::YXZ, y - yaw, pitch, z);
 
         // camera.rotation.to_axis_angle();
         // camera.rotate_axis(-Vec3::Y, yaw);
         // camera.rotate(quat);
-        camera.rotation = quat;
+
+        camera.rotation = q1 * camera.rotation;
+        camera.rotation = camera.rotation * q2;
 
         // *camera_rot = camera_rot
         //     .add_yaw(Degrees(yaw))
