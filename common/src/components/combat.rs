@@ -7,7 +7,7 @@ use std::ops::{Add, AddAssign, Sub, SubAssign};
 use bevy_ecs::component::Component;
 use glam::Vec3;
 
-use crate::id::NamespacedId;
+use crate::id::{NamespacedId, WeakId};
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -302,6 +302,18 @@ impl<'a> ExactSizeIterator for Iter<'a> {
 
 impl<'a> FusedIterator for Iter<'a> {}
 
+/// A damage "type".
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[repr(transparent)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(transparent))]
+pub struct DamageClass(pub WeakId<u32>);
+
+impl DamageClass {
+    pub const BALLISTIC: Self = Self(WeakId(2));
+    pub const ENERGY: Self = Self(WeakId(3));
+}
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(transparent))]
@@ -312,6 +324,7 @@ impl ResistanceId {
     pub const ENERGY: Self = Self(NamespacedId::core(3));
 }
 
+/// A resistance value.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]
 pub struct Resistance(u32);
