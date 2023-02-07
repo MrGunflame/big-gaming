@@ -1,0 +1,43 @@
+[package]
+name = "game_client"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+game_ai = { version = "*", path = "../game_ai" }
+game_common = { version = "0.1.0", path = "../game_common" }
+game_core = { version = "*", path = "../game_core" }
+game_ui = { version = "*", path = "../game_ui" }
+game_input = { version = "*", path = "../game_input" }
+
+ahash = "0.8.2"
+bevy = { version = "0.9.0", features = ["wav", "jpeg"] }
+bevy_rapier3d = { version = "0.19.0", features = ["debug-render"]}
+serde = { version = "1.0.149", features = ["derive"], optional = true }
+bevy_egui = "0.17"
+winit = "0.27.5"
+tracing = "0.1.37"
+chrono = "0.4.23"
+nalgebra = "0.31.4"
+
+[features]
+default = []
+
+
+# dylib bevy for dev
+dynamic = ["bevy/dynamic"]
+
+serde = ["dep:serde"]
+simd = ["bevy_rapier3d/simd-nightly"]
+
+[profile.release]
+debug-assertions = true
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+
+[profile.dev.package.bevy]
+opt-level = 3
+
+[profile.dev.package.bevy_rapier3d]
+opt-level = 3

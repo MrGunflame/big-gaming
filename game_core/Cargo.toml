@@ -1,0 +1,13 @@
+[package]
+name = "game_core"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+game_ai = { version = "*", path = "../game_ai" }
+game_common = { version = "*", path = "../game_common" }
+
+bevy = "0.9.1"
+bevy_ecs = "0.9.1"
+tracing = "0.1.37"
+bevy_rapier3d = "0.19.0"

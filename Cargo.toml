@@ -1,3 +1,14 @@
 [workspace]
-members = ["ai", "base", "common", "client", "server", "ui", "net", "input", "macros"]
+members = [
+    "game_ai",
+    "game_core",
+    "game_common",
+    "game_client",
+    "game_server",
+    "game_ui",
+    "game_net",
+    "game_input",
+    "game_macros"
+]
+
 resolver = "2"
