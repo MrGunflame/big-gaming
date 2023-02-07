@@ -28,7 +28,9 @@ const NANOS_PER_SEC: u32 = 1_000_000_000;
 /// There are not leap years or leap seconds, every year is repeated as is.
 ///
 /// The time should be constantly advanced using the `Add<Duration>` impl.
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Component, Resource)]
+#[derive(
+    Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Component, Resource,
+)]
 pub struct DateTime {
     nsecs: u128,
 }
