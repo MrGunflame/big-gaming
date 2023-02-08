@@ -47,22 +47,29 @@ macro_rules! impl_encode_int {
 impl_encode_int! { u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize }
 
 unsafe impl Encode for [u8] {
+    #[inline]
     fn size(&self) -> usize {
         self.len().size() + self.len()
     }
 
-    unsafe fn encode(&self, buf: *mut u8) {
+    #[inline]
+    unsafe fn encode(&self, mut buf: *mut u8) {
         unsafe {
+            self.len().encode(buf);
+            buf = buf.add(self.len().size());
+
             ptr::copy_nonoverlapping(self.as_ptr(), buf, self.len());
         }
     }
 }
 
 unsafe impl Encode for str {
+    #[inline]
     fn size(&self) -> usize {
         self.len()
     }
 
+    #[inline]
     unsafe fn encode(&self, buf: *mut u8) {
         unsafe {
             self.as_bytes().encode(buf);
