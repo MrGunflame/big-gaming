@@ -13,6 +13,8 @@ serde = ["dep:serde"]
 json = ["serde", "dep:serde_json"]
 
 [dependencies]
+game_macros = { version = "0.1.0", path = "../game_macros" }
+
 ahash = "0.8.2"
 bevy_ecs = "0.9.1"
 glam = "0.22.0"
