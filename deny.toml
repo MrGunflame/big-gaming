@@ -1,0 +1,30 @@
+[advisories]
+vulnerability = "warn"
+unmaintained = "warn"
+notice = "warn"
+unsound = "warn"
+
+[bans]
+multiple-versions = "warn"
+deny = []
+skip = []
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+
+[licenses]
+unlicensed = "deny"
+copyleft = "allow"
+confidence-threshold = 0.93
+allow = ["Apache-2.0", "MIT", "BSD-3-Clause", "BSD-2-Clause", "MIT-0", "ISC", "CC0-1.0", "Zlib"]
+
+exceptions = [
+    { allow = ["Unicode-DFS-2016"], name = "unicode-ident" },
+    { allow = ["BSL-1.0"], name = "str-buf" },
+    { allow = ["BSL-1.0"], name = "error-code" },
+    { allow = ["BSL-1.0"], name = "clipboard-win" },
+    # Licenses for default fonts used by egui
+    # Also see https://github.com/emilk/egui/issues/2321
+    { allow = ["OFL-1.1", "LicenseRef-UFL-1.0"], name = "epaint" }
+]
