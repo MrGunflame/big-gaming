@@ -1,5 +1,7 @@
 //! Binary (de)serialization format
 
+mod math;
+
 use std::mem;
 use std::ptr;
 
