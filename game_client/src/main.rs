@@ -335,7 +335,7 @@ fn setup(
             resistances: None,
             ammo: None,
             damage: None,
-            magazine: Magazine::default(),
+            magazine: None,
             mass: Default::default(),
             cooldown: Cooldown::new(Duration::ZERO),
         },

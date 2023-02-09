@@ -4,7 +4,7 @@ use bevy::prelude::{
     AssetServer, Commands, DespawnRecursiveExt, Entity, Plugin, Query, Res, Transform, With,
 };
 use bevy::scene::SceneBundle;
-use bevy_rapier3d::prelude::RapierContext;
+use bevy_rapier3d::prelude::{RapierContext, Velocity};
 use game_common::components::actor::{Actor, ActorLimb};
 use game_common::components::combat::{Damage, IncomingDamage};
 use game_common::components::object::{Lifetime, ObjectChildren};

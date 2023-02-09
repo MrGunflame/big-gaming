@@ -71,9 +71,11 @@ fn handle_attack_events(
             continue;
         }
 
-        // Out of ammo, cannot attack.
-        if !item.magazine.decrement() {
-            continue;
+        if let Some(magazine) = &mut item.magazine {
+            // Out of ammo, cannot attack.
+            if magazine.pop().is_none() {
+                continue;
+            }
         }
 
         // let ray_origin = transform.translation + figure.eyes;
@@ -111,7 +113,9 @@ fn handle_reload_events(
 ) {
     for (entity, mut equipment) in &mut actors {
         if let Some(item) = equipment.get_mut(EquipmentSlot::MAIN_HAND) {
-            item.magazine.set(30);
+            if let Some(id) = item.ammo {
+                item.magazine.as_mut().unwrap().push(id, 30);
+            }
         }
 
         commands.entity(entity).remove::<Reload>();

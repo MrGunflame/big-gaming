@@ -37,51 +37,56 @@ pub struct Item {
     pub ammo: Option<ItemId>,
     pub damage: Option<u32>,
     /// The number of bullets currently in the magazine.
-    pub magazine: Magazine,
+    pub magazine: Option<Magazine>,
     // pub properties: Properties,
     pub mass: Mass,
     pub cooldown: Cooldown,
 }
 
-// FIXME: Can the size of this be reduced to 2?
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[repr(transparent)]
-pub struct Magazine(pub Option<u16>);
+#[derive(Clone, Debug)]
+pub enum Magazine {
+    /// A single item.
+    Single { id: ItemId, count: u16 },
+}
 
 impl Magazine {
-    pub const fn new(val: u16) -> Self {
-        Self(Some(val))
-    }
-
     #[inline]
-    pub fn decrement(&mut self) -> bool {
-        let Some(old) = &mut self.0 else {
-            return true;
-        };
-
-        match old.checked_sub(1) {
-            Some(new) => {
-                *old = new;
-                true
+    pub fn pop(&mut self) -> Option<ItemId> {
+        match self {
+            Self::Single { id, count } => {
+                if *count > 0 {
+                    *count -= 1;
+                    Some(*id)
+                } else {
+                    None
+                }
             }
-            None => false,
         }
     }
 
     #[inline]
-    pub fn set(&mut self, val: u16) {
-        match &mut self.0 {
-            Some(n) => *n = val,
-            None => (),
+    pub fn push(&mut self, item: ItemId, n: u16) {
+        match self {
+            Self::Single { id, count } => {
+                if *id != item {
+                    return;
+                }
+
+                *count += n;
+            }
+        }
+    }
+
+    #[inline]
+    pub fn count(&self) -> u16 {
+        match self {
+            Self::Single { id: _, count } => *count,
         }
     }
 
     #[inline]
     pub fn is_empty(&self) -> bool {
-        match self.0 {
-            Some(n) => n == 0,
-            _ => false,
-        }
+        self.count() == 0
     }
 }
 

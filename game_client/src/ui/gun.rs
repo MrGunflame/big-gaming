@@ -11,14 +11,10 @@ pub fn gun(mut egui: ResMut<EguiContext>, players: Query<&Equipment, With<HostPl
         return;
     };
 
-    let current = item.magazine.0.unwrap();
-
     Area::new("ammo")
         .anchor(Align2::RIGHT_BOTTOM, Vec2::new(0.0, 0.0))
         .order(Order::Background)
-        .show(egui.ctx_mut(), |ui| {
-            ui.add(Ammo { current });
-        });
+        .show(egui.ctx_mut(), |ui| {});
 }
 
 /// The current ammo widget.

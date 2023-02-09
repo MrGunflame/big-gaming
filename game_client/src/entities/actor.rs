@@ -57,7 +57,10 @@ impl ActorBundle {
                 resistances: None,
                 damage: None,
                 components: None,
-                magazine: Magazine::new(30),
+                magazine: Some(Magazine::Single {
+                    id: ItemId(64.into()),
+                    count: 31,
+                }),
                 mass: Default::default(),
                 ammo: Some(ItemId(64.into())),
                 cooldown: Cooldown::new(Duration::new(0, 200)),
