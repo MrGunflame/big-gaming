@@ -5,6 +5,7 @@ mod math;
 use std::mem;
 use std::ptr;
 
+use bytes::Buf;
 pub use game_macros::Encode;
 
 /// A type that can be encoded into a binary buffer.
@@ -23,6 +24,14 @@ pub unsafe trait Encode {
     /// [`size`]: Self::size
     unsafe fn encode(&self, buf: *mut u8);
 }
+
+pub trait Decode: Sized {
+    fn decode<B>(buf: B) -> Result<Self, Error>
+    where
+        B: Buf;
+}
+
+pub struct Error;
 
 macro_rules! impl_encode_int {
     ($($t:ty),*) => {
@@ -76,5 +85,21 @@ unsafe impl Encode for str {
         unsafe {
             self.as_bytes().encode(buf);
         }
+    }
+}
+
+impl Decode for u8 {
+    fn decode<B>(mut buf: B) -> Result<Self, Error>
+    where
+        B: Buf,
+    {
+        if buf.remaining() < mem::size_of::<Self>() {
+            return Err(Error);
+        }
+
+        let mut bytes = [0; mem::size_of::<Self>()];
+        buf.copy_to_slice(&mut bytes);
+
+        Ok(Self::from_le_bytes(bytes))
     }
 }
