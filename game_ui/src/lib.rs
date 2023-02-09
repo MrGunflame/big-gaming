@@ -9,7 +9,7 @@ use bevy::prelude::{Plugin, Stage};
 
 use cursor::Cursor;
 pub use interface::{Context, InterfaceState, Widget, WidgetFlags};
-use widgets::{Crosshair, Health};
+use widgets::{Crosshair, Health, Weapon};
 
 pub struct UiPlugin;
 
@@ -18,6 +18,7 @@ impl Plugin for UiPlugin {
         let mut state = InterfaceState::new();
         state.push(Health);
         state.push(Crosshair);
+        state.push(Weapon);
 
         app.add_plugin(bevy_egui::EguiPlugin)
             .insert_resource(state)

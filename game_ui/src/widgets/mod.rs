@@ -4,6 +4,7 @@ mod death;
 mod gamemenu;
 mod health;
 mod inventory;
+mod weapon;
 
 use std::borrow::Cow;
 
@@ -14,6 +15,7 @@ pub use death::Death;
 pub use gamemenu::GameMenu;
 pub use health::Health;
 pub use inventory::Inventory;
+pub use weapon::Weapon;
 
 use game_input::hotkeys::{
     Hotkey, HotkeyCode, HotkeyFilter, HotkeyId, HotkeyReader, Hotkeys, Key, TriggerKind,
