@@ -22,7 +22,7 @@ pub fn encode(input: TokenStream) -> TokenStream {
     let encode_impl = expand_encode_impl(&fields);
 
     TokenStream::from(quote! {
-        unsafe impl Encode for #ident {
+        unsafe impl ::game_common::proto::Encode for #ident {
             #[inline]
             fn size(&self) -> usize {
                 #size_impl

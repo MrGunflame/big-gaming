@@ -7,6 +7,10 @@
 #![feature(const_option)]
 #![feature(const_mut_refs)]
 
+// Allow usage of proc macros on the crate.
+
+extern crate self as game_common;
+
 pub mod actors;
 pub mod archive;
 pub mod bundles;
