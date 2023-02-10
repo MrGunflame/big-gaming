@@ -30,7 +30,7 @@ static mut RELOAD: Hotkey = Hotkey {
     id: HotkeyId(0),
     name: Cow::Borrowed("reload"),
     default: Key {
-        trigger: TriggerKind::PRESSED,
+        trigger: TriggerKind::JUST_PRESSED,
         code: HotkeyCode::KeyCode {
             key_code: KeyCode::R,
         },
