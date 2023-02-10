@@ -1,12 +1,12 @@
 use std::borrow::Cow;
 
 use bevy::prelude::{
-    Bundle, Camera3d, Commands, Entity, EulerRot, MouseButton, Plugin, Query, Res, ResMut,
+    Bundle, Camera3d, Commands, Entity, EulerRot, KeyCode, MouseButton, Plugin, Query, Res, ResMut,
     Transform, Vec3, With,
 };
 use bevy_rapier3d::prelude::{QueryFilter, RapierContext};
 use game_common::components::actor::ActorFigure;
-use game_common::components::combat::{Attack, Health, IncomingDamage, Resistances};
+use game_common::components::combat::{Attack, Health, IncomingDamage, Reload, Resistances};
 use game_common::components::player::HostPlayer;
 use game_input::hotkeys::{
     Hotkey, HotkeyCode, HotkeyFilter, HotkeyId, HotkeyReader, Hotkeys, Key, TriggerKind,
@@ -26,10 +26,22 @@ static mut ATTACK: Hotkey = Hotkey {
     },
 };
 
+static mut RELOAD: Hotkey = Hotkey {
+    id: HotkeyId(0),
+    name: Cow::Borrowed("reload"),
+    default: Key {
+        trigger: TriggerKind::PRESSED,
+        code: HotkeyCode::KeyCode {
+            key_code: KeyCode::R,
+        },
+    },
+};
+
 impl Plugin for CombatPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
         app.add_startup_system(register_events)
-            .add_system(attack_events);
+            .add_system(attack_events)
+            .add_system(reload_events);
     }
 }
 
@@ -38,6 +50,11 @@ fn register_events(mut hotkeys: ResMut<Hotkeys>) {
     let id = hotkeys.register(attack.clone());
     attack.id = id;
     drop(attack);
+
+    let mut reload = unsafe { &mut RELOAD };
+    let id = hotkeys.register(reload.clone());
+    reload.id = id;
+    drop(reload);
 }
 
 struct AttackEvent;
@@ -45,6 +62,14 @@ struct AttackEvent;
 impl HotkeyFilter for AttackEvent {
     fn filter(id: HotkeyId) -> bool {
         id == unsafe { ATTACK.id }
+    }
+}
+
+struct ReloadEvent;
+
+impl HotkeyFilter for ReloadEvent {
+    fn filter(id: HotkeyId) -> bool {
+        id == unsafe { RELOAD.id }
     }
 }
 
@@ -75,6 +100,18 @@ fn attack_events(
     let target = ray_origin + toi * ray_dir;
 
     commands.entity(entity).insert(Attack { target });
+}
+
+fn reload_events(
+    mut commands: Commands,
+    players: Query<Entity, With<HostPlayer>>,
+    mut events: HotkeyReader<ReloadEvent>,
+) {
+    let entity = players.single();
+
+    for _ in events.iter() {
+        commands.entity(entity).insert(Reload);
+    }
 }
 
 #[derive(Bundle)]
