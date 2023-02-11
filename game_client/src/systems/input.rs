@@ -4,6 +4,7 @@ use game_common::components::actor::ActorFigure;
 use game_common::components::combat::{Attack, Reload};
 use game_common::components::interaction::{InteractionQueue, Interactions};
 use game_common::components::player::{FocusedEntity, HostPlayer};
+use game_common::math::RotationExt;
 
 // pub fn keyboard_input(
 //     rapier_ctx: Res<RapierContext>,
@@ -217,9 +218,7 @@ pub fn interact_target(
     let (player, mut focused_ent) = players.single_mut();
     let (cam, pos) = cameras.single();
 
-    // TODO: Needs revisiting
-    let (y, x, _) = pos.rotation.to_euler(EulerRot::YXZ);
-    let ray_dir = Vec3::new(-y.sin() * x.cos(), x.sin(), -y.cos() * x.cos()).normalize();
+    let ray_dir = pos.rotation.dir_vec();
 
     let ray_pos = pos.translation;
     let max_toi = 4.0;

@@ -1,4 +1,4 @@
-use glam::{EulerRot, Quat};
+use glam::{Quat, Vec3};
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct Rotation {
@@ -8,65 +8,15 @@ pub struct Rotation {
 }
 
 /// An extension trait for types that can be interpreted as a rotation.
-///
-/// `RotationExt` exposes functions to operate on simpler yaw-pitch-roll euler angles.
 pub trait RotationExt {
-    /// Returns the yaw value.
-    fn yaw(&self) -> f32;
-
-    /// Returns the pitch value.
-    fn pitch(&self) -> f32;
-
-    /// Sets the yaw value to `yaw`.
-    fn set_yaw(&mut self, yaw: f32);
-
-    /// Sets the pitch value to `pitch`.
-    fn set_pitch(&mut self, pitch: f32);
-
-    /// Creates a new copy of the type with the given `yaw` value.
-    #[inline]
-    fn with_yaw(mut self, yaw: f32) -> Self
-    where
-        Self: Copy,
-    {
-        self.set_yaw(yaw);
-        self
-    }
-
-    /// Creates a new copy of the type with the given `pitch` value.
-    #[inline]
-    fn with_pitch(mut self, pitch: f32) -> Self
-    where
-        Self: Copy,
-    {
-        self.set_pitch(pitch);
-        self
-    }
+    /// Returns a direction unit vector represented by this rotation.
+    fn dir_vec(&self) -> Vec3;
 }
 
 impl RotationExt for Quat {
     #[inline]
-    fn yaw(&self) -> f32 {
-        let (y, _, _) = self.to_euler(EulerRot::YXZ);
-        y
-    }
-
-    #[inline]
-    fn pitch(&self) -> f32 {
-        let (_, x, _) = self.to_euler(EulerRot::YXZ);
-        x
-    }
-
-    #[inline]
-    fn set_yaw(&mut self, yaw: f32) {
-        let (_, x, z) = self.to_euler(EulerRot::YXZ);
-        *self = Self::from_euler(EulerRot::YXZ, yaw, x, z);
-    }
-
-    #[inline]
-    fn set_pitch(&mut self, pitch: f32) {
-        let (y, _, z) = self.to_euler(EulerRot::YXZ);
-        *self = Self::from_euler(EulerRot::YXZ, y, pitch, z);
+    fn dir_vec(&self) -> Vec3 {
+        *self * -Vec3::Z
     }
 }
 
@@ -74,7 +24,9 @@ impl RotationExt for Quat {
 mod tests {
     use std::f32::consts::PI;
 
-    use super::{EulerRot, Quat, RotationExt};
+    use glam::Vec3;
+
+    use super::{Quat, RotationExt};
 
     /// Asserts approximated equals on two f32s.
     macro_rules! assert_f32 {
@@ -83,6 +35,14 @@ mod tests {
                 // Fallback to the assert_eq macro for better output.
                 assert_eq!($a, $b);
             }
+        }};
+    }
+
+    macro_rules! assert_vec {
+        ($a:expr, $b:expr) => {{
+            assert_f32!($a.x, $b.x);
+            assert_f32!($a.y, $b.y);
+            assert_f32!($a.z, $b.z);
         }};
     }
 
@@ -98,40 +58,14 @@ mod tests {
     }
 
     #[test]
-    fn test_quat_get() {
+    fn test_quat_dir_vec() {
         let quat = Quat::IDENTITY;
-        assert_f32!(quat.yaw(), 0.0);
-        assert_f32!(quat.pitch(), 0.0);
+        assert_eq!(quat.dir_vec(), Vec3::new(0.0, 0.0, -1.0));
 
-        let quat = Quat::from_euler(EulerRot::YXZ, PI / 2.0, 0.0, 0.0);
-        assert_f32!(quat.yaw(), PI / 2.0);
-        assert_f32!(quat.pitch(), 0.0);
+        let quat = Quat::from_axis_angle(Vec3::Y, PI / 2.0);
+        assert_vec!(quat.dir_vec(), Vec3::new(-1.0, 0.0, 0.0));
 
-        let quat = Quat::from_euler(EulerRot::YXZ, PI / 2.0, PI / 4.0, 0.0);
-        assert_f32!(quat.yaw(), PI / 2.0);
-        assert_f32!(quat.pitch(), PI / 4.0);
-
-        let quat = Quat::from_euler(EulerRot::YXZ, PI / 2.0, PI / 4.0, PI / 2.0);
-        assert_f32!(quat.yaw(), PI / 2.0);
-        assert_f32!(quat.pitch(), PI / 4.0);
-    }
-
-    #[test]
-    fn test_quat_set() {
-        let mut quat = Quat::IDENTITY;
-        assert_f32!(quat.yaw(), 0.0);
-        assert_f32!(quat.pitch(), 0.0);
-
-        quat.set_yaw(PI / 2.0);
-        assert_f32!(quat.yaw(), PI / 2.0);
-        assert_f32!(quat.pitch(), 0.0);
-
-        quat.set_pitch(PI / 4.0);
-        assert_f32!(quat.yaw(), PI / 2.0);
-        assert_f32!(quat.pitch(), PI / 4.0);
-
-        quat.set_pitch(PI / 2.0);
-        assert_f32!(quat.yaw(), PI / 2.0);
-        assert_f32!(quat.pitch(), PI / 2.0);
+        let quat = Quat::from_axis_angle(Vec3::X, PI / 2.0);
+        assert_vec!(quat.dir_vec(), Vec3::new(0.0, 1.0, 0.0));
     }
 }

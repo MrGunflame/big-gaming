@@ -345,6 +345,6 @@ fn mouse_movement(
         //     .saturating_add_pitch(Degrees(pitch));
 
         // *player_rot = camera_rot.with_pitch(Radians(0.0));
-        player.rotation = camera.rotation;
+        player.rotation = q1 * player.rotation;
     }
 }
