@@ -7,12 +7,29 @@ pub mod track;
 
 use std::collections::VecDeque;
 use std::io::Cursor;
+use std::sync::Arc;
 
-use bevy::prelude::{Assets, AudioSource, Handle, NonSendMut, Plugin, Res, Resource};
+use bevy_app::{App, Plugin};
+use bevy_asset::{AddAsset, AssetLoader, Assets, Handle, LoadedAsset};
+use bevy_ecs::system::{NonSendMut, Res, Resource};
+use bevy_reflect::TypeUuid;
+
 use kira::manager::backend::cpal::CpalBackend;
 use kira::manager::{AudioManager, AudioManagerSettings};
 use kira::sound::static_sound::{StaticSoundData, StaticSoundSettings};
 use parking_lot::RwLock;
+
+#[derive(Clone, Debug, TypeUuid)]
+#[uuid = "ec630975-6b47-4006-9f16-d8b1eeb3584c"]
+pub struct AudioSource {
+    pub bytes: Arc<[u8]>,
+}
+
+impl AsRef<[u8]> for AudioSource {
+    fn as_ref(&self) -> &[u8] {
+        &self.bytes
+    }
+}
 
 pub struct AudioPlugin {}
 
@@ -23,12 +40,34 @@ impl AudioPlugin {
 }
 
 impl Plugin for AudioPlugin {
-    fn build(&self, app: &mut bevy::prelude::App) {
+    fn build(&self, app: &mut App) {
         app.insert_resource(AudioServer {
             queue: RwLock::default(),
         })
         .insert_non_send_resource(AudioBackend::new())
+        .add_asset::<AudioSource>()
+        .init_asset_loader::<AudioLoader>()
         .add_system(play_queued_audio);
+    }
+}
+
+#[derive(Copy, Clone, Debug, Default)]
+struct AudioLoader;
+
+impl AssetLoader for AudioLoader {
+    fn load<'a>(
+        &'a self,
+        bytes: &'a [u8],
+        load_context: &'a mut bevy_asset::LoadContext,
+    ) -> bevy_asset::BoxedFuture<'a, Result<(), bevy_asset::Error>> {
+        load_context.set_default_asset(LoadedAsset::new(AudioSource {
+            bytes: bytes.into(),
+        }));
+        Box::pin(async move { Ok(()) })
+    }
+
+    fn extensions(&self) -> &[&str] {
+        &["flac", "wav", "ogg"]
     }
 }
 

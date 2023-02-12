@@ -1,4 +1,4 @@
-use bevy::prelude::Vec3;
+use glam::Vec3;
 
 #[derive(Copy, Clone, Debug)]
 pub struct SoundFrame {
