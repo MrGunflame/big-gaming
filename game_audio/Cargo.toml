@@ -5,5 +5,6 @@ edition = "2021"
 
 [dependencies]
 bevy = { version = "0.9.1", features = ["wav", "flac", "vorbis"] }
+kira = { version = "0.7.1", features = ["cpal"] }
 parking_lot = "0.12.1"
-rodio = "0.16.0"
+tracing = "0.1.37"

@@ -1,31 +1,32 @@
+#![deny(unsafe_op_in_unsafe_fn)]
+#![feature(const_option)]
+
+pub mod sound;
+pub mod track;
+
 use std::collections::VecDeque;
 use std::io::Cursor;
 
-use bevy::prelude::{Assets, AudioSource, Handle, Plugin, Res, Resource};
+use bevy::prelude::{Assets, AudioSource, Handle, NonSendMut, Plugin, Res, Resource};
+use kira::manager::backend::cpal::CpalBackend;
+use kira::manager::{AudioManager, AudioManagerSettings};
+use kira::sound::static_sound::{StaticSoundData, StaticSoundSettings};
 use parking_lot::RwLock;
-use rodio::{Decoder, OutputStream, OutputStreamHandle, Sink};
 
-pub struct AudioPlugin {
-    handle: Option<OutputStreamHandle>,
-}
+pub struct AudioPlugin {}
 
 impl AudioPlugin {
     pub fn new() -> Self {
-        let (stream, handle) = OutputStream::try_default().unwrap();
-        std::mem::forget(stream);
-
-        Self {
-            handle: Some(handle),
-        }
+        Self {}
     }
 }
 
 impl Plugin for AudioPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
         app.insert_resource(AudioServer {
-            default_sink: self.handle.as_ref().map(|h| Sink::try_new(&h).unwrap()),
             queue: RwLock::default(),
         })
+        .insert_non_send_resource(AudioBackend::new())
         .add_system(play_queued_audio);
     }
 }
@@ -33,7 +34,31 @@ impl Plugin for AudioPlugin {
 #[derive(Resource)]
 pub struct AudioServer {
     queue: RwLock<VecDeque<Handle<AudioSource>>>,
-    default_sink: Option<Sink>,
+}
+
+struct AudioBackend {
+    manager: Option<AudioManager<CpalBackend>>,
+}
+
+impl AudioBackend {
+    fn new() -> Self {
+        let manager = match AudioManager::new(AudioManagerSettings::default()) {
+            Ok(man) => Some(man),
+            Err(err) => {
+                tracing::error!("Failed to attach to audio sink: {}", err);
+                None
+            }
+        };
+
+        Self { manager }
+    }
+}
+
+impl Default for AudioBackend {
+    #[inline]
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl AudioServer {
@@ -63,8 +88,12 @@ impl AudioHandle {
 #[repr(transparent)]
 struct StreamId(u64);
 
-fn play_queued_audio(audio: Res<AudioServer>, assets: Res<Assets<AudioSource>>) {
-    let Some(sink) = &audio.default_sink else {
+fn play_queued_audio(
+    mut backend: NonSendMut<AudioBackend>,
+    audio: Res<AudioServer>,
+    assets: Res<Assets<AudioSource>>,
+) {
+    let Some(manager) = &mut backend.manager else {
         return;
     };
 
@@ -80,7 +109,9 @@ fn play_queued_audio(audio: Res<AudioServer>, assets: Res<Assets<AudioSource>>) 
         };
 
         let reader = Cursor::new(source.clone());
-        sink.append(Decoder::new(reader).unwrap());
+        let data = StaticSoundData::from_cursor(reader, StaticSoundSettings::default()).unwrap();
+
+        let handle = manager.play(data).unwrap();
 
         queue.remove(index);
     }
