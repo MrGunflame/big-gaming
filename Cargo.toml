@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "game_ai",
+    "game_audio",
     "game_core",
     "game_common",
     "game_client",
