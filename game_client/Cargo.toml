@@ -11,6 +11,7 @@ game_common = { version = "0.1.0", path = "../game_common" }
 game_core = { version = "*", path = "../game_core" }
 game_ui = { version = "*", path = "../game_ui" }
 game_input = { version = "*", path = "../game_input" }
+game_audio = { version = "*", path = "../game_audio" }
 
 ahash = "0.8.2"
 bevy = { version = "0.9.0", features = ["wav", "jpeg"] }

@@ -18,7 +18,6 @@ mod world;
 
 use std::time::Duration;
 
-use bevy::audio::AudioPlugin;
 use bevy::core_pipeline::CorePipelinePlugin;
 use bevy::diagnostic::DiagnosticsPlugin;
 use bevy::gltf::GltfPlugin;
@@ -44,6 +43,7 @@ use entities::player::PlayerCharacterBundle;
 use game_ai::bundles::AiBundle;
 use game_ai::components::AiController;
 use game_ai::AiPlugin;
+use game_audio::AudioPlugin;
 use game_common::actors::human::Human;
 use game_common::archive::loader::ModuleLoader;
 use game_common::archive::GameArchive;
@@ -86,7 +86,6 @@ fn main() {
         .add_plugin(SpritePlugin)
         .add_plugin(TextPlugin)
         .add_plugin(bevy::ui::UiPlugin)
-        .add_plugin(AudioPlugin)
         .add_plugin(GilrsPlugin)
         .add_plugin(GltfPlugin)
         .add_plugin(WinitPlugin)
@@ -113,6 +112,7 @@ fn main() {
         .add_plugin(sky::SkyPlugin)
         .add_plugin(game_core::world::ObjectPlugin)
         .add_plugin(crate::plugins::combat::CombatPlugin)
+        .add_plugin(AudioPlugin::new())
         .run();
 }
 
