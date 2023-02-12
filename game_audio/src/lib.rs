@@ -1,6 +1,7 @@
 #![deny(unsafe_op_in_unsafe_fn)]
 #![feature(const_option)]
 
+mod effects;
 pub mod sound;
 pub mod track;
 
