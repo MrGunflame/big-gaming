@@ -12,6 +12,7 @@ pub struct AudioPlugin {
 impl AudioPlugin {
     pub fn new() -> Self {
         let (stream, handle) = OutputStream::try_default().unwrap();
+        std::mem::forget(stream);
 
         Self {
             handle: Some(handle),
@@ -40,12 +41,12 @@ impl AudioServer {
         let mut queue = self.queue.write();
         queue.push_back(source);
 
-        AudioHandle { id: SoundId(0) }
+        AudioHandle { id: StreamId(0) }
     }
 }
 
 pub struct AudioHandle {
-    id: SoundId,
+    id: StreamId,
 }
 
 impl AudioHandle {
@@ -60,7 +61,7 @@ impl AudioHandle {
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 #[repr(transparent)]
-struct SoundId(u64);
+struct StreamId(u64);
 
 fn play_queued_audio(audio: Res<AudioServer>, assets: Res<Assets<AudioSource>>) {
     let Some(sink) = &audio.default_sink else {
