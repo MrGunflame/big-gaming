@@ -1,6 +1,10 @@
-use ahash::{HashSet, HashSetExt};
-use bevy_ecs::prelude::Entity;
-use glam::Vec3;
+use std::any::Any;
+use std::borrow::Borrow;
+
+use ahash::{HashMap, HashMapExt};
+use glam::{Vec3, Vec3A};
+
+use crate::ecs::components::DynamicComponent;
 
 pub const CELL_SIZE: Vec3 = Vec3::new(64.0, 64.0, 64.0);
 
@@ -65,9 +69,25 @@ impl CellId {
     }
 }
 
+impl From<Vec3> for CellId {
+    #[inline]
+    fn from(value: Vec3) -> Self {
+        Self::new(value.x, value.y, value.z)
+    }
+}
+
+impl From<Vec3A> for CellId {
+    #[inline]
+    fn from(value: Vec3A) -> Self {
+        Self::new(value.x, value.y, value.z)
+    }
+}
+
+#[derive(Debug)]
 pub struct Cell {
     pub id: CellId,
-    entities: HashSet<Entity>,
+    next_id: u32,
+    entities: HashMap<EntityId, EntityComponents>,
 }
 
 impl Cell {
@@ -77,7 +97,8 @@ impl Cell {
     {
         Self {
             id: id.into(),
-            entities: HashSet::new(),
+            next_id: 0,
+            entities: HashMap::new(),
         }
     }
 
@@ -91,15 +112,87 @@ impl Cell {
         self.len() == 0
     }
 
-    pub fn insert(&mut self, entity: Entity) {
-        self.entities.insert(entity);
+    pub fn spawn(&mut self) -> EntityMut<'_> {
+        let id = EntityId(self.next_id);
+        self.next_id += 1;
+
+        self.entities.insert(
+            id,
+            EntityComponents {
+                id,
+                components: Vec::new(),
+            },
+        );
+
+        EntityMut {
+            entity: self.entities.get_mut(&id).unwrap(),
+        }
     }
 
-    pub fn remove(&mut self, entity: Entity) -> Option<Entity> {
-        if self.entities.remove(&entity) {
-            Some(entity)
-        } else {
-            None
-        }
+    pub fn remove<T>(&mut self, id: EntityId)
+    where
+        T: Borrow<EntityId>,
+    {
+        self.entities.remove(&id);
+    }
+}
+
+#[derive(Debug)]
+pub struct EntityComponents {
+    id: EntityId,
+    components: Vec<DynamicComponent>,
+}
+
+pub struct EntityMut<'a> {
+    entity: &'a mut EntityComponents,
+}
+
+impl<'a> EntityMut<'a> {
+    #[inline]
+    pub fn id(&self) -> EntityId {
+        self.entity.id
+    }
+
+    pub fn insert<T>(&'a mut self, component: T) -> &'a mut Self
+    where
+        T: Into<DynamicComponent>,
+    {
+        self.entity.components.push(component.into());
+        self
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct EntityId(u32);
+
+#[cfg(test)]
+mod tests {
+    use super::CellId;
+
+    #[test]
+    fn chunk_id() {
+        let id = CellId::new(0.0, 0.0, 0.0);
+        assert_eq!(id.0, 0);
+        assert_eq!(id.x(), 0.0);
+        assert_eq!(id.y(), 0.0);
+        assert_eq!(id.z(), 0.0);
+
+        let id = CellId::new(128.0, 128.0, 128.0);
+        assert_eq!(id.0, (2 << 64) + (2 << 32) + 2);
+        assert_eq!(id.x(), 128.0);
+        assert_eq!(id.y(), 128.0);
+        assert_eq!(id.z(), 128.0);
+
+        let id = CellId::new(156.0, 128.0, 191.0);
+        assert_eq!(id.0, (2 << 64) + (2 << 32) + 2);
+        assert_eq!(id.x(), 128.0);
+        assert_eq!(id.y(), 128.0);
+        assert_eq!(id.z(), 128.0);
+
+        let id = CellId::new(1472.0, 36288.0, 48384.0);
+        assert_eq!(id.0, (23 << 64) + (567 << 32) + 756);
+        assert_eq!(id.x(), 1472.0);
+        assert_eq!(id.y(), 36288.0);
+        assert_eq!(id.z(), 48384.0);
     }
 }

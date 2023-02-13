@@ -16,7 +16,9 @@ use serde::{Deserialize, Serialize};
 pub struct ObjectId(pub WeakId<u32>);
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Component)]
-pub struct Object;
+pub struct Object {
+    pub id: ObjectId,
+}
 
 #[derive(Clone, Default, Debug, Component)]
 pub struct ObjectChildren {

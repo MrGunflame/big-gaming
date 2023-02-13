@@ -1,13 +1,15 @@
 use std::time::Duration;
 
 use bevy::prelude::{
-    Commands, Component, Entity, EulerRot, Plugin, Query, Res, Transform, Vec3, With,
+    Commands, Component, Entity, EulerRot, IntoSystemDescriptor, Plugin, Query, Res, Transform,
+    Vec3, With,
 };
 use bevy::time::Time;
 use bevy_rapier3d::prelude::Velocity;
 use game_common::components::actor::{ActorFlag, ActorFlags, MovementSpeed};
 use game_common::components::items::Cooldown;
 use game_common::components::movement::{Jump, Movement, Rotate, Teleport};
+use game_common::components::transform::PreviousTransform;
 
 // FIXME: Different behaivoir in client/server envs
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -18,7 +20,10 @@ impl Plugin for MovementPlugin {
         app.add_system(handle_movement_events)
             .add_system(handle_rotate_events)
             .add_system(handle_teleport_events)
-            .add_system(handle_jump_events);
+            .add_system(handle_jump_events)
+            // FIXME: This should be run after any transform mutating events,
+            // not only movement events.
+            .add_system(update_previous_transform.before(handle_movement_events));
     }
 }
 
@@ -107,6 +112,16 @@ fn handle_jump_events(
         velocity.linvel.y += 10.0;
 
         commands.entity(entity).remove::<Jump>();
+    }
+}
+
+/// Updates the [`PreviousTransform`] component to the current [`Transform`] value.
+///
+/// **Note: This system must run before the [`Transform`] value is updated again in order to
+/// update to the correct value.**
+fn update_previous_transform(mut entities: Query<(&Transform, &mut PreviousTransform)>) {
+    for (transform, mut previous_transform) in &mut entities {
+        **previous_transform = *transform;
     }
 }
 

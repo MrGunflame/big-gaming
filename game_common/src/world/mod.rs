@@ -24,7 +24,9 @@ pub mod component;
 pub mod gen;
 pub mod interaction;
 mod level;
+mod source;
 pub mod time;
 
 pub use cell::{Cell, CellId, CELL_SIZE};
 pub use level::Level;
+pub use source::StreamingSource;

@@ -37,3 +37,4 @@ bevy_asset = "0.9.1"
 bevy_hierarchy = "0.9.1"
 bevy_render = "0.9.1"
 thiserror = "1.0.38"
+uuid = { version = "1.3.0", features = ["fast-rng"] }
