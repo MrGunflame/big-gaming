@@ -49,23 +49,38 @@ impl CellId {
     ///
     /// The resulting chunk will span `x() + CHUNK_SIZE.x`.
     #[inline]
-    pub fn x(self) -> f32 {
+    pub fn min_x(self) -> f32 {
         let x = (self.0 & Self::MASK_X) >> 64;
         x as f32 * CELL_SIZE.x
     }
 
+    #[inline]
+    pub fn max_x(self) -> f32 {
+        self.min_x() + CELL_SIZE.x
+    }
+
     /// Returns the `y` coordinate at which this `ChunkId` starts.
     #[inline]
-    pub fn y(self) -> f32 {
+    pub fn min_y(self) -> f32 {
         let y = (self.0 & Self::MASK_Y) >> 32;
         y as f32 * CELL_SIZE.y
     }
 
+    #[inline]
+    pub fn max_y(self) -> f32 {
+        self.min_y() + CELL_SIZE.y
+    }
+
     /// Returns the `z` coordinate at which this `ChunkId` starts.
     #[inline]
-    pub fn z(self) -> f32 {
+    pub fn min_z(self) -> f32 {
         let z = self.0 & Self::MASK_Z;
         z as f32 * CELL_SIZE.z
+    }
+
+    #[inline]
+    pub fn max_z(self) -> f32 {
+        self.min_z() + CELL_SIZE.z
     }
 }
 

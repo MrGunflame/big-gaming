@@ -1,7 +1,5 @@
 use bevy::prelude::{Component, Query, Transform};
-
-#[derive(Copy, Clone, Debug, PartialEq, Component)]
-pub struct PreviousTransform(pub Transform);
+use game_common::components::transform::PreviousTransform;
 
 pub fn update_previous_transform(mut entities: Query<(&Transform, &mut PreviousTransform)>) {
     for (transform, mut previous_transform) in &mut entities {

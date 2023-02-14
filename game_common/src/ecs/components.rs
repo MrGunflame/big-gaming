@@ -110,10 +110,12 @@ pub type DropFn = unsafe fn(this: *mut ());
 
 #[derive(Debug)]
 pub struct DynamicComponent {
-    id: ComponentId,
-    encode: EncodeFn,
+    // id: ComponentId,
+    // encode: EncodeFn,
 }
 
 impl DynamicComponent {
-    pub fn encode(&self) {}
+    // pub fn encode(&self) {}
+
+    fn insert() {}
 }

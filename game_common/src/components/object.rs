@@ -4,6 +4,7 @@ use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 
 use crate::id::WeakId;
+use crate::proto::Encode;
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};

@@ -1,8 +1,6 @@
 use bevy::prelude::{Entity, Plugin, Query, ResMut, Transform, With};
 use game_common::world::chunk::{ChunkId, ChunkRegistry};
 
-use crate::prev_transform::PreviousTransform;
-
 // pub struct ChunkPlugin;
 
 // impl Plugin for ChunkPlugin {

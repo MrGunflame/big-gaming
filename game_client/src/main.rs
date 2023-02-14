@@ -52,7 +52,7 @@ use game_common::components::items::{Cooldown, Item, ItemId, Magazine};
 use game_common::world::chunk::ChunkRegistry;
 use game_core::combat::CombatPlugin;
 use game_core::projectile::ProjectilePlugin;
-use game_core::world::{ChunkPlugin, SpawnPlugin};
+use game_core::world::{ChunkPlugin, LevelPlugin, SpawnPlugin};
 use game_ui::UiPlugin;
 use plugins::interactions::InteractionsPlugin;
 use plugins::respawn::RespawnPlugin;
@@ -102,7 +102,6 @@ fn main() {
         .add_plugin(RespawnPlugin)
         .add_plugin(ChunkPlugin::new(ChunkRegistry::new()))
         .add_plugin(game_core::world::TimePlugin::default())
-        .add_system_to_stage(CoreStage::Update, prev_transform::update_previous_transform)
         .add_plugin(InteractionsPlugin)
         .add_plugin(game_core::animation::AnimationPlugin)
         .add_plugin(AiPlugin)
@@ -113,6 +112,7 @@ fn main() {
         .add_plugin(game_core::world::ObjectPlugin)
         .add_plugin(crate::plugins::combat::CombatPlugin)
         .add_plugin(AudioPlugin::new())
+        .add_plugin(LevelPlugin)
         .run();
 }
 

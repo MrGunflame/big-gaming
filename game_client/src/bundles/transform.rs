@@ -1,6 +1,5 @@
 use bevy::prelude::{Bundle, Transform, Vec3};
-
-use crate::prev_transform::PreviousTransform;
+use game_common::components::transform::PreviousTransform;
 
 #[derive(Debug, Bundle)]
 pub struct TransformBundle {

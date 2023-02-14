@@ -3,6 +3,7 @@ use bevy::{
     prelude::{Bundle, Camera3dBundle, Component, Transform, *},
 };
 use game_common::components::player::{FocusedEntity, HostPlayer};
+use game_common::world::source::StreamingSource;
 
 use crate::{
     components::Rotation,
@@ -21,6 +22,7 @@ pub struct PlayerCharacterBundle {
     pub focus: Focus,
     pub respawn_point: RespawnPoint,
     pub focused_entity: FocusedEntity,
+    pub streaming_source: StreamingSource,
 }
 
 impl PlayerCharacterBundle {
@@ -34,6 +36,7 @@ impl PlayerCharacterBundle {
             },
             respawn_point: RespawnPoint(Vec3::new(0.0, 0.0, 0.0)),
             focused_entity: FocusedEntity::None,
+            streaming_source: StreamingSource::new(),
         }
     }
 }

@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use bevy::prelude::{AssetServer, Bundle, Vec3};
+use bevy::prelude::{AssetServer, Bundle, Transform, Vec3};
 use bevy_rapier3d::prelude::{
     Ccd, CharacterAutostep, CharacterLength, KinematicCharacterController, LockedAxes, RigidBody,
     Velocity,
@@ -11,6 +11,7 @@ use game_common::components::actor::{
 use game_common::components::animation::AnimationQueue;
 use game_common::components::inventory::{Equipment, EquipmentSlot, Inventory};
 use game_common::components::items::{Cooldown, Item, ItemId, Magazine};
+use game_common::components::transform::PreviousTransform;
 
 use crate::bundles::VisibilityBundle;
 use crate::components::Rotation;
