@@ -13,6 +13,9 @@ pub const CELL_SIZE: Vec3 = Vec3::new(64.0, 64.0, 64.0);
 pub struct CellId(u128);
 
 impl CellId {
+    // FIXME: What happens if (x|y|z) == CELL_SIZE is currently not
+    // well defined. This should properly specified.
+
     const MASK_X: u128 = 0x0000_0000_FFFF_FFFF__0000_0000_0000_0000;
     const MASK_Y: u128 = 0x0000_0000_0000_0000__FFFF_FFFF_0000_0000;
     const MASK_Z: u128 = 0x0000_0000_0000_0000__0000_0000_FFFF_FFFF;
@@ -21,9 +24,24 @@ impl CellId {
     #[inline]
     pub fn new(x: f32, y: f32, z: f32) -> Self {
         // Relative offset based on CHUNK_SIZE.
-        let x = (x / CELL_SIZE.x) as i32;
-        let y = (y / CELL_SIZE.y) as i32;
-        let z = (z / CELL_SIZE.z) as i32;
+
+        let x = if x.is_sign_positive() {
+            (x / CELL_SIZE.x) as i32
+        } else {
+            ((x - CELL_SIZE.x) / CELL_SIZE.x) as i32
+        };
+
+        let y = if y.is_sign_positive() {
+            (y / CELL_SIZE.y) as i32
+        } else {
+            ((y - CELL_SIZE.y) / CELL_SIZE.y) as i32
+        };
+
+        let z = if z.is_sign_positive() {
+            (z / CELL_SIZE.z) as i32
+        } else {
+            ((z - CELL_SIZE.z) / CELL_SIZE.z) as i32
+        };
 
         Self::from_parts(x as u32, y as u32, z as u32)
     }
@@ -50,7 +68,7 @@ impl CellId {
     /// The resulting chunk will span `x() + CHUNK_SIZE.x`.
     #[inline]
     pub fn min_x(self) -> f32 {
-        let x = (self.0 & Self::MASK_X) >> 64;
+        let x = ((self.0 & Self::MASK_X) >> 64) as i32;
         x as f32 * CELL_SIZE.x
     }
 
@@ -62,7 +80,7 @@ impl CellId {
     /// Returns the `y` coordinate at which this `ChunkId` starts.
     #[inline]
     pub fn min_y(self) -> f32 {
-        let y = (self.0 & Self::MASK_Y) >> 32;
+        let y = ((self.0 & Self::MASK_Y) >> 32) as i32;
         y as f32 * CELL_SIZE.y
     }
 
@@ -74,7 +92,7 @@ impl CellId {
     /// Returns the `z` coordinate at which this `ChunkId` starts.
     #[inline]
     pub fn min_z(self) -> f32 {
-        let z = self.0 & Self::MASK_Z;
+        let z = (self.0 & Self::MASK_Z) as i32;
         z as f32 * CELL_SIZE.z
     }
 
@@ -188,26 +206,36 @@ mod tests {
     fn chunk_id() {
         let id = CellId::new(0.0, 0.0, 0.0);
         assert_eq!(id.0, 0);
-        assert_eq!(id.x(), 0.0);
-        assert_eq!(id.y(), 0.0);
-        assert_eq!(id.z(), 0.0);
+        assert_eq!(id.min_x(), 0.0);
+        assert_eq!(id.min_y(), 0.0);
+        assert_eq!(id.min_z(), 0.0);
 
         let id = CellId::new(128.0, 128.0, 128.0);
         assert_eq!(id.0, (2 << 64) + (2 << 32) + 2);
-        assert_eq!(id.x(), 128.0);
-        assert_eq!(id.y(), 128.0);
-        assert_eq!(id.z(), 128.0);
+        assert_eq!(id.min_x(), 128.0);
+        assert_eq!(id.min_y(), 128.0);
+        assert_eq!(id.min_z(), 128.0);
 
         let id = CellId::new(156.0, 128.0, 191.0);
         assert_eq!(id.0, (2 << 64) + (2 << 32) + 2);
-        assert_eq!(id.x(), 128.0);
-        assert_eq!(id.y(), 128.0);
-        assert_eq!(id.z(), 128.0);
+        assert_eq!(id.min_x(), 128.0);
+        assert_eq!(id.min_y(), 128.0);
+        assert_eq!(id.min_z(), 128.0);
 
         let id = CellId::new(1472.0, 36288.0, 48384.0);
         assert_eq!(id.0, (23 << 64) + (567 << 32) + 756);
-        assert_eq!(id.x(), 1472.0);
-        assert_eq!(id.y(), 36288.0);
-        assert_eq!(id.z(), 48384.0);
+        assert_eq!(id.min_x(), 1472.0);
+        assert_eq!(id.min_y(), 36288.0);
+        assert_eq!(id.min_z(), 48384.0);
+
+        let id = CellId::new(-32.0, 0.0, 0.0);
+        assert_eq!(id.min_x(), -64.0);
+        assert_eq!(id.min_y(), 0.0);
+        assert_eq!(id.min_z(), 0.0);
+
+        let id = CellId::new(-63.0, 0.0, -65.0);
+        assert_eq!(id.min_x(), -64.0);
+        assert_eq!(id.min_y(), 0.0);
+        assert_eq!(id.min_z(), -128.0);
     }
 }
