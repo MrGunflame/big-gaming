@@ -11,8 +11,7 @@ impl bevy::app::Plugin for LevelPlugin {
         app.insert_resource(Level::new())
             .insert_resource(StreamingSources::new())
             .add_system(update_streaming_sources)
-            .add_system(process_queue)
-            .add_system(super::debug::cell::render_cell_borders);
+            .add_system(process_queue);
     }
 }
 

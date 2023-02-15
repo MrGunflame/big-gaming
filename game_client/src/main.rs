@@ -113,6 +113,7 @@ fn main() {
         .add_plugin(crate::plugins::combat::CombatPlugin)
         .add_plugin(AudioPlugin::new())
         .add_plugin(LevelPlugin)
+        .add_plugin(game_core::debug::DebugPlugin)
         .run();
 }
 
