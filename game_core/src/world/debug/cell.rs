@@ -40,9 +40,18 @@ pub fn render_cell_borders(
         min_x: 0.0,
         max_x: 0.0,
         min_y: 0.0,
-        max_y: cell.max_y() - cell.min_y(),
+        max_y: CELL_SIZE.y,
         min_z: 0.0,
-        max_z: cell.max_z() - cell.min_z(),
+        max_z: CELL_SIZE.z,
+    };
+
+    let xz = shape::Box {
+        min_x: 0.0,
+        max_x: CELL_SIZE.x,
+        min_y: 0.0,
+        max_y: 0.0,
+        min_z: 0.0,
+        max_z: CELL_SIZE.z,
     };
 
     // PT (0|0)
@@ -67,6 +76,58 @@ pub fn render_cell_borders(
             transform: Transform::from_translation(Vec3::new(
                 cell.min_x(),
                 cell.min_y(),
+                cell.min_z(),
+            )),
+            ..Default::default()
+        })
+        .insert(CellFrame);
+
+    commands
+        .spawn(PbrBundle {
+            mesh: meshes.add(xy.into()),
+            material: materials.add(Color::RED.into()),
+            transform: Transform::from_translation(Vec3::new(
+                cell.min_x(),
+                cell.min_y(),
+                cell.max_z(),
+            )),
+            ..Default::default()
+        })
+        .insert(CellFrame);
+
+    commands
+        .spawn(PbrBundle {
+            mesh: meshes.add(zy.into()),
+            material: materials.add(Color::RED.into()),
+            transform: Transform::from_translation(Vec3::new(
+                cell.max_x(),
+                cell.min_y(),
+                cell.min_z(),
+            )),
+            ..Default::default()
+        })
+        .insert(CellFrame);
+
+    commands
+        .spawn(PbrBundle {
+            mesh: meshes.add(xz.into()),
+            material: materials.add(Color::RED.into()),
+            transform: Transform::from_translation(Vec3::new(
+                cell.min_x(),
+                cell.min_y(),
+                cell.min_z(),
+            )),
+            ..Default::default()
+        })
+        .insert(CellFrame);
+
+    commands
+        .spawn(PbrBundle {
+            mesh: meshes.add(xz.into()),
+            material: materials.add(Color::RED.into()),
+            transform: Transform::from_translation(Vec3::new(
+                cell.min_x(),
+                cell.max_y(),
                 cell.min_z(),
             )),
             ..Default::default()
