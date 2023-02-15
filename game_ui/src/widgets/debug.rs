@@ -1,7 +1,9 @@
 use bevy::prelude::{Transform, With};
 use bevy_egui::egui::{Area, Pos2};
 use game_common::components::player::HostPlayer;
+use game_common::components::transform::PreviousTransform;
 use game_common::math::RotationExt;
+use game_common::world::source::StreamingSources;
 use game_common::world::CellId;
 
 use crate::{Context, Widget, WidgetFlags};
@@ -15,10 +17,12 @@ impl Widget for DebugInfo {
     }
 
     fn render(&mut self, ctx: &mut Context) {
-        let transform = ctx
+        let (transform, prev) = ctx
             .world
-            .query_filtered::<&Transform, With<HostPlayer>>()
+            .query_filtered::<(&Transform, &PreviousTransform), With<HostPlayer>>()
             .single(ctx.world);
+
+        let soures = ctx.world.resource::<StreamingSources>();
 
         Area::new("debug")
             .fixed_pos(Pos2::new(0.0, 0.0))
@@ -38,6 +42,21 @@ impl Widget for DebugInfo {
                 let cell = CellId::new(x, y, z);
                 let (x, y, z) = cell.as_parts();
                 ui.label(format!("CELL {}:{}:{}", x as i32, y as i32, z as i32));
+
+                let x = transform.translation.x - prev.translation.x;
+                let y = transform.translation.y - prev.translation.y;
+                let z = transform.translation.z - prev.translation.z;
+                ui.label(format!("DELTA X: {:.2} Y: {:.2} Z: {:.2}", x, y, z));
+
+                let loaded = soures.loaded().count();
+                let unloaded = soures.unloaded().count();
+                ui.label(format!(
+                    "CELL C={} L={} U={} D={}",
+                    soures.len(),
+                    loaded,
+                    unloaded,
+                    loaded + unloaded,
+                ));
             });
     }
 }
