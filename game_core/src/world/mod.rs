@@ -1,5 +1,6 @@
 //! Systems related to the game world.
 mod chunk;
+pub mod debug;
 mod level;
 mod object;
 mod spawn;

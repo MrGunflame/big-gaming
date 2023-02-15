@@ -185,7 +185,6 @@ fn toggle_sprint(
     let mut speed = players.single_mut();
 
     for event in events.iter() {
-        dbg!(event);
         if event.trigger.just_pressed() {
             **speed = 5.0;
         } else {

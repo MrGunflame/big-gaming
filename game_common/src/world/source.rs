@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 
 use bevy_ecs::component::Component;
+use bevy_ecs::prelude::Entity;
 use bevy_ecs::system::Resource;
 
 use super::CellId;
@@ -75,6 +76,14 @@ impl StreamingSources {
             loaded: Vec::new(),
             unloaded: Vec::new(),
         }
+    }
+
+    pub fn len(&self) -> usize {
+        self.sources.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 
     pub fn load(&mut self, id: CellId) {
