@@ -21,6 +21,7 @@
 mod cell;
 pub mod chunk;
 pub mod component;
+pub mod entity;
 pub mod gen;
 pub mod interaction;
 mod level;

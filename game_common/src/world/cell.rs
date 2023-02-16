@@ -6,6 +6,8 @@ use glam::{Vec3, Vec3A};
 
 use crate::ecs::components::DynamicComponent;
 
+use super::entity::{Entity, EntityQueue};
+
 pub const CELL_SIZE: Vec3 = Vec3::new(64.0, 64.0, 64.0);
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -120,7 +122,7 @@ impl From<Vec3A> for CellId {
 pub struct Cell {
     pub id: CellId,
     next_id: u32,
-    entities: HashMap<EntityId, EntityComponents>,
+    entities: HashMap<EntityId, Entity>,
 }
 
 impl Cell {
@@ -145,21 +147,15 @@ impl Cell {
         self.len() == 0
     }
 
-    pub fn spawn(&mut self) -> EntityMut<'_> {
+    pub fn spawn<T>(&mut self, entity: T) -> EntityId
+    where
+        T: Into<Entity>,
+    {
         let id = EntityId(self.next_id);
         self.next_id += 1;
 
-        self.entities.insert(
-            id,
-            EntityComponents {
-                id,
-                components: Vec::new(),
-            },
-        );
-
-        EntityMut {
-            entity: self.entities.get_mut(&id).unwrap(),
-        }
+        self.entities.insert(id, entity.into());
+        id
     }
 
     pub fn remove<T>(&mut self, id: EntityId)
@@ -168,30 +164,11 @@ impl Cell {
     {
         self.entities.remove(&id);
     }
-}
 
-#[derive(Debug)]
-pub struct EntityComponents {
-    id: EntityId,
-    components: Vec<DynamicComponent>,
-}
-
-pub struct EntityMut<'a> {
-    entity: &'a mut EntityComponents,
-}
-
-impl<'a> EntityMut<'a> {
-    #[inline]
-    pub fn id(&self) -> EntityId {
-        self.entity.id
-    }
-
-    pub fn insert<T>(&'a mut self, component: T) -> &'a mut Self
-    where
-        T: Into<DynamicComponent>,
-    {
-        self.entity.components.push(component.into());
-        self
+    pub fn queue(&self) -> EntityQueue {
+        let mut queue = EntityQueue::new();
+        queue.extend(self.entities.values().cloned());
+        queue
     }
 }
 

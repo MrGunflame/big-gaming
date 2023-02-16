@@ -1,5 +1,7 @@
-use bevy::prelude::{Query, Res, ResMut, Transform};
+use bevy::prelude::{Commands, Query, Res, ResMut, Transform};
+use game_common::archive::GameArchive;
 use game_common::components::transform::PreviousTransform;
+use game_common::world::entity::{BuildEntity, EntityQueue};
 use game_common::world::source::{StreamingSource, StreamingSources, StreamingState};
 use game_common::world::{CellId, Level};
 
@@ -10,8 +12,10 @@ impl bevy::app::Plugin for LevelPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
         app.insert_resource(Level::new())
             .insert_resource(StreamingSources::new())
+            .insert_resource(EntityQueue::new())
             .add_system(update_streaming_sources)
-            .add_system(process_queue);
+            .add_system(process_queue)
+            .add_system(flush_entity_queue);
     }
 }
 
@@ -63,13 +67,29 @@ fn update_streaming_sources(
     }
 }
 
-fn process_queue(sources: Res<StreamingSources>, mut level: ResMut<Level>) {
+fn process_queue(
+    sources: Res<StreamingSources>,
+    mut queue: ResMut<EntityQueue>,
+    mut level: ResMut<Level>,
+) {
     for id in sources.loaded() {
         tracing::info!("loading cell {:?}", id);
-        level.load(id);
+        let cell = level.load(id);
+
+        queue.extend(cell.queue());
     }
 
     for id in sources.unloaded() {
         tracing::info!("unloading cell {:?}", id);
+    }
+}
+
+fn flush_entity_queue(
+    mut commands: Commands,
+    mut archive: Res<GameArchive>,
+    mut queue: ResMut<EntityQueue>,
+) {
+    while let Some(entity) = queue.pop() {
+        entity.build(&archive, &mut commands);
     }
 }

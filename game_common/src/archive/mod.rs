@@ -129,6 +129,20 @@ pub struct Objects<'a> {
 }
 
 impl<'a> Objects<'a> {
+    pub fn get(&self, id: ObjectId) -> Option<Ref<'a, Object>> {
+        let objects = self.archive.objects.read();
+        match objects.get(&id) {
+            Some(obj) => Some(Ref {
+                archive: self.archive,
+                item: obj.clone(),
+            }),
+            None => {
+                tracing::warn!("no object with id {:?}", id);
+                None
+            }
+        }
+    }
+
     pub fn insert(&self, mut object: Object, module: &Module) -> ObjectId {
         if let Some(handle) = &mut object.handle {
             let base = module.root.to_str().expect("path has non-unicode chars");
