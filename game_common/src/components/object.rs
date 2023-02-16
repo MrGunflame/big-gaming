@@ -51,3 +51,16 @@ impl Lifetime {
         self.start.elapsed() >= self.lifetime
     }
 }
+
+/// An [`Object`] that currently being loaded.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Component)]
+pub struct LoadObject {
+    pub id: ObjectId,
+}
+
+impl LoadObject {
+    #[inline]
+    pub const fn new(id: ObjectId) -> Self {
+        Self { id }
+    }
+}

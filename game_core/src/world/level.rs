@@ -1,5 +1,7 @@
-use bevy::prelude::{Commands, Query, Res, ResMut, Transform};
+use bevy::prelude::{AssetServer, Commands, Entity, Query, Res, ResMut, Transform};
+use bevy::scene::{Scene, SceneBundle};
 use game_common::archive::GameArchive;
+use game_common::components::object::LoadObject;
 use game_common::components::transform::PreviousTransform;
 use game_common::world::entity::{BuildEntity, EntityQueue};
 use game_common::world::source::{StreamingSource, StreamingSources, StreamingState};
@@ -15,7 +17,8 @@ impl bevy::app::Plugin for LevelPlugin {
             .insert_resource(EntityQueue::new())
             .add_system(update_streaming_sources)
             .add_system(process_queue)
-            .add_system(flush_entity_queue);
+            .add_system(flush_entity_queue)
+            .add_system(load_objects);
     }
 }
 
@@ -91,5 +94,28 @@ fn flush_entity_queue(
 ) {
     while let Some(entity) = queue.pop() {
         entity.build(&archive, &mut commands);
+    }
+}
+
+fn load_objects(
+    mut commands: Commands,
+    mut archive: Res<GameArchive>,
+    mut assets: Res<AssetServer>,
+    mut objects: Query<(Entity, &LoadObject)>,
+) {
+    for (entity, object) in &objects {
+        let Some(obj) = archive.objects().get(object.id) else {
+            continue;
+        };
+
+        commands.entity(entity).remove::<LoadObject>();
+
+        let Some(handle) = &obj.handle else {
+            continue;
+        };
+
+        commands
+            .entity(entity)
+            .insert(assets.load::<Scene, _>(handle));
     }
 }

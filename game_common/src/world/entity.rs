@@ -1,11 +1,13 @@
 use bevy_ecs::system::{Commands, Resource};
+use bevy_scene::SceneBundle;
 use bevy_transform::components::Transform;
 use bevy_transform::TransformBundle;
 use glam::{Quat, Vec3};
 
 use crate::archive::GameArchive;
+use crate::bundles::VisibilityBundle;
 use crate::components::items::ItemId;
-use crate::components::object::{self, ObjectId};
+use crate::components::object::{self, LoadObject, ObjectId};
 
 #[derive(Clone, Debug)]
 pub enum Entity {
@@ -62,14 +64,15 @@ pub trait BuildEntity {
 
 impl BuildEntity for Object {
     fn build(self, archive: &GameArchive, commands: &mut Commands) {
-        archive.objects().get(self.id);
+        let object = archive.objects().get(self.id).unwrap();
 
         commands
-            .spawn(object::Object { id: self.id })
+            .spawn(LoadObject::new(self.id))
             .insert(TransformBundle {
                 local: self.transform,
                 global: Default::default(),
-            });
+            })
+            .insert(VisibilityBundle::new());
     }
 }
 
