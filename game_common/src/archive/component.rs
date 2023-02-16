@@ -1,6 +1,6 @@
 use crate::id::StrongId;
 use crate::localization::LocalizedString;
-use crate::types::Mass;
+use crate::units::Mass;
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};

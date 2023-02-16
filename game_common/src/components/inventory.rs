@@ -11,7 +11,7 @@ use ahash::RandomState;
 use bevy_ecs::component::Component;
 use indexmap::IndexMap;
 
-use crate::types::Mass;
+use crate::units::Mass;
 
 use super::items::{IntoItemStack, Item, ItemId, ItemStack};
 

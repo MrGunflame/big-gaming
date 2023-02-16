@@ -3,7 +3,7 @@ use std::time::{Duration, Instant};
 use bevy_ecs::component::Component;
 
 use crate::id::{NamespacedId, WeakId};
-use crate::types::Mass;
+use crate::units::Mass;
 
 use super::combat::Resistances;
 
