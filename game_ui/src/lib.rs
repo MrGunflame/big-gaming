@@ -5,6 +5,7 @@ mod systems;
 
 pub mod widgets;
 
+use bevy::diagnostic::FrameTimeDiagnosticsPlugin;
 use bevy::prelude::{Plugin, Stage};
 
 use cursor::Cursor;
@@ -21,6 +22,7 @@ impl Plugin for UiPlugin {
         state.push(Weapon);
 
         app.add_plugin(bevy_egui::EguiPlugin)
+            .add_plugin(FrameTimeDiagnosticsPlugin)
             .insert_resource(state)
             .insert_resource(Cursor::new())
             .add_startup_system(widgets::register_hotkeys)

@@ -1,3 +1,4 @@
+use bevy::diagnostic::{Diagnostic, Diagnostics, FrameTimeDiagnosticsPlugin};
 use bevy::prelude::{Transform, With};
 use bevy_egui::egui::{Area, Pos2};
 use game_common::components::player::HostPlayer;
@@ -24,9 +25,23 @@ impl Widget for DebugInfo {
 
         let soures = ctx.world.resource::<StreamingSources>();
 
+        let diags = ctx.world.resource::<Diagnostics>();
+        let fps = diags
+            .get(FrameTimeDiagnosticsPlugin::FPS)
+            .unwrap()
+            .value()
+            .unwrap();
+        let ft = diags
+            .get(FrameTimeDiagnosticsPlugin::FRAME_TIME)
+            .unwrap()
+            .value()
+            .unwrap();
+
         Area::new("debug")
             .fixed_pos(Pos2::new(0.0, 0.0))
             .show(ctx.ctx, |ui| {
+                ui.label(format!("{:.2} FPS ({:.2} ms)", fps, ft));
+
                 let x = transform.translation.x;
                 let y = transform.translation.y;
                 let z = transform.translation.z;
