@@ -22,6 +22,7 @@ winit = "0.27.5"
 tracing = "0.1.37"
 chrono = "0.4.23"
 nalgebra = "0.31.4"
+noise = "0.8.2"
 
 [features]
 default = []
