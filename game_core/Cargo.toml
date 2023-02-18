@@ -8,6 +8,7 @@ license = "GPL-3.0-or-later"
 [dependencies]
 game_ai = { version = "*", path = "../game_ai" }
 game_common = { version = "*", path = "../game_common" }
+game_audio = { version = "*", path = "../game_audio" }
 
 bevy = "0.9.1"
 bevy_ecs = "0.9.1"

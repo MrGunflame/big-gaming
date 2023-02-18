@@ -16,7 +16,8 @@ pub struct InputPlugin;
 
 impl Plugin for InputPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
-        app.add_plugin(HotkeyPlugin)
+        app.add_plugin(bevy::input::InputPlugin)
+            .add_plugin(HotkeyPlugin)
             .add_event::<keyboard::KeyboardInput>()
             .add_event::<mouse::MouseMotion>()
             .add_event::<mouse::MouseButtonInput>()

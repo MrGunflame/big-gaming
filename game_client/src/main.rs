@@ -53,6 +53,7 @@ use game_common::world::chunk::ChunkRegistry;
 use game_core::combat::CombatPlugin;
 use game_core::projectile::ProjectilePlugin;
 use game_core::world::{ChunkPlugin, LevelPlugin, SpawnPlugin};
+use game_core::CorePlugins;
 use game_ui::UiPlugin;
 use noise::NoiseFn;
 use plugins::interactions::InteractionsPlugin;
@@ -68,18 +69,17 @@ fn main() {
     loader.load("../mods/core").unwrap();
 
     App::new()
-        .add_plugin(LogPlugin::default())
         .insert_resource(archive)
         .insert_resource(Msaa { samples: 4 })
-        .add_plugin(CorePlugin::default())
-        .add_plugin(TimePlugin)
-        .add_plugin(TransformPlugin)
-        .add_plugin(HierarchyPlugin)
-        .add_plugin(DiagnosticsPlugin)
-        .add_plugin(InputPlugin)
+        .add_plugin(CorePlugins)
+        // .add_plugin(TimePlugin)
+        // .add_plugin(TransformPlugin)
+        // .add_plugin(HierarchyPlugin)
+        // .add_plugin(DiagnosticsPlugin)
+        // .add_plugin(InputPlugin)
         .add_plugin(WindowPlugin::default())
-        .add_plugin(AssetPlugin::default())
-        .add_plugin(ScenePlugin)
+        // .add_plugin(AssetPlugin::default())
+        // .add_plugin(ScenePlugin)
         .add_plugin(RenderPlugin)
         .add_plugin(ImagePlugin::default())
         .add_plugin(CorePipelinePlugin::default())
@@ -88,32 +88,32 @@ fn main() {
         .add_plugin(TextPlugin)
         .add_plugin(bevy::ui::UiPlugin)
         .add_plugin(GilrsPlugin)
-        .add_plugin(GltfPlugin)
+        // .add_plugin(GltfPlugin)
         .add_plugin(WinitPlugin)
-        .add_plugin(RapierPhysicsPlugin::<NoUserData>::default())
+        // .add_plugin(RapierPhysicsPlugin::<NoUserData>::default())
         .add_plugin(RapierDebugRenderPlugin::default())
         .add_startup_system(setup)
         .add_plugin(CameraPlugin)
-        .add_plugin(ProjectilePlugin)
-        .add_plugin(CombatPlugin)
+        // .add_plugin(ProjectilePlugin)
+        // .add_plugin(CombatPlugin)
         .add_plugin(UiPlugin)
         .add_plugin(HotkeyPlugin)
         .add_plugin(MovementPlugin)
-        .add_plugin(game_core::movement::MovementPlugin)
-        .add_plugin(RespawnPlugin)
-        .add_plugin(ChunkPlugin::new(ChunkRegistry::new()))
-        .add_plugin(game_core::world::TimePlugin::default())
+        // .add_plugin(game_core::movement::MovementPlugin)
+        // .add_plugin(RespawnPlugin)
+        // .add_plugin(ChunkPlugin::new(ChunkRegistry::new()))
+        // .add_plugin(game_core::world::TimePlugin::default())
         .add_plugin(InteractionsPlugin)
-        .add_plugin(game_core::animation::AnimationPlugin)
-        .add_plugin(AiPlugin)
-        .add_plugin(SpawnPlugin)
-        // .add_plugin(crate::ui::UiPlugin)
+        // .add_plugin(game_core::animation::AnimationPlugin)
+        // .add_plugin(AiPlugin)
+        // .add_plugin(SpawnPlugin)
+        // // .add_plugin(crate::ui::UiPlugin)
         .add_plugin(game_input::InputPlugin)
         .add_plugin(sky::SkyPlugin)
-        .add_plugin(game_core::world::ObjectPlugin)
-        .add_plugin(crate::plugins::combat::CombatPlugin)
-        .add_plugin(AudioPlugin::new())
-        .add_plugin(LevelPlugin)
+        // .add_plugin(game_core::world::ObjectPlugin)
+        // .add_plugin(crate::plugins::combat::CombatPlugin)
+        // .add_plugin(AudioPlugin::new())
+        // .add_plugin(LevelPlugin)
         .add_plugin(game_core::debug::DebugPlugin)
         .run();
 }
@@ -346,7 +346,7 @@ fn setup(
         let x = index % size_x;
         let y = index / size_x;
 
-        let res = noise.get([x as f64, y as f64]);
+        let res = noise.get([x as f64 / 2.0, y as f64 / 2.0]);
 
         // let z = if index == 25 { 1.0 } else { 0.0 };
         // let z = -5.0;
@@ -382,19 +382,18 @@ fn setup(
 
     let img: Handle<Image> = asset_server.load("gw316.jpg");
 
-    commands
-        .spawn(PbrBundle {
-            mesh: meshes.add(mesh),
-            material: materials.add(StandardMaterial {
-                base_color: Color::RED,
-                base_color_texture: Some(img),
-                ..Default::default()
-            }),
-            transform: Transform::from_translation(Vec3::new(15.0, 5.0, 0.0)),
-            ..default()
-        })
-        .insert(RigidBody::Fixed)
-        .insert(Collider::trimesh(collider_verts, collider_indis));
+    commands.spawn(PbrBundle {
+        mesh: meshes.add(mesh),
+        material: materials.add(StandardMaterial {
+            base_color: Color::RED,
+            base_color_texture: Some(img),
+            ..Default::default()
+        }),
+        transform: Transform::from_translation(Vec3::new(15.0, 5.0, 0.0)),
+        ..default()
+    });
+    // .insert(RigidBody::Fixed);
+    // .insert(Collider::trimesh(collider_verts, collider_indis));
 
     commands.spawn(ItemBundle::new(
         &asset_server,
