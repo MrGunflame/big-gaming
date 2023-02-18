@@ -13,6 +13,21 @@
 //!
 //!
 //!
+//! # Server enitity ids
+//!
+//! Every entity that needs to be synchronized between the server and client is represented by a
+//! [`ServerEntity`] which uniquely identifies an entity for both sides. [`ServerEntity`]s are only
+//! created by the server, and accepted by the client.
+//!
+//! Entities are created by the [`EntityCreate`] frame and destroyed by the [`EntityDestroy`]
+//! frame. A [`ServerEntity`] may be reused once the entity has been destroyed, and the client has
+//! acknowledged the reception of that [`Packet`].
+//!
+//! The generation algorithm for [`ServerEntity`] ids is unspecified and the choice is left to the
+//! server implementation.
+//!
+
+pub use game_macros::{net__decode as Decode, net__encode as Encode};
 
 use std::convert::Infallible;
 
@@ -26,6 +41,14 @@ use thiserror::Error;
 pub enum Error {
     UnexpectedEof(#[from] EofError),
     InvalidPacketType(#[from] InvalidPacketType),
+    InvalidFrameType(#[from] InvalidFrameType),
+    InvalidEntityKind(#[from] InvalidEntityKind),
+}
+
+impl From<Infallible> for Error {
+    fn from(value: Infallible) -> Self {
+        match value {}
+    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Error)]
@@ -184,6 +207,8 @@ impl PacketType {
 
     pub const ACK: Self = Self(2);
     pub const NAK: Self = Self(4);
+
+    pub const FRAME: Self = Self(5);
 }
 
 impl Encode for PacketType {
@@ -240,7 +265,7 @@ pub struct Header {
 }
 
 /// Creates a new entity on the client.
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Encode, Decode)]
 pub struct EntityCreate {
     pub entity: ServerEntity,
     pub kind: EntityKind,
@@ -248,14 +273,35 @@ pub struct EntityCreate {
     pub rotation: Quat,
 }
 
+// impl Encode for EntityCreate {
+//     type Error = Infallible;
+
+//     fn encode<B>(&self, mut buf: B) -> Result<(), Self::Error>
+//     where
+//         B: BufMut,
+//     {
+//         self.entity.encode(&mut buf)?;
+//         // TODO: Bit packing
+//         let kind: u8 = match self.kind {
+//             EntityKind::Object => 1,
+//             EntityKind::Actor => 2,
+//         };
+//         kind.encode(&mut buf)?;
+//         self.translation.encode(&mut buf)?;
+//         self.rotation.encode(&mut buf)?;
+
+//         Ok(())
+//     }
+// }
+
 /// Destroys a entity on the client.
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Encode, Decode)]
 pub struct EntityDestroy {
     pub entity: ServerEntity,
 }
 
 /// Update the translation of an entity.
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, Encode, Decode)]
 pub struct EntityTranslate {
     pub entity: ServerEntity,
     /// The new translation (absolute) translation of the entity.
@@ -263,7 +309,7 @@ pub struct EntityTranslate {
 }
 
 /// Update the rotation of an entity. Contains the new rotation.
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, Encode, Decode)]
 pub struct EntityRotate {
     pub entity: ServerEntity,
     /// The new rotation (absolute) of the entity.
@@ -278,6 +324,65 @@ pub enum Frame {
     EntityRotate(EntityRotate),
 }
 
+impl Encode for Frame {
+    type Error = Error;
+
+    fn encode<B>(&self, mut buf: B) -> Result<(), Self::Error>
+    where
+        B: BufMut,
+    {
+        match self {
+            Self::EntityCreate(frame) => {
+                FrameType::ENTITY_CREATE.encode(&mut buf)?;
+                frame.encode(buf)
+            }
+            Self::EntityDestroy(frame) => {
+                FrameType::ENTITY_DESTROY.encode(&mut buf)?;
+                frame.encode(buf)
+            }
+            Self::EntityTranslate(frame) => {
+                FrameType::ENTITY_TRANSLATE.encode(&mut buf)?;
+                frame.encode(buf)
+            }
+            Self::EntityRotate(frame) => {
+                FrameType::ENTITY_ROTATE.encode(&mut buf)?;
+                frame.encode(buf)
+            }
+        }
+    }
+}
+
+impl Decode for Frame {
+    type Error = Error;
+
+    fn decode<B>(mut buf: B) -> Result<Self, Self::Error>
+    where
+        B: Buf,
+    {
+        let typ = FrameType::decode(&mut buf)?;
+
+        match typ {
+            FrameType::ENTITY_CREATE => {
+                let frame = EntityCreate::decode(buf)?;
+                Ok(Self::EntityCreate(frame))
+            }
+            FrameType::ENTITY_DESTROY => {
+                let frame = EntityDestroy::decode(buf)?;
+                Ok(Self::EntityDestroy(frame))
+            }
+            FrameType::ENTITY_TRANSLATE => {
+                let frame = EntityTranslate::decode(buf)?;
+                Ok(Self::EntityTranslate(frame))
+            }
+            FrameType::ENTITY_ROTATE => {
+                let frame = EntityRotate::decode(buf)?;
+                Ok(Self::EntityRotate(frame))
+            }
+            _ => unreachable!(),
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Packet {
     pub header: Header,
@@ -290,12 +395,120 @@ pub enum EntityKind {
     Actor,
 }
 
+impl EntityKind {
+    const OBJECT: u8 = 1;
+    const ACTOR: u8 = 2;
+}
+
+impl Encode for EntityKind {
+    type Error = Infallible;
+
+    fn encode<B>(&self, buf: B) -> Result<(), Self::Error>
+    where
+        B: BufMut,
+    {
+        let v: u8 = match self {
+            Self::Object => 1,
+            Self::Actor => 2,
+        };
+        v.encode(buf)
+    }
+}
+
+impl Decode for EntityKind {
+    type Error = Error;
+
+    fn decode<B>(buf: B) -> Result<Self, Self::Error>
+    where
+        B: Buf,
+    {
+        Ok(Self::try_from(u8::decode(buf)?)?)
+    }
+}
+
+impl TryFrom<u8> for EntityKind {
+    type Error = InvalidEntityKind;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            Self::OBJECT => Ok(Self::Object),
+            Self::ACTOR => Ok(Self::Actor),
+            _ => Err(InvalidEntityKind(value)),
+        }
+    }
+}
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct FrameType(u16);
 
 impl FrameType {
+    /// The `FrameType` for the [`EntityCreate`] frame.
     pub const ENTITY_CREATE: Self = Self(0);
+
+    /// The `FrameType` for the [`EntityDestroy`] frame.
     pub const ENTITY_DESTROY: Self = Self(1);
+
+    /// The `FrameType` for the [`EntityTranslate`] frame.
     pub const ENTITY_TRANSLATE: Self = Self(2);
+
+    /// The `FrameType` for the [`EntityRotate`] frame.
     pub const ENTITY_ROTATE: Self = Self(3);
+}
+
+impl TryFrom<u16> for FrameType {
+    type Error = InvalidFrameType;
+
+    fn try_from(value: u16) -> Result<Self, Self::Error> {
+        match Self(value) {
+            Self::ENTITY_CREATE => Ok(Self::ENTITY_CREATE),
+            Self::ENTITY_DESTROY => Ok(Self::ENTITY_DESTROY),
+            Self::ENTITY_TRANSLATE => Ok(Self::ENTITY_TRANSLATE),
+            Self::ENTITY_ROTATE => Ok(Self::ENTITY_ROTATE),
+            _ => Err(InvalidFrameType(value)),
+        }
+    }
+}
+
+impl Encode for FrameType {
+    type Error = Infallible;
+
+    #[inline]
+    fn encode<B>(&self, buf: B) -> Result<(), Self::Error>
+    where
+        B: BufMut,
+    {
+        self.0.encode(buf)
+    }
+}
+
+impl Decode for FrameType {
+    type Error = Error;
+
+    fn decode<B>(buf: B) -> Result<Self, Self::Error>
+    where
+        B: Buf,
+    {
+        Ok(Self::try_from(u16::decode(buf)?)?)
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Error)]
+#[error("invalid frame type: {0}")]
+pub struct InvalidFrameType(pub u16);
+
+impl From<u16> for InvalidFrameType {
+    #[inline]
+    fn from(value: u16) -> Self {
+        Self(value)
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Error)]
+#[error("invalid entity kind: {0}")]
+pub struct InvalidEntityKind(pub u8);
+
+impl From<u8> for InvalidEntityKind {
+    fn from(value: u8) -> Self {
+        Self(value)
+    }
 }

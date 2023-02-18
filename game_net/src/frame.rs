@@ -43,4 +43,5 @@ pub struct PacketType(u16);
 impl PacketType {
     pub const HANDSHAKE: Self = Self(0);
     pub const SHUTDOWN: Self = Self(1);
+    pub const FRAME: Self = Self(2);
 }
