@@ -328,6 +328,49 @@ fn setup(
 
     // commands.spawn(ActorBundle::new(&asset_server));
 
+    // Terrain mesh
+    let size_x = 100;
+    let size_y = 100;
+
+    let mut vertices = Vec::new();
+    let mut indices = Vec::new();
+
+    for index in 0..size_x * size_y {
+        let x = index % size_x;
+        let y = index / size_x;
+
+        // let z = if index == 25 { 1.0 } else { 0.0 };
+        let z = 0.0;
+
+        vertices.push([x as f32, y as f32, z]);
+
+        if x != size_x - 1 && y != size_y - 1 {
+            // Build the tri
+            // Up tri (index -> index + 10 -> index + 10 + 1)
+            indices.extend([index, index + size_x, index + size_x + 1]);
+
+            // Down tri (index -> index + 1 -> index + 10 + 1)
+            indices.extend([index + size_x + 1, index + 1, index]);
+        }
+    }
+
+    let mut mesh = Mesh::new(PrimitiveTopology::TriangleList);
+    mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, vertices);
+    mesh.set_indices(Some(Indices::U32(indices)));
+
+    // mesh.insert_attribute(
+    //     Mesh::ATTRIBUTE_POSITION,
+    //     vec![[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [1.0, 1.0, 0.0]],
+    // );
+    // mesh.set_indices(Some(Indices::U32(vec![0, 1, 2])));
+
+    commands.spawn(PbrBundle {
+        mesh: meshes.add(mesh),
+        material: materials.add(Color::AQUAMARINE.into()),
+        transform: Transform::from_translation(Vec3::new(15.0, 5.0, 0.0)),
+        ..default()
+    });
+
     commands.spawn(ItemBundle::new(
         &asset_server,
         Item {
