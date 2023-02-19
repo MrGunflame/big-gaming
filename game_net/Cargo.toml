@@ -16,3 +16,5 @@ futures = "0.3.26"
 pin-project = "1.0.12"
 tokio = { version = "1.25.0", features = ["net", "sync"] }
 socket2 = "0.4.7"
+bevy_ecs = "0.9.1"
+parking_lot = "0.12.1"

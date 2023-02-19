@@ -257,7 +257,7 @@ impl From<u16> for InvalidPacketType {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Encode, Decode)]
 pub struct Header {
     pub packet_type: PacketType,
     pub timestamp: u32,
@@ -316,16 +316,25 @@ pub struct EntityRotate {
     pub rotation: Quat,
 }
 
+/// Sets the host actor host used by the client.
+///
+/// This is the actor the client is allowed to control.
+#[derive(Copy, Clone, Debug, Encode, Decode)]
+pub struct SpawnHost {
+    pub entity: ServerEntity,
+}
+
 #[derive(Clone, Debug)]
 pub enum Frame {
     EntityCreate(EntityCreate),
     EntityDestroy(EntityDestroy),
     EntityTranslate(EntityTranslate),
     EntityRotate(EntityRotate),
+    SpawnHost(SpawnHost),
 }
 
 impl Encode for Frame {
-    type Error = Error;
+    type Error = Infallible;
 
     fn encode<B>(&self, mut buf: B) -> Result<(), Self::Error>
     where
@@ -346,6 +355,10 @@ impl Encode for Frame {
             }
             Self::EntityRotate(frame) => {
                 FrameType::ENTITY_ROTATE.encode(&mut buf)?;
+                frame.encode(buf)
+            }
+            Self::SpawnHost(frame) => {
+                FrameType::SPAWN_HOST.encode(&mut buf)?;
                 frame.encode(buf)
             }
         }
@@ -387,6 +400,41 @@ impl Decode for Frame {
 pub struct Packet {
     pub header: Header,
     pub frames: Vec<Frame>,
+}
+
+impl Encode for Packet {
+    type Error = Infallible;
+
+    fn encode<B>(&self, mut buf: B) -> Result<(), Self::Error>
+    where
+        B: BufMut,
+    {
+        self.header.encode(&mut buf)?;
+
+        for frame in &self.frames {
+            frame.encode(&mut buf)?;
+        }
+
+        Ok(())
+    }
+}
+
+impl Decode for Packet {
+    type Error = Error;
+
+    fn decode<B>(mut buf: B) -> Result<Self, Self::Error>
+    where
+        B: Buf,
+    {
+        let header = Header::decode(&mut buf)?;
+
+        let mut frames = Vec::new();
+        while buf.remaining() > 0 {
+            frames.push(Frame::decode(&mut buf)?);
+        }
+
+        Ok(Self { header, frames })
+    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -453,6 +501,8 @@ impl FrameType {
 
     /// The `FrameType` for the [`EntityRotate`] frame.
     pub const ENTITY_ROTATE: Self = Self(3);
+
+    pub const SPAWN_HOST: Self = Self(4);
 }
 
 impl TryFrom<u16> for FrameType {

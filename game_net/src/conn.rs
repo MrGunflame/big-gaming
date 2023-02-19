@@ -1,28 +1,61 @@
 use std::collections::VecDeque;
 use std::future::Future;
-use std::net::UdpSocket;
 use std::pin::Pin;
 use std::sync::Arc;
-use std::task::{ready, Context, Poll};
+use std::task::{Context, Poll};
 
-use futures::Sink;
-use pin_project::pin_project;
-use tokio::sync::mpsc;
+use parking_lot::RwLock;
+use tokio::sync::{broadcast, mpsc};
 
+use crate::entity::Entities;
 use crate::proto::{Error, Frame, Header, Packet, PacketType};
+use crate::socket::Socket;
 
 pub struct Connection {
     /// Input stream from the socket
     stream: mpsc::Receiver<Packet>,
-    writer: mpsc::Receiver<Frame>,
-    reader: mpsc::Sender<Frame>,
+    socket: Arc<Socket>,
+
+    /// Direction (from self)
+    chan_out: mpsc::Receiver<Frame>,
+    chan_in: broadcast::Sender<Frame>,
+
     state: ConnectionState,
 
     queue: FrameQueue,
-    sink: mpsc::Sender<Packet>,
+    entities: Arc<RwLock<Entities>>,
 }
 
 impl Connection {
+    pub fn new(socket: Arc<Socket>) -> ConnectionHandle {
+        let entities: Arc<RwLock<Entities>> = Arc::default();
+
+        let (tx, rx) = mpsc::channel(32);
+        let (in_tx, in_rx) = broadcast::channel(32);
+        let (out_tx, out_rx) = mpsc::channel(32);
+
+        let conn = Self {
+            stream: rx,
+            socket,
+            state: ConnectionState::Read,
+            chan_in: in_tx,
+            chan_out: out_rx,
+            queue: FrameQueue::new(),
+            entities: entities.clone(),
+        };
+
+        tokio::task::spawn(async move {
+            conn.await.unwrap();
+        });
+
+        ConnectionHandle {
+            tx,
+            chan_in: in_rx,
+            chan_out: out_tx,
+            entities,
+        }
+    }
+
     fn poll_read(&mut self, cx: &mut Context<'_>) -> Poll<()> {
         #[cfg(debug_assertions)]
         assert!(matches!(self.state, ConnectionState::Read));
@@ -31,11 +64,11 @@ impl Connection {
             let packet = packet.unwrap();
 
             for frame in packet.frames {
-                self.reader.try_send(frame);
+                self.chan_in.send(frame);
             }
         }
 
-        if let Poll::Ready(frame) = self.writer.poll_recv(cx) {
+        if let Poll::Ready(frame) = self.chan_out.poll_recv(cx) {
             let frame = frame.unwrap();
             self.queue.push(frame);
         }
@@ -57,12 +90,21 @@ impl Connection {
                 frames: vec![frame],
             };
 
-            self.sink.try_send(packet).unwrap();
+            // self.sink.try_send(packet).unwrap();
         }
 
         self.state = ConnectionState::Read;
         Poll::Ready(())
     }
+
+    fn handle_packet(&mut self, packet: Packet) {
+        match packet.header.packet_type {
+            PacketType::HANDSHAKE => self.handle_handshake(packet),
+            _ => (),
+        }
+    }
+
+    fn handle_handshake(&mut self, packet: Packet) {}
 }
 
 impl Future for Connection {
@@ -122,5 +164,30 @@ impl FrameQueue {
 
     pub fn pop(&mut self) -> Option<Frame> {
         self.queue.pop_front()
+    }
+}
+
+#[derive(Debug)]
+pub struct ConnectionHandle {
+    tx: mpsc::Sender<Packet>,
+    chan_in: broadcast::Receiver<Frame>,
+    chan_out: mpsc::Sender<Frame>,
+    entities: Arc<RwLock<Entities>>,
+}
+
+impl ConnectionHandle {
+    pub async fn send(&self, packet: Packet) {
+        let _ = self.tx.send(packet).await;
+    }
+}
+
+impl Clone for ConnectionHandle {
+    fn clone(&self) -> Self {
+        Self {
+            tx: self.tx.clone(),
+            chan_out: self.chan_out.clone(),
+            chan_in: self.chan_in.resubscribe(),
+            entities: self.entities.clone(),
+        }
     }
 }
