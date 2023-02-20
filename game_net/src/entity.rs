@@ -5,6 +5,9 @@ use std::collections::HashMap;
 use bevy_ecs::entity::Entity;
 use game_common::net::ServerEntity;
 
+use crate::proto::{EntityCreate, EntityDestroy, EntityKind, EntityRotate, EntityTranslate, Frame};
+use crate::snapshot::Command;
+
 #[derive(Clone, Debug, Default)]
 pub struct Entities {
     host: HashMap<Entity, ServerEntity>,
@@ -36,6 +39,76 @@ impl Entities {
         E: ServerEntityTranslation,
     {
         entity.get(self)
+    }
+
+    pub fn translate(&self, frame: Frame) -> Option<Command> {
+        match frame {
+            Frame::EntityCreate(frame) => {
+                let id = self.get(frame.entity)?;
+
+                Some(Command::EntityCreate {
+                    id,
+                    translation: frame.translation,
+                    rotation: frame.rotation,
+                })
+            }
+            Frame::EntityDestroy(frame) => {
+                let id = self.get(frame.entity)?;
+
+                Some(Command::EntityDestroy { id })
+            }
+            Frame::EntityTranslate(frame) => {
+                let id = self.get(frame.entity)?;
+
+                Some(Command::EntityTranslate {
+                    id,
+                    translation: frame.translation,
+                })
+            }
+            _ => unimplemented!(),
+        }
+    }
+
+    pub fn translate_cmd(&self, cmd: Command) -> Option<Frame> {
+        match cmd {
+            Command::EntityCreate {
+                id,
+                translation,
+                rotation,
+            } => {
+                let id = self.get(id)?;
+
+                Some(Frame::EntityCreate(EntityCreate {
+                    entity: id,
+                    translation,
+                    rotation,
+                    kind: EntityKind::Object,
+                }))
+            }
+            Command::EntityDestroy { id } => {
+                let id = self.get(id)?;
+
+                Some(Frame::EntityDestroy(EntityDestroy { entity: id }))
+            }
+            Command::EntityTranslate { id, translation } => {
+                let id = self.get(id)?;
+
+                Some(Frame::EntityTranslate(EntityTranslate {
+                    entity: id,
+                    translation,
+                }))
+            }
+            Command::EntityRotate { id, rotation } => {
+                let id = self.get(id)?;
+
+                Some(Frame::EntityRotate(EntityRotate {
+                    entity: id,
+                    rotation,
+                }))
+            }
+            Command::PlayerJoin => unimplemented!(),
+            _ => unimplemented!(),
+        }
     }
 }
 

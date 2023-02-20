@@ -5,9 +5,8 @@ use std::sync::Arc;
 
 use ahash::AHashMap;
 use game_net::conn::ConnectionHandle;
+use game_net::snapshot::CommandQueue;
 use parking_lot::RwLock;
-
-use crate::snapshot::CommandQueue;
 
 pub type ConnectionKey = SocketAddr;
 

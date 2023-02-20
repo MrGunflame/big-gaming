@@ -11,6 +11,7 @@ use state::State;
 use tokio::time::{interval, MissedTickBehavior};
 
 mod config;
+mod conn;
 mod plugins;
 mod server;
 mod snapshot;

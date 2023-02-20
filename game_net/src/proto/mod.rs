@@ -208,7 +208,7 @@ impl PacketType {
     pub const ACK: Self = Self(2);
     pub const NAK: Self = Self(4);
 
-    pub const FRAME: Self = Self(5);
+    pub const DATA: Self = Self(5);
 }
 
 impl Encode for PacketType {
@@ -324,6 +324,12 @@ pub struct SpawnHost {
     pub entity: ServerEntity,
 }
 
+#[derive(Copy, Clone, Debug, Encode, Decode)]
+pub struct WorldJoin {}
+
+#[derive(Copy, Clone, Debug, Encode, Decode)]
+pub struct WorldLeave {}
+
 #[derive(Clone, Debug)]
 pub enum Frame {
     EntityCreate(EntityCreate),
@@ -331,6 +337,8 @@ pub enum Frame {
     EntityTranslate(EntityTranslate),
     EntityRotate(EntityRotate),
     SpawnHost(SpawnHost),
+    WorldJoin(WorldJoin),
+    WorldLeave(WorldLeave),
 }
 
 impl Encode for Frame {
@@ -359,6 +367,14 @@ impl Encode for Frame {
             }
             Self::SpawnHost(frame) => {
                 FrameType::SPAWN_HOST.encode(&mut buf)?;
+                frame.encode(buf)
+            }
+            Self::WorldJoin(frame) => {
+                FrameType::WORLD_JOIN.encode(&mut buf)?;
+                frame.encode(buf)
+            }
+            Self::WorldLeave(frame) => {
+                FrameType::WORLD_LEAVE.encode(&mut buf)?;
                 frame.encode(buf)
             }
         }
@@ -503,6 +519,9 @@ impl FrameType {
     pub const ENTITY_ROTATE: Self = Self(3);
 
     pub const SPAWN_HOST: Self = Self(4);
+
+    pub const WORLD_JOIN: Self = Self(5);
+    pub const WORLD_LEAVE: Self = Self(6);
 }
 
 impl TryFrom<u16> for FrameType {

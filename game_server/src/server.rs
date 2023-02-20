@@ -90,7 +90,7 @@ impl Future for Worker {
 
 async fn handle_packet(addr: SocketAddr, socket: Arc<Socket>, state: &State, packet: Packet) {
     if let Some(handle) = state.pool.get(addr) {
-        handle.send(packet).await;
+        handle.send(packet);
         return;
     }
 
@@ -99,8 +99,8 @@ async fn handle_packet(addr: SocketAddr, socket: Arc<Socket>, state: &State, pac
         return;
     }
 
-    let handle = Connection::new(socket);
-    handle.send(packet).await;
+    let handle = Connection::new(addr, state.queue.clone(), socket);
+    handle.send(packet);
 
     state.pool.insert(addr, handle);
 }

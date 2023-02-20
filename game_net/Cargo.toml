@@ -18,3 +18,4 @@ tokio = { version = "1.25.0", features = ["net", "sync"] }
 socket2 = "0.4.7"
 bevy_ecs = "0.9.1"
 parking_lot = "0.12.1"
+tracing = "0.1.37"

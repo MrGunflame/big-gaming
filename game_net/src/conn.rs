@@ -1,47 +1,72 @@
 use std::collections::VecDeque;
 use std::future::Future;
+use std::net::SocketAddr;
 use std::pin::Pin;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 use std::task::{Context, Poll};
 
-use parking_lot::RwLock;
-use tokio::sync::{broadcast, mpsc};
+use bytes::BytesMut;
+use futures::FutureExt;
+use tokio::sync::mpsc;
 
 use crate::entity::Entities;
-use crate::proto::{Error, Frame, Header, Packet, PacketType};
+use crate::proto::{Encode, Error, Frame, Header, Packet, PacketType};
+use crate::snapshot::{Command, CommandQueue, ConnectionMessage};
 use crate::socket::Socket;
 
+static CONNECTION_ID: AtomicU32 = AtomicU32::new(0);
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct ConnectionId(pub u32);
+
+impl ConnectionId {
+    #[inline]
+    pub fn new() -> Self {
+        let id = CONNECTION_ID.fetch_add(1, Ordering::Relaxed);
+        Self(id)
+    }
+}
+
+impl Default for ConnectionId {
+    #[inline]
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 pub struct Connection {
+    id: ConnectionId,
     /// Input stream from the socket
     stream: mpsc::Receiver<Packet>,
     socket: Arc<Socket>,
 
     /// Direction (from self)
-    chan_out: mpsc::Receiver<Frame>,
-    chan_in: broadcast::Sender<Frame>,
+    chan_out: mpsc::Receiver<Command>,
 
     state: ConnectionState,
 
-    queue: FrameQueue,
-    entities: Arc<RwLock<Entities>>,
+    queue: CommandQueue,
+    entities: Entities,
+    peer: SocketAddr,
 }
 
 impl Connection {
-    pub fn new(socket: Arc<Socket>) -> ConnectionHandle {
-        let entities: Arc<RwLock<Entities>> = Arc::default();
+    pub fn new(peer: SocketAddr, queue: CommandQueue, socket: Arc<Socket>) -> ConnectionHandle {
+        let id = ConnectionId::new();
 
         let (tx, rx) = mpsc::channel(32);
-        let (in_tx, in_rx) = broadcast::channel(32);
         let (out_tx, out_rx) = mpsc::channel(32);
 
         let conn = Self {
+            id,
             stream: rx,
             socket,
             state: ConnectionState::Read,
-            chan_in: in_tx,
             chan_out: out_rx,
-            queue: FrameQueue::new(),
-            entities: entities.clone(),
+            queue,
+            entities: Entities::new(),
+            peer,
         };
 
         tokio::task::spawn(async move {
@@ -49,10 +74,9 @@ impl Connection {
         });
 
         ConnectionHandle {
+            id,
             tx,
-            chan_in: in_rx,
             chan_out: out_tx,
-            entities,
         }
     }
 
@@ -64,13 +88,41 @@ impl Connection {
             let packet = packet.unwrap();
 
             for frame in packet.frames {
-                self.chan_in.send(frame);
+                let Some(cmd) = self.entities.translate(frame) else {
+                    tracing::debug!("failed to translate cmd");
+                    continue;
+                };
+
+                self.queue.push(ConnectionMessage {
+                    id: self.id,
+                    command: cmd,
+                });
             }
         }
 
-        if let Poll::Ready(frame) = self.chan_out.poll_recv(cx) {
-            let frame = frame.unwrap();
-            self.queue.push(frame);
+        if let Poll::Ready(cmd) = self.chan_out.poll_recv(cx) {
+            let cmd = cmd.unwrap();
+
+            let socket = self.socket.clone();
+
+            let frame = self.entities.translate_cmd(cmd).unwrap();
+
+            let packet = Packet {
+                header: Header {
+                    packet_type: PacketType::DATA,
+                    timestamp: 0,
+                    sequence_number: 0,
+                },
+                frames: vec![frame],
+            };
+
+            let peer = self.peer;
+            self.state = ConnectionState::Write(Box::pin(async move {
+                let mut buf = BytesMut::zeroed(1500);
+                packet.encode(&mut buf).unwrap();
+
+                socket.send_to(&buf, peer).await.unwrap();
+            }));
         }
 
         Poll::Pending
@@ -78,23 +130,20 @@ impl Connection {
 
     fn poll_write(&mut self, cx: &mut Context<'_>) -> Poll<()> {
         #[cfg(debug_assertions)]
-        assert!(matches!(self.state, ConnectionState::Write));
+        assert!(matches!(self.state, ConnectionState::Write(_)));
 
-        while let Some(frame) = self.queue.pop() {
-            let packet = Packet {
-                header: Header {
-                    packet_type: PacketType::FRAME,
-                    timestamp: 0,
-                    sequence_number: 0,
-                },
-                frames: vec![frame],
-            };
+        let fut = match &mut self.state {
+            ConnectionState::Write(fut) => fut,
+            _ => unreachable!(),
+        };
 
-            // self.sink.try_send(packet).unwrap();
+        match fut.poll_unpin(cx) {
+            Poll::Ready(_) => {
+                self.state = ConnectionState::Read;
+                Poll::Ready(())
+            }
+            Poll::Pending => Poll::Pending,
         }
-
-        self.state = ConnectionState::Read;
-        Poll::Ready(())
     }
 
     fn handle_packet(&mut self, packet: Packet) {
@@ -117,7 +166,7 @@ impl Future for Connection {
                     Poll::Pending => return Poll::Pending,
                     Poll::Ready(()) => (),
                 },
-                ConnectionState::Write => match self.poll_write(cx) {
+                ConnectionState::Write(_) => match self.poll_write(cx) {
                     Poll::Pending => return Poll::Pending,
                     Poll::Ready(()) => (),
                 },
@@ -143,7 +192,7 @@ impl Sender {
 
 enum ConnectionState {
     Read,
-    Write,
+    Write(Pin<Box<(dyn Future<Output = ()> + Send + Sync + 'static)>>),
     Closed,
 }
 
@@ -167,27 +216,21 @@ impl FrameQueue {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct ConnectionHandle {
+    pub id: ConnectionId,
     tx: mpsc::Sender<Packet>,
-    chan_in: broadcast::Receiver<Frame>,
-    chan_out: mpsc::Sender<Frame>,
-    entities: Arc<RwLock<Entities>>,
+    chan_out: mpsc::Sender<Command>,
 }
 
 impl ConnectionHandle {
-    pub async fn send(&self, packet: Packet) {
-        let _ = self.tx.send(packet).await;
+    pub fn send(&self, packet: Packet) {
+        self.tx.try_send(packet).unwrap();
+    }
+
+    pub fn send_cmd(&self, cmd: Command) {
+        self.chan_out.try_send(cmd).unwrap();
     }
 }
 
-impl Clone for ConnectionHandle {
-    fn clone(&self) -> Self {
-        Self {
-            tx: self.tx.clone(),
-            chan_out: self.chan_out.clone(),
-            chan_in: self.chan_in.resubscribe(),
-            entities: self.entities.clone(),
-        }
-    }
-}
+pub struct ConnectionKey {}
