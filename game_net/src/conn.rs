@@ -6,7 +6,6 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 use std::task::{Context, Poll};
 
-use bytes::BytesMut;
 use futures::FutureExt;
 use tokio::sync::mpsc;
 
@@ -105,6 +104,8 @@ impl Connection {
         if let Poll::Ready(cmd) = self.chan_out.poll_recv(cx) {
             let cmd = cmd.unwrap();
 
+            tracing::info!("sending {:?}", cmd);
+
             let socket = self.socket.clone();
 
             let frame = self.entities.translate_cmd(cmd).unwrap();
@@ -120,7 +121,7 @@ impl Connection {
 
             let peer = self.peer;
             self.state = ConnectionState::Write(Box::pin(async move {
-                let mut buf = BytesMut::zeroed(1500);
+                let mut buf = Vec::with_capacity(1500);
                 packet.encode(&mut buf).unwrap();
 
                 socket.send_to(&buf, peer).await.unwrap();

@@ -241,6 +241,9 @@ impl TryFrom<u16> for PacketType {
         match Self(value) {
             Self::HANDSHAKE => Ok(Self::HANDSHAKE),
             Self::SHUTDOWN => Ok(Self::SHUTDOWN),
+            Self::ACK => Ok(Self::ACK),
+            Self::NAK => Ok(Self::NAK),
+            Self::DATA => Ok(Self::DATA),
             _ => Err(InvalidPacketType(value)),
         }
     }
@@ -325,10 +328,10 @@ pub struct SpawnHost {
 }
 
 #[derive(Copy, Clone, Debug, Encode, Decode)]
-pub struct WorldJoin {}
+pub struct PlayerJoin {}
 
 #[derive(Copy, Clone, Debug, Encode, Decode)]
-pub struct WorldLeave {}
+pub struct PlayerLeave {}
 
 #[derive(Clone, Debug)]
 pub enum Frame {
@@ -337,8 +340,8 @@ pub enum Frame {
     EntityTranslate(EntityTranslate),
     EntityRotate(EntityRotate),
     SpawnHost(SpawnHost),
-    WorldJoin(WorldJoin),
-    WorldLeave(WorldLeave),
+    PlayerJoin(PlayerJoin),
+    PlayerLeave(PlayerLeave),
 }
 
 impl Encode for Frame {
@@ -369,12 +372,12 @@ impl Encode for Frame {
                 FrameType::SPAWN_HOST.encode(&mut buf)?;
                 frame.encode(buf)
             }
-            Self::WorldJoin(frame) => {
-                FrameType::WORLD_JOIN.encode(&mut buf)?;
+            Self::PlayerJoin(frame) => {
+                FrameType::PLAYER_JOIN.encode(&mut buf)?;
                 frame.encode(buf)
             }
-            Self::WorldLeave(frame) => {
-                FrameType::WORLD_LEAVE.encode(&mut buf)?;
+            Self::PlayerLeave(frame) => {
+                FrameType::PLAYER_LEAVE.encode(&mut buf)?;
                 frame.encode(buf)
             }
         }
@@ -406,6 +409,18 @@ impl Decode for Frame {
             FrameType::ENTITY_ROTATE => {
                 let frame = EntityRotate::decode(buf)?;
                 Ok(Self::EntityRotate(frame))
+            }
+            FrameType::SPAWN_HOST => {
+                let frame = SpawnHost::decode(buf)?;
+                Ok(Self::SpawnHost(frame))
+            }
+            FrameType::PLAYER_JOIN => {
+                let frame = PlayerJoin::decode(buf)?;
+                Ok(Self::PlayerJoin(frame))
+            }
+            FrameType::PLAYER_LEAVE => {
+                let frame = PlayerLeave::decode(buf)?;
+                Ok(Self::PlayerLeave(frame))
             }
             _ => unreachable!(),
         }
@@ -520,8 +535,8 @@ impl FrameType {
 
     pub const SPAWN_HOST: Self = Self(4);
 
-    pub const WORLD_JOIN: Self = Self(5);
-    pub const WORLD_LEAVE: Self = Self(6);
+    pub const PLAYER_JOIN: Self = Self(5);
+    pub const PLAYER_LEAVE: Self = Self(6);
 }
 
 impl TryFrom<u16> for FrameType {
@@ -533,6 +548,9 @@ impl TryFrom<u16> for FrameType {
             Self::ENTITY_DESTROY => Ok(Self::ENTITY_DESTROY),
             Self::ENTITY_TRANSLATE => Ok(Self::ENTITY_TRANSLATE),
             Self::ENTITY_ROTATE => Ok(Self::ENTITY_ROTATE),
+            Self::SPAWN_HOST => Ok(Self::SPAWN_HOST),
+            Self::PLAYER_JOIN => Ok(Self::PLAYER_JOIN),
+            Self::PLAYER_LEAVE => Ok(Self::PLAYER_LEAVE),
             _ => Err(InvalidFrameType(value)),
         }
     }
@@ -581,3 +599,6 @@ impl From<u8> for InvalidEntityKind {
         Self(value)
     }
 }
+
+#[derive(Copy, Clone, Debug, Encode, Decode)]
+pub struct Handshake {}

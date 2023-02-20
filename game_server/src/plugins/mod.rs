@@ -10,7 +10,7 @@ use game_net::snapshot::{Command, CommandQueue, Snapshot};
 
 use crate::conn::Connections;
 
-pub struct ServerPlugins {}
+pub struct ServerPlugins;
 
 impl Plugin for ServerPlugins {
     fn build(&self, app: &mut bevy::prelude::App) {
@@ -26,6 +26,8 @@ fn flush_command_queue(
     mut entities: Query<(Entity, &mut Transform)>,
 ) {
     while let Some(msg) = queue.pop() {
+        tracing::info!("got command {:?}", msg.command);
+
         match msg.command {
             Command::EntityCreate {
                 id,
@@ -52,6 +54,7 @@ fn flush_command_queue(
 
                 connections.set_host(msg.id, id);
             }
+            Command::PlayerLeave => {}
             Command::SpawnHost { id } => (),
         }
     }
@@ -80,7 +83,7 @@ fn update_snapshots(
         snapshot.update(entity, body);
     }
 
-    for snap in connections.iter_mut() {
+    for mut snap in connections.iter_mut() {
         *snap = snapshot.clone();
     }
 }

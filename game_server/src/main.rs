@@ -2,9 +2,11 @@ use std::time::Duration;
 
 use bevy::prelude::App;
 use clap::Parser;
+use conn::Connections;
 use game_common::archive::loader::ModuleLoader;
 use game_common::archive::GameArchive;
 use game_core::CorePlugins;
+use plugins::ServerPlugins;
 use server::Server;
 use snapshot::CommandQueue;
 use state::State;
@@ -26,6 +28,7 @@ async fn main() {
     let state = State::new();
 
     let queue = state.queue.clone();
+    let conns = state.conns.clone();
 
     tokio::task::spawn(async move {
         let server = Server::new(state).unwrap();
@@ -40,7 +43,10 @@ async fn main() {
     let mut app = App::new();
     app.insert_resource(archive);
     app.add_plugin(CorePlugins);
+
     app.insert_resource(queue);
+    app.insert_resource(conns);
+    app.add_plugin(ServerPlugins);
 
     let mut interval = interval(Duration::from_millis(50));
     interval.set_missed_tick_behavior(MissedTickBehavior::Skip);

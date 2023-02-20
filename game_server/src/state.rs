@@ -8,6 +8,8 @@ use game_net::conn::ConnectionHandle;
 use game_net::snapshot::CommandQueue;
 use parking_lot::RwLock;
 
+use crate::conn::Connections;
+
 pub type ConnectionKey = SocketAddr;
 
 #[derive(Clone, Debug)]
@@ -18,6 +20,7 @@ impl State {
         State(Arc::new(StateInner {
             pool: ConnectionPool::new(),
             queue: CommandQueue::default(),
+            conns: Connections::default(),
         }))
     }
 }
@@ -35,6 +38,7 @@ impl Deref for State {
 pub struct StateInner {
     pub pool: ConnectionPool,
     pub queue: CommandQueue,
+    pub conns: Connections,
 }
 
 #[derive(Debug)]

@@ -6,7 +6,8 @@ use bevy_ecs::entity::Entity;
 use game_common::net::ServerEntity;
 
 use crate::proto::{
-    EntityCreate, EntityDestroy, EntityKind, EntityRotate, EntityTranslate, Frame, WorldJoin,
+    EntityCreate, EntityDestroy, EntityKind, EntityRotate, EntityTranslate, Frame, PlayerJoin,
+    PlayerLeave, SpawnHost,
 };
 use crate::snapshot::Command;
 
@@ -67,7 +68,21 @@ impl Entities {
                     translation: frame.translation,
                 })
             }
-            _ => unimplemented!(),
+            Frame::EntityRotate(frame) => {
+                let id = self.get(frame.entity)?;
+
+                Some(Command::EntityRotate {
+                    id,
+                    rotation: frame.rotation,
+                })
+            }
+            Frame::SpawnHost(frame) => {
+                let id = self.get(frame.entity)?;
+
+                Some(Command::SpawnHost { id })
+            }
+            Frame::PlayerJoin(_) => Some(Command::PlayerJoin),
+            Frame::PlayerLeave(_) => Some(Command::PlayerLeave),
         }
     }
 
@@ -108,8 +123,13 @@ impl Entities {
                     rotation,
                 }))
             }
-            Command::PlayerJoin => Some(Frame::WorldJoin(WorldJoin {})),
-            _ => unimplemented!(),
+            Command::PlayerJoin => Some(Frame::PlayerJoin(PlayerJoin {})),
+            Command::PlayerLeave => Some(Frame::PlayerLeave(PlayerLeave {})),
+            Command::SpawnHost { id } => {
+                let id = self.get(id)?;
+
+                Some(Frame::SpawnHost(SpawnHost { entity: id }))
+            }
         }
     }
 }

@@ -9,7 +9,7 @@ use bytes::BytesMut;
 use futures::stream::FuturesUnordered;
 use futures::{FutureExt, StreamExt};
 use game_net::conn::Connection;
-use game_net::proto::{Decode, Error, Packet, PacketType};
+use game_net::proto::{Decode, Error, Packet};
 use game_net::socket::Socket;
 use tokio::task::JoinHandle;
 
@@ -64,10 +64,12 @@ impl Worker {
                 let (len, addr) = socket.recv_from(&mut buf).await.unwrap();
                 buf.truncate(len);
 
+                tracing::info!("got {} bytes from {}", len, addr);
+
                 let packet = match Packet::decode(&mut buf) {
                     Ok(packet) => packet,
                     Err(err) => {
-                        tracing::debug!("failed to decode packet: {}", err);
+                        tracing::info!("failed to decode packet: {}", err);
                         continue;
                     }
                 };
@@ -95,12 +97,14 @@ async fn handle_packet(addr: SocketAddr, socket: Arc<Socket>, state: &State, pac
     }
 
     // Unknown clients may only sent handshake requests.
-    if packet.header.packet_type != PacketType::HANDSHAKE {
-        return;
-    }
+    // if packet.header.packet_type != PacketType::HANDSHAKE {
+    //     tracing::info!("data packet from unknown client {}", addr);
+    //     return;
+    // }
 
     let handle = Connection::new(addr, state.queue.clone(), socket);
     handle.send(packet);
 
-    state.pool.insert(addr, handle);
+    state.pool.insert(addr, handle.clone());
+    state.conns.insert(handle);
 }

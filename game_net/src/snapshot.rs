@@ -86,6 +86,7 @@ pub enum Command {
         rotation: Quat,
     },
     PlayerJoin,
+    PlayerLeave,
     SpawnHost {
         id: Entity,
     },

@@ -1,113 +1,124 @@
 use std::borrow::Borrow;
-use std::collections::hash_map::{Values, ValuesMut};
 use std::ops::{Deref, DerefMut};
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::Arc;
 
 use ahash::HashMap;
 use bevy::prelude::{Entity, Resource};
 use game_net::conn::{ConnectionHandle, ConnectionId};
 use game_net::snapshot::{Command, EntityChange, Snapshot};
+use parking_lot::RwLock;
 
 /// List of connections
-#[derive(Resource)]
+// FIXME: Maybe merge with ConnectionPool.
+#[derive(Clone, Debug, Default, Resource)]
 pub struct Connections {
-    snapshots: HashMap<ConnectionId, Snapshot>,
-    handles: HashMap<ConnectionId, ConnectionHandle>,
-    hosts: HashMap<ConnectionId, Option<Entity>>,
+    connections: Arc<RwLock<HashMap<ConnectionId, Arc<ConnectionData>>>>,
 }
 
 impl Connections {
-    pub fn insert(&mut self, handle: ConnectionHandle) -> ConnectionId {
-        let id = ConnectionId::new();
-        self.snapshots.insert(id, Snapshot::new());
-        self.handles.insert(id, handle);
-        self.hosts.insert(id, None);
-        id
+    pub fn insert(&self, handle: ConnectionHandle) {
+        let mut inner = self.connections.write();
+
+        inner.insert(handle.id, Arc::new(ConnectionData::new(handle)));
     }
 
-    pub fn set_host<T>(&mut self, id: T, host: Entity)
+    pub fn set_host<T>(&self, id: T, host: Entity)
     where
         T: Borrow<ConnectionId>,
     {
-        *self.hosts.get_mut(id.borrow()).unwrap() = Some(host);
-        self.handles
-            .get(id.borrow())
-            .unwrap()
-            .send_cmd(Command::SpawnHost { id: host });
+        let mut inner = self.connections.write();
+
+        let data = inner.get_mut(id.borrow()).unwrap();
+
+        *data.host.write() = Some(host);
+        data.handle.send_cmd(Command::SpawnHost { id: host });
     }
 
-    pub fn get_mut<T>(&mut self, id: T) -> Option<ConnectionMut<'_>>
+    pub fn get_mut<T>(&self, id: T) -> Option<ConnectionMut>
     where
         T: Borrow<ConnectionId>,
     {
-        match self.snapshots.get_mut(id.borrow()) {
-            Some(snap) => Some(ConnectionMut {
-                handle: self.handles.get(id.borrow()).unwrap(),
-                prev: snap.clone(),
-                snapshot: snap,
+        let mut inner = self.connections.write();
+
+        match inner.get_mut(id.borrow()) {
+            Some(data) => Some(ConnectionMut {
+                snapshot: data.snapshot.read().clone(),
+                data: data.clone(),
                 id: *id.borrow(),
             }),
             None => None,
         }
     }
 
-    pub fn iter_mut(&mut self) -> IterMut<'_> {
+    pub fn iter_mut(&self) -> IterMut<'_> {
+        let ids: Vec<_> = self.connections.read().keys().copied().collect();
+
         IterMut {
-            first: false,
-            snapshots: self.snapshots.values_mut(),
-            handles: self.handles.values_mut(),
+            inner: self,
+            ids: ids.into_iter(),
+        }
+    }
+}
+
+#[derive(Debug)]
+struct ConnectionData {
+    pub snapshot: RwLock<Snapshot>,
+    pub handle: ConnectionHandle,
+    pub host: RwLock<Option<Entity>>,
+}
+
+impl ConnectionData {
+    pub fn new(handle: ConnectionHandle) -> Self {
+        Self {
+            snapshot: RwLock::new(Snapshot::new()),
+            handle,
+            host: RwLock::new(None),
         }
     }
 }
 
 pub struct IterMut<'a> {
-    first: bool,
-    snapshots: ValuesMut<'a, ConnectionId, Snapshot>,
-    handles: ValuesMut<'a, ConnectionId, ConnectionHandle>,
+    inner: &'a Connections,
+    ids: std::vec::IntoIter<ConnectionId>,
 }
 
 impl<'a> Iterator for IterMut<'a> {
-    type Item = &'a mut Snapshot;
+    type Item = ConnectionMut;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let snapshot = self.snapshots.next();
-
-        if self.first {
-            // Calculate delta
-        }
-
-        if snapshot.is_some() {
-            self.first = true;
-        }
-
-        snapshot
+        let id = self.ids.next()?;
+        self.inner.get_mut(id)
     }
 }
 
-pub struct ConnectionMut<'a> {
-    handle: &'a ConnectionHandle,
-    snapshot: &'a mut Snapshot,
-    prev: Snapshot,
+pub struct ConnectionMut {
+    data: Arc<ConnectionData>,
+    /// The *new* snapshot (cloned from the one in data).
+    snapshot: Snapshot,
     id: ConnectionId,
 }
 
-impl<'a> Deref for ConnectionMut<'a> {
+impl Deref for ConnectionMut {
     type Target = Snapshot;
 
     fn deref(&self) -> &Self::Target {
-        self.snapshot
+        &self.snapshot
     }
 }
 
-impl<'a> DerefMut for ConnectionMut<'a> {
+impl DerefMut for ConnectionMut {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        self.snapshot
+        &mut self.snapshot
     }
 }
 
-impl<'a> Drop for ConnectionMut<'a> {
+impl Drop for ConnectionMut {
     fn drop(&mut self) {
-        let delta = self.prev.delta(&self.snapshot);
+        let prev = self.data.snapshot.read();
+        let delta = prev.delta(&self.snapshot);
+
+        // Drop the lock as early as possible.
+        drop(prev);
 
         for change in delta {
             let cmd = match change {
@@ -116,7 +127,7 @@ impl<'a> Drop for ConnectionMut<'a> {
                 EntityChange::Destroy(id) => Command::EntityDestroy { id },
             };
 
-            self.handle.send_cmd(cmd);
+            self.data.handle.send_cmd(cmd);
         }
     }
 }
