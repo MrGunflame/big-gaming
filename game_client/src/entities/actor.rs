@@ -69,7 +69,9 @@ impl ActorBundle {
         );
 
         Self {
-            transform: crate::bundles::TransformBundle::from_translation(Vec3::new(0.0, 0.0, 0.0)),
+            transform: crate::bundles::TransformBundle::from_translation(Vec3::new(
+                10.0, 1.0, 10.0,
+            )),
             // scene: SceneBundle {
             //     scene: assets.load("person.glb#Scene0"),
             //     ..Default::default()

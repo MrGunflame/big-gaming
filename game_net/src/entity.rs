@@ -5,7 +5,9 @@ use std::collections::HashMap;
 use bevy_ecs::entity::Entity;
 use game_common::net::ServerEntity;
 
-use crate::proto::{EntityCreate, EntityDestroy, EntityKind, EntityRotate, EntityTranslate, Frame};
+use crate::proto::{
+    EntityCreate, EntityDestroy, EntityKind, EntityRotate, EntityTranslate, Frame, WorldJoin,
+};
 use crate::snapshot::Command;
 
 #[derive(Clone, Debug, Default)]
@@ -106,7 +108,7 @@ impl Entities {
                     rotation,
                 }))
             }
-            Command::PlayerJoin => unimplemented!(),
+            Command::PlayerJoin => Some(Frame::WorldJoin(WorldJoin {})),
             _ => unimplemented!(),
         }
     }

@@ -144,15 +144,15 @@ impl<'a> Objects<'a> {
     }
 
     pub fn insert(&self, mut object: Object, module: &Module) -> ObjectId {
-        if let Some(handle) = &mut object.handle {
-            let base = module.root.to_str().expect("path has non-unicode chars");
+        // if let Some(handle) = &mut object.handle {
+        //     let base = module.root.to_str().expect("path has non-unicode chars");
 
-            *handle = if handle.ends_with("/") {
-                format!("{}{}", base, handle)
-            } else {
-                format!("{}{}", base, handle)
-            }
-        }
+        //     *handle = if handle.ends_with("/") {
+        //         format!("{}{}", base, handle)
+        //     } else {
+        //         format!("{}{}", base, handle)
+        //     }
+        // }
 
         let mut objects = self.archive.objects.write();
 

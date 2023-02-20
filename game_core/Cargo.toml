@@ -9,6 +9,7 @@ license = "GPL-3.0-or-later"
 game_ai = { version = "*", path = "../game_ai" }
 game_common = { version = "*", path = "../game_common" }
 game_audio = { version = "*", path = "../game_audio" }
+game_net = { version = "*", path = "../game_net" }
 
 bevy = "0.9.1"
 bevy_ecs = "0.9.1"

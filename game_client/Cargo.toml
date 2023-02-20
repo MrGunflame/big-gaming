@@ -12,6 +12,7 @@ game_core = { version = "*", path = "../game_core" }
 game_ui = { version = "*", path = "../game_ui" }
 game_input = { version = "*", path = "../game_input" }
 game_audio = { version = "*", path = "../game_audio" }
+game_net = { version = "*", path = "../game_net" }
 
 ahash = "0.8.2"
 bevy = { version = "0.9.0", features = ["wav", "jpeg"] }
@@ -23,6 +24,7 @@ tracing = "0.1.37"
 chrono = "0.4.23"
 nalgebra = "0.31.4"
 noise = "0.8.2"
+tokio = { version = "1.25.0", features = ["full"] }
 
 [features]
 default = []

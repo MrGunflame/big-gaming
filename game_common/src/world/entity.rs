@@ -9,17 +9,17 @@ use crate::bundles::VisibilityBundle;
 use crate::components::items::ItemId;
 use crate::components::object::{self, LoadObject, ObjectId};
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Entity {
     Object(Object),
     Actor(Actor),
     Item(Item),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Object {
-    id: ObjectId,
-    transform: Transform,
+    pub id: ObjectId,
+    pub transform: Transform,
 }
 
 impl Object {
@@ -28,13 +28,13 @@ impl Object {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Actor {
     id: u32,
     transform: Transform,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Item {
     id: ItemId,
     transform: Transform,

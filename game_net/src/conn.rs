@@ -81,6 +81,8 @@ impl Connection {
     }
 
     fn poll_read(&mut self, cx: &mut Context<'_>) -> Poll<()> {
+        tracing::trace!("Connection.poll_read");
+
         #[cfg(debug_assertions)]
         assert!(matches!(self.state, ConnectionState::Read));
 
@@ -123,12 +125,16 @@ impl Connection {
 
                 socket.send_to(&buf, peer).await.unwrap();
             }));
+
+            return Poll::Ready(());
         }
 
         Poll::Pending
     }
 
     fn poll_write(&mut self, cx: &mut Context<'_>) -> Poll<()> {
+        tracing::trace!("Connection.poll_write");
+
         #[cfg(debug_assertions)]
         assert!(matches!(self.state, ConnectionState::Write(_)));
 
@@ -160,6 +166,8 @@ impl Future for Connection {
     type Output = Result<(), Error>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        tracing::trace!("Connection.poll");
+
         loop {
             match self.state {
                 ConnectionState::Read => match self.poll_read(cx) {

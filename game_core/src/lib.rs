@@ -7,7 +7,7 @@ use bevy::gltf::GltfPlugin;
 use bevy::input::InputPlugin;
 use bevy::log::LogPlugin;
 use bevy::pbr::PbrPlugin;
-use bevy::prelude::{AssetPlugin, CorePlugin, HierarchyPlugin, Plugin};
+use bevy::prelude::{AddAsset, AssetPlugin, CorePlugin, HierarchyPlugin, Mesh, Plugin};
 use bevy::scene::ScenePlugin;
 use bevy::time::TimePlugin;
 use bevy::transform::TransformPlugin;
@@ -50,5 +50,6 @@ impl Plugin for CorePlugins {
         app.add_plugin(ProjectilePlugin);
         app.add_plugin(RapierPhysicsPlugin::<NoUserData>::default());
         app.add_plugin(AnimationPlugin);
+        app.add_asset::<Mesh>();
     }
 }

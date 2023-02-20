@@ -19,7 +19,7 @@ use super::items::{IntoItemStack, Item, ItemId, ItemStack};
 ///
 /// Note that the hard limit for a `Inventory` is `usize::MAX` items or total combined mass of
 /// `Mass::MAX`, whichever is reached first.
-#[derive(Clone, Debug, Component)]
+#[derive(Clone, Debug, Default, Component)]
 pub struct Inventory {
     items: IndexMap<ItemId, ItemStack, RandomState>,
     /// The count of all items in this `Inventory`.

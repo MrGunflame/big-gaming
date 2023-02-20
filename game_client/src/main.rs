@@ -7,6 +7,7 @@ mod bundles;
 mod components;
 mod entities;
 mod log;
+mod net;
 mod plugins;
 mod prev_transform;
 mod sky;
@@ -55,6 +56,7 @@ use game_core::projectile::ProjectilePlugin;
 use game_core::world::{ChunkPlugin, LevelPlugin, SpawnPlugin};
 use game_core::CorePlugins;
 use game_ui::UiPlugin;
+use net::NetPlugin;
 use noise::NoiseFn;
 use plugins::interactions::InteractionsPlugin;
 use plugins::respawn::RespawnPlugin;
@@ -115,6 +117,7 @@ fn main() {
         // .add_plugin(AudioPlugin::new())
         // .add_plugin(LevelPlugin)
         .add_plugin(game_core::debug::DebugPlugin)
+        .add_plugin(NetPlugin::default())
         .run();
 }
 
