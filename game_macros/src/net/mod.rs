@@ -60,7 +60,7 @@ impl Input {
 
         quote! {
             impl Encode for #ident {
-                type Error = Error;
+                type Error = Infallible;
 
                 fn encode<__B>(&self, mut buf: __B) -> ::core::result::Result<(), Self::Error>
                 where
