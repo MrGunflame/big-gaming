@@ -137,23 +137,23 @@ fn setup(
         .insert(RigidBody::Fixed)
         .insert(Collider::cuboid(1000.0, 0.1, 1000.0));
 
-    commands.spawn(ObjectBundle::new(&asset_server).at(Vec3::new(5.0, 0.5, 5.0)));
-    commands.spawn(ObjectBundle::new(&asset_server).at(Vec3::new(5.0, 1.5, 5.0)));
-    commands.spawn(ObjectBundle::new(&asset_server).at(Vec3::new(5.0, 2.5, 5.0)));
-    commands.spawn(ObjectBundle::new(&asset_server).at(Vec3::new(5.0, 3.5, 5.0)));
+    // commands.spawn(ObjectBundle::new(&asset_server).at(Vec3::new(5.0, 0.5, 5.0)));
+    // commands.spawn(ObjectBundle::new(&asset_server).at(Vec3::new(5.0, 1.5, 5.0)));
+    // commands.spawn(ObjectBundle::new(&asset_server).at(Vec3::new(5.0, 2.5, 5.0)));
+    // commands.spawn(ObjectBundle::new(&asset_server).at(Vec3::new(5.0, 3.5, 5.0)));
 
-    commands.spawn(ObjectBundle::new(&asset_server).at(Vec3::new(5.0, 0.5, 6.0)));
-    commands.spawn(ObjectBundle::new(&asset_server).at(Vec3::new(5.0, 1.5, 6.0)));
-    commands.spawn(ObjectBundle::new(&asset_server).at(Vec3::new(5.0, 2.5, 6.0)));
-    commands.spawn(ObjectBundle::new(&asset_server).at(Vec3::new(5.0, 3.5, 6.0)));
+    // commands.spawn(ObjectBundle::new(&asset_server).at(Vec3::new(5.0, 0.5, 6.0)));
+    // commands.spawn(ObjectBundle::new(&asset_server).at(Vec3::new(5.0, 1.5, 6.0)));
+    // commands.spawn(ObjectBundle::new(&asset_server).at(Vec3::new(5.0, 2.5, 6.0)));
+    // commands.spawn(ObjectBundle::new(&asset_server).at(Vec3::new(5.0, 3.5, 6.0)));
 
-    commands.spawn(ObjectBundle::new(&asset_server).at(Vec3::new(5.0, 0.5, 7.0)));
-    commands.spawn(ObjectBundle::new(&asset_server).at(Vec3::new(5.0, 1.5, 7.0)));
-    commands.spawn(ObjectBundle::new(&asset_server).at(Vec3::new(5.0, 2.5, 7.0)));
-    commands.spawn(ObjectBundle::new(&asset_server).at(Vec3::new(5.0, 3.5, 7.0)));
+    // commands.spawn(ObjectBundle::new(&asset_server).at(Vec3::new(5.0, 0.5, 7.0)));
+    // commands.spawn(ObjectBundle::new(&asset_server).at(Vec3::new(5.0, 1.5, 7.0)));
+    // commands.spawn(ObjectBundle::new(&asset_server).at(Vec3::new(5.0, 2.5, 7.0)));
+    // commands.spawn(ObjectBundle::new(&asset_server).at(Vec3::new(5.0, 3.5, 7.0)));
 
-    commands.spawn(ObjectBundle::new(&asset_server).at(Vec3::new(-5.0, 0.5, -5.0)));
-    commands.spawn(ObjectBundle::new(&asset_server).at(Vec3::new(10.0, 0.5, 5.0)));
+    // commands.spawn(ObjectBundle::new(&asset_server).at(Vec3::new(-5.0, 0.5, -5.0)));
+    // commands.spawn(ObjectBundle::new(&asset_server).at(Vec3::new(10.0, 0.5, 5.0)));
 
     commands.spawn(DirectionalLightBundle {
         directional_light: DirectionalLight {

@@ -27,6 +27,8 @@
 //! server implementation.
 //!
 
+use game_common::components::object::ObjectId;
+use game_common::id::WeakId;
 pub use game_macros::{net__decode as Decode, net__encode as Encode};
 
 use std::convert::Infallible;
@@ -113,6 +115,28 @@ macro_rules! impl_primitive {
 }
 
 impl_primitive! { u8, u16, u32, u64, u128, i8, i16, i32, i64, i128, f32, f64 }
+
+impl Encode for () {
+    type Error = Infallible;
+
+    fn encode<B>(&self, buf: B) -> Result<(), Self::Error>
+    where
+        B: BufMut,
+    {
+        Ok(())
+    }
+}
+
+impl Decode for () {
+    type Error = Infallible;
+
+    fn decode<B>(buf: B) -> Result<Self, Self::Error>
+    where
+        B: Buf,
+    {
+        Ok(())
+    }
+}
 
 impl Encode for Vec3 {
     type Error = Infallible;
@@ -470,8 +494,8 @@ impl Decode for Packet {
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum EntityKind {
-    Object,
-    Actor,
+    Object(ObjectId),
+    Actor(()),
 }
 
 impl EntityKind {
@@ -479,40 +503,50 @@ impl EntityKind {
     const ACTOR: u8 = 2;
 }
 
+impl From<ObjectId> for EntityKind {
+    #[inline]
+    fn from(value: ObjectId) -> Self {
+        Self::Object(value)
+    }
+}
+
 impl Encode for EntityKind {
     type Error = Infallible;
 
-    fn encode<B>(&self, buf: B) -> Result<(), Self::Error>
+    fn encode<B>(&self, mut buf: B) -> Result<(), Self::Error>
     where
         B: BufMut,
     {
-        let v: u8 = match self {
-            Self::Object => 1,
-            Self::Actor => 2,
-        };
-        v.encode(buf)
+        match self {
+            Self::Object(id) => {
+                1u8.encode(&mut buf)?;
+                id.encode(&mut buf)
+            }
+            Self::Actor(id) => {
+                2u8.encode(&mut buf)?;
+                Ok(())
+            }
+        }
     }
 }
 
 impl Decode for EntityKind {
     type Error = Error;
 
-    fn decode<B>(buf: B) -> Result<Self, Self::Error>
+    fn decode<B>(mut buf: B) -> Result<Self, Self::Error>
     where
         B: Buf,
     {
-        Ok(Self::try_from(u8::decode(buf)?)?)
-    }
-}
+        let typ = u8::decode(&mut buf)?;
 
-impl TryFrom<u8> for EntityKind {
-    type Error = InvalidEntityKind;
+        match typ {
+            Self::OBJECT => {
+                let id = ObjectId::decode(&mut buf)?;
 
-    fn try_from(value: u8) -> Result<Self, Self::Error> {
-        match value {
-            Self::OBJECT => Ok(Self::Object),
-            Self::ACTOR => Ok(Self::Actor),
-            _ => Err(InvalidEntityKind(value)),
+                Ok(Self::Object(id))
+            }
+            Self::ACTOR => Ok(Self::Actor(())),
+            _ => Err(InvalidEntityKind(typ).into()),
         }
     }
 }
@@ -602,3 +636,53 @@ impl From<u8> for InvalidEntityKind {
 
 #[derive(Copy, Clone, Debug, Encode, Decode)]
 pub struct Handshake {}
+
+impl<T> Encode for WeakId<T>
+where
+    T: Encode,
+{
+    type Error = <T as Encode>::Error;
+
+    fn encode<B>(&self, buf: B) -> Result<(), Self::Error>
+    where
+        B: BufMut,
+    {
+        self.0.encode(buf)
+    }
+}
+
+impl<T> Decode for WeakId<T>
+where
+    T: Decode,
+{
+    type Error = <T as Decode>::Error;
+
+    fn decode<B>(buf: B) -> Result<Self, Self::Error>
+    where
+        B: Buf,
+    {
+        T::decode(buf).map(Self)
+    }
+}
+
+impl Encode for ObjectId {
+    type Error = Infallible;
+
+    fn encode<B>(&self, buf: B) -> Result<(), Self::Error>
+    where
+        B: BufMut,
+    {
+        self.0.encode(buf)
+    }
+}
+
+impl Decode for ObjectId {
+    type Error = EofError;
+
+    fn decode<B>(buf: B) -> Result<Self, Self::Error>
+    where
+        B: Buf,
+    {
+        WeakId::decode(buf).map(Self)
+    }
+}

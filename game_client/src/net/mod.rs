@@ -2,10 +2,11 @@ use std::net::SocketAddr;
 use std::sync::{mpsc, Arc};
 use std::time::Duration;
 
-use bevy::prelude::{Commands, Query, Res, Transform};
+use bevy::prelude::{Commands, Query, Res, Transform, VisibilityBundle};
+use game_common::components::object::LoadObject;
 use game_common::components::player::HostPlayer;
 use game_net::conn::{Connection, ConnectionHandle};
-use game_net::proto::{Decode, Packet};
+use game_net::proto::{Decode, EntityKind, Packet};
 use game_net::snapshot::{Command, CommandQueue};
 use game_net::Socket;
 use tokio::runtime::Runtime;
@@ -23,6 +24,8 @@ impl bevy::prelude::Plugin for NetPlugin {
         let queue = CommandQueue::new();
 
         let handle = spawn_conn(queue.clone());
+
+        handle.send_cmd(Command::PlayerJoin);
 
         app.insert_resource(queue)
             .insert_resource(ServerConnection::new(handle))
@@ -71,6 +74,7 @@ fn flush_command_queue(
     mut commands: Commands,
     queue: Res<CommandQueue>,
     mut entities: Query<&mut Transform>,
+    mut conn: Res<ServerConnection>,
 ) {
     while let Some(msg) = queue.pop() {
         match msg.command {
@@ -78,8 +82,20 @@ fn flush_command_queue(
                 id,
                 translation,
                 rotation,
+                kind,
             } => {
-                unimplemented!()
+                let entity = match kind {
+                    EntityKind::Object(id) => commands
+                        .spawn(Transform::from_translation(translation))
+                        .insert(VisibilityBundle::default())
+                        .insert(LoadObject { id })
+                        .id(),
+                    EntityKind::Actor(()) => commands
+                        .spawn(Transform::from_translation(translation))
+                        .id(),
+                };
+
+                conn.send(Command::RegisterEntity { id, entity });
             }
             Command::EntityDestroy { id } => {
                 commands.entity(id).despawn();
@@ -97,6 +113,8 @@ fn flush_command_queue(
             }
             // Never sent to clients
             Command::PlayerJoin => (),
+            Command::PlayerLeave => (),
+            Command::RegisterEntity { id, entity } => unreachable!(),
         }
     }
 }

@@ -47,10 +47,11 @@ impl Entities {
     pub fn translate(&self, frame: Frame) -> Option<Command> {
         match frame {
             Frame::EntityCreate(frame) => {
-                let id = self.get(frame.entity)?;
+                // let id = self.get(frame.entity)?;
 
                 Some(Command::EntityCreate {
-                    id,
+                    id: frame.entity,
+                    kind: frame.kind,
                     translation: frame.translation,
                     rotation: frame.rotation,
                 })
@@ -90,18 +91,15 @@ impl Entities {
         match cmd {
             Command::EntityCreate {
                 id,
+                kind,
                 translation,
                 rotation,
-            } => {
-                let id = self.get(id)?;
-
-                Some(Frame::EntityCreate(EntityCreate {
-                    entity: id,
-                    translation,
-                    rotation,
-                    kind: EntityKind::Object,
-                }))
-            }
+            } => Some(Frame::EntityCreate(EntityCreate {
+                entity: id,
+                translation,
+                rotation,
+                kind,
+            })),
             Command::EntityDestroy { id } => {
                 let id = self.get(id)?;
 
@@ -130,6 +128,7 @@ impl Entities {
 
                 Some(Frame::SpawnHost(SpawnHost { entity: id }))
             }
+            Command::RegisterEntity { id: _, entity: _ } => unreachable!(),
         }
     }
 }

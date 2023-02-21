@@ -3,23 +3,26 @@ use game_common::bundles::ActorBundle;
 use game_common::components::actor::Actor;
 use game_common::components::object::Object;
 use game_common::components::player::Player;
-use game_common::world::entity::Object as WorldObject;
+use game_common::world::entity::{Actor as WorldActor, Object as WorldObject};
 use game_common::world::source::StreamingSource;
 use game_net::proto::Frame;
 use game_net::snapshot::{Command, CommandQueue, Snapshot};
 
 use crate::conn::Connections;
+use crate::entity::ServerEntityGenerator;
 
 pub struct ServerPlugins;
 
 impl Plugin for ServerPlugins {
     fn build(&self, app: &mut bevy::prelude::App) {
-        app.add_system(flush_command_queue)
+        app.insert_resource(ServerEntityGenerator::new())
+            .add_system(flush_command_queue)
             .add_system(update_snapshots);
     }
 }
 
 fn flush_command_queue(
+    mut gen: Res<ServerEntityGenerator>,
     mut commands: Commands,
     mut connections: ResMut<Connections>,
     queue: Res<CommandQueue>,
@@ -30,6 +33,7 @@ fn flush_command_queue(
 
         match msg.command {
             Command::EntityCreate {
+                kind,
                 id,
                 translation,
                 rotation,
@@ -52,16 +56,24 @@ fn flush_command_queue(
                     .insert(StreamingSource::default())
                     .id();
 
+                connections.get_mut(msg.id).unwrap().data.handle.send_cmd(
+                    Command::RegisterEntity {
+                        id: gen.generate(),
+                        entity: id,
+                    },
+                );
+
                 connections.set_host(msg.id, id);
             }
             Command::PlayerLeave => {}
             Command::SpawnHost { id } => (),
+            Command::RegisterEntity { id, entity } => unreachable!(),
         }
     }
 }
 
 fn update_snapshots(
-    mut connections: ResMut<Connections>,
+    connections: Res<Connections>,
     // FIXME: Make dedicated type for all shared entities.
     mut entities: Query<(Entity, &Transform, Option<&Object>, Option<&Actor>)>,
 ) {
@@ -75,7 +87,11 @@ fn update_snapshots(
             }
             .into(),
             None => match actor {
-                Some(act) => continue,
+                Some(act) => WorldActor {
+                    id: 0,
+                    transform: *transform,
+                }
+                .into(),
                 None => continue,
             },
         };

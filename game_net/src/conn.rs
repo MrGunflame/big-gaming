@@ -104,6 +104,11 @@ impl Connection {
         if let Poll::Ready(cmd) = self.chan_out.poll_recv(cx) {
             let cmd = cmd.unwrap();
 
+            if let Command::RegisterEntity { id, entity } = cmd {
+                self.entities.insert(entity, id);
+                return Poll::Ready(());
+            }
+
             tracing::info!("sending {:?}", cmd);
 
             let socket = self.socket.clone();
@@ -123,6 +128,8 @@ impl Connection {
             self.state = ConnectionState::Write(Box::pin(async move {
                 let mut buf = Vec::with_capacity(1500);
                 packet.encode(&mut buf).unwrap();
+
+                tracing::info!("sending {:?} ({} bytes)", packet, buf.len());
 
                 socket.send_to(&buf, peer).await.unwrap();
             }));

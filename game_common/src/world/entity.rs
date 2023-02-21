@@ -30,8 +30,8 @@ impl Object {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Actor {
-    id: u32,
-    transform: Transform,
+    pub id: u32,
+    pub transform: Transform,
 }
 
 #[derive(Clone, Debug, PartialEq)]

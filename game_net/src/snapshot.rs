@@ -1,14 +1,14 @@
 use bevy_ecs::prelude::Entity;
 use bevy_ecs::system::Resource;
+use game_common::net::ServerEntity;
 use game_common::world::entity::Entity as EntityBody;
 use glam::{Quat, Vec3};
-use parking_lot::{Mutex, RwLock};
+use parking_lot::Mutex;
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 
 use crate::conn::ConnectionId;
-use crate::entity::Entities;
-use crate::proto::Frame;
+use crate::proto::EntityKind;
 
 #[derive(Clone, Debug, Default)]
 pub struct Snapshot {
@@ -70,7 +70,8 @@ pub struct ConnectionMessage {
 #[derive(Clone, Debug)]
 pub enum Command {
     EntityCreate {
-        id: Entity,
+        id: ServerEntity,
+        kind: EntityKind,
         translation: Vec3,
         rotation: Quat,
     },
@@ -89,6 +90,11 @@ pub enum Command {
     PlayerLeave,
     SpawnHost {
         id: Entity,
+    },
+    // FIXME: Should this be another type?
+    RegisterEntity {
+        id: ServerEntity,
+        entity: Entity,
     },
 }
 

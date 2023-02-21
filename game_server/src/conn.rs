@@ -4,7 +4,10 @@ use std::sync::Arc;
 
 use ahash::HashMap;
 use bevy::prelude::{Entity, Resource};
+use game_common::net::ServerEntity;
+use game_common::world::entity::Entity as EntityBody;
 use game_net::conn::{ConnectionHandle, ConnectionId};
+use game_net::proto::EntityKind;
 use game_net::snapshot::{Command, EntityChange, Snapshot};
 use parking_lot::RwLock;
 
@@ -61,7 +64,7 @@ impl Connections {
 }
 
 #[derive(Debug)]
-struct ConnectionData {
+pub struct ConnectionData {
     pub snapshot: RwLock<Snapshot>,
     pub handle: ConnectionHandle,
     pub host: RwLock<Option<Entity>>,
@@ -92,7 +95,7 @@ impl<'a> Iterator for IterMut<'a> {
 }
 
 pub struct ConnectionMut {
-    data: Arc<ConnectionData>,
+    pub data: Arc<ConnectionData>,
     /// The *new* snapshot (cloned from the one in data).
     snapshot: Snapshot,
     id: ConnectionId,
@@ -114,15 +117,34 @@ impl DerefMut for ConnectionMut {
 
 impl Drop for ConnectionMut {
     fn drop(&mut self) {
-        let prev = self.data.snapshot.read();
+        let mut prev = self.data.snapshot.write();
         let delta = prev.delta(&self.snapshot);
+
+        *prev = self.snapshot.clone();
 
         // Drop the lock as early as possible.
         drop(prev);
 
         for change in delta {
             let cmd = match change {
-                EntityChange::Create { id, content } => unimplemented!(),
+                EntityChange::Create { id, content } => Command::EntityCreate {
+                    id: ServerEntity(0),
+                    kind: match &content {
+                        EntityBody::Object(obj) => EntityKind::Object(obj.id),
+                        EntityBody::Actor(act) => EntityKind::Actor(()),
+                        _ => unimplemented!(),
+                    },
+                    translation: match &content {
+                        EntityBody::Object(obj) => obj.transform.translation,
+                        EntityBody::Actor(act) => act.transform.translation,
+                        _ => unimplemented!(),
+                    },
+                    rotation: match &content {
+                        EntityBody::Object(obj) => obj.transform.rotation,
+                        EntityBody::Actor(act) => act.transform.rotation,
+                        _ => unimplemented!(),
+                    },
+                },
                 EntityChange::Update { id, content } => unimplemented!(),
                 EntityChange::Destroy(id) => Command::EntityDestroy { id },
             };
