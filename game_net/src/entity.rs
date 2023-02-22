@@ -2,19 +2,20 @@
 
 use std::collections::HashMap;
 
-use bevy_ecs::entity::Entity;
+use game_common::entity::EntityId;
 use game_common::net::ServerEntity;
 
 use crate::proto::{
-    EntityCreate, EntityDestroy, EntityKind, EntityRotate, EntityTranslate, Frame, PlayerJoin,
-    PlayerLeave, SpawnHost,
+    EntityCreate, EntityDestroy, EntityRotate, EntityTranslate, Frame, PlayerJoin, PlayerLeave,
+    SpawnHost,
 };
 use crate::snapshot::Command;
 
 #[derive(Clone, Debug, Default)]
 pub struct Entities {
-    host: HashMap<Entity, ServerEntity>,
-    remote: HashMap<ServerEntity, Entity>,
+    host: HashMap<EntityId, ServerEntity>,
+    remote: HashMap<ServerEntity, EntityId>,
+    next_server_id: u64,
 }
 
 impl Entities {
@@ -22,10 +23,11 @@ impl Entities {
         Self {
             host: HashMap::new(),
             remote: HashMap::new(),
+            next_server_id: 0,
         }
     }
 
-    pub fn insert(&mut self, local: Entity, remote: ServerEntity) {
+    pub fn insert(&mut self, local: EntityId, remote: ServerEntity) {
         self.host.insert(local, remote);
         self.remote.insert(remote, local);
     }
@@ -44,13 +46,15 @@ impl Entities {
         entity.get(self)
     }
 
-    pub fn translate(&self, frame: Frame) -> Option<Command> {
+    /// Unpacks a raw [`Frame`] into a game [`Command`].
+    pub fn unpack(&mut self, frame: Frame) -> Option<Command> {
         match frame {
             Frame::EntityCreate(frame) => {
-                // let id = self.get(frame.entity)?;
+                let id = EntityId::new();
+                self.insert(id, frame.entity);
 
                 Some(Command::EntityCreate {
-                    id: frame.entity,
+                    id,
                     kind: frame.kind,
                     translation: frame.translation,
                     rotation: frame.rotation,
@@ -58,6 +62,7 @@ impl Entities {
             }
             Frame::EntityDestroy(frame) => {
                 let id = self.get(frame.entity)?;
+                self.remove(id);
 
                 Some(Command::EntityDestroy { id })
             }
@@ -87,19 +92,24 @@ impl Entities {
         }
     }
 
-    pub fn translate_cmd(&self, cmd: Command) -> Option<Frame> {
+    pub fn pack(&mut self, cmd: Command) -> Option<Frame> {
         match cmd {
             Command::EntityCreate {
                 id,
                 kind,
                 translation,
                 rotation,
-            } => Some(Frame::EntityCreate(EntityCreate {
-                entity: id,
-                translation,
-                rotation,
-                kind,
-            })),
+            } => {
+                let entity = self.new_id();
+                self.insert(id, entity);
+
+                Some(Frame::EntityCreate(EntityCreate {
+                    entity,
+                    translation,
+                    rotation,
+                    kind,
+                }))
+            }
             Command::EntityDestroy { id } => {
                 let id = self.get(id)?;
 
@@ -128,8 +138,13 @@ impl Entities {
 
                 Some(Frame::SpawnHost(SpawnHost { entity: id }))
             }
-            Command::RegisterEntity { id: _, entity: _ } => unreachable!(),
         }
+    }
+
+    fn new_id(&mut self) -> ServerEntity {
+        let id = self.next_server_id;
+        self.next_server_id += 1;
+        ServerEntity(id)
     }
 }
 
@@ -143,7 +158,7 @@ pub trait ServerEntityTranslation: private::Sealed {
     fn remove(self, entities: &mut Entities) -> Option<Self::Target>;
 }
 
-impl ServerEntityTranslation for Entity {
+impl ServerEntityTranslation for EntityId {
     type Target = ServerEntity;
 
     #[inline]
@@ -160,7 +175,7 @@ impl ServerEntityTranslation for Entity {
 }
 
 impl ServerEntityTranslation for ServerEntity {
-    type Target = Entity;
+    type Target = EntityId;
 
     #[inline]
     fn get(self, entities: &Entities) -> Option<Self::Target> {
@@ -176,7 +191,7 @@ impl ServerEntityTranslation for ServerEntity {
 }
 
 #[doc(hidden)]
-impl private::Sealed for Entity {}
+impl private::Sealed for EntityId {}
 
 #[doc(hidden)]
 impl private::Sealed for ServerEntity {}

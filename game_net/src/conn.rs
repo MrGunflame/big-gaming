@@ -48,6 +48,7 @@ pub struct Connection {
     queue: CommandQueue,
     entities: Entities,
     peer: SocketAddr,
+    srv_ent_id: u64,
 }
 
 impl Connection {
@@ -66,6 +67,7 @@ impl Connection {
             queue,
             entities: Entities::new(),
             peer,
+            srv_ent_id: 0,
         };
 
         tokio::task::spawn(async move {
@@ -86,10 +88,12 @@ impl Connection {
         assert!(matches!(self.state, ConnectionState::Read));
 
         if let Poll::Ready(packet) = self.stream.poll_recv(cx) {
+            tracing::info!("recv {:?}", packet);
+
             let packet = packet.unwrap();
 
             for frame in packet.frames {
-                let Some(cmd) = self.entities.translate(frame) else {
+                let Some(cmd) = self.entities.unpack(frame) else {
                     tracing::debug!("failed to translate cmd");
                     continue;
                 };
@@ -104,16 +108,11 @@ impl Connection {
         if let Poll::Ready(cmd) = self.chan_out.poll_recv(cx) {
             let cmd = cmd.unwrap();
 
-            if let Command::RegisterEntity { id, entity } = cmd {
-                self.entities.insert(entity, id);
-                return Poll::Ready(());
-            }
-
             tracing::info!("sending {:?}", cmd);
 
             let socket = self.socket.clone();
 
-            let frame = self.entities.translate_cmd(cmd).unwrap();
+            let frame = self.entities.pack(cmd).unwrap();
 
             let packet = Packet {
                 header: Header {
@@ -240,8 +239,8 @@ pub struct ConnectionHandle {
 }
 
 impl ConnectionHandle {
-    pub fn send(&self, packet: Packet) {
-        self.tx.try_send(packet).unwrap();
+    pub async fn send(&self, packet: Packet) {
+        self.tx.send(packet).await.unwrap();
     }
 
     pub fn send_cmd(&self, cmd: Command) {

@@ -6,6 +6,7 @@ use conn::Connections;
 use game_common::archive::loader::ModuleLoader;
 use game_common::archive::GameArchive;
 use game_common::components::object::{Object, ObjectId};
+use game_common::entity::{Entity, EntityData, EntityId};
 use game_common::id::WeakId;
 use game_core::CorePlugins;
 use plugins::ServerPlugins;
@@ -63,7 +64,16 @@ async fn main() {
 }
 
 fn setup(mut commands: Commands) {
-    commands.spawn(Transform::default()).insert(Object {
-        id: ObjectId(0.into()),
-    });
+    commands
+        .spawn(Transform::default())
+        .insert(Object {
+            id: ObjectId(0.into()),
+        })
+        .insert(Entity {
+            id: EntityId::new(),
+            transform: Transform::default(),
+            data: EntityData::Object {
+                id: ObjectId(0.into()),
+            },
+        });
 }

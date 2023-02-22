@@ -3,9 +3,8 @@ use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 
 use ahash::HashMap;
-use bevy::prelude::{Entity, Resource};
-use game_common::net::ServerEntity;
-use game_common::world::entity::Entity as EntityBody;
+use bevy::prelude::Resource;
+use game_common::entity::{EntityData, EntityId};
 use game_net::conn::{ConnectionHandle, ConnectionId};
 use game_net::proto::EntityKind;
 use game_net::snapshot::{Command, EntityChange, Snapshot};
@@ -25,7 +24,7 @@ impl Connections {
         inner.insert(handle.id, Arc::new(ConnectionData::new(handle)));
     }
 
-    pub fn set_host<T>(&self, id: T, host: Entity)
+    pub fn set_host<T>(&self, id: T, host: EntityId)
     where
         T: Borrow<ConnectionId>,
     {
@@ -67,7 +66,7 @@ impl Connections {
 pub struct ConnectionData {
     pub snapshot: RwLock<Snapshot>,
     pub handle: ConnectionHandle,
-    pub host: RwLock<Option<Entity>>,
+    pub host: RwLock<Option<EntityId>>,
 }
 
 impl ConnectionData {
@@ -127,26 +126,29 @@ impl Drop for ConnectionMut {
 
         for change in delta {
             let cmd = match change {
-                EntityChange::Create { id, content } => Command::EntityCreate {
-                    id: ServerEntity(0),
-                    kind: match &content {
-                        EntityBody::Object(obj) => EntityKind::Object(obj.id),
-                        EntityBody::Actor(act) => EntityKind::Actor(()),
-                        _ => unimplemented!(),
+                EntityChange::Create { id, data } => Command::EntityCreate {
+                    id,
+                    kind: match data.data {
+                        EntityData::Object { id } => EntityKind::Object(id),
+                        EntityData::Actor {} => EntityKind::Actor(()),
                     },
-                    translation: match &content {
-                        EntityBody::Object(obj) => obj.transform.translation,
-                        EntityBody::Actor(act) => act.transform.translation,
-                        _ => unimplemented!(),
-                    },
-                    rotation: match &content {
-                        EntityBody::Object(obj) => obj.transform.rotation,
-                        EntityBody::Actor(act) => act.transform.rotation,
-                        _ => unimplemented!(),
-                    },
+                    translation: data.transform.translation,
+                    rotation: data.transform.rotation,
                 },
-                EntityChange::Update { id, content } => unimplemented!(),
-                EntityChange::Destroy(id) => Command::EntityDestroy { id },
+                EntityChange::Create { id, data } => Command::EntityCreate {
+                    id,
+                    kind: match &data.data {
+                        EntityData::Object { id } => EntityKind::Object(*id),
+                        EntityData::Actor {} => EntityKind::Actor(()),
+                    },
+                    translation: data.transform.translation,
+                    rotation: data.transform.rotation,
+                },
+                EntityChange::Update { id, data } => Command::EntityTranslate {
+                    id,
+                    translation: data.transform.translation,
+                },
+                EntityChange::Destroy { id } => Command::EntityDestroy { id },
             };
 
             self.data.handle.send_cmd(cmd);

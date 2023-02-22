@@ -16,6 +16,7 @@ pub mod archive;
 pub mod bundles;
 pub mod components;
 pub mod ecs;
+pub mod entity;
 pub mod id;
 pub mod localization;
 pub mod math;

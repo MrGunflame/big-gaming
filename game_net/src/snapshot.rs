@@ -1,7 +1,6 @@
-use bevy_ecs::prelude::Entity;
 use bevy_ecs::system::Resource;
+use game_common::entity::{Entity, EntityId};
 use game_common::net::ServerEntity;
-use game_common::world::entity::Entity as EntityBody;
 use glam::{Quat, Vec3};
 use parking_lot::Mutex;
 use std::collections::{HashMap, VecDeque};
@@ -12,7 +11,8 @@ use crate::proto::EntityKind;
 
 #[derive(Clone, Debug, Default)]
 pub struct Snapshot {
-    entities: HashMap<Entity, EntityBody>,
+    // FIXME: Can be hashset
+    entities: HashMap<EntityId, Entity>,
 }
 
 impl Snapshot {
@@ -22,11 +22,11 @@ impl Snapshot {
         }
     }
 
-    pub fn update(&mut self, id: Entity, new: EntityBody) {
-        match self.entities.get_mut(&id) {
-            Some(ent) => *ent = new,
+    pub fn update(&mut self, entity: Entity) {
+        match self.entities.get_mut(&entity.id) {
+            Some(ent) => *ent = entity,
             None => {
-                self.entities.insert(id, new);
+                self.entities.insert(entity.id, entity);
             }
         }
     }
@@ -40,21 +40,18 @@ impl Snapshot {
             match entities.remove(id) {
                 Some(new) => {
                     if body != &new {
-                        delta.push(EntityChange::Update {
-                            id: *id,
-                            content: new,
-                        });
+                        delta.push(EntityChange::Update { id: *id, data: new });
                     }
                 }
                 None => {
-                    delta.push(EntityChange::Destroy(*id));
+                    delta.push(EntityChange::Destroy { id: *id });
                 }
             }
         }
 
         // New entities
         for (id, body) in entities {
-            delta.push(EntityChange::Create { id, content: body });
+            delta.push(EntityChange::Create { id, data: body });
         }
 
         delta
@@ -70,31 +67,26 @@ pub struct ConnectionMessage {
 #[derive(Clone, Debug)]
 pub enum Command {
     EntityCreate {
-        id: ServerEntity,
+        id: EntityId,
         kind: EntityKind,
         translation: Vec3,
         rotation: Quat,
     },
     EntityDestroy {
-        id: Entity,
+        id: EntityId,
     },
     EntityTranslate {
-        id: Entity,
+        id: EntityId,
         translation: Vec3,
     },
     EntityRotate {
-        id: Entity,
+        id: EntityId,
         rotation: Quat,
     },
     PlayerJoin,
     PlayerLeave,
     SpawnHost {
-        id: Entity,
-    },
-    // FIXME: Should this be another type?
-    RegisterEntity {
-        id: ServerEntity,
-        entity: Entity,
+        id: EntityId,
     },
 }
 
@@ -123,7 +115,7 @@ impl CommandQueue {
 
 #[derive(Clone, Debug)]
 pub enum EntityChange {
-    Create { id: Entity, content: EntityBody },
-    Update { id: Entity, content: EntityBody },
-    Destroy(Entity),
+    Create { id: EntityId, data: Entity },
+    Update { id: EntityId, data: Entity },
+    Destroy { id: EntityId },
 }

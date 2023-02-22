@@ -2,9 +2,10 @@ use std::net::SocketAddr;
 use std::sync::{mpsc, Arc};
 use std::time::Duration;
 
-use bevy::prelude::{Commands, Query, Res, Transform, VisibilityBundle};
+use bevy::prelude::{Commands, Query, Res, ResMut, Transform, VisibilityBundle};
 use game_common::components::object::LoadObject;
 use game_common::components::player::HostPlayer;
+use game_common::entity::{Entity, EntityData, EntityMap};
 use game_net::conn::{Connection, ConnectionHandle};
 use game_net::proto::{Decode, EntityKind, Packet};
 use game_net::snapshot::{Command, CommandQueue};
@@ -28,6 +29,7 @@ impl bevy::prelude::Plugin for NetPlugin {
         handle.send_cmd(Command::PlayerJoin);
 
         app.insert_resource(queue)
+            .insert_resource(EntityMap::default())
             .insert_resource(ServerConnection::new(handle))
             .add_system(flush_command_queue);
     }
@@ -62,7 +64,7 @@ fn spawn_conn(queue: CommandQueue) -> ConnectionHandle {
                     }
                 };
 
-                handle.send(packet);
+                handle.send(packet).await;
             }
         });
     });
@@ -75,6 +77,7 @@ fn flush_command_queue(
     queue: Res<CommandQueue>,
     mut entities: Query<&mut Transform>,
     mut conn: Res<ServerConnection>,
+    mut map: ResMut<EntityMap>,
 ) {
     while let Some(msg) = queue.pop() {
         match msg.command {
@@ -85,36 +88,52 @@ fn flush_command_queue(
                 kind,
             } => {
                 let entity = match kind {
-                    EntityKind::Object(id) => commands
+                    EntityKind::Object(oid) => commands
                         .spawn(Transform::from_translation(translation))
                         .insert(VisibilityBundle::default())
-                        .insert(LoadObject { id })
+                        .insert(LoadObject { id: oid })
+                        .insert(Entity {
+                            id,
+                            transform: Transform::from_translation(translation),
+                            data: EntityData::Object { id: oid },
+                        })
                         .id(),
                     EntityKind::Actor(()) => commands
                         .spawn(Transform::from_translation(translation))
+                        .insert(Entity {
+                            id,
+                            transform: Transform::from_translation(translation),
+                            data: EntityData::Actor {},
+                        })
                         .id(),
                 };
 
-                conn.send(Command::RegisterEntity { id, entity });
+                map.insert(id, entity);
             }
             Command::EntityDestroy { id } => {
-                commands.entity(id).despawn();
+                let ent = map.get(id).unwrap();
+                commands.entity(ent).despawn();
             }
             Command::EntityTranslate { id, translation } => {
-                let mut transform = entities.get_mut(id).unwrap();
+                let ent = map.get(id).unwrap();
+
+                let mut transform = entities.get_mut(ent).unwrap();
                 transform.translation = translation;
             }
             Command::EntityRotate { id, rotation } => {
-                let mut transform = entities.get_mut(id).unwrap();
+                let ent = map.get(id).unwrap();
+
+                let mut transform = entities.get_mut(ent).unwrap();
                 transform.rotation = rotation;
             }
             Command::SpawnHost { id } => {
-                commands.entity(id).insert(HostPlayer);
+                let ent = map.get(id).unwrap();
+
+                commands.entity(ent).insert(HostPlayer);
             }
             // Never sent to clients
             Command::PlayerJoin => (),
             Command::PlayerLeave => (),
-            Command::RegisterEntity { id, entity } => unreachable!(),
         }
     }
 }
