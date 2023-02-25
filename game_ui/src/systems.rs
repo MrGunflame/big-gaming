@@ -5,7 +5,7 @@ use bevy::window::Windows;
 
 use game_common::components::actor::{ActorFlag, ActorFlags, Death};
 use game_common::components::player::HostPlayer;
-use game_common::scene::{Scene, SceneTransition};
+use game_common::scene::{Scene, SceneTransition, ServerError};
 use game_input::CanMouseMove;
 
 use crate::cursor::Cursor;
@@ -80,6 +80,11 @@ pub fn scene_transition(
                 state.push(Weapon);
             }
             Scene::ServerConnect { addr } => (),
+            Scene::ServerError(err) => match err {
+                ServerError::Connection(err) => {
+                    state.push(crate::scenes::ServerError::new(err.clone()));
+                }
+            },
         }
     }
 }

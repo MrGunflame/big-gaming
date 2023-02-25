@@ -1,7 +1,7 @@
 use std::net::ToSocketAddrs;
 
 use bevy::prelude::{
-    Commands, DespawnRecursiveExt, Entity, EventReader, EventWriter, Query, Res, ResMut,
+    Commands, DespawnRecursiveExt, Entity, EventReader, EventWriter, Events, Query, Res, ResMut,
 };
 use game_common::scene::{Scene, SceneTransition};
 use game_net::snapshot::CommandQueue;
@@ -15,26 +15,26 @@ impl bevy::prelude::Plugin for ScenePlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
         app.add_event::<SceneTransition>()
             .add_startup_system(startup_transition)
-            .add_system(despawn_scene)
+            // .add_system(despawn_scene)
             .add_system(server_connect);
     }
 }
 
-pub fn despawn_scene(
-    mut commands: Commands,
-    mut events: EventReader<SceneTransition>,
-    mut entities: Query<(Entity, &Scene)>,
-) {
-    for event in events.iter() {
-        for (entity, scene) in &mut entities {
-            if event.to == *scene {
-                continue;
-            }
+// pub fn despawn_scene(
+//     mut commands: Commands,
+//     mut events: EventReader<SceneTransition>,
+//     mut entities: Query<(Entity, &Scene)>,
+// ) {
+//     for event in events.iter() {
+//         for (entity, scene) in &mut entities {
+//             if matches!(&event.to, scene) {
+//                 continue;
+//             }
 
-            commands.entity(entity).despawn_recursive();
-        }
-    }
-}
+//             commands.entity(entity).despawn_recursive();
+//         }
+//     }
+// }
 
 fn startup_transition(mut writer: EventWriter<SceneTransition>) {
     writer.send(SceneTransition {
@@ -55,8 +55,6 @@ fn server_connect(
             _ => continue,
         };
 
-        // TODO: Use async API
-        let addr = addr.to_socket_addrs().unwrap().next().unwrap();
         conn.connect(queue.clone(), addr);
     }
 }

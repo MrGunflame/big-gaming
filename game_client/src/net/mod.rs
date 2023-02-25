@@ -4,7 +4,6 @@ use std::sync::{mpsc, Arc};
 use bevy::prelude::{Commands, Query, Res, ResMut, Transform};
 use game_common::bundles::{HostPlayerBundle, ObjectBundle};
 use game_common::components::object::ObjectId;
-use game_common::components::player::HostPlayer;
 use game_common::entity::{Entity, EntityData, EntityMap};
 use game_net::conn::{Connection, ConnectionHandle};
 use game_net::proto::{Decode, EntityKind, Packet};
@@ -29,26 +28,37 @@ impl bevy::prelude::Plugin for NetPlugin {
         app.insert_resource(queue)
             .insert_resource(map.clone())
             .insert_resource(ServerConnection::stub(map))
-            .add_system(flush_command_queue);
+            .add_system(flush_command_queue)
+            .add_system(conn::update_connection_state);
     }
 }
 
-pub fn spawn_conn(queue: CommandQueue, addr: SocketAddr) -> ConnectionHandle {
+pub fn spawn_conn(
+    queue: CommandQueue,
+    addr: SocketAddr,
+) -> Result<ConnectionHandle, Box<dyn std::error::Error + Send + Sync + 'static>> {
     let (tx, rx) = mpsc::channel();
 
     std::thread::spawn(move || {
         let rt = Runtime::new().unwrap();
 
         rt.block_on(async move {
-            let sock = Arc::new(Socket::connect(addr).unwrap());
+            let sock = match Socket::connect(addr) {
+                Ok(s) => Arc::new(s),
+                Err(err) => {
+                    tx.send(Err(err.into())).unwrap();
+                    return;
+                }
+            };
             let (conn, handle) = Connection::new(addr, queue, sock.clone());
+
             tokio::task::spawn(async move {
                 conn.await.unwrap();
             });
 
             tracing::info!("connected");
 
-            tx.send(handle.clone()).unwrap();
+            tx.send(Ok(handle.clone())).unwrap();
 
             handle.send_cmd(Command::PlayerJoin);
 
