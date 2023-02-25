@@ -129,6 +129,10 @@ impl InterfaceState {
         }
     }
 
+    pub fn clear(&mut self) {
+        while self.pop() {}
+    }
+
     /// Removes the [`Widget`] at the given `index` and recalculate flags.
     fn remove_in(&mut self, index: usize) {
         self.widgets.remove(index).destroy();

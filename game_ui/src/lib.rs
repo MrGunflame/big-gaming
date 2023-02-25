@@ -1,6 +1,7 @@
 //! UI related systems
 mod cursor;
 mod interface;
+mod scenes;
 mod systems;
 
 pub mod widgets;
@@ -28,6 +29,7 @@ impl Plugin for UiPlugin {
             .add_startup_system(widgets::register_hotkeys)
             .add_system(systems::capture_pointer_keys)
             .add_system(systems::death)
+            .add_system(systems::scene_transition)
             .add_stage("InterfaceStage", InterfaceStage);
 
         widgets::register_hotkey_systems(app);

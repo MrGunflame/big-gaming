@@ -24,28 +24,22 @@ impl bevy::prelude::Plugin for NetPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
         let queue = CommandQueue::new();
 
-        let handle = spawn_conn(queue.clone());
-
-        handle.send_cmd(Command::PlayerJoin);
-
         let map = EntityMap::default();
 
         app.insert_resource(queue)
             .insert_resource(map.clone())
-            .insert_resource(ServerConnection::new(handle, map))
+            .insert_resource(ServerConnection::stub(map))
             .add_system(flush_command_queue);
     }
 }
 
-fn spawn_conn(queue: CommandQueue) -> ConnectionHandle {
+pub fn spawn_conn(queue: CommandQueue, addr: SocketAddr) -> ConnectionHandle {
     let (tx, rx) = mpsc::channel();
 
     std::thread::spawn(move || {
         let rt = Runtime::new().unwrap();
 
         rt.block_on(async move {
-            let addr = SocketAddr::from(([127, 0, 0, 1], 6942));
-
             let sock = Arc::new(Socket::connect(addr).unwrap());
             let (conn, handle) = Connection::new(addr, queue, sock.clone());
             tokio::task::spawn(async move {
@@ -55,6 +49,8 @@ fn spawn_conn(queue: CommandQueue) -> ConnectionHandle {
             tracing::info!("connected");
 
             tx.send(handle.clone()).unwrap();
+
+            handle.send_cmd(Command::PlayerJoin);
 
             loop {
                 let mut buf = vec![0; 1500];

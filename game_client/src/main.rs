@@ -10,6 +10,7 @@ mod log;
 mod net;
 mod plugins;
 mod prev_transform;
+mod scene;
 mod sky;
 mod systems;
 mod ui;
@@ -98,6 +99,7 @@ fn main() {
         .add_plugin(CameraPlugin)
         // .add_plugin(ProjectilePlugin)
         // .add_plugin(CombatPlugin)
+        .add_plugin(scene::ScenePlugin)
         .add_plugin(UiPlugin)
         .add_plugin(HotkeyPlugin)
         .add_plugin(MovementPlugin)
@@ -128,14 +130,14 @@ fn setup(
     asset_server: Res<AssetServer>,
 ) {
     // THE FLOOOR
-    commands
-        .spawn(PbrBundle {
-            mesh: meshes.add(Mesh::from(shape::Plane { size: 1.0 })),
-            material: materials.add(Color::rgb(1.0, 0.0, 0.0).into()),
-            ..Default::default()
-        })
-        .insert(RigidBody::Fixed)
-        .insert(Collider::cuboid(1000.0, 0.1, 1000.0));
+    // commands
+    //     .spawn(PbrBundle {
+    //         mesh: meshes.add(Mesh::from(shape::Plane { size: 1.0 })),
+    //         material: materials.add(Color::rgb(1.0, 0.0, 0.0).into()),
+    //         ..Default::default()
+    //     })
+    //     .insert(RigidBody::Fixed)
+    //     .insert(Collider::cuboid(1000.0, 0.1, 1000.0));
 
     // commands.spawn(ObjectBundle::new(&asset_server).at(Vec3::new(5.0, 0.5, 5.0)));
     // commands.spawn(ObjectBundle::new(&asset_server).at(Vec3::new(5.0, 1.5, 5.0)));
@@ -255,68 +257,68 @@ fn setup(
     // });
 
     // INITIATE THE WALL
-    for x in 0..1 {
-        for y in 0..1 {
-            for z in 0..1 {
-                // commands
-                //     .spawn_bundle(PbrBundle {
-                //         mesh: meshes.add(Mesh::from(shape::Box {
-                //             min_x: 0.0,
-                //             max_x: 1.0,
-                //             min_y: 0.0,
-                //             max_y: 1.0,
-                //             min_z: 0.0,
-                //             max_z: 1.0,
-                //         })),
-                //         material: materials.add(Color::rgb(1.0, 1.0, 1.0).into()),
-                //         transform: Transform::from_xyz(
-                //             10.0 + x as f32,
-                //             10.0 + y as f32,
-                //             10.0 + z as f32,
-                //         ),
-                //         ..Default::default()
-                //     })
-                //     .insert(RigidBody::Dynamic)
-                //     .insert(GravityScale(1.0))
-                //     .insert(Sleeping::disabled())
-                //     .insert(Ccd::enabled())
-                //     .insert(Collider::cuboid(1.0, 1.0, 1.0))
-                //     .insert(Restitution::coefficient(0.7))
-                //     .insert(ColliderMassProperties::Density(1.0));
+    // for x in 0..1 {
+    //     for y in 0..1 {
+    //         for z in 0..1 {
+    // commands
+    //     .spawn_bundle(PbrBundle {
+    //         mesh: meshes.add(Mesh::from(shape::Box {
+    //             min_x: 0.0,
+    //             max_x: 1.0,
+    //             min_y: 0.0,
+    //             max_y: 1.0,
+    //             min_z: 0.0,
+    //             max_z: 1.0,
+    //         })),
+    //         material: materials.add(Color::rgb(1.0, 1.0, 1.0).into()),
+    //         transform: Transform::from_xyz(
+    //             10.0 + x as f32,
+    //             10.0 + y as f32,
+    //             10.0 + z as f32,
+    //         ),
+    //         ..Default::default()
+    //     })
+    //     .insert(RigidBody::Dynamic)
+    //     .insert(GravityScale(1.0))
+    //     .insert(Sleeping::disabled())
+    //     .insert(Ccd::enabled())
+    //     .insert(Collider::cuboid(1.0, 1.0, 1.0))
+    //     .insert(Restitution::coefficient(0.7))
+    //     .insert(ColliderMassProperties::Density(1.0));
 
-                // let scene = asset_server.load("WaterBottle.gltf#Scene0");
-                // let scene = asset_server.load("thing2.glb#Scene0");
+    // let scene = asset_server.load("WaterBottle.gltf#Scene0");
+    // let scene = asset_server.load("thing2.glb#Scene0");
 
-                // let collider = AsyncSceneCollider {
-                //     handle: scene.clone_weak(),
-                //     shape: Some(ComputedColliderShape::TriMesh),
-                //     named_shapes: default(),
-                // };
+    // let collider = AsyncSceneCollider {
+    //     handle: scene.clone_weak(),
+    //     shape: Some(ComputedColliderShape::TriMesh),
+    //     named_shapes: default(),
+    // };
 
-                let collider = Collider::cuboid(1.0, 1.0, 1.0);
+    // let collider = Collider::cuboid(1.0, 1.0, 1.0);
 
-                // let collider =
-                //     Collider::from_bevy_mesh(&scene, &ComputedColliderShape::TriMesh).unwrap();
+    // let collider =
+    //     Collider::from_bevy_mesh(&scene, &ComputedColliderShape::TriMesh).unwrap();
 
-                // commands
-                //     .spawn(SceneBundle {
-                //         scene,
-                //         transform: Transform::from_xyz(10.0, 5.0, 10.0),
-                //         ..default()
-                //     })
-                //     .insert(RigidBody::Dynamic)
-                //     .insert(GravityScale(1.0))
-                //     .insert(Sleeping::disabled())
-                //     .insert(Ccd::enabled())
-                //     .insert(collider)
-                //     // .insert(Collider::cuboid(1.0, 1.0, 1.0))
-                //     .insert(Restitution::coefficient(0.7))
-                //     .insert(ColliderMassProperties::Density(1.0));
+    // commands
+    //     .spawn(SceneBundle {
+    //         scene,
+    //         transform: Transform::from_xyz(10.0, 5.0, 10.0),
+    //         ..default()
+    //     })
+    //     .insert(RigidBody::Dynamic)
+    //     .insert(GravityScale(1.0))
+    //     .insert(Sleeping::disabled())
+    //     .insert(Ccd::enabled())
+    //     .insert(collider)
+    //     // .insert(Collider::cuboid(1.0, 1.0, 1.0))
+    //     .insert(Restitution::coefficient(0.7))
+    //     .insert(ColliderMassProperties::Density(1.0));
 
-                println!("spawned {x} {y} {z}");
-            }
-        }
-    }
+    //             println!("spawned {x} {y} {z}");
+    //         }
+    //     }
+    // }
 
     // let scene = asset_server.load("wall_1x5x3.glb#Scene0");
     // let collider = Collider::cuboid(1.0, 5.0, 3.0);

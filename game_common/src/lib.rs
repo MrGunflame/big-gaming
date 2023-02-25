@@ -24,6 +24,7 @@ pub mod module;
 pub mod net;
 pub mod proto;
 pub mod savefile;
+pub mod scene;
 pub mod units;
 pub mod uuid;
 pub mod world;
