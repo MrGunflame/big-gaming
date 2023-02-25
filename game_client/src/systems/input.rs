@@ -109,7 +109,9 @@ pub fn mouse_button_input(
     input: Res<Input<MouseButton>>,
     kb_input: Res<Input<KeyCode>>,
 ) {
-    let (player, player_transform, figure) = players.single();
+    let Ok((player, player_transform, figure)) = players.get_single() else {
+        return;
+    };
     let cam_transform = cameras.single();
 
     if kb_input.just_pressed(KeyCode::R) {
@@ -215,7 +217,9 @@ pub fn interact_target(
     entities: Query<(Entity, &Interactions)>,
     input: Res<Input<KeyCode>>,
 ) {
-    let (player, mut focused_ent) = players.single_mut();
+    let Ok((player, mut focused_ent)) = players.get_single_mut() else {
+        return;
+    };
     let (cam, pos) = cameras.single();
 
     let ray_dir = pos.rotation.dir_vec();

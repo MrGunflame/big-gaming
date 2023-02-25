@@ -18,10 +18,12 @@ impl Widget for Health {
     }
 
     fn render(&mut self, ctx: &mut Context) {
-        let health = ctx
+        let Ok(health) = ctx
             .world
             .query_filtered::<&ActorHealth, With<HostPlayer>>()
-            .single(&ctx.world);
+            .get_single(&ctx.world) else {
+                return;
+            };
 
         Area::new("health")
             .anchor(Align2::LEFT_BOTTOM, Vec2::new(5.0, -5.0))

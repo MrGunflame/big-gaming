@@ -42,6 +42,7 @@ impl PlayerCharacterBundle {
 }
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Component)]
+#[deprecated]
 pub enum CameraPosition {
     #[default]
     FirstPerson,

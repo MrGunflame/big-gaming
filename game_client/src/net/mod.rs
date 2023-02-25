@@ -1,10 +1,9 @@
 use std::net::SocketAddr;
 use std::sync::{mpsc, Arc};
-use std::time::Duration;
 
-use bevy::prelude::{Commands, Query, Res, ResMut, Transform, VisibilityBundle};
-use game_common::bundles::ObjectBundle;
-use game_common::components::object::LoadObject;
+use bevy::prelude::{Commands, Query, Res, ResMut, Transform};
+use game_common::bundles::{HostPlayerBundle, ObjectBundle};
+use game_common::components::object::ObjectId;
 use game_common::components::player::HostPlayer;
 use game_common::entity::{Entity, EntityData, EntityMap};
 use game_net::conn::{Connection, ConnectionHandle};
@@ -13,7 +12,7 @@ use game_net::snapshot::{Command, CommandQueue};
 use game_net::Socket;
 use tokio::runtime::Runtime;
 
-use self::conn::ServerConnection;
+pub use self::conn::ServerConnection;
 
 mod conn;
 
@@ -29,9 +28,11 @@ impl bevy::prelude::Plugin for NetPlugin {
 
         handle.send_cmd(Command::PlayerJoin);
 
+        let map = EntityMap::default();
+
         app.insert_resource(queue)
-            .insert_resource(EntityMap::default())
-            .insert_resource(ServerConnection::new(handle))
+            .insert_resource(map.clone())
+            .insert_resource(ServerConnection::new(handle, map))
             .add_system(flush_command_queue);
     }
 }
@@ -105,7 +106,11 @@ fn flush_command_queue(
                         })
                         .id(),
                     EntityKind::Actor(()) => commands
-                        .spawn(Transform::from_translation(translation))
+                        .spawn(
+                            ObjectBundle::new(ObjectId(0.into()))
+                                .translation(translation)
+                                .rotation(rotation),
+                        )
                         .insert(Entity {
                             id,
                             transform: Transform::from_translation(translation),
@@ -128,15 +133,16 @@ fn flush_command_queue(
                 }
             }
             Command::EntityRotate { id, rotation } => {
-                let ent = map.get(id).unwrap();
+                let entity = map.get(id).unwrap();
 
-                let mut transform = entities.get_mut(ent).unwrap();
-                transform.rotation = rotation;
+                if let Ok(mut transform) = entities.get_mut(entity) {
+                    transform.rotation = rotation;
+                }
             }
             Command::SpawnHost { id } => {
                 let ent = map.get(id).unwrap();
 
-                // commands.entity(ent).insert(HostPlayer);
+                commands.entity(ent).insert(HostPlayerBundle::new());
             }
             // Never sent to clients
             Command::PlayerJoin => (),

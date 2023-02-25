@@ -57,6 +57,7 @@ pub struct EntityMap {
 #[derive(Clone, Debug, Default)]
 struct EntityMapInner {
     inner: HashMap<EntityId, bevy_ecs::entity::Entity>,
+    inner2: HashMap<bevy_ecs::entity::Entity, EntityId>,
 }
 
 impl EntityMap {
@@ -64,11 +65,18 @@ impl EntityMap {
         let mut inner = self.inner.write();
 
         inner.inner.insert(id, ent);
+        inner.inner2.insert(ent, id);
     }
 
     pub fn get(&self, id: EntityId) -> Option<bevy_ecs::entity::Entity> {
         let inner = self.inner.read();
 
         inner.inner.get(&id).copied()
+    }
+
+    pub fn get_entity(&self, ent: bevy_ecs::entity::Entity) -> Option<EntityId> {
+        let inner = self.inner.read();
+
+        inner.inner2.get(&ent).copied()
     }
 }

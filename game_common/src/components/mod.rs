@@ -2,6 +2,7 @@
 
 pub mod actor;
 pub mod animation;
+pub mod camera;
 pub mod character;
 pub mod combat;
 pub mod entity;

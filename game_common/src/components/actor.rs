@@ -117,6 +117,12 @@ impl Mul<Duration> for MovementSpeed {
     }
 }
 
+impl Default for MovementSpeed {
+    fn default() -> Self {
+        Self(1.0)
+    }
+}
+
 /// A model of an [`Actor`], including multi-entity meshes and animations.
 ///
 /// **Note that not every [`Actor`] has this component.**

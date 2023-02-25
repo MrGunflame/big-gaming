@@ -18,10 +18,12 @@ impl Widget for Crosshair {
     }
 
     fn render(&mut self, ctx: &mut Context) {
-        let focus = ctx
+        let Ok(focus) = ctx
             .world
             .query_filtered::<&FocusedEntity, With<HostPlayer>>()
-            .single(&ctx.world);
+            .get_single(&ctx.world) else {
+                return;
+            };
 
         let area = Area::new("crosshair").fixed_pos(Pos2::new(0.0, 0.0));
 

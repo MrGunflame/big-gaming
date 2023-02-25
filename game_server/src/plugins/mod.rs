@@ -19,8 +19,7 @@ impl Plugin for ServerPlugins {
         app.insert_resource(ServerEntityGenerator::new())
             .insert_resource(EntityMap::default())
             .add_system(flush_command_queue)
-            .add_system(update_snapshots)
-            .add_system(mov_ent);
+            .add_system(update_snapshots);
     }
 }
 
@@ -71,19 +70,19 @@ fn flush_command_queue(
                     })
                     .id();
 
-                // connections
-                //     .get_mut(msg.id)
-                //     .unwrap()
-                //     .data
-                //     .handle
-                //     .send_cmd(Command::EntityCreate {
-                //         id,
-                //         kind: EntityKind::Actor(()),
-                //         translation: Vec3::default(),
-                //         rotation: Quat::default(),
-                //     });
+                connections
+                    .get_mut(msg.id)
+                    .unwrap()
+                    .data
+                    .handle
+                    .send_cmd(Command::EntityCreate {
+                        id,
+                        kind: EntityKind::Actor(()),
+                        translation: Vec3::default(),
+                        rotation: Quat::default(),
+                    });
 
-                // connections.set_host(msg.id, id);
+                connections.set_host(msg.id, id);
                 map.insert(id, ent);
             }
             Command::PlayerLeave => {}
@@ -123,11 +122,5 @@ fn update_snapshots(
 
     for mut snap in connections.iter_mut() {
         *snap = snapshot.clone();
-    }
-}
-
-fn mov_ent(mut entities: Query<(&mut Entity, &mut Transform)>) {
-    for (ent, mut transf) in &mut entities {
-        transf.translation.x += 0.1;
     }
 }

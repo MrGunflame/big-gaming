@@ -1,20 +1,18 @@
+mod events;
+
 use std::borrow::Cow;
-use std::f32::consts::PI;
 
 use bevy::prelude::{
-    Camera3d, Commands, CoreStage, Entity, EulerRot, EventReader, KeyCode, Mat3, Plugin, Quat,
-    Query, ResMut, Transform, Vec3, With, Without,
+    Camera3d, Commands, CoreStage, Entity, EventReader, KeyCode, Plugin, Quat, Query, ResMut,
+    Transform, Vec3, With, Without,
 };
 use game_common::components::actor::MovementSpeed;
 use game_common::components::movement::{Jump, Movement};
 use game_common::components::player::HostPlayer;
-use game_common::math::RotationExt;
 use game_input::hotkeys::{
     Event, Hotkey, HotkeyCode, HotkeyFilter, HotkeyId, HotkeyReader, Hotkeys, Key, TriggerKind,
 };
 use game_input::mouse::MouseMotion;
-
-use crate::ui::Focus;
 
 static mut MOVE_FORWARD: Hotkey = Hotkey {
     id: HotkeyId(0),
@@ -134,7 +132,9 @@ impl Plugin for MovementPlugin {
             .add_system_to_stage(CoreStage::PreUpdate, movement_events)
             .add_system(mouse_movement)
             .add_system(toggle_sprint)
-            .add_system(jump_events);
+            .add_system(jump_events)
+            .add_system(events::handle_movement_events)
+            .add_system(events::handle_rotate_events);
     }
 }
 
@@ -182,7 +182,9 @@ fn toggle_sprint(
     mut players: Query<&mut MovementSpeed, With<HostPlayer>>,
     mut events: HotkeyReader<Sprint>,
 ) {
-    let mut speed = players.single_mut();
+    let Ok(mut speed) = players.get_single_mut() else {
+        return;
+    };
 
     for event in events.iter() {
         if event.trigger.just_pressed() {
@@ -198,7 +200,9 @@ fn movement_events(
     mut events: HotkeyReader<MovementEvent>,
     players: Query<Entity, With<HostPlayer>>,
 ) {
-    let entity = players.single();
+    let Ok(entity) = players.get_single() else {
+        return;
+    };
 
     let mut angle = Angle::default();
 
@@ -221,6 +225,7 @@ fn movement_events(
     }
 
     if let Some(angle) = angle.to_radians() {
+        dbg!("mov");
         commands.entity(entity).insert(Movement {
             direction: Quat::from_axis_angle(Vec3::Y, angle),
         });
@@ -232,7 +237,9 @@ fn jump_events(
     players: Query<Entity, With<HostPlayer>>,
     mut events: HotkeyReader<JumpEvent>,
 ) {
-    let entity = players.single();
+    let Ok(entity) = players.get_single() else {
+        return;
+    };
 
     for _ in events.iter() {
         commands.entity(entity).insert(Jump);
@@ -306,10 +313,15 @@ impl Angle {
 fn mouse_movement(
     mut events: EventReader<MouseMotion>,
     mut cameras: Query<&mut Transform, With<Camera3d>>,
-    mut players: Query<(&mut Transform, &Focus), (With<HostPlayer>, Without<Camera3d>)>,
+    mut players: Query<&mut Transform, (With<HostPlayer>, Without<Camera3d>)>,
 ) {
-    let mut camera = cameras.single_mut();
-    let (mut player, _) = players.single_mut();
+    let Ok(mut camera) = cameras.get_single_mut() else {
+        return;
+    };
+
+    let Ok(mut player) = players.get_single_mut() else {
+        return;
+    };
 
     for event in events.iter() {
         let yaw = event.delta.x * 0.001;

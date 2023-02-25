@@ -19,10 +19,12 @@ impl Widget for Weapon {
     }
 
     fn render(&mut self, ctx: &mut Context) {
-        let equipment = ctx
+        let Ok(equipment) = ctx
             .world
             .query_filtered::<&Equipment, With<HostPlayer>>()
-            .single(ctx.world);
+            .get_single(ctx.world) else {
+                return;
+            };
 
         let Some(item) = equipment.get(EquipmentSlot::MAIN_HAND) else {
             return;

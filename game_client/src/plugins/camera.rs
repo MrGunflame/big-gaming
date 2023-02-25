@@ -8,6 +8,7 @@ use bevy::prelude::{
 };
 use bevy::time::Time;
 use game_common::components::actor::{ActorFigure, MovementSpeed};
+use game_common::components::camera::CameraMode;
 use game_common::components::movement::Movement;
 use game_common::components::player::HostPlayer;
 
@@ -26,9 +27,9 @@ impl Plugin for CameraPlugin {
             .insert_resource(CameraSettings::default())
             .add_system(crate::systems::input::interact_target)
             .add_system(synchronize_player_camera)
-            .add_system(head_bumping.after(synchronize_player_camera))
-            .add_system(toggle_camera_position)
-            .add_system(adjust_camera_distance);
+            .add_system(head_bumping.after(synchronize_player_camera));
+        // .add_system(toggle_camera_position)
+        // .add_system(adjust_camera_distance);
     }
 }
 
@@ -44,24 +45,25 @@ fn setup_camera(mut commands: Commands) {
             },
             ..Default::default()
         })
-        .insert(CameraPosition::FirstPerson)
-        .insert(Rotation::new());
+        .insert(CameraMode::FirstPerson);
 }
 
 fn synchronize_player_camera(
     settings: Res<CameraSettings>,
     players: Query<(&Transform, &ActorFigure), With<HostPlayer>>,
-    mut cameras: Query<(&mut Transform, &CameraPosition), Without<HostPlayer>>,
+    mut cameras: Query<(&mut Transform, &CameraMode), Without<HostPlayer>>,
 ) {
-    let (player, figure) = players.single();
-    let (mut camera, position) = cameras.single_mut();
+    let Ok((player, figure)) = players.get_single() else {
+        return;
+    };
+    let (mut camera, mode) = cameras.single_mut();
 
-    match position {
-        CameraPosition::FirstPerson => {
+    match mode {
+        CameraMode::FirstPerson => {
             let rotation_matrix = Mat3::from_quat(player.rotation);
             camera.translation = player.translation + rotation_matrix * figure.eyes;
         }
-        CameraPosition::ThirdPerson { distance } => {
+        CameraMode::ThirdPerson { distance } => {
             let rotation_matrix = Mat3::from_quat(camera.rotation);
 
             camera.translation = player.translation
@@ -80,7 +82,7 @@ fn head_bumping(
     time: Res<Time>,
     settings: Res<CameraSettings>,
     players: Query<(&Transform, &MovementSpeed), (With<HostPlayer>, With<Movement>)>,
-    mut cameras: Query<(&mut Transform, &CameraPosition), Without<HostPlayer>>,
+    mut cameras: Query<(&mut Transform, &CameraMode), Without<HostPlayer>>,
 ) {
     // Only apply head bumping when the player is moving.
     let Ok((player, speed)) = players.get_single() else {
@@ -89,7 +91,7 @@ fn head_bumping(
 
     let (mut camera, position) = cameras.single_mut();
 
-    if position.is_third() {
+    if matches!(position, CameraMode::ThirdPerson { distance: _ }) {
         return;
     }
 

@@ -46,7 +46,7 @@ impl Plugin for CorePlugins {
         app.add_plugin(world::TimePlugin::default());
         app.add_plugin(AudioPlugin::new());
         app.add_plugin(SpawnPlugin);
-        app.add_plugin(MovementPlugin);
+        // app.add_plugin(MovementPlugin);
         app.add_plugin(ProjectilePlugin);
         app.add_plugin(RapierPhysicsPlugin::<NoUserData>::default());
         app.add_plugin(AnimationPlugin);

@@ -1,6 +1,6 @@
 use bevy_ecs::bundle::Bundle;
 
-use crate::components::actor::Actor;
+use crate::components::actor::{Actor, ActorFlags, MovementSpeed};
 use crate::components::inventory::{Equipment, Inventory};
 
 use super::combat::CombatBundle;
@@ -20,4 +20,6 @@ pub struct ActorBundle {
 
     pub inventory: Inventory,
     pub equipment: Equipment,
+    pub actor_flags: ActorFlags,
+    pub movement_speed: MovementSpeed,
 }

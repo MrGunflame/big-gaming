@@ -17,9 +17,11 @@ pub fn capture_pointer_keys(
     state: Res<InterfaceState>,
     mut players: Query<&mut ActorFlags, With<HostPlayer>>,
 ) {
-    let mut window = windows.primary_mut();
+    let Ok(mut flags) = players.get_single_mut() else {
+        return;
+    };
 
-    let mut flags = players.single_mut();
+    let mut window = windows.primary_mut();
 
     if state.captures_pointer() {
         flags.remove(ActorFlag::CAN_ROTATE);

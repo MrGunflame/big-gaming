@@ -129,7 +129,9 @@ fn move_sky_pane(
     mut panes: Query<(&mut Transform, &SkyPane), Without<HostPlayer>>,
     sky: Res<Sky>,
 ) {
-    let player = players.single();
+    let Ok(player) = players.get_single() else {
+        return;
+    };
 
     let distance = sky.distance;
 

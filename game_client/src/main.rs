@@ -398,22 +398,22 @@ fn setup(
     // .insert(RigidBody::Fixed);
     // .insert(Collider::trimesh(collider_verts, collider_indis));
 
-    commands.spawn(ItemBundle::new(
-        &asset_server,
-        Item {
-            id: ItemId(0.into()),
-            components: None,
-            resistances: None,
-            ammo: None,
-            damage: None,
-            magazine: None,
-            mass: Default::default(),
-            cooldown: Cooldown::new(Duration::ZERO),
-        },
-    ));
+    // commands.spawn(ItemBundle::new(
+    //     &asset_server,
+    //     Item {
+    //         id: ItemId(0.into()),
+    //         components: None,
+    //         resistances: None,
+    //         ammo: None,
+    //         damage: None,
+    //         magazine: None,
+    //         mass: Default::default(),
+    //         cooldown: Cooldown::new(Duration::ZERO),
+    //     },
+    // ));
 
-    let mut cmd = commands.spawn(PlayerCharacterBundle::new(&asset_server));
-    Human::default().spawn(&asset_server, &mut cmd);
+    // let mut cmd = commands.spawn(PlayerCharacterBundle::new(&asset_server));
+    // Human::default().spawn(&asset_server, &mut cmd);
 
     // let mut cmd = commands.spawn(ActorBundle::new(&asset_server));
     // Human::default().spawn(&asset_server, &mut cmd);
