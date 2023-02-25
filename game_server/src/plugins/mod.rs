@@ -71,19 +71,19 @@ fn flush_command_queue(
                     })
                     .id();
 
-                connections
-                    .get_mut(msg.id)
-                    .unwrap()
-                    .data
-                    .handle
-                    .send_cmd(Command::EntityCreate {
-                        id,
-                        kind: EntityKind::Actor(()),
-                        translation: Vec3::default(),
-                        rotation: Quat::default(),
-                    });
+                // connections
+                //     .get_mut(msg.id)
+                //     .unwrap()
+                //     .data
+                //     .handle
+                //     .send_cmd(Command::EntityCreate {
+                //         id,
+                //         kind: EntityKind::Actor(()),
+                //         translation: Vec3::default(),
+                //         rotation: Quat::default(),
+                //     });
 
-                connections.set_host(msg.id, id);
+                // connections.set_host(msg.id, id);
                 map.insert(id, ent);
             }
             Command::PlayerLeave => {}

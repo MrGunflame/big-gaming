@@ -3,6 +3,7 @@ use std::sync::{mpsc, Arc};
 use std::time::Duration;
 
 use bevy::prelude::{Commands, Query, Res, ResMut, Transform, VisibilityBundle};
+use game_common::bundles::ObjectBundle;
 use game_common::components::object::LoadObject;
 use game_common::components::player::HostPlayer;
 use game_common::entity::{Entity, EntityData, EntityMap};
@@ -45,7 +46,10 @@ fn spawn_conn(queue: CommandQueue) -> ConnectionHandle {
             let addr = SocketAddr::from(([127, 0, 0, 1], 6942));
 
             let sock = Arc::new(Socket::connect(addr).unwrap());
-            let handle = Connection::new(addr, queue, sock.clone());
+            let (conn, handle) = Connection::new(addr, queue, sock.clone());
+            tokio::task::spawn(async move {
+                conn.await.unwrap();
+            });
 
             tracing::info!("connected");
 
@@ -89,9 +93,11 @@ fn flush_command_queue(
             } => {
                 let entity = match kind {
                     EntityKind::Object(oid) => commands
-                        .spawn(Transform::from_translation(translation))
-                        .insert(VisibilityBundle::default())
-                        .insert(LoadObject { id: oid })
+                        .spawn(
+                            ObjectBundle::new(oid)
+                                .translation(translation)
+                                .rotation(rotation),
+                        )
                         .insert(Entity {
                             id,
                             transform: Transform::from_translation(translation),
@@ -115,10 +121,11 @@ fn flush_command_queue(
                 commands.entity(ent).despawn();
             }
             Command::EntityTranslate { id, translation } => {
-                let ent = map.get(id).unwrap();
+                let entity = map.get(id).unwrap();
 
-                let mut transform = entities.get_mut(ent).unwrap();
-                transform.translation = translation;
+                if let Ok(mut transform) = entities.get_mut(entity) {
+                    transform.translation = translation;
+                }
             }
             Command::EntityRotate { id, rotation } => {
                 let ent = map.get(id).unwrap();
@@ -129,7 +136,7 @@ fn flush_command_queue(
             Command::SpawnHost { id } => {
                 let ent = map.get(id).unwrap();
 
-                commands.entity(ent).insert(HostPlayer);
+                // commands.entity(ent).insert(HostPlayer);
             }
             // Never sent to clients
             Command::PlayerJoin => (),

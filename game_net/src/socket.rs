@@ -39,11 +39,15 @@ impl Socket {
     }
 
     pub async fn send_to(&self, buf: &[u8], target: SocketAddr) -> io::Result<usize> {
-        self.socket.send_to(buf, target).await
+        let len = self.socket.send_to(buf, target).await?;
+        tracing::trace!("write {} bytes to {}", len, target);
+        Ok(len)
     }
 
     pub async fn recv_from(&self, buf: &mut [u8]) -> io::Result<(usize, SocketAddr)> {
-        self.socket.recv_from(buf).await
+        let (len, addr) = self.socket.recv_from(buf).await?;
+        tracing::trace!("read {} bytes from {}", len, addr);
+        Ok((len, addr))
     }
 }
 

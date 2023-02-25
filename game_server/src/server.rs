@@ -102,7 +102,11 @@ async fn handle_packet(addr: SocketAddr, socket: Arc<Socket>, state: &State, pac
     //     return;
     // }
 
-    let handle = Connection::new(addr, state.queue.clone(), socket);
+    let (conn, handle) = Connection::new(addr, state.queue.clone(), socket);
+    tokio::task::spawn(async move {
+        conn.await.unwrap();
+    });
+
     handle.send(packet).await;
 
     state.pool.insert(addr, handle.clone());

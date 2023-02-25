@@ -104,6 +104,8 @@ fn load_objects(
     mut objects: Query<(Entity, &LoadObject)>,
 ) {
     for (entity, object) in &objects {
+        tracing::info!("loading object {:?}", object.id);
+
         let Some(obj) = archive.objects().get(object.id) else {
             continue;
         };

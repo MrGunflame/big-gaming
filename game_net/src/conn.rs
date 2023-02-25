@@ -52,7 +52,11 @@ pub struct Connection {
 }
 
 impl Connection {
-    pub fn new(peer: SocketAddr, queue: CommandQueue, socket: Arc<Socket>) -> ConnectionHandle {
+    pub fn new(
+        peer: SocketAddr,
+        queue: CommandQueue,
+        socket: Arc<Socket>,
+    ) -> (Self, ConnectionHandle) {
         let id = ConnectionId::new();
 
         let (tx, rx) = mpsc::channel(32);
@@ -70,15 +74,14 @@ impl Connection {
             srv_ent_id: 0,
         };
 
-        tokio::task::spawn(async move {
-            conn.await.unwrap();
-        });
-
-        ConnectionHandle {
-            id,
-            tx,
-            chan_out: out_tx,
-        }
+        (
+            conn,
+            ConnectionHandle {
+                id,
+                tx,
+                chan_out: out_tx,
+            },
+        )
     }
 
     fn poll_read(&mut self, cx: &mut Context<'_>) -> Poll<()> {
@@ -87,8 +90,8 @@ impl Connection {
         #[cfg(debug_assertions)]
         assert!(matches!(self.state, ConnectionState::Read));
 
-        if let Poll::Ready(packet) = self.stream.poll_recv(cx) {
-            tracing::info!("recv {:?}", packet);
+        while let Poll::Ready(packet) = self.stream.poll_recv(cx) {
+            tracing::debug!("recv {:?}", packet);
 
             let packet = packet.unwrap();
 
@@ -108,7 +111,7 @@ impl Connection {
         if let Poll::Ready(cmd) = self.chan_out.poll_recv(cx) {
             let cmd = cmd.unwrap();
 
-            tracing::info!("sending {:?}", cmd);
+            tracing::debug!("sending {:?}", cmd);
 
             let socket = self.socket.clone();
 
@@ -128,7 +131,7 @@ impl Connection {
                 let mut buf = Vec::with_capacity(1500);
                 packet.encode(&mut buf).unwrap();
 
-                tracing::info!("sending {:?} ({} bytes)", packet, buf.len());
+                tracing::debug!("sending {:?} ({} bytes)", packet, buf.len());
 
                 socket.send_to(&buf, peer).await.unwrap();
             }));
