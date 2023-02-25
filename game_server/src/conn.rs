@@ -135,19 +135,10 @@ impl Drop for ConnectionMut {
                     translation: data.transform.translation,
                     rotation: data.transform.rotation,
                 },
-                EntityChange::Create { id, data } => Command::EntityCreate {
-                    id,
-                    kind: match &data.data {
-                        EntityData::Object { id } => EntityKind::Object(*id),
-                        EntityData::Actor {} => EntityKind::Actor(()),
-                    },
-                    translation: data.transform.translation,
-                    rotation: data.transform.rotation,
-                },
-                EntityChange::Update { id, data } => Command::EntityTranslate {
-                    id,
-                    translation: data.transform.translation,
-                },
+                EntityChange::Translate { id, translation } => {
+                    Command::EntityTranslate { id, translation }
+                }
+                EntityChange::Rotate { id, rotation } => Command::EntityRotate { id, rotation },
                 EntityChange::Destroy { id } => Command::EntityDestroy { id },
             };
 

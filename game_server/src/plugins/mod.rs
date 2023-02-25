@@ -55,6 +55,7 @@ fn flush_command_queue(
 
                 let (ent, mut transform) = entities.get_mut(ent).unwrap();
                 transform.rotation = rotation;
+                dbg!(transform);
             }
             Command::PlayerJoin => {
                 let id = EntityId::new();

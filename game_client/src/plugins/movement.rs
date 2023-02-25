@@ -7,7 +7,7 @@ use bevy::prelude::{
     Transform, Vec3, With, Without,
 };
 use game_common::components::actor::MovementSpeed;
-use game_common::components::movement::{Jump, Movement};
+use game_common::components::movement::{Jump, Movement, Rotate};
 use game_common::components::player::HostPlayer;
 use game_input::hotkeys::{
     Event, Hotkey, HotkeyCode, HotkeyFilter, HotkeyId, HotkeyReader, Hotkeys, Key, TriggerKind,
@@ -311,15 +311,16 @@ impl Angle {
 }
 
 fn mouse_movement(
+    mut commands: Commands,
     mut events: EventReader<MouseMotion>,
     mut cameras: Query<&mut Transform, With<Camera3d>>,
-    mut players: Query<&mut Transform, (With<HostPlayer>, Without<Camera3d>)>,
+    mut players: Query<(Entity, &mut Transform), (With<HostPlayer>, Without<Camera3d>)>,
 ) {
     let Ok(mut camera) = cameras.get_single_mut() else {
         return;
     };
 
-    let Ok(mut player) = players.get_single_mut() else {
+    let Ok((entity, mut player)) = players.get_single_mut() else {
         return;
     };
 
@@ -357,5 +358,8 @@ fn mouse_movement(
 
         // *player_rot = camera_rot.with_pitch(Radians(0.0));
         player.rotation = q1 * player.rotation;
+        // commands.entity(entity).insert(Rotate {
+        //     destination: q1 * player.rotation,
+        // });
     }
 }

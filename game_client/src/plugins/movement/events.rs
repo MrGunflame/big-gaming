@@ -26,8 +26,6 @@ pub fn handle_movement_events(
             continue;
         }
 
-        dbg!("mov");
-
         let rotation = transform.rotation * movement.direction;
         transform.translation += rotation.dir_vec() * speed.0 * delta;
 
