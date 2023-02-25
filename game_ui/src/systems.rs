@@ -67,7 +67,7 @@ pub fn scene_transition(
     for event in events.iter() {
         state.clear();
 
-        match event.to {
+        match &event.to {
             Scene::Loading => {
                 state.push(Loading::default());
             }
@@ -79,6 +79,7 @@ pub fn scene_transition(
                 state.push(Crosshair);
                 state.push(Weapon);
             }
+            Scene::ServerConnect { addr } => (),
         }
     }
 }

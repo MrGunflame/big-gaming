@@ -1,4 +1,6 @@
-use bevy_egui::egui::{Area, Pos2, Ui};
+use bevy::prelude::World;
+use bevy_egui::egui::{Area, Pos2, Ui, Window};
+use game_common::scene::{Scene, SceneTransition};
 
 use crate::{Widget, WidgetFlags};
 
@@ -17,10 +19,10 @@ impl Widget for MainMenu {
     }
 
     fn render(&mut self, ctx: &mut crate::Context) {
-        Area::new("main_menu")
+        Window::new("main_menu")
             .fixed_pos(Pos2::new(0.0, 0.0))
             .show(ctx.ctx, |ui| {
-                render(&mut self.state, ui);
+                render(&mut self.state, ui, ctx.world);
             });
     }
 }
@@ -34,7 +36,7 @@ enum State {
     },
 }
 
-fn render(state: &mut State, ui: &mut Ui) {
+fn render(state: &mut State, ui: &mut Ui, world: &mut World) {
     match state {
         State::Main => {
             ui.label("Main Menu");
@@ -53,6 +55,13 @@ fn render(state: &mut State, ui: &mut Ui) {
         }
         State::ServerConnect { addr } => {
             ui.text_edit_singleline(addr);
+
+            if ui.button("Ok").clicked() {
+                world.send_event(SceneTransition {
+                    from: Scene::MainMenu,
+                    to: Scene::ServerConnect { addr: addr.clone() },
+                });
+            }
 
             if ui.button("Back").clicked() {
                 *state = State::Main;
