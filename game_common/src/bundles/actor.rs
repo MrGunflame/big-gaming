@@ -18,7 +18,6 @@ pub struct ActorBundle {
     pub combat: CombatBundle,
     #[bundle]
     pub physics: DynamicPhysicsBundle,
-
     pub actor: Actor,
 
     pub inventory: Inventory,

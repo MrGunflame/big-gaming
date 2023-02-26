@@ -50,6 +50,7 @@ use game_audio::AudioPlugin;
 use game_common::actors::human::Human;
 use game_common::archive::loader::ModuleLoader;
 use game_common::archive::GameArchive;
+use game_common::components::actor::Actor;
 use game_common::components::interaction::InteractionQueue;
 use game_common::components::items::{Cooldown, Item, ItemId, Magazine};
 use game_common::scene::SceneTransition;

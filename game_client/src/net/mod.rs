@@ -88,7 +88,7 @@ pub fn spawn_conn(
 fn flush_command_queue(
     mut commands: Commands,
     queue: Res<CommandQueue>,
-    mut entities: Query<(&mut Transform, &mut Velocity), Without<HostPlayer>>,
+    mut entities: Query<(&mut Transform,), Without<HostPlayer>>,
     hosts: Query<bevy::ecs::entity::Entity, With<HostPlayer>>,
     conn: Res<ServerConnection>,
     map: ResMut<EntityMap>,
@@ -166,23 +166,23 @@ fn flush_command_queue(
             Command::EntityTranslate { id, translation } => {
                 let entity = map.get(id).unwrap();
 
-                if let Ok((mut transform, _)) = entities.get_mut(entity) {
+                if let Ok((mut transform,)) = entities.get_mut(entity) {
                     transform.translation = translation;
                 }
             }
             Command::EntityRotate { id, rotation } => {
                 let entity = map.get(id).unwrap();
 
-                if let Ok((mut transform, _)) = entities.get_mut(entity) {
+                if let Ok((mut transform,)) = entities.get_mut(entity) {
                     transform.rotation = rotation;
                 }
             }
             Command::EntityVelocity { id, linvel, angvel } => {
                 let entity = map.get(id).unwrap();
 
-                if let Ok((_, mut velocity)) = entities.get_mut(entity) {
-                    velocity.linvel = linvel;
-                    velocity.angvel = angvel;
+                if let Ok((_,)) = entities.get_mut(entity) {
+                    // velocity.linvel = linvel;
+                    // velocity.angvel = angvel;
                 }
             }
             Command::SpawnHost { id } => {
@@ -194,7 +194,7 @@ fn flush_command_queue(
                     commands.entity(host).remove::<HostPlayer>();
                 }
 
-                let (transform, _) = entities.get(ent).unwrap();
+                let (transform,) = entities.get(ent).unwrap();
                 tracing::info!(
                     "Entity {:?} (located at {:.2}, {:.2}, {:.2}) is now host",
                     ent,
@@ -203,7 +203,7 @@ fn flush_command_queue(
                     transform.translation.z,
                 );
 
-                commands.entity(ent).insert(HostPlayerBundle::new());
+                commands.entity(ent).insert(HostPlayer);
             }
             // Never sent to clients
             Command::PlayerJoin => (),
