@@ -25,6 +25,7 @@ chrono = "0.4.23"
 nalgebra = "0.31.4"
 noise = "0.8.2"
 tokio = { version = "1.25.0", features = ["full"] }
+clap = { version = "4.1.6", features = ["derive"] }
 
 [features]
 default = []

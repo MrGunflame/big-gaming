@@ -38,6 +38,7 @@ use bevy::winit::WinitPlugin;
 use bevy_rapier3d::prelude::*;
 use bevy_rapier3d::render::RapierDebugRenderPlugin;
 use bundles::ObjectBundle;
+use clap::Parser;
 use components::Rotation;
 use entities::actor::ActorBundle;
 use entities::item::ItemBundle;
@@ -51,6 +52,7 @@ use game_common::archive::loader::ModuleLoader;
 use game_common::archive::GameArchive;
 use game_common::components::interaction::InteractionQueue;
 use game_common::components::items::{Cooldown, Item, ItemId, Magazine};
+use game_common::scene::SceneTransition;
 use game_common::world::chunk::ChunkRegistry;
 use game_core::combat::CombatPlugin;
 use game_core::projectile::ProjectilePlugin;
@@ -63,16 +65,23 @@ use plugins::interactions::InteractionsPlugin;
 use plugins::respawn::RespawnPlugin;
 use plugins::{CameraPlugin, HotkeyPlugin, MovementPlugin};
 
+#[derive(Clone, Debug, Default, Parser)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    #[arg(short, long)]
+    connect: Option<String>,
+}
+
 fn main() {
-    // log::Logger::new().init();
+    let args = Args::parse();
 
     let archive = GameArchive::new();
 
     let loader = ModuleLoader::new(&archive);
     loader.load("../mods/core").unwrap();
 
-    App::new()
-        .insert_resource(archive)
+    let mut app = App::new();
+    app.insert_resource(archive)
         .insert_resource(Msaa { samples: 4 })
         .add_plugin(CorePlugins)
         // .add_plugin(TimePlugin)
@@ -95,7 +104,6 @@ fn main() {
         .add_plugin(WinitPlugin)
         // .add_plugin(RapierPhysicsPlugin::<NoUserData>::default())
         .add_plugin(RapierDebugRenderPlugin::default())
-        .add_startup_system(setup)
         .add_plugin(CameraPlugin)
         // .add_plugin(ProjectilePlugin)
         // .add_plugin(CombatPlugin)
@@ -120,7 +128,19 @@ fn main() {
         // .add_plugin(LevelPlugin)
         .add_plugin(game_core::debug::DebugPlugin)
         .add_plugin(NetPlugin::default())
-        .run();
+        .add_startup_system(setup);
+
+    if let Some(addr) = args.connect {
+        tracing::info!("Connecting to {}", addr);
+
+        // Transition to server connection scene.
+        app.world.send_event(SceneTransition {
+            from: game_common::scene::Scene::Loading,
+            to: game_common::scene::Scene::ServerConnect { addr },
+        });
+    }
+
+    app.run();
 }
 
 fn setup(
@@ -130,14 +150,14 @@ fn setup(
     asset_server: Res<AssetServer>,
 ) {
     // THE FLOOOR
-    // commands
-    //     .spawn(PbrBundle {
-    //         mesh: meshes.add(Mesh::from(shape::Plane { size: 1.0 })),
-    //         material: materials.add(Color::rgb(1.0, 0.0, 0.0).into()),
-    //         ..Default::default()
-    //     })
-    //     .insert(RigidBody::Fixed)
-    //     .insert(Collider::cuboid(1000.0, 0.1, 1000.0));
+    commands
+        .spawn(PbrBundle {
+            mesh: meshes.add(Mesh::from(shape::Plane { size: 1000.0 })),
+            material: materials.add(Color::rgb(1.0, 0.0, 0.0).into()),
+            ..Default::default()
+        })
+        .insert(RigidBody::Fixed)
+        .insert(Collider::cuboid(1000.0, 0.1, 1000.0));
 
     // commands.spawn(ObjectBundle::new(&asset_server).at(Vec3::new(5.0, 0.5, 5.0)));
     // commands.spawn(ObjectBundle::new(&asset_server).at(Vec3::new(5.0, 1.5, 5.0)));
