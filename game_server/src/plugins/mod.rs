@@ -69,7 +69,7 @@ fn flush_command_queue(
                 let id = EntityId::new();
 
                 let mut actor = ActorBundle::default();
-                actor.transform.transform.translation.y += 1000.0;
+                actor.transform.transform.translation.y += 5.0;
                 actor.physics.collider = Collider::cuboid(1.0, 1.0, 1.0);
 
                 let ent = commands

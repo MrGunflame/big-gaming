@@ -88,7 +88,7 @@ pub fn spawn_conn(
 fn flush_command_queue(
     mut commands: Commands,
     queue: Res<CommandQueue>,
-    mut entities: Query<(&mut Transform,), Without<HostPlayer>>,
+    mut entities: Query<(&mut Transform,)>,
     hosts: Query<bevy::ecs::entity::Entity, With<HostPlayer>>,
     conn: Res<ServerConnection>,
     map: ResMut<EntityMap>,
@@ -168,13 +168,15 @@ fn flush_command_queue(
 
                 if let Ok((mut transform,)) = entities.get_mut(entity) {
                     transform.translation = translation;
+                } else {
+                    tracing::warn!("unknown entity");
                 }
             }
             Command::EntityRotate { id, rotation } => {
                 let entity = map.get(id).unwrap();
 
                 if let Ok((mut transform,)) = entities.get_mut(entity) {
-                    transform.rotation = rotation;
+                    // transform.rotation = rotation;
                 }
             }
             Command::EntityVelocity { id, linvel, angvel } => {

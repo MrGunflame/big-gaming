@@ -155,7 +155,7 @@ impl Limb {
     }
 }
 
-#[derive(Copy, Clone, Debug, Component)]
+#[derive(Copy, Clone, Debug, Default, Component)]
 pub struct ActorFigure {
     /// The offset to the eyes.
     ///

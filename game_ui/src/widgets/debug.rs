@@ -1,5 +1,5 @@
 use bevy::diagnostic::{Diagnostic, Diagnostics, FrameTimeDiagnosticsPlugin};
-use bevy::prelude::{Transform, With};
+use bevy::prelude::{Camera3d, Transform, With};
 use bevy_egui::egui::{Area, Pos2};
 use game_common::components::player::HostPlayer;
 use game_common::components::transform::PreviousTransform;
@@ -18,6 +18,12 @@ impl Widget for DebugInfo {
     }
 
     fn render(&mut self, ctx: &mut Context) {
+        let camera = ctx
+            .world
+            .query_filtered::<&Transform, With<Camera3d>>()
+            .single(ctx.world)
+            .clone();
+
         let (transform, prev) = ctx
             .world
             .query_filtered::<(&Transform, &PreviousTransform), With<HostPlayer>>()
@@ -71,6 +77,18 @@ impl Widget for DebugInfo {
                     loaded,
                     unloaded,
                     loaded + unloaded,
+                ));
+
+                // CAMERA
+                let x = camera.translation.x;
+                let y = camera.translation.y;
+                let z = camera.translation.z;
+                ui.label(format!("CAM ORIG X: {:.2} Y: {:.2} Z: {:.2}", x, y, z));
+
+                let dir = camera.rotation.dir_vec();
+                ui.label(format!(
+                    "CAM DIR X: {:.2} Y: {:.2} Z: {:.2}",
+                    dir.x, dir.y, dir.z
                 ));
             });
     }

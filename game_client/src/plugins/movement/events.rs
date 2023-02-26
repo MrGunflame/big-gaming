@@ -28,7 +28,16 @@ pub fn handle_movement_events(
         }
 
         let rotation = transform.rotation * movement.direction;
-        transform.translation += rotation.dir_vec() * speed.0 * delta;
+        let translation = rotation.dir_vec() * speed.0 * delta;
+
+        tracing::info!(
+            "translate ({:.2}, {:.2}, {:.2})",
+            translation.x,
+            translation.y,
+            translation.z,
+        );
+
+        transform.translation += translation;
 
         // Inform the server that we want to move the entity.
         if let Some(id) = conn.lookup(entity) {
@@ -54,12 +63,12 @@ pub fn handle_rotate_events(
 
         transform.rotation = rotate.destination;
 
-        if let Some(id) = conn.lookup(entity) {
-            conn.send(Command::EntityRotate {
-                id,
-                rotation: transform.rotation,
-            });
-        }
+        // if let Some(id) = conn.lookup(entity) {
+        //     conn.send(Command::EntityRotate {
+        //         id,
+        //         rotation: transform.rotation,
+        //     });
+        // }
 
         commands.entity(entity).remove::<Rotate>();
     }
