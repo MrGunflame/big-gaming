@@ -1,9 +1,11 @@
 use std::net::SocketAddr;
 use std::sync::{mpsc, Arc};
 
-use bevy::prelude::{Commands, Query, Res, ResMut, Transform};
-use game_common::bundles::{HostPlayerBundle, ObjectBundle};
+use bevy::prelude::{Commands, Query, Res, ResMut, Transform, With, Without};
+use bevy_rapier3d::prelude::{Collider, Velocity};
+use game_common::bundles::{ActorBundle, HostPlayerBundle, ObjectBundle};
 use game_common::components::object::ObjectId;
+use game_common::components::player::HostPlayer;
 use game_common::entity::{Entity, EntityData, EntityMap};
 use game_net::conn::{Connection, ConnectionHandle};
 use game_net::proto::{Decode, EntityKind, Packet};
@@ -86,9 +88,10 @@ pub fn spawn_conn(
 fn flush_command_queue(
     mut commands: Commands,
     queue: Res<CommandQueue>,
-    mut entities: Query<&mut Transform>,
-    mut conn: Res<ServerConnection>,
-    mut map: ResMut<EntityMap>,
+    mut entities: Query<(&mut Transform, &mut Velocity), Without<HostPlayer>>,
+    hosts: Query<bevy::ecs::entity::Entity, With<HostPlayer>>,
+    conn: Res<ServerConnection>,
+    map: ResMut<EntityMap>,
 ) {
     while let Some(msg) = queue.pop() {
         match msg.command {
@@ -99,33 +102,62 @@ fn flush_command_queue(
                 kind,
             } => {
                 let entity = match kind {
-                    EntityKind::Object(oid) => commands
-                        .spawn(
-                            ObjectBundle::new(oid)
-                                .translation(translation)
-                                .rotation(rotation),
-                        )
-                        .insert(Entity {
+                    EntityKind::Object(oid) => {
+                        let id = commands
+                            .spawn(
+                                ObjectBundle::new(oid)
+                                    .translation(translation)
+                                    .rotation(rotation),
+                            )
+                            .insert(Entity {
+                                id,
+                                transform: Transform::from_translation(translation),
+                                data: EntityData::Object { id: oid },
+                            })
+                            .id();
+
+                        tracing::info!(
+                            "Spawning object {:?} at {:.2}, {:.2}, {:.2}",
                             id,
-                            transform: Transform::from_translation(translation),
-                            data: EntityData::Object { id: oid },
-                        })
-                        .id(),
-                    EntityKind::Actor(()) => commands
-                        .spawn(
-                            ObjectBundle::new(ObjectId(0.into()))
-                                .translation(translation)
-                                .rotation(rotation),
-                        )
-                        .insert(Entity {
+                            translation.x,
+                            translation.y,
+                            translation.z,
+                        );
+
+                        id
+                    }
+                    EntityKind::Actor(()) => {
+                        let mut actor = ActorBundle::default();
+                        actor.transform.transform.translation = translation;
+                        actor.transform.transform.rotation = rotation;
+                        actor.physics.collider = Collider::cuboid(1.0, 1.0, 1.0);
+
+                        let id = commands
+                            .spawn(actor)
+                            .insert(Entity {
+                                id,
+                                transform: Transform::from_translation(translation),
+                                data: EntityData::Actor {},
+                            })
+                            .id();
+
+                        tracing::info!(
+                            "Spawning actor {:?} at {:.2}, {:.2}, {:.2}",
                             id,
-                            transform: Transform::from_translation(translation),
-                            data: EntityData::Actor {},
-                        })
-                        .id(),
+                            translation.x,
+                            translation.y,
+                            translation.z,
+                        );
+
+                        id
+                    }
                 };
 
                 map.insert(id, entity);
+
+                // Make sure the entity is spawned before processing any other
+                // commands.
+                break;
             }
             Command::EntityDestroy { id } => {
                 let ent = map.get(id).unwrap();
@@ -134,19 +166,42 @@ fn flush_command_queue(
             Command::EntityTranslate { id, translation } => {
                 let entity = map.get(id).unwrap();
 
-                if let Ok(mut transform) = entities.get_mut(entity) {
+                if let Ok((mut transform, _)) = entities.get_mut(entity) {
                     transform.translation = translation;
                 }
             }
             Command::EntityRotate { id, rotation } => {
                 let entity = map.get(id).unwrap();
 
-                if let Ok(mut transform) = entities.get_mut(entity) {
+                if let Ok((mut transform, _)) = entities.get_mut(entity) {
                     transform.rotation = rotation;
+                }
+            }
+            Command::EntityVelocity { id, linvel, angvel } => {
+                let entity = map.get(id).unwrap();
+
+                if let Ok((_, mut velocity)) = entities.get_mut(entity) {
+                    velocity.linvel = linvel;
+                    velocity.angvel = angvel;
                 }
             }
             Command::SpawnHost { id } => {
                 let ent = map.get(id).unwrap();
+
+                // If the world already contains a HostPlayer it must be removed.
+                // Having more than one HostPlayer causes problems and must be avoided.
+                if let Ok(host) = hosts.get_single() {
+                    commands.entity(host).remove::<HostPlayer>();
+                }
+
+                let (transform, _) = entities.get(ent).unwrap();
+                tracing::info!(
+                    "Entity {:?} (located at {:.2}, {:.2}, {:.2}) is now host",
+                    ent,
+                    transform.translation.x,
+                    transform.translation.y,
+                    transform.translation.z,
+                );
 
                 commands.entity(ent).insert(HostPlayerBundle::new());
             }

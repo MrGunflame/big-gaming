@@ -1,7 +1,6 @@
 use bevy::prelude::{Commands, Plugin, Quat, Query, Res, ResMut, Transform, Vec3};
+use bevy_rapier3d::prelude::{Collider, Velocity};
 use game_common::bundles::ActorBundle;
-use game_common::components::actor::Actor;
-use game_common::components::object::Object;
 use game_common::components::player::Player;
 use game_common::entity::{Entity, EntityData, EntityId, EntityMap};
 use game_common::world::entity::{Actor as WorldActor, Object as WorldObject};
@@ -28,7 +27,7 @@ fn flush_command_queue(
     mut commands: Commands,
     mut connections: ResMut<Connections>,
     queue: Res<CommandQueue>,
-    mut entities: Query<(&Entity, &mut Transform)>,
+    mut entities: Query<(&Entity, &mut Transform, &mut Velocity)>,
     mut map: ResMut<EntityMap>,
 ) {
     while let Some(msg) = queue.pop() {
@@ -47,21 +46,34 @@ fn flush_command_queue(
             Command::EntityTranslate { id, translation } => {
                 let ent = map.get(id).unwrap();
 
-                let (ent, mut transform) = entities.get_mut(ent).unwrap();
-                transform.translation = translation;
+                if let Ok((ent, mut transform, _)) = entities.get_mut(ent) {
+                    transform.translation = translation;
+                } else {
+                    tracing::warn!("unknown entity {:?}", ent);
+                }
             }
             Command::EntityRotate { id, rotation } => {
                 let ent = map.get(id).unwrap();
 
-                let (ent, mut transform) = entities.get_mut(ent).unwrap();
+                let (ent, mut transform, _) = entities.get_mut(ent).unwrap();
                 transform.rotation = rotation;
-                dbg!(transform);
+            }
+            Command::EntityVelocity { id, linvel, angvel } => {
+                let ent = map.get(id).unwrap();
+
+                let (ent, _, mut velocity) = entities.get_mut(ent).unwrap();
+                velocity.linvel = linvel;
+                velocity.angvel = angvel;
             }
             Command::PlayerJoin => {
                 let id = EntityId::new();
 
+                let mut actor = ActorBundle::default();
+                actor.transform.transform.translation.y += 1000.0;
+                actor.physics.collider = Collider::cuboid(1.0, 1.0, 1.0);
+
                 let ent = commands
-                    .spawn(ActorBundle::default())
+                    .spawn(actor)
                     .insert(Player)
                     .insert(StreamingSource::default())
                     .insert(Entity {
@@ -71,20 +83,20 @@ fn flush_command_queue(
                     })
                     .id();
 
-                connections
-                    .get_mut(msg.id)
-                    .unwrap()
-                    .data
-                    .handle
-                    .send_cmd(Command::EntityCreate {
-                        id,
-                        kind: EntityKind::Actor(()),
-                        translation: Vec3::default(),
-                        rotation: Quat::default(),
-                    });
+                // connections
+                //     .get_mut(msg.id)
+                //     .unwrap()
+                //     .data
+                //     .handle
+                //     .send_cmd(Command::EntityCreate {
+                //         id,
+                //         kind: EntityKind::Actor(()),
+                //         translation: Vec3::new(0.0, 1000.0, 0.0),
+                //         rotation: Quat::default(),
+                //     });
 
-                connections.set_host(msg.id, id);
                 map.insert(id, ent);
+                connections.set_host(msg.id, id);
             }
             Command::PlayerLeave => {}
             Command::SpawnHost { id } => (),

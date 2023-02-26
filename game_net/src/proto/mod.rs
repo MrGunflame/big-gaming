@@ -343,6 +343,16 @@ pub struct EntityRotate {
     pub rotation: Quat,
 }
 
+/// Updates the velocity of an entity. Contains the absolute velocity.
+#[derive(Copy, Clone, Debug, Encode, Decode)]
+pub struct EntityVelocity {
+    pub entity: ServerEntity,
+    /// The linear velocity of the entity.
+    pub linvel: Vec3,
+    /// The angular velocity of the entity.
+    pub angvel: Vec3,
+}
+
 /// Sets the host actor host used by the client.
 ///
 /// This is the actor the client is allowed to control.
@@ -363,6 +373,7 @@ pub enum Frame {
     EntityDestroy(EntityDestroy),
     EntityTranslate(EntityTranslate),
     EntityRotate(EntityRotate),
+    EntityVelocity(EntityVelocity),
     SpawnHost(SpawnHost),
     PlayerJoin(PlayerJoin),
     PlayerLeave(PlayerLeave),
@@ -390,6 +401,10 @@ impl Encode for Frame {
             }
             Self::EntityRotate(frame) => {
                 FrameType::ENTITY_ROTATE.encode(&mut buf)?;
+                frame.encode(buf)
+            }
+            Self::EntityVelocity(frame) => {
+                FrameType::ENTITY_VELOCITY.encode(&mut buf)?;
                 frame.encode(buf)
             }
             Self::SpawnHost(frame) => {
@@ -433,6 +448,10 @@ impl Decode for Frame {
             FrameType::ENTITY_ROTATE => {
                 let frame = EntityRotate::decode(buf)?;
                 Ok(Self::EntityRotate(frame))
+            }
+            FrameType::ENTITY_VELOCITY => {
+                let frame = EntityVelocity::decode(buf)?;
+                Ok(Self::EntityVelocity(frame))
             }
             FrameType::SPAWN_HOST => {
                 let frame = SpawnHost::decode(buf)?;
@@ -567,10 +586,13 @@ impl FrameType {
     /// The `FrameType` for the [`EntityRotate`] frame.
     pub const ENTITY_ROTATE: Self = Self(3);
 
-    pub const SPAWN_HOST: Self = Self(4);
+    /// The `FrameType` for the [`EntityVelocity`] frame.
+    pub const ENTITY_VELOCITY: Self = Self(4);
 
-    pub const PLAYER_JOIN: Self = Self(5);
-    pub const PLAYER_LEAVE: Self = Self(6);
+    pub const SPAWN_HOST: Self = Self(5);
+
+    pub const PLAYER_JOIN: Self = Self(6);
+    pub const PLAYER_LEAVE: Self = Self(7);
 }
 
 impl TryFrom<u16> for FrameType {
@@ -582,6 +604,7 @@ impl TryFrom<u16> for FrameType {
             Self::ENTITY_DESTROY => Ok(Self::ENTITY_DESTROY),
             Self::ENTITY_TRANSLATE => Ok(Self::ENTITY_TRANSLATE),
             Self::ENTITY_ROTATE => Ok(Self::ENTITY_ROTATE),
+            Self::ENTITY_VELOCITY => Ok(Self::ENTITY_VELOCITY),
             Self::SPAWN_HOST => Ok(Self::SPAWN_HOST),
             Self::PLAYER_JOIN => Ok(Self::PLAYER_JOIN),
             Self::PLAYER_LEAVE => Ok(Self::PLAYER_LEAVE),

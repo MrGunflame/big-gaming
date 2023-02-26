@@ -1,5 +1,5 @@
 use bevy::prelude::World;
-use bevy_egui::egui::{Area, Pos2, Ui, Window};
+use bevy_egui::egui::{Area, CentralPanel, Pos2, Ui, Window};
 use game_common::scene::{Scene, SceneTransition};
 
 use crate::{Widget, WidgetFlags};
@@ -19,11 +19,9 @@ impl Widget for MainMenu {
     }
 
     fn render(&mut self, ctx: &mut crate::Context) {
-        Window::new("main_menu")
-            .fixed_pos(Pos2::new(0.0, 0.0))
-            .show(ctx.ctx, |ui| {
-                render(&mut self.state, ui, ctx.world);
-            });
+        CentralPanel::default().show(ctx.ctx, |ui| {
+            render(&mut self.state, ui, ctx.world);
+        });
     }
 }
 

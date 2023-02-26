@@ -134,7 +134,8 @@ impl Plugin for MovementPlugin {
             .add_system(toggle_sprint)
             .add_system(jump_events)
             .add_system(events::handle_movement_events)
-            .add_system(events::handle_rotate_events);
+            .add_system(events::handle_rotate_events)
+            .add_system(events::handle_jump_events);
     }
 }
 
@@ -225,7 +226,6 @@ fn movement_events(
     }
 
     if let Some(angle) = angle.to_radians() {
-        dbg!("mov");
         commands.entity(entity).insert(Movement {
             direction: Quat::from_axis_angle(Vec3::Y, angle),
         });

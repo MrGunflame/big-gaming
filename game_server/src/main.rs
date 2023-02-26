@@ -1,17 +1,18 @@
 use std::time::Duration;
 
-use bevy::prelude::{App, Commands, Transform};
+use bevy::prelude::{
+    shape, App, Assets, Color, Commands, Mesh, PbrBundle, ResMut, StandardMaterial, Transform,
+};
+use bevy::transform::TransformBundle;
+use bevy_rapier3d::prelude::{Collider, NoUserData, RapierPhysicsPlugin, RigidBody};
 use clap::Parser;
-use conn::Connections;
 use game_common::archive::loader::ModuleLoader;
 use game_common::archive::GameArchive;
 use game_common::components::object::{Object, ObjectId};
 use game_common::entity::{Entity, EntityData, EntityId};
-use game_common::id::WeakId;
 use game_core::CorePlugins;
 use plugins::ServerPlugins;
 use server::Server;
-use snapshot::CommandQueue;
 use state::State;
 use tokio::time::{interval, MissedTickBehavior};
 
@@ -65,15 +66,20 @@ async fn main() {
 
 fn setup(mut commands: Commands) {
     commands
-        .spawn(Transform::default())
-        .insert(Object {
-            id: ObjectId(0.into()),
-        })
-        .insert(Entity {
-            id: EntityId::new(),
-            transform: Transform::default(),
-            data: EntityData::Object {
-                id: ObjectId(0.into()),
-            },
-        });
+        .spawn(TransformBundle::default())
+        .insert(RigidBody::Fixed)
+        .insert(Collider::cuboid(1000.0, 0.1, 1000.0));
+
+    // commands
+    //     .spawn(Transform::default())
+    //     .insert(Object {
+    //         id: ObjectId(0.into()),
+    //     })
+    //     .insert(Entity {
+    //         id: EntityId::new(),
+    //         transform: Transform::default(),
+    //         data: EntityData::Object {
+    //             id: ObjectId(0.into()),
+    //         },
+    //     });
 }

@@ -4,6 +4,7 @@ use crate::components::actor::{Actor, ActorFlags, MovementSpeed};
 use crate::components::inventory::{Equipment, Inventory};
 
 use super::combat::CombatBundle;
+use super::physics::DynamicPhysicsBundle;
 use super::transform::TransformBundle;
 use super::visibility::VisibilityBundle;
 
@@ -15,6 +16,8 @@ pub struct ActorBundle {
     pub visibility: VisibilityBundle,
     #[bundle]
     pub combat: CombatBundle,
+    #[bundle]
+    pub physics: DynamicPhysicsBundle,
 
     pub actor: Actor,
 

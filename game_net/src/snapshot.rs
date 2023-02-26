@@ -1,6 +1,5 @@
 use bevy_ecs::system::Resource;
 use game_common::entity::{Entity, EntityId};
-use game_common::net::ServerEntity;
 use glam::{Quat, Vec3};
 use parking_lot::Mutex;
 use std::collections::{HashMap, VecDeque};
@@ -39,9 +38,23 @@ impl Snapshot {
         for (id, body) in &self.entities {
             match entities.remove(id) {
                 Some(new) => {
-                    if body != &new {
-                        delta.push(EntityChange::Update { id: *id, data: new });
+                    if body.transform.translation != new.transform.translation {
+                        delta.push(EntityChange::Translate {
+                            id: *id,
+                            translation: new.transform.translation,
+                        });
                     }
+
+                    if body.transform.rotation != new.transform.rotation {
+                        delta.push(EntityChange::Rotate {
+                            id: *id,
+                            rotation: new.transform.rotation,
+                        });
+                    }
+
+                    // if body != &new {
+                    //     delta.push(EntityChange::Update { id: *id, data: new });
+                    // }
                 }
                 None => {
                     delta.push(EntityChange::Destroy { id: *id });
@@ -83,11 +96,40 @@ pub enum Command {
         id: EntityId,
         rotation: Quat,
     },
+    EntityVelocity {
+        id: EntityId,
+        linvel: Vec3,
+        angvel: Vec3,
+    },
     PlayerJoin,
     PlayerLeave,
     SpawnHost {
         id: EntityId,
     },
+}
+
+impl Command {
+    pub const fn id(&self) -> Option<EntityId> {
+        match self {
+            Self::EntityCreate {
+                id,
+                kind: _,
+                translation: _,
+                rotation: _,
+            } => Some(*id),
+            Self::EntityDestroy { id } => Some(*id),
+            Self::EntityTranslate { id, translation: _ } => Some(*id),
+            Self::EntityRotate { id, rotation: _ } => Some(*id),
+            Self::EntityVelocity {
+                id,
+                linvel: _,
+                angvel: _,
+            } => Some(*id),
+            Self::PlayerJoin => None,
+            Self::PlayerLeave => None,
+            Self::SpawnHost { id } => Some(*id),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default, Resource)]
@@ -116,6 +158,10 @@ impl CommandQueue {
 #[derive(Clone, Debug)]
 pub enum EntityChange {
     Create { id: EntityId, data: Entity },
-    Update { id: EntityId, data: Entity },
+    Translate { id: EntityId, translation: Vec3 },
+    Rotate { id: EntityId, rotation: Quat },
+    // Update { id: EntityId, data: Entity },
     Destroy { id: EntityId },
 }
+
+pub struct Patch {}

@@ -154,6 +154,7 @@ fn setup(
         .spawn(PbrBundle {
             mesh: meshes.add(Mesh::from(shape::Plane { size: 1000.0 })),
             material: materials.add(Color::rgb(1.0, 0.0, 0.0).into()),
+            transform: Transform::from_translation(Vec3::new(0.0, -100.0, 0.0)),
             ..Default::default()
         })
         .insert(RigidBody::Fixed)

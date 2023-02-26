@@ -6,8 +6,8 @@ use game_common::entity::EntityId;
 use game_common::net::ServerEntity;
 
 use crate::proto::{
-    EntityCreate, EntityDestroy, EntityRotate, EntityTranslate, Frame, PlayerJoin, PlayerLeave,
-    SpawnHost,
+    EntityCreate, EntityDestroy, EntityRotate, EntityTranslate, EntityVelocity, Frame, PlayerJoin,
+    PlayerLeave, SpawnHost,
 };
 use crate::snapshot::Command;
 
@@ -82,6 +82,15 @@ impl Entities {
                     rotation: frame.rotation,
                 })
             }
+            Frame::EntityVelocity(frame) => {
+                let id = self.get(frame.entity)?;
+
+                Some(Command::EntityVelocity {
+                    id,
+                    linvel: frame.linvel,
+                    angvel: frame.angvel,
+                })
+            }
             Frame::SpawnHost(frame) => {
                 let id = self.get(frame.entity)?;
 
@@ -92,7 +101,7 @@ impl Entities {
         }
     }
 
-    pub fn pack(&mut self, cmd: Command) -> Option<Frame> {
+    pub fn pack(&mut self, cmd: &Command) -> Option<Frame> {
         match cmd {
             Command::EntityCreate {
                 id,
@@ -101,40 +110,51 @@ impl Entities {
                 rotation,
             } => {
                 let entity = self.new_id();
-                self.insert(id, entity);
+                self.insert(*id, entity);
+
+                dbg!(id, entity);
 
                 Some(Frame::EntityCreate(EntityCreate {
                     entity,
-                    translation,
-                    rotation,
-                    kind,
+                    translation: *translation,
+                    rotation: *rotation,
+                    kind: *kind,
                 }))
             }
             Command::EntityDestroy { id } => {
-                let id = self.get(id)?;
+                let id = self.get(*id)?;
 
                 Some(Frame::EntityDestroy(EntityDestroy { entity: id }))
             }
             Command::EntityTranslate { id, translation } => {
-                let id = self.get(id)?;
+                let id = self.get(*id)?;
 
                 Some(Frame::EntityTranslate(EntityTranslate {
                     entity: id,
-                    translation,
+                    translation: *translation,
                 }))
             }
             Command::EntityRotate { id, rotation } => {
-                let id = self.get(id)?;
+                let id = self.get(*id)?;
 
                 Some(Frame::EntityRotate(EntityRotate {
                     entity: id,
-                    rotation,
+                    rotation: *rotation,
+                }))
+            }
+            Command::EntityVelocity { id, linvel, angvel } => {
+                let id = self.get(*id)?;
+
+                Some(Frame::EntityVelocity(EntityVelocity {
+                    entity: id,
+                    linvel: *linvel,
+                    angvel: *angvel,
                 }))
             }
             Command::PlayerJoin => Some(Frame::PlayerJoin(PlayerJoin {})),
             Command::PlayerLeave => Some(Frame::PlayerLeave(PlayerLeave {})),
             Command::SpawnHost { id } => {
-                let id = self.get(id)?;
+                let id = self.get(*id)?;
 
                 Some(Frame::SpawnHost(SpawnHost { entity: id }))
             }

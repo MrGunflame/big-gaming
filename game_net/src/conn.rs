@@ -1,4 +1,4 @@
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::future::Future;
 use std::net::SocketAddr;
 use std::pin::Pin;
@@ -7,6 +7,7 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 
 use futures::FutureExt;
+use game_common::entity::EntityId;
 use tokio::sync::mpsc;
 
 use crate::entity::Entities;
@@ -48,7 +49,8 @@ pub struct Connection {
     queue: CommandQueue,
     entities: Entities,
     peer: SocketAddr,
-    srv_ent_id: u64,
+    backlog: Backlog,
+    frame_queue: FrameQueue,
 }
 
 impl Connection {
@@ -71,7 +73,8 @@ impl Connection {
             queue,
             entities: Entities::new(),
             peer,
-            srv_ent_id: 0,
+            backlog: Backlog::new(),
+            frame_queue: FrameQueue::new(),
         };
 
         (
@@ -108,14 +111,36 @@ impl Connection {
             }
         }
 
-        if let Poll::Ready(cmd) = self.chan_out.poll_recv(cx) {
+        while let Poll::Ready(cmd) = self.chan_out.poll_recv(cx) {
             let cmd = cmd.unwrap();
 
-            tracing::debug!("sending {:?}", cmd);
+            let frame = match self.entities.pack(&cmd) {
+                Some(frame) => frame,
+                None => {
+                    tracing::info!("backlogging command");
 
+                    if let Some(id) = cmd.id() {
+                        self.backlog.insert(id, cmd);
+                    }
+
+                    continue;
+                }
+            };
+
+            self.frame_queue.push(frame);
+
+            if let Some(id) = cmd.id() {
+                if let Some(vec) = self.backlog.remove(id) {
+                    tracing::info!("flushing commands for {:?}", id);
+
+                    self.frame_queue
+                        .extend(vec.into_iter().map(|cmd| self.entities.pack(&cmd).unwrap()));
+                }
+            }
+        }
+
+        if let Some(frame) = self.frame_queue.pop() {
             let socket = self.socket.clone();
-
-            let frame = self.entities.pack(cmd).unwrap();
 
             let packet = Packet {
                 header: Header {
@@ -131,7 +156,7 @@ impl Connection {
                 let mut buf = Vec::with_capacity(1500);
                 packet.encode(&mut buf).unwrap();
 
-                tracing::debug!("sending {:?} ({} bytes)", packet, buf.len());
+                // tracing::info!("sending {:?} ({} bytes)", packet, buf.len());
 
                 socket.send_to(&buf, peer).await.unwrap();
             }));
@@ -214,6 +239,7 @@ enum ConnectionState {
     Closed,
 }
 
+#[derive(Clone, Debug)]
 pub struct FrameQueue {
     queue: VecDeque<Frame>,
 }
@@ -231,6 +257,12 @@ impl FrameQueue {
 
     pub fn pop(&mut self) -> Option<Frame> {
         self.queue.pop_front()
+    }
+}
+
+impl Extend<Frame> for FrameQueue {
+    fn extend<T: IntoIterator<Item = Frame>>(&mut self, iter: T) {
+        self.queue.extend(iter);
     }
 }
 
@@ -252,3 +284,33 @@ impl ConnectionHandle {
 }
 
 pub struct ConnectionKey {}
+
+/// Command backlog
+///
+/// Commands in the backlog are held until the entity with the given
+/// id exists.
+#[derive(Clone, Debug)]
+pub struct Backlog {
+    commands: HashMap<EntityId, Vec<Command>>,
+}
+
+impl Backlog {
+    pub fn new() -> Self {
+        Self {
+            commands: HashMap::new(),
+        }
+    }
+
+    pub fn insert(&mut self, id: EntityId, cmd: Command) {
+        match self.commands.get_mut(&id) {
+            Some(vec) => vec.push(cmd),
+            None => {
+                self.commands.insert(id, vec![cmd]);
+            }
+        }
+    }
+
+    pub fn remove(&mut self, id: EntityId) -> Option<Vec<Command>> {
+        self.commands.remove(&id)
+    }
+}

@@ -126,15 +126,19 @@ impl Drop for ConnectionMut {
 
         for change in delta {
             let cmd = match change {
-                EntityChange::Create { id, data } => Command::EntityCreate {
-                    id,
-                    kind: match data.data {
-                        EntityData::Object { id } => EntityKind::Object(id),
-                        EntityData::Actor {} => EntityKind::Actor(()),
-                    },
-                    translation: data.transform.translation,
-                    rotation: data.transform.rotation,
-                },
+                EntityChange::Create { id, data } => {
+                    dbg!(id);
+
+                    Command::EntityCreate {
+                        id,
+                        kind: match data.data {
+                            EntityData::Object { id } => EntityKind::Object(id),
+                            EntityData::Actor {} => EntityKind::Actor(()),
+                        },
+                        translation: data.transform.translation,
+                        rotation: data.transform.rotation,
+                    }
+                }
                 EntityChange::Translate { id, translation } => {
                     Command::EntityTranslate { id, translation }
                 }
