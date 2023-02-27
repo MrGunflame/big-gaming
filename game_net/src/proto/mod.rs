@@ -27,6 +27,8 @@
 //! server implementation.
 //!
 
+mod handshake;
+
 use game_common::components::object::ObjectId;
 use game_common::id::WeakId;
 pub use game_macros::{net__decode as Decode, net__encode as Encode};
@@ -38,6 +40,8 @@ use game_common::net::ServerEntity;
 use glam::{Quat, Vec3};
 use thiserror::Error;
 
+use self::handshake::{InvalidHandshakeFlags, InvalidHandshakeType};
+
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Error)]
 #[error(transparent)]
 pub enum Error {
@@ -45,6 +49,8 @@ pub enum Error {
     InvalidPacketType(#[from] InvalidPacketType),
     InvalidFrameType(#[from] InvalidFrameType),
     InvalidEntityKind(#[from] InvalidEntityKind),
+    InvalidHandshakeType(#[from] InvalidHandshakeType),
+    InvalidHandshakeFlags(#[from] InvalidHandshakeFlags),
 }
 
 impl From<Infallible> for Error {
@@ -658,7 +664,17 @@ impl From<u8> for InvalidEntityKind {
 }
 
 #[derive(Copy, Clone, Debug, Encode, Decode)]
-pub struct Handshake {}
+pub struct Handshake {
+    pub version: u16,
+    pub mtu: u16,
+    pub flow_window: u16,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub enum EncryptionField {
+    None,
+    Aes128,
+}
 
 impl<T> Encode for WeakId<T>
 where
