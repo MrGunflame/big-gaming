@@ -4,17 +4,33 @@ use std::net::SocketAddr;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
-use std::task::{Context, Poll};
+use std::task::{ready, Context, Poll};
+use std::time::{Duration, Instant};
 
 use futures::FutureExt;
 use game_common::entity::EntityId;
+use thiserror::Error;
 use tokio::sync::mpsc;
+use tokio::time::MissedTickBehavior;
 
 use crate::entity::Entities;
 use crate::proto::handshake::{Handshake, HandshakeFlags, HandshakeType};
 use crate::proto::{Encode, Error, Frame, Header, Packet, PacketBody, PacketType};
 use crate::snapshot::{Command, CommandQueue, ConnectionMessage};
 use crate::socket::Socket;
+
+// #[derive(Debug, Error)]
+// #[error(transparent)]
+// pub struct Error(#[from] ErrorInner);
+
+// #[derive(Debug, Error)]
+// enum ErrorInner {
+//     #[error("unexpected packet: expected {expected} but got {got}")]
+//     UnexpectedPacket {
+//         expected: HandshakeType,
+//         got: HandshakeType,
+//     },
+// }
 
 static CONNECTION_ID: AtomicU32 = AtomicU32::new(0);
 
@@ -54,6 +70,8 @@ pub struct Connection {
     frame_queue: FrameQueue,
     mode: ConnectionMode,
     write: Option<WriteRequest>,
+    interval: TickInterval,
+    last_time: Instant,
 }
 
 impl Connection {
@@ -81,6 +99,8 @@ impl Connection {
             frame_queue: FrameQueue::new(),
             mode,
             write: None,
+            interval: TickInterval::new(),
+            last_time: Instant::now(),
         };
 
         if mode == ConnectionMode::Connect {
@@ -106,6 +126,8 @@ impl Connection {
         while let Poll::Ready(packet) = self.stream.poll_recv(cx) {
             tracing::debug!("recv {:?}", packet);
 
+            self.last_time = Instant::now();
+
             let packet = packet.unwrap();
 
             let frames = match packet.body {
@@ -124,6 +146,10 @@ impl Connection {
                     command: cmd,
                 });
             }
+        }
+
+        if let Poll::Ready(()) = self.poll_tick(cx) {
+            return Poll::Ready(());
         }
 
         while let Poll::Ready(cmd) = self.chan_out.poll_recv(cx) {
@@ -217,18 +243,32 @@ impl Connection {
         };
 
         let Poll::Ready(packet) = self.stream.poll_recv(cx) else {
+            if let Poll::Ready(()) = self.poll_tick(cx) {
+                return Poll::Ready(());
+            }
+
             return Poll::Pending;
         };
         let packet = packet.unwrap();
 
+        self.last_time = Instant::now();
+
         let PacketBody::Handshake(body) = packet.body else {
-            panic!("expected HS");
+            return match self.mode {
+                ConnectionMode::Connect => self.abort(),
+                ConnectionMode::Listen => self.reject(HandshakeType::REJ_ROGUE),
+            };
         };
 
         match (state, self.mode) {
             // Connect mode
             (HandshakeState::Hello, ConnectionMode::Connect) => {
                 assert_eq!(body.kind, HandshakeType::HELLO);
+
+                if body.kind != HandshakeType::HELLO {
+                    tracing::info!("abort: expected HELLO, but got {:?}", body.kind);
+                    return self.abort();
+                }
 
                 // Send AGREEMENT
                 let packet = Packet {
@@ -260,13 +300,19 @@ impl Connection {
                 });
             }
             (HandshakeState::Agreement, ConnectionMode::Connect) => {
-                assert_eq!(body.kind, HandshakeType::AGREEMENT);
+                if body.kind != HandshakeType::AGREEMENT {
+                    tracing::info!("abort: expected AGREEMENT, but got {:?}", body.kind);
+                    return self.abort();
+                }
 
                 self.state = ConnectionState::Read;
             }
             // Listen mode
             (HandshakeState::Hello, ConnectionMode::Listen) => {
-                assert_eq!(body.kind, HandshakeType::HELLO);
+                if body.kind != HandshakeType::HELLO {
+                    tracing::info!("reject: expected HELLO, but got {:?}", body.kind);
+                    return self.reject(HandshakeType::REJ_ROGUE);
+                }
 
                 // Send HELLO
                 let packet = Packet {
@@ -298,7 +344,10 @@ impl Connection {
                 });
             }
             (HandshakeState::Agreement, ConnectionMode::Listen) => {
-                assert_eq!(body.kind, HandshakeType::AGREEMENT);
+                if body.kind != HandshakeType::AGREEMENT {
+                    tracing::info!("reject: expected AGREEMENT, but got {:?}", body.kind);
+                    return self.reject(HandshakeType::REJ_ROGUE);
+                }
 
                 let packet = Packet {
                     header: Header {
@@ -371,6 +420,59 @@ impl Connection {
             }),
             state: ConnectionState::Handshake(HandshakeState::Hello),
         });
+    }
+
+    fn poll_tick(&mut self, cx: &mut Context<'_>) -> Poll<()> {
+        ready!(self.interval.poll_tick(cx));
+
+        if self.last_time.elapsed() >= Duration::from_secs(15) {
+            tracing::info!("closing connection due to timeout");
+
+            return self.abort();
+        }
+
+        Poll::Pending
+    }
+
+    fn reject(&mut self, reason: HandshakeType) -> Poll<()> {
+        // Don't accidently send a non-rejection.
+        #[cfg(debug_assertions)]
+        assert!(reason.is_rejection());
+
+        let packet = Packet {
+            header: Header {
+                packet_type: PacketType::HANDSHAKE,
+                _resv0: 0,
+                sequence_number: 0,
+                timestamp: 0,
+            },
+            body: Handshake {
+                version: 0,
+                kind: reason,
+                flags: HandshakeFlags::default(),
+                mtu: 1500,
+                flow_window: 8192,
+            }
+            .into(),
+        };
+
+        let socket = self.socket.clone();
+        let peer = self.peer;
+        self.write = Some(WriteRequest {
+            future: Box::pin(async move {
+                let mut buf = Vec::with_capacity(1500);
+                packet.encode(&mut buf).unwrap();
+                socket.send_to(&buf, peer).await.unwrap();
+            }),
+            state: ConnectionState::Closed,
+        });
+
+        Poll::Ready(())
+    }
+
+    fn abort(&mut self) -> Poll<()> {
+        self.state = ConnectionState::Closed;
+        Poll::Ready(())
     }
 }
 
@@ -530,5 +632,23 @@ impl ConnectionMode {
     #[inline]
     pub const fn is_listen(self) -> bool {
         matches!(self, Self::Listen)
+    }
+}
+
+#[derive(Debug)]
+struct TickInterval {
+    interval: tokio::time::Interval,
+}
+
+impl TickInterval {
+    fn new() -> Self {
+        let mut interval = tokio::time::interval(Duration::from_secs(15));
+        interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
+
+        Self { interval }
+    }
+
+    fn poll_tick(&mut self, cx: &mut Context<'_>) -> Poll<()> {
+        self.interval.poll_tick(cx).map(|_| ())
     }
 }

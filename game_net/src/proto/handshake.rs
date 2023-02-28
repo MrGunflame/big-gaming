@@ -90,6 +90,11 @@ impl HandshakeType {
 
     /// The advertised MTU is too low for the peer.
     pub const REJ_MTU: Self = Self(18);
+
+    #[inline]
+    pub const fn is_rejection(self) -> bool {
+        self.0 >= 16
+    }
 }
 
 impl Encode for HandshakeType {

@@ -35,6 +35,7 @@ use game_common::id::WeakId;
 pub use game_macros::{net__decode as Decode, net__encode as Encode};
 
 use std::convert::Infallible;
+use std::fmt::{self, Display, Formatter};
 
 use bytes::{Buf, BufMut};
 use game_common::net::ServerEntity;

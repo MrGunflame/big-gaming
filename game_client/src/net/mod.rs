@@ -177,7 +177,7 @@ fn flush_command_queue(
                 let entity = map.get(id).unwrap();
 
                 if let Ok((mut transform,)) = entities.get_mut(entity) {
-                    transform.rotation = rotation;
+                    // transform.rotation = rotation;
                 }
             }
             Command::EntityVelocity { id, linvel, angvel } => {
