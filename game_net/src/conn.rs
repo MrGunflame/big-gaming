@@ -11,7 +11,8 @@ use game_common::entity::EntityId;
 use tokio::sync::mpsc;
 
 use crate::entity::Entities;
-use crate::proto::{Encode, Error, Frame, Header, Packet, PacketType};
+use crate::proto::handshake::{Handshake, HandshakeFlags, HandshakeType};
+use crate::proto::{Encode, Error, Frame, Header, Packet, PacketBody, PacketType};
 use crate::snapshot::{Command, CommandQueue, ConnectionMessage};
 use crate::socket::Socket;
 
@@ -51,6 +52,8 @@ pub struct Connection {
     peer: SocketAddr,
     backlog: Backlog,
     frame_queue: FrameQueue,
+    mode: ConnectionMode,
+    write: Option<WriteRequest>,
 }
 
 impl Connection {
@@ -75,6 +78,8 @@ impl Connection {
             peer,
             backlog: Backlog::new(),
             frame_queue: FrameQueue::new(),
+            mode: ConnectionMode::Listen,
+            write: None,
         };
 
         (
@@ -98,7 +103,12 @@ impl Connection {
 
             let packet = packet.unwrap();
 
-            for frame in packet.frames {
+            let frames = match packet.body {
+                PacketBody::Frames(f) => f,
+                _ => unreachable!(),
+            };
+
+            for frame in frames {
                 let Some(cmd) = self.entities.unpack(frame) else {
                     tracing::debug!("failed to translate cmd");
                     continue;
@@ -147,19 +157,23 @@ impl Connection {
                     packet_type: PacketType::DATA,
                     timestamp: 0,
                     sequence_number: 0,
+                    _resv0: 0,
                 },
-                frames: vec![frame],
+                body: PacketBody::Frames(vec![frame]),
             };
 
             let peer = self.peer;
-            self.state = ConnectionState::Write(Box::pin(async move {
-                let mut buf = Vec::with_capacity(1500);
-                packet.encode(&mut buf).unwrap();
+            self.write = Some(WriteRequest {
+                future: Box::pin(async move {
+                    let mut buf = Vec::with_capacity(1500);
+                    packet.encode(&mut buf).unwrap();
 
-                // tracing::info!("sending {:?} ({} bytes)", packet, buf.len());
+                    // tracing::info!("sending {:?} ({} bytes)", packet, buf.len());
 
-                socket.send_to(&buf, peer).await.unwrap();
-            }));
+                    socket.send_to(&buf, peer).await.unwrap();
+                }),
+                state: ConnectionState::Read,
+            });
 
             return Poll::Ready(());
         }
@@ -171,25 +185,154 @@ impl Connection {
         tracing::trace!("Connection.poll_write");
 
         #[cfg(debug_assertions)]
-        assert!(matches!(self.state, ConnectionState::Write(_)));
+        assert!(self.write.is_some());
 
-        let fut = match &mut self.state {
-            ConnectionState::Write(fut) => fut,
-            _ => unreachable!(),
+        let Some(req) = &mut self.write else {
+            unreachable!();
         };
 
-        match fut.poll_unpin(cx) {
+        match req.future.poll_unpin(cx) {
             Poll::Ready(_) => {
-                self.state = ConnectionState::Read;
+                self.state = req.state;
+                self.write = None;
                 Poll::Ready(())
             }
             Poll::Pending => Poll::Pending,
         }
     }
 
+    fn poll_handshake(&mut self, cx: &mut Context<'_>) -> Poll<()> {
+        tracing::trace!("Connection.poll_handshake");
+
+        #[cfg(debug_assertions)]
+        assert!(matches!(self.state, ConnectionState::Handshake(_)));
+
+        let ConnectionState::Handshake(state) = self.state else {
+            unreachable!();
+        };
+
+        let Poll::Ready(packet) = self.stream.poll_recv(cx) else {
+            return Poll::Pending;
+        };
+        let packet = packet.unwrap();
+
+        match state {
+            // Connect mode
+            HandshakeState::Hello if self.mode == ConnectionMode::Connect => {
+                let body = match packet.body {
+                    PacketBody::Handshake(body) => body,
+                    _ => panic!("expected HS"),
+                };
+
+                // Send AGREEMENT
+                let packet = Packet {
+                    header: Header {
+                        packet_type: PacketType::HANDSHAKE,
+                        _resv0: 0,
+                        sequence_number: 0,
+                        timestamp: 0,
+                    },
+                    body: Handshake {
+                        version: 0,
+                        kind: HandshakeType::AGREEMENT,
+                        flags: HandshakeFlags::default(),
+                        mtu: 1500,
+                        flow_window: 8192,
+                    }
+                    .into(),
+                };
+
+                let socket = self.socket.clone();
+                let peer = self.peer;
+                self.write = Some(WriteRequest {
+                    future: Box::pin(async move {
+                        let mut buf = Vec::with_capacity(1500);
+                        packet.encode(&mut buf).unwrap();
+                        socket.send_to(&buf, peer).await.unwrap();
+                    }),
+                    state: ConnectionState::Handshake(HandshakeState::Agreement),
+                });
+            }
+            HandshakeState::Agreement if self.mode == ConnectionMode::Connect => {
+                let body = match packet.body {
+                    PacketBody::Handshake(body) => body,
+                    _ => panic!("err"),
+                };
+
+                self.state = ConnectionState::Read;
+            }
+            // Listen mode
+            HandshakeState::Hello if self.mode == ConnectionMode::Listen => {
+                assert!(matches!(packet.body, PacketBody::Handshake(_)));
+
+                // Send HELLO
+                let packet = Packet {
+                    header: Header {
+                        packet_type: PacketType::HANDSHAKE,
+                        _resv0: 0,
+                        sequence_number: 0,
+                        timestamp: 0,
+                    },
+                    body: Handshake {
+                        version: 0,
+                        kind: HandshakeType::HELLO,
+                        flags: HandshakeFlags::default(),
+                        mtu: 1500,
+                        flow_window: 8192,
+                    }
+                    .into(),
+                };
+
+                let socket = self.socket.clone();
+                let peer = self.peer;
+                self.write = Some(WriteRequest {
+                    future: Box::pin(async move {
+                        let mut buf = Vec::with_capacity(1500);
+                        packet.encode(&mut buf).unwrap();
+                        socket.send_to(&buf, peer).await.unwrap();
+                    }),
+                    state: ConnectionState::Handshake(HandshakeState::Agreement),
+                });
+            }
+            HandshakeState::Agreement if self.mode == ConnectionMode::Listen => {
+                let packet = Packet {
+                    header: Header {
+                        packet_type: PacketType::HANDSHAKE,
+                        _resv0: 0,
+                        sequence_number: 0,
+                        timestamp: 0,
+                    },
+                    body: Handshake {
+                        version: 0,
+                        kind: HandshakeType::AGREEMENT,
+                        flags: HandshakeFlags::default(),
+                        mtu: 1500,
+                        flow_window: 8192,
+                    }
+                    .into(),
+                };
+
+                let socket = self.socket.clone();
+                let peer = self.peer;
+                self.write = Some(WriteRequest {
+                    future: Box::pin(async move {
+                        let mut buf = Vec::with_capacity(1500);
+                        packet.encode(&mut buf).unwrap();
+                        socket.send_to(&buf, peer).await.unwrap();
+                    }),
+                    state: ConnectionState::Handshake(HandshakeState::Agreement),
+                });
+            }
+            _ => unreachable!(),
+        }
+
+        Poll::Ready(())
+    }
+
     fn handle_packet(&mut self, packet: Packet) {
-        match packet.header.packet_type {
-            PacketType::HANDSHAKE => self.handle_handshake(packet),
+        match packet.body {
+            PacketBody::Handshake(body) => {}
+            PacketBody::Frames(body) => {}
             _ => (),
         }
     }
@@ -204,12 +347,19 @@ impl Future for Connection {
         tracing::trace!("Connection.poll");
 
         loop {
+            if self.write.is_some() {
+                match self.poll_write(cx) {
+                    Poll::Pending => return Poll::Pending,
+                    Poll::Ready(()) => (),
+                }
+            }
+
             match self.state {
-                ConnectionState::Read => match self.poll_read(cx) {
+                ConnectionState::Handshake(_) => match self.poll_handshake(cx) {
                     Poll::Pending => return Poll::Pending,
                     Poll::Ready(()) => (),
                 },
-                ConnectionState::Write(_) => match self.poll_write(cx) {
+                ConnectionState::Read => match self.poll_read(cx) {
                     Poll::Pending => return Poll::Pending,
                     Poll::Ready(()) => (),
                 },
@@ -233,10 +383,26 @@ impl Sender {
     }
 }
 
+struct WriteRequest {
+    future: Pin<Box<(dyn Future<Output = ()> + Send + Sync + 'static)>>,
+    /// The state to return to once done with writing.
+    state: ConnectionState,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 enum ConnectionState {
+    Handshake(HandshakeState),
     Read,
-    Write(Pin<Box<(dyn Future<Output = ()> + Send + Sync + 'static)>>),
     Closed,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+enum HandshakeState {
+    ///
+    /// If [`ConnectionMode::Connect`]: Hello sent, waiting for HELLO from server.
+    /// If [`ConnectionMode::Listen`]: Waiting for HELLO from client.
+    Hello,
+    Agreement,
 }
 
 #[derive(Clone, Debug)]
@@ -313,4 +479,10 @@ impl Backlog {
     pub fn remove(&mut self, id: EntityId) -> Option<Vec<Command>> {
         self.commands.remove(&id)
     }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum ConnectionMode {
+    Connect,
+    Listen,
 }

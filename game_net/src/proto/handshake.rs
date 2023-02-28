@@ -14,6 +14,16 @@ use bytes::{Buf, BufMut};
 
 use super::{Decode, Encode, Error};
 
+///
+/// ```text
+///  0               1               2               3
+///  0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
+/// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+/// | Version                       | Type          | Flags         |
+/// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+/// | MTU                           | Flow window                   |
+/// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+/// ```
 #[derive(Copy, Clone, Debug, Encode, Decode)]
 pub struct Handshake {
     pub version: u16,
@@ -72,7 +82,10 @@ impl HandshakeType {
     pub const HELLO: Self = Self(0);
     pub const AGREEMENT: Self = Self(1);
 
+    /// Rejected for unknown reason.
     pub const REJ_UNKNOWN: Self = Self(16);
+
+    /// Rejected due to invalid data in handshake packet.
     pub const REJ_ROGUE: Self = Self(17);
 
     /// The advertised MTU is too low for the peer.

@@ -27,7 +27,8 @@
 //! server implementation.
 //!
 
-mod handshake;
+pub mod handshake;
+pub mod shutdown;
 
 use game_common::components::object::ObjectId;
 use game_common::id::WeakId;
@@ -40,7 +41,7 @@ use game_common::net::ServerEntity;
 use glam::{Quat, Vec3};
 use thiserror::Error;
 
-use self::handshake::{InvalidHandshakeFlags, InvalidHandshakeType};
+use self::handshake::{Handshake, InvalidHandshakeFlags, InvalidHandshakeType};
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Error)]
 #[error(transparent)]
@@ -229,6 +230,7 @@ impl Decode for ServerEntity {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[repr(transparent)]
 pub struct PacketType(u16);
 
 impl PacketType {
@@ -290,11 +292,25 @@ impl From<u16> for InvalidPacketType {
     }
 }
 
+///
+/// ```text
+///  0               1               2               3
+///  0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
+/// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+/// | Packet Type                   | Reserved                      |
+/// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+/// | Sequence Number                                               |
+/// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+/// | Timestamp                                                     |
+/// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+/// ```
 #[derive(Copy, Clone, Debug, Encode, Decode)]
 pub struct Header {
     pub packet_type: PacketType,
-    pub timestamp: u32,
+    /// Reserved
+    pub _resv0: u16,
     pub sequence_number: u32,
+    pub timestamp: u32,
 }
 
 /// Creates a new entity on the client.
@@ -479,7 +495,19 @@ impl Decode for Frame {
 #[derive(Clone, Debug)]
 pub struct Packet {
     pub header: Header,
-    pub frames: Vec<Frame>,
+    pub body: PacketBody,
+}
+
+#[derive(Clone, Debug)]
+pub enum PacketBody {
+    Handshake(Handshake),
+    Frames(Vec<Frame>),
+}
+
+impl From<Handshake> for PacketBody {
+    fn from(value: Handshake) -> Self {
+        Self::Handshake(value)
+    }
 }
 
 impl Encode for Packet {
@@ -489,10 +517,23 @@ impl Encode for Packet {
     where
         B: BufMut,
     {
-        self.header.encode(&mut buf)?;
+        let mut header = self.header;
 
-        for frame in &self.frames {
-            frame.encode(&mut buf)?;
+        match &self.body {
+            PacketBody::Handshake(body) => {
+                header.packet_type = PacketType::HANDSHAKE;
+                header.encode(&mut buf)?;
+
+                body.encode(&mut buf)?;
+            }
+            PacketBody::Frames(body) => {
+                header.packet_type = PacketType::DATA;
+                header.encode(&mut buf)?;
+
+                for frame in body {
+                    frame.encode(&mut buf)?;
+                }
+            }
         }
 
         Ok(())
@@ -508,12 +549,20 @@ impl Decode for Packet {
     {
         let header = Header::decode(&mut buf)?;
 
-        let mut frames = Vec::new();
-        while buf.remaining() > 0 {
-            frames.push(Frame::decode(&mut buf)?);
-        }
+        let body = match header.packet_type {
+            PacketType::HANDSHAKE => PacketBody::Handshake(Handshake::decode(buf)?),
+            PacketType::DATA => {
+                let mut frames = Vec::new();
+                while buf.remaining() > 0 {
+                    frames.push(Frame::decode(&mut buf)?);
+                }
 
-        Ok(Self { header, frames })
+                PacketBody::Frames(frames)
+            }
+            _ => unreachable!(),
+        };
+
+        Ok(Self { header, body })
     }
 }
 
@@ -661,13 +710,6 @@ impl From<u8> for InvalidEntityKind {
     fn from(value: u8) -> Self {
         Self(value)
     }
-}
-
-#[derive(Copy, Clone, Debug, Encode, Decode)]
-pub struct Handshake {
-    pub version: u16,
-    pub mtu: u16,
-    pub flow_window: u16,
 }
 
 #[derive(Copy, Clone, Debug)]
