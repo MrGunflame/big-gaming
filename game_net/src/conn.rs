@@ -15,6 +15,7 @@ use tokio::time::MissedTickBehavior;
 
 use crate::entity::Entities;
 use crate::proto::handshake::{Handshake, HandshakeFlags, HandshakeType};
+use crate::proto::sequence::Sequence;
 use crate::proto::{Encode, Error, Frame, Header, Packet, PacketBody, PacketType};
 use crate::snapshot::{Command, CommandQueue, ConnectionMessage};
 use crate::socket::Socket;
@@ -187,7 +188,7 @@ impl Connection {
                 header: Header {
                     packet_type: PacketType::DATA,
                     timestamp: 0,
-                    sequence_number: 0,
+                    sequence_number: Sequence::default(),
                     _resv0: 0,
                 },
                 body: PacketBody::Frames(vec![frame]),
@@ -275,7 +276,7 @@ impl Connection {
                     header: Header {
                         packet_type: PacketType::HANDSHAKE,
                         _resv0: 0,
-                        sequence_number: 0,
+                        sequence_number: Sequence::default(),
                         timestamp: 0,
                     },
                     body: Handshake {
@@ -319,7 +320,7 @@ impl Connection {
                     header: Header {
                         packet_type: PacketType::HANDSHAKE,
                         _resv0: 0,
-                        sequence_number: 0,
+                        sequence_number: Sequence::default(),
                         timestamp: 0,
                     },
                     body: Handshake {
@@ -353,7 +354,7 @@ impl Connection {
                     header: Header {
                         packet_type: PacketType::HANDSHAKE,
                         _resv0: 0,
-                        sequence_number: 0,
+                        sequence_number: Sequence::default(),
                         timestamp: 0,
                     },
                     body: Handshake {
@@ -376,6 +377,12 @@ impl Connection {
                     }),
                     state: ConnectionState::Read,
                 });
+
+                // Signal the game that the player spawns.
+                self.queue.push(ConnectionMessage {
+                    id: self.id,
+                    command: Command::PlayerJoin,
+                });
             }
         }
 
@@ -397,7 +404,7 @@ impl Connection {
             header: Header {
                 packet_type: PacketType::HANDSHAKE,
                 _resv0: 0,
-                sequence_number: 0,
+                sequence_number: Sequence::default(),
                 timestamp: 0,
             },
             body: Handshake {
@@ -443,7 +450,7 @@ impl Connection {
             header: Header {
                 packet_type: PacketType::HANDSHAKE,
                 _resv0: 0,
-                sequence_number: 0,
+                sequence_number: Sequence::default(),
                 timestamp: 0,
             },
             body: Handshake {
@@ -470,8 +477,18 @@ impl Connection {
         Poll::Ready(())
     }
 
+    /// Closes the connection without doing a shutdown process.
     fn abort(&mut self) -> Poll<()> {
+        // If the connection active we need to notify that the player left.
+        if self.mode.is_listen() && self.state == ConnectionState::Read {
+            self.queue.push(ConnectionMessage {
+                id: self.id,
+                command: Command::PlayerLeave,
+            });
+        }
+
         self.state = ConnectionState::Closed;
+
         Poll::Ready(())
     }
 }

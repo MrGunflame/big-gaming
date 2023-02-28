@@ -28,6 +28,7 @@
 //!
 
 pub mod handshake;
+pub mod sequence;
 pub mod shutdown;
 
 use game_common::components::object::ObjectId;
@@ -42,6 +43,7 @@ use glam::{Quat, Vec3};
 use thiserror::Error;
 
 use self::handshake::{Handshake, InvalidHandshakeFlags, InvalidHandshakeType};
+use self::sequence::Sequence;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Error)]
 #[error(transparent)]
@@ -309,7 +311,7 @@ pub struct Header {
     pub packet_type: PacketType,
     /// Reserved
     pub _resv0: u16,
-    pub sequence_number: u32,
+    pub sequence_number: Sequence,
     pub timestamp: u32,
 }
 
