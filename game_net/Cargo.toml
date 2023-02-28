@@ -14,7 +14,7 @@ thiserror = "1.0.38"
 glam = "0.22.0"
 futures = "0.3.26"
 pin-project = "1.0.12"
-tokio = { version = "1.25.0", features = ["net", "sync"] }
+tokio = { version = "1.25.0", features = ["net", "sync", "time"] }
 socket2 = "0.4.7"
 bevy_ecs = "0.9.1"
 parking_lot = "0.12.1"
