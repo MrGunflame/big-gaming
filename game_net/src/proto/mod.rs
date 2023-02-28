@@ -30,6 +30,7 @@
 pub mod handshake;
 pub mod sequence;
 pub mod shutdown;
+pub mod timestamp;
 
 use game_common::components::object::ObjectId;
 use game_common::id::WeakId;
@@ -44,6 +45,7 @@ use thiserror::Error;
 
 use self::handshake::{Handshake, InvalidHandshakeFlags, InvalidHandshakeType};
 use self::sequence::Sequence;
+use self::timestamp::Timestamp;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Error)]
 #[error(transparent)]
@@ -312,7 +314,7 @@ pub struct Header {
     /// Reserved
     pub _resv0: u16,
     pub sequence_number: Sequence,
-    pub timestamp: u32,
+    pub timestamp: Timestamp,
 }
 
 /// Creates a new entity on the client.
@@ -504,6 +506,15 @@ pub struct Packet {
 pub enum PacketBody {
     Handshake(Handshake),
     Frames(Vec<Frame>),
+}
+
+impl PacketBody {
+    pub fn packet_type(&self) -> PacketType {
+        match self {
+            Self::Handshake(_) => PacketType::HANDSHAKE,
+            Self::Frames(_) => PacketType::DATA,
+        }
+    }
 }
 
 impl From<Handshake> for PacketBody {
