@@ -12,7 +12,7 @@ pub trait Serial:
 impl Serial for u32 {
     #[inline]
     fn max<const N: usize>() -> Self {
-        (1 << N) - 1
+        ((1u64 << N) - 1) as Self
     }
 
     #[inline]

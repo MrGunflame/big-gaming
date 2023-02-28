@@ -73,6 +73,8 @@ pub struct Connection {
     write: Option<WriteRequest>,
     interval: TickInterval,
     last_time: Instant,
+    next_server_sequence: Sequence,
+    start_time: Instant,
 }
 
 impl Connection {
@@ -102,6 +104,8 @@ impl Connection {
             write: None,
             interval: TickInterval::new(),
             last_time: Instant::now(),
+            next_server_sequence: Sequence::default(),
+            start_time: Instant::now(),
         };
 
         if mode == ConnectionMode::Connect {
@@ -182,7 +186,7 @@ impl Connection {
         }
 
         if let Some(frame) = self.frame_queue.pop() {
-            return self.send(PacketBody::Frames(vec![frame]));
+            return self.send(PacketBody::Frames(vec![frame]), ConnectionState::Read);
         }
 
         Poll::Pending
@@ -209,7 +213,7 @@ impl Connection {
     }
 
     fn poll_handshake(&mut self, cx: &mut Context<'_>) -> Poll<()> {
-        tracing::info!("Connection.poll_handshake");
+        tracing::trace!("Connection.poll_handshake");
 
         #[cfg(debug_assertions)]
         assert!(matches!(self.state, ConnectionState::Handshake(_)));
@@ -255,7 +259,7 @@ impl Connection {
                     flow_window: 8192,
                 };
 
-                return self.send(resp);
+                return self.send(resp, ConnectionState::Handshake(HandshakeState::Agreement));
             }
             (HandshakeState::Agreement, ConnectionMode::Connect) => {
                 if body.kind != HandshakeType::AGREEMENT {
@@ -281,7 +285,7 @@ impl Connection {
                     flow_window: 8192,
                 };
 
-                return self.send(resp);
+                return self.send(resp, ConnectionState::Handshake(HandshakeState::Agreement));
             }
             (HandshakeState::Agreement, ConnectionMode::Listen) => {
                 if body.kind != HandshakeType::AGREEMENT {
@@ -303,7 +307,7 @@ impl Connection {
                     command: Command::PlayerJoin,
                 });
 
-                return self.send(resp);
+                return self.send(resp, ConnectionState::Read);
             }
         }
 
@@ -330,7 +334,7 @@ impl Connection {
         };
 
         // connect is only called initially (before the future was first polled).
-        let _ = self.send(req);
+        let _ = self.send(req, ConnectionState::Handshake(HandshakeState::Hello));
     }
 
     fn poll_tick(&mut self, cx: &mut Context<'_>) -> Poll<()> {
@@ -358,7 +362,7 @@ impl Connection {
             flow_window: 8192,
         };
 
-        self.send(resp)
+        self.send(resp, ConnectionState::Closed)
     }
 
     /// Closes the connection without doing a shutdown process.
@@ -376,18 +380,23 @@ impl Connection {
         Poll::Ready(())
     }
 
-    fn send<T>(&mut self, body: T) -> Poll<()>
+    fn send<T>(&mut self, body: T, state: ConnectionState) -> Poll<()>
     where
         T: Into<PacketBody>,
     {
         let body = body.into();
 
+        let sequence = self.next_server_sequence;
+        self.next_server_sequence += 1;
+
+        let timestamp = Timestamp::new(self.start_time.elapsed());
+
         let packet = Packet {
             header: Header {
                 packet_type: body.packet_type(),
                 _resv0: 0,
-                sequence_number: Sequence::default(),
-                timestamp: Timestamp::default(),
+                sequence_number: sequence,
+                timestamp,
             },
             body,
         };
@@ -400,7 +409,7 @@ impl Connection {
                 packet.encode(&mut buf).unwrap();
                 socket.send_to(&buf, peer).await.unwrap();
             }),
-            state: ConnectionState::Closed,
+            state,
         });
 
         Poll::Ready(())
