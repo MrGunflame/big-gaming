@@ -61,14 +61,14 @@ pub fn handle_rotate_events(
             continue;
         }
 
-        transform.rotation = rotate.destination;
+        // transform.rotation = rotate.destination;
 
-        // if let Some(id) = conn.lookup(entity) {
-        //     conn.send(Command::EntityRotate {
-        //         id,
-        //         rotation: transform.rotation,
-        //     });
-        // }
+        if let Some(id) = conn.lookup(entity) {
+            conn.send(Command::EntityRotate {
+                id,
+                rotation: transform.rotation,
+            });
+        }
 
         commands.entity(entity).remove::<Rotate>();
     }

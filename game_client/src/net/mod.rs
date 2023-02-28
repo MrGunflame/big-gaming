@@ -7,7 +7,7 @@ use game_common::bundles::{ActorBundle, HostPlayerBundle, ObjectBundle};
 use game_common::components::object::ObjectId;
 use game_common::components::player::HostPlayer;
 use game_common::entity::{Entity, EntityData, EntityMap};
-use game_net::conn::{Connection, ConnectionHandle};
+use game_net::conn::{Connection, ConnectionHandle, ConnectionMode};
 use game_net::proto::{Decode, EntityKind, Packet};
 use game_net::snapshot::{Command, CommandQueue};
 use game_net::Socket;
@@ -52,7 +52,8 @@ pub fn spawn_conn(
                     return;
                 }
             };
-            let (conn, handle) = Connection::new(addr, queue, sock.clone());
+            let (conn, handle) =
+                Connection::new(addr, queue, sock.clone(), ConnectionMode::Connect);
 
             tokio::task::spawn(async move {
                 conn.await.unwrap();
@@ -176,7 +177,7 @@ fn flush_command_queue(
                 let entity = map.get(id).unwrap();
 
                 if let Ok((mut transform,)) = entities.get_mut(entity) {
-                    // transform.rotation = rotation;
+                    transform.rotation = rotation;
                 }
             }
             Command::EntityVelocity { id, linvel, angvel } => {

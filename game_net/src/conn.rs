@@ -61,26 +61,31 @@ impl Connection {
         peer: SocketAddr,
         queue: CommandQueue,
         socket: Arc<Socket>,
+        mode: ConnectionMode,
     ) -> (Self, ConnectionHandle) {
         let id = ConnectionId::new();
 
         let (tx, rx) = mpsc::channel(32);
         let (out_tx, out_rx) = mpsc::channel(32);
 
-        let conn = Self {
+        let mut conn = Self {
             id,
             stream: rx,
             socket,
-            state: ConnectionState::Read,
+            state: ConnectionState::Handshake(HandshakeState::Hello),
             chan_out: out_rx,
             queue,
             entities: Entities::new(),
             peer,
             backlog: Backlog::new(),
             frame_queue: FrameQueue::new(),
-            mode: ConnectionMode::Listen,
+            mode,
             write: None,
         };
+
+        if mode == ConnectionMode::Connect {
+            conn.prepare_connect();
+        }
 
         (
             conn,
@@ -202,7 +207,7 @@ impl Connection {
     }
 
     fn poll_handshake(&mut self, cx: &mut Context<'_>) -> Poll<()> {
-        tracing::trace!("Connection.poll_handshake");
+        tracing::info!("Connection.poll_handshake");
 
         #[cfg(debug_assertions)]
         assert!(matches!(self.state, ConnectionState::Handshake(_)));
@@ -216,13 +221,14 @@ impl Connection {
         };
         let packet = packet.unwrap();
 
-        match state {
+        let PacketBody::Handshake(body) = packet.body else {
+            panic!("expected HS");
+        };
+
+        match (state, self.mode) {
             // Connect mode
-            HandshakeState::Hello if self.mode == ConnectionMode::Connect => {
-                let body = match packet.body {
-                    PacketBody::Handshake(body) => body,
-                    _ => panic!("expected HS"),
-                };
+            (HandshakeState::Hello, ConnectionMode::Connect) => {
+                assert_eq!(body.kind, HandshakeType::HELLO);
 
                 // Send AGREEMENT
                 let packet = Packet {
@@ -253,17 +259,14 @@ impl Connection {
                     state: ConnectionState::Handshake(HandshakeState::Agreement),
                 });
             }
-            HandshakeState::Agreement if self.mode == ConnectionMode::Connect => {
-                let body = match packet.body {
-                    PacketBody::Handshake(body) => body,
-                    _ => panic!("err"),
-                };
+            (HandshakeState::Agreement, ConnectionMode::Connect) => {
+                assert_eq!(body.kind, HandshakeType::AGREEMENT);
 
                 self.state = ConnectionState::Read;
             }
             // Listen mode
-            HandshakeState::Hello if self.mode == ConnectionMode::Listen => {
-                assert!(matches!(packet.body, PacketBody::Handshake(_)));
+            (HandshakeState::Hello, ConnectionMode::Listen) => {
+                assert_eq!(body.kind, HandshakeType::HELLO);
 
                 // Send HELLO
                 let packet = Packet {
@@ -294,7 +297,9 @@ impl Connection {
                     state: ConnectionState::Handshake(HandshakeState::Agreement),
                 });
             }
-            HandshakeState::Agreement if self.mode == ConnectionMode::Listen => {
+            (HandshakeState::Agreement, ConnectionMode::Listen) => {
+                assert_eq!(body.kind, HandshakeType::AGREEMENT);
+
                 let packet = Packet {
                     header: Header {
                         packet_type: PacketType::HANDSHAKE,
@@ -320,10 +325,9 @@ impl Connection {
                         packet.encode(&mut buf).unwrap();
                         socket.send_to(&buf, peer).await.unwrap();
                     }),
-                    state: ConnectionState::Handshake(HandshakeState::Agreement),
+                    state: ConnectionState::Read,
                 });
             }
-            _ => unreachable!(),
         }
 
         Poll::Ready(())
@@ -338,6 +342,36 @@ impl Connection {
     }
 
     fn handle_handshake(&mut self, packet: Packet) {}
+
+    fn prepare_connect(&mut self) {
+        let packet = Packet {
+            header: Header {
+                packet_type: PacketType::HANDSHAKE,
+                _resv0: 0,
+                sequence_number: 0,
+                timestamp: 0,
+            },
+            body: Handshake {
+                version: 0,
+                kind: HandshakeType::HELLO,
+                flags: HandshakeFlags::default(),
+                mtu: 1500,
+                flow_window: 8192,
+            }
+            .into(),
+        };
+
+        let socket = self.socket.clone();
+        let peer = self.peer;
+        self.write = Some(WriteRequest {
+            future: Box::pin(async move {
+                let mut buf = Vec::with_capacity(1500);
+                packet.encode(&mut buf).unwrap();
+                socket.send_to(&buf, peer).await.unwrap();
+            }),
+            state: ConnectionState::Handshake(HandshakeState::Hello),
+        });
+    }
 }
 
 impl Future for Connection {
@@ -485,4 +519,16 @@ impl Backlog {
 pub enum ConnectionMode {
     Connect,
     Listen,
+}
+
+impl ConnectionMode {
+    #[inline]
+    pub const fn is_connect(self) -> bool {
+        matches!(self, Self::Connect)
+    }
+
+    #[inline]
+    pub const fn is_listen(self) -> bool {
+        matches!(self, Self::Listen)
+    }
 }

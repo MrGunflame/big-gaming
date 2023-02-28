@@ -367,6 +367,9 @@ fn mouse_movement(
         //     destination: q1 * player.rotation,
         // });
 
+        dbg!(q1 * player.rotation);
+
+        player.rotation = q1 * player.rotation;
         commands.entity(entity).insert(Rotate {
             destination: q1 * player.rotation,
         });
