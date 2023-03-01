@@ -16,7 +16,7 @@ use crate::entity::Entities;
 use crate::proto::ack::{Ack, Nak};
 use crate::proto::handshake::{Handshake, HandshakeFlags, HandshakeType};
 use crate::proto::sequence::Sequence;
-use crate::proto::shutdown::Shutdown;
+use crate::proto::shutdown::{Shutdown, ShutdownReason};
 use crate::proto::timestamp::Timestamp;
 use crate::proto::{Encode, Error, Frame, Header, Packet, PacketBody};
 use crate::snapshot::{Command, CommandQueue, ConnectionMessage};
@@ -154,7 +154,9 @@ impl Connection {
         }
 
         while let Poll::Ready(cmd) = self.chan_out.poll_recv(cx) {
-            let cmd = cmd.unwrap();
+            let Some(cmd) = cmd else {
+                return self.shutdown();
+            };
 
             let frame = match self.entities.pack(&cmd) {
                 Some(frame) => frame,
@@ -319,7 +321,7 @@ impl Connection {
     }
 
     fn handle_shutdown(&mut self, header: Header, body: Shutdown) -> Poll<()> {
-        Poll::Pending
+        self.shutdown()
     }
 
     fn handle_ack(&mut self, header: Header, body: Ack) -> Poll<()> {
@@ -349,7 +351,7 @@ impl Connection {
         if self.last_time.elapsed() >= Duration::from_secs(15) {
             tracing::info!("closing connection due to timeout");
 
-            return self.abort();
+            return self.shutdown();
         }
 
         // Send periodic ACKs while connected.
@@ -396,6 +398,22 @@ impl Connection {
         Poll::Ready(())
     }
 
+    fn shutdown(&mut self) -> Poll<()> {
+        // If the connection active we need to notify that the player left.
+        if self.mode.is_listen() && self.state == ConnectionState::Connected {
+            self.queue.push(ConnectionMessage {
+                id: self.id,
+                command: Command::Disconnected,
+            });
+        }
+
+        let packet = Shutdown {
+            reason: ShutdownReason::CLOSE,
+        };
+
+        self.send(packet, ConnectionState::Closed)
+    }
+
     fn send<T>(&mut self, body: T, state: ConnectionState) -> Poll<()>
     where
         T: Into<PacketBody>,
@@ -422,7 +440,9 @@ impl Connection {
             future: Box::pin(async move {
                 let mut buf = Vec::with_capacity(1500);
                 packet.encode(&mut buf).unwrap();
-                socket.send_to(&buf, peer).await.unwrap();
+                if let Err(err) = socket.send_to(&buf, peer).await {
+                    tracing::error!("Failed to send packet: {}", err);
+                }
             }),
             state,
         });
