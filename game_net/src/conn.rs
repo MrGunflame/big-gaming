@@ -9,6 +9,7 @@ use std::time::{Duration, Instant};
 
 use futures::FutureExt;
 use game_common::entity::EntityId;
+use thiserror::Error;
 use tokio::sync::mpsc;
 use tokio::time::MissedTickBehavior;
 
@@ -18,22 +19,23 @@ use crate::proto::handshake::{Handshake, HandshakeFlags, HandshakeType};
 use crate::proto::sequence::Sequence;
 use crate::proto::shutdown::{Shutdown, ShutdownReason};
 use crate::proto::timestamp::Timestamp;
-use crate::proto::{Encode, Error, Frame, Header, Packet, PacketBody};
+use crate::proto::{Encode, Frame, Header, Packet, PacketBody};
 use crate::snapshot::{Command, CommandQueue, ConnectionMessage};
 use crate::socket::Socket;
 
-// #[derive(Debug, Error)]
-// #[error(transparent)]
-// pub struct Error(#[from] ErrorInner);
+#[derive(Debug, Error)]
+#[error(transparent)]
+pub struct Error(#[from] ErrorKind);
 
-// #[derive(Debug, Error)]
-// enum ErrorInner {
-//     #[error("unexpected packet: expected {expected} but got {got}")]
-//     UnexpectedPacket {
-//         expected: HandshakeType,
-//         got: HandshakeType,
-//     },
-// }
+#[derive(Debug, Error)]
+enum ErrorKind {
+    #[error("connection refused")]
+    ConnectionRefused,
+    #[error("timed out")]
+    TimedOut,
+    #[error("peer shutdown")]
+    PeerShutdown,
+}
 
 static CONNECTION_ID: AtomicU32 = AtomicU32::new(0);
 
@@ -127,7 +129,7 @@ impl Connection {
         )
     }
 
-    fn poll_read(&mut self, cx: &mut Context<'_>) -> Poll<()> {
+    fn poll_read(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), ErrorKind>> {
         tracing::trace!("Connection.poll_read");
 
         while let Poll::Ready(packet) = self.stream.poll_recv(cx) {
@@ -140,12 +142,12 @@ impl Connection {
             };
 
             if self.handle_packet(packet).is_ready() {
-                return Poll::Ready(());
+                return Poll::Ready(Ok(()));
             }
         }
 
-        if let Poll::Ready(()) = self.poll_tick(cx) {
-            return Poll::Ready(());
+        if let Poll::Ready(res) = self.poll_tick(cx) {
+            return Poll::Ready(res);
         }
 
         // Don't send commands to peer until connected.
@@ -184,7 +186,8 @@ impl Connection {
         }
 
         if let Some(frame) = self.frame_queue.pop() {
-            return self.send(PacketBody::Frames(vec![frame]), ConnectionState::Connected);
+            self.send(PacketBody::Frames(vec![frame]), ConnectionState::Connected);
+            return Poll::Ready(Ok(()));
         }
 
         Poll::Pending
@@ -253,7 +256,8 @@ impl Connection {
 
                 if body.kind != HandshakeType::HELLO {
                     tracing::info!("abort: expected HELLO, but got {:?}", body.kind);
-                    return self.abort();
+                    self.abort();
+                    return Poll::Ready(());
                 }
 
                 // Send AGREEMENT
@@ -270,10 +274,15 @@ impl Connection {
             (HandshakeState::Agreement, ConnectionMode::Connect) => {
                 if body.kind != HandshakeType::AGREEMENT {
                     tracing::info!("abort: expected AGREEMENT, but got {:?}", body.kind);
-                    return self.abort();
+                    self.abort();
+                    return Poll::Ready(());
                 }
 
                 self.state = ConnectionState::Connected;
+                self.queue.push(ConnectionMessage {
+                    id: self.id,
+                    command: Command::Connected,
+                });
             }
             // Listen mode
             (HandshakeState::Hello, ConnectionMode::Listen) => {
@@ -321,7 +330,8 @@ impl Connection {
     }
 
     fn handle_shutdown(&mut self, header: Header, body: Shutdown) -> Poll<()> {
-        self.shutdown()
+        let _ = self.shutdown();
+        Poll::Ready(())
     }
 
     fn handle_ack(&mut self, header: Header, body: Ack) -> Poll<()> {
@@ -345,23 +355,25 @@ impl Connection {
         let _ = self.send(req, ConnectionState::Handshake(HandshakeState::Hello));
     }
 
-    fn poll_tick(&mut self, cx: &mut Context<'_>) -> Poll<()> {
+    fn poll_tick(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), ErrorKind>> {
         ready!(self.interval.poll_tick(cx));
 
         if self.last_time.elapsed() >= Duration::from_secs(15) {
             tracing::info!("closing connection due to timeout");
 
-            return self.shutdown();
+            self.shutdown();
+            return Poll::Ready(Err(ErrorKind::TimedOut));
         }
 
         // Send periodic ACKs while connected.
         if self.state == ConnectionState::Connected {
-            self.send(
+            let _ = self.send(
                 Ack {
                     sequence: self.next_peer_sequence,
                 },
                 ConnectionState::Connected,
-            )
+            );
+            Poll::Ready(Ok(()))
         } else {
             Poll::Pending
         }
@@ -384,9 +396,9 @@ impl Connection {
     }
 
     /// Closes the connection without doing a shutdown process.
-    fn abort(&mut self) -> Poll<()> {
+    fn abort(&mut self) -> Poll<Result<(), ErrorKind>> {
         // If the connection active we need to notify that the player left.
-        if self.mode.is_listen() && self.state == ConnectionState::Connected {
+        if self.state == ConnectionState::Connected {
             self.queue.push(ConnectionMessage {
                 id: self.id,
                 command: Command::Disconnected,
@@ -395,10 +407,10 @@ impl Connection {
 
         self.state = ConnectionState::Closed;
 
-        Poll::Ready(())
+        Poll::Ready(Ok(()))
     }
 
-    fn shutdown(&mut self) -> Poll<()> {
+    fn shutdown(&mut self) -> Poll<Result<(), ErrorKind>> {
         // If the connection active we need to notify that the player left.
         if self.mode.is_listen() && self.state == ConnectionState::Connected {
             self.queue.push(ConnectionMessage {
@@ -411,7 +423,8 @@ impl Connection {
             reason: ShutdownReason::CLOSE,
         };
 
-        self.send(packet, ConnectionState::Closed)
+        let _ = self.send(packet, ConnectionState::Closed);
+        Poll::Ready(Ok(()))
     }
 
     fn send<T>(&mut self, body: T, state: ConnectionState) -> Poll<()>
@@ -469,7 +482,8 @@ impl Future for Connection {
                 ConnectionState::Connected | ConnectionState::Handshake(_) => {
                     match self.poll_read(cx) {
                         Poll::Pending => return Poll::Pending,
-                        Poll::Ready(()) => (),
+                        Poll::Ready(Err(err)) => return Poll::Ready(Err(Error(err))),
+                        Poll::Ready(Ok(())) => (),
                     }
                 }
                 ConnectionState::Closed => return Poll::Ready(Ok(())),
@@ -554,7 +568,7 @@ impl ConnectionHandle {
     }
 
     pub fn send_cmd(&self, cmd: Command) {
-        self.chan_out.try_send(cmd).unwrap();
+        self.chan_out.try_send(cmd);
     }
 }
 

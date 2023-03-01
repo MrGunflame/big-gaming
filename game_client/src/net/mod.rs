@@ -1,19 +1,19 @@
 use std::net::SocketAddr;
 use std::sync::{mpsc, Arc};
 
-use bevy::prelude::{Commands, Query, Res, ResMut, Transform, With, Without};
-use bevy_rapier3d::prelude::{Collider, Velocity};
-use game_common::bundles::{ActorBundle, HostPlayerBundle, ObjectBundle};
-use game_common::components::object::ObjectId;
+use bevy::prelude::{Commands, Query, Res, ResMut, Transform, With};
+use bevy_rapier3d::prelude::Collider;
+use game_common::bundles::{ActorBundle, ObjectBundle};
 use game_common::components::player::HostPlayer;
 use game_common::entity::{Entity, EntityData, EntityMap};
 use game_net::conn::{Connection, ConnectionHandle, ConnectionMode};
 use game_net::proto::{Decode, EntityKind, Packet};
-use game_net::snapshot::{Command, CommandQueue};
+use game_net::snapshot::{Command, CommandQueue, ConnectionMessage};
 use game_net::Socket;
 use tokio::runtime::Runtime;
 
 pub use self::conn::ServerConnection;
+use self::conn::State;
 
 mod conn;
 
@@ -29,7 +29,7 @@ impl bevy::prelude::Plugin for NetPlugin {
 
         app.insert_resource(queue)
             .insert_resource(map.clone())
-            .insert_resource(ServerConnection::stub(map))
+            .insert_resource(ServerConnection::new(map))
             .add_system(flush_command_queue)
             .add_system(conn::update_connection_state);
     }
@@ -52,11 +52,17 @@ pub fn spawn_conn(
                     return;
                 }
             };
-            let (conn, handle) =
-                Connection::new(addr, queue, sock.clone(), ConnectionMode::Connect);
+            let (mut conn, handle) =
+                Connection::new(addr, queue.clone(), sock.clone(), ConnectionMode::Connect);
 
             tokio::task::spawn(async move {
-                conn.await.unwrap();
+                if let Err(err) = (&mut conn).await {
+                    tracing::error!("server error: {}", err);
+                    queue.push(ConnectionMessage {
+                        id: conn.id,
+                        command: Command::Disconnected,
+                    });
+                }
             });
 
             tracing::info!("connected");
@@ -89,7 +95,7 @@ fn flush_command_queue(
     queue: Res<CommandQueue>,
     mut entities: Query<(&mut Transform,)>,
     hosts: Query<bevy::ecs::entity::Entity, With<HostPlayer>>,
-    conn: Res<ServerConnection>,
+    mut conn: ResMut<ServerConnection>,
     map: ResMut<EntityMap>,
 ) {
     while let Some(msg) = queue.pop() {
@@ -207,8 +213,12 @@ fn flush_command_queue(
                 commands.entity(ent).insert(HostPlayer);
             }
             // Never sent to clients
-            Command::Connected => (),
-            Command::Disconnected => (),
+            Command::Connected => {
+                conn.push_state(State::Connected);
+            }
+            Command::Disconnected => {
+                conn.push_state(State::Disconnected);
+            }
         }
     }
 }

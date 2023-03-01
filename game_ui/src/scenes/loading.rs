@@ -1,3 +1,5 @@
+use bevy_egui::egui::CentralPanel;
+
 use crate::{Widget, WidgetFlags};
 
 #[derive(Debug, Default)]
@@ -12,5 +14,9 @@ impl Widget for Loading {
         WidgetFlags::IGNORE_CLOSE
     }
 
-    fn render(&mut self, ctx: &mut crate::Context) {}
+    fn render(&mut self, ctx: &mut crate::Context) {
+        CentralPanel::default().show(ctx.ctx, |ui| {
+            ui.label("Loading");
+        });
+    }
 }
