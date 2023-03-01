@@ -44,8 +44,10 @@ use game_common::net::ServerEntity;
 use glam::{Quat, Vec3};
 use thiserror::Error;
 
+use self::ack::{Ack, Nak};
 use self::handshake::{Handshake, InvalidHandshakeFlags, InvalidHandshakeType};
 use self::sequence::Sequence;
+use self::shutdown::Shutdown;
 use self::timestamp::Timestamp;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Error)]
@@ -554,6 +556,9 @@ pub struct Packet {
 #[derive(Clone, Debug)]
 pub enum PacketBody {
     Handshake(Handshake),
+    Shutdown(Shutdown),
+    Ack(Ack),
+    Nak(Nak),
     Frames(Vec<Frame>),
 }
 
@@ -561,6 +566,9 @@ impl PacketBody {
     pub fn packet_type(&self) -> PacketType {
         match self {
             Self::Handshake(_) => PacketType::HANDSHAKE,
+            Self::Shutdown(_) => PacketType::SHUTDOWN,
+            Self::Ack(_) => PacketType::ACK,
+            Self::Nak(_) => PacketType::NAK,
             Self::Frames(_) => PacketType::DATA,
         }
     }
@@ -584,6 +592,24 @@ impl Encode for Packet {
         match &self.body {
             PacketBody::Handshake(body) => {
                 header.packet_type = PacketType::HANDSHAKE;
+                header.encode(&mut buf)?;
+
+                body.encode(&mut buf)?;
+            }
+            PacketBody::Shutdown(body) => {
+                header.packet_type = PacketType::SHUTDOWN;
+                header.encode(&mut buf)?;
+
+                body.encode(&mut buf)?;
+            }
+            PacketBody::Ack(body) => {
+                header.packet_type = PacketType::ACK;
+                header.encode(&mut buf)?;
+
+                body.encode(&mut buf)?;
+            }
+            PacketBody::Nak(body) => {
+                header.packet_type = PacketType::NAK;
                 header.encode(&mut buf)?;
 
                 body.encode(&mut buf)?;
@@ -613,6 +639,7 @@ impl Decode for Packet {
 
         let body = match header.packet_type {
             PacketType::HANDSHAKE => PacketBody::Handshake(Handshake::decode(buf)?),
+            PacketType::SHUTDOWN => PacketBody::Shutdown(Shutdown::decode(buf)?),
             PacketType::DATA => {
                 let mut frames = Vec::new();
                 while buf.remaining() > 0 {

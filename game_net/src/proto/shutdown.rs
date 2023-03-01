@@ -13,6 +13,11 @@ pub struct Shutdown {
 #[repr(transparent)]
 pub struct ShutdownReason(u8);
 
+impl ShutdownReason {
+    /// Server is closing.
+    pub const CLOSE: Self = Self(0);
+}
+
 impl Encode for ShutdownReason {
     type Error = Infallible;
 
