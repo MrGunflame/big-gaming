@@ -65,7 +65,7 @@ fn flush_command_queue(
                 velocity.linvel = linvel;
                 velocity.angvel = angvel;
             }
-            Command::PlayerJoin => {
+            Command::Connected => {
                 let id = EntityId::new();
 
                 let mut actor = ActorBundle::default();
@@ -98,7 +98,10 @@ fn flush_command_queue(
                 map.insert(id, ent);
                 connections.set_host(msg.id, id);
             }
-            Command::PlayerLeave => {}
+            Command::Disconnected => {
+                // Remove the player from the connections ref.
+                connections.remove(msg.id);
+            }
             Command::SpawnHost { id } => (),
         }
     }

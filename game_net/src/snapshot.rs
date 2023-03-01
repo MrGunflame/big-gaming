@@ -79,6 +79,8 @@ pub struct ConnectionMessage {
 
 #[derive(Clone, Debug)]
 pub enum Command {
+    Connected,
+    Disconnected,
     EntityCreate {
         id: EntityId,
         kind: EntityKind,
@@ -101,8 +103,6 @@ pub enum Command {
         linvel: Vec3,
         angvel: Vec3,
     },
-    PlayerJoin,
-    PlayerLeave,
     SpawnHost {
         id: EntityId,
     },
@@ -111,6 +111,8 @@ pub enum Command {
 impl Command {
     pub const fn id(&self) -> Option<EntityId> {
         match self {
+            Self::Connected => None,
+            Self::Disconnected => None,
             Self::EntityCreate {
                 id,
                 kind: _,
@@ -125,8 +127,6 @@ impl Command {
                 linvel: _,
                 angvel: _,
             } => Some(*id),
-            Self::PlayerJoin => None,
-            Self::PlayerLeave => None,
             Self::SpawnHost { id } => Some(*id),
         }
     }

@@ -60,6 +60,14 @@ impl Connections {
             ids: ids.into_iter(),
         }
     }
+
+    pub fn remove<T>(&self, id: T)
+    where
+        T: Borrow<ConnectionId>,
+    {
+        let mut inner = self.connections.write();
+        inner.remove(id.borrow());
+    }
 }
 
 #[derive(Debug)]

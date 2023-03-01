@@ -27,6 +27,7 @@
 //! server implementation.
 //!
 
+pub mod ack;
 pub mod handshake;
 pub mod sequence;
 pub mod shutdown;
@@ -297,24 +298,96 @@ impl From<u16> for InvalidPacketType {
 }
 
 ///
+/// Data packet:
+///
 /// ```text
 ///  0               1               2               3
 ///  0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
 /// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-/// | Packet Type                   | Reserved                      |
-/// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-/// | Sequence Number                                               |
+/// |0| Sequence                                                    |
 /// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 /// | Timestamp                                                     |
 /// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 /// ```
-#[derive(Copy, Clone, Debug, Encode, Decode)]
+///
+/// Control packet:
+///
+/// ```text
+///  0               1               2               3
+///  0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
+/// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+/// |1| Control Type                | Reserved                      |
+/// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+/// | Timestamp                                                     |
+/// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+/// ```
+#[derive(Copy, Clone, Debug)]
 pub struct Header {
     pub packet_type: PacketType,
-    /// Reserved
-    pub _resv0: u16,
-    pub sequence_number: Sequence,
+    pub sequence: Sequence,
     pub timestamp: Timestamp,
+}
+
+impl Encode for Header {
+    type Error = Infallible;
+
+    fn encode<B>(&self, mut buf: B) -> Result<(), Self::Error>
+    where
+        B: BufMut,
+    {
+        let word0 = if self.packet_type == PacketType::DATA {
+            let bits = self.sequence.to_bits();
+
+            // MSB must not be set.
+            // This should be enforced by the Sequence type.
+            #[cfg(debug_assertions)]
+            assert!(bits < 1 << 31);
+
+            bits
+        } else {
+            let packet_type = 1 << 31;
+            let control_type = (self.packet_type.0 as u32) << 16;
+
+            packet_type | control_type
+        };
+
+        word0.encode(&mut buf)?;
+        self.timestamp.encode(&mut buf)?;
+        Ok(())
+    }
+}
+
+impl Decode for Header {
+    type Error = Error;
+
+    fn decode<B>(mut buf: B) -> Result<Self, Self::Error>
+    where
+        B: Buf,
+    {
+        let word0 = u32::decode(&mut buf)?;
+        let timestamp = Timestamp::decode(&mut buf)?;
+
+        let packet_type;
+        let sequence;
+        // DATA
+        if word0 & 1 << 31 == 0 {
+            packet_type = PacketType::DATA;
+            sequence = Sequence::from_bits(word0 >> 1);
+
+            // CONTROL
+        } else {
+            // Decode the control type.
+            let bits = ((word0 >> 16) & ((1 << 15) - 1)) as u16;
+            packet_type = PacketType::try_from(bits)?;
+            sequence = Sequence::new(0);
+        }
+
+        Ok(Self {
+            packet_type,
+            sequence,
+            timestamp,
+        })
+    }
 }
 
 /// Creates a new entity on the client.
@@ -387,12 +460,6 @@ pub struct SpawnHost {
     pub entity: ServerEntity,
 }
 
-#[derive(Copy, Clone, Debug, Encode, Decode)]
-pub struct PlayerJoin {}
-
-#[derive(Copy, Clone, Debug, Encode, Decode)]
-pub struct PlayerLeave {}
-
 #[derive(Clone, Debug)]
 pub enum Frame {
     EntityCreate(EntityCreate),
@@ -401,8 +468,6 @@ pub enum Frame {
     EntityRotate(EntityRotate),
     EntityVelocity(EntityVelocity),
     SpawnHost(SpawnHost),
-    PlayerJoin(PlayerJoin),
-    PlayerLeave(PlayerLeave),
 }
 
 impl Encode for Frame {
@@ -435,14 +500,6 @@ impl Encode for Frame {
             }
             Self::SpawnHost(frame) => {
                 FrameType::SPAWN_HOST.encode(&mut buf)?;
-                frame.encode(buf)
-            }
-            Self::PlayerJoin(frame) => {
-                FrameType::PLAYER_JOIN.encode(&mut buf)?;
-                frame.encode(buf)
-            }
-            Self::PlayerLeave(frame) => {
-                FrameType::PLAYER_LEAVE.encode(&mut buf)?;
                 frame.encode(buf)
             }
         }
@@ -482,14 +539,6 @@ impl Decode for Frame {
             FrameType::SPAWN_HOST => {
                 let frame = SpawnHost::decode(buf)?;
                 Ok(Self::SpawnHost(frame))
-            }
-            FrameType::PLAYER_JOIN => {
-                let frame = PlayerJoin::decode(buf)?;
-                Ok(Self::PlayerJoin(frame))
-            }
-            FrameType::PLAYER_LEAVE => {
-                let frame = PlayerLeave::decode(buf)?;
-                Ok(Self::PlayerLeave(frame))
             }
             _ => unreachable!(),
         }

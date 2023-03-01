@@ -7,7 +7,7 @@ use crate::serial;
 
 use super::{Decode, Encode};
 
-const BITS: usize = 32;
+const BITS: usize = 31;
 
 /// A sequence number
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -23,6 +23,11 @@ impl Sequence {
     #[inline]
     pub fn to_bits(self) -> u32 {
         self.0
+    }
+
+    #[inline]
+    pub fn from_bits(bits: u32) -> Self {
+        Self(bits)
     }
 }
 

@@ -54,7 +54,7 @@ impl Default for ConnectionId {
 }
 
 pub struct Connection {
-    id: ConnectionId,
+    pub id: ConnectionId,
     /// Input stream from the socket
     stream: mpsc::Receiver<Packet>,
     socket: Arc<Socket>,
@@ -137,7 +137,10 @@ impl Connection {
 
             let frames = match packet.body {
                 PacketBody::Frames(f) => f,
-                _ => unreachable!(),
+                _ => {
+                    tracing::info!("skip: expected frame");
+                    continue;
+                }
             };
 
             for frame in frames {
@@ -304,7 +307,7 @@ impl Connection {
                 // Signal the game that the player spawns.
                 self.queue.push(ConnectionMessage {
                     id: self.id,
-                    command: Command::PlayerJoin,
+                    command: Command::Connected,
                 });
 
                 return self.send(resp, ConnectionState::Read);
@@ -371,7 +374,7 @@ impl Connection {
         if self.mode.is_listen() && self.state == ConnectionState::Read {
             self.queue.push(ConnectionMessage {
                 id: self.id,
-                command: Command::PlayerLeave,
+                command: Command::Disconnected,
             });
         }
 
@@ -394,8 +397,7 @@ impl Connection {
         let packet = Packet {
             header: Header {
                 packet_type: body.packet_type(),
-                _resv0: 0,
-                sequence_number: sequence,
+                sequence,
                 timestamp,
             },
             body,

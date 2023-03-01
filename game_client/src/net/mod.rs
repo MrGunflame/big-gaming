@@ -63,8 +63,6 @@ pub fn spawn_conn(
 
             tx.send(Ok(handle.clone())).unwrap();
 
-            handle.send_cmd(Command::PlayerJoin);
-
             loop {
                 let mut buf = vec![0; 1500];
                 let (len, addr) = sock.recv_from(&mut buf).await.unwrap();
@@ -209,8 +207,8 @@ fn flush_command_queue(
                 commands.entity(ent).insert(HostPlayer);
             }
             // Never sent to clients
-            Command::PlayerJoin => (),
-            Command::PlayerLeave => (),
+            Command::Connected => (),
+            Command::Disconnected => (),
         }
     }
 }

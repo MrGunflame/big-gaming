@@ -6,8 +6,7 @@ use game_common::entity::EntityId;
 use game_common::net::ServerEntity;
 
 use crate::proto::{
-    EntityCreate, EntityDestroy, EntityRotate, EntityTranslate, EntityVelocity, Frame, PlayerJoin,
-    PlayerLeave, SpawnHost,
+    EntityCreate, EntityDestroy, EntityRotate, EntityTranslate, EntityVelocity, Frame, SpawnHost,
 };
 use crate::snapshot::Command;
 
@@ -96,8 +95,6 @@ impl Entities {
 
                 Some(Command::SpawnHost { id })
             }
-            Frame::PlayerJoin(_) => Some(Command::PlayerJoin),
-            Frame::PlayerLeave(_) => Some(Command::PlayerLeave),
         }
     }
 
@@ -151,8 +148,8 @@ impl Entities {
                     angvel: *angvel,
                 }))
             }
-            Command::PlayerJoin => Some(Frame::PlayerJoin(PlayerJoin {})),
-            Command::PlayerLeave => Some(Frame::PlayerLeave(PlayerLeave {})),
+            Command::Connected => None,
+            Command::Disconnected => None,
             Command::SpawnHost { id } => {
                 let id = self.get(*id)?;
 

@@ -103,9 +103,17 @@ async fn handle_packet(addr: SocketAddr, socket: Arc<Socket>, state: &State, pac
     // }
 
     let (conn, handle) = Connection::new(addr, state.queue.clone(), socket, ConnectionMode::Listen);
-    tokio::task::spawn(async move {
-        conn.await.unwrap();
-    });
+
+    {
+        let state = state.clone();
+        tokio::task::spawn(async move {
+            if let Err(err) = conn.await {
+                tracing::warn!("Error serving connection: {}", err);
+            }
+
+            state.pool.remove(addr);
+        });
+    }
 
     handle.send(packet).await;
 
