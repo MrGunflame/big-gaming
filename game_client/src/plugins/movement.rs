@@ -200,13 +200,8 @@ fn movement_events(
     mut commands: Commands,
     mut events: HotkeyReader<MovementEvent>,
     players: Query<Entity, With<HostPlayer>>,
-    cameras: Query<&Transform, With<Camera3d>>,
 ) {
     let Ok(entity) = players.get_single() else {
-        return;
-    };
-
-    let Ok(camera) = cameras.get_single() else {
         return;
     };
 
@@ -232,7 +227,7 @@ fn movement_events(
 
     if let Some(angle) = angle.to_radians() {
         commands.entity(entity).insert(Movement {
-            direction: camera.rotation * Quat::from_axis_angle(Vec3::Y, angle),
+            direction: Quat::from_axis_angle(Vec3::Y, angle),
         });
     }
 }

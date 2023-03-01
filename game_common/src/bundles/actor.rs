@@ -1,5 +1,8 @@
 use bevy_ecs::bundle::Bundle;
-use bevy_rapier3d::prelude::LockedAxes;
+use bevy_rapier3d::prelude::{
+    CharacterAutostep, CharacterLength, KinematicCharacterController, LockedAxes,
+};
+use glam::Vec3;
 
 use crate::components::actor::{Actor, ActorFigure, ActorFlags, MovementSpeed};
 use crate::components::inventory::{Equipment, Inventory};
@@ -28,6 +31,7 @@ pub struct ActorBundle {
     pub actor_figure: ActorFigure,
 
     pub locked_axes: LockedAxes,
+    pub character_controller: KinematicCharacterController,
 }
 
 impl Default for ActorBundle {
@@ -44,6 +48,19 @@ impl Default for ActorBundle {
             actor_flags: ActorFlags::default(),
             movement_speed: MovementSpeed::default(),
             actor_figure: ActorFigure::default(),
+            character_controller: KinematicCharacterController {
+                offset: CharacterLength::Absolute(0.01),
+                up: Vec3::Y,
+                max_slope_climb_angle: 45.0f32.to_radians(),
+                min_slope_slide_angle: 30.0f32.to_radians(),
+                autostep: Some(CharacterAutostep {
+                    max_height: CharacterLength::Absolute(0.5),
+                    min_width: CharacterLength::Absolute(0.2),
+                    include_dynamic_bodies: true,
+                }),
+                snap_to_ground: Some(CharacterLength::Relative(0.2)),
+                ..Default::default()
+            },
         }
     }
 }

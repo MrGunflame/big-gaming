@@ -265,18 +265,47 @@ fn setup(
     //     ..Default::default()
     // });
 
-    // commands.spawn(PbrBundle {
-    //     mesh: meshes.add(Mesh::from(shape::Box {
-    //         min_x: -100.0,
-    //         max_x: 100.0,
-    //         min_y: -0.1,
-    //         max_y: 0.1,
-    //         min_z: -0.1,
-    //         max_z: 0.1,
-    //     })),
-    //     material: materials.add(Color::rgb(1.0, 0.0, 0.0).into()),
-    //     ..Default::default()
-    // });
+    // X
+    commands.spawn(PbrBundle {
+        mesh: meshes.add(Mesh::from(shape::Box {
+            min_x: -100.0,
+            max_x: 100.0,
+            min_y: 0.9,
+            max_y: 1.1,
+            min_z: 0.9,
+            max_z: 1.1,
+        })),
+        material: materials.add(Color::rgb(1.0, 0.0, 0.0).into()),
+        ..Default::default()
+    });
+
+    // Y
+    commands.spawn(PbrBundle {
+        mesh: meshes.add(Mesh::from(shape::Box {
+            min_y: -100.0,
+            max_y: 100.0,
+            min_x: 0.9,
+            max_x: 1.1,
+            min_z: 0.9,
+            max_z: 1.1,
+        })),
+        material: materials.add(Color::rgb(0.0, 1.0, 0.0).into()),
+        ..Default::default()
+    });
+
+    // Z
+    commands.spawn(PbrBundle {
+        mesh: meshes.add(Mesh::from(shape::Box {
+            min_z: -100.0,
+            max_z: 100.0,
+            min_y: 0.9,
+            max_y: 1.1,
+            min_x: 0.9,
+            max_x: 1.1,
+        })),
+        material: materials.add(Color::rgb(0.0, 0.0, 1.0).into()),
+        ..Default::default()
+    });
 
     // INITIATE THE WALL
     // for x in 0..1 {

@@ -30,13 +30,6 @@ pub fn handle_movement_events(
         let rotation = transform.rotation * movement.direction;
         let translation = rotation.dir_vec() * speed.0 * delta;
 
-        tracing::info!(
-            "translate ({:.2}, {:.2}, {:.2})",
-            translation.x,
-            translation.y,
-            translation.z,
-        );
-
         transform.translation += translation;
 
         // Inform the server that we want to move the entity.
