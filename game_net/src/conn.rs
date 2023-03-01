@@ -77,6 +77,8 @@ pub struct Connection {
     last_time: Instant,
     next_server_sequence: Sequence,
     start_time: Instant,
+
+    next_peer_sequence: Sequence,
 }
 
 impl Connection {
@@ -108,6 +110,7 @@ impl Connection {
             last_time: Instant::now(),
             next_server_sequence: Sequence::default(),
             start_time: Instant::now(),
+            next_peer_sequence: Sequence::default(),
         };
 
         if mode == ConnectionMode::Connect {
@@ -218,6 +221,8 @@ impl Connection {
     }
 
     fn handle_data(&mut self, header: Header, frames: Vec<Frame>) -> Poll<()> {
+        self.next_peer_sequence += 1;
+
         for frame in frames {
             let Some(cmd) = self.entities.unpack(frame) else {
                     tracing::debug!("failed to translate cmd");
@@ -347,7 +352,17 @@ impl Connection {
             return self.abort();
         }
 
-        Poll::Pending
+        // Send periodic ACKs while connected.
+        if self.state == ConnectionState::Connected {
+            self.send(
+                Ack {
+                    sequence: self.next_peer_sequence,
+                },
+                ConnectionState::Connected,
+            )
+        } else {
+            Poll::Pending
+        }
     }
 
     fn reject(&mut self, reason: HandshakeType) -> Poll<()> {
@@ -580,7 +595,7 @@ struct TickInterval {
 
 impl TickInterval {
     fn new() -> Self {
-        let mut interval = tokio::time::interval(Duration::from_secs(15));
+        let mut interval = tokio::time::interval(Duration::from_secs(1));
         interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
         Self { interval }

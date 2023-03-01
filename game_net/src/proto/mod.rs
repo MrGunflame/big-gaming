@@ -563,6 +563,7 @@ pub enum PacketBody {
 }
 
 impl PacketBody {
+    #[inline]
     pub fn packet_type(&self) -> PacketType {
         match self {
             Self::Handshake(_) => PacketType::HANDSHAKE,
@@ -575,8 +576,30 @@ impl PacketBody {
 }
 
 impl From<Handshake> for PacketBody {
+    #[inline]
     fn from(value: Handshake) -> Self {
         Self::Handshake(value)
+    }
+}
+
+impl From<Shutdown> for PacketBody {
+    #[inline]
+    fn from(value: Shutdown) -> Self {
+        Self::Shutdown(value)
+    }
+}
+
+impl From<Ack> for PacketBody {
+    #[inline]
+    fn from(value: Ack) -> Self {
+        Self::Ack(value)
+    }
+}
+
+impl From<Nak> for PacketBody {
+    #[inline]
+    fn from(value: Nak) -> Self {
+        Self::Nak(value)
     }
 }
 
@@ -638,8 +661,6 @@ impl Decode for Packet {
         let header = Header::decode(&mut buf)?;
 
         let body = match header.packet_type {
-            PacketType::HANDSHAKE => PacketBody::Handshake(Handshake::decode(buf)?),
-            PacketType::SHUTDOWN => PacketBody::Shutdown(Shutdown::decode(buf)?),
             PacketType::DATA => {
                 let mut frames = Vec::new();
                 while buf.remaining() > 0 {
@@ -648,6 +669,10 @@ impl Decode for Packet {
 
                 PacketBody::Frames(frames)
             }
+            PacketType::HANDSHAKE => PacketBody::Handshake(Handshake::decode(buf)?),
+            PacketType::SHUTDOWN => PacketBody::Shutdown(Shutdown::decode(buf)?),
+            PacketType::ACK => PacketBody::Ack(Ack::decode(buf)?),
+            PacketType::NAK => PacketBody::Nak(Nak::decode(buf)?),
             _ => unreachable!(),
         };
 
