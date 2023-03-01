@@ -36,6 +36,16 @@ impl Connections {
         data.handle.send_cmd(Command::SpawnHost { id: host });
     }
 
+    pub fn host<T>(&self, id: T) -> Option<EntityId>
+    where
+        T: Borrow<ConnectionId>,
+    {
+        let inner = self.connections.read();
+        let data = inner.get(id.borrow())?.clone();
+        let l = data.host.read();
+        *l
+    }
+
     pub fn get_mut<T>(&self, id: T) -> Option<ConnectionMut>
     where
         T: Borrow<ConnectionId>,

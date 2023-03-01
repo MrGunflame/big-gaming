@@ -1,4 +1,6 @@
-use bevy::prelude::{Commands, Plugin, Quat, Query, Res, ResMut, Transform, Vec3};
+use bevy::prelude::{
+    Commands, DespawnRecursiveExt, Plugin, Quat, Query, Res, ResMut, Transform, Vec3,
+};
 use bevy_rapier3d::prelude::{Collider, Velocity};
 use game_common::bundles::ActorBundle;
 use game_common::components::player::Player;
@@ -99,6 +101,11 @@ fn flush_command_queue(
                 connections.set_host(msg.id, id);
             }
             Command::Disconnected => {
+                if let Some(id) = connections.host(msg.id) {
+                    let entity = map.get(id).unwrap();
+                    commands.entity(entity).despawn_recursive();
+                }
+
                 // Remove the player from the connections ref.
                 connections.remove(msg.id);
             }
