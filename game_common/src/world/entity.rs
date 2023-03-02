@@ -11,10 +11,14 @@ use crate::components::object::{self, LoadObject, ObjectId};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Entity {
+    Terrain(),
     Object(Object),
     Actor(Actor),
     Item(Item),
 }
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Terrain {}
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Object {

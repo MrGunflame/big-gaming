@@ -63,9 +63,18 @@ pub fn death(mut state: ResMut<InterfaceState>, players: Query<&Death, With<Host
 pub fn scene_transition(
     mut state: ResMut<InterfaceState>,
     mut events: EventReader<SceneTransition>,
+    mut cursor: ResMut<Cursor>,
+    mut windows: ResMut<Windows>,
 ) {
+    let mut window = windows.primary_mut();
+
     for event in events.iter() {
         state.clear();
+
+        // Only world locks cursor.
+        if matches!(event.from, Scene::World) {
+            cursor.unlock(&mut window);
+        }
 
         match &event.to {
             Scene::Loading => {

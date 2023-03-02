@@ -18,9 +18,6 @@ pub struct UiPlugin;
 impl Plugin for UiPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
         let mut state = InterfaceState::new();
-        state.push(Health);
-        state.push(Crosshair);
-        state.push(Weapon);
 
         app.add_plugin(bevy_egui::EguiPlugin)
             .add_plugin(FrameTimeDiagnosticsPlugin)
@@ -29,8 +26,10 @@ impl Plugin for UiPlugin {
             .add_startup_system(widgets::register_hotkeys)
             .add_system(systems::capture_pointer_keys)
             .add_system(systems::death)
-            .add_system(systems::scene_transition)
             .add_stage("InterfaceStage", InterfaceStage);
+
+        #[cfg(not(feature = "editor"))]
+        app.add_system(systems::scene_transition);
 
         widgets::register_hotkey_systems(app);
     }

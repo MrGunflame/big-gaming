@@ -1,16 +1,51 @@
+use bevy::core_pipeline::CorePipelinePlugin;
+use bevy::pbr::PbrPlugin;
 use bevy::prelude::{
-    shape, App, Assets, Camera3dBundle, Color, Commands, Mesh, PbrBundle, PointLight,
-    PointLightBundle, ResMut, StandardMaterial, Transform, Vec3,
+    shape, App, Assets, Camera3dBundle, Color, Commands, GilrsPlugin, ImagePlugin, Mesh, PbrBundle,
+    PointLight, PointLightBundle, ResMut, StandardMaterial, Transform, Vec3,
 };
-use bevy::DefaultPlugins;
+use bevy::render::RenderPlugin;
+use bevy::sprite::SpritePlugin;
+use bevy::text::TextPlugin;
+use bevy::window::WindowPlugin;
+use bevy::winit::WinitPlugin;
+use bevy::{DefaultPlugins, MinimalPlugins};
+use game_common::archive::loader::ModuleLoader;
+use game_common::archive::GameArchive;
+use game_core::CorePlugins;
+use game_input::InputPlugin;
+use game_ui::{InterfaceState, UiPlugin};
+use plugins::camera::CameraPlugin;
+use world::EntityOptions;
 
+mod picker;
 mod plugins;
+mod ui;
+mod world;
 
 fn main() {
+    let archive = GameArchive::new();
+
+    let loader = ModuleLoader::new(&archive);
+    loader.load("../mods/core").unwrap();
+
     App::new()
-        .add_plugins(DefaultPlugins)
+        .insert_resource(archive)
+        .add_plugin(CorePlugins)
+        .add_plugin(WindowPlugin::default())
+        .add_plugin(RenderPlugin)
+        .add_plugin(ImagePlugin::default())
+        .add_plugin(CorePipelinePlugin::default())
+        .add_plugin(PbrPlugin)
+        .add_plugin(SpritePlugin)
+        .add_plugin(TextPlugin)
+        .add_plugin(bevy::ui::UiPlugin)
+        .add_plugin(GilrsPlugin)
+        .add_plugin(WinitPlugin)
+        .add_plugin(CameraPlugin)
+        .add_plugin(InputPlugin)
+        .add_plugin(UiPlugin)
         .add_startup_system(setup)
-        .add_plugin(plugins::camera::CameraPlugin)
         .run();
 }
 
@@ -18,7 +53,10 @@ fn setup(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    mut interface: ResMut<InterfaceState>,
 ) {
+    interface.push(ui::SceneHierarchy::default());
+
     // plane
     commands.spawn(PbrBundle {
         mesh: meshes.add(Mesh::from(shape::Plane { size: 5.0 })),
@@ -26,12 +64,18 @@ fn setup(
         ..Default::default()
     });
     // cube
-    commands.spawn(PbrBundle {
-        mesh: meshes.add(Mesh::from(shape::Cube { size: 1.0 })),
-        material: materials.add(Color::rgb(0.8, 0.7, 0.6).into()),
-        transform: Transform::from_xyz(0.0, 0.5, 0.0),
-        ..Default::default()
-    });
+    commands
+        .spawn(PbrBundle {
+            mesh: meshes.add(Mesh::from(shape::Cube { size: 1.0 })),
+            material: materials.add(Color::rgb(0.8, 0.7, 0.6).into()),
+            transform: Transform::from_xyz(0.0, 0.5, 0.0),
+            ..Default::default()
+        })
+        .insert(EntityOptions {
+            selected: true,
+            hidden: false,
+        });
+
     // light
     commands.spawn(PointLightBundle {
         point_light: PointLight {

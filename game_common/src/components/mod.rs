@@ -16,5 +16,6 @@ pub mod player;
 pub mod projectile;
 pub mod properties;
 pub mod race;
+pub mod terrain;
 pub mod transform;
 pub mod weapon;
