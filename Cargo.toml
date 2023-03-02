@@ -9,7 +9,8 @@ members = [
     "game_ui",
     "game_net",
     "game_input",
-    "game_macros"
+    "game_macros",
+    "game_editor"
 ]
 
 resolver = "2"
