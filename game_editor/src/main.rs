@@ -16,6 +16,7 @@ use game_core::CorePlugins;
 use game_input::InputPlugin;
 use game_ui::{InterfaceState, UiPlugin};
 use plugins::camera::CameraPlugin;
+use world::axes::Axis;
 use world::EntityOptions;
 
 mod picker;
@@ -46,6 +47,7 @@ fn main() {
         .add_plugin(InputPlugin)
         .add_plugin(UiPlugin)
         .add_startup_system(setup)
+        .add_system(world::axes::render_axes)
         .run();
 }
 
@@ -72,7 +74,7 @@ fn setup(
             ..Default::default()
         })
         .insert(EntityOptions {
-            selected: true,
+            selected: false,
             hidden: false,
         });
 
@@ -86,4 +88,17 @@ fn setup(
         transform: Transform::from_xyz(4.0, 8.0, 4.0),
         ..Default::default()
     });
+
+    // commands.spawn(PbrBundle {
+    //     mesh: meshes.add(
+    //         Axis {
+    //             direction: Vec3::X,
+    //             length: 1.0,
+    //         }
+    //         .into(),
+    //     ),
+    //     material: materials.add(Color::rgb(0.8, 0.7, 0.6).into()),
+    //     transform: Transform::from_xyz(0.0, 2.5, 0.0),
+    //     ..Default::default()
+    // });
 }
