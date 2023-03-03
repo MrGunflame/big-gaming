@@ -1,3 +1,4 @@
+use std::ffi::OsStr;
 use std::fs::{self, File};
 use std::path::{Path, PathBuf};
 
@@ -10,13 +11,18 @@ use super::Loader;
 /// Recursively load an entire directory.
 pub struct DirectoryLoader<'a> {
     archive: &'a GameArchive,
-    root: &'a Module,
+    module: &'a Module,
+    root: &'a Path,
 }
 
 impl<'a> DirectoryLoader<'a> {
     #[inline]
-    pub fn new(archive: &'a GameArchive, root: &'a Module) -> Self {
-        Self { archive, root }
+    pub fn new(archive: &'a GameArchive, module: &'a Module, root: &'a Path) -> Self {
+        Self {
+            archive,
+            module,
+            root,
+        }
     }
 
     pub fn load<P>(&self, path: P) -> FileResult
@@ -44,9 +50,13 @@ impl<'a> DirectoryLoader<'a> {
             let path = entry.path();
 
             if metadata.is_dir() {
-                DirectoryLoader::new(self.archive, self.root).load(path)?;
+                DirectoryLoader::new(self.archive, self.module, self.root).load(path)?;
             } else {
-                FileLoader::new(self.archive, self.root).load(path)?;
+                if path.file_name() == Some(OsStr::new("mod.json")) {
+                    continue;
+                }
+
+                FileLoader::new(self.archive, self.module, self.root).load(path)?;
             }
         }
 

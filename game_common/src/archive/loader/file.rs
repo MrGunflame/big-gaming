@@ -26,13 +26,18 @@ pub struct FileError {
 
 pub struct FileLoader<'a> {
     archive: &'a GameArchive,
-    root: &'a Module,
+    module: &'a Module,
+    root: &'a Path,
 }
 
 impl<'a> FileLoader<'a> {
     #[inline]
-    pub fn new(archive: &'a GameArchive, root: &'a Module) -> Self {
-        Self { archive, root }
+    pub fn new(archive: &'a GameArchive, module: &'a Module, root: &'a Path) -> Self {
+        Self {
+            archive,
+            module,
+            root,
+        }
     }
 }
 
@@ -45,7 +50,7 @@ impl<'a> Loader for FileLoader<'a> {
 
         match path.extension() {
             Some(ext) if ext == OsStr::new("json") => {
-                JsonLoader::new(self.archive, self.root).load(path)
+                JsonLoader::new(self.archive, self.module, self.root).load(path)
             }
             _ => {
                 return Err(FileError {

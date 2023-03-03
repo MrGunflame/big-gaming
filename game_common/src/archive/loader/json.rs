@@ -11,12 +11,17 @@ use crate::archive::GameArchive;
 /// Loader for a json file.
 pub struct JsonLoader<'a> {
     archive: &'a GameArchive,
-    root: &'a Module,
+    module: &'a Module,
+    root: &'a Path,
 }
 
 impl<'a> JsonLoader<'a> {
-    pub fn new(archive: &'a GameArchive, root: &'a Module) -> Self {
-        Self { archive, root }
+    pub fn new(archive: &'a GameArchive, module: &'a Module, root: &'a Path) -> Self {
+        Self {
+            archive,
+            module,
+            root,
+        }
     }
 
     pub fn load<P>(&self, path: P) -> FileResult
@@ -49,7 +54,7 @@ impl<'a> JsonLoader<'a> {
             }
             ArchiveFile::Objects(objects) => {
                 for object in objects {
-                    self.archive.objects().insert(object, self.root);
+                    self.archive.objects().insert(object, self.module);
                 }
             }
             ArchiveFile::Components(components) => {

@@ -1,3 +1,5 @@
+use std::fs::File;
+use std::io::Read;
 use std::path::Path;
 
 use self::directory::DirectoryLoader;
@@ -30,11 +32,16 @@ impl<'a> ModuleLoader<'a> {
         let path = path.as_ref();
         tracing::info!("Loading module {:?}", path);
 
-        let module = Module {
-            root: path.to_owned(),
-        };
+        let mut header = path.to_path_buf();
+        header.push("mod.json");
 
-        DirectoryLoader::new(self.archive, &module).load(path)
+        let mut file = File::open(header).unwrap();
+        let mut buf = Vec::new();
+        file.read_to_end(&mut buf).unwrap();
+
+        let module = serde_json::from_slice(&buf).unwrap();
+
+        DirectoryLoader::new(self.archive, &module, &path).load(path)
     }
 }
 
