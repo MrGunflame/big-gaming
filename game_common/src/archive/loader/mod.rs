@@ -5,7 +5,6 @@ use std::path::Path;
 use self::directory::DirectoryLoader;
 use self::file::FileResult;
 
-use super::module::Module;
 use super::GameArchive;
 
 mod directory;

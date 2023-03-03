@@ -14,6 +14,8 @@ pub struct Module {
     pub name: String,
     pub version: Version,
     pub description: Option<String>,
+    #[serde(default)]
+    pub dependencies: Vec<Dependency>,
 }
 
 /// A semver version string.
@@ -114,6 +116,13 @@ enum VersionErrorKind {
     MissingSegment,
     #[error("trailing")]
     Trailing,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Dependency {
+    pub id: Uuid,
+    pub name: Option<String>,
+    pub version: Version,
 }
 
 #[cfg(test)]
