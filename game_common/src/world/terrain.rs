@@ -4,7 +4,7 @@ use bevy_render::prelude::Mesh;
 use bevy_render::render_resource::PrimitiveTopology;
 use glam::Vec3;
 
-use super::CellId;
+use super::{CellId, CELL_SIZE_UINT};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct TerrainMesh {
@@ -21,8 +21,8 @@ impl TerrainMesh {
         let mut vertices = Vec::new();
         let mut indices = Vec::new();
 
-        let size_x = 64;
-        let size_z = 64;
+        let size_x = CELL_SIZE_UINT.x + 1;
+        let size_z = CELL_SIZE_UINT.z + 1;
 
         for index in 0u32..size_x * size_z {
             let x = index % size_x;
@@ -50,8 +50,8 @@ impl TerrainMesh {
         let mut vertices = Vec::new();
         let mut indices = Vec::new();
 
-        let size_x = 64;
-        let size_z = 64;
+        let size_x = CELL_SIZE_UINT.x + 1;
+        let size_z = CELL_SIZE_UINT.z + 1;
 
         for index in 0u32..size_x * size_z {
             let x = index % size_x;

@@ -2,13 +2,14 @@ use std::any::Any;
 use std::borrow::Borrow;
 
 use ahash::{HashMap, HashMapExt};
-use glam::{Vec3, Vec3A};
+use glam::{UVec3, Vec3, Vec3A};
 
 use crate::ecs::components::DynamicComponent;
 
 use super::entity::{Entity, EntityQueue};
 
 pub const CELL_SIZE: Vec3 = Vec3::new(64.0, 64.0, 64.0);
+pub const CELL_SIZE_UINT: UVec3 = UVec3::new(64, 64, 64);
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 #[repr(transparent)]

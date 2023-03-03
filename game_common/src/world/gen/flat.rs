@@ -6,7 +6,7 @@ use crate::components::object::ObjectId;
 use crate::world::entity::Object;
 use crate::world::gen::Generate;
 use crate::world::terrain::{Heightmap, TerrainMesh};
-use crate::world::Cell;
+use crate::world::{Cell, CELL_SIZE, CELL_SIZE_UINT};
 
 pub struct FlatGenerator;
 
@@ -16,9 +16,9 @@ impl Generate for FlatGenerator {
 
         let mut map = Heightmap::default();
 
-        for index in 0..64 * 64 {
-            let x = index % 64;
-            let z = index / 64;
+        for index in 0..(CELL_SIZE_UINT.x + 1) * (CELL_SIZE_UINT.z + 1) {
+            let x = index % (CELL_SIZE_UINT.x + 1);
+            let z = index / (CELL_SIZE_UINT.z + 1);
 
             let y = noise.get([x as f64 / 20.0, z as f64 / 20.0]);
             map.nodes.push(y as f32 * 2.0 as f32);

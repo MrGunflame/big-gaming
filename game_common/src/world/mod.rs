@@ -29,5 +29,5 @@ pub mod source;
 pub mod terrain;
 pub mod time;
 
-pub use cell::{Cell, CellId, CELL_SIZE};
+pub use cell::{Cell, CellId, CELL_SIZE, CELL_SIZE_UINT};
 pub use level::Level;
