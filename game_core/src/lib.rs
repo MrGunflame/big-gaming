@@ -16,7 +16,7 @@ use combat::CombatPlugin;
 use game_audio::AudioPlugin;
 use movement::MovementPlugin;
 use projectile::ProjectilePlugin;
-use world::{LevelPlugin, ObjectPlugin, SpawnPlugin};
+use world::{LevelPlugin, ObjectPlugin, SpawnPlugin, TerrainPlugin};
 
 pub mod ai;
 pub mod animation;
@@ -50,6 +50,7 @@ impl Plugin for CorePlugins {
         app.add_plugin(ProjectilePlugin);
         app.add_plugin(RapierPhysicsPlugin::<NoUserData>::default());
         app.add_plugin(AnimationPlugin);
+        app.add_plugin(TerrainPlugin);
         app.add_asset::<Mesh>();
     }
 }

@@ -6,6 +6,7 @@ use bevy_rapier3d::prelude::Collider;
 use game_common::bundles::{ActorBundle, ObjectBundle};
 use game_common::components::player::HostPlayer;
 use game_common::entity::{Entity, EntityData, EntityMap};
+use game_common::world::source::StreamingSource;
 use game_net::conn::{Connection, ConnectionHandle, ConnectionMode};
 use game_net::proto::{Decode, EntityKind, Packet};
 use game_net::snapshot::{Command, CommandQueue, ConnectionMessage};
@@ -210,7 +211,10 @@ fn flush_command_queue(
                     transform.translation.z,
                 );
 
-                commands.entity(ent).insert(HostPlayer);
+                commands
+                    .entity(ent)
+                    .insert(HostPlayer)
+                    .insert(StreamingSource::new());
             }
             // Never sent to clients
             Command::Connected => {

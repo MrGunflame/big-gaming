@@ -55,6 +55,7 @@ use game_common::components::interaction::InteractionQueue;
 use game_common::components::items::{Cooldown, Item, ItemId, Magazine};
 use game_common::scene::SceneTransition;
 use game_common::world::chunk::ChunkRegistry;
+use game_common::world::terrain::{Heightmap, TerrainMesh};
 use game_core::combat::CombatPlugin;
 use game_core::projectile::ProjectilePlugin;
 use game_core::world::{ChunkPlugin, LevelPlugin, SpawnPlugin};
@@ -129,7 +130,8 @@ fn main() {
         // .add_plugin(LevelPlugin)
         .add_plugin(game_core::debug::DebugPlugin)
         .add_plugin(NetPlugin::default())
-        .add_startup_system(setup);
+        .add_startup_system(setup)
+        .add_system(crate::world::terrain::load_terrain_mesh);
 
     if let Some(addr) = args.connect {
         tracing::info!("Connecting to {}", addr);
@@ -151,15 +153,15 @@ fn setup(
     asset_server: Res<AssetServer>,
 ) {
     // THE FLOOOR
-    commands
-        .spawn(PbrBundle {
-            mesh: meshes.add(Mesh::from(shape::Plane { size: 1000.0 })),
-            material: materials.add(Color::rgb(1.0, 0.0, 0.0).into()),
-            transform: Transform::from_translation(Vec3::new(0.0, 0.0, 0.0)),
-            ..Default::default()
-        })
-        .insert(RigidBody::Fixed)
-        .insert(Collider::cuboid(1000.0, 0.1, 1000.0));
+    // commands
+    //     .spawn(PbrBundle {
+    //         mesh: meshes.add(Mesh::from(shape::Plane { size: 1000.0 })),
+    //         material: materials.add(Color::rgb(1.0, 0.0, 0.0).into()),
+    //         transform: Transform::from_translation(Vec3::new(0.0, 0.0, 0.0)),
+    //         ..Default::default()
+    //     })
+    //     .insert(RigidBody::Fixed)
+    //     .insert(Collider::cuboid(1000.0, 0.1, 1000.0));
 
     // commands.spawn(ObjectBundle::new(&asset_server).at(Vec3::new(5.0, 0.5, 5.0)));
     // commands.spawn(ObjectBundle::new(&asset_server).at(Vec3::new(5.0, 1.5, 5.0)));
@@ -386,48 +388,27 @@ fn setup(
     // commands.spawn(ActorBundle::new(&asset_server));
 
     // Terrain mesh
-    let size_x = 100;
-    let size_y = 100;
+    let size_x = 64;
+    let size_y = 64;
 
-    let mut vertices = Vec::new();
-    let mut indices = Vec::new();
     // let mut uvs = Vec::new();
 
-    let mut collider_verts = Vec::new();
-    let mut collider_indis = Vec::new();
+    // let noise = noise::Simplex::default();
 
-    let mut noise = noise::Simplex::default();
+    // let mut height_map = Heightmap::default();
 
-    for index in 0..size_x * size_y {
-        let x = index % size_x;
-        let y = index / size_x;
+    // for index in 0..size_x * size_y {
+    //     let x = index % size_x;
+    //     let y = index / size_x;
 
-        let res = noise.get([x as f64 / 2.0, y as f64 / 2.0]);
+    //     let res = noise.get([x as f64 / 20.0, y as f64 / 20.0]);
+    //     height_map.nodes.push(res as f32);
+    // }
 
-        // let z = if index == 25 { 1.0 } else { 0.0 };
-        // let z = -5.0;
-        let z = res * 2.0 - 5.0;
+    // let chunk = TerrainMesh::new(height_map);
+    // let mesh = chunk.mesh();
+    // let collider = chunk.collider();
 
-        vertices.push([x as f32, z as f32, y as f32]);
-        // uvs.push([0.0, 1.0]);
-        collider_verts.push(Vec3::new(x as f32, z as f32, y as f32));
-
-        if x != size_x - 1 && y != size_y - 1 {
-            // Build the tri
-            // Up tri (index -> index + 10 -> index + 10 + 1)
-            indices.extend([index, index + size_x, index + size_x + 1]);
-
-            // Down tri (index -> index + 1 -> index + 10 + 1)
-            indices.extend([index + size_x + 1, index + 1, index]);
-
-            collider_indis.push([index, index + size_x, index + size_x + 1]);
-            collider_indis.push([index + size_x + 1, index + 1, index]);
-        }
-    }
-
-    let mut mesh = Mesh::new(PrimitiveTopology::TriangleList);
-    mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, vertices);
-    mesh.set_indices(Some(Indices::U32(indices)));
     // mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
 
     // mesh.insert_attribute(
@@ -436,20 +417,21 @@ fn setup(
     // );
     // mesh.set_indices(Some(Indices::U32(vec![0, 1, 2])));
 
-    let img: Handle<Image> = asset_server.load("gw316.jpg");
+    // let img: Handle<Image> = asset_server.load("gw316.jpg");
 
-    commands.spawn(PbrBundle {
-        mesh: meshes.add(mesh),
-        material: materials.add(StandardMaterial {
-            base_color: Color::RED,
-            base_color_texture: Some(img),
-            ..Default::default()
-        }),
-        transform: Transform::from_translation(Vec3::new(15.0, 5.0, 0.0)),
-        ..default()
-    });
-    // .insert(RigidBody::Fixed);
-    // .insert(Collider::trimesh(collider_verts, collider_indis));
+    // commands
+    //     .spawn(PbrBundle {
+    //         mesh: meshes.add(mesh),
+    //         material: materials.add(StandardMaterial {
+    //             base_color: Color::RED,
+    //             base_color_texture: Some(img),
+    //             ..Default::default()
+    //         }),
+    //         transform: Transform::from_translation(Vec3::new(15.0, 10.0, 0.0)),
+    //         ..default()
+    //     })
+    //     .insert(RigidBody::Fixed)
+    //     .insert(collider);
 
     // commands.spawn(ItemBundle::new(
     //     &asset_server,

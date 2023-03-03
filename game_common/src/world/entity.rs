@@ -1,4 +1,5 @@
 use bevy_ecs::system::{Commands, Resource};
+use bevy_pbr::PbrBundle;
 use bevy_scene::SceneBundle;
 use bevy_transform::components::Transform;
 use bevy_transform::TransformBundle;
@@ -8,10 +9,13 @@ use crate::archive::GameArchive;
 use crate::bundles::VisibilityBundle;
 use crate::components::items::ItemId;
 use crate::components::object::{self, LoadObject, ObjectId};
+use crate::components::terrain::LoadTerrain;
+
+use super::terrain::TerrainMesh;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Entity {
-    Terrain(),
+    Terrain(TerrainMesh),
     Object(Object),
     Actor(Actor),
     Item(Item),
@@ -44,6 +48,12 @@ pub struct Item {
     transform: Transform,
 }
 
+impl From<TerrainMesh> for Entity {
+    fn from(value: TerrainMesh) -> Self {
+        Self::Terrain(value)
+    }
+}
+
 impl From<Object> for Entity {
     fn from(value: Object) -> Self {
         Self::Object(value)
@@ -66,6 +76,25 @@ pub trait BuildEntity {
     fn build(self, archive: &GameArchive, commands: &mut Commands);
 }
 
+impl BuildEntity for TerrainMesh {
+    fn build(self, archive: &GameArchive, commands: &mut Commands) {
+        let cell = self.cell;
+
+        dbg!(cell);
+
+        commands
+            .spawn(LoadTerrain {
+                cell: self.cell,
+                mesh: self,
+            })
+            .insert(TransformBundle {
+                local: Transform::from_translation(cell.min()),
+                global: Default::default(),
+            })
+            .insert(VisibilityBundle::new());
+    }
+}
+
 impl BuildEntity for Object {
     fn build(self, archive: &GameArchive, commands: &mut Commands) {
         let object = archive.objects().get(self.id).unwrap();
@@ -83,6 +112,7 @@ impl BuildEntity for Object {
 impl BuildEntity for Entity {
     fn build(self, archive: &GameArchive, commands: &mut Commands) {
         match self {
+            Self::Terrain(terrain) => terrain.build(archive, commands),
             Self::Object(object) => object.build(archive, commands),
             _ => todo!(),
         }

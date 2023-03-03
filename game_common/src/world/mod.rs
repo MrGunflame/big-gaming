@@ -26,6 +26,7 @@ pub mod gen;
 pub mod interaction;
 mod level;
 pub mod source;
+pub mod terrain;
 pub mod time;
 
 pub use cell::{Cell, CellId, CELL_SIZE};

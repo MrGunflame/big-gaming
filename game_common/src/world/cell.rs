@@ -102,6 +102,16 @@ impl CellId {
     pub fn max_z(self) -> f32 {
         self.min_z() + CELL_SIZE.z
     }
+
+    #[inline]
+    pub fn min(self) -> Vec3 {
+        Vec3::new(self.min_x(), self.min_y(), self.min_z())
+    }
+
+    #[inline]
+    pub fn max(self) -> Vec3 {
+        Vec3::new(self.max_x(), self.max_y(), self.max_z())
+    }
 }
 
 impl From<Vec3> for CellId {

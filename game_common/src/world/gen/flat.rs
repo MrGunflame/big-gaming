@@ -1,15 +1,31 @@
 use bevy_transform::prelude::Transform;
 use glam::Vec3;
+use noise::{NoiseFn, Simplex};
 
 use crate::components::object::ObjectId;
 use crate::world::entity::Object;
 use crate::world::gen::Generate;
+use crate::world::terrain::{Heightmap, TerrainMesh};
 use crate::world::Cell;
 
 pub struct FlatGenerator;
 
 impl Generate for FlatGenerator {
     fn generate(&self, cell: &mut Cell) {
+        let noise = Simplex::default();
+
+        let mut map = Heightmap::default();
+
+        for index in 0..64 * 64 {
+            let x = index % 64;
+            let z = index / 64;
+
+            let y = noise.get([x as f64 / 20.0, z as f64 / 20.0]);
+            map.nodes.push(y as f32 * 2.0 as f32);
+        }
+
+        cell.spawn(TerrainMesh::new(cell.id, map));
+
         // for _ in 0..10 {}
 
         // let mut x = cell.id.min_x();

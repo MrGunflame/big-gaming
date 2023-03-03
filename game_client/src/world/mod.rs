@@ -1,4 +1,5 @@
 pub mod chunk;
+pub mod terrain;
 
 #[derive(Copy, Clone, Debug)]
 pub struct ChunkId(i32);
