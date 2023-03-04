@@ -10,6 +10,8 @@ use game_net::proto::EntityKind;
 use game_net::snapshot::{Command, EntityChange, Snapshot};
 use parking_lot::RwLock;
 
+use crate::net::state::ConnectionState;
+
 /// List of connections
 // FIXME: Maybe merge with ConnectionPool.
 #[derive(Clone, Debug, Default, Resource)]
@@ -84,6 +86,7 @@ pub struct ConnectionData {
     pub snapshot: RwLock<Vec<EntityChange>>,
     pub handle: ConnectionHandle,
     pub host: RwLock<Option<EntityId>>,
+    pub state: RwLock<ConnectionState>,
 }
 
 impl ConnectionData {
@@ -92,6 +95,7 @@ impl ConnectionData {
             snapshot: RwLock::new(vec![]),
             handle,
             host: RwLock::new(None),
+            state: RwLock::new(ConnectionState { full_update: true }),
         }
     }
 }

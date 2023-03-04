@@ -153,7 +153,30 @@ fn update_snapshots(
     }
 
     for conn in connections.iter_mut() {
-        conn.set_delta(delta.to_vec());
+        let mut state = conn.data.state.write();
+        if state.full_update {
+            state.full_update = false;
+
+            // Send full state
+            let Some(view) = world.newest() else {
+                continue;
+            };
+
+            for entity in view.iter() {
+                conn.data.handle.send_cmd(Command::EntityCreate {
+                    id: entity.id,
+                    kind: match entity.data {
+                        EntityData::Object { id } => EntityKind::Object(id),
+                        EntityData::Actor {} => EntityKind::Actor(()),
+                    },
+                    translation: entity.transform.translation,
+                    rotation: entity.transform.rotation,
+                });
+            }
+        } else {
+            // Send only deltas
+            conn.set_delta(delta.to_vec());
+        }
     }
 
     // for mut snap in connections.iter_mut() {

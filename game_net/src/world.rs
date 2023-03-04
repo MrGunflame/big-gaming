@@ -30,6 +30,10 @@ impl WorldState {
         }
     }
 
+    pub fn newest(&self) -> Option<WorldViewRef<'_>> {
+        self.get(self.last)
+    }
+
     pub fn get(&self, id: SnapshotId) -> Option<WorldViewRef<'_>> {
         self.snapshots
             .get(&id)
@@ -53,7 +57,6 @@ impl WorldState {
     }
 
     pub fn remove(&mut self, id: SnapshotId) {
-        dbg!("rm");
         self.snapshots.remove(&id);
     }
 
@@ -89,6 +92,10 @@ pub struct WorldViewRef<'a> {
 impl<'a> WorldViewRef<'a> {
     pub fn get(&self, id: EntityId) -> Option<&Entity> {
         self.snapshot.entities.entities.iter().find(|x| x.id == id)
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &Entity> {
+        self.snapshot.entities.entities.iter()
     }
 }
 
