@@ -2,11 +2,34 @@ use bevy_ecs::system::Resource;
 use game_common::entity::{Entity, EntityId};
 use glam::{Quat, Vec3};
 use parking_lot::Mutex;
-use std::collections::{HashMap, VecDeque};
+use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::ops::{Add, AddAssign};
 use std::sync::Arc;
+use std::time::Instant;
 
 use crate::conn::ConnectionId;
 use crate::proto::EntityKind;
+
+/// A temporary identifier for a snapshot.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[repr(transparent)]
+pub struct SnapshotId(pub u32);
+
+impl Add<u32> for SnapshotId {
+    type Output = Self;
+
+    #[inline]
+    fn add(self, rhs: u32) -> Self::Output {
+        Self(self.0.wrapping_add(rhs))
+    }
+}
+
+impl AddAssign<u32> for SnapshotId {
+    #[inline]
+    fn add_assign(&mut self, rhs: u32) {
+        *self = *self + rhs;
+    }
+}
 
 #[derive(Clone, Debug, Default)]
 pub struct Snapshot {
@@ -165,3 +188,81 @@ pub enum EntityChange {
 }
 
 pub struct Patch {}
+
+pub struct Snapshots {
+    snapshots: VecDeque<(Instant, SnapshotId)>,
+    next_id: SnapshotId,
+}
+
+impl Snapshots {
+    pub fn new() -> Self {
+        Self {
+            snapshots: VecDeque::new(),
+            next_id: SnapshotId(0),
+        }
+    }
+
+    pub fn push(&mut self) {
+        self.push_in(Instant::now());
+    }
+
+    /// Returns the id of the first snapshot that happened at or after
+    /// `ts`.
+    pub fn get(&self, ts: Instant) -> Option<SnapshotId> {
+        let mut index = 0;
+        while index < self.snapshots.len() {
+            let (t, id) = self.snapshots[index];
+
+            if ts <= t {
+                return Some(id);
+            }
+
+            index += 1;
+        }
+
+        None
+    }
+
+    pub fn newest(&self) -> Option<SnapshotId> {
+        self.snapshots.back().map(|(_, x)| *x)
+    }
+
+    pub fn oldest(&self) -> Option<SnapshotId> {
+        self.snapshots.front().map(|(_, x)| *x)
+    }
+
+    fn push_in(&mut self, instant: Instant) {
+        let id = self.next_id;
+        self.next_id += 1;
+
+        self.snapshots.push_back((instant, id));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::{Duration, Instant};
+
+    use super::{SnapshotId, Snapshots};
+
+    #[test]
+    fn test_snapshots() {
+        let mut snapshots = Snapshots::new();
+
+        let now = Instant::now();
+
+        let t1 = now;
+        let t2 = now + Duration::new(1, 0);
+        let t3 = now + Duration::new(2, 0);
+
+        snapshots.push_in(t1);
+        snapshots.push_in(t2);
+        snapshots.push_in(t3);
+
+        assert_eq!(snapshots.get(t1), Some(SnapshotId(0)));
+        assert_eq!(snapshots.get(t2), Some(SnapshotId(1)));
+        assert_eq!(snapshots.get(t3), Some(SnapshotId(2)));
+
+        assert_eq!(snapshots.get(t1 + Duration::new(0, 1)), Some(SnapshotId(1)));
+    }
+}
