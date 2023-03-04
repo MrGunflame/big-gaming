@@ -54,7 +54,6 @@ impl Connections {
 
         match inner.get_mut(id.borrow()) {
             Some(data) => Some(ConnectionMut {
-                snapshot: data.snapshot.read().clone(),
                 data: data.clone(),
                 id: *id.borrow(),
             }),
@@ -82,7 +81,7 @@ impl Connections {
 
 #[derive(Debug)]
 pub struct ConnectionData {
-    pub snapshot: RwLock<Snapshot>,
+    pub snapshot: RwLock<Vec<EntityChange>>,
     pub handle: ConnectionHandle,
     pub host: RwLock<Option<EntityId>>,
 }
@@ -90,7 +89,7 @@ pub struct ConnectionData {
 impl ConnectionData {
     pub fn new(handle: ConnectionHandle) -> Self {
         Self {
-            snapshot: RwLock::new(Snapshot::new()),
+            snapshot: RwLock::new(vec![]),
             handle,
             host: RwLock::new(None),
         }
@@ -114,41 +113,34 @@ impl<'a> Iterator for IterMut<'a> {
 pub struct ConnectionMut {
     pub data: Arc<ConnectionData>,
     /// The *new* snapshot (cloned from the one in data).
-    snapshot: Snapshot,
     id: ConnectionId,
 }
 
-impl Deref for ConnectionMut {
-    type Target = Snapshot;
-
-    fn deref(&self) -> &Self::Target {
-        &self.snapshot
-    }
-}
-
-impl DerefMut for ConnectionMut {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.snapshot
+impl ConnectionMut {
+    pub fn set_delta(&self, delta: Vec<EntityChange>) {
+        *self.data.snapshot.write() = delta;
     }
 }
 
 impl Drop for ConnectionMut {
     fn drop(&mut self) {
-        let mut prev = self.data.snapshot.write();
-        let delta = prev.delta(&self.snapshot);
+        // let mut prev = self.data.snapshot.write();
+        // let delta = prev.delta(&self.snapshot);
 
-        *prev = self.snapshot.clone();
+        // *prev = self.snapshot.clone();
 
-        // Drop the lock as early as possible.
-        drop(prev);
+        // // Drop the lock as early as possible.
+        // drop(prev);
 
-        for change in delta {
+        let delta = self.data.snapshot.read();
+
+        for change in &*delta {
             let cmd = match change {
                 EntityChange::Create { id, data } => {
                     dbg!(id);
 
                     Command::EntityCreate {
-                        id,
+                        id: *id,
                         kind: match data.data {
                             EntityData::Object { id } => EntityKind::Object(id),
                             EntityData::Actor {} => EntityKind::Actor(()),
@@ -157,11 +149,15 @@ impl Drop for ConnectionMut {
                         rotation: data.transform.rotation,
                     }
                 }
-                EntityChange::Translate { id, translation } => {
-                    Command::EntityTranslate { id, translation }
-                }
-                EntityChange::Rotate { id, rotation } => Command::EntityRotate { id, rotation },
-                EntityChange::Destroy { id } => Command::EntityDestroy { id },
+                EntityChange::Translate { id, translation } => Command::EntityTranslate {
+                    id: *id,
+                    translation: *translation,
+                },
+                EntityChange::Rotate { id, rotation } => Command::EntityRotate {
+                    id: *id,
+                    rotation: *rotation,
+                },
+                EntityChange::Destroy { id } => Command::EntityDestroy { id: *id },
             };
 
             self.data.handle.send_cmd(cmd);

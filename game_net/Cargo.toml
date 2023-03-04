@@ -5,6 +5,10 @@ edition = "2021"
 authors = ["MrGunflame <git@robbsrv.de>"]
 license = "GPL-3.0-or-later"
 
+[features]
+default = ["tracing"]
+tracing = []
+
 [dependencies]
 game_macros = { version = "0.1.0", path = "../game_macros", features = ["net"] }
 game_common = { version = "0.1.0", path = "../game_common" }
@@ -19,3 +23,4 @@ socket2 = "0.4.7"
 bevy_ecs = "0.9.1"
 parking_lot = "0.12.1"
 tracing = "0.1.37"
+indexmap = "1.9.2"

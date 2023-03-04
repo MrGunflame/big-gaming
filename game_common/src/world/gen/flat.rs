@@ -17,8 +17,10 @@ impl Generate for FlatGenerator {
         let mut map = Heightmap::default();
 
         for index in 0..(CELL_SIZE_UINT.x + 1) * (CELL_SIZE_UINT.z + 1) {
-            let x = index % (CELL_SIZE_UINT.x + 1);
-            let z = index / (CELL_SIZE_UINT.z + 1);
+            let x = cell.id.min_x() as u32 + (index % (CELL_SIZE_UINT.x + 1));
+            let z = cell.id.min_z() as u32 + (index / (CELL_SIZE_UINT.z + 1));
+
+            dbg!(x);
 
             let y = noise.get([x as f64 / 20.0, z as f64 / 20.0]);
             map.nodes.push(y as f32 * 2.0 as f32);

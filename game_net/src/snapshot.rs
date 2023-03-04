@@ -2,7 +2,7 @@ use bevy_ecs::system::Resource;
 use game_common::entity::{Entity, EntityId};
 use glam::{Quat, Vec3};
 use parking_lot::Mutex;
-use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::collections::{HashMap, VecDeque};
 use std::ops::{Add, AddAssign};
 use std::sync::Arc;
 use std::time::Instant;
@@ -189,6 +189,7 @@ pub enum EntityChange {
 
 pub struct Patch {}
 
+#[derive(Clone, Debug, Resource)]
 pub struct Snapshots {
     snapshots: VecDeque<(Instant, SnapshotId)>,
     next_id: SnapshotId,
