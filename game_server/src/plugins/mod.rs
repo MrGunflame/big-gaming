@@ -122,6 +122,7 @@ fn flush_command_queue(
             }
             Command::Disconnected => {
                 if let Some(id) = connections.host(msg.id) {
+                    view.despawn(id);
                     let entity = map.get(id).unwrap();
                     commands.entity(entity).despawn_recursive();
                 }
@@ -146,18 +147,14 @@ fn update_snapshots(
 ) {
     let delta = world.delta();
 
-    dbg!(delta);
-    if !delta.is_empty() {
-        // dbg!(world);
-        // panic!();
-    }
-
     for conn in connections.iter_mut() {
         let mut state = conn.data.state.write();
         if state.full_update {
             state.full_update = false;
 
             // Send full state
+            // The delta from the current frame is "included" in the
+            // full update.
             let Some(view) = world.newest() else {
                 continue;
             };

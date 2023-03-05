@@ -210,8 +210,7 @@ impl Snapshot {
                 });
             }
             EntityChange::Destroy { id } => {
-                // TODO
-                todo!()
+                self.entities.despawn(id);
             }
             EntityChange::Translate { id, translation } => {
                 let entity = self.entities.get_mut(id).unwrap();
