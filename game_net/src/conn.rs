@@ -20,7 +20,7 @@ use crate::proto::sequence::Sequence;
 use crate::proto::shutdown::{Shutdown, ShutdownReason};
 use crate::proto::timestamp::Timestamp;
 use crate::proto::{Encode, Frame, Header, Packet, PacketBody};
-use crate::snapshot::{Command, CommandQueue, ConnectionMessage};
+use crate::snapshot::{Command, CommandQueue, ConnectionMessage, SnapshotId};
 use crate::socket::Socket;
 
 #[derive(Debug, Error)]
@@ -81,6 +81,7 @@ pub struct Connection {
     start_time: Instant,
 
     next_peer_sequence: Sequence,
+    next_snapshot: u32,
 }
 
 impl Connection {
@@ -113,6 +114,7 @@ impl Connection {
             next_server_sequence: Sequence::default(),
             start_time: Instant::now(),
             next_peer_sequence: Sequence::default(),
+            next_snapshot: 0,
         };
 
         if mode == ConnectionMode::Connect {
@@ -236,8 +238,11 @@ impl Connection {
 
             self.queue.push(ConnectionMessage {
                 id: self.id,
+                snapshot: SnapshotId(self.next_snapshot),
                 command: cmd,
             });
+
+            self.next_snapshot += 1;
         }
 
         Poll::Ready(())
@@ -281,6 +286,7 @@ impl Connection {
                 self.state = ConnectionState::Connected;
                 self.queue.push(ConnectionMessage {
                     id: self.id,
+                    snapshot: SnapshotId(0),
                     command: Command::Connected,
                 });
             }
@@ -319,6 +325,7 @@ impl Connection {
                 // Signal the game that the player spawns.
                 self.queue.push(ConnectionMessage {
                     id: self.id,
+                    snapshot: SnapshotId(0),
                     command: Command::Connected,
                 });
 
@@ -401,6 +408,7 @@ impl Connection {
         if self.state == ConnectionState::Connected {
             self.queue.push(ConnectionMessage {
                 id: self.id,
+                snapshot: SnapshotId(0),
                 command: Command::Disconnected,
             });
         }
@@ -415,6 +423,7 @@ impl Connection {
         if self.mode.is_listen() && self.state == ConnectionState::Connected {
             self.queue.push(ConnectionMessage {
                 id: self.id,
+                snapshot: SnapshotId(0),
                 command: Command::Disconnected,
             });
         }

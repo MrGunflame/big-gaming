@@ -162,6 +162,7 @@ impl Drop for ConnectionMut {
                     rotation: *rotation,
                 },
                 EntityChange::Destroy { id } => Command::EntityDestroy { id: *id },
+                _ => unimplemented!(),
             };
 
             self.data.handle.send_cmd(cmd);

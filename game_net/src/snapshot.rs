@@ -3,7 +3,7 @@ use game_common::entity::{Entity, EntityId};
 use glam::{Quat, Vec3};
 use parking_lot::Mutex;
 use std::collections::{HashMap, VecDeque};
-use std::ops::{Add, AddAssign};
+use std::ops::{Add, AddAssign, Sub, SubAssign};
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -28,6 +28,22 @@ impl AddAssign<u32> for SnapshotId {
     #[inline]
     fn add_assign(&mut self, rhs: u32) {
         *self = *self + rhs;
+    }
+}
+
+impl Sub<u32> for SnapshotId {
+    type Output = Self;
+
+    #[inline]
+    fn sub(self, rhs: u32) -> Self::Output {
+        Self(self.0.wrapping_sub(rhs))
+    }
+}
+
+impl SubAssign<u32> for SnapshotId {
+    #[inline]
+    fn sub_assign(&mut self, rhs: u32) {
+        *self = *self - rhs;
     }
 }
 
@@ -97,6 +113,7 @@ impl Snapshot {
 #[derive(Clone, Debug)]
 pub struct ConnectionMessage {
     pub id: ConnectionId,
+    pub snapshot: SnapshotId,
     pub command: Command,
 }
 
@@ -185,6 +202,8 @@ pub enum EntityChange {
     Rotate { id: EntityId, rotation: Quat },
     // Update { id: EntityId, data: Entity },
     Destroy { id: EntityId },
+    CreateHost { id: EntityId },
+    DestroyHost { id: EntityId },
 }
 
 pub struct Patch {}
@@ -237,6 +256,31 @@ impl Snapshots {
         self.next_id += 1;
 
         self.snapshots.push_back((instant, id));
+    }
+}
+
+#[derive(Clone, Debug, Default, Resource)]
+pub struct DeltaQueue {
+    queue: VecDeque<EntityChange>,
+}
+
+impl DeltaQueue {
+    pub fn new() -> Self {
+        Self {
+            queue: VecDeque::new(),
+        }
+    }
+
+    pub fn push(&mut self, change: EntityChange) {
+        self.queue.push_back(change);
+    }
+
+    pub fn peek(&mut self) -> Option<&EntityChange> {
+        self.queue.front()
+    }
+
+    pub fn pop(&mut self) -> Option<EntityChange> {
+        self.queue.pop_front()
     }
 }
 

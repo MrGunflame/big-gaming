@@ -49,7 +49,8 @@ impl WorldState {
 
     pub fn insert(&mut self, id: SnapshotId) {
         let entities = self.snapshots.get(&self.last).cloned().unwrap_or(Snapshot {
-            entities: Entities { entities: vec![] },
+            entities: Entities::default(),
+            hosts: Hosts::default(),
         });
         self.snapshots.insert(id, entities);
         self.last = id;
@@ -84,18 +85,73 @@ impl WorldState {
     }
 }
 
-#[derive(Debug)]
+#[derive(Copy, Clone, Debug)]
 pub struct WorldViewRef<'a> {
     snapshot: &'a Snapshot,
 }
 
 impl<'a> WorldViewRef<'a> {
     pub fn get(&self, id: EntityId) -> Option<&Entity> {
-        self.snapshot.entities.entities.iter().find(|x| x.id == id)
+        self.snapshot.entities.get(id)
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &Entity> {
-        self.snapshot.entities.entities.iter()
+        self.snapshot.entities.entities.values()
+    }
+
+    /// Creates a delta from `self` to `next`.
+    pub fn delta(this: Option<Self>, next: WorldViewRef<'_>) -> Vec<EntityChange> {
+        let mut entities = next.snapshot.entities.clone();
+        let mut hosts = next.snapshot.hosts.clone();
+
+        let mut delta = Vec::new();
+
+        if let Some(view) = this {
+            for entity in view.iter() {
+                match entities.entities.remove(&entity.id) {
+                    Some(new) => {
+                        if entity.transform.translation != new.transform.translation {
+                            delta.push(EntityChange::Translate {
+                                id: entity.id,
+                                translation: new.transform.translation,
+                            });
+                        }
+
+                        if entity.transform.rotation != new.transform.rotation {
+                            delta.push(EntityChange::Rotate {
+                                id: entity.id,
+                                rotation: new.transform.rotation,
+                            });
+                        }
+                    }
+                    None => {
+                        delta.push(EntityChange::Destroy { id: entity.id });
+                    }
+                }
+            }
+
+            for id in view.snapshot.hosts.entities.keys().copied() {
+                match hosts.entities.remove(&id) {
+                    Some(()) => {}
+                    None => {
+                        delta.push(EntityChange::Destroy { id });
+                    }
+                }
+            }
+        }
+
+        for entity in entities.entities.into_values() {
+            delta.push(EntityChange::Create {
+                id: entity.id,
+                data: entity,
+            });
+        }
+
+        for id in hosts.entities.into_keys() {
+            delta.push(EntityChange::CreateHost { id });
+        }
+
+        delta
     }
 }
 
@@ -109,20 +165,15 @@ pub struct WorldViewMut<'a> {
 
 impl<'a> WorldViewMut<'a> {
     pub fn get_mut(&mut self, id: EntityId) -> Option<EntityMut<'_>> {
-        self.snapshot
-            .entities
-            .entities
-            .iter_mut()
-            .find(|x| x.id == id)
-            .map(|entity| EntityMut {
-                prev: entity.clone(),
-                entity,
-                delta: &mut self.delta,
-            })
+        self.snapshot.entities.get_mut(id).map(|entity| EntityMut {
+            prev: entity.clone(),
+            entity,
+            delta: &mut self.delta,
+        })
     }
 
     pub fn spawn(&mut self, entity: Entity) {
-        self.snapshot.entities.entities.push(entity.clone());
+        self.snapshot.entities.spawn(entity.clone());
         self.delta.push(EntityChange::Create {
             id: entity.id,
             data: entity,
@@ -130,8 +181,22 @@ impl<'a> WorldViewMut<'a> {
     }
 
     pub fn despawn(&mut self, id: EntityId) {
-        self.snapshot.entities.entities.retain(|i| i.id != id);
+        self.snapshot.entities.despawn(id);
         self.delta.push(EntityChange::Destroy { id });
+
+        // Despawn host with the entity if exists.
+        self.despawn_host(id);
+    }
+
+    pub fn spawn_host(&mut self, id: EntityId) {
+        #[cfg(debug_assertions)]
+        assert!(self.snapshot.entities.get(id).is_some());
+
+        self.snapshot.hosts.insert(id);
+    }
+
+    pub fn despawn_host(&mut self, id: EntityId) {
+        self.snapshot.hosts.remove(id);
     }
 
     pub fn delta(&self) -> &[EntityChange] {
@@ -176,34 +241,66 @@ impl<'a> Drop for EntityMut<'a> {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 struct Entities {
-    entities: Vec<Entity>,
+    entities: HashMap<EntityId, Entity>,
 }
 
 impl Entities {
+    fn get(&self, id: EntityId) -> Option<&Entity> {
+        self.entities.get(&id)
+    }
+
     fn get_mut(&mut self, id: EntityId) -> Option<&mut Entity> {
-        self.entities
-            .iter_mut()
-            .find(|x| x.id == id)
-            .map(|entity| entity)
+        self.entities.get_mut(&id)
+    }
+
+    fn spawn(&mut self, entity: Entity) {
+        self.entities.insert(entity.id, entity);
     }
 
     fn despawn(&mut self, id: EntityId) {
-        self.entities.retain(|i| i.id != id);
+        self.entities.remove(&id);
     }
 }
 
 #[derive(Clone, Debug)]
 struct Snapshot {
     entities: Entities,
+    hosts: Hosts,
+}
+
+#[derive(Clone, Debug, Default)]
+struct Hosts {
+    // TODO: Add HostId (or similar)
+    entities: HashMap<EntityId, ()>,
+}
+
+impl Hosts {
+    fn new() -> Self {
+        Self {
+            entities: HashMap::new(),
+        }
+    }
+
+    fn get(&self, id: EntityId) -> Option<&()> {
+        self.entities.get(&id)
+    }
+
+    fn insert(&mut self, id: EntityId) {
+        self.entities.insert(id, ());
+    }
+
+    fn remove(&mut self, id: EntityId) {
+        self.entities.remove(&id);
+    }
 }
 
 impl Snapshot {
     fn apply(&mut self, delta: EntityChange) {
         match delta {
             EntityChange::Create { id, data } => {
-                self.entities.entities.push(Entity {
+                self.entities.spawn(Entity {
                     id,
                     transform: data.transform,
                     data: data.data,
@@ -218,6 +315,12 @@ impl Snapshot {
             }
             EntityChange::Rotate { id, rotation } => {
                 todo!()
+            }
+            EntityChange::CreateHost { id } => {
+                self.hosts.insert(id);
+            }
+            EntityChange::DestroyHost { id } => {
+                self.hosts.remove(id);
             }
         }
     }
