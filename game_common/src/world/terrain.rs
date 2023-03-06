@@ -1,3 +1,5 @@
+use core::panic;
+
 use bevy_rapier3d::prelude::Collider;
 use bevy_render::mesh::Indices;
 use bevy_render::prelude::Mesh;
@@ -49,6 +51,7 @@ impl TerrainMesh {
 
         let mut vertices = Vec::new();
         let mut indices = Vec::new();
+        let mut normals = Vec::new();
 
         let size_x = CELL_SIZE_UINT.x + 1;
         let size_z = CELL_SIZE_UINT.z + 1;
@@ -60,6 +63,7 @@ impl TerrainMesh {
             let y = self.offsets.nodes[index as usize];
 
             vertices.push([x as f32, y as f32, z as f32]);
+            // normals.push([0.0, 0.0, 1.0]);
 
             if x != size_x - 1 && z != size_z - 1 {
                 // Up tri (index -> index + 10 -> index + 10 + 1)
@@ -70,8 +74,39 @@ impl TerrainMesh {
             }
         }
 
+        for index in &indices {
+            // Up tri
+            let a = vertices[*index as usize];
+            let b = vertices[*index as usize + size_x as usize];
+            let c = vertices[*index as usize + size_x as usize + 1];
+            dbg!((a, b, c));
+
+            let (a, b, c) = (Vec3::from(a), Vec3::from(b), Vec3::from(c));
+            let normal: [f32; 3] = (b - a).cross(c - a).normalize().into();
+
+            normals.push(normal);
+
+            // Down tri
+            let a = vertices[*index as usize + size_x as usize + 1];
+            let b = vertices[*index as usize + 1];
+            let c = vertices[*index as usize];
+            dbg!((a, b, c));
+
+            let (a, b, c) = (Vec3::from(a), Vec3::from(b), Vec3::from(c));
+            let normal: [f32; 3] = (b - a).cross(c - a).normalize().into();
+
+            normals.push(normal);
+        }
+
         mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, vertices);
         mesh.set_indices(Some(Indices::U32(indices)));
+        mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
+
+        // mesh.duplicate_vertices();
+        // mesh.compute_flat_normals();
+
+        // dbg!(mesh.attribute(Mesh::ATTRIBUTE_NORMAL));
+        // panic!();
 
         mesh
     }
