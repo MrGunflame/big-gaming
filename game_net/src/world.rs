@@ -237,6 +237,13 @@ impl<'a> Drop for EntityMut<'a> {
             });
         }
 
+        if self.prev.transform.rotation != self.entity.transform.rotation {
+            self.delta.push(EntityChange::Rotate {
+                id: self.entity.id,
+                rotation: self.entity.transform.rotation,
+            });
+        }
+
         // TODO: Other deltas
     }
 }
@@ -314,7 +321,8 @@ impl Snapshot {
                 entity.transform.translation = translation;
             }
             EntityChange::Rotate { id, rotation } => {
-                todo!()
+                let entity = self.entities.get_mut(id).unwrap();
+                entity.transform.rotation = rotation;
             }
             EntityChange::CreateHost { id } => {
                 self.hosts.insert(id);

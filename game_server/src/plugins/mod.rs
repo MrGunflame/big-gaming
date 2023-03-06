@@ -69,10 +69,8 @@ fn flush_command_queue(
                 }
             }
             Command::EntityRotate { id, rotation } => {
-                let ent = map.get(id).unwrap();
-
-                let (ent, mut transform, _) = entities.get_mut(ent).unwrap();
-                transform.rotation = rotation;
+                let mut entity = view.get_mut(id).unwrap();
+                entity.transform.rotation = rotation;
             }
             Command::EntityVelocity { id, linvel, angvel } => {
                 let ent = map.get(id).unwrap();

@@ -4,12 +4,8 @@ mod world;
 use std::net::SocketAddr;
 use std::sync::{mpsc, Arc};
 
-use bevy::prelude::{Commands, Query, Res, ResMut, Transform, Vec3, With};
-use bevy_rapier3d::prelude::Collider;
-use game_common::bundles::{ActorBundle, ObjectBundle};
-use game_common::components::player::HostPlayer;
+use bevy::prelude::{Commands, Res, ResMut, Transform, Vec3};
 use game_common::entity::{Entity, EntityData, EntityMap};
-use game_common::world::source::StreamingSource;
 use game_net::conn::{Connection, ConnectionHandle, ConnectionMode};
 use game_net::proto::{Decode, EntityKind, Packet};
 use game_net::snapshot::{
