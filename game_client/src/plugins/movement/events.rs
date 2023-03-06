@@ -1,10 +1,12 @@
-use bevy::prelude::{Commands, Entity, Query, Res, Transform, With};
+use bevy::prelude::{Commands, Entity, Query, Res, ResMut, Transform, With};
 use bevy::time::Time;
 use bevy_rapier3d::prelude::Velocity;
 use game_common::components::actor::{ActorFlag, ActorFlags, MovementSpeed};
 use game_common::components::movement::{Jump, Movement, Rotate};
+use game_common::entity::EntityMap;
 use game_common::math::RotationExt;
-use game_net::snapshot::Command;
+use game_net::snapshot::{Command, Snapshots};
+use game_net::world::WorldState;
 
 use crate::net::ServerConnection;
 
@@ -19,6 +21,9 @@ pub fn handle_movement_events(
         &MovementSpeed,
         &Movement,
     )>,
+    mut world: ResMut<WorldState>,
+    snapshots: Res<Snapshots>,
+    map: ResMut<EntityMap>,
 ) {
     let delta = time.delta_seconds();
 
@@ -41,6 +46,23 @@ pub fn handle_movement_events(
         }
 
         commands.entity(entity).remove::<Movement>();
+
+        let Some(mut id) = snapshots.newest() else {
+            continue;
+        };
+
+        if id.0 < 6 {
+            continue;
+        }
+        id -= 6;
+
+        let mut view = world.get_mut(id).unwrap();
+        let mut ent = view.get_mut(map.get_entity(entity).unwrap()).unwrap();
+        ent.transform.translation = transform.translation;
+
+        drop(ent);
+        drop(view);
+        world.patch_delta(id);
     }
 }
 
