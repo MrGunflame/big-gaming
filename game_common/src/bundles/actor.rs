@@ -6,6 +6,7 @@ use glam::Vec3;
 
 use crate::components::actor::{Actor, ActorFigure, ActorFlags, MovementSpeed};
 use crate::components::inventory::{Equipment, Inventory};
+use crate::components::movement::RotateQueue;
 
 use super::combat::CombatBundle;
 use super::physics::DynamicPhysicsBundle;
@@ -32,6 +33,7 @@ pub struct ActorBundle {
 
     pub locked_axes: LockedAxes,
     pub character_controller: KinematicCharacterController,
+    pub rotate_queue: RotateQueue,
 }
 
 impl Default for ActorBundle {
@@ -61,6 +63,7 @@ impl Default for ActorBundle {
                 snap_to_ground: Some(CharacterLength::Relative(0.2)),
                 ..Default::default()
             },
+            rotate_queue: RotateQueue::default(),
         }
     }
 }

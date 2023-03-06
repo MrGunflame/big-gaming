@@ -1,3 +1,5 @@
+use std::collections::VecDeque;
+
 use bevy_ecs::component::Component;
 use glam::{Quat, Vec3};
 
@@ -7,6 +9,9 @@ pub struct Movement {
     /// The point the entity is moving to.
     pub direction: Quat,
 }
+
+#[derive(Clone, Debug, Default, Component)]
+pub struct RotateQueue(pub VecDeque<Rotate>);
 
 #[derive(Copy, Clone, Debug, Component)]
 pub struct Rotate {
