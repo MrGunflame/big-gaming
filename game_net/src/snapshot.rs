@@ -226,6 +226,10 @@ impl Snapshots {
         self.push_in(Instant::now());
     }
 
+    pub fn len(&self) -> usize {
+        self.snapshots.len()
+    }
+
     /// Returns the id of the first snapshot that happened at or after
     /// `ts`.
     pub fn get(&self, ts: Instant) -> Option<SnapshotId> {
@@ -241,6 +245,10 @@ impl Snapshots {
         }
 
         None
+    }
+
+    pub fn remove(&mut self, id: SnapshotId) {
+        self.snapshots.retain(|(_, i)| *i != id);
     }
 
     pub fn newest(&self) -> Option<SnapshotId> {

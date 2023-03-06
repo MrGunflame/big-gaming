@@ -30,31 +30,29 @@ pub fn apply_world_delta(
         return;
     };
 
-    // if id < 60 {
-    //     return;
-    // }
+    if id.0 < 6 {
+        snapshots.push();
+        world.insert(snapshots.newest().unwrap());
+        return;
+    }
 
-    // id -= 60;
+    id -= 6;
 
     // Create a delta from the previous snapshot to the current one.
     let prev = world.get(id - 1);
     let next = world.get(id).unwrap();
 
-    dbg!(&prev);
-    dbg!(&next);
-
     let delta = WorldViewRef::delta(prev, next);
 
-    if !delta.is_empty() {
-        for change in delta {
-            dbg!(&change);
-            queue.push(change);
-        }
+    for change in delta {
+        queue.push(change);
     }
 
-    // if prev.is_some() {
-    //     world.remove(id - 1);
-    // }
+    if prev.is_some() {
+        world.remove(id - 1);
+        snapshots.remove(id - 1);
+    }
+
     snapshots.push();
     world.insert(snapshots.newest().unwrap());
 }
