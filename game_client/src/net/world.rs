@@ -4,6 +4,7 @@ use bevy::prelude::{Commands, Query, Res, ResMut, Transform};
 use bevy::time::Time;
 use bevy_rapier3d::prelude::Collider;
 use game_common::bundles::{ActorBundle, ObjectBundle};
+use game_common::components::actor::ActorProperties;
 use game_common::components::combat::Health;
 use game_common::components::player::HostPlayer;
 use game_common::entity::{Entity, EntityData, EntityMap};
@@ -61,7 +62,11 @@ pub fn apply_world_delta(
 pub fn flush_delta_queue(
     mut commands: Commands,
     mut queue: ResMut<DeltaQueue>,
-    mut entities: Query<(&mut Transform, Option<&mut Health>)>,
+    mut entities: Query<(
+        &mut Transform,
+        Option<&mut Health>,
+        Option<&mut ActorProperties>,
+    )>,
     map: ResMut<EntityMap>,
 ) {
     while let Some(change) = queue.peek() {
@@ -84,7 +89,7 @@ pub fn flush_delta_queue(
             EntityChange::Translate { id, translation } => {
                 let entity = map.get(*id).unwrap();
 
-                if let Ok((mut transform, _)) = entities.get_mut(entity) {
+                if let Ok((mut transform, _, _)) = entities.get_mut(entity) {
                     transform.translation = *translation;
                 } else {
                     tracing::warn!("unknown entity");
@@ -93,8 +98,14 @@ pub fn flush_delta_queue(
             EntityChange::Rotate { id, rotation } => {
                 let entity = map.get(*id).unwrap();
 
-                if let Ok((mut transform, _)) = entities.get_mut(entity) {
-                    transform.rotation = *rotation;
+                if let Ok((mut transform, _, props)) = entities.get_mut(entity) {
+                    if let Some(mut props) = props {
+                        // Actor
+                        props.rotation = *rotation;
+                    } else {
+                        // Object
+                        transform.rotation = *rotation;
+                    }
                 } else {
                     tracing::warn!("unknown entity");
                 }
@@ -118,7 +129,7 @@ pub fn flush_delta_queue(
             EntityChange::Health { id, health } => {
                 let entity = map.get(*id).unwrap();
 
-                let (_, h) = entities.get_mut(entity).unwrap();
+                let (_, h, _) = entities.get_mut(entity).unwrap();
                 if let Some(mut h) = h {
                     *h = *health;
                 } else {

@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
-use glam::Vec3;
+use glam::{Quat, Vec3};
 
 /// An entity that may act on its own within the world, i.e. players and NPCs.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Component)]
@@ -218,3 +218,14 @@ pub struct Spawn;
 /// A death event.
 #[derive(Copy, Clone, Debug, Default, Component)]
 pub struct Death;
+
+#[derive(Clone, Debug, Default, Component)]
+pub struct ActorProperties {
+    /// The rotation that the actor is facing in.
+    ///
+    /// Defaults to [`IDENTITY`].
+    ///
+    /// [`IDENTITY`]: Quat::IDENTITY
+    pub rotation: Quat,
+    // TODO: Add custom props
+}

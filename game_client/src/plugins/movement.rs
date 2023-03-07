@@ -6,7 +6,7 @@ use bevy::prelude::{
     Camera3d, Commands, CoreStage, Entity, EventReader, KeyCode, Plugin, Quat, Query, ResMut,
     Transform, Vec3, With, Without,
 };
-use game_common::components::actor::MovementSpeed;
+use game_common::components::actor::{ActorProperties, MovementSpeed};
 use game_common::components::movement::{Jump, Movement, Rotate, RotateQueue};
 use game_common::components::player::HostPlayer;
 use game_input::hotkeys::{
@@ -315,7 +315,12 @@ fn mouse_movement(
     mut events: EventReader<MouseMotion>,
     mut cameras: Query<&mut Transform, With<Camera3d>>,
     mut players: Query<
-        (Entity, &mut Transform, &mut RotateQueue),
+        (
+            Entity,
+            &mut Transform,
+            &mut RotateQueue,
+            &mut ActorProperties,
+        ),
         (With<HostPlayer>, Without<Camera3d>),
     >,
 ) {
@@ -323,7 +328,7 @@ fn mouse_movement(
         return;
     };
 
-    let Ok((entity, mut player, mut queue)) = players.get_single_mut() else {
+    let Ok((entity, mut player, mut queue, mut props)) = players.get_single_mut() else {
         return;
     };
 
@@ -355,8 +360,10 @@ fn mouse_movement(
         // camera.rotate_axis(-Vec3::Y, yaw);
         // camera.rotate(quat);
 
-        camera.rotation = q1 * camera.rotation;
-        camera.rotation = camera.rotation * q2;
+        // camera.rotation = q1 * camera.rotation;
+        // camera.rotation = camera.rotation * q2;
+        props.rotation = q1 * props.rotation;
+        props.rotation = props.rotation * q2;
 
         // *camera_rot = camera_rot
         //     .add_yaw(Degrees(yaw))
@@ -369,13 +376,15 @@ fn mouse_movement(
         // });
 
         // player.rotation = q1 * player.rotation;
-        rotation = q1 * rotation;
+        // rotation = q1 * rotation;
+        // rotation = rotation * q2;
+
         changed = true;
     }
 
     if changed {
         queue.0.push_back(Rotate {
-            destination: rotation,
+            destination: props.rotation,
         });
     }
 }

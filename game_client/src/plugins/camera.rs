@@ -7,7 +7,7 @@ use bevy::prelude::{
     Vec3, With, Without,
 };
 use bevy::time::Time;
-use game_common::components::actor::{ActorFigure, MovementSpeed};
+use game_common::components::actor::{ActorFigure, ActorProperties, MovementSpeed};
 use game_common::components::camera::CameraMode;
 use game_common::components::movement::Movement;
 use game_common::components::player::HostPlayer;
@@ -50,10 +50,10 @@ fn setup_camera(mut commands: Commands) {
 
 fn synchronize_player_camera(
     settings: Res<CameraSettings>,
-    players: Query<(&Transform, &ActorFigure), With<HostPlayer>>,
+    players: Query<(&Transform, &ActorFigure, &ActorProperties), With<HostPlayer>>,
     mut cameras: Query<(&mut Transform, &CameraMode), Without<HostPlayer>>,
 ) {
-    let Ok((player, figure)) = players.get_single() else {
+    let Ok((player, figure, props)) = players.get_single() else {
         return;
     };
     let (mut camera, mode) = cameras.single_mut();
@@ -62,6 +62,8 @@ fn synchronize_player_camera(
         CameraMode::FirstPerson => {
             let rotation_matrix = Mat3::from_quat(player.rotation);
             camera.translation = player.translation + rotation_matrix * figure.eyes;
+
+            camera.rotation = props.rotation;
         }
         CameraMode::ThirdPerson { distance } => {
             let rotation_matrix = Mat3::from_quat(camera.rotation);
