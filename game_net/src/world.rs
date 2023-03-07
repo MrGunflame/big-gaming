@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::ops::{Deref, DerefMut};
 
 use bevy_ecs::system::Resource;
-use game_common::entity::{Entity, EntityId};
+use game_common::entity::{Entity, EntityData, EntityId};
 
 #[cfg(feature = "tracing")]
 use tracing::{event, span, Level, Span};
@@ -122,6 +122,24 @@ impl<'a> WorldViewRef<'a> {
                                 id: entity.id,
                                 rotation: new.transform.rotation,
                             });
+                        }
+
+                        match (&entity.data, &new.data) {
+                            (
+                                EntityData::Actor { race: _, health },
+                                EntityData::Actor {
+                                    race: _,
+                                    health: new,
+                                },
+                            ) => {
+                                if health != new {
+                                    delta.push(EntityChange::Health {
+                                        id: entity.id,
+                                        health: *new,
+                                    });
+                                }
+                            }
+                            _ => (),
                         }
                     }
                     None => {
@@ -323,6 +341,13 @@ impl Snapshot {
             EntityChange::Rotate { id, rotation } => {
                 let entity = self.entities.get_mut(id).unwrap();
                 entity.transform.rotation = rotation;
+            }
+            EntityChange::Health { id, health } => {
+                let entity = self.entities.get_mut(id).unwrap();
+
+                if let EntityData::Actor { race: _, health: h } = &mut entity.data {
+                    *h = health;
+                }
             }
             EntityChange::CreateHost { id } => {
                 self.hosts.insert(id);

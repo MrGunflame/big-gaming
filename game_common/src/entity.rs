@@ -9,6 +9,7 @@ use bevy_ecs::system::Resource;
 use bevy_transform::prelude::Transform;
 use parking_lot::RwLock;
 
+use crate::components::combat::Health;
 use crate::components::object::ObjectId;
 use crate::components::race::RaceId;
 
@@ -37,7 +38,7 @@ pub struct Entity {
 #[derive(Clone, Debug, PartialEq)]
 pub enum EntityData {
     Object { id: ObjectId },
-    Actor { race: RaceId },
+    Actor { race: RaceId, health: Health },
 }
 
 impl EntityData {
@@ -46,7 +47,7 @@ impl EntityData {
     }
 
     pub const fn is_actor(&self) -> bool {
-        matches!(self, Self::Actor { race: _ })
+        matches!(self, Self::Actor { race: _, health: _ })
     }
 }
 

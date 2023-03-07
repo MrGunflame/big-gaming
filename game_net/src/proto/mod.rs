@@ -33,11 +33,13 @@ pub mod sequence;
 pub mod shutdown;
 pub mod timestamp;
 
+use game_common::components::combat::Health;
 use game_common::components::object::ObjectId;
 use game_common::components::race::RaceId;
 use game_common::entity::EntityData;
 use game_common::id::WeakId;
 pub use game_macros::{net__decode as Decode, net__encode as Encode};
+use indexmap::Equivalent;
 
 use std::convert::Infallible;
 
@@ -415,9 +417,10 @@ impl Encode for EntityData {
                 1u8.encode(&mut buf)?;
                 id.encode(&mut buf)?;
             }
-            Self::Actor { race } => {
+            Self::Actor { race, health } => {
                 2u8.encode(&mut buf)?;
                 race.encode(&mut buf)?;
+                health.encode(&mut buf)?;
             }
         }
 
@@ -442,8 +445,9 @@ impl Decode for EntityData {
             }
             2 => {
                 let race = RaceId::decode(&mut buf)?;
+                let health = Health::decode(&mut buf)?;
 
-                Ok(Self::Actor { race })
+                Ok(Self::Actor { race, health })
             }
             _ => Err(InvalidEntityKind(typ).into()),
         }
@@ -471,6 +475,35 @@ impl Decode for RaceId {
         B: Buf,
     {
         WeakId::decode(buf).map(Self)
+    }
+}
+
+impl Encode for Health {
+    type Error = Infallible;
+
+    #[inline]
+    fn encode<B>(&self, mut buf: B) -> Result<(), Self::Error>
+    where
+        B: BufMut,
+    {
+        self.health.encode(&mut buf)?;
+        self.max_health.encode(&mut buf)?;
+        Ok(())
+    }
+}
+
+impl Decode for Health {
+    type Error = Error;
+
+    #[inline]
+    fn decode<B>(mut buf: B) -> Result<Self, Self::Error>
+    where
+        B: Buf,
+    {
+        let health = u32::decode(&mut buf)?;
+        let max_health = u32::decode(&mut buf)?;
+
+        Ok(Self { health, max_health })
     }
 }
 
@@ -527,6 +560,13 @@ pub struct EntityVelocity {
     pub angvel: Vec3,
 }
 
+/// Updates the health of an entity.
+#[derive(Copy, Clone, Debug, Encode, Decode)]
+pub struct EntityHealth {
+    pub entity: ServerEntity,
+    pub health: Health,
+}
+
 /// Sets the host actor host used by the client.
 ///
 /// This is the actor the client is allowed to control.
@@ -542,6 +582,7 @@ pub enum Frame {
     EntityTranslate(EntityTranslate),
     EntityRotate(EntityRotate),
     EntityVelocity(EntityVelocity),
+    EntityHealth(EntityHealth),
     SpawnHost(SpawnHost),
 }
 
@@ -571,6 +612,10 @@ impl Encode for Frame {
             }
             Self::EntityVelocity(frame) => {
                 FrameType::ENTITY_VELOCITY.encode(&mut buf)?;
+                frame.encode(buf)
+            }
+            Self::EntityHealth(frame) => {
+                FrameType::ENTITY_HEALTH.encode(&mut buf)?;
                 frame.encode(buf)
             }
             Self::SpawnHost(frame) => {
@@ -610,6 +655,10 @@ impl Decode for Frame {
             FrameType::ENTITY_VELOCITY => {
                 let frame = EntityVelocity::decode(buf)?;
                 Ok(Self::EntityVelocity(frame))
+            }
+            FrameType::ENTITY_HEALTH => {
+                let frame = EntityHealth::decode(buf)?;
+                Ok(Self::EntityHealth(frame))
             }
             FrameType::SPAWN_HOST => {
                 let frame = SpawnHost::decode(buf)?;
@@ -776,6 +825,9 @@ impl FrameType {
 
     pub const PLAYER_JOIN: Self = Self(6);
     pub const PLAYER_LEAVE: Self = Self(7);
+
+    /// The `FrameType` for the [`EntityHealth`] frame.
+    pub const ENTITY_HEALTH: Self = Self(0x10);
 }
 
 impl TryFrom<u16> for FrameType {
@@ -788,6 +840,7 @@ impl TryFrom<u16> for FrameType {
             Self::ENTITY_TRANSLATE => Ok(Self::ENTITY_TRANSLATE),
             Self::ENTITY_ROTATE => Ok(Self::ENTITY_ROTATE),
             Self::ENTITY_VELOCITY => Ok(Self::ENTITY_VELOCITY),
+            Self::ENTITY_HEALTH => Ok(Self::ENTITY_HEALTH),
             Self::SPAWN_HOST => Ok(Self::SPAWN_HOST),
             Self::PLAYER_JOIN => Ok(Self::PLAYER_JOIN),
             Self::PLAYER_LEAVE => Ok(Self::PLAYER_LEAVE),

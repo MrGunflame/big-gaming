@@ -1,4 +1,5 @@
 use bevy_ecs::system::Resource;
+use game_common::components::combat::Health;
 use game_common::entity::{Entity, EntityData, EntityId};
 use glam::{Quat, Vec3};
 use parking_lot::Mutex;
@@ -142,6 +143,10 @@ pub enum Command {
         linvel: Vec3,
         angvel: Vec3,
     },
+    EntityHealth {
+        id: EntityId,
+        health: Health,
+    },
     SpawnHost {
         id: EntityId,
     },
@@ -166,6 +171,7 @@ impl Command {
                 linvel: _,
                 angvel: _,
             } => Some(*id),
+            Self::EntityHealth { id, health: _ } => Some(*id),
             Self::SpawnHost { id } => Some(*id),
         }
     }
@@ -199,6 +205,7 @@ pub enum EntityChange {
     Create { id: EntityId, data: Entity },
     Translate { id: EntityId, translation: Vec3 },
     Rotate { id: EntityId, rotation: Quat },
+    Health { id: EntityId, health: Health },
     // Update { id: EntityId, data: Entity },
     Destroy { id: EntityId },
     CreateHost { id: EntityId },

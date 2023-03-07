@@ -100,11 +100,65 @@ impl Display for Health {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Component)]
+pub struct DamageList {
+    inner: Vec<Damage>,
+}
+
+impl DamageList {
+    pub const fn new() -> Self {
+        Self { inner: Vec::new() }
+    }
+
+    pub fn push(&mut self, damage: Damage) {
+        self.inner.push(damage);
+    }
+
+    #[inline]
+    pub fn iter(&self) -> DamageIter<'_> {
+        DamageIter {
+            inner: self,
+            index: 0,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct DamageIter<'a> {
+    inner: &'a DamageList,
+    index: usize,
+}
+
+impl<'a> Iterator for DamageIter<'a> {
+    type Item = Damage;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        let elem = *self.inner.inner.get(self.index)?;
+        self.index += 1;
+        Some(elem)
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.len(), Some(self.len()))
+    }
+}
+
+impl<'a> ExactSizeIterator for DamageIter<'a> {
+    #[inline]
+    fn len(&self) -> usize {
+        self.inner.inner.len() - self.index
+    }
+}
+
+impl<'a> FusedIterator for DamageIter<'a> {}
+
 /// A raw damage value.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Component)]
 #[cfg_attr(feaure = "serde", derive(Serialize, Deserialize))]
 pub struct Damage {
-    pub class: Option<ResistanceId>,
+    pub class: Option<DamageClass>,
     pub amount: u32,
 }
 
@@ -116,7 +170,7 @@ impl Damage {
         }
     }
 
-    pub const fn with_class(mut self, class: ResistanceId) -> Self {
+    pub const fn with_class(mut self, class: DamageClass) -> Self {
         self.class = Some(class);
         self
     }
@@ -165,7 +219,7 @@ impl Extend<Damage> for IncomingDamage {
 
 #[derive(Clone, Debug, Default, Component)]
 pub struct Resistances {
-    classes: HashMap<ResistanceId, Resistance>,
+    classes: HashMap<DamageClass, Resistance>,
 }
 
 impl Resistances {
@@ -178,21 +232,21 @@ impl Resistances {
 
     pub fn get<T>(&self, class: T) -> Option<Resistance>
     where
-        T: Borrow<ResistanceId>,
+        T: Borrow<DamageClass>,
     {
         self.classes.get(class.borrow()).copied()
     }
 
     pub fn get_mut<T>(&mut self, class: T) -> Option<&mut Resistance>
     where
-        T: Borrow<ResistanceId>,
+        T: Borrow<DamageClass>,
     {
         self.classes.get_mut(class.borrow())
     }
 
     pub fn add<T>(&mut self, class: T, value: Resistance) -> Resistance
     where
-        T: Borrow<ResistanceId>,
+        T: Borrow<DamageClass>,
     {
         match self.get_mut(class.borrow()) {
             Some(res) => {
@@ -208,14 +262,14 @@ impl Resistances {
 
     pub fn set<T>(&mut self, class: T, value: Resistance)
     where
-        T: Borrow<ResistanceId>,
+        T: Borrow<DamageClass>,
     {
         self.classes.insert(*class.borrow(), value);
     }
 
     pub fn sub<T>(&mut self, class: T, value: Resistance) -> Option<Resistance>
     where
-        T: Borrow<ResistanceId>,
+        T: Borrow<DamageClass>,
     {
         let res = self.get_mut(class)?;
         *res -= value;
@@ -265,7 +319,7 @@ impl<'a> AddAssign<&'a Self> for Resistances {
 }
 
 impl<'a> IntoIterator for &'a Resistances {
-    type Item = (ResistanceId, Resistance);
+    type Item = (DamageClass, Resistance);
     type IntoIter = Iter<'a>;
 
     #[inline]
@@ -276,11 +330,11 @@ impl<'a> IntoIterator for &'a Resistances {
 
 #[derive(Clone, Debug)]
 pub struct Iter<'a> {
-    iter: std::collections::hash_map::Iter<'a, ResistanceId, Resistance>,
+    iter: std::collections::hash_map::Iter<'a, DamageClass, Resistance>,
 }
 
 impl<'a> Iterator for Iter<'a> {
-    type Item = (ResistanceId, Resistance);
+    type Item = (DamageClass, Resistance);
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
@@ -317,6 +371,7 @@ impl DamageClass {
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(transparent))]
+#[deprecated = "Use `DamageClass` instead"]
 pub struct ResistanceId(NamespacedId<u32>);
 
 impl ResistanceId {

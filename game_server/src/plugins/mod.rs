@@ -5,6 +5,7 @@ use bevy::prelude::{
 };
 use bevy_rapier3d::prelude::{Collider, Velocity};
 use game_common::bundles::ActorBundle;
+use game_common::components::combat::Health;
 use game_common::components::player::Player;
 use game_common::components::race::RaceId;
 use game_common::entity::{Entity, EntityData, EntityId, EntityMap};
@@ -80,6 +81,9 @@ fn flush_command_queue(
                 velocity.linvel = linvel;
                 velocity.angvel = angvel;
             }
+            Command::EntityHealth { id: _, health: _ } => {
+                tracing::warn!("received EntityHealth from client, ignored");
+            }
             Command::Connected => {
                 let id = EntityId::new();
 
@@ -96,6 +100,7 @@ fn flush_command_queue(
                         transform: Transform::default(),
                         data: EntityData::Actor {
                             race: RaceId(1.into()),
+                            health: Health::new(50),
                         },
                     })
                     .id();
@@ -105,6 +110,7 @@ fn flush_command_queue(
                     transform: Transform::default(),
                     data: EntityData::Actor {
                         race: RaceId(1.into()),
+                        health: Health::new(50),
                     },
                 });
 

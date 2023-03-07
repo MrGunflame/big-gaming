@@ -6,7 +6,8 @@ use game_common::entity::EntityId;
 use game_common::net::ServerEntity;
 
 use crate::proto::{
-    EntityCreate, EntityDestroy, EntityRotate, EntityTranslate, EntityVelocity, Frame, SpawnHost,
+    EntityCreate, EntityDestroy, EntityHealth, EntityRotate, EntityTranslate, EntityVelocity,
+    Frame, SpawnHost,
 };
 use crate::snapshot::Command;
 
@@ -90,6 +91,14 @@ impl Entities {
                     angvel: frame.angvel,
                 })
             }
+            Frame::EntityHealth(frame) => {
+                let id = self.get(frame.entity)?;
+
+                Some(Command::EntityHealth {
+                    id,
+                    health: frame.health,
+                })
+            }
             Frame::SpawnHost(frame) => {
                 let id = self.get(frame.entity)?;
 
@@ -146,6 +155,14 @@ impl Entities {
                     entity: id,
                     linvel: *linvel,
                     angvel: *angvel,
+                }))
+            }
+            Command::EntityHealth { id, health } => {
+                let entity = self.get(*id)?;
+
+                Some(Frame::EntityHealth(EntityHealth {
+                    entity,
+                    health: *health,
                 }))
             }
             Command::Connected => None,

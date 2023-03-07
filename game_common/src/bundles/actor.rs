@@ -5,6 +5,7 @@ use bevy_rapier3d::prelude::{
 use glam::Vec3;
 
 use crate::components::actor::{Actor, ActorFigure, ActorFlags, MovementSpeed};
+use crate::components::combat::{Health, IncomingDamage};
 use crate::components::inventory::{Equipment, Inventory};
 use crate::components::movement::RotateQueue;
 

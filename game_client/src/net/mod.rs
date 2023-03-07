@@ -230,6 +230,15 @@ fn flush_command_queue(
                 // velocity.angvel = angvel;
                 // }
             }
+            Command::EntityHealth { id, health } => {
+                let mut entity = view.get_mut(id).unwrap();
+
+                if let EntityData::Actor { race: _, health: h } = &mut entity.data {
+                    *h = health;
+                } else {
+                    tracing::warn!("tried to apply health to a non-actor entity");
+                }
+            }
             Command::SpawnHost { id } => {
                 view.spawn_host(id);
 

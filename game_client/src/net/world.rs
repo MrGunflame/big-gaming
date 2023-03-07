@@ -4,6 +4,7 @@ use bevy::prelude::{Commands, Query, Res, ResMut, Transform};
 use bevy::time::Time;
 use bevy_rapier3d::prelude::Collider;
 use game_common::bundles::{ActorBundle, ObjectBundle};
+use game_common::components::combat::Health;
 use game_common::components::player::HostPlayer;
 use game_common::entity::{Entity, EntityData, EntityMap};
 use game_common::world::source::StreamingSource;
@@ -60,7 +61,7 @@ pub fn apply_world_delta(
 pub fn flush_delta_queue(
     mut commands: Commands,
     mut queue: ResMut<DeltaQueue>,
-    mut entities: Query<&mut Transform>,
+    mut entities: Query<(&mut Transform, Option<&mut Health>)>,
     map: ResMut<EntityMap>,
 ) {
     while let Some(change) = queue.peek() {
@@ -78,7 +79,7 @@ pub fn flush_delta_queue(
             EntityChange::Translate { id, translation } => {
                 let entity = map.get(*id).unwrap();
 
-                if let Ok(mut transform) = entities.get_mut(entity) {
+                if let Ok((mut transform, _)) = entities.get_mut(entity) {
                     transform.translation = *translation;
                 } else {
                     tracing::warn!("unknown entity");
@@ -87,7 +88,7 @@ pub fn flush_delta_queue(
             EntityChange::Rotate { id, rotation } => {
                 let entity = map.get(*id).unwrap();
 
-                if let Ok(mut transform) = entities.get_mut(entity) {
+                if let Ok((mut transform, _)) = entities.get_mut(entity) {
                     transform.rotation = *rotation;
                 } else {
                     tracing::warn!("unknown entity");
@@ -108,6 +109,16 @@ pub fn flush_delta_queue(
                     .entity(entity)
                     .remove::<HostPlayer>()
                     .remove::<StreamingSource>();
+            }
+            EntityChange::Health { id, health } => {
+                let entity = map.get(*id).unwrap();
+
+                let (_, h) = entities.get_mut(entity).unwrap();
+                if let Some(mut h) = h {
+                    *h = *health;
+                } else {
+                    tracing::warn!("tried to apply health to a non-actor entity");
+                }
             }
         }
 
@@ -142,11 +153,12 @@ fn spawn_entity(commands: &mut Commands, entity: Entity) -> bevy::ecs::entity::E
 
             id
         }
-        EntityData::Actor { race: _ } => {
+        EntityData::Actor { race: _, health } => {
             let mut actor = ActorBundle::default();
             actor.transform.transform.translation = entity.transform.translation;
             actor.transform.transform.rotation = entity.transform.rotation;
             actor.physics.collider = Collider::cuboid(1.0, 1.0, 1.0);
+            actor.combat.health = health;
 
             let id = commands.spawn(actor).insert(entity).id();
 
