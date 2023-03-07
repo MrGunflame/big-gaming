@@ -51,7 +51,7 @@ impl TerrainMesh {
 
         let mut vertices = Vec::new();
         let mut indices = Vec::new();
-        let mut normals = Vec::new();
+        // let mut normals = Vec::new();
 
         let size_x = CELL_SIZE_UINT.x + 1;
         let size_z = CELL_SIZE_UINT.z + 1;
@@ -74,36 +74,59 @@ impl TerrainMesh {
             }
         }
 
-        for index in &indices {
-            // Up tri
-            let a = vertices[*index as usize];
-            let b = vertices[*index as usize + size_x as usize];
-            let c = vertices[*index as usize + size_x as usize + 1];
-            dbg!((a, b, c));
+        // let mut index = 0;
+        // assert!(vertices.len() % 3 == 0);
+        // while index < vertices.len() {
+        //     let a = vertices[index];
+        //     let b = vertices[index + 1];
+        //     let c = vertices[index + 2];
 
-            let (a, b, c) = (Vec3::from(a), Vec3::from(b), Vec3::from(c));
-            let normal: [f32; 3] = (b - a).cross(c - a).normalize().into();
+        //     let (a, b, c) = (Vec3::from(a), Vec3::from(b), Vec3::from(c));
+        //     let normal: [f32; 3] = (b - a).cross(c - a).normalize().into();
 
-            normals.push(normal);
+        //     normals.push([0.0, 0.0, 0.0]);
 
-            // Down tri
-            let a = vertices[*index as usize + size_x as usize + 1];
-            let b = vertices[*index as usize + 1];
-            let c = vertices[*index as usize];
-            dbg!((a, b, c));
+        //     normals.extend([normal, normal, normal]);
 
-            let (a, b, c) = (Vec3::from(a), Vec3::from(b), Vec3::from(c));
-            let normal: [f32; 3] = (b - a).cross(c - a).normalize().into();
+        //     index += 3;
+        // }
 
-            normals.push(normal);
-        }
+        // for index in 0u32..vertices {
+        //     let x = index % size_x;
+        //     let z = index / size_z;
+
+        //     if x == size_x - 1 || z == size_z - 1 {
+        //         continue;
+        //     }
+
+        //     // Up tri
+        //     let a = vertices[index as usize];
+        //     let b = vertices[index as usize + size_x as usize];
+        //     let c = vertices[index as usize + size_x as usize + 1];
+
+        //     let (a, b, c) = (Vec3::from(a), Vec3::from(b), Vec3::from(c));
+        //     let normal: [f32; 3] = (b - a).cross(c - a).normalize().into();
+
+        //     normals.push(normal);
+
+        //     // Down tri
+        //     // let a = vertices[index as usize + size_x as usize + 1];
+        //     // let b = vertices[index as usize + 1];
+        //     // let c = vertices[index as usize];
+        //     // dbg!((a, b, c));
+
+        //     // let (a, b, c) = (Vec3::from(a), Vec3::from(b), Vec3::from(c));
+        //     // let normal: [f32; 3] = (b - a).cross(c - a).normalize().into();
+
+        //     // normals.push(normal);
+        // }
 
         mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, vertices);
         mesh.set_indices(Some(Indices::U32(indices)));
-        mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
+        // mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
 
-        // mesh.duplicate_vertices();
-        // mesh.compute_flat_normals();
+        mesh.duplicate_vertices();
+        mesh.compute_flat_normals();
 
         // dbg!(mesh.attribute(Mesh::ATTRIBUTE_NORMAL));
         // panic!();
