@@ -6,7 +6,6 @@ use ahash::HashMap;
 use bevy::prelude::Resource;
 use game_common::entity::{EntityData, EntityId};
 use game_net::conn::{ConnectionHandle, ConnectionId};
-use game_net::proto::EntityKind;
 use game_net::snapshot::{Command, EntityChange, Snapshot};
 use parking_lot::RwLock;
 
@@ -140,19 +139,12 @@ impl Drop for ConnectionMut {
 
         for change in &*delta {
             let cmd = match change {
-                EntityChange::Create { id, data } => {
-                    dbg!(id);
-
-                    Command::EntityCreate {
-                        id: *id,
-                        kind: match data.data {
-                            EntityData::Object { id } => EntityKind::Object(id),
-                            EntityData::Actor {} => EntityKind::Actor(()),
-                        },
-                        translation: data.transform.translation,
-                        rotation: data.transform.rotation,
-                    }
-                }
+                EntityChange::Create { id, data } => Command::EntityCreate {
+                    id: *id,
+                    translation: data.transform.translation,
+                    rotation: data.transform.rotation,
+                    data: data.data.clone(),
+                },
                 EntityChange::Translate { id, translation } => Command::EntityTranslate {
                     id: *id,
                     translation: *translation,

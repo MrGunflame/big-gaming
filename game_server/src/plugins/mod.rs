@@ -6,10 +6,11 @@ use bevy::prelude::{
 use bevy_rapier3d::prelude::{Collider, Velocity};
 use game_common::bundles::ActorBundle;
 use game_common::components::player::Player;
+use game_common::components::race::RaceId;
 use game_common::entity::{Entity, EntityData, EntityId, EntityMap};
 use game_common::world::entity::{Actor as WorldActor, Object as WorldObject};
 use game_common::world::source::StreamingSource;
-use game_net::proto::{EntityKind, Frame};
+use game_net::proto::Frame;
 use game_net::snapshot::{Command, CommandQueue, Snapshot, Snapshots};
 use game_net::world::WorldState;
 
@@ -49,10 +50,10 @@ fn flush_command_queue(
 
         match msg.command {
             Command::EntityCreate {
-                kind,
                 id,
                 translation,
                 rotation,
+                data,
             } => {}
             Command::EntityDestroy { id } => {
                 // commands.entity(id).despawn();
@@ -93,14 +94,18 @@ fn flush_command_queue(
                     .insert(Entity {
                         id,
                         transform: Transform::default(),
-                        data: EntityData::Actor {},
+                        data: EntityData::Actor {
+                            race: RaceId(1.into()),
+                        },
                     })
                     .id();
 
                 view.spawn(Entity {
                     id,
                     transform: Transform::default(),
-                    data: EntityData::Actor {},
+                    data: EntityData::Actor {
+                        race: RaceId(1.into()),
+                    },
                 });
 
                 // connections
@@ -160,12 +165,9 @@ fn update_snapshots(
             for entity in view.iter() {
                 conn.data.handle.send_cmd(Command::EntityCreate {
                     id: entity.id,
-                    kind: match entity.data {
-                        EntityData::Object { id } => EntityKind::Object(id),
-                        EntityData::Actor {} => EntityKind::Actor(()),
-                    },
                     translation: entity.transform.translation,
                     rotation: entity.transform.rotation,
+                    data: entity.data.clone(),
                 });
             }
         } else {
@@ -183,7 +185,7 @@ fn update_snapshots(
     world.insert(snapshots.newest().unwrap());
 
     // Only keep 2s.
-    if snapshots.newest().unwrap().0 - snapshots.oldest().unwrap().0 > 120 {
+    if snapshots.len() > 120 {
         world.remove(snapshots.oldest().unwrap());
     }
 }

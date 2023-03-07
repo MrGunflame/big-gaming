@@ -10,6 +10,7 @@ use bevy_transform::prelude::Transform;
 use parking_lot::RwLock;
 
 use crate::components::object::ObjectId;
+use crate::components::race::RaceId;
 
 static ENTITY_ID: AtomicU64 = AtomicU64::new(0);
 
@@ -36,7 +37,7 @@ pub struct Entity {
 #[derive(Clone, Debug, PartialEq)]
 pub enum EntityData {
     Object { id: ObjectId },
-    Actor {},
+    Actor { race: RaceId },
 }
 
 impl EntityData {
@@ -45,7 +46,7 @@ impl EntityData {
     }
 
     pub const fn is_actor(&self) -> bool {
-        matches!(self, Self::Actor {})
+        matches!(self, Self::Actor { race: _ })
     }
 }
 

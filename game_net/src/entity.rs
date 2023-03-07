@@ -54,9 +54,9 @@ impl Entities {
 
                 Some(Command::EntityCreate {
                     id,
-                    kind: frame.kind,
                     translation: frame.translation,
                     rotation: frame.rotation,
+                    data: frame.data,
                 })
             }
             Frame::EntityDestroy(frame) => {
@@ -102,9 +102,9 @@ impl Entities {
         match cmd {
             Command::EntityCreate {
                 id,
-                kind,
                 translation,
                 rotation,
+                data,
             } => {
                 let entity = self.new_id();
                 self.insert(*id, entity);
@@ -115,7 +115,7 @@ impl Entities {
                     entity,
                     translation: *translation,
                     rotation: *rotation,
-                    kind: *kind,
+                    data: data.clone(),
                 }))
             }
             Command::EntityDestroy { id } => {

@@ -7,7 +7,7 @@ use std::sync::{mpsc, Arc};
 use bevy::prelude::{Commands, Res, ResMut, Transform, Vec3};
 use game_common::entity::{Entity, EntityData, EntityMap};
 use game_net::conn::{Connection, ConnectionHandle, ConnectionMode};
-use game_net::proto::{Decode, EntityKind, Packet};
+use game_net::proto::{Decode, Packet};
 use game_net::snapshot::{
     Command, CommandQueue, ConnectionMessage, DeltaQueue, SnapshotId, Snapshots,
 };
@@ -128,7 +128,7 @@ fn flush_command_queue(
                 id,
                 translation,
                 rotation,
-                kind,
+                data,
             } => {
                 view.spawn(Entity {
                     id,
@@ -137,10 +137,7 @@ fn flush_command_queue(
                         rotation,
                         scale: Vec3::splat(1.0),
                     },
-                    data: match kind {
-                        EntityKind::Object(id) => EntityData::Object { id },
-                        EntityKind::Actor(()) => EntityData::Actor {},
-                    },
+                    data,
                 });
                 // let entity = match kind {
                 //     EntityKind::Object(oid) => {

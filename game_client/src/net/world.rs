@@ -142,7 +142,7 @@ fn spawn_entity(commands: &mut Commands, entity: Entity) -> bevy::ecs::entity::E
 
             id
         }
-        EntityData::Actor {} => {
+        EntityData::Actor { race: _ } => {
             let mut actor = ActorBundle::default();
             actor.transform.transform.translation = entity.transform.translation;
             actor.transform.transform.rotation = entity.transform.rotation;

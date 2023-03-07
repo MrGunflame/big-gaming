@@ -34,6 +34,8 @@ pub mod shutdown;
 pub mod timestamp;
 
 use game_common::components::object::ObjectId;
+use game_common::components::race::RaceId;
+use game_common::entity::EntityData;
 use game_common::id::WeakId;
 pub use game_macros::{net__decode as Decode, net__encode as Encode};
 
@@ -393,12 +395,83 @@ impl Decode for Header {
 }
 
 /// Creates a new entity on the client.
-#[derive(Copy, Clone, Debug, Encode, Decode)]
+#[derive(Clone, Debug, Encode, Decode)]
 pub struct EntityCreate {
     pub entity: ServerEntity,
-    pub kind: EntityKind,
     pub translation: Vec3,
     pub rotation: Quat,
+    pub data: EntityData,
+}
+
+impl Encode for EntityData {
+    type Error = Infallible;
+
+    fn encode<B>(&self, mut buf: B) -> Result<(), Self::Error>
+    where
+        B: BufMut,
+    {
+        match self {
+            Self::Object { id } => {
+                1u8.encode(&mut buf)?;
+                id.encode(&mut buf)?;
+            }
+            Self::Actor { race } => {
+                2u8.encode(&mut buf)?;
+                race.encode(&mut buf)?;
+            }
+        }
+
+        Ok(())
+    }
+}
+
+impl Decode for EntityData {
+    type Error = Error;
+
+    fn decode<B>(mut buf: B) -> Result<Self, Self::Error>
+    where
+        B: Buf,
+    {
+        let typ = u8::decode(&mut buf)?;
+
+        match typ {
+            1 => {
+                let id = ObjectId::decode(&mut buf)?;
+
+                Ok(Self::Object { id })
+            }
+            2 => {
+                let race = RaceId::decode(&mut buf)?;
+
+                Ok(Self::Actor { race })
+            }
+            _ => Err(InvalidEntityKind(typ).into()),
+        }
+    }
+}
+
+impl Encode for RaceId {
+    type Error = Infallible;
+
+    #[inline]
+    fn encode<B>(&self, buf: B) -> Result<(), Self::Error>
+    where
+        B: BufMut,
+    {
+        self.0.encode(buf)
+    }
+}
+
+impl Decode for RaceId {
+    type Error = EofError;
+
+    #[inline]
+    fn decode<B>(buf: B) -> Result<Self, Self::Error>
+    where
+        B: Buf,
+    {
+        WeakId::decode(buf).map(Self)
+    }
 }
 
 // impl Encode for EntityCreate {
@@ -677,65 +750,6 @@ impl Decode for Packet {
         };
 
         Ok(Self { header, body })
-    }
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub enum EntityKind {
-    Object(ObjectId),
-    Actor(()),
-}
-
-impl EntityKind {
-    const OBJECT: u8 = 1;
-    const ACTOR: u8 = 2;
-}
-
-impl From<ObjectId> for EntityKind {
-    #[inline]
-    fn from(value: ObjectId) -> Self {
-        Self::Object(value)
-    }
-}
-
-impl Encode for EntityKind {
-    type Error = Infallible;
-
-    fn encode<B>(&self, mut buf: B) -> Result<(), Self::Error>
-    where
-        B: BufMut,
-    {
-        match self {
-            Self::Object(id) => {
-                1u8.encode(&mut buf)?;
-                id.encode(&mut buf)
-            }
-            Self::Actor(id) => {
-                2u8.encode(&mut buf)?;
-                Ok(())
-            }
-        }
-    }
-}
-
-impl Decode for EntityKind {
-    type Error = Error;
-
-    fn decode<B>(mut buf: B) -> Result<Self, Self::Error>
-    where
-        B: Buf,
-    {
-        let typ = u8::decode(&mut buf)?;
-
-        match typ {
-            Self::OBJECT => {
-                let id = ObjectId::decode(&mut buf)?;
-
-                Ok(Self::Object(id))
-            }
-            Self::ACTOR => Ok(Self::Actor(())),
-            _ => Err(InvalidEntityKind(typ).into()),
-        }
     }
 }
 

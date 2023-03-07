@@ -1,5 +1,5 @@
 use bevy_ecs::system::Resource;
-use game_common::entity::{Entity, EntityId};
+use game_common::entity::{Entity, EntityData, EntityId};
 use glam::{Quat, Vec3};
 use parking_lot::Mutex;
 use std::collections::{HashMap, VecDeque};
@@ -8,7 +8,6 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use crate::conn::ConnectionId;
-use crate::proto::EntityKind;
 
 /// A temporary identifier for a snapshot.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -123,9 +122,9 @@ pub enum Command {
     Disconnected,
     EntityCreate {
         id: EntityId,
-        kind: EntityKind,
         translation: Vec3,
         rotation: Quat,
+        data: EntityData,
     },
     EntityDestroy {
         id: EntityId,
@@ -155,9 +154,9 @@ impl Command {
             Self::Disconnected => None,
             Self::EntityCreate {
                 id,
-                kind: _,
                 translation: _,
                 rotation: _,
+                data: _,
             } => Some(*id),
             Self::EntityDestroy { id } => Some(*id),
             Self::EntityTranslate { id, translation: _ } => Some(*id),
