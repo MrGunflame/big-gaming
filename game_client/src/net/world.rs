@@ -65,11 +65,16 @@ pub fn flush_delta_queue(
     map: ResMut<EntityMap>,
 ) {
     while let Some(change) = queue.peek() {
-        dbg!(&change);
         match change {
             EntityChange::Create { id, data } => {
                 let entity = spawn_entity(&mut commands, data.clone());
                 map.insert(*id, entity);
+
+                // The following commands may reference an entity that was just created.
+                // Wait for the next tick before processing them.
+                // TODO: This should rather update the entities in place instead of waiting.
+                queue.pop().unwrap();
+                return;
             }
             EntityChange::Destroy { id } => {
                 let entity = map.get(*id).unwrap();
