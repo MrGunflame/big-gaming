@@ -33,13 +33,14 @@ pub mod sequence;
 pub mod shutdown;
 pub mod timestamp;
 
+mod combat;
+
 use game_common::components::combat::Health;
 use game_common::components::object::ObjectId;
 use game_common::components::race::RaceId;
 use game_common::entity::EntityData;
 use game_common::id::WeakId;
 pub use game_macros::{net__decode as Decode, net__encode as Encode};
-use indexmap::Equivalent;
 
 use std::convert::Infallible;
 
@@ -475,35 +476,6 @@ impl Decode for RaceId {
         B: Buf,
     {
         WeakId::decode(buf).map(Self)
-    }
-}
-
-impl Encode for Health {
-    type Error = Infallible;
-
-    #[inline]
-    fn encode<B>(&self, mut buf: B) -> Result<(), Self::Error>
-    where
-        B: BufMut,
-    {
-        self.health.encode(&mut buf)?;
-        self.max_health.encode(&mut buf)?;
-        Ok(())
-    }
-}
-
-impl Decode for Health {
-    type Error = Error;
-
-    #[inline]
-    fn decode<B>(mut buf: B) -> Result<Self, Self::Error>
-    where
-        B: Buf,
-    {
-        let health = u32::decode(&mut buf)?;
-        let max_health = u32::decode(&mut buf)?;
-
-        Ok(Self { health, max_health })
     }
 }
 

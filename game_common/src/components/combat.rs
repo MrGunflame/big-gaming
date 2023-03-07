@@ -158,20 +158,20 @@ impl<'a> FusedIterator for DamageIter<'a> {}
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Component)]
 #[cfg_attr(feaure = "serde", derive(Serialize, Deserialize))]
 pub struct Damage {
-    pub class: Option<DamageClass>,
+    pub class: DamageClass,
     pub amount: u32,
 }
 
 impl Damage {
     pub const fn new(amount: u32) -> Self {
         Self {
-            class: None,
+            class: DamageClass(WeakId(0)),
             amount,
         }
     }
 
     pub const fn with_class(mut self, class: DamageClass) -> Self {
-        self.class = Some(class);
+        self.class = class;
         self
     }
 }
@@ -382,7 +382,7 @@ impl ResistanceId {
 /// A resistance value.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]
-pub struct Resistance(u32);
+pub struct Resistance(pub u32);
 
 impl Resistance {
     #[inline]
