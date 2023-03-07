@@ -1,9 +1,10 @@
 use std::time::{Duration, Instant};
 
 use bevy::prelude::{
-    Commands, DespawnRecursiveExt, Plugin, Quat, Query, Res, ResMut, Transform, Vec3,
+    AssetServer, Commands, DespawnRecursiveExt, Plugin, Quat, Query, Res, ResMut, Transform, Vec3,
 };
 use bevy_rapier3d::prelude::{Collider, Velocity};
+use game_common::actors::human::Human;
 use game_common::bundles::ActorBundle;
 use game_common::components::combat::Health;
 use game_common::components::player::Player;
@@ -40,6 +41,7 @@ fn flush_command_queue(
     mut map: ResMut<EntityMap>,
     mut world: ResMut<WorldState>,
     mut snapshots: ResMut<Snapshots>,
+    assets: Res<AssetServer>,
 ) {
     while let Some(msg) = queue.pop() {
         tracing::info!("got command {:?}", msg.command);
@@ -89,11 +91,10 @@ fn flush_command_queue(
 
                 let mut actor = ActorBundle::default();
                 actor.transform.transform.translation.y += 5.0;
-                actor.physics.collider = Collider::cuboid(1.0, 1.0, 1.0);
+                actor.properties.eyes = Vec3::new(0.0, 1.6, -0.1);
 
-                let ent = commands
-                    .spawn(actor)
-                    .insert(Player)
+                let mut cmds = commands.spawn(actor);
+                cmds.insert(Player)
                     .insert(StreamingSource::default())
                     .insert(Entity {
                         id,
@@ -102,8 +103,10 @@ fn flush_command_queue(
                             race: RaceId(1.into()),
                             health: Health::new(50),
                         },
-                    })
-                    .id();
+                    });
+                Human::default().spawn(&assets, &mut cmds);
+
+                let ent = cmds.id();
 
                 view.spawn(Entity {
                     id,

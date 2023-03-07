@@ -6,7 +6,7 @@ use bevy_rapier3d::prelude::{Ccd, Collider, RigidBody, Velocity};
 pub struct DynamicPhysicsBundle {
     pub rigid_body: RigidBody,
     pub velocity: Velocity,
-    pub collider: Collider,
+    // pub collider: Collider,
     pub ccd: Ccd,
 }
 
@@ -15,7 +15,7 @@ impl Default for DynamicPhysicsBundle {
         Self {
             rigid_body: RigidBody::Dynamic,
             velocity: Velocity::zero(),
-            collider: Collider::default(),
+            // collider: Collider::default(),
             ccd: Ccd::enabled(),
         }
     }

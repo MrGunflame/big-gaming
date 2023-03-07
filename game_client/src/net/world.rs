@@ -1,8 +1,9 @@
 use std::time::{Duration, Instant};
 
-use bevy::prelude::{Commands, Query, Res, ResMut, Transform};
+use bevy::prelude::{AssetServer, Commands, Query, Res, ResMut, Transform, Vec3};
 use bevy::time::Time;
 use bevy_rapier3d::prelude::Collider;
+use game_common::actors::human::Human;
 use game_common::bundles::{ActorBundle, ObjectBundle};
 use game_common::components::actor::ActorProperties;
 use game_common::components::combat::Health;
@@ -68,11 +69,12 @@ pub fn flush_delta_queue(
         Option<&mut ActorProperties>,
     )>,
     map: ResMut<EntityMap>,
+    assets: Res<AssetServer>,
 ) {
     while let Some(change) = queue.peek() {
         match change {
             EntityChange::Create { id, data } => {
-                let entity = spawn_entity(&mut commands, data.clone());
+                let entity = spawn_entity(&mut commands, &assets, data.clone());
                 map.insert(*id, entity);
 
                 // The following commands may reference an entity that was just created.
@@ -155,7 +157,11 @@ pub fn advance_snapshots(
     // }
 }
 
-fn spawn_entity(commands: &mut Commands, entity: Entity) -> bevy::ecs::entity::Entity {
+fn spawn_entity(
+    commands: &mut Commands,
+    assets: &AssetServer,
+    entity: Entity,
+) -> bevy::ecs::entity::Entity {
     match entity.data {
         EntityData::Object { id } => {
             let id = commands
@@ -173,12 +179,15 @@ fn spawn_entity(commands: &mut Commands, entity: Entity) -> bevy::ecs::entity::E
             let mut actor = ActorBundle::default();
             actor.transform.transform.translation = entity.transform.translation;
             actor.transform.transform.rotation = entity.transform.rotation;
-            actor.physics.collider = Collider::cuboid(1.0, 1.0, 1.0);
             actor.combat.health = health;
 
-            let id = commands.spawn(actor).insert(entity).id();
+            actor.properties.eyes = Vec3::new(0.0, 1.6, -0.1);
 
-            id
+            let mut cmds = commands.spawn(actor);
+            cmds.insert(entity);
+            Human::default().spawn(assets, &mut cmds);
+
+            cmds.id()
         }
     }
 }

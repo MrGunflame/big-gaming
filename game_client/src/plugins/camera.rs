@@ -50,10 +50,10 @@ fn setup_camera(mut commands: Commands) {
 
 fn synchronize_player_camera(
     settings: Res<CameraSettings>,
-    players: Query<(&Transform, &ActorFigure, &ActorProperties), With<HostPlayer>>,
+    players: Query<(&Transform, &ActorProperties), With<HostPlayer>>,
     mut cameras: Query<(&mut Transform, &CameraMode), Without<HostPlayer>>,
 ) {
-    let Ok((player, figure, props)) = players.get_single() else {
+    let Ok((player, props)) = players.get_single() else {
         return;
     };
     let (mut camera, mode) = cameras.single_mut();
@@ -61,7 +61,7 @@ fn synchronize_player_camera(
     match mode {
         CameraMode::FirstPerson => {
             let rotation_matrix = Mat3::from_quat(player.rotation);
-            camera.translation = player.translation + rotation_matrix * figure.eyes;
+            camera.translation = player.translation + rotation_matrix * props.eyes;
 
             camera.rotation = props.rotation;
         }

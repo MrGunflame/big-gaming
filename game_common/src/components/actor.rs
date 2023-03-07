@@ -227,5 +227,7 @@ pub struct ActorProperties {
     ///
     /// [`IDENTITY`]: Quat::IDENTITY
     pub rotation: Quat,
+    /// The local offset (from the actor root) at which the camera sits.
+    pub eyes: Vec3,
     // TODO: Add custom props
 }

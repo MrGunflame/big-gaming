@@ -1,12 +1,14 @@
 use bevy::prelude::{Entity, Plugin, Quat, Query, Transform, Vec3, Without};
-use game_common::components::actor::ActorModel;
+use game_common::components::actor::{ActorModel, ActorProperties};
 use game_common::components::animation::{AnimationQueue, Bone, Skeleton};
 
 pub struct AnimationPlugin;
 
 impl Plugin for AnimationPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
-        app.add_system(start_animations).add_system(transform_bones);
+        app.add_system(start_animations)
+            .add_system(transform_bones)
+            .add_system(sync_actor_rotations);
     }
 }
 
@@ -50,5 +52,11 @@ fn update_bone(
     // FIXME: Remove the clone and allocation.
     for bone in bone.children.clone().iter() {
         update_bone(*bone, root_transform, bones);
+    }
+}
+
+fn sync_actor_rotations(mut actors: Query<(&mut Transform, &ActorProperties)>) {
+    for (mut transform, props) in &mut actors {
+        transform.rotation = props.rotation;
     }
 }
