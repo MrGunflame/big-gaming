@@ -7,14 +7,14 @@ license = "GPL-3.0-or-later"
 
 [dependencies]
 ahash = "0.8.3"
-bevy = "0.9.1"
-bevy_rapier3d = "0.19.0"
+bevy = "0.10.0"
+bevy_rapier3d = "0.21.0"
 bytes = "1.4.0"
 clap = { version = "4.1.6", features = ["derive"] }
 futures = "0.3.26"
-game_common = { version = "*", path = "../game_common" }
-game_core = { version = "*", path = "../game_core" }
-game_net = { version = "*", path = "../game_net" }
+game_common = { version = "0.1.0", path = "../game_common" }
+game_core = { version = "0.1.0", path = "../game_core" }
+game_net = { version = "0.1.0", path = "../game_net" }
 parking_lot = "0.12.1"
 
 tokio = { version = "1.25.0", features = ["rt", "rt-multi-thread", "net", "sync", "macros", "time"] }

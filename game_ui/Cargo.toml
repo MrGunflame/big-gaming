@@ -14,6 +14,6 @@ editor = []
 game_common = { version = "0.1.0", path = "../game_common" }
 game_input = { version = "0.1.0", path = "../game_input" }
 
-bevy = "0.9.1"
-bevy_ecs = "0.9.1"
-bevy_egui = "0.18.0"
+bevy = "0.10.0"
+bevy_ecs = "0.10.0"
+bevy_egui = "0.20.0"
