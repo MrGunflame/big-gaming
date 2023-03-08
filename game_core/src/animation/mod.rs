@@ -1,6 +1,9 @@
+use std::f32::consts::PI;
+
 use bevy::prelude::{Entity, Plugin, Quat, Query, Transform, Vec3, Without};
 use game_common::components::actor::{ActorModel, ActorProperties};
 use game_common::components::animation::{AnimationQueue, Bone, Skeleton};
+use game_common::math::RotationExt;
 
 pub struct AnimationPlugin;
 
@@ -57,6 +60,26 @@ fn update_bone(
 
 fn sync_actor_rotations(mut actors: Query<(&mut Transform, &ActorProperties)>) {
     for (mut transform, props) in &mut actors {
-        transform.rotation = props.rotation;
+        let mut pt = props.rotation.dir_vec();
+
+        if pt.y == 1.0 {
+            continue;
+        }
+
+        pt.y = 0.0;
+        if !pt.is_normalized() {
+            pt = pt.normalize();
+        }
+
+        let b = Vec3::Z;
+
+        let mut angle = (pt.dot(b)).acos();
+        if pt.x.is_sign_negative() {
+            angle = -angle;
+        }
+
+        let rot = Quat::from_axis_angle(Vec3::Y, angle + PI);
+
+        transform.rotation = rot;
     }
 }
