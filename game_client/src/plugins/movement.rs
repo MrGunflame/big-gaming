@@ -3,8 +3,8 @@ mod events;
 use std::borrow::Cow;
 
 use bevy::prelude::{
-    Camera3d, Commands, Entity, EventReader, KeyCode, Plugin, Quat, Query, ResMut, Transform, Vec3,
-    With, Without,
+    Camera3d, Commands, Entity, EventReader, IntoSystemConfig, IntoSystemSetConfig, KeyCode,
+    Plugin, Quat, Query, ResMut, SystemSet, Transform, Vec3, With, Without,
 };
 use game_common::components::actor::{ActorProperties, MovementSpeed};
 use game_common::components::movement::{Jump, Movement, Rotate, RotateQueue};
@@ -13,6 +13,7 @@ use game_input::hotkeys::{
     Event, Hotkey, HotkeyCode, HotkeyFilter, HotkeyId, HotkeyReader, Hotkeys, Key, TriggerKind,
 };
 use game_input::mouse::MouseMotion;
+use game_input::InputSet;
 
 static mut MOVE_FORWARD: Hotkey = Hotkey {
     id: HotkeyId(0),
@@ -122,20 +123,30 @@ impl HotkeyFilter for Sprint {
     }
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, SystemSet)]
+pub enum MovementSet {
+    Read,
+    Apply,
+}
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct MovementPlugin;
 
 impl Plugin for MovementPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
-        app.add_startup_system(register_events)
-            // Run in PreUpdate before camera is updated.
-            .add_system(movement_events)
-            .add_system(mouse_movement)
-            .add_system(toggle_sprint)
-            .add_system(jump_events)
-            .add_system(events::handle_movement_events)
-            .add_system(events::handle_rotate_events)
-            .add_system(events::handle_jump_events);
+        app.add_startup_system(register_events);
+
+        app.add_system(movement_events.in_set(MovementSet::Read));
+        app.add_system(mouse_movement.in_set(MovementSet::Read));
+        app.add_system(toggle_sprint.in_set(MovementSet::Read));
+        app.add_system(jump_events.in_set(MovementSet::Read));
+
+        app.add_system(events::handle_movement_events.in_set(MovementSet::Apply));
+        app.add_system(events::handle_rotate_events.in_set(MovementSet::Apply));
+        app.add_system(events::handle_jump_events.in_set(MovementSet::Apply));
+
+        app.configure_set(InputSet::Hotkeys.before(MovementSet::Read));
+        app.configure_set(MovementSet::Read.before(MovementSet::Apply));
     }
 }
 

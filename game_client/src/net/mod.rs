@@ -4,7 +4,7 @@ mod world;
 use std::net::SocketAddr;
 use std::sync::{mpsc, Arc};
 
-use bevy::prelude::{Commands, Res, ResMut, Transform, Vec3};
+use bevy::prelude::{Commands, IntoSystemConfig, Res, ResMut, SystemSet, Transform, Vec3};
 use game_common::entity::{Entity, EntityData, EntityMap};
 use game_net::conn::{Connection, ConnectionHandle, ConnectionMode};
 use game_net::proto::{Decode, Packet};
@@ -17,6 +17,13 @@ use tokio::runtime::Runtime;
 
 pub use self::conn::ServerConnection;
 use self::conn::State;
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, SystemSet)]
+pub enum NetSet {
+    ReadCommands,
+    FlushBuffers,
+    WriteCommands,
+}
 
 /// Client-side network plugin
 #[derive(Clone, Debug, Default)]
@@ -34,17 +41,18 @@ impl bevy::prelude::Plugin for NetPlugin {
         let mut world = WorldState::new();
         world.insert(snaps.newest().unwrap());
 
-        app.insert_resource(queue)
-            .insert_resource(world)
-            .insert_resource(snaps)
-            .insert_resource(map.clone())
-            .insert_resource(ServerConnection::new(map))
-            .insert_resource(DeltaQueue::new())
-            .add_system(flush_command_queue)
-            .add_system(conn::update_connection_state)
-            .add_system(world::apply_world_delta)
-            .add_system(world::advance_snapshots)
-            .add_system(world::flush_delta_queue);
+        app.insert_resource(queue);
+        app.insert_resource(world);
+        app.insert_resource(snaps);
+        app.insert_resource(map.clone());
+        app.insert_resource(ServerConnection::new(map));
+        app.insert_resource(DeltaQueue::new());
+
+        app.add_system(flush_command_queue.in_set(NetSet::ReadCommands));
+
+        app.add_system(conn::update_connection_state);
+        app.add_system(world::apply_world_delta);
+        app.add_system(world::flush_delta_queue);
     }
 }
 
@@ -105,7 +113,6 @@ pub fn spawn_conn(
 }
 
 fn flush_command_queue(
-    mut commands: Commands,
     queue: Res<CommandQueue>,
     // mut entities: Query<(&mut Transform,)>,
     // hosts: Query<bevy::ecs::entity::Entity, With<HostPlayer>>,
@@ -121,8 +128,6 @@ fn flush_command_queue(
     let mut view = world.get_mut(id).unwrap();
 
     while let Some(msg) = queue.pop() {
-        dbg!(&msg);
-
         match msg.command {
             Command::EntityCreate {
                 id,
@@ -139,97 +144,19 @@ fn flush_command_queue(
                     },
                     data,
                 });
-                // let entity = match kind {
-                //     EntityKind::Object(oid) => {
-                //         let id = commands
-                //             .spawn(
-                //                 ObjectBundle::new(oid)
-                //                     .translation(translation)
-                //                     .rotation(rotation),
-                //             )
-                //             .insert(Entity {
-                //                 id,
-                //                 transform: Transform::from_translation(translation),
-                //                 data: EntityData::Object { id: oid },
-                //             })
-                //             .id();
-
-                //         tracing::info!(
-                //             "Spawning object {:?} at {:.2}, {:.2}, {:.2}",
-                //             id,
-                //             translation.x,
-                //             translation.y,
-                //             translation.z,
-                //         );
-
-                //         id
-                //     }
-                //     EntityKind::Actor(()) => {
-                //         let mut actor = ActorBundle::default();
-                //         actor.transform.transform.translation = translation;
-                //         actor.transform.transform.rotation = rotation;
-                //         actor.physics.collider = Collider::cuboid(1.0, 1.0, 1.0);
-
-                //         let id = commands
-                //             .spawn(actor)
-                //             .insert(Entity {
-                //                 id,
-                //                 transform: Transform::from_translation(translation),
-                //                 data: EntityData::Actor {},
-                //             })
-                //             .id();
-
-                //         tracing::info!(
-                //             "Spawning actor {:?} at {:.2}, {:.2}, {:.2}",
-                //             id,
-                //             translation.x,
-                //             translation.y,
-                //             translation.z,
-                //         );
-
-                //         id
-                //     }
-                // };
-
-                // map.insert(id, entity);
-
-                // Make sure the entity is spawned before processing any other
-                // commands.
-                // break;
             }
             Command::EntityDestroy { id } => {
-                // let ent = map.get(id).unwrap();
-                // commands.entity(ent).despawn();
-
                 view.despawn(id);
             }
             Command::EntityTranslate { id, translation } => {
-                // let entity = map.get(id).unwrap();
-
-                // if let Ok((mut transform,)) = entities.get_mut(entity) {
-                //     transform.translation = translation;
-                // } else {
-                //     tracing::warn!("unknown entity");
-                // }
-
                 let mut entity = view.get_mut(id).unwrap();
                 entity.transform.translation = translation;
             }
             Command::EntityRotate { id, rotation } => {
-                // if let Ok((mut transform,)) = entities.get_mut(entity) {
-                // transform.rotation = rotation;
-                // }
-
                 let mut entity = view.get_mut(id).unwrap();
                 entity.transform.rotation = rotation;
             }
-            Command::EntityVelocity { id, linvel, angvel } => {
-
-                // if let Ok((_,)) = entities.get_mut(entity) {
-                // velocity.linvel = linvel;
-                // velocity.angvel = angvel;
-                // }
-            }
+            Command::EntityVelocity { id, linvel, angvel } => {}
             Command::EntityHealth { id, health } => {
                 let mut entity = view.get_mut(id).unwrap();
 
@@ -241,30 +168,7 @@ fn flush_command_queue(
             }
             Command::SpawnHost { id } => {
                 view.spawn_host(id);
-
-                // let ent = map.get(id).unwrap();
-
-                // If the world already contains a HostPlayer it must be removed.
-                // Having more than one HostPlayer causes problems and must be avoided.
-                // if let Ok(host) = hosts.get_single() {
-                // commands.entity(host).remove::<HostPlayer>();
-                // }
-
-                // let (transform,) = entities.get(ent).unwrap();
-                // tracing::info!(
-                //     "Entity {:?} (located at {:.2}, {:.2}, {:.2}) is now host",
-                //     ent,
-                //     transform.translation.x,
-                //     transform.translation.y,
-                //     transform.translation.z,
-                // );
-
-                // commands
-                //     .entity(ent)
-                //     .insert(HostPlayer)
-                //     .insert(StreamingSource::new());
             }
-            // Never sent to clients
             Command::Connected => {
                 conn.push_state(State::Connected);
             }

@@ -144,19 +144,6 @@ pub fn flush_delta_queue(
     }
 }
 
-pub fn advance_snapshots(
-    time: Res<Time>,
-    mut snapshots: ResMut<Snapshots>,
-    mut world: ResMut<WorldState>,
-) {
-    // snapshots.push();
-    // world.insert(snapshots.newest().unwrap());
-
-    // if snapshots.newest().unwrap().0 - snapshots.oldest().unwrap().0 > 120 {
-    //     world.remove(snapshots.oldest().unwrap());
-    // }
-}
-
 fn spawn_entity(
     commands: &mut Commands,
     assets: &AssetServer,

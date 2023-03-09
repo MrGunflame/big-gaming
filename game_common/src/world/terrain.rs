@@ -98,7 +98,6 @@ impl TerrainMesh {
         for index in 0..size_x * size_z {
             let x = ((index % size_x) as f32) * (1f32 / (size_x as f32 - 1.0));
             let z = ((index / size_z) as f32) * (1f32 / (size_z as f32 - 1.0));
-            dbg!(x, z);
             uvs.push([x as f32, z as f32]);
         }
 
