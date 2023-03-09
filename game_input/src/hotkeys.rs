@@ -61,8 +61,8 @@ use std::sync::atomic::{AtomicU32, Ordering};
 
 use bevy::input::ButtonState;
 use bevy::prelude::{
-    EventReader, EventWriter, IntoSystemConfig, KeyCode, MouseButton, Plugin, Res, ResMut,
-    Resource, ScanCode,
+    EventReader, EventWriter, IntoSystemConfig, IntoSystemSetConfig, KeyCode, MouseButton, Plugin,
+    Res, ResMut, Resource, ScanCode, SystemSet,
 };
 use bevy_ecs::system::SystemParam;
 
@@ -71,18 +71,33 @@ use crate::mouse::MouseButtonInput;
 
 static EVENT_ID: AtomicU32 = AtomicU32::new(1);
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, SystemSet)]
+pub enum HotkeySet {
+    Reset,
+    Update,
+    Dispatch,
+}
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct HotkeyPlugin;
 
 impl Plugin for HotkeyPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
-        app.insert_resource(Hotkeys::new())
-            .add_event::<Event>()
-            .add_system(keyboard_input)
-            // keyboard_input currently resets the previous states.
-            // All other systems need to come after and not reset the state.
-            .add_system(mouse_input.after(keyboard_input))
-            .add_system(send_hotkey_events);
+        app.insert_resource(Hotkeys::new());
+        app.add_event::<Event>();
+
+        // Reset
+        app.add_system(reset_hotkeys.in_set(HotkeySet::Reset));
+
+        // Update
+        app.add_system(keyboard_input.in_set(HotkeySet::Update));
+        app.add_system(mouse_input.in_set(HotkeySet::Update));
+
+        // Dispatch
+        app.add_system(send_hotkey_events.in_set(HotkeySet::Dispatch));
+
+        app.configure_set(HotkeySet::Reset.before(HotkeySet::Update));
+        app.configure_set(HotkeySet::Update.before(HotkeySet::Dispatch));
     }
 }
 
@@ -667,9 +682,11 @@ pub enum HotkeyKind {
     MouseButton { button: MouseButton },
 }
 
-fn keyboard_input(mut hotkeys: ResMut<Hotkeys>, mut events: EventReader<KeyboardInput>) {
+fn reset_hotkeys(mut hotkeys: ResMut<Hotkeys>) {
     hotkeys.hotkeys.clear();
+}
 
+fn keyboard_input(mut hotkeys: ResMut<Hotkeys>, mut events: EventReader<KeyboardInput>) {
     for event in events.iter() {
         let Some(key_code) = event.key_code else {
             continue;
