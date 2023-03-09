@@ -33,7 +33,7 @@ impl Cursor {
     #[inline]
     pub fn reset(&self, window: &mut Window) {
         if self.is_locked {
-            window.set_cursor_position(self.position);
+            window.set_cursor_position(Some(self.position));
         }
     }
 
@@ -44,8 +44,8 @@ impl Cursor {
     /// [`lock`]: Self::lock
     #[inline]
     pub fn lock_unchecked(&mut self, window: &mut Window) {
-        window.set_cursor_visibility(false);
-        window.set_cursor_grab_mode(CursorGrabMode::Locked);
+        window.cursor.visible = false;
+        window.cursor.grab_mode = CursorGrabMode::Locked;
 
         self.is_locked = true;
         self.position = window.cursor_position().unwrap_or_default();
@@ -53,8 +53,8 @@ impl Cursor {
 
     #[inline]
     pub fn unlock_unchecked(&mut self, window: &mut Window) {
-        window.set_cursor_visibility(true);
-        window.set_cursor_grab_mode(CursorGrabMode::None);
+        window.cursor.visible = true;
+        window.cursor.grab_mode = CursorGrabMode::None;
 
         self.is_locked = false;
     }

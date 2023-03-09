@@ -9,8 +9,8 @@ pub struct VisibilityBundle {
 impl VisibilityBundle {
     pub const fn new() -> Self {
         Self {
-            visibility: Visibility::VISIBLE,
-            computed_visibility: ComputedVisibility::INVISIBLE,
+            visibility: Visibility::Inherited,
+            computed_visibility: ComputedVisibility::HIDDEN,
         }
     }
 }

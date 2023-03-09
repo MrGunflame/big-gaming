@@ -7,7 +7,10 @@ use bevy::gltf::GltfPlugin;
 use bevy::input::InputPlugin;
 use bevy::log::LogPlugin;
 use bevy::pbr::PbrPlugin;
-use bevy::prelude::{AddAsset, AssetPlugin, CorePlugin, HierarchyPlugin, Mesh, Plugin};
+use bevy::prelude::{
+    AddAsset, AssetPlugin, FrameCountPlugin, HierarchyPlugin, Mesh, Plugin, TaskPoolPlugin,
+    TypeRegistrationPlugin,
+};
 use bevy::scene::ScenePlugin;
 use bevy::time::TimePlugin;
 use bevy::transform::TransformPlugin;
@@ -31,7 +34,9 @@ pub struct CorePlugins;
 
 impl Plugin for CorePlugins {
     fn build(&self, app: &mut bevy::prelude::App) {
-        app.add_plugin(CorePlugin::default());
+        app.add_plugin(TaskPoolPlugin::default());
+        app.add_plugin(TypeRegistrationPlugin::default());
+        app.add_plugin(FrameCountPlugin::default());
         app.add_plugin(LogPlugin::default());
         app.add_plugin(TimePlugin);
         app.add_plugin(TransformPlugin);

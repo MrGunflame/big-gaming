@@ -1,8 +1,8 @@
 use std::time::Duration;
 
 use bevy::prelude::{
-    Commands, Component, Entity, EulerRot, IntoSystemDescriptor, Plugin, Query, Res, Transform,
-    Vec3, With,
+    Commands, Component, Entity, EulerRot, IntoSystemConfig, Plugin, Query, Res, Transform, Vec3,
+    With,
 };
 use bevy::time::Time;
 use bevy_rapier3d::prelude::Velocity;

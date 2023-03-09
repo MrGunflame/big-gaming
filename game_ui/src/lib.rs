@@ -7,7 +7,7 @@ mod systems;
 pub mod widgets;
 
 use bevy::diagnostic::FrameTimeDiagnosticsPlugin;
-use bevy::prelude::{Plugin, Stage};
+use bevy::prelude::{Plugin, World};
 
 use cursor::Cursor;
 pub use interface::{Context, InterfaceState, Widget, WidgetFlags};
@@ -26,7 +26,7 @@ impl Plugin for UiPlugin {
             .add_startup_system(widgets::register_hotkeys)
             .add_system(systems::capture_pointer_keys)
             .add_system(systems::death)
-            .add_stage("InterfaceStage", InterfaceStage);
+            .add_system(render_widgets);
 
         #[cfg(not(feature = "editor"))]
         app.add_system(systems::scene_transition);
@@ -35,12 +35,8 @@ impl Plugin for UiPlugin {
     }
 }
 
-struct InterfaceStage;
-
-impl Stage for InterfaceStage {
-    fn run(&mut self, world: &mut bevy::prelude::World) {
-        world.resource_scope::<InterfaceState, ()>(|world, mut state| {
-            state.render(world);
-        });
-    }
+fn render_widgets(world: &mut World) {
+    world.resource_scope::<InterfaceState, ()>(|world, mut state| {
+        state.render(world);
+    });
 }

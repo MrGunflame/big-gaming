@@ -56,7 +56,7 @@ impl ItemBundle {
 fn pickup(target: Entity, actor: Entity, world: &mut World) {
     // FIXME: Optimally this would only get removed after the actor inventory was
     // acquired.
-    let item = world.entity_mut(target).remove::<Item>().unwrap();
+    let item = world.entity_mut(target).take::<Item>().unwrap();
 
     let Ok(mut inventory) = world.query::<&mut Inventory>().get_mut(world, actor) else {
         // If the actor doesn't exist anymore, we discard the interaction.

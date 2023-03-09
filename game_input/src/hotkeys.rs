@@ -61,7 +61,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 
 use bevy::input::ButtonState;
 use bevy::prelude::{
-    EventReader, EventWriter, IntoSystemDescriptor, KeyCode, MouseButton, Plugin, Res, ResMut,
+    EventReader, EventWriter, IntoSystemConfig, KeyCode, MouseButton, Plugin, Res, ResMut,
     Resource, ScanCode,
 };
 use bevy_ecs::system::SystemParam;
@@ -527,7 +527,7 @@ impl AsRef<HotkeyId> for Hotkey {
 /// `TriggerKind` can be combined using the [`BitOr`] implementation:
 ///
 /// ```
-/// # use input::hotkeys::TriggerKind;
+/// # use game_input::hotkeys::TriggerKind;
 /// #
 /// let just_pressed = TriggerKind::JUST_PRESSED;
 /// let just_released = TriggerKind::JUST_RELEASED;

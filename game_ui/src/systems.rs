@@ -1,7 +1,7 @@
 //! Core UI systems
 
 use bevy::prelude::{EventReader, Query, Res, ResMut, With};
-use bevy::window::Windows;
+use bevy::window::{PrimaryWindow, Window};
 
 use game_common::components::actor::{ActorFlag, ActorFlags, Death};
 use game_common::components::player::HostPlayer;
@@ -15,7 +15,7 @@ use crate::{widgets, InterfaceState};
 
 pub fn capture_pointer_keys(
     mut mouse_move: ResMut<CanMouseMove>,
-    mut windows: ResMut<Windows>,
+    mut windows: Query<&mut Window, With<PrimaryWindow>>,
     mut cursor: ResMut<Cursor>,
     state: Res<InterfaceState>,
     mut players: Query<&mut ActorFlags, With<HostPlayer>>,
@@ -24,7 +24,7 @@ pub fn capture_pointer_keys(
         return;
     };
 
-    let mut window = windows.primary_mut();
+    let mut window = windows.single_mut();
 
     if state.captures_pointer() {
         flags.remove(ActorFlag::CAN_ROTATE);
@@ -50,7 +50,7 @@ pub fn capture_pointer_keys(
 
     // Reset the cursor to its pinned position. This does
     // nothing if the cursor is not currently pinned.
-    cursor.reset(window);
+    cursor.reset(&mut window);
 }
 
 /// Create the death widget if the player dies.
@@ -64,9 +64,9 @@ pub fn scene_transition(
     mut state: ResMut<InterfaceState>,
     mut events: EventReader<SceneTransition>,
     mut cursor: ResMut<Cursor>,
-    mut windows: ResMut<Windows>,
+    mut windows: Query<&mut Window, With<PrimaryWindow>>,
 ) {
-    let mut window = windows.primary_mut();
+    let mut window = windows.single_mut();
 
     for event in events.iter() {
         state.clear();

@@ -8,7 +8,7 @@ use game_common::world::source::StreamingSource;
 use crate::{
     components::Rotation,
     plugins::respawn::RespawnPoint,
-    ui::{Focus, FocusKind},
+    // ui::{Focus, FocusKind},
 };
 
 use super::actor::ActorBundle;
@@ -19,7 +19,7 @@ pub struct PlayerCharacterBundle {
     pub actor: ActorBundle,
 
     pub player_character: HostPlayer,
-    pub focus: Focus,
+    // pub focus: Focus,
     pub respawn_point: RespawnPoint,
     pub focused_entity: FocusedEntity,
     pub streaming_source: StreamingSource,
@@ -30,10 +30,10 @@ impl PlayerCharacterBundle {
         Self {
             player_character: HostPlayer,
             actor: ActorBundle::new(assets),
-            focus: Focus {
-                kind: FocusKind::World,
-                changed: false,
-            },
+            // focus: Focus {
+            //     kind: FocusKind::World,
+            //     changed: false,
+            // },
             respawn_point: RespawnPoint(Vec3::new(0.0, 0.0, 0.0)),
             focused_entity: FocusedEntity::None,
             streaming_source: StreamingSource::new(),

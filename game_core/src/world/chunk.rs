@@ -1,6 +1,6 @@
 //! Chunk related systems
 
-use bevy::prelude::{Plugin, ResMut, Stage, Transform, With};
+use bevy::prelude::{Plugin, ResMut, Transform, With};
 use bevy_ecs::entity::Entity;
 use bevy_ecs::system::Query;
 use game_common::components::player::Player;
@@ -55,10 +55,4 @@ fn update_player_chunks(
 
         chunk_registry.load(id);
     }
-}
-
-struct ChunkStage;
-
-impl Stage for ChunkStage {
-    fn run(&mut self, world: &mut bevy::prelude::World) {}
 }

@@ -6,8 +6,8 @@ authors = ["MrGunflame <git@robbsrv.de>"]
 license = "GPL-3.0-or-later"
 
 [dependencies]
-game_common = { version = "*", path = "../game_common" }
+game_common = { version = "0.1.0", path = "../game_common" }
 
-bevy = "0.9.1"
-bevy_ecs = "0.9.1"
+bevy = "0.10.0"
+bevy_ecs = "0.10.0"
 tracing = "0.1.37"

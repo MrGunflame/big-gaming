@@ -13,13 +13,15 @@ mod prev_transform;
 mod scene;
 mod sky;
 mod systems;
-mod ui;
+// mod ui;
 mod utils;
-mod window;
+// mod window;
 mod world;
 
+use std::io::Write;
 use std::time::Duration;
 
+use bevy::a11y::AccessibilityPlugin;
 use bevy::core_pipeline::CorePipelinePlugin;
 use bevy::diagnostic::DiagnosticsPlugin;
 use bevy::gltf::GltfPlugin;
@@ -83,55 +85,56 @@ fn main() {
     loader.load("../mods/core").unwrap();
 
     let mut app = App::new();
-    app.insert_resource(archive)
-        .insert_resource(Msaa { samples: 4 })
-        .add_plugin(CorePlugins)
-        // .add_plugin(TimePlugin)
-        // .add_plugin(TransformPlugin)
-        // .add_plugin(HierarchyPlugin)
-        // .add_plugin(DiagnosticsPlugin)
-        // .add_plugin(InputPlugin)
-        .add_plugin(WindowPlugin::default())
-        // .add_plugin(AssetPlugin::default())
-        // .add_plugin(ScenePlugin)
-        .add_plugin(RenderPlugin)
-        .add_plugin(ImagePlugin::default())
-        .add_plugin(CorePipelinePlugin::default())
-        .add_plugin(PbrPlugin)
-        .add_plugin(SpritePlugin)
-        .add_plugin(TextPlugin)
-        .add_plugin(bevy::ui::UiPlugin)
-        .add_plugin(GilrsPlugin)
-        // .add_plugin(GltfPlugin)
-        .add_plugin(WinitPlugin)
-        // .add_plugin(RapierPhysicsPlugin::<NoUserData>::default())
-        .add_plugin(RapierDebugRenderPlugin::default())
-        .add_plugin(CameraPlugin)
-        // .add_plugin(ProjectilePlugin)
-        // .add_plugin(CombatPlugin)
-        .add_plugin(scene::ScenePlugin)
-        .add_plugin(UiPlugin)
-        .add_plugin(HotkeyPlugin)
-        .add_plugin(MovementPlugin)
-        // .add_plugin(game_core::movement::MovementPlugin)
-        // .add_plugin(RespawnPlugin)
-        // .add_plugin(ChunkPlugin::new(ChunkRegistry::new()))
-        // .add_plugin(game_core::world::TimePlugin::default())
-        .add_plugin(InteractionsPlugin)
-        // .add_plugin(game_core::animation::AnimationPlugin)
-        // .add_plugin(AiPlugin)
-        // .add_plugin(SpawnPlugin)
-        // // .add_plugin(crate::ui::UiPlugin)
-        .add_plugin(game_input::InputPlugin)
-        .add_plugin(sky::SkyPlugin)
-        // .add_plugin(game_core::world::ObjectPlugin)
-        // .add_plugin(crate::plugins::combat::CombatPlugin)
-        // .add_plugin(AudioPlugin::new())
-        // .add_plugin(LevelPlugin)
-        .add_plugin(game_core::debug::DebugPlugin)
-        .add_plugin(NetPlugin::default())
-        .add_startup_system(setup)
-        .add_system(crate::world::terrain::load_terrain_mesh);
+    app.insert_resource(archive);
+    app.insert_resource(Msaa::Sample4);
+    app.add_plugin(CorePlugins);
+    // .add_plugin(TimePlugin)
+    // .add_plugin(TransformPlugin)
+    // .add_plugin(HierarchyPlugin)
+    // .add_plugin(DiagnosticsPlugin)
+    // .add_plugin(InputPlugin)
+    app.add_plugin(WindowPlugin::default());
+    // .add_plugin(AssetPlugin::default())
+    // .add_plugin(ScenePlugin)
+    app.add_plugin(RenderPlugin::default());
+    app.add_plugin(ImagePlugin::default());
+    app.add_plugin(CorePipelinePlugin::default());
+    app.add_plugin(PbrPlugin::default());
+    app.add_plugin(SpritePlugin);
+    app.add_plugin(TextPlugin);
+    app.add_plugin(bevy::ui::UiPlugin);
+    app.add_plugin(GilrsPlugin);
+    // .add_plugin(GltfPlugin)
+    app.add_plugin(AccessibilityPlugin);
+    app.add_plugin(WinitPlugin);
+    // .add_plugin(RapierPhysicsPlugin::<NoUserData>::default())
+    app.add_plugin(RapierDebugRenderPlugin::default());
+    app.add_plugin(CameraPlugin);
+    // .add_plugin(ProjectilePlugin)
+    // .add_plugin(CombatPlugin)
+    app.add_plugin(scene::ScenePlugin);
+    app.add_plugin(UiPlugin);
+    app.add_plugin(HotkeyPlugin);
+    app.add_plugin(MovementPlugin);
+    // .add_plugin(game_core::movement::MovementPlugin)
+    // .add_plugin(RespawnPlugin)
+    // .add_plugin(ChunkPlugin::new(ChunkRegistry::new()))
+    // .add_plugin(game_core::world::TimePlugin::default())
+    app.add_plugin(InteractionsPlugin);
+    // .add_plugin(game_core::animation::AnimationPlugin)
+    // .add_plugin(AiPlugin)
+    // .add_plugin(SpawnPlugin)
+    // // .add_plugin(crate::ui::UiPlugin)
+    app.add_plugin(game_input::InputPlugin);
+    app.add_plugin(sky::SkyPlugin);
+    // .add_plugin(game_core::world::ObjectPlugin)
+    // .add_plugin(crate::plugins::combat::CombatPlugin)
+    // .add_plugin(AudioPlugin::new())
+    // .add_plugin(LevelPlugin)
+    app.add_plugin(game_core::debug::DebugPlugin);
+    app.add_plugin(NetPlugin::default());
+    app.add_startup_system(setup);
+    app.add_system(crate::world::terrain::load_terrain_mesh);
 
     if let Some(addr) = args.connect {
         tracing::info!("Connecting to {}", addr);

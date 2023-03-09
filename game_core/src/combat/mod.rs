@@ -1,6 +1,4 @@
-use bevy::prelude::{
-    AssetServer, Commands, CoreStage, Entity, Plugin, Query, Res, Transform, Vec3, With,
-};
+use bevy::prelude::{AssetServer, Commands, Entity, Plugin, Query, Res, Transform, Vec3, With};
 use game_common::bundles::ProjectileBundle;
 use game_common::components::actor::{ActorFigure, ActorFlag, ActorFlags, Death};
 use game_common::components::combat::{

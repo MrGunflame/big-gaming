@@ -9,12 +9,12 @@ license = "GPL-3.0-or-later"
 default = []
 
 [dependencies]
-bevy_ecs = "0.9.1"
-bevy_app = "0.9.1"
-bevy_reflect = "0.9.1"
-bevy_asset = "0.9.1"
+bevy_ecs = "0.10"
+bevy_app = "0.10.0"
+bevy_reflect = "0.10.0"
+bevy_asset = "0.10.0"
 
 kira = { version = "0.7.1", features = ["cpal"] }
 parking_lot = "0.12.1"
 tracing = "0.1.37"
-glam = "0.22.0"
+glam = "0.23.0"

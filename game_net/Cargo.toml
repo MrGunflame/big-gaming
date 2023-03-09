@@ -15,7 +15,7 @@ game_common = { version = "0.1.0", path = "../game_common" }
 
 bytes = "1.3.0"
 thiserror = "1.0.38"
-glam = "0.22.0"
+glam = "0.23.0"
 futures = "0.3.26"
 pin-project = "1.0.12"
 tokio = { version = "1.25.0", features = ["net", "sync", "time"] }

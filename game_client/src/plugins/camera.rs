@@ -3,8 +3,8 @@ mod events;
 use std::f32::consts::PI;
 
 use bevy::prelude::{
-    Camera3dBundle, Commands, IntoSystemDescriptor, Mat3, Plugin, Quat, Query, Res, Transform,
-    Vec3, With, Without,
+    Camera3dBundle, Commands, IntoSystemConfig, Mat3, Plugin, Quat, Query, Res, Transform, Vec3,
+    With, Without,
 };
 use bevy::time::Time;
 use game_common::components::actor::{ActorFigure, ActorProperties, MovementSpeed};

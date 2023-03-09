@@ -56,7 +56,7 @@ impl Human {
             root: Entity::from_bits(0),
         };
 
-        commands.add_children(|cmd| {
+        commands.with_children(|cmd| {
             // for entity in [
             //     cmd.spawn(Head::new(assets, &template)).id(),
             //     cmd.spawn(Torso::new(assets, &template)).id(),

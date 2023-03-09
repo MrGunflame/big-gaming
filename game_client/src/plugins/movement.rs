@@ -3,8 +3,8 @@ mod events;
 use std::borrow::Cow;
 
 use bevy::prelude::{
-    Camera3d, Commands, CoreStage, Entity, EventReader, KeyCode, Plugin, Quat, Query, ResMut,
-    Transform, Vec3, With, Without,
+    Camera3d, Commands, Entity, EventReader, KeyCode, Plugin, Quat, Query, ResMut, Transform, Vec3,
+    With, Without,
 };
 use game_common::components::actor::{ActorProperties, MovementSpeed};
 use game_common::components::movement::{Jump, Movement, Rotate, RotateQueue};
@@ -129,7 +129,7 @@ impl Plugin for MovementPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
         app.add_startup_system(register_events)
             // Run in PreUpdate before camera is updated.
-            .add_system_to_stage(CoreStage::PreUpdate, movement_events)
+            .add_system(movement_events)
             .add_system(mouse_movement)
             .add_system(toggle_sprint)
             .add_system(jump_events)

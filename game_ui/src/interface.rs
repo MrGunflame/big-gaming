@@ -2,7 +2,8 @@
 
 use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign};
 
-use bevy::prelude::Resource;
+use bevy::prelude::{Resource, With};
+use bevy::window::{PrimaryWindow, Window};
 use bevy_ecs::world::World;
 use bevy_egui::EguiContext;
 
@@ -31,32 +32,39 @@ impl InterfaceState {
     }
 
     pub fn render(&mut self, world: &mut World) {
-        world.resource_scope::<EguiContext, ()>(|world, mut ctx| {
-            let mut ctx = Context {
-                ctx: ctx.ctx_mut(),
-                world,
-                close: false,
-            };
+        // THIS IS UNSOUND!
+        // Since 0.10.0 (bevy_egui 0.20.0) we unforunately need "exclusive"
+        // access to the windows entities.
+        let world2 = unsafe { &mut *(world as *mut World) };
 
-            let mut index = 0;
-            while index < self.widgets.len() {
-                let widget = &mut self.widgets[index];
+        let mut ctx = world2
+            .query_filtered::<&mut EguiContext, With<PrimaryWindow>>()
+            .single_mut(world2);
 
-                widget.create();
+        let mut ctx = Context {
+            ctx: ctx.get_mut(),
+            world,
+            close: false,
+        };
 
-                widget.boxed.render(&mut ctx);
+        let mut index = 0;
+        while index < self.widgets.len() {
+            let widget = &mut self.widgets[index];
 
-                if ctx.close {
-                    self.remove_in(index);
-                    index -= 1;
+            widget.create();
 
-                    // Reset for next widget.
-                    ctx.reset();
-                }
+            widget.boxed.render(&mut ctx);
 
-                index += 1;
+            if ctx.close {
+                self.remove_in(index);
+                index -= 1;
+
+                // Reset for next widget.
+                ctx.reset();
             }
-        });
+
+            index += 1;
+        }
     }
 
     pub fn push<T>(&mut self, widget: T)
