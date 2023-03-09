@@ -1,5 +1,5 @@
 use bevy::prelude::{
-    Assets, Color, Commands, Entity, Handle, Mesh, PbrBundle, Quat, Query, ResMut,
+    AssetServer, Assets, Color, Commands, Entity, Handle, Mesh, PbrBundle, Quat, Query, ResMut,
     StandardMaterial, Transform, Vec3, Without,
 };
 use game_common::components::terrain::LoadTerrain;
@@ -9,12 +9,14 @@ pub fn load_terrain_mesh(
     meshes: Query<(Entity, &LoadTerrain), Without<Handle<Mesh>>>,
     mut mesh_assets: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    mut server: ResMut<AssetServer>,
 ) {
     for (entity, mesh) in &meshes {
         commands.entity(entity).insert(PbrBundle {
             mesh: mesh_assets.add(mesh.mesh.mesh()),
             material: materials.add(StandardMaterial {
-                base_color: Color::RED,
+                // base_color: Color::RED,
+                base_color_texture: Some(server.load("gw316.jpg")),
                 ..Default::default()
             }),
             transform: Transform {

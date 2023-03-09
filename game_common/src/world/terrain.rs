@@ -51,7 +51,8 @@ impl TerrainMesh {
 
         let mut vertices = Vec::new();
         let mut indices = Vec::new();
-        // let mut normals = Vec::new();
+        let mut normals = Vec::new();
+        let mut uvs = Vec::new();
 
         let size_x = CELL_SIZE_UINT.x + 1;
         let size_z = CELL_SIZE_UINT.z + 1;
@@ -73,6 +74,42 @@ impl TerrainMesh {
                 indices.extend([index + size_x + 1, index + 1, index]);
             }
         }
+
+        for index in 0u32..size_x * size_z {
+            let x = index % size_x;
+            let z = index / size_z;
+
+            let vert: Vec3 = vertices[index as usize].into();
+
+            if x != size_x - 1 && z != size_z - 1 {
+                let x: Vec3 = vertices[index as usize + size_x as usize].into();
+                let z: Vec3 = vertices[index as usize + 1].into();
+
+                let face_normal = x.cross(z).normalize();
+
+                normals.push(face_normal);
+
+                // Outer edges
+            } else {
+                normals.push(Vec3::splat(0.0));
+            }
+        }
+
+        for index in 0..size_x * size_z {
+            let x = ((index % size_x) as f32) * (1f32 / (size_x as f32 - 1.0));
+            let z = ((index / size_z) as f32) * (1f32 / (size_z as f32 - 1.0));
+            dbg!(x, z);
+            uvs.push([x as f32, z as f32]);
+        }
+
+        // for index in 0u32..size_x * size_z {
+        //     let x = index % size_x;
+        //     let z = index / size_z;
+
+        //     if x != size_x && s != size_z {
+        //         let normal = vertices[index + size_x + 1] - vertices[index];
+        //     }
+        // }
 
         // let mut index = 0;
         // assert!(vertices.len() % 3 == 0);
@@ -123,10 +160,11 @@ impl TerrainMesh {
 
         mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, vertices);
         mesh.set_indices(Some(Indices::U32(indices)));
-        // mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
+        mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
+        mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
 
-        mesh.duplicate_vertices();
-        mesh.compute_flat_normals();
+        // mesh.duplicate_vertices();
+        // mesh.compute_flat_normals();
 
         // dbg!(mesh.attribute(Mesh::ATTRIBUTE_NORMAL));
         // panic!();

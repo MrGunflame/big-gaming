@@ -108,7 +108,7 @@ fn main() {
     app.add_plugin(AccessibilityPlugin);
     app.add_plugin(WinitPlugin);
     // .add_plugin(RapierPhysicsPlugin::<NoUserData>::default())
-    app.add_plugin(RapierDebugRenderPlugin::default());
+    // app.add_plugin(RapierDebugRenderPlugin::default());
     app.add_plugin(CameraPlugin);
     // .add_plugin(ProjectilePlugin)
     // .add_plugin(CombatPlugin)
