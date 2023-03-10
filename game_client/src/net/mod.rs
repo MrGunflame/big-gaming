@@ -3,14 +3,13 @@ mod world;
 
 use std::net::SocketAddr;
 use std::sync::{mpsc, Arc};
+use std::time::Instant;
 
 use bevy::prelude::{Commands, IntoSystemConfig, Res, ResMut, SystemSet, Transform, Vec3};
 use game_common::entity::{Entity, EntityData, EntityMap};
 use game_net::conn::{Connection, ConnectionHandle, ConnectionMode};
 use game_net::proto::{Decode, Packet};
-use game_net::snapshot::{
-    Command, CommandQueue, ConnectionMessage, DeltaQueue, SnapshotId, Snapshots,
-};
+use game_net::snapshot::{Command, CommandQueue, ConnectionMessage, DeltaQueue, SnapshotId};
 use game_net::world::WorldState;
 use game_net::Socket;
 use tokio::runtime::Runtime;
@@ -35,15 +34,10 @@ impl bevy::prelude::Plugin for NetPlugin {
 
         let map = EntityMap::default();
 
-        let mut snaps = Snapshots::new();
-        snaps.push();
-
         let mut world = WorldState::new();
-        world.insert(snaps.newest().unwrap());
 
         app.insert_resource(queue);
         app.insert_resource(world);
-        app.insert_resource(snaps);
         app.insert_resource(map.clone());
         app.insert_resource(ServerConnection::new(map));
         app.insert_resource(DeltaQueue::new());
@@ -82,7 +76,7 @@ pub fn spawn_conn(
                     queue.push(ConnectionMessage {
                         id: conn.id,
                         command: Command::Disconnected,
-                        snapshot: SnapshotId(0),
+                        snapshot: Instant::now(),
                     });
                 }
             });
@@ -119,15 +113,26 @@ fn flush_command_queue(
     mut conn: ResMut<ServerConnection>,
     map: ResMut<EntityMap>,
     mut world: ResMut<WorldState>,
-    snapshots: ResMut<Snapshots>,
 ) {
-    let Some(id) = snapshots.newest() else {
-        return;
-    };
-
-    let mut view = world.get_mut(id).unwrap();
-
     while let Some(msg) = queue.pop() {
+        match msg.command {
+            Command::Connected => {
+                conn.push_state(State::Connected);
+                continue;
+            }
+            Command::Disconnected => {
+                conn.push_state(State::Disconnected);
+                continue;
+            }
+            _ => (),
+        }
+
+        if world.get(msg.snapshot).is_none() {
+            world.insert(msg.snapshot);
+        }
+
+        let mut view = world.get_mut(msg.snapshot).unwrap();
+
         match msg.command {
             Command::EntityCreate {
                 id,
@@ -169,12 +174,8 @@ fn flush_command_queue(
             Command::SpawnHost { id } => {
                 view.spawn_host(id);
             }
-            Command::Connected => {
-                conn.push_state(State::Connected);
-            }
-            Command::Disconnected => {
-                conn.push_state(State::Disconnected);
-            }
+            Command::Connected => (),
+            Command::Disconnected => (),
         }
     }
 }

@@ -5,7 +5,7 @@ use game_common::components::actor::{ActorFlag, ActorFlags, ActorProperties, Mov
 use game_common::components::movement::{Jump, Movement, Rotate, RotateQueue};
 use game_common::entity::EntityMap;
 use game_common::math::RotationExt;
-use game_net::snapshot::{Command, Snapshots};
+use game_net::snapshot::Command;
 use game_net::world::WorldState;
 
 use crate::net::ServerConnection;
@@ -22,7 +22,6 @@ pub fn handle_movement_events(
         &Movement,
     )>,
     mut world: ResMut<WorldState>,
-    snapshots: Res<Snapshots>,
     map: ResMut<EntityMap>,
 ) {
     let delta = time.delta_seconds();
@@ -47,22 +46,15 @@ pub fn handle_movement_events(
 
         commands.entity(entity).remove::<Movement>();
 
-        let Some(mut id) = snapshots.newest() else {
-            continue;
-        };
+        let period = conn.interpolation_period();
 
-        if id.0 < 6 {
-            continue;
-        }
-        id -= 6;
-
-        let mut view = world.get_mut(id).unwrap();
+        let mut view = world.get_mut(period).unwrap();
         let mut ent = view.get_mut(map.get_entity(entity).unwrap()).unwrap();
         ent.transform.translation = transform.translation;
 
         drop(ent);
         drop(view);
-        world.patch_delta(id);
+        world.patch_delta(period);
     }
 }
 
@@ -70,7 +62,6 @@ pub fn handle_rotate_events(
     mut commands: Commands,
     conn: Res<ServerConnection>,
     mut actors: Query<(Entity, &ActorFlags, &mut ActorProperties, &mut RotateQueue)>,
-    snapshots: Res<Snapshots>,
     mut world: ResMut<WorldState>,
     map: ResMut<EntityMap>,
 ) {
@@ -94,22 +85,15 @@ pub fn handle_rotate_events(
                 });
             }
 
-            let Some(mut id) = snapshots.newest() else {
-                continue;
-            };
+            let period = conn.interpolation_period();
 
-            if id.0 < 6 {
-                continue;
-            }
-            id -= 6;
-
-            let mut view = world.get_mut(id).unwrap();
+            let mut view = world.get_mut(period).unwrap();
             let mut ent = view.get_mut(map.get_entity(entity).unwrap()).unwrap();
             ent.transform.rotation = props.rotation;
 
             drop(ent);
             drop(view);
-            world.patch_delta(id);
+            world.patch_delta(period);
         }
     }
 }

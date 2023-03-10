@@ -10,54 +10,33 @@ use game_common::components::combat::Health;
 use game_common::components::player::HostPlayer;
 use game_common::entity::{Entity, EntityData, EntityMap};
 use game_common::world::source::StreamingSource;
-use game_net::snapshot::{DeltaQueue, EntityChange, Snapshots};
+use game_net::snapshot::{DeltaQueue, EntityChange};
 use game_net::world::{WorldState, WorldViewRef};
 
+use super::ServerConnection;
+
 pub fn apply_world_delta(
+    conn: Res<ServerConnection>,
     mut commands: Commands,
     mut world: ResMut<WorldState>,
-    mut snapshots: ResMut<Snapshots>,
     map: ResMut<EntityMap>,
     mut queue: ResMut<DeltaQueue>,
 ) {
-    // snapshots.push();
-    // world.insert(snapshots.newest().unwrap());
+    let period = conn.interpolation_period();
 
-    // let Some(id) = snapshots.get(Instant::now()) else {
-    //     return;
-    // };
-
-    let Some(mut id) = snapshots.newest() else {
-        snapshots.push();
-        world.insert(snapshots.newest().unwrap());
+    let Some(view) = world.next() else {
         return;
     };
 
-    if id.0 < 6 {
-        snapshots.push();
-        world.insert(snapshots.newest().unwrap());
-        return;
-    }
-
-    id -= 6;
-
-    // Create a delta from the previous snapshot to the current one.
-    let prev = world.get(id - 1);
-    let next = world.get(id).unwrap();
-
-    let delta = WorldViewRef::delta(prev, next);
+    let delta = WorldViewRef::delta(view.prev, view.view);
 
     for change in delta {
         queue.push(change);
     }
 
-    if prev.is_some() {
-        world.remove(id - 1);
-        snapshots.remove(id - 1);
+    if world.len() > 120 {
+        world.pop();
     }
-
-    snapshots.push();
-    world.insert(snapshots.newest().unwrap());
 }
 
 pub fn flush_delta_queue(

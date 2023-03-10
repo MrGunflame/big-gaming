@@ -5,7 +5,9 @@ use super::{Decode, Encode, Error};
 
 #[derive(Copy, Clone, Debug, Encode, Decode)]
 pub struct Ack {
-    /// The last acknowledged sequence number.
+    /// The last acknowledged sequence number + 1.
+    ///
+    /// In other words the first sequence number that has not yet been received.
     pub sequence: Sequence,
 }
 

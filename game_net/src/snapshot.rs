@@ -113,7 +113,7 @@ impl Snapshot {
 #[derive(Clone, Debug)]
 pub struct ConnectionMessage {
     pub id: ConnectionId,
-    pub snapshot: SnapshotId,
+    pub snapshot: Instant,
     pub command: Command,
 }
 
@@ -214,65 +214,6 @@ pub enum EntityChange {
 
 pub struct Patch {}
 
-#[derive(Clone, Debug, Resource)]
-pub struct Snapshots {
-    snapshots: VecDeque<(Instant, SnapshotId)>,
-    next_id: SnapshotId,
-}
-
-impl Snapshots {
-    pub fn new() -> Self {
-        Self {
-            snapshots: VecDeque::new(),
-            next_id: SnapshotId(0),
-        }
-    }
-
-    pub fn push(&mut self) {
-        self.push_in(Instant::now());
-    }
-
-    pub fn len(&self) -> usize {
-        self.snapshots.len()
-    }
-
-    /// Returns the id of the first snapshot that happened at or after
-    /// `ts`.
-    pub fn get(&self, ts: Instant) -> Option<SnapshotId> {
-        let mut index = 0;
-        while index < self.snapshots.len() {
-            let (t, id) = self.snapshots[index];
-
-            if ts <= t {
-                return Some(id);
-            }
-
-            index += 1;
-        }
-
-        None
-    }
-
-    pub fn remove(&mut self, id: SnapshotId) {
-        self.snapshots.retain(|(_, i)| *i != id);
-    }
-
-    pub fn newest(&self) -> Option<SnapshotId> {
-        self.snapshots.back().map(|(_, x)| *x)
-    }
-
-    pub fn oldest(&self) -> Option<SnapshotId> {
-        self.snapshots.front().map(|(_, x)| *x)
-    }
-
-    fn push_in(&mut self, instant: Instant) {
-        let id = self.next_id;
-        self.next_id += 1;
-
-        self.snapshots.push_back((instant, id));
-    }
-}
-
 #[derive(Clone, Debug, Default, Resource)]
 pub struct DeltaQueue {
     queue: VecDeque<EntityChange>,
@@ -295,33 +236,5 @@ impl DeltaQueue {
 
     pub fn pop(&mut self) -> Option<EntityChange> {
         self.queue.pop_front()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use std::time::{Duration, Instant};
-
-    use super::{SnapshotId, Snapshots};
-
-    #[test]
-    fn test_snapshots() {
-        let mut snapshots = Snapshots::new();
-
-        let now = Instant::now();
-
-        let t1 = now;
-        let t2 = now + Duration::new(1, 0);
-        let t3 = now + Duration::new(2, 0);
-
-        snapshots.push_in(t1);
-        snapshots.push_in(t2);
-        snapshots.push_in(t3);
-
-        assert_eq!(snapshots.get(t1), Some(SnapshotId(0)));
-        assert_eq!(snapshots.get(t2), Some(SnapshotId(1)));
-        assert_eq!(snapshots.get(t3), Some(SnapshotId(2)));
-
-        assert_eq!(snapshots.get(t1 + Duration::new(0, 1)), Some(SnapshotId(1)));
     }
 }

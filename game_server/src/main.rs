@@ -56,7 +56,9 @@ async fn main() {
 
     app.add_startup_system(setup);
 
-    let mut interval = interval(Duration::from_millis(15));
+    let timestep = Duration::from_secs(1) / 60;
+
+    let mut interval = interval(timestep.into());
     interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
     loop {

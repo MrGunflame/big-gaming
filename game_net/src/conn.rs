@@ -81,7 +81,6 @@ pub struct Connection {
     start_time: Instant,
 
     next_peer_sequence: Sequence,
-    next_snapshot: u32,
 }
 
 impl Connection {
@@ -114,7 +113,6 @@ impl Connection {
             next_server_sequence: Sequence::default(),
             start_time: Instant::now(),
             next_peer_sequence: Sequence::default(),
-            next_snapshot: 0,
         };
 
         if mode == ConnectionMode::Connect {
@@ -230,6 +228,8 @@ impl Connection {
     fn handle_data(&mut self, header: Header, frames: Vec<Frame>) -> Poll<()> {
         self.next_peer_sequence += 1;
 
+        let snapshot = self.start_time + header.timestamp.to_duration();
+
         for frame in frames {
             let Some(cmd) = self.entities.unpack(frame) else {
                     tracing::debug!("failed to translate cmd");
@@ -238,11 +238,9 @@ impl Connection {
 
             self.queue.push(ConnectionMessage {
                 id: self.id,
-                snapshot: SnapshotId(self.next_snapshot),
+                snapshot,
                 command: cmd,
             });
-
-            self.next_snapshot += 1;
         }
 
         Poll::Ready(())
@@ -286,7 +284,7 @@ impl Connection {
                 self.state = ConnectionState::Connected;
                 self.queue.push(ConnectionMessage {
                     id: self.id,
-                    snapshot: SnapshotId(0),
+                    snapshot: self.start_time,
                     command: Command::Connected,
                 });
             }
@@ -325,7 +323,7 @@ impl Connection {
                 // Signal the game that the player spawns.
                 self.queue.push(ConnectionMessage {
                     id: self.id,
-                    snapshot: SnapshotId(0),
+                    snapshot: self.start_time,
                     command: Command::Connected,
                 });
 
@@ -408,7 +406,7 @@ impl Connection {
         if self.state == ConnectionState::Connected {
             self.queue.push(ConnectionMessage {
                 id: self.id,
-                snapshot: SnapshotId(0),
+                snapshot: self.start_time,
                 command: Command::Disconnected,
             });
         }
@@ -423,7 +421,7 @@ impl Connection {
         if self.mode.is_listen() && self.state == ConnectionState::Connected {
             self.queue.push(ConnectionMessage {
                 id: self.id,
-                snapshot: SnapshotId(0),
+                snapshot: self.start_time,
                 command: Command::Disconnected,
             });
         }

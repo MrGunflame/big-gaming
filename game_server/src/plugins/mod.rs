@@ -1,7 +1,8 @@
 use std::time::{Duration, Instant};
 
 use bevy::prelude::{
-    AssetServer, Commands, DespawnRecursiveExt, Plugin, Quat, Query, Res, ResMut, Transform, Vec3,
+    AssetServer, Commands, DespawnRecursiveExt, IntoSystemConfig, Plugin, Quat, Query, Res, ResMut,
+    Transform, Vec3,
 };
 use bevy_rapier3d::prelude::{Collider, Velocity};
 use game_common::actors::human::Human;
@@ -13,22 +14,21 @@ use game_common::entity::{Entity, EntityData, EntityId, EntityMap};
 use game_common::world::entity::{Actor as WorldActor, Object as WorldObject};
 use game_common::world::source::StreamingSource;
 use game_net::proto::Frame;
-use game_net::snapshot::{Command, CommandQueue, Snapshot, Snapshots};
+use game_net::snapshot::{Command, CommandQueue, Snapshot};
 use game_net::world::WorldState;
 
 use crate::conn::Connections;
-use crate::entity::ServerEntityGenerator;
+use crate::entity::{self, ServerEntityGenerator};
 
 pub struct ServerPlugins;
 
 impl Plugin for ServerPlugins {
     fn build(&self, app: &mut bevy::prelude::App) {
         app.insert_resource(ServerEntityGenerator::new())
-            .insert_resource(Snapshots::new())
             .insert_resource(WorldState::new())
             .insert_resource(EntityMap::default())
             .add_system(flush_command_queue)
-            .add_system(update_snapshots);
+            .add_system(update_snapshots.after(flush_command_queue));
     }
 }
 
@@ -40,7 +40,6 @@ fn flush_command_queue(
     mut entities: Query<(&Entity, &mut Transform, &mut Velocity)>,
     mut map: ResMut<EntityMap>,
     mut world: ResMut<WorldState>,
-    mut snapshots: ResMut<Snapshots>,
     assets: Res<AssetServer>,
 ) {
     while let Some(msg) = queue.pop() {
@@ -48,8 +47,10 @@ fn flush_command_queue(
 
         // Get the world state at the time the client sent the command.
         let client_time = Instant::now() - Duration::from_millis(100);
-        let id = snapshots.get(client_time).unwrap();
-        let mut view = world.get_mut(id).unwrap();
+        let Some(mut view) = world.get_mut(client_time) else {
+            tracing::warn!("No snapshots yet");
+            return;
+        };
 
         match msg.command {
             Command::EntityCreate {
@@ -145,8 +146,10 @@ fn flush_command_queue(
             Command::SpawnHost { id } => (),
         }
 
+        dbg!(&view);
+
         drop(view);
-        world.patch_delta(id);
+        world.patch_delta(client_time);
     }
 }
 
@@ -155,19 +158,17 @@ fn update_snapshots(
     // FIXME: Make dedicated type for all shared entities.
     // mut entities: Query<(&mut Entity, &Transform)>,
     mut world: ResMut<WorldState>,
-    mut snapshots: ResMut<Snapshots>,
 ) {
-    let delta = world.delta();
-
     for conn in connections.iter_mut() {
         let mut state = conn.data.state.write();
+
         if state.full_update {
             state.full_update = false;
 
             // Send full state
             // The delta from the current frame is "included" in the
             // full update.
-            let Some(view) = world.newest() else {
+            let Some(view) = world.front() else {
                 continue;
             };
 
@@ -180,21 +181,17 @@ fn update_snapshots(
                 });
             }
         } else {
+            let delta = world.delta();
+
             // Send only deltas
             conn.set_delta(delta.to_vec());
         }
     }
 
-    // for mut snap in connections.iter_mut() {
-    //     *snap = snapshot.clone();
-    // }
-
-    // Create a new snapshot
-    snapshots.push();
-    world.insert(snapshots.newest().unwrap());
+    world.insert(Instant::now());
 
     // Only keep 2s.
-    if snapshots.len() > 120 {
-        world.remove(snapshots.oldest().unwrap());
+    if world.len() > 120 {
+        world.pop();
     }
 }

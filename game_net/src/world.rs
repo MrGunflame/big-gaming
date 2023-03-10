@@ -1,20 +1,27 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::ops::{Deref, DerefMut};
+use std::time::{Duration, Instant};
 
 use bevy_ecs::system::Resource;
 use game_common::entity::{Entity, EntityData, EntityId};
 
+use glam::{Quat, Vec3};
+use tracing::Instrument;
 #[cfg(feature = "tracing")]
 use tracing::{event, span, Level, Span};
 
+use crate::proto::sequence::Sequence;
+use crate::proto::timestamp::Timestamp;
 use crate::snapshot::{EntityChange, SnapshotId};
 
 /// The world state at constant time intervals.
 #[derive(Clone, Debug, Resource)]
 pub struct WorldState {
-    snapshots: HashMap<SnapshotId, Snapshot>,
-    last: SnapshotId,
+    // TODO: This can be a fixed size ring buffer.
+    snapshots: VecDeque<Snapshot>,
     delta: Vec<EntityChange>,
+    overries: Overrides,
+    head: usize,
     #[cfg(feature = "tracing")]
     resource_span: Span,
 }
@@ -22,67 +29,134 @@ pub struct WorldState {
 impl WorldState {
     pub fn new() -> Self {
         Self {
-            snapshots: HashMap::new(),
-            last: SnapshotId(0),
+            snapshots: VecDeque::new(),
             delta: vec![],
+            overries: Overrides::new(),
+            head: 0,
             #[cfg(feature = "tracing")]
             resource_span: span!(Level::DEBUG, "WorldState"),
         }
     }
 
-    pub fn newest(&self) -> Option<WorldViewRef<'_>> {
-        self.get(self.last)
-    }
-
-    pub fn get(&self, id: SnapshotId) -> Option<WorldViewRef<'_>> {
+    pub fn get(&self, ts: Instant) -> Option<WorldViewRef<'_>> {
+        let index = self.get_index(ts)?;
         self.snapshots
-            .get(&id)
-            .map(|snapshot| WorldViewRef { snapshot })
+            .get(index)
+            .map(|s| WorldViewRef { snapshot: s })
     }
 
-    pub fn get_mut(&mut self, id: SnapshotId) -> Option<WorldViewMut<'_>> {
-        self.snapshots.get_mut(&id).map(|snapshot| WorldViewMut {
-            snapshot,
+    pub fn get_mut(&mut self, ts: Instant) -> Option<WorldViewMut<'_>> {
+        let index = self.get_index(ts)?;
+        self.snapshots.get_mut(index).map(|s| WorldViewMut {
+            snapshot: s,
             delta: &mut self.delta,
         })
     }
 
-    pub fn insert(&mut self, id: SnapshotId) {
-        let entities = self.snapshots.get(&self.last).cloned().unwrap_or(Snapshot {
-            entities: Entities::default(),
-            hosts: Hosts::default(),
-        });
-        self.snapshots.insert(id, entities);
-        self.last = id;
-        self.delta.clear();
+    pub fn len(&self) -> usize {
+        self.snapshots.len()
     }
 
-    pub fn remove(&mut self, id: SnapshotId) {
-        self.snapshots.remove(&id);
+    pub fn insert(&mut self, ts: Instant) {
+        #[cfg(debug_assertions)]
+        if let Some(snapshot) = self.snapshots.back() {
+            assert!(snapshot.creation < ts);
+        }
+
+        let snapshot = match self.snapshots.back() {
+            Some(snapshot) => {
+                let mut snap = snapshot.clone();
+                snap.creation = ts;
+                snap
+            }
+            None => Snapshot {
+                creation: ts,
+                entities: Entities::default(),
+                hosts: Hosts::new(),
+            },
+        };
+
+        self.delta = vec![];
+        self.snapshots.push_back(snapshot);
+    }
+
+    pub fn remove(&mut self, ts: Instant) {
+        self.snapshots.retain(|s| s.creation != ts);
+        self.head -= 1;
+    }
+
+    /// Removes the oldest snapshot.
+    pub fn pop(&mut self) {
+        if self.snapshots.pop_front().is_some() && self.head > 0 {
+            self.head -= 1;
+        }
     }
 
     // FIXME: This should run while modifying WorldViewMut (e.g. on Drop).
-    pub fn patch_delta(&mut self, mut id: SnapshotId) {
-        // Requested snapshot already up to date.
-        id += 1;
+    pub fn patch_delta(&mut self, mut ts: Instant) {
+        let Some(mut index) = self.get_index(ts) else {
+            return;
+        };
 
         // Change all up to last (including).
-        while id <= self.last {
-            let snap = self.snapshots.get_mut(&id).unwrap();
+        while index < self.snapshots.len() {
+            let snap = self.snapshots.get_mut(index).unwrap();
 
             for delta in self.delta.clone() {
                 snap.apply(delta);
             }
 
-            tracing::info!("Applying delta to {:?}", id);
-
-            id += 1;
+            index += 1;
         }
     }
 
     pub fn delta(&self) -> &[EntityChange] {
         &self.delta
     }
+
+    pub fn next(&mut self) -> Option<NextWorldView<'_>> {
+        let next = self.snapshots.get(self.head)?;
+        let prev = self.snapshots.get(self.head.wrapping_sub(1));
+
+        self.head += 1;
+
+        Some(NextWorldView {
+            prev: prev.map(|s| WorldViewRef { snapshot: s }),
+            view: WorldViewRef { snapshot: next },
+            delta: prev.map(|p| next.creation - p.creation),
+        })
+    }
+
+    pub fn front(&mut self) -> Option<WorldViewRef<'_>> {
+        self.snapshots.back().map(|s| WorldViewRef { snapshot: s })
+    }
+
+    fn get_index(&self, ts: Instant) -> Option<usize> {
+        let mut index = 0;
+
+        while index < self.snapshots.len() {
+            let snapshot = &self.snapshots[index];
+
+            if ts <= snapshot.creation {
+                return Some(index);
+            }
+
+            index += 1;
+        }
+
+        None
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct NextWorldView<'a> {
+    pub prev: Option<WorldViewRef<'a>>,
+    pub view: WorldViewRef<'a>,
+    /// The delta time elapsed since the last snapshot. `None` if no previous snapshot exists.
+    ///
+    /// For the client this is the interpolation period between the previous and the current
+    /// snapshot.
+    pub delta: Option<Duration>,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -291,6 +365,7 @@ impl Entities {
 
 #[derive(Clone, Debug)]
 struct Snapshot {
+    creation: Instant,
     entities: Entities,
     hosts: Hosts,
 }
@@ -357,4 +432,51 @@ impl Snapshot {
             }
         }
     }
+}
+
+#[derive(Clone, Debug)]
+pub struct Overrides {
+    seqs: HashMap<Sequence, Vec<Override>>,
+    ids: HashMap<EntityId, Override>,
+}
+
+impl Overrides {
+    pub fn new() -> Self {
+        Self {
+            seqs: HashMap::new(),
+            ids: HashMap::new(),
+        }
+    }
+
+    pub fn insert(&mut self, seq: Sequence, e: Override) {
+        match self.seqs.get_mut(&seq) {
+            Some(vec) => {
+                vec.push(e.clone());
+            }
+            None => {
+                self.seqs.insert(seq, vec![e.clone()]);
+            }
+        }
+
+        self.ids.insert(e.id, e);
+    }
+
+    pub fn remove(&mut self, seq: Sequence) {
+        let (_, e) = self.seqs.remove_entry(&seq).unwrap_or_default();
+
+        for e in e {
+            self.ids.remove(&e.id);
+        }
+    }
+
+    pub fn get(&self, id: EntityId) -> Option<Override> {
+        self.ids.get(&id).cloned()
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Override {
+    pub id: EntityId,
+    pub translation: Option<Vec3>,
+    pub rotation: Option<Quat>,
 }

@@ -91,7 +91,7 @@ impl TerrainMesh {
 
                 // Outer edges
             } else {
-                normals.push(Vec3::splat(0.0));
+                normals.push(Vec3::new(0.0, 1.0, 0.0));
             }
         }
 
