@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use bevy_egui::egui::{Pos2, Window};
+use bevy_egui::egui::{CentralPanel, Pos2, Window};
 use game_common::scene::{Scene, SceneTransition};
 
 use crate::{Context, Widget, WidgetFlags};
@@ -26,18 +26,16 @@ impl Widget for ServerError {
     }
 
     fn render(&mut self, ctx: &mut Context) {
-        Window::new("server_error")
-            .fixed_pos(Pos2::new(0.0, 0.0))
-            .show(ctx.ctx, |ui| {
-                ui.label("Server Error:");
-                ui.label(self.error.to_string());
+        CentralPanel::default().show(ctx.ctx, |ui| {
+            ui.label("Server Error:");
+            ui.label(self.error.to_string());
 
-                if ui.button("Main Menu").clicked() {
-                    ctx.world.send_event(SceneTransition {
-                        to: Scene::MainMenu,
-                        from: Scene::Loading,
-                    });
-                }
-            });
+            if ui.button("Main Menu").clicked() {
+                ctx.world.send_event(SceneTransition {
+                    to: Scene::MainMenu,
+                    from: Scene::Loading,
+                });
+            }
+        });
     }
 }

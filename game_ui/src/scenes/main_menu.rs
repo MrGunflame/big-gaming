@@ -50,6 +50,10 @@ fn render(state: &mut State, ui: &mut Ui, world: &mut World) {
             }
 
             if ui.button("Settings").clicked() {}
+
+            if ui.button("Exit").clicked() {
+                std::process::exit(0);
+            }
         }
         State::ServerConnect { addr } => {
             ui.text_edit_singleline(addr);

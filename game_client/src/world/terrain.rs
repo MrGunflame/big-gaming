@@ -16,7 +16,7 @@ pub fn load_terrain_mesh(
             mesh: mesh_assets.add(mesh.mesh.mesh()),
             material: materials.add(StandardMaterial {
                 // base_color: Color::RED,
-                base_color_texture: Some(server.load("gw316.jpg")),
+                base_color_texture: Some(server.load("Baker.png")),
                 ..Default::default()
             }),
             transform: Transform {
