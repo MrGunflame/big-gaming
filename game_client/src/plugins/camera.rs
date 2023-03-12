@@ -7,6 +7,7 @@ use bevy::prelude::{
     With, Without,
 };
 use bevy::time::Time;
+use bevy_rapier3d::prelude::PhysicsSet;
 use game_common::components::actor::{ActorFigure, ActorProperties, MovementSpeed};
 use game_common::components::camera::CameraMode;
 use game_common::components::movement::Movement;
@@ -18,6 +19,8 @@ use crate::entities::player::CameraPosition;
 
 use self::events::{adjust_camera_distance, register_events, toggle_camera_position};
 
+use super::movement::MovementSet;
+
 pub struct CameraPlugin;
 
 impl Plugin for CameraPlugin {
@@ -26,7 +29,7 @@ impl Plugin for CameraPlugin {
             .add_startup_system(register_events)
             .insert_resource(CameraSettings::default())
             .add_system(crate::systems::input::interact_target)
-            .add_system(synchronize_player_camera)
+            .add_system(synchronize_player_camera.after(MovementSet::Apply))
             .add_system(head_bumping.after(synchronize_player_camera));
         // .add_system(toggle_camera_position)
         // .add_system(adjust_camera_distance);
