@@ -1,10 +1,11 @@
 use core::panic;
+use std::ops::Index;
 
 use bevy_rapier3d::prelude::Collider;
 use bevy_render::mesh::Indices;
 use bevy_render::prelude::Mesh;
 use bevy_render::render_resource::PrimitiveTopology;
-use glam::Vec3;
+use glam::{UVec2, Vec3};
 
 use super::{CellId, CELL_SIZE_UINT};
 
@@ -174,5 +175,121 @@ impl TerrainMesh {
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Heightmap {
-    pub nodes: Vec<f32>,
+    size: UVec2,
+    nodes: Vec<f32>,
+}
+
+impl Heightmap {
+    pub fn from_vec(size: UVec2, nodes: Vec<f32>) -> Self {
+        assert!(nodes.len() as u32 / size.x == size.y);
+
+        Self { size, nodes }
+    }
+
+    pub fn get(&self, x: u32, z: u32) -> f32 {
+        assert!(x <= self.size.x && z <= self.size.y);
+
+        let index = x * self.size.y + z;
+
+        self.nodes[index as usize]
+    }
+}
+
+impl AsRef<[f32]> for Heightmap {
+    #[inline]
+    fn as_ref(&self) -> &[f32] {
+        &self.nodes
+    }
+}
+
+/// A projection of a Heightmap onto a different sized plane.
+struct Projection<'a> {
+    heightmap: &'a Heightmap,
+    dimensions: UVec2,
+}
+
+impl<'a> Projection<'a> {
+    #[inline]
+    fn new(heightmap: &'a Heightmap, dimensions: UVec2) -> Self {
+        Self {
+            heightmap,
+            dimensions,
+        }
+    }
+
+    fn get(&self, x: u32, z: u32) -> f32 {
+        assert!(x <= self.dimensions.x && z <= self.dimensions.y);
+
+        let x1 = x / self.dimensions.x;
+        let z1 = z / self.dimensions.y;
+
+        dbg!(z);
+
+        let fx = (self.heightmap.size.x as f32 / self.dimensions.x as f32) * x as f32;
+        let fz = (self.heightmap.size.y as f32 / self.dimensions.y as f32) * z as f32;
+
+        let (val_z, dist_z, diff_z) = if fz == fz.ceil() {
+            (self.heightmap.get(0, fz as u32), 0.0, 0.0)
+        } else {
+            let curr = self.heightmap.get(fx as u32, fz.trunc() as u32);
+            let next = self.heightmap.get(fx as u32, fz.trunc() as u32 + 1);
+
+            // Distance from z.
+            let dist = fz.fract();
+
+            let diff = next - curr;
+
+            // curr + diff * dist
+            (curr, dist, diff)
+        };
+
+        let (val_x, dist_x, diff_x) = if fx == fx.ceil() {
+            (self.heightmap.get(fx as u32, 0), 0.0, 0.0)
+        } else {
+            let curr = self.heightmap.get(fx as u32, fz as u32);
+            let next = self.heightmap.get(fx as u32, fz as u32);
+
+            let dist = fx.fract();
+            let diff = next - curr;
+
+            // curr + diff * dist
+            (curr, dist, diff)
+        };
+
+        dbg!(val_x, diff_x, dist_x);
+
+        (val_z + diff_z * dist_z) + (val_x + diff_x * dist_x)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use glam::UVec2;
+
+    use super::{Heightmap, Projection};
+
+    #[test]
+    fn test_heightmap() {
+        let mut nodes = vec![0.0, 1.0, 2.0, 3.0];
+        let map = Heightmap::from_vec(UVec2::new(2, 2), nodes);
+
+        assert_eq!(map.get(0, 0), 0.0);
+        assert_eq!(map.get(0, 1), 1.0);
+        assert_eq!(map.get(1, 0), 2.0);
+        assert_eq!(map.get(1, 1), 3.0);
+    }
+
+    #[test]
+    fn test_projection() {
+        let mut nodes = vec![0.0, 1.0, 2.0, 3.0];
+        let map = Heightmap::from_vec(UVec2::new(2, 2), nodes);
+
+        let mut proj = Projection::new(&map, UVec2::new(4, 4));
+
+        assert_eq!(proj.get(0, 0), 0.0);
+        assert_eq!(proj.get(0, 1), 0.5);
+        assert_eq!(proj.get(0, 2), 1.0);
+        assert_eq!(proj.get(0, 3), 1.5);
+        assert_eq!(proj.get(0, 4), 2.0);
+    }
 }
