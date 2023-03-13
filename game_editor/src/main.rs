@@ -1,3 +1,4 @@
+use bevy::a11y::AccessibilityPlugin;
 use bevy::core_pipeline::CorePipelinePlugin;
 use bevy::pbr::PbrPlugin;
 use bevy::prelude::{
@@ -33,11 +34,12 @@ fn main() {
     App::new()
         .insert_resource(archive)
         .add_plugin(CorePlugins)
+        .add_plugin(AccessibilityPlugin)
         .add_plugin(WindowPlugin::default())
-        .add_plugin(RenderPlugin)
+        .add_plugin(RenderPlugin::default())
         .add_plugin(ImagePlugin::default())
         .add_plugin(CorePipelinePlugin::default())
-        .add_plugin(PbrPlugin)
+        .add_plugin(PbrPlugin::default())
         .add_plugin(SpritePlugin)
         .add_plugin(TextPlugin)
         .add_plugin(bevy::ui::UiPlugin)
@@ -61,10 +63,11 @@ fn setup(
 
     // plane
     commands.spawn(PbrBundle {
-        mesh: meshes.add(Mesh::from(shape::Plane { size: 5.0 })),
+        mesh: meshes.add(Mesh::from(shape::Plane::from_size(5.0))),
         material: materials.add(Color::rgb(0.3, 0.5, 0.3).into()),
         ..Default::default()
     });
+
     // cube
     commands
         .spawn(PbrBundle {
