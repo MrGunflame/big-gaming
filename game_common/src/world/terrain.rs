@@ -1,7 +1,6 @@
 use core::panic;
 use std::ops::Index;
 
-use bevy_ecs::prelude::dbg;
 use bevy_rapier3d::prelude::Collider;
 use bevy_render::mesh::Indices;
 use bevy_render::prelude::Mesh;
@@ -28,11 +27,13 @@ impl TerrainMesh {
         let size_x = CELL_SIZE_UINT.x + 1;
         let size_z = CELL_SIZE_UINT.z + 1;
 
-        for index in 0u32..size_x * size_z {
-            let x = index % size_x;
-            let z = index / size_z;
+        let projection = Projection::new(&self.offsets, UVec2::new(size_x, size_z));
 
-            let y = self.offsets.nodes[index as usize];
+        for index in 0u32..size_x * size_z {
+            let x = index / size_x;
+            let z = index % size_z;
+
+            let y = projection.get(x, z);
 
             vertices.push(Vec3::new(x as f32, y as f32, z as f32));
 
@@ -59,11 +60,13 @@ impl TerrainMesh {
         let size_x = CELL_SIZE_UINT.x + 1;
         let size_z = CELL_SIZE_UINT.z + 1;
 
+        let projection = Projection::new(&self.offsets, UVec2::new(size_x, size_z));
+
         for index in 0u32..size_x * size_z {
             let x = index % size_x;
             let z = index / size_z;
 
-            let y = self.offsets.nodes[index as usize];
+            let y = projection.get(x, z);
 
             vertices.push([x as f32, y as f32, z as f32]);
             // normals.push([0.0, 0.0, 1.0]);
@@ -190,7 +193,8 @@ impl Heightmap {
     pub fn get(&self, x: u32, y: u32) -> f32 {
         assert!(x < self.size.x && y < self.size.y);
 
-        let index = x * self.size.y + y;
+        // Wrong axes
+        let index = y * self.size.x + x;
 
         self.nodes[index as usize]
     }
