@@ -1,6 +1,7 @@
 use core::panic;
 use std::ops::Index;
 
+use bevy_ecs::prelude::dbg;
 use bevy_rapier3d::prelude::Collider;
 use bevy_render::mesh::Indices;
 use bevy_render::prelude::Mesh;
@@ -186,10 +187,10 @@ impl Heightmap {
         Self { size, nodes }
     }
 
-    pub fn get(&self, x: u32, z: u32) -> f32 {
-        assert!(x <= self.size.x && z <= self.size.y);
+    pub fn get(&self, x: u32, y: u32) -> f32 {
+        assert!(x < self.size.x && y < self.size.y);
 
-        let index = x * self.size.y + z;
+        let index = x * self.size.y + y;
 
         self.nodes[index as usize]
     }
@@ -217,49 +218,38 @@ impl<'a> Projection<'a> {
         }
     }
 
-    fn get(&self, x: u32, z: u32) -> f32 {
-        assert!(x <= self.dimensions.x && z <= self.dimensions.y);
+    fn get(&self, x: u32, y: u32) -> f32 {
+        assert!(x < self.dimensions.x && y < self.dimensions.y);
 
-        let x1 = x / self.dimensions.x;
-        let z1 = z / self.dimensions.y;
+        let xf = x as f32 / (self.dimensions.x as f32 - 1.0);
+        let yf = y as f32 / (self.dimensions.y as f32 - 1.0);
 
-        dbg!(z);
+        // Bilinear interpolation
+        let w = self.heightmap.size.x as f32 - 1.0;
+        let h = self.heightmap.size.y as f32 - 1.0;
 
-        let fx = (self.heightmap.size.x as f32 / self.dimensions.x as f32) * x as f32;
-        let fz = (self.heightmap.size.y as f32 / self.dimensions.y as f32) * z as f32;
+        let x1 = f32::floor(xf * w);
+        let y1 = f32::floor(yf * h);
+        let x2 = f32::clamp(x1 + 1.0, 0.0, w);
+        let y2 = f32::clamp(y1 + 1.0, 0.0, h);
 
-        let (val_z, dist_z, diff_z) = if fz == fz.ceil() {
-            (self.heightmap.get(0, fz as u32), 0.0, 0.0)
-        } else {
-            let curr = self.heightmap.get(fx as u32, fz.trunc() as u32);
-            let next = self.heightmap.get(fx as u32, fz.trunc() as u32 + 1);
+        let xp = xf * w - x1;
+        let yp = yf * h - y1;
 
-            // Distance from z.
-            let dist = fz.fract();
+        let p11 = self.heightmap.get(x1 as u32, y1 as u32);
+        let p21 = self.heightmap.get(x2 as u32, y1 as u32);
+        let p12 = self.heightmap.get(x1 as u32, y2 as u32);
+        let p22 = self.heightmap.get(x2 as u32, y2 as u32);
 
-            let diff = next - curr;
+        let px1 = lerp(p11, p21, xp);
+        let px2 = lerp(p12, p22, xp);
 
-            // curr + diff * dist
-            (curr, dist, diff)
-        };
-
-        let (val_x, dist_x, diff_x) = if fx == fx.ceil() {
-            (self.heightmap.get(fx as u32, 0), 0.0, 0.0)
-        } else {
-            let curr = self.heightmap.get(fx as u32, fz as u32);
-            let next = self.heightmap.get(fx as u32, fz as u32);
-
-            let dist = fx.fract();
-            let diff = next - curr;
-
-            // curr + diff * dist
-            (curr, dist, diff)
-        };
-
-        dbg!(val_x, diff_x, dist_x);
-
-        (val_z + diff_z * dist_z) + (val_x + diff_x * dist_x)
+        lerp(px1, px2, yp)
     }
+}
+
+fn lerp(lhs: f32, rhs: f32, s: f32) -> f32 {
+    lhs + ((rhs - lhs) * s)
 }
 
 #[cfg(test)]
@@ -281,10 +271,14 @@ mod tests {
 
     #[test]
     fn test_projection() {
-        let mut nodes = vec![0.0, 1.0, 2.0, 3.0];
-        let map = Heightmap::from_vec(UVec2::new(2, 2), nodes);
+        let mut nodes = vec![
+            0.0, 1.0, 2.0, // 0
+            0.0, 1.0, 2.0, // 1
+            0.0, 1.0, 2.0, // 2
+        ];
+        let map = Heightmap::from_vec(UVec2::new(3, 3), nodes);
 
-        let mut proj = Projection::new(&map, UVec2::new(4, 4));
+        let mut proj = Projection::new(&map, UVec2::new(5, 5));
 
         assert_eq!(proj.get(0, 0), 0.0);
         assert_eq!(proj.get(0, 1), 0.5);
