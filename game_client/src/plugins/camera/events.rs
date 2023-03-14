@@ -1,66 +1,77 @@
+use std::borrow::Cow;
 use std::mem::MaybeUninit;
 
 use bevy::input::mouse::MouseWheel;
 use bevy::prelude::{EventReader, KeyCode, Query, Res, ResMut};
 use bevy::time::Time;
+use game_common::components::camera::CameraMode;
+use game_input::hotkeys::{
+    Hotkey, HotkeyCode, HotkeyFilter, HotkeyId, HotkeyReader, Hotkeys, TriggerKind,
+};
 
 use crate::entities::player::CameraPosition;
-use crate::plugins::hotkeys::{Event, EventId, HotkeyStore, TriggerKind};
+use crate::plugins::hotkeys::{Event, EventId, HotkeyStore};
 
 const DEFAULT_TRIGGER_TOGGLE_CAMERA: KeyCode = KeyCode::V;
 
-static mut EVENTS: MaybeUninit<Events> = MaybeUninit::uninit();
+static mut TOGGLE_CAMERA: Hotkey = Hotkey {
+    id: HotkeyId(0),
+    name: Cow::Borrowed("toggle_camera"),
+    default: game_input::hotkeys::Key {
+        trigger: TriggerKind::JUST_PRESSED,
+        code: HotkeyCode::KeyCode {
+            key_code: KeyCode::V,
+        },
+    },
+};
 
-struct Events {
-    toggle_camera: EventId,
+pub(super) fn register_events(mut hotkeys: ResMut<Hotkeys>) {
+    let mut toggle = unsafe { &mut TOGGLE_CAMERA };
+    let id = hotkeys.register(toggle.clone());
+    toggle.id = id;
+    drop(toggle);
 }
 
-pub(super) fn register_events(mut hotkeys: ResMut<HotkeyStore>) {
-    let toggle_camera = hotkeys.register(
-        Event::new()
-            .trigger(DEFAULT_TRIGGER_TOGGLE_CAMERA)
-            .kind(TriggerKind::Trigger),
-    );
+pub struct ToggleCamera;
 
-    unsafe {
-        EVENTS.write(Events { toggle_camera });
+impl HotkeyFilter for ToggleCamera {
+    fn filter(id: HotkeyId) -> bool {
+        id == unsafe { TOGGLE_CAMERA.id }
     }
 }
 
 pub(super) fn toggle_camera_position(
-    hotkeys: Res<HotkeyStore>,
-    mut cameras: Query<&mut CameraPosition>,
+    mut cameras: Query<&mut CameraMode>,
+    mut events: HotkeyReader<ToggleCamera>,
 ) {
-    let events = unsafe { EVENTS.assume_init_ref() };
+    let mut mode = cameras.single_mut();
 
-    let mut position = cameras.single_mut();
-
-    if hotkeys.triggered(events.toggle_camera) {
-        *position = match *position {
-            CameraPosition::FirstPerson => CameraPosition::ThirdPerson { distance: 5.0 },
-            CameraPosition::ThirdPerson { distance: _ } => CameraPosition::FirstPerson,
+    for _ in events.iter() {
+        *mode = match *mode {
+            CameraMode::FirstPerson => CameraMode::ThirdPerson { distance: 5.0 },
+            CameraMode::ThirdPerson { distance: _ } => CameraMode::FirstPerson,
         };
     }
 }
 
-pub(super) fn adjust_camera_distance(
-    time: Res<Time>,
-    mut cameras: Query<&mut CameraPosition>,
-    mut events: EventReader<MouseWheel>,
-) {
-    let mut position = cameras.single_mut();
+// pub(super) fn adjust_camera_distance(
+//     time: Res<Time>,
+//     mut cameras: Query<&mut CameraPosition>,
+//     mut events: EventReader<MouseWheel>,
+// ) {
+//     let mut position = cameras.single_mut();
 
-    let delta = time.delta_seconds();
+//     let delta = time.delta_seconds();
 
-    if let CameraPosition::ThirdPerson { distance } = &mut *position {
-        for event in events.iter() {
-            *distance -= event.y * delta * 5.0;
+//     if let CameraPosition::ThirdPerson { distance } = &mut *position {
+//         for event in events.iter() {
+//             *distance -= event.y * delta * 5.0;
 
-            if *distance < 1.0 {
-                *distance = 1.0;
-            } else if *distance > 10.0 {
-                *distance = 10.0;
-            }
-        }
-    }
-}
+//             if *distance < 1.0 {
+//                 *distance = 1.0;
+//             } else if *distance > 10.0 {
+//                 *distance = 10.0;
+//             }
+//         }
+//     }
+// }

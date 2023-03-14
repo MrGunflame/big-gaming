@@ -17,8 +17,6 @@ use crate::components::settings::CameraSettings;
 use crate::components::Rotation;
 use crate::entities::player::CameraPosition;
 
-use self::events::{adjust_camera_distance, register_events, toggle_camera_position};
-
 use super::movement::MovementSet;
 
 pub struct CameraPlugin;
@@ -26,7 +24,8 @@ pub struct CameraPlugin;
 impl Plugin for CameraPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
         app.add_startup_system(setup_camera)
-            .add_startup_system(register_events)
+            .add_startup_system(events::register_events)
+            .add_system(events::toggle_camera_position)
             .insert_resource(CameraSettings::default())
             .add_system(crate::systems::input::interact_target)
             .add_system(synchronize_player_camera.after(MovementSet::Apply))
@@ -69,7 +68,7 @@ fn synchronize_player_camera(
             camera.rotation = props.rotation;
         }
         CameraMode::ThirdPerson { distance } => {
-            let rotation_matrix = Mat3::from_quat(camera.rotation);
+            let rotation_matrix = Mat3::from_quat(player.rotation);
 
             camera.translation = player.translation
                 + rotation_matrix
@@ -78,6 +77,8 @@ fn synchronize_player_camera(
                         settings.offset.y,
                         settings.offset.z + *distance,
                     );
+
+            camera.look_at(player.translation, Vec3::Y);
         }
     }
 }
