@@ -64,7 +64,7 @@ impl Worker {
                 let (len, addr) = socket.recv_from(&mut buf).await.unwrap();
                 buf.truncate(len);
 
-                tracing::info!("got {} bytes from {}", len, addr);
+                tracing::trace!("got {} bytes from {}", len, addr);
 
                 let packet = match Packet::decode(&mut buf) {
                     Ok(packet) => packet,

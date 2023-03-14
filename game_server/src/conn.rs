@@ -94,7 +94,11 @@ impl ConnectionData {
             snapshot: RwLock::new(vec![]),
             handle,
             host: RwLock::new(None),
-            state: RwLock::new(ConnectionState { full_update: true }),
+            state: RwLock::new(ConnectionState {
+                full_update: true,
+                cells: vec![],
+                id: None,
+            }),
         }
     }
 }

@@ -186,3 +186,15 @@ impl Default for Cooldown {
         }
     }
 }
+
+#[derive(Copy, Clone, Debug, Component)]
+pub struct LoadItem {
+    pub id: ItemId,
+}
+
+impl LoadItem {
+    #[inline]
+    pub const fn new(id: ItemId) -> Self {
+        Self { id }
+    }
+}

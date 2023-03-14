@@ -1,12 +1,12 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::ops::{Deref, DerefMut};
 use std::time::{Duration, Instant};
 
 use bevy_ecs::system::Resource;
 use game_common::entity::{Entity, EntityData, EntityId};
 
+use game_common::world::CellId;
 use glam::{Quat, Vec3};
-use tracing::Instrument;
 #[cfg(feature = "tracing")]
 use tracing::{event, span, Level, Span};
 
@@ -73,6 +73,7 @@ impl WorldState {
                 creation: ts,
                 entities: Entities::default(),
                 hosts: Hosts::new(),
+                cells: HashSet::new(),
             },
         };
 
@@ -127,7 +128,7 @@ impl WorldState {
         })
     }
 
-    pub fn front(&mut self) -> Option<WorldViewRef<'_>> {
+    pub fn front(&self) -> Option<WorldViewRef<'_>> {
         self.snapshots.back().map(|s| WorldViewRef { snapshot: s })
     }
 
@@ -171,6 +172,18 @@ impl<'a> WorldViewRef<'a> {
 
     pub fn iter(&self) -> impl Iterator<Item = &Entity> {
         self.snapshot.entities.entities.values()
+    }
+
+    /// Returns a view into a cell in the world.
+    pub fn cell(&self, id: CellId) -> Option<CellViewRef<'_>> {
+        if self.snapshot.cells.contains(&id) {
+            Some(CellViewRef {
+                id,
+                entities: &self.snapshot.entities,
+            })
+        } else {
+            None
+        }
     }
 
     /// Creates a delta from `self` to `next`.
@@ -258,6 +271,7 @@ pub struct WorldViewMut<'a> {
 impl<'a> WorldViewMut<'a> {
     pub fn get_mut(&mut self, id: EntityId) -> Option<EntityMut<'_>> {
         self.snapshot.entities.get_mut(id).map(|entity| EntityMut {
+            cells: &mut self.snapshot.cells,
             prev: entity.clone(),
             entity,
             delta: &mut self.delta,
@@ -265,7 +279,12 @@ impl<'a> WorldViewMut<'a> {
     }
 
     pub fn spawn(&mut self, entity: Entity) {
+        self.snapshot
+            .cells
+            .insert(CellId::from(entity.transform.translation));
+
         self.snapshot.entities.spawn(entity.clone());
+
         self.delta.push(EntityChange::Create {
             id: entity.id,
             data: entity,
@@ -301,6 +320,7 @@ impl<'a> Drop for WorldViewMut<'a> {
 }
 
 pub struct EntityMut<'a> {
+    cells: &'a mut HashSet<CellId>,
     prev: Entity,
     entity: &'a mut Entity,
     delta: &'a mut Vec<EntityChange>,
@@ -327,6 +347,13 @@ impl<'a> Drop for EntityMut<'a> {
                 id: self.entity.id,
                 translation: self.entity.transform.translation,
             });
+
+            // Update the cell when moved.
+            let prev = CellId::from(self.prev.transform.translation);
+            let curr = CellId::from(self.entity.transform.translation);
+            if prev != curr {
+                self.cells.insert(curr);
+            }
         }
 
         if self.prev.transform.rotation != self.entity.transform.rotation {
@@ -368,6 +395,7 @@ struct Snapshot {
     creation: Instant,
     entities: Entities,
     hosts: Hosts,
+    cells: HashSet<CellId>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -400,6 +428,8 @@ impl Snapshot {
     fn apply(&mut self, delta: EntityChange) {
         match delta {
             EntityChange::Create { id, data } => {
+                self.cells.insert(CellId::from(data.transform.translation));
+
                 self.entities.spawn(Entity {
                     id,
                     transform: data.transform,
@@ -411,6 +441,10 @@ impl Snapshot {
             }
             EntityChange::Translate { id, translation } => {
                 let entity = self.entities.get_mut(id).unwrap();
+
+                self.cells
+                    .insert(CellId::from(entity.transform.translation));
+
                 entity.transform.translation = translation;
             }
             EntityChange::Rotate { id, rotation } => {
@@ -479,4 +513,41 @@ pub struct Override {
     pub id: EntityId,
     pub translation: Option<Vec3>,
     pub rotation: Option<Quat>,
+}
+
+#[derive(Clone, Debug)]
+pub struct CellViewRef<'a> {
+    id: CellId,
+    entities: &'a Entities,
+}
+
+impl<'a> CellViewRef<'a> {
+    pub fn len(&self) -> usize {
+        self.iter().count()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    pub fn id(&self) -> CellId {
+        self.id
+    }
+
+    pub fn get(&self, id: EntityId) -> Option<&Entity> {
+        let entity = self.entities.get(id)?;
+        if CellId::from(entity.transform.translation) != self.id {
+            None
+        } else {
+            Some(entity)
+        }
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &Entity> {
+        self.entities
+            .entities
+            .iter()
+            .filter(|(_, e)| CellId::from(e.transform.translation) == self.id)
+            .map(|(_, e)| e)
+    }
 }

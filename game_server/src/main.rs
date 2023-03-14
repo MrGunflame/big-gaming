@@ -24,6 +24,7 @@ mod plugins;
 mod server;
 mod snapshot;
 mod state;
+mod world;
 
 #[derive(Debug, Parser)]
 #[command(author, version, about, long_about = None)]

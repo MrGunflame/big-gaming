@@ -13,8 +13,9 @@ use game_common::components::race::RaceId;
 use game_common::entity::{Entity, EntityData, EntityId, EntityMap};
 use game_common::world::entity::{Actor as WorldActor, Object as WorldObject};
 use game_common::world::source::StreamingSource;
+use game_common::world::CellId;
 use game_net::proto::Frame;
-use game_net::snapshot::{Command, CommandQueue, Snapshot};
+use game_net::snapshot::{Command, CommandQueue, EntityChange, Snapshot};
 use game_net::world::WorldState;
 
 use crate::conn::Connections;
@@ -43,7 +44,7 @@ fn flush_command_queue(
     assets: Res<AssetServer>,
 ) {
     while let Some(msg) = queue.pop() {
-        tracing::info!("got command {:?}", msg.command);
+        tracing::trace!("got command {:?}", msg.command);
 
         // Get the world state at the time the client sent the command.
         let client_time = Instant::now() - Duration::from_millis(100);
@@ -111,7 +112,7 @@ fn flush_command_queue(
 
                 view.spawn(Entity {
                     id,
-                    transform: Transform::default(),
+                    transform: Transform::from_translation(Vec3::new(0.0, 32.0, 0.0)),
                     data: EntityData::Actor {
                         race: RaceId(1.into()),
                         health: Health::new(50),
@@ -132,6 +133,13 @@ fn flush_command_queue(
 
                 map.insert(id, ent);
                 connections.set_host(msg.id, id);
+
+                let conn = connections.get_mut(msg.id).unwrap();
+                let mut state = conn.data.state.write();
+                state.id = Some(id);
+                state.cells = vec![CellId::new(0.0, 0.0, 0.0)];
+
+                tracing::info!("spawning host {:?} in cell", msg.id);
             }
             Command::Disconnected => {
                 if let Some(id) = connections.host(msg.id) {
@@ -145,8 +153,6 @@ fn flush_command_queue(
             }
             Command::SpawnHost { id } => (),
         }
-
-        dbg!(&view);
 
         drop(view);
         world.patch_delta(client_time);
@@ -162,6 +168,10 @@ fn update_snapshots(
     for conn in connections.iter_mut() {
         let mut state = conn.data.state.write();
 
+        let Some(id) = state.id else {
+            continue
+        };
+
         if state.full_update {
             state.full_update = false;
 
@@ -172,7 +182,10 @@ fn update_snapshots(
                 continue;
             };
 
-            for entity in view.iter() {
+            let host = view.get(id).unwrap();
+            let cell = view.cell(host.transform.translation.into()).unwrap();
+
+            for entity in cell.iter() {
                 conn.data.handle.send_cmd(Command::EntityCreate {
                     id: entity.id,
                     translation: entity.transform.translation,
@@ -181,10 +194,35 @@ fn update_snapshots(
                 });
             }
         } else {
-            let delta = world.delta();
+            let mut changes = world.delta().to_vec();
 
-            // Send only deltas
-            conn.set_delta(delta.to_vec());
+            let Some(view) = world.front() else {
+                continue;
+            };
+            let host = view.get(id).unwrap();
+
+            let cell_id = CellId::from(host.transform.translation);
+            if !state.cells.contains(&cell_id) {
+                tracing::info!("Moving host from {:?} to {:?}", state.cells, cell_id);
+
+                // Host changed cells
+                let unload = state.cells.clone();
+
+                state.cells.clear();
+
+                state.cells.push(host.transform.translation.into());
+
+                for id in unload {
+                    let cell = view.cell(id).unwrap();
+
+                    // Destroy all entities (for the client) from the unloaded cell.
+                    for entity in cell.iter() {
+                        changes.push(EntityChange::Destroy { id: entity.id });
+                    }
+                }
+            }
+
+            conn.set_delta(changes);
         }
     }
 

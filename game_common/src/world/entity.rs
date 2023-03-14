@@ -7,7 +7,7 @@ use glam::{Quat, Vec3};
 
 use crate::archive::GameArchive;
 use crate::bundles::VisibilityBundle;
-use crate::components::items::ItemId;
+use crate::components::items::{ItemId, LoadItem};
 use crate::components::object::{self, LoadObject, ObjectId};
 use crate::components::terrain::LoadTerrain;
 
@@ -44,8 +44,8 @@ pub struct Actor {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Item {
-    id: ItemId,
-    transform: Transform,
+    pub id: ItemId,
+    pub transform: Transform,
 }
 
 impl From<TerrainMesh> for Entity {
@@ -109,11 +109,26 @@ impl BuildEntity for Object {
     }
 }
 
+impl BuildEntity for Item {
+    fn build(self, archive: &GameArchive, commands: &mut Commands) {
+        let item = archive.items().get(self.id).unwrap();
+
+        commands
+            .spawn(LoadItem { id: self.id })
+            .insert(TransformBundle {
+                local: self.transform,
+                global: Default::default(),
+            })
+            .insert(VisibilityBundle::new());
+    }
+}
+
 impl BuildEntity for Entity {
     fn build(self, archive: &GameArchive, commands: &mut Commands) {
         match self {
             Self::Terrain(terrain) => terrain.build(archive, commands),
             Self::Object(object) => object.build(archive, commands),
+            Self::Item(item) => item.build(archive, commands),
             _ => todo!(),
         }
     }

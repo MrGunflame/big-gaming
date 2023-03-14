@@ -2,8 +2,9 @@ use bevy_transform::prelude::Transform;
 use glam::{UVec2, Vec3};
 use noise::{NoiseFn, Simplex};
 
+use crate::components::items::ItemId;
 use crate::components::object::ObjectId;
-use crate::world::entity::Object;
+use crate::world::entity::{Item, Object};
 use crate::world::gen::Generate;
 use crate::world::terrain::{Heightmap, TerrainMesh};
 use crate::world::{Cell, CELL_SIZE, CELL_SIZE_UINT};
@@ -24,10 +25,20 @@ impl Generate for FlatGenerator {
             map.push(y as f32 * 2.0 as f32);
         }
 
+        // cell.spawn(TerrainMesh::new(
+        //     cell.id,
+        //     Heightmap::from_vec(UVec2::new(CELL_SIZE_UINT.x + 1, CELL_SIZE_UINT.z + 1), map),
+        // ));
+
         cell.spawn(TerrainMesh::new(
             cell.id,
-            Heightmap::from_vec(UVec2::new(CELL_SIZE_UINT.x + 1, CELL_SIZE_UINT.z + 1), map),
+            Heightmap::from_vec(UVec2::new(2, 2), vec![0.0, 0.0, 0.0, 0.0]),
         ));
+
+        cell.spawn(Item {
+            id: ItemId(0.into()),
+            transform: Transform::from_translation(Vec3::splat(25.0)),
+        });
 
         // for _ in 0..10 {}
 

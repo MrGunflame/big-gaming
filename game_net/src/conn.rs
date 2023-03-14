@@ -163,7 +163,7 @@ impl Connection {
             let frame = match self.entities.pack(&cmd) {
                 Some(frame) => frame,
                 None => {
-                    tracing::info!("backlogging command");
+                    tracing::info!("backlogging command for entity {:?}", cmd.id());
 
                     if let Some(id) = cmd.id() {
                         self.backlog.insert(id, cmd);

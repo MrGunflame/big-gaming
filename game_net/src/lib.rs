@@ -22,6 +22,7 @@
 mod buffer;
 pub mod conn;
 pub mod entity;
+pub mod host;
 mod output;
 pub mod proto;
 pub mod sequence;
