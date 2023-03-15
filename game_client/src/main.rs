@@ -36,7 +36,7 @@ use game_core::CorePlugins;
 use game_ui::UiPlugin;
 use net::NetPlugin;
 use plugins::interactions::InteractionsPlugin;
-use plugins::{CameraPlugin, HotkeyPlugin, MovementPlugin};
+use plugins::{CameraPlugin, MovementPlugin};
 
 #[derive(Clone, Debug, Default, Parser)]
 #[command(author, version, about, long_about = None)]
@@ -83,7 +83,6 @@ fn main() {
     // .add_plugin(CombatPlugin)
     app.add_plugin(scene::ScenePlugin);
     app.add_plugin(UiPlugin);
-    app.add_plugin(HotkeyPlugin);
     app.add_plugin(MovementPlugin);
     // .add_plugin(game_core::movement::MovementPlugin)
     // .add_plugin(RespawnPlugin)
