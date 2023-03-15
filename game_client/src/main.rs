@@ -13,7 +13,6 @@ mod prev_transform;
 mod scene;
 mod sky;
 mod systems;
-// mod ui;
 mod utils;
 // mod window;
 mod world;
