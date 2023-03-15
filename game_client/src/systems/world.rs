@@ -1,6 +1,6 @@
 use bevy::prelude::{Commands, Entity, Query, Transform, With};
 
-use crate::components::{Actor, Player};
+use crate::components::Player;
 
 /// Despawn "lost" entities, i.e. entities that are above the maximum bounds
 pub fn despawn_lost(mut commands: Commands, mut entities: Query<(Entity, &Transform)>) {

@@ -1,8 +1,6 @@
-use std::time::{Duration, Instant};
-
-use bevy::prelude::{AssetServer, Commands, Query, Res, ResMut, Transform, Vec3};
-use bevy::time::Time;
-use bevy_rapier3d::prelude::Collider;
+use bevy::prelude::{
+    AssetServer, Commands, DespawnRecursiveExt, Query, Res, ResMut, Transform, Vec3,
+};
 use game_common::actors::human::Human;
 use game_common::bundles::{ActorBundle, ObjectBundle};
 use game_common::components::actor::ActorProperties;
@@ -13,17 +11,7 @@ use game_common::world::source::StreamingSource;
 use game_net::snapshot::{DeltaQueue, EntityChange};
 use game_net::world::{WorldState, WorldViewRef};
 
-use super::ServerConnection;
-
-pub fn apply_world_delta(
-    conn: Res<ServerConnection>,
-    mut commands: Commands,
-    mut world: ResMut<WorldState>,
-    map: ResMut<EntityMap>,
-    mut queue: ResMut<DeltaQueue>,
-) {
-    let period = conn.interpolation_period();
-
+pub fn apply_world_delta(mut world: ResMut<WorldState>, mut queue: ResMut<DeltaQueue>) {
     let Some(view) = world.next() else {
         return;
     };
@@ -47,7 +35,7 @@ pub fn flush_delta_queue(
         Option<&mut Health>,
         Option<&mut ActorProperties>,
     )>,
-    map: ResMut<EntityMap>,
+    map: Res<EntityMap>,
     assets: Res<AssetServer>,
 ) {
     while let Some(change) = queue.peek() {
@@ -65,7 +53,7 @@ pub fn flush_delta_queue(
             EntityChange::Destroy { id } => {
                 let entity = map.get(*id).unwrap();
 
-                commands.entity(entity).despawn();
+                commands.entity(entity).despawn_recursive();
             }
             EntityChange::Translate { id, translation } => {
                 let entity = map.get(*id).unwrap();

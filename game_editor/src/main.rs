@@ -2,22 +2,20 @@ use bevy::a11y::AccessibilityPlugin;
 use bevy::core_pipeline::CorePipelinePlugin;
 use bevy::pbr::PbrPlugin;
 use bevy::prelude::{
-    shape, App, Assets, Camera3dBundle, Color, Commands, GilrsPlugin, ImagePlugin, Mesh, PbrBundle,
-    PointLight, PointLightBundle, ResMut, StandardMaterial, Transform, Vec3,
+    shape, App, Assets, Color, Commands, GilrsPlugin, ImagePlugin, Mesh, PbrBundle, PointLight,
+    PointLightBundle, ResMut, StandardMaterial, Transform,
 };
 use bevy::render::RenderPlugin;
 use bevy::sprite::SpritePlugin;
 use bevy::text::TextPlugin;
 use bevy::window::WindowPlugin;
 use bevy::winit::WinitPlugin;
-use bevy::{DefaultPlugins, MinimalPlugins};
 use game_common::archive::loader::ModuleLoader;
 use game_common::archive::GameArchive;
 use game_core::CorePlugins;
 use game_input::InputPlugin;
 use game_ui::{InterfaceState, UiPlugin};
 use plugins::camera::CameraPlugin;
-use world::axes::Axis;
 use world::EntityOptions;
 
 mod picker;

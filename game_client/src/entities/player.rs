@@ -1,15 +1,11 @@
 use bevy::{
     math::Vec3,
-    prelude::{Bundle, Camera3dBundle, Component, Transform, *},
+    prelude::{Bundle, Component},
 };
 use game_common::components::player::{FocusedEntity, HostPlayer};
 use game_common::world::source::StreamingSource;
 
-use crate::{
-    components::Rotation,
-    plugins::respawn::RespawnPoint,
-    // ui::{Focus, FocusKind},
-};
+use crate::plugins::respawn::RespawnPoint;
 
 use super::actor::ActorBundle;
 
@@ -26,10 +22,10 @@ pub struct PlayerCharacterBundle {
 }
 
 impl PlayerCharacterBundle {
-    pub fn new(assets: &AssetServer) -> Self {
+    pub fn new() -> Self {
         Self {
             player_character: HostPlayer,
-            actor: ActorBundle::new(assets),
+            actor: ActorBundle::new(),
             // focus: Focus {
             //     kind: FocusKind::World,
             //     changed: false,

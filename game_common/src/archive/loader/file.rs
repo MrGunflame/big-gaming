@@ -1,8 +1,5 @@
-use std::borrow::Cow;
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
-
-use thiserror::Error;
 
 use crate::archive::module::Module;
 use crate::archive::GameArchive;

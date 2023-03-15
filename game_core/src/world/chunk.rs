@@ -1,6 +1,6 @@
 //! Chunk related systems
 
-use bevy::prelude::{Plugin, ResMut, Transform, With};
+use bevy::prelude::{Plugin, Res, ResMut, Transform, With};
 use bevy_ecs::entity::Entity;
 use bevy_ecs::system::Query;
 use game_common::components::player::Player;
@@ -47,7 +47,7 @@ fn transfer_entities(
 }
 
 fn update_player_chunks(
-    mut chunk_registry: ResMut<ChunkRegistry>,
+    chunk_registry: Res<ChunkRegistry>,
     mut players: Query<&Transform, With<Player>>,
 ) {
     for player in &mut players {

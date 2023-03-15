@@ -1,11 +1,11 @@
 use std::collections::VecDeque;
 
-use bevy::prelude::{DespawnRecursiveExt, Entity, With, World};
+use bevy::prelude::{DespawnRecursiveExt, Entity, World};
 use bevy_egui::egui::panel::Side;
 use bevy_egui::egui::{SidePanel, Ui};
 use game_ui::{Context, Widget};
 
-use crate::world::{EntityOptions, Selected};
+use crate::world::EntityOptions;
 
 #[derive(Clone, Debug, Default)]
 pub struct SceneHierarchy {}

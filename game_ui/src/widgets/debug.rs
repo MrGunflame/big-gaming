@@ -1,4 +1,4 @@
-use bevy::diagnostic::{Diagnostic, Diagnostics, FrameTimeDiagnosticsPlugin};
+use bevy::diagnostic::{Diagnostics, FrameTimeDiagnosticsPlugin};
 use bevy::prelude::{Camera3d, Transform, With};
 use bevy_egui::egui::{Area, Pos2};
 use game_common::components::player::HostPlayer;
@@ -7,7 +7,7 @@ use game_common::math::RotationExt;
 use game_common::world::source::StreamingSources;
 use game_common::world::CellId;
 
-use crate::{Context, Widget, WidgetFlags};
+use crate::{Context, Widget};
 
 #[derive(Clone, Default)]
 pub struct DebugInfo {}

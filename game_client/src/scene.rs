@@ -1,8 +1,4 @@
-use std::net::ToSocketAddrs;
-
-use bevy::prelude::{
-    Commands, DespawnRecursiveExt, Entity, EventReader, EventWriter, Events, Query, Res, ResMut,
-};
+use bevy::prelude::{EventReader, EventWriter, Res};
 use game_common::scene::{Scene, SceneTransition};
 use game_net::snapshot::CommandQueue;
 
@@ -45,7 +41,7 @@ fn startup_transition(mut writer: EventWriter<SceneTransition>) {
 }
 
 fn server_connect(
-    mut conn: ResMut<ServerConnection>,
+    conn: Res<ServerConnection>,
     queue: Res<CommandQueue>,
     mut events: EventReader<SceneTransition>,
 ) {

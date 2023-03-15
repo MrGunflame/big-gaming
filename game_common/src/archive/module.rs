@@ -1,6 +1,5 @@
 use std::fmt::{self, Display, Formatter};
 use std::num::ParseIntError;
-use std::path::PathBuf;
 use std::str::FromStr;
 
 use serde::de::{self, Visitor};

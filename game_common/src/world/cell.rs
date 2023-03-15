@@ -1,10 +1,7 @@
-use std::any::Any;
 use std::borrow::Borrow;
 
 use ahash::{HashMap, HashMapExt};
 use glam::{UVec3, Vec3, Vec3A};
-
-use crate::ecs::components::DynamicComponent;
 
 use super::entity::{Entity, EntityQueue};
 

@@ -5,11 +5,11 @@ use std::net::SocketAddr;
 use std::sync::{mpsc, Arc};
 use std::time::Instant;
 
-use bevy::prelude::{Commands, IntoSystemConfig, Res, ResMut, SystemSet, Transform, Vec3};
+use bevy::prelude::{IntoSystemConfig, Res, ResMut, SystemSet, Transform, Vec3};
 use game_common::entity::{Entity, EntityData, EntityMap};
 use game_net::conn::{Connection, ConnectionHandle, ConnectionMode};
 use game_net::proto::{Decode, Packet};
-use game_net::snapshot::{Command, CommandQueue, ConnectionMessage, DeltaQueue, SnapshotId};
+use game_net::snapshot::{Command, CommandQueue, ConnectionMessage, DeltaQueue};
 use game_net::world::WorldState;
 use game_net::Socket;
 use tokio::runtime::Runtime;
@@ -34,7 +34,7 @@ impl bevy::prelude::Plugin for NetPlugin {
 
         let map = EntityMap::default();
 
-        let mut world = WorldState::new();
+        let world = WorldState::new();
 
         app.insert_resource(queue);
         app.insert_resource(world);
@@ -110,8 +110,7 @@ fn flush_command_queue(
     queue: Res<CommandQueue>,
     // mut entities: Query<(&mut Transform,)>,
     // hosts: Query<bevy::ecs::entity::Entity, With<HostPlayer>>,
-    mut conn: ResMut<ServerConnection>,
-    map: ResMut<EntityMap>,
+    conn: Res<ServerConnection>,
     mut world: ResMut<WorldState>,
 ) {
     while let Some(msg) = queue.pop() {

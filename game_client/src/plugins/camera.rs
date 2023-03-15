@@ -7,15 +7,12 @@ use bevy::prelude::{
     With, Without,
 };
 use bevy::time::Time;
-use bevy_rapier3d::prelude::PhysicsSet;
-use game_common::components::actor::{ActorFigure, ActorProperties, MovementSpeed};
+use game_common::components::actor::{ActorProperties, MovementSpeed};
 use game_common::components::camera::CameraMode;
 use game_common::components::movement::Movement;
 use game_common::components::player::HostPlayer;
 
 use crate::components::settings::CameraSettings;
-use crate::components::Rotation;
-use crate::entities::player::CameraPosition;
 
 use super::movement::MovementSet;
 

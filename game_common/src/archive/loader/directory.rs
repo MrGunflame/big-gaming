@@ -1,6 +1,6 @@
 use std::ffi::OsStr;
-use std::fs::{self, File};
-use std::path::{Path, PathBuf};
+use std::fs::{self};
+use std::path::Path;
 
 use crate::archive::module::Module;
 use crate::archive::GameArchive;

@@ -1,18 +1,10 @@
 use std::borrow::Cow;
-use std::mem::MaybeUninit;
 
-use bevy::input::mouse::MouseWheel;
-use bevy::prelude::{EventReader, KeyCode, Query, Res, ResMut};
-use bevy::time::Time;
+use bevy::prelude::{KeyCode, Query, ResMut};
 use game_common::components::camera::CameraMode;
 use game_input::hotkeys::{
     Hotkey, HotkeyCode, HotkeyFilter, HotkeyId, HotkeyReader, Hotkeys, TriggerKind,
 };
-
-use crate::entities::player::CameraPosition;
-use crate::plugins::hotkeys::{Event, EventId, HotkeyStore};
-
-const DEFAULT_TRIGGER_TOGGLE_CAMERA: KeyCode = KeyCode::V;
 
 static mut TOGGLE_CAMERA: Hotkey = Hotkey {
     id: HotkeyId(0),

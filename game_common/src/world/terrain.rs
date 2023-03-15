@@ -1,6 +1,3 @@
-use core::panic;
-use std::ops::Index;
-
 use bevy_rapier3d::prelude::Collider;
 use bevy_render::mesh::Indices;
 use bevy_render::prelude::Mesh;
@@ -83,8 +80,6 @@ impl TerrainMesh {
         for index in 0u32..size_x * size_z {
             let x = index % size_x;
             let z = index / size_z;
-
-            let vert: Vec3 = vertices[index as usize].into();
 
             if x != size_x - 1 && z != size_z - 1 {
                 let x: Vec3 = vertices[index as usize + size_x as usize].into();
@@ -264,7 +259,7 @@ mod tests {
 
     #[test]
     fn test_heightmap() {
-        let mut nodes = vec![0.0, 1.0, 2.0, 3.0];
+        let nodes = vec![0.0, 1.0, 2.0, 3.0];
         let map = Heightmap::from_vec(UVec2::new(2, 2), nodes);
 
         assert_eq!(map.get(0, 0), 0.0);
@@ -275,14 +270,14 @@ mod tests {
 
     #[test]
     fn test_projection() {
-        let mut nodes = vec![
+        let nodes = vec![
             0.0, 1.0, 2.0, // 0
             0.0, 1.0, 2.0, // 1
             0.0, 1.0, 2.0, // 2
         ];
         let map = Heightmap::from_vec(UVec2::new(3, 3), nodes);
 
-        let mut proj = Projection::new(&map, UVec2::new(5, 5));
+        let proj = Projection::new(&map, UVec2::new(5, 5));
 
         assert_eq!(proj.get(0, 0), 0.0);
         assert_eq!(proj.get(0, 1), 0.5);

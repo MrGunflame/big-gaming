@@ -3,7 +3,6 @@
 use std::collections::HashMap;
 
 use bevy_ecs::component::Component;
-use bevy_ecs::prelude::Entity;
 use bevy_ecs::system::Resource;
 
 use super::CellId;

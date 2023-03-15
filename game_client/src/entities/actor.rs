@@ -1,17 +1,16 @@
 use std::time::Duration;
 
-use bevy::prelude::{AssetServer, Bundle, Transform, Vec3};
+use bevy::prelude::{Bundle, Vec3};
 use bevy_rapier3d::prelude::{
     Ccd, CharacterAutostep, CharacterLength, KinematicCharacterController, LockedAxes, RigidBody,
     Velocity,
 };
 use game_common::components::actor::{
-    Actor, ActorFigure, ActorFlag, ActorFlags, ActorState, MovementSpeed, SpawnPoint, SpawnPoints,
+    Actor, ActorFigure, ActorFlags, MovementSpeed, SpawnPoint, SpawnPoints,
 };
 use game_common::components::animation::AnimationQueue;
 use game_common::components::inventory::{Equipment, EquipmentSlot, Inventory};
 use game_common::components::items::{Cooldown, Item, ItemId, Magazine};
-use game_common::components::transform::PreviousTransform;
 
 use crate::bundles::VisibilityBundle;
 use crate::components::Rotation;
@@ -49,7 +48,7 @@ pub struct ActorBundle {
 }
 
 impl ActorBundle {
-    pub fn new(assets: &AssetServer) -> Self {
+    pub fn new() -> Self {
         let mut equipment = Equipment::new();
         equipment.insert(
             EquipmentSlot::MAIN_HAND,

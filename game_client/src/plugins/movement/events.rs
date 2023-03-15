@@ -2,7 +2,7 @@ use bevy::prelude::{Commands, Entity, Query, Res, ResMut, Transform, With};
 use bevy::time::Time;
 use bevy_rapier3d::prelude::Velocity;
 use game_common::components::actor::{ActorFlag, ActorFlags, ActorProperties, MovementSpeed};
-use game_common::components::movement::{Jump, Movement, Rotate, RotateQueue};
+use game_common::components::movement::{Jump, Movement, RotateQueue};
 use game_common::entity::EntityMap;
 use game_common::math::RotationExt;
 use game_net::snapshot::Command;
@@ -59,13 +59,12 @@ pub fn handle_movement_events(
 }
 
 pub fn handle_rotate_events(
-    mut commands: Commands,
     conn: Res<ServerConnection>,
     mut actors: Query<(Entity, &ActorFlags, &mut ActorProperties, &mut RotateQueue)>,
     mut world: ResMut<WorldState>,
     map: ResMut<EntityMap>,
 ) {
-    for (entity, flags, mut props, mut rotate) in &mut actors {
+    for (entity, flags, props, mut rotate) in &mut actors {
         if !flags.contains(ActorFlag::CAN_ROTATE) {
             continue;
         }

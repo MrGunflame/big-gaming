@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use bevy_egui::egui::{CentralPanel, Pos2, Window};
+use bevy_egui::egui::CentralPanel;
 use game_common::scene::{Scene, SceneTransition};
 
 use crate::{Context, Widget, WidgetFlags};

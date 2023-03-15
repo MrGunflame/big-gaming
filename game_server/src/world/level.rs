@@ -1,7 +1,6 @@
 use bevy::prelude::{Query, Transform};
 use game_common::components::transform::PreviousTransform;
 use game_common::world::source::StreamingSource;
-use game_common::world::CellId;
 
 pub fn update_streaming_sources(
     // mut sources: ResMut<StreamingSource>,

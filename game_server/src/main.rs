@@ -1,15 +1,11 @@
 use std::time::Duration;
 
-use bevy::prelude::{
-    shape, App, Assets, Color, Commands, Mesh, PbrBundle, ResMut, StandardMaterial, Transform,
-};
+use bevy::prelude::{App, Commands};
 use bevy::transform::TransformBundle;
-use bevy_rapier3d::prelude::{Collider, NoUserData, RapierPhysicsPlugin, RigidBody};
+use bevy_rapier3d::prelude::{Collider, RigidBody};
 use clap::Parser;
 use game_common::archive::loader::ModuleLoader;
 use game_common::archive::GameArchive;
-use game_common::components::object::{Object, ObjectId};
-use game_common::entity::{Entity, EntityData, EntityId};
 use game_core::CorePlugins;
 use plugins::ServerPlugins;
 use server::Server;

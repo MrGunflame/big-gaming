@@ -2,7 +2,7 @@ use std::net::ToSocketAddrs;
 use std::sync::Arc;
 use std::time::Instant;
 
-use bevy::prelude::{Entity, EventWriter, ResMut, Resource};
+use bevy::prelude::{Entity, EventWriter, Res, Resource};
 use game_common::entity::{EntityId, EntityMap};
 use game_common::scene::{Scene, SceneTransition, ServerError};
 use game_net::conn::ConnectionHandle;
@@ -97,7 +97,7 @@ impl ServerConnection {
 }
 
 pub fn update_connection_state(
-    mut conn: ResMut<ServerConnection>,
+    conn: Res<ServerConnection>,
     mut writer: EventWriter<SceneTransition>,
 ) {
     let mut rx = conn.inner.state_rx.lock();

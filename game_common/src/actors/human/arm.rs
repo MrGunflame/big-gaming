@@ -3,7 +3,7 @@ use bevy_ecs::prelude::Bundle;
 use bevy_rapier3d::prelude::Collider;
 use bevy_scene::SceneBundle;
 use bevy_transform::prelude::Transform;
-use glam::{Quat, Vec3};
+use glam::Vec3;
 
 use crate::components::actor::ActorLimb;
 

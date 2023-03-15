@@ -1,8 +1,8 @@
 //! Render cell borders
 
 use bevy::prelude::{
-    shape, AlphaMode, Assets, Color, Commands, Component, DespawnRecursiveExt, Entity, Material,
-    MaterialMeshBundle, Mesh, PbrBundle, Query, ResMut, StandardMaterial, Transform, Vec3, With,
+    shape, AlphaMode, Assets, Commands, Component, DespawnRecursiveExt, Entity, Material,
+    MaterialMeshBundle, Mesh, Query, ResMut, Transform, Vec3, With,
 };
 use bevy::reflect::TypeUuid;
 use bevy::render::render_resource::{AsBindGroup, ShaderRef};
@@ -28,8 +28,8 @@ pub struct CellFrame;
 
 pub fn render_cell_borders(
     mut commands: Commands,
-    mut players: Query<&Transform, With<HostPlayer>>,
-    mut frames: Query<Entity, With<CellFrame>>,
+    players: Query<&Transform, With<HostPlayer>>,
+    frames: Query<Entity, With<CellFrame>>,
     mut materials: ResMut<Assets<CellFrameMaterial>>,
     mut meshes: ResMut<Assets<Mesh>>,
 ) {

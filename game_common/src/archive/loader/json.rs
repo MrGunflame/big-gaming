@@ -1,4 +1,3 @@
-use std::borrow::Cow;
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;

@@ -1,12 +1,9 @@
 //! The core game systems.
 
 use animation::AnimationPlugin;
-use bevy::core_pipeline::CorePipelinePlugin;
 use bevy::diagnostic::DiagnosticsPlugin;
 use bevy::gltf::GltfPlugin;
-use bevy::input::InputPlugin;
 use bevy::log::LogPlugin;
-use bevy::pbr::PbrPlugin;
 use bevy::prelude::{
     AddAsset, AssetPlugin, FrameCountPlugin, HierarchyPlugin, Mesh, Plugin, TaskPoolPlugin,
     TypeRegistrationPlugin,

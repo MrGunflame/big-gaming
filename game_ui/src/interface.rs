@@ -3,7 +3,7 @@
 use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign};
 
 use bevy::prelude::{Resource, With};
-use bevy::window::{PrimaryWindow, Window};
+use bevy::window::PrimaryWindow;
 use bevy_ecs::world::World;
 use bevy_egui::EguiContext;
 

@@ -1,5 +1,5 @@
 use bevy::prelude::World;
-use bevy_egui::egui::{Area, CentralPanel, Pos2, Ui, Window};
+use bevy_egui::egui::{CentralPanel, Ui};
 use game_common::scene::{Scene, SceneTransition};
 
 use crate::{Widget, WidgetFlags};

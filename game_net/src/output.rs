@@ -2,15 +2,13 @@ use std::cmp::Ordering;
 use std::collections::BinaryHeap;
 use std::future::Future;
 use std::pin::Pin;
-use std::task::{ready, Context, Poll, Waker};
+use std::task::{ready, Context, Poll};
 use std::time::{Duration, Instant};
 
-use futures::pin_mut;
-use futures::FutureExt;
 use pin_project::pin_project;
 use tokio::time::Sleep;
 
-use crate::snapshot::{Command, CommandQueue, ConnectionMessage};
+use crate::snapshot::{CommandQueue, ConnectionMessage};
 
 #[derive(Debug)]
 #[pin_project]

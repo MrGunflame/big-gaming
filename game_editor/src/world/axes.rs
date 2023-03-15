@@ -1,9 +1,7 @@
 use bevy::prelude::{
-    shape, Assets, Color, Commands, Component, Entity, Mesh, PbrBundle, Quat, Query, ResMut,
-    Resource, StandardMaterial, Transform, Vec3, With,
+    shape, Assets, Commands, Component, Entity, Mesh, PbrBundle, Quat, Query, ResMut,
+    StandardMaterial, Transform, Vec3, With,
 };
-use bevy::render::mesh::Indices;
-use bevy::render::render_resource::PrimitiveTopology;
 
 use super::{EntityOptions, COLOR_X, COLOR_Y, COLOR_Z};
 

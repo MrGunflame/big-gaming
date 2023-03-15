@@ -8,11 +8,10 @@ use game_common::entity::{Entity, EntityData, EntityId};
 use game_common::world::CellId;
 use glam::{Quat, Vec3};
 #[cfg(feature = "tracing")]
-use tracing::{event, span, Level, Span};
+use tracing::{span, Level, Span};
 
 use crate::proto::sequence::Sequence;
-use crate::proto::timestamp::Timestamp;
-use crate::snapshot::{EntityChange, SnapshotId};
+use crate::snapshot::EntityChange;
 
 /// The world state at constant time intervals.
 #[derive(Clone, Debug, Resource)]

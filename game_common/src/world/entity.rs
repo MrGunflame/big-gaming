@@ -1,6 +1,4 @@
 use bevy_ecs::system::{Commands, Resource};
-use bevy_pbr::PbrBundle;
-use bevy_scene::SceneBundle;
 use bevy_transform::components::Transform;
 use bevy_transform::TransformBundle;
 use glam::{Quat, Vec3};
@@ -8,7 +6,7 @@ use glam::{Quat, Vec3};
 use crate::archive::GameArchive;
 use crate::bundles::VisibilityBundle;
 use crate::components::items::{ItemId, LoadItem};
-use crate::components::object::{self, LoadObject, ObjectId};
+use crate::components::object::{LoadObject, ObjectId};
 use crate::components::terrain::LoadTerrain;
 
 use super::terrain::TerrainMesh;

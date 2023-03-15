@@ -1,5 +1,5 @@
 use bevy::prelude::{AssetServer, Commands, Entity, Query, Res, ResMut, Transform};
-use bevy::scene::{Scene, SceneBundle};
+use bevy::scene::Scene;
 use game_common::archive::GameArchive;
 use game_common::components::object::LoadObject;
 use game_common::components::transform::PreviousTransform;
@@ -73,7 +73,7 @@ fn update_streaming_sources(
 fn process_queue(
     sources: Res<StreamingSources>,
     mut queue: ResMut<EntityQueue>,
-    mut level: ResMut<Level>,
+    level: Res<Level>,
 ) {
     for id in sources.loaded() {
         tracing::info!("loading cell {:?}", id);
@@ -89,7 +89,7 @@ fn process_queue(
 
 fn flush_entity_queue(
     mut commands: Commands,
-    mut archive: Res<GameArchive>,
+    archive: Res<GameArchive>,
     mut queue: ResMut<EntityQueue>,
 ) {
     while let Some(entity) = queue.pop() {
@@ -99,9 +99,9 @@ fn flush_entity_queue(
 
 fn load_objects(
     mut commands: Commands,
-    mut archive: Res<GameArchive>,
-    mut assets: Res<AssetServer>,
-    mut objects: Query<(Entity, &LoadObject)>,
+    archive: Res<GameArchive>,
+    assets: Res<AssetServer>,
+    objects: Query<(Entity, &LoadObject)>,
 ) {
     for (entity, object) in &objects {
         tracing::info!("loading object {:?}", object.id);

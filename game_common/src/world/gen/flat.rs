@@ -3,11 +3,10 @@ use glam::{UVec2, Vec3};
 use noise::{NoiseFn, Simplex};
 
 use crate::components::items::ItemId;
-use crate::components::object::ObjectId;
-use crate::world::entity::{Item, Object};
+use crate::world::entity::Item;
 use crate::world::gen::Generate;
 use crate::world::terrain::{Heightmap, TerrainMesh};
-use crate::world::{Cell, CELL_SIZE, CELL_SIZE_UINT};
+use crate::world::{Cell, CELL_SIZE_UINT};
 
 pub struct FlatGenerator;
 

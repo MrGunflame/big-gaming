@@ -1,25 +1,23 @@
 use std::time::{Duration, Instant};
 
 use bevy::prelude::{
-    AssetServer, Commands, DespawnRecursiveExt, IntoSystemConfig, Plugin, Quat, Query, Res, ResMut,
+    AssetServer, Commands, DespawnRecursiveExt, IntoSystemConfig, Plugin, Query, Res, ResMut,
     Transform, Vec3,
 };
-use bevy_rapier3d::prelude::{Collider, Velocity};
+use bevy_rapier3d::prelude::Velocity;
 use game_common::actors::human::Human;
 use game_common::bundles::ActorBundle;
 use game_common::components::combat::Health;
 use game_common::components::player::Player;
 use game_common::components::race::RaceId;
 use game_common::entity::{Entity, EntityData, EntityId, EntityMap};
-use game_common::world::entity::{Actor as WorldActor, Object as WorldObject};
 use game_common::world::source::StreamingSource;
 use game_common::world::CellId;
-use game_net::proto::Frame;
-use game_net::snapshot::{Command, CommandQueue, EntityChange, Snapshot};
+use game_net::snapshot::{Command, CommandQueue, EntityChange};
 use game_net::world::WorldState;
 
 use crate::conn::Connections;
-use crate::entity::{self, ServerEntityGenerator};
+use crate::entity::ServerEntityGenerator;
 
 pub struct ServerPlugins;
 
@@ -34,12 +32,11 @@ impl Plugin for ServerPlugins {
 }
 
 fn flush_command_queue(
-    mut gen: Res<ServerEntityGenerator>,
     mut commands: Commands,
-    mut connections: ResMut<Connections>,
+    connections: Res<Connections>,
     queue: Res<CommandQueue>,
     mut entities: Query<(&Entity, &mut Transform, &mut Velocity)>,
-    mut map: ResMut<EntityMap>,
+    map: Res<EntityMap>,
     mut world: ResMut<WorldState>,
     assets: Res<AssetServer>,
 ) {
@@ -213,10 +210,13 @@ fn update_snapshots(
                 state.cells.push(host.transform.translation.into());
 
                 for id in unload {
+                    dbg!(id);
                     let cell = view.cell(id).unwrap();
 
                     // Destroy all entities (for the client) from the unloaded cell.
+                    dbg!(cell.len());
                     for entity in cell.iter() {
+                        dbg!(entity);
                         changes.push(EntityChange::Destroy { id: entity.id });
                     }
                 }

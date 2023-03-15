@@ -1,4 +1,4 @@
-use bevy::prelude::{Commands, Component, Entity, EventReader, Query};
+use bevy::prelude::{Commands, Component, Entity, Query};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Component)]
 pub struct Health(u32);

@@ -17,55 +17,25 @@ mod utils;
 // mod window;
 mod world;
 
-use std::io::Write;
-use std::time::Duration;
-
 use bevy::a11y::AccessibilityPlugin;
 use bevy::core_pipeline::CorePipelinePlugin;
-use bevy::diagnostic::DiagnosticsPlugin;
-use bevy::gltf::GltfPlugin;
-use bevy::input::InputPlugin;
-use bevy::log::LogPlugin;
 use bevy::pbr::PbrPlugin;
 use bevy::prelude::*;
-use bevy::render::mesh::Indices;
-use bevy::render::render_resource::PrimitiveTopology;
 use bevy::render::RenderPlugin;
-use bevy::scene::ScenePlugin;
 use bevy::sprite::SpritePlugin;
 use bevy::text::TextPlugin;
-use bevy::time::TimePlugin;
 use bevy::winit::WinitPlugin;
 use bevy_rapier3d::prelude::*;
 use bevy_rapier3d::render::RapierDebugRenderPlugin;
-use bundles::ObjectBundle;
 use clap::Parser;
 use components::Rotation;
-use entities::actor::ActorBundle;
-use entities::item::ItemBundle;
-use entities::player::PlayerCharacterBundle;
-use game_ai::bundles::AiBundle;
-use game_ai::components::AiController;
-use game_ai::AiPlugin;
-use game_audio::AudioPlugin;
-use game_common::actors::human::Human;
 use game_common::archive::loader::ModuleLoader;
 use game_common::archive::GameArchive;
-use game_common::components::actor::Actor;
-use game_common::components::interaction::InteractionQueue;
-use game_common::components::items::{Cooldown, Item, ItemId, Magazine};
 use game_common::scene::SceneTransition;
-use game_common::world::chunk::ChunkRegistry;
-use game_common::world::terrain::{Heightmap, TerrainMesh};
-use game_core::combat::CombatPlugin;
-use game_core::projectile::ProjectilePlugin;
-use game_core::world::{ChunkPlugin, LevelPlugin, SpawnPlugin};
 use game_core::CorePlugins;
 use game_ui::UiPlugin;
 use net::NetPlugin;
-use noise::NoiseFn;
 use plugins::interactions::InteractionsPlugin;
-use plugins::respawn::RespawnPlugin;
 use plugins::{CameraPlugin, HotkeyPlugin, MovementPlugin};
 
 #[derive(Clone, Debug, Default, Parser)]
@@ -152,7 +122,6 @@ fn setup(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    asset_server: Res<AssetServer>,
 ) {
     // THE FLOOOR
     // commands
@@ -390,8 +359,6 @@ fn setup(
     // commands.spawn(ActorBundle::new(&asset_server));
 
     // Terrain mesh
-    let size_x = 64;
-    let size_y = 64;
 
     // let mut uvs = Vec::new();
 

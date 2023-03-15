@@ -6,7 +6,7 @@
 use std::sync::Arc;
 
 use bevy::prelude::{AssetServer, Bundle, DespawnRecursiveExt, Entity, Handle, World};
-use bevy::scene::{Scene, SceneBundle};
+use bevy::scene::Scene;
 use game_common::components::interaction::{Interaction, InteractionId, Interactions};
 use game_common::components::inventory::Inventory;
 use game_common::components::items::Item;

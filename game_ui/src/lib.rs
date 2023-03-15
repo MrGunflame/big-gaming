@@ -11,13 +11,12 @@ use bevy::prelude::{Plugin, World};
 
 use cursor::Cursor;
 pub use interface::{Context, InterfaceState, Widget, WidgetFlags};
-use widgets::{Crosshair, Health, Weapon};
 
 pub struct UiPlugin;
 
 impl Plugin for UiPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
-        let mut state = InterfaceState::new();
+        let state = InterfaceState::new();
 
         app.add_plugin(bevy_egui::EguiPlugin)
             .add_plugin(FrameTimeDiagnosticsPlugin)

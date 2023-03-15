@@ -20,7 +20,7 @@ use crate::proto::sequence::Sequence;
 use crate::proto::shutdown::{Shutdown, ShutdownReason};
 use crate::proto::timestamp::Timestamp;
 use crate::proto::{Encode, Frame, Header, Packet, PacketBody};
-use crate::snapshot::{Command, CommandQueue, ConnectionMessage, SnapshotId};
+use crate::snapshot::{Command, CommandQueue, ConnectionMessage};
 use crate::socket::Socket;
 
 #[derive(Debug, Error)]

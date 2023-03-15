@@ -1,5 +1,5 @@
 use bevy::prelude::Bundle;
-use bevy_rapier3d::prelude::{AdditionalMassProperties, Ccd, Collider, RigidBody, Velocity};
+use bevy_rapier3d::prelude::{Ccd, Collider, RigidBody, Velocity};
 
 #[derive(Bundle)]
 pub struct PhysicsBundle {

@@ -4,7 +4,7 @@ use std::borrow::Cow;
 
 use bevy::prelude::{
     Camera3d, Commands, Entity, EventReader, IntoSystemConfig, IntoSystemSetConfig, KeyCode,
-    Plugin, Quat, Query, ResMut, SystemSet, Transform, Vec3, With, Without,
+    Plugin, Quat, Query, ResMut, SystemSet, Vec3, With, Without,
 };
 use game_common::components::actor::{ActorProperties, MovementSpeed};
 use game_common::components::movement::{Jump, Movement, Rotate, RotateQueue};
@@ -322,29 +322,17 @@ impl Angle {
 }
 
 fn mouse_movement(
-    mut commands: Commands,
     mut events: EventReader<MouseMotion>,
-    mut cameras: Query<&mut Transform, With<Camera3d>>,
     mut players: Query<
-        (
-            Entity,
-            &mut Transform,
-            &mut RotateQueue,
-            &mut ActorProperties,
-        ),
+        (&mut RotateQueue, &mut ActorProperties),
         (With<HostPlayer>, Without<Camera3d>),
     >,
 ) {
-    let Ok(mut camera) = cameras.get_single_mut() else {
-        return;
-    };
-
-    let Ok((entity, mut player, mut queue, mut props)) = players.get_single_mut() else {
+    let Ok((mut queue, mut props)) = players.get_single_mut() else {
         return;
     };
 
     let mut changed = false;
-    let mut rotation = Quat::IDENTITY;
 
     for event in events.iter() {
         let yaw = event.delta.x * 0.001;

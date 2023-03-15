@@ -1,7 +1,6 @@
 use std::borrow::Borrow;
 use std::fmt::{self, Debug, Formatter};
 
-use crate::id::NamespacedId;
 use crate::localization::LocalizedString;
 
 use ahash::AHashMap;

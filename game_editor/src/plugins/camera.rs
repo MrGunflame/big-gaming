@@ -1,9 +1,8 @@
 use bevy::input::mouse::{MouseMotion, MouseWheel};
 use bevy::prelude::{
-    Camera3d, Camera3dBundle, Commands, Component, Entity, EventReader, Input, KeyCode, Mat3,
-    MouseButton, Plugin, Quat, Query, Res, Transform, Vec3, With,
+    Camera3d, Camera3dBundle, Commands, Component, EventReader, Input, KeyCode, Mat3, MouseButton,
+    Plugin, Quat, Query, Res, Transform, Vec3, With,
 };
-use game_common::math::RotationExt;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct CameraPlugin;
