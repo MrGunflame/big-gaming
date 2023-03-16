@@ -3,8 +3,9 @@ use bevy_render::mesh::Indices;
 use bevy_render::prelude::Mesh;
 use bevy_render::render_resource::PrimitiveTopology;
 use glam::{UVec2, Vec3};
+use image::{GenericImageView, Luma, Primitive};
 
-use super::{CellId, CELL_SIZE_UINT};
+use super::{CellId, CELL_SIZE, CELL_SIZE_UINT};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct TerrainMesh {
@@ -185,6 +186,29 @@ impl Heightmap {
         Self { size, nodes }
     }
 
+    pub fn from_image<T, P>(view: T) -> Self
+    where
+        T: GenericImageView<Pixel = Luma<P>>,
+        P: Primitive,
+    {
+        let (x, y) = view.dimensions();
+
+        let nodes = view
+            .pixels()
+            .map(|(_, _, p)| {
+                let p = p.0[0];
+                let v = p.to_f32().unwrap();
+
+                // P::MAX is the bounds of the cell.
+                let res = v / (P::DEFAULT_MAX_VALUE.to_f32().unwrap() / CELL_SIZE.y);
+                debug_assert!(res <= CELL_SIZE.y);
+                res
+            })
+            .collect();
+
+        Self::from_vec(UVec2::new(x, y), nodes)
+    }
+
     pub fn get(&self, x: u32, y: u32) -> f32 {
         assert!(x < self.size.x && y < self.size.y);
 
@@ -199,6 +223,16 @@ impl AsRef<[f32]> for Heightmap {
     #[inline]
     fn as_ref(&self) -> &[f32] {
         &self.nodes
+    }
+}
+
+impl<T, P> From<T> for Heightmap
+where
+    T: GenericImageView<Pixel = Luma<P>>,
+    P: Primitive,
+{
+    fn from(value: T) -> Self {
+        Self::from_image(value)
     }
 }
 
