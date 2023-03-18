@@ -8,4 +8,8 @@ pub struct ConnectionState {
     pub cells: Vec<CellId>,
     /// The entity that is the host.
     pub id: Option<EntityId>,
+    /// The snapshot index that the client's view is located at (currently modified).
+    ///
+    /// `head - 1..head` is the delta period.
+    pub head: usize,
 }

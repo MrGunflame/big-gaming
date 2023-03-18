@@ -52,6 +52,10 @@ impl WorldState {
         })
     }
 
+    pub fn index(&self, ts: Instant) -> Option<usize> {
+        self.get_index(ts)
+    }
+
     pub fn len(&self) -> usize {
         self.snapshots.len()
     }
@@ -97,7 +101,7 @@ impl WorldState {
     }
 
     // FIXME: This should run while modifying WorldViewMut (e.g. on Drop).
-    pub fn patch_delta(&mut self, mut ts: Instant) {
+    pub fn patch_delta(&mut self, ts: Instant) {
         let Some(mut index) = self.get_index(ts) else {
             return;
         };
@@ -175,6 +179,14 @@ pub struct WorldViewRef<'a> {
 }
 
 impl<'a> WorldViewRef<'a> {
+    pub fn len(&self) -> usize {
+        self.snapshot.entities.entities.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     pub fn get(&self, id: EntityId) -> Option<&Entity> {
         self.snapshot.entities.get(id)
     }
@@ -584,6 +596,8 @@ impl<'a> CellViewRef<'a> {
                                 id: entity.id,
                                 translation: new.transform.translation,
                             });
+
+                            dbg!(new.transform.translation);
                         }
 
                         if entity.transform.rotation != new.transform.rotation {

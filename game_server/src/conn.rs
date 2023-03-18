@@ -1,5 +1,6 @@
 use std::borrow::Borrow;
 use std::sync::Arc;
+use std::time::Instant;
 
 use ahash::HashMap;
 use bevy::prelude::Resource;
@@ -97,6 +98,7 @@ impl ConnectionData {
                 full_update: true,
                 cells: vec![],
                 id: None,
+                head: 0,
             }),
         }
     }

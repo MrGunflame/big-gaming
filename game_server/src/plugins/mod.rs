@@ -43,8 +43,12 @@ fn flush_command_queue(
     while let Some(msg) = queue.pop() {
         tracing::trace!("got command {:?}", msg.command);
 
-        // Get the world state at the time the client sent the command.
         let client_time = Instant::now() - Duration::from_millis(100);
+
+        connections.get_mut(msg.id).unwrap().data.state.write().head =
+            world.index(client_time).unwrap_or(0);
+
+        // Get the world state at the time the client sent the command.
         let Some(mut view) = world.get_mut(client_time) else {
             tracing::warn!("No snapshots yet");
             return;
@@ -162,21 +166,19 @@ fn update_snapshots(
     // mut entities: Query<(&mut Entity, &Transform)>,
     mut world: ResMut<WorldState>,
 ) {
-    let Some(prev) = world.at(world.len().wrapping_sub(2)) else {
-        world.insert(Instant::now());
-        return;
-    };
-
-    let Some(curr) = world.at(world.len().wrapping_sub(1)) else {
-        world.insert(Instant::now());
-        return;
-    };
-
     for conn in connections.iter_mut() {
         let mut state = conn.data.state.write();
 
         let Some(id) = state.id else {
             continue
+        };
+
+        let Some(prev) = world.at(state.head.saturating_sub(1)) else {
+            return;
+        };
+
+        let Some(curr) = world.at(world.len().wrapping_sub(1)) else {
+            return;
         };
 
         if state.full_update {
@@ -227,8 +229,6 @@ fn update_snapshots(
                 }
 
                 // Create all entities in loaded cells.
-                dbg!(&cell_id);
-                dbg!(&curr);
                 let cell = curr.cell(cell_id).unwrap();
 
                 for entity in cell.iter() {
@@ -241,7 +241,6 @@ fn update_snapshots(
                         id: entity.id,
                         data: entity.clone(),
                     });
-                    dbg!("c");
                 }
 
                 // Host in same cell
