@@ -51,7 +51,13 @@ pub fn flush_delta_queue(
                 return;
             }
             EntityChange::Destroy { id } => {
-                let entity = map.get(*id).unwrap();
+                let Some(entity) = map.get(*id) else {
+                    tracing::warn!("attempted to destroy a non-existent entity: {:?}", id);
+                    queue.pop().unwrap();
+                    continue;
+                };
+
+                dbg!(entity);
 
                 commands.entity(entity).despawn_recursive();
             }

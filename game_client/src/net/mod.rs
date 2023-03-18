@@ -150,6 +150,8 @@ fn flush_command_queue(
                 });
             }
             Command::EntityDestroy { id } => {
+                dbg!(id);
+
                 view.despawn(id);
             }
             Command::EntityTranslate { id, translation } => {

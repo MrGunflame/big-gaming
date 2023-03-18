@@ -56,6 +56,10 @@ impl WorldState {
         self.snapshots.len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     pub fn insert(&mut self, ts: Instant) {
         #[cfg(debug_assertions)]
         if let Some(snapshot) = self.snapshots.back() {
@@ -129,6 +133,12 @@ impl WorldState {
 
     pub fn front(&self) -> Option<WorldViewRef<'_>> {
         self.snapshots.back().map(|s| WorldViewRef { snapshot: s })
+    }
+
+    pub fn at(&self, index: usize) -> Option<WorldViewRef<'_>> {
+        self.snapshots
+            .get(index)
+            .map(|s| WorldViewRef { snapshot: s })
     }
 
     fn get_index(&self, ts: Instant) -> Option<usize> {
@@ -257,6 +267,11 @@ impl<'a> WorldViewRef<'a> {
 
         delta
     }
+
+    #[inline]
+    pub fn creation(&self) -> Instant {
+        self.snapshot.creation
+    }
 }
 
 #[derive(Debug)]
@@ -311,6 +326,11 @@ impl<'a> WorldViewMut<'a> {
 
     pub fn delta(&self) -> &[EntityChange] {
         &self.delta
+    }
+
+    #[inline]
+    pub fn creation(&self) -> Instant {
+        self.snapshot.creation
     }
 }
 
@@ -441,8 +461,7 @@ impl Snapshot {
             EntityChange::Translate { id, translation } => {
                 let entity = self.entities.get_mut(id).unwrap();
 
-                self.cells
-                    .insert(CellId::from(entity.transform.translation));
+                self.cells.insert(CellId::from(translation));
 
                 entity.transform.translation = translation;
             }
@@ -548,5 +567,119 @@ impl<'a> CellViewRef<'a> {
             .iter()
             .filter(|(_, e)| CellId::from(e.transform.translation) == self.id)
             .map(|(_, e)| e)
+    }
+
+    pub fn delta(this: Option<Self>, next: CellViewRef<'_>) -> Vec<EntityChange> {
+        let mut entities =
+            HashMap::<EntityId, Entity>::from_iter(next.iter().cloned().map(|e| (e.id, e)));
+
+        let mut delta = Vec::new();
+
+        if let Some(view) = this {
+            for entity in view.iter() {
+                match entities.remove(&entity.id) {
+                    Some(new) => {
+                        if entity.transform.translation != new.transform.translation {
+                            delta.push(EntityChange::Translate {
+                                id: entity.id,
+                                translation: new.transform.translation,
+                            });
+                        }
+
+                        if entity.transform.rotation != new.transform.rotation {
+                            delta.push(EntityChange::Rotate {
+                                id: entity.id,
+                                rotation: new.transform.rotation,
+                            });
+                        }
+
+                        match (&entity.data, &new.data) {
+                            (
+                                EntityData::Actor { race: _, health },
+                                EntityData::Actor {
+                                    race: _,
+                                    health: new,
+                                },
+                            ) => {
+                                if health != new {
+                                    delta.push(EntityChange::Health {
+                                        id: entity.id,
+                                        health: *new,
+                                    });
+                                }
+                            }
+                            _ => (),
+                        }
+                    }
+                    None => {
+                        delta.push(EntityChange::Destroy { id: entity.id });
+                    }
+                }
+            }
+        }
+
+        for entity in entities.into_values() {
+            delta.push(EntityChange::Create {
+                id: entity.id,
+                data: entity,
+            });
+        }
+
+        delta
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    macro_rules! assert_get {
+        ($world:expr, $in:expr) => {
+            assert!({
+                if let Some(v) = $world.get($in) {
+                    v.creation() == $in
+                } else {
+                    false
+                }
+            })
+        };
+        ($world:expr, $in:expr, $out:expr) => {
+            assert!({
+                if let Some(v) = $world.get($in) {
+                    v.creation() == $out
+                } else {
+                    false
+                }
+            })
+        };
+    }
+
+    #[test]
+    fn test_world_times() {
+        let mut world = WorldState::new();
+
+        assert_eq!(world.len(), 0);
+        assert_eq!(world.is_empty(), true);
+        assert!(matches!(world.next(), None));
+
+        let now = Instant::now();
+
+        let t1 = now;
+        let t2 = now + Duration::from_millis(10);
+        let t3 = now + Duration::from_millis(20);
+
+        world.insert(t1);
+        assert_eq!(world.len(), 1);
+        assert_get!(world, t1);
+
+        world.insert(t2);
+        assert_eq!(world.len(), 2);
+        assert_get!(world, t2);
+
+        world.insert(t3);
+        assert_eq!(world.len(), 3);
+        assert_get!(world, t3);
+
+        assert_get!(world, t1 + Duration::from_millis(5), t2);
     }
 }

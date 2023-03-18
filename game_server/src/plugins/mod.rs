@@ -14,7 +14,7 @@ use game_common::entity::{Entity, EntityData, EntityId, EntityMap};
 use game_common::world::source::StreamingSource;
 use game_common::world::CellId;
 use game_net::snapshot::{Command, CommandQueue, EntityChange};
-use game_net::world::WorldState;
+use game_net::world::{CellViewRef, WorldState};
 
 use crate::conn::Connections;
 use crate::entity::ServerEntityGenerator;
@@ -162,6 +162,16 @@ fn update_snapshots(
     // mut entities: Query<(&mut Entity, &Transform)>,
     mut world: ResMut<WorldState>,
 ) {
+    let Some(prev) = world.at(world.len().wrapping_sub(2)) else {
+        world.insert(Instant::now());
+        return;
+    };
+
+    let Some(curr) = world.at(world.len().wrapping_sub(1)) else {
+        world.insert(Instant::now());
+        return;
+    };
+
     for conn in connections.iter_mut() {
         let mut state = conn.data.state.write();
 
@@ -175,12 +185,9 @@ fn update_snapshots(
             // Send full state
             // The delta from the current frame is "included" in the
             // full update.
-            let Some(view) = world.front() else {
-                continue;
-            };
 
-            let host = view.get(id).unwrap();
-            let cell = view.cell(host.transform.translation.into()).unwrap();
+            let host = curr.get(id).unwrap();
+            let cell = curr.cell(host.transform.translation.into()).unwrap();
 
             for entity in cell.iter() {
                 conn.data.handle.send_cmd(Command::EntityCreate {
@@ -191,14 +198,13 @@ fn update_snapshots(
                 });
             }
         } else {
-            let mut changes = world.delta().to_vec();
+            // let mut changes = world.delta().to_vec();
+            let mut changes = Vec::new();
 
-            let Some(view) = world.front() else {
-                continue;
-            };
-            let host = view.get(id).unwrap();
+            let host = curr.get(id).unwrap();
 
             let cell_id = CellId::from(host.transform.translation);
+            // Host changed cells
             if !state.cells.contains(&cell_id) {
                 tracing::info!("Moving host from {:?} to {:?}", state.cells, cell_id);
 
@@ -209,17 +215,41 @@ fn update_snapshots(
 
                 state.cells.push(host.transform.translation.into());
 
+                // Destroy all entities in unloaded cells.
                 for id in unload {
-                    dbg!(id);
-                    let cell = view.cell(id).unwrap();
+                    let cell = curr.cell(id).unwrap();
 
                     // Destroy all entities (for the client) from the unloaded cell.
-                    dbg!(cell.len());
                     for entity in cell.iter() {
-                        dbg!(entity);
                         changes.push(EntityChange::Destroy { id: entity.id });
+                        dbg!("destroy {:?}", entity);
                     }
                 }
+
+                // Create all entities in loaded cells.
+                dbg!(&cell_id);
+                dbg!(&curr);
+                let cell = curr.cell(cell_id).unwrap();
+
+                for entity in cell.iter() {
+                    // Don't duplicate the player actor.
+                    if entity.id == host.id {
+                        continue;
+                    }
+
+                    changes.push(EntityChange::Create {
+                        id: entity.id,
+                        data: entity.clone(),
+                    });
+                    dbg!("c");
+                }
+
+                // Host in same cell
+            } else {
+                let prev_cell = prev.cell(cell_id).unwrap();
+                let curr_cell = curr.cell(cell_id).unwrap();
+
+                changes.extend(CellViewRef::delta(Some(prev_cell), curr_cell));
             }
 
             conn.set_delta(changes);
