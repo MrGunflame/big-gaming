@@ -99,27 +99,6 @@ impl WorldState {
         }
     }
 
-    // FIXME: This should run while modifying WorldViewMut (e.g. on Drop).
-    #[deprecated]
-    pub fn patch_delta(&mut self, ts: Instant) {
-        // Now handled by WorldViewMut::drop.
-
-        // let Some(mut index) = self.get_index(ts) else {
-        //     return;
-        // };
-
-        // // Change all up to last (including).
-        // while index < self.snapshots.len() {
-        //     let snap = self.snapshots.get_mut(index).unwrap();
-
-        //     for delta in self.delta.clone() {
-        //         snap.apply(delta);
-        //     }
-
-        //     index += 1;
-        // }
-    }
-
     pub fn delta(&self) -> &[EntityChange] {
         &self.delta
     }

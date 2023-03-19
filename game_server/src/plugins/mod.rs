@@ -156,7 +156,6 @@ fn flush_command_queue(
         }
 
         drop(view);
-        world.patch_delta(client_time);
     }
 }
 
