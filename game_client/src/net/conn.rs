@@ -1,6 +1,6 @@
 use std::net::ToSocketAddrs;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::Duration;
 
 use bevy::prelude::{Entity, EventWriter, Res, Resource};
 use game_common::entity::{EntityId, EntityMap};
@@ -22,7 +22,7 @@ struct ConnectionInner {
     /// State changes
     state: mpsc::Sender<State>,
     state_rx: Mutex<mpsc::Receiver<State>>,
-    interpolation_period: Mutex<Instant>,
+    interpolation_period: Duration,
 }
 
 impl ServerConnection {
@@ -35,7 +35,7 @@ impl ServerConnection {
                 entities: map,
                 state: tx,
                 state_rx: Mutex::new(rx),
-                interpolation_period: Mutex::new(Instant::now()),
+                interpolation_period: Duration::from_millis(100),
             }),
         }
     }
@@ -91,8 +91,8 @@ impl ServerConnection {
         let _ = self.inner.state.try_send(state);
     }
 
-    pub fn interpolation_period(&self) -> Instant {
-        *self.inner.interpolation_period.lock()
+    pub fn interpolation_period(&self) -> Duration {
+        self.inner.interpolation_period
     }
 }
 

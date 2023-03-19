@@ -46,15 +46,29 @@ pub fn handle_movement_events(
 
         commands.entity(entity).remove::<Movement>();
 
-        let period = conn.interpolation_period();
+        let Some(mut view) = world.back_mut() else {
+            return;
+        };
 
-        let mut view = world.get_mut(period).unwrap();
-        let mut ent = view.get_mut(map.get_entity(entity).unwrap()).unwrap();
+        let id = map.get_entity(entity).unwrap();
+
+        // The host entity may not exist yet. (If the player was spawned before the rendering
+        // interpolation period was reached.)
+        let Some(mut ent) = view.get_mut(id) else {
+            // The entity should already exists in the newest view.
+            #[cfg(debug_assertions)]
+            {
+                drop(view);
+                assert!(world.front().unwrap().get(id).is_some());
+            }
+
+            return;
+        };
+
         ent.transform.translation = transform.translation;
 
         drop(ent);
         drop(view);
-        world.patch_delta(period);
     }
 }
 
@@ -84,15 +98,29 @@ pub fn handle_rotate_events(
                 });
             }
 
-            let period = conn.interpolation_period();
+            let Some(mut view) = world.back_mut() else {
+                return;
+            };
 
-            let mut view = world.get_mut(period).unwrap();
-            let mut ent = view.get_mut(map.get_entity(entity).unwrap()).unwrap();
+            let id = map.get_entity(entity).unwrap();
+
+            // The host entity may not exist yet. (If the player was spawned before the rendering
+            // interpolation period was reached.)
+            let Some(mut ent) = view.get_mut(id) else {
+                // The entity should already exists in the newest view.
+                #[cfg(debug_assertions)]
+                {
+                    drop(view);
+                    assert!(world.front().unwrap().get(id).is_some());
+                }
+
+                return;
+            };
+
             ent.transform.rotation = props.rotation;
 
             drop(ent);
             drop(view);
-            world.patch_delta(period);
         }
     }
 }
