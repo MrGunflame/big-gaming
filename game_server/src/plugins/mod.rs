@@ -246,7 +246,7 @@ fn update_snapshots(
                 let prev_cell = prev.cell(cell_id);
                 let curr_cell = curr.cell(cell_id);
 
-                changes.extend(CellViewRef::delta(Some(prev_cell), curr_cell));
+                changes.extend(CellViewRef::delta(prev_cell, curr_cell));
             }
 
             conn.set_delta(changes);

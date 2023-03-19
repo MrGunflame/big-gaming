@@ -44,6 +44,8 @@ pub fn flush_delta_queue(
                 let entity = spawn_entity(&mut commands, &assets, data.clone());
                 map.insert(*id, entity);
 
+                tracing::info!("spawning entity {:?}", id);
+
                 // The following commands may reference an entity that was just created.
                 // Wait for the next tick before processing them.
                 // TODO: This should rather update the entities in place instead of waiting.
@@ -57,7 +59,7 @@ pub fn flush_delta_queue(
                     continue;
                 };
 
-                dbg!(entity);
+                tracing::info!("despawning entity {:?}", id);
 
                 commands.entity(entity).despawn_recursive();
             }

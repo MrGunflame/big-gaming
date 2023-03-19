@@ -126,6 +126,10 @@ pub struct ConnectionMut {
 
 impl ConnectionMut {
     pub fn set_delta(&self, delta: Vec<EntityChange>) {
+        if delta.len() > 0 {
+            tracing::info!("write {} deltas to peer {:?}", delta.len(), self.id);
+        }
+
         *self.data.snapshot.write() = delta;
     }
 }

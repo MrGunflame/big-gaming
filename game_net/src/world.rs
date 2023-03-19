@@ -596,51 +596,53 @@ impl<'a> CellViewRef<'a> {
             .map(|(_, e)| e)
     }
 
-    pub fn delta(this: Option<Self>, next: CellViewRef<'_>) -> Vec<EntityChange> {
-        let mut entities =
-            HashMap::<EntityId, Entity>::from_iter(next.iter().cloned().map(|e| (e.id, e)));
+    pub fn delta(this: Self, next: CellViewRef<'_>) -> Vec<EntityChange> {
+        let mut entities = HashMap::<EntityId, Entity>::from_iter(
+            next.iter()
+                .cloned()
+                .filter(|e| CellId::from(e.transform.translation) == this.id)
+                .map(|e| (e.id, e)),
+        );
 
         let mut delta = Vec::new();
 
-        if let Some(view) = this {
-            for entity in view.iter() {
-                match entities.remove(&entity.id) {
-                    Some(new) => {
-                        if entity.transform.translation != new.transform.translation {
-                            delta.push(EntityChange::Translate {
-                                id: entity.id,
-                                translation: new.transform.translation,
-                            });
-                        }
+        for entity in this.iter() {
+            match entities.remove(&entity.id) {
+                Some(new) => {
+                    if entity.transform.translation != new.transform.translation {
+                        delta.push(EntityChange::Translate {
+                            id: entity.id,
+                            translation: new.transform.translation,
+                        });
+                    }
 
-                        if entity.transform.rotation != new.transform.rotation {
-                            delta.push(EntityChange::Rotate {
-                                id: entity.id,
-                                rotation: new.transform.rotation,
-                            });
-                        }
+                    if entity.transform.rotation != new.transform.rotation {
+                        delta.push(EntityChange::Rotate {
+                            id: entity.id,
+                            rotation: new.transform.rotation,
+                        });
+                    }
 
-                        match (&entity.data, &new.data) {
-                            (
-                                EntityData::Actor { race: _, health },
-                                EntityData::Actor {
-                                    race: _,
-                                    health: new,
-                                },
-                            ) => {
-                                if health != new {
-                                    delta.push(EntityChange::Health {
-                                        id: entity.id,
-                                        health: *new,
-                                    });
-                                }
+                    match (&entity.data, &new.data) {
+                        (
+                            EntityData::Actor { race: _, health },
+                            EntityData::Actor {
+                                race: _,
+                                health: new,
+                            },
+                        ) => {
+                            if health != new {
+                                delta.push(EntityChange::Health {
+                                    id: entity.id,
+                                    health: *new,
+                                });
                             }
-                            _ => (),
                         }
+                        _ => (),
                     }
-                    None => {
-                        delta.push(EntityChange::Destroy { id: entity.id });
-                    }
+                }
+                None => {
+                    delta.push(EntityChange::Destroy { id: entity.id });
                 }
             }
         }
