@@ -1,5 +1,7 @@
 use bevy_ecs::bundle::Bundle;
-use bevy_rapier3d::prelude::{Ccd, Collider, RigidBody, Velocity};
+use bevy_rapier3d::prelude::{
+    Ccd, CoefficientCombineRule, Collider, Restitution, RigidBody, Velocity,
+};
 
 /// Physics bundle for dynamic bodies.
 #[derive(Clone, Debug, Bundle)]
@@ -8,6 +10,7 @@ pub struct DynamicPhysicsBundle {
     pub velocity: Velocity,
     // pub collider: Collider,
     pub ccd: Ccd,
+    pub restitution: Restitution,
 }
 
 impl Default for DynamicPhysicsBundle {
@@ -17,6 +20,10 @@ impl Default for DynamicPhysicsBundle {
             velocity: Velocity::zero(),
             // collider: Collider::default(),
             ccd: Ccd::enabled(),
+            restitution: Restitution {
+                coefficient: 0.0,
+                combine_rule: CoefficientCombineRule::Min,
+            },
         }
     }
 }
