@@ -139,6 +139,12 @@ impl WorldState {
             .map(|s| WorldViewRef { snapshot: s })
     }
 
+    pub fn at_mut(&mut self, index: usize) -> Option<WorldViewMut<'_>> {
+        self.snapshots.get_mut(index)?;
+
+        Some(WorldViewMut { world: self, index })
+    }
+
     fn get_index(&self, ts: Instant) -> Option<usize> {
         let mut index = 0;
 
@@ -648,6 +654,9 @@ impl<'a> CellViewRef<'a> {
         }
 
         for entity in entities.into_values() {
+            dbg!(&this);
+            dbg!(&next);
+
             delta.push(EntityChange::Create {
                 id: entity.id,
                 data: entity,

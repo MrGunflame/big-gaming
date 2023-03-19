@@ -26,8 +26,18 @@ impl Plugin for ServerPlugins {
         app.insert_resource(ServerEntityGenerator::new())
             .insert_resource(WorldState::new())
             .insert_resource(EntityMap::default())
+            .add_system(update_client_heads.before(flush_command_queue))
             .add_system(flush_command_queue)
             .add_system(update_snapshots.after(flush_command_queue));
+    }
+}
+
+fn update_client_heads(conns: Res<Connections>, world: Res<WorldState>) {
+    for conn in conns.iter_mut() {
+        let client_time = Instant::now() - Duration::from_millis(100);
+        let head = world.index(client_time).unwrap_or(0);
+
+        conn.data.state.write().head = head;
     }
 }
 
@@ -43,13 +53,10 @@ fn flush_command_queue(
     while let Some(msg) = queue.pop() {
         tracing::trace!("got command {:?}", msg.command);
 
-        let client_time = Instant::now() - Duration::from_millis(100);
-
-        connections.get_mut(msg.id).unwrap().data.state.write().head =
-            world.index(client_time).unwrap_or(0);
+        let head = connections.get_mut(msg.id).unwrap().data.state.read().head;
 
         // Get the world state at the time the client sent the command.
-        let Some(mut view) = world.get_mut(client_time) else {
+        let Some(mut view) = world.at_mut(head) else {
             tracing::warn!("No snapshots yet");
             return;
         };
