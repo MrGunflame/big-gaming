@@ -189,7 +189,7 @@ fn update_snapshots(
             // full update.
 
             let host = curr.get(id).unwrap();
-            let cell = curr.cell(host.transform.translation.into()).unwrap();
+            let cell = curr.cell(host.transform.translation.into());
 
             for entity in cell.iter() {
                 conn.data.handle.send_cmd(Command::EntityCreate {
@@ -219,17 +219,16 @@ fn update_snapshots(
 
                 // Destroy all entities in unloaded cells.
                 for id in unload {
-                    let cell = curr.cell(id).unwrap();
+                    let cell = curr.cell(id);
 
                     // Destroy all entities (for the client) from the unloaded cell.
                     for entity in cell.iter() {
                         changes.push(EntityChange::Destroy { id: entity.id });
-                        dbg!("destroy {:?}", entity);
                     }
                 }
 
                 // Create all entities in loaded cells.
-                let cell = curr.cell(cell_id).unwrap();
+                let cell = curr.cell(cell_id);
 
                 for entity in cell.iter() {
                     // Don't duplicate the player actor.
@@ -245,8 +244,8 @@ fn update_snapshots(
 
                 // Host in same cell
             } else {
-                let prev_cell = prev.cell(cell_id).unwrap();
-                let curr_cell = curr.cell(cell_id).unwrap();
+                let prev_cell = prev.cell(cell_id);
+                let curr_cell = curr.cell(cell_id);
 
                 changes.extend(CellViewRef::delta(Some(prev_cell), curr_cell));
             }

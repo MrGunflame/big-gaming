@@ -46,10 +46,9 @@ impl WorldState {
 
     pub fn get_mut(&mut self, ts: Instant) -> Option<WorldViewMut<'_>> {
         let index = self.get_index(ts)?;
-        self.snapshots.get_mut(index).map(|s| WorldViewMut {
-            snapshot: s,
-            delta: &mut self.delta,
-        })
+        self.snapshots.get_mut(index)?;
+
+        Some(WorldViewMut { world: self, index })
     }
 
     pub fn index(&self, ts: Instant) -> Option<usize> {
@@ -101,21 +100,24 @@ impl WorldState {
     }
 
     // FIXME: This should run while modifying WorldViewMut (e.g. on Drop).
+    #[deprecated]
     pub fn patch_delta(&mut self, ts: Instant) {
-        let Some(mut index) = self.get_index(ts) else {
-            return;
-        };
+        // Now handled by WorldViewMut::drop.
 
-        // Change all up to last (including).
-        while index < self.snapshots.len() {
-            let snap = self.snapshots.get_mut(index).unwrap();
+        // let Some(mut index) = self.get_index(ts) else {
+        //     return;
+        // };
 
-            for delta in self.delta.clone() {
-                snap.apply(delta);
-            }
+        // // Change all up to last (including).
+        // while index < self.snapshots.len() {
+        //     let snap = self.snapshots.get_mut(index).unwrap();
 
-            index += 1;
-        }
+        //     for delta in self.delta.clone() {
+        //         snap.apply(delta);
+        //     }
+
+        //     index += 1;
+        // }
     }
 
     pub fn delta(&self) -> &[EntityChange] {
@@ -132,6 +134,19 @@ impl WorldState {
             prev: prev.map(|s| WorldViewRef { snapshot: s }),
             view: WorldViewRef { snapshot: next },
             delta: prev.map(|p| next.creation - p.creation),
+        })
+    }
+
+    pub fn back(&self) -> Option<WorldViewRef<'_>> {
+        self.snapshots.front().map(|s| WorldViewRef { snapshot: s })
+    }
+
+    pub fn back_mut(&mut self) -> Option<WorldViewMut<'_>> {
+        self.snapshots.front_mut()?;
+
+        Some(WorldViewMut {
+            world: self,
+            index: 0,
         })
     }
 
@@ -196,14 +211,10 @@ impl<'a> WorldViewRef<'a> {
     }
 
     /// Returns a view into a cell in the world.
-    pub fn cell(&self, id: CellId) -> Option<CellViewRef<'_>> {
-        if self.snapshot.cells.contains(&id) {
-            Some(CellViewRef {
-                id,
-                entities: &self.snapshot.entities,
-            })
-        } else {
-            None
+    pub fn cell(&self, id: CellId) -> CellViewRef<'_> {
+        CellViewRef {
+            id,
+            entities: &self.snapshot.entities,
         }
     }
 
@@ -288,38 +299,49 @@ impl<'a> WorldViewRef<'a> {
 
 #[derive(Debug)]
 pub struct WorldViewMut<'a> {
+    world: &'a mut WorldState,
+    index: usize,
     // entities: &'a mut Entities,
     // delta: Vec<EntityChange>,
-    snapshot: &'a mut Snapshot,
-    delta: &'a mut Vec<EntityChange>,
+    // snapshot: &'a mut Snapshot,
+    // delta: &'a mut Vec<EntityChange>,
 }
 
 impl<'a> WorldViewMut<'a> {
+    fn snapshot(&mut self) -> &mut Snapshot {
+        self.world.snapshots.get_mut(self.index).unwrap()
+    }
+
     pub fn get_mut(&mut self, id: EntityId) -> Option<EntityMut<'_>> {
-        self.snapshot.entities.get_mut(id).map(|entity| EntityMut {
-            cells: &mut self.snapshot.cells,
-            prev: entity.clone(),
-            entity,
-            delta: &mut self.delta,
-        })
+        let sn = self.world.snapshots.get_mut(self.index).unwrap();
+
+        match sn.entities.get_mut(id) {
+            Some(entity) => Some(EntityMut {
+                cells: &mut sn.cells,
+                prev: entity.clone(),
+                entity,
+                delta: &mut self.world.delta,
+            }),
+            None => None,
+        }
     }
 
     pub fn spawn(&mut self, entity: Entity) {
-        self.snapshot
+        self.snapshot()
             .cells
             .insert(CellId::from(entity.transform.translation));
 
-        self.snapshot.entities.spawn(entity.clone());
+        self.snapshot().entities.spawn(entity.clone());
 
-        self.delta.push(EntityChange::Create {
+        self.world.delta.push(EntityChange::Create {
             id: entity.id,
             data: entity,
         });
     }
 
     pub fn despawn(&mut self, id: EntityId) {
-        self.snapshot.entities.despawn(id);
-        self.delta.push(EntityChange::Destroy { id });
+        self.snapshot().entities.despawn(id);
+        self.world.delta.push(EntityChange::Destroy { id });
 
         // Despawn host with the entity if exists.
         self.despawn_host(id);
@@ -327,27 +349,37 @@ impl<'a> WorldViewMut<'a> {
 
     pub fn spawn_host(&mut self, id: EntityId) {
         #[cfg(debug_assertions)]
-        assert!(self.snapshot.entities.get(id).is_some());
+        assert!(self.snapshot().entities.get(id).is_some());
 
-        self.snapshot.hosts.insert(id);
+        self.snapshot().hosts.insert(id);
     }
 
     pub fn despawn_host(&mut self, id: EntityId) {
-        self.snapshot.hosts.remove(id);
+        self.snapshot().hosts.remove(id);
     }
 
     pub fn delta(&self) -> &[EntityChange] {
-        &self.delta
+        &self.world.delta
     }
 
     #[inline]
     pub fn creation(&self) -> Instant {
-        self.snapshot.creation
+        self.world.snapshots.get(self.index).unwrap().creation
     }
 }
 
 impl<'a> Drop for WorldViewMut<'a> {
-    fn drop(&mut self) {}
+    fn drop(&mut self) {
+        while self.index < self.world.snapshots.len() {
+            let view = self.world.snapshots.get_mut(self.index).unwrap();
+
+            for delta in &self.world.delta {
+                view.apply(delta.clone());
+            }
+
+            self.index += 1;
+        }
+    }
 }
 
 pub struct EntityMut<'a> {
@@ -457,6 +489,9 @@ impl Hosts {
 
 impl Snapshot {
     fn apply(&mut self, delta: EntityChange) {
+        // Note that an entity may have already been despawned in the next snapshot.
+        // In that case we simply ignore the change.
+
         match delta {
             EntityChange::Create { id, data } => {
                 self.cells.insert(CellId::from(data.transform.translation));
@@ -471,21 +506,22 @@ impl Snapshot {
                 self.entities.despawn(id);
             }
             EntityChange::Translate { id, translation } => {
-                let entity = self.entities.get_mut(id).unwrap();
+                if let Some(entity) = self.entities.get_mut(id) {
+                    entity.transform.translation = translation;
+                }
 
                 self.cells.insert(CellId::from(translation));
-
-                entity.transform.translation = translation;
             }
             EntityChange::Rotate { id, rotation } => {
-                let entity = self.entities.get_mut(id).unwrap();
-                entity.transform.rotation = rotation;
+                if let Some(entity) = self.entities.get_mut(id) {
+                    entity.transform.rotation = rotation;
+                }
             }
             EntityChange::Health { id, health } => {
-                let entity = self.entities.get_mut(id).unwrap();
-
-                if let EntityData::Actor { race: _, health: h } = &mut entity.data {
-                    *h = health;
+                if let Some(entity) = self.entities.get_mut(id) {
+                    if let EntityData::Actor { race: _, health: h } = &mut entity.data {
+                        *h = health;
+                    }
                 }
             }
             EntityChange::CreateHost { id } => {
@@ -596,8 +632,6 @@ impl<'a> CellViewRef<'a> {
                                 id: entity.id,
                                 translation: new.transform.translation,
                             });
-
-                            dbg!(new.transform.translation);
                         }
 
                         if entity.transform.rotation != new.transform.rotation {
