@@ -125,48 +125,43 @@ pub struct ConnectionMut {
 }
 
 impl ConnectionMut {
-    pub fn set_delta(&self, delta: Vec<EntityChange>) {
-        if delta.len() > 0 {
-            // tracing::info!("write {} deltas to peer {:?}", delta.len(), self.id);
-        }
-
-        *self.data.snapshot.write() = delta;
-    }
-}
-
-impl Drop for ConnectionMut {
-    fn drop(&mut self) {
-        // let mut prev = self.data.snapshot.write();
-        // let delta = prev.delta(&self.snapshot);
-
-        // *prev = self.snapshot.clone();
-
-        // // Drop the lock as early as possible.
-        // drop(prev);
-
-        let delta = self.data.snapshot.read();
-
-        for change in &*delta {
-            let cmd = match change {
+    pub fn push<T>(&self, deltas: T)
+    where
+        T: IntoDeltas,
+    {
+        for delta in deltas.into_deltas() {
+            let cmd = match delta {
                 EntityChange::Create { id, data } => Command::EntityCreate {
-                    id: *id,
+                    id,
                     translation: data.transform.translation,
                     rotation: data.transform.rotation,
-                    data: data.data.clone(),
+                    data: data.data,
                 },
-                EntityChange::Translate { id, translation } => Command::EntityTranslate {
-                    id: *id,
-                    translation: *translation,
-                },
-                EntityChange::Rotate { id, rotation } => Command::EntityRotate {
-                    id: *id,
-                    rotation: *rotation,
-                },
-                EntityChange::Destroy { id } => Command::EntityDestroy { id: *id },
-                _ => unimplemented!(),
+                EntityChange::Destroy { id } => Command::EntityDestroy { id },
+                EntityChange::Translate { id, translation } => {
+                    Command::EntityTranslate { id, translation }
+                }
+                EntityChange::Rotate { id, rotation } => Command::EntityRotate { id, rotation },
+                _ => todo!(),
             };
 
             self.data.handle.send_cmd(cmd);
         }
+    }
+}
+
+pub trait IntoDeltas {
+    fn into_deltas(self) -> Vec<EntityChange>;
+}
+
+impl IntoDeltas for EntityChange {
+    fn into_deltas(self) -> Vec<EntityChange> {
+        vec![self]
+    }
+}
+
+impl IntoDeltas for Vec<EntityChange> {
+    fn into_deltas(self) -> Vec<EntityChange> {
+        self
     }
 }

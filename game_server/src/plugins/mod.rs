@@ -1,7 +1,7 @@
 use std::time::{Duration, Instant};
 
 use bevy::prelude::{
-    dbg, AssetServer, Commands, DespawnRecursiveExt, IntoSystemConfig, Plugin, Query, Res, ResMut,
+    AssetServer, Commands, DespawnRecursiveExt, IntoSystemConfig, Plugin, Query, Res, ResMut,
     Transform, Vec3,
 };
 use bevy_rapier3d::prelude::Velocity;
@@ -207,8 +207,6 @@ fn update_snapshots(
             let host = curr.get(id).unwrap();
             let cell = curr.cell(host.transform.translation.into());
 
-            dbg!(&cell);
-
             for entity in cell.iter() {
                 conn.data.handle.send_cmd(Command::EntityCreate {
                     id: entity.id,
@@ -268,7 +266,7 @@ fn update_snapshots(
                 changes.extend(curr_cell.deltas().to_vec());
             }
 
-            conn.set_delta(changes);
+            conn.push(changes);
         }
     }
 
