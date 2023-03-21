@@ -1,6 +1,6 @@
 use std::borrow::Borrow;
+use std::iter::FusedIterator;
 use std::sync::Arc;
-use std::time::Instant;
 
 use ahash::HashMap;
 use bevy::prelude::Resource;
@@ -15,57 +15,42 @@ use crate::net::state::ConnectionState;
 // FIXME: Maybe merge with ConnectionPool.
 #[derive(Clone, Debug, Default, Resource)]
 pub struct Connections {
-    connections: Arc<RwLock<HashMap<ConnectionId, Arc<ConnectionData>>>>,
+    connections: Arc<RwLock<HashMap<ConnectionId, Connection>>>,
 }
 
 impl Connections {
     pub fn insert(&self, handle: ConnectionHandle) {
         let mut inner = self.connections.write();
 
-        inner.insert(handle.id, Arc::new(ConnectionData::new(handle)));
+        inner.insert(
+            handle.id,
+            Connection {
+                inner: Arc::new(ConnectionInner {
+                    id: handle.id,
+                    state: RwLock::new(ConnectionState {
+                        full_update: false,
+                        cells: vec![],
+                        id: None,
+                        head: 0,
+                    }),
+                    handle,
+                }),
+            },
+        );
     }
 
-    pub fn set_host<T>(&self, id: T, host: EntityId)
-    where
-        T: Borrow<ConnectionId>,
-    {
-        let mut inner = self.connections.write();
-
-        let data = inner.get_mut(id.borrow()).unwrap();
-
-        *data.host.write() = Some(host);
-        data.handle.send_cmd(Command::SpawnHost { id: host });
-    }
-
-    pub fn host<T>(&self, id: T) -> Option<EntityId>
+    pub fn get<T>(&self, id: T) -> Option<Connection>
     where
         T: Borrow<ConnectionId>,
     {
         let inner = self.connections.read();
-        let data = inner.get(id.borrow())?.clone();
-        let l = data.host.read();
-        *l
+        inner.get(id.borrow()).cloned()
     }
 
-    pub fn get_mut<T>(&self, id: T) -> Option<ConnectionMut>
-    where
-        T: Borrow<ConnectionId>,
-    {
-        let mut inner = self.connections.write();
-
-        match inner.get_mut(id.borrow()) {
-            Some(data) => Some(ConnectionMut {
-                data: data.clone(),
-                id: *id.borrow(),
-            }),
-            None => None,
-        }
-    }
-
-    pub fn iter_mut(&self) -> IterMut<'_> {
+    pub fn iter(&self) -> Iter<'_> {
         let ids: Vec<_> = self.connections.read().keys().copied().collect();
 
-        IterMut {
+        Iter {
             inner: self,
             ids: ids.into_iter(),
         }
@@ -80,51 +65,57 @@ impl Connections {
     }
 }
 
-#[derive(Debug)]
-pub struct ConnectionData {
-    pub snapshot: RwLock<Vec<EntityChange>>,
-    pub handle: ConnectionHandle,
-    pub host: RwLock<Option<EntityId>>,
-    pub state: RwLock<ConnectionState>,
-}
+impl<'a> IntoIterator for &'a Connections {
+    type Item = Connection;
+    type IntoIter = Iter<'a>;
 
-impl ConnectionData {
-    pub fn new(handle: ConnectionHandle) -> Self {
-        Self {
-            snapshot: RwLock::new(vec![]),
-            handle,
-            host: RwLock::new(None),
-            state: RwLock::new(ConnectionState {
-                full_update: true,
-                cells: vec![],
-                id: None,
-                head: 0,
-            }),
-        }
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
     }
 }
 
-pub struct IterMut<'a> {
+#[derive(Debug)]
+pub struct Iter<'a> {
     inner: &'a Connections,
     ids: std::vec::IntoIter<ConnectionId>,
 }
 
-impl<'a> Iterator for IterMut<'a> {
-    type Item = ConnectionMut;
+impl<'a> Iterator for Iter<'a> {
+    type Item = Connection;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let id = self.ids.next()?;
-        self.inner.get_mut(id)
+        loop {
+            let id = self.ids.next()?;
+
+            // Note: It is possible that the connection was already removed
+            // by another thread while iterting.
+            if let Some(conn) = self.inner.get(id) {
+                return Some(conn);
+            }
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (0, Some(self.ids.len()))
     }
 }
 
-pub struct ConnectionMut {
-    pub data: Arc<ConnectionData>,
-    /// The *new* snapshot (cloned from the one in data).
-    id: ConnectionId,
+impl<'a> FusedIterator for Iter<'a> {}
+
+#[derive(Clone, Debug)]
+pub struct Connection {
+    inner: Arc<ConnectionInner>,
 }
 
-impl ConnectionMut {
+impl Connection {
+    pub fn id(&self) -> ConnectionId {
+        self.inner.id
+    }
+
+    pub fn handle(&self) -> &ConnectionHandle {
+        &self.inner.handle
+    }
+
     pub fn push<T>(&self, deltas: T)
     where
         T: IntoDeltas,
@@ -145,9 +136,29 @@ impl ConnectionMut {
                 _ => todo!(),
             };
 
-            self.data.handle.send_cmd(cmd);
+            self.inner.handle.send_cmd(cmd);
         }
     }
+
+    pub fn state(&self) -> &RwLock<ConnectionState> {
+        &self.inner.state
+    }
+
+    pub fn host(&self) -> Option<EntityId> {
+        self.state().read().id
+    }
+
+    pub fn set_host(&self, id: EntityId) {
+        self.state().write().id = Some(id);
+        self.handle().send_cmd(Command::SpawnHost { id });
+    }
+}
+
+#[derive(Debug)]
+struct ConnectionInner {
+    id: ConnectionId,
+    handle: ConnectionHandle,
+    state: RwLock<ConnectionState>,
 }
 
 pub trait IntoDeltas {

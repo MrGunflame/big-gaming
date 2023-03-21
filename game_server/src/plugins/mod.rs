@@ -14,7 +14,7 @@ use game_common::entity::{Entity, EntityData, EntityId, EntityMap};
 use game_common::world::source::StreamingSource;
 use game_common::world::CellId;
 use game_net::snapshot::{Command, CommandQueue, EntityChange};
-use game_net::world::{CellViewRef, WorldState};
+use game_net::world::WorldState;
 
 use crate::conn::Connections;
 use crate::entity::ServerEntityGenerator;
@@ -35,15 +35,15 @@ impl Plugin for ServerPlugins {
 fn update_client_heads(conns: Res<Connections>, mut world: ResMut<WorldState>) {
     world.insert(Instant::now());
 
-    for conn in conns.iter_mut() {
-        let old_head = conn.data.state.write().head;
+    for conn in conns.iter() {
+        let old_head = conn.state().write().head;
 
         let client_time = Instant::now() - Duration::from_millis(100);
         let head = world.index(client_time).unwrap_or(0);
 
         // assert_ne!(old_head, head);
 
-        conn.data.state.write().head = head;
+        conn.state().write().head = head;
     }
 
     if world.len() > 120 {
@@ -63,7 +63,8 @@ fn flush_command_queue(
     while let Some(msg) = queue.pop() {
         tracing::trace!("got command {:?}", msg.command);
 
-        let head = connections.get_mut(msg.id).unwrap().data.state.read().head;
+        let conn = connections.get(msg.id).unwrap();
+        let head = conn.state().read().head;
 
         // Get the world state at the time the client sent the command.
         let Some(mut view) = world.at_mut(head) else {
@@ -150,17 +151,16 @@ fn flush_command_queue(
                 //     });
 
                 map.insert(id, ent);
-                connections.set_host(msg.id, id);
+                conn.set_host(id);
 
-                let conn = connections.get_mut(msg.id).unwrap();
-                let mut state = conn.data.state.write();
+                let mut state = conn.state().write();
                 state.id = Some(id);
                 state.cells = vec![CellId::new(0.0, 0.0, 0.0)];
 
                 tracing::info!("spawning host {:?} in cell", msg.id);
             }
             Command::Disconnected => {
-                if let Some(id) = connections.host(msg.id) {
+                if let Some(id) = conn.host() {
                     view.despawn(id);
                     let entity = map.get(id).unwrap();
                     commands.entity(entity).despawn_recursive();
@@ -182,8 +182,8 @@ fn update_snapshots(
     // mut entities: Query<(&mut Entity, &Transform)>,
     mut world: ResMut<WorldState>,
 ) {
-    for conn in connections.iter_mut() {
-        let mut state = conn.data.state.write();
+    for conn in connections.iter() {
+        let mut state = conn.state().write();
 
         let Some(id) = state.id else {
             continue
@@ -208,7 +208,7 @@ fn update_snapshots(
             let cell = curr.cell(host.transform.translation.into());
 
             for entity in cell.iter() {
-                conn.data.handle.send_cmd(Command::EntityCreate {
+                conn.handle().send_cmd(Command::EntityCreate {
                     id: entity.id,
                     translation: entity.transform.translation,
                     rotation: entity.transform.rotation,
