@@ -1,7 +1,7 @@
 use std::time::{Duration, Instant};
 
 use bevy::prelude::{
-    AssetServer, Commands, DespawnRecursiveExt, IntoSystemConfig, Plugin, Query, Res, ResMut,
+    dbg, AssetServer, Commands, DespawnRecursiveExt, IntoSystemConfig, Plugin, Query, Res, ResMut,
     Transform, Vec3,
 };
 use bevy_rapier3d::prelude::Velocity;
@@ -32,12 +32,22 @@ impl Plugin for ServerPlugins {
     }
 }
 
-fn update_client_heads(conns: Res<Connections>, world: Res<WorldState>) {
+fn update_client_heads(conns: Res<Connections>, mut world: ResMut<WorldState>) {
+    world.insert(Instant::now());
+
     for conn in conns.iter_mut() {
+        let old_head = conn.data.state.write().head;
+
         let client_time = Instant::now() - Duration::from_millis(100);
         let head = world.index(client_time).unwrap_or(0);
 
+        // assert_ne!(old_head, head);
+
         conn.data.state.write().head = head;
+    }
+
+    if world.len() > 120 {
+        world.pop();
     }
 }
 
@@ -120,7 +130,7 @@ fn flush_command_queue(
 
                 view.spawn(Entity {
                     id,
-                    transform: Transform::from_translation(Vec3::new(0.0, 32.0, 0.0)),
+                    transform: Transform::from_translation(Vec3::new(10.0, 32.0, 10.0)),
                     data: EntityData::Actor {
                         race: RaceId(1.into()),
                         health: Health::new(50),
@@ -179,9 +189,9 @@ fn update_snapshots(
             continue
         };
 
-        let Some(prev) = world.at(state.head.saturating_sub(1)) else {
-            return;
-        };
+        // let Some(prev) = world.at(state.head.saturating_sub(1)) else {
+        //     return;
+        // };
 
         let Some(curr) = world.at(world.len().wrapping_sub(1)) else {
             return;
@@ -196,6 +206,8 @@ fn update_snapshots(
 
             let host = curr.get(id).unwrap();
             let cell = curr.cell(host.transform.translation.into());
+
+            dbg!(&cell);
 
             for entity in cell.iter() {
                 conn.data.handle.send_cmd(Command::EntityCreate {
@@ -250,20 +262,24 @@ fn update_snapshots(
 
                 // Host in same cell
             } else {
-                let prev_cell = prev.cell(cell_id);
+                // let prev_cell = prev.cell(cell_id);
                 let curr_cell = curr.cell(cell_id);
 
-                changes.extend(CellViewRef::delta(prev_cell, curr_cell));
+                if !curr_cell.deltas().is_empty() {
+                    dbg!(curr_cell.deltas());
+                }
+
+                changes.extend(curr_cell.deltas().to_vec());
             }
 
             conn.set_delta(changes);
         }
     }
 
-    world.insert(Instant::now());
+    // world.insert(Instant::now());
 
     // Only keep 2s.
-    if world.len() > 120 {
-        world.pop();
-    }
+    // if world.len() > 120 {
+    //     world.pop();
+    // }
 }

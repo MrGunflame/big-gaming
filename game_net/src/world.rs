@@ -73,13 +73,14 @@ impl WorldState {
             Some(snapshot) => {
                 let mut snap = snapshot.clone();
                 snap.creation = ts;
+                snap.cells.clear();
                 snap
             }
             None => Snapshot {
                 creation: ts,
                 entities: Entities::default(),
                 hosts: Hosts::new(),
-                cells: HashSet::new(),
+                cells: HashMap::new(),
             },
         };
 
@@ -200,6 +201,7 @@ impl<'a> WorldViewRef<'a> {
         CellViewRef {
             id,
             entities: &self.snapshot.entities,
+            cells: &self.snapshot.cells,
         }
     }
 
@@ -314,7 +316,12 @@ impl<'a> WorldViewMut<'a> {
     pub fn spawn(&mut self, entity: Entity) {
         self.snapshot()
             .cells
-            .insert(CellId::from(entity.transform.translation));
+            .entry(CellId::from(entity.transform.translation))
+            .or_default()
+            .push(EntityChange::Create {
+                id: entity.id,
+                data: entity.clone(),
+            });
 
         self.snapshot().entities.spawn(entity.clone());
 
@@ -327,6 +334,20 @@ impl<'a> WorldViewMut<'a> {
     pub fn despawn(&mut self, id: EntityId) {
         self.snapshot().entities.despawn(id);
         self.world.delta.push(EntityChange::Destroy { id });
+
+        let translation = self
+            .snapshot()
+            .entities
+            .get(id)
+            .unwrap()
+            .transform
+            .translation;
+
+        self.snapshot()
+            .cells
+            .entry(CellId::from(translation))
+            .or_default()
+            .push(EntityChange::Destroy { id });
 
         // Despawn host with the entity if exists.
         self.despawn_host(id);
@@ -368,7 +389,7 @@ impl<'a> Drop for WorldViewMut<'a> {
 }
 
 pub struct EntityMut<'a> {
-    cells: &'a mut HashSet<CellId>,
+    cells: &'a mut HashMap<CellId, Vec<EntityChange>>,
     prev: Entity,
     entity: &'a mut Entity,
     delta: &'a mut Vec<EntityChange>,
@@ -399,8 +420,17 @@ impl<'a> Drop for EntityMut<'a> {
             // Update the cell when moved.
             let prev = CellId::from(self.prev.transform.translation);
             let curr = CellId::from(self.entity.transform.translation);
+
+            self.cells
+                .entry(curr)
+                .or_default()
+                .push(EntityChange::Translate {
+                    id: self.entity.id,
+                    translation: self.entity.transform.translation,
+                });
+
             if prev != curr {
-                self.cells.insert(curr);
+                // TODO
             }
         }
 
@@ -443,7 +473,8 @@ struct Snapshot {
     creation: Instant,
     entities: Entities,
     hosts: Hosts,
-    cells: HashSet<CellId>,
+    // Deltas for every cell
+    cells: HashMap<CellId, Vec<EntityChange>>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -479,7 +510,13 @@ impl Snapshot {
 
         match delta {
             EntityChange::Create { id, data } => {
-                self.cells.insert(CellId::from(data.transform.translation));
+                self.cells
+                    .entry(CellId::from(data.transform.translation))
+                    .or_default()
+                    .push(EntityChange::Create {
+                        id,
+                        data: data.clone(),
+                    });
 
                 self.entities.spawn(Entity {
                     id,
@@ -488,14 +525,25 @@ impl Snapshot {
                 });
             }
             EntityChange::Destroy { id } => {
+                let translation = self.entities.get(id).unwrap().transform.translation;
                 self.entities.despawn(id);
+
+                self.cells
+                    .entry(CellId::from(translation))
+                    .or_default()
+                    .push(EntityChange::Destroy { id });
             }
             EntityChange::Translate { id, translation } => {
                 if let Some(entity) = self.entities.get_mut(id) {
                     entity.transform.translation = translation;
+                } else {
+                    tracing::warn!("tried to translate a non-existant entity");
                 }
 
-                self.cells.insert(CellId::from(translation));
+                self.cells
+                    .entry(CellId::from(translation))
+                    .or_default()
+                    .push(EntityChange::Translate { id, translation });
             }
             EntityChange::Rotate { id, rotation } => {
                 if let Some(entity) = self.entities.get_mut(id) {
@@ -570,6 +618,7 @@ pub struct Override {
 pub struct CellViewRef<'a> {
     id: CellId,
     entities: &'a Entities,
+    cells: &'a HashMap<CellId, Vec<EntityChange>>,
 }
 
 impl<'a> CellViewRef<'a> {
@@ -600,6 +649,13 @@ impl<'a> CellViewRef<'a> {
             .iter()
             .filter(|(_, e)| CellId::from(e.transform.translation) == self.id)
             .map(|(_, e)| e)
+    }
+
+    pub fn deltas(&self) -> &[EntityChange] {
+        self.cells
+            .get(&self.id)
+            .map(|v| v.as_slice())
+            .unwrap_or(&[])
     }
 
     pub fn delta(this: Self, next: CellViewRef<'_>) -> Vec<EntityChange> {
@@ -654,9 +710,6 @@ impl<'a> CellViewRef<'a> {
         }
 
         for entity in entities.into_values() {
-            dbg!(&this);
-            dbg!(&next);
-
             delta.push(EntityChange::Create {
                 id: entity.id,
                 data: entity,
