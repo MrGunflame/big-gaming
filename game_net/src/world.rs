@@ -332,9 +332,6 @@ impl<'a> WorldViewMut<'a> {
     }
 
     pub fn despawn(&mut self, id: EntityId) {
-        self.snapshot().entities.despawn(id);
-        self.world.delta.push(EntityChange::Destroy { id });
-
         let translation = self
             .snapshot()
             .entities
@@ -342,6 +339,9 @@ impl<'a> WorldViewMut<'a> {
             .unwrap()
             .transform
             .translation;
+
+        self.snapshot().entities.despawn(id);
+        self.world.delta.push(EntityChange::Destroy { id });
 
         self.snapshot()
             .cells
@@ -376,6 +376,9 @@ impl<'a> WorldViewMut<'a> {
 
 impl<'a> Drop for WorldViewMut<'a> {
     fn drop(&mut self) {
+        // Skip the current snapshot.
+        self.index += 1;
+
         while self.index < self.world.snapshots.len() {
             let view = self.world.snapshots.get_mut(self.index).unwrap();
 
@@ -439,6 +442,14 @@ impl<'a> Drop for EntityMut<'a> {
                 id: self.entity.id,
                 rotation: self.entity.transform.rotation,
             });
+
+            self.cells
+                .entry(CellId::from(self.entity.transform.translation))
+                .or_default()
+                .push(EntityChange::Rotate {
+                    id: self.entity.id,
+                    rotation: self.entity.transform.rotation,
+                });
         }
 
         // TODO: Other deltas
@@ -525,7 +536,11 @@ impl Snapshot {
                 });
             }
             EntityChange::Destroy { id } => {
-                let translation = self.entities.get(id).unwrap().transform.translation;
+                let Some(translation) = self.entities.get(id).map(|s| s.transform.translation) else {
+                    tracing::warn!("no such entiy to despawn: {:?}", id);
+                    return;
+                };
+
                 self.entities.despawn(id);
 
                 self.cells
@@ -548,6 +563,13 @@ impl Snapshot {
             EntityChange::Rotate { id, rotation } => {
                 if let Some(entity) = self.entities.get_mut(id) {
                     entity.transform.rotation = rotation;
+
+                    self.cells
+                        .entry(CellId::from(entity.transform.translation))
+                        .or_default()
+                        .push(EntityChange::Rotate { id, rotation });
+                } else {
+                    tracing::warn!("tried to rotate a non-existant entity");
                 }
             }
             EntityChange::Health { id, health } => {

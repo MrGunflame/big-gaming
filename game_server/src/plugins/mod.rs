@@ -265,10 +265,6 @@ fn update_snapshots(
                 // let prev_cell = prev.cell(cell_id);
                 let curr_cell = curr.cell(cell_id);
 
-                if !curr_cell.deltas().is_empty() {
-                    dbg!(curr_cell.deltas());
-                }
-
                 changes.extend(curr_cell.deltas().to_vec());
             }
 
