@@ -63,7 +63,11 @@ pub fn flush_delta_queue(
 
                 commands.entity(entity).despawn_recursive();
             }
-            EntityChange::Translate { id, translation } => {
+            EntityChange::Translate {
+                id,
+                translation,
+                cell: _,
+            } => {
                 let entity = map.get(*id).unwrap();
 
                 if let Ok((mut transform, _, _)) = entities.get_mut(entity) {

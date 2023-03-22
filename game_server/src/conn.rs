@@ -129,9 +129,11 @@ impl Connection {
                     data: data.data,
                 },
                 EntityChange::Destroy { id } => Command::EntityDestroy { id },
-                EntityChange::Translate { id, translation } => {
-                    Command::EntityTranslate { id, translation }
-                }
+                EntityChange::Translate {
+                    id,
+                    translation,
+                    cell: _,
+                } => Command::EntityTranslate { id, translation },
                 EntityChange::Rotate { id, rotation } => Command::EntityRotate { id, rotation },
                 _ => todo!(),
             };

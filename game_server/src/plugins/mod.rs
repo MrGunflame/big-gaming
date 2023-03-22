@@ -180,7 +180,7 @@ fn update_snapshots(
     connections: Res<Connections>,
     // FIXME: Make dedicated type for all shared entities.
     // mut entities: Query<(&mut Entity, &Transform)>,
-    mut world: ResMut<WorldState>,
+    world: Res<WorldState>,
 ) {
     for conn in connections.iter() {
         let mut state = conn.state().write();
@@ -197,19 +197,15 @@ fn update_snapshots(
             return;
         };
 
+        // Send full state
+        // The delta from the current frame is "included" in the full update.
         if state.full_update {
             state.full_update = false;
-
-            // Send full state
-            // The delta from the current frame is "included" in the
-            // full update.
 
             let host = curr.get(id).unwrap();
             let cell = curr.cell(host.transform.translation.into());
 
             for entity in cell.iter() {
-                dbg!(&entity);
-
                 conn.handle().send_cmd(Command::EntityCreate {
                     id: entity.id,
                     translation: entity.transform.translation,
@@ -217,65 +213,88 @@ fn update_snapshots(
                     data: entity.data.clone(),
                 });
             }
-        } else {
-            // let mut changes = world.delta().to_vec();
-            let mut changes = Vec::new();
 
-            let host = curr.get(id).unwrap();
+            return;
+        }
 
-            let cell_id = CellId::from(host.transform.translation);
+        let mut changes = Vec::new();
+
+        let host = curr.get(id).unwrap();
+
+        let cell_id = CellId::from(host.transform.translation);
+        // Host changed cells
+        if !state.cells.contains(&cell_id) {
+            tracing::info!("Moving host from {:?} to {:?}", state.cells, cell_id);
+
             // Host changed cells
-            if !state.cells.contains(&cell_id) {
-                tracing::info!("Moving host from {:?} to {:?}", state.cells, cell_id);
+            let unload = state.cells.clone();
 
-                // Host changed cells
-                let unload = state.cells.clone();
+            state.cells.clear();
 
-                state.cells.clear();
+            state.cells.push(host.transform.translation.into());
 
-                state.cells.push(host.transform.translation.into());
+            // Destroy all entities in unloaded cells.
+            for id in unload {
+                let cell = curr.cell(id);
 
-                // Destroy all entities in unloaded cells.
-                for id in unload {
-                    let cell = curr.cell(id);
-
-                    // Destroy all entities (for the client) from the unloaded cell.
-                    for entity in cell.iter() {
-                        changes.push(EntityChange::Destroy { id: entity.id });
-                    }
-                }
-
-                // Create all entities in loaded cells.
-                let cell = curr.cell(cell_id);
-
+                // Destroy all entities (for the client) from the unloaded cell.
                 for entity in cell.iter() {
-                    // Don't duplicate the player actor.
-                    if entity.id == host.id {
-                        continue;
-                    }
-
-                    changes.push(EntityChange::Create {
-                        id: entity.id,
-                        data: entity.clone(),
-                    });
+                    changes.push(EntityChange::Destroy { id: entity.id });
                 }
-
-                // Host in same cell
-            } else {
-                // let prev_cell = prev.cell(cell_id);
-                let curr_cell = curr.cell(cell_id);
-
-                changes.extend(curr_cell.deltas().to_vec());
             }
 
-            conn.push(changes);
+            // Create all entities in loaded cells.
+            let cell = curr.cell(cell_id);
+
+            for entity in cell.iter() {
+                // Don't duplicate the player actor.
+                if entity.id == host.id {
+                    continue;
+                }
+
+                changes.push(EntityChange::Create {
+                    id: entity.id,
+                    data: entity.clone(),
+                });
+            }
+
+            // Host in same cell
+        } else {
+            // let prev_cell = prev.cell(cell_id);
+            let curr_cell = curr.cell(cell_id);
+
+            changes.extend(curr_cell.deltas().to_vec());
+        }
+
+        for delta in changes {
+            let delta = match delta {
+                EntityChange::Translate {
+                    id,
+                    translation,
+                    cell,
+                } => {
+                    if let Some(cell) = cell {
+                        if !state.cells.contains(&cell.to) {
+                            EntityChange::Destroy { id }
+                        } else {
+                            EntityChange::Translate {
+                                id,
+                                translation,
+                                cell: Some(cell),
+                            }
+                        }
+                    } else {
+                        EntityChange::Translate {
+                            id,
+                            translation,
+                            cell,
+                        }
+                    }
+                }
+                d => d,
+            };
+
+            conn.push(delta);
         }
     }
-
-    // world.insert(Instant::now());
-
-    // Only keep 2s.
-    // if world.len() > 120 {
-    //     world.pop();
-    // }
 }

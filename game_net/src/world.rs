@@ -11,7 +11,7 @@ use glam::{Quat, Vec3};
 use tracing::{span, Level, Span};
 
 use crate::proto::sequence::Sequence;
-use crate::snapshot::EntityChange;
+use crate::snapshot::{EntityChange, TransferCell};
 
 /// The world state at constant time intervals.
 #[derive(Clone, Debug, Resource)]
@@ -220,6 +220,10 @@ impl<'a> WorldViewRef<'a> {
                             delta.push(EntityChange::Translate {
                                 id: entity.id,
                                 translation: new.transform.translation,
+                                cell: TransferCell::new(
+                                    entity.transform.translation,
+                                    new.transform.translation,
+                                ),
                             });
                         }
 
@@ -418,6 +422,10 @@ impl<'a> Drop for EntityMut<'a> {
             self.delta.push(EntityChange::Translate {
                 id: self.entity.id,
                 translation: self.entity.transform.translation,
+                cell: TransferCell::new(
+                    self.prev.transform.translation,
+                    self.entity.transform.translation,
+                ),
             });
 
             // Update the cell when moved.
@@ -430,6 +438,7 @@ impl<'a> Drop for EntityMut<'a> {
                 .push(EntityChange::Translate {
                     id: self.entity.id,
                     translation: self.entity.transform.translation,
+                    cell: TransferCell::new(prev, curr),
                 });
 
             if prev != curr {
@@ -548,7 +557,11 @@ impl Snapshot {
                     .or_default()
                     .push(EntityChange::Destroy { id });
             }
-            EntityChange::Translate { id, translation } => {
+            EntityChange::Translate {
+                id,
+                translation,
+                cell,
+            } => {
                 if let Some(entity) = self.entities.get_mut(id) {
                     entity.transform.translation = translation;
                 } else {
@@ -558,7 +571,11 @@ impl Snapshot {
                 self.cells
                     .entry(CellId::from(translation))
                     .or_default()
-                    .push(EntityChange::Translate { id, translation });
+                    .push(EntityChange::Translate {
+                        id,
+                        translation,
+                        cell,
+                    });
             }
             EntityChange::Rotate { id, rotation } => {
                 if let Some(entity) = self.entities.get_mut(id) {
@@ -697,6 +714,10 @@ impl<'a> CellViewRef<'a> {
                         delta.push(EntityChange::Translate {
                             id: entity.id,
                             translation: new.transform.translation,
+                            cell: TransferCell::new(
+                                entity.transform.translation,
+                                new.transform.translation,
+                            ),
                         });
                     }
 

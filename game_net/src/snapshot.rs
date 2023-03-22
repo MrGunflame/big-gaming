@@ -1,6 +1,7 @@
 use bevy_ecs::system::Resource;
 use game_common::components::combat::Health;
 use game_common::entity::{Entity, EntityData, EntityId};
+use game_common::world::CellId;
 use glam::{Quat, Vec3};
 use parking_lot::Mutex;
 use std::collections::{HashMap, VecDeque};
@@ -81,6 +82,10 @@ impl Snapshot {
                         delta.push(EntityChange::Translate {
                             id: *id,
                             translation: new.transform.translation,
+                            cell: Some(TransferCell {
+                                from: body.transform.translation.into(),
+                                to: new.transform.translation.into(),
+                            }),
                         });
                     }
 
@@ -202,14 +207,57 @@ impl CommandQueue {
 
 #[derive(Clone, Debug)]
 pub enum EntityChange {
-    Create { id: EntityId, data: Entity },
-    Translate { id: EntityId, translation: Vec3 },
-    Rotate { id: EntityId, rotation: Quat },
-    Health { id: EntityId, health: Health },
+    Create {
+        id: EntityId,
+        data: Entity,
+    },
+    Translate {
+        id: EntityId,
+        translation: Vec3,
+        cell: Option<TransferCell>,
+    },
+    Rotate {
+        id: EntityId,
+        rotation: Quat,
+    },
+    Health {
+        id: EntityId,
+        health: Health,
+    },
     // Update { id: EntityId, data: Entity },
-    Destroy { id: EntityId },
-    CreateHost { id: EntityId },
-    DestroyHost { id: EntityId },
+    Destroy {
+        id: EntityId,
+    },
+    CreateHost {
+        id: EntityId,
+    },
+    DestroyHost {
+        id: EntityId,
+    },
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct TransferCell {
+    pub from: CellId,
+    pub to: CellId,
+}
+
+impl TransferCell {
+    #[inline]
+    pub fn new<T, U>(from: T, to: U) -> Option<Self>
+    where
+        T: Into<CellId>,
+        U: Into<CellId>,
+    {
+        let from = from.into();
+        let to = to.into();
+
+        if from == to {
+            None
+        } else {
+            Some(Self { from, to })
+        }
+    }
 }
 
 pub struct Patch {}
