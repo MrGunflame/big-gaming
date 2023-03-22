@@ -28,7 +28,7 @@ impl Connections {
                 inner: Arc::new(ConnectionInner {
                     id: handle.id,
                     state: RwLock::new(ConnectionState {
-                        full_update: false,
+                        full_update: true,
                         cells: vec![],
                         id: None,
                         head: 0,

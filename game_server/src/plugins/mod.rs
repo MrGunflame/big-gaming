@@ -193,7 +193,7 @@ fn update_snapshots(
         //     return;
         // };
 
-        let Some(curr) = world.at(world.len().wrapping_sub(1)) else {
+        let Some(curr) = world.front() else {
             return;
         };
 
@@ -208,6 +208,8 @@ fn update_snapshots(
             let cell = curr.cell(host.transform.translation.into());
 
             for entity in cell.iter() {
+                dbg!(&entity);
+
                 conn.handle().send_cmd(Command::EntityCreate {
                     id: entity.id,
                     translation: entity.transform.translation,
