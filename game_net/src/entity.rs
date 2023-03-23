@@ -28,6 +28,11 @@ impl Entities {
     }
 
     pub fn insert(&mut self, local: EntityId, remote: ServerEntity) {
+        if cfg!(debug_assertions) {
+            assert!(!self.host.contains_key(&local));
+            assert!(!self.remote.contains_key(&remote));
+        }
+
         self.host.insert(local, remote);
         self.remote.insert(remote, local);
     }
@@ -44,6 +49,16 @@ impl Entities {
         E: ServerEntityTranslation,
     {
         entity.get(self)
+    }
+
+    pub fn len(&self) -> usize {
+        debug_assert_eq!(self.host.len(), self.remote.len());
+
+        self.host.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 
     /// Unpacks a raw [`Frame`] into a game [`Command`].
@@ -232,4 +247,45 @@ impl private::Sealed for ServerEntity {}
 
 mod private {
     pub trait Sealed {}
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Entities, EntityId, ServerEntity};
+
+    #[test]
+    fn test_entities() {
+        let mut entities = Entities::new();
+        assert_eq!(entities.len(), 0);
+        assert_eq!(entities.is_empty(), true);
+
+        entities.insert(EntityId::from_raw(0), ServerEntity(0));
+        assert_eq!(entities.get(EntityId::from_raw(0)), Some(ServerEntity(0)));
+        assert_eq!(entities.get(ServerEntity(0)), Some(EntityId::from_raw(0)));
+        assert_eq!(entities.len(), 1);
+
+        entities.insert(EntityId::from_raw(1), ServerEntity(1));
+        assert_eq!(entities.get(EntityId::from_raw(1)), Some(ServerEntity(1)));
+        assert_eq!(entities.get(ServerEntity(1)), Some(EntityId::from_raw(1)));
+        assert_eq!(entities.len(), 2);
+
+        assert_eq!(entities.get(EntityId::from_raw(0)), Some(ServerEntity(0)));
+        assert_eq!(entities.get(ServerEntity(0)), Some(EntityId::from_raw(0)));
+
+        assert_eq!(
+            entities.remove(EntityId::from_raw(0)),
+            Some(ServerEntity(0))
+        );
+        assert_eq!(entities.get(EntityId::from_raw(0)), None);
+        assert_eq!(entities.get(ServerEntity(0)), None);
+        assert_eq!(entities.len(), 1);
+
+        assert_eq!(
+            entities.remove(ServerEntity(1)),
+            Some(EntityId::from_raw(1))
+        );
+        assert_eq!(entities.get(EntityId::from_raw(1)), None);
+        assert_eq!(entities.get(ServerEntity(1)), None);
+        assert_eq!(entities.len(), 0);
+    }
 }
