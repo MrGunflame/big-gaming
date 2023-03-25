@@ -26,6 +26,10 @@ impl EntityId {
         let id = ENTITY_ID.fetch_add(1, Ordering::Relaxed);
         Self { index: id }
     }
+
+    pub fn from_raw(index: u64) -> Self {
+        Self { index }
+    }
 }
 
 #[derive(Clone, Debug, Component, PartialEq)]
