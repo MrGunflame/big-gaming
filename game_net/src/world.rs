@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, VecDeque};
 use std::ops::{Deref, DerefMut};
 use std::time::{Duration, Instant};
 
@@ -7,8 +7,9 @@ use game_common::entity::{Entity, EntityData, EntityId};
 
 use game_common::world::CellId;
 use glam::{Quat, Vec3};
+
 #[cfg(feature = "tracing")]
-use tracing::{span, Level, Span};
+use tracing::{event, span, Level, Span};
 
 use crate::proto::sequence::Sequence;
 use crate::snapshot::{EntityChange, TransferCell};
@@ -132,6 +133,15 @@ impl WorldState {
 
     pub fn front(&self) -> Option<WorldViewRef<'_>> {
         self.snapshots.back().map(|s| WorldViewRef { snapshot: s })
+    }
+
+    pub fn front_mut(&mut self) -> Option<WorldViewMut<'_>> {
+        self.snapshots.back_mut()?;
+
+        Some(WorldViewMut {
+            index: self.len() - 1,
+            world: self,
+        })
     }
 
     pub fn at(&self, index: usize) -> Option<WorldViewRef<'_>> {
@@ -318,6 +328,15 @@ impl<'a> WorldViewMut<'a> {
     }
 
     pub fn spawn(&mut self, entity: Entity) {
+        #[cfg(feature = "tracing")]
+        event!(
+            Level::INFO,
+            "[{}] spawning {:?} (C = {})",
+            self.index,
+            entity.id,
+            CellId::from(entity.transform.translation).to_f32()
+        );
+
         self.snapshot()
             .cells
             .entry(CellId::from(entity.transform.translation))
@@ -343,6 +362,15 @@ impl<'a> WorldViewMut<'a> {
             .unwrap()
             .transform
             .translation;
+
+        #[cfg(feature = "tracing")]
+        event!(
+            Level::INFO,
+            "[{}] despawning {:?} (C = {})",
+            self.index,
+            id,
+            CellId::from(translation).to_f32()
+        );
 
         self.snapshot().entities.despawn(id);
         self.world.delta.push(EntityChange::Destroy { id });
@@ -381,17 +409,62 @@ impl<'a> WorldViewMut<'a> {
 impl<'a> Drop for WorldViewMut<'a> {
     fn drop(&mut self) {
         // Skip the current snapshot.
-        self.index += 1;
+        let mut index = self.index + 1;
 
-        while self.index < self.world.snapshots.len() {
-            let view = self.world.snapshots.get_mut(self.index).unwrap();
+        let delta = self.delta().to_vec();
 
-            for delta in &self.world.delta {
+        while index < self.world.snapshots.len() {
+            #[cfg(feature = "tracing")]
+            event!(
+                Level::INFO,
+                "[{}] patch {} into {}",
+                self.index,
+                self.index,
+                index
+            );
+
+            let view = self.world.snapshots.get_mut(index).unwrap();
+
+            for delta in &delta {
+                #[cfg(feature = "tracing")]
+                event!(
+                    Level::INFO,
+                    "[{}] apply {}",
+                    self.index,
+                    event_to_str(delta)
+                );
+
                 view.apply(delta.clone());
             }
 
-            self.index += 1;
+            #[cfg(feature = "tracing")]
+            event!(
+                Level::INFO,
+                "[{}] done patching {} into {}",
+                self.index,
+                self.index,
+                index
+            );
+
+            index += 1;
         }
+    }
+}
+
+#[cfg(feature = "tracing")]
+fn event_to_str(event: &EntityChange) -> &'static str {
+    match event {
+        EntityChange::Create { id: _, data: _ } => "Create",
+        EntityChange::Destroy { id: _ } => "Destroy",
+        EntityChange::Translate {
+            id: _,
+            translation: _,
+            cell: _,
+        } => "Translate",
+        EntityChange::Rotate { id: _, rotation: _ } => "Rotate",
+        EntityChange::Health { id: _, health: _ } => "Health",
+        EntityChange::CreateHost { id: _ } => "CreateHost",
+        EntityChange::DestroyHost { id: _ } => "DestroyHost",
     }
 }
 

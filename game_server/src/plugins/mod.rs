@@ -28,7 +28,11 @@ impl Plugin for ServerPlugins {
             .insert_resource(EntityMap::default())
             .add_system(update_client_heads.before(flush_command_queue))
             .add_system(flush_command_queue)
-            .add_system(update_snapshots.after(flush_command_queue));
+            .add_system(
+                update_snapshots
+                    .after(flush_command_queue)
+                    .after(update_client_heads),
+            );
     }
 }
 
@@ -67,7 +71,8 @@ fn flush_command_queue(
         let head = conn.state().read().head;
 
         // Get the world state at the time the client sent the command.
-        let Some(mut view) = world.at_mut(head) else {
+        // let Some(mut view) = world.at_mut(head) else {
+        let Some(mut view) = world.front_mut() else {
             tracing::warn!("No snapshots yet");
             return;
         };
