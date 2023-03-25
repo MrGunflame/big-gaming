@@ -1,8 +1,8 @@
 use std::time::{Duration, Instant};
 
 use bevy::prelude::{
-    AssetServer, Commands, DespawnRecursiveExt, IntoSystemConfig, Plugin, Query, Res, ResMut,
-    Transform, Vec3,
+    AssetServer, Commands, DespawnRecursiveExt, IntoSystemConfig, IntoSystemSetConfig, Plugin,
+    Query, Res, ResMut, SystemSet, Transform, Vec3,
 };
 use bevy_rapier3d::prelude::Velocity;
 use game_common::actors::human::Human;
@@ -21,18 +21,34 @@ use crate::entity::ServerEntityGenerator;
 
 pub struct ServerPlugins;
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, SystemSet)]
+enum NetSet {
+    UpdateHeads,
+    FlushCommands,
+    UpdateSnapshots,
+}
+
 impl Plugin for ServerPlugins {
     fn build(&self, app: &mut bevy::prelude::App) {
-        app.insert_resource(ServerEntityGenerator::new())
-            .insert_resource(WorldState::new())
-            .insert_resource(EntityMap::default())
-            .add_system(update_client_heads.before(flush_command_queue))
-            .add_system(flush_command_queue)
-            .add_system(
-                update_snapshots
-                    .after(flush_command_queue)
-                    .after(update_client_heads),
-            );
+        app.insert_resource(ServerEntityGenerator::new());
+        app.insert_resource(WorldState::new());
+        app.insert_resource(EntityMap::default());
+
+        app.add_system(update_client_heads.in_set(NetSet::UpdateHeads));
+        app.add_system(flush_command_queue.in_set(NetSet::FlushCommands));
+        app.add_system(update_snapshots.in_set(NetSet::UpdateSnapshots));
+
+        app.configure_set(NetSet::UpdateHeads.before(NetSet::FlushCommands));
+        app.configure_set(NetSet::FlushCommands.before(NetSet::UpdateSnapshots));
+
+        // Note: This may seem to be implied with the above rules,
+        // but does not work in bevy 0.10!
+        // Without this rule update_client_heads runs before update_snapshots sometimes!
+        app.configure_set(
+            NetSet::UpdateSnapshots
+                .after(NetSet::FlushCommands)
+                .after(NetSet::UpdateHeads),
+        );
     }
 }
 
