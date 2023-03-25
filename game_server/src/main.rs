@@ -28,14 +28,25 @@ struct Args {}
 
 #[tokio::main]
 async fn main() {
+    game_core::logger::init();
+
     let state = State::new();
 
     let queue = state.queue.clone();
     let conns = state.conns.clone();
 
     tokio::task::spawn(async move {
-        let server = Server::new(state).unwrap();
-        server.await.unwrap();
+        let server = match Server::new(state) {
+            Ok(s) => s,
+            Err(err) => {
+                tracing::error!("failed to run server: {}", err);
+                return;
+            }
+        };
+
+        if let Err(err) = server.await {
+            tracing::error!("failed to run server: {}", err);
+        }
     });
 
     let archive = GameArchive::new();
