@@ -1,4 +1,5 @@
 use std::collections::{HashMap, VecDeque};
+use std::fmt::{self, Debug, Display, Formatter};
 use std::ops::{Deref, DerefMut};
 use std::time::{Duration, Instant};
 
@@ -42,7 +43,7 @@ impl WorldState {
         let index = self.get_index(ts)?;
         self.snapshots
             .get(index)
-            .map(|s| WorldViewRef { snapshot: s })
+            .map(|s| WorldViewRef { snapshot: s, index })
     }
 
     pub fn get_mut(&mut self, ts: Instant) -> Option<WorldViewMut<'_>> {
@@ -112,14 +113,23 @@ impl WorldState {
         self.head += 1;
 
         Some(NextWorldView {
-            prev: prev.map(|s| WorldViewRef { snapshot: s }),
-            view: WorldViewRef { snapshot: next },
+            prev: prev.map(|s| WorldViewRef {
+                snapshot: s,
+                index: self.head.wrapping_sub(1),
+            }),
+            view: WorldViewRef {
+                snapshot: next,
+                index: self.head,
+            },
             delta: prev.map(|p| next.creation - p.creation),
         })
     }
 
     pub fn back(&self) -> Option<WorldViewRef<'_>> {
-        self.snapshots.front().map(|s| WorldViewRef { snapshot: s })
+        self.snapshots.front().map(|s| WorldViewRef {
+            snapshot: s,
+            index: 0,
+        })
     }
 
     pub fn back_mut(&mut self) -> Option<WorldViewMut<'_>> {
@@ -132,7 +142,10 @@ impl WorldState {
     }
 
     pub fn front(&self) -> Option<WorldViewRef<'_>> {
-        self.snapshots.back().map(|s| WorldViewRef { snapshot: s })
+        self.snapshots.back().map(|s| WorldViewRef {
+            snapshot: s,
+            index: self.len() - 1,
+        })
     }
 
     pub fn front_mut(&mut self) -> Option<WorldViewMut<'_>> {
@@ -147,7 +160,7 @@ impl WorldState {
     pub fn at(&self, index: usize) -> Option<WorldViewRef<'_>> {
         self.snapshots
             .get(index)
-            .map(|s| WorldViewRef { snapshot: s })
+            .map(|s| WorldViewRef { snapshot: s, index })
     }
 
     pub fn at_mut(&mut self, index: usize) -> Option<WorldViewMut<'_>> {
@@ -187,6 +200,7 @@ pub struct NextWorldView<'a> {
 #[derive(Copy, Clone, Debug)]
 pub struct WorldViewRef<'a> {
     snapshot: &'a Snapshot,
+    index: usize,
 }
 
 impl<'a> WorldViewRef<'a> {
@@ -298,7 +312,6 @@ impl<'a> WorldViewRef<'a> {
     }
 }
 
-#[derive(Debug)]
 pub struct WorldViewMut<'a> {
     world: &'a mut WorldState,
     index: usize,
@@ -309,6 +322,10 @@ pub struct WorldViewMut<'a> {
 }
 
 impl<'a> WorldViewMut<'a> {
+    fn snapshot_ref(&self) -> &Snapshot {
+        self.world.snapshots.get(self.index).unwrap()
+    }
+
     fn snapshot(&mut self) -> &mut Snapshot {
         self.world.snapshots.get_mut(self.index).unwrap()
     }
@@ -403,6 +420,15 @@ impl<'a> WorldViewMut<'a> {
     #[inline]
     pub fn creation(&self) -> Instant {
         self.world.snapshots.get(self.index).unwrap().creation
+    }
+}
+
+impl<'a> Debug for WorldViewMut<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.debug_struct("WorldViewMut")
+            .field("index", &self.index)
+            .field("snapshot", self.snapshot_ref())
+            .finish_non_exhaustive()
     }
 }
 
