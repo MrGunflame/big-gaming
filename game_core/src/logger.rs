@@ -4,10 +4,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use chrono::Local;
 use tracing::field::{Field, Visit};
-use tracing::metadata::LevelFilter;
 use tracing::span::{Attributes, Record};
 use tracing::subscriber::set_global_default;
-use tracing::{Event, Id, Metadata, Subscriber};
+use tracing::{Event, Id, Level, Metadata, Subscriber};
 
 pub fn init() {
     Logger::new().init();
@@ -31,20 +30,18 @@ impl Logger {
 }
 
 impl Logger {
-    fn log<T, L>(&self, level: L, content: T)
+    fn log<T>(&self, level: Level, content: T)
     where
         T: Display,
-        L: Into<LevelFilter>,
     {
         let now = Local::now().format("%Y-%m-%d %H:%M:%S");
 
-        let level = match level.into() {
-            LevelFilter::ERROR => "ERROR",
-            LevelFilter::WARN => "WARN",
-            LevelFilter::INFO => "INFO",
-            LevelFilter::DEBUG => "DEBUG",
-            LevelFilter::TRACE => "TRACE",
-            LevelFilter::OFF => return,
+        let level = match level {
+            Level::ERROR => "ERROR",
+            Level::WARN => "WARN",
+            Level::INFO => "INFO",
+            Level::DEBUG => "DEBUG",
+            Level::TRACE => "TRACE",
         };
 
         println!("[{}] [{}] {}", now, level, content);
@@ -67,7 +64,7 @@ impl Subscriber for Logger {
         let mut visitor = Visitor::new();
         values.record(&mut visitor);
 
-        self.log(LevelFilter::INFO, visitor);
+        self.log(Level::INFO, visitor);
     }
 
     fn record_follows_from(&self, span: &Id, follows: &Id) {}
@@ -80,11 +77,11 @@ impl Subscriber for Logger {
     }
 
     fn enter(&self, span: &Id) {
-        self.log(LevelFilter::INFO, format!("--> {}", span.into_u64()));
+        self.log(Level::INFO, format!("--> {}", span.into_u64()));
     }
 
     fn exit(&self, span: &Id) {
-        self.log(LevelFilter::INFO, format!("<-- {}", span.into_u64()));
+        self.log(Level::INFO, format!("<-- {}", span.into_u64()));
     }
 }
 
