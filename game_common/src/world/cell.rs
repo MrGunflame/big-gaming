@@ -1,7 +1,7 @@
 use std::borrow::Borrow;
 
 use ahash::{HashMap, HashMapExt};
-use glam::{UVec3, Vec3, Vec3A};
+use glam::{IVec3, UVec3, Vec3, Vec3A};
 
 use super::entity::{Entity, EntityQueue};
 
@@ -61,6 +61,23 @@ impl CellId {
         let z = z as u128;
 
         Self(x | y | z)
+    }
+
+    #[inline]
+    pub fn to_i32(self) -> IVec3 {
+        let x = ((self.0 & Self::MASK_X) >> 64) as i32;
+        let y = ((self.0 & Self::MASK_Y) >> 32) as i32;
+        let z = (self.0 & Self::MASK_Z) as i32;
+        IVec3::new(x, y, z)
+    }
+
+    /// Returns a `f32` representation of the `CellId`.
+    #[inline]
+    pub fn to_f32(self) -> Vec3 {
+        let x = (((self.0 & Self::MASK_X) >> 64) as i32) as f32;
+        let y = (((self.0 & Self::MASK_Y) >> 32) as i32) as f32;
+        let z = ((self.0 & Self::MASK_Z) as i32) as f32;
+        Vec3::new(x, y, z)
     }
 
     /// Returns the `x` coordinate at which this `ChunkId` starts.
