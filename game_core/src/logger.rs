@@ -18,6 +18,7 @@ pub fn init() {
 pub struct Logger {
     id: AtomicU64,
     spans: RwLock<HashMap<Id, SpanDetails>>,
+    is_tty: bool,
 }
 
 impl Logger {
@@ -25,6 +26,7 @@ impl Logger {
         Self {
             id: AtomicU64::new(1),
             spans: RwLock::new(HashMap::new()),
+            is_tty: atty::is(atty::Stream::Stdout),
         }
     }
 
@@ -48,10 +50,18 @@ impl Logger {
             Level::TRACE => ("TRACE", Color::LIGHT_GRAY_BOLD),
         };
 
-        let now = ColorText::new(format!("[{}]", now), Color::LIGHT_GRAY);
-        let level = ColorText::new(level, color);
-        let name = ColorText::new(&meta.name, Color::LIGHT_GRAY);
-        println!("{} {} {} {}", now, level, name, content);
+        if self.is_tty {
+            let now = ColorText::new(format!("[{}]", now), Color::LIGHT_GRAY);
+            let level = ColorText::new(level, color);
+            let name = ColorText::new(&meta.name, Color::LIGHT_GRAY);
+
+            println!("{} {} {} {}", now, level, name, content);
+        } else {
+            let now = format!("[{}]", now);
+            let name = &meta.name;
+
+            println!("{} {} {} {}", now, level, name, content);
+        };
     }
 }
 
