@@ -26,6 +26,8 @@ pub mod movement;
 pub mod projectile;
 pub mod world;
 
+pub mod logger;
+
 #[derive(Copy, Clone, Debug, Default)]
 pub struct CorePlugins;
 
