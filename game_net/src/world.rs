@@ -338,7 +338,6 @@ impl<'a> WorldViewMut<'a> {
                 cells: &mut sn.cells,
                 prev: entity.clone(),
                 entity,
-                delta: &mut self.world.delta,
             }),
             None => None,
         }
@@ -347,7 +346,7 @@ impl<'a> WorldViewMut<'a> {
     pub fn spawn(&mut self, entity: Entity) {
         #[cfg(feature = "tracing")]
         event!(
-            Level::INFO,
+            Level::TRACE,
             "[{}] spawning {:?} (C = {})",
             self.index,
             entity.id,
@@ -382,7 +381,7 @@ impl<'a> WorldViewMut<'a> {
 
         #[cfg(feature = "tracing")]
         event!(
-            Level::INFO,
+            Level::TRACE,
             "[{}] despawning {:?} (C = {})",
             self.index,
             id,
@@ -442,7 +441,7 @@ impl<'a> Drop for WorldViewMut<'a> {
         while index < self.world.snapshots.len() {
             #[cfg(feature = "tracing")]
             event!(
-                Level::INFO,
+                Level::TRACE,
                 "[{}] patch {} into {}",
                 self.index,
                 self.index,
@@ -454,7 +453,7 @@ impl<'a> Drop for WorldViewMut<'a> {
             for delta in &delta {
                 #[cfg(feature = "tracing")]
                 event!(
-                    Level::INFO,
+                    Level::TRACE,
                     "[{}] apply {}",
                     self.index,
                     event_to_str(delta)
@@ -465,7 +464,7 @@ impl<'a> Drop for WorldViewMut<'a> {
 
             #[cfg(feature = "tracing")]
             event!(
-                Level::INFO,
+                Level::TRACE,
                 "[{}] done patching {} into {}",
                 self.index,
                 self.index,
@@ -498,7 +497,6 @@ pub struct EntityMut<'a> {
     cells: &'a mut HashMap<CellId, Vec<EntityChange>>,
     prev: Entity,
     entity: &'a mut Entity,
-    delta: &'a mut Vec<EntityChange>,
 }
 
 impl<'a> Deref for EntityMut<'a> {
@@ -518,18 +516,18 @@ impl<'a> DerefMut for EntityMut<'a> {
 impl<'a> Drop for EntityMut<'a> {
     fn drop(&mut self) {
         if self.prev.transform.translation != self.entity.transform.translation {
-            self.delta.push(EntityChange::Translate {
-                id: self.entity.id,
-                translation: self.entity.transform.translation,
-                cell: TransferCell::new(
-                    self.prev.transform.translation,
-                    self.entity.transform.translation,
-                ),
-            });
-
             // Update the cell when moved.
             let prev = CellId::from(self.prev.transform.translation);
             let curr = CellId::from(self.entity.transform.translation);
+
+            self.cells
+                .entry(prev)
+                .or_default()
+                .push(EntityChange::Translate {
+                    id: self.entity.id,
+                    translation: self.entity.transform.translation,
+                    cell: TransferCell::new(prev, curr),
+                });
 
             self.cells
                 .entry(curr)
@@ -546,11 +544,6 @@ impl<'a> Drop for EntityMut<'a> {
         }
 
         if self.prev.transform.rotation != self.entity.transform.rotation {
-            self.delta.push(EntityChange::Rotate {
-                id: self.entity.id,
-                rotation: self.entity.transform.rotation,
-            });
-
             self.cells
                 .entry(CellId::from(self.entity.transform.translation))
                 .or_default()

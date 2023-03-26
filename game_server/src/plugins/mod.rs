@@ -280,38 +280,40 @@ fn update_snapshots(
             // let prev_cell = prev.cell(cell_id);
             let curr_cell = curr.cell(cell_id);
 
-            changes.extend(curr_cell.deltas().to_vec());
-        }
-
-        for delta in changes {
-            let delta = match delta {
-                EntityChange::Translate {
-                    id,
-                    translation,
-                    cell,
-                } => {
-                    if let Some(cell) = cell {
-                        if !state.cells.contains(&cell.to) {
-                            EntityChange::Destroy { id }
-                        } else {
-                            EntityChange::Translate {
-                                id,
-                                translation,
-                                cell: Some(cell),
-                            }
-                        }
-                    } else {
+            changes.extend(
+                curr_cell
+                    .deltas()
+                    .iter()
+                    .cloned()
+                    .map(|d| match &d {
                         EntityChange::Translate {
                             id,
-                            translation,
+                            translation: _,
                             cell,
-                        }
-                    }
-                }
-                d => d,
-            };
+                        } => {
+                            if let Some(cell) = cell {
+                                if !state.cells.contains(&cell.to) {
+                                    EntityChange::Destroy { id: *id }
+                                } else if !state.cells.contains(&cell.from) {
+                                    let enttiy = curr.get(*id).unwrap();
 
-            conn.push(delta);
+                                    EntityChange::Create {
+                                        id: *id,
+                                        data: enttiy.clone(),
+                                    }
+                                } else {
+                                    d
+                                }
+                            } else {
+                                d
+                            }
+                        }
+                        _ => d,
+                    })
+                    .collect::<Vec<_>>(),
+            );
         }
+
+        conn.push(changes);
     }
 }

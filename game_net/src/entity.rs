@@ -141,7 +141,7 @@ impl Entities {
                 }))
             }
             Command::EntityDestroy { id } => {
-                let id = self.get(*id)?;
+                let id = self.remove(*id)?;
 
                 Some(Frame::EntityDestroy(EntityDestroy { entity: id }))
             }
