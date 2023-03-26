@@ -6,6 +6,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use chrono::Local;
 use parking_lot::RwLock;
 use tracing::field::{Field, Visit};
+use tracing::metadata::LevelFilter;
 use tracing::span::{Attributes, Record};
 use tracing::subscriber::set_global_default;
 use tracing::{Event, Id, Level, Metadata, Subscriber};
@@ -19,14 +20,28 @@ pub struct Logger {
     id: AtomicU64,
     spans: RwLock<HashMap<Id, SpanDetails>>,
     is_tty: bool,
+    level: LevelFilter,
 }
 
 impl Logger {
     pub fn new() -> Self {
+        let level = std::env::var("RUST_LOG")
+            .map(|e| match e.as_str() {
+                "error" | "ERROR" => LevelFilter::ERROR,
+                "warn" | "WARN" => LevelFilter::WARN,
+                "info" | "INFO" => LevelFilter::INFO,
+                "debug" | "DEBUG" => LevelFilter::DEBUG,
+                "trace" | "TRACE" => LevelFilter::TRACE,
+                "off" | "OFF" => LevelFilter::OFF,
+                _ => LevelFilter::INFO,
+            })
+            .unwrap_or(LevelFilter::INFO);
+
         Self {
             id: AtomicU64::new(1),
             spans: RwLock::new(HashMap::new()),
             is_tty: atty::is(atty::Stream::Stdout),
+            level,
         }
     }
 
@@ -40,6 +55,11 @@ impl Logger {
     where
         T: Display,
     {
+        // Discard if more verbose than max level.
+        if meta.level > self.level {
+            return;
+        }
+
         let now = Local::now().format("%Y-%m-%d %H:%M:%S");
 
         let (level, color) = match meta.level {
@@ -67,7 +87,7 @@ impl Logger {
 
 impl Subscriber for Logger {
     fn enabled(&self, metadata: &Metadata<'_>) -> bool {
-        true
+        *metadata.level() <= self.level
     }
 
     fn new_span(&self, span: &Attributes<'_>) -> Id {
