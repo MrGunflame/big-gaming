@@ -133,8 +133,6 @@ impl Entities {
                 let entity = self.new_id();
                 self.insert(*id, entity);
 
-                dbg!(id, entity);
-
                 Some(Frame::EntityCreate(EntityCreate {
                     entity,
                     translation: *translation,

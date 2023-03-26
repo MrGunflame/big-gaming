@@ -21,38 +21,34 @@ use crate::entity::ServerEntityGenerator;
 
 pub struct ServerPlugins;
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, SystemSet)]
-enum NetSet {
-    UpdateHeads,
-    FlushCommands,
-    UpdateSnapshots,
-}
-
 impl Plugin for ServerPlugins {
     fn build(&self, app: &mut bevy::prelude::App) {
         app.insert_resource(ServerEntityGenerator::new());
         app.insert_resource(WorldState::new());
         app.insert_resource(EntityMap::default());
 
-        app.add_system(update_client_heads.in_set(NetSet::UpdateHeads));
-        app.add_system(flush_command_queue.in_set(NetSet::FlushCommands));
-        app.add_system(update_snapshots.in_set(NetSet::UpdateSnapshots));
-
-        app.configure_set(NetSet::UpdateHeads.before(NetSet::FlushCommands));
-        app.configure_set(NetSet::FlushCommands.before(NetSet::UpdateSnapshots));
-
-        // Note: This may seem to be implied with the above rules,
-        // but does not work in bevy 0.10!
-        // Without this rule update_client_heads runs before update_snapshots sometimes!
-        app.configure_set(
-            NetSet::UpdateSnapshots
-                .after(NetSet::FlushCommands)
-                .after(NetSet::UpdateHeads),
-        );
+        app.add_system(tick);
     }
 }
 
-fn update_client_heads(conns: Res<Connections>, mut world: ResMut<WorldState>) {
+// All systems need to run sequentially.
+fn tick(
+    commands: Commands,
+    conns: Res<Connections>,
+    mut world: ResMut<WorldState>,
+    queue: Res<CommandQueue>,
+    entities: Query<(&Entity, &mut Transform, &mut Velocity)>,
+    map: Res<EntityMap>,
+    assets: Res<AssetServer>,
+) {
+    update_client_heads(&conns, &mut world);
+    flush_command_queue(
+        commands, &conns, &queue, entities, &map, &mut world, &assets,
+    );
+    update_snapshots(&conns, &world);
+}
+
+fn update_client_heads(conns: &Connections, world: &mut WorldState) {
     world.insert(Instant::now());
 
     for conn in conns.iter() {
@@ -73,12 +69,12 @@ fn update_client_heads(conns: Res<Connections>, mut world: ResMut<WorldState>) {
 
 fn flush_command_queue(
     mut commands: Commands,
-    connections: Res<Connections>,
-    queue: Res<CommandQueue>,
+    connections: &Connections,
+    queue: &CommandQueue,
     mut entities: Query<(&Entity, &mut Transform, &mut Velocity)>,
-    map: Res<EntityMap>,
-    mut world: ResMut<WorldState>,
-    assets: Res<AssetServer>,
+    map: &EntityMap,
+    mut world: &mut WorldState,
+    assets: &AssetServer,
 ) {
     while let Some(msg) = queue.pop() {
         tracing::trace!("got command {:?}", msg.command);
@@ -198,16 +194,16 @@ fn flush_command_queue(
 }
 
 fn update_snapshots(
-    connections: Res<Connections>,
+    connections: &Connections,
     // FIXME: Make dedicated type for all shared entities.
     // mut entities: Query<(&mut Entity, &Transform)>,
-    world: Res<WorldState>,
+    world: &WorldState,
 ) {
     for conn in connections.iter() {
         let mut state = conn.state().write();
 
         let Some(id) = state.id else {
-            continue
+            continue;
         };
 
         // let Some(prev) = world.at(state.head.saturating_sub(1)) else {
@@ -235,7 +231,7 @@ fn update_snapshots(
                 });
             }
 
-            return;
+            continue;
         }
 
         let mut changes = Vec::new();
