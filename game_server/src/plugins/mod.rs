@@ -55,7 +55,7 @@ fn update_client_heads(conns: &Connections, world: &mut WorldState) {
         let old_head = conn.state().write().head;
 
         let client_time = Instant::now() - Duration::from_millis(100);
-        let head = world.index(client_time).unwrap_or(0);
+        let head = world.index(client_time).unwrap_or(world.len() - 1);
 
         // assert_ne!(old_head, head);
 
