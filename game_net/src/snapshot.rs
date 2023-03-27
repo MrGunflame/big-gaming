@@ -10,6 +10,8 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use crate::conn::ConnectionId;
+use crate::proto::sequence::Sequence;
+use crate::world::Override;
 
 /// A temporary identifier for a snapshot.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]

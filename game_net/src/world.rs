@@ -303,6 +303,8 @@ impl<'a> WorldViewRef<'a> {
             delta.push(EntityChange::CreateHost { id });
         }
 
+        dbg!(&delta);
+
         delta
     }
 
@@ -438,6 +440,8 @@ impl<'a> Drop for WorldViewMut<'a> {
 
         let delta = self.delta().to_vec();
 
+        let cells = self.snapshot().cells.clone();
+
         while index < self.world.snapshots.len() {
             #[cfg(feature = "tracing")]
             event!(
@@ -460,6 +464,11 @@ impl<'a> Drop for WorldViewMut<'a> {
                 );
 
                 view.apply(delta.clone());
+            }
+
+            // Copy deltas
+            for (k, v) in cells.iter() {
+                view.cells.entry(*k).or_default().extend(v.clone());
             }
 
             #[cfg(feature = "tracing")]
@@ -698,6 +707,8 @@ impl Snapshot {
     }
 }
 
+/// A set for local overrides used until the server achknowledges their
+/// reception.
 #[derive(Clone, Debug)]
 pub struct Overrides {
     seqs: HashMap<Sequence, Vec<Override>>,

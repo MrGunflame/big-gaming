@@ -19,6 +19,7 @@
 //!
 //! # Lag compensation
 //!
+pub mod backlog;
 mod buffer;
 pub mod conn;
 pub mod entity;
