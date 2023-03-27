@@ -1,5 +1,5 @@
 use std::collections::{HashMap, VecDeque};
-use std::fmt::{self, Debug, Display, Formatter};
+use std::fmt::{self, Debug, Formatter};
 use std::ops::{Deref, DerefMut};
 use std::time::{Duration, Instant};
 
@@ -12,6 +12,7 @@ use glam::{Quat, Vec3};
 #[cfg(feature = "tracing")]
 use tracing::{event, span, Level, Span};
 
+use crate::metrics::WorldMetrics;
 use crate::proto::sequence::Sequence;
 use crate::snapshot::{EntityChange, TransferCell};
 
@@ -20,22 +21,23 @@ use crate::snapshot::{EntityChange, TransferCell};
 pub struct WorldState {
     // TODO: This can be a fixed size ring buffer.
     snapshots: VecDeque<Snapshot>,
-    delta: Vec<EntityChange>,
     overries: Overrides,
     head: usize,
     #[cfg(feature = "tracing")]
     resource_span: Span,
+
+    metrics: WorldMetrics,
 }
 
 impl WorldState {
     pub fn new() -> Self {
         Self {
             snapshots: VecDeque::new(),
-            delta: vec![],
             overries: Overrides::new(),
             head: 0,
             #[cfg(feature = "tracing")]
             resource_span: span!(Level::DEBUG, "WorldState"),
+            metrics: WorldMetrics::new(),
         }
     }
 
@@ -50,7 +52,11 @@ impl WorldState {
         let index = self.get_index(ts)?;
         self.snapshots.get_mut(index)?;
 
-        Some(WorldViewMut { world: self, index })
+        Some(WorldViewMut {
+            world: self,
+            index,
+            new_deltas: HashMap::new(),
+        })
     }
 
     pub fn index(&self, ts: Instant) -> Option<usize> {
@@ -71,6 +77,8 @@ impl WorldState {
             assert!(snapshot.creation < ts);
         }
 
+        self.metrics.snapshots.inc();
+
         let snapshot = match self.snapshots.back() {
             Some(snapshot) => {
                 let mut snap = snapshot.clone();
@@ -86,24 +94,31 @@ impl WorldState {
             },
         };
 
-        self.delta = vec![];
         self.snapshots.push_back(snapshot);
     }
 
     pub fn remove(&mut self, ts: Instant) {
-        self.snapshots.retain(|s| s.creation != ts);
-        self.head -= 1;
-    }
+        let Some(index) = self.get_index(ts) else {
+            return;
+        };
 
-    /// Removes the oldest snapshot.
-    pub fn pop(&mut self) {
-        if self.snapshots.pop_front().is_some() && self.head > 0 {
+        let snapshot = self.snapshots.remove(index).unwrap();
+        self.drop_snapshot(snapshot);
+
+        if self.head > 0 {
             self.head -= 1;
         }
     }
 
-    pub fn delta(&self) -> &[EntityChange] {
-        &self.delta
+    /// Removes the oldest snapshot.
+    pub fn pop(&mut self) {
+        if let Some(snapshot) = self.snapshots.pop_front() {
+            self.drop_snapshot(snapshot);
+
+            if self.head > 0 {
+                self.head -= 1;
+            }
+        }
     }
 
     pub fn next(&mut self) -> Option<NextWorldView<'_>> {
@@ -138,6 +153,7 @@ impl WorldState {
         Some(WorldViewMut {
             world: self,
             index: 0,
+            new_deltas: HashMap::new(),
         })
     }
 
@@ -154,6 +170,7 @@ impl WorldState {
         Some(WorldViewMut {
             index: self.len() - 1,
             world: self,
+            new_deltas: HashMap::new(),
         })
     }
 
@@ -166,7 +183,11 @@ impl WorldState {
     pub fn at_mut(&mut self, index: usize) -> Option<WorldViewMut<'_>> {
         self.snapshots.get_mut(index)?;
 
-        Some(WorldViewMut { world: self, index })
+        Some(WorldViewMut {
+            world: self,
+            index,
+            new_deltas: HashMap::new(),
+        })
     }
 
     fn get_index(&self, ts: Instant) -> Option<usize> {
@@ -183,6 +204,17 @@ impl WorldState {
         }
 
         None
+    }
+
+    pub fn metrics(&self) -> &WorldMetrics {
+        &self.metrics
+    }
+
+    fn drop_snapshot(&self, snapshot: Snapshot) {
+        self.metrics.snapshots.dec();
+
+        let deltas = snapshot.cells.values().map(|e| e.len() as u64).sum();
+        self.metrics.deltas.sub(deltas);
     }
 }
 
@@ -321,6 +353,11 @@ pub struct WorldViewMut<'a> {
     // delta: Vec<EntityChange>,
     // snapshot: &'a mut Snapshot,
     // delta: &'a mut Vec<EntityChange>,
+    /// A list of changes applied while this `WorldViewMut` was held.
+    ///
+    /// Note that we can't use the snapshot-global delta list as that would be applied to every
+    /// snapshot, even if it was already applied.
+    new_deltas: HashMap<CellId, Vec<EntityChange>>,
 }
 
 impl<'a> WorldViewMut<'a> {
@@ -337,7 +374,7 @@ impl<'a> WorldViewMut<'a> {
 
         match sn.entities.get_mut(id) {
             Some(entity) => Some(EntityMut {
-                cells: &mut sn.cells,
+                cells: &mut self.new_deltas,
                 prev: entity.clone(),
                 entity,
             }),
@@ -346,6 +383,9 @@ impl<'a> WorldViewMut<'a> {
     }
 
     pub fn spawn(&mut self, entity: Entity) {
+        self.world.metrics.entities.inc();
+        self.world.metrics.deltas.inc();
+
         #[cfg(feature = "tracing")]
         event!(
             Level::TRACE,
@@ -355,8 +395,7 @@ impl<'a> WorldViewMut<'a> {
             CellId::from(entity.transform.translation).to_f32()
         );
 
-        self.snapshot()
-            .cells
+        self.new_deltas
             .entry(CellId::from(entity.transform.translation))
             .or_default()
             .push(EntityChange::Create {
@@ -365,14 +404,12 @@ impl<'a> WorldViewMut<'a> {
             });
 
         self.snapshot().entities.spawn(entity.clone());
-
-        self.world.delta.push(EntityChange::Create {
-            id: entity.id,
-            data: entity,
-        });
     }
 
     pub fn despawn(&mut self, id: EntityId) {
+        self.world.metrics.entities.dec();
+        self.world.metrics.deltas.inc();
+
         let translation = self
             .snapshot()
             .entities
@@ -391,10 +428,8 @@ impl<'a> WorldViewMut<'a> {
         );
 
         self.snapshot().entities.despawn(id);
-        self.world.delta.push(EntityChange::Destroy { id });
 
-        self.snapshot()
-            .cells
+        self.new_deltas
             .entry(CellId::from(translation))
             .or_default()
             .push(EntityChange::Destroy { id });
@@ -414,10 +449,6 @@ impl<'a> WorldViewMut<'a> {
         self.snapshot().hosts.remove(id);
     }
 
-    pub fn delta(&self) -> &[EntityChange] {
-        &self.world.delta
-    }
-
     #[inline]
     pub fn creation(&self) -> Instant {
         self.world.snapshots.get(self.index).unwrap().creation
@@ -435,12 +466,18 @@ impl<'a> Debug for WorldViewMut<'a> {
 
 impl<'a> Drop for WorldViewMut<'a> {
     fn drop(&mut self) {
-        // Skip the current snapshot.
+        // Deltas from the current snapshot are only in `new_deltas`.
+        // Copy all `new_deltas` into cells.
+        let view = self.world.snapshots.get_mut(self.index).unwrap();
+
+        for (k, v) in &self.new_deltas {
+            self.world.metrics.deltas.add(v.len() as u64);
+            dbg!("+", v.len() as u64);
+
+            view.cells.entry(*k).or_default().extend(v.clone());
+        }
+
         let mut index = self.index + 1;
-
-        let delta = self.delta().to_vec();
-
-        let cells = self.snapshot().cells.clone();
 
         while index < self.world.snapshots.len() {
             #[cfg(feature = "tracing")]
@@ -454,20 +491,22 @@ impl<'a> Drop for WorldViewMut<'a> {
 
             let view = self.world.snapshots.get_mut(index).unwrap();
 
-            for delta in &delta {
-                #[cfg(feature = "tracing")]
-                event!(
-                    Level::TRACE,
-                    "[{}] apply {}",
-                    self.index,
-                    event_to_str(delta)
-                );
-
-                view.apply(delta.clone());
-            }
-
             // Copy deltas
-            for (k, v) in cells.iter() {
+            for (k, v) in self.new_deltas.iter() {
+                self.world.metrics.deltas.add(v.len() as u64);
+
+                for change in v {
+                    #[cfg(feature = "tracing")]
+                    event!(
+                        Level::TRACE,
+                        "[{}] apply {}",
+                        self.index,
+                        event_to_str(change)
+                    );
+
+                    view.apply(change.clone());
+                }
+
                 view.cells.entry(*k).or_default().extend(v.clone());
             }
 

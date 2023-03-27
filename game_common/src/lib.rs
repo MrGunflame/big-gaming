@@ -20,6 +20,7 @@ pub mod entity;
 pub mod id;
 pub mod localization;
 pub mod math;
+pub mod metrics;
 pub mod module;
 pub mod net;
 pub mod proto;
