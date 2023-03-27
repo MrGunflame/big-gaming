@@ -3,10 +3,11 @@ mod world;
 
 use std::net::SocketAddr;
 use std::sync::{mpsc, Arc};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use bevy::prelude::{IntoSystemConfig, Res, ResMut, SystemSet, Transform, Vec3};
 use game_common::entity::{Entity, EntityData, EntityMap};
+use game_net::backlog::Backlog;
 use game_net::conn::{Connection, ConnectionHandle, ConnectionMode};
 use game_net::proto::{Decode, Packet};
 use game_net::snapshot::{Command, CommandQueue, ConnectionMessage, DeltaQueue};
@@ -34,13 +35,15 @@ impl bevy::prelude::Plugin for NetPlugin {
 
         let map = EntityMap::default();
 
-        let world = WorldState::new();
+        let mut world = WorldState::new();
+        world.insert(Instant::now() - Duration::from_millis(50));
 
         app.insert_resource(queue);
         app.insert_resource(world);
         app.insert_resource(map.clone());
         app.insert_resource(ServerConnection::new(map));
         app.insert_resource(DeltaQueue::new());
+        app.insert_resource(Backlog::new());
 
         app.add_system(flush_command_queue.in_set(NetSet::ReadCommands));
 
@@ -131,6 +134,8 @@ fn flush_command_queue(
         }
 
         let mut view = world.get_mut(msg.snapshot).unwrap();
+
+        dbg!(&msg);
 
         match msg.command {
             Command::EntityCreate {

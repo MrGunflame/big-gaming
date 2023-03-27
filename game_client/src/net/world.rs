@@ -8,23 +8,25 @@ use game_common::components::combat::Health;
 use game_common::components::player::HostPlayer;
 use game_common::entity::{Entity, EntityData, EntityMap};
 use game_common::world::source::StreamingSource;
+use game_net::backlog::Backlog;
 use game_net::snapshot::{DeltaQueue, EntityChange};
 use game_net::world::{WorldState, WorldViewRef};
 
 pub fn apply_world_delta(mut world: ResMut<WorldState>, mut queue: ResMut<DeltaQueue>) {
-    let Some(view) = world.next() else {
+    let (Some(curr), Some(next)) = (world.at(0), world.at(1)) else {
         return;
     };
 
-    let delta = WorldViewRef::delta(view.prev, view.view);
+    let distance = next.creation() - curr.creation();
+    dbg!(distance);
+
+    let delta = WorldViewRef::delta(Some(curr), next);
 
     for change in delta {
         queue.push(change);
     }
 
-    if world.len() > 120 {
-        world.pop();
-    }
+    world.pop();
 }
 
 pub fn flush_delta_queue(
@@ -37,25 +39,23 @@ pub fn flush_delta_queue(
     )>,
     map: Res<EntityMap>,
     assets: Res<AssetServer>,
+    mut backlog: ResMut<Backlog>,
 ) {
-    while let Some(change) = queue.peek() {
+    // Since events are received in batches, and commands are not applied until
+    // the system is done, we buffer all created entities so we can modify them
+    // in place within the same batch before they are spawned into the world.
+    let mut buffer: Vec<DelayedEntity> = vec![];
+
+    while let Some(change) = queue.pop() {
         match change {
             EntityChange::Create { id, data } => {
-                let entity = spawn_entity(&mut commands, &assets, data.clone());
-                map.insert(*id, entity);
-
                 tracing::info!("spawning entity {:?}", id);
 
-                // The following commands may reference an entity that was just created.
-                // Wait for the next tick before processing them.
-                // TODO: This should rather update the entities in place instead of waiting.
-                queue.pop().unwrap();
-                return;
+                buffer.push(data.into());
             }
             EntityChange::Destroy { id } => {
-                let Some(entity) = map.get(*id) else {
+                let Some(entity) = map.get(id) else {
                     tracing::warn!("attempted to destroy a non-existent entity: {:?}", id);
-                    queue.pop().unwrap();
                     continue;
                 };
 
@@ -66,33 +66,57 @@ pub fn flush_delta_queue(
             EntityChange::Translate {
                 id,
                 translation,
-                cell: _,
+                cell,
             } => {
-                let entity = map.get(*id).unwrap();
+                let Some(entity) = map.get(id) else {
+                    if let Some(entity) = buffer.iter_mut().find(|e|e.entity.id==id) {
+                        entity.entity.transform.translation = translation;
+                    } else {
+                        backlog.push(id, EntityChange::Translate { id, translation, cell });
+                    }
+
+                    continue;
+                };
 
                 if let Ok((mut transform, _, _)) = entities.get_mut(entity) {
-                    transform.translation = *translation;
+                    transform.translation = translation;
                 } else {
-                    tracing::warn!("unknown entity");
+                    tracing::warn!("attempted to translate unknown entity {:?}", id);
                 }
             }
             EntityChange::Rotate { id, rotation } => {
-                let entity = map.get(*id).unwrap();
+                let Some(entity) = map.get(id) else {
+                    if let Some(entity) = buffer.iter_mut().find(|e| e.entity.id == id) {
+                        entity.entity.transform.rotation = rotation;
+                    } else {
+                        backlog.push(id, EntityChange::Rotate { id, rotation });
+                    }
+
+                    continue;
+                };
 
                 if let Ok((mut transform, _, props)) = entities.get_mut(entity) {
                     if let Some(mut props) = props {
                         // Actor
-                        props.rotation = *rotation;
+                        props.rotation = rotation;
                     } else {
                         // Object
-                        transform.rotation = *rotation;
+                        transform.rotation = rotation;
                     }
                 } else {
-                    tracing::warn!("unknown entity");
+                    tracing::warn!("attempted to rotate unknown entity {:?}", id);
                 }
             }
             EntityChange::CreateHost { id } => {
-                let entity = map.get(*id).unwrap();
+                let Some(entity) = map.get(id) else {
+                    if let Some(entity) = buffer.iter_mut().find(|e| e.entity.id == id) {
+                        entity.host = true;
+                    } else {
+                        backlog.push(id, EntityChange::CreateHost { id });
+                    }
+
+                    continue;
+                };
 
                 commands
                     .entity(entity)
@@ -100,7 +124,15 @@ pub fn flush_delta_queue(
                     .insert(StreamingSource::new());
             }
             EntityChange::DestroyHost { id } => {
-                let entity = map.get(*id).unwrap();
+                let Some(entity) = map.get(id) else {
+                    if let Some(entity) = buffer.iter_mut().find(|e| e.entity.id == id) {
+                        entity.host = false;
+                    } else {
+                        backlog.push(id, EntityChange::DestroyHost { id });
+                    }
+
+                    continue;
+                };
 
                 commands
                     .entity(entity)
@@ -108,52 +140,84 @@ pub fn flush_delta_queue(
                     .remove::<StreamingSource>();
             }
             EntityChange::Health { id, health } => {
-                let entity = map.get(*id).unwrap();
+                let Some(entity) = map.get(id) else {
+                    if let Some(entity) = buffer.iter_mut().find(|e| e.entity.id == id ) {
+                        if let EntityData::Actor { race:_, health:h } = &mut entity.entity.data{
+                            *h = health;
+                        }
+                    } else {
+                        backlog.push(id, EntityChange::Health { id, health });
+                    }
+
+                    continue;
+                };
 
                 let (_, h, _) = entities.get_mut(entity).unwrap();
                 if let Some(mut h) = h {
-                    *h = *health;
+                    *h = health;
                 } else {
                     tracing::warn!("tried to apply health to a non-actor entity");
                 }
             }
         }
+    }
 
-        queue.pop().unwrap();
+    for entity in buffer {
+        let id = entity.entity.id;
+        let entity = spawn_entity(&mut commands, &assets, entity);
+        map.insert(id, entity);
     }
 }
 
 fn spawn_entity(
     commands: &mut Commands,
     assets: &AssetServer,
-    entity: Entity,
+    entity: DelayedEntity,
 ) -> bevy::ecs::entity::Entity {
-    match entity.data {
+    match entity.entity.data {
         EntityData::Object { id } => {
             let id = commands
                 .spawn(
                     ObjectBundle::new(id)
-                        .translation(entity.transform.translation)
-                        .rotation(entity.transform.rotation),
+                        .translation(entity.entity.transform.translation)
+                        .rotation(entity.entity.transform.rotation),
                 )
-                .insert(entity)
+                .insert(entity.entity)
                 .id();
 
             id
         }
         EntityData::Actor { race: _, health } => {
             let mut actor = ActorBundle::default();
-            actor.transform.transform.translation = entity.transform.translation;
-            actor.transform.transform.rotation = entity.transform.rotation;
+            actor.transform.transform.translation = entity.entity.transform.translation;
+            actor.transform.transform.rotation = entity.entity.transform.rotation;
             actor.combat.health = health;
 
             actor.properties.eyes = Vec3::new(0.0, 1.6, -0.1);
 
             let mut cmds = commands.spawn(actor);
-            cmds.insert(entity);
+            cmds.insert(entity.entity);
             Human::default().spawn(assets, &mut cmds);
 
+            if entity.host {
+                cmds.insert(HostPlayer).insert(StreamingSource::new());
+            }
+
             cmds.id()
+        }
+    }
+}
+
+struct DelayedEntity {
+    entity: Entity,
+    host: bool,
+}
+
+impl From<Entity> for DelayedEntity {
+    fn from(value: Entity) -> Self {
+        Self {
+            entity: value,
+            host: false,
         }
     }
 }
