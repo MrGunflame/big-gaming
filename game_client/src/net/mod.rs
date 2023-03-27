@@ -135,8 +135,6 @@ fn flush_command_queue(
 
         let mut view = world.get_mut(msg.snapshot).unwrap();
 
-        dbg!(&msg);
-
         match msg.command {
             Command::EntityCreate {
                 id,

@@ -335,8 +335,6 @@ impl<'a> WorldViewRef<'a> {
             delta.push(EntityChange::CreateHost { id });
         }
 
-        dbg!(&delta);
-
         delta
     }
 
@@ -349,10 +347,6 @@ impl<'a> WorldViewRef<'a> {
 pub struct WorldViewMut<'a> {
     world: &'a mut WorldState,
     index: usize,
-    // entities: &'a mut Entities,
-    // delta: Vec<EntityChange>,
-    // snapshot: &'a mut Snapshot,
-    // delta: &'a mut Vec<EntityChange>,
     /// A list of changes applied while this `WorldViewMut` was held.
     ///
     /// Note that we can't use the snapshot-global delta list as that would be applied to every
@@ -472,7 +466,6 @@ impl<'a> Drop for WorldViewMut<'a> {
 
         for (k, v) in &self.new_deltas {
             self.world.metrics.deltas.add(v.len() as u64);
-            dbg!("+", v.len() as u64);
 
             view.cells.entry(*k).or_default().extend(v.clone());
         }
@@ -492,7 +485,7 @@ impl<'a> Drop for WorldViewMut<'a> {
             let view = self.world.snapshots.get_mut(index).unwrap();
 
             // Copy deltas
-            for (k, v) in self.new_deltas.iter() {
+            for (_, v) in self.new_deltas.iter() {
                 self.world.metrics.deltas.add(v.len() as u64);
 
                 for change in v {
@@ -506,8 +499,6 @@ impl<'a> Drop for WorldViewMut<'a> {
 
                     view.apply(change.clone());
                 }
-
-                view.cells.entry(*k).or_default().extend(v.clone());
             }
 
             #[cfg(feature = "tracing")]
