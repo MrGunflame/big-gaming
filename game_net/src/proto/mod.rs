@@ -40,13 +40,15 @@ use game_common::components::object::ObjectId;
 use game_common::components::race::RaceId;
 use game_common::entity::EntityData;
 use game_common::id::WeakId;
+use game_common::world::terrain::Heightmap;
+use game_common::world::CellId;
 pub use game_macros::{net__decode as Decode, net__encode as Encode};
 
 use std::convert::Infallible;
 
 use bytes::{Buf, BufMut};
 use game_common::net::ServerEntity;
-use glam::{Quat, Vec3};
+use glam::{Quat, UVec2, Vec3};
 use thiserror::Error;
 
 use self::ack::{Ack, Nak};
@@ -138,7 +140,7 @@ impl_primitive! { u8, u16, u32, u64, u128, i8, i16, i32, i64, i128, f32, f64 }
 impl Encode for () {
     type Error = Infallible;
 
-    fn encode<B>(&self, buf: B) -> Result<(), Self::Error>
+    fn encode<B>(&self, _buf: B) -> Result<(), Self::Error>
     where
         B: BufMut,
     {
@@ -149,7 +151,7 @@ impl Encode for () {
 impl Decode for () {
     type Error = Infallible;
 
-    fn decode<B>(buf: B) -> Result<Self, Self::Error>
+    fn decode<B>(_buf: B) -> Result<Self, Self::Error>
     where
         B: Buf,
     {
@@ -219,6 +221,32 @@ impl Decode for Quat {
     }
 }
 
+impl Encode for UVec2 {
+    type Error = Infallible;
+
+    fn encode<B>(&self, mut buf: B) -> Result<(), Self::Error>
+    where
+        B: BufMut,
+    {
+        self.x.encode(&mut buf)?;
+        self.y.encode(&mut buf)?;
+        Ok(())
+    }
+}
+
+impl Decode for UVec2 {
+    type Error = EofError;
+
+    fn decode<B>(mut buf: B) -> Result<Self, Self::Error>
+    where
+        B: Buf,
+    {
+        let x = u32::decode(&mut buf)?;
+        let y = u32::decode(&mut buf)?;
+        Ok(Self::new(x, y))
+    }
+}
+
 impl Encode for ServerEntity {
     type Error = Infallible;
 
@@ -238,6 +266,35 @@ impl Decode for ServerEntity {
         B: Buf,
     {
         u64::decode(buf).map(Self)
+    }
+}
+
+impl Encode for CellId {
+    type Error = Infallible;
+
+    fn encode<B>(&self, mut buf: B) -> Result<(), Self::Error>
+    where
+        B: BufMut,
+    {
+        let (x, y, z) = self.as_parts();
+        x.encode(&mut buf)?;
+        y.encode(&mut buf)?;
+        z.encode(&mut buf)?;
+        Ok(())
+    }
+}
+
+impl Decode for CellId {
+    type Error = EofError;
+
+    fn decode<B>(mut buf: B) -> Result<Self, Self::Error>
+    where
+        B: Buf,
+    {
+        let x = u32::decode(&mut buf)?;
+        let y = u32::decode(&mut buf)?;
+        let z = u32::decode(&mut buf)?;
+        Ok(Self::from_parts(x, y, z))
     }
 }
 
@@ -548,6 +605,59 @@ pub struct SpawnHost {
 }
 
 #[derive(Clone, Debug)]
+pub struct Terrain {
+    pub cell: CellId,
+    pub height: Heightmap,
+}
+
+impl Encode for Terrain {
+    type Error = Infallible;
+
+    fn encode<B>(&self, mut buf: B) -> Result<(), Self::Error>
+    where
+        B: BufMut,
+    {
+        self.cell.encode(&mut buf)?;
+
+        self.height.size().encode(&mut buf)?;
+
+        for p in self.height.nodes() {
+            p.encode(&mut buf)?;
+        }
+
+        Ok(())
+    }
+}
+
+impl Decode for Terrain {
+    type Error = EofError;
+
+    fn decode<B>(mut buf: B) -> Result<Self, Self::Error>
+    where
+        B: Buf,
+    {
+        let cell = CellId::decode(&mut buf)?;
+
+        let size = UVec2::decode(&mut buf)?;
+        let len = (size.x as usize)
+            .checked_mul(size.y as usize)
+            .expect("received terrain mesh size overflowed");
+
+        let mut nodes = Vec::with_capacity(len);
+
+        for _ in 0..len {
+            let node = f32::decode(&mut buf)?;
+            nodes.push(node);
+        }
+
+        Ok(Self {
+            cell,
+            height: Heightmap::from_vec(size, nodes),
+        })
+    }
+}
+
+#[derive(Clone, Debug)]
 pub enum Frame {
     EntityCreate(EntityCreate),
     EntityDestroy(EntityDestroy),
@@ -556,6 +666,7 @@ pub enum Frame {
     EntityVelocity(EntityVelocity),
     EntityHealth(EntityHealth),
     SpawnHost(SpawnHost),
+    WorldTerrain(Terrain),
 }
 
 impl Encode for Frame {
@@ -592,6 +703,10 @@ impl Encode for Frame {
             }
             Self::SpawnHost(frame) => {
                 FrameType::SPAWN_HOST.encode(&mut buf)?;
+                frame.encode(buf)
+            }
+            Self::WorldTerrain(frame) => {
+                FrameType::WORLD_TERRAIN.encode(&mut buf)?;
                 frame.encode(buf)
             }
         }
@@ -635,6 +750,10 @@ impl Decode for Frame {
             FrameType::SPAWN_HOST => {
                 let frame = SpawnHost::decode(buf)?;
                 Ok(Self::SpawnHost(frame))
+            }
+            FrameType::WORLD_TERRAIN => {
+                let frame = Terrain::decode(buf)?;
+                Ok(Self::WorldTerrain(frame))
             }
             _ => unreachable!(),
         }
@@ -800,6 +919,9 @@ impl FrameType {
 
     /// The `FrameType` for the [`EntityHealth`] frame.
     pub const ENTITY_HEALTH: Self = Self(0x10);
+
+    /// The `FrameType` for the [`Terrain`] frame.
+    pub const WORLD_TERRAIN: Self = Self(0x20);
 }
 
 impl TryFrom<u16> for FrameType {
@@ -816,6 +938,7 @@ impl TryFrom<u16> for FrameType {
             Self::SPAWN_HOST => Ok(Self::SPAWN_HOST),
             Self::PLAYER_JOIN => Ok(Self::PLAYER_JOIN),
             Self::PLAYER_LEAVE => Ok(Self::PLAYER_LEAVE),
+            Self::WORLD_TERRAIN => Ok(Self::WORLD_TERRAIN),
             _ => Err(InvalidFrameType(value)),
         }
     }

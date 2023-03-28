@@ -186,6 +186,14 @@ impl Heightmap {
         Self { size, nodes }
     }
 
+    pub fn size(&self) -> UVec2 {
+        self.size
+    }
+
+    pub fn nodes(&self) -> &[f32] {
+        &self.nodes
+    }
+
     pub fn from_image<T, P>(view: T) -> Self
     where
         T: GenericImageView<Pixel = Luma<P>>,
