@@ -13,10 +13,12 @@ use glam::{Quat, Vec3};
 #[cfg(feature = "tracing")]
 use tracing::{event, span, Level, Span};
 
-use crate::entity::{Entity, EntityData, EntityId};
+use crate::entity::EntityId;
 use crate::world::snapshot::{EntityChange, TransferCell};
 
 pub use metrics::WorldMetrics;
+
+use super::entity::{Entity, EntityBody};
 
 /// The world state at constant time intervals.
 #[derive(Clone, Debug, Resource)]
@@ -260,18 +262,12 @@ impl<'a> WorldViewRef<'a> {
                             });
                         }
 
-                        match (&entity.data, &new.data) {
-                            (
-                                EntityData::Actor { race: _, health },
-                                EntityData::Actor {
-                                    race: _,
-                                    health: new,
-                                },
-                            ) => {
-                                if health != new {
+                        match (&entity.body, &new.body) {
+                            (EntityBody::Actor(prev), EntityBody::Actor(next)) => {
+                                if prev.health != next.health {
                                     delta.push(EntityChange::Health {
                                         id: entity.id,
-                                        health: *new,
+                                        health: next.health,
                                     });
                                 }
                             }
@@ -643,7 +639,7 @@ impl Snapshot {
                 self.entities.spawn(Entity {
                     id,
                     transform: data.transform,
-                    data: data.data,
+                    body: data.body,
                 });
             }
             EntityChange::Destroy { id } => {
@@ -693,8 +689,8 @@ impl Snapshot {
             }
             EntityChange::Health { id, health } => {
                 if let Some(entity) = self.entities.get_mut(id) {
-                    if let EntityData::Actor { race: _, health: h } = &mut entity.data {
-                        *h = health;
+                    if let EntityBody::Actor(actor) = &mut entity.body {
+                        actor.health = health;
                     }
                 }
             }
@@ -791,18 +787,12 @@ impl<'a> CellViewRef<'a> {
                         });
                     }
 
-                    match (&entity.data, &new.data) {
-                        (
-                            EntityData::Actor { race: _, health },
-                            EntityData::Actor {
-                                race: _,
-                                health: new,
-                            },
-                        ) => {
-                            if health != new {
+                    match (&entity.body, &new.body) {
+                        (EntityBody::Actor(prev), EntityBody::Actor(next)) => {
+                            if prev.health != next.health {
                                 delta.push(EntityChange::Health {
                                     id: entity.id,
-                                    health: *new,
+                                    health: next.health,
                                 });
                             }
                         }

@@ -1,6 +1,7 @@
 use bevy_ecs::system::Resource;
 use game_common::components::combat::Health;
-use game_common::entity::{EntityData, EntityId};
+use game_common::entity::EntityId;
+use game_common::world::entity::EntityBody;
 use game_common::world::snapshot::EntityChange;
 use game_common::world::terrain::Heightmap;
 use game_common::world::CellId;
@@ -65,7 +66,7 @@ pub enum Command {
         id: EntityId,
         translation: Vec3,
         rotation: Quat,
-        data: EntityData,
+        data: EntityBody,
     },
     EntityDestroy {
         id: EntityId,

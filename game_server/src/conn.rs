@@ -127,7 +127,7 @@ impl Connection {
                     id,
                     translation: data.transform.translation,
                     rotation: data.transform.rotation,
-                    data: data.data,
+                    data: data.body,
                 },
                 EntityChange::Destroy { id } => Command::EntityDestroy { id },
                 EntityChange::Translate {

@@ -38,8 +38,8 @@ mod combat;
 use game_common::components::combat::Health;
 use game_common::components::object::ObjectId;
 use game_common::components::race::RaceId;
-use game_common::entity::EntityData;
 use game_common::id::WeakId;
+use game_common::world::entity::{Actor, EntityBody, Object};
 use game_common::world::terrain::Heightmap;
 use game_common::world::CellId;
 pub use game_macros::{net__decode as Decode, net__encode as Encode};
@@ -460,10 +460,10 @@ pub struct EntityCreate {
     pub entity: ServerEntity,
     pub translation: Vec3,
     pub rotation: Quat,
-    pub data: EntityData,
+    pub data: EntityBody,
 }
 
-impl Encode for EntityData {
+impl Encode for EntityBody {
     type Error = Infallible;
 
     fn encode<B>(&self, mut buf: B) -> Result<(), Self::Error>
@@ -471,14 +471,19 @@ impl Encode for EntityData {
         B: BufMut,
     {
         match self {
-            Self::Object { id } => {
+            Self::Terrain(_) => todo!(),
+            Self::Object(object) => {
                 1u8.encode(&mut buf)?;
-                id.encode(&mut buf)?;
+                object.id.encode(&mut buf)?;
             }
-            Self::Actor { race, health } => {
+            Self::Actor(actor) => {
                 2u8.encode(&mut buf)?;
-                race.encode(&mut buf)?;
-                health.encode(&mut buf)?;
+                actor.race.encode(&mut buf)?;
+                actor.health.encode(&mut buf)?;
+            }
+            Self::Item(item) => {
+                3u8.encode(&mut buf)?;
+                todo!()
             }
         }
 
@@ -486,7 +491,7 @@ impl Encode for EntityData {
     }
 }
 
-impl Decode for EntityData {
+impl Decode for EntityBody {
     type Error = Error;
 
     fn decode<B>(mut buf: B) -> Result<Self, Self::Error>
@@ -496,16 +501,19 @@ impl Decode for EntityData {
         let typ = u8::decode(&mut buf)?;
 
         match typ {
-            1 => {
+            1u8 => {
                 let id = ObjectId::decode(&mut buf)?;
 
-                Ok(Self::Object { id })
+                Ok(Self::Object(Object { id }))
             }
-            2 => {
+            2u8 => {
                 let race = RaceId::decode(&mut buf)?;
                 let health = Health::decode(&mut buf)?;
 
-                Ok(Self::Actor { race, health })
+                Ok(Self::Actor(Actor { race, health }))
+            }
+            3u8 => {
+                todo!()
             }
             _ => Err(InvalidEntityKind(typ).into()),
         }

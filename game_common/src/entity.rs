@@ -38,29 +38,6 @@ impl EntityId {
     }
 }
 
-#[derive(Clone, Debug, Component, PartialEq)]
-pub struct Entity {
-    pub id: EntityId,
-    pub transform: Transform,
-    pub data: EntityData,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum EntityData {
-    Object { id: ObjectId },
-    Actor { race: RaceId, health: Health },
-}
-
-impl EntityData {
-    pub const fn is_object(&self) -> bool {
-        matches!(self, Self::Object { id: _ })
-    }
-
-    pub const fn is_actor(&self) -> bool {
-        matches!(self, Self::Actor { race: _, health: _ })
-    }
-}
-
 #[derive(Clone, Debug, Default, Resource)]
 pub struct EntityMap {
     inner: Arc<RwLock<EntityMapInner>>,

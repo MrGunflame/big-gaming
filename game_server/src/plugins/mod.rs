@@ -9,7 +9,8 @@ use game_common::bundles::ActorBundle;
 use game_common::components::combat::Health;
 use game_common::components::player::Player;
 use game_common::components::race::RaceId;
-use game_common::entity::{Entity, EntityData, EntityId, EntityMap};
+use game_common::entity::{EntityId, EntityMap};
+use game_common::world::entity::{Actor, Entity, EntityBody};
 use game_common::world::snapshot::EntityChange;
 use game_common::world::source::StreamingSource;
 use game_common::world::world::WorldState;
@@ -137,10 +138,10 @@ fn flush_command_queue(
                     .insert(Entity {
                         id,
                         transform: Transform::default(),
-                        data: EntityData::Actor {
+                        body: EntityBody::Actor(Actor {
                             race: RaceId(1.into()),
                             health: Health::new(50),
-                        },
+                        }),
                     });
                 Human::default().spawn(&assets, &mut cmds);
 
@@ -149,10 +150,10 @@ fn flush_command_queue(
                 view.spawn(Entity {
                     id,
                     transform: Transform::from_translation(Vec3::new(10.0, 32.0, 10.0)),
-                    data: EntityData::Actor {
+                    body: EntityBody::Actor(Actor {
                         race: RaceId(1.into()),
                         health: Health::new(50),
-                    },
+                    }),
                 });
 
                 // connections
@@ -230,7 +231,7 @@ fn update_snapshots(
                     id: entity.id,
                     translation: entity.transform.translation,
                     rotation: entity.transform.rotation,
-                    data: entity.data.clone(),
+                    data: entity.body.clone(),
                 });
             }
 

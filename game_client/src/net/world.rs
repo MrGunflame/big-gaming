@@ -6,7 +6,8 @@ use game_common::bundles::{ActorBundle, ObjectBundle};
 use game_common::components::actor::ActorProperties;
 use game_common::components::combat::Health;
 use game_common::components::player::HostPlayer;
-use game_common::entity::{Entity, EntityData, EntityMap};
+use game_common::entity::EntityMap;
+use game_common::world::entity::{Entity, EntityBody};
 use game_common::world::snapshot::EntityChange;
 use game_common::world::source::StreamingSource;
 use game_common::world::world::{WorldState, WorldViewRef};
@@ -143,8 +144,8 @@ pub fn flush_delta_queue(
             EntityChange::Health { id, health } => {
                 let Some(entity) = map.get(id) else {
                     if let Some(entity) = buffer.iter_mut().find(|e| e.entity.id == id ) {
-                        if let EntityData::Actor { race:_, health:h } = &mut entity.entity.data{
-                            *h = health;
+                        if let EntityBody::Actor(actor) = &mut entity.entity.body {
+                            actor.health = health;
                         }
                     } else {
                         backlog.push(id, EntityChange::Health { id, health });
@@ -176,11 +177,14 @@ fn spawn_entity(
     assets: &AssetServer,
     entity: DelayedEntity,
 ) -> bevy::ecs::entity::Entity {
-    match entity.entity.data {
-        EntityData::Object { id } => {
+    match &entity.entity.body {
+        EntityBody::Terrain(t) => {
+            todo!();
+        }
+        EntityBody::Object(object) => {
             let id = commands
                 .spawn(
-                    ObjectBundle::new(id)
+                    ObjectBundle::new(object.id)
                         .translation(entity.entity.transform.translation)
                         .rotation(entity.entity.transform.rotation),
                 )
@@ -189,11 +193,11 @@ fn spawn_entity(
 
             id
         }
-        EntityData::Actor { race: _, health } => {
+        EntityBody::Actor(act) => {
             let mut actor = ActorBundle::default();
             actor.transform.transform.translation = entity.entity.transform.translation;
             actor.transform.transform.rotation = entity.entity.transform.rotation;
-            actor.combat.health = health;
+            actor.combat.health = act.health;
 
             actor.properties.eyes = Vec3::new(0.0, 1.6, -0.1);
 
@@ -206,6 +210,9 @@ fn spawn_entity(
             }
 
             cmds.id()
+        }
+        EntityBody::Item(item) => {
+            todo!();
         }
     }
 }

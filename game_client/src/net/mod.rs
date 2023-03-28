@@ -6,7 +6,8 @@ use std::sync::{mpsc, Arc};
 use std::time::{Duration, Instant};
 
 use bevy::prelude::{IntoSystemConfig, Res, ResMut, SystemSet, Transform, Vec3};
-use game_common::entity::{Entity, EntityData, EntityMap};
+use game_common::entity::EntityMap;
+use game_common::world::entity::{Entity, EntityBody};
 use game_common::world::world::WorldState;
 use game_net::backlog::Backlog;
 use game_net::conn::{Connection, ConnectionHandle, ConnectionMode};
@@ -149,7 +150,7 @@ fn flush_command_queue(
                         rotation,
                         scale: Vec3::splat(1.0),
                     },
-                    data,
+                    body: data,
                 });
             }
             Command::EntityDestroy { id } => {
@@ -169,8 +170,8 @@ fn flush_command_queue(
             Command::EntityHealth { id, health } => {
                 let mut entity = view.get_mut(id).unwrap();
 
-                if let EntityData::Actor { race: _, health: h } = &mut entity.data {
-                    *h = health;
+                if let EntityBody::Actor(actor) = &mut entity.body {
+                    actor.health = health;
                 } else {
                     tracing::warn!("tried to apply health to a non-actor entity");
                 }

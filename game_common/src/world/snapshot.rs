@@ -2,9 +2,11 @@ use game_common::components::combat::Health;
 use glam::{Quat, Vec3};
 use std::ops::{Add, AddAssign, Sub, SubAssign};
 
-use crate::entity::{Entity, EntityId};
+use crate::entity::EntityId;
 use crate::world::cell::CellId;
 use crate::world::terrain::Heightmap;
+
+use super::entity::Entity;
 
 /// A temporary identifier for a snapshot.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
