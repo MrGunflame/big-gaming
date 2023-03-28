@@ -1,18 +1,17 @@
 use bevy_ecs::system::Resource;
 use game_common::components::combat::Health;
-use game_common::entity::{Entity, EntityData, EntityId};
+use game_common::entity::{EntityData, EntityId};
+use game_common::world::snapshot::EntityChange;
 use game_common::world::terrain::Heightmap;
 use game_common::world::CellId;
 use glam::{Quat, Vec3};
 use parking_lot::Mutex;
-use std::collections::{HashMap, VecDeque};
+use std::collections::VecDeque;
 use std::ops::{Add, AddAssign, Sub, SubAssign};
 use std::sync::Arc;
 use std::time::Instant;
 
 use crate::conn::ConnectionId;
-use crate::proto::sequence::Sequence;
-use crate::world::Override;
 
 /// A temporary identifier for a snapshot.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -48,73 +47,6 @@ impl SubAssign<u32> for SnapshotId {
     #[inline]
     fn sub_assign(&mut self, rhs: u32) {
         *self = *self - rhs;
-    }
-}
-
-#[derive(Clone, Debug, Default)]
-pub struct Snapshot {
-    // FIXME: Can be hashset
-    entities: HashMap<EntityId, Entity>,
-}
-
-impl Snapshot {
-    pub fn new() -> Self {
-        Self {
-            entities: HashMap::new(),
-        }
-    }
-
-    pub fn update(&mut self, entity: Entity) {
-        match self.entities.get_mut(&entity.id) {
-            Some(ent) => *ent = entity,
-            None => {
-                self.entities.insert(entity.id, entity);
-            }
-        }
-    }
-
-    pub fn delta(&self, new: &Self) -> Vec<EntityChange> {
-        let mut entities = new.entities.clone();
-
-        let mut delta = Vec::new();
-
-        for (id, body) in &self.entities {
-            match entities.remove(id) {
-                Some(new) => {
-                    if body.transform.translation != new.transform.translation {
-                        delta.push(EntityChange::Translate {
-                            id: *id,
-                            translation: new.transform.translation,
-                            cell: Some(TransferCell {
-                                from: body.transform.translation.into(),
-                                to: new.transform.translation.into(),
-                            }),
-                        });
-                    }
-
-                    if body.transform.rotation != new.transform.rotation {
-                        delta.push(EntityChange::Rotate {
-                            id: *id,
-                            rotation: new.transform.rotation,
-                        });
-                    }
-
-                    // if body != &new {
-                    //     delta.push(EntityChange::Update { id: *id, data: new });
-                    // }
-                }
-                None => {
-                    delta.push(EntityChange::Destroy { id: *id });
-                }
-            }
-        }
-
-        // New entities
-        for (id, body) in entities {
-            delta.push(EntityChange::Create { id, data: body });
-        }
-
-        delta
     }
 }
 
@@ -211,41 +143,6 @@ impl CommandQueue {
         let mut queue = self.queue.lock();
         queue.pop_front()
     }
-}
-
-#[derive(Clone, Debug)]
-pub enum EntityChange {
-    Create {
-        id: EntityId,
-        data: Entity,
-    },
-    Translate {
-        id: EntityId,
-        translation: Vec3,
-        cell: Option<TransferCell>,
-    },
-    Rotate {
-        id: EntityId,
-        rotation: Quat,
-    },
-    Health {
-        id: EntityId,
-        health: Health,
-    },
-    // Update { id: EntityId, data: Entity },
-    Destroy {
-        id: EntityId,
-    },
-    CreateHost {
-        id: EntityId,
-    },
-    DestroyHost {
-        id: EntityId,
-    },
-    CreateTerrain {
-        cell: CellId,
-        height: Heightmap,
-    },
 }
 
 #[derive(Copy, Clone, Debug)]

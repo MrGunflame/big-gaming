@@ -7,11 +7,11 @@ use std::time::{Duration, Instant};
 
 use bevy::prelude::{IntoSystemConfig, Res, ResMut, SystemSet, Transform, Vec3};
 use game_common::entity::{Entity, EntityData, EntityMap};
+use game_common::world::world::WorldState;
 use game_net::backlog::Backlog;
 use game_net::conn::{Connection, ConnectionHandle, ConnectionMode};
 use game_net::proto::{Decode, Packet};
 use game_net::snapshot::{Command, CommandQueue, ConnectionMessage, DeltaQueue};
-use game_net::world::WorldState;
 use game_net::Socket;
 use tokio::runtime::Runtime;
 

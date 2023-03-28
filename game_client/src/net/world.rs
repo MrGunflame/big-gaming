@@ -7,10 +7,11 @@ use game_common::components::actor::ActorProperties;
 use game_common::components::combat::Health;
 use game_common::components::player::HostPlayer;
 use game_common::entity::{Entity, EntityData, EntityMap};
+use game_common::world::snapshot::EntityChange;
 use game_common::world::source::StreamingSource;
+use game_common::world::world::{WorldState, WorldViewRef};
 use game_net::backlog::Backlog;
-use game_net::snapshot::{DeltaQueue, EntityChange};
-use game_net::world::{WorldState, WorldViewRef};
+use game_net::snapshot::DeltaQueue;
 
 pub fn apply_world_delta(mut world: ResMut<WorldState>, mut queue: ResMut<DeltaQueue>) {
     let (Some(curr), Some(next)) = (world.at(0), world.at(1)) else {

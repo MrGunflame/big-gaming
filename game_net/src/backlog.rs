@@ -7,8 +7,7 @@ use std::collections::HashMap;
 
 use bevy_ecs::system::Resource;
 use game_common::entity::EntityId;
-
-use crate::snapshot::EntityChange;
+use game_common::world::snapshot::EntityChange;
 
 #[derive(Clone, Debug, Default, Resource)]
 pub struct Backlog {

@@ -5,8 +5,9 @@ use std::sync::Arc;
 use ahash::HashMap;
 use bevy::prelude::Resource;
 use game_common::entity::EntityId;
+use game_common::world::snapshot::EntityChange;
 use game_net::conn::{ConnectionHandle, ConnectionId};
-use game_net::snapshot::{Command, EntityChange};
+use game_net::snapshot::Command;
 use parking_lot::RwLock;
 
 use crate::net::state::ConnectionState;

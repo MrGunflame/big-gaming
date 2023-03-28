@@ -1,10 +1,11 @@
+pub mod metrics;
+
 use std::collections::{HashMap, VecDeque};
 use std::fmt::{self, Debug, Formatter};
 use std::ops::{Deref, DerefMut};
 use std::time::Instant;
 
 use bevy_ecs::system::Resource;
-use game_common::entity::{Entity, EntityData, EntityId};
 
 use game_common::world::CellId;
 use glam::{Quat, Vec3};
@@ -12,8 +13,10 @@ use glam::{Quat, Vec3};
 #[cfg(feature = "tracing")]
 use tracing::{event, span, Level, Span};
 
-use crate::metrics::WorldMetrics;
-use crate::snapshot::{EntityChange, TransferCell};
+use crate::entity::{Entity, EntityData, EntityId};
+use crate::world::snapshot::{EntityChange, TransferCell};
+
+pub use metrics::WorldMetrics;
 
 /// The world state at constant time intervals.
 #[derive(Clone, Debug, Resource)]

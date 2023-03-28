@@ -10,10 +10,11 @@ use game_common::components::combat::Health;
 use game_common::components::player::Player;
 use game_common::components::race::RaceId;
 use game_common::entity::{Entity, EntityData, EntityId, EntityMap};
+use game_common::world::snapshot::EntityChange;
 use game_common::world::source::StreamingSource;
+use game_common::world::world::WorldState;
 use game_common::world::CellId;
-use game_net::snapshot::{Command, CommandQueue, EntityChange};
-use game_net::world::WorldState;
+use game_net::snapshot::{Command, CommandQueue};
 
 use crate::conn::Connections;
 use crate::entity::ServerEntityGenerator;

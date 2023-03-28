@@ -5,8 +5,8 @@ use game_common::components::actor::{ActorFlag, ActorFlags, ActorProperties, Mov
 use game_common::components::movement::{Jump, Movement, RotateQueue};
 use game_common::entity::EntityMap;
 use game_common::math::RotationExt;
+use game_common::world::world::WorldState;
 use game_net::snapshot::Command;
-use game_net::world::WorldState;
 
 use crate::net::ServerConnection;
 
