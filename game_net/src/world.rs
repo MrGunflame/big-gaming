@@ -1,12 +1,11 @@
 use std::collections::{HashMap, VecDeque};
 use std::fmt::{self, Debug, Formatter};
 use std::ops::{Deref, DerefMut};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use bevy_ecs::system::Resource;
 use game_common::entity::{Entity, EntityData, EntityId};
 
-use game_common::world::terrain::Heightmap;
 use game_common::world::CellId;
 use glam::{Quat, Vec3};
 
@@ -14,7 +13,6 @@ use glam::{Quat, Vec3};
 use tracing::{event, span, Level, Span};
 
 use crate::metrics::WorldMetrics;
-use crate::proto::sequence::Sequence;
 use crate::snapshot::{EntityChange, TransferCell};
 
 /// The world state at constant time intervals.
@@ -22,20 +20,17 @@ use crate::snapshot::{EntityChange, TransferCell};
 pub struct WorldState {
     // TODO: This can be a fixed size ring buffer.
     snapshots: VecDeque<Snapshot>,
-
-    overries: Overrides,
     head: usize,
+    metrics: WorldMetrics,
+
     #[cfg(feature = "tracing")]
     resource_span: Span,
-
-    metrics: WorldMetrics,
 }
 
 impl WorldState {
     pub fn new() -> Self {
         Self {
             snapshots: VecDeque::new(),
-            overries: Overrides::new(),
             head: 0,
             #[cfg(feature = "tracing")]
             resource_span: span!(Level::DEBUG, "WorldState"),
@@ -123,25 +118,6 @@ impl WorldState {
         }
     }
 
-    pub fn next(&mut self) -> Option<NextWorldView<'_>> {
-        let next = self.snapshots.get(self.head)?;
-        let prev = self.snapshots.get(self.head.wrapping_sub(1));
-
-        self.head += 1;
-
-        Some(NextWorldView {
-            prev: prev.map(|s| WorldViewRef {
-                snapshot: s,
-                index: self.head.wrapping_sub(1),
-            }),
-            view: WorldViewRef {
-                snapshot: next,
-                index: self.head,
-            },
-            delta: prev.map(|p| next.creation - p.creation),
-        })
-    }
-
     pub fn back(&self) -> Option<WorldViewRef<'_>> {
         self.snapshots.front().map(|s| WorldViewRef {
             snapshot: s,
@@ -218,17 +194,6 @@ impl WorldState {
         let deltas = snapshot.cells.values().map(|e| e.len() as u64).sum();
         self.metrics.deltas.sub(deltas);
     }
-}
-
-#[derive(Copy, Clone, Debug)]
-pub struct NextWorldView<'a> {
-    pub prev: Option<WorldViewRef<'a>>,
-    pub view: WorldViewRef<'a>,
-    /// The delta time elapsed since the last snapshot. `None` if no previous snapshot exists.
-    ///
-    /// For the client this is the interpolation period between the previous and the current
-    /// snapshot.
-    pub delta: Option<Duration>,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -741,48 +706,6 @@ impl Snapshot {
     }
 }
 
-/// A set for local overrides used until the server achknowledges their
-/// reception.
-#[derive(Clone, Debug)]
-pub struct Overrides {
-    seqs: HashMap<Sequence, Vec<Override>>,
-    ids: HashMap<EntityId, Override>,
-}
-
-impl Overrides {
-    pub fn new() -> Self {
-        Self {
-            seqs: HashMap::new(),
-            ids: HashMap::new(),
-        }
-    }
-
-    pub fn insert(&mut self, seq: Sequence, e: Override) {
-        match self.seqs.get_mut(&seq) {
-            Some(vec) => {
-                vec.push(e.clone());
-            }
-            None => {
-                self.seqs.insert(seq, vec![e.clone()]);
-            }
-        }
-
-        self.ids.insert(e.id, e);
-    }
-
-    pub fn remove(&mut self, seq: Sequence) {
-        let (_, e) = self.seqs.remove_entry(&seq).unwrap_or_default();
-
-        for e in e {
-            self.ids.remove(&e.id);
-        }
-    }
-
-    pub fn get(&self, id: EntityId) -> Option<Override> {
-        self.ids.get(&id).cloned()
-    }
-}
-
 #[derive(Clone, Debug)]
 pub struct Override {
     pub id: EntityId,
@@ -902,6 +825,8 @@ impl<'a> CellViewRef<'a> {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use super::*;
 
     macro_rules! assert_get {
@@ -931,7 +856,6 @@ mod tests {
 
         assert_eq!(world.len(), 0);
         assert_eq!(world.is_empty(), true);
-        assert!(matches!(world.next(), None));
 
         let now = Instant::now();
 
