@@ -159,6 +159,7 @@ pub fn flush_delta_queue(
                     tracing::warn!("tried to apply health to a non-actor entity");
                 }
             }
+            EntityChange::CreateTerrain { cell, height } => {}
         }
     }
 

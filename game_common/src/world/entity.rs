@@ -1,3 +1,4 @@
+use bevy_ecs::prelude::Component;
 use bevy_ecs::system::{Commands, Resource};
 use bevy_transform::components::Transform;
 use bevy_transform::TransformBundle;
@@ -5,18 +6,48 @@ use glam::{Quat, Vec3};
 
 use crate::archive::GameArchive;
 use crate::bundles::VisibilityBundle;
+use crate::components::combat::Health;
 use crate::components::items::{ItemId, LoadItem};
 use crate::components::object::{LoadObject, ObjectId};
+use crate::components::race::RaceId;
 use crate::components::terrain::LoadTerrain;
+use crate::entity::EntityId;
 
 use super::terrain::TerrainMesh;
+use super::CellId;
+
+#[derive(Clone, Debug, Component, PartialEq)]
+pub struct Entity {
+    pub id: EntityId,
+    pub transform: Transform,
+    pub body: EntityBody,
+}
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum Entity {
+pub enum EntityBody {
     Terrain(TerrainMesh),
     Object(Object),
     Actor(Actor),
     Item(Item),
+}
+
+impl EntityBody {
+    pub const fn kind(&self) -> EntityKind {
+        match self {
+            Self::Terrain(_) => EntityKind::Terrain,
+            Self::Object(_) => EntityKind::Object,
+            Self::Actor(_) => EntityKind::Actor,
+            Self::Item(_) => EntityKind::Item,
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum EntityKind {
+    Terrain,
+    Object,
+    Actor,
+    Item,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -25,7 +56,6 @@ pub struct Terrain {}
 #[derive(Clone, Debug, PartialEq)]
 pub struct Object {
     pub id: ObjectId,
-    pub transform: Transform,
 }
 
 impl Object {
@@ -36,35 +66,34 @@ impl Object {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Actor {
-    pub id: u32,
-    pub transform: Transform,
+    pub race: RaceId,
+    pub health: Health,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Item {
     pub id: ItemId,
-    pub transform: Transform,
 }
 
-impl From<TerrainMesh> for Entity {
+impl From<TerrainMesh> for EntityBody {
     fn from(value: TerrainMesh) -> Self {
         Self::Terrain(value)
     }
 }
 
-impl From<Object> for Entity {
+impl From<Object> for EntityBody {
     fn from(value: Object) -> Self {
         Self::Object(value)
     }
 }
 
-impl From<Item> for Entity {
+impl From<Item> for EntityBody {
     fn from(value: Item) -> Self {
         Self::Item(value)
     }
 }
 
-impl From<Actor> for Entity {
+impl From<Actor> for EntityBody {
     fn from(value: Actor) -> Self {
         Self::Actor(value)
     }
@@ -74,58 +103,50 @@ pub trait BuildEntity {
     fn build(self, archive: &GameArchive, commands: &mut Commands);
 }
 
-impl BuildEntity for TerrainMesh {
-    fn build(self, archive: &GameArchive, commands: &mut Commands) {
-        let cell = self.cell;
-
-        commands
-            .spawn(LoadTerrain {
-                cell: self.cell,
-                mesh: self,
-            })
-            .insert(TransformBundle {
-                local: Transform::from_translation(cell.min()),
-                global: Default::default(),
-            })
-            .insert(VisibilityBundle::new());
-    }
-}
-
-impl BuildEntity for Object {
-    fn build(self, archive: &GameArchive, commands: &mut Commands) {
-        let object = archive.objects().get(self.id).unwrap();
-
-        commands
-            .spawn(LoadObject::new(self.id))
-            .insert(TransformBundle {
-                local: self.transform,
-                global: Default::default(),
-            })
-            .insert(VisibilityBundle::new());
-    }
-}
-
-impl BuildEntity for Item {
-    fn build(self, archive: &GameArchive, commands: &mut Commands) {
-        let item = archive.items().get(self.id).unwrap();
-
-        commands
-            .spawn(LoadItem { id: self.id })
-            .insert(TransformBundle {
-                local: self.transform,
-                global: Default::default(),
-            })
-            .insert(VisibilityBundle::new());
-    }
-}
-
 impl BuildEntity for Entity {
     fn build(self, archive: &GameArchive, commands: &mut Commands) {
-        match self {
-            Self::Terrain(terrain) => terrain.build(archive, commands),
-            Self::Object(object) => object.build(archive, commands),
-            Self::Item(item) => item.build(archive, commands),
-            _ => todo!(),
+        let local = self.transform;
+
+        match self.body {
+            EntityBody::Terrain(terrain) => {
+                commands
+                    .spawn(LoadTerrain {
+                        cell: CellId::from(local.translation),
+                        mesh: terrain,
+                    })
+                    .insert(TransformBundle {
+                        local,
+                        global: Default::default(),
+                    })
+                    .insert(VisibilityBundle::new());
+            }
+            EntityBody::Object(object) => {
+                commands
+                    .spawn(LoadObject::new(object.id))
+                    .insert(TransformBundle {
+                        local,
+                        global: Default::default(),
+                    })
+                    .insert(VisibilityBundle::new());
+            }
+            EntityBody::Actor(actor) => {
+                // commands
+                // .spawn(LoadObject::new(actor.id))
+                // .insert(TransformBundle {
+                //     local,
+                //     global: Default::default(),
+                // })
+                // .insert(VisibilityBundle::new());
+            }
+            EntityBody::Item(item) => {
+                commands
+                    .spawn(LoadItem::new(item.id))
+                    .insert(TransformBundle {
+                        local,
+                        global: Default::default(),
+                    })
+                    .insert(VisibilityBundle::new());
+            }
         }
     }
 }
@@ -199,20 +220,22 @@ impl IntoIterator for EntityQueue {
 
 #[derive(Clone, Debug)]
 pub struct ObjectBuilder {
-    pub id: ObjectId,
-    pub transform: Transform,
+    transform: Transform,
+    object: Object,
 }
 
 impl ObjectBuilder {
     pub fn new() -> Self {
         Self {
-            id: ObjectId(0.into()),
-            transform: Transform::IDENTITY,
+            transform: Transform::default(),
+            object: Object {
+                id: ObjectId(0.into()),
+            },
         }
     }
 
     pub fn id(mut self, id: ObjectId) -> Self {
-        self.id = id;
+        self.object.id = id;
         self
     }
 
@@ -236,17 +259,28 @@ impl ObjectBuilder {
         self
     }
 
-    pub fn build(self) -> Object {
-        Object {
-            id: self.id,
+    pub fn build(self) -> Entity {
+        Entity {
+            id: EntityId::dangling(),
             transform: self.transform,
+            body: EntityBody::Object(self.object),
         }
     }
 }
 
-impl From<ObjectBuilder> for Object {
+impl From<ObjectBuilder> for Entity {
     #[inline]
     fn from(value: ObjectBuilder) -> Self {
         value.build()
+    }
+}
+
+impl From<TerrainMesh> for Entity {
+    fn from(value: TerrainMesh) -> Self {
+        Entity {
+            id: EntityId::dangling(),
+            transform: Transform::from_translation(value.cell.min()),
+            body: EntityBody::Terrain(value),
+        }
     }
 }

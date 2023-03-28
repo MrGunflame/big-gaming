@@ -27,8 +27,14 @@ impl EntityId {
         Self { index: id }
     }
 
-    pub fn from_raw(index: u64) -> Self {
+    #[inline]
+    pub const fn from_raw(index: u64) -> Self {
         Self { index }
+    }
+
+    #[inline]
+    pub const fn dangling() -> Self {
+        Self::from_raw(0)
     }
 }
 

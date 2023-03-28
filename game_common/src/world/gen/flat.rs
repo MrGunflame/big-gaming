@@ -34,10 +34,10 @@ impl Generate for FlatGenerator {
             Heightmap::from_vec(UVec2::new(2, 2), vec![0.0, 0.0, 0.0, 0.0]),
         ));
 
-        cell.spawn(Item {
-            id: ItemId(0.into()),
-            transform: Transform::from_translation(Vec3::splat(25.0)),
-        });
+        // cell.spawn(Item {
+        //     id: ItemId(0.into()),
+        //     transform: Transform::from_translation(Vec3::splat(25.0)),
+        // });
 
         // for _ in 0..10 {}
 
