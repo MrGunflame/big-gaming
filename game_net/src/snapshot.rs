@@ -1,6 +1,7 @@
 use bevy_ecs::system::Resource;
 use game_common::components::combat::Health;
 use game_common::entity::{Entity, EntityData, EntityId};
+use game_common::world::terrain::Heightmap;
 use game_common::world::CellId;
 use glam::{Quat, Vec3};
 use parking_lot::Mutex;
@@ -157,6 +158,10 @@ pub enum Command {
     SpawnHost {
         id: EntityId,
     },
+    WorldTerrain {
+        cell: CellId,
+        height: Heightmap,
+    },
 }
 
 impl Command {
@@ -180,6 +185,7 @@ impl Command {
             } => Some(*id),
             Self::EntityHealth { id, health: _ } => Some(*id),
             Self::SpawnHost { id } => Some(*id),
+            Self::WorldTerrain { cell: _, height: _ } => None,
         }
     }
 }
@@ -235,6 +241,10 @@ pub enum EntityChange {
     },
     DestroyHost {
         id: EntityId,
+    },
+    CreateTerrain {
+        cell: CellId,
+        height: Heightmap,
     },
 }
 

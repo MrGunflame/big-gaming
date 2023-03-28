@@ -1,8 +1,7 @@
 use std::time::{Duration, Instant};
 
 use bevy::prelude::{
-    AssetServer, Commands, DespawnRecursiveExt, IntoSystemConfig, IntoSystemSetConfig, Plugin,
-    Query, Res, ResMut, SystemSet, Transform, Vec3,
+    AssetServer, Commands, DespawnRecursiveExt, Plugin, Query, Res, ResMut, Transform, Vec3,
 };
 use bevy_rapier3d::prelude::Velocity;
 use game_common::actors::human::Human;
@@ -187,6 +186,9 @@ fn flush_command_queue(
                 connections.remove(msg.id);
             }
             Command::SpawnHost { id } => (),
+            Command::WorldTerrain { cell: _, height: _ } => {
+                tracing::debug!("received WorldTerrain from client, ignoring");
+            }
         }
 
         drop(view);

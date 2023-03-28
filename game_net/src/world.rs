@@ -6,6 +6,7 @@ use std::time::{Duration, Instant};
 use bevy_ecs::system::Resource;
 use game_common::entity::{Entity, EntityData, EntityId};
 
+use game_common::world::terrain::Heightmap;
 use game_common::world::CellId;
 use glam::{Quat, Vec3};
 
@@ -21,6 +22,7 @@ use crate::snapshot::{EntityChange, TransferCell};
 pub struct WorldState {
     // TODO: This can be a fixed size ring buffer.
     snapshots: VecDeque<Snapshot>,
+
     overries: Overrides,
     head: usize,
     #[cfg(feature = "tracing")]
@@ -529,6 +531,7 @@ fn event_to_str(event: &EntityChange) -> &'static str {
         EntityChange::Health { id: _, health: _ } => "Health",
         EntityChange::CreateHost { id: _ } => "CreateHost",
         EntityChange::DestroyHost { id: _ } => "DestroyHost",
+        EntityChange::CreateTerrain { cell: _, height: _ } => "CreateTerrain",
     }
 }
 
@@ -733,6 +736,7 @@ impl Snapshot {
             EntityChange::DestroyHost { id } => {
                 self.hosts.remove(id);
             }
+            EntityChange::CreateTerrain { cell, height } => {}
         }
     }
 }

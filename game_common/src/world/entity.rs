@@ -78,8 +78,6 @@ impl BuildEntity for TerrainMesh {
     fn build(self, archive: &GameArchive, commands: &mut Commands) {
         let cell = self.cell;
 
-        dbg!(cell);
-
         commands
             .spawn(LoadTerrain {
                 cell: self.cell,
