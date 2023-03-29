@@ -12,13 +12,14 @@ use game_common::components::race::RaceId;
 use game_common::entity::{EntityId, EntityMap};
 use game_common::world::entity::{Actor, Entity, EntityBody};
 use game_common::world::snapshot::EntityChange;
-use game_common::world::source::StreamingSource;
+use game_common::world::source::{StreamingSource, StreamingSources, StreamingState};
 use game_common::world::world::WorldState;
 use game_common::world::CellId;
 use game_net::snapshot::{Command, CommandQueue};
 
 use crate::conn::Connections;
 use crate::entity::ServerEntityGenerator;
+use crate::world::level::Level;
 
 pub struct ServerPlugins;
 
@@ -33,7 +34,7 @@ impl Plugin for ServerPlugins {
 }
 
 // All systems need to run sequentially.
-fn tick(
+pub fn tick(
     commands: Commands,
     conns: Res<Connections>,
     mut world: ResMut<WorldState>,
@@ -41,11 +42,18 @@ fn tick(
     entities: Query<(&Entity, &mut Transform, &mut Velocity)>,
     map: Res<EntityMap>,
     assets: Res<AssetServer>,
+    level: Res<Level>,
+    mut sources: ResMut<StreamingSources>,
 ) {
     update_client_heads(&conns, &mut world);
     flush_command_queue(
         commands, &conns, &queue, entities, &map, &mut world, &assets,
     );
+
+    crate::world::level::update_streaming_sources(&mut sources, &world);
+    crate::world::level::update_level(&sources, &level, &mut world);
+
+    // Push snapshots last always
     update_snapshots(&conns, &world);
 }
 
@@ -74,7 +82,7 @@ fn flush_command_queue(
     queue: &CommandQueue,
     mut entities: Query<(&Entity, &mut Transform, &mut Velocity)>,
     map: &EntityMap,
-    mut world: &mut WorldState,
+    world: &mut WorldState,
     assets: &AssetServer,
 ) {
     while let Some(msg) = queue.pop() {
@@ -126,7 +134,16 @@ fn flush_command_queue(
                 tracing::warn!("received EntityHealth from client, ignored");
             }
             Command::Connected => {
-                let id = EntityId::new();
+                let id = view.spawn(Entity {
+                    id: EntityId::dangling(),
+                    transform: Transform::from_translation(Vec3::new(10.0, 32.0, 10.0)),
+                    body: EntityBody::Actor(Actor {
+                        race: RaceId(1.into()),
+                        health: Health::new(50),
+                    }),
+                });
+
+                view.upate_streaming_source(id, StreamingState::Create);
 
                 let mut actor = ActorBundle::default();
                 actor.transform.transform.translation.y += 5.0;
@@ -146,15 +163,6 @@ fn flush_command_queue(
                 Human::default().spawn(&assets, &mut cmds);
 
                 let ent = cmds.id();
-
-                view.spawn(Entity {
-                    id,
-                    transform: Transform::from_translation(Vec3::new(10.0, 32.0, 10.0)),
-                    body: EntityBody::Actor(Actor {
-                        race: RaceId(1.into()),
-                        health: Health::new(50),
-                    }),
-                });
 
                 // connections
                 //     .get_mut(msg.id)
@@ -233,6 +241,8 @@ fn update_snapshots(
                     rotation: entity.transform.rotation,
                     data: entity.body.clone(),
                 });
+
+                dbg!(&entity);
             }
 
             continue;
@@ -316,6 +326,10 @@ fn update_snapshots(
                     })
                     .collect::<Vec<_>>(),
             );
+        }
+
+        if !changes.is_empty() {
+            dbg!(&changes);
         }
 
         conn.push(changes);

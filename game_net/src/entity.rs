@@ -16,6 +16,7 @@ pub struct Entities {
     host: HashMap<EntityId, ServerEntity>,
     remote: HashMap<ServerEntity, EntityId>,
     next_server_id: u64,
+    next_id: u64,
 }
 
 impl Entities {
@@ -24,6 +25,7 @@ impl Entities {
             host: HashMap::new(),
             remote: HashMap::new(),
             next_server_id: 0,
+            next_id: 0,
         }
     }
 
@@ -65,7 +67,9 @@ impl Entities {
     pub fn unpack(&mut self, frame: Frame) -> Option<Command> {
         match frame {
             Frame::EntityCreate(frame) => {
-                let id = EntityId::new();
+                let id = EntityId::from_raw(self.next_id);
+                self.next_id += 1;
+
                 self.insert(id, frame.entity);
 
                 Some(Command::EntityCreate {

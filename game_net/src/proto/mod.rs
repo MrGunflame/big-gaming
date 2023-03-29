@@ -40,7 +40,7 @@ use game_common::components::object::ObjectId;
 use game_common::components::race::RaceId;
 use game_common::id::WeakId;
 use game_common::world::entity::{Actor, EntityBody, Object};
-use game_common::world::terrain::Heightmap;
+use game_common::world::terrain::{Heightmap, TerrainMesh};
 use game_common::world::CellId;
 pub use game_macros::{net__decode as Decode, net__encode as Encode};
 
@@ -471,7 +471,14 @@ impl Encode for EntityBody {
         B: BufMut,
     {
         match self {
-            Self::Terrain(_) => todo!(),
+            Self::Terrain(terrain) => {
+                0u8.encode(&mut buf)?;
+
+                terrain.height().size().encode(&mut buf)?;
+                for node in terrain.height().nodes() {
+                    node.encode(&mut buf)?;
+                }
+            }
             Self::Object(object) => {
                 1u8.encode(&mut buf)?;
                 object.id.encode(&mut buf)?;
@@ -501,6 +508,25 @@ impl Decode for EntityBody {
         let typ = u8::decode(&mut buf)?;
 
         match typ {
+            0u8 => {
+                let size = UVec2::decode(&mut buf)?;
+                let len = (size.x as usize)
+                    .checked_mul(size.y as usize)
+                    .expect("terrain heightmap size overflow while decoding");
+
+                let mut nodes = Vec::with_capacity(len);
+
+                for _ in 0..len {
+                    let node = f32::decode(&mut buf)?;
+                    nodes.push(node);
+                }
+
+                Ok(Self::Terrain(TerrainMesh::new(
+                    // STUB, Don't use
+                    CellId::new(0.0, 0.0, 0.0),
+                    Heightmap::from_vec(size, nodes),
+                )))
+            }
             1u8 => {
                 let id = ObjectId::decode(&mut buf)?;
 

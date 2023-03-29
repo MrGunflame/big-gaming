@@ -18,6 +18,10 @@ impl TerrainMesh {
         Self { cell, offsets }
     }
 
+    pub fn height(&self) -> &Heightmap {
+        &self.offsets
+    }
+
     pub fn collider(&self) -> Collider {
         let mut vertices = Vec::new();
         let mut indices = Vec::new();

@@ -1,9 +1,7 @@
-use std::borrow::Borrow;
-
-use ahash::{HashMap, HashMapExt};
 use glam::{IVec3, UVec3, Vec3, Vec3A};
 
-use super::entity::{Entity, EntityQueue};
+use super::entity::Entity;
+use super::world::{CellViewRef, WorldViewMut};
 
 pub const CELL_SIZE: Vec3 = Vec3::new(64.0, 64.0, 64.0);
 pub const CELL_SIZE_UINT: UVec3 = UVec3::new(64, 64, 64);
@@ -145,9 +143,10 @@ impl From<Vec3A> for CellId {
 
 #[derive(Debug)]
 pub struct Cell {
-    pub id: CellId,
-    next_id: u32,
-    entities: HashMap<EntityId, Entity>,
+    id: CellId,
+    entities: Vec<Entity>,
+    #[cfg(debug_assertions)]
+    loaded: bool,
 }
 
 impl Cell {
@@ -157,9 +156,14 @@ impl Cell {
     {
         Self {
             id: id.into(),
-            next_id: 0,
-            entities: HashMap::new(),
+            entities: Vec::new(),
+            #[cfg(debug_assertions)]
+            loaded: false,
         }
+    }
+
+    pub fn id(&self) -> CellId {
+        self.id
     }
 
     #[inline]
@@ -172,28 +176,43 @@ impl Cell {
         self.len() == 0
     }
 
-    pub fn spawn<T>(&mut self, entity: T) -> EntityId
+    pub fn spawn<T>(&mut self, entity: T)
     where
         T: Into<Entity>,
     {
-        let id = EntityId(self.next_id);
-        self.next_id += 1;
-
-        self.entities.insert(id, entity.into());
-        id
+        self.entities.push(entity.into());
     }
 
-    pub fn remove<T>(&mut self, id: EntityId)
-    where
-        T: Borrow<EntityId>,
-    {
-        self.entities.remove(&id);
+    pub fn load(&mut self, view: &mut WorldViewMut<'_>) {
+        #[cfg(debug_assertions)]
+        {
+            self.loaded = true;
+        }
+
+        for entity in &mut self.entities {
+            entity.id = view.spawn(entity.clone());
+        }
     }
 
-    pub fn queue(&self) -> EntityQueue {
-        let mut queue = EntityQueue::new();
-        queue.extend(self.entities.values().cloned());
-        queue
+    pub fn unload(&mut self, view: &mut WorldViewMut<'_>) {
+        #[cfg(debug_assertions)]
+        assert!(self.loaded, "attempted to unload cell before it was loaded");
+
+        for entity in &self.entities {
+            view.despawn(entity.id);
+        }
+    }
+
+    pub fn update(&mut self, view: &CellViewRef<'_>) {
+        #[cfg(debug_assertions)]
+        assert!(self.loaded, "attempted to update cell before it was loaded");
+
+        // Expect a similar amount of entities.
+        let mut entities = Vec::with_capacity(self.entities.len());
+
+        for entity in view.iter() {
+            entities.push(entity.clone());
+        }
     }
 }
 

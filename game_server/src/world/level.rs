@@ -1,12 +1,56 @@
-use bevy::prelude::{Query, Transform};
-use game_common::components::transform::PreviousTransform;
-use game_common::world::source::StreamingSource;
+use std::sync::Arc;
 
-pub fn update_streaming_sources(
-    // mut sources: ResMut<StreamingSource>,
-    mut entities: Query<(&Transform, &PreviousTransform, &mut StreamingSource)>,
-) {
-    // sources.clear();
+use ahash::HashMap;
+use bevy::prelude::{Query, Res, ResMut, Resource, Transform};
+use game_common::components::transform::PreviousTransform;
+use game_common::world::cell::Cell;
+use game_common::world::gen::flat::FlatGenerator;
+use game_common::world::gen::Generator;
+use game_common::world::snapshot::EntityChange;
+use game_common::world::source::{StreamingSource, StreamingSources, StreamingState};
+use game_common::world::world::WorldState;
+use game_common::world::CellId;
+use parking_lot::RwLock;
+
+pub fn update_streaming_sources(mut sources: &mut StreamingSources, world: &WorldState) {
+    let Some(view) = world.front() else {
+        return;
+    };
+
+    sources.clear();
+
+    let mut load = vec![];
+    let mut unload = vec![];
+
+    for event in view.deltas() {
+        let EntityChange::UpdateStreamingSource { id, state } = event else {
+            continue;
+        };
+
+        let entity = view.get(*id).unwrap();
+        let cell = CellId::from(entity.transform.translation);
+
+        match state {
+            StreamingState::Create => {
+                load.push(cell);
+            }
+            StreamingState::Destroy => {
+                unload.push(cell);
+            }
+            _ => (),
+        }
+    }
+
+    load.dedup();
+    unload.dedup();
+
+    for id in load {
+        sources.load(id);
+    }
+
+    for id in unload {
+        sources.unload(id);
+    }
 
     // for (transform, prev, mut source) in &mut entities {
     //     let new_id = CellId::from(transform.translation);
@@ -25,4 +69,72 @@ pub fn update_streaming_sources(
     //     //     }
     //     // }
     // }
+}
+
+pub fn update_level(sources: &StreamingSources, level: &Level, mut world: &mut WorldState) {
+    let Some(mut view) = world.front_mut() else {
+        return;
+    };
+
+    for id in sources.loaded() {
+        tracing::info!("loading cell {:?}", id);
+
+        let cell = level.get(id);
+        let mut cell = cell.write();
+
+        cell.load(&mut view);
+    }
+
+    for id in sources.unloaded() {
+        tracing::info!("unloading cell {:?}", id);
+
+        let cell = level.get(id);
+        let mut cell = cell.write();
+
+        cell.unload(&mut view);
+    }
+
+    drop(view);
+    let view = world.front().unwrap();
+
+    for id in sources.iter() {
+        let view = view.cell(id);
+
+        let cell = level.get(id);
+        let mut cell = cell.write();
+
+        cell.update(&view);
+    }
+}
+
+#[derive(Resource)]
+pub struct Level {
+    cells: RwLock<HashMap<CellId, Arc<RwLock<Cell>>>>,
+    generator: Generator,
+}
+
+impl Level {
+    pub fn new() -> Self {
+        Self {
+            cells: RwLock::default(),
+            generator: Generator::from(FlatGenerator),
+        }
+    }
+
+    pub fn get(&self, id: CellId) -> Arc<RwLock<Cell>> {
+        let cells = self.cells.read();
+        if let Some(cell) = cells.get(&id) {
+            return cell.clone();
+        }
+
+        drop(cells);
+        let mut cells = self.cells.write();
+
+        let mut cell = Cell::new(id);
+        self.generator.generate(&mut cell);
+
+        let cell = Arc::new(RwLock::new(cell));
+        cells.insert(id, cell.clone());
+        cell
+    }
 }

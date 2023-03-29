@@ -11,12 +11,13 @@ use plugins::ServerPlugins;
 use server::Server;
 use state::State;
 use tokio::time::{interval, MissedTickBehavior};
+use world::WorldPlugin;
 
 mod config;
 mod conn;
 mod entity;
 mod net;
-mod plugins;
+pub mod plugins;
 mod server;
 mod snapshot;
 mod state;
@@ -61,6 +62,8 @@ async fn main() {
     app.insert_resource(queue);
     app.insert_resource(conns);
     app.add_plugin(ServerPlugins);
+
+    app.add_plugin(WorldPlugin);
 
     app.add_startup_system(setup);
 

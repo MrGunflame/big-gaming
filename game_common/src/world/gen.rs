@@ -11,7 +11,7 @@ pub struct Generator {
 
 impl Generator {
     pub fn generate(&self, cell: &mut Cell) {
-        tracing::info!("Generating cell {:?}", cell.id.as_parts());
+        tracing::info!("Generating cell {:?}", cell.id().as_parts());
 
         self.inner.generate(cell);
     }

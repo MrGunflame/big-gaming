@@ -13,8 +13,6 @@ use crate::components::combat::Health;
 use crate::components::object::ObjectId;
 use crate::components::race::RaceId;
 
-static ENTITY_ID: AtomicU64 = AtomicU64::new(0);
-
 /// A unique identifier for a object in the world.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct EntityId {
@@ -22,11 +20,6 @@ pub struct EntityId {
 }
 
 impl EntityId {
-    pub fn new() -> Self {
-        let id = ENTITY_ID.fetch_add(1, Ordering::Relaxed);
-        Self { index: id }
-    }
-
     #[inline]
     pub const fn from_raw(index: u64) -> Self {
         Self { index }

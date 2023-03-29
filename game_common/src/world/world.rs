@@ -19,6 +19,7 @@ use crate::world::snapshot::{EntityChange, TransferCell};
 pub use metrics::WorldMetrics;
 
 use super::entity::{Entity, EntityBody};
+use super::source::{StreamingSource, StreamingState};
 
 /// The world state at constant time intervals.
 #[derive(Clone, Debug, Resource)]
@@ -93,6 +94,7 @@ impl WorldState {
                 entities: Entities::default(),
                 hosts: Hosts::new(),
                 cells: HashMap::new(),
+                streaming_sources: StreamingSources::new(),
             },
         };
 
@@ -233,6 +235,10 @@ impl<'a> WorldViewRef<'a> {
         }
     }
 
+    pub fn deltas(&self) -> impl Iterator<Item = &EntityChange> {
+        self.snapshot.cells.values().flatten()
+    }
+
     /// Creates a delta from `self` to `next`.
     pub fn delta(this: Option<Self>, next: WorldViewRef<'_>) -> Vec<EntityChange> {
         let mut entities = next.snapshot.entities.clone();
@@ -342,7 +348,7 @@ impl<'a> WorldViewMut<'a> {
         }
     }
 
-    pub fn spawn(&mut self, entity: Entity) {
+    pub fn spawn(&mut self, entity: Entity) -> EntityId {
         self.world.metrics.entities.inc();
         self.world.metrics.deltas.inc();
 
@@ -363,7 +369,7 @@ impl<'a> WorldViewMut<'a> {
                 data: entity.clone(),
             });
 
-        self.snapshot().entities.spawn(entity.clone());
+        self.snapshot().entities.spawn(entity)
     }
 
     pub fn despawn(&mut self, id: EntityId) {
@@ -407,6 +413,42 @@ impl<'a> WorldViewMut<'a> {
 
     pub fn despawn_host(&mut self, id: EntityId) {
         self.snapshot().hosts.remove(id);
+    }
+
+    /// Sets the streaming state of the entity.
+    pub fn upate_streaming_source(&mut self, id: EntityId, state: StreamingState) {
+        #[cfg(debug_assertions)]
+        if state != StreamingState::Create {
+            assert!(self.snapshot().streaming_sources.get(id).is_some());
+        }
+
+        let translation = self
+            .snapshot()
+            .entities
+            .get(id)
+            .unwrap()
+            .transform
+            .translation;
+
+        self.new_deltas
+            .entry(CellId::from(translation))
+            .or_default()
+            .push(EntityChange::UpdateStreamingSource { id, state });
+
+        match state {
+            StreamingState::Create => {
+                self.snapshot().streaming_sources.insert(id, state);
+            }
+            StreamingState::Active => {
+                self.snapshot().streaming_sources.insert(id, state);
+            }
+            StreamingState::Destroy => {
+                self.snapshot().streaming_sources.insert(id, state);
+            }
+            StreamingState::Destroyed => {
+                self.snapshot().streaming_sources.remove(id);
+            }
+        }
     }
 
     #[inline]
@@ -565,6 +607,7 @@ impl<'a> Drop for EntityMut<'a> {
 
 #[derive(Clone, Debug, Default)]
 struct Entities {
+    next_id: u64,
     entities: HashMap<EntityId, Entity>,
 }
 
@@ -577,12 +620,26 @@ impl Entities {
         self.entities.get_mut(&id)
     }
 
-    fn spawn(&mut self, entity: Entity) {
+    fn insert(&mut self, entity: Entity) {
         self.entities.insert(entity.id, entity);
+    }
+
+    fn spawn(&mut self, mut entity: Entity) -> EntityId {
+        let id = self.next_id();
+        entity.id = id;
+
+        self.entities.insert(entity.id, entity);
+        id
     }
 
     fn despawn(&mut self, id: EntityId) {
         self.entities.remove(&id);
+    }
+
+    fn next_id(&mut self) -> EntityId {
+        let id = EntityId::from_raw(self.next_id);
+        self.next_id += 1;
+        id
     }
 }
 
@@ -591,6 +648,7 @@ struct Snapshot {
     creation: Instant,
     entities: Entities,
     hosts: Hosts,
+    streaming_sources: StreamingSources,
     // Deltas for every cell
     cells: HashMap<CellId, Vec<EntityChange>>,
 }
@@ -621,6 +679,32 @@ impl Hosts {
     }
 }
 
+/// Entities that keep chunks loaded.
+#[derive(Clone, Debug)]
+struct StreamingSources {
+    entities: HashMap<EntityId, StreamingSource>,
+}
+
+impl StreamingSources {
+    fn new() -> Self {
+        Self {
+            entities: HashMap::new(),
+        }
+    }
+
+    fn get(&self, id: EntityId) -> Option<&StreamingSource> {
+        self.entities.get(&id)
+    }
+
+    fn insert(&mut self, id: EntityId, state: StreamingState) {
+        self.entities.insert(id, StreamingSource { state });
+    }
+
+    fn remove(&mut self, id: EntityId) {
+        self.entities.remove(&id);
+    }
+}
+
 impl Snapshot {
     fn apply(&mut self, delta: EntityChange) {
         // Note that an entity may have already been despawned in the next snapshot.
@@ -636,7 +720,7 @@ impl Snapshot {
                         data: data.clone(),
                     });
 
-                self.entities.spawn(Entity {
+                self.entities.insert(Entity {
                     id,
                     transform: data.transform,
                     body: data.body,
@@ -701,6 +785,29 @@ impl Snapshot {
                 self.hosts.remove(id);
             }
             EntityChange::CreateTerrain { cell, height } => {}
+            EntityChange::UpdateStreamingSource { id, state } => {
+                let entity = self.entities.get(id).unwrap();
+
+                self.cells
+                    .entry(CellId::from(entity.transform.translation))
+                    .or_default()
+                    .push(EntityChange::UpdateStreamingSource { id, state });
+
+                match state {
+                    StreamingState::Create => {
+                        self.streaming_sources.insert(id, state);
+                    }
+                    StreamingState::Active => {
+                        self.streaming_sources.insert(id, state);
+                    }
+                    StreamingState::Destroy => {
+                        self.streaming_sources.insert(id, state);
+                    }
+                    StreamingState::Destroyed => {
+                        self.streaming_sources.remove(id);
+                    }
+                };
+            }
         }
     }
 }

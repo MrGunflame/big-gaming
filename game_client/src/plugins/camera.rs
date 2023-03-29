@@ -24,7 +24,7 @@ impl Plugin for CameraPlugin {
             .add_startup_system(events::register_events)
             .add_system(events::toggle_camera_position)
             .insert_resource(CameraSettings::default())
-            .add_system(crate::systems::input::interact_target)
+            // .add_system(crate::systems::input::interact_target)
             .add_system(synchronize_player_camera.after(MovementSet::Apply))
             .add_system(head_bumping.after(synchronize_player_camera));
         // .add_system(toggle_camera_position)

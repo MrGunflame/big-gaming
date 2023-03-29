@@ -1,11 +1,14 @@
 use bevy::prelude::{
     AssetServer, Commands, DespawnRecursiveExt, Query, Res, ResMut, Transform, Vec3,
 };
+use bevy::transform::TransformBundle;
 use game_common::actors::human::Human;
 use game_common::bundles::{ActorBundle, ObjectBundle};
 use game_common::components::actor::ActorProperties;
 use game_common::components::combat::Health;
+use game_common::components::items::LoadItem;
 use game_common::components::player::HostPlayer;
+use game_common::components::terrain::LoadTerrain;
 use game_common::entity::EntityMap;
 use game_common::world::entity::{Entity, EntityBody};
 use game_common::world::snapshot::EntityChange;
@@ -13,6 +16,8 @@ use game_common::world::source::StreamingSource;
 use game_common::world::world::{WorldState, WorldViewRef};
 use game_net::backlog::Backlog;
 use game_net::snapshot::DeltaQueue;
+
+use crate::bundles::VisibilityBundle;
 
 pub fn apply_world_delta(mut world: ResMut<WorldState>, mut queue: ResMut<DeltaQueue>) {
     let (Some(curr), Some(next)) = (world.at(0), world.at(1)) else {
@@ -162,6 +167,7 @@ pub fn flush_delta_queue(
                 }
             }
             EntityChange::CreateTerrain { cell, height } => {}
+            EntityChange::UpdateStreamingSource { id, state } => (),
         }
     }
 
@@ -178,8 +184,21 @@ fn spawn_entity(
     entity: DelayedEntity,
 ) -> bevy::ecs::entity::Entity {
     match &entity.entity.body {
-        EntityBody::Terrain(t) => {
-            todo!();
+        EntityBody::Terrain(terrain) => {
+            let id = commands
+                .spawn(LoadTerrain {
+                    cell: entity.entity.transform.translation.into(),
+                    mesh: terrain.clone(),
+                })
+                .insert(TransformBundle {
+                    local: entity.entity.transform,
+                    global: Default::default(),
+                })
+                .insert(VisibilityBundle::new())
+                .insert(entity.entity)
+                .id();
+
+            id
         }
         EntityBody::Object(object) => {
             let id = commands
@@ -212,7 +231,17 @@ fn spawn_entity(
             cmds.id()
         }
         EntityBody::Item(item) => {
-            todo!();
+            let id = commands
+                .spawn(LoadItem::new(item.id))
+                .insert(TransformBundle {
+                    local: entity.entity.transform,
+                    global: Default::default(),
+                })
+                .insert(VisibilityBundle::new())
+                .insert(entity.entity)
+                .id();
+
+            id
         }
     }
 }

@@ -209,39 +209,39 @@ pub fn mouse_button_input(
 }
 
 // TODO: This should scan for all entities `Interaction`s.
-pub fn interact_target(
-    mut queue: ResMut<InteractionQueue>,
-    rapier: Res<RapierContext>,
-    mut players: Query<(Entity, &mut FocusedEntity), With<HostPlayer>>,
-    cameras: Query<(Entity, &Transform), With<Camera3d>>,
-    entities: Query<(Entity, &Interactions)>,
-    input: Res<Input<KeyCode>>,
-) {
-    let Ok((player, mut focused_ent)) = players.get_single_mut() else {
-        return;
-    };
-    let (cam, pos) = cameras.single();
+// pub fn interact_target(
+//     mut queue: ResMut<InteractionQueue>,
+//     rapier: Res<RapierContext>,
+//     mut players: Query<(Entity, &mut FocusedEntity), With<HostPlayer>>,
+//     cameras: Query<(Entity, &Transform), With<Camera3d>>,
+//     entities: Query<(Entity, &Interactions)>,
+//     input: Res<Input<KeyCode>>,
+// ) {
+//     let Ok((player, mut focused_ent)) = players.get_single_mut() else {
+//         return;
+//     };
+//     let (cam, pos) = cameras.single();
 
-    let ray_dir = pos.rotation.dir_vec();
+//     let ray_dir = pos.rotation.dir_vec();
 
-    let ray_pos = pos.translation;
-    let max_toi = 4.0;
-    let solid = true;
-    let filter = QueryFilter::new().exclude_collider(cam);
-    if let Some((entity, toi)) = rapier.cast_ray(ray_pos, ray_dir, max_toi, solid, filter) {
-        if let Ok((entity, interactions)) = entities.get(entity) {
-            *focused_ent = FocusedEntity::Some {
-                entity,
-                distance: toi,
-            };
+//     let ray_pos = pos.translation;
+//     let max_toi = 4.0;
+//     let solid = true;
+//     let filter = QueryFilter::new().exclude_collider(cam);
+//     if let Some((entity, toi)) = rapier.cast_ray(ray_pos, ray_dir, max_toi, solid, filter) {
+//         if let Ok((entity, interactions)) = entities.get(entity) {
+//             *focused_ent = FocusedEntity::Some {
+//                 entity,
+//                 distance: toi,
+//             };
 
-            if input.pressed(KeyCode::F) {
-                queue.push(interactions.iter().nth(0).unwrap(), entity, player);
-            }
-        } else {
-            *focused_ent = FocusedEntity::None;
-        }
-    } else {
-        *focused_ent = FocusedEntity::None;
-    }
-}
+//             if input.pressed(KeyCode::F) {
+//                 queue.push(interactions.iter().nth(0).unwrap(), entity, player);
+//             }
+//         } else {
+//             *focused_ent = FocusedEntity::None;
+//         }
+//     } else {
+//         *focused_ent = FocusedEntity::None;
+//     }
+// }

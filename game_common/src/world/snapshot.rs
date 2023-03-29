@@ -7,6 +7,7 @@ use crate::world::cell::CellId;
 use crate::world::terrain::Heightmap;
 
 use super::entity::Entity;
+use super::source::StreamingState;
 
 /// A temporary identifier for a snapshot.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -77,6 +78,10 @@ pub enum EntityChange {
     CreateTerrain {
         cell: CellId,
         height: Heightmap,
+    },
+    UpdateStreamingSource {
+        id: EntityId,
+        state: StreamingState,
     },
 }
 

@@ -1,20 +1,16 @@
 use bevy_ecs::prelude::Component;
-use bevy_ecs::system::{Commands, Resource};
+use bevy_ecs::system::Resource;
 use bevy_transform::components::Transform;
-use bevy_transform::TransformBundle;
 use glam::{Quat, Vec3};
 
-use crate::archive::GameArchive;
-use crate::bundles::VisibilityBundle;
 use crate::components::combat::Health;
-use crate::components::items::{ItemId, LoadItem};
-use crate::components::object::{LoadObject, ObjectId};
+use crate::components::items::ItemId;
+use crate::components::object::ObjectId;
 use crate::components::race::RaceId;
-use crate::components::terrain::LoadTerrain;
 use crate::entity::EntityId;
 
 use super::terrain::TerrainMesh;
-use super::CellId;
+use super::world::WorldViewMut;
 
 #[derive(Clone, Debug, Component, PartialEq)]
 pub struct Entity {
@@ -100,54 +96,12 @@ impl From<Actor> for EntityBody {
 }
 
 pub trait BuildEntity {
-    fn build(self, archive: &GameArchive, commands: &mut Commands);
+    fn build(self, view: &mut WorldViewMut);
 }
 
 impl BuildEntity for Entity {
-    fn build(self, archive: &GameArchive, commands: &mut Commands) {
-        let local = self.transform;
-
-        match self.body {
-            EntityBody::Terrain(terrain) => {
-                commands
-                    .spawn(LoadTerrain {
-                        cell: CellId::from(local.translation),
-                        mesh: terrain,
-                    })
-                    .insert(TransformBundle {
-                        local,
-                        global: Default::default(),
-                    })
-                    .insert(VisibilityBundle::new());
-            }
-            EntityBody::Object(object) => {
-                commands
-                    .spawn(LoadObject::new(object.id))
-                    .insert(TransformBundle {
-                        local,
-                        global: Default::default(),
-                    })
-                    .insert(VisibilityBundle::new());
-            }
-            EntityBody::Actor(actor) => {
-                // commands
-                // .spawn(LoadObject::new(actor.id))
-                // .insert(TransformBundle {
-                //     local,
-                //     global: Default::default(),
-                // })
-                // .insert(VisibilityBundle::new());
-            }
-            EntityBody::Item(item) => {
-                commands
-                    .spawn(LoadItem::new(item.id))
-                    .insert(TransformBundle {
-                        local,
-                        global: Default::default(),
-                    })
-                    .insert(VisibilityBundle::new());
-            }
-        }
+    fn build(self, view: &mut WorldViewMut) {
+        view.spawn(self);
     }
 }
 
