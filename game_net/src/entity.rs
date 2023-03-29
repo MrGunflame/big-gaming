@@ -123,10 +123,6 @@ impl Entities {
 
                 Some(Command::SpawnHost { id })
             }
-            Frame::WorldTerrain(frame) => Some(Command::WorldTerrain {
-                cell: frame.cell,
-                height: frame.height,
-            }),
         }
     }
 
@@ -193,10 +189,6 @@ impl Entities {
 
                 Some(Frame::SpawnHost(SpawnHost { entity: id }))
             }
-            Command::WorldTerrain { cell, height } => Some(Frame::WorldTerrain(Terrain {
-                cell: *cell,
-                height: height.clone(),
-            })),
         }
     }
 

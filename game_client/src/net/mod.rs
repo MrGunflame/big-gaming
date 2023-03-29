@@ -181,7 +181,6 @@ fn flush_command_queue(
             }
             Command::Connected => (),
             Command::Disconnected => (),
-            Command::WorldTerrain { cell, height } => {}
         }
     }
 }

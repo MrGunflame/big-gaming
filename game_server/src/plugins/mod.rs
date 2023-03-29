@@ -196,9 +196,6 @@ fn flush_command_queue(
                 connections.remove(msg.id);
             }
             Command::SpawnHost { id } => (),
-            Command::WorldTerrain { cell: _, height: _ } => {
-                tracing::debug!("received WorldTerrain from client, ignoring");
-            }
         }
 
         drop(view);

@@ -703,7 +703,6 @@ pub enum Frame {
     EntityVelocity(EntityVelocity),
     EntityHealth(EntityHealth),
     SpawnHost(SpawnHost),
-    WorldTerrain(Terrain),
 }
 
 impl Encode for Frame {
@@ -740,10 +739,6 @@ impl Encode for Frame {
             }
             Self::SpawnHost(frame) => {
                 FrameType::SPAWN_HOST.encode(&mut buf)?;
-                frame.encode(buf)
-            }
-            Self::WorldTerrain(frame) => {
-                FrameType::WORLD_TERRAIN.encode(&mut buf)?;
                 frame.encode(buf)
             }
         }
@@ -787,10 +782,6 @@ impl Decode for Frame {
             FrameType::SPAWN_HOST => {
                 let frame = SpawnHost::decode(buf)?;
                 Ok(Self::SpawnHost(frame))
-            }
-            FrameType::WORLD_TERRAIN => {
-                let frame = Terrain::decode(buf)?;
-                Ok(Self::WorldTerrain(frame))
             }
             _ => unreachable!(),
         }
@@ -956,9 +947,6 @@ impl FrameType {
 
     /// The `FrameType` for the [`EntityHealth`] frame.
     pub const ENTITY_HEALTH: Self = Self(0x10);
-
-    /// The `FrameType` for the [`Terrain`] frame.
-    pub const WORLD_TERRAIN: Self = Self(0x20);
 }
 
 impl TryFrom<u16> for FrameType {
@@ -975,7 +963,6 @@ impl TryFrom<u16> for FrameType {
             Self::SPAWN_HOST => Ok(Self::SPAWN_HOST),
             Self::PLAYER_JOIN => Ok(Self::PLAYER_JOIN),
             Self::PLAYER_LEAVE => Ok(Self::PLAYER_LEAVE),
-            Self::WORLD_TERRAIN => Ok(Self::WORLD_TERRAIN),
             _ => Err(InvalidFrameType(value)),
         }
     }
