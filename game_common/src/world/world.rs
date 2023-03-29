@@ -226,6 +226,10 @@ impl<'a> WorldViewRef<'a> {
         self.snapshot.entities.entities.values()
     }
 
+    pub fn streaming_sources(&self) -> &StreamingSources {
+        &self.snapshot.streaming_sources
+    }
+
     /// Returns a view into a cell in the world.
     pub fn cell(&self, id: CellId) -> CellViewRef<'_> {
         CellViewRef {
@@ -358,11 +362,11 @@ impl<'a> WorldViewMut<'a> {
             "[{}] spawning {:?} (C = {})",
             self.index,
             entity.id,
-            CellId::from(entity.transform.translation).to_f32()
+            entity.cell()
         );
 
         self.new_deltas
-            .entry(CellId::from(entity.transform.translation))
+            .entry(entity.cell())
             .or_default()
             .push(EntityChange::Create {
                 id: entity.id,
@@ -462,6 +466,7 @@ impl<'a> Debug for WorldViewMut<'a> {
         f.debug_struct("WorldViewMut")
             .field("index", &self.index)
             .field("snapshot", self.snapshot_ref())
+            .field("new_deltas", &self.new_deltas)
             .finish_non_exhaustive()
     }
 }
@@ -681,7 +686,7 @@ impl Hosts {
 
 /// Entities that keep chunks loaded.
 #[derive(Clone, Debug)]
-struct StreamingSources {
+pub struct StreamingSources {
     entities: HashMap<EntityId, StreamingSource>,
 }
 
@@ -692,7 +697,7 @@ impl StreamingSources {
         }
     }
 
-    fn get(&self, id: EntityId) -> Option<&StreamingSource> {
+    pub fn get(&self, id: EntityId) -> Option<&StreamingSource> {
         self.entities.get(&id)
     }
 
@@ -852,7 +857,7 @@ impl<'a> CellViewRef<'a> {
         self.entities
             .entities
             .iter()
-            .filter(|(_, e)| CellId::from(e.transform.translation) == self.id)
+            .filter(|(_, e)| e.cell() == self.id)
             .map(|(_, e)| e)
     }
 

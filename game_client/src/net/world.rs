@@ -25,7 +25,7 @@ pub fn apply_world_delta(mut world: ResMut<WorldState>, mut queue: ResMut<DeltaQ
     };
 
     let distance = next.creation() - curr.creation();
-    dbg!(distance);
+    // dbg!(distance);
 
     let delta = WorldViewRef::delta(Some(curr), next);
 
@@ -185,9 +185,11 @@ fn spawn_entity(
 ) -> bevy::ecs::entity::Entity {
     match &entity.entity.body {
         EntityBody::Terrain(terrain) => {
+            dbg!(terrain);
+
             let id = commands
                 .spawn(LoadTerrain {
-                    cell: entity.entity.transform.translation.into(),
+                    cell: terrain.cell,
                     mesh: terrain.clone(),
                 })
                 .insert(TransformBundle {

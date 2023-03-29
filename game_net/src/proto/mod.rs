@@ -474,6 +474,8 @@ impl Encode for EntityBody {
             Self::Terrain(terrain) => {
                 0u8.encode(&mut buf)?;
 
+                terrain.cell.encode(&mut buf)?;
+
                 terrain.height().size().encode(&mut buf)?;
                 for node in terrain.height().nodes() {
                     node.encode(&mut buf)?;
@@ -509,6 +511,8 @@ impl Decode for EntityBody {
 
         match typ {
             0u8 => {
+                let cell = CellId::decode(&mut buf)?;
+
                 let size = UVec2::decode(&mut buf)?;
                 let len = (size.x as usize)
                     .checked_mul(size.y as usize)
@@ -522,8 +526,7 @@ impl Decode for EntityBody {
                 }
 
                 Ok(Self::Terrain(TerrainMesh::new(
-                    // STUB, Don't use
-                    CellId::new(0.0, 0.0, 0.0),
+                    cell,
                     Heightmap::from_vec(size, nodes),
                 )))
             }

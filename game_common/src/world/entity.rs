@@ -11,12 +11,22 @@ use crate::entity::EntityId;
 
 use super::terrain::TerrainMesh;
 use super::world::WorldViewMut;
+use super::CellId;
 
 #[derive(Clone, Debug, Component, PartialEq)]
 pub struct Entity {
     pub id: EntityId,
     pub transform: Transform,
     pub body: EntityBody,
+}
+
+impl Entity {
+    pub fn cell(&self) -> CellId {
+        match &self.body {
+            EntityBody::Terrain(terrain) => terrain.cell,
+            _ => self.transform.translation.into(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]

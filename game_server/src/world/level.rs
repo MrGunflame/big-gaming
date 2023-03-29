@@ -23,19 +23,34 @@ pub fn update_streaming_sources(mut sources: &mut StreamingSources, world: &Worl
     let mut unload = vec![];
 
     for event in view.deltas() {
-        let EntityChange::UpdateStreamingSource { id, state } = event else {
-            continue;
-        };
+        match event {
+            EntityChange::UpdateStreamingSource { id, state } => {
+                let entity = view.get(*id).unwrap();
+                let cell = CellId::from(entity.transform.translation);
 
-        let entity = view.get(*id).unwrap();
-        let cell = CellId::from(entity.transform.translation);
-
-        match state {
-            StreamingState::Create => {
-                load.push(cell);
+                match state {
+                    StreamingState::Create => {
+                        load.push(cell);
+                    }
+                    StreamingState::Destroy => {
+                        unload.push(cell);
+                    }
+                    _ => (),
+                }
             }
-            StreamingState::Destroy => {
-                unload.push(cell);
+            EntityChange::Translate {
+                id,
+                translation: _,
+                cell,
+            } => {
+                if let Some(cell) = cell {
+                    dbg!(cell);
+
+                    if view.streaming_sources().get(*id).is_some() {
+                        load.push(cell.to);
+                        // unload.push(cell.from);
+                    }
+                }
             }
             _ => (),
         }

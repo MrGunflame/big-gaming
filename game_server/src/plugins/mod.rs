@@ -241,8 +241,6 @@ fn update_snapshots(
                     rotation: entity.transform.rotation,
                     data: entity.body.clone(),
                 });
-
-                dbg!(&entity);
             }
 
             continue;
@@ -326,10 +324,6 @@ fn update_snapshots(
                     })
                     .collect::<Vec<_>>(),
             );
-        }
-
-        if !changes.is_empty() {
-            dbg!(&changes);
         }
 
         conn.push(changes);
