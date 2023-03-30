@@ -136,6 +136,7 @@ impl Connection {
                     cell: _,
                 } => Command::EntityTranslate { id, translation },
                 EntityChange::Rotate { id, rotation } => Command::EntityRotate { id, rotation },
+                EntityChange::UpdateStreamingSource { id: _, state: _ } => continue,
                 _ => todo!(),
             };
 
