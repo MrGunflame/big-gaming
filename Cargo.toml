@@ -10,7 +10,8 @@ members = [
     "game_net",
     "game_input",
     "game_macros",
-    "game_editor"
+    "game_editor",
+    "game_physics"
 ]
 
 resolver = "2"
