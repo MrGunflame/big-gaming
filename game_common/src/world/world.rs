@@ -339,6 +339,10 @@ impl<'a> WorldViewMut<'a> {
         self.world.snapshots.get_mut(self.index).unwrap()
     }
 
+    pub fn get(&self, id: EntityId) -> Option<&Entity> {
+        self.snapshot_ref().entities.get(id)
+    }
+
     pub fn get_mut(&mut self, id: EntityId) -> Option<EntityMut<'_>> {
         let sn = self.world.snapshots.get_mut(self.index).unwrap();
 
@@ -932,6 +936,11 @@ impl<'a> CellViewRef<'a> {
 mod tests {
     use std::time::Duration;
 
+    use bevy_transform::prelude::Transform;
+
+    use crate::components::object::ObjectId;
+    use crate::world::entity::Object;
+
     use super::*;
 
     macro_rules! assert_get {
@@ -981,5 +990,134 @@ mod tests {
         assert_get!(world, t3);
 
         assert_get!(world, t1 + Duration::from_millis(5), t2);
+    }
+
+    #[test]
+    fn test_world() {
+        let mut world = WorldState::new();
+
+        let now = Instant::now();
+        let t0 = now;
+        let t1 = now + Duration::from_millis(10);
+
+        world.insert(t0);
+
+        let mut view = world.at_mut(0).unwrap();
+        assert_eq!(view.creation(), t0);
+
+        let id = view.spawn(Entity {
+            id: EntityId::dangling(),
+            transform: Transform::default(),
+            body: EntityBody::Object(Object {
+                id: ObjectId(0.into()),
+            }),
+        });
+
+        assert!(view.get(id).is_some());
+        drop(view);
+
+        // Spawned entity should exist in new snapshot.
+        world.insert(t1);
+
+        let view = world.at(0).unwrap();
+        assert!(view.get(id).is_some());
+
+        drop(view);
+    }
+
+    #[test]
+    fn test_world_modify() {
+        let mut world = WorldState::new();
+
+        let now = Instant::now();
+        let t0 = now;
+        let t1 = now + Duration::from_millis(10);
+        let t2 = now + Duration::from_millis(20);
+        let t3 = now + Duration::from_millis(30);
+
+        world.insert(t0);
+        world.insert(t1);
+        world.insert(t2);
+        world.insert(t3);
+
+        let mut view = world.get_mut(t1).unwrap();
+
+        let id = view.spawn(Entity {
+            id: EntityId::dangling(),
+            transform: Transform::default(),
+            body: EntityBody::Object(Object {
+                id: ObjectId(0.into()),
+            }),
+        });
+
+        drop(view);
+
+        let view = world.get(t0).unwrap();
+        assert!(view.get(id).is_none());
+        assert_eq!(view.deltas().count(), 0);
+
+        for ts in [t1, t2, t3] {
+            let view = world.get(ts).unwrap();
+            assert!(view.get(id).is_some());
+
+            assert_eq!(view.deltas().count(), 1);
+        }
+    }
+
+    #[test]
+    fn test_world_cells() {
+        let mut world = WorldState::new();
+
+        let now = Instant::now();
+        let t0 = now;
+        let t1 = now + Duration::from_millis(10);
+
+        world.insert(t0);
+        world.insert(t1);
+
+        let mut view = world.get_mut(t0).unwrap();
+
+        let id = view.spawn(Entity {
+            id: EntityId::dangling(),
+            transform: Transform::from_translation(Vec3::new(0.0, 0.0, 0.0)),
+            body: EntityBody::Object(Object {
+                id: ObjectId(0.into()),
+            }),
+        });
+
+        drop(view);
+
+        // Translate entity from cell (0, 0, 0) to cell (1, 0, 0)
+        let mut view = world.get_mut(t1).unwrap();
+        let mut entity = view.get_mut(id).unwrap();
+        entity.transform.translation = Vec3::new(64.0, 0.0, 0.0);
+        drop(entity);
+        drop(view);
+
+        // Entity unmoved in t0
+        {
+            let view = world.get(t0).unwrap();
+            let entity = view.get(id).unwrap();
+            assert_eq!(entity.transform.translation, Vec3::new(0.0, 0.0, 0.0));
+
+            let cell = view.cell(CellId::from(Vec3::new(0.0, 0.0, 0.0)));
+            assert!(cell.get(id).is_some());
+
+            let cell = view.cell(CellId::from(Vec3::new(64.0, 0.0, 0.0)));
+            assert!(cell.get(id).is_none());
+        }
+
+        // Moved in t1
+        {
+            let view = world.get(t1).unwrap();
+            let entity = view.get(id).unwrap();
+            assert_eq!(entity.transform.translation, Vec3::new(64.0, 0.0, 0.0));
+
+            let cell = view.cell(CellId::from(Vec3::new(0.0, 0.0, 0.0)));
+            assert!(cell.get(id).is_none());
+
+            let cell = view.cell(CellId::from(Vec3::new(64.0, 0.0, 0.0)));
+            assert!(cell.get(id).is_some());
+        }
     }
 }
