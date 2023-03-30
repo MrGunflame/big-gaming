@@ -356,7 +356,7 @@ impl<'a> WorldViewMut<'a> {
         }
     }
 
-    pub fn spawn(&mut self, entity: Entity) -> EntityId {
+    pub fn spawn(&mut self, mut entity: Entity) -> EntityId {
         self.world.metrics.entities.inc();
         self.world.metrics.deltas.inc();
 
@@ -369,15 +369,15 @@ impl<'a> WorldViewMut<'a> {
             entity.cell()
         );
 
+        let id = self.snapshot().entities.spawn(entity.clone());
+        entity.id = id;
+
         self.new_deltas
             .entry(entity.cell())
             .or_default()
-            .push(EntityChange::Create {
-                id: entity.id,
-                data: entity.clone(),
-            });
+            .push(EntityChange::Create { id, data: entity });
 
-        self.snapshot().entities.spawn(entity)
+        id
     }
 
     pub fn despawn(&mut self, id: EntityId) {

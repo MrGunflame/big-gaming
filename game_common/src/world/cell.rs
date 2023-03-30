@@ -1,3 +1,5 @@
+use std::fmt::{self, Debug, Formatter};
+
 use glam::{IVec3, UVec3, Vec3, Vec3A};
 
 use super::entity::Entity;
@@ -6,7 +8,7 @@ use super::world::{CellViewRef, WorldViewMut};
 pub const CELL_SIZE: Vec3 = Vec3::new(64.0, 64.0, 64.0);
 pub const CELL_SIZE_UINT: UVec3 = UVec3::new(64, 64, 64);
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash)]
 #[repr(transparent)]
 pub struct CellId(u128);
 
@@ -124,6 +126,12 @@ impl CellId {
     #[inline]
     pub fn max(self) -> Vec3 {
         Vec3::new(self.max_x(), self.max_y(), self.max_z())
+    }
+}
+
+impl Debug for CellId {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("CellId").field(&self.to_i32()).finish()
     }
 }
 

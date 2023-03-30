@@ -67,6 +67,8 @@ async fn main() {
 
     app.add_startup_system(setup);
 
+    app.insert_resource(game_physics::Pipeline::new());
+
     let timestep = Duration::from_secs(1) / 60;
 
     let mut interval = interval(timestep.into());

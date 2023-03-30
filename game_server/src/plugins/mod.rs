@@ -44,6 +44,7 @@ pub fn tick(
     assets: Res<AssetServer>,
     level: Res<Level>,
     mut sources: ResMut<StreamingSources>,
+    mut pipeline: ResMut<game_physics::Pipeline>,
 ) {
     update_client_heads(&conns, &mut world);
     flush_command_queue(
@@ -52,6 +53,8 @@ pub fn tick(
 
     crate::world::level::update_streaming_sources(&mut sources, &world);
     crate::world::level::update_level(&sources, &level, &mut world);
+
+    pipeline.step(&mut world);
 
     // Push snapshots last always
     update_snapshots(&conns, &world);
@@ -109,15 +112,8 @@ fn flush_command_queue(
                 // commands.entity(id).despawn();
             }
             Command::EntityTranslate { id, translation } => {
-                let ent = map.get(id).unwrap();
-
-                if let Ok((ent, mut transform, _)) = entities.get_mut(ent) {
-                    let mut entity = view.get_mut(id).unwrap();
-                    entity.transform.translation = translation;
-                    // transform.translation = translation;
-                } else {
-                    tracing::warn!("unknown entity {:?}", ent);
-                }
+                let mut entity = view.get_mut(id).unwrap();
+                entity.transform.translation = translation;
             }
             Command::EntityRotate { id, rotation } => {
                 let mut entity = view.get_mut(id).unwrap();
@@ -301,8 +297,12 @@ fn update_snapshots(
                             cell,
                         } => {
                             if let Some(cell) = cell {
+                                // The cell that the entity moved into is not loaded by the
+                                // client. Remove the entity from the client view.
                                 if !state.cells.contains(&cell.to) {
                                     EntityChange::Destroy { id: *id }
+                                // The cell that the entity moved from was not loaded by the
+                                // client. Add the entity to the client view.
                                 } else if !state.cells.contains(&cell.from) {
                                     let enttiy = curr.get(*id).unwrap();
 
@@ -321,6 +321,18 @@ fn update_snapshots(
                     })
                     .collect::<Vec<_>>(),
             );
+        }
+
+        // The host should never be destroyed.
+        if cfg!(debug_assertions) {
+            for event in &changes {
+                match event {
+                    EntityChange::Destroy { id } => {
+                        assert!(*id != host.id);
+                    }
+                    _ => (),
+                }
+            }
         }
 
         conn.push(changes);
