@@ -309,8 +309,8 @@ mod tests {
         let map = Heightmap::from_vec(UVec2::new(2, 2), nodes);
 
         assert_eq!(map.get(0, 0), 0.0);
-        assert_eq!(map.get(0, 1), 1.0);
-        assert_eq!(map.get(1, 0), 2.0);
+        assert_eq!(map.get(1, 0), 1.0);
+        assert_eq!(map.get(0, 1), 2.0);
         assert_eq!(map.get(1, 1), 3.0);
     }
 
@@ -326,9 +326,9 @@ mod tests {
         let proj = Projection::new(&map, UVec2::new(5, 5));
 
         assert_eq!(proj.get(0, 0), 0.0);
-        assert_eq!(proj.get(0, 1), 0.5);
-        assert_eq!(proj.get(0, 2), 1.0);
-        assert_eq!(proj.get(0, 3), 1.5);
-        assert_eq!(proj.get(0, 4), 2.0);
+        assert_eq!(proj.get(1, 0), 0.5);
+        assert_eq!(proj.get(2, 0), 1.0);
+        assert_eq!(proj.get(3, 0), 1.5);
+        assert_eq!(proj.get(4, 0), 2.0);
     }
 }
