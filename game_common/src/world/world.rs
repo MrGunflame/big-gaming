@@ -793,7 +793,6 @@ impl Snapshot {
             EntityChange::DestroyHost { id } => {
                 self.hosts.remove(id);
             }
-            EntityChange::CreateTerrain { cell, height } => {}
             EntityChange::UpdateStreamingSource { id, state } => {
                 let entity = self.entities.get(id).unwrap();
 

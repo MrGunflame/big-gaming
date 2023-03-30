@@ -75,10 +75,6 @@ pub enum EntityChange {
     DestroyHost {
         id: EntityId,
     },
-    CreateTerrain {
-        cell: CellId,
-        height: Heightmap,
-    },
     UpdateStreamingSource {
         id: EntityId,
         state: StreamingState,
