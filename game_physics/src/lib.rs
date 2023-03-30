@@ -98,8 +98,8 @@ impl Pipeline {
 
         for event in view.deltas() {
             match event {
-                EntityChange::Create { id: _, data } => {
-                    self.add_entity(data);
+                EntityChange::Create { entity } => {
+                    self.add_entity(entity);
                 }
                 EntityChange::Translate {
                     id,
@@ -166,7 +166,6 @@ impl Pipeline {
 
             let id = self.body_handles.get2(handle).unwrap();
             if let Some(mut entity) = view.get_mut(id) {
-                dbg!(body.translation());
                 entity.transform.translation = (*body.translation()).into();
                 entity.transform.rotation = (*body.rotation()).into();
             }

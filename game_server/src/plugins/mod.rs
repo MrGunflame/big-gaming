@@ -275,8 +275,7 @@ fn update_snapshots(
                 }
 
                 changes.push(EntityChange::Create {
-                    id: entity.id,
-                    data: entity.clone(),
+                    entity: entity.clone(),
                 });
             }
 
@@ -304,11 +303,10 @@ fn update_snapshots(
                                 // The cell that the entity moved from was not loaded by the
                                 // client. Add the entity to the client view.
                                 } else if !state.cells.contains(&cell.from) {
-                                    let enttiy = curr.get(*id).unwrap();
+                                    let entity = curr.get(*id).unwrap();
 
                                     EntityChange::Create {
-                                        id: *id,
-                                        data: enttiy.clone(),
+                                        entity: entity.clone(),
                                     }
                                 } else {
                                     d

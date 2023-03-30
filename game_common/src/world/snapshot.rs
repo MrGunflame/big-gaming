@@ -4,7 +4,6 @@ use std::ops::{Add, AddAssign, Sub, SubAssign};
 
 use crate::entity::EntityId;
 use crate::world::cell::CellId;
-use crate::world::terrain::Heightmap;
 
 use super::entity::Entity;
 use super::source::StreamingState;
@@ -49,8 +48,7 @@ impl SubAssign<u32> for SnapshotId {
 #[derive(Clone, Debug)]
 pub enum EntityChange {
     Create {
-        id: EntityId,
-        data: Entity,
+        entity: Entity,
     },
     Translate {
         id: EntityId,

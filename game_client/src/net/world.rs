@@ -55,10 +55,10 @@ pub fn flush_delta_queue(
 
     while let Some(change) = queue.pop() {
         match change {
-            EntityChange::Create { id, data } => {
-                tracing::info!("spawning entity {:?}", id);
+            EntityChange::Create { entity } => {
+                tracing::info!("spawning entity {:?}", entity.id);
 
-                buffer.push(data.into());
+                buffer.push(entity.into());
             }
             EntityChange::Destroy { id } => {
                 let Some(entity) = map.get(id) else {

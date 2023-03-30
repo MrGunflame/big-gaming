@@ -123,11 +123,11 @@ impl Connection {
     {
         for delta in deltas.into_deltas() {
             let cmd = match delta {
-                EntityChange::Create { id, data } => Command::EntityCreate {
-                    id,
-                    translation: data.transform.translation,
-                    rotation: data.transform.rotation,
-                    data: data.body,
+                EntityChange::Create { entity } => Command::EntityCreate {
+                    id: entity.id,
+                    translation: entity.transform.translation,
+                    rotation: entity.transform.rotation,
+                    data: entity.body,
                 },
                 EntityChange::Destroy { id } => Command::EntityDestroy { id },
                 EntityChange::Translate {

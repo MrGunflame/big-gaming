@@ -301,10 +301,7 @@ impl<'a> WorldViewRef<'a> {
         }
 
         for entity in entities.entities.into_values() {
-            delta.push(EntityChange::Create {
-                id: entity.id,
-                data: entity,
-            });
+            delta.push(EntityChange::Create { entity });
         }
 
         for id in hosts.entities.into_keys() {
@@ -375,7 +372,7 @@ impl<'a> WorldViewMut<'a> {
         self.new_deltas
             .entry(entity.cell())
             .or_default()
-            .push(EntityChange::Create { id, data: entity });
+            .push(EntityChange::Create { entity });
 
         id
     }
@@ -720,20 +717,15 @@ impl Snapshot {
         // In that case we simply ignore the change.
 
         match delta {
-            EntityChange::Create { id, data } => {
+            EntityChange::Create { entity } => {
                 self.cells
-                    .entry(CellId::from(data.transform.translation))
+                    .entry(CellId::from(entity.transform.translation))
                     .or_default()
                     .push(EntityChange::Create {
-                        id,
-                        data: data.clone(),
+                        entity: entity.clone(),
                     });
 
-                self.entities.insert(Entity {
-                    id,
-                    transform: data.transform,
-                    body: data.body,
-                });
+                self.entities.insert(entity);
             }
             EntityChange::Destroy { id } => {
                 let Some(translation) = self.entities.get(id).map(|s| s.transform.translation) else {
@@ -921,10 +913,7 @@ impl<'a> CellViewRef<'a> {
         }
 
         for entity in entities.into_values() {
-            delta.push(EntityChange::Create {
-                id: entity.id,
-                data: entity,
-            });
+            delta.push(EntityChange::Create { entity });
         }
 
         delta
