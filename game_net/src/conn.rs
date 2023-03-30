@@ -588,16 +588,38 @@ pub struct ConnectionKey {}
 #[derive(Clone, Debug)]
 pub struct Backlog {
     commands: HashMap<EntityId, Vec<Command>>,
+    /// Total number of commands pushed.
+    ///
+    /// Only used when `debug_assertions` is enabled: When pushing too many commands without ever
+    /// removing them, [`insert`] will panic above the threshold [`MAX_LEN`].
+    ///
+    /// [`insert`]: Self::insert
+    /// [`MAX_LEN`]: Self::MAX_LEN
+    #[cfg(debug_assertions)]
+    len: usize,
 }
 
 impl Backlog {
+    #[cfg(debug_assertions)]
+    const MAX_LEN: usize = 8192;
+
     pub fn new() -> Self {
         Self {
             commands: HashMap::new(),
+            #[cfg(debug_assertions)]
+            len: 0,
         }
     }
 
     pub fn insert(&mut self, id: EntityId, cmd: Command) {
+        #[cfg(debug_assertions)]
+        {
+            self.len += 1;
+            if self.len > Self::MAX_LEN {
+                panic!("exceeded maximum backlog len of {} commands", Self::MAX_LEN);
+            }
+        }
+
         match self.commands.get_mut(&id) {
             Some(vec) => vec.push(cmd),
             None => {
@@ -607,7 +629,17 @@ impl Backlog {
     }
 
     pub fn remove(&mut self, id: EntityId) -> Option<Vec<Command>> {
-        self.commands.remove(&id)
+        match self.commands.remove(&id) {
+            Some(cmds) => {
+                #[cfg(debug_assertions)]
+                {
+                    self.len -= cmds.len();
+                }
+
+                Some(cmds)
+            }
+            None => None,
+        }
     }
 }
 

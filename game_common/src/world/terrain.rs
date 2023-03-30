@@ -51,6 +51,35 @@ impl TerrainMesh {
         Collider::trimesh(vertices, indices)
     }
 
+    pub fn verts_indices(&self) -> (Vec<Vec3>, Vec<[u32; 3]>) {
+        let mut vertices = Vec::new();
+        let mut indices = Vec::new();
+
+        let size_x = CELL_SIZE_UINT.x + 1;
+        let size_z = CELL_SIZE_UINT.z + 1;
+
+        let projection = Projection::new(&self.offsets, UVec2::new(size_x, size_z));
+
+        for index in 0u32..size_x * size_z {
+            let x = index / size_x;
+            let z = index % size_z;
+
+            let y = projection.get(x, z);
+
+            vertices.push(Vec3::new(x as f32, y as f32, z as f32));
+
+            if x != size_x - 1 && z != size_z - 1 {
+                // Up tri (index -> index + 10 -> index + 10 + 1)
+                indices.push([index, index + size_x, index + size_x + 1]);
+
+                // Down tri (index -> index + 1 -> index + 10 + 1)
+                indices.push([index + size_x + 1, index + 1, index]);
+            }
+        }
+
+        (vertices, indices)
+    }
+
     pub fn mesh(&self) -> Mesh {
         let mut mesh = Mesh::new(PrimitiveTopology::TriangleList);
 

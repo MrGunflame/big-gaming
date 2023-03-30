@@ -1,6 +1,6 @@
 use bevy_ecs::system::Resource;
 use game_common::math::RotationExt;
-use game_common::world::entity::Entity;
+use game_common::world::entity::{Entity, EntityBody};
 use game_common::world::snapshot::EntityChange;
 use game_common::world::world::WorldState;
 use handle::HandleMap;
@@ -141,17 +141,45 @@ impl Pipeline {
     }
 
     fn add_entity(&mut self, entity: &Entity) {
-        let body = RigidBodyBuilder::new(RigidBodyType::Dynamic)
-            .translation(entity.transform.translation.into())
-            .rotation(entity.transform.rotation.dir_vec().into())
-            .build();
+        let handle = match &entity.body {
+            // Terrain can never move.
+            EntityBody::Terrain(terrain) => {
+                let body = RigidBodyBuilder::new(RigidBodyType::Fixed)
+                    .translation(terrain.cell.min().into())
+                    // .rotation(Vector::new(0.0, 0.0, -1.0))
+                    .ccd_enabled(true)
+                    .build();
 
-        let body_handle = self.bodies.insert(body);
-        self.body_handles.insert(entity.id, body_handle);
+                let body_handle = self.bodies.insert(body);
+                self.body_handles.insert(entity.id, body_handle);
 
-        let collider = ColliderBuilder::cuboid(1.0, 1.0, 1.0).build();
-        self.colliders
-            .insert_with_parent(collider, body_handle, &mut self.bodies);
+                let (vertices, indices) = terrain.verts_indices();
+                let vertices = vertices.into_iter().map(|vert| vert.into()).collect();
+
+                let collider = ColliderBuilder::trimesh(vertices, indices);
+                self.colliders
+                    .insert_with_parent(collider, body_handle, &mut self.bodies);
+
+                body_handle
+            }
+            _ => {
+                let body = RigidBodyBuilder::new(RigidBodyType::Dynamic)
+                    .translation(entity.transform.translation.into())
+                    .rotation(entity.transform.rotation.dir_vec().into())
+                    .ccd_enabled(true)
+                    .lock_rotations()
+                    .build();
+
+                let body_handle = self.bodies.insert(body);
+                let collider = ColliderBuilder::cuboid(1.0, 1.0, 1.0);
+                self.colliders
+                    .insert_with_parent(collider, body_handle, &mut self.bodies);
+
+                body_handle
+            }
+        };
+
+        self.body_handles.insert(entity.id, handle);
     }
 
     fn write_back(&mut self, world: &mut WorldState) {

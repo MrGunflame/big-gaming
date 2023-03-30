@@ -44,8 +44,6 @@ pub fn update_streaming_sources(mut sources: &mut StreamingSources, world: &Worl
                 cell,
             } => {
                 if let Some(cell) = cell {
-                    dbg!(cell);
-
                     if view.streaming_sources().get(*id).is_some() {
                         load.push(cell.to);
                         // unload.push(cell.from);
