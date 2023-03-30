@@ -130,6 +130,16 @@ fn flush_command_queue(
             _ => (),
         }
 
+        // Snapshot arrived after we already consumed the frame.
+        if let Some(view) = world.back() {
+            if msg.snapshot < view.creation() {
+                let diff = view.creation() - msg.snapshot;
+                tracing::warn!("dropping snapshot; arrived {:?} too late", diff);
+
+                continue;
+            }
+        }
+
         if world.get(msg.snapshot).is_none() {
             world.insert(msg.snapshot);
         }
