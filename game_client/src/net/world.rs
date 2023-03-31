@@ -220,8 +220,6 @@ fn spawn_entity(
 ) -> bevy::ecs::entity::Entity {
     match &entity.entity.body {
         EntityBody::Terrain(terrain) => {
-            dbg!(terrain);
-
             let id = commands
                 .spawn(LoadTerrain {
                     cell: terrain.cell,
