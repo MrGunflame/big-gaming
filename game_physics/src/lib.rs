@@ -1,3 +1,5 @@
+use std::time::{Duration, Instant};
+
 use bevy_ecs::system::Resource;
 use game_common::math::RotationExt;
 use game_common::world::entity::{Entity, EntityBody};
@@ -32,6 +34,8 @@ pub struct Pipeline {
     is_initialized: bool,
 
     body_handles: HandleMap<RigidBodyHandle>,
+
+    last_timestep: Instant,
 }
 
 impl Pipeline {
@@ -50,6 +54,7 @@ impl Pipeline {
             ccd_solver: CCDSolver::new(),
             is_initialized: false,
             body_handles: HandleMap::new(),
+            last_timestep: Instant::now(),
         }
     }
 
@@ -60,21 +65,31 @@ impl Pipeline {
             self.prepare_poll(world);
         }
 
-        self.pipeline.step(
-            &self.gravity,
-            &self.integration_parameters,
-            &mut self.islands,
-            &mut self.broad_phase,
-            &mut self.narrow_phase,
-            &mut self.bodies,
-            &mut self.colliders,
-            &mut self.impulse_joints,
-            &mut self.multibody_joints,
-            &mut self.ccd_solver,
-            None,
-            &(),
-            &(),
-        );
+        let mut steps = 0;
+
+        let now = Instant::now();
+        while self.last_timestep < now {
+            self.pipeline.step(
+                &self.gravity,
+                &self.integration_parameters,
+                &mut self.islands,
+                &mut self.broad_phase,
+                &mut self.narrow_phase,
+                &mut self.bodies,
+                &mut self.colliders,
+                &mut self.impulse_joints,
+                &mut self.multibody_joints,
+                &mut self.ccd_solver,
+                None,
+                &(),
+                &(),
+            );
+
+            self.last_timestep += Duration::from_secs_f64(1.0 / 60.0);
+            steps += 1;
+        }
+
+        tracing::info!("stepping physics for {} steps", steps);
 
         self.write_back(world);
     }
