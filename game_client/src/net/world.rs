@@ -1,3 +1,5 @@
+use std::time::{Duration, Instant};
+
 use bevy::prelude::{
     AssetServer, Commands, DespawnRecursiveExt, Query, Res, ResMut, Transform, Vec3,
 };
@@ -6,6 +8,7 @@ use game_common::actors::human::Human;
 use game_common::bundles::{ActorBundle, ObjectBundle};
 use game_common::components::actor::ActorProperties;
 use game_common::components::combat::Health;
+use game_common::components::entity::InterpolateTranslation;
 use game_common::components::items::LoadItem;
 use game_common::components::player::HostPlayer;
 use game_common::components::terrain::LoadTerrain;
@@ -19,13 +22,34 @@ use game_net::snapshot::DeltaQueue;
 
 use crate::bundles::VisibilityBundle;
 
-pub fn apply_world_delta(mut world: ResMut<WorldState>, mut queue: ResMut<DeltaQueue>) {
+use super::ServerConnection;
+
+pub fn apply_world_delta(
+    mut world: ResMut<WorldState>,
+    mut queue: ResMut<DeltaQueue>,
+    conn: Res<ServerConnection>,
+) {
+    let mut period = conn.interpolation_period().write();
+
+    // Don't start a new period until the previous ended.
+    if period.end > Instant::now() - Duration::from_millis(100) {
+        return;
+    }
+
     let (Some(curr), Some(next)) = (world.at(0), world.at(1)) else {
         return;
     };
 
-    let distance = next.creation() - curr.creation();
-    // dbg!(distance);
+    // The end of the previous snapshot should be the current snapshot.
+    if cfg!(debug_assertions) {
+        // Ignore the start, where start == end.
+        if period.start != period.end {
+            assert_eq!(period.end, curr.creation());
+        }
+    }
+
+    period.start = curr.creation();
+    period.end = next.creation();
 
     let delta = WorldViewRef::delta(Some(curr), next);
 
@@ -40,6 +64,7 @@ pub fn flush_delta_queue(
     mut commands: Commands,
     mut queue: ResMut<DeltaQueue>,
     mut entities: Query<(
+        bevy::ecs::entity::Entity,
         &mut Transform,
         Option<&mut Health>,
         Option<&mut ActorProperties>,
@@ -47,11 +72,15 @@ pub fn flush_delta_queue(
     map: Res<EntityMap>,
     assets: Res<AssetServer>,
     mut backlog: ResMut<Backlog>,
+    conn: Res<ServerConnection>,
 ) {
     // Since events are received in batches, and commands are not applied until
     // the system is done, we buffer all created entities so we can modify them
     // in place within the same batch before they are spawned into the world.
     let mut buffer: Vec<DelayedEntity> = vec![];
+
+    // Drop the lock ASAP.
+    let period = { *conn.interpolation_period().read() };
 
     while let Some(change) = queue.pop() {
         match change {
@@ -85,8 +114,15 @@ pub fn flush_delta_queue(
                     continue;
                 };
 
-                if let Ok((mut transform, _, _)) = entities.get_mut(entity) {
-                    transform.translation = translation;
+                if let Ok((ent, mut transform, _, _)) = entities.get_mut(entity) {
+                    commands.entity(ent).insert(InterpolateTranslation {
+                        src: transform.translation,
+                        dst: translation,
+                        start: period.start,
+                        end: period.end,
+                    });
+
+                    // transform.translation = translation;
                 } else {
                     tracing::warn!("attempted to translate unknown entity {:?}", id);
                 }
@@ -102,7 +138,7 @@ pub fn flush_delta_queue(
                     continue;
                 };
 
-                if let Ok((mut transform, _, props)) = entities.get_mut(entity) {
+                if let Ok((ent, mut transform, _, props)) = entities.get_mut(entity) {
                     if let Some(mut props) = props {
                         // Actor
                         props.rotation = rotation;
@@ -159,7 +195,7 @@ pub fn flush_delta_queue(
                     continue;
                 };
 
-                let (_, h, _) = entities.get_mut(entity).unwrap();
+                let (_, _, h, _) = entities.get_mut(entity).unwrap();
                 if let Some(mut h) = h {
                     *h = health;
                 } else {

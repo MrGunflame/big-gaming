@@ -1,6 +1,6 @@
 use std::net::ToSocketAddrs;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use bevy::prelude::{Entity, EventWriter, Res, Resource};
 use game_common::entity::{EntityId, EntityMap};
@@ -22,12 +22,14 @@ struct ConnectionInner {
     /// State changes
     state: mpsc::Sender<State>,
     state_rx: Mutex<mpsc::Receiver<State>>,
-    interpolation_period: Duration,
+    interpolation_period: RwLock<InterpolationPeriod>,
 }
 
 impl ServerConnection {
     pub fn new(map: EntityMap) -> Self {
         let (tx, rx) = mpsc::channel(8);
+
+        let now = Instant::now();
 
         Self {
             inner: Arc::new(ConnectionInner {
@@ -35,7 +37,10 @@ impl ServerConnection {
                 entities: map,
                 state: tx,
                 state_rx: Mutex::new(rx),
-                interpolation_period: Duration::from_millis(100),
+                interpolation_period: RwLock::new(InterpolationPeriod {
+                    start: now,
+                    end: now,
+                }),
             }),
         }
     }
@@ -91,8 +96,8 @@ impl ServerConnection {
         let _ = self.inner.state.try_send(state);
     }
 
-    pub fn interpolation_period(&self) -> Duration {
-        self.inner.interpolation_period
+    pub fn interpolation_period(&self) -> &RwLock<InterpolationPeriod> {
+        &self.inner.interpolation_period
     }
 }
 
@@ -142,4 +147,10 @@ pub enum State {
     /// Sucessfully connected
     Connected,
     Failed(Arc<dyn std::error::Error + Send + Sync + 'static>),
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct InterpolationPeriod {
+    pub start: Instant,
+    pub end: Instant,
 }

@@ -1,4 +1,5 @@
 mod conn;
+mod interpolate;
 mod world;
 
 use std::net::SocketAddr;
@@ -51,6 +52,8 @@ impl bevy::prelude::Plugin for NetPlugin {
         app.add_system(conn::update_connection_state);
         app.add_system(world::apply_world_delta);
         app.add_system(world::flush_delta_queue);
+
+        app.add_system(interpolate::interpolate_translation);
     }
 }
 
