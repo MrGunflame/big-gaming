@@ -120,6 +120,10 @@ fn flush_command_queue(
     conn: Res<ServerConnection>,
     mut world: ResMut<WorldState>,
 ) {
+    // Limit the maximum number of iterations in this frame.
+    let mut iterations = 0;
+    const MAX_ITERATIONS: usize = 8192;
+
     while let Some(msg) = queue.pop() {
         match msg.command {
             Command::Connected => {
@@ -167,8 +171,6 @@ fn flush_command_queue(
                 });
             }
             Command::EntityDestroy { id } => {
-                dbg!(id);
-
                 view.despawn(id);
             }
             Command::EntityTranslate { id, translation } => {
@@ -194,6 +196,11 @@ fn flush_command_queue(
             }
             Command::Connected => (),
             Command::Disconnected => (),
+        }
+
+        iterations += 1;
+        if iterations >= MAX_ITERATIONS {
+            break;
         }
     }
 }

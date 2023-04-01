@@ -40,6 +40,8 @@ pub fn apply_world_delta(
         return;
     };
 
+    debug_assert_ne!(curr.creation(), next.creation());
+
     // The end of the previous snapshot should be the current snapshot.
     if cfg!(debug_assertions) {
         // Ignore the start, where start == end.
