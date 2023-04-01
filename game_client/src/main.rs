@@ -26,7 +26,6 @@ use bevy::sprite::SpritePlugin;
 use bevy::text::TextPlugin;
 use bevy::winit::WinitPlugin;
 use clap::Parser;
-use components::Rotation;
 use game_common::archive::loader::ModuleLoader;
 use game_common::archive::GameArchive;
 use game_common::scene::SceneTransition;
@@ -432,11 +431,4 @@ impl Position {
     pub fn new(x: f32, y: f32, z: f32) -> Self {
         Self { x, y, z }
     }
-}
-
-#[derive(Bundle)]
-pub struct PlayerCamera {
-    #[bundle]
-    camera: Camera3dBundle,
-    rotation: Rotation,
 }

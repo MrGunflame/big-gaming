@@ -9,7 +9,6 @@ use game_common::components::inventory::{Equipment, EquipmentSlot, Inventory};
 use game_common::components::items::{Cooldown, Item, ItemId, Magazine};
 
 use crate::bundles::VisibilityBundle;
-use crate::components::Rotation;
 use crate::plugins::combat::CombatBundle;
 
 #[derive(Bundle)]
@@ -22,8 +21,6 @@ pub struct ActorBundle {
     // pub scene: SceneBundle,
     #[bundle]
     pub combat: CombatBundle,
-
-    pub rotation: Rotation,
 
     pub actor: Actor,
     pub actor_state: ActorFlags,
@@ -64,7 +61,6 @@ impl ActorBundle {
             //     ..Default::default()
             // },
             visibility: VisibilityBundle::new(),
-            rotation: Rotation::new(),
             actor: Actor,
             combat: CombatBundle::new(),
             actor_state: ActorFlags::default(),
