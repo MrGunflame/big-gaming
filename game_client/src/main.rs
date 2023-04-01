@@ -6,7 +6,6 @@ mod assets;
 mod bundles;
 mod components;
 mod entities;
-mod log;
 mod net;
 mod plugins;
 mod prev_transform;
