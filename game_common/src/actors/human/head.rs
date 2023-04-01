@@ -1,6 +1,5 @@
 use bevy_asset::AssetServer;
 use bevy_ecs::prelude::Bundle;
-use bevy_rapier3d::prelude::Collider;
 use bevy_scene::SceneBundle;
 use bevy_transform::prelude::Transform;
 use glam::Vec3;
@@ -13,7 +12,6 @@ use super::{HumanTemplate, LIMB_HEAD};
 pub struct Head {
     #[bundle]
     scene: SceneBundle,
-    collider: Collider,
     actor_limb: ActorLimb,
 }
 
@@ -27,16 +25,11 @@ impl Head {
             },
             ..Default::default()
         };
-        let collider = Collider::cuboid(0.1, 0.15, 0.1);
         let actor_limb = ActorLimb {
             actor: template.actor,
             limb: LIMB_HEAD,
         };
 
-        Self {
-            scene,
-            collider,
-            actor_limb,
-        }
+        Self { scene, actor_limb }
     }
 }

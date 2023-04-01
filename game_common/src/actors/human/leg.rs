@@ -1,6 +1,5 @@
 use bevy_asset::AssetServer;
 use bevy_ecs::prelude::Bundle;
-use bevy_rapier3d::prelude::Collider;
 use bevy_scene::SceneBundle;
 use bevy_transform::prelude::Transform;
 use glam::Vec3;
@@ -16,7 +15,6 @@ use super::{
 pub struct UpperLeftLeg {
     #[bundle]
     scene: SceneBundle,
-    collider: Collider,
     actor_limb: ActorLimb,
 }
 
@@ -30,17 +28,12 @@ impl UpperLeftLeg {
             },
             ..Default::default()
         };
-        let collider = Collider::cuboid(0.1, 0.2, 0.1);
         let actor_limb = ActorLimb {
             actor: template.actor,
             limb: LIMB_UPPER_LEG_LEFT,
         };
 
-        Self {
-            scene,
-            collider,
-            actor_limb,
-        }
+        Self { scene, actor_limb }
     }
 }
 
@@ -48,7 +41,6 @@ impl UpperLeftLeg {
 pub struct LowerLeftLeg {
     #[bundle]
     scene: SceneBundle,
-    collider: Collider,
     actor_limb: ActorLimb,
 }
 
@@ -62,17 +54,12 @@ impl LowerLeftLeg {
             },
             ..Default::default()
         };
-        let collider = Collider::cuboid(0.1, 0.3, 0.1);
         let actor_limb = ActorLimb {
             actor: template.actor,
             limb: LIMB_LOWER_LEG_LEFT,
         };
 
-        Self {
-            scene,
-            collider,
-            actor_limb,
-        }
+        Self { scene, actor_limb }
     }
 }
 
@@ -80,7 +67,6 @@ impl LowerLeftLeg {
 pub struct UpperRightLeg {
     #[bundle]
     scene: SceneBundle,
-    collider: Collider,
     actor_limb: ActorLimb,
 }
 
@@ -94,17 +80,12 @@ impl UpperRightLeg {
             },
             ..Default::default()
         };
-        let collider = Collider::cuboid(0.1, 0.2, 0.1);
         let actor_limb = ActorLimb {
             actor: template.actor,
             limb: LIMB_UPPER_LEG_RIGHT,
         };
 
-        Self {
-            scene,
-            collider,
-            actor_limb,
-        }
+        Self { scene, actor_limb }
     }
 }
 
@@ -112,7 +93,6 @@ impl UpperRightLeg {
 pub struct LowerRightLeg {
     #[bundle]
     scene: SceneBundle,
-    collider: Collider,
     actor_limb: ActorLimb,
 }
 
@@ -126,16 +106,11 @@ impl LowerRightLeg {
             },
             ..Default::default()
         };
-        let collider = Collider::cuboid(0.1, 0.3, 0.1);
         let actor_limb = ActorLimb {
             actor: template.actor,
             limb: LIMB_LOWER_LEG_RIGHT,
         };
 
-        Self {
-            scene,
-            collider,
-            actor_limb,
-        }
+        Self { scene, actor_limb }
     }
 }

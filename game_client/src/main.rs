@@ -25,8 +25,6 @@ use bevy::render::RenderPlugin;
 use bevy::sprite::SpritePlugin;
 use bevy::text::TextPlugin;
 use bevy::winit::WinitPlugin;
-use bevy_rapier3d::prelude::*;
-use bevy_rapier3d::render::RapierDebugRenderPlugin;
 use clap::Parser;
 use components::Rotation;
 use game_common::archive::loader::ModuleLoader;
@@ -441,5 +439,4 @@ pub struct PlayerCamera {
     #[bundle]
     camera: Camera3dBundle,
     rotation: Rotation,
-    velocity: Velocity,
 }

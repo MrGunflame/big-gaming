@@ -5,7 +5,6 @@ mod character;
 mod combat;
 mod items;
 mod math;
-mod physics;
 mod transform;
 
 use std::convert::Infallible;

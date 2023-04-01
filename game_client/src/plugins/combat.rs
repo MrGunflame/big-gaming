@@ -4,7 +4,6 @@ use bevy::prelude::{
     Bundle, Camera3d, Commands, Entity, EulerRot, KeyCode, MouseButton, Plugin, Query, Res, ResMut,
     Transform, Vec3, With,
 };
-use bevy_rapier3d::prelude::{QueryFilter, RapierContext};
 use game_common::components::actor::ActorFigure;
 use game_common::components::combat::{Attack, Health, IncomingDamage, Reload, Resistances};
 use game_common::components::player::HostPlayer;
@@ -40,7 +39,7 @@ static mut RELOAD: Hotkey = Hotkey {
 impl Plugin for CombatPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
         app.add_startup_system(register_events)
-            .add_system(attack_events)
+            // .add_system(attack_events)
             .add_system(reload_events);
     }
 }
@@ -73,34 +72,34 @@ impl HotkeyFilter for ReloadEvent {
     }
 }
 
-fn attack_events(
-    mut commands: Commands,
-    rapier: Res<RapierContext>,
-    players: Query<(Entity, &Transform, &ActorFigure), With<HostPlayer>>,
-    cameras: Query<&Transform, With<Camera3d>>,
-    mut events: HotkeyReader<AttackEvent>,
-) {
-    if events.iter().count() == 0 {
-        return;
-    }
+// fn attack_events(
+//     mut commands: Commands,
+//     rapier: Res<RapierContext>,
+//     players: Query<(Entity, &Transform, &ActorFigure), With<HostPlayer>>,
+//     cameras: Query<&Transform, With<Camera3d>>,
+//     mut events: HotkeyReader<AttackEvent>,
+// ) {
+//     if events.iter().count() == 0 {
+//         return;
+//     }
 
-    let (entity, player, figure) = players.single();
-    let cam = cameras.single();
+//     let (entity, player, figure) = players.single();
+//     let cam = cameras.single();
 
-    let ray_origin = player.translation + figure.eyes;
-    let (y, x, _) = cam.rotation.to_euler(EulerRot::YXZ);
-    let ray_dir = Vec3::new(-y.sin() * x.cos(), x.sin(), -y.cos() * x.cos());
-    let max_toi = 1000.0;
+//     let ray_origin = player.translation + figure.eyes;
+//     let (y, x, _) = cam.rotation.to_euler(EulerRot::YXZ);
+//     let ray_dir = Vec3::new(-y.sin() * x.cos(), x.sin(), -y.cos() * x.cos());
+//     let max_toi = 1000.0;
 
-    let toi = match rapier.cast_ray(ray_origin, ray_dir, max_toi, true, QueryFilter::new()) {
-        Some((_, toi)) => toi,
-        None => max_toi,
-    };
+//     let toi = match rapier.cast_ray(ray_origin, ray_dir, max_toi, true, QueryFilter::new()) {
+//         Some((_, toi)) => toi,
+//         None => max_toi,
+//     };
 
-    let target = ray_origin + toi * ray_dir;
+//     let target = ray_origin + toi * ray_dir;
 
-    commands.entity(entity).insert(Attack { target });
-}
+//     commands.entity(entity).insert(Attack { target });
+// }
 
 fn reload_events(
     mut commands: Commands,

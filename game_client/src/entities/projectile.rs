@@ -3,40 +3,25 @@ use bevy::prelude::{
     Visibility,
 };
 use bevy::scene::{Scene, SceneBundle};
-use bevy_rapier3d::prelude::{AdditionalMassProperties, Ccd, Collider, RigidBody, Velocity};
 use game_common::components::projectile::Projectile;
 
 #[derive(Bundle)]
 pub struct ProjectileBundle {
     #[bundle]
     pub scene: SceneBundle,
-    pub velocity: Velocity,
-    pub ccd: Ccd,
-    pub collider: Collider,
-    pub mass: AdditionalMassProperties,
-    pub rigid_body: RigidBody,
     pub projectile: Projectile,
 }
 
 impl ProjectileBundle {
     pub fn new(assets: Res<AssetServer>) -> Self {
         let scene = assets.load("bullet.glb#Scene0");
-        let velocity = Velocity::zero();
-        let mass = AdditionalMassProperties::Mass(3.56);
-        let ccd = Ccd::enabled();
-        let collider = Collider::cuboid(0.1, 0.1, 0.1);
 
         Self {
+            projectile: Projectile,
             scene: SceneBundle {
                 scene,
                 ..Default::default()
             },
-            ccd,
-            collider,
-            projectile: Projectile,
-            rigid_body: RigidBody::Dynamic,
-            mass,
-            velocity,
         }
     }
 }
@@ -51,13 +36,6 @@ pub struct ProjectileBuilder {
     pub visibility: Visibility,
     pub computed_visibility: ComputedVisibility,
 
-    // PHYSICS
-    pub collider: Collider,
-    pub velocity: Velocity,
-    pub ccd: Ccd,
-    pub mass: AdditionalMassProperties,
-    pub rigid_body: RigidBody,
-
     // MARKER
     pub projectile: Projectile,
 }
@@ -71,29 +49,12 @@ impl ProjectileBuilder {
             scene: None,
             visibility: Visibility::Inherited,
             computed_visibility: ComputedVisibility::HIDDEN,
-            collider: Collider::cuboid(1.0, 1.0, 1.0),
-            velocity: Velocity::zero(),
-            ccd: Ccd::enabled(),
-            mass: AdditionalMassProperties::Mass(0.0),
-            rigid_body: RigidBody::Dynamic,
             projectile: Projectile,
         }
     }
 
     pub const fn transform(mut self, transform: Transform) -> Self {
         self.transform = transform;
-        self
-    }
-
-    // TODO: Project velocity along transform.rotation.
-    pub fn velocity(mut self, velocity: Velocity) -> Self {
-        self.velocity = velocity;
-        self
-    }
-
-    // TODO: Allow passing MassProperties.
-    pub fn mass(mut self, mass: f32) -> Self {
-        self.mass = AdditionalMassProperties::Mass(mass);
         self
     }
 
@@ -104,11 +65,6 @@ impl ProjectileBuilder {
             scene,
             visibility,
             computed_visibility,
-            collider,
-            velocity,
-            ccd,
-            mass,
-            rigid_body,
             projectile,
         } = self;
 
@@ -122,11 +78,6 @@ impl ProjectileBuilder {
             builder.insert(computed_visibility);
         }
 
-        builder.insert(collider);
-        builder.insert(velocity);
-        builder.insert(ccd);
-        builder.insert(mass);
-        builder.insert(rigid_body);
         builder.insert(projectile);
     }
 }

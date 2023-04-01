@@ -1,5 +1,4 @@
 use bevy::prelude::*;
-use bevy_rapier3d::prelude::{QueryFilter, RapierContext};
 use game_common::components::actor::ActorFigure;
 use game_common::components::combat::{Attack, Reload};
 use game_common::components::interaction::{InteractionQueue, Interactions};
@@ -101,112 +100,112 @@ use game_common::math::RotationExt;
 //     }
 // }
 
-pub fn mouse_button_input(
-    mut commands: Commands,
-    rapier: Res<RapierContext>,
-    players: Query<(Entity, &Transform, &ActorFigure), With<HostPlayer>>,
-    cameras: Query<&Transform, With<Camera3d>>,
-    input: Res<Input<MouseButton>>,
-    kb_input: Res<Input<KeyCode>>,
-) {
-    let Ok((player, player_transform, figure)) = players.get_single() else {
-        return;
-    };
-    let cam_transform = cameras.single();
+// pub fn mouse_button_input(
+//     mut commands: Commands,
+//     rapier: Res<RapierContext>,
+//     players: Query<(Entity, &Transform, &ActorFigure), With<HostPlayer>>,
+//     cameras: Query<&Transform, With<Camera3d>>,
+//     input: Res<Input<MouseButton>>,
+//     kb_input: Res<Input<KeyCode>>,
+// ) {
+//     let Ok((player, player_transform, figure)) = players.get_single() else {
+//         return;
+//     };
+//     let cam_transform = cameras.single();
 
-    if kb_input.just_pressed(KeyCode::R) {
-        commands.entity(player).insert(Reload);
-    }
+//     if kb_input.just_pressed(KeyCode::R) {
+//         commands.entity(player).insert(Reload);
+//     }
 
-    if input.pressed(MouseButton::Left) {
-        let ray_origin = player_transform.translation + figure.eyes;
-        let (y, x, _) = cam_transform.rotation.to_euler(EulerRot::YXZ);
-        let ray_dir = Vec3::new(-y.sin() * x.cos(), x.sin(), -y.cos() * x.cos()).normalize();
-        let max_toi = 1000.0;
+//     if input.pressed(MouseButton::Left) {
+//         let ray_origin = player_transform.translation + figure.eyes;
+//         let (y, x, _) = cam_transform.rotation.to_euler(EulerRot::YXZ);
+//         let ray_dir = Vec3::new(-y.sin() * x.cos(), x.sin(), -y.cos() * x.cos()).normalize();
+//         let max_toi = 1000.0;
 
-        let toi = match rapier.cast_ray(ray_origin, ray_dir, max_toi, true, QueryFilter::new()) {
-            Some((_, toi)) => toi,
-            None => max_toi,
-        };
+//         let toi = match rapier.cast_ray(ray_origin, ray_dir, max_toi, true, QueryFilter::new()) {
+//             Some((_, toi)) => toi,
+//             None => max_toi,
+//         };
 
-        commands.entity(player).insert(Attack {
-            target: ray_origin + toi * ray_dir,
-        });
-    }
+//         commands.entity(player).insert(Attack {
+//             target: ray_origin + toi * ray_dir,
+//         });
+//     }
 
-    if input.pressed(MouseButton::Right) {}
+//     if input.pressed(MouseButton::Right) {}
 
-    //  let (player, mut equipment, figure, focus) = players.single_mut();
-    //  let camera_rot = cameras.single();
+//  let (player, mut equipment, figure, focus) = players.single_mut();
+//  let camera_rot = cameras.single();
 
-    // if focus.kind != FocusKind::World {
-    //     return;
-    // }
+// if focus.kind != FocusKind::World {
+//     return;
+// }
 
-    // let item = match equipment.get_mut(EquipmentSlot::MAIN_HAND) {
-    //     Some(item) => item,
-    //     None => return,
-    // };
+// let item = match equipment.get_mut(EquipmentSlot::MAIN_HAND) {
+//     Some(item) => item,
+//     None => return,
+// };
 
-    // if kb_input.just_pressed(KeyCode::R) {
-    //     if let Some(mag) = &mut item.magazine {
-    //         if *mag == 0 {
-    //             *mag = 30;
-    //         } else {
-    //             *mag = 31;
-    //         }
-    //     }
-    // }
+// if kb_input.just_pressed(KeyCode::R) {
+//     if let Some(mag) = &mut item.magazine {
+//         if *mag == 0 {
+//             *mag = 30;
+//         } else {
+//             *mag = 31;
+//         }
+//     }
+// }
 
-    // if input.pressed(MouseButton::Left) {
-    //     if let Some(mag) = &mut item.magazine {
-    //         if *mag == 0 {
-    //             return;
-    //         }
+// if input.pressed(MouseButton::Left) {
+//     if let Some(mag) = &mut item.magazine {
+//         if *mag == 0 {
+//             return;
+//         }
 
-    //         *mag -= 1;
-    //     } else {
-    //         return;
-    //     }
+//         *mag -= 1;
+//     } else {
+//         return;
+//     }
 
-    //     audio.play_with_settings(
-    //         assets.load("sounds/weapons/fire.wav"),
-    //         PlaybackSettings::default().with_volume(0.03),
-    //     );
+//     audio.play_with_settings(
+//         assets.load("sounds/weapons/fire.wav"),
+//         PlaybackSettings::default().with_volume(0.03),
+//     );
 
-    //     // Do a ray cast from the players camera position to figure out where to
-    //     // shoot the projectile.
-    //     let ray_origin = player.translation + figure.eyes;
-    //     let ray_dir = camera_rot.movement_vec();
-    //     let max_toi = 1000.0;
-    //     let solid = true;
-    //     let predicate = |entity| match projectiles.get(entity) {
-    //         Ok(_) => false,
-    //         Err(_) => true,
-    //     };
-    //     let filter = QueryFilter::new().predicate(&predicate);
+//     // Do a ray cast from the players camera position to figure out where to
+//     // shoot the projectile.
+//     let ray_origin = player.translation + figure.eyes;
+//     let ray_dir = camera_rot.movement_vec();
+//     let max_toi = 1000.0;
+//     let solid = true;
+//     let predicate = |entity| match projectiles.get(entity) {
+//         Ok(_) => false,
+//         Err(_) => true,
+//     };
+//     let filter = QueryFilter::new().predicate(&predicate);
 
-    //     let target = match rapier.cast_ray(ray_origin, ray_dir, max_toi, solid, filter) {
-    //         Some((_, toi)) => ray_origin + toi * ray_dir,
-    //         None => ray_origin + max_toi * ray_dir,
-    //     };
+//     let target = match rapier.cast_ray(ray_origin, ray_dir, max_toi, solid, filter) {
+//         Some((_, toi)) => ray_origin + toi * ray_dir,
+//         None => ray_origin + max_toi * ray_dir,
+//     };
 
-    //     let mut entity = ProjectileBundle::new(assets);
+//     let mut entity = ProjectileBundle::new(assets);
 
-    //     // Create a new entity at the same position as the player,
-    //     // pointing at the same direction as the player and a positive velocity
-    //     // into the direction of the player.
-    //     let mut origin = *player;
-    //     origin.translation.y += 1.0;
-    //     entity.scene.transform = origin.looking_at(target, Vec3::Y);
-    //     entity.scene.transform.translation += camera_rot.movement_vec() * Vec3::splat(5.0);
+//     // Create a new entity at the same position as the player,
+//     // pointing at the same direction as the player and a positive velocity
+//     // into the direction of the player.
+//     let mut origin = *player;
+//     origin.translation.y += 1.0;
+//     entity.scene.transform = origin.looking_at(target, Vec3::Y);
+//     entity.scene.transform.translation += camera_rot.movement_vec() * Vec3::splat(5.0);
 
-    //     let dir = target - player.translation;
-    //     entity.velocity.linvel = dir.normalize() * Vec3::splat(1000.0);
+//     let dir = target - player.translation;
+//     entity.velocity.linvel = dir.normalize() * Vec3::splat(1000.0);
 
-    //     commands.spawn(entity).insert(Damage::new(1));
-    // }
-}
+//     commands.spawn(entity).insert(Damage::new(1));
+// }
+// }
 
 // TODO: This should scan for all entities `Interaction`s.
 // pub fn interact_target(

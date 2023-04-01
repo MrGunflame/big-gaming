@@ -5,14 +5,10 @@ use glam::Vec3;
 
 use crate::components::projectile::Projectile;
 
-use super::physics::DynamicPhysicsBundle;
-
 #[derive(Default, Bundle)]
 pub struct ProjectileBundle {
     #[bundle]
     pub scene: SceneBundle,
-    #[bundle]
-    pub physics: DynamicPhysicsBundle,
 
     pub projectile: Projectile,
 }
@@ -24,7 +20,6 @@ impl ProjectileBundle {
                 scene: assets.load("bullet.glb#Scene0"),
                 ..Default::default()
             },
-            physics: DynamicPhysicsBundle::default(),
             projectile: Projectile,
         }
     }

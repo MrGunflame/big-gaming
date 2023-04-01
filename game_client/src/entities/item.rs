@@ -11,7 +11,7 @@ use game_common::components::interaction::{Interaction, InteractionId, Interacti
 use game_common::components::inventory::Inventory;
 use game_common::components::items::Item;
 
-use crate::bundles::{PhysicsBundle, VisibilityBundle};
+use crate::bundles::VisibilityBundle;
 
 #[derive(Bundle)]
 pub struct ItemBundle {
@@ -22,8 +22,6 @@ pub struct ItemBundle {
     // #[bundle]
     // pub scene: SceneBundle,
     scene: Handle<Scene>,
-    #[bundle]
-    pub physics: PhysicsBundle,
 
     pub item: Item,
     /// Item can be picked up.
@@ -46,7 +44,6 @@ impl ItemBundle {
             // },
             visibility: VisibilityBundle::new(),
             scene: assets.load("barrel.glb#Scene0"),
-            physics: PhysicsBundle::new(),
             item,
             interactions: interaction.into(),
         }

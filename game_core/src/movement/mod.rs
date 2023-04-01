@@ -5,7 +5,6 @@ use bevy::prelude::{
     With,
 };
 use bevy::time::Time;
-use bevy_rapier3d::prelude::Velocity;
 use game_common::components::actor::{ActorFlag, ActorFlags, MovementSpeed};
 use game_common::components::items::Cooldown;
 use game_common::components::movement::{Jump, Movement, Rotate, Teleport};
@@ -20,7 +19,6 @@ impl Plugin for MovementPlugin {
         app.add_system(handle_movement_events)
             .add_system(handle_rotate_events)
             .add_system(handle_teleport_events)
-            .add_system(handle_jump_events)
             // FIXME: This should be run after any transform mutating events,
             // not only movement events.
             .add_system(update_previous_transform.before(handle_movement_events));
@@ -81,39 +79,39 @@ fn handle_teleport_events(
     }
 }
 
-fn handle_jump_events(
-    mut commands: Commands,
-    mut actors: Query<
-        (
-            Entity,
-            &ActorFlags,
-            &mut Velocity,
-            Option<&mut JumpCooldown>,
-        ),
-        With<Jump>,
-    >,
-) {
-    for (entity, flags, mut velocity, cooldown) in &mut actors {
-        // Jumping is also handled with the `CAN_MOVE` flag.
-        if !flags.contains(ActorFlag::CAN_MOVE) {
-            continue;
-        }
+// fn handle_jump_events(
+//     mut commands: Commands,
+//     mut actors: Query<
+//         (
+//             Entity,
+//             &ActorFlags,
+//             &mut Velocity,
+//             Option<&mut JumpCooldown>,
+//         ),
+//         With<Jump>,
+//     >,
+// ) {
+//     for (entity, flags, mut velocity, cooldown) in &mut actors {
+//         // Jumping is also handled with the `CAN_MOVE` flag.
+//         if !flags.contains(ActorFlag::CAN_MOVE) {
+//             continue;
+//         }
 
-        // FIXME: Maybe the actor should always have the JumpCooldown already
-        // to avoid this extra check.
-        if let Some(mut cooldown) = cooldown {
-            if !cooldown.cooldown.tick() {
-                return;
-            }
-        } else {
-            commands.entity(entity).insert(JumpCooldown::new());
-        }
+//         // FIXME: Maybe the actor should always have the JumpCooldown already
+//         // to avoid this extra check.
+//         if let Some(mut cooldown) = cooldown {
+//             if !cooldown.cooldown.tick() {
+//                 return;
+//             }
+//         } else {
+//             commands.entity(entity).insert(JumpCooldown::new());
+//         }
 
-        velocity.linvel.y += 10.0;
+//         velocity.linvel.y += 10.0;
 
-        commands.entity(entity).remove::<Jump>();
-    }
-}
+//         commands.entity(entity).remove::<Jump>();
+//     }
+// }
 
 /// Updates the [`PreviousTransform`] component to the current [`Transform`] value.
 ///

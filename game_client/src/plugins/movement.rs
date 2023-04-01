@@ -143,7 +143,7 @@ impl Plugin for MovementPlugin {
 
         app.add_system(events::handle_movement_events.in_set(MovementSet::Apply));
         app.add_system(events::handle_rotate_events.in_set(MovementSet::Apply));
-        app.add_system(events::handle_jump_events.in_set(MovementSet::Apply));
+        // app.add_system(events::handle_jump_events.in_set(MovementSet::Apply));
 
         app.configure_set(InputSet::Hotkeys.before(MovementSet::Read));
         app.configure_set(MovementSet::Read.before(MovementSet::Apply));

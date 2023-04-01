@@ -2,7 +2,6 @@ use std::time::Duration;
 
 use bevy::prelude::{App, Commands};
 use bevy::transform::TransformBundle;
-use bevy_rapier3d::prelude::{Collider, RigidBody};
 use clap::Parser;
 use game_common::archive::loader::ModuleLoader;
 use game_common::archive::GameArchive;
@@ -65,8 +64,6 @@ async fn main() {
 
     app.add_plugin(WorldPlugin);
 
-    app.add_startup_system(setup);
-
     app.insert_resource(game_physics::Pipeline::new());
 
     let timestep = Duration::from_secs(1) / 60;
@@ -78,24 +75,4 @@ async fn main() {
         app.update();
         interval.tick().await;
     }
-}
-
-fn setup(mut commands: Commands) {
-    commands
-        .spawn(TransformBundle::default())
-        .insert(RigidBody::Fixed)
-        .insert(Collider::cuboid(1000.0, 0.1, 1000.0));
-
-    // commands
-    //     .spawn(Transform::default())
-    //     .insert(Object {
-    //         id: ObjectId(0.into()),
-    //     })
-    //     .insert(Entity {
-    //         id: EntityId::new(),
-    //         transform: Transform::default(),
-    //         data: EntityData::Object {
-    //             id: ObjectId(0.into()),
-    //         },
-    //     });
 }

@@ -1,9 +1,8 @@
 use std::time::{Duration, Instant};
 
 use bevy::prelude::{
-    AssetServer, Commands, DespawnRecursiveExt, Plugin, Query, Res, ResMut, Transform, Vec3,
+    AssetServer, Commands, DespawnRecursiveExt, Plugin, Res, ResMut, Transform, Vec3,
 };
-use bevy_rapier3d::prelude::Velocity;
 use game_common::actors::human::Human;
 use game_common::bundles::ActorBundle;
 use game_common::components::combat::Health;
@@ -39,7 +38,6 @@ pub fn tick(
     conns: Res<Connections>,
     mut world: ResMut<WorldState>,
     queue: Res<CommandQueue>,
-    entities: Query<(&Entity, &mut Transform, &mut Velocity)>,
     map: Res<EntityMap>,
     assets: Res<AssetServer>,
     level: Res<Level>,
@@ -47,9 +45,7 @@ pub fn tick(
     mut pipeline: ResMut<game_physics::Pipeline>,
 ) {
     update_client_heads(&conns, &mut world);
-    flush_command_queue(
-        commands, &conns, &queue, entities, &map, &mut world, &assets,
-    );
+    flush_command_queue(commands, &conns, &queue, &map, &mut world, &assets);
 
     crate::world::level::update_streaming_sources(&mut sources, &world);
     crate::world::level::update_level(&sources, &level, &mut world);
@@ -83,7 +79,6 @@ fn flush_command_queue(
     mut commands: Commands,
     connections: &Connections,
     queue: &CommandQueue,
-    mut entities: Query<(&Entity, &mut Transform, &mut Velocity)>,
     map: &EntityMap,
     world: &mut WorldState,
     assets: &AssetServer,
@@ -122,9 +117,9 @@ fn flush_command_queue(
             Command::EntityVelocity { id, linvel, angvel } => {
                 let ent = map.get(id).unwrap();
 
-                let (ent, _, mut velocity) = entities.get_mut(ent).unwrap();
-                velocity.linvel = linvel;
-                velocity.angvel = angvel;
+                // let (ent, _, mut velocity) = entities.get_mut(ent).unwrap();
+                // velocity.linvel = linvel;
+                // velocity.angvel = angvel;
             }
             Command::EntityHealth { id: _, health: _ } => {
                 tracing::warn!("received EntityHealth from client, ignored");
@@ -326,7 +321,7 @@ fn update_snapshots(
             for event in &changes {
                 match event {
                     EntityChange::Destroy { id } => {
-                        assert!(*id != host.id);
+                        assert_ne!(*id, host.id);
                     }
                     _ => (),
                 }

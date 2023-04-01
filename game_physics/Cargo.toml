@@ -9,5 +9,10 @@ license = "GPL-3.0-or-later"
 bevy_ecs = "0.10.0"
 game_common = { version = "0.1.0", path = "../game_common" }
 
+nalgebra = { version = "0.32.1", features = ["convert-glam023"] }
 rapier3d = "0.17.2"
 tracing = "0.1.37"
+
+[features]
+default = ["simd"]
+simd = ["rapier3d/simd-nightly"]

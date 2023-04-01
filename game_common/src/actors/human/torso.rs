@@ -1,6 +1,5 @@
 use bevy_asset::AssetServer;
 use bevy_ecs::prelude::Bundle;
-use bevy_rapier3d::prelude::Collider;
 use bevy_scene::SceneBundle;
 use bevy_transform::prelude::Transform;
 use glam::Vec3;
@@ -12,7 +11,6 @@ use crate::components::actor::ActorLimb;
 pub struct Torso {
     #[bundle]
     scene: SceneBundle,
-    collider: Collider,
     actor_limb: ActorLimb,
 }
 
@@ -26,16 +24,11 @@ impl Torso {
             },
             ..Default::default()
         };
-        let collider = Collider::cuboid(0.2, 0.4, 0.2);
         let actor_limb = ActorLimb {
             actor: template.actor,
             limb: LIMB_TORSO,
         };
 
-        Self {
-            scene,
-            collider,
-            actor_limb,
-        }
+        Self { scene, actor_limb }
     }
 }

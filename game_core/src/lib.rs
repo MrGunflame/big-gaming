@@ -11,7 +11,6 @@ use bevy::prelude::{
 use bevy::scene::ScenePlugin;
 use bevy::time::TimePlugin;
 use bevy::transform::TransformPlugin;
-use bevy_rapier3d::prelude::{NoUserData, RapierPhysicsPlugin};
 use combat::CombatPlugin;
 use game_audio::AudioPlugin;
 use movement::MovementPlugin;
