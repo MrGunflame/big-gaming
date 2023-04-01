@@ -14,7 +14,8 @@ use game_common::world::snapshot::EntityChange;
 use game_common::world::source::{StreamingSource, StreamingSources, StreamingState};
 use game_common::world::world::WorldState;
 use game_common::world::CellId;
-use game_net::snapshot::{Command, CommandQueue};
+use game_net::conn::ConnectionId;
+use game_net::snapshot::{Command, CommandQueue, ConnectionMessage};
 
 use crate::conn::Connections;
 use crate::entity::ServerEntityGenerator;
@@ -168,7 +169,9 @@ fn flush_command_queue(
                 //     });
 
                 map.insert(id, ent);
-                conn.set_host(id);
+                // FIXME: This should not be set in this snapshot, but in the most
+                // recent one.
+                conn.set_host(id, view.creation());
 
                 let mut state = conn.state().write();
                 state.id = Some(id);
@@ -223,11 +226,15 @@ fn update_snapshots(
             let cell = curr.cell(host.transform.translation.into());
 
             for entity in cell.iter() {
-                conn.handle().send_cmd(Command::EntityCreate {
-                    id: entity.id,
-                    translation: entity.transform.translation,
-                    rotation: entity.transform.rotation,
-                    data: entity.body.clone(),
+                conn.handle().send_cmd(ConnectionMessage {
+                    id: ConnectionId(0),
+                    snapshot: curr.creation(),
+                    command: Command::EntityCreate {
+                        id: entity.id,
+                        translation: entity.transform.translation,
+                        rotation: entity.transform.rotation,
+                        data: entity.body.clone(),
+                    },
                 });
             }
 
@@ -328,6 +335,6 @@ fn update_snapshots(
             }
         }
 
-        conn.push(changes);
+        conn.push(changes, curr.creation());
     }
 }

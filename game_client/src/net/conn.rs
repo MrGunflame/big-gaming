@@ -5,8 +5,8 @@ use std::time::{Duration, Instant};
 use bevy::prelude::{Entity, EventWriter, Res, Resource};
 use game_common::entity::{EntityId, EntityMap};
 use game_common::scene::{Scene, SceneTransition, ServerError};
-use game_net::conn::ConnectionHandle;
-use game_net::snapshot::{Command, CommandQueue};
+use game_net::conn::{ConnectionHandle, ConnectionId};
+use game_net::snapshot::{Command, CommandQueue, ConnectionMessage};
 use parking_lot::{Mutex, RwLock};
 use tokio::sync::mpsc;
 
@@ -49,7 +49,11 @@ impl ServerConnection {
         let handle = self.inner.handle.read();
 
         if let Some(handle) = &*handle {
-            handle.send_cmd(cmd);
+            handle.send_cmd(ConnectionMessage {
+                id: ConnectionId(0),
+                snapshot: Instant::now(),
+                command: cmd,
+            });
         }
     }
 

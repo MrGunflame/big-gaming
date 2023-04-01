@@ -1,13 +1,14 @@
 use std::borrow::Borrow;
 use std::iter::FusedIterator;
 use std::sync::Arc;
+use std::time::Instant;
 
 use ahash::HashMap;
 use bevy::prelude::Resource;
 use game_common::entity::EntityId;
 use game_common::world::snapshot::EntityChange;
 use game_net::conn::{ConnectionHandle, ConnectionId};
-use game_net::snapshot::Command;
+use game_net::snapshot::{Command, ConnectionMessage};
 use parking_lot::RwLock;
 
 use crate::net::state::ConnectionState;
@@ -117,7 +118,7 @@ impl Connection {
         &self.inner.handle
     }
 
-    pub fn push<T>(&self, deltas: T)
+    pub fn push<T>(&self, deltas: T, snapshot: Instant)
     where
         T: IntoDeltas,
     {
@@ -140,7 +141,11 @@ impl Connection {
                 _ => todo!(),
             };
 
-            self.inner.handle.send_cmd(cmd);
+            self.inner.handle.send_cmd(ConnectionMessage {
+                id: ConnectionId(0),
+                snapshot,
+                command: cmd,
+            });
         }
     }
 
@@ -152,9 +157,13 @@ impl Connection {
         self.state().read().id
     }
 
-    pub fn set_host(&self, id: EntityId) {
+    pub fn set_host(&self, id: EntityId, snapshot: Instant) {
         self.state().write().id = Some(id);
-        self.handle().send_cmd(Command::SpawnHost { id });
+        self.handle().send_cmd(ConnectionMessage {
+            id: ConnectionId(0),
+            snapshot,
+            command: Command::SpawnHost { id },
+        });
     }
 }
 

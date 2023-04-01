@@ -19,7 +19,7 @@ use crate::proto::handshake::{Handshake, HandshakeFlags, HandshakeType};
 use crate::proto::sequence::Sequence;
 use crate::proto::shutdown::{Shutdown, ShutdownReason};
 use crate::proto::timestamp::Timestamp;
-use crate::proto::{Encode, Frame, Header, Packet, PacketBody};
+use crate::proto::{Encode, Frame, Header, Packet, PacketBody, PacketType};
 use crate::snapshot::{Command, CommandQueue, ConnectionMessage};
 use crate::socket::Socket;
 
@@ -64,7 +64,7 @@ pub struct Connection {
     socket: Arc<Socket>,
 
     /// Direction (from self)
-    chan_out: mpsc::Receiver<Command>,
+    chan_out: mpsc::Receiver<ConnectionMessage>,
 
     state: ConnectionState,
 
@@ -155,38 +155,44 @@ impl Connection {
             return Poll::Pending;
         }
 
-        while let Poll::Ready(cmd) = self.chan_out.poll_recv(cx) {
-            let Some(cmd) = cmd else {
+        while let Poll::Ready(msg) = self.chan_out.poll_recv(cx) {
+            let Some(msg) = msg else {
                 return self.shutdown();
             };
 
-            let frame = match self.entities.pack(&cmd) {
+            let frame = match self.entities.pack(&msg.command) {
                 Some(frame) => frame,
                 None => {
-                    tracing::info!("backlogging command {:?} for entity {:?}", cmd, cmd.id());
+                    tracing::info!(
+                        "backlogging command {:?} for entity {:?}",
+                        msg,
+                        msg.command.id()
+                    );
 
-                    if let Some(id) = cmd.id() {
-                        self.backlog.insert(id, cmd);
+                    if let Some(id) = msg.command.id() {
+                        self.backlog.insert(id, msg.command);
                     }
 
                     continue;
                 }
             };
 
-            self.frame_queue.push(frame);
+            self.frame_queue.push(frame, msg.snapshot);
 
-            if let Some(id) = cmd.id() {
+            if let Some(id) = msg.command.id() {
                 if let Some(vec) = self.backlog.remove(id) {
                     tracing::info!("flushing commands for {:?}", id);
 
-                    self.frame_queue
-                        .extend(vec.into_iter().map(|cmd| self.entities.pack(&cmd).unwrap()));
+                    self.frame_queue.extend(
+                        vec.into_iter()
+                            .map(|cmd| (self.entities.pack(&cmd).unwrap(), msg.snapshot)),
+                    );
                 }
             }
         }
 
-        if let Some(frame) = self.frame_queue.pop() {
-            self.send(PacketBody::Frames(vec![frame]), ConnectionState::Connected);
+        if let Some((frame, snapshot)) = self.frame_queue.pop() {
+            self.send_data(vec![frame], snapshot, ConnectionState::Connected);
             return Poll::Ready(Ok(()));
         }
 
@@ -469,6 +475,42 @@ impl Connection {
 
         Poll::Ready(())
     }
+
+    fn send_data(
+        &mut self,
+        body: Vec<Frame>,
+        snapshot: Instant,
+        state: ConnectionState,
+    ) -> Poll<()> {
+        let sequence = self.next_server_sequence;
+        self.next_server_sequence += 1;
+
+        let timestamp = Timestamp::new(snapshot - self.start_time);
+
+        let packet = Packet {
+            header: Header {
+                packet_type: PacketType::DATA,
+                sequence,
+                timestamp,
+            },
+            body: PacketBody::Frames(body),
+        };
+
+        let socket = self.socket.clone();
+        let peer = self.peer;
+        self.write = Some(WriteRequest {
+            future: Box::pin(async move {
+                let mut buf = Vec::with_capacity(1500);
+                packet.encode(&mut buf).unwrap();
+                if let Err(err) = socket.send_to(&buf, peer).await {
+                    tracing::error!("Failed to send packet: {}", err);
+                }
+            }),
+            state,
+        });
+
+        Poll::Ready(())
+    }
 }
 
 impl Future for Connection {
@@ -537,7 +579,7 @@ enum HandshakeState {
 
 #[derive(Clone, Debug)]
 pub struct FrameQueue {
-    queue: VecDeque<Frame>,
+    queue: VecDeque<(Frame, Instant)>,
 }
 
 impl FrameQueue {
@@ -547,17 +589,17 @@ impl FrameQueue {
         }
     }
 
-    pub fn push(&mut self, frame: Frame) {
-        self.queue.push_back(frame);
+    pub fn push(&mut self, frame: Frame, ts: Instant) {
+        self.queue.push_back((frame, ts));
     }
 
-    pub fn pop(&mut self) -> Option<Frame> {
+    pub fn pop(&mut self) -> Option<(Frame, Instant)> {
         self.queue.pop_front()
     }
 }
 
-impl Extend<Frame> for FrameQueue {
-    fn extend<T: IntoIterator<Item = Frame>>(&mut self, iter: T) {
+impl Extend<(Frame, Instant)> for FrameQueue {
+    fn extend<T: IntoIterator<Item = (Frame, Instant)>>(&mut self, iter: T) {
         self.queue.extend(iter);
     }
 }
@@ -566,7 +608,7 @@ impl Extend<Frame> for FrameQueue {
 pub struct ConnectionHandle {
     pub id: ConnectionId,
     tx: mpsc::Sender<Packet>,
-    chan_out: mpsc::Sender<Command>,
+    chan_out: mpsc::Sender<ConnectionMessage>,
 }
 
 impl ConnectionHandle {
@@ -574,7 +616,7 @@ impl ConnectionHandle {
         self.tx.send(packet).await.unwrap();
     }
 
-    pub fn send_cmd(&self, cmd: Command) {
+    pub fn send_cmd(&self, cmd: ConnectionMessage) {
         self.chan_out.try_send(cmd);
     }
 }
