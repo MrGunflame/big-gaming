@@ -10,6 +10,8 @@ pub fn interpolate_translation(
     let now = Instant::now();
 
     for (entity, mut transform, interpolate) in &mut entities {
+        let now = now - (interpolate.end - interpolate.start);
+
         transform.translation = interpolate.get(now);
 
         if now >= interpolate.end {
