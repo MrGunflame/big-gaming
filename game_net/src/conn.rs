@@ -648,7 +648,7 @@ impl ConnectionHandle {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         cmd.id = Some(CommandId(id));
 
-        self.chan_out.try_send(cmd).unwrap();
+        self.chan_out.try_send(cmd);
         CommandId(id)
     }
 }

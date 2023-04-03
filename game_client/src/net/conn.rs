@@ -10,6 +10,8 @@ use game_net::snapshot::{Command, CommandQueue, ConnectionMessage};
 use parking_lot::{Mutex, RwLock};
 use tokio::sync::mpsc;
 
+use super::prediction::{LocalOverrides, Prediction};
+
 #[derive(Clone, Debug, Resource)]
 pub struct ServerConnection {
     inner: Arc<ConnectionInner>,
@@ -23,6 +25,7 @@ struct ConnectionInner {
     state: mpsc::Sender<State>,
     state_rx: Mutex<mpsc::Receiver<State>>,
     interpolation_period: RwLock<InterpolationPeriod>,
+    overrides: RwLock<LocalOverrides>,
 }
 
 impl ServerConnection {
@@ -41,6 +44,7 @@ impl ServerConnection {
                     start: now,
                     end: now,
                 }),
+                overrides: RwLock::new(LocalOverrides::new()),
             }),
         }
     }
@@ -49,12 +53,24 @@ impl ServerConnection {
         let handle = self.inner.handle.read();
 
         if let Some(handle) = &*handle {
-            handle.send_cmd(ConnectionMessage {
+            let cmd_id = handle.send_cmd(ConnectionMessage {
                 id: None,
                 conn: ConnectionId(0),
                 snapshot: Instant::now(),
-                command: cmd,
+                command: cmd.clone(),
             });
+
+            match cmd {
+                Command::EntityTranslate { id, translation } => {
+                    let mut ov = self.inner.overrides.write();
+                    ov.push(id, cmd_id, Prediction::Translation(translation));
+                }
+                Command::EntityRotate { id, rotation } => {
+                    let mut ov = self.inner.overrides.write();
+                    ov.push(id, cmd_id, Prediction::Rotation(rotation));
+                }
+                _ => (),
+            }
         }
     }
 
@@ -103,6 +119,10 @@ impl ServerConnection {
 
     pub fn interpolation_period(&self) -> &RwLock<InterpolationPeriod> {
         &self.inner.interpolation_period
+    }
+
+    pub fn overrides(&self) -> &RwLock<LocalOverrides> {
+        &self.inner.overrides
     }
 }
 

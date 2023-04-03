@@ -1,12 +1,13 @@
 mod conn;
 mod interpolate;
+mod prediction;
 mod world;
 
 use std::net::SocketAddr;
 use std::sync::{mpsc, Arc};
 use std::time::{Duration, Instant};
 
-use bevy::prelude::{IntoSystemConfig, Res, ResMut, SystemSet, Transform, Vec3};
+use bevy::prelude::{dbg, IntoSystemConfig, Res, ResMut, SystemSet, Transform, Vec3};
 use game_common::entity::EntityMap;
 use game_common::world::entity::{Entity, EntityBody};
 use game_common::world::world::WorldState;
@@ -197,7 +198,13 @@ fn flush_command_queue(
             }
             Command::Connected => (),
             Command::Disconnected => (),
-            Command::ReceivedCommands { ids: _ } => (),
+            Command::ReceivedCommands { ids } => {
+                dbg!(&ids);
+                let mut ov = conn.overrides().write();
+                for id in ids {
+                    ov.remove(id);
+                }
+            }
         }
 
         iterations += 1;

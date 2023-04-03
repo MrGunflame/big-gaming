@@ -36,6 +36,15 @@ pub fn apply_world_delta(
         return;
     }
 
+    if world.len() < 2 {
+        return;
+    }
+
+    // Apply client-side prediction
+    let view = world.at_mut(0).unwrap();
+    conn.overrides().read().apply(view);
+    // drop(view);
+
     let (Some(curr), Some(next)) = (world.at(0), world.at(1)) else {
         return;
     };
