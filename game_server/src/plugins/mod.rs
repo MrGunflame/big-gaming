@@ -87,7 +87,7 @@ fn flush_command_queue(
     while let Some(msg) = queue.pop() {
         tracing::trace!("got command {:?}", msg.command);
 
-        let conn = connections.get(msg.id).unwrap();
+        let conn = connections.get(msg.conn).unwrap();
         let head = conn.state().read().head;
 
         // Get the world state at the time the client sent the command.
@@ -187,9 +187,10 @@ fn flush_command_queue(
                 }
 
                 // Remove the player from the connections ref.
-                connections.remove(msg.id);
+                connections.remove(msg.conn);
             }
             Command::SpawnHost { id } => (),
+            Command::ReceivedCommands { ids: _ } => (),
         }
 
         drop(view);
@@ -227,7 +228,8 @@ fn update_snapshots(
 
             for entity in cell.iter() {
                 conn.handle().send_cmd(ConnectionMessage {
-                    id: ConnectionId(0),
+                    id: None,
+                    conn: ConnectionId(0),
                     snapshot: curr.creation(),
                     command: Command::EntityCreate {
                         id: entity.id,

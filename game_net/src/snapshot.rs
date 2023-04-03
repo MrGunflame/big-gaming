@@ -52,7 +52,8 @@ impl SubAssign<u32> for SnapshotId {
 
 #[derive(Clone, Debug)]
 pub struct ConnectionMessage {
-    pub id: ConnectionId,
+    pub id: Option<CommandId>,
+    pub conn: ConnectionId,
     pub snapshot: Instant,
     pub command: Command,
 }
@@ -90,7 +91,14 @@ pub enum Command {
     SpawnHost {
         id: EntityId,
     },
+    ReceivedCommands {
+        ids: Vec<CommandId>,
+    },
 }
+
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
+#[repr(transparent)]
+pub struct CommandId(pub u32);
 
 impl Command {
     pub const fn id(&self) -> Option<EntityId> {
@@ -113,6 +121,7 @@ impl Command {
             } => Some(*id),
             Self::EntityHealth { id, health: _ } => Some(*id),
             Self::SpawnHost { id } => Some(*id),
+            Self::ReceivedCommands { ids: _ } => None,
         }
     }
 }

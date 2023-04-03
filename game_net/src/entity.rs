@@ -189,6 +189,7 @@ impl Entities {
 
                 Some(Frame::SpawnHost(SpawnHost { entity: id }))
             }
+            Command::ReceivedCommands { ids: _ } => None,
         }
     }
 

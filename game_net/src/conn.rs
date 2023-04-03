@@ -20,7 +20,7 @@ use crate::proto::sequence::Sequence;
 use crate::proto::shutdown::{Shutdown, ShutdownReason};
 use crate::proto::timestamp::Timestamp;
 use crate::proto::{Encode, Frame, Header, Packet, PacketBody, PacketType};
-use crate::snapshot::{Command, CommandQueue, ConnectionMessage};
+use crate::snapshot::{Command, CommandId, CommandQueue, ConnectionMessage};
 use crate::socket::Socket;
 
 #[derive(Debug, Error)]
@@ -81,6 +81,8 @@ pub struct Connection {
     start_time: Instant,
 
     next_peer_sequence: Sequence,
+
+    commands: Commands,
 }
 
 impl Connection {
@@ -113,6 +115,9 @@ impl Connection {
             next_server_sequence: Sequence::default(),
             start_time: Instant::now(),
             next_peer_sequence: Sequence::default(),
+            commands: Commands {
+                cmds: Default::default(),
+            },
         };
 
         if mode == ConnectionMode::Connect {
@@ -125,6 +130,7 @@ impl Connection {
                 id,
                 tx,
                 chan_out: out_tx,
+                next_id: Arc::new(AtomicU32::new(0)),
             },
         )
     }
@@ -160,6 +166,8 @@ impl Connection {
                 return self.shutdown();
             };
 
+            let msgid = msg.id.unwrap();
+
             let frame = match self.entities.pack(&msg.command) {
                 Some(frame) => frame,
                 None => {
@@ -177,7 +185,7 @@ impl Connection {
                 }
             };
 
-            self.frame_queue.push(frame, msg.snapshot);
+            self.frame_queue.push(frame, msgid, msg.snapshot);
 
             if let Some(id) = msg.command.id() {
                 if let Some(vec) = self.backlog.remove(id) {
@@ -185,14 +193,14 @@ impl Connection {
 
                     self.frame_queue.extend(
                         vec.into_iter()
-                            .map(|cmd| (self.entities.pack(&cmd).unwrap(), msg.snapshot)),
+                            .map(|cmd| (self.entities.pack(&cmd).unwrap(), msgid, msg.snapshot)),
                     );
                 }
             }
         }
 
-        if let Some((frame, snapshot)) = self.frame_queue.pop() {
-            self.send_data(vec![frame], snapshot, ConnectionState::Connected);
+        if let Some((frame, id, snapshot)) = self.frame_queue.pop() {
+            self.send_data(vec![frame], vec![id], snapshot, ConnectionState::Connected);
             return Poll::Ready(Ok(()));
         }
 
@@ -243,7 +251,8 @@ impl Connection {
                 };
 
             self.queue.push(ConnectionMessage {
-                id: self.id,
+                id: None,
+                conn: self.id,
                 snapshot,
                 command: cmd,
             });
@@ -289,7 +298,8 @@ impl Connection {
 
                 self.state = ConnectionState::Connected;
                 self.queue.push(ConnectionMessage {
-                    id: self.id,
+                    id: None,
+                    conn: self.id,
                     snapshot: self.start_time,
                     command: Command::Connected,
                 });
@@ -328,7 +338,8 @@ impl Connection {
 
                 // Signal the game that the player spawns.
                 self.queue.push(ConnectionMessage {
-                    id: self.id,
+                    id: None,
+                    conn: self.id,
                     snapshot: self.start_time,
                     command: Command::Connected,
                 });
@@ -346,6 +357,17 @@ impl Connection {
     }
 
     fn handle_ack(&mut self, header: Header, body: Ack) -> Poll<()> {
+        let sequence = body.sequence;
+
+        if let Some(ids) = self.commands.cmds.remove(&sequence) {
+            self.queue.push(ConnectionMessage {
+                id: None,
+                conn: self.id,
+                snapshot: Instant::now(),
+                command: Command::ReceivedCommands { ids },
+            });
+        }
+
         Poll::Pending
     }
 
@@ -411,7 +433,8 @@ impl Connection {
         // If the connection active we need to notify that the player left.
         if self.state == ConnectionState::Connected {
             self.queue.push(ConnectionMessage {
-                id: self.id,
+                id: None,
+                conn: self.id,
                 snapshot: self.start_time,
                 command: Command::Disconnected,
             });
@@ -426,7 +449,8 @@ impl Connection {
         // If the connection active we need to notify that the player left.
         if self.mode.is_listen() && self.state == ConnectionState::Connected {
             self.queue.push(ConnectionMessage {
-                id: self.id,
+                id: None,
+                conn: self.id,
                 snapshot: self.start_time,
                 command: Command::Disconnected,
             });
@@ -479,11 +503,14 @@ impl Connection {
     fn send_data(
         &mut self,
         body: Vec<Frame>,
+        cmds: Vec<CommandId>,
         snapshot: Instant,
         state: ConnectionState,
     ) -> Poll<()> {
         let sequence = self.next_server_sequence;
         self.next_server_sequence += 1;
+
+        self.commands.cmds.insert(sequence, cmds);
 
         let timestamp = Timestamp::new(snapshot - self.start_time);
 
@@ -579,7 +606,7 @@ enum HandshakeState {
 
 #[derive(Clone, Debug)]
 pub struct FrameQueue {
-    queue: VecDeque<(Frame, Instant)>,
+    queue: VecDeque<(Frame, CommandId, Instant)>,
 }
 
 impl FrameQueue {
@@ -589,17 +616,17 @@ impl FrameQueue {
         }
     }
 
-    pub fn push(&mut self, frame: Frame, ts: Instant) {
-        self.queue.push_back((frame, ts));
+    pub fn push(&mut self, frame: Frame, id: CommandId, ts: Instant) {
+        self.queue.push_back((frame, id, ts));
     }
 
-    pub fn pop(&mut self) -> Option<(Frame, Instant)> {
+    pub fn pop(&mut self) -> Option<(Frame, CommandId, Instant)> {
         self.queue.pop_front()
     }
 }
 
-impl Extend<(Frame, Instant)> for FrameQueue {
-    fn extend<T: IntoIterator<Item = (Frame, Instant)>>(&mut self, iter: T) {
+impl Extend<(Frame, CommandId, Instant)> for FrameQueue {
+    fn extend<T: IntoIterator<Item = (Frame, CommandId, Instant)>>(&mut self, iter: T) {
         self.queue.extend(iter);
     }
 }
@@ -609,6 +636,7 @@ pub struct ConnectionHandle {
     pub id: ConnectionId,
     tx: mpsc::Sender<Packet>,
     chan_out: mpsc::Sender<ConnectionMessage>,
+    next_id: Arc<AtomicU32>,
 }
 
 impl ConnectionHandle {
@@ -616,8 +644,12 @@ impl ConnectionHandle {
         self.tx.send(packet).await.unwrap();
     }
 
-    pub fn send_cmd(&self, cmd: ConnectionMessage) {
-        self.chan_out.try_send(cmd);
+    pub fn send_cmd(&self, mut cmd: ConnectionMessage) -> CommandId {
+        let id = self.next_id.fetch_add(1, Ordering::Relaxed);
+        cmd.id = Some(CommandId(id));
+
+        self.chan_out.try_send(cmd).unwrap();
+        CommandId(id)
     }
 }
 
@@ -719,4 +751,8 @@ impl TickInterval {
     fn poll_tick(&mut self, cx: &mut Context<'_>) -> Poll<()> {
         self.interval.poll_tick(cx).map(|_| ())
     }
+}
+
+struct Commands {
+    cmds: HashMap<Sequence, Vec<CommandId>>,
 }

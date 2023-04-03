@@ -142,7 +142,8 @@ impl Connection {
             };
 
             self.inner.handle.send_cmd(ConnectionMessage {
-                id: ConnectionId(0),
+                id: None,
+                conn: ConnectionId(0),
                 snapshot,
                 command: cmd,
             });
@@ -160,7 +161,8 @@ impl Connection {
     pub fn set_host(&self, id: EntityId, snapshot: Instant) {
         self.state().write().id = Some(id);
         self.handle().send_cmd(ConnectionMessage {
-            id: ConnectionId(0),
+            id: None,
+            conn: ConnectionId(0),
             snapshot,
             command: Command::SpawnHost { id },
         });

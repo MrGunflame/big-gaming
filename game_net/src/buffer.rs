@@ -96,3 +96,6 @@ pub struct ReplayData {
     pub translation: Vec3,
     pub rotation: Quat,
 }
+
+/// A `FrameBuffer` contains what frames contained what data.
+pub struct FrameBuffer {}

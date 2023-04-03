@@ -1,6 +1,6 @@
 use std::net::ToSocketAddrs;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use bevy::prelude::{Entity, EventWriter, Res, Resource};
 use game_common::entity::{EntityId, EntityMap};
@@ -50,7 +50,8 @@ impl ServerConnection {
 
         if let Some(handle) = &*handle {
             handle.send_cmd(ConnectionMessage {
-                id: ConnectionId(0),
+                id: None,
+                conn: ConnectionId(0),
                 snapshot: Instant::now(),
                 command: cmd,
             });

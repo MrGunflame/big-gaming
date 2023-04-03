@@ -81,7 +81,8 @@ pub fn spawn_conn(
                 if let Err(err) = (&mut conn).await {
                     tracing::error!("server error: {}", err);
                     queue.push(ConnectionMessage {
-                        id: conn.id,
+                        id: None,
+                        conn: conn.id,
                         command: Command::Disconnected,
                         snapshot: Instant::now(),
                     });
@@ -196,6 +197,7 @@ fn flush_command_queue(
             }
             Command::Connected => (),
             Command::Disconnected => (),
+            Command::ReceivedCommands { ids: _ } => (),
         }
 
         iterations += 1;
