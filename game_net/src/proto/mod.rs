@@ -34,6 +34,7 @@ pub mod shutdown;
 pub mod timestamp;
 
 mod combat;
+mod quat;
 
 use game_common::components::combat::Health;
 use game_common::components::object::ObjectId;
@@ -186,38 +187,6 @@ impl Decode for Vec3 {
         let y = f32::decode(&mut buf)?;
         let z = f32::decode(&mut buf)?;
         Ok(Self { x, y, z })
-    }
-}
-
-impl Encode for Quat {
-    type Error = Infallible;
-
-    #[inline]
-    fn encode<B>(&self, mut buf: B) -> Result<(), Self::Error>
-    where
-        B: BufMut,
-    {
-        self.x.encode(&mut buf)?;
-        self.y.encode(&mut buf)?;
-        self.z.encode(&mut buf)?;
-        self.w.encode(&mut buf)?;
-        Ok(())
-    }
-}
-
-impl Decode for Quat {
-    type Error = EofError;
-
-    #[inline]
-    fn decode<B>(mut buf: B) -> Result<Self, Self::Error>
-    where
-        B: Buf,
-    {
-        let x = f32::decode(&mut buf)?;
-        let y = f32::decode(&mut buf)?;
-        let z = f32::decode(&mut buf)?;
-        let w = f32::decode(&mut buf)?;
-        Ok(Self::from_xyzw(x, y, z, w))
     }
 }
 
