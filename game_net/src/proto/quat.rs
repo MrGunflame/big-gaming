@@ -5,12 +5,13 @@ use glam::Quat;
 
 use super::{Decode, Encode, EofError};
 
+/// The component that needs to be reconstructed.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 enum Component {
-    X,
-    Y,
-    Z,
-    W,
+    X = 0b00,
+    Y = 0b01,
+    Z = 0b10,
+    W = 0b11,
 }
 
 impl Encode for Quat {
@@ -21,17 +22,17 @@ impl Encode for Quat {
     where
         B: BufMut,
     {
-        let mut max = self.x;
+        let mut max = self.x.abs();
         let mut comp = Component::X;
-        if self.y > max {
+        if self.y.abs() > max {
             max = self.y;
             comp = Component::Y;
         }
-        if self.z > max {
+        if self.z.abs() > max {
             max = self.z;
             comp = Component::Z;
         }
-        if self.w > max {
+        if self.w.abs() > max {
             comp = Component::W;
         }
 
@@ -43,28 +44,41 @@ impl Encode for Quat {
         };
         index.encode(&mut buf)?;
 
+        let (mut a, mut b, mut c);
         match comp {
             Component::X => {
-                self.y.encode(&mut buf)?;
-                self.z.encode(&mut buf)?;
-                self.w.encode(&mut buf)?;
+                a = self.y;
+                b = self.z;
+                c = self.w;
             }
             Component::Y => {
-                self.x.encode(&mut buf)?;
-                self.z.encode(&mut buf)?;
-                self.w.encode(&mut buf)?;
+                a = self.x;
+                b = self.z;
+                c = self.w;
             }
             Component::Z => {
-                self.x.encode(&mut buf)?;
-                self.y.encode(&mut buf)?;
-                self.w.encode(&mut buf)?;
+                a = self.x;
+                b = self.y;
+                c = self.w;
             }
             Component::W => {
-                self.x.encode(&mut buf)?;
-                self.y.encode(&mut buf)?;
-                self.z.encode(&mut buf)?;
+                a = self.x;
+                b = self.y;
+                c = self.z;
             }
         }
+
+        // If the omitted value is negative we make it positive by negating the
+        // entire Quat.
+        if max.is_sign_negative() {
+            a = -a;
+            b = -b;
+            c = -c;
+        }
+
+        a.encode(&mut buf)?;
+        b.encode(&mut buf)?;
+        c.encode(&mut buf)?;
 
         Ok(())
     }
@@ -90,14 +104,20 @@ impl Decode for Quat {
         let a = f32::decode(&mut buf)?;
         let b = f32::decode(&mut buf)?;
         let c = f32::decode(&mut buf)?;
-        let d = f32::sqrt(1.0 - a.powf(2.0) - b.powf(2.0) - c.powf(2.0));
+        let d = f32::sqrt(1.0 - a * a - b * b - c * c);
 
-        Ok(match comp {
+        let this = match comp {
             Component::X => Quat::from_xyzw(d, a, b, c),
             Component::Y => Quat::from_xyzw(a, d, b, c),
             Component::Z => Quat::from_xyzw(a, b, d, c),
             Component::W => Quat::from_xyzw(a, b, c, d),
-        })
+        };
+
+        if this.is_normalized() {
+            Ok(this)
+        } else {
+            Ok(this.normalize())
+        }
     }
 }
 
@@ -117,6 +137,7 @@ mod tests {
             Quat::from_xyzw(0.0, 0.0, 1.0, 0.0),
             Quat::from_axis_angle(Vec3::new(0.0, 0.5, 0.5).normalize(), 0.0),
             Quat::from_axis_angle(Vec3::new(0.4, 0.2, 0.4).normalize(), 0.93),
+            Quat::from_axis_angle(Vec3::new(-1.0, 0.0, 0.0), 1.4),
         ] {
             assert!(quat.is_normalized(), "{:?} is not normalized", quat);
 
