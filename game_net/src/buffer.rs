@@ -1,104 +1,8 @@
-use std::borrow::Borrow;
-use std::collections::{HashMap, VecDeque};
 use std::iter::FusedIterator;
-
-use game_common::entity::EntityId;
-use glam::{Quat, Vec3};
+use std::ops::Range;
 
 use crate::proto::sequence::Sequence;
 use crate::proto::Frame;
-use crate::snapshot::SnapshotId;
-
-/// Constant time replay buffer
-#[derive(Clone, Debug)]
-pub struct ReplayBuffer {
-    id: EntityId,
-    buf: VecDeque<(SnapshotId, ReplayData)>,
-    limit: usize,
-    /// The next snapshot
-    head: SnapshotId,
-}
-
-impl ReplayBuffer {
-    pub fn new(id: EntityId) -> Self {
-        Self {
-            id,
-            buf: VecDeque::new(),
-            limit: 120,
-            head: SnapshotId(0),
-        }
-    }
-
-    #[inline]
-    pub fn id(&self) -> EntityId {
-        self.id
-    }
-
-    pub fn push(&mut self, id: SnapshotId, data: ReplayData) {
-        #[cfg(debug_assertions)]
-        if let Some((last, _)) = self.buf.back() {
-            assert!(id > *last);
-        }
-
-        self.buf.push_back((id, data));
-        if self.buf.len() > self.limit {
-            self.buf.pop_front();
-        }
-    }
-
-    pub fn get<T>(&self, id: T) -> Option<&ReplayData>
-    where
-        T: Borrow<SnapshotId>,
-    {
-        self.buf
-            .iter()
-            .find(|(i, _)| i == id.borrow())
-            .map(|(_, d)| d)
-    }
-
-    // pub fn next(&mut self) -> Option<NextReplayData<'_>> {
-    //     // let id = self.buf.get(self.head)?;
-
-    //     // // Wrap the head at the buffer capacity.
-    //     // self.head += 1;
-    //     // if self.head >= self.limit {
-    //     //     self.head = 0;
-    //     // }
-
-    //     // self.head += 1;
-
-    //     let id = self.head;
-    //     self.head += 1;
-
-    //     let mut delta = 1;
-    //     loop {
-    //         if let Some(data) = self.get(id) {
-    //             return Some(NextReplayData { delta, data });
-    //         }
-
-    //         delta += 1;
-    //         self.head += 1;
-    //     }
-    // }
-
-    pub fn seek(&mut self) {}
-}
-
-#[derive(Copy, Clone, Debug)]
-pub struct NextReplayData<'a> {
-    /// Delta from the previous snapshot.
-    ///
-    /// This is usually `1` (the next snapshot), but may be higher if a snapshot was lost.
-    /// `delta * server_tickrate` is the interpolation period.
-    pub delta: u32,
-    pub data: &'a ReplayData,
-}
-
-#[derive(Clone, Debug)]
-pub struct ReplayData {
-    pub translation: Vec3,
-    pub rotation: Quat,
-}
 
 /// A `FrameBuffer` contains what frames contained what data.
 #[derive(Clone, Debug, Default)]
@@ -143,7 +47,39 @@ impl FrameBuffer {
                 Frame::EntityDestroy(frame) => {
                     let id = frame.entity;
 
-                    self.buffer.retain(|(_, frame)| frame.id() != id);
+                    // If we have the `EntityCreate` frame in the buffer
+                    // the entity was not yet created on the remote peer
+                    // and we can simply remove ALL buffered frames for
+                    // that entity.
+
+                    // Note that the `EntityCreate` frame must have come
+                    // before the `EntityDestroy` frame, i.e. must be in
+                    // range `0..index`.
+                    let mut index2 = 0;
+                    while index2 < index {
+                        let (_, frame2) = &self.buffer[index2];
+
+                        if let Frame::EntityCreate(frame2) = frame2 {
+                            if frame.entity == frame2.entity {
+                                // Also remove the `EntityDestroy` frame.
+                                index += 1;
+
+                                index -= self.retain_range(index2..index, |f| f.id() != id);
+                                continue 'out;
+                            }
+                        }
+
+                        index2 += 1;
+                    }
+
+                    // If the peer already received the `EntityCreate` frame
+                    // the `EntityDestroy` frame needs to be retained, but all
+                    // other frames effecting the entity may be removed.
+                    index -= self.retain_range(0..index, |f| f.id() != id);
+
+                    // let mut index2 = index + 1;
+
+                    // self.buffer.retain(|(_, frame)| frame.id() != id);
                 }
                 Frame::EntityTranslate(frame) => {
                     let mut index2 = index + 1;
@@ -195,6 +131,32 @@ impl FrameBuffer {
             buffer: self,
         }
     }
+
+    /// Retains only the elements specified by `f` within the `range`. Returns the number of
+    /// removed elements.
+    fn retain_range<F>(&mut self, mut range: Range<usize>, mut f: F) -> usize
+    where
+        F: FnMut(&Frame) -> bool,
+    {
+        debug_assert!(range.start <= range.end);
+        debug_assert!(range.end <= self.buffer.len());
+
+        let mut num_removed = 0;
+        let mut index = range.start;
+        while index < range.end {
+            let (_, frame) = &self.buffer[index];
+
+            if f(frame) {
+                index += 1;
+            } else {
+                self.buffer.remove(index);
+                num_removed += 1;
+                range.end -= 1;
+            }
+        }
+
+        num_removed
+    }
 }
 
 impl<'a> IntoIterator for &'a FrameBuffer {
@@ -240,11 +202,14 @@ impl<'a> FusedIterator for Iter<'a> {}
 
 #[cfg(test)]
 mod tests {
+    use game_common::components::object::ObjectId;
+    use game_common::id::WeakId;
     use game_common::net::ServerEntity;
-    use glam::Vec3;
+    use game_common::world::entity::{EntityBody, Object};
+    use glam::{Quat, Vec3};
 
     use crate::proto::sequence::Sequence;
-    use crate::proto::{EntityTranslate, Frame};
+    use crate::proto::{EntityCreate, EntityDestroy, EntityTranslate, Frame};
 
     use super::FrameBuffer;
 
@@ -292,6 +257,69 @@ mod tests {
         } else {
             panic!()
         }
+
+        assert!(iter.next().is_none());
+    }
+
+    #[test]
+    fn frame_buffer_shrink_destroy() {
+        let mut buffer = FrameBuffer::new();
+
+        buffer.push(
+            Sequence::new(0),
+            Frame::EntityTranslate(EntityTranslate {
+                entity: ServerEntity(1),
+                translation: Vec3::splat(1.0),
+            }),
+        );
+        buffer.push(
+            Sequence::new(1),
+            Frame::EntityDestroy(EntityDestroy {
+                entity: ServerEntity(1),
+            }),
+        );
+
+        buffer.shrink();
+        let mut iter = buffer.iter();
+
+        if let Frame::EntityDestroy(frame) = iter.next().unwrap() {
+            assert_eq!(frame.entity, ServerEntity(1));
+        } else {
+            panic!()
+        }
+    }
+
+    #[test]
+    fn frame_buffer_shrink_create_destroy() {
+        let mut buffer = FrameBuffer::new();
+
+        buffer.push(
+            Sequence::new(0),
+            Frame::EntityCreate(EntityCreate {
+                entity: ServerEntity(1),
+                translation: Vec3::splat(0.0),
+                rotation: Quat::IDENTITY,
+                data: EntityBody::Object(Object {
+                    id: ObjectId(WeakId(0)),
+                }),
+            }),
+        );
+        buffer.push(
+            Sequence::new(1),
+            Frame::EntityTranslate(EntityTranslate {
+                entity: ServerEntity(1),
+                translation: Vec3::splat(1.0),
+            }),
+        );
+        buffer.push(
+            Sequence::new(2),
+            Frame::EntityDestroy(EntityDestroy {
+                entity: ServerEntity(1),
+            }),
+        );
+
+        buffer.shrink();
+        let mut iter = buffer.iter();
 
         assert!(iter.next().is_none());
     }
