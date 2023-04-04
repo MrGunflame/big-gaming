@@ -5,7 +5,9 @@ use bevy_ecs::component::Component;
 use crate::id::{NamespacedId, WeakId};
 use crate::units::Mass;
 
+use super::actions::Actions;
 use super::combat::Resistances;
+use super::properties::Properties;
 
 /// A stack of up to `u32::MAX` items.
 ///
@@ -34,13 +36,9 @@ pub struct Item {
     pub components: Option<Vec<ItemComponentId>>,
     // TODO: Should these really be hardcoded here?
     pub resistances: Option<Resistances>,
-    pub ammo: Option<ItemId>,
-    pub damage: Option<u32>,
-    /// The number of bullets currently in the magazine.
-    pub magazine: Option<Magazine>,
-    // pub properties: Properties,
     pub mass: Mass,
-    pub cooldown: Cooldown,
+    pub properties: Properties,
+    pub actions: Actions,
 }
 
 #[derive(Clone, Debug)]

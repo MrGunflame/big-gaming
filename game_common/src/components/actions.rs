@@ -6,7 +6,7 @@ use crate::world::world::WorldViewMut;
 use super::actor::ActorFlags;
 use super::items::Item;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct Actions {
     actions: Vec<Action>,
 }
@@ -38,6 +38,6 @@ impl Debug for Action {
     }
 }
 
-pub trait FireAction {
+pub trait FireAction: 'static + Send + Sync {
     fn fire(&mut self, item: &mut Item, actor: &mut ActorFlags, world: &mut WorldViewMut<'_>);
 }

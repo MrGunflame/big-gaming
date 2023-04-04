@@ -1,17 +1,49 @@
 use std::collections::HashMap;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct Properties {
-    props: HashMap<PropertyId, u32>,
+    props: Vec<Property>,
+}
+
+impl Properties {
+    pub fn new() -> Self {
+        Self { props: Vec::new() }
+    }
+
+    pub fn insert(&mut self, property: Property) {
+        self.props.push(property);
+    }
 }
 
 #[derive(Copy, Clone, Debug)]
 pub struct PropertyId(u32);
 
-impl PropertyId {
-    pub const DAMAGE: Self = Self(1);
+#[derive(Clone, Debug)]
+pub struct Property {
+    pub name: String,
+    pub value: PropertyValue,
+}
 
-    pub const ATTACK_SPEED: Self = Self(2);
+#[derive(Clone, Debug)]
+pub enum PropertyValue {
+    I32(i32),
+    I64(i64),
+    Bytes(Box<[u8]>),
+}
 
-    pub const MAGAZINE: Self = Self(1);
+impl PropertyValue {
+    pub fn kind(&self) -> PropertyKind {
+        match self {
+            Self::I32(_) => PropertyKind::I32,
+            Self::I64(_) => PropertyKind::I64,
+            Self::Bytes(_) => PropertyKind::Bytes,
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum PropertyKind {
+    I32,
+    I64,
+    Bytes,
 }

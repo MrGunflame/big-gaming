@@ -49,6 +49,7 @@ impl ActorBundle {
                 mass: Default::default(),
                 ammo: Some(ItemId(64.into())),
                 cooldown: Cooldown::new(Duration::new(0, 200)),
+                actions: Default::default(),
             },
         );
 

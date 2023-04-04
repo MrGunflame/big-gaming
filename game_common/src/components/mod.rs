@@ -1,5 +1,6 @@
 //! All components
 
+pub mod actions;
 pub mod actor;
 pub mod animation;
 pub mod camera;

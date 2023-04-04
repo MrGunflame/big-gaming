@@ -34,6 +34,8 @@ pub mod shutdown;
 pub mod timestamp;
 
 mod combat;
+mod inventory;
+mod properties;
 mod quat;
 
 use game_common::components::combat::Health;
