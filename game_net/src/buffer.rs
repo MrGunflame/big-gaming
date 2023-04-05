@@ -34,7 +34,26 @@ impl FrameBuffer {
     }
 
     pub fn remove(&mut self, seq: Sequence) {
-        self.buffer.retain(|(s, _)| *s != seq);
+        // Sequences are guaranteed to be in ascending order.
+        // We only need to find the index of the last element
+        // containing the sequence.
+
+        // FIXME: Binary search or separate indices may be faster?
+        let mut index = 0;
+        let mut found = false;
+        while index < self.buffer.len() {
+            let (s, _) = &self.buffer[index];
+
+            if found && *s != seq {
+                break;
+            } else if *s == seq {
+                found = true;
+            }
+
+            index += 1;
+        }
+
+        self.retain_range(0..index, |_| false);
     }
 
     pub fn shrink(&mut self) {
@@ -209,7 +228,7 @@ mod tests {
     use glam::{Quat, Vec3};
 
     use crate::proto::sequence::Sequence;
-    use crate::proto::{EntityCreate, EntityDestroy, EntityTranslate, Frame};
+    use crate::proto::{EntityCreate, EntityDestroy, EntityTranslate, Frame, SpawnHost};
 
     use super::FrameBuffer;
 
@@ -255,7 +274,7 @@ mod tests {
             assert_eq!(frame.entity, ServerEntity(2));
             assert_eq!(frame.translation, Vec3::splat(3.0));
         } else {
-            panic!()
+            panic!();
         }
 
         assert!(iter.next().is_none());
@@ -285,7 +304,7 @@ mod tests {
         if let Frame::EntityDestroy(frame) = iter.next().unwrap() {
             assert_eq!(frame.entity, ServerEntity(1));
         } else {
-            panic!()
+            panic!();
         }
     }
 
@@ -322,5 +341,38 @@ mod tests {
         let mut iter = buffer.iter();
 
         assert!(iter.next().is_none());
+    }
+
+    #[test]
+    fn frame_buffer_remove() {
+        let mut buffer = FrameBuffer::new();
+
+        buffer.push(
+            Sequence::new(0),
+            Frame::SpawnHost(SpawnHost {
+                entity: ServerEntity(1),
+            }),
+        );
+        buffer.push(
+            Sequence::new(1),
+            Frame::SpawnHost(SpawnHost {
+                entity: ServerEntity(1),
+            }),
+        );
+        buffer.push(
+            Sequence::new(1),
+            Frame::SpawnHost(SpawnHost {
+                entity: ServerEntity(1),
+            }),
+        );
+        buffer.push(
+            Sequence::new(2),
+            Frame::SpawnHost(SpawnHost {
+                entity: ServerEntity(1),
+            }),
+        );
+
+        buffer.remove(Sequence::new(1));
+        assert_eq!(buffer.len(), 1);
     }
 }
