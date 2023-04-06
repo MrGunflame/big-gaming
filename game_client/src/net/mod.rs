@@ -202,7 +202,7 @@ fn flush_command_queue(
                 dbg!(&ids);
                 let mut ov = conn.overrides().write();
                 for id in ids {
-                    ov.remove(id);
+                    ov.remove(id.id);
                 }
             }
         }

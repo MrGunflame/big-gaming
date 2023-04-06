@@ -40,16 +40,17 @@ impl ActorBundle {
             Item {
                 id: ItemId(0.into()),
                 resistances: None,
-                damage: None,
+                // damage: None,
                 components: None,
-                magazine: Some(Magazine::Single {
-                    id: ItemId(64.into()),
-                    count: 31,
-                }),
+                // magazine: Some(Magazine::Single {
+                //     id: ItemId(64.into()),
+                //     count: 31,
+                // }),
                 mass: Default::default(),
-                ammo: Some(ItemId(64.into())),
-                cooldown: Cooldown::new(Duration::new(0, 200)),
+                // ammo: Some(ItemId(64.into())),
+                // cooldown: Cooldown::new(Duration::new(0, 200)),
                 actions: Default::default(),
+                properties: Default::default(),
             },
         );
 

@@ -1,7 +1,6 @@
 use std::time::Duration;
 
-use bevy::prelude::{App, Commands};
-use bevy::transform::TransformBundle;
+use bevy::prelude::App;
 use clap::Parser;
 use game_common::archive::loader::ModuleLoader;
 use game_common::archive::GameArchive;
@@ -66,7 +65,7 @@ async fn main() {
 
     app.insert_resource(game_physics::Pipeline::new());
 
-    let timestep = Duration::from_secs(1) / 60;
+    let timestep = Duration::from_secs(1) / 20;
 
     let mut interval = interval(timestep.into());
     interval.set_missed_tick_behavior(MissedTickBehavior::Skip);

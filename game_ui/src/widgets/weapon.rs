@@ -37,7 +37,7 @@ impl Widget for Weapon {
 }
 
 fn render(ui: &mut Ui, item: &Item) {
-    if let Some(magazine) = &item.magazine {
-        ui.label(magazine.count().to_string());
-    }
+    // if let Some(magazine) = &item.magazine {
+    //     ui.label(magazine.count().to_string());
+    // }
 }

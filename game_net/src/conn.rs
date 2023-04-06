@@ -13,6 +13,7 @@ use thiserror::Error;
 use tokio::sync::mpsc;
 use tokio::time::MissedTickBehavior;
 
+use crate::buffer::FrameBuffer;
 use crate::entity::Entities;
 use crate::proto::ack::{Ack, Nak};
 use crate::proto::handshake::{Handshake, HandshakeFlags, HandshakeType};
@@ -20,7 +21,8 @@ use crate::proto::sequence::Sequence;
 use crate::proto::shutdown::{Shutdown, ShutdownReason};
 use crate::proto::timestamp::Timestamp;
 use crate::proto::{Encode, Frame, Header, Packet, PacketBody, PacketType};
-use crate::snapshot::{Command, CommandId, CommandQueue, ConnectionMessage};
+use crate::request::Request;
+use crate::snapshot::{Command, CommandId, CommandQueue, ConnectionMessage, Response, Status};
 use crate::socket::Socket;
 
 #[derive(Debug, Error)]
@@ -83,6 +85,8 @@ pub struct Connection {
     next_peer_sequence: Sequence,
 
     commands: Commands,
+    buffer: FrameBuffer,
+    write_queue: WriteQueue,
 }
 
 impl Connection {
@@ -118,6 +122,8 @@ impl Connection {
             commands: Commands {
                 cmds: Default::default(),
             },
+            buffer: FrameBuffer::new(),
+            write_queue: WriteQueue::new(),
         };
 
         if mode == ConnectionMode::Connect {
@@ -137,6 +143,12 @@ impl Connection {
 
     fn poll_read(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), ErrorKind>> {
         tracing::trace!("Connection.poll_read");
+
+        // Flush the send buffer before reading any packets.
+        if !self.write_queue.is_empty() {
+            self.init_write(self.state);
+            return Poll::Ready(Ok(()));
+        }
 
         while let Poll::Ready(packet) = self.stream.poll_recv(cx) {
             tracing::debug!("recv {:?}", packet);
@@ -199,12 +211,76 @@ impl Connection {
             }
         }
 
-        if let Some((frame, id, snapshot)) = self.frame_queue.pop() {
-            self.send_data(vec![frame], vec![id], snapshot, ConnectionState::Connected);
-            return Poll::Ready(Ok(()));
+        Poll::Pending
+    }
+
+    fn write_snapshot(&mut self) {
+        // Merge FrameQueue into FrameBuffer, compact then send.
+
+        let timestamp = Timestamp::new(self.start_time.elapsed());
+
+        while let Some((frame, id, snapshot)) = self.frame_queue.pop() {
+            let sequence = self.next_server_sequence;
+            self.next_server_sequence += 1;
+
+            self.buffer.push(Request {
+                id,
+                sequence,
+                frame,
+            });
         }
 
-        Poll::Pending
+        // for req in self.buffer.compact() {
+        //     self.queue.push(ConnectionMessage {
+        //         id: None,
+        //         conn: self.id,
+        //         snapshot: Instant::now(),
+        //         command: Command::ReceivedCommands {
+        //             ids: vec![Response {
+        //                 id: req.id,
+        //                 status: Status::Overwritten,
+        //             }],
+        //         },
+        //     });
+        // }
+
+        for req in &self.buffer {
+            let sequence = self.next_server_sequence;
+            self.next_server_sequence += 1;
+
+            self.commands.cmds.insert(sequence, vec![req.id]);
+
+            let packet = Packet {
+                header: Header {
+                    packet_type: PacketType::DATA,
+                    sequence,
+                    timestamp,
+                },
+                body: PacketBody::Frames(vec![req.frame.clone()]),
+            };
+
+            self.write_queue.push(packet);
+        }
+
+        self.buffer.clear();
+    }
+
+    fn init_write(&mut self, state: ConnectionState) {
+        let socket = self.socket.clone();
+        let peer = self.peer;
+
+        let packet = self.write_queue.pop().unwrap();
+
+        self.write = Some(WriteRequest {
+            future: Box::pin(async move {
+                let mut buf = Vec::with_capacity(1500);
+                packet.encode(&mut buf).unwrap();
+                if let Err(err) = socket.send_to(&buf, peer).await {
+                    tracing::error!("failed to send packet: {}", err);
+                }
+            }),
+            state,
+        });
     }
 
     fn poll_write(&mut self, cx: &mut Context<'_>) -> Poll<()> {
@@ -364,7 +440,15 @@ impl Connection {
                 id: None,
                 conn: self.id,
                 snapshot: Instant::now(),
-                command: Command::ReceivedCommands { ids },
+                command: Command::ReceivedCommands {
+                    ids: ids
+                        .into_iter()
+                        .map(|id| Response {
+                            id,
+                            status: Status::Received,
+                        })
+                        .collect(),
+                },
             });
         }
 
@@ -389,7 +473,7 @@ impl Connection {
     }
 
     fn poll_tick(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), ErrorKind>> {
-        ready!(self.interval.poll_tick(cx));
+        let tick = ready!(self.interval.poll_tick(cx));
 
         if self.last_time.elapsed() >= Duration::from_secs(15) {
             tracing::info!("closing connection due to timeout");
@@ -399,13 +483,16 @@ impl Connection {
         }
 
         // Send periodic ACKs while connected.
-        if self.state == ConnectionState::Connected {
+        if self.state == ConnectionState::Connected && tick.is_ack() {
             let _ = self.send(
                 Ack {
                     sequence: self.next_peer_sequence,
                 },
                 ConnectionState::Connected,
             );
+            Poll::Ready(Ok(()))
+        } else if self.state == ConnectionState::Connected && tick.is_fire() {
+            self.write_snapshot();
             Poll::Ready(Ok(()))
         } else {
             Poll::Pending
@@ -738,21 +825,74 @@ impl ConnectionMode {
 #[derive(Debug)]
 struct TickInterval {
     interval: tokio::time::Interval,
+    tick: u16,
 }
 
 impl TickInterval {
     fn new() -> Self {
-        let mut interval = tokio::time::interval(Duration::from_secs(1));
+        let mut interval = tokio::time::interval(Duration::from_millis(50));
         interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
-        Self { interval }
+        Self { interval, tick: 0 }
     }
 
-    fn poll_tick(&mut self, cx: &mut Context<'_>) -> Poll<()> {
-        self.interval.poll_tick(cx).map(|_| ())
+    fn poll_tick(&mut self, cx: &mut Context<'_>) -> Poll<Tick> {
+        self.interval.poll_tick(cx).map(|_| {
+            let tick = Tick { tick: self.tick };
+            self.tick += 1;
+            tick
+        })
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+struct Tick {
+    tick: u16,
+}
+
+impl Tick {
+    fn is_ack(&self) -> bool {
+        (self.tick & 10) == 0
+    }
+
+    fn is_fire(&self) -> bool {
+        true
     }
 }
 
 struct Commands {
     cmds: HashMap<Sequence, Vec<CommandId>>,
+}
+
+struct WriteQueue {
+    packets: VecDeque<Packet>,
+}
+
+impl WriteQueue {
+    #[inline]
+    fn new() -> Self {
+        Self {
+            packets: VecDeque::new(),
+        }
+    }
+
+    #[inline]
+    fn len(&self) -> usize {
+        self.packets.len()
+    }
+
+    #[inline]
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    #[inline]
+    fn push(&mut self, packet: Packet) {
+        self.packets.push_back(packet);
+    }
+
+    #[inline]
+    fn pop(&mut self) -> Option<Packet> {
+        self.packets.pop_front()
+    }
 }

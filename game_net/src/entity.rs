@@ -30,6 +30,8 @@ impl Entities {
     }
 
     pub fn insert(&mut self, local: EntityId, remote: ServerEntity) {
+        dbg!(&self, local, remote);
+
         if cfg!(debug_assertions) {
             assert!(!self.host.contains_key(&local));
             assert!(!self.remote.contains_key(&remote));

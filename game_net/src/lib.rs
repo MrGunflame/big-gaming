@@ -26,6 +26,7 @@ pub mod entity;
 pub mod host;
 mod output;
 pub mod proto;
+mod request;
 pub mod sequence;
 mod serial;
 pub mod snapshot;

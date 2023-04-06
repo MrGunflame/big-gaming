@@ -50,6 +50,22 @@ impl SubAssign<u32> for SnapshotId {
     }
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct Response {
+    pub id: CommandId,
+    pub status: Status,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum Status {
+    /// The command was acknowledged by the remote peer.
+    Received,
+    /// The command was dropped because it is no longer relevant. Another command takes the place
+    /// of this command.
+    Overwritten,
+    Dropped,
+}
+
 #[derive(Clone, Debug)]
 pub struct ConnectionMessage {
     pub id: Option<CommandId>,
@@ -92,7 +108,7 @@ pub enum Command {
         id: EntityId,
     },
     ReceivedCommands {
-        ids: Vec<CommandId>,
+        ids: Vec<Response>,
     },
 }
 

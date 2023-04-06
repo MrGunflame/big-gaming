@@ -3,11 +3,12 @@ use std::ops::Range;
 
 use crate::proto::sequence::Sequence;
 use crate::proto::Frame;
+use crate::request::Request;
 
 /// A `FrameBuffer` contains what frames contained what data.
 #[derive(Clone, Debug, Default)]
 pub struct FrameBuffer {
-    buffer: Vec<(Sequence, Frame)>,
+    buffer: Vec<Request>,
 }
 
 impl FrameBuffer {
@@ -19,18 +20,22 @@ impl FrameBuffer {
         self.buffer.len()
     }
 
-    pub fn get(&self, index: usize) -> Option<&Frame> {
-        self.buffer.get(index).map(|(_, f)| f)
+    pub fn get(&self, index: usize) -> Option<&Request> {
+        self.buffer.get(index)
     }
 
-    pub fn push(&mut self, seq: Sequence, frame: Frame) {
+    pub fn clear(&mut self) {
+        self.buffer.clear();
+    }
+
+    pub fn push(&mut self, req: Request) {
         if cfg!(debug_assertions) {
-            if let Some((prev, _)) = self.buffer.last() {
-                assert!(seq >= *prev);
+            if let Some(prev) = self.buffer.last() {
+                assert!(req.sequence >= prev.sequence);
             }
         }
 
-        self.buffer.push((seq, frame));
+        self.buffer.push(req);
     }
 
     pub fn remove(&mut self, seq: Sequence) {
@@ -42,11 +47,11 @@ impl FrameBuffer {
         let mut index = 0;
         let mut found = false;
         while index < self.buffer.len() {
-            let (s, _) = &self.buffer[index];
+            let req = &self.buffer[index];
 
-            if found && *s != seq {
+            if found && req.sequence != seq {
                 break;
-            } else if *s == seq {
+            } else if req.sequence == seq {
                 found = true;
             }
 
@@ -56,12 +61,14 @@ impl FrameBuffer {
         self.retain_range(0..index, |_| false);
     }
 
-    pub fn shrink(&mut self) {
+    pub fn compact(&mut self) -> Vec<Request> {
+        let mut removed = vec![];
+
         let mut index = 0;
         'out: while index < self.buffer.len() {
-            let (_, frame) = &self.buffer[index];
+            let req = &self.buffer[index];
 
-            match frame {
+            match &req.frame {
                 Frame::EntityCreate(_) => (),
                 Frame::EntityDestroy(frame) => {
                     let id = frame.entity;
@@ -76,14 +83,16 @@ impl FrameBuffer {
                     // range `0..index`.
                     let mut index2 = 0;
                     while index2 < index {
-                        let (_, frame2) = &self.buffer[index2];
+                        let req2 = &self.buffer[index2];
 
-                        if let Frame::EntityCreate(frame2) = frame2 {
+                        if let Frame::EntityCreate(frame2) = &req2.frame {
                             if frame.entity == frame2.entity {
                                 // Also remove the `EntityDestroy` frame.
                                 index += 1;
 
-                                index -= self.retain_range(index2..index, |f| f.id() != id);
+                                let rm = self.retain_range(index2..index, |f| f.id() != id);
+                                index -= rm.len();
+                                removed.extend(rm);
                                 continue 'out;
                             }
                         }
@@ -94,7 +103,9 @@ impl FrameBuffer {
                     // If the peer already received the `EntityCreate` frame
                     // the `EntityDestroy` frame needs to be retained, but all
                     // other frames effecting the entity may be removed.
-                    index -= self.retain_range(0..index, |f| f.id() != id);
+                    let rm = self.retain_range(0..index, |f| f.id() != id);
+                    index -= rm.len();
+                    removed.extend(rm);
 
                     // let mut index2 = index + 1;
 
@@ -103,9 +114,9 @@ impl FrameBuffer {
                 Frame::EntityTranslate(frame) => {
                     let mut index2 = index + 1;
                     while index2 < self.buffer.len() {
-                        let (_, frame2) = &self.buffer[index2];
+                        let req2 = &self.buffer[index2];
 
-                        if let Frame::EntityTranslate(frame2) = frame2 {
+                        if let Frame::EntityTranslate(frame2) = &req2.frame {
                             if index2 > index && frame.entity == frame2.entity {
                                 // Replace the current element with the new one, then
                                 // remove the current element.
@@ -121,9 +132,9 @@ impl FrameBuffer {
                 Frame::EntityRotate(frame) => {
                     let mut index2 = index + 1;
                     while index2 < self.buffer.len() {
-                        let (_, frame2) = &self.buffer[index2];
+                        let req2 = &self.buffer[index2];
 
-                        if let Frame::EntityRotate(frame2) = frame2 {
+                        if let Frame::EntityRotate(frame2) = &req2.frame {
                             if index2 > index && frame.entity == frame2.entity {
                                 // Replace the current element with the new one, then
                                 // remove the current element.
@@ -141,6 +152,8 @@ impl FrameBuffer {
 
             index += 1;
         }
+
+        removed
     }
 
     #[inline]
@@ -153,33 +166,33 @@ impl FrameBuffer {
 
     /// Retains only the elements specified by `f` within the `range`. Returns the number of
     /// removed elements.
-    fn retain_range<F>(&mut self, mut range: Range<usize>, mut f: F) -> usize
+    fn retain_range<F>(&mut self, mut range: Range<usize>, mut f: F) -> Vec<Request>
     where
         F: FnMut(&Frame) -> bool,
     {
         debug_assert!(range.start <= range.end);
         debug_assert!(range.end <= self.buffer.len());
 
-        let mut num_removed = 0;
+        let mut removed = vec![];
+
         let mut index = range.start;
         while index < range.end {
-            let (_, frame) = &self.buffer[index];
+            let req = &self.buffer[index];
 
-            if f(frame) {
+            if f(&req.frame) {
                 index += 1;
             } else {
-                self.buffer.remove(index);
-                num_removed += 1;
+                removed.push(self.buffer.remove(index));
                 range.end -= 1;
             }
         }
 
-        num_removed
+        removed
     }
 }
 
 impl<'a> IntoIterator for &'a FrameBuffer {
-    type Item = &'a Frame;
+    type Item = &'a Request;
     type IntoIter = Iter<'a>;
 
     #[inline]
@@ -195,13 +208,13 @@ pub struct Iter<'a> {
 }
 
 impl<'a> Iterator for Iter<'a> {
-    type Item = &'a Frame;
+    type Item = &'a Request;
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        let frame = self.buffer.get(self.index)?;
+        let req = self.buffer.get(self.index)?;
         self.index += 1;
-        Some(frame)
+        Some(req)
     }
 
     #[inline]
@@ -229,48 +242,53 @@ mod tests {
 
     use crate::proto::sequence::Sequence;
     use crate::proto::{EntityCreate, EntityDestroy, EntityTranslate, Frame, SpawnHost};
+    use crate::request::Request;
+    use crate::snapshot::CommandId;
 
     use super::FrameBuffer;
 
     #[test]
-    fn test_frame_buffer_shrink() {
+    fn test_frame_buffer_compact() {
         let mut buffer = FrameBuffer::new();
 
-        buffer.push(
-            Sequence::new(0),
-            Frame::EntityTranslate(EntityTranslate {
+        buffer.push(Request {
+            id: CommandId(0),
+            sequence: Sequence::new(0),
+            frame: Frame::EntityTranslate(EntityTranslate {
                 entity: ServerEntity(1),
                 translation: Vec3::splat(1.0),
             }),
-        );
+        });
 
-        buffer.push(
-            Sequence::new(1),
-            Frame::EntityTranslate(EntityTranslate {
+        buffer.push(Request {
+            id: CommandId(1),
+            sequence: Sequence::new(1),
+            frame: Frame::EntityTranslate(EntityTranslate {
                 entity: ServerEntity(1),
                 translation: Vec3::splat(2.0),
             }),
-        );
+        });
 
-        buffer.push(
-            Sequence::new(2),
-            Frame::EntityTranslate(EntityTranslate {
+        buffer.push(Request {
+            id: CommandId(2),
+            sequence: Sequence::new(2),
+            frame: Frame::EntityTranslate(EntityTranslate {
                 entity: ServerEntity(2),
                 translation: Vec3::splat(3.0),
             }),
-        );
+        });
 
-        buffer.shrink();
+        buffer.compact();
         let mut iter = buffer.iter();
 
-        if let Frame::EntityTranslate(frame) = iter.next().unwrap() {
+        if let Frame::EntityTranslate(frame) = iter.next().unwrap().frame {
             assert_eq!(frame.entity, ServerEntity(1));
             assert_eq!(frame.translation, Vec3::splat(2.0));
         } else {
             panic!();
         }
 
-        if let Frame::EntityTranslate(frame) = iter.next().unwrap() {
+        if let Frame::EntityTranslate(frame) = iter.next().unwrap().frame {
             assert_eq!(frame.entity, ServerEntity(2));
             assert_eq!(frame.translation, Vec3::splat(3.0));
         } else {
@@ -281,27 +299,29 @@ mod tests {
     }
 
     #[test]
-    fn frame_buffer_shrink_destroy() {
+    fn frame_buffer_compact_destroy() {
         let mut buffer = FrameBuffer::new();
 
-        buffer.push(
-            Sequence::new(0),
-            Frame::EntityTranslate(EntityTranslate {
+        buffer.push(Request {
+            id: CommandId(0),
+            sequence: Sequence::new(0),
+            frame: Frame::EntityTranslate(EntityTranslate {
                 entity: ServerEntity(1),
                 translation: Vec3::splat(1.0),
             }),
-        );
-        buffer.push(
-            Sequence::new(1),
-            Frame::EntityDestroy(EntityDestroy {
+        });
+        buffer.push(Request {
+            id: CommandId(1),
+            sequence: Sequence::new(1),
+            frame: Frame::EntityDestroy(EntityDestroy {
                 entity: ServerEntity(1),
             }),
-        );
+        });
 
-        buffer.shrink();
+        buffer.compact();
         let mut iter = buffer.iter();
 
-        if let Frame::EntityDestroy(frame) = iter.next().unwrap() {
+        if let Frame::EntityDestroy(frame) = iter.next().unwrap().frame {
             assert_eq!(frame.entity, ServerEntity(1));
         } else {
             panic!();
@@ -309,12 +329,13 @@ mod tests {
     }
 
     #[test]
-    fn frame_buffer_shrink_create_destroy() {
+    fn frame_buffer_compact_create_destroy() {
         let mut buffer = FrameBuffer::new();
 
-        buffer.push(
-            Sequence::new(0),
-            Frame::EntityCreate(EntityCreate {
+        buffer.push(Request {
+            id: CommandId(0),
+            sequence: Sequence::new(0),
+            frame: Frame::EntityCreate(EntityCreate {
                 entity: ServerEntity(1),
                 translation: Vec3::splat(0.0),
                 rotation: Quat::IDENTITY,
@@ -322,22 +343,24 @@ mod tests {
                     id: ObjectId(WeakId(0)),
                 }),
             }),
-        );
-        buffer.push(
-            Sequence::new(1),
-            Frame::EntityTranslate(EntityTranslate {
+        });
+        buffer.push(Request {
+            id: CommandId(1),
+            sequence: Sequence::new(1),
+            frame: Frame::EntityTranslate(EntityTranslate {
                 entity: ServerEntity(1),
                 translation: Vec3::splat(1.0),
             }),
-        );
-        buffer.push(
-            Sequence::new(2),
-            Frame::EntityDestroy(EntityDestroy {
+        });
+        buffer.push(Request {
+            id: CommandId(2),
+            sequence: Sequence::new(2),
+            frame: Frame::EntityDestroy(EntityDestroy {
                 entity: ServerEntity(1),
             }),
-        );
+        });
 
-        buffer.shrink();
+        buffer.compact();
         let mut iter = buffer.iter();
 
         assert!(iter.next().is_none());
@@ -347,30 +370,34 @@ mod tests {
     fn frame_buffer_remove() {
         let mut buffer = FrameBuffer::new();
 
-        buffer.push(
-            Sequence::new(0),
-            Frame::SpawnHost(SpawnHost {
+        buffer.push(Request {
+            id: CommandId(0),
+            sequence: Sequence::new(0),
+            frame: Frame::SpawnHost(SpawnHost {
                 entity: ServerEntity(1),
             }),
-        );
-        buffer.push(
-            Sequence::new(1),
-            Frame::SpawnHost(SpawnHost {
+        });
+        buffer.push(Request {
+            id: CommandId(1),
+            sequence: Sequence::new(1),
+            frame: Frame::SpawnHost(SpawnHost {
                 entity: ServerEntity(1),
             }),
-        );
-        buffer.push(
-            Sequence::new(1),
-            Frame::SpawnHost(SpawnHost {
+        });
+        buffer.push(Request {
+            id: CommandId(2),
+            sequence: Sequence::new(1),
+            frame: Frame::SpawnHost(SpawnHost {
                 entity: ServerEntity(1),
             }),
-        );
-        buffer.push(
-            Sequence::new(2),
-            Frame::SpawnHost(SpawnHost {
+        });
+        buffer.push(Request {
+            id: CommandId(3),
+            sequence: Sequence::new(4),
+            frame: Frame::SpawnHost(SpawnHost {
                 entity: ServerEntity(1),
             }),
-        );
+        });
 
         buffer.remove(Sequence::new(1));
         assert_eq!(buffer.len(), 1);

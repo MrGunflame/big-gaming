@@ -41,6 +41,7 @@ mod quat;
 use game_common::components::combat::Health;
 use game_common::components::object::ObjectId;
 use game_common::components::race::RaceId;
+use game_common::entity::EntityId;
 use game_common::id::WeakId;
 use game_common::world::entity::{Actor, EntityBody, Object};
 use game_common::world::terrain::{Heightmap, TerrainMesh};
@@ -674,6 +675,20 @@ pub enum Frame {
     EntityVelocity(EntityVelocity),
     EntityHealth(EntityHealth),
     SpawnHost(SpawnHost),
+}
+
+impl Frame {
+    pub fn id(&self) -> ServerEntity {
+        match self {
+            Self::EntityCreate(frame) => frame.entity,
+            Self::EntityDestroy(frame) => frame.entity,
+            Self::EntityTranslate(frame) => frame.entity,
+            Self::EntityRotate(frame) => frame.entity,
+            Self::EntityVelocity(frame) => frame.entity,
+            Self::EntityHealth(frame) => frame.entity,
+            Self::SpawnHost(frame) => frame.entity,
+        }
+    }
 }
 
 impl Encode for Frame {

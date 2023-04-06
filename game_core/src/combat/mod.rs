@@ -111,9 +111,9 @@ fn handle_reload_events(
 ) {
     for (entity, mut equipment) in &mut actors {
         if let Some(item) = equipment.get_mut(EquipmentSlot::MAIN_HAND) {
-            if let Some(id) = item.ammo {
-                item.magazine.as_mut().unwrap().push(id, 30);
-            }
+            // if let Some(id) = item.ammo {
+            //     item.magazine.as_mut().unwrap().push(id, 30);
+            // }
         }
 
         commands.entity(entity).remove::<Reload>();
