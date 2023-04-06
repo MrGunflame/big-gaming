@@ -15,6 +15,7 @@ use crate::components::race::RaceId;
 
 /// A unique identifier for a object in the world.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[repr(C)]
 pub struct EntityId {
     index: u64,
 }
