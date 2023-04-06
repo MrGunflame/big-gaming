@@ -1,10 +1,10 @@
 use std::fmt::{self, Debug, Formatter};
 use std::sync::Arc;
 
+use crate::entity::EntityId;
 use crate::world::world::WorldViewMut;
 
-use super::actor::ActorFlags;
-use super::items::Item;
+use super::items::ItemId;
 
 #[derive(Clone, Debug, Default)]
 pub struct Actions {
@@ -38,6 +38,13 @@ impl Debug for Action {
     }
 }
 
+#[derive(Debug)]
+pub struct Context<'a> {
+    pub id: ItemId,
+    pub invoker: EntityId,
+    pub world: WorldViewMut<'a>,
+}
+
 pub trait FireAction: 'static + Send + Sync {
-    fn fire(&mut self, item: &mut Item, actor: &mut ActorFlags, world: &mut WorldViewMut<'_>);
+    fn call(&self, ctx: Context<'_>);
 }
