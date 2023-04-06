@@ -22,63 +22,68 @@ impl Encode for Quat {
     where
         B: BufMut,
     {
-        let mut max = self.x.abs();
-        let mut comp = Component::X;
-        if self.y.abs() > max {
-            max = self.y;
-            comp = Component::Y;
-        }
-        if self.z.abs() > max {
-            max = self.z;
-            comp = Component::Z;
-        }
-        if self.w.abs() > max {
-            comp = Component::W;
-        }
+        self.x.encode(&mut buf)?;
+        self.y.encode(&mut buf)?;
+        self.z.encode(&mut buf)?;
+        self.w.encode(&mut buf)?;
 
-        let index: u8 = match comp {
-            Component::X => 0b00,
-            Component::Y => 0b01,
-            Component::Z => 0b10,
-            Component::W => 0b11,
-        };
-        index.encode(&mut buf)?;
+        // let mut max = self.x.abs();
+        // let mut comp = Component::X;
+        // if self.y.abs() > max {
+        //     max = self.y;
+        //     comp = Component::Y;
+        // }
+        // if self.z.abs() > max {
+        //     max = self.z;
+        //     comp = Component::Z;
+        // }
+        // if self.w.abs() > max {
+        //     comp = Component::W;
+        // }
 
-        let (mut a, mut b, mut c);
-        match comp {
-            Component::X => {
-                a = self.y;
-                b = self.z;
-                c = self.w;
-            }
-            Component::Y => {
-                a = self.x;
-                b = self.z;
-                c = self.w;
-            }
-            Component::Z => {
-                a = self.x;
-                b = self.y;
-                c = self.w;
-            }
-            Component::W => {
-                a = self.x;
-                b = self.y;
-                c = self.z;
-            }
-        }
+        // let index: u8 = match comp {
+        //     Component::X => 0b00,
+        //     Component::Y => 0b01,
+        //     Component::Z => 0b10,
+        //     Component::W => 0b11,
+        // };
+        // index.encode(&mut buf)?;
+
+        // let (mut a, mut b, mut c);
+        // match comp {
+        //     Component::X => {
+        //         a = self.y;
+        //         b = self.z;
+        //         c = self.w;
+        //     }
+        //     Component::Y => {
+        //         a = self.x;
+        //         b = self.z;
+        //         c = self.w;
+        //     }
+        //     Component::Z => {
+        //         a = self.x;
+        //         b = self.y;
+        //         c = self.w;
+        //     }
+        //     Component::W => {
+        //         a = self.x;
+        //         b = self.y;
+        //         c = self.z;
+        //     }
+        // }
 
         // If the omitted value is negative we make it positive by negating the
         // entire Quat.
-        if max.is_sign_negative() {
-            a = -a;
-            b = -b;
-            c = -c;
-        }
+        // if max.is_sign_negative() {
+        //     a = -a;
+        //     b = -b;
+        //     c = -c;
+        // }
 
-        a.encode(&mut buf)?;
-        b.encode(&mut buf)?;
-        c.encode(&mut buf)?;
+        // a.encode(&mut buf)?;
+        // b.encode(&mut buf)?;
+        // c.encode(&mut buf)?;
 
         Ok(())
     }
@@ -92,32 +97,38 @@ impl Decode for Quat {
     where
         B: Buf,
     {
-        let index = u8::decode(&mut buf)?;
-        let comp = match index & 0b11 {
-            0b00 => Component::X,
-            0b01 => Component::Y,
-            0b10 => Component::Z,
-            0b11 => Component::W,
-            _ => unreachable!(),
-        };
+        let x = f32::decode(&mut buf)?;
+        let y = f32::decode(&mut buf)?;
+        let z = f32::decode(&mut buf)?;
+        let w = f32::decode(&mut buf)?;
+        Ok(Self::from_xyzw(x, y, z, w))
 
-        let a = f32::decode(&mut buf)?;
-        let b = f32::decode(&mut buf)?;
-        let c = f32::decode(&mut buf)?;
-        let d = f32::sqrt(1.0 - a * a - b * b - c * c);
+        // let index = u8::decode(&mut buf)?;
+        // let comp = match index & 0b11 {
+        //     0b00 => Component::X,
+        //     0b01 => Component::Y,
+        //     0b10 => Component::Z,
+        //     0b11 => Component::W,
+        //     _ => unreachable!(),
+        // };
 
-        let this = match comp {
-            Component::X => Quat::from_xyzw(d, a, b, c),
-            Component::Y => Quat::from_xyzw(a, d, b, c),
-            Component::Z => Quat::from_xyzw(a, b, d, c),
-            Component::W => Quat::from_xyzw(a, b, c, d),
-        };
+        // let a = f32::decode(&mut buf)?;
+        // let b = f32::decode(&mut buf)?;
+        // let c = f32::decode(&mut buf)?;
+        // let d = f32::sqrt(1.0 - a * a - b * b - c * c);
 
-        if this.is_normalized() {
-            Ok(this)
-        } else {
-            Ok(this.normalize())
-        }
+        // let this = match comp {
+        //     Component::X => Quat::from_xyzw(d, a, b, c),
+        //     Component::Y => Quat::from_xyzw(a, d, b, c),
+        //     Component::Z => Quat::from_xyzw(a, b, d, c),
+        //     Component::W => Quat::from_xyzw(a, b, c, d),
+        // };
+
+        // if this.is_normalized() {
+        //     Ok(this)
+        // } else {
+        //     Ok(this.normalize())
+        // }
     }
 }
 
