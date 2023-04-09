@@ -92,10 +92,22 @@ impl Decode for String {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct DataBuffer {
     pub header: Header,
     pub items: Vec<Item>,
+}
+
+impl DataBuffer {
+    pub fn new() -> Self {
+        Self {
+            header: Header {
+                version: 0,
+                items: 0,
+            },
+            items: Vec::new(),
+        }
+    }
 }
 
 impl Encode for DataBuffer {
