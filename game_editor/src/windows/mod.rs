@@ -1,6 +1,11 @@
+use std::sync::Arc;
+
 use bevy::prelude::{Camera, Camera3dBundle, Commands, EventReader};
 use bevy::render::camera::RenderTarget;
 use bevy::window::{Window, WindowRef};
+use game_common::module::ModuleId;
+use game_data::DataBuffer;
+use parking_lot::RwLock;
 
 use self::modules::ModuleWindowPlugin;
 use self::templates::TemplatesPlugin;
@@ -39,7 +44,10 @@ fn spawn_window(mut events: EventReader<SpawnWindow>, mut commands: Commands) {
                 cmds.insert(modules::ModuleWindow);
             }
             SpawnWindow::Templates => {
-                cmds.insert(templates::TemplatesWindow);
+                cmds.insert(templates::TemplatesWindow {
+                    module: ModuleId::default(),
+                    data: Arc::new(RwLock::new(DataBuffer::new())),
+                });
             }
         }
 
