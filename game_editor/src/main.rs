@@ -12,6 +12,7 @@ use bevy::window::WindowPlugin;
 use bevy::winit::WinitPlugin;
 use game_common::archive::loader::ModuleLoader;
 use game_common::archive::GameArchive;
+use game_common::world::world::WorldState;
 use game_core::CorePlugins;
 use game_input::InputPlugin;
 use game_ui::{InterfaceState, UiPlugin};
@@ -21,6 +22,7 @@ use world::EntityOptions;
 mod picker;
 mod plugins;
 mod ui;
+mod windows;
 mod world;
 
 fn main() {
@@ -31,6 +33,7 @@ fn main() {
 
     App::new()
         .insert_resource(archive)
+        .insert_resource(WorldState::new())
         .add_plugin(CorePlugins)
         .add_plugin(AccessibilityPlugin)
         .add_plugin(WindowPlugin::default())
@@ -48,6 +51,8 @@ fn main() {
         .add_plugin(UiPlugin)
         .add_startup_system(setup)
         .add_system(world::axes::render_axes)
+        .add_plugin(windows::WindowPlugin)
+        .add_system(ui::main_bar::render_main_bar)
         .run();
 }
 

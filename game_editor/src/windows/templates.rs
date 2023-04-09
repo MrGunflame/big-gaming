@@ -1,8 +1,6 @@
 //! The template data editor.
 
-use bevy::prelude::{Camera, Camera3dBundle, Commands, Component, Query, With};
-use bevy::render::camera::RenderTarget;
-use bevy::window::{Window, WindowRef};
+use bevy::prelude::{Component, Query, With};
 use bevy_egui::egui::{Align, CentralPanel, Layout};
 use bevy_egui::EguiContext;
 use game_common::units::Mass;
@@ -12,34 +10,15 @@ pub struct TemplatesPlugin;
 
 impl bevy::prelude::Plugin for TemplatesPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
-        app.add_startup_system(spawn_window)
-            .add_system(render_window);
+        app.add_system(render_window);
     }
 }
 
 #[derive(Copy, Clone, Debug, Component)]
-struct TemplatesWindow;
-
-fn spawn_window(mut commands: Commands) {
-    let id = commands
-        .spawn(Window {
-            title: "Templates".to_owned(),
-            ..Default::default()
-        })
-        .insert(TemplatesWindow)
-        .id();
-
-    commands.spawn(Camera3dBundle {
-        camera: Camera {
-            target: RenderTarget::Window(WindowRef::Entity(id)),
-            ..Default::default()
-        },
-        ..Default::default()
-    });
-}
+pub struct TemplatesWindow;
 
 fn render_window(mut windows: Query<&mut EguiContext, With<TemplatesWindow>>) {
-    let mut ctx = windows.single_mut();
+    let Ok(mut ctx) = windows.get_single_mut() else { return; };
 
     let items = vec![
         Item {
