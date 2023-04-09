@@ -13,6 +13,7 @@ members = [
     "game_editor",
     "game_physics",
     "game_api",
+    "game_data",
 ]
 
 resolver = "2"
