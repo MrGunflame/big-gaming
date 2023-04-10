@@ -1,16 +1,40 @@
 use std::fmt::{self, Display, Formatter};
 use std::str::FromStr;
 
+use uuid::Uuid;
+
+#[derive(Clone, Debug)]
 pub struct Module {
     pub id: ModuleId,
     pub name: String,
-    pub version: String,
+    pub version: Version,
+    pub dependencies: Vec<Dependency>,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+impl Module {
+    // FIXME: Change this to constant if possible.
+    pub fn core() -> Self {
+        Self {
+            id: ModuleId::CORE,
+            name: String::from("core"),
+            version: Version,
+            dependencies: Vec::new(),
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub struct ModuleId([u8; 16]);
 
-impl ModuleId {}
+impl ModuleId {
+    pub const CORE: Self = Self([0; 16]);
+
+    /// Creates and returns a new random `ModuleId`.
+    pub fn random() -> Self {
+        let uuid = Uuid::new_v4();
+        Self(uuid.into_bytes())
+    }
+}
 
 impl Display for ModuleId {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
@@ -28,3 +52,14 @@ impl FromStr for ModuleId {
         Ok(Self(buf[0..15].try_into().unwrap()))
     }
 }
+
+#[derive(Clone, Debug)]
+pub struct Dependency {
+    pub id: ModuleId,
+    pub name: Option<String>,
+    //TODO
+    pub version: Version,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct Version;
