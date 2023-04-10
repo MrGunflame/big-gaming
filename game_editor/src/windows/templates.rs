@@ -2,8 +2,9 @@
 
 use std::sync::Arc;
 
-use bevy::prelude::{Component, Query, With};
-use bevy_egui::egui::{Align, CentralPanel, Layout};
+use bevy::prelude::{Component, Query};
+use bevy_egui::egui::panel::Side;
+use bevy_egui::egui::{Align, CentralPanel, Layout, SidePanel, TextEdit};
 use bevy_egui::EguiContext;
 use game_common::module::ModuleId;
 use game_common::units::Mass;
@@ -21,13 +22,42 @@ impl bevy::prelude::Plugin for TemplatesPlugin {
 
 #[derive(Clone, Debug, Component)]
 pub struct TemplatesWindow {
-    pub module: ModuleId,
-    pub data: Arc<RwLock<DataBuffer>>,
+    module: ModuleId,
+    data: Arc<RwLock<DataBuffer>>,
+    state: State,
 }
 
-fn render_window(mut windows: Query<(&mut EguiContext, &TemplatesWindow)>) {
-    for (mut ctx, window) in &mut windows {
+impl TemplatesWindow {
+    pub fn new(module: ModuleId, data: Arc<RwLock<DataBuffer>>) -> Self {
+        Self {
+            module,
+            data,
+            state: State {
+                search: String::new(),
+                categories: [false; 1],
+            },
+        }
+    }
+}
+
+fn render_window(mut windows: Query<(&mut EguiContext, &mut TemplatesWindow)>) {
+    for (mut ctx, mut window) in &mut windows {
+        // Reborrow Mut<..> as &mut ..
+        let window = window.as_mut();
+
         let data = window.data.read();
+
+        SidePanel::new(Side::Left, "form_selector").show(ctx.get_mut(), |ui| {
+            ui.add(TextEdit::singleline(&mut window.state.search).hint_text("Search"));
+
+            for category in &[Category::Items] {
+                ui.label(category.as_str());
+
+                for item in &data.items {
+                    ui.label(format!("{} [{}]", item.name, item.id));
+                }
+            }
+        });
 
         CentralPanel::default().show(ctx.get_mut(), |ui| {
             ui.with_layout(Layout::left_to_right(Align::Min), |ui| {
@@ -60,8 +90,20 @@ fn render_window(mut windows: Query<(&mut EguiContext, &TemplatesWindow)>) {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-enum Categories {
-    Items,
+enum Category {
+    Items = 0,
 }
 
-struct State {}
+impl Category {
+    fn as_str(&self) -> &'static str {
+        match self {
+            Self::Items => "Items",
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+struct State {
+    search: String,
+    categories: [bool; 1],
+}

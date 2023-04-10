@@ -56,10 +56,10 @@ fn spawn_window(
             SpawnWindow::Templates => {
                 let form = forms.modules.entry(ModuleId::default()).or_default();
 
-                cmds.insert(templates::TemplatesWindow {
-                    module: ModuleId::default(),
-                    data: form.clone(),
-                });
+                cmds.insert(templates::TemplatesWindow::new(
+                    ModuleId::default(),
+                    form.clone(),
+                ));
             }
         }
 
