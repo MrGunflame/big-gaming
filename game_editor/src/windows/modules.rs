@@ -3,6 +3,7 @@
 use bevy::prelude::{Component, Query, ResMut, With};
 use bevy_egui::egui::{Align, CentralPanel, Layout};
 use bevy_egui::EguiContext;
+use egui_extras::{Column, TableBuilder};
 
 use super::Modules;
 
@@ -24,19 +25,34 @@ fn render_modules(
 ) {
     for mut ctx in &mut windows {
         CentralPanel::default().show(ctx.get_mut(), |ui| {
-            ui.with_layout(Layout::left_to_right(Align::Min), |ui| {
-                ui.label("ID");
-                ui.label("Name");
-                ui.label("Dependencies");
-            });
-
-            for module in modules.modules.values() {
-                ui.with_layout(Layout::left_to_right(Align::Min), |ui| {
-                    ui.label(module.module.id.to_string());
-                    ui.label(module.module.name.clone());
-                    ui.label(module.module.dependencies.len().to_string());
+            TableBuilder::new(ui)
+                .columns(Column::remainder().resizable(true), 3)
+                .header(20.0, |mut header| {
+                    header.col(|ui| {
+                        ui.heading("ID");
+                    });
+                    header.col(|ui| {
+                        ui.heading("Name");
+                    });
+                    header.col(|ui| {
+                        ui.heading("Dependencies");
+                    });
+                })
+                .body(|mut body| {
+                    for module in modules.modules.values() {
+                        body.row(20.0, |mut row| {
+                            row.col(|ui| {
+                                ui.label(module.module.id.to_string());
+                            });
+                            row.col(|ui| {
+                                ui.label(module.module.name.clone());
+                            });
+                            row.col(|ui| {
+                                ui.label(module.module.dependencies.len().to_string());
+                            });
+                        });
+                    }
                 });
-            }
 
             if ui.button("New").clicked() {}
         });

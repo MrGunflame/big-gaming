@@ -13,3 +13,4 @@ game_data = { version = "0.1.0", path = "../game_data" }
 bevy = "0.10.0"
 bevy_egui = "0.20.2"
 parking_lot = "0.12.1"
+egui_extras = "0.21.0"
