@@ -12,22 +12,22 @@ use game_data::components::item::{Item, ItemId};
 use game_data::DataBuffer;
 use parking_lot::RwLock;
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct TemplatesPlugin;
+pub struct RecordsWindowPlugin;
 
-impl bevy::prelude::Plugin for TemplatesPlugin {
+impl bevy::prelude::Plugin for RecordsWindowPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
         app.add_system(render_window);
     }
 }
 
 #[derive(Clone, Debug, Component)]
-pub struct TemplatesWindow {
+pub struct RecordsWindow {
     module: ModuleId,
     data: Arc<RwLock<DataBuffer>>,
     state: State,
 }
 
-impl TemplatesWindow {
+impl RecordsWindow {
     pub fn new(module: ModuleId, data: Arc<RwLock<DataBuffer>>) -> Self {
         Self {
             module,
@@ -40,7 +40,7 @@ impl TemplatesWindow {
     }
 }
 
-fn render_window(mut windows: Query<(&mut EguiContext, &mut TemplatesWindow)>) {
+fn render_window(mut windows: Query<(&mut EguiContext, &mut RecordsWindow)>) {
     for (mut ctx, mut window) in &mut windows {
         // Reborrow Mut<..> as &mut ..
         let window = window.as_mut();
