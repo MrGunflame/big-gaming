@@ -26,7 +26,7 @@ fn render_modules(
     for mut ctx in &mut windows {
         CentralPanel::default().show(ctx.get_mut(), |ui| {
             TableBuilder::new(ui)
-                .columns(Column::remainder().resizable(true), 3)
+                .columns(Column::remainder().resizable(true), 4)
                 .header(20.0, |mut header| {
                     header.col(|ui| {
                         ui.heading("ID");
@@ -36,6 +36,9 @@ fn render_modules(
                     });
                     header.col(|ui| {
                         ui.heading("Dependencies");
+                    });
+                    header.col(|ui| {
+                        ui.heading("Writable");
                     });
                 })
                 .body(|mut body| {
@@ -50,11 +53,12 @@ fn render_modules(
                             row.col(|ui| {
                                 ui.label(module.module.dependencies.len().to_string());
                             });
+                            row.col(|ui| {
+                                ui.label(module.capabilities.write().to_string());
+                            });
                         });
                     }
                 });
-
-            if ui.button("New").clicked() {}
         });
     }
 }
