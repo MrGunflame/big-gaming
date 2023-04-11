@@ -6,21 +6,23 @@ use bevy::prelude::{Camera, Camera3dBundle, Commands, EventReader, ResMut, Resou
 use bevy::render::camera::RenderTarget;
 use bevy::window::{Window, WindowRef};
 use game_common::module::{Module, ModuleId};
-use game_common::units::Mass;
+use game_data::record::RecordId;
 use game_data::DataBuffer;
 use parking_lot::RwLock;
 
+use crate::state::module::Records;
+
 use self::modules::ModuleWindowPlugin;
-use self::records::{ItemRecord, Record, RecordId, RecordsWindowPlugin};
+use self::records::RecordsWindowPlugin;
 
 mod modules;
 mod records;
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub enum SpawnWindow {
     Modules,
     Templates,
-    Record,
+    Record(Records, RecordId),
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -59,20 +61,13 @@ fn spawn_window(
 
                 cmds.insert(records::RecordsWindow::new(
                     ModuleId::default(),
-                    form.clone(),
+                    Records::default(),
                 ));
             }
-            SpawnWindow::Record => {
+            SpawnWindow::Record(records, id) => {
                 cmds.insert(records::RecordWindow {
-                    module: ModuleId::random(),
-                    record: Record {
-                        id: RecordId(0),
-                        name: String::new(),
-                        body: records::RecordBody::Item(ItemRecord {
-                            mass: Mass::new(),
-                            value: 0,
-                        }),
-                    },
+                    records: records.clone(),
+                    id: *id,
                 });
             }
         }

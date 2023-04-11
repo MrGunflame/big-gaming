@@ -6,6 +6,7 @@ use header::Header;
 
 pub mod components;
 pub mod header;
+pub mod record;
 
 pub trait Encode {
     fn encode<B>(&self, buf: B)

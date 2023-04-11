@@ -1,3 +1,5 @@
+use std::fmt::{self, Display, Formatter, LowerHex};
+
 use bytes::{Buf, BufMut};
 use game_common::units::Mass;
 
@@ -58,5 +60,12 @@ impl Decode for ItemId {
         B: Buf,
     {
         u32::decode(buf).map(Self)
+    }
+}
+
+impl Display for ItemId {
+    #[inline]
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        LowerHex::fmt(&self.0, f)
     }
 }

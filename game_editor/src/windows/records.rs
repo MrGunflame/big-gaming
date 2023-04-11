@@ -1,17 +1,14 @@
 //! The template data editor.
 
-use std::fmt::{self, Display, Formatter, LowerHex};
-use std::sync::Arc;
-
 use bevy::prelude::{Component, EventWriter, Query};
 use bevy_egui::egui::panel::Side;
 use bevy_egui::egui::{Align, CentralPanel, Layout, SidePanel, TextEdit};
 use bevy_egui::EguiContext;
 use game_common::module::ModuleId;
 use game_common::units::Mass;
-use game_data::components::item::{Item, ItemId};
-use game_data::DataBuffer;
-use parking_lot::RwLock;
+use game_data::record::{ItemRecord, Record, RecordBody, RecordId};
+
+use crate::state::module::Records;
 
 use super::SpawnWindow;
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -28,15 +25,15 @@ impl bevy::prelude::Plugin for RecordsWindowPlugin {
 #[derive(Clone, Debug, Component)]
 pub struct RecordsWindow {
     module: ModuleId,
-    data: Arc<RwLock<DataBuffer>>,
+    records: Records,
     state: State,
 }
 
 impl RecordsWindow {
-    pub fn new(module: ModuleId, data: Arc<RwLock<DataBuffer>>) -> Self {
+    pub fn new(module: ModuleId, records: Records) -> Self {
         Self {
             module,
-            data,
+            records,
             state: State {
                 search: String::new(),
                 categories: [false; 1],
@@ -53,17 +50,11 @@ fn render_window(
         // Reborrow Mut<..> as &mut ..
         let window = window.as_mut();
 
-        let data = window.data.read();
-
         SidePanel::new(Side::Left, "form_selector").show(ctx.get_mut(), |ui| {
             ui.add(TextEdit::singleline(&mut window.state.search).hint_text("Search"));
 
             for category in &[Category::Items] {
                 ui.label(category.as_str());
-
-                for item in &data.items {
-                    ui.label(format!("{} [{}]", item.name, item.id));
-                }
             }
         });
 
@@ -72,30 +63,38 @@ fn render_window(
                 ui.label("ID");
                 ui.label("Name");
                 ui.label("Mass");
+                ui.label("Value");
             });
 
-            for item in &data.items {
+            for record in window.records.iter() {
                 ui.with_layout(Layout::left_to_right(Align::Min), |ui| {
-                    ui.label(format!("{:?}", item.id));
-                    ui.label(item.name.clone());
-                    ui.label(item.mass.to_grams().to_string());
+                    ui.label(record.id.to_string());
+                    ui.label(record.name);
+
+                    match record.body {
+                        RecordBody::Item(item) => {
+                            ui.label(item.mass.to_grams().to_string());
+                            ui.label(item.value.to_string());
+                        }
+                    }
+
+                    if ui.button("Edit").double_clicked() {
+                        events.send(SpawnWindow::Record(window.records.clone(), record.id));
+                    }
                 });
             }
 
             if ui.button("Add").clicked() {
-                let item = Item {
-                    id: ItemId(0),
+                let rec = Record {
+                    id: RecordId(0),
                     name: "".to_owned(),
-                    mass: Mass::from_grams(0),
+                    body: RecordBody::Item(ItemRecord {
+                        mass: Mass::new(),
+                        value: 0,
+                    }),
                 };
 
-                drop(data);
-                let mut data = window.data.write();
-                data.items.push(item);
-            }
-
-            if ui.button("Rec").clicked() {
-                events.send(SpawnWindow::Record);
+                window.records.insert(rec);
             }
         });
     }
@@ -122,53 +121,36 @@ struct State {
 
 #[derive(Clone, Debug, Component)]
 pub struct RecordWindow {
-    pub module: ModuleId,
-    pub record: Record,
-}
-
-#[derive(Clone, Debug)]
-pub struct Record {
+    pub records: Records,
     pub id: RecordId,
-    pub name: String,
-    pub body: RecordBody,
-}
-
-#[derive(Clone, Debug)]
-pub enum RecordBody {
-    Item(ItemRecord),
-}
-
-#[derive(Clone, Debug)]
-pub struct ItemRecord {
-    pub mass: Mass,
-    // TODO: Add separate Value type.
-    pub value: u64,
-}
-
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
-pub struct RecordId(pub u32);
-
-impl Display for RecordId {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        LowerHex::fmt(&self.0, f)
-    }
 }
 
 fn render_record_windows(mut windows: Query<(&mut EguiContext, &mut RecordWindow)>) {
-    for (mut ctx, mut state) in &mut windows {
+    for (mut ctx, state) in &mut windows {
+        let mut record = state.records.get(state.id).unwrap();
+
+        let mut changed = false;
+
         CentralPanel::default().show(ctx.get_mut(), |ui| {
             ui.heading("Metadata");
 
             ui.label("Record ID");
-            ui.add_enabled(
-                false,
-                TextEdit::singleline(&mut state.record.id.to_string()).interactive(false),
-            );
+            if ui
+                .add_enabled(
+                    false,
+                    TextEdit::singleline(&mut record.id.to_string()).interactive(false),
+                )
+                .changed()
+            {
+                changed = true;
+            }
 
             ui.label("Name");
-            ui.add(TextEdit::singleline(&mut state.record.name));
+            if ui.add(TextEdit::singleline(&mut record.name)).changed() {
+                changed = true;
+            }
 
-            match &mut state.record.body {
+            match &mut record.body {
                 RecordBody::Item(item) => {
                     ui.heading("Item");
 
@@ -178,6 +160,7 @@ fn render_record_windows(mut windows: Query<(&mut EguiContext, &mut RecordWindow
                     if ui.add(TextEdit::singleline(&mut mass)).changed() {
                         let val = mass.parse::<u32>().unwrap_or_default();
                         item.mass = Mass::from_grams(val);
+                        changed = true;
                     }
 
                     ui.label("Value");
@@ -186,9 +169,14 @@ fn render_record_windows(mut windows: Query<(&mut EguiContext, &mut RecordWindow
                     if ui.add(TextEdit::singleline(&mut value)).changed() {
                         let val = value.parse::<u64>().unwrap_or_default();
                         item.value = val;
+                        changed = true;
                     }
                 }
             }
         });
+
+        if changed {
+            state.records.put(record);
+        }
     }
 }

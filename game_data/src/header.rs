@@ -4,7 +4,7 @@ use crate::{Decode, Encode};
 
 pub const MAGIC: [u8; 4] = [0, 0, 0, 0];
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct Header {
     // magic outlined
     pub version: u8,
