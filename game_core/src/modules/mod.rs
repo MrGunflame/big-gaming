@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use bevy::prelude::{Plugin, Resource};
 use game_common::module::ModuleId;
 use game_data::loader::FileLoader;
+use game_data::record::Record;
 use tokio::runtime::Runtime;
 
 pub struct ModulePlugin;
@@ -13,13 +14,35 @@ impl Plugin for ModulePlugin {
 
         let mut modules = Modules::new();
 
-        rt.block_on(async move {
-            let mut dir = tokio::fs::read_dir("./mods").await.unwrap();
+        rt.block_on(async {
+            let mut dir = match tokio::fs::read_dir("./mods").await {
+                Ok(dir) => dir,
+                Err(err) => {
+                    tracing::error!("failed to load modules: {}", err);
+                    std::process::exit(1);
+                }
+            };
 
             while let Some(entry) = dir.next_entry().await.unwrap() {
                 let data = FileLoader::load(entry.path()).await.unwrap();
+
+                let mut records = Records::new();
+                for item in data.items {
+                    records.insert(Record {
+                        id: item.id,
+                        name: String::new(),
+                        body: game_data::record::RecordBody::Item(item),
+                    });
+                }
+
+                modules.insert(ModuleData {
+                    id: data.header.id,
+                    records,
+                });
             }
         });
+
+        app.insert_resource(modules);
     }
 }
 

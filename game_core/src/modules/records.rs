@@ -9,6 +9,12 @@ pub struct Records {
 }
 
 impl Records {
+    pub fn new() -> Self {
+        Self {
+            records: HashMap::new(),
+        }
+    }
+
     pub fn get(&self, id: RecordId) -> Option<&Record> {
         self.records.get(&id)
     }

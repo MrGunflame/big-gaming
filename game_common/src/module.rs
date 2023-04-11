@@ -34,6 +34,14 @@ impl ModuleId {
         let uuid = Uuid::new_v4();
         Self(uuid.into_bytes())
     }
+
+    pub fn into_bytes(self) -> [u8; 16] {
+        self.0
+    }
+
+    pub fn from_bytes(bytes: [u8; 16]) -> Self {
+        Self(bytes)
+    }
 }
 
 impl Display for ModuleId {

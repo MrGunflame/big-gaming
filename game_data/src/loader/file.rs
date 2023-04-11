@@ -17,6 +17,8 @@ impl FileLoader {
     }
 
     async fn load_inner(path: &Path) -> std::io::Result<DataBuffer> {
+        tracing::info!("loading module: {:?}", path);
+
         let mut file = File::open(path).await?;
 
         let mut buf = Vec::new();

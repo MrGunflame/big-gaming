@@ -7,3 +7,4 @@ edition = "2021"
 bytes = "1.4.0"
 game_common = { version = "0.1.0", path = "../game_common" }
 tokio = { version = "1.27.0", features = ["fs"] }
+tracing = "0.1.37"

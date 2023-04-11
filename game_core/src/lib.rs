@@ -13,6 +13,7 @@ use bevy::time::TimePlugin;
 use bevy::transform::TransformPlugin;
 use combat::CombatPlugin;
 use game_audio::AudioPlugin;
+use modules::ModulePlugin;
 use movement::MovementPlugin;
 use projectile::ProjectilePlugin;
 use world::{LevelPlugin, ObjectPlugin, SpawnPlugin, TerrainPlugin};
@@ -56,5 +57,6 @@ impl Plugin for CorePlugins {
         app.add_plugin(AnimationPlugin);
         // app.add_plugin(TerrainPlugin);
         app.add_asset::<Mesh>();
+        app.add_plugin(ModulePlugin);
     }
 }
