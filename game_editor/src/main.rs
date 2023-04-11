@@ -1,4 +1,5 @@
 use bevy::a11y::AccessibilityPlugin;
+
 use bevy::core_pipeline::CorePipelinePlugin;
 use bevy::pbr::PbrPlugin;
 use bevy::prelude::{
@@ -21,6 +22,7 @@ use world::EntityOptions;
 
 mod picker;
 mod plugins;
+mod state;
 mod ui;
 mod windows;
 mod world;

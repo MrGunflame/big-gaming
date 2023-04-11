@@ -59,6 +59,8 @@ fn render_modules(
                         });
                     }
                 });
+
+            if ui.button("Create new").clicked() {}
         });
     }
 }

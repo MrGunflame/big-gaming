@@ -1,4 +1,3 @@
-use std::borrow::Cow;
 use std::collections::HashMap;
 use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign};
 use std::sync::Arc;
@@ -7,19 +6,21 @@ use bevy::prelude::{Camera, Camera3dBundle, Commands, EventReader, ResMut, Resou
 use bevy::render::camera::RenderTarget;
 use bevy::window::{Window, WindowRef};
 use game_common::module::{Module, ModuleId};
+use game_common::units::Mass;
 use game_data::DataBuffer;
 use parking_lot::RwLock;
 
 use self::modules::ModuleWindowPlugin;
-use self::templates::TemplatesPlugin;
+use self::records::{ItemRecord, Record, RecordId, RecordsWindowPlugin};
 
 mod modules;
-mod templates;
+mod records;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum SpawnWindow {
     Modules,
     Templates,
+    Record,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -28,7 +29,7 @@ pub struct WindowPlugin;
 impl bevy::prelude::Plugin for WindowPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
         app.add_event::<SpawnWindow>();
-        app.add_plugin(TemplatesPlugin);
+        app.add_plugin(RecordsWindowPlugin);
         app.add_plugin(ModuleWindowPlugin);
 
         app.insert_resource(Forms::default());
@@ -56,10 +57,23 @@ fn spawn_window(
             SpawnWindow::Templates => {
                 let form = forms.modules.entry(ModuleId::default()).or_default();
 
-                cmds.insert(templates::TemplatesWindow::new(
+                cmds.insert(records::RecordsWindow::new(
                     ModuleId::default(),
                     form.clone(),
                 ));
+            }
+            SpawnWindow::Record => {
+                cmds.insert(records::RecordWindow {
+                    module: ModuleId::random(),
+                    record: Record {
+                        id: RecordId(0),
+                        name: String::new(),
+                        body: records::RecordBody::Item(ItemRecord {
+                            mass: Mass::new(),
+                            value: 0,
+                        }),
+                    },
+                });
             }
         }
 

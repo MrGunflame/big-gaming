@@ -1,8 +1,9 @@
 //! The template data editor.
 
+use std::fmt::{self, Display, Formatter, LowerHex};
 use std::sync::Arc;
 
-use bevy::prelude::{Component, Query};
+use bevy::prelude::{Component, EventWriter, Query};
 use bevy_egui::egui::panel::Side;
 use bevy_egui::egui::{Align, CentralPanel, Layout, SidePanel, TextEdit};
 use bevy_egui::EguiContext;
@@ -11,12 +12,16 @@ use game_common::units::Mass;
 use game_data::components::item::{Item, ItemId};
 use game_data::DataBuffer;
 use parking_lot::RwLock;
+
+use super::SpawnWindow;
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct RecordsWindowPlugin;
 
 impl bevy::prelude::Plugin for RecordsWindowPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
         app.add_system(render_window);
+
+        app.add_system(render_record_windows);
     }
 }
 
@@ -40,7 +45,10 @@ impl RecordsWindow {
     }
 }
 
-fn render_window(mut windows: Query<(&mut EguiContext, &mut RecordsWindow)>) {
+fn render_window(
+    mut windows: Query<(&mut EguiContext, &mut RecordsWindow)>,
+    mut events: EventWriter<SpawnWindow>,
+) {
     for (mut ctx, mut window) in &mut windows {
         // Reborrow Mut<..> as &mut ..
         let window = window.as_mut();
@@ -85,6 +93,10 @@ fn render_window(mut windows: Query<(&mut EguiContext, &mut RecordsWindow)>) {
                 let mut data = window.data.write();
                 data.items.push(item);
             }
+
+            if ui.button("Rec").clicked() {
+                events.send(SpawnWindow::Record);
+            }
         });
     }
 }
@@ -106,4 +118,77 @@ impl Category {
 struct State {
     search: String,
     categories: [bool; 1],
+}
+
+#[derive(Clone, Debug, Component)]
+pub struct RecordWindow {
+    pub module: ModuleId,
+    pub record: Record,
+}
+
+#[derive(Clone, Debug)]
+pub struct Record {
+    pub id: RecordId,
+    pub name: String,
+    pub body: RecordBody,
+}
+
+#[derive(Clone, Debug)]
+pub enum RecordBody {
+    Item(ItemRecord),
+}
+
+#[derive(Clone, Debug)]
+pub struct ItemRecord {
+    pub mass: Mass,
+    // TODO: Add separate Value type.
+    pub value: u64,
+}
+
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
+pub struct RecordId(pub u32);
+
+impl Display for RecordId {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        LowerHex::fmt(&self.0, f)
+    }
+}
+
+fn render_record_windows(mut windows: Query<(&mut EguiContext, &mut RecordWindow)>) {
+    for (mut ctx, mut state) in &mut windows {
+        CentralPanel::default().show(ctx.get_mut(), |ui| {
+            ui.heading("Metadata");
+
+            ui.label("Record ID");
+            ui.add_enabled(
+                false,
+                TextEdit::singleline(&mut state.record.id.to_string()).interactive(false),
+            );
+
+            ui.label("Name");
+            ui.add(TextEdit::singleline(&mut state.record.name));
+
+            match &mut state.record.body {
+                RecordBody::Item(item) => {
+                    ui.heading("Item");
+
+                    ui.label("Mass (g)");
+
+                    let mut mass = item.mass.to_grams().to_string();
+                    if ui.add(TextEdit::singleline(&mut mass)).changed() {
+                        let val = mass.parse::<u32>().unwrap_or_default();
+                        item.mass = Mass::from_grams(val);
+                    }
+
+                    ui.label("Value");
+
+                    let mut value = item.value.to_string();
+                    if ui.add(TextEdit::singleline(&mut value)).changed() {
+                        let val = value.parse::<u64>().unwrap_or_default();
+                        item.value = val;
+                    }
+                }
+            }
+        });
+    }
 }
