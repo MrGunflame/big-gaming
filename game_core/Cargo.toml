@@ -10,6 +10,7 @@ game_ai = { version = "0.1.0", path = "../game_ai" }
 game_common = { version = "0.1.0", path = "../game_common" }
 game_audio = { version = "0.1.0", path = "../game_audio" }
 game_net = { version = "0.1.0", path = "../game_net" }
+game_data = { version = "0.1.0", path = "../game_data" }
 
 bevy = "0.10.0"
 bevy_ecs = "0.10.0"
@@ -17,3 +18,4 @@ tracing = "0.1.37"
 chrono = "0.4.24"
 parking_lot = "0.12.1"
 atty = "0.2.14"
+tokio = { version = "1.27.0", features = ["full"] }

@@ -1,6 +1,9 @@
 use std::fmt::{self, Display, Formatter, LowerHex};
 
-use game_common::units::Mass;
+use bytes::{Buf, BufMut};
+
+use crate::components::item::ItemRecord;
+use crate::{Decode, Encode};
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub struct RecordId(pub u32);
@@ -23,9 +26,22 @@ pub enum RecordBody {
     Item(ItemRecord),
 }
 
-#[derive(Clone, Debug)]
-pub struct ItemRecord {
-    pub mass: Mass,
-    // TODO: Add separate Value type.
-    pub value: u64,
+impl Encode for RecordId {
+    fn encode<B>(&self, buf: B)
+    where
+        B: BufMut,
+    {
+        self.0.encode(buf);
+    }
+}
+
+impl Decode for RecordId {
+    type Error = <u32 as Decode>::Error;
+
+    fn decode<B>(buf: B) -> Result<Self, Self::Error>
+    where
+        B: Buf,
+    {
+        u32::decode(buf).map(Self)
+    }
 }

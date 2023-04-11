@@ -3,16 +3,18 @@ use std::fmt::{self, Display, Formatter, LowerHex};
 use bytes::{Buf, BufMut};
 use game_common::units::Mass;
 
+use crate::record::RecordId;
 use crate::{Decode, Encode};
 
 #[derive(Clone, Debug)]
-pub struct Item {
-    pub id: ItemId,
+pub struct ItemRecord {
+    pub id: RecordId,
     pub name: String,
     pub mass: Mass,
+    pub value: u64,
 }
 
-impl Encode for Item {
+impl Encode for ItemRecord {
     fn encode<B>(&self, mut buf: B)
     where
         B: BufMut,
@@ -23,18 +25,24 @@ impl Encode for Item {
     }
 }
 
-impl Decode for Item {
+impl Decode for ItemRecord {
     type Error = std::io::Error;
 
     fn decode<B>(mut buf: B) -> Result<Self, Self::Error>
     where
         B: Buf,
     {
-        let id = ItemId::decode(&mut buf)?;
+        let id = RecordId::decode(&mut buf)?;
         let name = String::decode(&mut buf)?;
         let mass = Mass::decode(&mut buf)?;
+        let value = u64::decode(&mut buf)?;
 
-        Ok(Self { id, name, mass })
+        Ok(Self {
+            id,
+            name,
+            mass,
+            value,
+        })
     }
 }
 

@@ -6,7 +6,8 @@ use bevy_egui::egui::{Align, CentralPanel, Layout, SidePanel, TextEdit};
 use bevy_egui::EguiContext;
 use game_common::module::ModuleId;
 use game_common::units::Mass;
-use game_data::record::{ItemRecord, Record, RecordBody, RecordId};
+use game_data::components::item::ItemRecord;
+use game_data::record::{Record, RecordBody, RecordId};
 
 use crate::state::module::Records;
 
@@ -89,6 +90,8 @@ fn render_window(
                     id: RecordId(0),
                     name: "".to_owned(),
                     body: RecordBody::Item(ItemRecord {
+                        id: RecordId(0),
+                        name: String::new(),
                         mass: Mass::new(),
                         value: 0,
                     }),

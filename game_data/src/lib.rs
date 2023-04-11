@@ -1,11 +1,13 @@
 //! Types and (de)serializiers for data files.
 
 use bytes::{Buf, BufMut};
-use components::item::Item;
+use components::item::ItemRecord;
+use game_common::module::ModuleId;
 use header::Header;
 
 pub mod components;
 pub mod header;
+pub mod loader;
 pub mod record;
 
 pub trait Encode {
@@ -96,7 +98,7 @@ impl Decode for String {
 #[derive(Clone, Debug, Default)]
 pub struct DataBuffer {
     pub header: Header,
-    pub items: Vec<Item>,
+    pub items: Vec<ItemRecord>,
 }
 
 impl DataBuffer {
@@ -105,6 +107,7 @@ impl DataBuffer {
             header: Header {
                 version: 0,
                 items: 0,
+                id: ModuleId::random(),
             },
             items: Vec::new(),
         }
@@ -136,7 +139,7 @@ impl Decode for DataBuffer {
 
         let mut items = vec![];
         for _ in 0..header.items {
-            let item = Item::decode(&mut buf)?;
+            let item = ItemRecord::decode(&mut buf)?;
             items.push(item);
         }
 
