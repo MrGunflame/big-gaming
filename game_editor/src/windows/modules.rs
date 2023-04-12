@@ -8,6 +8,7 @@ use bevy_egui::EguiContext;
 use egui_extras::{Column, TableBuilder};
 use game_common::module::{Module, ModuleId, Version};
 
+use crate::backend::{Handle, Task};
 use crate::state::capabilities::Capabilities;
 use crate::state::module::{EditorModule, Modules, Records};
 
@@ -94,6 +95,7 @@ impl CreateModuleWindow {
 fn render_create_module_windows(
     mut commands: Commands,
     mut modules: ResMut<Modules>,
+    handle: ResMut<Handle>,
     mut windows: Query<(Entity, &mut EguiContext, &mut CreateModuleWindow)>,
 ) {
     for (entity, mut ctx, mut state) in &mut windows {
@@ -118,6 +120,8 @@ fn render_create_module_windows(
                     records: Records::default(),
                     capabilities: Capabilities::READ | Capabilities::WRITE,
                 };
+
+                handle.send(Task::SaveData(module.clone()));
 
                 modules.insert(module);
 

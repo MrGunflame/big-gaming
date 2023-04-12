@@ -1,3 +1,4 @@
+use backend::Backend;
 use bevy::a11y::AccessibilityPlugin;
 
 use bevy::core_pipeline::CorePipelinePlugin;
@@ -18,8 +19,10 @@ use game_core::CorePlugins;
 use game_input::InputPlugin;
 use game_ui::{InterfaceState, UiPlugin};
 use plugins::camera::CameraPlugin;
+use tokio::runtime::Runtime;
 use world::EntityOptions;
 
+mod backend;
 mod picker;
 mod plugins;
 mod state;
@@ -33,7 +36,15 @@ fn main() {
     let loader = ModuleLoader::new(&archive);
     loader.load("../mods/core").unwrap();
 
+    let (backend, handle) = Backend::new();
+
+    std::thread::spawn(move || {
+        let rt = Runtime::new().unwrap();
+        rt.block_on(backend.run());
+    });
+
     App::new()
+        .insert_resource(handle)
         .insert_resource(archive)
         .insert_resource(WorldState::new())
         .add_plugin(CorePlugins)

@@ -21,6 +21,10 @@ impl Encode for Header {
         B: BufMut,
     {
         buf.put_slice(&MAGIC);
+
+        self.version.encode(&mut buf);
+        self.id.encode(&mut buf);
+        self.items.encode(&mut buf);
     }
 }
 
