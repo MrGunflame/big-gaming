@@ -1,12 +1,17 @@
 //! Module selectors
 
-use bevy::prelude::{Component, EventWriter, Query, ResMut, With};
-use bevy_egui::egui::{Align, CentralPanel, Layout, TextEdit};
+use std::path::PathBuf;
+
+use bevy::prelude::{Commands, Component, Entity, EventWriter, Query, ResMut, With};
+use bevy_egui::egui::{CentralPanel, TextEdit};
 use bevy_egui::EguiContext;
 use egui_extras::{Column, TableBuilder};
-use game_common::module::ModuleId;
+use game_common::module::{Module, ModuleId, Version};
 
-use super::{Modules, SpawnWindow};
+use crate::state::capabilities::Capabilities;
+use crate::state::module::{EditorModule, Modules, Records};
+
+use super::SpawnWindow;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ModuleWindowPlugin;
@@ -46,7 +51,7 @@ fn render_modules(
                     });
                 })
                 .body(|mut body| {
-                    for module in modules.modules.values() {
+                    for module in modules.iter() {
                         body.row(20.0, |mut row| {
                             row.col(|ui| {
                                 ui.label(module.module.id.to_string());
@@ -87,10 +92,11 @@ impl CreateModuleWindow {
 }
 
 fn render_create_module_windows(
-    modules: ResMut<Modules>,
-    mut windows: Query<(&mut EguiContext, &mut CreateModuleWindow)>,
+    mut commands: Commands,
+    mut modules: ResMut<Modules>,
+    mut windows: Query<(Entity, &mut EguiContext, &mut CreateModuleWindow)>,
 ) {
-    for (mut ctx, mut state) in &mut windows {
+    for (entity, mut ctx, mut state) in &mut windows {
         CentralPanel::default().show(ctx.get_mut(), |ui| {
             ui.heading("Create Module");
 
@@ -101,7 +107,21 @@ fn render_create_module_windows(
             ui.add(TextEdit::singleline(&mut state.name));
 
             if ui.button("OK").clicked() {
-                dbg!("tbd");
+                let module = EditorModule {
+                    module: Module {
+                        id: state.id,
+                        name: std::mem::take(&mut state.name),
+                        version: Version,
+                        dependencies: vec![],
+                    },
+                    path: PathBuf::from(format!("./{}", state.id)),
+                    records: Records::default(),
+                    capabilities: Capabilities::READ | Capabilities::WRITE,
+                };
+
+                modules.insert(module);
+
+                commands.entity(entity).despawn();
             }
         });
     }
