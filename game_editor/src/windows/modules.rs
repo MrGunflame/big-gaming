@@ -1,11 +1,12 @@
 //! Module selectors
 
-use bevy::prelude::{Component, Query, ResMut, With};
-use bevy_egui::egui::{Align, CentralPanel, Layout};
+use bevy::prelude::{Component, EventWriter, Query, ResMut, With};
+use bevy_egui::egui::{Align, CentralPanel, Layout, TextEdit};
 use bevy_egui::EguiContext;
 use egui_extras::{Column, TableBuilder};
+use game_common::module::ModuleId;
 
-use super::Modules;
+use super::{Modules, SpawnWindow};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ModuleWindowPlugin;
@@ -13,6 +14,8 @@ pub struct ModuleWindowPlugin;
 impl bevy::prelude::Plugin for ModuleWindowPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
         app.add_system(render_modules);
+
+        app.add_system(render_create_module_windows);
     }
 }
 
@@ -22,6 +25,7 @@ pub struct ModuleWindow;
 fn render_modules(
     modules: ResMut<Modules>,
     mut windows: Query<&mut EguiContext, With<ModuleWindow>>,
+    mut events: EventWriter<SpawnWindow>,
 ) {
     for mut ctx in &mut windows {
         CentralPanel::default().show(ctx.get_mut(), |ui| {
@@ -60,7 +64,45 @@ fn render_modules(
                     }
                 });
 
-            if ui.button("Create new").clicked() {}
+            if ui.button("Create new").clicked() {
+                events.send(SpawnWindow::CreateModule);
+            }
+        });
+    }
+}
+
+#[derive(Clone, Debug, Component)]
+pub struct CreateModuleWindow {
+    id: ModuleId,
+    name: String,
+}
+
+impl CreateModuleWindow {
+    pub fn new() -> Self {
+        Self {
+            id: ModuleId::random(),
+            name: String::new(),
+        }
+    }
+}
+
+fn render_create_module_windows(
+    modules: ResMut<Modules>,
+    mut windows: Query<(&mut EguiContext, &mut CreateModuleWindow)>,
+) {
+    for (mut ctx, mut state) in &mut windows {
+        CentralPanel::default().show(ctx.get_mut(), |ui| {
+            ui.heading("Create Module");
+
+            ui.label("ID");
+            ui.label(state.id.to_string());
+
+            ui.label("Name");
+            ui.add(TextEdit::singleline(&mut state.name));
+
+            if ui.button("OK").clicked() {
+                dbg!("tbd");
+            }
         });
     }
 }

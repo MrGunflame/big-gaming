@@ -21,6 +21,7 @@ mod records;
 #[derive(Clone, Debug)]
 pub enum SpawnWindow {
     Modules,
+    CreateModule,
     Templates,
     Record(Records, RecordId),
 }
@@ -55,6 +56,9 @@ fn spawn_window(
         match event {
             SpawnWindow::Modules => {
                 cmds.insert(modules::ModuleWindow);
+            }
+            SpawnWindow::CreateModule => {
+                cmds.insert(modules::CreateModuleWindow::new());
             }
             SpawnWindow::Templates => {
                 let form = forms.modules.entry(ModuleId::default()).or_default();
