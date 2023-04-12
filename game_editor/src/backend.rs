@@ -1,6 +1,6 @@
 use bevy::prelude::Resource;
-use game_data::record::{Record, RecordBody};
-use tokio::fs::{File, OpenOptions};
+use game_data::record::RecordBody;
+use tokio::fs::OpenOptions;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::{mpsc, oneshot};
 
@@ -38,7 +38,7 @@ async fn save_data(module: EditorModule) -> TaskResult<()> {
         .await?;
 
     let mut buffer = DataBuffer::new();
-    buffer.header.id = module.module.id;
+    buffer.header.module = module.module;
     buffer.items = module
         .records
         .iter()

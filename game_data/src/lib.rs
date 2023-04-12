@@ -2,7 +2,7 @@
 
 use bytes::{Buf, BufMut};
 use components::item::ItemRecord;
-use game_common::module::ModuleId;
+use game_common::module::{Module, ModuleId};
 use header::Header;
 
 pub mod components;
@@ -95,7 +95,7 @@ impl Decode for String {
     }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct DataBuffer {
     pub header: Header,
     pub items: Vec<ItemRecord>,
@@ -107,7 +107,8 @@ impl DataBuffer {
             header: Header {
                 version: 0,
                 items: 0,
-                id: ModuleId::random(),
+                // stub
+                module: Module::core(),
             },
             items: Vec::new(),
         }

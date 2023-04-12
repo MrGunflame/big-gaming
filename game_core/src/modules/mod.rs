@@ -36,7 +36,7 @@ impl Plugin for ModulePlugin {
                 }
 
                 modules.insert(ModuleData {
-                    id: data.header.id,
+                    id: data.header.module.id,
                     records,
                 });
             }
