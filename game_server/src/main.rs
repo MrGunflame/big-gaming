@@ -8,6 +8,7 @@ use game_core::CorePlugins;
 use plugins::ServerPlugins;
 use server::Server;
 use state::State;
+use tokio::runtime::Runtime;
 use tokio::time::{interval, MissedTickBehavior};
 use world::WorldPlugin;
 
@@ -25,28 +26,13 @@ mod world;
 #[command(author, version, about, long_about = None)]
 struct Args {}
 
-#[tokio::main]
-async fn main() {
+fn main() {
     game_core::logger::init();
 
     let state = State::new();
 
     let queue = state.queue.clone();
     let conns = state.conns.clone();
-
-    tokio::task::spawn(async move {
-        let server = match Server::new(state) {
-            Ok(s) => s,
-            Err(err) => {
-                tracing::error!("failed to run server: {}", err);
-                return;
-            }
-        };
-
-        if let Err(err) = server.await {
-            tracing::error!("failed to run server: {}", err);
-        }
-    });
 
     let archive = GameArchive::new();
 
@@ -65,7 +51,26 @@ async fn main() {
 
     app.insert_resource(game_physics::Pipeline::new());
 
-    let timestep = Duration::from_secs(1) / 20;
+    let rt = Runtime::new().unwrap();
+    rt.block_on(main_loop(app, state));
+}
+
+async fn main_loop(mut app: App, state: State) {
+    tokio::task::spawn(async move {
+        let server = match Server::new(state) {
+            Ok(s) => s,
+            Err(err) => {
+                tracing::error!("failed to run server: {}", err);
+                return;
+            }
+        };
+
+        if let Err(err) = server.await {
+            tracing::error!("failed to run server: {}", err);
+        }
+    });
+
+    let timestep = Duration::from_secs(1) / 1;
 
     let mut interval = interval(timestep.into());
     interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
