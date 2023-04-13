@@ -1,9 +1,10 @@
 //! Types and (de)serializiers for data files.
 
 use bytes::{Buf, BufMut};
-use components::item::ItemRecord;
-use game_common::module::{Module, ModuleId};
+use game_common::module::Module;
 use header::Header;
+use record::Record;
+use thiserror::Error;
 
 pub mod components;
 pub mod header;
@@ -24,6 +25,18 @@ pub trait Decode: Sized {
         B: Buf;
 }
 
+#[derive(Debug, Error)]
+pub enum Error {
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
+    #[error(transparent)]
+    EofError(#[from] EofError),
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Error)]
+#[error("eof error")]
+pub struct EofError;
+
 macro_rules! int_impls {
     ($($id:ident),*$(,)?) => {
         $(
@@ -37,15 +50,35 @@ macro_rules! int_impls {
             }
 
             impl Decode for $id {
-                type Error = std::io::Error;
+                type Error = EofError;
 
                 #[inline]
                 fn decode<B>(mut buf: B) -> Result<Self, Self::Error>
                     where B: Buf,
                 {
                     let mut bytes = [0; std::mem::size_of::<Self>()];
-                    buf.copy_to_slice(&mut bytes);
-                    Ok(Self::from_le_bytes(bytes))
+
+                    let mut start = std::mem::size_of::<Self>();
+                    while buf.remaining() > 0 && start < std::mem::size_of::<Self>() {
+                        let chunk = buf.chunk();
+                        let len = std::cmp::min(chunk.len(), std::mem::size_of::<Self>() - start);
+
+                        // SAFETY: Copy at most n bytes, which never exceeds the size_of::<Self>().
+                        unsafe {
+                            let dst = bytes.as_mut_ptr().add(start);
+                            std::ptr::copy_nonoverlapping(chunk.as_ptr(), dst, len);
+                        }
+
+                        buf.advance(len);
+                        start += len;
+                    }
+
+                    if start != std::mem::size_of::<Self>() {
+                        Err(EofError)
+                    } else {
+                        Ok(Self::from_le_bytes(bytes))
+                    }
+
                 }
             }
         )*
@@ -69,8 +102,14 @@ impl Encode for str {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Error)]
+pub enum StringError {
+    #[error(transparent)]
+    Eof(#[from] EofError),
+}
+
 impl Decode for String {
-    type Error = std::io::Error;
+    type Error = EofError;
 
     fn decode<B>(mut buf: B) -> Result<Self, Self::Error>
     where
@@ -82,7 +121,7 @@ impl Decode for String {
 
         while len > 0 {
             if buf.remaining() == 0 {
-                panic!();
+                return Err(EofError);
             }
 
             let chunk = buf.chunk();
@@ -98,19 +137,18 @@ impl Decode for String {
 #[derive(Clone, Debug)]
 pub struct DataBuffer {
     pub header: Header,
-    pub items: Vec<ItemRecord>,
+    pub records: Vec<Record>,
 }
 
 impl DataBuffer {
-    pub fn new() -> Self {
+    pub fn new(module: Module) -> Self {
         Self {
             header: Header {
                 version: 0,
                 items: 0,
-                // stub
-                module: Module::core(),
+                module,
             },
-            items: Vec::new(),
+            records: Vec::new(),
         }
     }
 }
@@ -120,17 +158,17 @@ impl Encode for DataBuffer {
     where
         B: BufMut,
     {
-        assert_eq!(self.header.items, self.items.len() as u32);
+        assert_eq!(self.header.items, self.records.len() as u32);
 
         self.header.encode(&mut buf);
-        for item in &self.items {
+        for item in &self.records {
             item.encode(&mut buf);
         }
     }
 }
 
 impl Decode for DataBuffer {
-    type Error = std::io::Error;
+    type Error = EofError;
 
     fn decode<B>(mut buf: B) -> Result<Self, Self::Error>
     where
@@ -138,12 +176,33 @@ impl Decode for DataBuffer {
     {
         let header = Header::decode(&mut buf)?;
 
-        let mut items = vec![];
+        let mut records = vec![];
         for _ in 0..header.items {
-            let item = ItemRecord::decode(&mut buf)?;
-            items.push(item);
+            let record = Record::decode(&mut buf)?;
+            records.push(record);
         }
 
-        Ok(Self { header, items })
+        Ok(Self { header, records })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Decode;
+
+    #[test]
+    fn test_int_decode() {
+        let buf = 1234u32.to_le_bytes();
+
+        assert_eq!(u32::decode(&buf[..]).unwrap(), 1234);
+
+        let buf = [0; 5];
+        assert_eq!(u32::decode(&buf[..]).unwrap(), 0);
+
+        let buf = [0; 0];
+        u32::decode(&buf[..]).unwrap_err();
+
+        let buf = [0; 2];
+        u32::decode(&buf[..]).unwrap_err();
     }
 }

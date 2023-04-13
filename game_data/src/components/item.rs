@@ -4,7 +4,7 @@ use bytes::{Buf, BufMut};
 use game_common::units::Mass;
 
 use crate::record::RecordId;
-use crate::{Decode, Encode};
+use crate::{Decode, Encode, EofError};
 
 #[derive(Clone, Debug)]
 pub struct ItemRecord {
@@ -26,7 +26,7 @@ impl Encode for ItemRecord {
 }
 
 impl Decode for ItemRecord {
-    type Error = std::io::Error;
+    type Error = EofError;
 
     fn decode<B>(mut buf: B) -> Result<Self, Self::Error>
     where

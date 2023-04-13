@@ -1,7 +1,7 @@
 use bytes::{Buf, BufMut};
 use game_common::units::Mass;
 
-use crate::{Decode, Encode};
+use crate::{Decode, Encode, EofError};
 
 impl Encode for Mass {
     #[inline]
@@ -14,7 +14,7 @@ impl Encode for Mass {
 }
 
 impl Decode for Mass {
-    type Error = std::io::Error;
+    type Error = EofError;
 
     #[inline]
     fn decode<B>(buf: B) -> Result<Self, Self::Error>

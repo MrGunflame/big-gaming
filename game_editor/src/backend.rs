@@ -111,7 +111,7 @@ pub struct WriteModule {
     pub records: Records,
 }
 
-pub type TaskResult<T> = Result<T, std::io::Error>;
+pub type TaskResult<T> = Result<T, game_data::Error>;
 
 #[derive(Debug, Resource)]
 pub struct Handle {

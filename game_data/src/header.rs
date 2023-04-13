@@ -1,7 +1,7 @@
 use bytes::{Buf, BufMut};
 use game_common::module::{Dependency, Module, ModuleId, Version};
 
-use crate::{Decode, Encode};
+use crate::{Decode, Encode, EofError};
 
 pub const MAGIC: [u8; 4] = [0, 0, 0, 0];
 
@@ -29,7 +29,7 @@ impl Encode for Header {
 }
 
 impl Decode for Header {
-    type Error = std::io::Error;
+    type Error = EofError;
 
     fn decode<B>(mut buf: B) -> Result<Self, Self::Error>
     where
@@ -60,7 +60,7 @@ impl Encode for ModuleId {
 }
 
 impl Decode for ModuleId {
-    type Error = std::io::Error;
+    type Error = EofError;
 
     fn decode<B>(mut buf: B) -> Result<Self, Self::Error>
     where
@@ -89,7 +89,7 @@ impl Encode for Module {
 }
 
 impl Decode for Module {
-    type Error = std::io::Error;
+    type Error = EofError;
 
     fn decode<B>(mut buf: B) -> Result<Self, Self::Error>
     where
@@ -129,7 +129,7 @@ impl Encode for Dependency {
 }
 
 impl Decode for Dependency {
-    type Error = std::io::Error;
+    type Error = EofError;
 
     fn decode<B>(mut buf: B) -> Result<Self, Self::Error>
     where

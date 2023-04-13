@@ -1,7 +1,7 @@
 use bytes::{Buf, BufMut};
 use game_common::module::ModuleId;
 
-use crate::{Decode, Encode};
+use crate::{Decode, Encode, EofError};
 
 #[derive(Clone, Debug)]
 pub struct Keyword {
@@ -32,7 +32,7 @@ impl Encode for Operation {
 }
 
 impl Decode for Operation {
-    type Error = std::io::Error;
+    type Error = EofError;
 
     fn decode<B>(buf: B) -> Result<Self, Self::Error>
     where

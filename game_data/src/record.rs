@@ -3,7 +3,7 @@ use std::fmt::{self, Display, Formatter, LowerHex};
 use bytes::{Buf, BufMut};
 
 use crate::components::item::ItemRecord;
-use crate::{Decode, Encode};
+use crate::{Decode, Encode, EofError};
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub struct RecordId(pub u32);
@@ -43,5 +43,45 @@ impl Decode for RecordId {
         B: Buf,
     {
         u32::decode(buf).map(Self)
+    }
+}
+
+impl Encode for Record {
+    fn encode<B>(&self, mut buf: B)
+    where
+        B: BufMut,
+    {
+        self.id.encode(&mut buf);
+        self.name.encode(&mut buf);
+
+        match &self.body {
+            RecordBody::Item(item) => {
+                1u8.encode(&mut buf);
+                item.encode(&mut buf);
+            }
+        };
+    }
+}
+
+impl Decode for Record {
+    type Error = EofError;
+
+    fn decode<B>(mut buf: B) -> Result<Self, Self::Error>
+    where
+        B: Buf,
+    {
+        let id = RecordId::decode(&mut buf)?;
+        let name = String::decode(&mut buf)?;
+        let kind = u8::decode(&mut buf)?;
+
+        let body = match kind {
+            0 => {
+                let item = ItemRecord::decode(&mut buf)?;
+                RecordBody::Item(item)
+            }
+            _ => panic!("bad record type"),
+        };
+
+        Ok(Self { id, name, body })
     }
 }
