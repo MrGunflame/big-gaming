@@ -1,5 +1,7 @@
 //! The template data editor.
 
+use std::path::PathBuf;
+
 use bevy::prelude::{Commands, Component, Entity, EventWriter, Query, ResMut};
 use bevy_egui::egui::panel::Side;
 use bevy_egui::egui::{CentralPanel, SidePanel, TextEdit};
@@ -204,6 +206,14 @@ fn render_record_windows(
                     if ui.add(TextEdit::singleline(&mut value)).changed() {
                         let val = value.parse::<u64>().unwrap_or_default();
                         item.value = val;
+                        changed = true;
+                    }
+
+                    ui.label("URI (relative)");
+
+                    let mut uri = item.uri.as_ref().to_str().unwrap().to_owned();
+                    if ui.add(TextEdit::singleline(&mut uri)).changed() {
+                        item.uri = Uri::from(PathBuf::from(uri));
                         changed = true;
                     }
                 }
