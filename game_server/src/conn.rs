@@ -8,7 +8,7 @@ use bevy::prelude::Resource;
 use game_common::entity::EntityId;
 use game_common::world::snapshot::EntityChange;
 use game_net::conn::{ConnectionHandle, ConnectionId};
-use game_net::snapshot::{Command, ConnectionMessage};
+use game_net::snapshot::{Command, CommandId, ConnectionMessage};
 use parking_lot::RwLock;
 
 use crate::net::state::ConnectionState;
@@ -36,6 +36,7 @@ impl Connections {
                         head: 0,
                     }),
                     handle,
+                    processed_messages: RwLock::new(Vec::new()),
                 }),
             },
         );
@@ -167,6 +168,16 @@ impl Connection {
             command: Command::SpawnHost { id },
         });
     }
+
+    pub fn push_proc_msg(&self, id: CommandId) {
+        let mut inner = self.inner.processed_messages.write();
+        inner.push(id);
+    }
+
+    pub fn take_proc_msg(&self) -> Vec<CommandId> {
+        let mut inner = self.inner.processed_messages.write();
+        std::mem::take(&mut *inner)
+    }
 }
 
 #[derive(Debug)]
@@ -174,6 +185,10 @@ struct ConnectionInner {
     id: ConnectionId,
     handle: ConnectionHandle,
     state: RwLock<ConnectionState>,
+    /// The messages handled from the peer in this tick.
+    ///
+    /// This buffer is filled in the read-commands phase and is drained in the send-snapshot phase.
+    processed_messages: RwLock<Vec<CommandId>>,
 }
 
 pub trait IntoDeltas {

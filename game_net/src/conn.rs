@@ -87,6 +87,7 @@ pub struct Connection {
     commands: Commands,
     buffer: FrameBuffer,
     write_queue: WriteQueue,
+    ack_list: AckList,
 }
 
 impl Connection {
@@ -124,6 +125,7 @@ impl Connection {
             },
             buffer: FrameBuffer::new(),
             write_queue: WriteQueue::new(),
+            ack_list: AckList::default(),
         };
 
         if mode == ConnectionMode::Connect {
@@ -177,6 +179,21 @@ impl Connection {
             let Some(msg) = msg else {
                 return self.shutdown();
             };
+
+            match &msg.command {
+                // The game loop has processed the commands.
+                // We can now acknowledge that we have processed the commands.
+                Command::ReceivedCommands { ids } => {
+                    for resp in ids {
+                        let seq = self.ack_list.list.remove(&resp.id).unwrap();
+                        // The last sequence acknowledged by the game loop.
+                        self.ack_list.ack_seq = seq;
+                    }
+
+                    continue;
+                }
+                _ => (),
+            }
 
             let msgid = msg.id.unwrap();
 
@@ -316,6 +333,7 @@ impl Connection {
     }
 
     fn handle_data(&mut self, header: Header, frames: Vec<Frame>) -> Poll<()> {
+        // TODO: Handle out-of-order / duplicates / drops
         self.next_peer_sequence += 1;
 
         let snapshot = self.start_time + header.timestamp.to_duration();
@@ -326,8 +344,13 @@ impl Connection {
                     continue;
                 };
 
+            let msgid = self.ack_list.next_cmd_id;
+            self.ack_list.next_cmd_id.0 += 1;
+
+            self.ack_list.list.insert(msgid, header.sequence);
+
             self.queue.push(ConnectionMessage {
-                id: None,
+                id: Some(msgid),
                 conn: self.id,
                 snapshot,
                 command: cmd,
@@ -486,7 +509,7 @@ impl Connection {
         if self.state == ConnectionState::Connected && tick.is_ack() {
             let _ = self.send(
                 Ack {
-                    sequence: self.next_peer_sequence,
+                    sequence: self.ack_list.ack_seq,
                 },
                 ConnectionState::Connected,
             );
@@ -895,4 +918,11 @@ impl WriteQueue {
     fn pop(&mut self) -> Option<Packet> {
         self.packets.pop_front()
     }
+}
+
+#[derive(Debug, Default)]
+pub struct AckList {
+    list: HashMap<CommandId, Sequence>,
+    next_cmd_id: CommandId,
+    ack_seq: Sequence,
 }

@@ -15,7 +15,7 @@ use game_common::world::source::{StreamingSource, StreamingSources, StreamingSta
 use game_common::world::world::WorldState;
 use game_common::world::CellId;
 use game_net::conn::ConnectionId;
-use game_net::snapshot::{Command, CommandQueue, ConnectionMessage};
+use game_net::snapshot::{Command, CommandQueue, ConnectionMessage, Response, Status};
 
 use crate::conn::Connections;
 use crate::entity::ServerEntityGenerator;
@@ -96,6 +96,10 @@ fn flush_command_queue(
             tracing::warn!("No snapshots yet");
             return;
         };
+
+        if let Some(id) = msg.id {
+            conn.push_proc_msg(id);
+        }
 
         match msg.command {
             Command::EntityCreate {
@@ -338,5 +342,24 @@ fn update_snapshots(
         }
 
         conn.push(changes, curr.creation());
+
+        // Acknowledge client commands.
+        let ids = conn.take_proc_msg();
+        if !ids.is_empty() {
+            conn.handle().send_cmd(ConnectionMessage {
+                id: None,
+                conn: conn.id(),
+                snapshot: Instant::now(),
+                command: Command::ReceivedCommands {
+                    ids: ids
+                        .into_iter()
+                        .map(|id| Response {
+                            id,
+                            status: Status::Received,
+                        })
+                        .collect(),
+                },
+            });
+        }
     }
 }

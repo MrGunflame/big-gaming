@@ -933,6 +933,8 @@ impl FrameType {
 
     /// The `FrameType` for the [`EntityHealth`] frame.
     pub const ENTITY_HEALTH: Self = Self(0x10);
+
+    pub const TRIGGER_ACTION: Self = Self(0x20);
 }
 
 impl TryFrom<u16> for FrameType {
