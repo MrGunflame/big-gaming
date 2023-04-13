@@ -58,7 +58,7 @@ macro_rules! int_impls {
                 {
                     let mut bytes = [0; std::mem::size_of::<Self>()];
 
-                    let mut start = std::mem::size_of::<Self>();
+                    let mut start = 0;
                     while buf.remaining() > 0 && start < std::mem::size_of::<Self>() {
                         let chunk = buf.chunk();
                         let len = std::cmp::min(chunk.len(), std::mem::size_of::<Self>() - start);
@@ -125,9 +125,12 @@ impl Decode for String {
             }
 
             let chunk = buf.chunk();
-            bytes.extend(chunk);
+            let end = std::cmp::min(chunk.len(), len);
 
-            len -= std::cmp::min(chunk.len(), len);
+            bytes.extend(&chunk[..end]);
+
+            len -= end;
+            buf.advance(end);
         }
 
         Ok(Self::from_utf8(bytes).unwrap())
@@ -193,7 +196,6 @@ mod tests {
     #[test]
     fn test_int_decode() {
         let buf = 1234u32.to_le_bytes();
-
         assert_eq!(u32::decode(&buf[..]).unwrap(), 1234);
 
         let buf = [0; 5];
