@@ -41,8 +41,8 @@ fn hanlde_backend_responses(
                 }
                 Err(err) => {
                     events.send(SpawnWindow::Error(format!(
-                        "Failed to load module: {}",
-                        err
+                        "Failed to load module: {} ({:?})",
+                        err, err,
                     )));
                 }
             },

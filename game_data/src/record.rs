@@ -1,6 +1,7 @@
 use std::fmt::{self, Display, Formatter, LowerHex};
 
 use bytes::{Buf, BufMut};
+use thiserror::Error;
 
 use crate::components::item::ItemRecord;
 use crate::{Decode, Encode, EofError};
@@ -64,7 +65,7 @@ impl Encode for Record {
 }
 
 impl Decode for Record {
-    type Error = EofError;
+    type Error = RecordError;
 
     fn decode<B>(mut buf: B) -> Result<Self, Self::Error>
     where
@@ -75,13 +76,21 @@ impl Decode for Record {
         let kind = u8::decode(&mut buf)?;
 
         let body = match kind {
-            0 => {
+            1 => {
                 let item = ItemRecord::decode(&mut buf)?;
                 RecordBody::Item(item)
             }
-            _ => panic!("bad record type"),
+            kind => return Err(RecordError::InvalidKind(kind)),
         };
 
         Ok(Self { id, name, body })
     }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Error)]
+pub enum RecordError {
+    #[error(transparent)]
+    EofError(#[from] EofError),
+    #[error("found invalid record kind: {0}")]
+    InvalidKind(u8),
 }

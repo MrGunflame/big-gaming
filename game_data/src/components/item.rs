@@ -22,6 +22,7 @@ impl Encode for ItemRecord {
         self.id.encode(&mut buf);
         self.name.encode(&mut buf);
         self.mass.encode(&mut buf);
+        self.value.encode(&mut buf);
     }
 }
 

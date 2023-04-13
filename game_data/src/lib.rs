@@ -3,7 +3,7 @@
 use bytes::{Buf, BufMut};
 use game_common::module::Module;
 use header::Header;
-use record::Record;
+use record::{Record, RecordError};
 use thiserror::Error;
 
 pub mod components;
@@ -31,11 +31,15 @@ pub enum Error {
     Io(#[from] std::io::Error),
     #[error(transparent)]
     EofError(#[from] EofError),
+    #[error(transparent)]
+    Record(#[from] RecordError),
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Error)]
-#[error("eof error")]
-pub struct EofError;
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Error)]
+#[error("eof error on {on}")]
+pub struct EofError {
+    pub on: &'static str,
+}
 
 macro_rules! int_impls {
     ($($id:ident),*$(,)?) => {
@@ -74,7 +78,9 @@ macro_rules! int_impls {
                     }
 
                     if start != std::mem::size_of::<Self>() {
-                        Err(EofError)
+                        Err(EofError {
+                            on: stringify!($id),
+                        })
                     } else {
                         Ok(Self::from_le_bytes(bytes))
                     }
@@ -121,7 +127,7 @@ impl Decode for String {
 
         while len > 0 {
             if buf.remaining() == 0 {
-                return Err(EofError);
+                return Err(EofError { on: "String" });
             }
 
             let chunk = buf.chunk();
@@ -171,7 +177,7 @@ impl Encode for DataBuffer {
 }
 
 impl Decode for DataBuffer {
-    type Error = EofError;
+    type Error = Error;
 
     fn decode<B>(mut buf: B) -> Result<Self, Self::Error>
     where
