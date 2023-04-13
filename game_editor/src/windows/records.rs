@@ -54,7 +54,7 @@ fn render_window(
         SidePanel::new(Side::Left, "form_selector").show(ctx.get_mut(), |ui| {
             ui.add(TextEdit::singleline(&mut window.state.search).hint_text("Search"));
 
-            for category in &[Category::Items] {
+            for category in &[Category::Items, Category::Objects, Category::Actors] {
                 ui.label(category.as_str());
             }
         });
@@ -124,13 +124,17 @@ fn render_window(
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 enum Category {
-    Items = 0,
+    Items,
+    Objects,
+    Actors,
 }
 
 impl Category {
     fn as_str(&self) -> &'static str {
         match self {
             Self::Items => "Items",
+            Self::Objects => "Objects",
+            Self::Actors => "Actors",
         }
     }
 }

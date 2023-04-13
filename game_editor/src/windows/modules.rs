@@ -23,6 +23,7 @@ impl bevy::prelude::Plugin for ModuleWindowPlugin {
 
         app.add_system(render_create_module_windows);
         app.add_system(render_load_module_windows);
+        app.add_system(render_edit_module_windows);
     }
 }
 
@@ -37,7 +38,7 @@ fn render_modules(
     for mut ctx in &mut windows {
         CentralPanel::default().show(ctx.get_mut(), |ui| {
             TableBuilder::new(ui)
-                .columns(Column::remainder().resizable(true), 4)
+                .columns(Column::remainder().resizable(true), 5)
                 .header(20.0, |mut header| {
                     header.col(|ui| {
                         ui.heading("ID");
@@ -50,6 +51,9 @@ fn render_modules(
                     });
                     header.col(|ui| {
                         ui.heading("Writable");
+                    });
+                    header.col(|ui| {
+                        ui.heading("Edit");
                     });
                 })
                 .body(|mut body| {
@@ -67,6 +71,11 @@ fn render_modules(
                             row.col(|ui| {
                                 ui.label(module.capabilities.write().to_string());
                             });
+                            row.col(|ui| {
+                                if ui.button("Edit").clicked() {
+                                    events.send(SpawnWindow::EditModule(module.clone()));
+                                }
+                            });
                         });
                     }
                 });
@@ -77,6 +86,45 @@ fn render_modules(
 
             if ui.button("Import").clicked() {
                 events.send(SpawnWindow::ImportModule);
+            }
+        });
+    }
+}
+
+#[derive(Clone, Debug, Component)]
+pub struct EditModuleWindow {
+    pub module: EditorModule,
+}
+
+fn render_edit_module_windows(
+    mut commands: Commands,
+    mut windows: Query<(Entity, &mut EguiContext, &mut EditModuleWindow)>,
+    mut modules: ResMut<Modules>,
+) {
+    for (entity, mut ctx, mut state) in &mut windows {
+        CentralPanel::default().show(ctx.get_mut(), |ui| {
+            ui.heading("Edit Module");
+
+            ui.label("ID");
+            ui.label(state.module.module.id.to_string());
+
+            ui.label("Name");
+            ui.add(TextEdit::singleline(&mut state.module.module.name));
+
+            ui.label("Version");
+            ui.label("TBD");
+
+            ui.label("Dependencies");
+            ui.label("TBD");
+
+            if ui.button("Ok").clicked() {
+                modules.insert(state.module.clone());
+
+                commands.entity(entity).despawn();
+            }
+
+            if ui.button("Cancel").clicked() {
+                commands.entity(entity).despawn();
             }
         });
     }

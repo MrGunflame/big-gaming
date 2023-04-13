@@ -4,7 +4,7 @@ use bevy::window::{Window, WindowRef};
 use game_common::module::ModuleId;
 use game_data::record::RecordId;
 
-use crate::state::module::Modules;
+use crate::state::module::{EditorModule, Modules};
 use crate::state::record::Records;
 
 use self::error::ErrorWindowsPlugin;
@@ -18,6 +18,7 @@ mod records;
 #[derive(Clone, Debug)]
 pub enum SpawnWindow {
     Modules,
+    EditModule(EditorModule),
     CreateModule,
     ImportModule,
     Templates,
@@ -53,6 +54,11 @@ fn spawn_window(mut events: EventReader<SpawnWindow>, mut commands: Commands) {
         match event {
             SpawnWindow::Modules => {
                 cmds.insert(modules::ModuleWindow);
+            }
+            SpawnWindow::EditModule(module) => {
+                cmds.insert(modules::EditModuleWindow {
+                    module: module.clone(),
+                });
             }
             SpawnWindow::CreateModule => {
                 cmds.insert(modules::CreateModuleWindow::new());
