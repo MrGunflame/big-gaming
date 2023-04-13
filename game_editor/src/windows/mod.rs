@@ -19,6 +19,7 @@ mod records;
 pub enum SpawnWindow {
     Modules,
     CreateModule,
+    ImportModule,
     Templates,
     Record(ModuleId, RecordId),
     CreateRecord,
@@ -55,6 +56,9 @@ fn spawn_window(mut events: EventReader<SpawnWindow>, mut commands: Commands) {
             }
             SpawnWindow::CreateModule => {
                 cmds.insert(modules::CreateModuleWindow::new());
+            }
+            SpawnWindow::ImportModule => {
+                cmds.insert(modules::LoadModuleWindow::default());
             }
             SpawnWindow::Templates => {
                 cmds.insert(records::RecordsWindow::new());

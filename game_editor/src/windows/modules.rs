@@ -8,10 +8,9 @@ use bevy_egui::EguiContext;
 use egui_extras::{Column, TableBuilder};
 use game_common::module::{Module, ModuleId, Version};
 
-use crate::backend::{Handle, Task, WriteModule};
+use crate::backend::{Handle, Task};
 use crate::state::capabilities::Capabilities;
 use crate::state::module::{EditorModule, Modules};
-use crate::state::record::Records;
 
 use super::SpawnWindow;
 
@@ -23,6 +22,7 @@ impl bevy::prelude::Plugin for ModuleWindowPlugin {
         app.add_system(render_modules);
 
         app.add_system(render_create_module_windows);
+        app.add_system(render_load_module_windows);
     }
 }
 
@@ -73,6 +73,10 @@ fn render_modules(
 
             if ui.button("Create new").clicked() {
                 events.send(SpawnWindow::CreateModule);
+            }
+
+            if ui.button("Import").clicked() {
+                events.send(SpawnWindow::ImportModule);
             }
         });
     }
@@ -128,7 +132,7 @@ fn render_create_module_windows(
     }
 }
 
-#[derive(Clone, Debug, Component)]
+#[derive(Clone, Debug, Default, Component)]
 pub struct LoadModuleWindow {
     path: String,
     writable: bool,
@@ -136,8 +140,8 @@ pub struct LoadModuleWindow {
 
 fn render_load_module_windows(
     mut commands: Commands,
-    mut modules: ResMut<Modules>,
     mut windows: Query<(Entity, &mut EguiContext, &mut LoadModuleWindow)>,
+    mut handle: ResMut<Handle>,
 ) {
     for (entity, mut ctx, mut state) in &mut windows {
         CentralPanel::default().show(ctx.get_mut(), |ui| {
@@ -148,7 +152,10 @@ fn render_load_module_windows(
 
             ui.checkbox(&mut state.writable, "Writable");
 
-            if ui.button("Ok").clicked() {}
+            if ui.button("Ok").clicked() {
+                handle.send(Task::ReadModule(state.path.clone().into()));
+                commands.entity(entity).despawn();
+            }
         });
     }
 }
