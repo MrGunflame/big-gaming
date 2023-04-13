@@ -1,5 +1,7 @@
 //! Types and (de)serializiers for data files.
 
+use std::mem::MaybeUninit;
+
 use bytes::{Buf, BufMut};
 use game_common::module::Module;
 use header::Header;
@@ -36,9 +38,11 @@ pub enum Error {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Error)]
-#[error("eof error on {on}")]
+#[error("unexpected eof reading {on}: consumed {consumed} by exepected {expected} bytes")]
 pub struct EofError {
     pub on: &'static str,
+    pub consumed: usize,
+    pub expected: usize,
 }
 
 macro_rules! int_impls {
@@ -46,10 +50,10 @@ macro_rules! int_impls {
         $(
             impl Encode for $id {
                 #[inline]
-                fn encode<B>(&self, mut buf: B)
+                fn encode<B>(&self, buf: B)
                     where B: BufMut,
                 {
-                    buf.put_slice(&self.to_le_bytes());
+                    self.to_le_bytes().encode(buf);
                 }
             }
 
@@ -57,34 +61,16 @@ macro_rules! int_impls {
                 type Error = EofError;
 
                 #[inline]
-                fn decode<B>(mut buf: B) -> Result<Self, Self::Error>
+                fn decode<B>(buf: B) -> Result<Self, Self::Error>
                     where B: Buf,
                 {
-                    let mut bytes = [0; std::mem::size_of::<Self>()];
+                    let bytes = <[u8; std::mem::size_of::<Self>()]>::decode(buf).map_err(|err| EofError {
+                        on: stringify!($id),
+                        consumed: err.consumed,
+                        expected: err.expected,
+                    })?;
 
-                    let mut start = 0;
-                    while buf.remaining() > 0 && start < std::mem::size_of::<Self>() {
-                        let chunk = buf.chunk();
-                        let len = std::cmp::min(chunk.len(), std::mem::size_of::<Self>() - start);
-
-                        // SAFETY: Copy at most n bytes, which never exceeds the size_of::<Self>().
-                        unsafe {
-                            let dst = bytes.as_mut_ptr().add(start);
-                            std::ptr::copy_nonoverlapping(chunk.as_ptr(), dst, len);
-                        }
-
-                        buf.advance(len);
-                        start += len;
-                    }
-
-                    if start != std::mem::size_of::<Self>() {
-                        Err(EofError {
-                            on: stringify!($id),
-                        })
-                    } else {
-                        Ok(Self::from_le_bytes(bytes))
-                    }
-
+                    Ok(Self::from_le_bytes(bytes))
                 }
             }
         )*
@@ -127,7 +113,11 @@ impl Decode for String {
 
         while len > 0 {
             if buf.remaining() == 0 {
-                return Err(EofError { on: "String" });
+                return Err(EofError {
+                    on: "String",
+                    consumed: 0,
+                    expected: 0,
+                });
             }
 
             let chunk = buf.chunk();
@@ -140,6 +130,60 @@ impl Decode for String {
         }
 
         Ok(Self::from_utf8(bytes).unwrap())
+    }
+}
+
+impl<const N: usize> Encode for [u8; N] {
+    #[inline]
+    fn encode<B>(&self, mut buf: B)
+    where
+        B: BufMut,
+    {
+        buf.put_slice(self);
+    }
+}
+
+impl<const N: usize> Decode for [u8; N] {
+    type Error = EofError;
+
+    #[inline]
+    fn decode<B>(mut buf: B) -> Result<Self, Self::Error>
+    where
+        B: Buf,
+    {
+        // SAFETY: An uninitialized `[MaybeUninit<u8>; N]` is always valid.
+        let mut bytes: [MaybeUninit<u8>; N] = unsafe { MaybeUninit::uninit().assume_init() };
+
+        let mut cursor = 0;
+
+        while buf.remaining() > 0 && cursor < N {
+            // SAFETY: `[MaybeUninit<u8>]` and `[u8]` have the same layout.
+            let chunk: &[MaybeUninit<u8>] =
+                unsafe { std::mem::transmute::<&[u8], &[MaybeUninit<u8>]>(buf.chunk()) };
+
+            let count = std::cmp::min(chunk.len(), N - cursor);
+
+            // SAFETY: Copy at most `start - N` bytes which never overflows `bytes` of size `N`.
+            unsafe {
+                let src = chunk.as_ptr();
+                let dst = bytes.as_mut_ptr().add(cursor);
+
+                std::ptr::copy_nonoverlapping(src, dst, count);
+            }
+
+            buf.advance(count);
+            cursor += count;
+        }
+
+        if cursor != N {
+            Err(EofError {
+                on: "[u8; N]",
+                consumed: cursor,
+                expected: N,
+            })
+        } else {
+            Ok(unsafe { std::ptr::read(bytes.as_ptr() as *const [u8; N]) })
+        }
     }
 }
 
@@ -197,7 +241,31 @@ impl Decode for DataBuffer {
 
 #[cfg(test)]
 mod tests {
-    use super::Decode;
+
+    use super::{Decode, Encode};
+
+    #[test]
+    fn test_array_decode() {
+        let buf = [0, 1, 2, 3, 4];
+        assert_eq!(<[u8; 5]>::decode(&buf[..]).unwrap(), [0, 1, 2, 3, 4]);
+
+        let buf = [0, 1, 2];
+        <[u8; 5]>::decode(&buf[..]).unwrap_err();
+
+        let buf = [0, 1, 2, 3, 4, 5, 6, 7];
+        assert_eq!(<[u8; 5]>::decode(&buf[..]).unwrap(), [0, 1, 2, 3, 4]);
+    }
+
+    #[test]
+    fn test_array_reflexive() {
+        const LEN: usize = 8;
+        let arr: [u8; LEN] = [54, 65, 97, 246, 97, 0, 56, 183];
+
+        let mut buf = Vec::new();
+        arr.encode(&mut buf);
+
+        assert_eq!(arr, <[u8; LEN]>::decode(&buf[..]).unwrap());
+    }
 
     #[test]
     fn test_int_decode() {

@@ -62,12 +62,16 @@ impl Encode for ModuleId {
 impl Decode for ModuleId {
     type Error = EofError;
 
-    fn decode<B>(mut buf: B) -> Result<Self, Self::Error>
+    fn decode<B>(buf: B) -> Result<Self, Self::Error>
     where
         B: Buf,
     {
-        let mut bytes = [0; 16];
-        buf.copy_to_slice(&mut bytes);
+        let bytes = <[u8; 16]>::decode(buf).map_err(|err| EofError {
+            on: "ModuleId",
+            consumed: err.consumed,
+            expected: err.expected,
+        })?;
+
         Ok(Self::from_bytes(bytes))
     }
 }
