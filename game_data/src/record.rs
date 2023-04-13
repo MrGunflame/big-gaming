@@ -27,6 +27,56 @@ pub enum RecordBody {
     Item(ItemRecord),
 }
 
+impl RecordBody {
+    pub const fn kind(&self) -> RecordKind {
+        match self {
+            Self::Item(_) => RecordKind::Item,
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum RecordKind {
+    Item,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Error)]
+pub enum RecordKindError {
+    #[error("failed to decode record kind byte: {0}")]
+    Byte(<u8 as Decode>::Error),
+    #[error("found invalid record kind: {0}")]
+    InvalidKind(u8),
+}
+
+impl Encode for RecordKind {
+    fn encode<B>(&self, buf: B)
+    where
+        B: BufMut,
+    {
+        let byte: u8 = match self {
+            Self::Item => 1,
+        };
+
+        byte.encode(buf);
+    }
+}
+
+impl Decode for RecordKind {
+    type Error = RecordKindError;
+
+    fn decode<B>(buf: B) -> Result<Self, Self::Error>
+    where
+        B: Buf,
+    {
+        let byte = u8::decode(buf).map_err(RecordKindError::Byte)?;
+
+        match byte {
+            1 => Ok(Self::Item),
+            _ => Err(RecordKindError::InvalidKind(byte)),
+        }
+    }
+}
+
 impl Encode for RecordId {
     fn encode<B>(&self, buf: B)
     where
@@ -73,14 +123,13 @@ impl Decode for Record {
     {
         let id = RecordId::decode(&mut buf).map_err(RecordError::Id)?;
         let name = String::decode(&mut buf).map_err(RecordError::Name)?;
-        let kind = u8::decode(&mut buf).map_err(RecordError::Kind)?;
+        let kind = RecordKind::decode(&mut buf).map_err(RecordError::Kind)?;
 
         let body = match kind {
-            1 => {
+            RecordKind::Item => {
                 let item = ItemRecord::decode(&mut buf)?;
                 RecordBody::Item(item)
             }
-            kind => return Err(RecordError::InvalidKind(kind)),
         };
 
         Ok(Self { id, name, body })
@@ -94,9 +143,7 @@ pub enum RecordError {
     #[error("failed to decode record name: {0}")]
     Name(<String as Decode>::Error),
     #[error("failed to decode record kind: {0}")]
-    Kind(<u8 as Decode>::Error),
-    #[error("found invalid record kind: {0}")]
-    InvalidKind(u8),
+    Kind(<RecordKind as Decode>::Error),
     #[error("failed to decode item record: {0}")]
     Item(#[from] <ItemRecord as Decode>::Error),
 }
