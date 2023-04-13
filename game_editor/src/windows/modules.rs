@@ -127,3 +127,28 @@ fn render_create_module_windows(
         });
     }
 }
+
+#[derive(Clone, Debug, Component)]
+pub struct LoadModuleWindow {
+    path: String,
+    writable: bool,
+}
+
+fn render_load_module_windows(
+    mut commands: Commands,
+    mut modules: ResMut<Modules>,
+    mut windows: Query<(Entity, &mut EguiContext, &mut LoadModuleWindow)>,
+) {
+    for (entity, mut ctx, mut state) in &mut windows {
+        CentralPanel::default().show(ctx.get_mut(), |ui| {
+            ui.heading("Load module");
+
+            ui.label("Local Path");
+            ui.add(TextEdit::singleline(&mut state.path));
+
+            ui.checkbox(&mut state.writable, "Writable");
+
+            if ui.button("Ok").clicked() {}
+        });
+    }
+}

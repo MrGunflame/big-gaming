@@ -7,9 +7,11 @@ use game_data::record::RecordId;
 use crate::state::module::Modules;
 use crate::state::record::Records;
 
+use self::error::ErrorWindowsPlugin;
 use self::modules::ModuleWindowPlugin;
 use self::records::RecordsWindowPlugin;
 
+mod error;
 mod modules;
 mod records;
 
@@ -20,6 +22,7 @@ pub enum SpawnWindow {
     Templates,
     Record(ModuleId, RecordId),
     CreateRecord,
+    Error(String),
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -28,6 +31,7 @@ pub struct WindowPlugin;
 impl bevy::prelude::Plugin for WindowPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
         app.add_event::<SpawnWindow>();
+        app.add_plugin(ErrorWindowsPlugin);
         app.add_plugin(RecordsWindowPlugin);
         app.add_plugin(ModuleWindowPlugin);
 
@@ -63,6 +67,11 @@ fn spawn_window(mut events: EventReader<SpawnWindow>, mut commands: Commands) {
             }
             SpawnWindow::CreateRecord => {
                 cmds.insert(records::CreateRecordWindow::new());
+            }
+            SpawnWindow::Error(text) => {
+                cmds.insert(error::ErrorWindow {
+                    text: text.to_owned(),
+                });
             }
         }
 

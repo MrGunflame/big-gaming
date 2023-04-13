@@ -1,4 +1,4 @@
-use bevy::prelude::{EventWriter, Query, Res, With};
+use bevy::prelude::{EventWriter, Query, Res, ResMut, With};
 use bevy::window::PrimaryWindow;
 use bevy_egui::egui::{Align2, Area, Vec2};
 use bevy_egui::EguiContext;
@@ -13,7 +13,7 @@ pub fn render_main_bar(
     mut events: EventWriter<SpawnWindow>,
     modules: Res<Modules>,
     records: Res<Records>,
-    handle: Res<Handle>,
+    mut handle: ResMut<Handle>,
 ) {
     let mut ctx = windows.single_mut();
 
