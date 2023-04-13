@@ -1,5 +1,4 @@
 use bevy::prelude::Resource;
-use game_data::record::RecordBody;
 use tokio::fs::OpenOptions;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::{mpsc, oneshot};
@@ -7,6 +6,7 @@ use tokio::sync::{mpsc, oneshot};
 use game_data::{DataBuffer, Encode};
 
 use crate::state::module::EditorModule;
+use crate::state::record::Records;
 
 pub struct Backend {
     rx: mpsc::Receiver<(Task, oneshot::Sender<TaskResult<()>>)>,
@@ -22,7 +22,7 @@ impl Backend {
     pub async fn run(mut self) {
         while let Some((task, tx)) = self.rx.recv().await {
             let res = match task {
-                Task::SaveData(module) => save_data(module).await,
+                Task::WriteModule(module) => save_data(module).await,
             };
 
             let _ = tx.send(res);
@@ -30,15 +30,16 @@ impl Backend {
     }
 }
 
-async fn save_data(module: EditorModule) -> TaskResult<()> {
+async fn save_data(payload: WriteModule) -> TaskResult<()> {
     let mut file = OpenOptions::new()
         .write(true)
         .create(true)
-        .open(module.path)
+        .open(payload.module.path)
         .await?;
 
-    let mut buffer = DataBuffer::new();
-    buffer.header.module = module.module;
+    let id = payload.module.module.id;
+
+    let mut buffer = DataBuffer::new(payload.module.module);
     // buffer.items = module
     //     .records
     //     .iter()
@@ -46,6 +47,13 @@ async fn save_data(module: EditorModule) -> TaskResult<()> {
     //         RecordBody::Item(r) => r,
     //     })
     //     .collect();
+
+    buffer.records = payload
+        .records
+        .iter()
+        .filter(|(m, _)| *m == id)
+        .map(|(_, record)| record.clone())
+        .collect();
 
     let mut buf = Vec::new();
     buffer.encode(&mut buf);
@@ -56,7 +64,13 @@ async fn save_data(module: EditorModule) -> TaskResult<()> {
 
 #[derive(Clone, Debug)]
 pub enum Task {
-    SaveData(EditorModule),
+    WriteModule(WriteModule),
+}
+
+#[derive(Clone, Debug)]
+pub struct WriteModule {
+    pub module: EditorModule,
+    pub records: Records,
 }
 
 pub type TaskResult<T> = Result<T, std::io::Error>;
