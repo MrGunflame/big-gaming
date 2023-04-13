@@ -61,7 +61,8 @@ fn main() {
         .add_plugin(WinitPlugin)
         .add_plugin(CameraPlugin)
         .add_plugin(InputPlugin)
-        .add_plugin(UiPlugin)
+        .add_plugin(bevy_egui::EguiPlugin)
+        // .add_plugin(UiPlugin)
         .add_startup_system(setup)
         .add_system(world::axes::render_axes)
         .add_plugin(windows::WindowPlugin)
@@ -73,9 +74,9 @@ fn setup(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    mut interface: ResMut<InterfaceState>,
+    // mut interface: ResMut<InterfaceState>,
 ) {
-    interface.push(ui::SceneHierarchy::default());
+    // interface.push(ui::SceneHierarchy::default());
 
     // plane
     commands.spawn(PbrBundle {

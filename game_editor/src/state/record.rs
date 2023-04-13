@@ -19,6 +19,10 @@ impl Records {
         }
     }
 
+    pub fn len(&self) -> usize {
+        self.records.len()
+    }
+
     pub fn get(&self, module: ModuleId, id: RecordId) -> Option<&Record> {
         self.records.get(&(module, id))
     }
