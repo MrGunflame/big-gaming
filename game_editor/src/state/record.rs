@@ -28,11 +28,16 @@ impl Records {
     }
 
     pub fn insert(&mut self, module: ModuleId, record: Record) {
+        if record.id.0 >= self.next_id {
+            self.next_id = record.id.0.checked_add(1).unwrap();
+        }
+
         self.records.insert((module, record.id), record);
     }
 
     pub fn push(&mut self, module: ModuleId, mut record: Record) -> RecordId {
         let id = RecordId(self.next_id);
+        self.next_id = self.next_id.checked_add(1).unwrap();
 
         record.id = id;
         self.records.insert((module, id), record);
