@@ -4,15 +4,10 @@ use bytes::{Buf, BufMut};
 use game_common::units::Mass;
 use thiserror::Error;
 
-use crate::record::RecordId;
 use crate::{Decode, Encode};
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Error)]
 pub enum ItemRecordError {
-    #[error("failed to decode record id: {0}")]
-    Id(<RecordId as Decode>::Error),
-    #[error("failed to decode record name: {0}")]
-    Name(<String as Decode>::Error),
     #[error("failed to decode item mass: {0}")]
     Mass(<Mass as Decode>::Error),
     #[error("failed to decode item value: {0}")]
@@ -21,8 +16,6 @@ pub enum ItemRecordError {
 
 #[derive(Clone, Debug)]
 pub struct ItemRecord {
-    pub id: RecordId,
-    pub name: String,
     pub mass: Mass,
     pub value: u64,
 }
@@ -32,8 +25,6 @@ impl Encode for ItemRecord {
     where
         B: BufMut,
     {
-        self.id.encode(&mut buf);
-        self.name.encode(&mut buf);
         self.mass.encode(&mut buf);
         self.value.encode(&mut buf);
     }
@@ -46,17 +37,10 @@ impl Decode for ItemRecord {
     where
         B: Buf,
     {
-        let id = RecordId::decode(&mut buf).map_err(ItemRecordError::Id)?;
-        let name = String::decode(&mut buf).map_err(ItemRecordError::Name)?;
         let mass = Mass::decode(&mut buf).map_err(ItemRecordError::Mass)?;
         let value = u64::decode(&mut buf).map_err(ItemRecordError::Value)?;
 
-        Ok(Self {
-            id,
-            name,
-            mass,
-            value,
-        })
+        Ok(Self { mass, value })
     }
 }
 

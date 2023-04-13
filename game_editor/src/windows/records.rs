@@ -2,7 +2,7 @@
 
 use bevy::prelude::{Commands, Component, Entity, EventWriter, Query, ResMut};
 use bevy_egui::egui::panel::Side;
-use bevy_egui::egui::{Align, CentralPanel, Layout, SidePanel, TextEdit};
+use bevy_egui::egui::{CentralPanel, SidePanel, TextEdit};
 use bevy_egui::EguiContext;
 use egui_extras::{Column, TableBuilder};
 use game_common::module::ModuleId;
@@ -248,8 +248,6 @@ fn render_create_record_windows(
                         id: RecordId(0),
                         name: String::new(),
                         body: RecordBody::Item(ItemRecord {
-                            id: RecordId(0),
-                            name: String::new(),
                             mass: Mass::new(),
                             value: 0,
                         }),
