@@ -4,7 +4,7 @@ use bytes::{Buf, BufMut};
 use thiserror::Error;
 
 use crate::components::item::ItemRecord;
-use crate::{Decode, Encode, EofError};
+use crate::{Decode, Encode};
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub struct RecordId(pub u32);
@@ -71,9 +71,9 @@ impl Decode for Record {
     where
         B: Buf,
     {
-        let id = RecordId::decode(&mut buf)?;
-        let name = String::decode(&mut buf)?;
-        let kind = u8::decode(&mut buf)?;
+        let id = RecordId::decode(&mut buf).map_err(RecordError::Id)?;
+        let name = String::decode(&mut buf).map_err(RecordError::Name)?;
+        let kind = u8::decode(&mut buf).map_err(RecordError::Kind)?;
 
         let body = match kind {
             1 => {
@@ -89,8 +89,14 @@ impl Decode for Record {
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Error)]
 pub enum RecordError {
-    #[error(transparent)]
-    EofError(#[from] EofError),
+    #[error("failed to decode record id: {0}")]
+    Id(<RecordId as Decode>::Error),
+    #[error("failed to decode record name: {0}")]
+    Name(<String as Decode>::Error),
+    #[error("failed to decode record kind: {0}")]
+    Kind(<u8 as Decode>::Error),
     #[error("found invalid record kind: {0}")]
     InvalidKind(u8),
+    #[error("failed to decode item record: {0}")]
+    Item(#[from] <ItemRecord as Decode>::Error),
 }
