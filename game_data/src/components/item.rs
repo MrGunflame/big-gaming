@@ -4,6 +4,7 @@ use bytes::{Buf, BufMut};
 use game_common::units::Mass;
 use thiserror::Error;
 
+use crate::uri::Uri;
 use crate::{Decode, Encode};
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Error)]
@@ -12,12 +13,15 @@ pub enum ItemRecordError {
     Mass(<Mass as Decode>::Error),
     #[error("failed to decode item value: {0}")]
     Value(<u64 as Decode>::Error),
+    #[error("failed to decode tem uri: {0}")]
+    Uri(<Uri as Decode>::Error),
 }
 
 #[derive(Clone, Debug)]
 pub struct ItemRecord {
     pub mass: Mass,
     pub value: u64,
+    pub uri: Uri,
 }
 
 impl Encode for ItemRecord {
@@ -27,6 +31,7 @@ impl Encode for ItemRecord {
     {
         self.mass.encode(&mut buf);
         self.value.encode(&mut buf);
+        self.uri.encode(&mut buf);
     }
 }
 
@@ -39,8 +44,9 @@ impl Decode for ItemRecord {
     {
         let mass = Mass::decode(&mut buf).map_err(ItemRecordError::Mass)?;
         let value = u64::decode(&mut buf).map_err(ItemRecordError::Value)?;
+        let uri = Uri::decode(&mut buf).map_err(ItemRecordError::Uri)?;
 
-        Ok(Self { mass, value })
+        Ok(Self { mass, value, uri })
     }
 }
 

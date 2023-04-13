@@ -12,6 +12,7 @@ pub mod components;
 pub mod header;
 pub mod loader;
 pub mod record;
+pub mod uri;
 
 pub trait Encode {
     fn encode<B>(&self, buf: B)

@@ -9,6 +9,7 @@ use game_common::module::ModuleId;
 use game_common::units::Mass;
 use game_data::components::item::ItemRecord;
 use game_data::record::{Record, RecordBody, RecordId};
+use game_data::uri::Uri;
 
 use crate::state::module::Modules;
 use crate::state::record::Records;
@@ -266,6 +267,7 @@ fn render_create_record_windows(
                         body: RecordBody::Item(ItemRecord {
                             mass: Mass::new(),
                             value: 0,
+                            uri: Uri::new(),
                         }),
                     },
                 );
