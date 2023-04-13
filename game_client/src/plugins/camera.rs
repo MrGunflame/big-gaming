@@ -25,8 +25,8 @@ impl Plugin for CameraPlugin {
             .add_system(events::toggle_camera_position)
             .insert_resource(CameraSettings::default())
             // .add_system(crate::systems::input::interact_target)
-            .add_system(synchronize_player_camera.after(MovementSet::Apply))
-            .add_system(head_bumping.after(synchronize_player_camera));
+            .add_system(synchronize_player_camera.after(MovementSet::Apply));
+        // .add_system(head_bumping.after(synchronize_player_camera));
         // .add_system(toggle_camera_position)
         // .add_system(adjust_camera_distance);
     }
@@ -80,31 +80,31 @@ fn synchronize_player_camera(
     }
 }
 
-/// Apply a periodic head bumping effect while the player is moving.
-fn head_bumping(
-    time: Res<Time>,
-    settings: Res<CameraSettings>,
-    players: Query<(&Transform, &MovementSpeed), (With<HostPlayer>, With<Movement>)>,
-    mut cameras: Query<(&mut Transform, &CameraMode), Without<HostPlayer>>,
-) {
-    // Only apply head bumping when the player is moving.
-    let Ok((player, speed)) = players.get_single() else {
-        return;
-    };
+// / Apply a periodic head bumping effect while the player is moving.
+// fn head_bumping(
+//     time: Res<Time>,
+//     settings: Res<CameraSettings>,
+//     players: Query<(&Transform, &MovementSpeed), (With<HostPlayer>, With<Movement>)>,
+//     mut cameras: Query<(&mut Transform, &CameraMode), Without<HostPlayer>>,
+// ) {
+//     // Only apply head bumping when the player is moving.
+//     let Ok((player, speed)) = players.get_single() else {
+//         return;
+//     };
 
-    let (mut camera, position) = cameras.single_mut();
+//     let (mut camera, position) = cameras.single_mut();
 
-    if matches!(position, CameraMode::ThirdPerson { distance: _ }) {
-        return;
-    }
+//     if matches!(position, CameraMode::ThirdPerson { distance: _ }) {
+//         return;
+//     }
 
-    // Relative distance between current and next frame.
-    // let distance = player.translation.distance(movement.desination).abs();
-    let distance = speed.0;
+//     // Relative distance between current and next frame.
+//     // let distance = player.translation.distance(movement.desination).abs();
+//     let distance = speed.0;
 
-    // F
-    let sc = time.elapsed_seconds() * PI * 2.0 * distance;
-    let offset = sc.sin() * 0.05 * settings.head_bumping;
+//     // F
+//     let sc = time.elapsed_seconds() * PI * 2.0 * distance;
+//     let offset = sc.sin() * 0.05 * settings.head_bumping;
 
-    camera.translation += Vec3::new(0.0, offset, 0.0);
-}
+//     camera.translation += Vec3::new(0.0, offset, 0.0);
+// }

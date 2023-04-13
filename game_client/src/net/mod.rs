@@ -199,7 +199,6 @@ fn flush_command_queue(
             Command::Connected => (),
             Command::Disconnected => (),
             Command::ReceivedCommands { ids } => {
-                dbg!(&ids);
                 let mut ov = conn.overrides().write();
                 for id in ids {
                     ov.remove(id.id);
