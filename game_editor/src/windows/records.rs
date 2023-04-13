@@ -145,14 +145,19 @@ struct State {
 pub struct RecordWindow {
     pub module: ModuleId,
     pub id: RecordId,
+    pub record: Option<Record>,
 }
 
 fn render_record_windows(
-    mut windows: Query<(&mut EguiContext, &mut RecordWindow)>,
+    mut commands: Commands,
+    mut windows: Query<(Entity, &mut EguiContext, &mut RecordWindow)>,
     mut records: ResMut<Records>,
 ) {
-    for (mut ctx, state) in &mut windows {
-        let mut record = records.get(state.module, state.id).unwrap().clone();
+    for (entity, mut ctx, mut state) in &mut windows {
+        let mut record = match state.record.take() {
+            Some(r) => r,
+            None => records.get(state.module, state.id).unwrap().clone(),
+        };
 
         let mut changed = false;
 
@@ -198,11 +203,18 @@ fn render_record_windows(
                     }
                 }
             }
-        });
 
-        if changed {
-            records.insert(state.module, record);
-        }
+            if ui.button("Ok").clicked() {
+                records.insert(state.module, record);
+                commands.entity(entity).despawn();
+            } else {
+                state.record = Some(record);
+            }
+
+            if ui.button("Cancel").clicked() {
+                commands.entity(entity).despawn();
+            }
+        });
     }
 }
 
