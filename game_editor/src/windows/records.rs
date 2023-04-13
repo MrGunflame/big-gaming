@@ -4,6 +4,7 @@ use bevy::prelude::{Commands, Component, Entity, EventWriter, Query, ResMut};
 use bevy_egui::egui::panel::Side;
 use bevy_egui::egui::{Align, CentralPanel, Layout, SidePanel, TextEdit};
 use bevy_egui::EguiContext;
+use egui_extras::{Column, TableBuilder};
 use game_common::module::ModuleId;
 use game_common::units::Mass;
 use game_data::components::item::ItemRecord;
@@ -59,32 +60,60 @@ fn render_window(
         });
 
         CentralPanel::default().show(ctx.get_mut(), |ui| {
-            ui.with_layout(Layout::left_to_right(Align::Min), |ui| {
-                ui.label("Module");
-                ui.label("ID");
-                ui.label("Name");
-                ui.label("Mass");
-                ui.label("Value");
-            });
+            TableBuilder::new(ui)
+                .columns(Column::remainder().resizable(true), 6)
+                .header(20.0, |mut header| {
+                    header.col(|ui| {
+                        ui.heading("Module ID");
+                    });
+                    header.col(|ui| {
+                        ui.heading("Record ID");
+                    });
+                    header.col(|ui| {
+                        ui.heading("Editor Name");
+                    });
+                    header.col(|ui| {
+                        ui.heading("Mass");
+                    });
+                    header.col(|ui| {
+                        ui.heading("Value");
+                    });
+                    header.col(|ui| {
+                        ui.heading("EDIT:w");
+                    });
+                })
+                .body(|mut body| {
+                    for (module, record) in records.iter() {
+                        body.row(20.0, |mut row| {
+                            row.col(|ui| {
+                                ui.label(module.to_string());
+                            });
+                            row.col(|ui| {
+                                ui.label(record.id.to_string());
+                            });
+                            row.col(|ui| {
+                                ui.label(&record.name);
+                            });
 
-            for (module, record) in records.iter() {
-                ui.with_layout(Layout::left_to_right(Align::Min), |ui| {
-                    ui.label(module.to_string());
-                    ui.label(record.id.to_string());
-                    ui.label(&record.name);
+                            match &record.body {
+                                RecordBody::Item(item) => {
+                                    row.col(|ui| {
+                                        ui.label(item.mass.to_grams().to_string());
+                                    });
+                                    row.col(|ui| {
+                                        ui.label(item.value.to_string());
+                                    });
+                                }
+                            }
 
-                    match &record.body {
-                        RecordBody::Item(item) => {
-                            ui.label(item.mass.to_grams().to_string());
-                            ui.label(item.value.to_string());
-                        }
-                    }
-
-                    if ui.button("Edit").double_clicked() {
-                        events.send(SpawnWindow::Record(module, record.id));
+                            row.col(|ui| {
+                                if ui.button("Edit").clicked() {
+                                    events.send(SpawnWindow::Record(module, record.id));
+                                }
+                            });
+                        });
                     }
                 });
-            }
 
             if ui.button("Add").clicked() {
                 events.send(SpawnWindow::CreateRecord);
