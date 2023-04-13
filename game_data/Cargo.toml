@@ -7,5 +7,5 @@ edition = "2021"
 bytes = "1.4.0"
 game_common = { version = "0.1.0", path = "../game_common" }
 thiserror = "1.0.40"
-tokio = { version = "1.27.0", features = ["fs"] }
+tokio = { version = "1.27.0", features = ["fs", "io-util"] }
 tracing = "0.1.37"

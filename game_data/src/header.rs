@@ -145,3 +145,40 @@ impl Decode for Dependency {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use game_common::module::{Dependency, Module, ModuleId, Version};
+
+    use crate::{Decode, Encode};
+
+    #[test]
+    fn test_module_reflexive() {
+        let module = Module {
+            id: ModuleId::random(),
+            name: String::from("test"),
+            version: Version,
+            dependencies: vec![Dependency {
+                id: ModuleId::random(),
+                name: Some(String::from("dep")),
+                version: Version,
+            }],
+        };
+
+        let mut buf = Vec::new();
+        module.encode(&mut buf);
+
+        let res = Module::decode(&buf[..]).unwrap();
+
+        assert_eq!(module.id, res.id);
+        assert_eq!(module.name, res.name);
+        assert_eq!(module.version, res.version);
+
+        assert_eq!(module.dependencies.len(), res.dependencies.len());
+        for (d1, d2) in module.dependencies.iter().zip(res.dependencies) {
+            assert_eq!(d1.id, d2.id);
+            assert_eq!(d1.name, d2.name);
+            assert_eq!(d1.version, d2.version);
+        }
+    }
+}
