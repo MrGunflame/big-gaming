@@ -39,13 +39,13 @@ async fn save_data(module: EditorModule) -> TaskResult<()> {
 
     let mut buffer = DataBuffer::new();
     buffer.header.module = module.module;
-    buffer.items = module
-        .records
-        .iter()
-        .map(|record| match record.body {
-            RecordBody::Item(r) => r,
-        })
-        .collect();
+    // buffer.items = module
+    //     .records
+    //     .iter()
+    //     .map(|record| match record.body {
+    //         RecordBody::Item(r) => r,
+    //     })
+    //     .collect();
 
     let mut buf = Vec::new();
     buffer.encode(&mut buf);

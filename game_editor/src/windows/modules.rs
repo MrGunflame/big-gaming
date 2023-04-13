@@ -10,7 +10,7 @@ use game_common::module::{Module, ModuleId, Version};
 
 use crate::backend::{Handle, Task};
 use crate::state::capabilities::Capabilities;
-use crate::state::module::{EditorModule, Modules, Records};
+use crate::state::module::{EditorModule, Modules};
 
 use super::SpawnWindow;
 
@@ -117,7 +117,6 @@ fn render_create_module_windows(
                         dependencies: vec![],
                     },
                     path: PathBuf::from(format!("./{}", state.id)),
-                    records: Records::default(),
                     capabilities: Capabilities::READ | Capabilities::WRITE,
                 };
 

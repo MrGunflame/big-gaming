@@ -4,7 +4,8 @@ use bevy::window::{Window, WindowRef};
 use game_common::module::ModuleId;
 use game_data::record::RecordId;
 
-use crate::state::module::{Modules, Records};
+use crate::state::module::Modules;
+use crate::state::record::Records;
 
 use self::modules::ModuleWindowPlugin;
 use self::records::RecordsWindowPlugin;
@@ -17,7 +18,8 @@ pub enum SpawnWindow {
     Modules,
     CreateModule,
     Templates,
-    Record(Records, RecordId),
+    Record(ModuleId, RecordId),
+    CreateRecord,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -29,7 +31,7 @@ impl bevy::prelude::Plugin for WindowPlugin {
         app.add_plugin(RecordsWindowPlugin);
         app.add_plugin(ModuleWindowPlugin);
 
-        app.insert_resource(Records::default());
+        app.insert_resource(Records::new());
         app.insert_resource(Modules::new());
 
         app.add_system(spawn_window);
@@ -51,16 +53,16 @@ fn spawn_window(mut events: EventReader<SpawnWindow>, mut commands: Commands) {
                 cmds.insert(modules::CreateModuleWindow::new());
             }
             SpawnWindow::Templates => {
-                cmds.insert(records::RecordsWindow::new(
-                    ModuleId::default(),
-                    Records::default(),
-                ));
+                cmds.insert(records::RecordsWindow::new());
             }
-            SpawnWindow::Record(records, id) => {
+            SpawnWindow::Record(module, id) => {
                 cmds.insert(records::RecordWindow {
-                    records: records.clone(),
+                    module: *module,
                     id: *id,
                 });
+            }
+            SpawnWindow::CreateRecord => {
+                cmds.insert(records::CreateRecordWindow::new());
             }
         }
 
