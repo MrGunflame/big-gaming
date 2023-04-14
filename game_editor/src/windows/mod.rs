@@ -2,7 +2,7 @@ use bevy::prelude::{Camera, Camera3dBundle, Commands, EventReader};
 use bevy::render::camera::RenderTarget;
 use bevy::window::{Window, WindowRef};
 use game_common::module::ModuleId;
-use game_data::record::RecordId;
+use game_data::record::{RecordId, RecordKind};
 
 use crate::state::module::{EditorModule, Modules};
 use crate::state::record::Records;
@@ -23,7 +23,7 @@ pub enum SpawnWindow {
     ImportModule,
     Templates,
     Record(ModuleId, RecordId),
-    CreateRecord,
+    CreateRecord(RecordKind),
     Error(String),
 }
 
@@ -76,8 +76,8 @@ fn spawn_window(mut events: EventReader<SpawnWindow>, mut commands: Commands) {
                     record: None,
                 });
             }
-            SpawnWindow::CreateRecord => {
-                cmds.insert(records::CreateRecordWindow::new());
+            SpawnWindow::CreateRecord(kind) => {
+                cmds.insert(records::CreateRecordWindow::new(*kind));
             }
             SpawnWindow::Error(text) => {
                 cmds.insert(error::ErrorWindow {

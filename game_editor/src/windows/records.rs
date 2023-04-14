@@ -9,12 +9,15 @@ use bevy_egui::EguiContext;
 use egui_extras::{Column, TableBuilder};
 use game_common::module::ModuleId;
 use game_common::units::Mass;
+use game_data::components::actions::ActionRecord;
 use game_data::components::item::ItemRecord;
-use game_data::record::{Record, RecordBody, RecordId};
+use game_data::record::{Record, RecordBody, RecordId, RecordKind};
 use game_data::uri::Uri;
 
 use crate::state::module::Modules;
 use crate::state::record::Records;
+
+const CATEGORIES: &[RecordKind] = &[RecordKind::Item, RecordKind::Action];
 
 use super::SpawnWindow;
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -32,6 +35,7 @@ impl bevy::prelude::Plugin for RecordsWindowPlugin {
 #[derive(Clone, Debug, Component)]
 pub struct RecordsWindow {
     state: State,
+    category: RecordKind,
 }
 
 impl RecordsWindow {
@@ -41,6 +45,7 @@ impl RecordsWindow {
                 search: String::new(),
                 categories: [false; 1],
             },
+            category: RecordKind::Item,
         }
     }
 }
@@ -57,14 +62,22 @@ fn render_window(
         SidePanel::new(Side::Left, "form_selector").show(ctx.get_mut(), |ui| {
             ui.add(TextEdit::singleline(&mut window.state.search).hint_text("Search"));
 
-            for category in &[Category::Items, Category::Objects, Category::Actors] {
-                ui.label(category.as_str());
+            for category in CATEGORIES {
+                if ui.button(category_str(*category)).clicked() {
+                    window.category = *category;
+                }
             }
         });
 
+        let count = 4 + match window.category {
+            RecordKind::Item => 2,
+            RecordKind::Action => 1,
+            _ => 0,
+        };
+
         CentralPanel::default().show(ctx.get_mut(), |ui| {
             TableBuilder::new(ui)
-                .columns(Column::remainder().resizable(true), 6)
+                .columns(Column::remainder().resizable(true), count)
                 .header(20.0, |mut header| {
                     header.col(|ui| {
                         ui.heading("Module ID");
@@ -75,12 +88,23 @@ fn render_window(
                     header.col(|ui| {
                         ui.heading("Editor Name");
                     });
-                    header.col(|ui| {
-                        ui.heading("Mass");
-                    });
-                    header.col(|ui| {
-                        ui.heading("Value");
-                    });
+
+                    match window.category {
+                        RecordKind::Item => {
+                            header.col(|ui| {
+                                ui.heading("Mass");
+                            });
+                            header.col(|ui| {
+                                ui.heading("Value");
+                            });
+                        }
+                        RecordKind::Action => {
+                            header.col(|ui| {
+                                ui.heading("Description");
+                            });
+                        }
+                    }
+
                     header.col(|ui| {
                         ui.heading("EDIT:w");
                     });
@@ -107,6 +131,11 @@ fn render_window(
                                         ui.label(item.value.to_string());
                                     });
                                 }
+                                RecordBody::Action(action) => {
+                                    row.col(|ui| {
+                                        ui.label(&action.description);
+                                    });
+                                }
                             }
 
                             row.col(|ui| {
@@ -119,26 +148,16 @@ fn render_window(
                 });
 
             if ui.button("Add").clicked() {
-                events.send(SpawnWindow::CreateRecord);
+                events.send(SpawnWindow::CreateRecord(window.category));
             }
         });
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-enum Category {
-    Items,
-    Objects,
-    Actors,
-}
-
-impl Category {
-    fn as_str(&self) -> &'static str {
-        match self {
-            Self::Items => "Items",
-            Self::Objects => "Objects",
-            Self::Actors => "Actors",
-        }
+fn category_str(kind: RecordKind) -> &'static str {
+    match kind {
+        RecordKind::Item => "Items",
+        RecordKind::Action => "Actions",
     }
 }
 
@@ -217,6 +236,16 @@ fn render_record_windows(
                         changed = true;
                     }
                 }
+                RecordBody::Action(action) => {
+                    ui.label("Description");
+
+                    if ui
+                        .add(TextEdit::multiline(&mut action.description))
+                        .changed()
+                    {
+                        changed = true;
+                    }
+                }
             }
 
             if ui.button("Ok").clicked() {
@@ -237,13 +266,15 @@ fn render_record_windows(
 pub struct CreateRecordWindow {
     module: ModuleId,
     id: RecordId,
+    kind: RecordKind,
 }
 
 impl CreateRecordWindow {
-    pub fn new() -> Self {
+    pub fn new(kind: RecordKind) -> Self {
         Self {
             module: ModuleId::CORE,
             id: RecordId(0),
+            kind,
         }
     }
 }
@@ -274,11 +305,16 @@ fn render_create_record_windows(
                     Record {
                         id: RecordId(0),
                         name: String::new(),
-                        body: RecordBody::Item(ItemRecord {
-                            mass: Mass::new(),
-                            value: 0,
-                            uri: Uri::new(),
-                        }),
+                        body: match state.kind {
+                            RecordKind::Item => RecordBody::Item(ItemRecord {
+                                mass: Mass::new(),
+                                value: 0,
+                                uri: Uri::new(),
+                            }),
+                            RecordKind::Action => RecordBody::Action(ActionRecord {
+                                description: String::new(),
+                            }),
+                        },
                     },
                 );
 

@@ -3,6 +3,7 @@ use std::fmt::{self, Display, Formatter, LowerHex};
 use bytes::{Buf, BufMut};
 use thiserror::Error;
 
+use crate::components::actions::ActionRecord;
 use crate::components::item::ItemRecord;
 use crate::{Decode, Encode};
 
@@ -25,12 +26,14 @@ pub struct Record {
 #[derive(Clone, Debug)]
 pub enum RecordBody {
     Item(ItemRecord),
+    Action(ActionRecord),
 }
 
 impl RecordBody {
     pub const fn kind(&self) -> RecordKind {
         match self {
             Self::Item(_) => RecordKind::Item,
+            Self::Action(_) => RecordKind::Action,
         }
     }
 }
@@ -38,6 +41,7 @@ impl RecordBody {
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum RecordKind {
     Item,
+    Action,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Error)]
@@ -55,6 +59,7 @@ impl Encode for RecordKind {
     {
         let byte: u8 = match self {
             Self::Item => 1,
+            Self::Action => 2,
         };
 
         byte.encode(buf);
@@ -72,6 +77,7 @@ impl Decode for RecordKind {
 
         match byte {
             1 => Ok(Self::Item),
+            2 => Ok(Self::Action),
             _ => Err(RecordKindError::InvalidKind(byte)),
         }
     }
@@ -105,10 +111,13 @@ impl Encode for Record {
         self.id.encode(&mut buf);
         self.name.encode(&mut buf);
 
+        self.body.kind().encode(&mut buf);
         match &self.body {
             RecordBody::Item(item) => {
-                1u8.encode(&mut buf);
                 item.encode(&mut buf);
+            }
+            RecordBody::Action(action) => {
+                action.encode(&mut buf);
             }
         };
     }
@@ -130,6 +139,10 @@ impl Decode for Record {
                 let item = ItemRecord::decode(&mut buf)?;
                 RecordBody::Item(item)
             }
+            RecordKind::Action => {
+                let action = ActionRecord::decode(&mut buf)?;
+                RecordBody::Action(action)
+            }
         };
 
         Ok(Self { id, name, body })
@@ -146,4 +159,6 @@ pub enum RecordError {
     Kind(<RecordKind as Decode>::Error),
     #[error("failed to decode item record: {0}")]
     Item(#[from] <ItemRecord as Decode>::Error),
+    #[error("failed to decode action record: {0}")]
+    Action(#[from] <ActionRecord as Decode>::Error),
 }
