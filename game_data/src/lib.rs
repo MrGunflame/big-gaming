@@ -1,5 +1,7 @@
 //! Types and (de)serializiers for data files.
 
+use std::error::Error as StdError;
+use std::hash::{Hash, Hasher};
 use std::mem::MaybeUninit;
 
 use bytes::{Buf, BufMut};
@@ -185,6 +187,118 @@ impl<const N: usize> Decode for [u8; N] {
         } else {
             Ok(unsafe { std::ptr::read(bytes.as_ptr() as *const [u8; N]) })
         }
+    }
+}
+
+impl<T> Encode for Vec<T>
+where
+    T: Encode,
+{
+    fn encode<B>(&self, mut buf: B)
+    where
+        B: BufMut,
+    {
+        (self.len() as u64).encode(&mut buf);
+
+        for elem in self {
+            elem.encode(&mut buf);
+        }
+    }
+}
+
+#[derive(Debug, Error)]
+pub enum ListError<T>
+where
+    T: Decode,
+    <T as Decode>::Error: StdError,
+{
+    #[error("failed to decode list length: {0}")]
+    Length(<u64 as Decode>::Error),
+    #[error("failed to decode list element: {0}")]
+    Element(<T as Decode>::Error),
+}
+
+impl<T> Clone for ListError<T>
+where
+    T: Decode,
+    <T as Decode>::Error: StdError + Clone,
+{
+    fn clone(&self) -> Self {
+        match self {
+            Self::Length(err) => Self::Length(*err),
+            Self::Element(err) => Self::Element(err.clone()),
+        }
+    }
+}
+
+impl<T> Copy for ListError<T>
+where
+    T: Decode,
+    <T as Decode>::Error: StdError + Copy,
+{
+}
+
+impl<T> PartialEq for ListError<T>
+where
+    T: Decode,
+    <T as Decode>::Error: StdError + PartialEq,
+{
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Length(lhs), Self::Length(rhs)) => lhs == rhs,
+            (Self::Element(lhs), Self::Element(rhs)) => lhs == rhs,
+            _ => false,
+        }
+    }
+}
+
+impl<T> Eq for ListError<T>
+where
+    T: Decode,
+    <T as Decode>::Error: StdError + Eq,
+{
+}
+
+impl<T> Hash for ListError<T>
+where
+    T: Decode,
+    <T as Decode>::Error: StdError + Hash,
+{
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        match self {
+            Self::Length(err) => {
+                state.write_u8(1);
+                err.hash(state);
+            }
+            Self::Element(err) => {
+                state.write_u8(2);
+                err.hash(state);
+            }
+        }
+    }
+}
+
+impl<T> Decode for Vec<T>
+where
+    T: Decode,
+    <T as Decode>::Error: StdError,
+{
+    type Error = ListError<T>;
+
+    fn decode<B>(mut buf: B) -> Result<Self, Self::Error>
+    where
+        B: Buf,
+    {
+        let len = u64::decode(&mut buf).map_err(ListError::Length)?;
+
+        let mut list = Vec::new();
+
+        for _ in 0..len {
+            let elem = T::decode(&mut buf).map_err(ListError::Element)?;
+            list.push(elem);
+        }
+
+        Ok(list)
     }
 }
 
