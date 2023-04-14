@@ -20,6 +20,14 @@ impl Modules {
         }
     }
 
+    pub fn len(&self) -> usize {
+        self.modules.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     pub fn insert(&mut self, module: EditorModule) {
         self.modules.insert(module.module.id, module);
     }

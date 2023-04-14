@@ -264,7 +264,7 @@ fn render_record_windows(
 
 #[derive(Clone, Debug, Component)]
 pub struct CreateRecordWindow {
-    module: ModuleId,
+    module: Option<ModuleId>,
     id: RecordId,
     kind: RecordKind,
 }
@@ -272,7 +272,7 @@ pub struct CreateRecordWindow {
 impl CreateRecordWindow {
     pub fn new(kind: RecordKind) -> Self {
         Self {
-            module: ModuleId::CORE,
+            module: None,
             id: RecordId(0),
             kind,
         }
@@ -290,33 +290,45 @@ fn render_create_record_windows(
             ui.heading("Create Record");
 
             ui.label("Module");
-            for m in modules.iter() {
-                let id = m.module.id;
+            if modules.is_empty() {
+                ui.label("No modules opened");
+            } else {
+                for m in modules.iter() {
+                    let id = m.module.id;
 
-                if ui.radio(state.module == id, id.to_string()).clicked() {
-                    state.module = id;
+                    if ui
+                        .radio(
+                            state.module.map(|m| m == id).unwrap_or(false),
+                            id.to_string(),
+                        )
+                        .clicked()
+                    {
+                        state.module = Some(id);
+                    }
                 }
             }
 
             if ui.button("Ok").clicked() {
-                let module = modules.get(state.module).unwrap();
-                records.push(
-                    state.module,
-                    Record {
-                        id: RecordId(0),
-                        name: String::new(),
-                        body: match state.kind {
-                            RecordKind::Item => RecordBody::Item(ItemRecord {
-                                mass: Mass::new(),
-                                value: 0,
-                                uri: Uri::new(),
-                            }),
-                            RecordKind::Action => RecordBody::Action(ActionRecord {
-                                description: String::new(),
-                            }),
+                if let Some(module_id) = state.module {
+                    records.push(
+                        module_id,
+                        Record {
+                            id: RecordId(0),
+                            name: String::new(),
+                            body: match state.kind {
+                                RecordKind::Item => RecordBody::Item(ItemRecord {
+                                    mass: Mass::new(),
+                                    value: 0,
+                                    uri: Uri::new(),
+                                    actions: Vec::new(),
+                                }),
+                                RecordKind::Action => RecordBody::Action(ActionRecord {
+                                    description: String::new(),
+                                }),
+                            },
                         },
-                    },
-                );
+                    );
+                }
 
                 commands.entity(entity).despawn();
             }
