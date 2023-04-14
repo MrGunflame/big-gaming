@@ -265,13 +265,14 @@ where
     <T as Decode>::Error: StdError + Hash,
 {
     fn hash<H: Hasher>(&self, state: &mut H) {
+        let self_tag = std::mem::discriminant(self);
+        self_tag.hash(state);
+
         match self {
             Self::Length(err) => {
-                state.write_u8(1);
                 err.hash(state);
             }
             Self::Element(err) => {
-                state.write_u8(2);
                 err.hash(state);
             }
         }
