@@ -1,11 +1,56 @@
 use std::fmt::{self, Display, Formatter, LowerHex};
 
 use bytes::{Buf, BufMut};
+use game_common::module::ModuleId;
 use thiserror::Error;
 
 use crate::components::actions::ActionRecord;
 use crate::components::item::ItemRecord;
 use crate::{Decode, Encode};
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Error)]
+pub enum RecordReferenceError {
+    #[error("failed to decode module ref: {0}")]
+    Module(<ModuleId as Decode>::Error),
+    #[error("failed to decode record ref: {0}")]
+    Record(<RecordId as Decode>::Error),
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct RecordReference {
+    pub module: ModuleId,
+    pub record: RecordId,
+}
+
+impl Display for RecordReference {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}:{}", self.module, self.record)
+    }
+}
+
+impl Encode for RecordReference {
+    fn encode<B>(&self, mut buf: B)
+    where
+        B: BufMut,
+    {
+        self.module.encode(&mut buf);
+        self.record.encode(&mut buf);
+    }
+}
+
+impl Decode for RecordReference {
+    type Error = RecordReferenceError;
+
+    fn decode<B>(mut buf: B) -> Result<Self, Self::Error>
+    where
+        B: Buf,
+    {
+        let module = ModuleId::decode(&mut buf).map_err(RecordReferenceError::Module)?;
+        let record = RecordId::decode(&mut buf).map_err(RecordReferenceError::Record)?;
+
+        Ok(Self { module, record })
+    }
+}
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub struct RecordId(pub u32);

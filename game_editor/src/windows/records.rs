@@ -11,7 +11,7 @@ use game_common::module::ModuleId;
 use game_common::units::Mass;
 use game_data::components::actions::ActionRecord;
 use game_data::components::item::ItemRecord;
-use game_data::record::{Record, RecordBody, RecordId, RecordKind};
+use game_data::record::{Record, RecordBody, RecordId, RecordKind, RecordReference};
 use game_data::uri::Uri;
 
 use crate::state::module::Modules;
@@ -252,7 +252,8 @@ fn render_record_windows(
 
                     let mut index = 0;
                     while index < item.actions.len() {
-                        let action = records.get(state.module, item.actions[index]);
+                        let action =
+                            records.get(item.actions[index].module, item.actions[index].record);
 
                         let text = match action {
                             Some(action) => format!("{} ({})", action.name, action.id),
@@ -280,7 +281,10 @@ fn render_record_windows(
                             .get(state.module, RecordId(state.add_action))
                             .is_some()
                         {
-                            item.actions.push(RecordId(state.add_action));
+                            item.actions.push(RecordReference {
+                                module: state.module,
+                                record: RecordId(state.add_action),
+                            });
                         }
                     }
                 }
