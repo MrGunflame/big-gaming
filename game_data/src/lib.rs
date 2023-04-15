@@ -15,6 +15,7 @@ pub mod header;
 pub mod loader;
 pub mod record;
 pub mod uri;
+pub mod varint;
 
 pub trait Encode {
     fn encode<B>(&self, buf: B)
