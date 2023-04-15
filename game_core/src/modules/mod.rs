@@ -3,6 +3,9 @@ use std::collections::HashMap;
 use bevy::prelude::{Plugin, Resource};
 use game_common::module::ModuleId;
 use game_data::loader::FileLoader;
+use game_data::record::RecordBody;
+use game_script::script::Script;
+use game_script::ScriptServer;
 use tokio::runtime::Runtime;
 
 pub struct ModulePlugin;
@@ -12,12 +15,13 @@ impl Plugin for ModulePlugin {
         let rt = Runtime::new().unwrap();
 
         let mut modules = Modules::new();
+        let mut server = ScriptServer::new();
 
         rt.block_on(async {
             let mut dir = match tokio::fs::read_dir("./mods").await {
                 Ok(dir) => dir,
                 Err(err) => {
-                    tracing::error!("failed to load modules: {}", err);
+                    tracing::error!("failed to load modules found ./mods: {}", err);
                     std::process::exit(1);
                 }
             };
@@ -25,8 +29,23 @@ impl Plugin for ModulePlugin {
             while let Some(entry) = dir.next_entry().await.unwrap() {
                 let data = FileLoader::load(entry.path()).await.unwrap();
 
+                tracing::info!(
+                    "loaded module {} ({})",
+                    data.header.module.name,
+                    data.header.module.id,
+                );
+
                 let mut records = Records::new();
                 for record in data.records {
+                    match &record.body {
+                        RecordBody::Action(action) => {
+                            let handle = server.insert(Script::load(action.script.as_ref()));
+
+                            server.get(&handle).unwrap().run();
+                        }
+                        _ => (),
+                    }
+
                     records.insert(record);
                 }
 
@@ -36,6 +55,8 @@ impl Plugin for ModulePlugin {
                 });
             }
         });
+
+        tracing::info!("loaded {} modules", modules.len());
 
         app.insert_resource(modules);
     }
@@ -55,6 +76,10 @@ impl Modules {
         Self {
             modules: HashMap::new(),
         }
+    }
+
+    pub fn len(&self) -> usize {
+        self.modules.len()
     }
 
     pub fn get(&self, id: ModuleId) -> Option<&ModuleData> {

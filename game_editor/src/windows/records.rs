@@ -297,6 +297,14 @@ fn render_record_windows(
                     {
                         changed = true;
                     }
+
+                    ui.label("Script URI (relative)");
+
+                    let mut uri = action.script.as_ref().to_str().unwrap().to_owned();
+                    if ui.add(TextEdit::singleline(&mut uri)).changed() {
+                        action.script = Uri::from(PathBuf::from(uri));
+                        changed = true;
+                    }
                 }
             }
 
@@ -376,6 +384,7 @@ fn render_create_record_windows(
                                 }),
                                 RecordKind::Action => RecordBody::Action(ActionRecord {
                                     description: String::new(),
+                                    script: Uri::new(),
                                 }),
                             },
                         },

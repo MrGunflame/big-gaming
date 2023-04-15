@@ -2,9 +2,16 @@ use std::fmt::{self, Debug, Formatter};
 use std::sync::Arc;
 
 use crate::entity::EntityId;
+use crate::module::ModuleId;
 use crate::world::world::WorldViewMut;
 
 use super::items::ItemId;
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct ActionId {
+    pub module: ModuleId,
+    pub record: u32,
+}
 
 #[derive(Clone, Debug, Default)]
 pub struct Actions {
@@ -25,14 +32,14 @@ impl Actions {
 
 #[derive(Clone)]
 pub struct Action {
-    pub name: String,
+    pub id: ActionId,
     pub fire: Arc<dyn FireAction>,
 }
 
 impl Debug for Action {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.debug_struct("Action")
-            .field("name", &self.name)
+            .field("name", &self.id)
             .field("fire", &Arc::as_ptr(&self.fire))
             .finish()
     }
