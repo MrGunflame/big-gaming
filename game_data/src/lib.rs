@@ -6,7 +6,7 @@ use std::mem::MaybeUninit;
 
 use bytes::{Buf, BufMut};
 use game_common::module::Module;
-use header::Header;
+use header::{Header, HeaderError};
 use record::{Record, RecordError};
 use thiserror::Error;
 
@@ -39,6 +39,8 @@ pub enum Error {
     EofError(#[from] EofError),
     #[error(transparent)]
     Record(#[from] RecordError),
+    #[error(transparent)]
+    Header(#[from] HeaderError),
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Error)]

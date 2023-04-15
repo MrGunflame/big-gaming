@@ -1,9 +1,24 @@
 use bytes::{Buf, BufMut};
 use game_common::module::{Dependency, Module, ModuleId, Version};
+use thiserror::Error;
 
 use crate::{Decode, Encode, EofError};
 
 pub const MAGIC: [u8; 4] = [0, 0, 0, 0];
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Error)]
+pub enum HeaderError {
+    #[error("failed to read header magic: {0}")]
+    Magic(<[u8; 4] as Decode>::Error),
+    #[error("invalid magic: {0:?}")]
+    InvalidMagic([u8; 4]),
+    #[error("failed to read header version: {0}")]
+    Version(<u8 as Decode>::Error),
+    #[error("failed to read module header: {0}")]
+    Module(<Module as Decode>::Error),
+    #[error("failed to read item count: {0}")]
+    Items(<u32 as Decode>::Error),
+}
 
 #[derive(Clone, Debug)]
 pub struct Header {
@@ -20,7 +35,7 @@ impl Encode for Header {
     where
         B: BufMut,
     {
-        buf.put_slice(&MAGIC);
+        MAGIC.encode(&mut buf);
 
         self.version.encode(&mut buf);
         self.module.encode(&mut buf);
@@ -29,18 +44,21 @@ impl Encode for Header {
 }
 
 impl Decode for Header {
-    type Error = EofError;
+    type Error = HeaderError;
 
     fn decode<B>(mut buf: B) -> Result<Self, Self::Error>
     where
         B: Buf,
     {
-        let magic = u32::decode(&mut buf)?;
-        assert!(magic == u32::from_ne_bytes(MAGIC));
+        let magic = <[u8; 4]>::decode(&mut buf).map_err(HeaderError::Magic)?;
 
-        let version = u8::decode(&mut buf)?;
-        let module = Module::decode(&mut buf)?;
-        let items = u32::decode(&mut buf)?;
+        if magic != MAGIC {
+            return Err(HeaderError::InvalidMagic(magic));
+        }
+
+        let version = u8::decode(&mut buf).map_err(HeaderError::Version)?;
+        let module = Module::decode(&mut buf).map_err(HeaderError::Module)?;
+        let items = u32::decode(&mut buf).map_err(HeaderError::Items)?;
 
         Ok(Self {
             version,

@@ -27,7 +27,13 @@ impl Plugin for ModulePlugin {
             };
 
             while let Some(entry) = dir.next_entry().await.unwrap() {
-                let data = FileLoader::load(entry.path()).await.unwrap();
+                let data = match FileLoader::load(entry.path()).await {
+                    Ok(data) => data,
+                    Err(err) => {
+                        tracing::error!("cannot load {:?}: {}", entry.path(), err);
+                        continue;
+                    }
+                };
 
                 tracing::info!(
                     "loaded module {} ({})",
@@ -39,8 +45,8 @@ impl Plugin for ModulePlugin {
                 for record in data.records {
                     match &record.body {
                         RecordBody::Action(action) => {
-                            let handle = server.insert(Script::load(action.script.as_ref()));
-
+                            let handle =
+                                server.insert(Script::load(&server, action.script.as_ref()));
                             server.get(&handle).unwrap().run();
                         }
                         _ => (),
