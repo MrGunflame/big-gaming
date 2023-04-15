@@ -4,3 +4,6 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+game_data = { version = "0.1.0", path = "../game_data" }
+libloading = "0.8.0"
+tracing = "0.1.37"

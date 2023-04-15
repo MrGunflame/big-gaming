@@ -2,6 +2,7 @@
 
 use script::Script;
 
+pub mod host;
 pub mod script;
 
 #[derive(Debug)]
