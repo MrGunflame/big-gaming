@@ -74,6 +74,7 @@ fn spawn_window(mut events: EventReader<SpawnWindow>, mut commands: Commands) {
                     module: *module,
                     id: *id,
                     record: None,
+                    add_action: 0,
                 });
             }
             SpawnWindow::CreateRecord(kind) => {

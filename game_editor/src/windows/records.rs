@@ -70,7 +70,7 @@ fn render_window(
         });
 
         let count = 4 + match window.category {
-            RecordKind::Item => 2,
+            RecordKind::Item => 3,
             RecordKind::Action => 1,
             _ => 0,
         };
@@ -97,6 +97,9 @@ fn render_window(
                             header.col(|ui| {
                                 ui.heading("Value");
                             });
+                            header.col(|ui| {
+                                ui.heading("Actions");
+                            });
                         }
                         RecordKind::Action => {
                             header.col(|ui| {
@@ -111,6 +114,10 @@ fn render_window(
                 })
                 .body(|mut body| {
                     for (module, record) in records.iter() {
+                        if record.body.kind() != window.category {
+                            continue;
+                        }
+
                         body.row(20.0, |mut row| {
                             row.col(|ui| {
                                 ui.label(module.to_string());
@@ -129,6 +136,9 @@ fn render_window(
                                     });
                                     row.col(|ui| {
                                         ui.label(item.value.to_string());
+                                    });
+                                    row.col(|ui| {
+                                        ui.label(item.actions.len().to_string());
                                     });
                                 }
                                 RecordBody::Action(action) => {
@@ -172,6 +182,8 @@ pub struct RecordWindow {
     pub module: ModuleId,
     pub id: RecordId,
     pub record: Option<Record>,
+    // TODO: RecordId
+    pub add_action: u32,
 }
 
 fn render_record_windows(
@@ -234,6 +246,42 @@ fn render_record_windows(
                     if ui.add(TextEdit::singleline(&mut uri)).changed() {
                         item.uri = Uri::from(PathBuf::from(uri));
                         changed = true;
+                    }
+
+                    ui.label("Actions");
+
+                    let mut index = 0;
+                    while index < item.actions.len() {
+                        let action = records.get(state.module, item.actions[index]);
+
+                        let text = match action {
+                            Some(action) => format!("{} ({})", action.name, action.id),
+                            None => format!("Invalid reference ({})", item.actions[index]),
+                        };
+
+                        ui.label(text);
+                        if ui.button("Delete").clicked() {
+                            item.actions.remove(index);
+                            continue;
+                        }
+
+                        index += 1;
+                    }
+
+                    ui.label("Add Action:");
+                    let mut add_action = state.add_action.to_string();
+                    if ui.add(TextEdit::singleline(&mut add_action)).changed() {
+                        state.add_action = add_action.parse().unwrap_or_default();
+                        changed = true;
+                    }
+
+                    if ui.button("Add").clicked() {
+                        if records
+                            .get(state.module, RecordId(state.add_action))
+                            .is_some()
+                        {
+                            item.actions.push(RecordId(state.add_action));
+                        }
                     }
                 }
                 RecordBody::Action(action) => {
