@@ -430,6 +430,7 @@ fn render_create_record_windows(
                                     mass: Mass::new(),
                                     value: 0,
                                     uri: Uri::new(),
+                                    components: Vec::new(),
                                     actions: Vec::new(),
                                 }),
                                 RecordKind::Action => RecordBody::Action(ActionRecord {
