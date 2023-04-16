@@ -9,6 +9,8 @@ raw = []
 panic_handler = []
 
 [dependencies]
+game_macros = { version = "0.1.0", path = "../game_macros", features = ["wasm"] }
+
 bytemuck = { version = "1.13.1", features = ["derive"] }
 # FIXME: Remove render dependencies from common.
 # game_common = { version = "0.1.0", path = "../game_common" }

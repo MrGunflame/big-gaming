@@ -9,6 +9,7 @@ mod raw;
 #[cfg(feature = "panic_handler")]
 mod panic;
 
+pub mod events;
 pub mod log;
 pub mod world;
 
