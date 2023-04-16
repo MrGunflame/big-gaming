@@ -15,6 +15,7 @@ members = [
     "game_api",
     "game_data",
     "game_script",
+    "game_wasm",
 ]
 
 resolver = "2"
