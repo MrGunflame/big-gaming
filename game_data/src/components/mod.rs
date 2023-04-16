@@ -1,4 +1,5 @@
 pub mod actions;
+pub mod components;
 pub mod damage;
 pub mod item;
 pub mod keyword;

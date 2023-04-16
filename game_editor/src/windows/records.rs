@@ -10,6 +10,7 @@ use egui_extras::{Column, TableBuilder};
 use game_common::module::ModuleId;
 use game_common::units::Mass;
 use game_data::components::actions::ActionRecord;
+use game_data::components::components::ComponentRecord;
 use game_data::components::item::ItemRecord;
 use game_data::record::{Record, RecordBody, RecordId, RecordKind, RecordReference};
 use game_data::uri::Uri;
@@ -17,7 +18,7 @@ use game_data::uri::Uri;
 use crate::state::module::Modules;
 use crate::state::record::Records;
 
-const CATEGORIES: &[RecordKind] = &[RecordKind::Item, RecordKind::Action];
+const CATEGORIES: &[RecordKind] = &[RecordKind::Item, RecordKind::Action, RecordKind::Component];
 
 use super::SpawnWindow;
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -71,8 +72,8 @@ fn render_window(
 
         let count = 4 + match window.category {
             RecordKind::Item => 3,
-            RecordKind::Action => 1,
-            _ => 0,
+            RecordKind::Action => 2,
+            RecordKind::Component => 2,
         };
 
         CentralPanel::default().show(ctx.get_mut(), |ui| {
@@ -104,6 +105,17 @@ fn render_window(
                         RecordKind::Action => {
                             header.col(|ui| {
                                 ui.heading("Description");
+                            });
+                            header.col(|ui| {
+                                ui.heading("Script");
+                            });
+                        }
+                        RecordKind::Component => {
+                            header.col(|ui| {
+                                ui.heading("Description");
+                            });
+                            header.col(|ui| {
+                                ui.heading("Script");
                             });
                         }
                     }
@@ -145,6 +157,25 @@ fn render_window(
                                     row.col(|ui| {
                                         ui.label(&action.description);
                                     });
+                                    row.col(|ui| {
+                                        ui.label(
+                                            &action.script.as_ref().to_string_lossy().to_string(),
+                                        );
+                                    });
+                                }
+                                RecordBody::Component(component) => {
+                                    row.col(|ui| {
+                                        ui.label(&component.description);
+                                    });
+                                    row.col(|ui| {
+                                        ui.label(
+                                            &component
+                                                .script
+                                                .as_ref()
+                                                .to_string_lossy()
+                                                .to_string(),
+                                        );
+                                    });
                                 }
                             }
 
@@ -168,6 +199,7 @@ fn category_str(kind: RecordKind) -> &'static str {
     match kind {
         RecordKind::Item => "Items",
         RecordKind::Action => "Actions",
+        RecordKind::Component => "Components",
     }
 }
 
@@ -306,6 +338,24 @@ fn render_record_windows(
                         changed = true;
                     }
                 }
+                RecordBody::Component(component) => {
+                    ui.label("Description");
+
+                    if ui
+                        .add(TextEdit::multiline(&mut component.description))
+                        .changed()
+                    {
+                        changed = true;
+                    }
+
+                    ui.label("Script URI (relative)");
+
+                    let mut uri = component.script.as_ref().to_str().unwrap().to_owned();
+                    if ui.add(TextEdit::singleline(&mut uri)).changed() {
+                        component.script = Uri::from(PathBuf::from(uri));
+                        changed = true;
+                    }
+                }
             }
 
             if ui.button("Ok").clicked() {
@@ -383,6 +433,10 @@ fn render_create_record_windows(
                                     actions: Vec::new(),
                                 }),
                                 RecordKind::Action => RecordBody::Action(ActionRecord {
+                                    description: String::new(),
+                                    script: Uri::new(),
+                                }),
+                                RecordKind::Component => RecordBody::Component(ComponentRecord {
                                     description: String::new(),
                                     script: Uri::new(),
                                 }),

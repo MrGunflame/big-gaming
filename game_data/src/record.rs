@@ -5,6 +5,7 @@ use game_common::module::ModuleId;
 use thiserror::Error;
 
 use crate::components::actions::ActionRecord;
+use crate::components::components::ComponentRecord;
 use crate::components::item::ItemRecord;
 use crate::{Decode, Encode};
 
@@ -72,6 +73,7 @@ pub struct Record {
 pub enum RecordBody {
     Item(ItemRecord),
     Action(ActionRecord),
+    Component(ComponentRecord),
 }
 
 impl RecordBody {
@@ -79,6 +81,7 @@ impl RecordBody {
         match self {
             Self::Item(_) => RecordKind::Item,
             Self::Action(_) => RecordKind::Action,
+            Self::Component(_) => RecordKind::Component,
         }
     }
 }
@@ -87,6 +90,7 @@ impl RecordBody {
 pub enum RecordKind {
     Item,
     Action,
+    Component,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Error)]
@@ -105,6 +109,7 @@ impl Encode for RecordKind {
         let byte: u8 = match self {
             Self::Item => 1,
             Self::Action => 2,
+            Self::Component => 3,
         };
 
         byte.encode(buf);
@@ -164,6 +169,9 @@ impl Encode for Record {
             RecordBody::Action(action) => {
                 action.encode(&mut buf);
             }
+            RecordBody::Component(component) => {
+                component.encode(&mut buf);
+            }
         };
     }
 }
@@ -188,6 +196,10 @@ impl Decode for Record {
                 let action = ActionRecord::decode(&mut buf)?;
                 RecordBody::Action(action)
             }
+            RecordKind::Component => {
+                let component = ComponentRecord::decode(&mut buf)?;
+                RecordBody::Component(component)
+            }
         };
 
         Ok(Self { id, name, body })
@@ -206,4 +218,6 @@ pub enum RecordError {
     Item(#[from] <ItemRecord as Decode>::Error),
     #[error("failed to decode action record: {0}")]
     Action(#[from] <ActionRecord as Decode>::Error),
+    #[error("failed to decode component record: {0}")]
+    Component(#[from] <ComponentRecord as Decode>::Error),
 }
