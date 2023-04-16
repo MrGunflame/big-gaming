@@ -5,10 +5,12 @@ use instance::ScriptInstance;
 use script::Script;
 use wasmtime::{Config, Engine};
 
+pub mod actions;
 pub mod events;
 pub mod host;
 pub mod instance;
 pub mod script;
+pub mod scripts;
 
 pub struct ScriptServer {
     scripts: Vec<Script>,

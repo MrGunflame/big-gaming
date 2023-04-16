@@ -45,6 +45,14 @@ impl BitOrAssign for Events {
     }
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct Event(u64);
+
+impl Event {
+    pub const ACTION: Self = Self(1);
+    pub const COLLISION: Self = Self(1 << 1);
+}
+
 ///
 /// ```ignore
 /// fn(entity: EntityId, invoker: EntityId);
