@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use bevy::prelude::{Plugin, Resource};
+use game_common::entity::EntityId;
 use game_common::module::ModuleId;
 use game_common::world::world::WorldState;
 use game_data::loader::FileLoader;
@@ -48,7 +49,10 @@ impl Plugin for ModulePlugin {
                         RecordBody::Action(action) => {
                             let handle =
                                 server.insert(Script::load(&server, action.script.as_ref()));
-                            server.get(&handle, &mut WorldState::new()).unwrap().run();
+                            server
+                                .get(&handle, &mut WorldState::new())
+                                .unwrap()
+                                .on_action(EntityId::from_raw(0), EntityId::from_raw(0));
                         }
                         _ => (),
                     }

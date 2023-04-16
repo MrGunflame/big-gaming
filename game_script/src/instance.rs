@@ -6,7 +6,11 @@ use game_common::world::world::WorldState;
 use game_wasm::log::Level;
 use game_wasm::raw;
 use game_wasm::raw::world::{Entity, Item};
-use wasmtime::{AsContextMut, Caller, Engine, Func, Instance, Linker, Module, Store, TypedFunc};
+use wasmtime::{
+    AsContextMut, Caller, Engine, Func, FuncType, Instance, Linker, Module, Store, TypedFunc, Val,
+};
+
+use crate::events::{Events, OnAction, OnCollision};
 
 macro_rules! register_fns {
     ($linker:expr, $($id:ident),*$(,)?) => {
@@ -19,10 +23,16 @@ macro_rules! register_fns {
 pub struct ScriptInstance<'a> {
     store: Store<State<'a>>,
     inner: Instance,
+    events: Events,
 }
 
 impl<'a> ScriptInstance<'a> {
-    pub fn new(engine: &Engine, module: &Module, world: &'a mut WorldState) -> Self {
+    pub fn new(
+        engine: &Engine,
+        module: &Module,
+        events: Events,
+        world: &'a mut WorldState,
+    ) -> Self {
         let mut store = Store::new(engine, State { world });
 
         //  let imports = vec![Func::new(
@@ -58,25 +68,44 @@ impl<'a> ScriptInstance<'a> {
             world_entity_despawn,
         };
 
-        // linker.func_wrap("host", "log", log);
-
         let instance = linker.instantiate(&mut store, &module).unwrap();
 
         Self {
             store,
             inner: instance,
+            events,
         }
     }
 
-    pub fn run(&mut self) {
-        let main: TypedFunc<u32, u32> = self
+    // pub fn run(&mut self) {
+    //     let main: TypedFunc<u32, u32> = self
+    //         .inner
+    //         .get_typed_func(&mut self.store, "script_main")
+    //         .unwrap();
+
+    //     dbg!("calling");
+    //     let out = main.call(&mut self.store, 23).unwrap();
+    //     dbg!(out);
+    // }
+
+    pub fn on_action(&mut self, entity: EntityId, invoker: EntityId) {
+        let func: OnAction = self
             .inner
-            .get_typed_func(&mut self.store, "script_main")
+            .get_typed_func(&mut self.store, "on_action")
             .unwrap();
 
-        dbg!("calling");
-        let out = main.call(&mut self.store, 23).unwrap();
-        dbg!(out);
+        func.call(&mut self.store, (entity.into_raw(), invoker.into_raw()))
+            .unwrap();
+    }
+
+    pub fn on_collision(&mut self, entity: EntityId, other: EntityId) {
+        let func: OnCollision = self
+            .inner
+            .get_typed_func(&mut self.store, "on_collision")
+            .unwrap();
+
+        func.call(&mut self.store, (entity.into_raw(), other.into_raw()))
+            .unwrap();
     }
 }
 

@@ -26,6 +26,10 @@ impl EntityId {
         Self { index }
     }
 
+    pub const fn into_raw(self) -> u64 {
+        self.index
+    }
+
     #[inline]
     pub const fn dangling() -> Self {
         Self::from_raw(0)

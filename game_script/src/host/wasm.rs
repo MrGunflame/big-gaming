@@ -2,10 +2,16 @@ use std::ffi::OsStr;
 use std::fs::File;
 use std::io::Read;
 
-use wasmtime::{Caller, Engine, Extern, Func, FuncType, Instance, Linker, Module, Store, ValType};
+use wasmtime::{
+    Caller, Engine, ExportType, Extern, ExternType, Func, FuncType, Instance, Linker, Module,
+    Store, ValType,
+};
+
+use crate::events::Events;
 
 pub struct WasmScript {
     pub module: Module,
+    pub events: Events,
 }
 
 impl WasmScript {
@@ -17,7 +23,33 @@ impl WasmScript {
 
         let module = Module::new(engine, buf).unwrap();
 
-        Self { module }
+        let mut events = Events::NONE;
+
+        for (name, event) in [("on_action", Events::ACTION)] {
+            let Some(export) = module.get_export("on_action") else {
+                continue;
+            };
+
+            match export {
+                ExternType::Func(_func) => {
+                    events |= event;
+                }
+                _ => {
+                    tracing::warn!(
+                        "Found event extern {} in module, but it is a {}",
+                        name,
+                        match export {
+                            ExternType::Func(_) => unreachable!(),
+                            ExternType::Global(_) => "Global",
+                            ExternType::Table(_) => "Table",
+                            ExternType::Memory(_) => "Memory",
+                        }
+                    );
+                }
+            }
+        }
+
+        Self { module, events }
     }
 
     pub fn run(&self) {}

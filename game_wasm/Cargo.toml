@@ -6,6 +6,7 @@ edition = "2021"
 [features]
 default = []
 raw = []
+panic_handler = []
 
 [dependencies]
 # FIXME: Remove render dependencies from common.

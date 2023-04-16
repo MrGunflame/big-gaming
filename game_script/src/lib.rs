@@ -5,6 +5,7 @@ use instance::ScriptInstance;
 use script::Script;
 use wasmtime::{Config, Engine};
 
+pub mod events;
 pub mod host;
 pub mod instance;
 pub mod script;
@@ -34,7 +35,12 @@ impl ScriptServer {
         let script = self.scripts.get(handle.id as usize)?;
 
         match script {
-            Script::Wasm(s) => Some(ScriptInstance::new(&self.engine, &s.module, world)),
+            Script::Wasm(s) => Some(ScriptInstance::new(
+                &self.engine,
+                &s.module,
+                s.events,
+                world,
+            )),
             _ => todo!(),
         }
     }
