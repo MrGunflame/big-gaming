@@ -1,20 +1,14 @@
 //! Entity
 
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 use ahash::HashMap;
-use bevy_ecs::component::Component;
 use bevy_ecs::system::Resource;
-use bevy_transform::prelude::Transform;
+use bytemuck::{Pod, Zeroable};
 use parking_lot::RwLock;
 
-use crate::components::combat::Health;
-use crate::components::object::ObjectId;
-use crate::components::race::RaceId;
-
 /// A unique identifier for a object in the world.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Zeroable, Pod)]
 #[repr(C)]
 pub struct EntityId {
     index: u64,

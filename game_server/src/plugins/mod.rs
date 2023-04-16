@@ -6,6 +6,7 @@ use bevy::prelude::{
 use game_common::actors::human::Human;
 use game_common::bundles::ActorBundle;
 use game_common::components::combat::Health;
+use game_common::components::components::Components;
 use game_common::components::player::Player;
 use game_common::components::race::RaceId;
 use game_common::entity::{EntityId, EntityMap};
@@ -137,6 +138,7 @@ fn flush_command_queue(
                         race: RaceId(1.into()),
                         health: Health::new(50),
                     }),
+                    components: Components::new(),
                 });
 
                 view.upate_streaming_source(id, StreamingState::Create);
@@ -155,6 +157,7 @@ fn flush_command_queue(
                             race: RaceId(1.into()),
                             health: Health::new(50),
                         }),
+                        components: Components::new(),
                     });
                 Human::default().spawn(&assets, &mut cmds);
 

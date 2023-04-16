@@ -1,3 +1,4 @@
+pub mod record;
 pub mod world;
 
 use core::marker::PhantomData;

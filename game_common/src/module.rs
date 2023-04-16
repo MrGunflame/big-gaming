@@ -1,6 +1,7 @@
 use std::fmt::{self, Display, Formatter};
 use std::str::FromStr;
 
+use bytemuck::{Pod, Zeroable};
 use uuid::Uuid;
 
 #[derive(Clone, Debug)]
@@ -23,7 +24,8 @@ impl Module {
     }
 }
 
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash, Zeroable, Pod)]
+#[repr(transparent)]
 pub struct ModuleId([u8; 16]);
 
 impl ModuleId {

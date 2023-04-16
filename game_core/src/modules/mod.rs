@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::time::Instant;
 
 use bevy::prelude::{Plugin, Resource};
 use game_common::entity::EntityId;
@@ -45,14 +46,18 @@ impl Plugin for ModulePlugin {
 
                 let mut records = Records::new();
                 for record in data.records {
+                    let mut world = WorldState::new();
+                    world.insert(Instant::now());
+                    let mut view = world.front_mut().unwrap();
+
                     match &record.body {
                         RecordBody::Action(action) => {
                             let handle =
                                 server.insert(Script::load(&server, action.script.as_ref()));
-                            server
-                                .get(&handle, &mut WorldState::new())
-                                .unwrap()
-                                .on_action(EntityId::from_raw(0), EntityId::from_raw(0));
+                            let mut scr = server.get(&handle, view).unwrap();
+                            scr.on_action(EntityId::from_raw(0), EntityId::from_raw(0));
+
+                            drop(scr);
                         }
                         _ => (),
                     }

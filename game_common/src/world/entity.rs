@@ -4,6 +4,7 @@ use bevy_transform::components::Transform;
 use glam::{Quat, Vec3};
 
 use crate::components::combat::Health;
+use crate::components::components::Components;
 use crate::components::items::ItemId;
 use crate::components::object::ObjectId;
 use crate::components::race::RaceId;
@@ -18,6 +19,7 @@ pub struct Entity {
     pub id: EntityId,
     pub transform: Transform,
     pub body: EntityBody,
+    pub components: Components,
 }
 
 impl Entity {
@@ -228,6 +230,7 @@ impl ObjectBuilder {
             id: EntityId::dangling(),
             transform: self.transform,
             body: EntityBody::Object(self.object),
+            components: Components::new(),
         }
     }
 }
@@ -245,6 +248,7 @@ impl From<TerrainMesh> for Entity {
             id: EntityId::dangling(),
             transform: Transform::from_translation(value.cell.min()),
             body: EntityBody::Terrain(value),
+            components: Components::new(),
         }
     }
 }

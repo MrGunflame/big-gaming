@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+bytemuck = "1.13.1"
 game_common = { version = "0.1.0", path = "../game_common" }
 game_data = { version = "0.1.0", path = "../game_data" }
 game_wasm = { version = "0.1.0", path = "../game_wasm", features = ["raw"] }

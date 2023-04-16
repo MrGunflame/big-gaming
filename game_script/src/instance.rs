@@ -1,8 +1,10 @@
 use std::mem::MaybeUninit;
 
+use bytemuck::{AnyBitPattern, NoUninit};
+use game_common::components::components::{Component, RecordReference};
 use game_common::entity::EntityId;
 use game_common::world::entity::EntityBody;
-use game_common::world::world::WorldState;
+use game_common::world::world::{WorldState, WorldViewMut};
 use game_wasm::log::Level;
 use game_wasm::raw;
 use game_wasm::raw::world::{Entity, Item};
@@ -20,18 +22,18 @@ macro_rules! register_fns {
     };
 }
 
-pub struct ScriptInstance<'a> {
-    store: Store<State<'a>>,
+pub struct ScriptInstance<'world> {
+    store: Store<State<'world>>,
     inner: Instance,
     events: Events,
 }
 
-impl<'a> ScriptInstance<'a> {
+impl<'world> ScriptInstance<'world> {
     pub fn new(
         engine: &Engine,
         module: &Module,
         events: Events,
-        world: &'a mut WorldState,
+        world: WorldViewMut<'world>,
     ) -> Self {
         let mut store = Store::new(engine, State { world });
 
@@ -109,7 +111,7 @@ impl<'a> ScriptInstance<'a> {
     }
 }
 
-fn log(mut caller: Caller<'_, State<'_>>, level: u32, ptr: u32, len: u32) {
+fn log(mut caller: Caller<'_, State<'_>>, level: u32, ptr: u32, len: u32) -> wasmtime::Result<()> {
     let mut memory = caller.get_export("memory").unwrap().into_memory().unwrap();
 
     let bytes = memory.data(&caller);
@@ -136,6 +138,8 @@ fn log(mut caller: Caller<'_, State<'_>>, level: u32, ptr: u32, len: u32) {
         }
         _ => unreachable!(),
     }
+
+    Ok(())
 }
 
 fn world_entity_spawn(mut caller: Caller<'_, State<'_>>, ptr: u32) -> u32 {
@@ -143,11 +147,7 @@ fn world_entity_spawn(mut caller: Caller<'_, State<'_>>, ptr: u32) -> u32 {
 }
 
 fn world_entity_get(mut caller: Caller<'_, State<'_>>, id: u64, out: u32) -> u32 {
-    let Some(view) = caller.data_mut().world.front() else {
-        return 1;
-    };
-
-    let Some(entity) = view.get(EntityId::from_raw(id)) else {
+    let Some(entity) = caller.data_mut().world.get(EntityId::from_raw(id)) else {
         return 1;
     };
 
@@ -177,14 +177,98 @@ fn world_entity_get(mut caller: Caller<'_, State<'_>>, id: u64, out: u32) -> u32
 fn world_entity_despawn(mut caller: Caller<'_, State<'_>>, id: u64) -> u32 {
     let id = EntityId::from_raw(id);
 
-    let Some(mut view) = caller.data_mut().world.front_mut() else {
-        return 1;
-    };
-
-    view.despawn(id);
+    caller.data_mut().world.despawn(id);
     0
 }
 
-pub struct State<'a> {
-    world: &'a mut WorldState,
+fn world_entity_component_get(
+    mut caller: Caller<'_, State<'_>>,
+    entity_id: u64,
+    component_id: u32,
+    out: u32,
+) -> wasmtime::Result<u32> {
+    let entity_id = EntityId::from_raw(entity_id);
+    let component_id: RecordReference = read_memory(&mut caller, component_id)?;
+
+    let entity = caller.data_mut().world.get(entity_id).unwrap();
+
+    let Some(comp) = entity.components.get(component_id) else {
+        return Ok(1);
+    };
+
+    let comp: game_wasm::world::Component = match comp {
+        Component::I32(x) => game_wasm::world::Component::I32(*x),
+        Component::I64(x) => game_wasm::world::Component::I64(*x),
+    };
+
+    let b: [u8; std::mem::size_of::<game_wasm::world::Component>()] =
+        unsafe { std::mem::transmute(comp) };
+
+    let mut memory = caller.get_export("memory").unwrap().into_memory().unwrap();
+    let bytes = memory.data_mut(&mut caller);
+
+    let out = &mut bytes[out as usize..out as usize + b.len()];
+    out.copy_from_slice(&b);
+
+    // write_memory(&mut caller, out, comp)?;
+    Ok(0)
+}
+
+// fn world_entity_component_insert(
+//     mut caller: &mut Caller<'_, State<'_>>,
+//     entity_id: u64,
+//     component_id: u32,
+//     ptr: u32,
+// ) -> wasmtime::Result<u32> {
+//     let entity_id = EntityId::from_raw(entity_id);
+//     let component_id: RecordReference = read_memory(&mut caller, component_id)?;
+
+//     let entity = caller.data_mut().world.get(entity_id).unwrap();
+
+//     let component = read_memory(&mut caller, ptr)?;
+
+//     entity.components.insert(
+//         component_id,
+//         match component {
+//             game_wasm::world::Component::I32(x) => Component::I32(x),
+//             game_wasm::world::Component::I64(x) => Component::I64(x),
+//         },
+//     );
+
+//     Ok(0)
+// }
+
+/// Reads type `T` from the guest memory starting at `T`.
+fn read_memory<T: AnyBitPattern>(
+    caller: &mut Caller<'_, State<'_>>,
+    ptr: u32,
+) -> wasmtime::Result<T> {
+    let mut memory = caller.get_export("memory").unwrap().into_memory().unwrap();
+    let bytes = memory.data(&caller);
+
+    let size = std::mem::size_of::<T>();
+    let bytes = &bytes[ptr as usize..ptr as usize + size as usize];
+
+    Ok(bytemuck::pod_read_unaligned(bytes))
+}
+
+// Why does T: Uninit imply T: Pod?
+fn write_memory<T: NoUninit>(
+    mut caller: &mut Caller<'_, State<'_>>,
+    ptr: u32,
+    value: &T,
+) -> wasmtime::Result<()> {
+    let mut memory = caller.get_export("memory").unwrap().into_memory().unwrap();
+    let bytes = memory.data_mut(&mut caller);
+
+    let size = std::mem::size_of::<T>();
+    let out = &mut bytes[ptr as usize..ptr as usize + size as usize];
+
+    out.copy_from_slice(bytemuck::bytes_of(value));
+
+    Ok(())
+}
+
+pub struct State<'world> {
+    world: WorldViewMut<'world>,
 }

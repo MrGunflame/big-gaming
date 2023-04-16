@@ -1,6 +1,6 @@
 //! Game (dynamic) scripting
 
-use game_common::world::world::WorldState;
+use game_common::world::world::{WorldState, WorldViewMut};
 use instance::ScriptInstance;
 use script::Script;
 use wasmtime::{Config, Engine};
@@ -27,11 +27,11 @@ impl ScriptServer {
         }
     }
 
-    pub fn get<'a>(
+    pub fn get<'world>(
         &self,
         handle: &Handle,
-        world: &'a mut WorldState,
-    ) -> Option<ScriptInstance<'a>> {
+        world: WorldViewMut<'world>,
+    ) -> Option<ScriptInstance<'world>> {
         let script = self.scripts.get(handle.id as usize)?;
 
         match script {

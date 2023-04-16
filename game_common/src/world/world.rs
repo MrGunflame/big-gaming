@@ -926,6 +926,7 @@ mod tests {
 
     use bevy_transform::prelude::Transform;
 
+    use crate::components::components::Components;
     use crate::components::object::ObjectId;
     use crate::world::entity::Object;
 
@@ -999,6 +1000,7 @@ mod tests {
             body: EntityBody::Object(Object {
                 id: ObjectId(0.into()),
             }),
+            components: Components::new(),
         });
 
         assert!(view.get(id).is_some());
@@ -1036,6 +1038,7 @@ mod tests {
             body: EntityBody::Object(Object {
                 id: ObjectId(0.into()),
             }),
+            components: Components::new(),
         });
 
         drop(view);
@@ -1071,6 +1074,7 @@ mod tests {
             body: EntityBody::Object(Object {
                 id: ObjectId(0.into()),
             }),
+            components: Components::new(),
         });
 
         drop(view);
