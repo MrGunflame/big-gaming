@@ -1,3 +1,5 @@
+pub mod world;
+
 use core::marker::PhantomData;
 use core::ptr::NonNull;
 
@@ -69,16 +71,4 @@ impl<T> PtrMut<T> {
 #[link(wasm_import_module = "host")]
 extern "C" {
     pub fn log(level: u32, ptr: Usize, len: Usize);
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-#[repr(transparent)]
-pub struct Level(u32);
-
-impl Level {
-    pub const ERROR: Self = Self(1);
-    pub const WARN: Self = Self(2);
-    pub const INFO: Self = Self(3);
-    pub const DEBUG: Self = Self(4);
-    pub const TRACE: Self = Self(5);
 }

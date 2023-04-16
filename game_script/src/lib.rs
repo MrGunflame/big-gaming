@@ -1,5 +1,6 @@
 //! Game (dynamic) scripting
 
+use game_common::world::world::WorldState;
 use instance::ScriptInstance;
 use script::Script;
 use wasmtime::{Config, Engine};
@@ -25,11 +26,15 @@ impl ScriptServer {
         }
     }
 
-    pub fn get(&self, handle: &Handle) -> Option<ScriptInstance> {
+    pub fn get<'a>(
+        &self,
+        handle: &Handle,
+        world: &'a mut WorldState,
+    ) -> Option<ScriptInstance<'a>> {
         let script = self.scripts.get(handle.id as usize)?;
 
         match script {
-            Script::Wasm(s) => Some(ScriptInstance::new(&self.engine, &s.module)),
+            Script::Wasm(s) => Some(ScriptInstance::new(&self.engine, &s.module, world)),
             _ => todo!(),
         }
     }

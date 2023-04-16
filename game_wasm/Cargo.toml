@@ -8,3 +8,5 @@ default = []
 raw = []
 
 [dependencies]
+# FIXME: Remove render dependencies from common.
+# game_common = { version = "0.1.0", path = "../game_common" }

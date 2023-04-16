@@ -7,3 +7,6 @@ pub mod raw;
 mod raw;
 
 pub mod log;
+pub mod world;
+
+pub struct Error;
