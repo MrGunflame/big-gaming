@@ -18,16 +18,12 @@ pub fn on_action(attr: TokenStream, input: TokenStream) -> TokenStream {
     // function.
     let fn_assert = quote! {
         #[inline(always)]
-        fn __assert_fn_signature_on_action<F>(f: F)
-        where
-            F: Fn(u64, u64),
-        {
-        }
+        fn __assert_fn_signature_on_action(f: unsafe extern "C" fn(u64, u64)) {}
     };
 
     let expanded = quote! {
         #[no_mangle]
-        fn on_action(#inputs) {
+        pub extern "C" fn on_action(#inputs) {
             {
                 #fn_assert
                 __assert_fn_signature_on_action(#ident);
