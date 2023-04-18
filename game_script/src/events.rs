@@ -46,12 +46,6 @@ impl BitOrAssign for Events {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub enum Event {
-    Action { entity: EntityId, invoker: EntityId },
-    Collision { entity: EntityId, other: EntityId },
-}
-
 ///
 /// ```ignore
 /// fn(entity: EntityId, invoker: EntityId);

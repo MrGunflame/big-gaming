@@ -3,6 +3,7 @@ use std::mem::MaybeUninit;
 use bytemuck::{AnyBitPattern, NoUninit};
 use game_common::components::components::{Component, RecordReference};
 use game_common::entity::EntityId;
+use game_common::events::Event;
 use game_common::world::entity::EntityBody;
 use game_common::world::world::{WorldState, WorldViewMut};
 use game_wasm::log::Level;
@@ -12,7 +13,7 @@ use wasmtime::{
     AsContextMut, Caller, Engine, Func, FuncType, Instance, Linker, Module, Store, TypedFunc, Val,
 };
 
-use crate::events::{Event, Events, OnAction, OnCollision};
+use crate::events::{Events, OnAction, OnCollision};
 
 macro_rules! register_fns {
     ($linker:expr, $($id:ident),*$(,)?) => {
@@ -90,10 +91,10 @@ impl<'world> ScriptInstance<'world> {
     //     dbg!(out);
     // }
 
-    pub fn run(&mut self, event: Event) {
+    pub fn run(&mut self, event: &Event) {
         match event {
-            Event::Action { entity, invoker } => self.on_action(entity, invoker),
-            Event::Collision { entity, other } => self.on_collision(entity, other),
+            Event::Action { entity, invoker } => self.on_action(*entity, *invoker),
+            Event::Collision { entity, other } => self.on_collision(*entity, *other),
         }
     }
 
@@ -164,7 +165,7 @@ fn world_entity_get(mut caller: Caller<'_, State<'_>>, id: u64, out: u32) -> u32
         rotation: entity.transform.rotation.to_array(),
         scale: entity.transform.scale.to_array(),
         body: match &entity.body {
-            EntityBody::Item(item) => raw::world::EntityBody::Item(Item { id: item.id.0 .0 }),
+            // EntityBody::Item(item) => raw::world::EntityBody::Item(Item { id: item.id.0 }),
             _ => todo!(),
         },
     };

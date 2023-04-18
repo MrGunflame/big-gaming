@@ -1,6 +1,7 @@
 use glam::UVec2;
 use noise::{NoiseFn, Simplex};
 
+use crate::components::items::Item;
 use crate::world::gen::Generate;
 use crate::world::terrain::{Heightmap, TerrainMesh};
 use crate::world::{Cell, CELL_SIZE_UINT};
@@ -34,6 +35,7 @@ impl Generate for FlatGenerator {
         // cell.spawn(Item {
         //     id: ItemId(0.into()),
         //     transform: Transform::from_translation(Vec3::splat(25.0)),
+        //     components: Default::default(),
         // });
 
         // for _ in 0..10 {}

@@ -2,6 +2,7 @@ use std::convert::Infallible;
 
 use bytes::{Buf, BufMut};
 use game_common::components::actions::Actions;
+use game_common::components::components::RecordReference;
 use game_common::components::items::{Item, ItemId, ItemStack};
 use game_common::components::properties::Properties;
 use game_common::id::WeakId;
@@ -29,7 +30,7 @@ impl Decode for ItemId {
     where
         B: Buf,
     {
-        WeakId::decode(buf).map(Self)
+        RecordReference::decode(buf).map(Self)
     }
 }
 

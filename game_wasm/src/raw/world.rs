@@ -45,7 +45,7 @@ pub enum EntityBody {
 #[derive(Clone, Debug)]
 #[repr(C)]
 pub struct Item {
-    pub id: u32,
+    pub id: RecordReference,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]

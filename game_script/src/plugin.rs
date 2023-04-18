@@ -3,9 +3,9 @@ use std::collections::VecDeque;
 use bevy_app::Plugin;
 use bevy_ecs::system::{Res, ResMut, Resource};
 use game_common::entity::EntityId;
+use game_common::events::{EntityEvent, Event, EventQueue};
 use game_common::world::world::WorldState;
 
-use crate::events::Event;
 use crate::scripts::Scripts;
 use crate::ScriptServer;
 
@@ -15,48 +15,20 @@ pub struct ScriptPlugin;
 impl Plugin for ScriptPlugin {
     fn build(&self, app: &mut bevy_app::App) {
         app.insert_resource(Scripts::new());
-        app.insert_resource(ScriptQueue::new());
+        app.insert_resource(EventQueue::new());
 
         app.add_system(execute_scripts);
     }
 }
 
-#[derive(Clone, Debug, Resource)]
-pub struct ScriptQueue {
-    events: VecDeque<EntityEvent>,
-}
-
-impl ScriptQueue {
-    fn new() -> Self {
-        Self {
-            events: VecDeque::new(),
-        }
-    }
-
-    pub fn push(&mut self, event: EntityEvent) {
-        self.events.push_back(event);
-    }
-
-    fn pop(&mut self) -> Option<EntityEvent> {
-        self.events.pop_front()
-    }
-}
-
-/// Run an event on an entity.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub struct EntityEvent {
-    pub entity: EntityId,
-    pub event: Event,
-}
-
 fn execute_scripts(
-    mut queue: ResMut<ScriptQueue>,
+    mut queue: ResMut<EventQueue>,
     mut world: ResMut<WorldState>,
-    mut server: Res<ScriptServer>,
-    mut scripts: Res<Scripts>,
+    server: Res<ScriptServer>,
+    scripts: Res<Scripts>,
 ) {
     while let Some(event) = queue.pop() {
-        let Some(handles) = scripts.get(event.entity, event.event) else {
+        let Some(handles) = scripts.get(event.entity, event.event.kind()) else {
             continue;
         };
 
@@ -67,7 +39,7 @@ fn execute_scripts(
 
             let mut instance = server.get(handle, view).unwrap();
 
-            instance.run(event.event);
+            instance.run(&event.event);
         }
     }
 }

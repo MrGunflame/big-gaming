@@ -13,6 +13,8 @@ impl Encode for PropertyValue {
         B: BufMut,
     {
         match self {
+            Self::None => (),
+            Self::Entity(_) => todo!(),
             Self::I32(val) => val.encode(buf)?,
             Self::I64(val) => val.encode(buf)?,
             Self::Bytes(bytes) => {

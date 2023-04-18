@@ -1,12 +1,14 @@
 use std::time::{Duration, Instant};
 
 use bevy_ecs::component::Component;
+use bytemuck::{Pod, Zeroable};
 
-use crate::id::{NamespacedId, WeakId};
+use crate::id::NamespacedId;
 use crate::units::Mass;
 
 use super::actions::Actions;
 use super::combat::Resistances;
+use super::components::RecordReference;
 use super::properties::Properties;
 
 /// A stack of up to `u32::MAX` items.
@@ -89,8 +91,9 @@ impl Magazine {
 }
 
 /// A weak identifer for an item.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ItemId(pub WeakId<u32>);
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Zeroable, Pod)]
+#[repr(transparent)]
+pub struct ItemId(pub RecordReference);
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ItemComponentId(NamespacedId<u32>);

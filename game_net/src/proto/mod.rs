@@ -37,6 +37,7 @@ mod combat;
 mod inventory;
 mod properties;
 mod quat;
+mod record;
 
 use game_common::components::combat::Health;
 use game_common::components::object::ObjectId;
