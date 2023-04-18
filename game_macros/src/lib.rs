@@ -7,6 +7,18 @@ mod wasm;
 
 mod proto;
 
+macro_rules! reexport_attribute_macro {
+    ($($ident:ident => $dst:path),*$(,)?) => {
+        $(
+            #[proc_macro_attribute]
+            #[allow(non_snake_case)]
+            pub fn $ident(attr: TokenStream, input: TokenStream) -> TokenStream {
+                $dst(attr, input)
+            }
+        )*
+    };
+}
+
 #[proc_macro_derive(Encode)]
 pub fn encode(input: TokenStream) -> TokenStream {
     proto::encode(input)
@@ -30,9 +42,7 @@ pub fn net__decode(input: TokenStream) -> TokenStream {
 
 // == wasm ==
 
-#[proc_macro_attribute]
-#[allow(non_snake_case)]
 #[cfg(feature = "wasm")]
-pub fn wasm__event_on_action(attr: TokenStream, input: TokenStream) -> TokenStream {
-    wasm::events::on_action(attr, input)
+reexport_attribute_macro! {
+    wasm__event_on_action => wasm::events::on_action,
 }
