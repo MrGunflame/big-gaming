@@ -1,5 +1,6 @@
 use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign};
 
+use game_common::entity::EntityId;
 use wasmtime::TypedFunc;
 
 /// Events exposed by a script.
@@ -46,11 +47,9 @@ impl BitOrAssign for Events {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct Event(u64);
-
-impl Event {
-    pub const ACTION: Self = Self(1);
-    pub const COLLISION: Self = Self(1 << 1);
+pub enum Event {
+    Action { entity: EntityId, invoker: EntityId },
+    Collision { entity: EntityId, other: EntityId },
 }
 
 ///

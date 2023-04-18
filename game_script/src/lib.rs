@@ -1,5 +1,6 @@
 //! Game (dynamic) scripting
 
+use bevy_ecs::system::Resource;
 use game_common::world::world::{WorldState, WorldViewMut};
 use instance::ScriptInstance;
 use script::Script;
@@ -9,9 +10,11 @@ pub mod actions;
 pub mod events;
 pub mod host;
 pub mod instance;
+pub mod plugin;
 pub mod script;
 pub mod scripts;
 
+#[derive(Resource)]
 pub struct ScriptServer {
     scripts: Vec<Script>,
     next_id: u64,

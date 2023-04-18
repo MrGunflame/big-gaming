@@ -27,7 +27,7 @@ impl Scripts {
             .push(handle);
     }
 
-    pub fn get(&mut self, entity: EntityId, event: Event) -> Option<&[Handle]> {
+    pub fn get(&self, entity: EntityId, event: Event) -> Option<&[Handle]> {
         self.scripts.get(&(entity, event)).map(|s| s.as_slice())
     }
 }

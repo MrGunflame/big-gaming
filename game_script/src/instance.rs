@@ -12,7 +12,7 @@ use wasmtime::{
     AsContextMut, Caller, Engine, Func, FuncType, Instance, Linker, Module, Store, TypedFunc, Val,
 };
 
-use crate::events::{Events, OnAction, OnCollision};
+use crate::events::{Event, Events, OnAction, OnCollision};
 
 macro_rules! register_fns {
     ($linker:expr, $($id:ident),*$(,)?) => {
@@ -89,6 +89,13 @@ impl<'world> ScriptInstance<'world> {
     //     let out = main.call(&mut self.store, 23).unwrap();
     //     dbg!(out);
     // }
+
+    pub fn run(&mut self, event: Event) {
+        match event {
+            Event::Action { entity, invoker } => self.on_action(entity, invoker),
+            Event::Collision { entity, other } => self.on_collision(entity, other),
+        }
+    }
 
     pub fn on_action(&mut self, entity: EntityId, invoker: EntityId) {
         let func: OnAction = self
