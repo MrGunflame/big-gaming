@@ -33,12 +33,14 @@ pub mod sequence;
 pub mod shutdown;
 pub mod timestamp;
 
+mod action;
 mod combat;
 mod inventory;
 mod properties;
 mod quat;
 mod record;
 
+use game_common::components::actions::ActionId;
 use game_common::components::combat::Health;
 use game_common::components::object::ObjectId;
 use game_common::components::race::RaceId;
@@ -606,6 +608,12 @@ pub struct EntityHealth {
     pub health: Health,
 }
 
+#[derive(Copy, Clone, Debug, Encode, Decode)]
+pub struct EntityAction {
+    pub entity: ServerEntity,
+    pub action: ActionId,
+}
+
 /// Sets the host actor host used by the client.
 ///
 /// This is the actor the client is allowed to control.
@@ -675,6 +683,7 @@ pub enum Frame {
     EntityRotate(EntityRotate),
     EntityVelocity(EntityVelocity),
     EntityHealth(EntityHealth),
+    EntityAction(EntityAction),
     SpawnHost(SpawnHost),
 }
 
@@ -687,6 +696,7 @@ impl Frame {
             Self::EntityRotate(frame) => frame.entity,
             Self::EntityVelocity(frame) => frame.entity,
             Self::EntityHealth(frame) => frame.entity,
+            Self::EntityAction(frame) => frame.entity,
             Self::SpawnHost(frame) => frame.entity,
         }
     }
@@ -722,6 +732,10 @@ impl Encode for Frame {
             }
             Self::EntityHealth(frame) => {
                 FrameType::ENTITY_HEALTH.encode(&mut buf)?;
+                frame.encode(buf)
+            }
+            Self::EntityAction(frame) => {
+                FrameType::ENTITY_ACTION.encode(&mut buf)?;
                 frame.encode(buf)
             }
             Self::SpawnHost(frame) => {
@@ -765,6 +779,10 @@ impl Decode for Frame {
             FrameType::ENTITY_HEALTH => {
                 let frame = EntityHealth::decode(buf)?;
                 Ok(Self::EntityHealth(frame))
+            }
+            FrameType::ENTITY_ACTION => {
+                let frame = EntityAction::decode(buf)?;
+                Ok(Self::EntityAction(frame))
             }
             FrameType::SPAWN_HOST => {
                 let frame = SpawnHost::decode(buf)?;
@@ -935,6 +953,8 @@ impl FrameType {
     /// The `FrameType` for the [`EntityHealth`] frame.
     pub const ENTITY_HEALTH: Self = Self(0x10);
 
+    pub const ENTITY_ACTION: Self = Self(0x11);
+
     pub const TRIGGER_ACTION: Self = Self(0x20);
 }
 
@@ -949,6 +969,7 @@ impl TryFrom<u16> for FrameType {
             Self::ENTITY_ROTATE => Ok(Self::ENTITY_ROTATE),
             Self::ENTITY_VELOCITY => Ok(Self::ENTITY_VELOCITY),
             Self::ENTITY_HEALTH => Ok(Self::ENTITY_HEALTH),
+            Self::ENTITY_ACTION => Ok(Self::ENTITY_ACTION),
             Self::SPAWN_HOST => Ok(Self::SPAWN_HOST),
             Self::PLAYER_JOIN => Ok(Self::PLAYER_JOIN),
             Self::PLAYER_LEAVE => Ok(Self::PLAYER_LEAVE),

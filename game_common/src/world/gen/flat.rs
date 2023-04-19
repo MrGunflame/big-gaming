@@ -1,7 +1,6 @@
 use glam::UVec2;
 use noise::{NoiseFn, Simplex};
 
-use crate::components::items::Item;
 use crate::world::gen::Generate;
 use crate::world::terrain::{Heightmap, TerrainMesh};
 use crate::world::{Cell, CELL_SIZE_UINT};

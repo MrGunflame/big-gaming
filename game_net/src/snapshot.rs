@@ -1,4 +1,5 @@
 use bevy_ecs::system::Resource;
+use game_common::components::actions::ActionId;
 use game_common::components::combat::Health;
 use game_common::entity::EntityId;
 use game_common::world::entity::EntityBody;
@@ -104,6 +105,10 @@ pub enum Command {
         id: EntityId,
         health: Health,
     },
+    EntityAction {
+        id: EntityId,
+        action: ActionId,
+    },
     SpawnHost {
         id: EntityId,
     },
@@ -136,6 +141,7 @@ impl Command {
                 angvel: _,
             } => Some(*id),
             Self::EntityHealth { id, health: _ } => Some(*id),
+            Self::EntityAction { id, action: _ } => Some(*id),
             Self::SpawnHost { id } => Some(*id),
             Self::ReceivedCommands { ids: _ } => None,
         }

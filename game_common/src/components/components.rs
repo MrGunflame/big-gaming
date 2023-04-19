@@ -3,7 +3,7 @@ use bytemuck::{Pod, Zeroable};
 
 use crate::module::ModuleId;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Components {
     components: HashMap<RecordReference, Component>,
 }

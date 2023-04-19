@@ -35,24 +35,24 @@ pub struct ActorBundle {
 impl ActorBundle {
     pub fn new() -> Self {
         let mut equipment = Equipment::new();
-        equipment.insert(
-            EquipmentSlot::MAIN_HAND,
-            Item {
-                id: ItemId(0.into()),
-                resistances: None,
-                // damage: None,
-                components: None,
-                // magazine: Some(Magazine::Single {
-                //     id: ItemId(64.into()),
-                //     count: 31,
-                // }),
-                mass: Default::default(),
-                // ammo: Some(ItemId(64.into())),
-                // cooldown: Cooldown::new(Duration::new(0, 200)),
-                actions: Default::default(),
-                properties: Default::default(),
-            },
-        );
+        // equipment.insert(
+        //     EquipmentSlot::MAIN_HAND,
+        //     Item {
+        //         id: ItemId(0.into()),
+        //         resistances: None,
+        //         // damage: None,
+        //         components: None,
+        //         // magazine: Some(Magazine::Single {
+        //         //     id: ItemId(64.into()),
+        //         //     count: 31,
+        //         // }),
+        //         mass: Default::default(),
+        //         // ammo: Some(ItemId(64.into())),
+        //         // cooldown: Cooldown::new(Duration::new(0, 200)),
+        //         actions: Default::default(),
+        //         properties: Default::default(),
+        //     },
+        // );
 
         Self {
             transform: crate::bundles::TransformBundle::from_translation(Vec3::new(

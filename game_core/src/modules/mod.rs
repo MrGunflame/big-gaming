@@ -7,6 +7,7 @@ use game_common::module::ModuleId;
 use game_common::world::world::WorldState;
 use game_data::loader::FileLoader;
 use game_data::record::RecordBody;
+use game_script::plugin::ScriptPlugin;
 use game_script::script::Script;
 use game_script::ScriptServer;
 use tokio::runtime::Runtime;
@@ -75,6 +76,8 @@ impl Plugin for ModulePlugin {
         tracing::info!("loaded {} modules", modules.len());
 
         app.insert_resource(modules);
+        app.insert_resource(server);
+        app.add_plugin(ScriptPlugin);
     }
 }
 

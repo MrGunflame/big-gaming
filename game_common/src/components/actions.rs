@@ -1,17 +1,14 @@
-use std::fmt::{self, Debug, Formatter};
-use std::sync::Arc;
+use std::collections::VecDeque;
+use std::fmt::Debug;
+
+use bevy_ecs::system::Resource;
 
 use crate::entity::EntityId;
-use crate::module::ModuleId;
-use crate::world::world::WorldViewMut;
 
-use super::items::ItemId;
+use super::components::RecordReference;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct ActionId {
-    pub module: ModuleId,
-    pub record: u32,
-}
+pub struct ActionId(pub RecordReference);
 
 #[derive(Clone, Debug, Default)]
 pub struct Actions {
@@ -30,28 +27,29 @@ impl Actions {
     }
 }
 
-#[derive(Clone)]
-pub struct Action {
-    pub id: ActionId,
-    pub fire: Arc<dyn FireAction>,
+#[derive(Clone, Debug, Default, Resource)]
+pub struct ActionQueue {
+    queue: VecDeque<Action>,
 }
 
-impl Debug for Action {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Action")
-            .field("name", &self.id)
-            .field("fire", &Arc::as_ptr(&self.fire))
-            .finish()
+impl ActionQueue {
+    pub fn new() -> Self {
+        Self {
+            queue: VecDeque::new(),
+        }
+    }
+
+    pub fn push(&mut self, action: Action) {
+        self.queue.push_back(action);
+    }
+
+    pub fn pop(&mut self) -> Option<Action> {
+        self.queue.pop_front()
     }
 }
 
-#[derive(Debug)]
-pub struct Context<'a> {
-    pub id: ItemId,
-    pub invoker: EntityId,
-    pub world: WorldViewMut<'a>,
-}
-
-pub trait FireAction: 'static + Send + Sync {
-    fn call(&self, ctx: Context<'_>);
+#[derive(Clone, Debug)]
+pub struct Action {
+    pub entity: EntityId,
+    pub id: ActionId,
 }

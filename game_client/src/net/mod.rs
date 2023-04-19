@@ -8,6 +8,7 @@ use std::sync::{mpsc, Arc};
 use std::time::{Duration, Instant};
 
 use bevy::prelude::{dbg, IntoSystemConfig, Res, ResMut, SystemSet, Transform, Vec3};
+use game_common::components::components::Components;
 use game_common::entity::EntityMap;
 use game_common::world::entity::{Entity, EntityBody};
 use game_common::world::world::WorldState;
@@ -170,6 +171,7 @@ fn flush_command_queue(
                         scale: Vec3::splat(1.0),
                     },
                     body: data,
+                    components: Components::new(),
                 });
             }
             Command::EntityDestroy { id } => {
@@ -193,6 +195,7 @@ fn flush_command_queue(
                     tracing::warn!("tried to apply health to a non-actor entity");
                 }
             }
+            Command::EntityAction { id: _, action: _ } => todo!(),
             Command::SpawnHost { id } => {
                 view.spawn_host(id);
             }
