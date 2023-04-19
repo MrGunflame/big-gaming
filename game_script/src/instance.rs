@@ -1,17 +1,7 @@
-use std::mem::MaybeUninit;
-
-use bytemuck::{AnyBitPattern, NoUninit};
-use game_common::components::components::{Component, RecordReference};
 use game_common::entity::EntityId;
 use game_common::events::Event;
-use game_common::world::entity::EntityBody;
-use game_common::world::world::{WorldState, WorldViewMut};
-use game_wasm::log::Level;
-use game_wasm::raw;
-use game_wasm::raw::world::{Entity, Item};
-use wasmtime::{
-    AsContextMut, Caller, Engine, Func, FuncType, Instance, Linker, Module, Store, TypedFunc, Val,
-};
+use game_common::world::world::WorldViewMut;
+use wasmtime::{Engine, Instance, Linker, Module, Store};
 
 use crate::events::{Events, OnAction, OnCollision};
 
@@ -43,7 +33,7 @@ impl<'world> ScriptInstance<'world> {
         }
     }
 
-    pub fn run(&mut self, event: &Event) {
+    pub fn run(&mut self, event: &Event) -> wasmtime::Result<()> {
         tracing::info!("exec {:?}", event);
 
         match event {
@@ -52,24 +42,14 @@ impl<'world> ScriptInstance<'world> {
         }
     }
 
-    pub fn on_action(&mut self, entity: EntityId, invoker: EntityId) {
-        let func: OnAction = self
-            .inner
-            .get_typed_func(&mut self.store, "on_action")
-            .unwrap();
-
+    pub fn on_action(&mut self, entity: EntityId, invoker: EntityId) -> wasmtime::Result<()> {
+        let func: OnAction = self.inner.get_typed_func(&mut self.store, "on_action")?;
         func.call(&mut self.store, (entity.into_raw(), invoker.into_raw()))
-            .unwrap();
     }
 
-    pub fn on_collision(&mut self, entity: EntityId, other: EntityId) {
-        let func: OnCollision = self
-            .inner
-            .get_typed_func(&mut self.store, "on_collision")
-            .unwrap();
-
+    pub fn on_collision(&mut self, entity: EntityId, other: EntityId) -> wasmtime::Result<()> {
+        let func: OnCollision = self.inner.get_typed_func(&mut self.store, "on_collision")?;
         func.call(&mut self.store, (entity.into_raw(), other.into_raw()))
-            .unwrap();
     }
 }
 
