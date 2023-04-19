@@ -26,6 +26,7 @@ struct ConnectionInner {
     state_rx: Mutex<mpsc::Receiver<State>>,
     interpolation_period: RwLock<InterpolationPeriod>,
     overrides: RwLock<LocalOverrides>,
+    host: RwLock<EntityId>,
 }
 
 impl ServerConnection {
@@ -45,6 +46,7 @@ impl ServerConnection {
                     end: now,
                 }),
                 overrides: RwLock::new(LocalOverrides::new()),
+                host: RwLock::new(EntityId::dangling()),
             }),
         }
     }
@@ -123,6 +125,14 @@ impl ServerConnection {
 
     pub fn overrides(&self) -> &RwLock<LocalOverrides> {
         &self.inner.overrides
+    }
+
+    pub fn host(&self) -> EntityId {
+        *self.inner.host.read()
+    }
+
+    pub fn set_host(&self, id: EntityId) {
+        *self.inner.host.write() = id;
     }
 }
 

@@ -198,6 +198,7 @@ fn flush_command_queue(
             Command::EntityAction { id: _, action: _ } => todo!(),
             Command::SpawnHost { id } => {
                 view.spawn_host(id);
+                conn.set_host(id);
             }
             Command::Connected => (),
             Command::Disconnected => (),

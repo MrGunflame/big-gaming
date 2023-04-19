@@ -22,4 +22,8 @@ impl Records {
     pub fn insert(&mut self, record: Record) {
         self.records.insert(record.id, record);
     }
+
+    pub fn iter(&self) -> impl Iterator<Item = &Record> {
+        self.records.values()
+    }
 }

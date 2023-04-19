@@ -13,6 +13,7 @@ game_ui = { version = "0.1.0", path = "../game_ui" }
 game_input = { version = "0.1.0", path = "../game_input" }
 game_audio = { version = "0.1.0", path = "../game_audio" }
 game_net = { version = "0.1.0", path = "../game_net" }
+game_data = { version = "0.1.0", path = "../game_data" }
 
 ahash = "0.8.2"
 bevy = { version = "0.10.0", features = ["wav", "jpeg"] }

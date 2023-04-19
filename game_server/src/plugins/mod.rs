@@ -130,6 +130,10 @@ fn flush_command_queue(
             Command::EntityHealth { id: _, health: _ } => {
                 tracing::warn!("received EntityHealth from client, ignored");
             }
+            Command::EntityAction { id, action } => {
+                dbg!("action from peer");
+                todo!()
+            }
             Command::Connected => {
                 let id = view.spawn(Entity {
                     id: EntityId::dangling(),

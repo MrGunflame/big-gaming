@@ -39,6 +39,8 @@ impl Encode for ItemRecord {
         self.mass.encode(&mut buf);
         self.value.encode(&mut buf);
         self.uri.encode(&mut buf);
+        self.components.encode(&mut buf);
+        self.actions.encode(&mut buf);
     }
 }
 

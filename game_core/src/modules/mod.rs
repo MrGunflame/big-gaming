@@ -112,6 +112,10 @@ impl Modules {
     pub fn contains(&self, id: ModuleId) -> bool {
         self.modules.contains_key(&id)
     }
+
+    pub fn iter(&self) -> impl Iterator<Item = &ModuleData> {
+        self.modules.values()
+    }
 }
 
 #[derive(Clone, Debug)]

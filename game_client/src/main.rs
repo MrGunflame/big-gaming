@@ -31,6 +31,7 @@ use game_common::scene::SceneTransition;
 use game_core::CorePlugins;
 use game_ui::UiPlugin;
 use net::NetPlugin;
+use plugins::actions::ActionsPlugin;
 use plugins::interactions::InteractionsPlugin;
 use plugins::{CameraPlugin, MovementPlugin};
 
@@ -99,6 +100,7 @@ fn main() {
     app.add_plugin(NetPlugin::default());
     app.add_startup_system(setup);
     app.add_system(crate::world::terrain::load_terrain_mesh);
+    app.add_plugin(ActionsPlugin);
 
     if let Some(addr) = args.connect {
         tracing::info!("Connecting to {}", addr);
