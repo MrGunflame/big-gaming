@@ -1,4 +1,4 @@
-use bytemuck::NoUninit;
+use bytemuck::{NoUninit, Pod, Zeroable};
 
 use super::record::RecordReference;
 use super::{Ptr, PtrMut};
@@ -26,7 +26,7 @@ extern "C" {
     pub fn world_entity_component_remove(entity_id: u64, component_id: RecordReference) -> u32;
 }
 
-#[derive(Clone, Debug)]
+#[derive(Copy, Clone, Debug)]
 #[repr(C)]
 pub struct Entity {
     pub id: u64,
@@ -36,20 +36,25 @@ pub struct Entity {
     pub body: EntityBody,
 }
 
-#[derive(Clone, Debug)]
-#[repr(u8, C)]
+#[derive(Copy, Clone, Debug)]
+#[repr(u32, C)]
 pub enum EntityBody {
-    Item(Item) = 0,
+    Terrain = 0,
+    Object = 1,
+    Actor = 2,
+    Item(Item) = 3,
 }
 
-#[derive(Clone, Debug)]
+unsafe impl NoUninit for EntityBody {}
+
+#[derive(Copy, Clone, Debug, Zeroable, Pod)]
 #[repr(C)]
 pub struct Item {
     pub id: RecordReference,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
-#[repr(u8, C)]
+#[repr(u32, C)]
 pub enum Component {
     I32(i32),
     I64(i64),

@@ -167,8 +167,15 @@ fn world_entity_get(mut caller: Caller<'_, State<'_>>, id: u64, out: u32) -> u32
         rotation: entity.transform.rotation.to_array(),
         scale: entity.transform.scale.to_array(),
         body: match &entity.body {
-            // EntityBody::Item(item) => raw::world::EntityBody::Item(Item { id: item.id.0 }),
-            _ => todo!(),
+            EntityBody::Item(item) => raw::world::EntityBody::Item(Item {
+                id: game_wasm::raw::record::RecordReference {
+                    module: item.id.0.module.into_bytes(),
+                    record: item.id.0.record,
+                },
+            }),
+            EntityBody::Actor(_) => raw::world::EntityBody::Actor,
+            EntityBody::Object(_) => raw::world::EntityBody::Object,
+            EntityBody::Terrain(_) => raw::world::EntityBody::Terrain,
         },
     };
 
