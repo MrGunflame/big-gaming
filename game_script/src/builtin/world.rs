@@ -1,19 +1,24 @@
 use game_common::entity::EntityId;
-use game_common::world::entity::{EntityBody, EntityKind};
-use game_wasm::raw;
-use game_wasm::raw::record::RecordReference;
-use game_wasm::raw::world::{Entity, Item};
-use wasmtime::{Caller, Result, WasmTy};
+use game_wasm::raw::world::Entity;
+use wasmtime::{Caller, Error, Result};
 
-use crate::abi::ToAbi;
+use crate::abi::{FromAbi, ToAbi};
 use crate::instance::State;
 
 use super::CallerExt;
 
-pub fn world_entity_spawn(mut caller: Caller<'_, State<'_>>, ptr: u32) -> Result<u32> {
+pub fn world_entity_spawn(mut caller: Caller<'_, State<'_>>, ptr: u32, out: u32) -> Result<u32> {
     let entity: Entity = caller.read(ptr)?;
 
-    todo!()
+    let entity = match entity.from_abi() {
+        Ok(entity) => entity,
+        Err(err) => return Err(Error::new(err)),
+    };
+
+    let id = caller.data_mut().world.spawn(entity);
+    caller.write(out, &id);
+
+    Ok(0)
 }
 
 pub fn world_entity_get(mut caller: Caller<'_, State<'_>>, id: u64, out: u32) -> Result<u32> {

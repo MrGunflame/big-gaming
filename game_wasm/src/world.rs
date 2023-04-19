@@ -23,12 +23,17 @@ impl Entity {
         }
     }
 
-    pub fn spawn(&self) -> Result<(), Error> {
+    pub fn spawn(&mut self) -> Result<(), Error> {
+        let mut id = self.0.id;
+        let out_ptr = &mut id as *mut u64 as Usize;
+
         let ptr = &self.0 as *const raw::Entity as Usize;
 
-        let res = unsafe { raw::world_entity_spawn(Ptr::from_raw(ptr)) };
+        let res = unsafe { raw::world_entity_spawn(Ptr::from_raw(ptr), PtrMut::from_raw(out_ptr)) };
 
         if res == 0 {
+            self.0.id = id;
+
             Ok(())
         } else {
             Err(Error)

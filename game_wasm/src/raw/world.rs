@@ -7,7 +7,7 @@ use super::{Ptr, PtrMut};
 extern "C" {
     pub fn world_entity_get(id: u64, out: PtrMut<Entity>) -> u32;
 
-    pub fn world_entity_spawn(entity: Ptr<Entity>) -> u32;
+    pub fn world_entity_spawn(entity: Ptr<Entity>, out: PtrMut<u64>) -> u32;
 
     pub fn world_entity_despawn(id: u64) -> u32;
 
