@@ -1,7 +1,7 @@
 use bevy::prelude::{Plugin, Res, ResMut};
 use game_common::components::actions::ActionQueue;
 use game_common::components::interaction::InteractionQueue;
-use game_common::events::{EntityEvent, Event, EventQueue};
+use game_common::events::{ActionEvent, EntityEvent, Event, EventQueue};
 use game_net::snapshot::Command;
 
 use crate::net::ServerConnection;
@@ -39,11 +39,14 @@ fn handle_action_events(
     while let Some(action) = actions.pop() {
         events.push(EntityEvent {
             entity: action.entity,
-            event: Event::Action {
+            event: Event::Action(ActionEvent {
                 entity: action.entity,
                 invoker: action.entity,
-            },
+                action: action.id,
+            }),
         });
+
+        dbg!(&action);
 
         conn.send(Command::EntityAction {
             id: action.entity,

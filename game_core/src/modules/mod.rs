@@ -9,6 +9,7 @@ use game_data::loader::FileLoader;
 use game_data::record::RecordBody;
 use game_script::plugin::ScriptPlugin;
 use game_script::script::Script;
+use game_script::scripts::Scripts;
 use game_script::ScriptServer;
 use tokio::runtime::Runtime;
 
@@ -20,6 +21,7 @@ impl Plugin for ModulePlugin {
 
         let mut modules = Modules::new();
         let mut server = ScriptServer::new();
+        let mut scripts = Scripts::new();
 
         rt.block_on(async {
             let mut dir = match tokio::fs::read_dir("./mods").await {
@@ -55,6 +57,7 @@ impl Plugin for ModulePlugin {
                         RecordBody::Action(action) => {
                             let handle =
                                 server.insert(Script::load(&server, action.script.as_ref()));
+
                             let mut scr = server.get(&handle, view).unwrap();
                             scr.on_action(EntityId::from_raw(0), EntityId::from_raw(0));
 

@@ -4,6 +4,7 @@ use std::collections::VecDeque;
 
 use bevy_ecs::system::Resource;
 
+use crate::components::actions::ActionId;
 use crate::entity::EntityId;
 
 #[derive(Clone, Debug, Default, Resource)]
@@ -29,17 +30,14 @@ impl EventQueue {
 
 #[derive(Clone, Debug)]
 pub enum Event {
-    Action { entity: EntityId, invoker: EntityId },
+    Action(ActionEvent),
     Collision { entity: EntityId, other: EntityId },
 }
 
 impl Event {
     pub const fn kind(&self) -> EventKind {
         match self {
-            Self::Action {
-                entity: _,
-                invoker: _,
-            } => EventKind::Action,
+            Self::Action(_) => EventKind::Action,
             Self::Collision {
                 entity: _,
                 other: _,
@@ -58,4 +56,11 @@ pub enum EventKind {
 pub struct EntityEvent {
     pub entity: EntityId,
     pub event: Event,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct ActionEvent {
+    pub entity: EntityId,
+    pub invoker: EntityId,
+    pub action: ActionId,
 }

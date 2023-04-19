@@ -7,7 +7,7 @@ use game_common::events::{EntityEvent, Event, EventQueue};
 use game_common::world::world::WorldState;
 
 use crate::scripts::Scripts;
-use crate::ScriptServer;
+use crate::{Handle, ScriptServer};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ScriptPlugin;
@@ -27,17 +27,38 @@ fn execute_scripts(
     server: Res<ScriptServer>,
     scripts: Res<Scripts>,
 ) {
-    while let Some(event) = queue.pop() {
-        let Some(handles) = scripts.get(event.entity, event.event.kind()) else {
-            continue;
-        };
+    // while let Some(event) = queue.pop() {
+    //     let Some(handles) = scripts.get(event.entity, event.event.kind()) else {
+    //         continue;
+    //     };
 
-        for handle in handles {
+    //     for handle in handles {
+    //         let Some(mut view) = world.front_mut() else {
+    //             return;
+    //         };
+
+    //         let mut instance = server.get(handle, view).unwrap();
+
+    //         instance.run(&event.event);
+    //     }
+    // }
+}
+
+pub fn flush_event_queue(
+    queue: &mut EventQueue,
+    world: &mut WorldState,
+    server: &ScriptServer,
+    scripts: &Scripts,
+) {
+    while let Some(event) = queue.pop() {
+        for (i, _) in server.scripts.iter().enumerate() {
             let Some(mut view) = world.front_mut() else {
                 return;
             };
 
-            let mut instance = server.get(handle, view).unwrap();
+            let handle = Handle { id: i as u64 };
+
+            let mut instance = server.get(&handle, view).unwrap();
 
             instance.run(&event.event);
         }

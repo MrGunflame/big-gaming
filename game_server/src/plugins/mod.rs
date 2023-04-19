@@ -10,6 +10,7 @@ use game_common::components::components::Components;
 use game_common::components::player::Player;
 use game_common::components::race::RaceId;
 use game_common::entity::{EntityId, EntityMap};
+use game_common::events::{ActionEvent, EntityEvent, Event, EventQueue};
 use game_common::world::entity::{Actor, Entity, EntityBody};
 use game_common::world::snapshot::EntityChange;
 use game_common::world::source::{StreamingSource, StreamingSources, StreamingState};
@@ -17,6 +18,8 @@ use game_common::world::world::WorldState;
 use game_common::world::CellId;
 use game_net::conn::ConnectionId;
 use game_net::snapshot::{Command, CommandQueue, ConnectionMessage, Response, Status};
+use game_script::scripts::Scripts;
+use game_script::ScriptServer;
 
 use crate::conn::Connections;
 use crate::entity::ServerEntityGenerator;
@@ -45,14 +48,27 @@ pub fn tick(
     level: Res<Level>,
     mut sources: ResMut<StreamingSources>,
     mut pipeline: ResMut<game_physics::Pipeline>,
+    mut event_queue: ResMut<EventQueue>,
+    server: Res<ScriptServer>,
+    scripts: Res<Scripts>,
 ) {
     update_client_heads(&conns, &mut world);
-    flush_command_queue(commands, &conns, &queue, &map, &mut world, &assets);
+    flush_command_queue(
+        commands,
+        &conns,
+        &queue,
+        &map,
+        &mut world,
+        &assets,
+        &mut event_queue,
+    );
 
     crate::world::level::update_streaming_sources(&mut sources, &world);
     crate::world::level::update_level(&sources, &level, &mut world);
 
     pipeline.step(&mut world);
+
+    game_script::plugin::flush_event_queue(&mut event_queue, &mut world, &server, &scripts);
 
     // Push snapshots last always
     update_snapshots(&conns, &world);
@@ -84,6 +100,7 @@ fn flush_command_queue(
     map: &EntityMap,
     world: &mut WorldState,
     assets: &AssetServer,
+    events: &mut EventQueue,
 ) {
     while let Some(msg) = queue.pop() {
         tracing::trace!("got command {:?}", msg.command);
@@ -131,8 +148,14 @@ fn flush_command_queue(
                 tracing::warn!("received EntityHealth from client, ignored");
             }
             Command::EntityAction { id, action } => {
-                dbg!("action from peer");
-                todo!()
+                events.push(EntityEvent {
+                    entity: id,
+                    event: Event::Action(ActionEvent {
+                        entity: id,
+                        invoker: id,
+                        action,
+                    }),
+                });
             }
             Command::Connected => {
                 let id = view.spawn(Entity {

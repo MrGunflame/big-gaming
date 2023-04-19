@@ -92,8 +92,10 @@ impl<'world> ScriptInstance<'world> {
     // }
 
     pub fn run(&mut self, event: &Event) {
+        tracing::info!("exec {:?}", event);
+
         match event {
-            Event::Action { entity, invoker } => self.on_action(*entity, *invoker),
+            Event::Action(event) => self.on_action(event.entity, event.invoker),
             Event::Collision { entity, other } => self.on_collision(*entity, *other),
         }
     }
