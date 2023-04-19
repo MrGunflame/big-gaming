@@ -45,4 +45,5 @@ pub fn net__decode(input: TokenStream) -> TokenStream {
 #[cfg(feature = "wasm")]
 reexport_attribute_macro! {
     wasm__event_on_action => wasm::events::on_action,
+    wasm__event_on_collision => wasm::events::on_collision,
 }

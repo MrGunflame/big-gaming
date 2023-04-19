@@ -28,6 +28,7 @@ macro_rules! define_action {
 
 define_action! {
     on_action => ["u64", "u64"],
+    on_collision => ["u64", "u64"],
 }
 
 fn expand_event_attr<T>(attr: TokenStream, input: TokenStream, inputs: T) -> TokenStream
