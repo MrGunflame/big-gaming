@@ -35,7 +35,7 @@ fn expand_event_attr<T>(attr: TokenStream, input: TokenStream, inputs: T) -> Tok
 where
     T: IntoIterator<Item = Type>,
 {
-    let args = parse_macro_input!(attr as Args);
+    parse_macro_input!(attr as EmptyArgs);
     let input = parse_macro_input!(input as ItemFn);
 
     let expanded = expand_extern(input, Punctuated::from_iter(inputs));
@@ -70,10 +70,18 @@ fn expand_assertion_block(ident: Ident, inputs: Punctuated<Type, Comma>) -> Toke
     }
 }
 
-struct Args {}
+struct EmptyArgs;
 
-impl Parse for Args {
+impl Parse for EmptyArgs {
     fn parse(input: ParseStream) -> Result<Self> {
+        if !input.is_empty() {
+            input
+                .span()
+                .unwrap()
+                .error("cannot add arguments to event macro")
+                .emit();
+        }
+
         Ok(Self {})
     }
 }
