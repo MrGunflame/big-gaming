@@ -47,6 +47,10 @@ pub struct Abort;
 pub enum Error {
     #[error("invalid invariant")]
     InvalidInvariant,
+    #[error("no memory")]
+    NoMemory,
+    #[error("oob pointer")]
+    BadPointer,
 }
 
 trait CallerExt {
@@ -73,21 +77,31 @@ trait CallerExt {
 
 impl<'a, S> CallerExt for Caller<'a, S> {
     fn read_memory<'s>(&'s mut self, ptr: u32, len: u32) -> wasmtime::Result<&'s [u8]> {
-        let memory = self.get_export("memory").unwrap().into_memory().unwrap();
+        let memory = self
+            .get_export("memory")
+            .map(|m| m.into_memory())
+            .flatten()
+            .ok_or_else(|| wasmtime::Error::new(Error::NoMemory))?;
+
         let bytes = memory
             .data(self)
             .get(ptr as usize..ptr as usize + len as usize)
-            .unwrap();
+            .ok_or_else(|| wasmtime::Error::new(Error::BadPointer))?;
 
         Ok(bytes)
     }
 
     fn write_memory(&mut self, ptr: u32, buf: &[u8]) -> wasmtime::Result<()> {
-        let memory = self.get_export("memory").unwrap().into_memory().unwrap();
+        let memory = self
+            .get_export("memory")
+            .map(|m| m.into_memory())
+            .flatten()
+            .ok_or_else(|| wasmtime::Error::new(Error::NoMemory))?;
+
         let mut bytes = memory
             .data_mut(self)
             .get_mut(ptr as usize..ptr as usize + buf.len())
-            .unwrap();
+            .ok_or_else(|| wasmtime::Error::new(Error::BadPointer))?;
 
         bytes.copy_from_slice(buf);
         Ok(())
