@@ -14,6 +14,8 @@ pub mod plugin;
 pub mod script;
 pub mod scripts;
 
+mod builtin;
+
 #[derive(Resource)]
 pub struct ScriptServer {
     scripts: Vec<Script>,

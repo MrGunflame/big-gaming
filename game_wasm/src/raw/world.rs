@@ -26,7 +26,7 @@ extern "C" {
     pub fn world_entity_component_remove(entity_id: u64, component_id: RecordReference) -> u32;
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, NoUninit)]
 #[repr(C)]
 pub struct Entity {
     pub id: u64,
