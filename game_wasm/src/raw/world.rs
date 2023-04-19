@@ -26,26 +26,28 @@ extern "C" {
     pub fn world_entity_component_remove(entity_id: u64, component_id: RecordReference) -> u32;
 }
 
-#[derive(Copy, Clone, Debug, NoUninit)]
+#[derive(Copy, Clone, NoUninit)]
 #[repr(C)]
 pub struct Entity {
     pub id: u64,
     pub translation: [f32; 3],
     pub rotation: [f32; 4],
     pub scale: [f32; 3],
-    pub body: EntityBody,
+    pub kind: EntityKind,
+    pub _pad0: u32,
+    // pub body: EntityBody,
 }
 
-#[derive(Copy, Clone, Debug)]
-#[repr(u32, C)]
-pub enum EntityBody {
-    Terrain = 0,
-    Object = 1,
-    Actor = 2,
-    Item(Item) = 3,
-}
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Zeroable, Pod)]
+#[repr(transparent)]
+pub struct EntityKind(u32);
 
-unsafe impl NoUninit for EntityBody {}
+impl EntityKind {
+    pub const TERRAIN: Self = Self(1);
+    pub const OBJECT: Self = Self(2);
+    pub const ACTOR: Self = Self(3);
+    pub const ITEM: Self = Self(4);
+}
 
 #[derive(Copy, Clone, Debug, Zeroable, Pod)]
 #[repr(C)]

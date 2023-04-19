@@ -1,5 +1,5 @@
 use game_common::entity::EntityId;
-use game_common::world::entity::EntityBody;
+use game_common::world::entity::{EntityBody, EntityKind};
 use game_wasm::raw;
 use game_wasm::raw::record::RecordReference;
 use game_wasm::raw::world::{Entity, Item};
@@ -23,17 +23,25 @@ pub fn world_entity_get(mut caller: Caller<'_, State<'_>>, id: u64, out: u32) ->
         translation: entity.transform.translation.to_array(),
         rotation: entity.transform.rotation.to_array(),
         scale: entity.transform.scale.to_array(),
-        body: match &entity.body {
-            EntityBody::Item(item) => raw::world::EntityBody::Item(Item {
-                id: RecordReference {
-                    module: item.id.0.module.into_bytes(),
-                    record: item.id.0.record,
-                },
-            }),
-            EntityBody::Actor(_) => raw::world::EntityBody::Actor,
-            EntityBody::Object(_) => raw::world::EntityBody::Object,
-            EntityBody::Terrain(_) => raw::world::EntityBody::Terrain,
+        //  body: match &entity.body {
+        //      //      EntityBody::Item(item) => raw::world::EntityBody::Item(Item {
+        //      //          id: RecordReference {
+        //      //              module: item.id.0.module.into_bytes(),
+        //      //              record: item.id.0.record,
+        //      //          },
+        //      //      }),
+        //      EntityBody::Item(_) => raw::world::EntityBody::Item,
+        //      EntityBody::Actor(_) => raw::world::EntityBody::Actor,
+        //      EntityBody::Object(_) => raw::world::EntityBody::Object,
+        //      EntityBody::Terrain(_) => raw::world::EntityBody::Terrain,
+        //  },
+        kind: match entity.body.kind() {
+            EntityKind::Terrain => raw::world::EntityKind::TERRAIN,
+            EntityKind::Object => raw::world::EntityKind::OBJECT,
+            EntityKind::Actor => raw::world::EntityKind::ACTOR,
+            EntityKind::Item => raw::world::EntityKind::ITEM,
         },
+        _pad0: 0,
     };
 
     caller.write(out, &entity);

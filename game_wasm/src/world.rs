@@ -6,7 +6,7 @@ use crate::Error;
 
 use crate::raw::world::{self as raw};
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Entity(raw::Entity);
 
 impl Entity {

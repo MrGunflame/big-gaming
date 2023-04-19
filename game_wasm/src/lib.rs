@@ -11,6 +11,7 @@ mod panic;
 
 pub mod events;
 pub mod log;
+pub mod process;
 pub mod world;
 
 #[derive(Clone, Debug)]
