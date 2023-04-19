@@ -12,7 +12,6 @@ members = [
     "game_macros",
     "game_editor",
     "game_physics",
-    "game_api",
     "game_data",
     "game_script",
     "game_wasm",

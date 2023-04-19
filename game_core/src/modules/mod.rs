@@ -57,11 +57,6 @@ impl Plugin for ModulePlugin {
                         RecordBody::Action(action) => {
                             let handle =
                                 server.insert(Script::load(&server, action.script.as_ref()));
-
-                            let mut scr = server.get(&handle, view).unwrap();
-                            scr.on_action(EntityId::from_raw(0), EntityId::from_raw(0));
-
-                            drop(scr);
                         }
                         _ => (),
                     }

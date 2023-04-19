@@ -1,7 +1,0 @@
-[package]
-name = "game_api"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-game_common = { version = "0.1.0", path = "../game_common" }
