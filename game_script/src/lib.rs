@@ -6,6 +6,7 @@ use instance::ScriptInstance;
 use script::Script;
 use wasmtime::{Config, Engine};
 
+pub mod abi;
 pub mod actions;
 pub mod events;
 pub mod host;
