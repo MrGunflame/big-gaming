@@ -1,12 +1,9 @@
 //! Conversions between Host and Guest ABIs
 
-use std::convert::Infallible;
-
 use bevy_transform::prelude::Transform;
 use game_common::components::components::Components;
 use game_common::entity::EntityId;
 use game_common::world::entity::Entity as HostEntity;
-use game_common::world::entity::EntityBody;
 use game_common::world::entity::EntityKind as HostEntityKind;
 use game_wasm::raw::world::Entity as GuestEntity;
 use game_wasm::raw::world::EntityKind as GuestEntityKind;

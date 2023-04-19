@@ -1,9 +1,6 @@
-use std::collections::VecDeque;
-
 use bevy_app::Plugin;
-use bevy_ecs::system::{Res, ResMut, Resource};
-use game_common::entity::EntityId;
-use game_common::events::{EntityEvent, Event, EventQueue};
+use bevy_ecs::system::{Res, ResMut};
+use game_common::events::EventQueue;
 use game_common::world::world::WorldState;
 
 use crate::scripts::Scripts;

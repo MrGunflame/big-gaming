@@ -1,6 +1,5 @@
 use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign};
 
-use game_common::entity::EntityId;
 use wasmtime::TypedFunc;
 
 /// Events exposed by a script.

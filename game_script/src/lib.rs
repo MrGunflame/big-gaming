@@ -1,7 +1,7 @@
 //! Game (dynamic) scripting
 
 use bevy_ecs::system::Resource;
-use game_common::world::world::{WorldState, WorldViewMut};
+use game_common::world::world::WorldViewMut;
 use instance::ScriptInstance;
 use script::Script;
 use wasmtime::{Config, Engine};

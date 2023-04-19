@@ -8,7 +8,7 @@ use std::mem;
 
 use bytemuck::{AnyBitPattern, NoUninit};
 use thiserror::Error;
-use wasmtime::{Caller, Linker, Store};
+use wasmtime::{Caller, Linker};
 
 use crate::instance::State;
 

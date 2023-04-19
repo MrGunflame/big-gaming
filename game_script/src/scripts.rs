@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use bevy_ecs::system::Resource;
 use game_common::entity::EntityId;
-use game_common::events::{Event, EventKind};
+use game_common::events::EventKind;
 
 use crate::Handle;
 

@@ -2,10 +2,7 @@ use std::ffi::OsStr;
 use std::fs::File;
 use std::io::Read;
 
-use wasmtime::{
-    Caller, Engine, ExportType, Extern, ExternType, Func, FuncType, Instance, Linker, Module,
-    Store, ValType,
-};
+use wasmtime::{Engine, ExternType, Module};
 
 use crate::events::Events;
 
