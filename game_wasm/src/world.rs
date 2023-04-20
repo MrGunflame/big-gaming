@@ -8,7 +8,7 @@ use crate::raw::record::RecordReference;
 use crate::raw::{Ptr, PtrMut, Usize};
 use crate::Error;
 
-use crate::raw::world::{self as raw, EntityKind};
+use crate::raw::world::{self as raw, EntityBody, EntityKind};
 
 #[derive(Clone)]
 pub struct Entity(raw::Entity);
@@ -140,6 +140,12 @@ impl EntityComponents {
     }
 }
 
+/// A byte buffer containing component data.
+///
+/// Note that the buffer has the alignment of `u8`. If you read values from the buffer you must use
+/// [`read_unaligned`].
+///
+/// [`read_unaligned`]: ptr::read_unaligned
 #[derive(Clone, Debug, PartialEq)]
 pub struct Component {
     bytes: Vec<u8>,
@@ -179,19 +185,33 @@ impl Component {
     }
 }
 
-#[derive(Clone, Debug)]
+impl AsRef<[u8]> for Component {
+    #[inline]
+    fn as_ref(&self) -> &[u8] {
+        &self.bytes
+    }
+}
+
+#[derive(Clone)]
 pub struct EntityBuilder {
     translation: Vec3,
     rotation: Quat,
     scale: Vec3,
+    kind: EntityKind,
+    body: EntityBody,
 }
 
 impl EntityBuilder {
-    pub fn new() -> Self {
+    pub fn new<T>(entity: T) -> Self
+    where
+        T: IntoEntityBody,
+    {
         Self {
             translation: Vec3::ZERO,
             rotation: Quat::IDENTITY,
             scale: Vec3::splat(1.0),
+            kind: entity.kind(),
+            body: entity.body(),
         }
     }
 
@@ -216,8 +236,54 @@ impl EntityBuilder {
             translation: self.translation.to_array(),
             rotation: self.rotation.to_array(),
             scale: self.scale.to_array(),
-            kind: EntityKind::OBJECT,
-            _pad0: 0,
+            kind: self.kind,
+            body: self.body,
         })
     }
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct Object {
+    pub id: RecordReference,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct Item {
+    pub id: RecordReference,
+}
+
+pub unsafe trait IntoEntityBody: private::Sealed {
+    #[doc(hidden)]
+    fn kind(&self) -> EntityKind;
+
+    #[doc(hidden)]
+    fn body(&self) -> EntityBody;
+}
+
+unsafe impl IntoEntityBody for Object {
+    fn kind(&self) -> EntityKind {
+        EntityKind::OBJECT
+    }
+
+    fn body(&self) -> EntityBody {
+        EntityBody { object: self.id }
+    }
+}
+
+impl private::Sealed for Object {}
+
+unsafe impl IntoEntityBody for Item {
+    fn kind(&self) -> EntityKind {
+        EntityKind::ITEM
+    }
+
+    fn body(&self) -> EntityBody {
+        EntityBody { item: self.id }
+    }
+}
+
+impl private::Sealed for Item {}
+
+mod private {
+    pub trait Sealed {}
 }

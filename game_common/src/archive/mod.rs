@@ -170,7 +170,7 @@ impl<'a> Objects<'a> {
     fn id(&self) -> ObjectId {
         let id = self.archive.object_id.fetch_add(1, Ordering::Relaxed);
         assert!(id != u32::MAX);
-        ObjectId(WeakId(id))
+        ObjectId(RecordReference::STUB)
     }
 }
 

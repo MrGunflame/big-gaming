@@ -42,8 +42,7 @@ pub struct Entity {
     pub rotation: [f32; 4],
     pub scale: [f32; 3],
     pub kind: EntityKind,
-    pub _pad0: u32,
-    // pub body: EntityBody,
+    pub body: EntityBody,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Zeroable, Pod)]
@@ -57,8 +56,41 @@ impl EntityKind {
     pub const ITEM: Self = Self(4);
 }
 
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub union EntityBody {
+    /// Unimplemented, padding
+    pub terrain: [u8; core::mem::size_of::<RecordReference>()],
+    pub object: RecordReference,
+    pub actor: [u8; core::mem::size_of::<RecordReference>()],
+    pub item: RecordReference,
+}
+
+unsafe impl Zeroable for EntityBody {}
+unsafe impl Pod for EntityBody {}
+
 #[derive(Copy, Clone, Debug, Zeroable, Pod)]
 #[repr(C)]
 pub struct Item {
     pub id: RecordReference,
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::raw::record::RecordReference;
+
+    use super::EntityBody;
+
+    #[test]
+    fn assert_entity_body_size_align() {
+        assert_eq!(
+            core::mem::size_of::<RecordReference>(),
+            core::mem::size_of::<EntityBody>()
+        );
+
+        assert_eq!(
+            core::mem::align_of::<RecordReference>(),
+            core::mem::align_of::<EntityBody>()
+        );
+    }
 }

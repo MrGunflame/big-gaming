@@ -2,20 +2,16 @@ use std::time::{Duration, Instant};
 
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
+use bytemuck::{Pod, Zeroable};
 
-use crate::id::WeakId;
-
-#[cfg(feature = "serde")]
-use serde::{Deserialize, Serialize};
+use super::components::RecordReference;
 
 /// A unique identifer for an object.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Zeroable, Pod)]
 #[repr(transparent)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[cfg_attr(feature = "serde", serde(transparent))]
-pub struct ObjectId(pub WeakId<u32>);
+pub struct ObjectId(pub RecordReference);
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Component)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Component)]
 pub struct Object {
     pub id: ObjectId,
 }

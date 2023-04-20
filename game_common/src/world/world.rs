@@ -926,7 +926,7 @@ mod tests {
 
     use bevy_transform::prelude::Transform;
 
-    use crate::components::components::Components;
+    use crate::components::components::{Components, RecordReference};
     use crate::components::object::ObjectId;
     use crate::world::entity::Object;
 
@@ -998,7 +998,7 @@ mod tests {
             id: EntityId::dangling(),
             transform: Transform::default(),
             body: EntityBody::Object(Object {
-                id: ObjectId(0.into()),
+                id: ObjectId(RecordReference::STUB),
             }),
             components: Components::new(),
         });
@@ -1036,7 +1036,7 @@ mod tests {
             id: EntityId::dangling(),
             transform: Transform::default(),
             body: EntityBody::Object(Object {
-                id: ObjectId(0.into()),
+                id: ObjectId(RecordReference::STUB),
             }),
             components: Components::new(),
         });
@@ -1072,7 +1072,7 @@ mod tests {
             id: EntityId::dangling(),
             transform: Transform::from_translation(Vec3::new(0.0, 0.0, 0.0)),
             body: EntityBody::Object(Object {
-                id: ObjectId(0.into()),
+                id: ObjectId(RecordReference::STUB),
             }),
             components: Components::new(),
         });

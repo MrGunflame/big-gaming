@@ -2,10 +2,15 @@
 
 use bevy_transform::prelude::Transform;
 use game_common::components::components::Components;
+use game_common::components::components::RecordReference;
 use game_common::entity::EntityId;
 use game_common::world::entity::Entity as HostEntity;
+use game_common::world::entity::EntityBody as HostEntityBody;
 use game_common::world::entity::EntityKind as HostEntityKind;
+use game_common::world::entity::Item;
+use game_common::world::entity::Object;
 use game_wasm::raw::world::Entity as GuestEntity;
+use game_wasm::raw::world::EntityBody as GuestEntityBody;
 use game_wasm::raw::world::EntityKind as GuestEntityKind;
 use glam::{Quat, Vec3};
 
@@ -34,7 +39,27 @@ impl ToAbi for HostEntity {
             rotation: self.transform.rotation.to_array(),
             scale: self.transform.scale.to_array(),
             kind: self.body.kind().to_abi(),
-            _pad0: 0,
+            body: match &self.body {
+                HostEntityBody::Terrain(_) => GuestEntityBody {
+                    terrain: [0; std::mem::size_of::<RecordReference>()],
+                },
+
+                HostEntityBody::Object(object) => GuestEntityBody {
+                    object: game_wasm::raw::record::RecordReference {
+                        module: object.id.0.module.into_bytes(),
+                        record: object.id.0.record,
+                    },
+                },
+                HostEntityBody::Actor(_) => GuestEntityBody {
+                    actor: [0; std::mem::size_of::<RecordReference>()],
+                },
+                HostEntityBody::Item(item) => GuestEntityBody {
+                    item: game_wasm::raw::record::RecordReference {
+                        module: item.id.0.module.into_bytes(),
+                        record: item.id.0.record,
+                    },
+                },
+            },
         }
     }
 }
@@ -73,10 +98,20 @@ impl FromAbi for GuestEntity {
 
     fn from_abi(&self) -> Result<Self::Target, Self::Error> {
         let body = match self.kind.from_abi()? {
-            HostEntityKind::Terrain => todo!(),
-            HostEntityKind::Object => todo!(),
+            HostEntityKind::Terrain => {
+                todo!()
+            }
+            HostEntityKind::Object => {
+                let id = bytemuck::cast_ref(&self.body);
+
+                HostEntityBody::Object(Object { id: *id })
+            }
             HostEntityKind::Actor => todo!(),
-            HostEntityKind::Item => todo!(),
+            HostEntityKind::Item => {
+                let id = bytemuck::cast_ref(&self.body);
+
+                HostEntityBody::Item(Item { id: *id })
+            }
         };
 
         Ok(HostEntity {

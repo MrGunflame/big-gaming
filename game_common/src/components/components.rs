@@ -57,3 +57,10 @@ pub struct RecordReference {
     pub module: ModuleId,
     pub record: u32,
 }
+
+impl RecordReference {
+    pub const STUB: Self = Self {
+        module: ModuleId::CORE,
+        record: 0,
+    };
+}

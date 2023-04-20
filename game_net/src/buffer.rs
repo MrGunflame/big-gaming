@@ -234,6 +234,7 @@ impl<'a> FusedIterator for Iter<'a> {}
 
 #[cfg(test)]
 mod tests {
+    use game_common::components::components::RecordReference;
     use game_common::components::object::ObjectId;
     use game_common::id::WeakId;
     use game_common::net::ServerEntity;
@@ -340,7 +341,7 @@ mod tests {
                 translation: Vec3::splat(0.0),
                 rotation: Quat::IDENTITY,
                 data: EntityBody::Object(Object {
-                    id: ObjectId(WeakId(0)),
+                    id: ObjectId(RecordReference::STUB),
                 }),
             }),
         });

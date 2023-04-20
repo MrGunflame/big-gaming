@@ -4,7 +4,7 @@ use bevy_transform::components::Transform;
 use glam::{Quat, Vec3};
 
 use crate::components::combat::Health;
-use crate::components::components::Components;
+use crate::components::components::{Components, RecordReference};
 use crate::components::items::ItemId;
 use crate::components::object::ObjectId;
 use crate::components::race::RaceId;
@@ -67,9 +67,9 @@ pub struct Object {
 }
 
 impl Object {
-    pub fn builder() -> ObjectBuilder {
-        ObjectBuilder::new()
-    }
+    // pub fn builder() -> ObjectBuilder {
+    //     ObjectBuilder::new()
+    // }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -191,14 +191,12 @@ pub struct ObjectBuilder {
 }
 
 impl ObjectBuilder {
-    pub fn new() -> Self {
-        Self {
-            transform: Transform::default(),
-            object: Object {
-                id: ObjectId(0.into()),
-            },
-        }
-    }
+    // pub fn new() -> Self {
+    //     Self {
+    //         transform: Transform::default(),
+    //         object: Object { id: ObjectId() },
+    //     }
+    // }
 
     pub fn id(mut self, id: ObjectId) -> Self {
         self.object.id = id;
