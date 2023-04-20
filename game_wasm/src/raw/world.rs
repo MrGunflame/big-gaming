@@ -1,7 +1,7 @@
-use bytemuck::{NoUninit, Pod, Zeroable};
+use bytemuck::{Pod, Zeroable};
 
 use super::record::RecordReference;
-use super::{Ptr, PtrMut};
+use super::{Ptr, PtrMut, Usize};
 
 #[link(wasm_import_module = "host")]
 extern "C" {
@@ -11,16 +11,24 @@ extern "C" {
 
     pub fn world_entity_despawn(id: u64) -> u32;
 
+    pub fn world_entity_component_len(
+        entity_id: u64,
+        component_id: Ptr<RecordReference>,
+        out: PtrMut<Usize>,
+    ) -> u32;
+
     pub fn world_entity_component_get(
         entity_id: u64,
         component_id: Ptr<RecordReference>,
-        out: PtrMut<Component>,
+        out: PtrMut<u8>,
+        len: Usize,
     ) -> u32;
 
     pub fn world_entity_component_insert(
         entity_id: u64,
         component_id: Ptr<RecordReference>,
-        component: Ptr<Component>,
+        ptr: Ptr<u8>,
+        len: Usize,
     ) -> u32;
 
     pub fn world_entity_component_remove(entity_id: u64, component_id: RecordReference) -> u32;
@@ -54,12 +62,3 @@ impl EntityKind {
 pub struct Item {
     pub id: RecordReference,
 }
-
-#[derive(Copy, Clone, Debug, PartialEq)]
-#[repr(u32, C)]
-pub enum Component {
-    I32(i32),
-    I64(i64),
-}
-
-unsafe impl NoUninit for Component {}

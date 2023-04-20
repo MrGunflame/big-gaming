@@ -1,10 +1,14 @@
-use core::mem::MaybeUninit;
+use core::mem::{self, MaybeUninit};
+use core::ptr;
+
+use alloc::vec::Vec;
+use glam::{Quat, Vec3};
 
 use crate::raw::record::RecordReference;
 use crate::raw::{Ptr, PtrMut, Usize};
 use crate::Error;
 
-use crate::raw::world::{self as raw};
+use crate::raw::world::{self as raw, EntityKind};
 
 #[derive(Clone)]
 pub struct Entity(raw::Entity);
@@ -62,41 +66,59 @@ pub struct EntityComponents {
 
 impl EntityComponents {
     pub fn get(&self, id: RecordReference) -> Result<Component, Error> {
-        let mut component = MaybeUninit::<raw::Component>::uninit();
-        let ptr = component.as_mut_ptr() as Usize;
+        let mut len: Usize = 0;
+        let len_ptr = &mut len as *mut Usize as Usize;
+
+        let res = unsafe {
+            raw::world_entity_component_len(
+                self.entity,
+                Ptr::from_raw(&id as *const _ as Usize),
+                PtrMut::from_raw(len_ptr),
+            )
+        };
+
+        if res != 0 {
+            return Err(Error);
+        }
+
+        // No need to fetch the component data when we know
+        // that it is empty.
+        if len == 0 {
+            return Ok(Component { bytes: Vec::new() });
+        }
+
+        let mut bytes = Vec::with_capacity(len as usize);
 
         let res = unsafe {
             raw::world_entity_component_get(
                 self.entity,
                 Ptr::from_raw(&id as *const _ as Usize),
-                PtrMut::from_raw(ptr),
+                PtrMut::from_raw(bytes.as_mut_ptr() as Usize),
+                len,
             )
         };
 
-        if res == 0 {
-            let component = unsafe { component.assume_init_read() };
+        unsafe {
+            bytes.set_len(len as usize);
+        }
 
-            Ok(match component {
-                raw::Component::I32(x) => Component::I32(x),
-                raw::Component::I64(x) => Component::I64(x),
-            })
+        if res == 0 {
+            Ok(Component { bytes })
         } else {
             Err(Error)
         }
     }
 
-    pub fn insert(&self, id: RecordReference, component: Component) -> Result<(), Error> {
-        let c = match component {
-            Component::I32(x) => raw::Component::I32(x),
-            Component::I64(x) => raw::Component::I64(x),
-        };
-        let ptr = &c as *const raw::Component as Usize;
+    pub fn insert(&self, id: RecordReference, component: &Component) -> Result<(), Error> {
+        let ptr = Ptr::from_raw(component.bytes.as_ptr() as Usize);
+        let len = component.bytes.len() as Usize;
 
         let res = unsafe {
             raw::world_entity_component_insert(
                 self.entity,
                 Ptr::from_raw(&id as *const _ as Usize),
-                Ptr::from_raw(ptr),
+                ptr,
+                len,
             )
         };
 
@@ -119,7 +141,83 @@ impl EntityComponents {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum Component {
-    I32(i32),
-    I64(i64),
+pub struct Component {
+    bytes: Vec<u8>,
+}
+
+impl Component {
+    pub fn to_f32(&self) -> f32 {
+        assert!(self.len() >= mem::size_of::<f32>());
+
+        unsafe { self.to_f32_unchecked() }
+    }
+
+    pub fn to_f64(&self) -> f64 {
+        assert!(self.len() >= mem::size_of::<f64>());
+
+        unsafe { self.to_f64_unchecked() }
+    }
+
+    pub fn len(&self) -> usize {
+        self.bytes.len()
+    }
+
+    pub unsafe fn to_f32_unchecked(&self) -> f32 {
+        unsafe { self.read_unchecked() }
+    }
+
+    pub unsafe fn to_f64_unchecked(&self) -> f64 {
+        unsafe { self.read_unchecked() }
+    }
+
+    unsafe fn read_unchecked<T>(&self) -> T {
+        if cfg!(debug_assertions) {
+            assert!(self.len() >= mem::size_of::<T>());
+        }
+
+        unsafe { ptr::read_unaligned(self.bytes.as_ptr().cast()) }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct EntityBuilder {
+    translation: Vec3,
+    rotation: Quat,
+    scale: Vec3,
+}
+
+impl EntityBuilder {
+    pub fn new() -> Self {
+        Self {
+            translation: Vec3::ZERO,
+            rotation: Quat::IDENTITY,
+            scale: Vec3::splat(1.0),
+        }
+    }
+
+    pub fn translation(mut self, translation: Vec3) -> Self {
+        self.translation = translation;
+        self
+    }
+
+    pub fn rotation(mut self, rotation: Quat) -> Self {
+        self.rotation = rotation;
+        self
+    }
+
+    pub fn scale(mut self, scale: Vec3) -> Self {
+        self.scale = scale;
+        self
+    }
+
+    pub fn build(self) -> Entity {
+        Entity(raw::Entity {
+            id: 0,
+            translation: self.translation.to_array(),
+            rotation: self.rotation.to_array(),
+            scale: self.scale.to_array(),
+            kind: EntityKind::OBJECT,
+            _pad0: 0,
+        })
+    }
 }

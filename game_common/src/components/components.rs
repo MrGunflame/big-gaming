@@ -33,9 +33,22 @@ impl Components {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum Component {
-    I32(i32),
-    I64(i64),
+pub struct Component {
+    pub bytes: Vec<u8>,
+}
+
+impl Component {
+    pub fn len(&self) -> usize {
+        self.bytes.len()
+    }
+
+    pub fn as_ptr(&self) -> *const u8 {
+        self.bytes.as_ptr()
+    }
+
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.bytes
+    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Zeroable, Pod)]

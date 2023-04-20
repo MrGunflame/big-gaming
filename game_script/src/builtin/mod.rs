@@ -26,12 +26,16 @@ pub fn register_host_fns(store: &mut Linker<State>) {
     use world::*;
 
     register_fns! {
-       store,
-       log,
-       abort,
-       world_entity_get,
-       world_entity_spawn,
-       world_entity_despawn,
+        store,
+        log,
+        abort,
+        world_entity_get,
+        world_entity_spawn,
+        world_entity_despawn,
+        world_entity_component_len,
+        world_entity_component_get,
+        world_entity_component_insert,
+        world_entity_component_remove,
     }
 }
 

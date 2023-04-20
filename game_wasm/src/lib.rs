@@ -1,13 +1,16 @@
 //! WASM host bindings
 #![no_std]
 
+#[deny(unsafe_op_in_unsafe_fn)]
+extern crate alloc;
+
 #[cfg(feature = "raw")]
 pub mod raw;
 #[cfg(not(feature = "raw"))]
 mod raw;
 
-#[cfg(feature = "panic_handler")]
-mod panic;
+// #[cfg(feature = "panic_handler")]
+// mod panic;
 
 pub mod events;
 pub mod log;
