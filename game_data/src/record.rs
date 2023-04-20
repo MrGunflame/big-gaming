@@ -7,6 +7,7 @@ use thiserror::Error;
 use crate::components::actions::ActionRecord;
 use crate::components::components::ComponentRecord;
 use crate::components::item::ItemRecord;
+use crate::components::objects::ObjectRecord;
 use crate::{Decode, Encode};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Error)]
@@ -74,6 +75,7 @@ pub enum RecordBody {
     Item(ItemRecord),
     Action(ActionRecord),
     Component(ComponentRecord),
+    Object(ObjectRecord),
 }
 
 impl RecordBody {
@@ -82,6 +84,7 @@ impl RecordBody {
             Self::Item(_) => RecordKind::Item,
             Self::Action(_) => RecordKind::Action,
             Self::Component(_) => RecordKind::Component,
+            Self::Object(_) => RecordKind::Object,
         }
     }
 }
@@ -91,6 +94,7 @@ pub enum RecordKind {
     Item,
     Action,
     Component,
+    Object,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Error)]
@@ -110,6 +114,7 @@ impl Encode for RecordKind {
             Self::Item => 1,
             Self::Action => 2,
             Self::Component => 3,
+            Self::Object => 4,
         };
 
         byte.encode(buf);
@@ -129,6 +134,7 @@ impl Decode for RecordKind {
             1 => Ok(Self::Item),
             2 => Ok(Self::Action),
             3 => Ok(Self::Component),
+            4 => Ok(Self::Object),
             _ => Err(RecordKindError::InvalidKind(byte)),
         }
     }
@@ -173,6 +179,9 @@ impl Encode for Record {
             RecordBody::Component(component) => {
                 component.encode(&mut buf);
             }
+            RecordBody::Object(object) => {
+                object.encode(&mut buf);
+            }
         };
     }
 }
@@ -201,6 +210,10 @@ impl Decode for Record {
                 let component = ComponentRecord::decode(&mut buf)?;
                 RecordBody::Component(component)
             }
+            RecordKind::Object => {
+                let object = ObjectRecord::decode(&mut buf)?;
+                RecordBody::Object(object)
+            }
         };
 
         Ok(Self { id, name, body })
@@ -221,4 +234,6 @@ pub enum RecordError {
     Action(#[from] <ActionRecord as Decode>::Error),
     #[error("failed to decode component record: {0}")]
     Component(#[from] <ComponentRecord as Decode>::Error),
+    #[error("failed to decode object record: {0}")]
+    Object(#[from] <ObjectRecord as Decode>::Error),
 }
