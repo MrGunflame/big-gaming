@@ -38,7 +38,7 @@ dynamic = ["bevy/dynamic_linking"]
 serde = ["dep:serde"]
 
 [profile.release]
-debug-assertions = true
+debug-assertions = false
 opt-level = 3
 lto = "fat"
 codegen-units = 1
