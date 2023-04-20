@@ -7,6 +7,9 @@ use game_common::world::entity::{BuildEntity, EntityQueue};
 use game_common::world::source::{StreamingSource, StreamingSources, StreamingState};
 use game_common::world::world::WorldState;
 use game_common::world::{CellId, Level};
+use game_data::record::{RecordBody, RecordId};
+
+use crate::modules::Modules;
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct LevelPlugin;
@@ -99,25 +102,35 @@ fn flush_entity_queue(mut world: ResMut<WorldState>, mut queue: ResMut<EntityQue
 
 fn load_objects(
     mut commands: Commands,
-    archive: Res<GameArchive>,
+    modules: Res<Modules>,
     assets: Res<AssetServer>,
     objects: Query<(Entity, &LoadObject)>,
 ) {
     for (entity, object) in &objects {
         tracing::info!("loading object {:?}", object.id);
 
-        let Some(obj) = archive.objects().get(object.id) else {
+        commands.entity(entity).remove::<LoadObject>();
+
+        dbg!(&modules);
+        dbg!(&object.id.0.module);
+        dbg!(modules.get(object.id.0.module));
+        let Some(m) = modules.get(object.id.0.module) else {
+            tracing::warn!("requested unknown module {}", object.id.0.module);
             continue;
         };
 
-        commands.entity(entity).remove::<LoadObject>();
+        let Some(record) = m.records.get(RecordId(object.id.0.record)) else {
+            tracing::warn!("requested unknown record {}", object.id.0.record);
+            continue;
+        };
 
-        let Some(handle) = &obj.handle else {
+        let RecordBody::Object(obj) = &record.body else {
+            tracing::warn!("attempted to load a {:?} as an object", record.body.kind());
             continue;
         };
 
         commands
             .entity(entity)
-            .insert(assets.load::<Scene, _>(handle));
+            .insert(assets.load::<Scene, _>(obj.uri.as_ref()));
     }
 }

@@ -2,9 +2,10 @@ use core::mem::{self, MaybeUninit};
 use core::ptr;
 
 use alloc::vec::Vec;
+use bytemuck::AnyBitPattern;
 use glam::{Quat, Vec3};
 
-use crate::raw::record::RecordReference;
+pub use crate::raw::record::RecordReference;
 use crate::raw::{Ptr, PtrMut, Usize};
 use crate::Error;
 
@@ -56,6 +57,18 @@ impl Entity {
 
     pub fn components(&self) -> EntityComponents {
         EntityComponents { entity: self.0.id }
+    }
+
+    pub fn translation(&self) -> Vec3 {
+        Vec3::from_array(self.0.translation)
+    }
+
+    pub fn rotation(&self) -> Quat {
+        Quat::from_array(self.0.rotation)
+    }
+
+    pub fn scale(&self) -> Vec3 {
+        Vec3::from_array(self.0.scale)
     }
 }
 
@@ -156,6 +169,15 @@ impl Component {
         assert!(self.len() >= mem::size_of::<f32>());
 
         unsafe { self.to_f32_unchecked() }
+    }
+
+    pub fn read<T>(&self) -> T
+    where
+        T: AnyBitPattern,
+    {
+        assert!(self.len() >= mem::size_of::<T>());
+
+        bytemuck::pod_read_unaligned(&self.bytes)
     }
 
     pub fn to_f64(&self) -> f64 {

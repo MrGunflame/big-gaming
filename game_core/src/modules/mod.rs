@@ -2,14 +2,12 @@ use std::collections::HashMap;
 use std::time::Instant;
 
 use bevy::prelude::{Plugin, Resource};
-use game_common::entity::EntityId;
 use game_common::module::ModuleId;
 use game_common::world::world::WorldState;
 use game_data::loader::FileLoader;
 use game_data::record::RecordBody;
 use game_script::plugin::ScriptPlugin;
 use game_script::script::Script;
-use game_script::scripts::Scripts;
 use game_script::ScriptServer;
 use tokio::runtime::Runtime;
 
@@ -21,7 +19,6 @@ impl Plugin for ModulePlugin {
 
         let mut modules = Modules::new();
         let mut server = ScriptServer::new();
-        let mut scripts = Scripts::new();
 
         rt.block_on(async {
             let mut dir = match tokio::fs::read_dir("./mods").await {
@@ -51,12 +48,9 @@ impl Plugin for ModulePlugin {
                 for record in data.records {
                     let mut world = WorldState::new();
                     world.insert(Instant::now());
-                    let mut view = world.front_mut().unwrap();
-
                     match &record.body {
                         RecordBody::Action(action) => {
-                            let handle =
-                                server.insert(Script::load(&server, action.script.as_ref()));
+                            server.insert(Script::load(&server, action.script.as_ref()));
                         }
                         _ => (),
                     }
@@ -120,4 +114,24 @@ impl Modules {
 pub struct ModuleData {
     pub id: ModuleId,
     pub records: Records,
+}
+
+#[cfg(test)]
+mod tests {
+    use game_common::module::ModuleId;
+
+    use super::records::Records;
+    use super::{ModuleData, Modules};
+
+    #[test]
+    fn test_modules() {
+        let mut modules = Modules::new();
+        modules.insert(ModuleData {
+            id: ModuleId::CORE,
+            records: Records::new(),
+        });
+
+        assert!(modules.get(ModuleId::CORE).is_some());
+        assert!(modules.contains(ModuleId::CORE));
+    }
 }
