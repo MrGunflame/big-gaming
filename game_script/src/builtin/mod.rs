@@ -15,7 +15,7 @@ use crate::instance::State;
 macro_rules! register_fns {
     ($linker:expr, $($id:ident),*$(,)?) => {
         $(
-            $linker.func_wrap("host", stringify!($id), $id);
+            $linker.func_wrap("host", stringify!($id), $id).unwrap();
         )*
     };
 }
@@ -98,7 +98,7 @@ impl<'a, S> CallerExt for Caller<'a, S> {
             .flatten()
             .ok_or_else(|| wasmtime::Error::new(Error::NoMemory))?;
 
-        let mut bytes = memory
+        let bytes = memory
             .data_mut(self)
             .get_mut(ptr as usize..ptr as usize + buf.len())
             .ok_or_else(|| wasmtime::Error::new(Error::BadPointer))?;

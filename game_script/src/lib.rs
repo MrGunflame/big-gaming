@@ -3,6 +3,7 @@
 use bevy_ecs::system::Resource;
 use game_common::world::world::WorldViewMut;
 use instance::ScriptInstance;
+use queue::CommandQueue;
 use script::Script;
 use wasmtime::{Config, Engine};
 
@@ -12,6 +13,7 @@ pub mod events;
 pub mod host;
 pub mod instance;
 pub mod plugin;
+pub mod queue;
 pub mod script;
 pub mod scripts;
 
@@ -39,6 +41,7 @@ impl ScriptServer {
         &self,
         handle: &Handle,
         world: WorldViewMut<'world>,
+        queue: &'world mut CommandQueue,
     ) -> Option<ScriptInstance<'world>> {
         let script = self.scripts.get(handle.id as usize)?;
 
@@ -48,8 +51,8 @@ impl ScriptServer {
                 &s.module,
                 s.events,
                 world,
+                queue,
             )),
-            _ => todo!(),
         }
     }
 

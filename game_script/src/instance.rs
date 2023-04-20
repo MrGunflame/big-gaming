@@ -4,6 +4,7 @@ use game_common::world::world::WorldViewMut;
 use wasmtime::{Engine, Instance, Linker, Module, Store};
 
 use crate::events::{Events, OnAction, OnCollision};
+use crate::queue::CommandQueue;
 
 pub struct ScriptInstance<'world> {
     store: Store<State<'world>>,
@@ -17,8 +18,9 @@ impl<'world> ScriptInstance<'world> {
         module: &Module,
         events: Events,
         world: WorldViewMut<'world>,
+        queue: &'world mut CommandQueue,
     ) -> Self {
-        let mut store = Store::new(engine, State { world });
+        let mut store = Store::new(engine, State { queue, world });
 
         let mut linker = Linker::<State>::new(&engine);
 
@@ -54,5 +56,6 @@ impl<'world> ScriptInstance<'world> {
 }
 
 pub struct State<'world> {
+    pub queue: &'world mut CommandQueue,
     pub world: WorldViewMut<'world>,
 }

@@ -3,6 +3,7 @@ use bevy_ecs::system::{Res, ResMut};
 use game_common::events::EventQueue;
 use game_common::world::world::WorldState;
 
+use crate::queue::CommandQueue;
 use crate::scripts::Scripts;
 use crate::{Handle, ScriptServer};
 
@@ -47,6 +48,8 @@ pub fn flush_event_queue(
     server: &ScriptServer,
     scripts: &Scripts,
 ) {
+    let mut buffer = CommandQueue::new();
+
     while let Some(event) = queue.pop() {
         for (i, _) in server.scripts.iter().enumerate() {
             let Some(mut view) = world.front_mut() else {
@@ -55,7 +58,7 @@ pub fn flush_event_queue(
 
             let handle = Handle { id: i as u64 };
 
-            let mut instance = server.get(&handle, view).unwrap();
+            let mut instance = server.get(&handle, view, &mut buffer).unwrap();
 
             instance.run(&event.event);
         }
