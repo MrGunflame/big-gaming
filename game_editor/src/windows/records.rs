@@ -12,13 +12,19 @@ use game_common::units::Mass;
 use game_data::components::actions::ActionRecord;
 use game_data::components::components::ComponentRecord;
 use game_data::components::item::ItemRecord;
+use game_data::components::objects::ObjectRecord;
 use game_data::record::{Record, RecordBody, RecordId, RecordKind, RecordReference};
 use game_data::uri::Uri;
 
 use crate::state::module::Modules;
 use crate::state::record::Records;
 
-const CATEGORIES: &[RecordKind] = &[RecordKind::Item, RecordKind::Action, RecordKind::Component];
+const CATEGORIES: &[RecordKind] = &[
+    RecordKind::Item,
+    RecordKind::Action,
+    RecordKind::Component,
+    RecordKind::Object,
+];
 
 use super::SpawnWindow;
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -74,6 +80,7 @@ fn render_window(
             RecordKind::Item => 3,
             RecordKind::Action => 2,
             RecordKind::Component => 2,
+            RecordKind::Object => 1,
         };
 
         CentralPanel::default().show(ctx.get_mut(), |ui| {
@@ -116,6 +123,11 @@ fn render_window(
                             });
                             header.col(|ui| {
                                 ui.heading("Script");
+                            });
+                        }
+                        RecordKind::Object => {
+                            header.col(|ui| {
+                                ui.heading("Handle");
                             });
                         }
                     }
@@ -177,6 +189,13 @@ fn render_window(
                                         );
                                     });
                                 }
+                                RecordBody::Object(object) => {
+                                    row.col(|ui| {
+                                        ui.label(
+                                            &object.uri.as_ref().to_string_lossy().to_string(),
+                                        );
+                                    });
+                                }
                             }
 
                             row.col(|ui| {
@@ -200,6 +219,7 @@ fn category_str(kind: RecordKind) -> &'static str {
         RecordKind::Item => "Items",
         RecordKind::Action => "Actions",
         RecordKind::Component => "Components",
+        RecordKind::Object => "Object",
     }
 }
 
@@ -356,6 +376,15 @@ fn render_record_windows(
                         changed = true;
                     }
                 }
+                RecordBody::Object(object) => {
+                    ui.label("Uri");
+
+                    let mut uri = object.uri.as_ref().to_str().unwrap().to_owned();
+                    if ui.add(TextEdit::singleline(&mut uri)).changed() {
+                        object.uri = Uri::from(PathBuf::from(uri));
+                        changed = true;
+                    }
+                }
             }
 
             if ui.button("Ok").clicked() {
@@ -441,6 +470,9 @@ fn render_create_record_windows(
                                     description: String::new(),
                                     script: Uri::new(),
                                 }),
+                                RecordKind::Object => {
+                                    RecordBody::Object(ObjectRecord { uri: Uri::new() })
+                                }
                             },
                         },
                     );
