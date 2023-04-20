@@ -128,6 +128,7 @@ impl Decode for RecordKind {
         match byte {
             1 => Ok(Self::Item),
             2 => Ok(Self::Action),
+            3 => Ok(Self::Component),
             _ => Err(RecordKindError::InvalidKind(byte)),
         }
     }
