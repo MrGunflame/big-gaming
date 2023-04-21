@@ -4,6 +4,8 @@ use crate::instance::State;
 
 use super::Abort;
 
-pub fn abort(mut caller: Caller<'_, State<'_>>) -> wasmtime::Result<()> {
+pub fn abort(_caller: Caller<'_, State<'_>>) -> wasmtime::Result<()> {
+    tracing::trace!("abort");
+
     Err(Error::new(Abort))
 }

@@ -9,6 +9,8 @@ use crate::instance::State;
 use super::CallerExt;
 
 pub fn world_entity_spawn(mut caller: Caller<'_, State<'_>>, ptr: u32, out: u32) -> Result<u32> {
+    tracing::trace!("world_entity_spawn(ptr = {}, out = {})", ptr, out);
+
     let entity: Entity = caller.read(ptr)?;
 
     let entity = match entity.from_abi() {
@@ -23,6 +25,8 @@ pub fn world_entity_spawn(mut caller: Caller<'_, State<'_>>, ptr: u32, out: u32)
 }
 
 pub fn world_entity_get(mut caller: Caller<'_, State<'_>>, id: u64, out: u32) -> Result<u32> {
+    tracing::trace!("world_entity_get(id = {}, out = {})", id, out);
+
     let Some(entity) = caller.data_mut().world.get(EntityId::from_raw(id)) else {
        return Ok(1);
     };
@@ -34,6 +38,8 @@ pub fn world_entity_get(mut caller: Caller<'_, State<'_>>, id: u64, out: u32) ->
 }
 
 pub fn world_entity_despawn(mut caller: Caller<'_, State<'_>>, id: u64) -> Result<u32> {
+    tracing::trace!("world_entity_despawn(id = {})", id);
+
     let id = EntityId::from_raw(id);
 
     caller.data_mut().world.despawn(id);
@@ -46,6 +52,13 @@ pub fn world_entity_component_len(
     component_id: u32,
     out: u32,
 ) -> Result<u32> {
+    tracing::trace!(
+        "world_entity_component_len(entity_id = {}, component_id = {}, out = {})",
+        entity_id,
+        component_id,
+        out
+    );
+
     let entity_id = EntityId::from_raw(entity_id);
     let component_id: RecordReference = caller.read(component_id)?;
 
@@ -70,6 +83,14 @@ pub fn world_entity_component_get(
     out: u32,
     len: u32,
 ) -> Result<u32> {
+    tracing::trace!(
+        "world_entity_component_get(entity_id = {}, component_id = {}, out = {}, len = {})",
+        entity_id,
+        component_id,
+        out,
+        len,
+    );
+
     let entity_id = EntityId::from_raw(entity_id);
     let component_id: RecordReference = caller.read(component_id)?;
 
@@ -100,6 +121,14 @@ pub fn world_entity_component_insert(
     ptr: u32,
     len: u32,
 ) -> Result<u32> {
+    tracing::trace!(
+        "world_entity_component_insert(entity_id = {}, component_id = {}, ptr = {}, len = {})",
+        entity_id,
+        component_id,
+        ptr,
+        len,
+    );
+
     let entity_id = EntityId::from_raw(entity_id);
     let component_id: RecordReference = caller.read(component_id)?;
     let bytes = caller.read_memory(ptr, len)?.to_owned();
@@ -117,6 +146,12 @@ pub fn world_entity_component_remove(
     entity_id: u64,
     component_id: u32,
 ) -> Result<u32> {
+    tracing::trace!(
+        "world_entity_component_remove(entity_id = {}, component_id = {})",
+        entity_id,
+        component_id,
+    );
+
     let entity_id = EntityId::from_raw(entity_id);
     let component_id: RecordReference = caller.read(component_id)?;
 

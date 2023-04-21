@@ -50,6 +50,8 @@ pub fn flush_event_queue(
 ) {
     let mut buffer = CommandQueue::new();
 
+    tracing::debug!("executing {} events", queue.len());
+
     while let Some(event) = queue.pop() {
         for (i, _) in server.scripts.iter().enumerate() {
             let Some(mut view) = world.front_mut() else {
@@ -60,7 +62,9 @@ pub fn flush_event_queue(
 
             let mut instance = server.get(&handle, view, &mut buffer).unwrap();
 
-            instance.run(&event.event);
+            if let Err(err) = instance.run(&event.event) {
+                tracing::error!("failed to execute event on script: {}", err);
+            }
         }
     }
 }

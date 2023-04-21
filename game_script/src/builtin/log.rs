@@ -11,6 +11,8 @@ pub fn log(
     ptr: u32,
     len: u32,
 ) -> wasmtime::Result<()> {
+    tracing::trace!("log(level = {}, ptr = {}, len = {})", level, ptr, len);
+
     let bytes = caller.read_memory(ptr, len)?;
 
     let content = std::str::from_utf8(bytes).unwrap();

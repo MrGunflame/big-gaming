@@ -16,6 +16,8 @@ fn main() {
 
     let mut app = App::new();
 
+    game_server::prepare(&mut app);
+
     modules::load_modules(&mut app);
 
     let rt = Runtime::new().unwrap();

@@ -19,6 +19,10 @@ impl EventQueue {
         }
     }
 
+    pub fn len(&self) -> usize {
+        self.events.len()
+    }
+
     pub fn push(&mut self, event: EntityEvent) {
         self.events.push_back(event);
     }

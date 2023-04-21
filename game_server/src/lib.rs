@@ -22,6 +22,14 @@ use crate::config::Config;
 use crate::server::Server;
 use crate::state::State;
 
+pub fn prepare(app: &mut App) {
+    app.add_plugin(CorePlugins);
+
+    app.add_plugin(WorldPlugin);
+
+    app.insert_resource(game_physics::Pipeline::new());
+}
+
 pub async fn run(mut app: App, config: Config) {
     let state = State::new(config);
 
@@ -29,20 +37,14 @@ pub async fn run(mut app: App, config: Config) {
     let conns = state.conns.clone();
 
     let archive = GameArchive::new();
-
     let loader = ModuleLoader::new(&archive);
     loader.load("../mods/core").unwrap();
-
     app.insert_resource(archive);
-    app.add_plugin(CorePlugins);
 
     app.insert_resource(queue);
     app.insert_resource(conns);
+
     app.add_plugin(ServerPlugins);
-
-    app.add_plugin(WorldPlugin);
-
-    app.insert_resource(game_physics::Pipeline::new());
 
     let timestep = Duration::from_secs(1) / state.config.timestep;
 
