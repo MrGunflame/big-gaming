@@ -7,7 +7,7 @@ use std::ops::{Add, AddAssign, Sub, SubAssign};
 use bevy_ecs::component::Component;
 use glam::Vec3;
 
-use crate::id::{NamespacedId, WeakId};
+use crate::id::WeakId;
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -366,17 +366,6 @@ pub struct DamageClass(pub WeakId<u32>);
 impl DamageClass {
     pub const BALLISTIC: Self = Self(WeakId(2));
     pub const ENERGY: Self = Self(WeakId(3));
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[cfg_attr(feature = "serde", serde(transparent))]
-#[deprecated = "Use `DamageClass` instead"]
-pub struct ResistanceId(NamespacedId<u32>);
-
-impl ResistanceId {
-    pub const BALLISTIC: Self = Self(NamespacedId::core(2));
-    pub const ENERGY: Self = Self(NamespacedId::core(3));
 }
 
 /// A resistance value.

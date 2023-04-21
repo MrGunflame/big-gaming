@@ -8,7 +8,6 @@ use std::time::Instant;
 use bevy_ecs::system::Resource;
 
 use game_common::world::CellId;
-use glam::{Quat, Vec3};
 
 #[cfg(feature = "tracing")]
 use tracing::{event, span, Level, Span};
@@ -813,13 +812,6 @@ impl Snapshot {
 }
 
 #[derive(Clone, Debug)]
-pub struct Override {
-    pub id: EntityId,
-    pub translation: Option<Vec3>,
-    pub rotation: Option<Quat>,
-}
-
-#[derive(Clone, Debug)]
 pub struct CellViewRef<'a> {
     id: CellId,
     entities: &'a Entities,
@@ -925,6 +917,7 @@ mod tests {
     use std::time::Duration;
 
     use bevy_transform::prelude::Transform;
+    use glam::Vec3;
 
     use crate::components::components::{Components, RecordReference};
     use crate::components::object::ObjectId;

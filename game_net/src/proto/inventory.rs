@@ -57,7 +57,6 @@ impl Decode for Item {
 
         Ok(Self {
             id,
-            components: None,
             resistances: None,
             mass: Mass::default(),
             properties: Properties::default(),

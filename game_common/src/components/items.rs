@@ -3,7 +3,6 @@ use std::time::{Duration, Instant};
 use bevy_ecs::component::Component;
 use bytemuck::{Pod, Zeroable};
 
-use crate::id::NamespacedId;
 use crate::units::Mass;
 
 use super::actions::Actions;
@@ -34,8 +33,6 @@ impl ItemStack {
 #[derive(Clone, Debug, Component)]
 pub struct Item {
     pub id: ItemId,
-    // FIXME: Should better be kv map.
-    pub components: Option<Vec<ItemComponentId>>,
     // TODO: Should these really be hardcoded here?
     pub resistances: Option<Resistances>,
     pub mass: Mass,
@@ -94,9 +91,6 @@ impl Magazine {
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Zeroable, Pod)]
 #[repr(transparent)]
 pub struct ItemId(pub RecordReference);
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ItemComponentId(NamespacedId<u32>);
 
 /// A component of a modifiable [`Item`].
 ///

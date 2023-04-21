@@ -4,7 +4,7 @@ use bevy_transform::components::Transform;
 use glam::{Quat, Vec3};
 
 use crate::components::combat::Health;
-use crate::components::components::{Components, RecordReference};
+use crate::components::components::Components;
 use crate::components::items::ItemId;
 use crate::components::object::ObjectId;
 use crate::components::race::RaceId;

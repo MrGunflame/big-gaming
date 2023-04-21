@@ -7,7 +7,7 @@ use std::net::SocketAddr;
 use std::sync::{mpsc, Arc};
 use std::time::{Duration, Instant};
 
-use bevy::prelude::{dbg, IntoSystemConfig, Res, ResMut, SystemSet, Transform, Vec3};
+use bevy::prelude::{IntoSystemConfig, Res, ResMut, SystemSet, Transform, Vec3};
 use game_common::components::components::Components;
 use game_common::entity::EntityMap;
 use game_common::world::entity::{Entity, EntityBody};

@@ -1,4 +1,4 @@
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use bevy_ecs::component::Component;
 use glam::Vec3;
