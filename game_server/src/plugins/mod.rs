@@ -258,26 +258,36 @@ fn update_client(conn: &Connection, world: &WorldState) {
         return;
     };
 
+    let host = curr.get(id).unwrap();
+    let cell_id = CellId::from(host.transform.translation);
+
     // Send full state
     // The delta from the current frame is "included" in the full update.
     if state.full_update {
         state.full_update = false;
 
-        let host = curr.get(id).unwrap();
-        let cell = curr.cell(host.transform.translation.into());
+        tracing::info!(
+            "sending full update to host in cell {:?} for cells: {:?}",
+            cell_id,
+            state.cells.cells(),
+        );
 
-        for entity in cell.iter() {
-            conn.handle().send_cmd(ConnectionMessage {
-                id: None,
-                conn: ConnectionId(0),
-                snapshot: curr.creation(),
-                command: Command::EntityCreate {
-                    id: entity.id,
-                    translation: entity.transform.translation,
-                    rotation: entity.transform.rotation,
-                    data: entity.body.clone(),
-                },
-            });
+        for id in state.cells.cells() {
+            let cell = curr.cell(*id);
+
+            for entity in cell.iter() {
+                conn.handle().send_cmd(ConnectionMessage {
+                    id: None,
+                    conn: ConnectionId(0),
+                    snapshot: curr.creation(),
+                    command: Command::EntityCreate {
+                        id: entity.id,
+                        translation: entity.transform.translation,
+                        rotation: entity.transform.rotation,
+                        data: entity.body.clone(),
+                    },
+                });
+            }
         }
 
         return;
@@ -285,9 +295,6 @@ fn update_client(conn: &Connection, world: &WorldState) {
 
     let mut changes = Vec::new();
 
-    let host = curr.get(id).unwrap();
-
-    let cell_id = CellId::from(host.transform.translation);
     // Host changed cells
     if !state.cells.contains(cell_id) {
         tracing::info!("Moving host from {:?} to {:?}", state.cells, cell_id);
