@@ -23,6 +23,7 @@ use game_script::ScriptServer;
 
 use crate::conn::{Connection, Connections};
 use crate::entity::ServerEntityGenerator;
+use crate::net::state::Cells;
 use crate::world::level::Level;
 
 pub struct ServerPlugins;
@@ -66,7 +67,7 @@ pub fn tick(
     crate::world::level::update_streaming_sources(&mut sources, &world);
     crate::world::level::update_level(&sources, &level, &mut world);
 
-    pipeline.step(&mut world);
+    pipeline.step(&mut world, &mut event_queue);
 
     game_script::plugin::flush_event_queue(&mut event_queue, &mut world, &server, &scripts);
 
@@ -209,7 +210,7 @@ fn flush_command_queue(
 
                 let mut state = conn.state().write();
                 state.id = Some(id);
-                state.cells = vec![CellId::new(0.0, 0.0, 0.0)];
+                state.cells = Cells::new(CellId::new(0.0, 0.0, 0.0));
 
                 tracing::info!("spawning host {:?} in cell", msg.id);
             }
@@ -288,18 +289,14 @@ fn update_client(conn: &Connection, world: &WorldState) {
 
     let cell_id = CellId::from(host.transform.translation);
     // Host changed cells
-    if !state.cells.contains(&cell_id) {
+    if !state.cells.contains(cell_id) {
         tracing::info!("Moving host from {:?} to {:?}", state.cells, cell_id);
 
         // Host changed cells
-        let unload = state.cells.clone();
-
-        state.cells.clear();
-
-        state.cells.push(host.transform.translation.into());
+        let update = state.cells.set(host.transform.translation.into());
 
         // Destroy all entities in unloaded cells.
-        for id in unload {
+        for id in update.unloaded() {
             let cell = curr.cell(id);
 
             // Destroy all entities (for the client) from the unloaded cell.
@@ -311,17 +308,19 @@ fn update_client(conn: &Connection, world: &WorldState) {
         }
 
         // Create all entities in loaded cells.
-        let cell = curr.cell(cell_id);
+        for cell_id in update.loaded() {
+            let cell = curr.cell(cell_id);
 
-        for entity in cell.iter() {
-            // Don't duplicate the player actor.
-            if entity.id == host.id {
-                continue;
+            for entity in cell.iter() {
+                // Don't duplicate the player actor.
+                if entity.id == host.id {
+                    continue;
+                }
+
+                changes.push(EntityChange::Create {
+                    entity: entity.clone(),
+                });
             }
-
-            changes.push(EntityChange::Create {
-                entity: entity.clone(),
-            });
         }
 
         // Host in same cell
@@ -352,11 +351,11 @@ fn update_client(conn: &Connection, world: &WorldState) {
                         if let Some(cell) = cell {
                             // The cell that the entity moved into is not loaded by the
                             // client. Remove the entity from the client view.
-                            if !state.cells.contains(&cell.to) {
+                            if !state.cells.contains(cell.to) {
                                 EntityChange::Destroy { id: *id }
                             // The cell that the entity moved from was not loaded by the
                             // client. Add the entity to the client view.
-                            } else if !state.cells.contains(&cell.from) {
+                            } else if !state.cells.contains(cell.from) {
                                 let entity = curr.get(*id).unwrap();
 
                                 EntityChange::Create {

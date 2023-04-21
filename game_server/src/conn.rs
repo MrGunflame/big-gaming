@@ -7,11 +7,12 @@ use ahash::HashMap;
 use bevy::prelude::Resource;
 use game_common::entity::EntityId;
 use game_common::world::snapshot::EntityChange;
+use game_common::world::CellId;
 use game_net::conn::{ConnectionHandle, ConnectionId};
 use game_net::snapshot::{Command, CommandId, ConnectionMessage};
 use parking_lot::RwLock;
 
-use crate::net::state::ConnectionState;
+use crate::net::state::{Cells, ConnectionState};
 
 /// List of connections
 // FIXME: Maybe merge with ConnectionPool.
@@ -31,7 +32,7 @@ impl Connections {
                     id: handle.id,
                     state: RwLock::new(ConnectionState {
                         full_update: true,
-                        cells: vec![],
+                        cells: Cells::new(CellId::new(0.0, 0.0, 0.0)),
                         id: None,
                         head: 0,
                     }),
