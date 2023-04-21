@@ -3,6 +3,7 @@ use bevy::render::camera::RenderTarget;
 use bevy::window::{Window, WindowRef};
 use game_common::module::ModuleId;
 use game_data::record::{RecordId, RecordKind};
+use game_data::uri::Uri;
 
 use crate::state::module::{EditorModule, Modules};
 use crate::state::record::Records;
@@ -14,6 +15,7 @@ use self::records::RecordsWindowPlugin;
 mod error;
 mod modules;
 mod records;
+mod view;
 
 #[derive(Clone, Debug)]
 pub enum SpawnWindow {
@@ -25,6 +27,7 @@ pub enum SpawnWindow {
     Record(ModuleId, RecordId),
     CreateRecord(RecordKind),
     Error(String),
+    View(Uri),
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -84,6 +87,9 @@ fn spawn_window(mut events: EventReader<SpawnWindow>, mut commands: Commands) {
                 cmds.insert(error::ErrorWindow {
                     text: text.to_owned(),
                 });
+            }
+            SpawnWindow::View(uri) => {
+                cmds.insert(view::ViewWindow::new(uri.clone()));
             }
         }
 

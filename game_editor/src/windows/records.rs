@@ -80,7 +80,7 @@ fn render_window(
             RecordKind::Item => 3,
             RecordKind::Action => 2,
             RecordKind::Component => 2,
-            RecordKind::Object => 1,
+            RecordKind::Object => 2,
         };
 
         CentralPanel::default().show(ctx.get_mut(), |ui| {
@@ -128,6 +128,10 @@ fn render_window(
                         RecordKind::Object => {
                             header.col(|ui| {
                                 ui.heading("Handle");
+                            });
+
+                            header.col(|ui| {
+                                ui.heading("Preview");
                             });
                         }
                     }
@@ -194,6 +198,12 @@ fn render_window(
                                         ui.label(
                                             &object.uri.as_ref().to_string_lossy().to_string(),
                                         );
+                                    });
+
+                                    row.col(|ui| {
+                                        if ui.button("Preview").clicked() {
+                                            events.send(SpawnWindow::View(object.uri.clone()));
+                                        }
                                     });
                                 }
                             }
