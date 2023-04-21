@@ -73,7 +73,57 @@ impl Sky {
 #[uuid = "5a811417-336e-4e2b-b0a3-cf21d63e78f4"]
 pub struct SkyMaterial {
     #[uniform(0)]
-    pub color: Color,
+    depolarization_factor: f32,
+    #[uniform(0)]
+    mie_coefficient: f32,
+    #[uniform(0)]
+    mie_directional_g: f32,
+    #[uniform(0)]
+    mie_k_coefficient: Vec3,
+    #[uniform(0)]
+    mie_v: f32,
+    #[uniform(0)]
+    mie_zenith_length: f32,
+    #[uniform(0)]
+    num_molecules: f32,
+    #[uniform(0)]
+    primaries: Vec3,
+    #[uniform(0)]
+    rayleigh: f32,
+    #[uniform(0)]
+    rayleigh_zenith_length: f32,
+    #[uniform(0)]
+    refractive_index: f32,
+    #[uniform(0)]
+    sun_angular_diameter_degrees: f32,
+    #[uniform(0)]
+    sun_intensity_factor: f32,
+    #[uniform(0)]
+    sun_intensity_falloff_steepness: f32,
+    #[uniform(0)]
+    turbidity: f32,
+}
+
+impl Default for SkyMaterial {
+    fn default() -> Self {
+        Self {
+            depolarization_factor: 0.035,
+            mie_coefficient: 0.005,
+            mie_directional_g: 0.8,
+            mie_k_coefficient: Vec3::new(0.686, 0.678, 0.666),
+            mie_v: 4.0,
+            mie_zenith_length: 1.25e3,
+            num_molecules: 2.542e25,
+            primaries: Vec3::new(6.8e-7, 5.5e-7, 4.5e-7),
+            rayleigh: 1.0,
+            rayleigh_zenith_length: 8.4e3,
+            refractive_index: 1.0003,
+            sun_angular_diameter_degrees: 0.0093333,
+            sun_intensity_factor: 1000.0,
+            sun_intensity_falloff_steepness: 1.5,
+            turbidity: 2.0,
+        }
+    }
 }
 
 impl Material for SkyMaterial {
@@ -115,9 +165,7 @@ fn setup_sky(
         commands
             .spawn(MaterialMeshBundle {
                 mesh: meshes.add(mesh),
-                material: materials.add(SkyMaterial {
-                    color: Color::rgb_u8(122, 249, 243),
-                }),
+                material: materials.add(SkyMaterial::default()),
                 ..Default::default()
             })
             .insert(pane);
