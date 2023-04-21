@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::time::Instant;
 
-use bevy::prelude::{Plugin, Resource};
+use bevy::prelude::{App, Plugin, Resource};
 use game_common::module::ModuleId;
 use game_common::world::world::WorldState;
 use game_data::loader::FileLoader;
@@ -15,60 +15,9 @@ pub struct ModulePlugin;
 
 impl Plugin for ModulePlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
-        let rt = Runtime::new().unwrap();
+        app.insert_resource(Modules::new());
+        app.insert_resource(ScriptServer::new());
 
-        let mut modules = Modules::new();
-        let mut server = ScriptServer::new();
-
-        rt.block_on(async {
-            let mut dir = match tokio::fs::read_dir("./mods").await {
-                Ok(dir) => dir,
-                Err(err) => {
-                    tracing::error!("failed to load modules found ./mods: {}", err);
-                    std::process::exit(1);
-                }
-            };
-
-            while let Some(entry) = dir.next_entry().await.unwrap() {
-                let data = match FileLoader::load(entry.path()).await {
-                    Ok(data) => data,
-                    Err(err) => {
-                        tracing::error!("cannot load {:?}: {}", entry.path(), err);
-                        continue;
-                    }
-                };
-
-                tracing::info!(
-                    "loaded module {} ({})",
-                    data.header.module.name,
-                    data.header.module.id,
-                );
-
-                let mut records = Records::new();
-                for record in data.records {
-                    let mut world = WorldState::new();
-                    world.insert(Instant::now());
-                    match &record.body {
-                        RecordBody::Action(action) => {
-                            server.insert(Script::load(&server, action.script.as_ref()));
-                        }
-                        _ => (),
-                    }
-
-                    records.insert(record);
-                }
-
-                modules.insert(ModuleData {
-                    id: data.header.module.id,
-                    records,
-                });
-            }
-        });
-
-        tracing::info!("loaded {} modules", modules.len());
-
-        app.insert_resource(modules);
-        app.insert_resource(server);
         app.add_plugin(ScriptPlugin);
     }
 }
@@ -134,4 +83,61 @@ mod tests {
         assert!(modules.get(ModuleId::CORE).is_some());
         assert!(modules.contains(ModuleId::CORE));
     }
+}
+
+pub fn load_modules(app: &mut App) {
+    let mut modules = Modules::new();
+    let mut server = ScriptServer::new();
+
+    let rt = Runtime::new().unwrap();
+
+    rt.block_on(async {
+        let mut dir = match tokio::fs::read_dir("./mods").await {
+            Ok(dir) => dir,
+            Err(err) => {
+                tracing::error!("failed to load modules found ./mods: {}", err);
+                std::process::exit(1);
+            }
+        };
+
+        while let Some(entry) = dir.next_entry().await.unwrap() {
+            let data = match FileLoader::load(entry.path()).await {
+                Ok(data) => data,
+                Err(err) => {
+                    tracing::error!("cannot load {:?}: {}", entry.path(), err);
+                    continue;
+                }
+            };
+
+            tracing::info!(
+                "loaded module {} ({})",
+                data.header.module.name,
+                data.header.module.id,
+            );
+
+            let mut records = Records::new();
+            for record in data.records {
+                let mut world = WorldState::new();
+                world.insert(Instant::now());
+                match &record.body {
+                    RecordBody::Action(action) => {
+                        server.insert(Script::load(&server, action.script.as_ref()));
+                    }
+                    _ => (),
+                }
+
+                records.insert(record);
+            }
+
+            modules.insert(ModuleData {
+                id: data.header.module.id,
+                records,
+            });
+        }
+    });
+
+    tracing::info!("loaded {} modules", modules.len());
+
+    app.insert_resource(modules);
+    app.insert_resource(server);
 }

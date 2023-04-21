@@ -51,6 +51,7 @@ fn main() {
     loader.load("../mods/core").unwrap();
 
     let mut app = App::new();
+
     app.insert_resource(archive);
     app.insert_resource(Msaa::Sample4);
     app.add_plugin(CorePlugins);
@@ -101,6 +102,8 @@ fn main() {
     app.add_startup_system(setup);
     app.add_system(crate::world::terrain::load_terrain_mesh);
     app.add_plugin(ActionsPlugin);
+
+    game_core::modules::load_modules(&mut app);
 
     if let Some(addr) = args.connect {
         tracing::info!("Connecting to {}", addr);
