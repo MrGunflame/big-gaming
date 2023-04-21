@@ -2,6 +2,7 @@ use std::time::Duration;
 
 use bevy::prelude::App;
 use clap::Parser;
+use config::Config;
 use game_common::archive::loader::ModuleLoader;
 use game_common::archive::GameArchive;
 use game_core::CorePlugins;
@@ -29,7 +30,9 @@ struct Args {}
 fn main() {
     game_core::logger::init();
 
-    let state = State::new();
+    let config = Config::from_file("./config.toml").unwrap();
+
+    let state = State::new(config);
 
     let queue = state.queue.clone();
     let conns = state.conns.clone();
@@ -56,6 +59,8 @@ fn main() {
 }
 
 async fn main_loop(mut app: App, state: State) {
+    let timestep = Duration::from_secs(1) / state.config.timestep;
+
     tokio::task::spawn(async move {
         let server = match Server::new(state) {
             Ok(s) => s,
@@ -69,8 +74,6 @@ async fn main_loop(mut app: App, state: State) {
             tracing::error!("failed to run server: {}", err);
         }
     });
-
-    let timestep = Duration::from_secs(1) / 1;
 
     let mut interval = interval(timestep.into());
     interval.set_missed_tick_behavior(MissedTickBehavior::Skip);

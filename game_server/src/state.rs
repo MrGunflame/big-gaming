@@ -8,6 +8,7 @@ use game_net::conn::ConnectionHandle;
 use game_net::snapshot::CommandQueue;
 use parking_lot::RwLock;
 
+use crate::config::Config;
 use crate::conn::Connections;
 
 pub type ConnectionKey = SocketAddr;
@@ -16,8 +17,9 @@ pub type ConnectionKey = SocketAddr;
 pub struct State(Arc<StateInner>);
 
 impl State {
-    pub fn new() -> Self {
+    pub fn new(config: Config) -> Self {
         State(Arc::new(StateInner {
+            config,
             pool: ConnectionPool::new(),
             queue: CommandQueue::default(),
             conns: Connections::default(),
@@ -36,6 +38,7 @@ impl Deref for State {
 
 #[derive(Debug)]
 pub struct StateInner {
+    pub config: Config,
     pub pool: ConnectionPool,
     pub queue: CommandQueue,
     pub conns: Connections,
