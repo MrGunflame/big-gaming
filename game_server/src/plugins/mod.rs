@@ -21,7 +21,7 @@ use game_net::snapshot::{Command, CommandQueue, ConnectionMessage, Response, Sta
 use game_script::scripts::Scripts;
 use game_script::ScriptServer;
 
-use crate::conn::Connections;
+use crate::conn::{Connection, Connections};
 use crate::entity::ServerEntityGenerator;
 use crate::world::level::Level;
 
@@ -238,158 +238,176 @@ fn update_snapshots(
     world: &WorldState,
 ) {
     for conn in connections.iter() {
-        let mut state = conn.state().write();
+        update_client(&conn, world);
+    }
+}
 
-        let Some(id) = state.id else {
-            continue;
-        };
+fn update_client(conn: &Connection, world: &WorldState) {
+    let mut state = conn.state().write();
 
-        // let Some(prev) = world.at(state.head.saturating_sub(1)) else {
-        //     return;
-        // };
+    let Some(id) = state.id else {
+        return;
+    };
 
-        let Some(curr) = world.front() else {
-            return;
-        };
+    // let Some(prev) = world.at(state.head.saturating_sub(1)) else {
+    //     return;
+    // };
 
-        // Send full state
-        // The delta from the current frame is "included" in the full update.
-        if state.full_update {
-            state.full_update = false;
+    let Some(curr) = world.front() else {
+        return;
+    };
 
-            let host = curr.get(id).unwrap();
-            let cell = curr.cell(host.transform.translation.into());
-
-            for entity in cell.iter() {
-                conn.handle().send_cmd(ConnectionMessage {
-                    id: None,
-                    conn: ConnectionId(0),
-                    snapshot: curr.creation(),
-                    command: Command::EntityCreate {
-                        id: entity.id,
-                        translation: entity.transform.translation,
-                        rotation: entity.transform.rotation,
-                        data: entity.body.clone(),
-                    },
-                });
-            }
-
-            continue;
-        }
-
-        let mut changes = Vec::new();
+    // Send full state
+    // The delta from the current frame is "included" in the full update.
+    if state.full_update {
+        state.full_update = false;
 
         let host = curr.get(id).unwrap();
+        let cell = curr.cell(host.transform.translation.into());
 
-        let cell_id = CellId::from(host.transform.translation);
+        for entity in cell.iter() {
+            conn.handle().send_cmd(ConnectionMessage {
+                id: None,
+                conn: ConnectionId(0),
+                snapshot: curr.creation(),
+                command: Command::EntityCreate {
+                    id: entity.id,
+                    translation: entity.transform.translation,
+                    rotation: entity.transform.rotation,
+                    data: entity.body.clone(),
+                },
+            });
+        }
+
+        return;
+    }
+
+    let mut changes = Vec::new();
+
+    let host = curr.get(id).unwrap();
+
+    let cell_id = CellId::from(host.transform.translation);
+    // Host changed cells
+    if !state.cells.contains(&cell_id) {
+        tracing::info!("Moving host from {:?} to {:?}", state.cells, cell_id);
+
         // Host changed cells
-        if !state.cells.contains(&cell_id) {
-            tracing::info!("Moving host from {:?} to {:?}", state.cells, cell_id);
+        let unload = state.cells.clone();
 
-            // Host changed cells
-            let unload = state.cells.clone();
+        state.cells.clear();
 
-            state.cells.clear();
+        state.cells.push(host.transform.translation.into());
 
-            state.cells.push(host.transform.translation.into());
+        // Destroy all entities in unloaded cells.
+        for id in unload {
+            let cell = curr.cell(id);
 
-            // Destroy all entities in unloaded cells.
-            for id in unload {
-                let cell = curr.cell(id);
-
-                // Destroy all entities (for the client) from the unloaded cell.
-                for entity in cell.iter() {
-                    changes.push(EntityChange::Destroy { id: entity.id });
-                }
-            }
-
-            // Create all entities in loaded cells.
-            let cell = curr.cell(cell_id);
-
+            // Destroy all entities (for the client) from the unloaded cell.
             for entity in cell.iter() {
-                // Don't duplicate the player actor.
-                if entity.id == host.id {
-                    continue;
-                }
+                debug_assert_ne!(entity.id, host.id);
 
-                changes.push(EntityChange::Create {
-                    entity: entity.clone(),
-                });
+                changes.push(EntityChange::Destroy { id: entity.id });
+            }
+        }
+
+        // Create all entities in loaded cells.
+        let cell = curr.cell(cell_id);
+
+        for entity in cell.iter() {
+            // Don't duplicate the player actor.
+            if entity.id == host.id {
+                continue;
             }
 
-            // Host in same cell
-        } else {
-            // let prev_cell = prev.cell(cell_id);
-            let curr_cell = curr.cell(cell_id);
+            changes.push(EntityChange::Create {
+                entity: entity.clone(),
+            });
+        }
 
-            changes.extend(
-                curr_cell
-                    .deltas()
-                    .iter()
-                    .cloned()
-                    .map(|d| match &d {
-                        EntityChange::Translate {
-                            id,
-                            translation: _,
-                            cell,
-                        } => {
-                            if let Some(cell) = cell {
-                                // The cell that the entity moved into is not loaded by the
-                                // client. Remove the entity from the client view.
-                                if !state.cells.contains(&cell.to) {
-                                    EntityChange::Destroy { id: *id }
-                                // The cell that the entity moved from was not loaded by the
-                                // client. Add the entity to the client view.
-                                } else if !state.cells.contains(&cell.from) {
-                                    let entity = curr.get(*id).unwrap();
+        // Host in same cell
+    } else {
+        // let prev_cell = prev.cell(cell_id);
+        let curr_cell = curr.cell(cell_id);
 
-                                    EntityChange::Create {
-                                        entity: entity.clone(),
-                                    }
-                                } else {
-                                    d
+        changes.extend(
+            curr_cell
+                .deltas()
+                .iter()
+                .cloned()
+                .map(|d| match &d {
+                    EntityChange::Translate {
+                        id,
+                        translation: _,
+                        cell,
+                    } => {
+                        // Note that CellIds returned from translation close to borders
+                        // are not well-defined.
+                        // This is a fix that would cause the host to get destroyed and
+                        // recreated in the same tick.
+                        // FIXME: This still doesn't seem like a good solution.
+                        if *id == host.id {
+                            return d;
+                        }
+
+                        if let Some(cell) = cell {
+                            // The cell that the entity moved into is not loaded by the
+                            // client. Remove the entity from the client view.
+                            if !state.cells.contains(&cell.to) {
+                                EntityChange::Destroy { id: *id }
+                            // The cell that the entity moved from was not loaded by the
+                            // client. Add the entity to the client view.
+                            } else if !state.cells.contains(&cell.from) {
+                                let entity = curr.get(*id).unwrap();
+
+                                EntityChange::Create {
+                                    entity: entity.clone(),
                                 }
                             } else {
                                 d
                             }
+                        } else {
+                            d
                         }
-                        _ => d,
-                    })
-                    .collect::<Vec<_>>(),
-            );
-        }
-
-        // The host should never be destroyed.
-        if cfg!(debug_assertions) {
-            for event in &changes {
-                match event {
-                    EntityChange::Destroy { id } => {
-                        assert_ne!(*id, host.id);
                     }
-                    _ => (),
+                    _ => d,
+                })
+                .collect::<Vec<_>>(),
+        );
+    }
+
+    // The host should never be destroyed.
+    if cfg!(debug_assertions) {
+        for event in &changes {
+            match event {
+                EntityChange::Destroy { id } => {
+                    assert_ne!(*id, host.id);
                 }
+                _ => (),
             }
         }
+    }
 
-        conn.push(changes, curr.creation());
+    conn.push(changes, curr.creation());
 
-        // Acknowledge client commands.
-        let ids = conn.take_proc_msg();
-        if !ids.is_empty() {
-            conn.handle().send_cmd(ConnectionMessage {
-                id: None,
-                conn: conn.id(),
-                snapshot: Instant::now(),
-                command: Command::ReceivedCommands {
-                    ids: ids
-                        .into_iter()
-                        .map(|id| Response {
-                            id,
-                            status: Status::Received,
-                        })
-                        .collect(),
-                },
-            });
-        }
+    // Acknowledge client commands.
+    let ids = conn.take_proc_msg();
+    if !ids.is_empty() {
+        conn.handle().send_cmd(ConnectionMessage {
+            id: None,
+            conn: conn.id(),
+            snapshot: Instant::now(),
+            command: Command::ReceivedCommands {
+                ids: ids
+                    .into_iter()
+                    .map(|id| Response {
+                        id,
+                        status: Status::Received,
+                    })
+                    .collect(),
+            },
+        });
     }
 }
+
+#[cfg(test)]
+mod tests {}
