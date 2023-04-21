@@ -1,5 +1,5 @@
 use bevy::prelude::{AssetServer, Commands, Entity, Query, Res, ResMut, Transform};
-use bevy::scene::Scene;
+use bevy::scene::{Scene, SceneBundle};
 use game_common::archive::GameArchive;
 use game_common::components::object::LoadObject;
 use game_common::components::transform::PreviousTransform;
@@ -104,16 +104,13 @@ fn load_objects(
     mut commands: Commands,
     modules: Res<Modules>,
     assets: Res<AssetServer>,
-    objects: Query<(Entity, &LoadObject)>,
+    objects: Query<(Entity, &Transform, &LoadObject)>,
 ) {
-    for (entity, object) in &objects {
+    for (entity, transform, object) in &objects {
         tracing::info!("loading object {:?}", object.id);
 
         commands.entity(entity).remove::<LoadObject>();
 
-        dbg!(&modules);
-        dbg!(&object.id.0.module);
-        dbg!(modules.get(object.id.0.module));
         let Some(m) = modules.get(object.id.0.module) else {
             tracing::warn!("requested unknown module {}", object.id.0.module);
             continue;
@@ -129,8 +126,19 @@ fn load_objects(
             continue;
         };
 
-        commands
-            .entity(entity)
-            .insert(assets.load::<Scene, _>(obj.uri.as_ref()));
+        // Note that for bevys asset loader &str != OsStr/Path.
+        // A string must be used for the label to be extracted.
+        let uri = obj.uri.as_ref().to_str().unwrap();
+        let handle = assets.load::<Scene, _>(uri);
+
+        dbg!(&transform);
+        dbg!(&handle);
+        commands.entity(entity).insert(SceneBundle {
+            scene: handle,
+            transform: *transform,
+            ..Default::default()
+        });
+
+        // commands.entity(entity).insert(handle);
     }
 }
