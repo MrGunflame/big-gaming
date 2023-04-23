@@ -122,7 +122,7 @@ impl Decode for String {
     {
         let mut len = u64::decode(&mut buf)? as usize;
         // 20MB max buffer to prevent memory exhaustion.
-        let mut bytes = Vec::with_capacity(std::cmp::max(len, 20_000_000));
+        let mut bytes = Vec::with_capacity(std::cmp::min(len, 20_000_000));
 
         while len > 0 {
             if buf.remaining() == 0 {
