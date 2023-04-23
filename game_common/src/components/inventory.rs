@@ -334,7 +334,65 @@ pub struct ItemRef<'a> {
 
 #[cfg(test)]
 mod tests {
-    use super::EquipmentSlot;
+    use crate::components::actions::Actions;
+    use crate::components::components::{Components, RecordReference};
+    use crate::components::inventory::InsertionError;
+    use crate::components::items::{Item, ItemId};
+    use crate::units::Mass;
+
+    use super::{EquipmentSlot, Inventory};
+
+    #[test]
+    fn inventory_insert() {
+        let item = new_test_item();
+        let mut inventory = Inventory::new();
+
+        inventory.insert(item).unwrap();
+    }
+
+    #[test]
+    fn inventory_insert_mass_fails() {
+        let mut item = new_test_item();
+        item.mass = Mass::MAX;
+
+        let mut inventory = Inventory::new();
+        inventory.insert(item).unwrap();
+
+        let mut item = new_test_item();
+        item.mass = Mass::from_grams(1);
+
+        assert!(matches!(
+            inventory.insert(item).unwrap_err(),
+            InsertionError::MaxMass(_)
+        ));
+    }
+
+    // Likely OOM, skip for now
+    // #[test]
+    // fn inventory_insert_count_fails() {
+    //     let mut inventory = Inventory::new();
+
+    //     for _ in 0..u32::MAX {
+    //         let item = new_test_item();
+    //         inventory.insert(item).unwrap();
+    //     }
+
+    //     let item = new_test_item();
+    //     assert!(matches!(
+    //         inventory.insert(item).unwrap_err(),
+    //         InsertionError::MaxItems(_)
+    //     ));
+    // }
+
+    fn new_test_item() -> Item {
+        Item {
+            id: ItemId(RecordReference::STUB),
+            mass: Mass::new(),
+            resistances: None,
+            actions: Actions::new(),
+            components: Components::new(),
+        }
+    }
 
     #[test]
     fn test_equipment_slot_consts() {
