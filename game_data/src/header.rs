@@ -29,7 +29,7 @@ pub struct Header {
 
     pub module: Module,
 
-    pub items: u32,
+    pub records: u32,
     pub patches: u32,
 }
 
@@ -42,7 +42,7 @@ impl Encode for Header {
 
         self.version.encode(&mut buf);
         self.module.encode(&mut buf);
-        self.items.encode(&mut buf);
+        self.records.encode(&mut buf);
         self.patches.encode(&mut buf);
     }
 }
@@ -62,12 +62,12 @@ impl Decode for Header {
 
         let version = u8::decode(&mut buf).map_err(HeaderError::Version)?;
         let module = Module::decode(&mut buf).map_err(HeaderError::Module)?;
-        let items = u32::decode(&mut buf).map_err(HeaderError::Items)?;
+        let records = u32::decode(&mut buf).map_err(HeaderError::Items)?;
         let patches = u32::decode(&mut buf).map_err(HeaderError::Patches)?;
 
         Ok(Self {
             version,
-            items,
+            records,
             module,
             patches,
         })

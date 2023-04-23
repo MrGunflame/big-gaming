@@ -90,7 +90,7 @@ async fn save_data(payload: WriteModule) -> TaskResult<()> {
         .map(|(_, record)| record.clone())
         .collect();
 
-    buffer.header.items = buffer.records.len() as u32;
+    buffer.header.records = buffer.records.len() as u32;
 
     let mut buf = Vec::new();
     buffer.encode(&mut buf);

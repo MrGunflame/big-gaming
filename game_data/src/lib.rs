@@ -325,7 +325,7 @@ impl DataBuffer {
             header: Header {
                 version: 0,
                 module,
-                items: 0,
+                records: 0,
                 patches: 0,
             },
             records: Vec::new(),
@@ -338,7 +338,7 @@ impl Encode for DataBuffer {
     where
         B: BufMut,
     {
-        assert_eq!(self.header.items, self.records.len() as u32);
+        assert_eq!(self.header.records, self.records.len() as u32);
 
         self.header.encode(&mut buf);
         for item in &self.records {
@@ -357,7 +357,7 @@ impl Decode for DataBuffer {
         let header = Header::decode(&mut buf)?;
 
         let mut records = vec![];
-        for _ in 0..header.items {
+        for _ in 0..header.records {
             let record = Record::decode(&mut buf)?;
             records.push(record);
         }
