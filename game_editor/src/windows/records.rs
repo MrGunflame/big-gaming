@@ -11,7 +11,7 @@ use game_common::module::ModuleId;
 use game_common::units::Mass;
 use game_data::components::actions::ActionRecord;
 use game_data::components::components::ComponentRecord;
-use game_data::components::item::ItemRecord;
+use game_data::components::item::{ItemComponent, ItemRecord};
 use game_data::components::objects::ObjectRecord;
 use game_data::record::{Record, RecordBody, RecordId, RecordKind, RecordReference};
 use game_data::uri::Uri;
@@ -246,6 +246,7 @@ pub struct RecordWindow {
     pub record: Option<Record>,
     // TODO: RecordId
     pub add_action: u32,
+    pub add_comp: u32,
 }
 
 fn render_record_windows(
@@ -346,6 +347,54 @@ fn render_record_windows(
                             item.actions.push(RecordReference {
                                 module: state.module,
                                 record: RecordId(state.add_action),
+                            });
+                        }
+                    }
+
+                    ui.label("Components");
+
+                    let mut index = 0;
+                    while index < item.components.len() {
+                        let comp = records.get(
+                            item.components[index].record.module,
+                            item.components[index].record.record,
+                        );
+
+                        let text = match comp {
+                            Some(comp) => format!("{} ({})", comp.name, comp.id),
+                            None => {
+                                format!("Invalid reference ({})", item.components[index].record)
+                            }
+                        };
+
+                        ui.label(text);
+                        if ui.button("Delete").clicked() {
+                            item.components.remove(index);
+                            continue;
+                        }
+
+                        index += 1;
+                    }
+
+                    ui.label("Add Component:");
+                    let mut add_component = state.add_comp.to_string();
+
+                    if ui.add(TextEdit::singleline(&mut add_component)).changed() {
+                        state.add_comp = add_component.parse().unwrap_or_default();
+                        changed = true;
+                    }
+
+                    if ui.button("Add").clicked() {
+                        if records
+                            .get(state.module, RecordId(state.add_comp))
+                            .is_some()
+                        {
+                            item.components.push(ItemComponent {
+                                record: RecordReference {
+                                    module: state.module,
+                                    record: RecordId(state.add_comp),
+                                },
+                                value: vec![],
                             });
                         }
                     }
