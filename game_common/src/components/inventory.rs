@@ -1,6 +1,6 @@
 //! Container inventories
 
-use std::borrow::{Borrow, Cow};
+use std::borrow::Borrow;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::hash::Hash;
@@ -9,11 +9,17 @@ use std::num::NonZeroU8;
 
 use ahash::RandomState;
 use bevy_ecs::component::Component;
+use bytemuck::{Pod, Zeroable};
 use indexmap::IndexMap;
 
 use crate::units::Mass;
 
-use super::items::{IntoItemStack, Item, ItemId, ItemStack};
+use super::items::Item;
+
+/// A unique id refering an item inside exactly one inventory.
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash, Zeroable, Pod)]
+#[repr(C)]
+pub struct InventoryId(u64);
 
 /// A container for storing items. This may be a player inventory or a container in the world.
 ///
@@ -21,11 +27,12 @@ use super::items::{IntoItemStack, Item, ItemId, ItemStack};
 /// `Mass::MAX`, whichever is reached first.
 #[derive(Clone, Debug, Default, Component)]
 pub struct Inventory {
-    items: IndexMap<ItemId, ItemStack, RandomState>,
+    items: IndexMap<InventoryId, Item, RandomState>,
     /// The count of all items in this `Inventory`.
     count: usize,
     /// The sum of all items in this inventory.
     mass: Mass,
+    next_id: InventoryId,
 }
 
 impl Inventory {
@@ -35,6 +42,7 @@ impl Inventory {
             items: IndexMap::with_hasher(RandomState::new()),
             count: 0,
             mass: Mass::new(),
+            next_id: InventoryId(0),
         }
     }
 
@@ -60,49 +68,40 @@ impl Inventory {
         self.mass
     }
 
-    pub fn get<T>(&self, id: T) -> Option<&ItemStack>
+    pub fn get<T>(&self, id: T) -> Option<&Item>
     where
-        T: Borrow<ItemId>,
+        T: Borrow<InventoryId>,
     {
         self.items.get(id.borrow())
     }
 
-    pub fn get_mut<T>(&mut self, id: T) -> Option<&mut ItemStack>
+    pub fn get_mut<T>(&mut self, id: T) -> Option<&mut Item>
     where
-        T: Borrow<ItemId>,
+        T: Borrow<InventoryId>,
     {
         self.items.get_mut(id.borrow())
     }
 
     /// Inserts a new [`Item`] or [`ItemStack`] into the `Inventory`.
-    pub fn insert<T>(&mut self, items: T) -> Result<(), InsertionError>
-    where
-        T: IntoItemStack,
-    {
-        let items = items.into_item_stack();
+    pub fn insert(&mut self, item: Item) -> Result<InventoryId, InsertionError> {
+        let id = self.next_id;
+        self.next_id.0 += 1;
 
         // Update inventory item quantity.
-        match self.count.checked_add(items.quantity as usize) {
+        match self.count.checked_add(1) {
             Some(count) => self.count = count,
-            None => return Err(InsertionError::MaxItems(items)),
+            None => return Err(InsertionError::MaxItems(item)),
         }
 
         // Update inventory mass.
-        match self.mass.checked_add(items.mass()) {
+        match self.mass.checked_add(item.mass) {
             Some(mass) => self.mass = mass,
-            None => return Err(InsertionError::MaxMass(items)),
+            None => return Err(InsertionError::MaxMass(item)),
         }
 
-        match self.get_mut(items.item.id) {
-            Some(stack) => {
-                stack.quantity += items.quantity;
-            }
-            None => {
-                self.items.insert(items.item.id, items);
-            }
-        }
+        self.items.insert(id, item);
 
-        Ok(())
+        Ok(id)
     }
 
     /// Removes and returns a single [`Item`] from this `Inventory`. Returns `None` if the item
@@ -111,49 +110,22 @@ impl Inventory {
     /// The returned value is a [`Cow::Borrowed`] if the removed item still remains in the
     /// `Inventory` (only the `quantity` was reduced) and [`Cow::Owned`] if the last item was
     /// removed from the `Inventory`.
-    pub fn remove<T>(&mut self, id: T) -> Option<Cow<'_, Item>>
+    pub fn remove<T>(&mut self, id: T) -> Option<Item>
     where
-        T: Borrow<ItemId>,
+        T: Borrow<InventoryId>,
     {
-        let stack = self.items.get_mut(id.borrow())?;
+        let item = self.items.get_mut(id.borrow())?;
 
         // We always only remove a single item.
         self.count -= 1;
-        self.mass -= stack.item.mass;
+        self.mass -= item.mass;
 
-        if stack.quantity != 1 {
-            // Reduce the stack count, then return the item.
-            stack.quantity -= 1;
-
-            // Borrow checker trickery: Since we return here early we don't actually
-            // keep the borrow of self if this if block never executres.
-            // Reborrow stack to satisfy the borrow checker.
-            let stack = unsafe { &*(stack as *mut ItemStack) };
-            return Some(Cow::Borrowed(&stack.item));
-        }
-
-        // Last item from the stack, remove the entry from the map.
-        let stack = self.items.remove(id.borrow()).unwrap();
-        return Some(Cow::Owned(stack.item));
-    }
-
-    /// Removes and returns the whole [`ItemStack`].
-    pub fn remove_stack<T>(&mut self, id: T) -> Option<ItemStack>
-    where
-        T: Borrow<ItemId>,
-    {
-        let stack = self.items.remove(id.borrow())?;
-
-        // Reduce stack mass.
-        self.count -= stack.quantity as usize;
-        self.mass -= stack.mass();
-
-        Some(stack)
+        Some(self.items.remove(id.borrow()).unwrap())
     }
 
     pub fn sort_by<F>(&mut self, mut f: F)
     where
-        F: FnMut(&ItemStack, &ItemStack) -> Ordering,
+        F: FnMut(&Item, &Item) -> Ordering,
     {
         self.items.sort_by(|_, lhs, _, rhs| f(lhs, rhs))
     }
@@ -166,7 +138,7 @@ impl Inventory {
 }
 
 impl<'a> IntoIterator for &'a Inventory {
-    type Item = &'a ItemStack;
+    type Item = ItemRef<'a>;
     type IntoIter = Iter<'a>;
 
     #[inline]
@@ -179,14 +151,14 @@ impl<'a> IntoIterator for &'a Inventory {
 pub enum InsertionError {
     /// The insertion failed because the [`Inventory`] already contains the maximum number of
     /// total items.
-    MaxItems(ItemStack),
+    MaxItems(Item),
     /// The insertion failed because the [`Inventory`] already carries the maximum combined
     /// [`Mass`].
-    MaxMass(ItemStack),
+    MaxMass(Item),
 }
 
 impl InsertionError {
-    pub fn into_inner(self) -> ItemStack {
+    pub fn into_inner(self) -> Item {
         match self {
             Self::MaxItems(inner) => inner,
             Self::MaxMass(inner) => inner,
@@ -328,15 +300,15 @@ impl<'a> FusedIterator for EquipmentIter<'a> {}
 
 #[derive(Clone, Debug)]
 pub struct Iter<'a> {
-    iter: indexmap::map::Iter<'a, ItemId, ItemStack>,
+    iter: indexmap::map::Iter<'a, InventoryId, Item>,
 }
 
 impl<'a> Iterator for Iter<'a> {
-    type Item = &'a ItemStack;
+    type Item = ItemRef<'a>;
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        self.iter.next().map(|(_, v)| v)
+        self.iter.next().map(|(id, item)| ItemRef { id: *id, item })
     }
 
     #[inline]
@@ -353,6 +325,12 @@ impl<'a> ExactSizeIterator for Iter<'a> {
 }
 
 impl<'a> FusedIterator for Iter<'a> {}
+
+#[derive(Copy, Clone, Debug)]
+pub struct ItemRef<'a> {
+    pub id: InventoryId,
+    pub item: &'a Item,
+}
 
 #[cfg(test)]
 mod tests {

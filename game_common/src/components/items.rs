@@ -7,8 +7,7 @@ use crate::units::Mass;
 
 use super::actions::Actions;
 use super::combat::Resistances;
-use super::components::RecordReference;
-use super::properties::Properties;
+use super::components::{Components, RecordReference};
 
 /// A stack of up to `u32::MAX` items.
 ///
@@ -36,55 +35,8 @@ pub struct Item {
     // TODO: Should these really be hardcoded here?
     pub resistances: Option<Resistances>,
     pub mass: Mass,
-    pub properties: Properties,
     pub actions: Actions,
-}
-
-#[derive(Clone, Debug)]
-pub enum Magazine {
-    /// A single item.
-    Single { id: ItemId, count: u16 },
-}
-
-impl Magazine {
-    #[inline]
-    pub fn pop(&mut self) -> Option<ItemId> {
-        match self {
-            Self::Single { id, count } => {
-                if *count > 0 {
-                    *count -= 1;
-                    Some(*id)
-                } else {
-                    None
-                }
-            }
-        }
-    }
-
-    #[inline]
-    pub fn push(&mut self, item: ItemId, n: u16) {
-        match self {
-            Self::Single { id, count } => {
-                if *id != item {
-                    return;
-                }
-
-                *count += n;
-            }
-        }
-    }
-
-    #[inline]
-    pub fn count(&self) -> u16 {
-        match self {
-            Self::Single { id: _, count } => *count,
-        }
-    }
-
-    #[inline]
-    pub fn is_empty(&self) -> bool {
-        self.count() == 0
-    }
+    pub components: Components,
 }
 
 /// A weak identifer for an item.
