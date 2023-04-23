@@ -13,6 +13,7 @@ use thiserror::Error;
 pub mod components;
 pub mod header;
 pub mod loader;
+pub mod patch;
 pub mod record;
 pub mod uri;
 pub mod varint;
@@ -323,8 +324,9 @@ impl DataBuffer {
         Self {
             header: Header {
                 version: 0,
-                items: 0,
                 module,
+                items: 0,
+                patches: 0,
             },
             records: Vec::new(),
         }

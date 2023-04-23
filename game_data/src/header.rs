@@ -18,6 +18,8 @@ pub enum HeaderError {
     Module(<Module as Decode>::Error),
     #[error("failed to read item count: {0}")]
     Items(<u32 as Decode>::Error),
+    #[error("failed to read patch count: {0}")]
+    Patches(<u32 as Decode>::Error),
 }
 
 #[derive(Clone, Debug)]
@@ -28,6 +30,7 @@ pub struct Header {
     pub module: Module,
 
     pub items: u32,
+    pub patches: u32,
 }
 
 impl Encode for Header {
@@ -40,6 +43,7 @@ impl Encode for Header {
         self.version.encode(&mut buf);
         self.module.encode(&mut buf);
         self.items.encode(&mut buf);
+        self.patches.encode(&mut buf);
     }
 }
 
@@ -59,11 +63,13 @@ impl Decode for Header {
         let version = u8::decode(&mut buf).map_err(HeaderError::Version)?;
         let module = Module::decode(&mut buf).map_err(HeaderError::Module)?;
         let items = u32::decode(&mut buf).map_err(HeaderError::Items)?;
+        let patches = u32::decode(&mut buf).map_err(HeaderError::Patches)?;
 
         Ok(Self {
             version,
             items,
             module,
+            patches,
         })
     }
 }
