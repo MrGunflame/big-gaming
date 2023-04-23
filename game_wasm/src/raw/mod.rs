@@ -1,4 +1,5 @@
 pub mod components;
+pub mod inventory;
 pub mod process;
 pub mod record;
 pub mod world;

@@ -1,5 +1,6 @@
 //! Builtin host functions
 
+mod inventory;
 mod log;
 mod process;
 mod world;
@@ -21,6 +22,7 @@ macro_rules! register_fns {
 }
 
 pub fn register_host_fns(store: &mut Linker<State>) {
+    use inventory::*;
     use log::*;
     use process::*;
     use world::*;
@@ -36,6 +38,13 @@ pub fn register_host_fns(store: &mut Linker<State>) {
         world_entity_component_get,
         world_entity_component_insert,
         world_entity_component_remove,
+        inventory_get,
+        inventory_insert,
+        inventory_remove,
+        inventory_component_len,
+        inventory_component_get,
+        inventory_component_insert,
+        inventory_component_remove,
     }
 }
 

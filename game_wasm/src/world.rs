@@ -143,7 +143,9 @@ impl EntityComponents {
     }
 
     pub fn remove(&self, id: RecordReference) -> Result<(), Error> {
-        let res = unsafe { raw::world_entity_component_remove(self.entity, id) };
+        let id = &id as *const _ as Usize;
+
+        let res = unsafe { raw::world_entity_component_remove(self.entity, Ptr::from_raw(id)) };
 
         if res == 0 {
             Ok(())

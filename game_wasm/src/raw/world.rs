@@ -31,7 +31,8 @@ extern "C" {
         len: Usize,
     ) -> u32;
 
-    pub fn world_entity_component_remove(entity_id: u64, component_id: RecordReference) -> u32;
+    pub fn world_entity_component_remove(entity_id: u64, component_id: Ptr<RecordReference>)
+        -> u32;
 }
 
 #[derive(Copy, Clone, Zeroable, Pod)]
