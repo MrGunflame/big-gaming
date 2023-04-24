@@ -2,8 +2,9 @@ use std::borrow::Cow;
 
 use ahash::HashMap;
 use bevy::prelude::{App, MouseButton, Res, ResMut, Resource};
-use game_common::components::actions::{Action, ActionId, ActionQueue};
+use game_common::components::actions::{Action, ActionId};
 use game_common::components::components::RecordReference;
+use game_common::events::{ActionEvent, EntityEvent, Event, EventQueue};
 use game_core::modules::Modules;
 use game_data::record::RecordBody;
 use game_input::hotkeys::{Hotkey, HotkeyCode, HotkeyId, HotkeyReader, Hotkeys, TriggerKind};
@@ -31,7 +32,7 @@ struct HotkeyMap {
 fn register_actions(
     mut map: ResMut<HotkeyMap>,
     mut hotkeys: ResMut<Hotkeys>,
-    mut modules: Res<Modules>,
+    modules: Res<Modules>,
 ) {
     for module in modules.iter() {
         for record in module.records.iter() {
@@ -41,7 +42,7 @@ fn register_actions(
 
             let id = hotkeys.register(Hotkey {
                 id: HotkeyId(0),
-                name: Cow::Borrowed("test action"),
+                name: record.name.to_owned().into(),
                 default: game_input::hotkeys::Key {
                     trigger: TriggerKind::JUST_PRESSED,
                     code: HotkeyCode::MouseButton {
@@ -65,22 +66,25 @@ fn register_actions(
 
 fn handle_player_inputs(
     conn: Res<ServerConnection>,
-    mut map: Res<HotkeyMap>,
+    map: Res<HotkeyMap>,
     mut events: HotkeyReader<Hotkey>,
-    mut queue: ResMut<ActionQueue>,
+    mut queue: ResMut<EventQueue>,
 ) {
     let host = conn.host();
 
     for event in events.iter() {
         let Some(actions) = map.hotkeys.get(&event.id) else {
-              continue;
+            continue;
         };
 
         for action in actions {
-            queue.push(Action {
+            queue.push(EntityEvent {
                 entity: host,
-                id: *action,
-                item: None,
+                event: Event::Action(ActionEvent {
+                    entity: host,
+                    invoker: host,
+                    action: *action,
+                }),
             });
         }
     }

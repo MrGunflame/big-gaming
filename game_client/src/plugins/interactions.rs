@@ -1,5 +1,4 @@
 use bevy::prelude::{Plugin, Res, ResMut};
-use game_common::components::actions::ActionQueue;
 use game_common::components::interaction::InteractionQueue;
 use game_common::events::{ActionEvent, EntityEvent, Event, EventQueue};
 use game_net::snapshot::Command;
@@ -13,11 +12,6 @@ impl Plugin for InteractionsPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
         // Need full rework
         app.insert_resource(InteractionQueue::new());
-        //     .add_stage("Interaction", InteractionStage);
-
-        app.insert_resource(ActionQueue::new());
-
-        app.add_system(handle_action_events);
     }
 }
 
@@ -30,27 +24,3 @@ impl Plugin for InteractionsPlugin {
 //         });
 //     }
 // }
-
-fn handle_action_events(
-    conn: Res<ServerConnection>,
-    mut actions: ResMut<ActionQueue>,
-    mut events: ResMut<EventQueue>,
-) {
-    while let Some(action) = actions.pop() {
-        events.push(EntityEvent {
-            entity: action.entity,
-            event: Event::Action(ActionEvent {
-                entity: action.entity,
-                invoker: action.entity,
-                action: action.id,
-            }),
-        });
-
-        dbg!(&action);
-
-        conn.send(Command::EntityAction {
-            id: action.entity,
-            action: action.id,
-        });
-    }
-}
