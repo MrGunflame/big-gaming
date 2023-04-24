@@ -35,6 +35,7 @@ pub mod timestamp;
 
 mod action;
 mod combat;
+mod components;
 mod inventory;
 mod properties;
 mod quat;
