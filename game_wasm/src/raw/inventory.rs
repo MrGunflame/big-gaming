@@ -41,6 +41,9 @@ extern "C" {
         component_id: Ptr<RecordReference>,
     ) -> u32;
 
+    pub fn inventory_equip(entity_id: u64, id: u64) -> u32;
+
+    pub fn inventory_unequip(entity_id: u64, id: u64) -> u32;
 }
 
 #[derive(Copy, Clone, Debug, Zeroable, Pod)]

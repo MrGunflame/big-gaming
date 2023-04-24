@@ -99,8 +99,8 @@ impl Connection {
     ) -> (Self, ConnectionHandle) {
         let id = ConnectionId::new();
 
-        let (tx, rx) = mpsc::channel(32);
-        let (out_tx, out_rx) = mpsc::channel(32);
+        let (tx, rx) = mpsc::channel(4096);
+        let (out_tx, out_rx) = mpsc::channel(4096);
 
         let mut conn = Self {
             id,

@@ -1,10 +1,6 @@
-use bevy::prelude::{AssetServer, Commands, Entity, Plugin, Query, Res, Transform, Vec3, With};
-use game_common::bundles::ProjectileBundle;
-use game_common::components::actor::{ActorFigure, ActorFlag, ActorFlags, Death};
-use game_common::components::combat::{
-    Attack, Damage, Health, IncomingDamage, Reload, Resistances,
-};
-use game_common::components::inventory::{Equipment, EquipmentSlot};
+use bevy::prelude::{Commands, Entity, Plugin, Query, With};
+use game_common::components::actor::{ActorFlag, ActorFlags, Death};
+use game_common::components::combat::{Health, IncomingDamage, Resistances};
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct CombatPlugin;
@@ -13,7 +9,6 @@ impl Plugin for CombatPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
         app.add_system(apply_incoming_damage)
             // .add_system(handle_attack_events)
-            .add_system(handle_reload_events)
             .add_system(remove_death);
     }
 }
@@ -104,21 +99,6 @@ fn apply_incoming_damage(
 //         commands.entity(entity).remove::<Attack>();
 //     }
 // }
-
-fn handle_reload_events(
-    mut commands: Commands,
-    mut actors: Query<(Entity, &mut Equipment), With<Reload>>,
-) {
-    for (entity, mut equipment) in &mut actors {
-        if let Some(item) = equipment.get_mut(EquipmentSlot::MAIN_HAND) {
-            // if let Some(id) = item.ammo {
-            //     item.magazine.as_mut().unwrap().push(id, 30);
-            // }
-        }
-
-        commands.entity(entity).remove::<Reload>();
-    }
-}
 
 // Remove the death event from all actors.
 fn remove_death(mut commands: Commands, mut actors: Query<Entity, With<Death>>) {

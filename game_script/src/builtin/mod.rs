@@ -45,6 +45,8 @@ pub fn register_host_fns(store: &mut Linker<State>) {
         inventory_component_get,
         inventory_component_insert,
         inventory_component_remove,
+        inventory_equip,
+        inventory_unequip,
     }
 }
 

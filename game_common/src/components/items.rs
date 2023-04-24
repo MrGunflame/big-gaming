@@ -37,6 +37,14 @@ pub struct Item {
     pub mass: Mass,
     pub actions: Actions,
     pub components: Components,
+    /// Whether the item is currently considered equipped.
+    ///
+    /// This has no effect if used outside the context of an [`Inventory`].
+    pub equipped: bool,
+    /// Whether the item should be visible in the player UI.
+    ///
+    /// This has no effect if used outside the context of an [`Inventory`].
+    pub hidden: bool,
 }
 
 /// A weak identifer for an item.

@@ -46,48 +46,48 @@ impl Encode for Item {
     }
 }
 
-impl Decode for Item {
-    type Error = EofError;
+// impl Decode for Item {
+//     type Error = EofError;
 
-    fn decode<B>(mut buf: B) -> Result<Self, Self::Error>
-    where
-        B: Buf,
-    {
-        let id = ItemId::decode(&mut buf)?;
+//     fn decode<B>(mut buf: B) -> Result<Self, Self::Error>
+//     where
+//         B: Buf,
+//     {
+//         let id = ItemId::decode(&mut buf)?;
 
-        Ok(Self {
-            id,
-            resistances: None,
-            mass: Mass::default(),
-            properties: Properties::default(),
-            actions: Actions::default(),
-        })
-    }
-}
+//         Ok(Self {
+//             id,
+//             resistances: None,
+//             mass: Mass::default(),
+//             properties: Properties::default(),
+//             actions: Actions::default(),
+//         })
+//     }
+// }
 
-impl Encode for ItemStack {
-    type Error = Infallible;
+// impl Encode for ItemStack {
+//     type Error = Infallible;
 
-    fn encode<B>(&self, mut buf: B) -> Result<(), Self::Error>
-    where
-        B: BufMut,
-    {
-        self.item.encode(&mut buf)?;
-        self.quantity.encode(&mut buf)?;
-        Ok(())
-    }
-}
+//     fn encode<B>(&self, mut buf: B) -> Result<(), Self::Error>
+//     where
+//         B: BufMut,
+//     {
+//         self.item.encode(&mut buf)?;
+//         self.quantity.encode(&mut buf)?;
+//         Ok(())
+//     }
+// }
 
-impl Decode for ItemStack {
-    type Error = EofError;
+// impl Decode for ItemStack {
+//     type Error = EofError;
 
-    fn decode<B>(mut buf: B) -> Result<Self, Self::Error>
-    where
-        B: Buf,
-    {
-        let item = Item::decode(&mut buf)?;
-        let quantity = u32::decode(&mut buf)?;
+//     fn decode<B>(mut buf: B) -> Result<Self, Self::Error>
+//     where
+//         B: Buf,
+//     {
+//         let item = Item::decode(&mut buf)?;
+//         let quantity = u32::decode(&mut buf)?;
 
-        Ok(Self { item, quantity })
-    }
-}
+//         Ok(Self { item, quantity })
+//     }
+// }

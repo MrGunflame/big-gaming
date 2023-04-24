@@ -13,6 +13,7 @@ mod raw;
 // mod panic;
 
 pub mod events;
+pub mod inventory;
 pub mod log;
 pub mod math;
 pub mod process;

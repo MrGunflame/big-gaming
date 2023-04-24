@@ -132,7 +132,7 @@ pub fn inventory_component_insert(
         return Ok(1);
     };
 
-    let Some(item) = inventory.get_mut(id) else {
+    let Some(mut item) = inventory.get_mut(id) else {
         return Ok(1);
     };
 
@@ -154,10 +154,48 @@ pub fn inventory_component_remove(
         return Ok(1);
     };
 
-    let Some(item) = inventory.get_mut(id) else {
+    let Some(mut item) = inventory.get_mut(id) else {
         return Ok(1);
     };
 
     item.components.remove(component_id);
+    Ok(0)
+}
+
+pub fn inventory_equip(mut caller: Caller<'_, State<'_>>, entity_id: u64, id: u64) -> Result<u32> {
+    let entity_id = EntityId::from_raw(entity_id);
+    let id = InventoryId::from_raw(id);
+
+    let Some(inventory) = caller.data_mut().world.inventories_mut().get_mut(entity_id) else {
+        return Ok(1);
+    };
+
+    let Some(mut item) = inventory.get_mut(id) else {
+        return Ok(1);
+    };
+
+    // ItemMut drop does the rest.
+    item.equipped = true;
+    Ok(0)
+}
+
+pub fn inventory_unequip(
+    mut caller: Caller<'_, State<'_>>,
+    entity_id: u64,
+    id: u64,
+) -> Result<u32> {
+    let entity_id = EntityId::from_raw(entity_id);
+    let id = InventoryId::from_raw(id);
+
+    let Some(inventory) = caller.data_mut().world.inventories_mut().get_mut(entity_id) else {
+        return Ok(1);
+    };
+
+    let Some(mut item) = inventory.get_mut(id) else {
+        return Ok(1);
+    };
+
+    // ItemMut drop does the rest.
+    item.equipped = false;
     Ok(0)
 }

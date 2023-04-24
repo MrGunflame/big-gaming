@@ -3,11 +3,10 @@ use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use game_common::components::actor::Actor;
 use game_common::components::combat::Resistances;
-use game_common::components::inventory::{Equipment, EquipmentSlot};
 use game_common::components::items::Item;
 
 pub(super) fn senses(app: &mut App) {
-    app.add_system(vision_sense).add_system(equipment_sense);
+    // app.add_system(vision_sense).add_system(equipment_sense);
 }
 
 #[derive(Clone, Debug, Default, Component)]
@@ -52,24 +51,24 @@ fn vision_sense(
     }
 }
 
-fn equipment_sense(mut hosts: Query<(&Equipment, &mut HostEquipment)>) {
-    for (equipment, mut host_equipment) in &mut hosts {
-        let mut resistances = Resistances::new();
-        let weapons = equipment
-            .get(EquipmentSlot::MAIN_HAND)
-            .map(|item| vec![item.clone()])
-            .unwrap_or_default();
+// fn equipment_sense(mut hosts: Query<(&Equipment, &mut HostEquipment)>) {
+//     for (equipment, mut host_equipment) in &mut hosts {
+//         let mut resistances = Resistances::new();
+//         let weapons = equipment
+//             .get(EquipmentSlot::MAIN_HAND)
+//             .map(|item| vec![item.clone()])
+//             .unwrap_or_default();
 
-        for item in equipment {
-            // Collect all resistances from all equipped items.
-            if let Some(res) = &item.resistances {
-                resistances += res;
-            }
-        }
+//         for item in equipment {
+//             // Collect all resistances from all equipped items.
+//             if let Some(res) = &item.resistances {
+//                 resistances += res;
+//             }
+//         }
 
-        *host_equipment = HostEquipment {
-            resistances,
-            weapons,
-        }
-    }
-}
+//         *host_equipment = HostEquipment {
+//             resistances,
+//             weapons,
+//         }
+//     }
+// }

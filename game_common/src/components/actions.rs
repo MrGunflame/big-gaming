@@ -6,6 +6,7 @@ use bevy_ecs::system::Resource;
 use crate::entity::EntityId;
 
 use super::components::RecordReference;
+use super::inventory::InventoryId;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ActionId(pub RecordReference);
@@ -52,4 +53,5 @@ impl ActionQueue {
 pub struct Action {
     pub entity: EntityId,
     pub id: ActionId,
+    pub item: Option<InventoryId>,
 }

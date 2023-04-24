@@ -44,14 +44,14 @@ impl Widget for Inventory {
 }
 
 fn render(state: &mut Inventory, ui: &mut Ui, archive: &GameArchive, inventory: &InventoryComp) {
-    let items: Vec<&ItemStack> = inventory.iter().collect();
+    // let items: Vec<&ItemStack> = inventory.iter().collect();
 
-    ui.add(Category {
-        state,
-        archive,
-        title: "test",
-        items: &items,
-    });
+    // ui.add(Category {
+    //     state,
+    //     archive,
+    //     title: "test",
+    //     items: &items,
+    // });
 }
 
 #[derive(Debug)]

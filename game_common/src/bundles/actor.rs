@@ -1,7 +1,7 @@
 use bevy_ecs::bundle::Bundle;
 
 use crate::components::actor::{Actor, ActorFigure, ActorFlags, ActorProperties, MovementSpeed};
-use crate::components::inventory::{Equipment, Inventory};
+use crate::components::inventory::Inventory;
 use crate::components::movement::RotateQueue;
 
 use super::combat::CombatBundle;
@@ -19,7 +19,6 @@ pub struct ActorBundle {
     pub actor: Actor,
 
     pub inventory: Inventory,
-    pub equipment: Equipment,
     pub actor_flags: ActorFlags,
     pub movement_speed: MovementSpeed,
     pub actor_figure: ActorFigure,
@@ -37,7 +36,6 @@ impl Default for ActorBundle {
             combat: CombatBundle::default(),
             actor: Actor,
             inventory: Inventory::new(),
-            equipment: Equipment::new(),
             actor_flags: ActorFlags::default(),
             movement_speed: MovementSpeed::default(),
             actor_figure: ActorFigure::default(),

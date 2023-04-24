@@ -1,10 +1,9 @@
 use std::borrow::Cow;
 
 use ahash::HashMap;
-use bevy::prelude::{App, EventReader, MouseButton, Query, Res, ResMut, Resource};
+use bevy::prelude::{App, MouseButton, Res, ResMut, Resource};
 use game_common::components::actions::{Action, ActionId, ActionQueue};
 use game_common::components::components::RecordReference;
-use game_common::world::world::WorldState;
 use game_core::modules::Modules;
 use game_data::record::RecordBody;
 use game_input::hotkeys::{Hotkey, HotkeyCode, HotkeyId, HotkeyReader, Hotkeys, TriggerKind};
@@ -81,6 +80,7 @@ fn handle_player_inputs(
             queue.push(Action {
                 entity: host,
                 id: *action,
+                item: None,
             });
         }
     }

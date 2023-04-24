@@ -56,3 +56,15 @@ pub type OnAction = TypedFunc<(u64, u64), ()>;
 /// fn(entity: EntityId, other: EntityId);
 /// ```
 pub type OnCollision = TypedFunc<(u64, u64), ()>;
+
+///
+/// ```ignore
+/// fn(actor: EntityId, item: InventoryId);
+/// ```
+pub type OnEquip = TypedFunc<(u64, u64), ()>;
+
+///
+/// ```ignore
+/// fn(actor: EntityId, item: InventoryId);
+/// ```
+pub type OnUnequip = TypedFunc<(u64, u64), ()>;

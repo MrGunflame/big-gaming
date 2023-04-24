@@ -292,6 +292,7 @@ fn spawn_entity(
     }
 }
 
+#[derive(Clone, Debug)]
 struct DelayedEntity {
     entity: Entity,
     host: bool,
