@@ -21,6 +21,18 @@ use super::items::Item;
 #[repr(C)]
 pub struct InventoryId(u64);
 
+impl InventoryId {
+    #[inline]
+    pub const fn into_bits(self) -> u64 {
+        self.0
+    }
+
+    #[inline]
+    pub const fn from_raw(bits: u64) -> Self {
+        Self(bits)
+    }
+}
+
 /// A container for storing items. This may be a player inventory or a container in the world.
 ///
 /// Note that the hard limit for a `Inventory` is `usize::MAX` items or total combined mass of

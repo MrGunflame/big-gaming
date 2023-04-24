@@ -12,6 +12,7 @@ use game_common::world::CellId;
 #[cfg(feature = "tracing")]
 use tracing::{event, span, Level, Span};
 
+use crate::components::inventory::Inventory;
 use crate::entity::EntityId;
 use crate::world::snapshot::{EntityChange, TransferCell};
 
@@ -94,6 +95,7 @@ impl WorldState {
                 hosts: Hosts::new(),
                 cells: HashMap::new(),
                 streaming_sources: StreamingSources::new(),
+                inventories: Inventories::new(),
             },
         };
 
@@ -227,6 +229,10 @@ impl<'a> WorldViewRef<'a> {
 
     pub fn streaming_sources(&self) -> &StreamingSources {
         &self.snapshot.streaming_sources
+    }
+
+    pub fn inventories(&self) -> &Inventories {
+        &self.snapshot.inventories
     }
 
     /// Returns a view into a cell in the world.
@@ -459,6 +465,14 @@ impl<'a> WorldViewMut<'a> {
     pub fn creation(&self) -> Instant {
         self.world.snapshots.get(self.index).unwrap().creation
     }
+
+    pub fn inventories(&self) -> &Inventories {
+        &self.snapshot_ref().inventories
+    }
+
+    pub fn inventories_mut(&mut self) -> &mut Inventories {
+        &mut self.snapshot().inventories
+    }
 }
 
 impl<'a> Debug for WorldViewMut<'a> {
@@ -656,6 +670,7 @@ struct Snapshot {
     streaming_sources: StreamingSources,
     // Deltas for every cell
     cells: HashMap<CellId, Vec<EntityChange>>,
+    inventories: Inventories,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -909,6 +924,35 @@ impl<'a> CellViewRef<'a> {
         }
 
         delta
+    }
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct Inventories {
+    inventories: HashMap<EntityId, Inventory>,
+}
+
+impl Inventories {
+    fn new() -> Self {
+        Self {
+            inventories: HashMap::new(),
+        }
+    }
+
+    pub fn get(&self, id: EntityId) -> Option<&Inventory> {
+        self.inventories.get(&id)
+    }
+
+    pub fn get_mut(&mut self, id: EntityId) -> Option<&mut Inventory> {
+        self.inventories.get_mut(&id)
+    }
+
+    pub fn insert(&mut self, id: EntityId, inventory: Inventory) {
+        self.inventories.insert(id, inventory);
+    }
+
+    pub fn remove(&mut self, id: EntityId) {
+        self.inventories.remove(&id);
     }
 }
 

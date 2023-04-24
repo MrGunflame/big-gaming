@@ -46,6 +46,5 @@ extern "C" {
 #[derive(Copy, Clone, Debug, Zeroable, Pod)]
 #[repr(C)]
 pub struct Item {
-    pub record: RecordReference,
-    pub mass: u32,
+    pub id: RecordReference,
 }

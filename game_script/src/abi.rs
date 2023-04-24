@@ -3,12 +3,13 @@
 use bevy_transform::prelude::Transform;
 use game_common::components::components::Components;
 use game_common::components::components::RecordReference;
+use game_common::components::items::Item as HostItem;
 use game_common::entity::EntityId;
 use game_common::world::entity::Entity as HostEntity;
 use game_common::world::entity::EntityBody as HostEntityBody;
 use game_common::world::entity::EntityKind as HostEntityKind;
-use game_common::world::entity::Item;
 use game_common::world::entity::Object;
+use game_wasm::raw::inventory::Item as GuestItem;
 use game_wasm::raw::world::Entity as GuestEntity;
 use game_wasm::raw::world::EntityBody as GuestEntityBody;
 use game_wasm::raw::world::EntityKind as GuestEntityKind;
@@ -110,7 +111,7 @@ impl FromAbi for GuestEntity {
             HostEntityKind::Item => {
                 let id = bytemuck::cast_ref(&self.body);
 
-                HostEntityBody::Item(Item { id: *id })
+                HostEntityBody::Item(game_common::world::entity::Item { id: *id })
             }
         };
 
@@ -124,5 +125,18 @@ impl FromAbi for GuestEntity {
             body,
             components: Components::new(),
         })
+    }
+}
+
+impl ToAbi for HostItem {
+    type Target = GuestItem;
+
+    fn to_abi(&self) -> Self::Target {
+        GuestItem {
+            id: game_wasm::raw::record::RecordReference {
+                module: self.id.0.module.into_bytes(),
+                record: self.id.0.record,
+            },
+        }
     }
 }
