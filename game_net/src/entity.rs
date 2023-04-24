@@ -7,7 +7,7 @@ use game_common::net::ServerEntity;
 
 use crate::proto::{
     EntityAction, EntityCreate, EntityDestroy, EntityHealth, EntityRotate, EntityTranslate,
-    EntityVelocity, Frame, SpawnHost,
+    EntityVelocity, Frame, InventoryItemAdd, InventoryItemRemove, InventoryItemUpdate, SpawnHost,
 };
 use crate::snapshot::Command;
 
@@ -131,6 +131,31 @@ impl Entities {
 
                 Some(Command::SpawnHost { id })
             }
+            Frame::InventoryItemAdd(frame) => {
+                let entity = self.get(frame.entity)?;
+
+                Some(Command::InventoryItemAdd {
+                    entity,
+                    id: frame.id,
+                    item: frame.item,
+                })
+            }
+            Frame::InventoryItemRemove(frame) => {
+                let entity = self.get(frame.entity)?;
+
+                Some(Command::InventoryItemRemove {
+                    entity,
+                    id: frame.id,
+                })
+            }
+            Frame::InventoryItemUpdate(frame) => {
+                let entity = self.get(frame.entity)?;
+
+                Some(Command::InventoryUpdate {
+                    entity,
+                    id: frame.id,
+                })
+            }
         }
     }
 
@@ -204,6 +229,31 @@ impl Entities {
                 let id = self.get(*id)?;
 
                 Some(Frame::SpawnHost(SpawnHost { entity: id }))
+            }
+            Command::InventoryItemAdd { entity, id, item } => {
+                let entity = self.get(*entity)?;
+
+                Some(Frame::InventoryItemAdd(InventoryItemAdd {
+                    entity,
+                    id: *id,
+                    item: *item,
+                }))
+            }
+            Command::InventoryItemRemove { entity, id } => {
+                let entity = self.get(*entity)?;
+
+                Some(Frame::InventoryItemRemove(InventoryItemRemove {
+                    entity,
+                    id: *id,
+                }))
+            }
+            Command::InventoryUpdate { entity, id } => {
+                let entity = self.get(*entity)?;
+
+                Some(Frame::InventoryItemUpdate(InventoryItemUpdate {
+                    entity,
+                    id: *id,
+                }))
             }
             Command::ReceivedCommands { ids: _ } => None,
         }

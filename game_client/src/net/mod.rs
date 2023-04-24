@@ -200,6 +200,15 @@ fn flush_command_queue(
                 view.spawn_host(id);
                 conn.set_host(id);
             }
+            Command::InventoryItemAdd { entity, id, item } => {
+                todo!();
+            }
+            Command::InventoryItemRemove { entity, id } => {
+                todo!();
+            }
+            Command::InventoryUpdate { entity, id } => {
+                todo!();
+            }
             Command::Connected => (),
             Command::Disconnected => (),
             Command::ReceivedCommands { ids } => {

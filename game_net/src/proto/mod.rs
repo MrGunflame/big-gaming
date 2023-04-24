@@ -43,6 +43,8 @@ mod record;
 use game_common::components::actions::ActionId;
 use game_common::components::combat::Health;
 use game_common::components::components::RecordReference;
+use game_common::components::inventory::InventoryId;
+use game_common::components::items::ItemId;
 use game_common::components::object::ObjectId;
 use game_common::components::race::RaceId;
 use game_common::id::WeakId;
@@ -622,6 +624,25 @@ pub struct SpawnHost {
     pub entity: ServerEntity,
 }
 
+#[derive(Copy, Clone, Debug, Encode, Decode)]
+pub struct InventoryItemAdd {
+    pub entity: ServerEntity,
+    pub id: InventoryId,
+    pub item: ItemId,
+}
+
+#[derive(Copy, Clone, Debug, Encode, Decode)]
+pub struct InventoryItemRemove {
+    pub entity: ServerEntity,
+    pub id: InventoryId,
+}
+
+#[derive(Copy, Clone, Debug, Encode, Decode)]
+pub struct InventoryItemUpdate {
+    pub entity: ServerEntity,
+    pub id: InventoryId,
+}
+
 #[derive(Clone, Debug)]
 pub struct Terrain {
     pub cell: CellId,
@@ -685,6 +706,9 @@ pub enum Frame {
     EntityHealth(EntityHealth),
     EntityAction(EntityAction),
     SpawnHost(SpawnHost),
+    InventoryItemAdd(InventoryItemAdd),
+    InventoryItemRemove(InventoryItemRemove),
+    InventoryItemUpdate(InventoryItemUpdate),
 }
 
 impl Frame {
@@ -698,6 +722,9 @@ impl Frame {
             Self::EntityHealth(frame) => frame.entity,
             Self::EntityAction(frame) => frame.entity,
             Self::SpawnHost(frame) => frame.entity,
+            Self::InventoryItemAdd(frame) => frame.entity,
+            Self::InventoryItemRemove(frame) => frame.entity,
+            Self::InventoryItemUpdate(frame) => frame.entity,
         }
     }
 }
@@ -740,6 +767,18 @@ impl Encode for Frame {
             }
             Self::SpawnHost(frame) => {
                 FrameType::SPAWN_HOST.encode(&mut buf)?;
+                frame.encode(buf)
+            }
+            Self::InventoryItemAdd(frame) => {
+                FrameType::INVENTORY_ITEM_ADD.encode(&mut buf)?;
+                frame.encode(buf)
+            }
+            Self::InventoryItemRemove(frame) => {
+                FrameType::INVENTORY_ITEM_REMOVE.encode(&mut buf)?;
+                frame.encode(buf)
+            }
+            Self::InventoryItemUpdate(frame) => {
+                FrameType::INVENTORY_ITEM_UPDATE.encode(&mut buf)?;
                 frame.encode(buf)
             }
         }
@@ -787,6 +826,18 @@ impl Decode for Frame {
             FrameType::SPAWN_HOST => {
                 let frame = SpawnHost::decode(buf)?;
                 Ok(Self::SpawnHost(frame))
+            }
+            FrameType::INVENTORY_ITEM_ADD => {
+                let frame = InventoryItemAdd::decode(buf)?;
+                Ok(Self::InventoryItemAdd(frame))
+            }
+            FrameType::INVENTORY_ITEM_REMOVE => {
+                let frame = InventoryItemRemove::decode(buf)?;
+                Ok(Self::InventoryItemRemove(frame))
+            }
+            FrameType::INVENTORY_ITEM_UPDATE => {
+                let frame = InventoryItemUpdate::decode(buf)?;
+                Ok(Self::InventoryItemUpdate(frame))
             }
             _ => unreachable!(),
         }
@@ -956,6 +1007,10 @@ impl FrameType {
     pub const ENTITY_ACTION: Self = Self(0x11);
 
     pub const TRIGGER_ACTION: Self = Self(0x20);
+
+    pub const INVENTORY_ITEM_ADD: Self = Self(0x30);
+    pub const INVENTORY_ITEM_REMOVE: Self = Self(0x31);
+    pub const INVENTORY_ITEM_UPDATE: Self = Self(0x32);
 }
 
 impl TryFrom<u16> for FrameType {
@@ -973,6 +1028,9 @@ impl TryFrom<u16> for FrameType {
             Self::SPAWN_HOST => Ok(Self::SPAWN_HOST),
             Self::PLAYER_JOIN => Ok(Self::PLAYER_JOIN),
             Self::PLAYER_LEAVE => Ok(Self::PLAYER_LEAVE),
+            Self::INVENTORY_ITEM_ADD => Ok(Self::INVENTORY_ITEM_ADD),
+            Self::INVENTORY_ITEM_REMOVE => Ok(Self::INVENTORY_ITEM_REMOVE),
+            Self::INVENTORY_ITEM_UPDATE => Ok(Self::INVENTORY_ITEM_UPDATE),
             _ => Err(InvalidFrameType(value)),
         }
     }
@@ -1075,5 +1133,27 @@ impl Decode for ObjectId {
         B: Buf,
     {
         RecordReference::decode(buf).map(Self)
+    }
+}
+
+impl Encode for InventoryId {
+    type Error = <u64 as Encode>::Error;
+
+    fn encode<B>(&self, buf: B) -> Result<(), Self::Error>
+    where
+        B: BufMut,
+    {
+        self.into_raw().encode(buf)
+    }
+}
+
+impl Decode for InventoryId {
+    type Error = <u64 as Decode>::Error;
+
+    fn decode<B>(buf: B) -> Result<Self, Self::Error>
+    where
+        B: Buf,
+    {
+        u64::decode(buf).map(Self::from_raw)
     }
 }

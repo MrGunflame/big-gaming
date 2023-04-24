@@ -1,12 +1,10 @@
-use std::borrow::Cow;
-
 use ahash::HashMap;
 use bevy::prelude::{App, MouseButton, Res, ResMut, Resource};
 use game_common::components::actions::{Action, ActionId};
 use game_common::components::components::RecordReference;
 use game_common::events::{ActionEvent, EntityEvent, Event, EventQueue};
 use game_core::modules::Modules;
-use game_data::record::RecordBody;
+use game_data::record::{Record, RecordBody, RecordKind};
 use game_input::hotkeys::{Hotkey, HotkeyCode, HotkeyId, HotkeyReader, Hotkeys, TriggerKind};
 
 use crate::net::ServerConnection;
@@ -26,6 +24,11 @@ impl bevy::prelude::Plugin for ActionsPlugin {
 #[derive(Clone, Debug, Default, Resource)]
 struct HotkeyMap {
     /// Note that a single hotkey may map to multiple actions.
+    hotkeys: HashMap<HotkeyId, Vec<ActionId>>,
+}
+
+#[derive(Clone, Debug, Default, Resource)]
+struct ActiveActions {
     hotkeys: HashMap<HotkeyId, Vec<ActionId>>,
 }
 

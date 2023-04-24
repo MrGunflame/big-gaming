@@ -1,6 +1,8 @@
 use bevy_ecs::system::Resource;
 use game_common::components::actions::ActionId;
 use game_common::components::combat::Health;
+use game_common::components::inventory::InventoryId;
+use game_common::components::items::ItemId;
 use game_common::entity::EntityId;
 use game_common::world::entity::EntityBody;
 use game_common::world::snapshot::EntityChange;
@@ -115,6 +117,19 @@ pub enum Command {
     ReceivedCommands {
         ids: Vec<Response>,
     },
+    InventoryItemAdd {
+        entity: EntityId,
+        id: InventoryId,
+        item: ItemId,
+    },
+    InventoryItemRemove {
+        entity: EntityId,
+        id: InventoryId,
+    },
+    InventoryUpdate {
+        entity: EntityId,
+        id: InventoryId,
+    },
 }
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
@@ -143,6 +158,13 @@ impl Command {
             Self::EntityHealth { id, health: _ } => Some(*id),
             Self::EntityAction { id, action: _ } => Some(*id),
             Self::SpawnHost { id } => Some(*id),
+            Self::InventoryItemAdd {
+                entity,
+                id: _,
+                item: _,
+            } => Some(*entity),
+            Self::InventoryItemRemove { entity, id: _ } => Some(*entity),
+            Self::InventoryUpdate { entity, id: _ } => Some(*entity),
             Self::ReceivedCommands { ids: _ } => None,
         }
     }

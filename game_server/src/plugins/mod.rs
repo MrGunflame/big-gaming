@@ -225,6 +225,15 @@ fn flush_command_queue(
                 connections.remove(msg.conn);
             }
             Command::SpawnHost { id } => (),
+            Command::InventoryItemAdd { entity, id, item } => {
+                todo!();
+            }
+            Command::InventoryItemRemove { entity, id } => {
+                todo!();
+            }
+            Command::InventoryUpdate { entity, id } => {
+                todo!();
+            }
             Command::ReceivedCommands { ids: _ } => (),
         }
 

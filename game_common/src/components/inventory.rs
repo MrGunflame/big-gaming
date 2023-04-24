@@ -23,7 +23,7 @@ pub struct InventoryId(u64);
 
 impl InventoryId {
     #[inline]
-    pub const fn into_bits(self) -> u64 {
+    pub const fn into_raw(self) -> u64 {
         self.0
     }
 
