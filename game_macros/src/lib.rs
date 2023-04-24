@@ -48,4 +48,6 @@ pub fn net__decode(input: TokenStream) -> TokenStream {
 reexport_attribute_macro! {
     wasm__event_on_action => wasm::events::on_action,
     wasm__event_on_collision => wasm::events::on_collision,
+    wasm__event_on_equip => wasm::events::on_equip,
+    wasm__event_on_unequip => wasm::events::on_unequip,
 }
