@@ -8,8 +8,12 @@ use std::sync::{mpsc, Arc};
 use std::time::{Duration, Instant};
 
 use bevy::prelude::{IntoSystemConfig, Res, ResMut, SystemSet, Transform, Vec3};
+use game_common::components::actions::Actions;
 use game_common::components::components::Components;
+use game_common::components::inventory::Inventory;
+use game_common::components::items::Item;
 use game_common::entity::EntityMap;
+use game_common::units::Mass;
 use game_common::world::entity::{Entity, EntityBody};
 use game_common::world::world::WorldState;
 use game_net::backlog::Backlog;
@@ -201,10 +205,37 @@ fn flush_command_queue(
                 conn.set_host(id);
             }
             Command::InventoryItemAdd { entity, id, item } => {
-                todo!();
+                let item = Item {
+                    id: item,
+                    components: Components::default(),
+                    mass: Mass::default(),
+                    actions: Actions::default(),
+                    resistances: None,
+                    equipped: false,
+                    hidden: false,
+                };
+
+                let mut inventories = view.inventories_mut();
+                if let Some(mut inventory) = inventories.get_mut(entity) {
+                    // FIXME: Don't unwrap
+                    inventory.insert(item).unwrap();
+                } else {
+                    let mut inventory = Inventory::new();
+                    // FIXME: Don't unwrap
+                    inventory.insert(item).unwrap();
+                    inventories.insert(entity, inventory);
+                }
             }
             Command::InventoryItemRemove { entity, id } => {
-                todo!();
+                let mut inventories = view.inventories_mut();
+
+                if let Some(mut inventory) = inventories.get_mut(entity) {
+                    inventory.remove(id);
+                } else {
+                    tracing::warn!(
+                        "requested inventory on entity that has no inventory (or does not exist)"
+                    );
+                }
             }
             Command::InventoryUpdate { entity, id } => {
                 todo!();

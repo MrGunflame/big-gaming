@@ -42,7 +42,8 @@ pub fn inventory_remove(mut caller: Caller<'_, State<'_>>, entity_id: u64, id: u
     let entity_id = EntityId::from_raw(entity_id);
     let id = InventoryId::from_raw(id);
 
-    let Some(inventory) = caller.data_mut().world.inventories_mut().get_mut(entity_id) else {
+    let mut inventories = caller.data_mut().world.inventories_mut();
+    let Some(mut inventory) = inventories.get_mut(entity_id) else {
         return Ok(1);
     };
 
@@ -128,7 +129,8 @@ pub fn inventory_component_insert(
 
     let bytes = caller.read_memory(ptr, len)?.to_owned();
 
-    let Some(inventory) = caller.data_mut().world.inventories_mut().get_mut(entity_id) else {
+    let mut inventories = caller.data_mut().world.inventories_mut();
+    let Some(mut inventory) = inventories.get_mut(entity_id) else {
         return Ok(1);
     };
 
@@ -150,7 +152,8 @@ pub fn inventory_component_remove(
     let id = InventoryId::from_raw(id);
     let component_id: RecordReference = caller.read(component_id)?;
 
-    let Some(inventory) = caller.data_mut().world.inventories_mut().get_mut(entity_id) else {
+    let mut inventories = caller.data_mut().world.inventories_mut();
+    let Some(mut inventory) = inventories.get_mut(entity_id) else {
         return Ok(1);
     };
 
@@ -166,7 +169,8 @@ pub fn inventory_equip(mut caller: Caller<'_, State<'_>>, entity_id: u64, id: u6
     let entity_id = EntityId::from_raw(entity_id);
     let id = InventoryId::from_raw(id);
 
-    let Some(inventory) = caller.data_mut().world.inventories_mut().get_mut(entity_id) else {
+    let mut inventories = caller.data_mut().world.inventories_mut();
+    let Some(mut inventory) = inventories.get_mut(entity_id) else {
         return Ok(1);
     };
 
@@ -187,7 +191,8 @@ pub fn inventory_unequip(
     let entity_id = EntityId::from_raw(entity_id);
     let id = InventoryId::from_raw(id);
 
-    let Some(inventory) = caller.data_mut().world.inventories_mut().get_mut(entity_id) else {
+    let mut inventories = caller.data_mut().world.inventories_mut();
+    let Some(mut inventory) = inventories.get_mut(entity_id) else {
         return Ok(1);
     };
 

@@ -28,9 +28,12 @@ impl CellId {
     const MASK_Y: u128 = 0x0000_0000_0000_0000__FFFF_FFFF_0000_0000;
     const MASK_Z: u128 = 0x0000_0000_0000_0000__0000_0000_FFFF_FFFF;
 
-    /// Creates a new `ChunkId` from the given coordinates.
+    /// Creates a new `CellId` from the given coordinates.
     #[inline]
     pub fn new(x: f32, y: f32, z: f32) -> Self {
+        // This is the same as (x / CELL_SIZE.x) as i32 - (x.to_bits() >> 31) as i32,
+        // but results in the same assembly.
+
         let x = if x.is_sign_negative() {
             (x / CELL_SIZE.x) as i32 - 1
         } else {
@@ -48,10 +51,6 @@ impl CellId {
         } else {
             (z / CELL_SIZE.z) as i32
         };
-
-        // let x = (x / CELL_SIZE.x) as i32;
-        // let y = (y / CELL_SIZE.y) as i32;
-        // let z = (z / CELL_SIZE.z) as i32;
 
         Self::from_i32(IVec3::new(x, y, z))
     }

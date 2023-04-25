@@ -214,6 +214,9 @@ pub fn flush_delta_queue(
                 }
             }
             EntityChange::UpdateStreamingSource { id, state } => (),
+            EntityChange::InventoryItemAdd(event) => todo!(),
+            EntityChange::InventoryItemRemove(event) => todo!(),
+            EntityChange::InventoryDestroy(event) => todo!(),
         }
     }
 

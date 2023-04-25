@@ -2,6 +2,8 @@ use game_common::components::combat::Health;
 use glam::{Quat, Vec3};
 use std::ops::{Add, AddAssign, Sub, SubAssign};
 
+use crate::components::inventory::InventoryId;
+use crate::components::items::ItemId;
 use crate::entity::EntityId;
 use crate::world::cell::CellId;
 
@@ -77,6 +79,27 @@ pub enum EntityChange {
         id: EntityId,
         state: StreamingState,
     },
+    InventoryItemAdd(InventoryItemAdd),
+    InventoryItemRemove(InventoryItemRemove),
+    InventoryDestroy(InventoryDestroy),
+}
+
+#[derive(Clone, Debug)]
+pub struct InventoryItemAdd {
+    pub entity: EntityId,
+    pub id: InventoryId,
+    pub item: ItemId,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct InventoryItemRemove {
+    pub entity: EntityId,
+    pub id: InventoryId,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct InventoryDestroy {
+    pub entity: EntityId,
 }
 
 #[derive(Copy, Clone, Debug)]

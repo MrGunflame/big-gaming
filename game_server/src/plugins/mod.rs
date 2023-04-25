@@ -7,6 +7,8 @@ use game_common::actors::human::Human;
 use game_common::bundles::ActorBundle;
 use game_common::components::combat::Health;
 use game_common::components::components::Components;
+use game_common::components::inventory::Inventory;
+use game_common::components::items::Item;
 use game_common::components::player::Player;
 use game_common::components::race::RaceId;
 use game_common::entity::{EntityId, EntityMap};
@@ -203,6 +205,9 @@ fn flush_command_queue(
                 //         rotation: Quat::default(),
                 //     });
 
+                let mut inventory = Inventory::new();
+                view.inventories_mut().insert(id, inventory);
+
                 map.insert(id, ent);
                 // FIXME: This should not be set in this snapshot, but in the most
                 // recent one.
@@ -225,14 +230,18 @@ fn flush_command_queue(
                 connections.remove(msg.conn);
             }
             Command::SpawnHost { id } => (),
-            Command::InventoryItemAdd { entity, id, item } => {
-                todo!();
+            Command::InventoryItemAdd {
+                entity: _,
+                id: _,
+                item: _,
+            } => {
+                // Server-only frame
             }
-            Command::InventoryItemRemove { entity, id } => {
-                todo!();
+            Command::InventoryItemRemove { entity: _, id: _ } => {
+                // Server-only frame
             }
-            Command::InventoryUpdate { entity, id } => {
-                todo!();
+            Command::InventoryUpdate { entity: _, id: _ } => {
+                // Server-only frame
             }
             Command::ReceivedCommands { ids: _ } => (),
         }

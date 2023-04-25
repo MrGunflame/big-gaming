@@ -13,19 +13,21 @@ use game_common::world::CellId;
 use tracing::{event, span, Level, Span};
 
 use crate::components::inventory::Inventory;
+use crate::components::items::Item;
 use crate::entity::EntityId;
 use crate::world::snapshot::{EntityChange, TransferCell};
 
 pub use metrics::WorldMetrics;
 
 use super::entity::{Entity, EntityBody};
+use super::inventory::InventoriesMut;
 use super::source::{StreamingSource, StreamingState};
 
 /// The world state at constant time intervals.
 #[derive(Clone, Debug, Resource)]
 pub struct WorldState {
     // TODO: This can be a fixed size ring buffer.
-    snapshots: VecDeque<Snapshot>,
+    pub(crate) snapshots: VecDeque<Snapshot>,
     head: usize,
     metrics: WorldMetrics,
 
@@ -323,21 +325,21 @@ impl<'a> WorldViewRef<'a> {
 }
 
 pub struct WorldViewMut<'a> {
-    world: &'a mut WorldState,
-    index: usize,
+    pub(crate) world: &'a mut WorldState,
+    pub(crate) index: usize,
     /// A list of changes applied while this `WorldViewMut` was held.
     ///
     /// Note that we can't use the snapshot-global delta list as that would be applied to every
     /// snapshot, even if it was already applied.
-    new_deltas: HashMap<CellId, Vec<EntityChange>>,
+    pub(crate) new_deltas: HashMap<CellId, Vec<EntityChange>>,
 }
 
 impl<'a> WorldViewMut<'a> {
-    fn snapshot_ref(&self) -> &Snapshot {
+    pub(crate) fn snapshot_ref(&self) -> &Snapshot {
         self.world.snapshots.get(self.index).unwrap()
     }
 
-    fn snapshot(&mut self) -> &mut Snapshot {
+    pub(crate) fn snapshot(&mut self) -> &mut Snapshot {
         self.world.snapshots.get_mut(self.index).unwrap()
     }
 
@@ -470,8 +472,8 @@ impl<'a> WorldViewMut<'a> {
         &self.snapshot_ref().inventories
     }
 
-    pub fn inventories_mut(&mut self) -> &mut Inventories {
-        &mut self.snapshot().inventories
+    pub fn inventories_mut(&mut self) -> InventoriesMut<'_, 'a> {
+        InventoriesMut { view: self }
     }
 }
 
@@ -663,14 +665,14 @@ impl Entities {
 }
 
 #[derive(Clone, Debug)]
-struct Snapshot {
+pub(crate) struct Snapshot {
     creation: Instant,
     entities: Entities,
     hosts: Hosts,
     streaming_sources: StreamingSources,
     // Deltas for every cell
     cells: HashMap<CellId, Vec<EntityChange>>,
-    inventories: Inventories,
+    pub(crate) inventories: Inventories,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -822,6 +824,30 @@ impl Snapshot {
                     }
                 };
             }
+            EntityChange::InventoryItemAdd(event) => {
+                let inventory = self.inventories.get_mut_or_insert(event.entity);
+
+                let item = Item {
+                    id: event.item,
+                    resistances: None,
+                    actions: Default::default(),
+                    components: Default::default(),
+                    mass: Default::default(),
+                    equipped: false,
+                    hidden: false,
+                };
+
+                // FIXME: Don't panic
+                inventory.insert(item).unwrap();
+            }
+            EntityChange::InventoryItemRemove(event) => {
+                if let Some(inventory) = self.inventories.get_mut(event.entity) {
+                    inventory.remove(event.id);
+                }
+            }
+            EntityChange::InventoryDestroy(event) => {
+                self.inventories.remove(event.entity);
+            }
         }
     }
 }
@@ -945,6 +971,14 @@ impl Inventories {
 
     pub fn get_mut(&mut self, id: EntityId) -> Option<&mut Inventory> {
         self.inventories.get_mut(&id)
+    }
+
+    pub fn get_mut_or_insert(&mut self, id: EntityId) -> &mut Inventory {
+        if !self.inventories.contains_key(&id) {
+            self.inventories.insert(id, Inventory::new());
+        }
+
+        self.get_mut(id).unwrap()
     }
 
     pub fn insert(&mut self, id: EntityId, inventory: Inventory) {
