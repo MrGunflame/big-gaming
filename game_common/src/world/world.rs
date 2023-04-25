@@ -21,6 +21,7 @@ pub use metrics::WorldMetrics;
 
 use super::entity::{Entity, EntityBody};
 use super::inventory::InventoriesMut;
+use super::snapshot::InventoryDestroy;
 use super::source::{StreamingSource, StreamingState};
 
 /// The world state at constant time intervals.
@@ -313,6 +314,30 @@ impl<'a> WorldViewRef<'a> {
 
         for id in hosts.entities.into_keys() {
             delta.push(EntityChange::CreateHost { id });
+        }
+
+        if let Some(this) = this {
+            let prev = &this.snapshot.inventories;
+            let mut curr = next.snapshot.inventories.clone();
+
+            for (key, inv1) in prev.inventories.iter() {
+                match curr.inventories.remove(&key) {
+                    Some(inv2) => {
+                        delta.extend(super::inventory::delta_inventory(*key, inv1, &inv2));
+                    }
+                    // Inventory removed
+                    None => {
+                        delta.push(EntityChange::InventoryDestroy(InventoryDestroy {
+                            entity: *key,
+                        }));
+                    }
+                }
+            }
+
+            let empty_inv = Inventory::new();
+            for (key, inv) in curr.inventories.iter() {
+                delta.extend(super::inventory::delta_inventory(*key, &empty_inv, inv));
+            }
         }
 
         delta
