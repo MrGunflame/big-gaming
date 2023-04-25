@@ -6,9 +6,9 @@ use bevy::prelude::{
 use game_common::actors::human::Human;
 use game_common::bundles::ActorBundle;
 use game_common::components::combat::Health;
-use game_common::components::components::Components;
+use game_common::components::components::{Components, RecordReference};
 use game_common::components::inventory::Inventory;
-use game_common::components::items::Item;
+use game_common::components::items::{Item, ItemId};
 use game_common::components::player::Player;
 use game_common::components::race::RaceId;
 use game_common::entity::{EntityId, EntityMap};
@@ -205,8 +205,24 @@ fn flush_command_queue(
                 //         rotation: Quat::default(),
                 //     });
 
-                let mut inventory = Inventory::new();
+                let inventory = Inventory::new();
                 view.inventories_mut().insert(id, inventory);
+
+                view.inventories_mut()
+                    .get_mut_or_insert(id)
+                    .insert(Item {
+                        id: ItemId(RecordReference {
+                            module: "c2d2a0de054e443ba5e4de7f07262ac7".parse().unwrap(),
+                            record: 0,
+                        }),
+                        mass: Default::default(),
+                        resistances: Default::default(),
+                        components: Default::default(),
+                        actions: Default::default(),
+                        equipped: false,
+                        hidden: false,
+                    })
+                    .unwrap();
 
                 map.insert(id, ent);
                 // FIXME: This should not be set in this snapshot, but in the most
@@ -305,6 +321,22 @@ fn update_client(conn: &Connection, world: &WorldState) {
                         data: entity.body.clone(),
                     },
                 });
+
+                // Sync the entity inventory, if it has one.
+                if let Some(inventory) = curr.inventories().get(entity.id) {
+                    for item in inventory.iter() {
+                        conn.handle().send_cmd(ConnectionMessage {
+                            id: None,
+                            conn: ConnectionId(0),
+                            snapshot: curr.creation(),
+                            command: Command::InventoryItemAdd {
+                                entity: entity.id,
+                                id: item.id,
+                                item: item.item.id,
+                            },
+                        });
+                    }
+                }
             }
         }
 
