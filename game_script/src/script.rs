@@ -10,15 +10,19 @@ pub enum Script {
 }
 
 impl Script {
-    pub fn load<P: AsRef<OsStr>>(server: &ScriptServer, path: P) -> Self {
-        let mut file = File::open(path.as_ref()).unwrap();
+    pub fn load<P: AsRef<OsStr>>(
+        server: &ScriptServer,
+        path: P,
+        // FIXME: Replace with strongly-typed error type.
+    ) -> Result<Self, Box<dyn std::error::Error>> {
+        let mut file = File::open(path.as_ref())?;
 
         // Read header
         let mut buf = [0; 4];
-        file.read_exact(&mut buf).unwrap();
+        file.read_exact(&mut buf)?;
 
         match buf {
-            MAGIC_WASM => Self::Wasm(WasmScript::new(path, &server.engine)),
+            MAGIC_WASM => Ok(Self::Wasm(WasmScript::new(path, &server.engine)?)),
             _ => panic!("unknown file type"),
         }
     }

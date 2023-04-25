@@ -134,7 +134,20 @@ fn load_module(data: DataBuffer, modules: &mut Modules, server: &mut ScriptServe
         world.insert(Instant::now());
         match &record.body {
             RecordBody::Action(action) => {
-                server.insert(Script::load(&server, action.script.as_ref()));
+                let script = match Script::load(&server, action.script.as_ref()) {
+                    Ok(script) => script,
+                    Err(err) => {
+                        tracing::error!(
+                            "failed to load script for record {} from local path {:?}: {}",
+                            record.name,
+                            action.script.as_ref(),
+                            err,
+                        );
+                        continue;
+                    }
+                };
+
+                server.insert(script);
             }
             _ => (),
         }

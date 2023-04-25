@@ -12,13 +12,13 @@ pub struct WasmScript {
 }
 
 impl WasmScript {
-    pub fn new<P: AsRef<OsStr>>(p: P, engine: &Engine) -> Self {
-        let mut file = File::open(p.as_ref()).unwrap();
+    pub fn new<P: AsRef<OsStr>>(p: P, engine: &Engine) -> Result<Self, Box<dyn std::error::Error>> {
+        let mut file = File::open(p.as_ref())?;
 
         let mut buf = Vec::new();
-        file.read_to_end(&mut buf).unwrap();
+        file.read_to_end(&mut buf)?;
 
-        let module = Module::new(engine, buf).unwrap();
+        let module = Module::new(engine, buf)?;
 
         let mut events = Events::NONE;
 
@@ -46,7 +46,7 @@ impl WasmScript {
             }
         }
 
-        Self { module, events }
+        Ok(Self { module, events })
     }
 
     pub fn run(&self) {}
