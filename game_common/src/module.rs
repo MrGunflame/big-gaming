@@ -2,6 +2,8 @@ use std::fmt::{self, Display, Formatter};
 use std::str::FromStr;
 
 use bytemuck::{Pod, Zeroable};
+use hex::FromHexError;
+use thiserror::Error;
 use uuid::Uuid;
 
 #[derive(Clone, Debug)]
@@ -52,14 +54,25 @@ impl Display for ModuleId {
     }
 }
 
+#[derive(Copy, Clone, Debug, Error)]
+pub enum ParseModuleIdError {
+    #[error("invalid string length: {0}, expected: 16")]
+    Length(usize),
+    #[error("invalid hex: {0}")]
+    InvalidHex(FromHexError),
+}
+
 impl FromStr for ModuleId {
-    type Err = hex::FromHexError;
+    type Err = ParseModuleIdError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let buf = hex::decode(s)?;
+        let buf = hex::decode(s).map_err(ParseModuleIdError::InvalidHex)?;
 
-        // TODO: Error handling
-        Ok(Self(buf[0..15].try_into().unwrap()))
+        if buf.len() != 16 {
+            return Err(ParseModuleIdError::Length(buf.len()));
+        }
+
+        Ok(Self(buf[0..16].try_into().unwrap()))
     }
 }
 
@@ -73,3 +86,22 @@ pub struct Dependency {
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Version;
+
+#[cfg(test)]
+mod tests {
+    use super::ModuleId;
+
+    #[test]
+    fn module_id_from_str() {
+        let input = "c2d2a0de054e443ba5e4de7f07262ac7";
+        let output = [
+            0xc2, 0xd2, 0xa0, 0xde, 0x05, 0x4e, 0x44, 0x3b, 0xa5, 0xe4, 0xde, 0x7f, 0x07, 0x26,
+            0x2a, 0xc7,
+        ];
+
+        assert_eq!(
+            input.parse::<ModuleId>().unwrap(),
+            ModuleId::from_bytes(output)
+        );
+    }
+}
