@@ -10,7 +10,6 @@ use std::time::{Duration, Instant};
 use bevy::prelude::{IntoSystemConfig, Res, ResMut, SystemSet, Transform, Vec3};
 use game_common::components::actions::Actions;
 use game_common::components::components::Components;
-use game_common::components::inventory::Inventory;
 use game_common::components::items::Item;
 use game_common::entity::EntityMap;
 use game_common::units::Mass;
@@ -216,15 +215,10 @@ fn flush_command_queue(
                 };
 
                 let mut inventories = view.inventories_mut();
-                if let Some(mut inventory) = inventories.get_mut(entity) {
-                    // FIXME: Don't unwrap
-                    inventory.insert(item).unwrap();
-                } else {
-                    let mut inventory = Inventory::new();
-                    // FIXME: Don't unwrap
-                    inventory.insert(item).unwrap();
-                    inventories.insert(entity, inventory);
-                }
+
+                let mut inventory = inventories.get_mut_or_insert(entity);
+                // FIXME: Don't unwrap
+                inventory.insert(item).unwrap();
             }
             Command::InventoryItemRemove { entity, id } => {
                 let mut inventories = view.inventories_mut();

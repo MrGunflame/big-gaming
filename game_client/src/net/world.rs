@@ -9,7 +9,8 @@ use game_common::bundles::{ActorBundle, ObjectBundle};
 use game_common::components::actor::ActorProperties;
 use game_common::components::combat::Health;
 use game_common::components::entity::InterpolateTranslation;
-use game_common::components::items::LoadItem;
+use game_common::components::inventory::Inventory;
+use game_common::components::items::{Item, ItemComponent, LoadItem};
 use game_common::components::player::HostPlayer;
 use game_common::components::terrain::LoadTerrain;
 use game_common::entity::EntityMap;
@@ -17,6 +18,8 @@ use game_common::world::entity::{Entity, EntityBody};
 use game_common::world::snapshot::EntityChange;
 use game_common::world::source::StreamingSource;
 use game_common::world::world::{WorldState, WorldViewRef};
+use game_core::modules::Modules;
+use game_data::record::{Record, RecordBody, RecordId};
 use game_net::backlog::Backlog;
 use game_net::snapshot::DeltaQueue;
 
@@ -79,11 +82,15 @@ pub fn flush_delta_queue(
         &mut Transform,
         Option<&mut Health>,
         Option<&mut ActorProperties>,
+        // FIXME: We prolly don't want this on entity directly and just
+        // access the WorldState.
+        Option<&mut Inventory>,
     )>,
     map: Res<EntityMap>,
     assets: Res<AssetServer>,
     mut backlog: ResMut<Backlog>,
     conn: Res<ServerConnection>,
+    modules: Res<Modules>,
 ) {
     // Since events are received in batches, and commands are not applied until
     // the system is done, we buffer all created entities so we can modify them
@@ -125,7 +132,7 @@ pub fn flush_delta_queue(
                     continue;
                 };
 
-                if let Ok((ent, mut transform, _, _)) = entities.get_mut(entity) {
+                if let Ok((ent, mut transform, _, _, _)) = entities.get_mut(entity) {
                     commands.entity(ent).insert(InterpolateTranslation {
                         src: transform.translation,
                         dst: translation,
@@ -149,7 +156,7 @@ pub fn flush_delta_queue(
                     continue;
                 };
 
-                if let Ok((ent, mut transform, _, props)) = entities.get_mut(entity) {
+                if let Ok((ent, mut transform, _, props, _)) = entities.get_mut(entity) {
                     if let Some(mut props) = props {
                         // Actor
                         props.rotation = rotation;
@@ -206,7 +213,7 @@ pub fn flush_delta_queue(
                     continue;
                 };
 
-                let (_, _, h, _) = entities.get_mut(entity).unwrap();
+                let (_, _, h, _, _) = entities.get_mut(entity).unwrap();
                 if let Some(mut h) = h {
                     *h = health;
                 } else {
@@ -214,7 +221,47 @@ pub fn flush_delta_queue(
                 }
             }
             EntityChange::UpdateStreamingSource { id, state } => (),
-            EntityChange::InventoryItemAdd(event) => todo!(),
+            EntityChange::InventoryItemAdd(event) => {
+                let base_item = match modules
+                    .get(event.item.0.module)
+                    .unwrap()
+                    .records
+                    .get(RecordId(event.item.0.record))
+                    .unwrap()
+                    .body
+                {
+                    RecordBody::Item(ref item) => item,
+                    _ => panic!("expected item"),
+                };
+
+                let item = Item {
+                    id: event.item,
+                    resistances: None,
+                    // actions: base_item.actions.clone(),
+                    // components: base_item.components.clone(),
+                    actions: Default::default(),
+                    components: Default::default(),
+                    mass: base_item.mass,
+                    equipped: false,
+                    hidden: false,
+                };
+
+                let Some(entity) = map.get(event.entity) else {
+                    if let Some(entity) = buffer.iter_mut().find(|e| e.entity.id == event.entity) {
+                        entity.inventory.insert(item).unwrap();
+                    } else {
+                        backlog.push(event.entity, EntityChange::InventoryItemAdd(event));
+                    }
+                
+                    continue;
+                };
+
+
+                let (_, _, _, _, inv) = entities.get_mut(entity).unwrap();
+                let mut inv = inv.unwrap();
+                inv.insert(item).unwrap();
+
+            }
             EntityChange::InventoryItemRemove(event) => todo!(),
             EntityChange::InventoryDestroy(event) => todo!(),
         }
@@ -274,7 +321,9 @@ fn spawn_entity(
             Human::default().spawn(assets, &mut cmds);
 
             if entity.host {
-                cmds.insert(HostPlayer).insert(StreamingSource::new());
+                cmds.insert(HostPlayer)
+                    .insert(StreamingSource::new())
+                    .insert(entity.inventory);
             }
 
             cmds.id()
@@ -299,6 +348,7 @@ fn spawn_entity(
 struct DelayedEntity {
     entity: Entity,
     host: bool,
+    inventory: Inventory,
 }
 
 impl From<Entity> for DelayedEntity {
@@ -306,6 +356,7 @@ impl From<Entity> for DelayedEntity {
         Self {
             entity: value,
             host: false,
+            inventory: Inventory::new(),
         }
     }
 }
