@@ -1,11 +1,13 @@
 use ahash::HashMap;
 use bevy::prelude::{App, MouseButton, Res, ResMut, Resource};
-use game_common::components::actions::{Action, ActionId};
+use game_common::components::actions::ActionId;
 use game_common::components::components::RecordReference;
 use game_common::events::{ActionEvent, EntityEvent, Event, EventQueue};
+use game_common::module::ModuleId;
 use game_core::modules::Modules;
-use game_data::record::{Record, RecordBody, RecordKind};
+use game_data::record::{Record, RecordBody};
 use game_input::hotkeys::{Hotkey, HotkeyCode, HotkeyId, HotkeyReader, Hotkeys, TriggerKind};
+use game_net::snapshot::Command;
 
 use crate::net::ServerConnection;
 
@@ -14,9 +16,11 @@ pub struct ActionsPlugin;
 
 impl bevy::prelude::Plugin for ActionsPlugin {
     fn build(&self, app: &mut App) {
+        app.insert_resource(ActiveActions::default());
         app.insert_resource(HotkeyMap::default());
+
         app.add_startup_system(register_actions);
-        app.add_system(handle_player_inputs);
+        app.add_system(dispatch_player_action_hotkeys);
     }
 }
 
@@ -27,9 +31,75 @@ struct HotkeyMap {
     hotkeys: HashMap<HotkeyId, Vec<ActionId>>,
 }
 
+/// The actions that are currently being listened on.
+///
+/// What actions are listened on are specified as follows:
+/// 1. All actions that are assigned to the actor itself (in form of a Race record) are always
+/// enabled.
+/// 2. All actions for items that are currently equipped are enabled.
 #[derive(Clone, Debug, Default, Resource)]
-struct ActiveActions {
+pub struct ActiveActions {
     hotkeys: HashMap<HotkeyId, Vec<ActionId>>,
+}
+
+impl ActiveActions {
+    pub fn register(&mut self, hotkeys: &mut Hotkeys, module: ModuleId, record: Record) {
+        assert!(matches!(record.body, RecordBody::Action(_)));
+
+        let id = hotkeys.register(Hotkey {
+            id: HotkeyId(0),
+            name: record.name.to_owned().into(),
+            default: game_input::hotkeys::Key {
+                trigger: TriggerKind::JUST_PRESSED,
+                code: HotkeyCode::MouseButton {
+                    button: MouseButton::Left,
+                },
+            },
+        });
+
+        self.hotkeys
+            .entry(id)
+            .or_default()
+            .push(ActionId(RecordReference {
+                module: module,
+                record: record.id.0,
+            }));
+    }
+
+    fn get(&self, id: HotkeyId) -> Option<&[ActionId]> {
+        self.hotkeys.get(&id).map(|s| s.as_slice())
+    }
+}
+
+fn dispatch_player_action_hotkeys(
+    actions: Res<ActiveActions>,
+    mut events: HotkeyReader<Hotkey>,
+    mut queue: ResMut<EventQueue>,
+    conn: Res<ServerConnection>,
+) {
+    let host = conn.host();
+
+    for event in events.iter() {
+        let Some(actions) = actions.get(event.id) else {
+            continue;
+        };
+
+        for action in actions {
+            conn.send(Command::EntityAction {
+                id: host,
+                action: *action,
+            });
+
+            queue.push(EntityEvent {
+                entity: host,
+                event: Event::Action(ActionEvent {
+                    entity: host,
+                    invoker: host,
+                    action: *action,
+                }),
+            });
+        }
+    }
 }
 
 fn register_actions(
@@ -65,30 +135,4 @@ fn register_actions(
     }
 
     tracing::info!("registered {} action hotkeys", map.hotkeys.len());
-}
-
-fn handle_player_inputs(
-    conn: Res<ServerConnection>,
-    map: Res<HotkeyMap>,
-    mut events: HotkeyReader<Hotkey>,
-    mut queue: ResMut<EventQueue>,
-) {
-    let host = conn.host();
-
-    for event in events.iter() {
-        let Some(actions) = map.hotkeys.get(&event.id) else {
-            continue;
-        };
-
-        for action in actions {
-            queue.push(EntityEvent {
-                entity: host,
-                event: Event::Action(ActionEvent {
-                    entity: host,
-                    invoker: host,
-                    action: *action,
-                }),
-            });
-        }
-    }
 }

@@ -2,18 +2,20 @@ use std::collections::VecDeque;
 use std::fmt::Debug;
 
 use bevy_ecs::system::Resource;
+use bytemuck::{Pod, Zeroable};
 
 use crate::entity::EntityId;
 
 use super::components::RecordReference;
 use super::inventory::InventoryId;
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Zeroable, Pod)]
+#[repr(transparent)]
 pub struct ActionId(pub RecordReference);
 
 #[derive(Clone, Debug, Default)]
 pub struct Actions {
-    actions: Vec<Action>,
+    actions: Vec<ActionId>,
 }
 
 impl Actions {
@@ -23,7 +25,7 @@ impl Actions {
         }
     }
 
-    pub fn push(&mut self, action: Action) {
+    pub fn push(&mut self, action: ActionId) {
         self.actions.push(action);
     }
 }

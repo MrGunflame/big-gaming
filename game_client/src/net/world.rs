@@ -6,8 +6,10 @@ use bevy::prelude::{
 use bevy::transform::TransformBundle;
 use game_common::actors::human::Human;
 use game_common::bundles::{ActorBundle, ObjectBundle};
+use game_common::components::actions::{Actions, ActionId};
 use game_common::components::actor::ActorProperties;
 use game_common::components::combat::Health;
+use game_common::components::components::RecordReference;
 use game_common::components::entity::InterpolateTranslation;
 use game_common::components::inventory::Inventory;
 use game_common::components::items::{Item, ItemComponent, LoadItem};
@@ -20,10 +22,12 @@ use game_common::world::source::StreamingSource;
 use game_common::world::world::{WorldState, WorldViewRef};
 use game_core::modules::Modules;
 use game_data::record::{Record, RecordBody, RecordId};
+use game_input::hotkeys::Hotkeys;
 use game_net::backlog::Backlog;
 use game_net::snapshot::DeltaQueue;
 
 use crate::bundles::VisibilityBundle;
+use crate::plugins::actions::ActiveActions;
 
 use super::ServerConnection;
 
@@ -91,6 +95,8 @@ pub fn flush_delta_queue(
     mut backlog: ResMut<Backlog>,
     conn: Res<ServerConnection>,
     modules: Res<Modules>,
+mut active_actions: ResMut<ActiveActions>,
+mut hotkeys: ResMut<Hotkeys>
 ) {
     // Since events are received in batches, and commands are not applied until
     // the system is done, we buffer all created entities so we can modify them
@@ -234,12 +240,25 @@ pub fn flush_delta_queue(
                     _ => panic!("expected item"),
                 };
 
+                let mut actions = Actions::new();
+                for a in &base_item.actions {
+                    actions.push(ActionId(RecordReference{
+                        module: a.module,
+                        record: a.record.0
+                    }));
+
+                    dbg!(&modules);
+                    dbg!(a);
+                    let action = modules.get(a.module).unwrap().records.get(a.record).unwrap().clone();
+
+                    active_actions.register(&mut hotkeys, a.module, action);
+                }
+
                 let item = Item {
                     id: event.item,
                     resistances: None,
-                    // actions: base_item.actions.clone(),
+                    actions,
                     // components: base_item.components.clone(),
-                    actions: Default::default(),
                     components: Default::default(),
                     mass: base_item.mass,
                     equipped: false,
@@ -256,10 +275,11 @@ pub fn flush_delta_queue(
                     continue;
                 };
 
-
                 let (_, _, _, _, inv) = entities.get_mut(entity).unwrap();
                 let mut inv = inv.unwrap();
                 inv.insert(item).unwrap();
+
+
 
             }
             EntityChange::InventoryItemRemove(event) => todo!(),
@@ -360,3 +380,4 @@ impl From<Entity> for DelayedEntity {
         }
     }
 }
+
