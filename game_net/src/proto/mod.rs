@@ -55,6 +55,7 @@ use game_common::world::CellId;
 pub use game_macros::{net__decode as Decode, net__encode as Encode};
 
 use std::convert::Infallible;
+use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign};
 
 use bytes::{Buf, BufMut};
 use game_common::net::ServerEntity;
@@ -638,10 +639,140 @@ pub struct InventoryItemRemove {
     pub id: InventoryId,
 }
 
-#[derive(Copy, Clone, Debug, Encode, Decode)]
+#[derive(Copy, Clone, Debug)]
 pub struct InventoryItemUpdate {
     pub entity: ServerEntity,
     pub id: InventoryId,
+    pub equipped: Option<bool>,
+    pub hidden: Option<bool>,
+}
+
+impl Encode for InventoryItemUpdate {
+    type Error = Infallible;
+
+    fn encode<B>(&self, mut buf: B) -> Result<(), Self::Error>
+    where
+        B: BufMut,
+    {
+        self.entity.encode(&mut buf)?;
+        self.id.encode(&mut buf)?;
+
+        let mut flags = ItemUpdateFlags(0);
+        if self.equipped.is_some() {
+            flags |= ItemUpdateFlags::EQUIPPED;
+        }
+        if self.hidden.is_some() {
+            flags |= ItemUpdateFlags::HIDDEN;
+        }
+
+        // Bits 0, 1, 2, 3 indicate what serialized data is following the frame.
+        // If EQUIPPED (0) is set, bit 6 contains the bool value.
+        // If HIDDEN (1) is set, bit 7 contains the bool value.
+        let mut bits = flags.0;
+
+        if let Some(equipped) = self.equipped {
+            bits |= 1 << 6;
+        }
+
+        if let Some(hidden) = self.hidden {
+            bits |= 1 << 7;
+        }
+
+        bits.encode(&mut buf)?;
+
+        Ok(())
+    }
+}
+
+impl Decode for InventoryItemUpdate {
+    type Error = EofError;
+
+    fn decode<B>(mut buf: B) -> Result<Self, Self::Error>
+    where
+        B: Buf,
+    {
+        let entity = ServerEntity::decode(&mut buf)?;
+        let id = InventoryId::decode(&mut buf)?;
+
+        let mut flags = ItemUpdateFlags::decode(&mut buf)?;
+
+        let mut equipped = None;
+        if flags & ItemUpdateFlags::EQUIPPED != ItemUpdateFlags(0) {
+            equipped = Some(flags.0 & (1 << 6) == 1 << 6);
+        }
+
+        let mut hidden = None;
+        if flags & ItemUpdateFlags::HIDDEN != ItemUpdateFlags(0) {
+            hidden = Some(flags.0 & (1 << 7) == 1 << 7);
+        }
+
+        Ok(Self {
+            entity,
+            id,
+            equipped,
+            hidden,
+        })
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Hash)]
+#[repr(transparent)]
+pub struct ItemUpdateFlags(u8);
+
+impl ItemUpdateFlags {
+    pub const EQUIPPED: Self = Self(1 << 1);
+    pub const HIDDEN: Self = Self(1 << 2);
+    pub const COMPONENTS: Self = Self(1 << 3);
+}
+
+impl Encode for ItemUpdateFlags {
+    type Error = <u8 as Encode>::Error;
+
+    fn encode<B>(&self, buf: B) -> Result<(), Self::Error>
+    where
+        B: BufMut,
+    {
+        self.0.encode(buf)
+    }
+}
+
+impl Decode for ItemUpdateFlags {
+    type Error = <u8 as Decode>::Error;
+
+    fn decode<B>(buf: B) -> Result<Self, Self::Error>
+    where
+        B: Buf,
+    {
+        u8::decode(buf).map(Self)
+    }
+}
+
+impl BitAnd for ItemUpdateFlags {
+    type Output = Self;
+
+    fn bitand(self, rhs: Self) -> Self::Output {
+        Self(self.0 & rhs.0)
+    }
+}
+
+impl BitAndAssign for ItemUpdateFlags {
+    fn bitand_assign(&mut self, rhs: Self) {
+        *self = *self & rhs;
+    }
+}
+
+impl BitOr for ItemUpdateFlags {
+    type Output = Self;
+
+    fn bitor(self, rhs: Self) -> Self::Output {
+        Self(self.0 | rhs.0)
+    }
+}
+
+impl BitOrAssign for ItemUpdateFlags {
+    fn bitor_assign(&mut self, rhs: Self) {
+        *self = *self | rhs;
+    }
 }
 
 #[derive(Clone, Debug)]

@@ -154,6 +154,8 @@ impl Entities {
                 Some(Command::InventoryUpdate {
                     entity,
                     id: frame.id,
+                    equipped: frame.equipped,
+                    hidden: frame.hidden,
                 })
             }
         }
@@ -247,12 +249,19 @@ impl Entities {
                     id: *id,
                 }))
             }
-            Command::InventoryUpdate { entity, id } => {
+            Command::InventoryUpdate {
+                entity,
+                id,
+                equipped,
+                hidden,
+            } => {
                 let entity = self.get(*entity)?;
 
                 Some(Frame::InventoryItemUpdate(InventoryItemUpdate {
                     entity,
                     id: *id,
+                    equipped: *equipped,
+                    hidden: *hidden,
                 }))
             }
             Command::ReceivedCommands { ids: _ } => None,

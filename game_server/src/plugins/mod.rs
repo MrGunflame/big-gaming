@@ -256,7 +256,12 @@ fn flush_command_queue(
             Command::InventoryItemRemove { entity: _, id: _ } => {
                 // Server-only frame
             }
-            Command::InventoryUpdate { entity: _, id: _ } => {
+            Command::InventoryUpdate {
+                entity: _,
+                id: _,
+                equipped: _,
+                hidden: _,
+            } => {
                 // Server-only frame
             }
             Command::ReceivedCommands { ids: _ } => (),

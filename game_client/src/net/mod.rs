@@ -231,7 +231,12 @@ fn flush_command_queue(
                     );
                 }
             }
-            Command::InventoryUpdate { entity, id } => {
+            Command::InventoryUpdate {
+                entity,
+                id,
+                equipped,
+                hidden,
+            } => {
                 todo!();
             }
             Command::Connected => (),

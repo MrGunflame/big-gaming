@@ -10,6 +10,7 @@ use game_common::world::CellId;
 use glam::{Quat, Vec3};
 use parking_lot::Mutex;
 use std::collections::VecDeque;
+use std::fs::OpenOptions;
 use std::ops::{Add, AddAssign, Sub, SubAssign};
 use std::sync::Arc;
 use std::time::Instant;
@@ -129,6 +130,8 @@ pub enum Command {
     InventoryUpdate {
         entity: EntityId,
         id: InventoryId,
+        equipped: Option<bool>,
+        hidden: Option<bool>,
     },
 }
 
@@ -164,7 +167,12 @@ impl Command {
                 item: _,
             } => Some(*entity),
             Self::InventoryItemRemove { entity, id: _ } => Some(*entity),
-            Self::InventoryUpdate { entity, id: _ } => Some(*entity),
+            Self::InventoryUpdate {
+                entity,
+                id: _,
+                equipped: _,
+                hidden: _,
+            } => Some(*entity),
             Self::ReceivedCommands { ids: _ } => None,
         }
     }
