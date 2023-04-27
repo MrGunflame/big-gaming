@@ -9,7 +9,7 @@ use game_common::bundles::{ActorBundle, ObjectBundle};
 use game_common::components::actions::{Actions, ActionId};
 use game_common::components::actor::ActorProperties;
 use game_common::components::combat::Health;
-use game_common::components::components::RecordReference;
+use game_common::components::components::{RecordReference, Components, Component};
 use game_common::components::entity::InterpolateTranslation;
 use game_common::components::inventory::Inventory;
 use game_common::components::items::{Item, ItemComponent, LoadItem};
@@ -247,19 +247,26 @@ mut hotkeys: ResMut<Hotkeys>
                         record: a.record.0
                     }));
 
-                    dbg!(&modules);
-                    dbg!(a);
                     let action = modules.get(a.module).unwrap().records.get(a.record).unwrap().clone();
 
                     active_actions.register(&mut hotkeys, a.module, action);
+                }
+
+                let mut components = Components::new();
+                for c in &base_item.components{
+                    let id = RecordReference{
+                        module: c.record.module,
+                        record: c.record.record.0
+                    };
+
+                    components.insert(id, Component{ bytes: c.value.clone() });
                 }
 
                 let item = Item {
                     id: event.item,
                     resistances: None,
                     actions,
-                    // components: base_item.components.clone(),
-                    components: Default::default(),
+                    components,
                     mass: base_item.mass,
                     equipped: false,
                     hidden: false,
