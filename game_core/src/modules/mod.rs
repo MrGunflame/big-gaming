@@ -132,6 +132,11 @@ fn load_module(data: DataBuffer, modules: &mut Modules, server: &mut ScriptServe
     for record in data.records {
         let mut world = WorldState::new();
         world.insert(Instant::now());
+
+        // In case a linked asset is not present we still want to load
+        // the record to not break linked records.
+        records.insert(record.clone());
+
         match &record.body {
             RecordBody::Action(action) => {
                 let script = match Script::load(&server, action.script.as_ref()) {
@@ -151,8 +156,6 @@ fn load_module(data: DataBuffer, modules: &mut Modules, server: &mut ScriptServe
             }
             _ => (),
         }
-
-        records.insert(record);
     }
 
     modules.insert(ModuleData {
