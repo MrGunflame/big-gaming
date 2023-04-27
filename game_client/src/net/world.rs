@@ -331,6 +331,7 @@ fn spawn_entity(
                         .rotation(entity.entity.transform.rotation),
                 )
                 .insert(entity.entity)
+                .insert(VisibilityBundle::new())
                 .id();
 
             id
@@ -350,7 +351,7 @@ fn spawn_entity(
             if entity.host {
                 cmds.insert(HostPlayer)
                     .insert(StreamingSource::new())
-                    .insert(entity.inventory);
+                    .insert(entity.inventory).insert(VisibilityBundle::new());
             }
 
             cmds.id()

@@ -6,14 +6,11 @@ use crate::components::movement::RotateQueue;
 
 use super::combat::CombatBundle;
 use super::transform::TransformBundle;
-use super::visibility::VisibilityBundle;
 
 #[derive(Clone, Debug, Bundle)]
 pub struct ActorBundle {
     #[bundle]
     pub transform: TransformBundle,
-    #[bundle]
-    pub visibility: VisibilityBundle,
     #[bundle]
     pub combat: CombatBundle,
     pub actor: Actor,
@@ -32,7 +29,6 @@ impl Default for ActorBundle {
     fn default() -> Self {
         Self {
             transform: TransformBundle::default(),
-            visibility: VisibilityBundle::default(),
             combat: CombatBundle::default(),
             actor: Actor,
             inventory: Inventory::new(),

@@ -4,14 +4,12 @@ use glam::{Quat, Vec3};
 
 use crate::components::object::{LoadObject, ObjectId};
 
-use super::{TransformBundle, VisibilityBundle};
+use super::TransformBundle;
 
 #[derive(Bundle)]
 pub struct ObjectBundle {
     #[bundle]
     pub transform: TransformBundle,
-    #[bundle]
-    pub visibility: VisibilityBundle,
     pub object: LoadObject,
 }
 
@@ -19,7 +17,6 @@ impl ObjectBundle {
     pub const fn new(id: ObjectId) -> Self {
         Self {
             transform: TransformBundle::new(Transform::IDENTITY),
-            visibility: VisibilityBundle::new(),
             object: LoadObject { id },
         }
     }

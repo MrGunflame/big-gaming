@@ -1,6 +1,10 @@
+#[cfg(feature = "render")]
 use bevy_render::mesh::Indices;
+#[cfg(feature = "render")]
 use bevy_render::prelude::Mesh;
+#[cfg(feature = "render")]
 use bevy_render::render_resource::PrimitiveTopology;
+
 use glam::{UVec2, Vec3};
 use image::{GenericImageView, Luma, Primitive};
 
@@ -50,6 +54,7 @@ impl TerrainMesh {
         (vertices, indices)
     }
 
+    #[cfg(feature = "render")]
     pub fn mesh(&self) -> Mesh {
         let mut mesh = Mesh::new(PrimitiveTopology::TriangleList);
 
