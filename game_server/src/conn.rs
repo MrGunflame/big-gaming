@@ -140,6 +140,15 @@ impl Connection {
                 } => Command::EntityTranslate { id, translation },
                 EntityChange::Rotate { id, rotation } => Command::EntityRotate { id, rotation },
                 EntityChange::UpdateStreamingSource { id: _, state: _ } => continue,
+                EntityChange::InventoryItemAdd(event) => Command::InventoryItemAdd {
+                    entity: event.entity,
+                    id: event.id,
+                    item: event.item,
+                },
+                EntityChange::InventoryItemRemove(event) => Command::InventoryItemRemove {
+                    entity: event.entity,
+                    id: event.id,
+                },
                 _ => todo!(),
             };
 
