@@ -2,9 +2,9 @@
 
 use bevy_transform::prelude::Transform;
 use game_common::components::components::Components;
-use game_common::components::components::RecordReference;
 use game_common::components::items::Item as HostItem;
 use game_common::entity::EntityId;
+use game_common::record::RecordReference;
 use game_common::world::entity::Entity as HostEntity;
 use game_common::world::entity::EntityBody as HostEntityBody;
 use game_common::world::entity::EntityKind as HostEntityKind;
@@ -48,7 +48,7 @@ impl ToAbi for HostEntity {
                 HostEntityBody::Object(object) => GuestEntityBody {
                     object: game_wasm::raw::record::RecordReference {
                         module: object.id.0.module.into_bytes(),
-                        record: object.id.0.record,
+                        record: object.id.0.record.0,
                     },
                 },
                 HostEntityBody::Actor(_) => GuestEntityBody {
@@ -57,7 +57,7 @@ impl ToAbi for HostEntity {
                 HostEntityBody::Item(item) => GuestEntityBody {
                     item: game_wasm::raw::record::RecordReference {
                         module: item.id.0.module.into_bytes(),
-                        record: item.id.0.record,
+                        record: item.id.0.record.0,
                     },
                 },
             },
@@ -135,7 +135,7 @@ impl ToAbi for HostItem {
         GuestItem {
             id: game_wasm::raw::record::RecordReference {
                 module: self.id.0.module.into_bytes(),
-                record: self.id.0.record,
+                record: self.id.0.record.0,
             },
         }
     }

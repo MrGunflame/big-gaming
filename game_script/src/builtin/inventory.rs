@@ -1,6 +1,7 @@
-use game_common::components::components::{Component, RecordReference};
+use game_common::components::components::Component;
 use game_common::components::inventory::InventoryId;
 use game_common::entity::EntityId;
+use game_common::record::RecordReference;
 use wasmtime::{Caller, Result};
 
 use crate::abi::ToAbi;

@@ -32,11 +32,9 @@ use parking_lot::RwLock;
 use self::items::Item;
 use self::module::Module;
 use self::objects::Object;
-use crate::components::components::RecordReference;
 use crate::components::items::ItemId;
 use crate::components::object::ObjectId;
-use crate::id::WeakId;
-use crate::module::ModuleId;
+use crate::record::RecordReference;
 
 /// The entrypoint of loading external data.
 #[derive(Debug, Resource)]
@@ -121,10 +119,7 @@ impl<'a> Items<'a> {
     fn id(&self) -> ItemId {
         let id = self.archive.item_id.fetch_add(1, Ordering::Relaxed);
         assert!(id != u32::MAX);
-        ItemId(RecordReference {
-            module: ModuleId::CORE,
-            record: 0,
-        })
+        ItemId(RecordReference::STUB)
     }
 }
 

@@ -25,6 +25,7 @@ pub mod metrics;
 pub mod module;
 pub mod net;
 pub mod proto;
+pub mod record;
 pub mod savefile;
 pub mod scene;
 pub mod units;

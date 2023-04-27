@@ -1,12 +1,10 @@
-use std::collections::VecDeque;
 use std::fmt::Debug;
 
-use bevy_ecs::system::Resource;
 use bytemuck::{Pod, Zeroable};
 
 use crate::entity::EntityId;
+use crate::record::RecordReference;
 
-use super::components::RecordReference;
 use super::inventory::InventoryId;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Zeroable, Pod)]

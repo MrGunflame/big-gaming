@@ -1,8 +1,8 @@
 use std::convert::Infallible;
 
 use bytes::{Buf, BufMut};
-use game_common::components::components::RecordReference;
 use game_common::module::ModuleId;
+use game_common::record::{RecordId, RecordReference};
 
 use super::{Decode, Encode, EofError};
 
@@ -14,7 +14,7 @@ impl Encode for RecordReference {
         B: BufMut,
     {
         self.module.encode(&mut buf)?;
-        self.record.encode(&mut buf)?;
+        self.record.0.encode(&mut buf)?;
 
         Ok(())
     }
@@ -30,7 +30,10 @@ impl Decode for RecordReference {
         let module = ModuleId::decode(&mut buf)?;
         let record = u32::decode(&mut buf)?;
 
-        Ok(Self { module, record })
+        Ok(Self {
+            module,
+            record: RecordId(record),
+        })
     }
 }
 

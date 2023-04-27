@@ -4,7 +4,7 @@ use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bytemuck::{Pod, Zeroable};
 
-use super::components::RecordReference;
+use crate::record::RecordReference;
 
 /// A unique identifer for an object.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Zeroable, Pod)]

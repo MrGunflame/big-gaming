@@ -234,10 +234,9 @@ impl<'a> FusedIterator for Iter<'a> {}
 
 #[cfg(test)]
 mod tests {
-    use game_common::components::components::RecordReference;
     use game_common::components::object::ObjectId;
-    use game_common::id::WeakId;
     use game_common::net::ServerEntity;
+    use game_common::record::RecordReference;
     use game_common::world::entity::{EntityBody, Object};
     use glam::{Quat, Vec3};
 

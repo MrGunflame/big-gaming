@@ -1022,8 +1022,9 @@ mod tests {
     use bevy_transform::prelude::Transform;
     use glam::Vec3;
 
-    use crate::components::components::{Components, RecordReference};
+    use crate::components::components::Components;
     use crate::components::object::ObjectId;
+    use crate::record::RecordReference;
     use crate::world::entity::Object;
 
     use super::*;

@@ -43,12 +43,12 @@ mod record;
 
 use game_common::components::actions::ActionId;
 use game_common::components::combat::Health;
-use game_common::components::components::RecordReference;
 use game_common::components::inventory::InventoryId;
 use game_common::components::items::ItemId;
 use game_common::components::object::ObjectId;
 use game_common::components::race::RaceId;
 use game_common::id::WeakId;
+use game_common::record::RecordReference;
 use game_common::world::entity::{Actor, EntityBody, Object};
 use game_common::world::terrain::{Heightmap, TerrainMesh};
 use game_common::world::CellId;

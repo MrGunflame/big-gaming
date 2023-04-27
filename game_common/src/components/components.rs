@@ -1,7 +1,6 @@
 use ahash::HashMap;
-use bytemuck::{Pod, Zeroable};
 
-use crate::module::ModuleId;
+use crate::record::RecordReference;
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Components {
@@ -59,20 +58,6 @@ impl Component {
     pub fn as_bytes(&self) -> &[u8] {
         &self.bytes
     }
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Zeroable, Pod)]
-#[repr(C)]
-pub struct RecordReference {
-    pub module: ModuleId,
-    pub record: u32,
-}
-
-impl RecordReference {
-    pub const STUB: Self = Self {
-        module: ModuleId::CORE,
-        record: 0,
-    };
 }
 
 pub struct Iter<'a> {

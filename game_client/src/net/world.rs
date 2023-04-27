@@ -9,13 +9,14 @@ use game_common::bundles::{ActorBundle, ObjectBundle};
 use game_common::components::actions::{Actions, ActionId};
 use game_common::components::actor::ActorProperties;
 use game_common::components::combat::Health;
-use game_common::components::components::{RecordReference, Components, Component};
+use game_common::components::components::{ Components, Component};
 use game_common::components::entity::InterpolateTranslation;
 use game_common::components::inventory::Inventory;
 use game_common::components::items::{Item, ItemComponent, LoadItem};
 use game_common::components::player::HostPlayer;
 use game_common::components::terrain::LoadTerrain;
 use game_common::entity::EntityMap;
+use game_common::record::RecordReference;
 use game_common::world::entity::{Entity, EntityBody};
 use game_common::world::snapshot::EntityChange;
 use game_common::world::source::StreamingSource;
@@ -232,7 +233,7 @@ mut hotkeys: ResMut<Hotkeys>
                     .get(event.item.0.module)
                     .unwrap()
                     .records
-                    .get(RecordId(event.item.0.record))
+                    .get(RecordId(event.item.0.record.0))
                     .unwrap()
                     .body
                 {
@@ -244,7 +245,7 @@ mut hotkeys: ResMut<Hotkeys>
                 for a in &base_item.actions {
                     actions.push(ActionId(RecordReference{
                         module: a.module,
-                        record: a.record.0
+                        record: game_common::record::RecordId(a.record.0)
                     }));
 
                     let action = modules.get(a.module).unwrap().records.get(a.record).unwrap().clone();
@@ -256,7 +257,7 @@ mut hotkeys: ResMut<Hotkeys>
                 for c in &base_item.components{
                     let id = RecordReference{
                         module: c.record.module,
-                        record: c.record.record.0
+                        record: game_common::record::RecordId(c.record.record.0)
                     };
 
                     components.insert(id, Component{ bytes: c.value.clone() });

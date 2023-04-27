@@ -347,9 +347,10 @@ impl<'a> FusedIterator for EquipmentIter<'a> {}
 #[cfg(test)]
 mod tests {
     use crate::components::actions::Actions;
-    use crate::components::components::{Components, RecordReference};
+    use crate::components::components::Components;
     use crate::components::inventory::InsertionError;
     use crate::components::items::{Item, ItemId};
+    use crate::record::RecordReference;
     use crate::units::Mass;
 
     use super::{EquipmentSlot, Inventory};

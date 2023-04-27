@@ -3,11 +3,12 @@ use std::time::{Duration, Instant};
 use bevy_ecs::component::Component;
 use bytemuck::{Pod, Zeroable};
 
+use crate::record::RecordReference;
 use crate::units::Mass;
 
 use super::actions::Actions;
 use super::combat::Resistances;
-use super::components::{Components, RecordReference};
+use super::components::Components;
 
 /// A stack of up to `u32::MAX` items.
 ///

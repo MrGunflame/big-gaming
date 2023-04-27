@@ -1,7 +1,8 @@
 use std::convert::Infallible;
 
 use bytes::{Buf, BufMut};
-use game_common::components::components::{Component, Components, RecordReference};
+use game_common::components::components::{Component, Components};
+use game_common::record::RecordReference;
 
 use super::{Decode, Encode, EofError};
 

@@ -6,13 +6,14 @@ use bevy::prelude::{
 use game_common::actors::human::Human;
 use game_common::bundles::ActorBundle;
 use game_common::components::combat::Health;
-use game_common::components::components::{Components, RecordReference};
+use game_common::components::components::Components;
 use game_common::components::inventory::Inventory;
 use game_common::components::items::{Item, ItemId};
 use game_common::components::player::Player;
 use game_common::components::race::RaceId;
 use game_common::entity::{EntityId, EntityMap};
 use game_common::events::{ActionEvent, EntityEvent, Event, EventQueue};
+use game_common::record::{RecordId, RecordReference};
 use game_common::world::entity::{Actor, Entity, EntityBody};
 use game_common::world::snapshot::EntityChange;
 use game_common::world::source::{StreamingSource, StreamingSources, StreamingState};
@@ -213,7 +214,7 @@ fn flush_command_queue(
                     .insert(Item {
                         id: ItemId(RecordReference {
                             module: "c2d2a0de054e443ba5e4de7f07262ac7".parse().unwrap(),
-                            record: 0,
+                            record: RecordId(0),
                         }),
                         mass: Default::default(),
                         resistances: Default::default(),

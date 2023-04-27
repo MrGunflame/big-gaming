@@ -1,9 +1,9 @@
 use ahash::HashMap;
 use bevy::prelude::{App, MouseButton, Res, ResMut, Resource};
 use game_common::components::actions::ActionId;
-use game_common::components::components::RecordReference;
 use game_common::events::{ActionEvent, EntityEvent, Event, EventQueue};
 use game_common::module::ModuleId;
+use game_common::record::{RecordId, RecordReference};
 use game_core::modules::Modules;
 use game_data::record::{Record, RecordBody};
 use game_input::hotkeys::{Hotkey, HotkeyCode, HotkeyId, HotkeyReader, Hotkeys, TriggerKind};
@@ -62,7 +62,7 @@ impl ActiveActions {
             .or_default()
             .push(ActionId(RecordReference {
                 module: module,
-                record: record.id.0,
+                record: RecordId(record.id.0),
             }));
     }
 
@@ -129,7 +129,7 @@ fn register_actions(
                 .or_default()
                 .push(ActionId(RecordReference {
                     module: module.id,
-                    record: record.id.0,
+                    record: RecordId(record.id.0),
                 }));
         }
     }

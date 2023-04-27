@@ -165,10 +165,10 @@ pub(crate) fn delta_inventory(
 
 #[cfg(test)]
 mod tests {
-    use crate::components::components::RecordReference;
     use crate::components::inventory::{Inventory, InventoryId};
     use crate::components::items::{Item, ItemId};
     use crate::entity::EntityId;
+    use crate::record::RecordReference;
     use crate::units::Mass;
     use crate::world::snapshot::EntityChange;
 

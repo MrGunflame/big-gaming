@@ -1,5 +1,6 @@
-use game_common::components::components::{Component, RecordReference};
+use game_common::components::components::Component;
 use game_common::entity::EntityId;
+use game_common::record::RecordReference;
 use game_wasm::raw::world::Entity;
 use wasmtime::{Caller, Error, Result};
 

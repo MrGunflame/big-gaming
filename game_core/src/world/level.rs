@@ -116,8 +116,8 @@ fn load_objects(
             continue;
         };
 
-        let Some(record) = m.records.get(RecordId(object.id.0.record)) else {
-            tracing::warn!("requested unknown record {}", object.id.0.record);
+        let Some(record) = m.records.get(RecordId(object.id.0.record.0)) else {
+            tracing::warn!("requested unknown record {}", object.id.0.record.0);
             continue;
         };
 
