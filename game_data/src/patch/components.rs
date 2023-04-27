@@ -1,7 +1,7 @@
 use bytes::{Buf, BufMut};
+use game_common::record::RecordReference;
 use thiserror::Error;
 
-use crate::record::RecordReference;
 use crate::{Decode, Encode};
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Error)]

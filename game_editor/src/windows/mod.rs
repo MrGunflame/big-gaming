@@ -2,7 +2,8 @@ use bevy::prelude::{Camera, Camera3dBundle, Commands, EventReader};
 use bevy::render::camera::RenderTarget;
 use bevy::window::{Window, WindowRef};
 use game_common::module::ModuleId;
-use game_data::record::{RecordId, RecordKind};
+use game_common::record::RecordId;
+use game_data::record::RecordKind;
 use game_data::uri::Uri;
 
 use crate::state::module::{EditorModule, Modules};

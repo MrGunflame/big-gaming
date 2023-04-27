@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use game_data::record::RecordId;
+use game_common::record::RecordId;
 
 use crate::Handle;
 

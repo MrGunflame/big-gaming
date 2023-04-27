@@ -46,20 +46,12 @@ impl ToAbi for HostEntity {
                 },
 
                 HostEntityBody::Object(object) => GuestEntityBody {
-                    object: game_wasm::raw::record::RecordReference {
-                        module: object.id.0.module.into_bytes(),
-                        record: object.id.0.record.0,
-                    },
+                    object: object.id.0,
                 },
                 HostEntityBody::Actor(_) => GuestEntityBody {
                     actor: [0; std::mem::size_of::<RecordReference>()],
                 },
-                HostEntityBody::Item(item) => GuestEntityBody {
-                    item: game_wasm::raw::record::RecordReference {
-                        module: item.id.0.module.into_bytes(),
-                        record: item.id.0.record.0,
-                    },
-                },
+                HostEntityBody::Item(item) => GuestEntityBody { item: item.id.0 },
             },
         }
     }
@@ -132,11 +124,6 @@ impl ToAbi for HostItem {
     type Target = GuestItem;
 
     fn to_abi(&self) -> Self::Target {
-        GuestItem {
-            id: game_wasm::raw::record::RecordReference {
-                module: self.id.0.module.into_bytes(),
-                record: self.id.0.record.0,
-            },
-        }
+        GuestItem { id: self.id.0 }
     }
 }

@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 
 use bevy::prelude::Resource;
-use game_data::record::{Record, RecordId};
+use game_common::record::RecordId;
+use game_data::record::Record;
 
 #[derive(Clone, Debug, Resource)]
 pub struct Records {

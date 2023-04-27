@@ -1,7 +1,6 @@
-use std::fmt::{self, Display, Formatter, LowerHex};
-
 use bytes::{Buf, BufMut};
 use game_common::module::ModuleId;
+use game_common::record::{RecordId, RecordReference};
 use thiserror::Error;
 
 use crate::components::actions::ActionRecord;
@@ -18,17 +17,11 @@ pub enum RecordReferenceError {
     Record(<RecordId as Decode>::Error),
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct RecordReference {
-    pub module: ModuleId,
-    pub record: RecordId,
-}
-
-impl Display for RecordReference {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}:{}", self.module, self.record)
-    }
-}
+// impl Display for RecordReference {
+//     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+//         write!(f, "{}:{}", self.module, self.record)
+//     }
+// }
 
 impl Encode for RecordReference {
     fn encode<B>(&self, mut buf: B)
@@ -54,14 +47,11 @@ impl Decode for RecordReference {
     }
 }
 
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
-pub struct RecordId(pub u32);
-
-impl Display for RecordId {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        LowerHex::fmt(&self.0, f)
-    }
-}
+// impl Display for RecordId {
+//     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+//         LowerHex::fmt(&self.0, f)
+//     }
+// }
 
 #[derive(Clone, Debug)]
 pub struct Record {

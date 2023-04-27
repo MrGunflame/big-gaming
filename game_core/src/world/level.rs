@@ -1,13 +1,9 @@
 use bevy::prelude::{AssetServer, Commands, Entity, Query, Res, ResMut, Transform};
 use bevy::scene::{Scene, SceneBundle};
-use game_common::archive::GameArchive;
 use game_common::components::object::LoadObject;
-use game_common::components::transform::PreviousTransform;
 use game_common::world::entity::{BuildEntity, EntityQueue};
-use game_common::world::source::{StreamingSource, StreamingSources, StreamingState};
 use game_common::world::world::WorldState;
-use game_common::world::{CellId, Level};
-use game_data::record::{RecordBody, RecordId};
+use game_data::record::RecordBody;
 
 use crate::modules::Modules;
 
@@ -116,7 +112,7 @@ fn load_objects(
             continue;
         };
 
-        let Some(record) = m.records.get(RecordId(object.id.0.record.0)) else {
+        let Some(record) = m.records.get(object.id.0.record) else {
             tracing::warn!("requested unknown record {}", object.id.0.record.0);
             continue;
         };

@@ -1,10 +1,10 @@
 use std::fmt::{self, Display, Formatter, LowerHex};
 
 use bytes::{Buf, BufMut};
+use game_common::record::RecordReference;
 use game_common::units::Mass;
 use thiserror::Error;
 
-use crate::record::RecordReference;
 use crate::uri::Uri;
 use crate::{Decode, Encode};
 

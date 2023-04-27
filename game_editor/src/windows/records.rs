@@ -8,12 +8,13 @@ use bevy_egui::egui::{CentralPanel, SidePanel, TextEdit};
 use bevy_egui::EguiContext;
 use egui_extras::{Column, TableBuilder};
 use game_common::module::ModuleId;
+use game_common::record::{RecordId, RecordReference};
 use game_common::units::Mass;
 use game_data::components::actions::ActionRecord;
 use game_data::components::components::ComponentRecord;
 use game_data::components::item::{ItemComponent, ItemRecord};
 use game_data::components::objects::ObjectRecord;
-use game_data::record::{Record, RecordBody, RecordId, RecordKind, RecordReference};
+use game_data::record::{Record, RecordBody, RecordKind};
 use game_data::uri::Uri;
 
 use crate::state::module::Modules;
