@@ -9,10 +9,12 @@ use crate::state::module::{EditorModule, Modules};
 use crate::state::record::Records;
 
 use self::error::ErrorWindowsPlugin;
+use self::files::FilesWindowPlugin;
 use self::modules::ModuleWindowPlugin;
 use self::records::RecordsWindowPlugin;
 
 mod error;
+mod files;
 mod modules;
 mod records;
 mod view;
@@ -39,6 +41,7 @@ impl bevy::prelude::Plugin for WindowPlugin {
         app.add_plugin(ErrorWindowsPlugin);
         app.add_plugin(RecordsWindowPlugin);
         app.add_plugin(ModuleWindowPlugin);
+        app.add_plugin(FilesWindowPlugin);
 
         app.insert_resource(Records::new());
         app.insert_resource(Modules::new());
@@ -67,7 +70,7 @@ fn spawn_window(mut events: EventReader<SpawnWindow>, mut commands: Commands) {
                 cmds.insert(modules::CreateModuleWindow::new());
             }
             SpawnWindow::ImportModule => {
-                cmds.insert(modules::LoadModuleWindow::default());
+                cmds.insert(files::OpenFilesWindow::new());
             }
             SpawnWindow::Templates => {
                 cmds.insert(records::RecordsWindow::new());
