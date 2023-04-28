@@ -28,7 +28,7 @@ macro_rules! define_action {
 
 define_action! {
     on_action => ["u64", "u64"],
-    on_collision => ["u64", "u64"],
+    on_collision => ["__self::entity::EntityId", "__self::entity::EntityId"],
     on_equip => ["u64", "u64"],
     on_unequip => ["u64", "u64"],
 }
@@ -65,6 +65,8 @@ fn expand_extern(func: ItemFn, inputs: Punctuated<Type, Comma>) -> TokenStream2 
 fn expand_assertion_block(ident: Ident, inputs: Punctuated<Type, Comma>) -> TokenStream2 {
     quote! {
         {
+            extern crate game_wasm as __self;
+
             #[inline(always)]
             fn __assert_fn_signature(_: unsafe extern "C" fn(#inputs)) {}
             __assert_fn_signature(#ident);

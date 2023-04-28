@@ -5,6 +5,7 @@ use alloc::vec::Vec;
 use bytemuck::AnyBitPattern;
 use glam::{Quat, Vec3};
 
+use crate::entity::EntityId;
 pub use crate::raw::record::RecordReference;
 use crate::raw::{Ptr, PtrMut, Usize};
 use crate::Error;
@@ -15,11 +16,11 @@ use crate::raw::world::{self as raw, EntityBody, EntityKind};
 pub struct Entity(raw::Entity);
 
 impl Entity {
-    pub fn get(id: u64) -> Result<Self, Error> {
+    pub fn get(id: EntityId) -> Result<Self, Error> {
         let mut entity = MaybeUninit::<raw::Entity>::uninit();
         let ptr = entity.as_mut_ptr() as Usize;
 
-        let res = unsafe { raw::world_entity_get(id, PtrMut::from_raw(ptr)) };
+        let res = unsafe { raw::world_entity_get(id.into_raw(), PtrMut::from_raw(ptr)) };
 
         if res == 0 {
             Ok(Self(unsafe { entity.assume_init_read() }))
