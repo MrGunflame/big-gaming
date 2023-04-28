@@ -59,12 +59,12 @@ pub type OnCollision = TypedFunc<(u64, u64), ()>;
 
 ///
 /// ```ignore
-/// fn(actor: EntityId, item: InventoryId);
+/// fn(item: InventoryId, actor: EntityId);
 /// ```
 pub type OnEquip = TypedFunc<(u64, u64), ()>;
 
 ///
 /// ```ignore
-/// fn(actor: EntityId, item: InventoryId);
+/// fn(item: InventoryId, actor: EntityId);
 /// ```
 pub type OnUnequip = TypedFunc<(u64, u64), ()>;

@@ -5,6 +5,7 @@ use std::collections::VecDeque;
 use bevy_ecs::system::Resource;
 
 use crate::components::actions::ActionId;
+use crate::components::inventory::InventoryId;
 use crate::entity::EntityId;
 
 #[derive(Clone, Debug, Default, Resource)]
@@ -36,6 +37,8 @@ impl EventQueue {
 pub enum Event {
     Action(ActionEvent),
     Collision(CollisionEvent),
+    Equip(EquipEvent),
+    Unequip(UnequipEvent),
 }
 
 impl Event {
@@ -43,6 +46,8 @@ impl Event {
         match self {
             Self::Action(_) => EventKind::Action,
             Self::Collision(_) => EventKind::Collision,
+            Self::Equip(_) => EventKind::Equip,
+            Self::Unequip(_) => EventKind::Unequip,
         }
     }
 }
@@ -51,6 +56,8 @@ impl Event {
 pub enum EventKind {
     Action,
     Collision,
+    Equip,
+    Unequip,
 }
 
 #[derive(Clone, Debug)]
@@ -72,4 +79,16 @@ pub struct ActionEvent {
 pub struct CollisionEvent {
     pub entity: EntityId,
     pub other: EntityId,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct EquipEvent {
+    pub entity: EntityId,
+    pub item: InventoryId,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct UnequipEvent {
+    pub entity: EntityId,
+    pub item: InventoryId,
 }

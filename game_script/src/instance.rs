@@ -1,9 +1,10 @@
+use game_common::components::inventory::InventoryId;
 use game_common::entity::EntityId;
 use game_common::events::Event;
 use game_common::world::world::WorldViewMut;
 use wasmtime::{Engine, Instance, Linker, Module, Store};
 
-use crate::events::{Events, OnAction, OnCollision};
+use crate::events::{Events, OnAction, OnCollision, OnEquip, OnUnequip};
 use crate::queue::CommandQueue;
 
 pub struct ScriptInstance<'world> {
@@ -41,6 +42,8 @@ impl<'world> ScriptInstance<'world> {
         match event {
             Event::Action(event) => self.on_action(event.entity, event.invoker),
             Event::Collision(event) => self.on_collision(event.entity, event.other),
+            Event::Equip(event) => self.on_equip(event.item, event.entity),
+            Event::Unequip(event) => self.on_unequip(event.item, event.entity),
         }
     }
 
@@ -52,6 +55,16 @@ impl<'world> ScriptInstance<'world> {
     pub fn on_collision(&mut self, entity: EntityId, other: EntityId) -> wasmtime::Result<()> {
         let func: OnCollision = self.inner.get_typed_func(&mut self.store, "on_collision")?;
         func.call(&mut self.store, (entity.into_raw(), other.into_raw()))
+    }
+
+    pub fn on_equip(&mut self, item: InventoryId, entity: EntityId) -> wasmtime::Result<()> {
+        let func: OnEquip = self.inner.get_typed_func(&mut self.store, "on_equip")?;
+        func.call(&mut self.store, (item.into_raw(), entity.into_raw()))
+    }
+
+    pub fn on_unequip(&mut self, item: InventoryId, entity: EntityId) -> wasmtime::Result<()> {
+        let func: OnUnequip = self.inner.get_typed_func(&mut self.store, "on_unequip")?;
+        func.call(&mut self.store, (item.into_raw(), entity.into_raw()))
     }
 }
 
