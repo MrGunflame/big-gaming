@@ -45,6 +45,7 @@ pub use game_macros::wasm__event_on_collision as on_collision;
 /// ```
 /// use game_wasm::entity::EntityId;
 /// use game_wasm::events::on_equip;
+/// use game_wasm::inventory::InventoryId;
 ///
 /// #[on_equip]
 /// fn on_equip(item: InventoryId, actor: EntityId) {
@@ -69,6 +70,7 @@ pub use game_macros::wasm__event_on_equip as on_equip;
 /// ```
 /// use game_wasm::entity::EntityId;
 /// use game_wasm::events::on_unequip;
+/// use game_wasm::inventory::InventoryId;
 ///
 /// #[on_unequip]
 /// fn on_unequip(item: InventoryId, actor: EntityId) {

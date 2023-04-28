@@ -29,8 +29,8 @@ macro_rules! define_action {
 define_action! {
     on_action => ["u64", "u64"],
     on_collision => ["__self::entity::EntityId", "__self::entity::EntityId"],
-    on_equip => ["u64", "u64"],
-    on_unequip => ["u64", "u64"],
+    on_equip => ["__self::inventory::InventoryId", "__self::entity::EntityId"],
+    on_unequip => ["__self::inventory::InventoryId", "__self::entity::EntityId"],
 }
 
 fn expand_event_attr<T>(attr: TokenStream, input: TokenStream, inputs: T) -> TokenStream
