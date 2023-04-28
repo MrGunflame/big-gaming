@@ -1,13 +1,16 @@
 use std::time::{Duration, Instant};
 
 use bevy_ecs::system::Resource;
+use game_common::events::{self, EntityEvent, Event, EventQueue};
 use game_common::math::RotationExt;
 use game_common::world::entity::{Entity, EntityBody};
 use game_common::world::snapshot::EntityChange;
 use game_common::world::world::WorldState;
 use handle::HandleMap;
+use parking_lot::Mutex;
 use rapier3d::prelude::{
-    BroadPhase, CCDSolver, ColliderBuilder, ColliderSet, ImpulseJointSet, IntegrationParameters,
+    ActiveEvents, BroadPhase, CCDSolver, ColliderBuilder, ColliderHandle, ColliderSet,
+    CollisionEvent, ContactPair, EventHandler, ImpulseJointSet, IntegrationParameters,
     IslandManager, MultibodyJointSet, NarrowPhase, PhysicsPipeline, RigidBodyBuilder,
     RigidBodyHandle, RigidBodySet, RigidBodyType, Vector,
 };
@@ -34,8 +37,12 @@ pub struct Pipeline {
     is_initialized: bool,
 
     body_handles: HandleMap<RigidBodyHandle>,
+    // We need the collider for collision events.
+    collider_handles: HandleMap<ColliderHandle>,
 
     last_timestep: Instant,
+
+    event_handler: CollisionHandler,
 }
 
 impl Pipeline {
@@ -55,10 +62,12 @@ impl Pipeline {
             is_initialized: false,
             body_handles: HandleMap::new(),
             last_timestep: Instant::now(),
+            event_handler: CollisionHandler::new(),
+            collider_handles: HandleMap::new(),
         }
     }
 
-    pub fn step(&mut self, world: &mut WorldState) {
+    pub fn step(&mut self, world: &mut WorldState, events: &mut EventQueue) {
         if !self.is_initialized {
             self.prepare_init(world);
         } else {
@@ -82,7 +91,7 @@ impl Pipeline {
                 &mut self.ccd_solver,
                 None,
                 &(),
-                &(),
+                &self.event_handler,
             );
 
             self.last_timestep += Duration::from_secs_f64(1.0 / 60.0);
@@ -90,6 +99,8 @@ impl Pipeline {
         }
 
         tracing::info!("stepping physics for {} steps", steps);
+
+        self.emit_events(events);
 
         self.write_back(world);
     }
@@ -156,7 +167,7 @@ impl Pipeline {
     }
 
     fn add_entity(&mut self, entity: &Entity) {
-        let handle = match &entity.body {
+        let (body, collider) = match &entity.body {
             // Terrain can never move.
             EntityBody::Terrain(terrain) => {
                 let body = RigidBodyBuilder::new(RigidBodyType::Fixed)
@@ -171,11 +182,13 @@ impl Pipeline {
                 let (vertices, indices) = terrain.verts_indices();
                 let vertices = vertices.into_iter().map(|vert| vert.into()).collect();
 
-                let collider = ColliderBuilder::trimesh(vertices, indices);
-                self.colliders
-                    .insert_with_parent(collider, body_handle, &mut self.bodies);
+                let collider = ColliderBuilder::trimesh(vertices, indices)
+                    .active_events(ActiveEvents::COLLISION_EVENTS);
+                let col_handle =
+                    self.colliders
+                        .insert_with_parent(collider, body_handle, &mut self.bodies);
 
-                body_handle
+                (body_handle, col_handle)
             }
             _ => {
                 let body = RigidBodyBuilder::new(RigidBodyType::Dynamic)
@@ -186,15 +199,18 @@ impl Pipeline {
                     .build();
 
                 let body_handle = self.bodies.insert(body);
-                let collider = ColliderBuilder::cuboid(1.0, 1.0, 1.0);
-                self.colliders
-                    .insert_with_parent(collider, body_handle, &mut self.bodies);
+                let collider = ColliderBuilder::cuboid(1.0, 1.0, 1.0)
+                    .active_events(ActiveEvents::COLLISION_EVENTS);
+                let col_handle =
+                    self.colliders
+                        .insert_with_parent(collider, body_handle, &mut self.bodies);
 
-                body_handle
+                (body_handle, col_handle)
             }
         };
 
-        self.body_handles.insert(entity.id, handle);
+        self.body_handles.insert(entity.id, body);
+        self.collider_handles.insert(entity.id, collider);
     }
 
     fn write_back(&mut self, world: &mut WorldState) {
@@ -214,4 +230,72 @@ impl Pipeline {
             }
         }
     }
+
+    fn emit_events(&mut self, queue: &mut EventQueue) {
+        let events = self.event_handler.events.get_mut();
+
+        for event in &*events {
+            let lhs = self.collider_handles.get2(event.handles[0]).unwrap();
+            let rhs = self.collider_handles.get2(event.handles[1]).unwrap();
+
+            queue.push(EntityEvent {
+                entity: lhs,
+                event: Event::Collision(events::CollisionEvent {
+                    entity: lhs,
+                    other: rhs,
+                }),
+            });
+        }
+
+        events.clear();
+    }
+}
+
+#[derive(Debug)]
+pub struct CollisionHandler {
+    events: Mutex<Vec<Collision>>,
+}
+
+impl CollisionHandler {
+    pub fn new() -> Self {
+        Self {
+            events: Mutex::new(Vec::with_capacity(16)),
+        }
+    }
+}
+
+impl EventHandler for CollisionHandler {
+    fn handle_collision_event(
+        &self,
+        _bodies: &RigidBodySet,
+        _colliders: &ColliderSet,
+        event: CollisionEvent,
+        _contact_pair: Option<&ContactPair>,
+    ) {
+        match event {
+            CollisionEvent::Started(lhs, rhs, _) => {
+                let collision = Collision {
+                    handles: [lhs, rhs],
+                };
+
+                self.events.lock().push(collision);
+            }
+            CollisionEvent::Stopped(_lhs, _rhs, _) => (),
+        }
+    }
+
+    fn handle_contact_force_event(
+        &self,
+        _dt: rapier3d::prelude::Real,
+        _bodies: &RigidBodySet,
+        _colliders: &ColliderSet,
+        _contact_pair: &rapier3d::prelude::ContactPair,
+        _total_force_magnitude: rapier3d::prelude::Real,
+    ) {
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct Collision {
+    handles: [ColliderHandle; 2],
 }

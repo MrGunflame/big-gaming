@@ -70,9 +70,9 @@ pub fn tick(
     crate::world::level::update_streaming_sources(&mut sources, &world);
     crate::world::level::update_level(&sources, &level, &mut world);
 
-    pipeline.step(&mut world, &mut event_queue);
-
     game_script::plugin::flush_event_queue(&mut event_queue, &mut world, &server, &scripts);
+
+    pipeline.step(&mut world, &mut event_queue);
 
     // Push snapshots last always
     update_snapshots(&conns, &world);

@@ -40,7 +40,7 @@ impl<'world> ScriptInstance<'world> {
 
         match event {
             Event::Action(event) => self.on_action(event.entity, event.invoker),
-            Event::Collision { entity, other } => self.on_collision(*entity, *other),
+            Event::Collision(event) => self.on_collision(event.entity, event.other),
         }
     }
 

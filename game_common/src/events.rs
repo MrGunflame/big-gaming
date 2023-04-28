@@ -35,17 +35,14 @@ impl EventQueue {
 #[derive(Clone, Debug)]
 pub enum Event {
     Action(ActionEvent),
-    Collision { entity: EntityId, other: EntityId },
+    Collision(CollisionEvent),
 }
 
 impl Event {
     pub const fn kind(&self) -> EventKind {
         match self {
             Self::Action(_) => EventKind::Action,
-            Self::Collision {
-                entity: _,
-                other: _,
-            } => EventKind::Collision,
+            Self::Collision(_) => EventKind::Collision,
         }
     }
 }
@@ -58,6 +55,8 @@ pub enum EventKind {
 
 #[derive(Clone, Debug)]
 pub struct EntityEvent {
+    // FIXME: Why do Events already have an entity field?
+    // This should be merged.
     pub entity: EntityId,
     pub event: Event,
 }
@@ -67,4 +66,10 @@ pub struct ActionEvent {
     pub entity: EntityId,
     pub invoker: EntityId,
     pub action: ActionId,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct CollisionEvent {
+    pub entity: EntityId,
+    pub other: EntityId,
 }
