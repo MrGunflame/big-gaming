@@ -6,8 +6,8 @@ use bytemuck::AnyBitPattern;
 use glam::{Quat, Vec3};
 
 use crate::entity::EntityId;
-pub use crate::raw::record::RecordReference;
 use crate::raw::{Ptr, PtrMut, Usize};
+pub use crate::record::RecordReference;
 use crate::Error;
 
 use crate::raw::world::{self as raw, EntityBody, EntityKind};

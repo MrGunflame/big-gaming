@@ -1,6 +1,6 @@
 use bytemuck::{Pod, Zeroable};
 
-use super::record::RecordReference;
+use crate::record::RecordReference;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Zeroable, Pod)]
 #[repr(C)]

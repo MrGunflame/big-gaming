@@ -1,8 +1,7 @@
 use bytemuck::{Pod, Zeroable};
 
-use crate::world::RecordReference;
-
 use super::{Ptr, PtrMut, Usize};
+use crate::record::RecordReference;
 
 #[link(wasm_import_module = "host")]
 extern "C" {

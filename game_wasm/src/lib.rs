@@ -18,6 +18,7 @@ pub mod inventory;
 pub mod log;
 pub mod math;
 pub mod process;
+pub mod record;
 pub mod world;
 
 #[derive(Clone, Debug)]
