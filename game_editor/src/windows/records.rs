@@ -444,6 +444,54 @@ fn render_record_windows(
                         object.uri = Uri::from(PathBuf::from(uri));
                         changed = true;
                     }
+
+                    ui.label("Components");
+
+                    let mut index = 0;
+                    while index < object.components.len() {
+                        let comp = records.get(
+                            object.components[index].record.module,
+                            object.components[index].record.record,
+                        );
+
+                        let text = match comp {
+                            Some(comp) => format!("{} ({})", comp.name, comp.id),
+                            None => {
+                                format!("Invalid reference ({})", object.components[index].record)
+                            }
+                        };
+
+                        ui.label(text);
+                        if ui.button("Delete").clicked() {
+                            object.components.remove(index);
+                            continue;
+                        }
+
+                        index += 1;
+                    }
+
+                    ui.label("Add Component:");
+                    let mut add_component = state.add_comp.to_string();
+
+                    if ui.add(TextEdit::singleline(&mut add_component)).changed() {
+                        state.add_comp = add_component.parse().unwrap_or_default();
+                        changed = true;
+                    }
+
+                    if ui.button("Add").clicked() {
+                        if records
+                            .get(state.module, RecordId(state.add_comp))
+                            .is_some()
+                        {
+                            object.components.push(ItemComponent {
+                                record: RecordReference {
+                                    module: state.module,
+                                    record: RecordId(state.add_comp),
+                                },
+                                value: vec![],
+                            })
+                        }
+                    }
                 }
             }
 
@@ -530,9 +578,10 @@ fn render_create_record_windows(
                                     description: String::new(),
                                     script: Uri::new(),
                                 }),
-                                RecordKind::Object => {
-                                    RecordBody::Object(ObjectRecord { uri: Uri::new() })
-                                }
+                                RecordKind::Object => RecordBody::Object(ObjectRecord {
+                                    uri: Uri::new(),
+                                    components: Vec::new(),
+                                }),
                             },
                         },
                     );

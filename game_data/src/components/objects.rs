@@ -4,15 +4,20 @@ use thiserror::Error;
 use crate::uri::Uri;
 use crate::{Decode, Encode};
 
+use super::item::ItemComponent;
+
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Error)]
 pub enum ObjectRecordError {
     #[error("failed to decode uri: {0}")]
     Uri(<Uri as Decode>::Error),
+    #[error("failed to decode components: {0}")]
+    Components(<Vec<ItemComponent> as Decode>::Error),
 }
 
 #[derive(Clone, Debug)]
 pub struct ObjectRecord {
     pub uri: Uri,
+    pub components: Vec<ItemComponent>,
 }
 
 impl Encode for ObjectRecord {
@@ -21,6 +26,7 @@ impl Encode for ObjectRecord {
         B: BufMut,
     {
         self.uri.encode(&mut buf);
+        self.components.encode(&mut buf);
     }
 }
 
@@ -32,7 +38,8 @@ impl Decode for ObjectRecord {
         B: Buf,
     {
         let uri = Uri::decode(&mut buf).map_err(ObjectRecordError::Uri)?;
+        let components = Vec::decode(&mut buf).map_err(ObjectRecordError::Components)?;
 
-        Ok(Self { uri })
+        Ok(Self { uri, components })
     }
 }

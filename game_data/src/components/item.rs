@@ -107,6 +107,7 @@ pub enum ItemComponentError {
     Value(<Vec<u8> as Decode>::Error),
 }
 
+// FIXME: This is no longer exclusive to Item. rename
 #[derive(Clone, Debug)]
 pub struct ItemComponent {
     pub record: RecordReference,
