@@ -39,12 +39,56 @@ impl ModuleId {
         Self(uuid.into_bytes())
     }
 
-    pub fn into_bytes(self) -> [u8; 16] {
+    pub const fn into_bytes(self) -> [u8; 16] {
         self.0
     }
 
-    pub fn from_bytes(bytes: [u8; 16]) -> Self {
+    pub const fn from_bytes(bytes: [u8; 16]) -> Self {
         Self(bytes)
+    }
+
+    pub const fn from_str_const(s: &str) -> Self {
+        let mut bytes = [0; 16];
+
+        let buf = s.as_bytes();
+        if buf.len() != 32 {
+            panic!("invalid string length");
+        }
+
+        let mut index = 0;
+        while index < 32 {
+            let b = buf[index];
+
+            let mut nibble = match b {
+                b'0' => 0,
+                b'1' => 1,
+                b'2' => 2,
+                b'3' => 3,
+                b'4' => 4,
+                b'5' => 5,
+                b'6' => 6,
+                b'7' => 7,
+                b'8' => 8,
+                b'9' => 9,
+                b'a' | b'A' => 10,
+                b'b' | b'B' => 11,
+                b'c' | b'C' => 12,
+                b'd' | b'D' => 13,
+                b'e' | b'E' => 14,
+                b'f' | b'F' => 15,
+                _ => panic!("invalid hex digit"),
+            };
+
+            // high
+            if index % 2 == 0 {
+                nibble <<= 4;
+            }
+
+            bytes[index / 2] += nibble;
+            index += 1;
+        }
+
+        Self::from_bytes(bytes)
     }
 }
 
@@ -101,6 +145,20 @@ mod tests {
 
         assert_eq!(
             input.parse::<ModuleId>().unwrap(),
+            ModuleId::from_bytes(output)
+        );
+    }
+
+    #[test]
+    fn module_id_from_str_const() {
+        let input = "c2d2a0de054e443ba5e4de7f07262ac7";
+        let output = [
+            0xc2, 0xd2, 0xa0, 0xde, 0x05, 0x4e, 0x44, 0x3b, 0xa5, 0xe4, 0xde, 0x7f, 0x07, 0x26,
+            0x2a, 0xc7,
+        ];
+
+        assert_eq!(
+            ModuleId::from_str_const(input),
             ModuleId::from_bytes(output)
         );
     }
