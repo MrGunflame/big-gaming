@@ -1,6 +1,7 @@
 //! Conversions between Host and Guest ABIs
 
 use bevy_transform::prelude::Transform;
+use bytemuck::cast;
 use game_common::components::components::Components;
 use game_common::components::items::Item as HostItem;
 use game_common::entity::EntityId;
@@ -46,12 +47,14 @@ impl ToAbi for HostEntity {
                 },
 
                 HostEntityBody::Object(object) => GuestEntityBody {
-                    object: object.id.0,
+                    object: cast(object.id.0),
                 },
                 HostEntityBody::Actor(_) => GuestEntityBody {
                     actor: [0; std::mem::size_of::<RecordReference>()],
                 },
-                HostEntityBody::Item(item) => GuestEntityBody { item: item.id.0 },
+                HostEntityBody::Item(item) => GuestEntityBody {
+                    item: cast(item.id.0),
+                },
             },
         }
     }
@@ -124,6 +127,8 @@ impl ToAbi for HostItem {
     type Target = GuestItem;
 
     fn to_abi(&self) -> Self::Target {
-        GuestItem { id: self.id.0 }
+        GuestItem {
+            id: bytemuck::cast(self.id.0),
+        }
     }
 }

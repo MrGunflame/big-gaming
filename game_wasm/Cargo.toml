@@ -10,7 +10,6 @@ panic_handler = []
 
 [dependencies]
 game_macros = { version = "0.1.0", path = "../game_macros", features = ["wasm"] }
-game_common = { version = "0.1.0", path = "../game_common" }
 
 bytemuck = { version = "1.13.1", features = ["derive"] }
 glam = { version = "0.23.0", default-features = false, features = ["libm"] }
