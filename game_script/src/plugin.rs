@@ -53,12 +53,15 @@ pub fn flush_event_queue(
     tracing::debug!("executing {} events", queue.len());
 
     while let Some(event) = queue.pop() {
-        for (i, _) in server.scripts.iter().enumerate() {
-            let Some(mut view) = world.front_mut() else {
+        // FIXME: Optimally we wouldn't event push the event if it is not handled.
+        let Some(scripts) = scripts.get(event.entity, event.event.kind()) else {
+            continue;
+        };
+
+        for handle in scripts {
+            let Some(view) = world.front_mut() else {
                 return;
             };
-
-            let handle = Handle { id: i as u64 };
 
             let mut instance = server.get(&handle, view, &mut buffer).unwrap();
 

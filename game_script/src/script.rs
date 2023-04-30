@@ -2,6 +2,7 @@ use std::ffi::OsStr;
 use std::fs::File;
 use std::io::Read;
 
+use crate::events::Events;
 use crate::host::wasm::WasmScript;
 use crate::ScriptServer;
 
@@ -30,6 +31,12 @@ impl Script {
     pub fn run(&self) {
         match self {
             Self::Wasm(sc) => sc.run(),
+        }
+    }
+
+    pub fn events(&self) -> Events {
+        match self {
+            Self::Wasm(sc) => sc.events,
         }
     }
 }

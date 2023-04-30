@@ -26,6 +26,10 @@ impl Actions {
     pub fn push(&mut self, action: ActionId) {
         self.actions.push(action);
     }
+
+    pub fn iter(&self) -> impl Iterator<Item = ActionId> + '_ {
+        self.actions.iter().copied()
+    }
 }
 
 #[derive(Clone, Debug)]

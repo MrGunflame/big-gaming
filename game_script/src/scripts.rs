@@ -8,6 +8,7 @@ use game_common::events::EventKind;
 
 use crate::Handle;
 
+/// Store for what entities have which assigned scripts.
 #[derive(Clone, Debug, Resource)]
 pub struct Scripts {
     scripts: HashMap<(EntityId, EventKind), Vec<Handle>>,
@@ -29,5 +30,9 @@ impl Scripts {
 
     pub fn get(&self, entity: EntityId, event: EventKind) -> Option<&[Handle]> {
         self.scripts.get(&(entity, event)).map(|s| s.as_slice())
+    }
+
+    pub fn remove(&mut self, entity: EntityId, event: EventKind) {
+        self.scripts.remove(&(entity, event));
     }
 }

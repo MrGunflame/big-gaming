@@ -3,7 +3,6 @@ use std::time::{Duration, Instant};
 use bevy::prelude::{
     AssetServer, Commands, DespawnRecursiveExt, Plugin, Res, ResMut, Transform, Vec3,
 };
-use game_common::actors::human::Human;
 use game_common::bundles::ActorBundle;
 use game_common::components::combat::Health;
 use game_common::components::components::Components;
@@ -12,15 +11,17 @@ use game_common::components::items::{Item, ItemId};
 use game_common::components::player::Player;
 use game_common::components::race::RaceId;
 use game_common::entity::{EntityId, EntityMap};
-use game_common::events::{ActionEvent, EntityEvent, Event, EventQueue};
+use game_common::events::{ActionEvent, EntityEvent, Event, EventKind, EventQueue};
 use game_common::record::{RecordId, RecordReference};
 use game_common::world::entity::{Actor, Entity, EntityBody};
 use game_common::world::snapshot::EntityChange;
 use game_common::world::source::{StreamingSource, StreamingSources, StreamingState};
 use game_common::world::world::WorldState;
 use game_common::world::CellId;
+use game_core::modules::Modules;
 use game_net::conn::ConnectionId;
 use game_net::snapshot::{Command, CommandQueue, ConnectionMessage, Response, Status};
+use game_script::events::Events;
 use game_script::scripts::Scripts;
 use game_script::ScriptServer;
 
@@ -54,7 +55,8 @@ pub fn tick(
     mut pipeline: ResMut<game_physics::Pipeline>,
     mut event_queue: ResMut<EventQueue>,
     server: Res<ScriptServer>,
-    scripts: Res<Scripts>,
+    mut scripts: ResMut<Scripts>,
+    modules: Res<Modules>,
 ) {
     update_client_heads(&conns, &mut world);
     flush_command_queue(
@@ -73,6 +75,8 @@ pub fn tick(
     game_script::plugin::flush_event_queue(&mut event_queue, &mut world, &server, &scripts);
 
     pipeline.step(&mut world, &mut event_queue);
+
+    update_scripts(&world, &mut scripts, &modules);
 
     // Push snapshots last always
     update_snapshots(&conns, &world);
@@ -190,7 +194,7 @@ fn flush_command_queue(
                         }),
                         components: Components::new(),
                     });
-                Human::default().spawn(&assets, &mut cmds);
+                // Human::default().spawn(&assets, &mut cmds);
 
                 let ent = cmds.id();
 
@@ -213,8 +217,8 @@ fn flush_command_queue(
                     .get_mut_or_insert(id)
                     .insert(Item {
                         id: ItemId(RecordReference {
-                            module: "c2d2a0de054e443ba5e4de7f07262ac7".parse().unwrap(),
-                            record: RecordId(0),
+                            module: "8f356647e8f846bbbf1baebc0b3cf40d".parse().unwrap(),
+                            record: RecordId(3),
                         }),
                         mass: Default::default(),
                         resistances: Default::default(),
@@ -269,6 +273,70 @@ fn flush_command_queue(
         }
 
         drop(view);
+    }
+}
+
+fn update_scripts(world: &WorldState, scripts: &mut Scripts, modules: &Modules) {
+    let Some(view) = world.front() else {
+        return;
+    };
+
+    for event in view.deltas() {
+        match event {
+            EntityChange::Create { entity } => {
+                // Register events for all components directly on the entity.
+                for (id, _) in entity.components.iter() {
+                    let module = modules.get(id.module).unwrap();
+                    let handles = module.records.get_scripts(id.record).unwrap();
+
+                    for handle in handles {
+                        for event in handle.events.iter() {
+                            scripts.push(entity.id, event, handle.handle.clone());
+                        }
+                    }
+                }
+
+                // Register for events on inventory items.
+                if let Some(inventory) = view.inventories().get(entity.id) {
+                    for item in inventory.iter() {
+                        let module = modules.get(item.item.id.0.module).unwrap();
+                        let handles = module.records.get_scripts(item.item.id.0.record).unwrap();
+
+                        for handle in handles {
+                            for event in handle.events.iter() {
+                                // FIXME: This should be using InventoryId.
+                                scripts.push(entity.id, event, handle.handle.clone());
+                            }
+                        }
+
+                        // Register for events on item components.
+                        for (id, _) in item.item.components.iter() {
+                            let module = modules.get(id.module).unwrap();
+                            let handles = module.records.get_scripts(id.record).unwrap();
+
+                            for handle in handles {
+                                for event in handle.events.iter() {
+                                    scripts.push(entity.id, event, handle.handle.clone());
+                                }
+                            }
+                        }
+
+                        // Register for events on item actions.
+                        for id in item.item.actions.iter() {
+                            let module = modules.get(id.0.module).unwrap();
+                            let handles = module.records.get_scripts(id.0.record).unwrap();
+
+                            for handle in handles {
+                                // All actions must only expose a action event.
+                                debug_assert_eq!(handle.events, Events::ACTION);
+                                scripts.push(entity.id, EventKind::Action, handle.handle.clone());
+                            }
+                        }
+                    }
+                }
+            }
+            _ => (),
+        }
     }
 }
 

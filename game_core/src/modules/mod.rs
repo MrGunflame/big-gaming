@@ -23,7 +23,7 @@ impl Plugin for ModulePlugin {
     }
 }
 
-use self::records::Records;
+use self::records::{Records, ScriptRecord};
 
 pub mod records;
 
@@ -138,6 +138,12 @@ fn load_module(data: DataBuffer, modules: &mut Modules, server: &mut ScriptServe
         records.insert(record.clone());
 
         match &record.body {
+            RecordBody::Item(_) => {
+                records.insert_scripts(record.id, vec![]);
+            }
+            RecordBody::Object(_) => {
+                records.insert_scripts(record.id, vec![]);
+            }
             RecordBody::Action(action) => {
                 let script = match Script::load(&server, action.script.as_ref()) {
                     Ok(script) => script,
@@ -152,9 +158,32 @@ fn load_module(data: DataBuffer, modules: &mut Modules, server: &mut ScriptServe
                     }
                 };
 
-                server.insert(script);
+                let events = script.events();
+
+                let handle = server.insert(script);
+
+                records.insert_scripts(record.id, vec![ScriptRecord { handle, events }]);
             }
-            _ => (),
+            RecordBody::Component(component) => {
+                let script = match Script::load(&server, component.script.as_ref()) {
+                    Ok(script) => script,
+                    Err(err) => {
+                        tracing::error!(
+                            "failed to load script for record {} from local path {:?}: {}",
+                            record.name,
+                            component.script.as_ref(),
+                            err,
+                        );
+
+                        continue;
+                    }
+                };
+
+                let events = script.events();
+                let handle = server.insert(script);
+
+                records.insert_scripts(record.id, vec![ScriptRecord { handle, events }]);
+            }
         }
     }
 
