@@ -8,6 +8,16 @@ pub struct Frame {
 
 impl Frame {
     pub fn draw(&self, ctx: &mut DrawContext) {
+        let size = ctx.size();
+
+        let mut width = 0.0;
+        for node in &self.nodes {
+            width += node.width;
+        }
+
+        // Space between
+        let padding = (size.x - width) / self.nodes.len() as f32 - 1.0;
+
         for node in &self.nodes {
             node.draw(ctx);
         }
@@ -40,16 +50,17 @@ pub struct Rect {
 
 impl Widget for Rect {
     fn draw(&self, ctx: &mut DrawContext) {
-        // Map (0.0, 0.0) to (-1.0, 1.0).
-        let start_x = self.position.x - 1.0;
-        let start_y = self.position.y + 1.0;
-        let origin = Vec2::new(start_x, start_y);
+        let start = remap(self.position, ctx.size());
+        let end = remap(
+            Vec2::new(self.position.x + self.width, self.position.y + self.height),
+            ctx.size(),
+        );
 
         let vertices = [
-            [origin.x, origin.y, 0.0],
-            [origin.x, origin.y - self.height, 0.0],
-            [origin.x + self.width, origin.y - self.height, 0.0],
-            [origin.x + self.width, origin.y, 0.0],
+            [start.x, start.y, 0.0],
+            [start.x, end.y, 0.0],
+            [end.x, end.y, 0.0],
+            [end.x, start.y, 0.0],
         ];
         let indicies = [0, 1, 2, 3, 0, 2];
 
@@ -95,4 +106,45 @@ impl DrawContext {
 
 pub enum Node {
     Rect(Rect),
+}
+
+/// Remap from absolute screen space to OpenGL vertex translations.
+fn remap(input: Vec2, size: Vec2) -> Vec2 {
+    let x = lerp(-1.0, 1.0, input.x / size.x);
+    let y = lerp(1.0, -1.0, input.y / size.y);
+    Vec2::new(x, y)
+}
+
+fn lerp(lhs: f32, rhs: f32, s: f32) -> f32 {
+    lhs + ((rhs - lhs) * s)
+}
+
+#[cfg(test)]
+mod tests {
+    use glam::Vec2;
+
+    #[test]
+    fn remap_baseline() {
+        let input = Vec2::new(0.0, 0.0);
+        let size = Vec2::new(1000.0, 1000.0);
+
+        assert_eq!(super::remap(input, size), Vec2::new(-1.0, 1.0));
+    }
+
+    #[test]
+    fn remap_center() {
+        let input = Vec2::new(500.0, 500.0);
+        let size = Vec2::splat(1000.0);
+
+        assert_eq!(super::remap(input, size), Vec2::new(0.0, 0.0));
+    }
+
+    #[test]
+    fn remap() {
+        let input = Vec2::new(400.0, 600.0);
+        let size = Vec2::splat(1000.0);
+
+        // FP inacuraccy
+        assert_eq!(super::remap(input, size), Vec2::new(-0.2, -0.2));
+    }
 }

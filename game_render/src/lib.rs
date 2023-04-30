@@ -128,8 +128,10 @@ impl State {
 
         let rect = Rect {
             position: Vec2::new(0.0, 0.0),
-            width: 1.0,
-            height: 1.0,
+            width: size.width as f32,
+            height: size.height as f32,
+            // width: 100.0,
+            // height: 100.0,
         };
 
         let mut ctx = DrawContext::new(Vec2::new(size.width as f32, size.height as f32));
@@ -139,6 +141,8 @@ impl State {
         let indics = Box::leak(ctx.indices.into_boxed_slice());
 
         let num_vertices = indics.len() as u32;
+
+        dbg!(&verts);
 
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("vertex_buffer"),
