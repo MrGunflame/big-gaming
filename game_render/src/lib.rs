@@ -12,6 +12,8 @@ use wgpu::{
 use winit::event::WindowEvent;
 use winit::window::Window;
 
+use crate::layout::Frame;
+
 struct State {
     surface: wgpu::Surface,
     device: wgpu::Device,
@@ -128,14 +130,20 @@ impl State {
 
         let rect = Rect {
             position: Vec2::new(0.0, 0.0),
-            width: size.width as f32,
-            height: size.height as f32,
+            width: size.width as f32 / 4.0,
+            height: size.height as f32 / 4.0,
             // width: 100.0,
             // height: 100.0,
         };
 
+        let mut frame = Frame::new();
+        frame.push(rect.clone());
+        frame.push(rect.clone());
+
         let mut ctx = DrawContext::new(Vec2::new(size.width as f32, size.height as f32));
-        rect.draw(&mut ctx);
+        // rect.draw(&mut ctx);
+
+        frame.draw(&mut ctx);
 
         let verts = Box::leak(ctx.vertex.into_boxed_slice());
         let indics = Box::leak(ctx.indices.into_boxed_slice());
@@ -143,6 +151,7 @@ impl State {
         let num_vertices = indics.len() as u32;
 
         dbg!(&verts);
+        dbg!(&indics);
 
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("vertex_buffer"),

@@ -7,7 +7,15 @@ pub struct Frame {
 }
 
 impl Frame {
-    pub fn draw(&self, ctx: &mut DrawContext) {
+    pub fn new() -> Self {
+        Self { nodes: vec![] }
+    }
+
+    pub fn push(&mut self, node: Rect) {
+        self.nodes.push(node);
+    }
+
+    pub fn draw(&mut self, ctx: &mut DrawContext) {
         let size = ctx.size();
 
         let mut width = 0.0;
@@ -17,9 +25,17 @@ impl Frame {
 
         // Space between
         let padding = (size.x - width) / self.nodes.len() as f32 - 1.0;
+        dbg!(padding);
 
-        for node in &self.nodes {
+        let mut diff = self.nodes[0].width;
+        for node in self.nodes.iter_mut().skip(1) {
+            node.position.x += diff;
+            // node.position.x += padding;
+        }
+
+        for node in self.nodes.iter() {
             node.draw(ctx);
+            ctx.update_vertex_counter();
         }
     }
 }
@@ -50,6 +66,8 @@ pub struct Rect {
 
 impl Widget for Rect {
     fn draw(&self, ctx: &mut DrawContext) {
+        dbg!(self.position);
+
         let start = remap(self.position, ctx.size());
         let end = remap(
             Vec2::new(self.position.x + self.width, self.position.y + self.height),
@@ -73,6 +91,7 @@ pub struct DrawContext {
     size: Vec2,
     pub(crate) vertex: Vec<Vertex>,
     pub(crate) indices: Vec<u32>,
+    vertices: u32,
 }
 
 impl DrawContext {
@@ -81,6 +100,7 @@ impl DrawContext {
             size,
             vertex: vec![],
             indices: vec![],
+            vertices: 0,
         }
     }
 
@@ -100,7 +120,14 @@ impl DrawContext {
     }
 
     pub fn indices(&mut self, indices: &[u32]) {
-        self.indices.extend(indices);
+        for mut index in indices.iter().copied() {
+            index += self.vertices;
+            self.indices.push(index);
+        }
+    }
+
+    fn update_vertex_counter(&mut self) {
+        self.vertices = self.vertex.len() as u32;
     }
 }
 
