@@ -1,3 +1,5 @@
+mod inventory;
+
 use std::time::{Duration, Instant};
 
 use bevy::prelude::{
@@ -67,6 +69,7 @@ pub fn tick(
         &mut world,
         &assets,
         &mut event_queue,
+        &modules,
     );
 
     crate::world::level::update_streaming_sources(&mut sources, &world);
@@ -109,6 +112,7 @@ fn flush_command_queue(
     world: &mut WorldState,
     assets: &AssetServer,
     events: &mut EventQueue,
+    modules: &Modules,
 ) {
     while let Some(msg) = queue.pop() {
         tracing::trace!("got command {:?}", msg.command);
@@ -213,21 +217,17 @@ fn flush_command_queue(
                 let inventory = Inventory::new();
                 view.inventories_mut().insert(id, inventory);
 
-                view.inventories_mut()
-                    .get_mut_or_insert(id)
-                    .insert(Item {
-                        id: ItemId(RecordReference {
-                            module: "8f356647e8f846bbbf1baebc0b3cf40d".parse().unwrap(),
-                            record: RecordId(3),
-                        }),
-                        mass: Default::default(),
-                        resistances: Default::default(),
-                        components: Default::default(),
-                        actions: Default::default(),
-                        equipped: false,
-                        hidden: false,
-                    })
-                    .unwrap();
+                let mut invs = view.inventories_mut();
+                let mut inv = invs.get_mut_or_insert(id);
+
+                inventory::add_item(
+                    &mut inv,
+                    ItemId(RecordReference {
+                        module: "8f356647e8f846bbbf1baebc0b3cf40d".parse().unwrap(),
+                        record: RecordId(3),
+                    }),
+                    &modules,
+                );
 
                 map.insert(id, ent);
                 // FIXME: This should not be set in this snapshot, but in the most

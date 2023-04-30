@@ -77,6 +77,50 @@ impl RecordBody {
             Self::Object(_) => RecordKind::Object,
         }
     }
+
+    pub fn unwrap_item(self) -> ItemRecord {
+        match self {
+            Self::Item(item) => item,
+            _ => self.panic_invalid_record("item"),
+        }
+    }
+
+    pub fn unwrap_action(self) -> ActionRecord {
+        match self {
+            Self::Action(action) => action,
+            _ => self.panic_invalid_record("action"),
+        }
+    }
+
+    pub fn unwrap_componen(self) -> ComponentRecord {
+        match self {
+            Self::Component(component) => component,
+            _ => self.panic_invalid_record("component"),
+        }
+    }
+
+    pub fn unwrap_object(self) -> ObjectRecord {
+        match self {
+            Self::Object(object) => object,
+            _ => self.panic_invalid_record("object"),
+        }
+    }
+
+    #[inline(never)]
+    #[cold]
+    fn panic_invalid_record(&self, expected: &'static str) -> ! {
+        let got = match self.kind() {
+            RecordKind::Item => "Item",
+            RecordKind::Action => "Action",
+            RecordKind::Component => "Component",
+            RecordKind::Object => "Object",
+        };
+
+        panic!(
+            "called `RecordBody::unwrap_{}` on a {} value",
+            expected, got
+        );
+    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
