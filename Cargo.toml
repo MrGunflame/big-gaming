@@ -15,6 +15,7 @@ members = [
     "game_data",
     "game_script",
     "game_wasm",
+    "game_render",
     "tests",
 ]
 
