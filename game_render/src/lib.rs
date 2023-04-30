@@ -6,7 +6,8 @@ use glam::Vec2;
 use layout::{DrawContext, Rect, Widget};
 use wgpu::util::DeviceExt;
 use wgpu::{
-    BufferAddress, BufferUsages, VertexAttribute, VertexBufferLayout, VertexFormat, VertexStepMode,
+    BufferAddress, BufferUsages, IndexFormat, VertexAttribute, VertexBufferLayout, VertexFormat,
+    VertexStepMode,
 };
 use winit::event::WindowEvent;
 use winit::window::Window;
@@ -127,27 +128,27 @@ impl State {
 
         let rect = Rect {
             position: Vec2::new(0.0, 0.0),
-            width: 0.5,
-            height: 0.5,
+            width: 1.0,
+            height: 1.0,
         };
 
         let mut ctx = DrawContext::new(Vec2::new(size.width as f32, size.height as f32));
         rect.draw(&mut ctx);
 
-        let buffer = Box::leak(ctx.vertex.into_boxed_slice());
+        let verts = Box::leak(ctx.vertex.into_boxed_slice());
+        let indics = Box::leak(ctx.indices.into_boxed_slice());
 
-        let num_vertices = buffer.len() as u32;
-        dbg!(&buffer);
+        let num_vertices = indics.len() as u32;
 
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("vertex_buffer"),
-            contents: bytemuck::cast_slice(buffer),
+            contents: bytemuck::cast_slice(verts),
             usage: wgpu::BufferUsages::VERTEX,
         });
 
         let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("index_buffer"),
-            contents: bytemuck::cast_slice(INDICES),
+            contents: bytemuck::cast_slice(indics),
             usage: BufferUsages::INDEX,
         });
 
@@ -218,9 +219,9 @@ impl State {
 
             render_pass.set_pipeline(&self.render_pipeline);
             render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-            render_pass.draw(0..self.num_vertices, 0..1);
-            // render_pass.set_index_buffer(self.index_buffer.slice(..), IndexFormat::Uint16);
-            // render_pass.draw_indexed(0..self.num_vertices, 0, 0..1);
+            // render_pass.draw(0..self.num_vertices, 0..1);
+            render_pass.set_index_buffer(self.index_buffer.slice(..), IndexFormat::Uint32);
+            render_pass.draw_indexed(0..self.num_vertices, 0, 0..1);
         }
 
         self.queue.submit(std::iter::once(encoder.finish()));
