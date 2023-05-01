@@ -24,13 +24,12 @@ impl Frame {
         }
 
         // Space between
-        let padding = (size.x - width) / self.nodes.len() as f32 - 1.0;
-        dbg!(padding);
+        let padding = (size.x - width) / (self.nodes.len() as f32 - 1.0);
 
-        let mut diff = self.nodes[0].width;
+        let diff = self.nodes[0].width;
         for node in self.nodes.iter_mut().skip(1) {
             node.position.x += diff;
-            // node.position.x += padding;
+            node.position.x += padding;
         }
 
         for node in self.nodes.iter() {

@@ -1,4 +1,5 @@
 pub mod layout;
+pub mod text;
 pub mod window;
 
 use bytemuck::{Pod, Zeroable};
@@ -13,6 +14,7 @@ use winit::event::WindowEvent;
 use winit::window::Window;
 
 use crate::layout::Frame;
+use crate::text::Text;
 
 struct State {
     surface: wgpu::Surface,
@@ -145,13 +147,15 @@ impl State {
 
         frame.draw(&mut ctx);
 
+        let text = Text {
+            text: "Hello World!".to_owned(),
+        };
+        text.draw(&mut ctx);
+
         let verts = Box::leak(ctx.vertex.into_boxed_slice());
         let indics = Box::leak(ctx.indices.into_boxed_slice());
 
         let num_vertices = indics.len() as u32;
-
-        dbg!(&verts);
-        dbg!(&indics);
 
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("vertex_buffer"),
