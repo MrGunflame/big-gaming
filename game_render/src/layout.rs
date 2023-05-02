@@ -1,8 +1,12 @@
+use std::collections::HashMap;
+
 use glam::Vec2;
+use image::ImageBuffer;
 use wgpu::{BindGroup, BindGroupLayout, Device, Queue};
 
 #[derive(Clone, Debug)]
 pub enum Element {
+    Container(Container),
     Text(Text),
     Image(Image),
 }
@@ -10,6 +14,7 @@ pub enum Element {
 impl Element {
     pub fn dimensions(&self) -> Vec2 {
         match self {
+            Self::Container(elem) => elem.dimensions(),
             Self::Text(elem) => elem.dimensions(),
             Self::Image(elem) => elem.dimensions(),
         }
@@ -26,11 +31,53 @@ impl BuildPrimitiveElement for Element {
         size: Vec2,
     ) -> crate::ui::PrimitiveElement {
         match self {
+            Self::Container(elem) => elem.build(position, pipeline, device, queue, size),
             Self::Text(elem) => elem.build(position, pipeline, device, queue, size),
             Self::Image(elem) => elem.build(position, pipeline, device, queue, size),
         }
     }
 }
+
+#[derive(Clone, Debug)]
+pub struct Container {
+    pub position: Vec2,
+}
+
+impl Container {
+    pub fn dimensions(&self) -> Vec2 {
+        Vec2::new(100.0, 100.0)
+    }
+}
+
+impl BuildPrimitiveElement for Container {
+    fn build(
+        &self,
+        position: Vec2,
+        pipeline: &crate::ui::UiPipeline,
+        device: &Device,
+        queue: &Queue,
+        size: Vec2,
+    ) -> crate::ui::PrimitiveElement {
+        let mut image = ImageBuffer::new(100, 100);
+        debug_border(&mut image);
+
+        let start = crate::layout::remap(position, size);
+        let end = crate::layout::remap(position + Vec2::new(100.0, 100.0), size);
+
+        PrimitiveElement::new(
+            pipeline,
+            device,
+            queue,
+            start,
+            end,
+            &image,
+            [0.0, 1.0, 0.0, 1.0],
+        )
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct Key(usize);
 
 /// The global wrapper for all UI elements.
 #[derive(Debug)]
@@ -39,6 +86,9 @@ pub struct Frame {
     layouts: Vec<Layout>,
     size: Vec2,
     changed: bool,
+
+    children: HashMap<usize, Vec<usize>>,
+    parents: HashMap<usize, usize>,
 }
 
 impl Frame {
@@ -48,6 +98,8 @@ impl Frame {
             layouts: vec![],
             size,
             changed: false,
+            children: HashMap::new(),
+            parents: HashMap::new(),
         }
     }
 
@@ -165,9 +217,9 @@ impl<'a> ExactSizeIterator for Layouts<'a> {
     }
 }
 
-use crate::image::Image;
+use crate::image::{debug_border, Image};
 use crate::text::Text;
-use crate::ui::BuildPrimitiveElement;
+use crate::ui::{BuildPrimitiveElement, PrimitiveElement};
 use crate::Vertex;
 
 #[derive(Copy, Clone, Debug)]

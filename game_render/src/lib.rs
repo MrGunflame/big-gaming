@@ -1,13 +1,15 @@
 pub mod buffer;
+pub mod events;
 pub mod image;
 pub mod layout;
+pub mod style;
 pub mod text;
 pub mod ui;
 pub mod window;
 
 use bytemuck::{Pod, Zeroable};
 use glam::Vec2;
-use layout::{DrawContext, Element, Rect, Widget};
+use layout::{Container, DrawContext, Element, Rect, Widget};
 use ui::{BuildPrimitiveElement, RenderContext, UiPass, UiPipeline};
 use wgpu::util::DeviceExt;
 use wgpu::{
@@ -164,6 +166,9 @@ impl State {
                 .to_rgba8(),
             dimensions: Vec2::new(64.0, 64.0),
         }));
+        frame.push(Element::Container(Container {
+            position: Vec2::splat(0.0),
+        }));
 
         let ui_pipeline = UiPipeline::new(&device);
 
@@ -201,6 +206,37 @@ impl State {
     }
 
     pub fn input(&mut self, event: &WindowEvent) -> bool {
+        match event {
+            WindowEvent::MouseInput {
+                device_id,
+                state,
+                button,
+                modifiers,
+            } => {}
+            WindowEvent::CursorMoved {
+                device_id,
+                position,
+                modifiers,
+            } => {
+                for (elem, layout) in self.frame.elements().zip(self.frame.layouts()) {
+                    let rect = crate::events::Rect {
+                        min: Vec2 {
+                            x: layout.position.x,
+                            y: layout.position.y,
+                        },
+                        max: Vec2 {
+                            x: layout.position.x + elem.dimensions().x,
+                            y: layout.position.y + elem.dimensions().y,
+                        },
+                    };
+
+                    let cursor = Vec2::new(position.x as f32, position.y as f32);
+                    dbg!(crate::events::hit_test(rect, cursor));
+                }
+            }
+            _ => todo!(),
+        }
+
         false
     }
 

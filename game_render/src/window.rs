@@ -28,6 +28,30 @@ pub async fn run() {
                     } => {
                         state.resize(*new_inner_size);
                     }
+                    WindowEvent::MouseInput {
+                        device_id,
+                        state: s,
+                        button,
+                        modifiers,
+                    } => {
+                        state.input(&WindowEvent::MouseInput {
+                            device_id,
+                            state: s,
+                            button,
+                            modifiers,
+                        });
+                    }
+                    WindowEvent::CursorMoved {
+                        device_id,
+                        position,
+                        modifiers,
+                    } => {
+                        state.input(&WindowEvent::CursorMoved {
+                            device_id,
+                            position,
+                            modifiers,
+                        });
+                    }
                     _ => (),
                 }
             }
