@@ -3,13 +3,15 @@ use std::time::Instant;
 
 use bevy::prelude::{App, Plugin, Resource};
 use game_common::module::ModuleId;
+use game_common::record::{RecordId, RecordReference};
 use game_common::world::world::WorldState;
 use game_data::loader::FileLoader;
-use game_data::record::RecordBody;
+use game_data::record::{Record, RecordBody, RecordKind};
 use game_data::DataBuffer;
 use game_script::plugin::ScriptPlugin;
 use game_script::script::Script;
 use game_script::ScriptServer;
+use thiserror::Error;
 use tokio::runtime::Runtime;
 
 pub struct ModulePlugin;
@@ -129,7 +131,7 @@ pub fn load_modules(app: &mut App) {
 
 fn load_module(data: DataBuffer, modules: &mut Modules, server: &mut ScriptServer) {
     let mut records = Records::new();
-    for record in data.records {
+    for record in &data.records {
         let mut world = WorldState::new();
         world.insert(Instant::now());
 
@@ -187,10 +189,132 @@ fn load_module(data: DataBuffer, modules: &mut Modules, server: &mut ScriptServe
         }
     }
 
+    if let Err(err) = validate_module(&modules, &data) {
+        tracing::error!(
+            "failed to load module {} ({}): {}",
+            data.header.module.name,
+            data.header.module.id,
+            err,
+        );
+
+        return;
+    }
+
     modules.insert(ModuleData {
         id: data.header.module.id,
         records,
     });
+}
+
+#[derive(Clone, Debug, Error)]
+#[error("bad record {record}: {kind}")]
+pub struct ValidationError {
+    record: RecordId,
+    kind: ValidationErrorKind,
+}
+
+#[derive(Clone, Debug, Error)]
+pub enum ValidationErrorKind {
+    /// A record linked an unknown [`ModuleId`].
+    ///
+    /// Note that any referenced records from external modules **MUST** be declared in an explicit
+    /// depdency. A transitive dependency is not enough.
+    #[error("unknown dependency: {0}")]
+    UnknownDependency(ModuleId),
+    /// A record linked to an unknown record inside a module.
+    ///
+    /// Note that an `UnknownRecord` means that the module was loaded successfully, but it did not
+    /// contain the requested [`RecordId`].
+    #[error("unknown record {id} in dependency {module}")]
+    UnknownRecord { module: ModuleId, id: RecordId },
+    #[error("invalid record kind {found:?}, expected {expected:?}")]
+    InvalidKind {
+        found: RecordKind,
+        expected: RecordKind,
+    },
+}
+
+fn validate_module(modules: &Modules, module: &DataBuffer) -> Result<(), ValidationError> {
+    for record in &module.records {
+        match &record.body {
+            RecordBody::Action(_) => {}
+            RecordBody::Component(_) => {}
+            RecordBody::Item(item) => {
+                for component in &item.components {
+                    let module_id = component.record.module;
+
+                    if module_id != module.header.module.id
+                        && !module
+                            .header
+                            .module
+                            .dependencies
+                            .iter()
+                            .any(|dep| dep.id == component.record.module)
+                    {
+                        return Err(ValidationError {
+                            record: record.id,
+                            kind: ValidationErrorKind::UnknownDependency(module_id),
+                        });
+                    }
+
+                    match fetch_record(&modules, &module, component.record) {
+                        Ok(rec) => {
+                            if !rec.body.kind().is_component() {
+                                return Err(ValidationError {
+                                    record: record.id,
+                                    kind: ValidationErrorKind::InvalidKind {
+                                        found: rec.body.kind(),
+                                        expected: RecordKind::Component,
+                                    },
+                                });
+                            }
+                        }
+                        Err(err) => {
+                            return Err(ValidationError {
+                                record: record.id,
+                                kind: err,
+                            });
+                        }
+                    }
+                }
+            }
+            RecordBody::Object(object) => {}
+        }
+    }
+
+    Ok(())
+}
+
+/// Fetch a record from either the module itself, or any dependant modules.
+fn fetch_record<'a>(
+    modules: &'a Modules,
+    module: &'a DataBuffer,
+    id: RecordReference,
+) -> Result<&'a Record, ValidationErrorKind> {
+    if let Some(module) = modules.get(id.module) {
+        if let Some(rec) = module.records.get(id.record) {
+            return Ok(rec);
+        } else {
+            // Module loaded, but doesn't contain record.
+            return Err(ValidationErrorKind::UnknownRecord {
+                module: id.module,
+                id: id.record,
+            });
+        }
+    }
+
+    if module.header.module.id != id.module {
+        return Err(ValidationErrorKind::UnknownDependency(id.module));
+    }
+
+    module
+        .records
+        .iter()
+        .find(|rec| rec.id == id.record)
+        .ok_or_else(|| ValidationErrorKind::UnknownRecord {
+            module: id.module,
+            id: id.record,
+        })
 }
 
 /// Temporary store used while loading modules.
