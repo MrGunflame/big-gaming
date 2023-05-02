@@ -7,8 +7,7 @@ pub mod window;
 use bytemuck::{Pod, Zeroable};
 use glam::Vec2;
 use layout::{DrawContext, Rect, Widget};
-use text::TextPipeline;
-use ui::{PrimitiveElement, RenderContext, UiPass, UiPipeline};
+use ui::{BuildPrimitiveElement, RenderContext, UiPass, UiPipeline};
 use wgpu::util::DeviceExt;
 use wgpu::{
     BindGroup, BufferAddress, BufferUsages, IndexFormat, PipelineLayout, RenderPipeline,
@@ -33,7 +32,6 @@ pub struct State {
     bind_groups: Vec<BindGroup>,
     pipelines: Vec<RenderPipeline>,
     pipeline_layouts: Vec<PipelineLayout>,
-    text_pipeline: TextPipeline,
     ui_pass: UiPass,
     ui_pipeline: UiPipeline,
 }
@@ -145,13 +143,6 @@ impl State {
         pipeline_layouts.push(render_pipeline_layout);
         pipelines.push(render_pipeline);
 
-        let mut text_pipeline = TextPipeline::new(
-            &device,
-            &queue,
-            &config,
-            Vec2::new(size.width as f32, size.height as f32),
-        );
-
         let rect = Rect {
             position: Vec2::new(0.0, 0.0),
             width: size.width as f32 / 4.0,
@@ -162,25 +153,16 @@ impl State {
 
         let mut bind_groups = vec![];
 
-        let mut frame = Frame::new();
-        frame.push(rect.clone());
-        frame.push(rect.clone());
+        let mut frame = Frame::new(Vec2::new(size.width as f32, size.height as f32));
+        // frame.push(Text{text: ""})
 
         let mut ctx = DrawContext::new(
             Vec2::new(size.width as f32, size.height as f32),
             &mut device,
             &queue,
             &mut bind_groups,
-            &mut text_pipeline,
         );
         // rect.draw(&mut ctx);
-
-        frame.draw(&mut ctx);
-
-        let text = Text {
-            text: "Hello World!".to_owned(),
-        };
-        text.draw(&mut ctx);
 
         let verts = Box::leak(ctx.vertex.into_boxed_slice());
         let indics = Box::leak(ctx.indices.into_boxed_slice());
@@ -201,21 +183,26 @@ impl State {
 
         let ui_pipeline = UiPipeline::new(&device);
 
-        let img = image::io::Reader::open("test.png")
-            .unwrap()
-            .decode()
-            .unwrap();
-        let img = img.to_rgba8();
-
         let ui_pass = UiPass {
-            elements: vec![PrimitiveElement::new(
+            // elements: vec![PrimitiveElement::new(
+            //     &ui_pipeline,
+            //     &device,
+            //     &queue,
+            //     Vec2::new(-1.0, 1.0),
+            //     Vec2::new(0.0, 0.0),
+            //     img,
+            //     [0.0, 1.0, 0.0, 1.0],
+            // )],
+            elements: vec![Text {
+                position: Vec2::splat(0.0),
+                text: "Test!".to_owned(),
+                size: 45.0,
+            }
+            .build(
                 &ui_pipeline,
                 &device,
                 &queue,
-                Vec2::new(-1.0, 1.0),
-                Vec2::new(0.0, 0.0),
-                img,
-                [0.0, 1.0, 0.0, 1.0],
+                Vec2::new(size.width as f32, size.height as f32),
             )],
         };
 
@@ -232,7 +219,6 @@ impl State {
             bind_groups,
             pipeline_layouts,
             pipelines,
-            text_pipeline,
             ui_pass,
             ui_pipeline,
         }
@@ -271,8 +257,6 @@ impl State {
             });
 
         {
-            let mut bind_groups = Vec::new();
-
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("render_pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -296,11 +280,6 @@ impl State {
             // render_pass.draw(0..self.num_vertices, 0..1);
             render_pass.set_index_buffer(self.index_buffer.slice(..), IndexFormat::Uint32);
             render_pass.draw_indexed(0..self.num_vertices, 0, 0..1);
-
-            Text {
-                text: "Hello World!".to_owned(),
-            }
-            .render(&self, &mut bind_groups, &mut render_pass);
         }
 
         let ctx = RenderContext {

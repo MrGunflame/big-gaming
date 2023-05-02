@@ -265,6 +265,7 @@ impl PrimitiveElement {
     }
 }
 
+#[derive(Debug)]
 pub struct UiPass {
     pub elements: Vec<PrimitiveElement>,
 }
@@ -340,3 +341,16 @@ impl<'a> RenderContext<'a> {
     //     self.encoder.begin_render_pass(desc)
     // }
 }
+
+pub(crate) trait BuildPrimitiveElement {
+    /// `size`: Screen size
+    fn build(
+        &self,
+        pipeline: &UiPipeline,
+        device: &Device,
+        queue: &Queue,
+        size: Vec2,
+    ) -> PrimitiveElement;
+}
+
+pub trait UiElement {}

@@ -1,53 +1,101 @@
 use glam::Vec2;
 use wgpu::{BindGroup, BindGroupLayout, Device, Queue};
 
-/// The global wrapper for all UI elements.
 #[derive(Clone, Debug)]
+pub enum Element {
+    Text(Text),
+}
+
+impl Element {
+    pub fn dimensions(&self) -> Vec2 {
+        match self {
+            Self::Text(elem) => elem.dimensions(),
+        }
+    }
+}
+
+/// The global wrapper for all UI elements.
+#[derive(Debug)]
 pub struct Frame {
-    nodes: Vec<Rect>,
+    nodes: Vec<Element>,
+    size: Vec2,
 }
 
 impl Frame {
-    pub fn new() -> Self {
-        Self { nodes: vec![] }
+    pub fn new(size: Vec2) -> Self {
+        Self {
+            nodes: vec![],
+            size,
+        }
     }
 
-    pub fn push(&mut self, node: Rect) {
-        self.nodes.push(node);
+    pub fn resize(&mut self, size: Vec2) {
+        self.size = size;
     }
 
-    pub fn draw(&mut self, ctx: &mut DrawContext) {
-        let size = ctx.size();
+    pub fn push(&mut self, elem: Element) {
+        self.nodes.push(elem);
+    }
 
-        let mut width = 0.0;
-        for node in &self.nodes {
-            width += node.width;
-        }
+    // pub fn draw(&mut self, ctx: &mut DrawContext) {
+    //     let size = ctx.size();
 
-        // Space between
-        let padding = (size.x - width) / (self.nodes.len() as f32 - 1.0);
+    //     let mut width = 0.0;
+    //     for node in &self.nodes {
+    //         width += node.width;
+    //     }
 
-        let diff = self.nodes[0].width;
-        for node in self.nodes.iter_mut().skip(1) {
-            node.position.x += diff;
-            node.position.x += padding;
-        }
+    //     // Space between
+    //     let padding = (size.x - width) / (self.nodes.len() as f32 - 1.0);
 
-        for node in self.nodes.iter() {
-            node.draw(ctx);
-            ctx.update_vertex_counter();
-        }
+    //     let diff = self.nodes[0].width;
+    //     for node in self.nodes.iter_mut().skip(1) {
+    //         node.position.x += diff;
+    //         node.position.x += padding;
+    //     }
+
+    //     for node in self.nodes.iter() {
+    //         node.draw(ctx);
+    //         ctx.update_vertex_counter();
+    //     }
+    // }
+
+    /// Returns an iterator over all elements in the `Frame`.
+    pub fn elements(&self) -> Elements<'_> {
+        Elements { inner: &self.nodes }
     }
 }
 
-use crate::text::{Text, TextPipeline};
+pub struct Elements<'a> {
+    inner: &'a [Element],
+}
+
+impl<'a> Iterator for Elements<'a> {
+    type Item = &'a Element;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let (elem, rem) = self.inner.split_first()?;
+        self.inner = rem;
+        Some(elem)
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.len(), Some(self.len()))
+    }
+}
+
+impl<'a> ExactSizeIterator for Elements<'a> {
+    fn len(&self) -> usize {
+        self.inner.len()
+    }
+}
+
+use crate::text::Text;
 use crate::Vertex;
 
 pub struct Layout {
-    children: Vec<Node>,
+    pub position: Vec2,
 }
-
-impl Layout {}
 
 pub trait Widget {
     fn draw(&self, ctx: &mut DrawContext);
@@ -89,7 +137,6 @@ pub struct DrawContext<'a> {
     device: &'a mut Device,
     queue: &'a Queue,
     pub(crate) bind_groups: &'a mut Vec<BindGroup>,
-    pub(crate) text_pipeline: &'a mut TextPipeline,
 }
 
 impl<'a> DrawContext<'a> {
@@ -98,7 +145,6 @@ impl<'a> DrawContext<'a> {
         device: &'a mut Device,
         queue: &'a Queue,
         bind_groups: &'a mut Vec<BindGroup>,
-        text_pipeline: &'a mut TextPipeline,
     ) -> Self {
         Self {
             size,
@@ -108,7 +154,6 @@ impl<'a> DrawContext<'a> {
             device,
             queue,
             bind_groups,
-            text_pipeline,
         }
     }
 
@@ -145,12 +190,6 @@ impl<'a> DrawContext<'a> {
     pub fn queue(&'a self) -> &'a Queue {
         &self.queue
     }
-}
-
-pub enum Element {
-    Box(Rect),
-    Text(Text),
-    Image(Image),
 }
 
 pub struct Image;
