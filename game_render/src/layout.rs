@@ -1,4 +1,5 @@
 use glam::Vec2;
+use wgpu::{BindGroup, BindGroupLayout, Device, Queue};
 
 /// The global wrapper for all UI elements.
 #[derive(Clone, Debug)]
@@ -39,6 +40,7 @@ impl Frame {
     }
 }
 
+use crate::text::TextPipeline;
 use crate::Vertex;
 
 pub struct Layout {
@@ -65,8 +67,6 @@ pub struct Rect {
 
 impl Widget for Rect {
     fn draw(&self, ctx: &mut DrawContext) {
-        dbg!(self.position);
-
         let start = remap(self.position, ctx.size());
         let end = remap(
             Vec2::new(self.position.x + self.width, self.position.y + self.height),
@@ -86,20 +86,34 @@ impl Widget for Rect {
     }
 }
 
-pub struct DrawContext {
+pub struct DrawContext<'a> {
     size: Vec2,
     pub(crate) vertex: Vec<Vertex>,
     pub(crate) indices: Vec<u32>,
     vertices: u32,
+    device: &'a mut Device,
+    queue: &'a Queue,
+    pub(crate) bind_groups: &'a mut Vec<BindGroup>,
+    pub(crate) text_pipeline: &'a mut TextPipeline,
 }
 
-impl DrawContext {
-    pub(crate) fn new(size: Vec2) -> Self {
+impl<'a> DrawContext<'a> {
+    pub(crate) fn new(
+        size: Vec2,
+        device: &'a mut Device,
+        queue: &'a Queue,
+        bind_groups: &'a mut Vec<BindGroup>,
+        text_pipeline: &'a mut TextPipeline,
+    ) -> Self {
         Self {
             size,
             vertex: vec![],
             indices: vec![],
             vertices: 0,
+            device,
+            queue,
+            bind_groups,
+            text_pipeline,
         }
     }
 
@@ -127,6 +141,14 @@ impl DrawContext {
 
     fn update_vertex_counter(&mut self) {
         self.vertices = self.vertex.len() as u32;
+    }
+
+    pub fn device(&'a self) -> &'a Device {
+        &self.device
+    }
+
+    pub fn queue(&'a self) -> &'a Queue {
+        &self.queue
     }
 }
 
@@ -173,4 +195,12 @@ mod tests {
         // FP inacuraccy
         assert_eq!(super::remap(input, size), Vec2::new(-0.2, -0.2));
     }
+}
+
+pub trait AsBindGroup {
+    const NAME: &'static str;
+
+    fn as_bind_group(&self);
+
+    fn bind_group_layout(device: &Device) -> BindGroupLayout;
 }

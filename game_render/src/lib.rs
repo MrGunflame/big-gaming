@@ -5,10 +5,11 @@ pub mod window;
 use bytemuck::{Pod, Zeroable};
 use glam::Vec2;
 use layout::{DrawContext, Rect, Widget};
+use text::TextPipeline;
 use wgpu::util::DeviceExt;
 use wgpu::{
-    BufferAddress, BufferUsages, IndexFormat, VertexAttribute, VertexBufferLayout, VertexFormat,
-    VertexStepMode,
+    BindGroup, BufferAddress, BufferUsages, IndexFormat, PipelineLayout, RenderPipeline,
+    VertexAttribute, VertexBufferLayout, VertexFormat, VertexStepMode,
 };
 use winit::event::WindowEvent;
 use winit::window::Window;
@@ -16,17 +17,20 @@ use winit::window::Window;
 use crate::layout::Frame;
 use crate::text::Text;
 
-struct State {
+pub struct State {
     surface: wgpu::Surface,
     device: wgpu::Device,
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
     size: winit::dpi::PhysicalSize<u32>,
     window: Window,
-    render_pipeline: wgpu::RenderPipeline,
     vertex_buffer: wgpu::Buffer,
     index_buffer: wgpu::Buffer,
     num_vertices: u32,
+    bind_groups: Vec<BindGroup>,
+    pipelines: Vec<RenderPipeline>,
+    pipeline_layouts: Vec<PipelineLayout>,
+    text_pipeline: TextPipeline,
 }
 
 impl State {
@@ -49,7 +53,7 @@ impl State {
             .await
             .unwrap();
 
-        let (device, queue) = adapter
+        let (mut device, queue) = adapter
             .request_device(
                 &wgpu::DeviceDescriptor {
                     features: wgpu::Features::empty(),
@@ -87,6 +91,9 @@ impl State {
             label: Some("shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
         });
+
+        let mut pipeline_layouts = vec![];
+        let mut pipelines = vec![];
 
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -130,6 +137,11 @@ impl State {
             multiview: None,
         });
 
+        pipeline_layouts.push(render_pipeline_layout);
+        pipelines.push(render_pipeline);
+
+        let mut text_pipeline = TextPipeline::new(&device, &config);
+
         let rect = Rect {
             position: Vec2::new(0.0, 0.0),
             width: size.width as f32 / 4.0,
@@ -138,14 +150,22 @@ impl State {
             // height: 100.0,
         };
 
+        let mut bind_groups = vec![];
+
         let mut frame = Frame::new();
         frame.push(rect.clone());
         frame.push(rect.clone());
 
-        let mut ctx = DrawContext::new(Vec2::new(size.width as f32, size.height as f32));
+        let mut ctx = DrawContext::new(
+            Vec2::new(size.width as f32, size.height as f32),
+            &mut device,
+            &queue,
+            &mut bind_groups,
+            &mut text_pipeline,
+        );
         // rect.draw(&mut ctx);
 
-        frame.draw(&mut ctx);
+        // frame.draw(&mut ctx);
 
         let text = Text {
             text: "Hello World!".to_owned(),
@@ -176,10 +196,13 @@ impl State {
             queue,
             config,
             size,
-            render_pipeline,
             vertex_buffer,
             index_buffer,
             num_vertices,
+            bind_groups,
+            pipeline_layouts,
+            pipelines,
+            text_pipeline,
         }
     }
 
@@ -216,6 +239,8 @@ impl State {
             });
 
         {
+            let mut bind_groups = Vec::new();
+
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("render_pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -234,11 +259,16 @@ impl State {
                 depth_stencil_attachment: None,
             });
 
-            render_pass.set_pipeline(&self.render_pipeline);
+            render_pass.set_pipeline(&self.pipelines[0]);
             render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
             // render_pass.draw(0..self.num_vertices, 0..1);
             render_pass.set_index_buffer(self.index_buffer.slice(..), IndexFormat::Uint32);
             render_pass.draw_indexed(0..self.num_vertices, 0, 0..1);
+
+            Text {
+                text: "Hello World!".to_owned(),
+            }
+            .render(&self, &mut bind_groups, &mut render_pass);
         }
 
         self.queue.submit(std::iter::once(encoder.finish()));
