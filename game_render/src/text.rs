@@ -401,23 +401,15 @@ fn render_to_texture(text: &str) -> ImageBuffer<Rgba<u8>, Vec<u8>> {
     let font =
         FontRef::try_from_slice(include_bytes!("/usr/share/fonts/droid/DroidSans.ttf")).unwrap();
 
-    let scaled_font = font.as_scaled(PxScale::from(24.0));
+    let scaled_font = font.as_scaled(PxScale::from(60.0));
 
     let mut glyphs = Vec::new();
-    layout_glyphs(scaled_font, point(20.0, 20.0), text, &mut glyphs);
+    let (num_lines, max_width) =
+        layout_glyphs(scaled_font, point(0.0, 0.0), text, 1000.0, &mut glyphs);
 
     let height = scaled_font.height().ceil() as u32;
-    let width = {
-        let min_x = glyphs.first().unwrap().position.x;
-        let last_glyph = glyphs.last().unwrap();
-        let max_x = last_glyph.position.x + scaled_font.h_advance(last_glyph.id);
-        // dbg!(max_x);
-        // (max_x - min_x).ceil() as u32
-        max_x.ceil() as u32
-    };
 
-    // let mut image: ImageBuffer<Luma<u8>, Vec<u8>> = ImageBuffer::new(width + 40, height + 40);
-    let mut image = RgbaImage::new(width + 40, height + 40);
+    let mut image = RgbaImage::new(max_width.ceil() as u32, num_lines * height);
 
     // for pixel in image.pixels_mut() {
     //     *pixel = Rgba([0, 0, 0, 255]);
@@ -447,8 +439,14 @@ fn layout_glyphs<SF: ScaleFont<F>, F: Font>(
     font: SF,
     position: Point,
     text: &str,
+    max_width: f32,
     target: &mut Vec<Glyph>,
-) {
+) -> (u32, f32) {
+    let mut num_lines = 1;
+
+    // The width of the widest line.
+    let mut width = 0.0;
+
     let v_advance = font.height() + font.line_gap();
     let mut caret = position + point(0.0, font.ascent());
 
@@ -456,7 +454,15 @@ fn layout_glyphs<SF: ScaleFont<F>, F: Font>(
 
     for ch in text.chars() {
         if ch.is_control() {
-            // TODO: handle newlines
+            if ch == '\n' {
+                if caret.x > width {
+                    width = caret.x;
+                }
+
+                caret = point(position.x, caret.y + v_advance);
+                num_lines += 1;
+            }
+
             continue;
         }
 
@@ -470,14 +476,25 @@ fn layout_glyphs<SF: ScaleFont<F>, F: Font>(
         last_glyph = Some(glyph.clone());
         caret.x += font.h_advance(glyph.id);
 
-        if !ch.is_whitespace() {
-            caret = point(caret.x + v_advance, position.y);
+        if !ch.is_whitespace() && caret.x > position.x + max_width {
+            if caret.x > width {
+                width = caret.x;
+            }
+
+            caret = point(caret.x, position.y);
             glyph.position = caret;
             last_glyph = None;
+            num_lines += 1;
         }
 
         target.push(glyph);
     }
+
+    if caret.x > width {
+        width = caret.x;
+    }
+
+    (num_lines, width)
 }
 
 #[derive(Copy, Clone, Debug, Zeroable, Pod)]

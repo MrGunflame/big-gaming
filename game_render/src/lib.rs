@@ -152,7 +152,7 @@ impl State {
         let mut frame = Frame::new(Vec2::new(size.width as f32, size.height as f32));
         frame.push(Element::Text(Text {
             position: Vec2::splat(0.0),
-            text: "abc".to_owned(),
+            text: "Hello World!\nNewline\nNL2".to_owned(),
             size: 45.0,
         }));
         frame.push(Element::Image(crate::image::Image {
