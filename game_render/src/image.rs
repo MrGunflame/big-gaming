@@ -21,14 +21,15 @@ impl Image {
 impl BuildPrimitiveElement for Image {
     fn build(
         &self,
+        position: Vec2,
         pipeline: &crate::ui::UiPipeline,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         size: glam::Vec2,
     ) -> PrimitiveElement {
-        let start = crate::layout::remap(self.position, size);
+        let start = crate::layout::remap(position, size);
         let end = crate::layout::remap(
-            self.position + Vec2::new(self.image.width() as f32, self.image.height() as f32),
+            position + Vec2::new(self.image.width() as f32, self.image.height() as f32),
             size,
         );
 

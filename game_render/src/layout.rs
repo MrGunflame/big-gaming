@@ -19,14 +19,15 @@ impl Element {
 impl BuildPrimitiveElement for Element {
     fn build(
         &self,
+        position: Vec2,
         pipeline: &crate::ui::UiPipeline,
         device: &Device,
         queue: &Queue,
         size: Vec2,
     ) -> crate::ui::PrimitiveElement {
         match self {
-            Self::Text(elem) => elem.build(pipeline, device, queue, size),
-            Self::Image(elem) => elem.build(pipeline, device, queue, size),
+            Self::Text(elem) => elem.build(position, pipeline, device, queue, size),
+            Self::Image(elem) => elem.build(position, pipeline, device, queue, size),
         }
     }
 }
@@ -35,6 +36,7 @@ impl BuildPrimitiveElement for Element {
 #[derive(Debug)]
 pub struct Frame {
     nodes: Vec<Element>,
+    layouts: Vec<Layout>,
     size: Vec2,
     changed: bool,
 }
@@ -43,6 +45,7 @@ impl Frame {
     pub fn new(size: Vec2) -> Self {
         Self {
             nodes: vec![],
+            layouts: vec![],
             size,
             changed: false,
         }
@@ -55,6 +58,9 @@ impl Frame {
 
     pub fn push(&mut self, elem: Element) {
         self.nodes.push(elem);
+        self.layouts.push(Layout {
+            position: Vec2::splat(0.0),
+        });
         self.changed = true;
     }
 
@@ -64,6 +70,14 @@ impl Frame {
 
     pub fn is_changed(&self) -> bool {
         self.changed
+    }
+
+    pub fn calculate_layout(&mut self) {
+        let mut y = 0.0;
+        for (elem, layout) in self.nodes.iter().zip(self.layouts.iter_mut()) {
+            layout.position.y = y;
+            y += elem.dimensions().y;
+        }
     }
 
     // pub fn draw(&mut self, ctx: &mut DrawContext) {
@@ -93,8 +107,15 @@ impl Frame {
     pub fn elements(&self) -> Elements<'_> {
         Elements { inner: &self.nodes }
     }
+
+    pub fn layouts(&self) -> Layouts<'_> {
+        Layouts {
+            inner: &self.layouts,
+        }
+    }
 }
 
+#[derive(Clone, Debug)]
 pub struct Elements<'a> {
     inner: &'a [Element],
 }
@@ -119,11 +140,37 @@ impl<'a> ExactSizeIterator for Elements<'a> {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct Layouts<'a> {
+    inner: &'a [Layout],
+}
+
+impl<'a> Iterator for Layouts<'a> {
+    type Item = &'a Layout;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let (elem, rem) = self.inner.split_first()?;
+        self.inner = rem;
+        Some(elem)
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.len(), Some(self.len()))
+    }
+}
+
+impl<'a> ExactSizeIterator for Layouts<'a> {
+    fn len(&self) -> usize {
+        self.inner.len()
+    }
+}
+
 use crate::image::Image;
 use crate::text::Text;
 use crate::ui::BuildPrimitiveElement;
 use crate::Vertex;
 
+#[derive(Copy, Clone, Debug)]
 pub struct Layout {
     pub position: Vec2,
 }

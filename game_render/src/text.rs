@@ -54,6 +54,7 @@ impl Text {
 impl BuildPrimitiveElement for Text {
     fn build(
         &self,
+        position: Vec2,
         pipeline: &UiPipeline,
         device: &Device,
         queue: &Queue,
@@ -65,9 +66,9 @@ impl BuildPrimitiveElement for Text {
         // of a `Text` element. Overflowing in the x direction will attempt
         // to wrap at the specified width, overflowing in the y direction
         // will cut any exceeding content.
-        let start = crate::layout::remap(self.position, size);
+        let start = crate::layout::remap(position, size);
         let end = crate::layout::remap(
-            self.position + Vec2::new(image.width() as f32, image.height() as f32),
+            position + Vec2::new(image.width() as f32, image.height() as f32),
             size,
         );
 

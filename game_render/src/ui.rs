@@ -291,10 +291,12 @@ impl UiPass {
             return;
         }
 
+        frame.calculate_layout();
+
         self.elements.clear();
-        for elem in frame.elements() {
+        for (elem, layout) in frame.elements().zip(frame.layouts()) {
             self.elements
-                .push(elem.build(pipeline, device, queue, size));
+                .push(elem.build(layout.position, pipeline, device, queue, size));
         }
 
         frame.unchanged();
@@ -371,6 +373,7 @@ pub(crate) trait BuildPrimitiveElement {
     /// `size`: Screen size
     fn build(
         &self,
+        position: Vec2,
         pipeline: &UiPipeline,
         device: &Device,
         queue: &Queue,
