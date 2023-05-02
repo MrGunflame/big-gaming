@@ -1,4 +1,5 @@
 pub mod buffer;
+pub mod image;
 pub mod layout;
 pub mod text;
 pub mod ui;
@@ -153,6 +154,15 @@ impl State {
             position: Vec2::splat(0.0),
             text: "abc".to_owned(),
             size: 45.0,
+        }));
+        frame.push(Element::Image(crate::image::Image {
+            position: Vec2::splat(0.0),
+            image: ::image::io::Reader::open("img.png")
+                .unwrap()
+                .decode()
+                .unwrap()
+                .to_rgba8(),
+            dimensions: Vec2::new(64.0, 64.0),
         }));
 
         let ui_pipeline = UiPipeline::new(&device);

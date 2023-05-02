@@ -22,6 +22,7 @@ use wgpu::{
     VertexState, VertexStepMode,
 };
 
+use crate::image::debug_border;
 use crate::layout::{DrawContext, Widget};
 use crate::ui::{BuildPrimitiveElement, PrimitiveElement, UiPipeline};
 use crate::State;
@@ -58,7 +59,7 @@ impl BuildPrimitiveElement for Text {
         queue: &Queue,
         size: Vec2,
     ) -> PrimitiveElement {
-        let image = render_to_texture(&self.text);
+        let mut image = render_to_texture(&self.text);
 
         // Note that the text size and contents themselves define the size
         // of a `Text` element. Overflowing in the x direction will attempt
@@ -70,14 +71,16 @@ impl BuildPrimitiveElement for Text {
             size,
         );
 
+        debug_border(&mut image);
+
         PrimitiveElement::new(
             pipeline,
             device,
             queue,
             start,
             end,
-            image,
-            [0.0, 0.0, 0.0, 1.0],
+            &image,
+            [1.0, 1.0, 1.0, 1.0],
         )
     }
 }

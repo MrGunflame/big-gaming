@@ -4,12 +4,14 @@ use wgpu::{BindGroup, BindGroupLayout, Device, Queue};
 #[derive(Clone, Debug)]
 pub enum Element {
     Text(Text),
+    Image(Image),
 }
 
 impl Element {
     pub fn dimensions(&self) -> Vec2 {
         match self {
             Self::Text(elem) => elem.dimensions(),
+            Self::Image(elem) => elem.dimensions(),
         }
     }
 }
@@ -24,6 +26,7 @@ impl BuildPrimitiveElement for Element {
     ) -> crate::ui::PrimitiveElement {
         match self {
             Self::Text(elem) => elem.build(pipeline, device, queue, size),
+            Self::Image(elem) => elem.build(pipeline, device, queue, size),
         }
     }
 }
@@ -116,6 +119,7 @@ impl<'a> ExactSizeIterator for Elements<'a> {
     }
 }
 
+use crate::image::Image;
 use crate::text::Text;
 use crate::ui::BuildPrimitiveElement;
 use crate::Vertex;
@@ -218,8 +222,6 @@ impl<'a> DrawContext<'a> {
         &self.queue
     }
 }
-
-pub struct Image;
 
 pub enum Node {
     Rect(Rect),

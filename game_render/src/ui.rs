@@ -164,7 +164,7 @@ impl PrimitiveElement {
         queue: &Queue,
         start: Vec2,
         end: Vec2,
-        image: ImageBuffer<Rgba<u8>, Vec<u8>>,
+        image: &ImageBuffer<Rgba<u8>, Vec<u8>>,
         color: [f32; 4],
     ) -> Self {
         let vertices = [
