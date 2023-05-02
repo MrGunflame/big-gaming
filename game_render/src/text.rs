@@ -6,6 +6,7 @@ use ab_glyph::{
     ScaleFont,
 };
 use bytemuck::{Pod, Zeroable};
+use glam::Vec2;
 use image::{ImageBuffer, Luma, LumaA, Rgba, RgbaImage};
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
 use wgpu::{
@@ -13,7 +14,7 @@ use wgpu::{
     BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindingResource, BindingType, BlendState,
     Buffer, BufferAddress, BufferUsages, ColorTargetState, ColorWrites, Device, Extent3d, Face,
     FilterMode, FragmentState, ImageCopyTexture, ImageDataLayout, MultisampleState, Origin3d,
-    PipelineLayoutDescriptor, PolygonMode, PrimitiveState, PrimitiveTopology, RenderPass,
+    PipelineLayoutDescriptor, PolygonMode, PrimitiveState, PrimitiveTopology, Queue, RenderPass,
     RenderPipeline, RenderPipelineDescriptor, Sampler, SamplerBindingType, SamplerDescriptor,
     ShaderModuleDescriptor, ShaderStages, SurfaceConfiguration, Texture, TextureAspect,
     TextureDescriptor, TextureDimension, TextureFormat, TextureSampleType, TextureUsages,
@@ -31,6 +32,7 @@ pub struct TextPipeline {
     buffer: Option<Texture>,
     vertex_buffer: Buffer,
     index_buffer: Buffer,
+    size: Vec2,
 }
 
 #[derive(Clone, Debug)]
@@ -39,7 +41,7 @@ pub struct Text {
 }
 
 impl TextPipeline {
-    pub fn new(device: &Device, config: &SurfaceConfiguration) -> Self {
+    pub fn new(device: &Device, queue: &Queue, config: &SurfaceConfiguration, size: Vec2) -> Self {
         let bind_group_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
             entries: &[
                 BindGroupLayoutEntry {
@@ -86,7 +88,7 @@ impl TextPipeline {
                 entry_point: "fs_main",
                 targets: &[Some(ColorTargetState {
                     format: config.format,
-                    blend: Some(BlendState::REPLACE),
+                    blend: Some(BlendState::ALPHA_BLENDING),
                     write_mask: ColorWrites::ALL,
                 })],
             }),
@@ -117,21 +119,62 @@ impl TextPipeline {
             ..Default::default()
         });
 
+        let image = render_to_texture();
+
+        let texture = device.create_texture(&TextureDescriptor {
+            label: Some("texture"),
+            size: Extent3d {
+                width: image.width(),
+                height: image.height(),
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: TextureDimension::D2,
+            format: TextureFormat::Rgba8UnormSrgb,
+            usage: TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+
+        queue.write_texture(
+            ImageCopyTexture {
+                texture: &texture,
+                mip_level: 0,
+                origin: Origin3d::ZERO,
+                aspect: TextureAspect::All,
+            },
+            &image,
+            ImageDataLayout {
+                offset: 0,
+                bytes_per_row: Some(4 * image.width()),
+                rows_per_image: Some(image.height()),
+            },
+            Extent3d {
+                width: image.width(),
+                height: image.height(),
+                depth_or_array_layers: 1,
+            },
+        );
+
+        let start = super::layout::remap(Vec2::new(0.0, 0.0), size);
+        let end =
+            super::layout::remap(Vec2::new(image.width() as f32, image.height() as f32), size);
+
         let vertices = [
             Vertex {
-                position: [-1.0, 1.0, 0.0],
+                position: [start.x, start.y, 0.0],
                 texture: [0.0, 0.0],
             },
             Vertex {
-                position: [-1.0, 0.0, 0.0],
+                position: [start.x, end.y, 0.0],
                 texture: [0.0, 1.0],
             },
             Vertex {
-                position: [0.0, 0.0, 0.0],
+                position: [end.x, end.y, 0.0],
                 texture: [1.0, 1.0],
             },
             Vertex {
-                position: [0.0, 1.0, 0.0],
+                position: [end.x, start.y, 0.0],
                 texture: [1.0, 0.0],
             },
         ];
@@ -156,6 +199,7 @@ impl TextPipeline {
             buffer: None,
             vertex_buffer,
             index_buffer,
+            size: Vec2::splat(0.0),
         }
     }
 }
@@ -220,14 +264,12 @@ impl Widget for Text {
             max_x.ceil() as u32
         };
 
-        dbg!(height, width);
-
         // let mut image: ImageBuffer<Luma<u8>, Vec<u8>> = ImageBuffer::new(width + 40, height + 40);
         let mut image = RgbaImage::new(width + 40, height + 40);
 
-        for pixel in image.pixels_mut() {
-            *pixel = Rgba([0, 0, 0, 255]);
-        }
+        // for pixel in image.pixels_mut() {
+        //     *pixel = Rgba([0, 0, 0, 255]);
+        // }
 
         for glyph in glyphs {
             if let Some(outlined_glyph) = scaled_font.outline_glyph(glyph) {
@@ -240,7 +282,7 @@ impl Widget for Text {
                         bounds.min.x as u32 + x,
                         bounds.min.y as u32 + y,
                         // Luma([pixel]),
-                        Rgba([pixel, 0, 0, 255]),
+                        Rgba([pixel, 0, 0, pixel]),
                     );
                 });
             }
@@ -284,6 +326,8 @@ impl Widget for Text {
         let text_pipeline = &mut ctx.text_pipeline;
         text_pipeline.buffer = Some(texture);
 
+        text_pipeline.size = Vec2::new(width as f32 + 40.0, height as f32 + 40.0);
+
         // let texture_view = texture.create_view(&TextureViewDescriptor::default());
 
         // let bind_group = ctx.device().create_bind_group(&BindGroupDescriptor {
@@ -305,6 +349,52 @@ impl Widget for Text {
 
         image.save("test.png").unwrap();
     }
+}
+
+fn render_to_texture() -> ImageBuffer<Rgba<u8>, Vec<u8>> {
+    let font =
+        FontRef::try_from_slice(include_bytes!("/usr/share/fonts/droid/DroidSans.ttf")).unwrap();
+
+    let scaled_font = font.as_scaled(PxScale::from(24.0));
+
+    let mut glyphs = Vec::new();
+    layout_glyphs(scaled_font, point(20.0, 20.0), "Hello World!", &mut glyphs);
+
+    let height = scaled_font.height().ceil() as u32;
+    let width = {
+        let min_x = glyphs.first().unwrap().position.x;
+        let last_glyph = glyphs.last().unwrap();
+        let max_x = last_glyph.position.x + scaled_font.h_advance(last_glyph.id);
+        // dbg!(max_x);
+        // (max_x - min_x).ceil() as u32
+        max_x.ceil() as u32
+    };
+
+    // let mut image: ImageBuffer<Luma<u8>, Vec<u8>> = ImageBuffer::new(width + 40, height + 40);
+    let mut image = RgbaImage::new(width + 40, height + 40);
+
+    // for pixel in image.pixels_mut() {
+    //     *pixel = Rgba([0, 0, 0, 255]);
+    // }
+
+    for glyph in glyphs {
+        if let Some(outlined_glyph) = scaled_font.outline_glyph(glyph) {
+            let bounds = outlined_glyph.px_bounds();
+
+            outlined_glyph.draw(|x, y, alpha| {
+                let pixel = (alpha * 255.0) as u8;
+
+                image.put_pixel(
+                    bounds.min.x as u32 + x,
+                    bounds.min.y as u32 + y,
+                    // Luma([pixel]),
+                    Rgba([pixel, 0, 0, pixel]),
+                );
+            });
+        }
+    }
+
+    image
 }
 
 fn layout_glyphs<SF: ScaleFont<F>, F: Font>(

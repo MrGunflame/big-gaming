@@ -157,7 +157,7 @@ pub enum Node {
 }
 
 /// Remap from absolute screen space to OpenGL vertex translations.
-fn remap(input: Vec2, size: Vec2) -> Vec2 {
+pub fn remap(input: Vec2, size: Vec2) -> Vec2 {
     let x = lerp(-1.0, 1.0, input.x / size.x);
     let y = lerp(1.0, -1.0, input.y / size.y);
     Vec2::new(x, y)

@@ -140,7 +140,12 @@ impl State {
         pipeline_layouts.push(render_pipeline_layout);
         pipelines.push(render_pipeline);
 
-        let mut text_pipeline = TextPipeline::new(&device, &config);
+        let mut text_pipeline = TextPipeline::new(
+            &device,
+            &queue,
+            &config,
+            Vec2::new(size.width as f32, size.height as f32),
+        );
 
         let rect = Rect {
             position: Vec2::new(0.0, 0.0),
