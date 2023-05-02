@@ -14,11 +14,26 @@ impl Element {
     }
 }
 
+impl BuildPrimitiveElement for Element {
+    fn build(
+        &self,
+        pipeline: &crate::ui::UiPipeline,
+        device: &Device,
+        queue: &Queue,
+        size: Vec2,
+    ) -> crate::ui::PrimitiveElement {
+        match self {
+            Self::Text(elem) => elem.build(pipeline, device, queue, size),
+        }
+    }
+}
+
 /// The global wrapper for all UI elements.
 #[derive(Debug)]
 pub struct Frame {
     nodes: Vec<Element>,
     size: Vec2,
+    changed: bool,
 }
 
 impl Frame {
@@ -26,15 +41,26 @@ impl Frame {
         Self {
             nodes: vec![],
             size,
+            changed: false,
         }
     }
 
     pub fn resize(&mut self, size: Vec2) {
         self.size = size;
+        self.changed = true;
     }
 
     pub fn push(&mut self, elem: Element) {
         self.nodes.push(elem);
+        self.changed = true;
+    }
+
+    pub fn unchanged(&mut self) {
+        self.changed = false;
+    }
+
+    pub fn is_changed(&self) -> bool {
+        self.changed
     }
 
     // pub fn draw(&mut self, ctx: &mut DrawContext) {
@@ -91,6 +117,7 @@ impl<'a> ExactSizeIterator for Elements<'a> {
 }
 
 use crate::text::Text;
+use crate::ui::BuildPrimitiveElement;
 use crate::Vertex;
 
 pub struct Layout {

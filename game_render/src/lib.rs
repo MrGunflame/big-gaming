@@ -6,7 +6,7 @@ pub mod window;
 
 use bytemuck::{Pod, Zeroable};
 use glam::Vec2;
-use layout::{DrawContext, Rect, Widget};
+use layout::{DrawContext, Element, Rect, Widget};
 use ui::{BuildPrimitiveElement, RenderContext, UiPass, UiPipeline};
 use wgpu::util::DeviceExt;
 use wgpu::{
@@ -26,14 +26,11 @@ pub struct State {
     config: wgpu::SurfaceConfiguration,
     size: winit::dpi::PhysicalSize<u32>,
     window: Window,
-    vertex_buffer: wgpu::Buffer,
-    index_buffer: wgpu::Buffer,
-    num_vertices: u32,
-    bind_groups: Vec<BindGroup>,
     pipelines: Vec<RenderPipeline>,
     pipeline_layouts: Vec<PipelineLayout>,
     ui_pass: UiPass,
     ui_pipeline: UiPipeline,
+    frame: Frame,
 }
 
 impl State {
@@ -151,60 +148,16 @@ impl State {
             // height: 100.0,
         };
 
-        let mut bind_groups = vec![];
-
         let mut frame = Frame::new(Vec2::new(size.width as f32, size.height as f32));
-        // frame.push(Text{text: ""})
-
-        let mut ctx = DrawContext::new(
-            Vec2::new(size.width as f32, size.height as f32),
-            &mut device,
-            &queue,
-            &mut bind_groups,
-        );
-        // rect.draw(&mut ctx);
-
-        let verts = Box::leak(ctx.vertex.into_boxed_slice());
-        let indics = Box::leak(ctx.indices.into_boxed_slice());
-
-        let num_vertices = indics.len() as u32;
-
-        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("vertex_buffer"),
-            contents: bytemuck::cast_slice(verts),
-            usage: wgpu::BufferUsages::VERTEX,
-        });
-
-        let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("index_buffer"),
-            contents: bytemuck::cast_slice(indics),
-            usage: BufferUsages::INDEX,
-        });
+        frame.push(Element::Text(Text {
+            position: Vec2::splat(0.0),
+            text: "abc".to_owned(),
+            size: 45.0,
+        }));
 
         let ui_pipeline = UiPipeline::new(&device);
 
-        let ui_pass = UiPass {
-            // elements: vec![PrimitiveElement::new(
-            //     &ui_pipeline,
-            //     &device,
-            //     &queue,
-            //     Vec2::new(-1.0, 1.0),
-            //     Vec2::new(0.0, 0.0),
-            //     img,
-            //     [0.0, 1.0, 0.0, 1.0],
-            // )],
-            elements: vec![Text {
-                position: Vec2::splat(0.0),
-                text: "Test!".to_owned(),
-                size: 45.0,
-            }
-            .build(
-                &ui_pipeline,
-                &device,
-                &queue,
-                Vec2::new(size.width as f32, size.height as f32),
-            )],
-        };
+        let ui_pass = UiPass::new();
 
         Self {
             window,
@@ -213,14 +166,11 @@ impl State {
             queue,
             config,
             size,
-            vertex_buffer,
-            index_buffer,
-            num_vertices,
-            bind_groups,
             pipeline_layouts,
             pipelines,
             ui_pass,
             ui_pipeline,
+            frame,
         }
     }
 
@@ -235,13 +185,24 @@ impl State {
             self.config.height = new_size.height;
             self.surface.configure(&self.device, &self.config);
         }
+
+        self.frame
+            .resize(Vec2::new(new_size.width as f32, new_size.height as f32));
     }
 
     pub fn input(&mut self, event: &WindowEvent) -> bool {
         false
     }
 
-    pub fn update(&mut self) {}
+    pub fn update(&mut self) {
+        self.ui_pass.update(
+            &self.ui_pipeline,
+            &self.device,
+            &self.queue,
+            Vec2::new(self.size.width as f32, self.size.height as f32),
+            &mut self.frame,
+        );
+    }
 
     pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
         let output = self.surface.get_current_texture()?;
@@ -274,12 +235,6 @@ impl State {
                 })],
                 depth_stencil_attachment: None,
             });
-
-            render_pass.set_pipeline(&self.pipelines[0]);
-            render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-            // render_pass.draw(0..self.num_vertices, 0..1);
-            render_pass.set_index_buffer(self.index_buffer.slice(..), IndexFormat::Uint32);
-            render_pass.draw_indexed(0..self.num_vertices, 0, 0..1);
         }
 
         let ctx = RenderContext {

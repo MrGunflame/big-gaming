@@ -16,6 +16,8 @@ use wgpu::{
     VertexFormat, VertexState, VertexStepMode,
 };
 
+use crate::layout::Frame;
+
 #[derive(Debug)]
 pub struct UiPipeline {
     bind_group_layout: BindGroupLayout,
@@ -271,8 +273,31 @@ pub struct UiPass {
 }
 
 impl UiPass {
-    pub fn new(device: &Device, queue: &Queue) -> Self {
+    pub fn new() -> Self {
         Self { elements: vec![] }
+    }
+
+    pub fn update(
+        &mut self,
+        pipeline: &UiPipeline,
+        device: &Device,
+        queue: &Queue,
+        size: Vec2,
+        frame: &mut Frame,
+    ) {
+        // We don't need to update any elements if no elements
+        // changed.
+        if !frame.is_changed() {
+            return;
+        }
+
+        self.elements.clear();
+        for elem in frame.elements() {
+            self.elements
+                .push(elem.build(pipeline, device, queue, size));
+        }
+
+        frame.unchanged();
     }
 
     pub fn render(&self, pipeline: &UiPipeline, ctx: RenderContext<'_>) {
