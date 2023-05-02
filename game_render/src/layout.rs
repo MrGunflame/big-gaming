@@ -40,7 +40,7 @@ impl Frame {
     }
 }
 
-use crate::text::TextPipeline;
+use crate::text::{Text, TextPipeline};
 use crate::Vertex;
 
 pub struct Layout {
@@ -48,11 +48,6 @@ pub struct Layout {
 }
 
 impl Layout {}
-
-#[derive(Clone, Debug)]
-pub struct Style {
-    pub padding: f32,
-}
 
 pub trait Widget {
     fn draw(&self, ctx: &mut DrawContext);
@@ -152,8 +147,34 @@ impl<'a> DrawContext<'a> {
     }
 }
 
+pub enum Element {
+    Box(Rect),
+    Text(Text),
+    Image(Image),
+}
+
+pub struct Image;
+
 pub enum Node {
     Rect(Rect),
+}
+
+#[derive(Clone, Debug)]
+pub struct Style {
+    pub padding: f32,
+    pub margin: f32,
+}
+
+pub enum Position {
+    Auto,
+    Relative,
+    Absolute,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum Size {
+    Pixel(f32),
+    Percent(f32),
 }
 
 /// Remap from absolute screen space to OpenGL vertex translations.

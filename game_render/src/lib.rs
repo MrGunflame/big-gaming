@@ -1,11 +1,14 @@
+pub mod buffer;
 pub mod layout;
 pub mod text;
+pub mod ui;
 pub mod window;
 
 use bytemuck::{Pod, Zeroable};
 use glam::Vec2;
 use layout::{DrawContext, Rect, Widget};
 use text::TextPipeline;
+use ui::{PrimitiveElement, RenderContext, UiPass, UiPipeline};
 use wgpu::util::DeviceExt;
 use wgpu::{
     BindGroup, BufferAddress, BufferUsages, IndexFormat, PipelineLayout, RenderPipeline,
@@ -31,6 +34,8 @@ pub struct State {
     pipelines: Vec<RenderPipeline>,
     pipeline_layouts: Vec<PipelineLayout>,
     text_pipeline: TextPipeline,
+    ui_pass: UiPass,
+    ui_pipeline: UiPipeline,
 }
 
 impl State {
@@ -170,7 +175,7 @@ impl State {
         );
         // rect.draw(&mut ctx);
 
-        // frame.draw(&mut ctx);
+        frame.draw(&mut ctx);
 
         let text = Text {
             text: "Hello World!".to_owned(),
@@ -194,6 +199,26 @@ impl State {
             usage: BufferUsages::INDEX,
         });
 
+        let ui_pipeline = UiPipeline::new(&device);
+
+        let img = image::io::Reader::open("test.png")
+            .unwrap()
+            .decode()
+            .unwrap();
+        let img = img.to_rgba8();
+
+        let ui_pass = UiPass {
+            elements: vec![PrimitiveElement::new(
+                &ui_pipeline,
+                &device,
+                &queue,
+                Vec2::new(-1.0, 1.0),
+                Vec2::new(0.0, 0.0),
+                img,
+                [0.0, 1.0, 0.0, 1.0],
+            )],
+        };
+
         Self {
             window,
             surface,
@@ -208,6 +233,8 @@ impl State {
             pipeline_layouts,
             pipelines,
             text_pipeline,
+            ui_pass,
+            ui_pipeline,
         }
     }
 
@@ -275,6 +302,13 @@ impl State {
             }
             .render(&self, &mut bind_groups, &mut render_pass);
         }
+
+        let ctx = RenderContext {
+            encoder: &mut encoder,
+            view: &view,
+            device: &self.device,
+        };
+        self.ui_pass.render(&self.ui_pipeline, ctx);
 
         self.queue.submit(std::iter::once(encoder.finish()));
         output.present();
