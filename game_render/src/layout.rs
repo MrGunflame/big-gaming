@@ -1,4 +1,5 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 use glam::Vec2;
 use image::ImageBuffer;
@@ -24,16 +25,16 @@ impl Element {
 impl BuildPrimitiveElement for Element {
     fn build(
         &self,
-        position: Vec2,
+        layout: Layout,
         pipeline: &crate::ui::UiPipeline,
         device: &Device,
         queue: &Queue,
         size: Vec2,
     ) -> crate::ui::PrimitiveElement {
         match self {
-            Self::Container(elem) => elem.build(position, pipeline, device, queue, size),
-            Self::Text(elem) => elem.build(position, pipeline, device, queue, size),
-            Self::Image(elem) => elem.build(position, pipeline, device, queue, size),
+            Self::Container(elem) => elem.build(layout, pipeline, device, queue, size),
+            Self::Text(elem) => elem.build(layout, pipeline, device, queue, size),
+            Self::Image(elem) => elem.build(layout, pipeline, device, queue, size),
         }
     }
 }
@@ -52,7 +53,7 @@ impl Container {
 impl BuildPrimitiveElement for Container {
     fn build(
         &self,
-        position: Vec2,
+        layout: Layout,
         pipeline: &crate::ui::UiPipeline,
         device: &Device,
         queue: &Queue,
@@ -61,8 +62,11 @@ impl BuildPrimitiveElement for Container {
         let mut image = ImageBuffer::new(100, 100);
         debug_border(&mut image);
 
-        let start = crate::layout::remap(position, size);
-        let end = crate::layout::remap(position + Vec2::new(100.0, 100.0), size);
+        let start = crate::layout::remap(layout.position, size);
+        let end = crate::layout::remap(
+            layout.position + Vec2::new(layout.width, layout.height),
+            size,
+        );
 
         PrimitiveElement::new(
             pipeline,
@@ -108,12 +112,26 @@ impl Frame {
         self.changed = true;
     }
 
-    pub fn push(&mut self, elem: Element) {
+    pub fn push(&mut self, parent: Option<Key>, elem: Element) -> Key {
+        let index = self.nodes.len();
+
         self.nodes.push(elem);
         self.layouts.push(Layout {
             position: Vec2::splat(0.0),
+            height: 0.0,
+            width: 0.0,
         });
+
+        self.children.insert(index, vec![]);
+
+        if let Some(Key(parent)) = parent {
+            self.children.get_mut(&parent).unwrap().push(index);
+            self.parents.insert(index, parent);
+        }
+
         self.changed = true;
+
+        Key(index)
     }
 
     pub fn unchanged(&mut self) {
@@ -124,11 +142,85 @@ impl Frame {
         self.changed
     }
 
-    pub fn calculate_layout(&mut self) {
+    pub fn compute_layout(&mut self) {
+        self.element_bounds();
+        // self.element_positions();
+
         let mut y = 0.0;
         for (elem, layout) in self.nodes.iter().zip(self.layouts.iter_mut()) {
             layout.position.y = y;
             y += elem.dimensions().y;
+        }
+    }
+
+    /// Computes the minimal bounds from the botton up.
+    fn element_bounds(&mut self) {
+        // Start with the leaf elements, then go bottom up.
+        let mut children = self.children.clone();
+
+        while children.len() > 0 {
+            // Lay out all leaf nodes.
+            for (index, _) in children.clone().iter().filter(|(_, c)| c.len() == 0) {
+                let elem = &self.nodes[*index];
+
+                let dimensions = if let Some(childs) = self.children.get(index) {
+                    if childs.is_empty() {
+                        elem.dimensions()
+                    } else {
+                        // The dimensions of the element with children are the sum of
+                        // the dimensions of all children in one direction, and the maximum
+                        // in the other.
+                        let mut width = 0.0;
+                        let mut height = 0.0;
+
+                        for child in childs {
+                            let layout = &self.layouts[*child];
+                            width += layout.width;
+                            height += layout.height;
+                        }
+
+                        Vec2::new(width, height)
+                    }
+                } else {
+                    // Elements without children, usually leaf nodes.
+                    elem.dimensions()
+                };
+
+                let layout = &mut self.layouts[*index];
+                layout.width = dimensions.x;
+                layout.height = dimensions.y;
+
+                if let Some(parent) = self.parents.get(index) {
+                    let (idx, _) = children
+                        .get_mut(parent)
+                        .unwrap()
+                        .iter()
+                        .enumerate()
+                        .find(|(_, child)| *child == index)
+                        .unwrap();
+
+                    children.get_mut(parent).unwrap().remove(idx);
+                }
+
+                children.remove(&index);
+            }
+        }
+    }
+
+    fn element_positions(&mut self) {
+        for (index, childs) in &self.children {
+            // Get parent position.
+            let layout = &self.layouts[*index];
+
+            let mut width = layout.position.x;
+            let mut height = layout.position.y;
+
+            for child in childs {
+                let elem = &mut self.layouts[*child];
+                elem.position = Vec2::new(width, height);
+                width += elem.width;
+                height += elem.height;
+            }
         }
     }
 
@@ -220,15 +312,12 @@ impl<'a> ExactSizeIterator for Layouts<'a> {
 use crate::image::{debug_border, Image};
 use crate::text::Text;
 use crate::ui::{BuildPrimitiveElement, PrimitiveElement};
-use crate::Vertex;
 
 #[derive(Copy, Clone, Debug)]
 pub struct Layout {
     pub position: Vec2,
-}
-
-pub trait Widget {
-    fn draw(&self, ctx: &mut DrawContext);
+    pub width: f32,
+    pub height: f32,
 }
 
 #[derive(Clone, Debug)]
@@ -236,90 +325,6 @@ pub struct Rect {
     pub position: Vec2,
     pub width: f32,
     pub height: f32,
-}
-
-impl Widget for Rect {
-    fn draw(&self, ctx: &mut DrawContext) {
-        let start = remap(self.position, ctx.size());
-        let end = remap(
-            Vec2::new(self.position.x + self.width, self.position.y + self.height),
-            ctx.size(),
-        );
-
-        let vertices = [
-            [start.x, start.y, 0.0],
-            [start.x, end.y, 0.0],
-            [end.x, end.y, 0.0],
-            [end.x, start.y, 0.0],
-        ];
-        let indicies = [0, 1, 2, 3, 0, 2];
-
-        ctx.vertices(&vertices);
-        ctx.indices(&indicies);
-    }
-}
-
-pub struct DrawContext<'a> {
-    size: Vec2,
-    pub(crate) vertex: Vec<Vertex>,
-    pub(crate) indices: Vec<u32>,
-    vertices: u32,
-    device: &'a mut Device,
-    queue: &'a Queue,
-    pub(crate) bind_groups: &'a mut Vec<BindGroup>,
-}
-
-impl<'a> DrawContext<'a> {
-    pub(crate) fn new(
-        size: Vec2,
-        device: &'a mut Device,
-        queue: &'a Queue,
-        bind_groups: &'a mut Vec<BindGroup>,
-    ) -> Self {
-        Self {
-            size,
-            vertex: vec![],
-            indices: vec![],
-            vertices: 0,
-            device,
-            queue,
-            bind_groups,
-        }
-    }
-
-    pub fn size(&self) -> Vec2 {
-        self.size
-    }
-
-    pub fn push(&mut self, vertex: Vertex) {
-        self.vertex.push(vertex);
-    }
-
-    pub fn vertices(&mut self, vertices: &[[f32; 3]]) {
-        self.vertex.extend(vertices.iter().map(|v| Vertex {
-            position: *v,
-            color: [1.0, 0.0, 0.0],
-        }))
-    }
-
-    pub fn indices(&mut self, indices: &[u32]) {
-        for mut index in indices.iter().copied() {
-            index += self.vertices;
-            self.indices.push(index);
-        }
-    }
-
-    fn update_vertex_counter(&mut self) {
-        self.vertices = self.vertex.len() as u32;
-    }
-
-    pub fn device(&'a self) -> &'a Device {
-        &self.device
-    }
-
-    pub fn queue(&'a self) -> &'a Queue {
-        &self.queue
-    }
 }
 
 pub enum Node {
@@ -330,6 +335,11 @@ pub enum Node {
 pub struct Style {
     pub padding: f32,
     pub margin: f32,
+}
+
+pub enum Direction {
+    Row,
+    Column,
 }
 
 pub enum Position {

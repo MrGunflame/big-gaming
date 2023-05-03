@@ -9,7 +9,8 @@ pub mod window;
 
 use bytemuck::{Pod, Zeroable};
 use glam::Vec2;
-use layout::{Container, DrawContext, Element, Rect, Widget};
+use layout::{Container, Element, Rect};
+use tracing::instrument::WithSubscriber;
 use ui::{BuildPrimitiveElement, RenderContext, UiPass, UiPipeline};
 use wgpu::util::DeviceExt;
 use wgpu::{
@@ -152,23 +153,41 @@ impl State {
         };
 
         let mut frame = Frame::new(Vec2::new(size.width as f32, size.height as f32));
-        frame.push(Element::Text(Text {
-            position: Vec2::splat(0.0),
-            text: "Hello World!\nNewline\nNL2".to_owned(),
-            size: 45.0,
-        }));
-        frame.push(Element::Image(crate::image::Image {
-            position: Vec2::splat(0.0),
-            image: ::image::io::Reader::open("img.png")
-                .unwrap()
-                .decode()
-                .unwrap()
-                .to_rgba8(),
-            dimensions: Vec2::new(64.0, 64.0),
-        }));
-        frame.push(Element::Container(Container {
-            position: Vec2::splat(0.0),
-        }));
+        frame.push(
+            None,
+            Element::Text(Text {
+                position: Vec2::splat(0.0),
+                text: "Hello World!\nNewline\nNL2".to_owned(),
+                size: 45.0,
+            }),
+        );
+        frame.push(
+            None,
+            Element::Image(crate::image::Image {
+                position: Vec2::splat(0.0),
+                image: ::image::io::Reader::open("img.png")
+                    .unwrap()
+                    .decode()
+                    .unwrap()
+                    .to_rgba8(),
+                dimensions: Vec2::new(64.0, 64.0),
+            }),
+        );
+        let container = frame.push(
+            None,
+            Element::Container(Container {
+                position: Vec2::splat(0.0),
+            }),
+        );
+
+        frame.push(
+            Some(container),
+            Element::Text(Text {
+                position: Vec2::splat(0.0),
+                text: "Im in a container".to_owned(),
+                size: 20.0,
+            }),
+        );
 
         let ui_pipeline = UiPipeline::new(&device);
 
@@ -225,8 +244,8 @@ impl State {
                             y: layout.position.y,
                         },
                         max: Vec2 {
-                            x: layout.position.x + elem.dimensions().x,
-                            y: layout.position.y + elem.dimensions().y,
+                            x: layout.position.x + layout.width,
+                            y: layout.position.y + layout.height,
                         },
                     };
 

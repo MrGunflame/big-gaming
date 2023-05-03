@@ -1,10 +1,12 @@
-use glam::{Vec2, Vec2Swizzles};
+use glam::Vec2;
 
 pub struct Events {
     pub cursor_enter: Option<Box<dyn Fn()>>,
     pub cursor_exit: Option<Box<dyn Fn()>>,
     pub click: Option<Box<dyn Fn()>>,
 }
+
+pub enum Event {}
 
 pub fn hit_test(elem: Rect, cursor: Vec2) -> bool {
     // (elem.x + elem_size.x >= cursor.x)

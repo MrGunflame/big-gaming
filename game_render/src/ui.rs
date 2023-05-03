@@ -16,7 +16,7 @@ use wgpu::{
     VertexFormat, VertexState, VertexStepMode,
 };
 
-use crate::layout::Frame;
+use crate::layout::{Frame, Layout};
 
 #[derive(Debug)]
 pub struct UiPipeline {
@@ -291,12 +291,12 @@ impl UiPass {
             return;
         }
 
-        frame.calculate_layout();
+        frame.compute_layout();
 
         self.elements.clear();
         for (elem, layout) in frame.elements().zip(frame.layouts()) {
             self.elements
-                .push(elem.build(layout.position, pipeline, device, queue, size));
+                .push(elem.build(*layout, pipeline, device, queue, size));
         }
 
         frame.unchanged();
@@ -373,7 +373,7 @@ pub(crate) trait BuildPrimitiveElement {
     /// `size`: Screen size
     fn build(
         &self,
-        position: Vec2,
+        layout: Layout,
         pipeline: &UiPipeline,
         device: &Device,
         queue: &Queue,

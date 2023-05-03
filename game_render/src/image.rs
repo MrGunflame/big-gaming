@@ -3,6 +3,7 @@ use std::ops::{Deref, DerefMut};
 use glam::Vec2;
 use image::{ImageBuffer, Pixel, Rgba};
 
+use crate::layout::Layout;
 use crate::ui::{BuildPrimitiveElement, PrimitiveElement};
 
 #[derive(Clone, Debug)]
@@ -21,15 +22,15 @@ impl Image {
 impl BuildPrimitiveElement for Image {
     fn build(
         &self,
-        position: Vec2,
+        layout: Layout,
         pipeline: &crate::ui::UiPipeline,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         size: glam::Vec2,
     ) -> PrimitiveElement {
-        let start = crate::layout::remap(position, size);
+        let start = crate::layout::remap(layout.position, size);
         let end = crate::layout::remap(
-            position + Vec2::new(self.image.width() as f32, self.image.height() as f32),
+            layout.position + Vec2::new(layout.width, layout.height),
             size,
         );
 

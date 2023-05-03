@@ -23,7 +23,7 @@ use wgpu::{
 };
 
 use crate::image::debug_border;
-use crate::layout::{DrawContext, Widget};
+use crate::layout::Layout;
 use crate::ui::{BuildPrimitiveElement, PrimitiveElement, UiPipeline};
 use crate::State;
 
@@ -54,7 +54,7 @@ impl Text {
 impl BuildPrimitiveElement for Text {
     fn build(
         &self,
-        position: Vec2,
+        layout: Layout,
         pipeline: &UiPipeline,
         device: &Device,
         queue: &Queue,
@@ -66,9 +66,9 @@ impl BuildPrimitiveElement for Text {
         // of a `Text` element. Overflowing in the x direction will attempt
         // to wrap at the specified width, overflowing in the y direction
         // will cut any exceeding content.
-        let start = crate::layout::remap(position, size);
+        let start = crate::layout::remap(layout.position, size);
         let end = crate::layout::remap(
-            position + Vec2::new(image.width() as f32, image.height() as f32),
+            layout.position + Vec2::new(layout.width, layout.height),
             size,
         );
 
