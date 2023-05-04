@@ -257,6 +257,10 @@ impl Frame {
             inner: &self.layouts,
         }
     }
+
+    pub fn keys(&self) -> impl Iterator<Item = Key> {
+        (0..self.nodes.len()).map(Key)
+    }
 }
 
 #[derive(Clone, Debug)]

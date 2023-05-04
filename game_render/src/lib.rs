@@ -7,9 +7,12 @@ pub mod text;
 pub mod ui;
 pub mod window;
 
+use std::collections::HashMap;
+
 use bytemuck::{Pod, Zeroable};
+use events::Event;
 use glam::Vec2;
-use layout::{Container, Element, Rect};
+use layout::{Container, Element, Key, Rect};
 use tracing::instrument::WithSubscriber;
 use ui::{BuildPrimitiveElement, RenderContext, UiPass, UiPipeline};
 use wgpu::util::DeviceExt;
@@ -35,6 +38,8 @@ pub struct State {
     ui_pass: UiPass,
     ui_pipeline: UiPipeline,
     frame: Frame,
+    events: Vec<Event>,
+    active_states: HashMap<Key, crate::events::State>,
 }
 
 impl State {
@@ -205,6 +210,8 @@ impl State {
             ui_pass,
             ui_pipeline,
             frame,
+            events: vec![],
+            active_states: HashMap::new(),
         }
     }
 
@@ -237,7 +244,12 @@ impl State {
                 position,
                 modifiers,
             } => {
-                for (elem, layout) in self.frame.elements().zip(self.frame.layouts()) {
+                for ((elem, layout), key) in self
+                    .frame
+                    .elements()
+                    .zip(self.frame.layouts())
+                    .zip(self.frame.keys())
+                {
                     let rect = crate::events::Rect {
                         min: Vec2 {
                             x: layout.position.x,
@@ -250,7 +262,24 @@ impl State {
                     };
 
                     let cursor = Vec2::new(position.x as f32, position.y as f32);
-                    dbg!(crate::events::hit_test(rect, cursor));
+
+                    let hits = crate::events::hit_test(rect, cursor);
+                    let state = if hits {
+                        crate::events::State::Hovered
+                    } else {
+                        crate::events::State::None
+                    };
+
+                    let cell = self
+                        .active_states
+                        .entry(key)
+                        .or_insert(crate::events::State::None);
+
+                    if *cell != state {
+                        *cell = state;
+                        self.events.push(Event { key, state });
+                        dbg!("new");
+                    }
                 }
             }
             _ => todo!(),
