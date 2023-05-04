@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
+use bevy_ecs::prelude::Component;
 use glam::Vec2;
 use image::ImageBuffer;
 use wgpu::{BindGroup, BindGroupLayout, Device, Queue};
@@ -84,7 +85,7 @@ impl BuildPrimitiveElement for Container {
 pub struct Key(usize);
 
 /// The global wrapper for all UI elements.
-#[derive(Debug)]
+#[derive(Debug, Component)]
 pub struct Frame {
     nodes: Vec<Element>,
     layouts: Vec<Layout>,

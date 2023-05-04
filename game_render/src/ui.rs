@@ -1,3 +1,5 @@
+use bevy_ecs::query::QueryState;
+use bevy_ecs::world::{FromWorld, World};
 use bytemuck::{Pod, Zeroable};
 use glam::Vec2;
 use image::{ImageBuffer, Rgba};

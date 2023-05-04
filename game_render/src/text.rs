@@ -25,7 +25,6 @@ use wgpu::{
 use crate::image::debug_border;
 use crate::layout::Layout;
 use crate::ui::{BuildPrimitiveElement, PrimitiveElement, UiPipeline};
-use crate::State;
 
 // pub struct TextPipeline {
 //     layout: BindGroupLayout,
