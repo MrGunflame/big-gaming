@@ -1,6 +1,7 @@
-use bevy_ecs::query::QueryState;
+use bevy_ecs::system::Resource;
 use bevy_ecs::world::{FromWorld, World};
 use bytemuck::{Pod, Zeroable};
+use game_window::WindowState;
 use glam::Vec2;
 use image::{ImageBuffer, Rgba};
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
@@ -18,13 +19,21 @@ use wgpu::{
     VertexFormat, VertexState, VertexStepMode,
 };
 
+use crate::graph::Node;
 use crate::layout::{Frame, Layout};
+use crate::{RenderDevice, RenderQueue};
 
-#[derive(Debug)]
+#[derive(Debug, Resource)]
 pub struct UiPipeline {
     bind_group_layout: BindGroupLayout,
     pipeline: RenderPipeline,
     sampler: Sampler,
+}
+
+impl FromWorld for UiPipeline {
+    fn from_world(world: &mut World) -> Self {
+        world.resource_scope::<RenderDevice, Self>(|world, device| Self::new(&device.0))
+    }
 }
 
 impl UiPipeline {
@@ -275,10 +284,77 @@ pub struct UiPass {
 }
 
 impl UiPass {
-    pub fn new() -> Self {
+    pub fn new(world: &mut World) -> Self {
+        world.init_resource::<UiPipeline>();
+
         Self { elements: vec![] }
     }
+}
 
+impl Node for UiPass {
+    fn update(&mut self, world: &mut World) {
+        // Uh-oh
+        world.resource_scope::<UiPipeline, ()>(|world, pipeline| {
+            world.resource_scope::<RenderDevice, ()>(|world, device| {
+                world.resource_scope::<RenderQueue, ()>(|world, queue| {
+                    let mut query = world.query::<(&WindowState, &mut Frame)>();
+
+                    for (window, mut frame) in query.iter_mut(world) {
+                        if !frame.is_changed() {
+                            continue;
+                        }
+
+                        let size = window.0.inner_size();
+
+                        frame.compute_layout();
+
+                        self.elements.clear();
+                        for (elem, layout) in frame.elements().zip(frame.layouts()) {
+                            self.elements.push(elem.build(
+                                *layout,
+                                &pipeline,
+                                &device.0,
+                                &queue.0,
+                                Vec2::new(size.width as f32, size.height as f32),
+                            ));
+                        }
+
+                        frame.unchanged();
+                    }
+                });
+            });
+        });
+    }
+
+    fn render(&self, world: &World, ctx: &mut RenderContext<'_>) {
+        let pipeline = world.resource::<UiPipeline>();
+
+        let mut render_pass = ctx.encoder.begin_render_pass(&RenderPassDescriptor {
+            label: Some("ui_pass"),
+            color_attachments: &[Some(RenderPassColorAttachment {
+                view: &ctx.view,
+                resolve_target: None,
+                ops: Operations {
+                    load: LoadOp::Load,
+                    store: true,
+                },
+            })],
+            depth_stencil_attachment: None,
+        });
+
+        render_pass.set_pipeline(&pipeline.pipeline);
+
+        for elem in &self.elements {
+            render_pass.set_bind_group(0, &elem.bind_group, &[]);
+            render_pass.set_vertex_buffer(0, elem.vertices.slice(..));
+            render_pass.set_index_buffer(elem.indices.slice(..), IndexFormat::Uint32);
+
+            render_pass.draw_indexed(0..elem.num_vertices, 0, 0..1);
+        }
+    }
+}
+
+impl UiPass {
     pub fn update(
         &mut self,
         pipeline: &UiPipeline,

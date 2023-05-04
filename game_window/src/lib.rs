@@ -41,10 +41,20 @@ pub struct Window {
 #[derive(Component)]
 pub struct WindowState(pub winit::window::Window);
 
+struct State {
+    /// Is the application currently active?
+    active: bool,
+    /// The timestamp of the last call to `app.update()`.
+    last_update: Instant,
+}
+
 pub fn main_loop(mut app: App) {
     let event_loop: EventLoop<()> = app.world.remove_non_send_resource().unwrap();
 
-    let mut last_update = Instant::now();
+    let mut state = State {
+        active: true,
+        last_update: Instant::now(),
+    };
 
     let mut created_windows_state: SystemState<(
         Commands,
@@ -72,7 +82,68 @@ pub fn main_loop(mut app: App) {
                         height: size.height,
                     });
                 }
-                _ => (),
+                WindowEvent::Moved(_) => {}
+                WindowEvent::CloseRequested => {}
+                WindowEvent::Destroyed => {}
+                WindowEvent::DroppedFile(_) => {}
+                WindowEvent::HoveredFile(_) => {}
+                WindowEvent::HoveredFileCancelled => {}
+                WindowEvent::ReceivedCharacter(_) => {}
+                WindowEvent::Focused(_) => {}
+                WindowEvent::KeyboardInput {
+                    device_id,
+                    input,
+                    is_synthetic,
+                } => {}
+                WindowEvent::ModifiersChanged(_) => {}
+                WindowEvent::Ime(_) => {}
+                WindowEvent::CursorMoved {
+                    device_id,
+                    position,
+                    modifiers,
+                } => {}
+                WindowEvent::CursorEntered { device_id } => {}
+                WindowEvent::CursorLeft { device_id } => {}
+                WindowEvent::MouseWheel {
+                    device_id,
+                    delta,
+                    phase,
+                    modifiers,
+                } => {}
+                WindowEvent::MouseInput {
+                    device_id,
+                    state,
+                    button,
+                    modifiers,
+                } => {}
+                WindowEvent::TouchpadMagnify {
+                    device_id,
+                    delta,
+                    phase,
+                } => {}
+                WindowEvent::SmartMagnify { device_id } => {}
+                WindowEvent::TouchpadRotate {
+                    device_id,
+                    delta,
+                    phase,
+                } => {}
+                WindowEvent::TouchpadPressure {
+                    device_id,
+                    pressure,
+                    stage,
+                } => {}
+                WindowEvent::AxisMotion {
+                    device_id,
+                    axis,
+                    value,
+                } => {}
+                WindowEvent::Touch(_) => {}
+                WindowEvent::ScaleFactorChanged {
+                    scale_factor,
+                    new_inner_size,
+                } => {}
+                WindowEvent::ThemeChanged(_) => {}
+                WindowEvent::Occluded(_) => {}
             },
             Event::DeviceEvent { device_id, event } => {}
             Event::UserEvent(()) => (),
@@ -82,7 +153,7 @@ pub fn main_loop(mut app: App) {
                 let should_update = true;
 
                 if should_update {
-                    last_update = Instant::now();
+                    state.last_update = Instant::now();
                     app.update();
                 }
 

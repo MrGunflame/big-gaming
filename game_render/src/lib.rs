@@ -1,5 +1,6 @@
 pub mod buffer;
 pub mod events;
+pub mod graph;
 pub mod image;
 pub mod layout;
 pub mod style;
@@ -11,13 +12,15 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use bevy_app::{App, Plugin};
-use bevy_ecs::prelude::{Component, Entity, EventReader};
-use bevy_ecs::system::{Query, Res, ResMut, Resource};
+use bevy_ecs::prelude::{Entity, EventReader};
+use bevy_ecs::query::QueryState;
+use bevy_ecs::system::{Commands, Query, Res, ResMut, Resource};
+use bevy_ecs::world::World;
 use bytemuck::{Pod, Zeroable};
-use events::Event;
 use game_window::events::{WindowCreated, WindowResized};
 use game_window::{Window, WindowState};
 use glam::Vec2;
+use graph::RenderGraph;
 use layout::{Container, Element, Key, Rect};
 use tracing::Instrument;
 use ui::{RenderContext, UiPass, UiPipeline};
@@ -69,8 +72,66 @@ impl Plugin for RenderPlugin {
         app.insert_resource(RenderQueue(Arc::new(queue)));
         app.insert_resource(WindowSurfaces::default());
 
+        let mut render_graph = RenderGraph::default();
+        render_graph.push(UiPass::new(&mut app.world));
+        app.insert_resource(render_graph);
+
+        let query = WindowQuery(app.world.query::<&WindowState>());
+        app.insert_resource(query);
+
         app.add_system(create_surfaces);
         app.add_system(render_surfaces);
+        app.add_system(create_ui_frames);
+    }
+}
+
+fn create_ui_frames(
+    mut commands: Commands,
+    mut windows: Query<(&WindowState)>,
+    mut events: EventReader<WindowCreated>,
+) {
+    for event in events.iter() {
+        let size = windows.get(event.window).unwrap().0.inner_size();
+
+        let mut frame = Frame::new(Vec2::new(size.width as f32, size.height as f32));
+
+        frame.push(
+            None,
+            Element::Text(Text {
+                position: Vec2::splat(0.0),
+                text: "Hello World!\nNewline\nNL2".to_owned(),
+                size: 45.0,
+            }),
+        );
+        frame.push(
+            None,
+            Element::Image(crate::image::Image {
+                position: Vec2::splat(0.0),
+                image: ::image::io::Reader::open("img.png")
+                    .unwrap()
+                    .decode()
+                    .unwrap()
+                    .to_rgba8(),
+                dimensions: Vec2::new(64.0, 64.0),
+            }),
+        );
+        let container = frame.push(
+            None,
+            Element::Container(Container {
+                position: Vec2::splat(0.0),
+            }),
+        );
+
+        frame.push(
+            Some(container),
+            Element::Text(Text {
+                position: Vec2::splat(0.0),
+                text: "Im in a container".to_owned(),
+                size: 20.0,
+            }),
+        );
+
+        commands.entity(event.window).insert(frame);
     }
 }
 
@@ -166,71 +227,100 @@ pub fn resize_surfaces(
     }
 }
 
-pub fn render_surfaces(
-    mut surfaces: ResMut<WindowSurfaces>,
-    windows: Query<&WindowState>,
-    device: Res<RenderDevice>,
-    queue: Res<RenderQueue>,
-) {
-    for (entity, surface) in surfaces.windows.iter_mut() {
-        let output = match surface.surface.get_current_texture() {
-            Ok(output) => output,
-            Err(err) => {
-                let size = windows.get(*entity).unwrap().0.inner_size();
-                surface.config.width = size.width;
-                surface.config.height = size.height;
+#[derive(Resource)]
+struct WindowQuery(QueryState<&'static WindowState>);
 
-                match err {
-                    SurfaceError::Outdated => {
-                        surface.surface.configure(&device.0, &surface.config);
+pub fn render_surfaces(
+    // mut surfaces: ResMut<WindowSurfaces>,
+    // windows: Query<&WindowState>,
+    // device: Res<RenderDevice>,
+    // queue: Res<RenderQueue>,
+    // render_graph: Res<RenderGraph>,
+    world: &mut World,
+) {
+    world.resource_scope::<RenderGraph, ()>(|world, mut render_graph| {
+        for node in &mut render_graph.nodes {
+            node.update(world);
+        }
+    });
+
+    world.resource_scope::<WindowSurfaces, ()>(|world, mut surfaces| {
+        world.resource_scope::<WindowQuery, ()>(|world, mut windows| {
+            let device = world.resource::<RenderDevice>();
+            let queue = world.resource::<RenderQueue>();
+            let render_graph = world.resource::<RenderGraph>();
+
+            for (entity, surface) in surfaces.windows.iter_mut() {
+                let output = match surface.surface.get_current_texture() {
+                    Ok(output) => output,
+                    Err(err) => {
+                        let size = windows.0.get(&world, *entity).unwrap().0.inner_size();
+                        surface.config.width = size.width;
+                        surface.config.height = size.height;
+
+                        match err {
+                            SurfaceError::Outdated => {
+                                surface.surface.configure(&device.0, &surface.config);
+                            }
+                            SurfaceError::Lost => {
+                                surface.surface.configure(&device.0, &surface.config);
+                            }
+                            SurfaceError::OutOfMemory => {
+                                tracing::error!("OOM");
+                                std::process::exit(1);
+                            }
+                            _ => {
+                                tracing::error!("failed to get window surface: {}", err);
+                            }
+                        }
+
+                        continue;
                     }
-                    SurfaceError::Lost => {
-                        surface.surface.configure(&device.0, &surface.config);
-                    }
-                    SurfaceError::OutOfMemory => {
-                        tracing::error!("OOM");
-                        std::process::exit(1);
-                    }
-                    _ => {
-                        tracing::error!("failed to get window surface: {}", err);
-                    }
+                };
+
+                let view = output
+                    .texture
+                    .create_view(&TextureViewDescriptor::default());
+
+                let mut encoder = device.0.create_command_encoder(&CommandEncoderDescriptor {
+                    label: Some("render_encoder"),
+                });
+
+                {
+                    let mut render_pass = encoder.begin_render_pass(&RenderPassDescriptor {
+                        label: Some("render_pass"),
+                        color_attachments: &[Some(RenderPassColorAttachment {
+                            view: &view,
+                            resolve_target: None,
+                            ops: Operations {
+                                load: LoadOp::Clear(Color {
+                                    r: 0.1,
+                                    g: 0.2,
+                                    b: 0.3,
+                                    a: 1.0,
+                                }),
+                                store: true,
+                            },
+                        })],
+                        depth_stencil_attachment: None,
+                    });
                 }
 
-                continue;
-            }
-        };
-
-        let view = output
-            .texture
-            .create_view(&TextureViewDescriptor::default());
-
-        let mut encoder = device.0.create_command_encoder(&CommandEncoderDescriptor {
-            label: Some("render_encoder"),
-        });
-
-        {
-            let mut render_pass = encoder.begin_render_pass(&RenderPassDescriptor {
-                label: Some("render_pass"),
-                color_attachments: &[Some(RenderPassColorAttachment {
+                let mut ctx = RenderContext {
+                    encoder: &mut encoder,
                     view: &view,
-                    resolve_target: None,
-                    ops: Operations {
-                        load: LoadOp::Clear(Color {
-                            r: 0.1,
-                            g: 0.2,
-                            b: 0.3,
-                            a: 1.0,
-                        }),
-                        store: true,
-                    },
-                })],
-                depth_stencil_attachment: None,
-            });
-        }
+                    device: &device.0,
+                };
 
-        queue.0.submit(std::iter::once(encoder.finish()));
-        output.present();
-    }
+                for node in &render_graph.nodes {
+                    node.render(world, &mut ctx);
+                }
+
+                queue.0.submit(std::iter::once(encoder.finish()));
+                output.present();
+            }
+        });
+    });
 }
 
 // pub struct State {
@@ -366,41 +456,41 @@ pub fn render_surfaces(
 //         };
 
 //         let mut frame = Frame::new(Vec2::new(size.width as f32, size.height as f32));
-//         frame.push(
-//             None,
-//             Element::Text(Text {
-//                 position: Vec2::splat(0.0),
-//                 text: "Hello World!\nNewline\nNL2".to_owned(),
-//                 size: 45.0,
-//             }),
-//         );
-//         frame.push(
-//             None,
-//             Element::Image(crate::image::Image {
-//                 position: Vec2::splat(0.0),
-//                 image: ::image::io::Reader::open("img.png")
-//                     .unwrap()
-//                     .decode()
-//                     .unwrap()
-//                     .to_rgba8(),
-//                 dimensions: Vec2::new(64.0, 64.0),
-//             }),
-//         );
-//         let container = frame.push(
-//             None,
-//             Element::Container(Container {
-//                 position: Vec2::splat(0.0),
-//             }),
-//         );
+// frame.push(
+//     None,
+//     Element::Text(Text {
+//         position: Vec2::splat(0.0),
+//         text: "Hello World!\nNewline\nNL2".to_owned(),
+//         size: 45.0,
+//     }),
+// );
+// frame.push(
+//     None,
+//     Element::Image(crate::image::Image {
+//         position: Vec2::splat(0.0),
+//         image: ::image::io::Reader::open("img.png")
+//             .unwrap()
+//             .decode()
+//             .unwrap()
+//             .to_rgba8(),
+//         dimensions: Vec2::new(64.0, 64.0),
+//     }),
+// );
+// let container = frame.push(
+//     None,
+//     Element::Container(Container {
+//         position: Vec2::splat(0.0),
+//     }),
+// );
 
-//         frame.push(
-//             Some(container),
-//             Element::Text(Text {
-//                 position: Vec2::splat(0.0),
-//                 text: "Im in a container".to_owned(),
-//                 size: 20.0,
-//             }),
-//         );
+// frame.push(
+//     Some(container),
+//     Element::Text(Text {
+//         position: Vec2::splat(0.0),
+//         text: "Im in a container".to_owned(),
+//         size: 20.0,
+//     }),
+// );
 
 //         let ui_pipeline = UiPipeline::new(&device);
 
