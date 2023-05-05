@@ -1,7 +1,9 @@
-use bevy_ecs::system::Resource;
+use bevy_ecs::prelude::EventReader;
+use bevy_ecs::system::{Query, Resource};
 use bevy_ecs::world::{FromWorld, World};
 use bytemuck::{Pod, Zeroable};
-use game_window::WindowState;
+use game_window::events::WindowResized;
+use game_window::{Window, WindowState};
 use glam::Vec2;
 use image::{ImageBuffer, Rgba};
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
@@ -460,3 +462,13 @@ pub(crate) trait BuildPrimitiveElement {
 }
 
 pub trait UiElement {}
+
+pub fn resize_frames(mut frames: Query<&mut Frame>, mut events: EventReader<WindowResized>) {
+    for event in events.iter() {
+        let Ok(mut frame) = frames.get_mut(event.window) else {
+            continue;
+        };
+
+        frame.resize(Vec2::new(event.width as f32, event.height as f32));
+    }
+}

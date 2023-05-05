@@ -17,7 +17,7 @@ use bevy_ecs::query::QueryState;
 use bevy_ecs::system::{Commands, Query, Res, ResMut, Resource};
 use bevy_ecs::world::World;
 use bytemuck::{Pod, Zeroable};
-use game_window::events::{WindowCreated, WindowResized};
+use game_window::events::{WindowCreated, WindowDestroyed, WindowResized};
 use game_window::{Window, WindowState};
 use glam::Vec2;
 use graph::RenderGraph;
@@ -80,8 +80,11 @@ impl Plugin for RenderPlugin {
         app.insert_resource(query);
 
         app.add_system(create_surfaces);
+        app.add_system(destroy_surfaces);
         app.add_system(render_surfaces);
         app.add_system(create_ui_frames);
+
+        app.add_system(ui::resize_frames);
     }
 }
 
@@ -224,6 +227,15 @@ pub fn resize_surfaces(
         surface.config.height = event.height;
 
         surface.surface.configure(&device.0, &surface.config);
+    }
+}
+
+pub fn destroy_surfaces(
+    mut surfaces: ResMut<WindowSurfaces>,
+    mut events: EventReader<WindowDestroyed>,
+) {
+    for event in events.iter() {
+        surfaces.windows.remove(&event.window);
     }
 }
 

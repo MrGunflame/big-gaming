@@ -11,3 +11,8 @@ pub struct WindowResized {
     pub width: u32,
     pub height: u32,
 }
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct WindowDestroyed {
+    pub window: Entity,
+}

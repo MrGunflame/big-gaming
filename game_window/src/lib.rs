@@ -10,7 +10,7 @@ use bevy_ecs::prelude::{Component, Entity, EventWriter};
 use bevy_ecs::query::Added;
 use bevy_ecs::system::{Commands, Query, ResMut, Resource, SystemState};
 use bevy_ecs::world::FromWorld;
-use events::{WindowCreated, WindowResized};
+use events::{WindowCreated, WindowDestroyed, WindowResized};
 use systems::create_windows;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::EventLoop;
@@ -27,6 +27,7 @@ impl Plugin for WindowPlugin {
 
         app.add_event::<WindowCreated>();
         app.add_event::<WindowResized>();
+        app.add_event::<WindowDestroyed>();
 
         app.insert_non_send_resource(event_loop);
         app.set_runner(main_loop);
@@ -83,7 +84,17 @@ pub fn main_loop(mut app: App) {
                     });
                 }
                 WindowEvent::Moved(_) => {}
-                WindowEvent::CloseRequested => {}
+                WindowEvent::CloseRequested => {
+                    let window = app
+                        .world
+                        .resource::<Windows>()
+                        .windows
+                        .get(&window_id)
+                        .copied()
+                        .unwrap();
+
+                    app.world.send_event(WindowDestroyed { window });
+                }
                 WindowEvent::Destroyed => {}
                 WindowEvent::DroppedFile(_) => {}
                 WindowEvent::HoveredFile(_) => {}
