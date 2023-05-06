@@ -3,6 +3,7 @@ use glam::Vec2;
 use image::{ImageBuffer, Rgba};
 
 use super::debug::debug_border;
+use super::layout::Bounds;
 use super::{BuildPrimitiveElement, PrimitiveElement, Rect};
 
 #[derive(Clone, Debug)]
@@ -33,5 +34,14 @@ impl BuildPrimitiveElement for Image {
             &img,
             [1.0, 1.0, 1.0, 1.0],
         )
+    }
+
+    fn bounds(&self) -> Bounds {
+        let size = Vec2::new(self.image.width() as f32, self.image.height() as f32);
+
+        Bounds {
+            min: Some(size),
+            max: Some(size),
+        }
     }
 }

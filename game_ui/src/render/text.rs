@@ -3,6 +3,7 @@ use glam::Vec2;
 use image::{ImageBuffer, Rgba, RgbaImage};
 
 use super::image::Image;
+use super::layout::Bounds;
 use super::BuildPrimitiveElement;
 
 #[derive(Clone, Debug)]
@@ -36,6 +37,11 @@ impl BuildPrimitiveElement for Text {
         let image = render_to_texture(&self.text, self.size, layout.max - layout.min);
 
         Image { image }.build(layout, pipeline, device, queue, size)
+    }
+
+    fn bounds(&self) -> Bounds {
+        let image = render_to_texture(&self.text, self.size, Vec2::splat(0.0));
+        Image { image }.bounds()
     }
 }
 

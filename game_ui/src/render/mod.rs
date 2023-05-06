@@ -31,7 +31,7 @@ use wgpu::{
     VertexStepMode,
 };
 
-use self::layout::LayoutTree;
+use self::layout::{Bounds, LayoutTree};
 
 pub use self::image::Image;
 pub use self::layout::{Element, ElementBody};
@@ -180,6 +180,8 @@ trait BuildPrimitiveElement {
         queue: &Queue,
         size: Vec2,
     ) -> PrimitiveElement;
+
+    fn bounds(&self) -> Bounds;
 }
 
 #[derive(Debug, Resource)]

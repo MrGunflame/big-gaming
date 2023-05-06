@@ -29,6 +29,14 @@ impl BuildPrimitiveElement for Element {
             ElementBody::Text(elem) => elem.build(layout, pipeline, device, queue, size),
         }
     }
+
+    fn bounds(&self) -> Bounds {
+        match &self.body {
+            ElementBody::Container() => todo!(),
+            ElementBody::Image(elem) => elem.bounds(),
+            ElementBody::Text(elem) => elem.bounds(),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -125,8 +133,8 @@ impl LayoutTree {
         for key in &self.root {
             let elem = &self.elems[*key];
 
-            let min_width = elem.bounds.min.unwrap_or_default().y;
-            let min_height = elem.bounds.min.unwrap_or_default().x;
+            let min_width = elem.bounds().min.unwrap_or_default().y;
+            let min_height = elem.bounds().min.unwrap_or_default().x;
 
             // Create the layout based on the minimal size.
             let layout = &mut self.layouts[*key];
@@ -153,19 +161,19 @@ impl LayoutTree {
             let elem = &self.elems[*key];
             let layout = &mut self.layouts[*key];
 
-            let max = elem.bounds.max.unwrap_or(Vec2::splat(f32::INFINITY));
+            let max = elem.bounds().max.unwrap_or(Vec2::splat(f32::INFINITY));
 
             layout.position = next_position;
             match direction {
                 Direction::Row => {
-                    layout.width = size_per_elem.x;
+                    layout.width = f32::min(size_per_elem.x, max.x);
                     layout.height = f32::min(size_per_elem.y, max.y);
 
                     next_position.y += layout.height;
                 }
                 Direction::Column => {
                     layout.width = f32::min(size_per_elem.x, max.x);
-                    layout.height = size_per_elem.y;
+                    layout.height = f32::min(size_per_elem.y, max.y);
 
                     next_position.x += layout.width;
                 }
