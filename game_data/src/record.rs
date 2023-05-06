@@ -131,6 +131,24 @@ pub enum RecordKind {
     Object,
 }
 
+impl RecordKind {
+    pub const fn is_action(&self) -> bool {
+        matches!(self, Self::Action)
+    }
+
+    pub const fn is_component(&self) -> bool {
+        matches!(self, Self::Component)
+    }
+
+    pub const fn is_item(&self) -> bool {
+        matches!(self, Self::Item)
+    }
+
+    pub const fn is_object(&self) -> bool {
+        matches!(self, Self::Object)
+    }
+}
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Error)]
 pub enum RecordKindError {
     #[error("failed to decode record kind byte: {0}")]
