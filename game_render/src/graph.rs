@@ -1,7 +1,6 @@
 use bevy_ecs::system::Resource;
 use bevy_ecs::world::World;
-
-use crate::ui::RenderContext;
+use wgpu::{CommandEncoder, Device, TextureView};
 
 #[derive(Default, Resource)]
 pub struct RenderGraph {
@@ -18,4 +17,10 @@ pub trait Node: Send + Sync + 'static {
     fn update(&mut self, world: &mut World);
 
     fn render(&self, world: &World, ctx: &mut RenderContext<'_>);
+}
+
+pub struct RenderContext<'a> {
+    pub encoder: &'a mut CommandEncoder,
+    pub view: &'a TextureView,
+    pub device: &'a Device,
 }

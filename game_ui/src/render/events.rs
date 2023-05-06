@@ -1,6 +1,6 @@
 use glam::Vec2;
 
-use crate::layout::Key;
+use super::layout::Key;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Event {
@@ -26,7 +26,7 @@ pub fn hit_test(elem: Rect, cursor: Vec2) -> bool {
 mod tests {
     use glam::Vec2;
 
-    use crate::events::hit_test;
+    use super::hit_test;
 
     use super::Rect;
 

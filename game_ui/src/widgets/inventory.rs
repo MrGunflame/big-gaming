@@ -44,6 +44,12 @@ impl Widget for Inventory {
 }
 
 fn render(state: &mut Inventory, ui: &mut Ui, archive: &GameArchive, inventory: &InventoryComp) {
+    ui.label(inventory.len().to_string());
+
+    for item in inventory.iter() {
+        ui.label(format!("{:?}", item.item));
+    }
+
     // let items: Vec<&ItemStack> = inventory.iter().collect();
 
     // ui.add(Category {
