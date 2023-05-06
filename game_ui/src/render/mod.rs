@@ -179,7 +179,7 @@ trait BuildPrimitiveElement {
         device: &Device,
         queue: &Queue,
         size: Vec2,
-    ) -> PrimitiveElement;
+    ) -> Option<PrimitiveElement>;
 
     fn bounds(&self) -> Bounds;
 }
@@ -350,7 +350,7 @@ impl Node for UiPass {
 
                         self.elements.clear();
                         for (elem, layout) in frame.elements().zip(frame.layouts()) {
-                            self.elements.push(elem.build(
+                            if let Some(elem) = elem.build(
                                 Rect {
                                     min: layout.position,
                                     max: Vec2::new(
@@ -362,7 +362,9 @@ impl Node for UiPass {
                                 &device.0,
                                 &queue.0,
                                 Vec2::new(size.width as f32, size.height as f32),
-                            ));
+                            ) {
+                                self.elements.push(elem);
+                            }
                         }
 
                         frame.unchanged();

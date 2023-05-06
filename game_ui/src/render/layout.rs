@@ -4,7 +4,7 @@ use bevy_ecs::prelude::Component;
 use glam::Vec2;
 
 use super::image::Image;
-use super::style::Direction;
+use super::style::{Direction, Style};
 use super::text::Text;
 use super::BuildPrimitiveElement;
 
@@ -12,6 +12,7 @@ use super::BuildPrimitiveElement;
 pub struct Element {
     pub bounds: Bounds,
     pub body: ElementBody,
+    pub style: Style,
 }
 
 impl BuildPrimitiveElement for Element {
@@ -22,9 +23,9 @@ impl BuildPrimitiveElement for Element {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         size: Vec2,
-    ) -> super::PrimitiveElement {
+    ) -> Option<super::PrimitiveElement> {
         match &self.body {
-            ElementBody::Container() => todo!(),
+            ElementBody::Container() => None,
             ElementBody::Image(elem) => elem.build(layout, pipeline, device, queue, size),
             ElementBody::Text(elem) => elem.build(layout, pipeline, device, queue, size),
         }
@@ -32,7 +33,7 @@ impl BuildPrimitiveElement for Element {
 
     fn bounds(&self) -> Bounds {
         match &self.body {
-            ElementBody::Container() => todo!(),
+            ElementBody::Container() => Bounds::default(),
             ElementBody::Image(elem) => elem.bounds(),
             ElementBody::Text(elem) => elem.bounds(),
         }
@@ -128,55 +129,161 @@ impl LayoutTree {
     }
 
     pub fn compute_layout(&mut self) {
-        let mut allocated = Vec2::splat(0.0);
-        let direction = Direction::Row;
+        let mut bounds = Bounds::default();
         for key in &self.root {
-            let elem = &self.elems[*key];
+            let child_bounds = self.compute_bounds(*key);
 
-            let min_width = elem.bounds().min.unwrap_or_default().y;
-            let min_height = elem.bounds().min.unwrap_or_default().x;
+            // Root elements always flow into Row direction.
+            bounds.min.unwrap().x = f32::max(bounds.min.unwrap().x, child_bounds.min.unwrap().x);
+            bounds.min.unwrap().y += bounds.min.unwrap().y;
+
+            bounds.max.unwrap().x = f32::max(bounds.max.unwrap().x, child_bounds.max.unwrap().x);
+            bounds.max.unwrap().y += bounds.max.unwrap().y;
+
+            // let elem = &self.elems[*key];
+
+            // let min_width = elem.bounds().min.unwrap_or_default().y;
+            // let min_height = elem.bounds().min.unwrap_or_default().x;
 
             // Create the layout based on the minimal size.
-            let layout = &mut self.layouts[*key];
-            layout.position = Vec2::new(allocated.x, 0.0);
-            layout.width = min_width;
-            layout.height = min_height;
+            // let layout = &mut self.layouts[*key];
+            // layout.position = Vec2::new(allocated.x, 0.0);
+            // layout.width = min_width;
+            // layout.height = min_height;
 
-            match direction {
-                Direction::Row => {
-                    allocated.x += min_width;
-                }
-                Direction::Column => {
-                    allocated.y += min_height;
-                }
-            }
+            // match direction {
+            //     Direction::Row => {
+            //         allocated.x += min_width;
+            //     }
+            //     Direction::Column => {
+            //         allocated.y += min_height;
+            //     }
+            // }
 
             // width += min_width;
         }
 
         let mut next_position = Vec2::splat(0.0);
-        let size_per_elem = size_per_element(self.size, self.root.len() as u32, direction);
-        for key in &self.root {
-            // Every elements gets `size_per_elem` or `max`, whichever is lower.
-            let elem = &self.elems[*key];
+        let size_per_elem = size_per_element(self.size, self.root.len() as u32, Direction::Row);
+        // FIXME: No need to clone, layout_element doesn't touch self.root.
+        for key in &self.root.clone() {
+            let bounds = self.compute_bounds(*key);
+
             let layout = &mut self.layouts[*key];
 
-            let max = elem.bounds().max.unwrap_or(Vec2::splat(f32::INFINITY));
-
+            // Every elements gets `size_per_elem` or `max`, whichever is lower.
             layout.position = next_position;
-            match direction {
-                Direction::Row => {
-                    layout.width = f32::min(size_per_elem.x, max.x);
-                    layout.height = f32::min(size_per_elem.y, max.y);
+            layout.width = f32::clamp(
+                size_per_elem.x,
+                bounds.min.unwrap().x,
+                bounds.max.unwrap().x,
+            );
+            layout.height = f32::clamp(
+                size_per_elem.y,
+                bounds.min.unwrap().y,
+                bounds.max.unwrap().y,
+            );
 
-                    next_position.y += layout.height;
-                }
-                Direction::Column => {
-                    layout.width = f32::min(size_per_elem.x, max.x);
-                    layout.height = f32::min(size_per_elem.y, max.y);
+            next_position.y += layout.height;
 
-                    next_position.x += layout.width;
+            self.layout_element(*key);
+        }
+
+        // for key in &self.root {
+        //     let elem = &self.elems[*key];
+        //     let layout = &mut self.layouts[*key];
+
+        //     let max = elem.bounds().max.unwrap_or(Vec2::splat(f32::INFINITY));
+        //     layout.width = f32::min(size_per_elem.x, max.x);
+        //     layout.height = f32::min(size_per_elem.y, max.y);
+
+        //     layout.position = next_position;
+        //     match direction {
+        //         Direction::Row => next_position.y += layout.height,
+        //         Direction::Column => next_position.x += layout.width,
+        //     }
+        // }
+    }
+
+    fn compute_bounds(&self, key: usize) -> Bounds {
+        let elem = &self.elems[key];
+
+        match &elem.body {
+            ElementBody::Container() => {
+                // Infer the bounds from the children elements.
+                if let Some(children) = self.children.get(&key) {
+                    let mut bounds = Bounds::default();
+                    for key in children {
+                        let child_bounds = self.compute_bounds(*key);
+
+                        let min = child_bounds.min.unwrap_or_default();
+                        let max = child_bounds.max.unwrap_or_default();
+
+                        match elem.style.direction {
+                            Direction::Row => {
+                                bounds.min.unwrap().y += min.y;
+                                bounds.min.unwrap().x = f32::max(bounds.min.unwrap().x, min.x);
+
+                                bounds.max.unwrap().y += max.y;
+                                bounds.max.unwrap().x = f32::max(bounds.max.unwrap().x, max.x);
+                            }
+                            Direction::Column => {
+                                bounds.min.unwrap().y = f32::min(bounds.min.unwrap().y, min.y);
+                                bounds.min.unwrap().x += min.x;
+
+                                bounds.max.unwrap().y = f32::max(bounds.max.unwrap().y, max.y);
+                                bounds.max.unwrap().x += max.x;
+                            }
+                        }
+                    }
+
+                    bounds
+                } else {
+                    Bounds::default()
                 }
+            }
+            ElementBody::Image(elem) => elem.bounds(),
+            ElementBody::Text(elem) => elem.bounds(),
+        }
+    }
+
+    fn layout_element(&mut self, key: usize) {
+        let elem = self.elems[key].clone();
+        let layout = &self.layouts[key];
+
+        let start = layout.position;
+        let end = Vec2::new(
+            layout.position.x + layout.width,
+            layout.position.y + layout.height,
+        );
+
+        if let Some(children) = self.children.get(&key).cloned() {
+            let mut next_position = layout.position;
+            let size_per_elem =
+                size_per_element(end - start, children.len() as u32, elem.style.direction);
+
+            for child in children {
+                let bounds = self.compute_bounds(child);
+                let layout = &mut self.layouts[child];
+
+                layout.position = next_position;
+                layout.width = f32::clamp(
+                    size_per_elem.x,
+                    bounds.min.unwrap().x,
+                    bounds.max.unwrap().x,
+                );
+                layout.height = f32::clamp(
+                    size_per_elem.y,
+                    bounds.min.unwrap().y,
+                    bounds.max.unwrap().y,
+                );
+
+                match elem.style.direction {
+                    Direction::Row => next_position.y += layout.height,
+                    Direction::Column => next_position.x += layout.width,
+                }
+
+                self.layout_element(child);
             }
         }
     }

@@ -33,7 +33,7 @@ impl BuildPrimitiveElement for Text {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         size: glam::Vec2,
-    ) -> super::PrimitiveElement {
+    ) -> Option<super::PrimitiveElement> {
         let image = render_to_texture(&self.text, self.size, layout.max - layout.min);
 
         Image { image }.build(layout, pipeline, device, queue, size)

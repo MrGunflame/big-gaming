@@ -19,21 +19,21 @@ impl BuildPrimitiveElement for Image {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         size: Vec2,
-    ) -> PrimitiveElement {
+    ) -> Option<PrimitiveElement> {
         let min = remap(position.min, size);
         let max = remap(position.max, size);
 
         let mut img = self.image.clone();
         debug_border(&mut img);
 
-        PrimitiveElement::new(
+        Some(PrimitiveElement::new(
             pipeline,
             device,
             queue,
             Rect { min, max },
             &img,
             [1.0, 1.0, 1.0, 1.0],
-        )
+        ))
     }
 
     fn bounds(&self) -> Bounds {

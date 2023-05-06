@@ -1,6 +1,7 @@
 use bevy_app::App;
 use bevy_ecs::system::Commands;
 use game_ui::render::layout::{Bounds, LayoutTree};
+use game_ui::render::style::{Direction, Style};
 use game_ui::render::{Element, ElementBody, Image, Text};
 use game_window::Window;
 use glam::Vec2;
@@ -24,6 +25,7 @@ fn setup(mut cmds: Commands) {
                 min: Some(Vec2::new(64.0, 64.0)),
                 max: None,
             },
+            style: Style::default(),
         },
     );
 
@@ -41,6 +43,37 @@ fn setup(mut cmds: Commands) {
                 max: None,
             },
             body: ElementBody::Image(Image { image: img }),
+            style: Style::default(),
+        },
+    );
+
+    let key = tree.push(
+        None,
+        Element {
+            bounds: Bounds::default(),
+            body: ElementBody::Container(),
+            style: Style {
+                direction: Direction::Column,
+                ..Default::default()
+            },
+        },
+    );
+
+    tree.push(
+        Some(key),
+        Element {
+            bounds: Bounds::default(),
+            body: ElementBody::Text(Text::new("test", 100.0)),
+            style: Style::default(),
+        },
+    );
+
+    tree.push(
+        Some(key),
+        Element {
+            bounds: Bounds::default(),
+            body: ElementBody::Text(Text::new("testestt", 100.0)),
+            style: Style::default(),
         },
     );
 
