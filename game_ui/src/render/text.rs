@@ -1,4 +1,5 @@
 use ab_glyph::{point, Font, FontRef, Glyph, Point, PxScale, ScaleFont};
+use glam::Vec2;
 use image::{ImageBuffer, Rgba, RgbaImage};
 
 use super::image::Image;
@@ -32,13 +33,13 @@ impl BuildPrimitiveElement for Text {
         queue: &wgpu::Queue,
         size: glam::Vec2,
     ) -> super::PrimitiveElement {
-        let image = render_to_texture(&self.text, self.size);
+        let image = render_to_texture(&self.text, self.size, layout.max - layout.min);
 
         Image { image }.build(layout, pipeline, device, queue, size)
     }
 }
 
-fn render_to_texture(text: &str, size: f32) -> ImageBuffer<Rgba<u8>, Vec<u8>> {
+fn render_to_texture(text: &str, size: f32, max: Vec2) -> ImageBuffer<Rgba<u8>, Vec<u8>> {
     let font =
         FontRef::try_from_slice(include_bytes!("/usr/share/fonts/droid/DroidSans.ttf")).unwrap();
 

@@ -4,6 +4,7 @@ use bevy_ecs::prelude::Component;
 use glam::Vec2;
 
 use super::image::Image;
+use super::style::Direction;
 use super::text::Text;
 use super::BuildPrimitiveElement;
 
@@ -37,10 +38,19 @@ pub enum ElementBody {
     Text(Text),
 }
 
-#[derive(Copy, Clone, Default, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub struct Bounds {
     pub min: Option<Vec2>,
     pub max: Option<Vec2>,
+}
+
+impl Default for Bounds {
+    fn default() -> Self {
+        Self {
+            min: Some(Vec2::splat(0.0)),
+            max: Some(Vec2::splat(f32::INFINITY)),
+        }
+    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -55,6 +65,8 @@ pub struct LayoutTree {
 
     children: HashMap<usize, Vec<usize>>,
     parents: HashMap<usize, usize>,
+    /// Root elements
+    root: Vec<usize>,
 }
 
 impl LayoutTree {
@@ -66,6 +78,7 @@ impl LayoutTree {
             changed: false,
             children: HashMap::new(),
             parents: HashMap::new(),
+            root: vec![],
         }
     }
 
@@ -89,6 +102,8 @@ impl LayoutTree {
         if let Some(Key(parent)) = parent {
             self.children.get_mut(&parent).unwrap().push(index);
             self.parents.insert(index, parent);
+        } else {
+            self.root.push(index);
         }
 
         self.changed = true;
@@ -105,13 +120,56 @@ impl LayoutTree {
     }
 
     pub fn compute_layout(&mut self) {
-        self.element_bounds();
-        // self.element_positions();
+        let mut allocated = Vec2::splat(0.0);
+        let direction = Direction::Row;
+        for key in &self.root {
+            let elem = &self.elems[*key];
 
-        let mut y = 0.0;
-        for (elem, layout) in self.elems.iter().zip(self.layouts.iter_mut()) {
-            layout.position.y = y;
-            y += elem.bounds.min.map(|v| v.y).unwrap_or(0.0);
+            let min_width = elem.bounds.min.unwrap_or_default().y;
+            let min_height = elem.bounds.min.unwrap_or_default().x;
+
+            // Create the layout based on the minimal size.
+            let layout = &mut self.layouts[*key];
+            layout.position = Vec2::new(allocated.x, 0.0);
+            layout.width = min_width;
+            layout.height = min_height;
+
+            match direction {
+                Direction::Row => {
+                    allocated.x += min_width;
+                }
+                Direction::Column => {
+                    allocated.y += min_height;
+                }
+            }
+
+            // width += min_width;
+        }
+
+        let mut next_position = Vec2::splat(0.0);
+        let size_per_elem = size_per_element(self.size, self.root.len() as u32, direction);
+        for key in &self.root {
+            // Every elements gets `size_per_elem` or `max`, whichever is lower.
+            let elem = &self.elems[*key];
+            let layout = &mut self.layouts[*key];
+
+            let max = elem.bounds.max.unwrap_or(Vec2::splat(f32::INFINITY));
+
+            layout.position = next_position;
+            match direction {
+                Direction::Row => {
+                    layout.width = size_per_elem.x;
+                    layout.height = f32::min(size_per_elem.y, max.y);
+
+                    next_position.y += layout.height;
+                }
+                Direction::Column => {
+                    layout.width = f32::min(size_per_elem.x, max.x);
+                    layout.height = size_per_elem.y;
+
+                    next_position.x += layout.width;
+                }
+            }
         }
     }
 
@@ -256,4 +314,54 @@ pub struct Layout {
     pub position: Vec2,
     pub width: f32,
     pub height: f32,
+}
+
+fn size_per_element(space: Vec2, num_elems: u32, direction: Direction) -> Vec2 {
+    match direction {
+        Direction::Row => {
+            let width = space.x;
+            let height = space.y / num_elems as f32;
+
+            Vec2::new(width, height)
+        }
+        Direction::Column => {
+            let width = space.x / num_elems as f32;
+            let height = space.y;
+
+            Vec2::new(width, height)
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use glam::Vec2;
+
+    use crate::render::style::Direction;
+
+    use super::size_per_element;
+
+    #[test]
+    fn size_per_element_row() {
+        let space = Vec2::splat(1000.0);
+        let num_elems = 5;
+        let direction = Direction::Row;
+
+        let output = size_per_element(space, num_elems, direction);
+
+        assert_eq!(output.x, 1000.0);
+        assert_eq!(output.y, 200.0);
+    }
+
+    #[test]
+    fn size_per_element_column() {
+        let space = Vec2::splat(1000.0);
+        let num_elems = 5;
+        let direction = Direction::Column;
+
+        let output = size_per_element(space, num_elems, direction);
+
+        assert_eq!(output.x, 200.0);
+        assert_eq!(output.y, 1000.0);
+    }
 }

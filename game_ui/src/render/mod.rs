@@ -1,4 +1,5 @@
 pub mod layout;
+pub mod style;
 
 mod debug;
 mod events;
@@ -350,7 +351,10 @@ impl Node for UiPass {
                             self.elements.push(elem.build(
                                 Rect {
                                     min: layout.position,
-                                    max: Vec2::new(layout.width, layout.height),
+                                    max: Vec2::new(
+                                        layout.position.x + layout.width,
+                                        layout.position.y + layout.height,
+                                    ),
                                 },
                                 &pipeline,
                                 &device.0,
