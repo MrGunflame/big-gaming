@@ -55,13 +55,11 @@ fn render_to_texture(text: &str, size: f32, max: Vec2) -> ImageBuffer<Rgba<u8>, 
     let (num_lines, max_width) =
         layout_glyphs(scaled_font, point(0.0, 0.0), text, 1000.0, &mut glyphs);
 
-    let height = scaled_font.height().ceil() as u32;
+    // Note that `height()` returns the biggest point that may be drawn to.
+    // We still need an additional pixel above that.
+    let height = scaled_font.height().ceil() as u32 + 1;
 
     let mut image = RgbaImage::new(max_width.ceil() as u32, num_lines * height);
-
-    // for pixel in image.pixels_mut() {
-    //     *pixel = Rgba([0, 0, 0, 255]);
-    // }
 
     for glyph in glyphs {
         if let Some(outlined_glyph) = scaled_font.outline_glyph(glyph) {
@@ -99,12 +97,13 @@ fn layout_glyphs<SF: ScaleFont<F>, F: Font>(
     let mut caret = position + point(0.0, font.ascent());
 
     let mut last_glyph: Option<Glyph> = None;
+    let mut last_gylph_width = 0.0;
 
     for ch in text.chars() {
         if ch.is_control() {
             if ch == '\n' {
-                if caret.x > width {
-                    width = caret.x;
+                if caret.x + last_gylph_width > width {
+                    width = caret.x + last_gylph_width;
                 }
 
                 caret = point(position.x, caret.y + v_advance);
@@ -121,12 +120,14 @@ fn layout_glyphs<SF: ScaleFont<F>, F: Font>(
 
         glyph.position = caret;
 
+        last_gylph_width = font.h_advance(glyph.id);
         last_glyph = Some(glyph.clone());
+
         caret.x += font.h_advance(glyph.id);
 
         if !ch.is_whitespace() && caret.x > position.x + max_width {
-            if caret.x > width {
-                width = caret.x;
+            if caret.x + last_gylph_width > width {
+                width = caret.x + last_gylph_width;
             }
 
             caret = point(caret.x, position.y);
@@ -138,9 +139,60 @@ fn layout_glyphs<SF: ScaleFont<F>, F: Font>(
         target.push(glyph);
     }
 
-    if caret.x > width {
-        width = caret.x;
+    if caret.x + last_gylph_width > width {
+        width = caret.x + last_gylph_width;
     }
 
     (num_lines, width)
+}
+
+#[cfg(test)]
+mod tests {
+    use ab_glyph::{point, Font, FontRef, PxScale};
+    use glam::Vec2;
+
+    use super::{layout_glyphs, render_to_texture};
+
+    fn test_font() -> FontRef<'static> {
+        FontRef::try_from_slice(include_bytes!("/usr/share/fonts/droid/DroidSans.ttf")).unwrap()
+    }
+
+    #[test]
+    fn render_to_texture_singleline() {
+        let text = "abcdefghijklmnopqrstuvwxyz";
+        let size = 100.0;
+        let max = Vec2::splat(0.0);
+
+        render_to_texture(text, size, max);
+    }
+
+    #[test]
+    fn render_to_texture_newline() {
+        let text = "abcdefghijklmnopqrstuvwxyz\nabcdefghijklmnopqrstuvwxyz";
+        let size = 100.0;
+        let max = Vec2::splat(0.0);
+
+        render_to_texture(text, size, max);
+    }
+
+    #[test]
+    fn render_to_texture_overflow() {
+        let text: String = (0..1000).map(|_| "a").collect();
+        let size = 100.0;
+        let max = Vec2::splat(0.0);
+
+        render_to_texture(&text, size, max);
+    }
+
+    #[test]
+    fn layout_glyphs_width_too_small() {
+        let font = test_font();
+        let font = font.as_scaled(PxScale::from(100.0));
+        let position = point(0.0, 0.0);
+        let text = "Hello";
+        let max_width = 1.0;
+        let mut target = Vec::new();
+
+        layout_glyphs(font, position, text, max_width, &mut target);
+    }
 }

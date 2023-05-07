@@ -72,7 +72,7 @@ fn setup(mut cmds: Commands) {
         Some(key),
         Element {
             bounds: Bounds::default(),
-            body: ElementBody::Text(Text::new("testestt", 100.0)),
+            body: ElementBody::Text(Text::new("yes", 100.0)),
             style: Style::default(),
         },
     );
