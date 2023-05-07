@@ -10,7 +10,10 @@ use bevy_ecs::prelude::{Component, Entity, EventWriter};
 use bevy_ecs::query::Added;
 use bevy_ecs::system::{Commands, Query, ResMut, Resource, SystemState};
 use bevy_ecs::world::FromWorld;
-use events::{WindowCreated, WindowDestroyed, WindowResized};
+use events::{
+    CursorEntered, CursorLeft, CursorMoved, WindowCreated, WindowDestroyed, WindowResized,
+};
+use glam::Vec2;
 use systems::create_windows;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::EventLoop;
@@ -28,6 +31,9 @@ impl Plugin for WindowPlugin {
         app.add_event::<WindowCreated>();
         app.add_event::<WindowResized>();
         app.add_event::<WindowDestroyed>();
+        app.add_event::<CursorMoved>();
+        app.add_event::<CursorEntered>();
+        app.add_event::<CursorLeft>();
 
         app.insert_non_send_resource(event_loop);
         app.set_runner(main_loop);
@@ -109,12 +115,45 @@ pub fn main_loop(mut app: App) {
                 WindowEvent::ModifiersChanged(_) => {}
                 WindowEvent::Ime(_) => {}
                 WindowEvent::CursorMoved {
-                    device_id,
+                    device_id: _,
                     position,
-                    modifiers,
-                } => {}
-                WindowEvent::CursorEntered { device_id } => {}
-                WindowEvent::CursorLeft { device_id } => {}
+                    modifiers: _,
+                } => {
+                    let window = app
+                        .world
+                        .resource::<Windows>()
+                        .windows
+                        .get(&window_id)
+                        .copied()
+                        .unwrap();
+
+                    app.world.send_event(CursorMoved {
+                        window,
+                        position: Vec2::new(position.x as f32, position.y as f32),
+                    });
+                }
+                WindowEvent::CursorEntered { device_id: _ } => {
+                    let window = app
+                        .world
+                        .resource::<Windows>()
+                        .windows
+                        .get(&window_id)
+                        .copied()
+                        .unwrap();
+
+                    app.world.send_event(CursorEntered { window });
+                }
+                WindowEvent::CursorLeft { device_id: _ } => {
+                    let window = app
+                        .world
+                        .resource::<Windows>()
+                        .windows
+                        .get(&window_id)
+                        .copied()
+                        .unwrap();
+
+                    app.world.send_event(CursorLeft { window });
+                }
                 WindowEvent::MouseWheel {
                     device_id,
                     delta,
