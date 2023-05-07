@@ -1,3 +1,4 @@
+use bevy_ecs::prelude::Entity;
 use bevy_ecs::system::Resource;
 use bevy_ecs::world::World;
 use wgpu::{CommandEncoder, Device, TextureView};
@@ -20,6 +21,7 @@ pub trait Node: Send + Sync + 'static {
 }
 
 pub struct RenderContext<'a> {
+    pub window: Entity,
     pub encoder: &'a mut CommandEncoder,
     pub view: &'a TextureView,
     pub device: &'a Device,

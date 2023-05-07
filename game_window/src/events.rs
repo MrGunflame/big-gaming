@@ -22,7 +22,6 @@ pub struct WindowDestroyed {
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct CursorMoved {
     pub window: Entity,
-    // FIXME: Should this be a UVec2 instead?
     pub position: Vec2,
 }
 

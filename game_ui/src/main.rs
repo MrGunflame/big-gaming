@@ -133,5 +133,10 @@ fn setup(mut cmds: Commands) {
     cmds.spawn(Window {
         title: "Hello World!".to_owned(),
     })
+    .insert(tree.clone());
+
+    cmds.spawn(Window {
+        title: "nr2".to_owned(),
+    })
     .insert(tree);
 }

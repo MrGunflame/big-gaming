@@ -249,6 +249,7 @@ pub fn render_surfaces(
                 }
 
                 let mut ctx = RenderContext {
+                    window: *entity,
                     encoder: &mut encoder,
                     view: &view,
                     device: &device.0,

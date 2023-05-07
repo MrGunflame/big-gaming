@@ -8,8 +8,11 @@ mod image;
 mod systems;
 mod text;
 
+use std::collections::HashMap;
+
 use ::image::{ImageBuffer, Rgba};
 use bevy_app::{App, Plugin};
+use bevy_ecs::prelude::Entity;
 use bevy_ecs::system::Resource;
 use bevy_ecs::world::{FromWorld, World};
 use bytemuck::{Pod, Zeroable};
@@ -329,7 +332,7 @@ pub struct Rect {
 
 #[derive(Debug, Default)]
 pub struct UiPass {
-    elements: Vec<PrimitiveElement>,
+    elements: HashMap<Entity, Vec<PrimitiveElement>>,
 }
 
 impl Node for UiPass {
@@ -338,9 +341,9 @@ impl Node for UiPass {
         world.resource_scope::<UiPipeline, ()>(|world, pipeline| {
             world.resource_scope::<RenderDevice, ()>(|world, device| {
                 world.resource_scope::<RenderQueue, ()>(|world, queue| {
-                    let mut query = world.query::<(&WindowState, &mut LayoutTree)>();
+                    let mut query = world.query::<(Entity, &WindowState, &mut LayoutTree)>();
 
-                    for (window, mut frame) in query.iter_mut(world) {
+                    for (entity, window, mut frame) in query.iter_mut(world) {
                         if !frame.is_changed() {
                             continue;
                         }
@@ -349,7 +352,7 @@ impl Node for UiPass {
 
                         frame.compute_layout();
 
-                        self.elements.clear();
+                        let mut elems = vec![];
                         for (elem, layout) in frame.elements().zip(frame.layouts()) {
                             if let Some(elem) = elem.build(
                                 Rect {
@@ -364,11 +367,13 @@ impl Node for UiPass {
                                 &queue.0,
                                 Vec2::new(size.width as f32, size.height as f32),
                             ) {
-                                self.elements.push(elem);
+                                elems.push(elem);
                             }
                         }
 
                         frame.unchanged();
+
+                        self.elements.insert(entity, elems);
                     }
                 });
             });
@@ -377,6 +382,10 @@ impl Node for UiPass {
 
     fn render(&self, world: &World, ctx: &mut RenderContext<'_>) {
         let pipeline = world.resource::<UiPipeline>();
+
+        let Some(elements) = self.elements.get(&ctx.window) else {
+            return;
+        };
 
         let mut render_pass = ctx.encoder.begin_render_pass(&RenderPassDescriptor {
             label: Some("ui_pass"),
@@ -393,7 +402,7 @@ impl Node for UiPass {
 
         render_pass.set_pipeline(&pipeline.pipeline);
 
-        for elem in &self.elements {
+        for elem in elements {
             render_pass.set_bind_group(0, &elem.bind_group, &[]);
             render_pass.set_vertex_buffer(0, elem.vertices.slice(..));
             render_pass.set_index_buffer(elem.indices.slice(..), IndexFormat::Uint32);
