@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use bevy_ecs::prelude::Component;
 use glam::Vec2;
 
+use super::container::Container;
 use super::image::Image;
 use super::style::{Direction, Style};
 use super::text::Text;
@@ -25,7 +26,7 @@ impl BuildPrimitiveElement for Element {
         size: Vec2,
     ) -> Option<super::PrimitiveElement> {
         match &self.body {
-            ElementBody::Container() => None,
+            ElementBody::Container() => Container.build(layout, pipeline, device, queue, size),
             ElementBody::Image(elem) => elem.build(layout, pipeline, device, queue, size),
             ElementBody::Text(elem) => elem.build(layout, pipeline, device, queue, size),
         }
@@ -221,18 +222,22 @@ impl LayoutTree {
 
                         match elem.style.direction {
                             Direction::Row => {
-                                bounds.min.unwrap().y += min.y;
-                                bounds.min.unwrap().x = f32::max(bounds.min.unwrap().x, min.x);
+                                bounds.min.as_mut().unwrap().y += min.y;
+                                bounds.min.as_mut().unwrap().x =
+                                    f32::max(bounds.min.unwrap().x, min.x);
 
-                                bounds.max.unwrap().y += max.y;
-                                bounds.max.unwrap().x = f32::max(bounds.max.unwrap().x, max.x);
+                                bounds.max.as_mut().unwrap().y += max.y;
+                                bounds.max.as_mut().unwrap().x =
+                                    f32::max(bounds.max.unwrap().x, max.x);
                             }
                             Direction::Column => {
-                                bounds.min.unwrap().y = f32::min(bounds.min.unwrap().y, min.y);
-                                bounds.min.unwrap().x += min.x;
+                                bounds.min.as_mut().unwrap().y =
+                                    f32::min(bounds.min.unwrap().y, min.y);
+                                bounds.min.as_mut().unwrap().x += min.x;
 
-                                bounds.max.unwrap().y = f32::max(bounds.max.unwrap().y, max.y);
-                                bounds.max.unwrap().x += max.x;
+                                bounds.max.as_mut().unwrap().y =
+                                    f32::max(bounds.max.unwrap().y, max.y);
+                                bounds.max.as_mut().unwrap().x += max.x;
                             }
                         }
                     }
@@ -452,9 +457,10 @@ fn size_per_element(space: Vec2, num_elems: u32, direction: Direction) -> Vec2 {
 mod tests {
     use glam::Vec2;
 
-    use crate::render::style::Direction;
+    use crate::render::style::{Direction, Style};
+    use crate::render::{BuildPrimitiveElement, Text};
 
-    use super::size_per_element;
+    use super::{size_per_element, Bounds, Element, ElementBody, LayoutTree};
 
     #[test]
     fn size_per_element_row() {
@@ -478,5 +484,32 @@ mod tests {
 
         assert_eq!(output.x, 200.0);
         assert_eq!(output.y, 1000.0);
+    }
+
+    #[test]
+    fn compute_layout_no_children() {
+        let mut tree = LayoutTree::new();
+        tree.resize(Vec2::splat(1000.0));
+        let elem = Element {
+            bounds: Bounds::default(),
+            style: Style::default(),
+            body: ElementBody::Text(Text::new("test", 100.0)),
+        };
+
+        let key0 = tree.push(None, elem.clone());
+        let key1 = tree.push(None, elem.clone());
+
+        tree.compute_layout();
+
+        let layout0 = tree.layouts[key0.0];
+        let layout1 = tree.layouts[key1.0];
+
+        assert_eq!(layout0.position, Vec2::splat(0.0));
+        assert_eq!(layout0.width, elem.bounds().min.unwrap().x);
+        assert_eq!(layout0.height, elem.bounds().min.unwrap().y);
+
+        assert_eq!(layout1.position, Vec2::new(0.0, layout0.height));
+        assert_eq!(layout1.width, elem.bounds().min.unwrap().x);
+        assert_eq!(layout1.height, elem.bounds().min.unwrap().y);
     }
 }
