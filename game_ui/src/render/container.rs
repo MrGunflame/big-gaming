@@ -1,7 +1,6 @@
 use image::ImageBuffer;
 
-use super::debug::debug_border;
-use super::layout::Bounds;
+use super::layout::ComputedBounds;
 use super::{BuildPrimitiveElement, Image};
 
 pub struct Container;
@@ -24,7 +23,7 @@ impl BuildPrimitiveElement for Container {
         Image { image }.build(layout, pipeline, device, queue, size)
     }
 
-    fn bounds(&self) -> super::layout::Bounds {
-        Bounds::default()
+    fn bounds(&self) -> ComputedBounds {
+        ComputedBounds::default()
     }
 }

@@ -1,10 +1,9 @@
 use bevy_app::App;
 use bevy_ecs::system::Commands;
-use game_ui::render::layout::{Bounds, LayoutTree};
-use game_ui::render::style::{Direction, Position, Style};
+use game_ui::render::layout::LayoutTree;
+use game_ui::render::style::{Bounds, Direction, Position, Style};
 use game_ui::render::{Element, ElementBody, Image, Text};
 use game_window::Window;
-use glam::Vec2;
 
 fn main() {
     let mut app = App::new();
@@ -38,7 +37,6 @@ fn setup(mut cmds: Commands) {
     let root = tree.push(
         None,
         Element {
-            bounds: Bounds::default(),
             body: ElementBody::Container(),
             style: Style {
                 direction: Direction::Column,
@@ -50,11 +48,11 @@ fn setup(mut cmds: Commands) {
     let side = tree.push(
         Some(root),
         Element {
-            bounds: Bounds::default(),
             body: ElementBody::Container(),
             style: Style {
                 position: Position::default(),
                 direction: Direction::Row,
+                bounds: Bounds::default(),
             },
         },
     );
@@ -62,7 +60,6 @@ fn setup(mut cmds: Commands) {
     let main = tree.push(
         Some(root),
         Element {
-            bounds: Bounds::default(),
             body: ElementBody::Container(),
             style: Style {
                 direction: Direction::Column,
@@ -75,7 +72,6 @@ fn setup(mut cmds: Commands) {
         tree.push(
             Some(side),
             Element {
-                bounds: Bounds::default(),
                 body: ElementBody::Text(Text::new("Some record", 100.0)),
                 style: Style::default(),
             },
@@ -86,7 +82,6 @@ fn setup(mut cmds: Commands) {
         tree.push(
             Some(main),
             Element {
-                bounds: Bounds::default(),
                 body: ElementBody::Image(Image { image: img.clone() }),
                 style: Style::default(),
             },

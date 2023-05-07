@@ -5,13 +5,12 @@ use glam::Vec2;
 
 use super::container::Container;
 use super::image::Image;
-use super::style::{Direction, Style};
+use super::style::{Bounds, Direction, Style};
 use super::text::Text;
 use super::BuildPrimitiveElement;
 
 #[derive(Clone, Debug)]
 pub struct Element {
-    pub bounds: Bounds,
     pub body: ElementBody,
     pub style: Style,
 }
@@ -32,9 +31,9 @@ impl BuildPrimitiveElement for Element {
         }
     }
 
-    fn bounds(&self) -> Bounds {
+    fn bounds(&self) -> ComputedBounds {
         match &self.body {
-            ElementBody::Container() => Bounds::default(),
+            ElementBody::Container() => ComputedBounds::default(),
             ElementBody::Image(elem) => elem.bounds(),
             ElementBody::Text(elem) => elem.bounds(),
         }
@@ -46,21 +45,6 @@ pub enum ElementBody {
     Container(),
     Image(Image),
     Text(Text),
-}
-
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub struct Bounds {
-    pub min: Vec2,
-    pub max: Vec2,
-}
-
-impl Default for Bounds {
-    fn default() -> Self {
-        Self {
-            min: Vec2::splat(0.0),
-            max: Vec2::splat(f32::INFINITY),
-        }
-    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -100,12 +84,15 @@ impl LayoutTree {
     pub fn push(&mut self, parent: Option<Key>, elem: Element) -> Key {
         let index = self.elems.len();
 
-        self.elems.push(elem);
         self.layouts.push(Layout {
             position: Vec2::splat(0.0),
             height: 0.0,
             width: 0.0,
+            style: ComputedStyle {
+                bounds: ComputedBounds::new(elem.style.bounds, self.size),
+            },
         });
+        self.elems.push(elem);
 
         self.children.insert(index, vec![]);
 
@@ -130,7 +117,9 @@ impl LayoutTree {
     }
 
     pub fn compute_layout(&mut self) {
-        let mut bounds = Bounds::default();
+        self.computed_sizes();
+
+        let mut bounds = ComputedBounds::default();
         for key in &self.root {
             let child_bounds = self.compute_bounds(*key);
 
@@ -198,14 +187,14 @@ impl LayoutTree {
         // }
     }
 
-    fn compute_bounds(&self, key: usize) -> Bounds {
+    fn compute_bounds(&self, key: usize) -> ComputedBounds {
         let elem = &self.elems[key];
 
         match &elem.body {
             ElementBody::Container() => {
                 // Infer the bounds from the children elements.
                 if let Some(children) = self.children.get(&key) {
-                    let mut bounds = Bounds::default();
+                    let mut bounds = ComputedBounds::default();
                     for key in children {
                         let child_bounds = self.compute_bounds(*key);
 
@@ -232,7 +221,7 @@ impl LayoutTree {
 
                     bounds
                 } else {
-                    Bounds::default()
+                    ComputedBounds::default()
                 }
             }
             ElementBody::Image(elem) => elem.bounds(),
@@ -273,59 +262,65 @@ impl LayoutTree {
         }
     }
 
-    /// Computes the minimal bounds from the botton up.
-    fn element_bounds(&mut self) {
-        // Start with the leaf elements, then go bottom up.
-        let mut children = self.children.clone();
-
-        while children.len() > 0 {
-            // Lay out all leaf nodes.
-            for (index, _) in children.clone().iter().filter(|(_, c)| c.len() == 0) {
-                let elem = &self.elems[*index];
-
-                let dimensions = if let Some(childs) = self.children.get(index) {
-                    if childs.is_empty() {
-                        elem.bounds.min
-                    } else {
-                        // The dimensions of the element with children are the sum of
-                        // the dimensions of all children in one direction, and the maximum
-                        // in the other.
-                        let mut width = 0.0;
-                        let mut height = 0.0;
-
-                        for child in childs {
-                            let layout = &self.layouts[*child];
-                            width += layout.width;
-                            height += layout.height;
-                        }
-
-                        Vec2::new(width, height)
-                    }
-                } else {
-                    // Elements without children, usually leaf nodes.
-                    elem.bounds.min
-                };
-
-                let layout = &mut self.layouts[*index];
-                layout.width = dimensions.x;
-                layout.height = dimensions.y;
-
-                if let Some(parent) = self.parents.get(index) {
-                    let (idx, _) = children
-                        .get_mut(parent)
-                        .unwrap()
-                        .iter()
-                        .enumerate()
-                        .find(|(_, child)| *child == index)
-                        .unwrap();
-
-                    children.get_mut(parent).unwrap().remove(idx);
-                }
-
-                children.remove(&index);
-            }
+    fn computed_sizes(&mut self) {
+        for (elem, layout) in self.elems.iter().zip(self.layouts.iter_mut()) {
+            layout.style.bounds = ComputedBounds::new(elem.style.bounds, self.size);
         }
     }
+
+    // / Computes the minimal bounds from the botton up.
+    // fn element_bounds(&mut self) {
+    //     // Start with the leaf elements, then go bottom up.
+    //     let mut children = self.children.clone();
+
+    //     while children.len() > 0 {
+    //         // Lay out all leaf nodes.
+    //         for (index, _) in children.clone().iter().filter(|(_, c)| c.len() == 0) {
+    //             let elem = &self.elems[*index];
+
+    //             let dimensions = if let Some(childs) = self.children.get(index) {
+    //                 if childs.is_empty() {
+    //                     elem.style.bounds.min
+    //                 } else {
+    //                     // The dimensions of the element with children are the sum of
+    //                     // the dimensions of all children in one direction, and the maximum
+    //                     // in the other.
+    //                     let mut width = 0.0;
+    //                     let mut height = 0.0;
+
+    //                     for child in childs {
+    //                         let layout = &self.layouts[*child];
+    //                         width += layout.width;
+    //                         height += layout.height;
+    //                     }
+
+    //                     Vec2::new(width, height)
+    //                 }
+    //             } else {
+    //                 // Elements without children, usually leaf nodes.
+    //                 elem.style.bounds.min
+    //             };
+
+    //             let layout = &mut self.layouts[*index];
+    //             layout.width = dimensions.x;
+    //             layout.height = dimensions.y;
+
+    //             if let Some(parent) = self.parents.get(index) {
+    //                 let (idx, _) = children
+    //                     .get_mut(parent)
+    //                     .unwrap()
+    //                     .iter()
+    //                     .enumerate()
+    //                     .find(|(_, child)| *child == index)
+    //                     .unwrap();
+
+    //                 children.get_mut(parent).unwrap().remove(idx);
+    //             }
+
+    //             children.remove(&index);
+    //         }
+    //     }
+    // }
 
     fn element_positions(&mut self) {
         for (index, childs) in &self.children {
@@ -411,6 +406,8 @@ impl<'a> ExactSizeIterator for Layouts<'a> {
 
 #[derive(Copy, Clone, Debug)]
 pub struct Layout {
+    style: ComputedStyle,
+
     pub position: Vec2,
     pub width: f32,
     pub height: f32,
@@ -433,6 +430,41 @@ fn size_per_element(space: Vec2, num_elems: u32, direction: Direction) -> Vec2 {
     }
 }
 
+#[derive(Copy, Clone, Debug)]
+struct ComputedStyle {
+    bounds: ComputedBounds,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub(crate) struct ComputedBounds {
+    pub(crate) min: Vec2,
+    pub(crate) max: Vec2,
+}
+
+impl ComputedBounds {
+    fn new(bounds: Bounds, viewport: Vec2) -> Self {
+        Self {
+            min: Vec2 {
+                x: bounds.min.x.to_pixels(viewport),
+                y: bounds.min.y.to_pixels(viewport),
+            },
+            max: Vec2 {
+                x: bounds.max.x.to_pixels(viewport),
+                y: bounds.max.y.to_pixels(viewport),
+            },
+        }
+    }
+}
+
+impl Default for ComputedBounds {
+    fn default() -> Self {
+        Self {
+            min: Vec2::splat(0.0),
+            max: Vec2::splat(f32::INFINITY),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use glam::Vec2;
@@ -440,7 +472,7 @@ mod tests {
     use crate::render::style::{Direction, Style};
     use crate::render::{BuildPrimitiveElement, Text};
 
-    use super::{size_per_element, Bounds, Element, ElementBody, LayoutTree};
+    use super::{size_per_element, Element, ElementBody, LayoutTree};
 
     #[test]
     fn size_per_element_row() {
@@ -471,7 +503,6 @@ mod tests {
         let mut tree = LayoutTree::new();
         tree.resize(Vec2::splat(1000.0));
         let elem = Element {
-            bounds: Bounds::default(),
             style: Style::default(),
             body: ElementBody::Text(Text::new("test", 100.0)),
         };

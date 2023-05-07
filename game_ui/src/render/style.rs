@@ -2,6 +2,7 @@ use glam::Vec2;
 
 #[derive(Copy, Clone, Debug, Default)]
 pub struct Style {
+    pub bounds: Bounds,
     pub position: Position,
     pub direction: Direction,
 }
@@ -48,6 +49,34 @@ impl Size {
             Self::Pixels(val) => val,
             Self::ViewportWidth(factor) => viewport.x * factor,
             Self::ViewportHeight(factor) => viewport.y * factor,
+        }
+    }
+}
+
+// TODO: Maybe replace with nalgebra vector.
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub struct SizeVec2 {
+    pub x: Size,
+    pub y: Size,
+}
+
+impl SizeVec2 {
+    pub const fn splat(size: Size) -> Self {
+        Self { x: size, y: size }
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct Bounds {
+    pub min: SizeVec2,
+    pub max: SizeVec2,
+}
+
+impl Default for Bounds {
+    fn default() -> Self {
+        Self {
+            min: SizeVec2::splat(Size::Pixels(0.0)),
+            max: SizeVec2::splat(Size::Pixels(f32::INFINITY)),
         }
     }
 }
