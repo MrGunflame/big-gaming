@@ -50,15 +50,15 @@ pub enum ElementBody {
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct Bounds {
-    pub min: Option<Vec2>,
-    pub max: Option<Vec2>,
+    pub min: Vec2,
+    pub max: Vec2,
 }
 
 impl Default for Bounds {
     fn default() -> Self {
         Self {
-            min: Some(Vec2::splat(0.0)),
-            max: Some(Vec2::splat(f32::INFINITY)),
+            min: Vec2::splat(0.0),
+            max: Vec2::splat(f32::INFINITY),
         }
     }
 }
@@ -135,11 +135,11 @@ impl LayoutTree {
             let child_bounds = self.compute_bounds(*key);
 
             // Root elements always flow into Row direction.
-            bounds.min.unwrap().x = f32::max(bounds.min.unwrap().x, child_bounds.min.unwrap().x);
-            bounds.min.unwrap().y += bounds.min.unwrap().y;
+            bounds.min.x = f32::max(bounds.min.x, child_bounds.min.x);
+            bounds.min.y += bounds.min.y;
 
-            bounds.max.unwrap().x = f32::max(bounds.max.unwrap().x, child_bounds.max.unwrap().x);
-            bounds.max.unwrap().y += bounds.max.unwrap().y;
+            bounds.max.x = f32::max(bounds.max.x, child_bounds.max.x);
+            bounds.max.y += bounds.max.y;
 
             // let elem = &self.elems[*key];
 
@@ -174,16 +174,8 @@ impl LayoutTree {
 
             // Every elements gets `size_per_elem` or `max`, whichever is lower.
             layout.position = next_position;
-            layout.width = f32::clamp(
-                size_per_elem.x,
-                bounds.min.unwrap().x,
-                bounds.max.unwrap().x,
-            );
-            layout.height = f32::clamp(
-                size_per_elem.y,
-                bounds.min.unwrap().y,
-                bounds.max.unwrap().y,
-            );
+            layout.width = f32::clamp(size_per_elem.x, bounds.min.x, bounds.max.x);
+            layout.height = f32::clamp(size_per_elem.y, bounds.min.y, bounds.max.y);
 
             next_position.y += layout.height;
 
@@ -217,27 +209,23 @@ impl LayoutTree {
                     for key in children {
                         let child_bounds = self.compute_bounds(*key);
 
-                        let min = child_bounds.min.unwrap_or_default();
-                        let max = child_bounds.max.unwrap_or_default();
+                        let min = child_bounds.min;
+                        let max = child_bounds.max;
 
                         match elem.style.direction {
                             Direction::Row => {
-                                bounds.min.as_mut().unwrap().y += min.y;
-                                bounds.min.as_mut().unwrap().x =
-                                    f32::max(bounds.min.unwrap().x, min.x);
+                                bounds.min.y += min.y;
+                                bounds.min.x = f32::max(bounds.min.x, min.x);
 
-                                bounds.max.as_mut().unwrap().y += max.y;
-                                bounds.max.as_mut().unwrap().x =
-                                    f32::max(bounds.max.unwrap().x, max.x);
+                                bounds.max.y += max.y;
+                                bounds.max.x = f32::max(bounds.max.x, max.x);
                             }
                             Direction::Column => {
-                                bounds.min.as_mut().unwrap().y =
-                                    f32::min(bounds.min.unwrap().y, min.y);
-                                bounds.min.as_mut().unwrap().x += min.x;
+                                bounds.min.y = f32::min(bounds.min.y, min.y);
+                                bounds.min.x += min.x;
 
-                                bounds.max.as_mut().unwrap().y =
-                                    f32::max(bounds.max.unwrap().y, max.y);
-                                bounds.max.as_mut().unwrap().x += max.x;
+                                bounds.max.y = f32::max(bounds.max.y, max.y);
+                                bounds.max.x += max.x;
                             }
                         }
                     }
@@ -272,16 +260,8 @@ impl LayoutTree {
                 let layout = &mut self.layouts[child];
 
                 layout.position = next_position;
-                layout.width = f32::clamp(
-                    size_per_elem.x,
-                    bounds.min.unwrap().x,
-                    bounds.max.unwrap().x,
-                );
-                layout.height = f32::clamp(
-                    size_per_elem.y,
-                    bounds.min.unwrap().y,
-                    bounds.max.unwrap().y,
-                );
+                layout.width = f32::clamp(size_per_elem.x, bounds.min.x, bounds.max.x);
+                layout.height = f32::clamp(size_per_elem.y, bounds.min.y, bounds.max.y);
 
                 match elem.style.direction {
                     Direction::Row => next_position.y += layout.height,
@@ -305,7 +285,7 @@ impl LayoutTree {
 
                 let dimensions = if let Some(childs) = self.children.get(index) {
                     if childs.is_empty() {
-                        elem.bounds.min.unwrap_or_default()
+                        elem.bounds.min
                     } else {
                         // The dimensions of the element with children are the sum of
                         // the dimensions of all children in one direction, and the maximum
@@ -323,7 +303,7 @@ impl LayoutTree {
                     }
                 } else {
                     // Elements without children, usually leaf nodes.
-                    elem.bounds.min.unwrap_or_default()
+                    elem.bounds.min
                 };
 
                 let layout = &mut self.layouts[*index];
@@ -505,11 +485,11 @@ mod tests {
         let layout1 = tree.layouts[key1.0];
 
         assert_eq!(layout0.position, Vec2::splat(0.0));
-        assert_eq!(layout0.width, elem.bounds().min.unwrap().x);
-        assert_eq!(layout0.height, elem.bounds().min.unwrap().y);
+        assert_eq!(layout0.width, elem.bounds().min.x);
+        assert_eq!(layout0.height, elem.bounds().min.y);
 
         assert_eq!(layout1.position, Vec2::new(0.0, layout0.height));
-        assert_eq!(layout1.width, elem.bounds().min.unwrap().x);
-        assert_eq!(layout1.height, elem.bounds().min.unwrap().y);
+        assert_eq!(layout1.width, elem.bounds().min.x);
+        assert_eq!(layout1.height, elem.bounds().min.y);
     }
 }

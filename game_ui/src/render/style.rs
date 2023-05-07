@@ -32,3 +32,22 @@ pub enum Position {
     Relative,
     Absolute(Vec2),
 }
+
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum Size {
+    Pixels(f32),
+    /// Viewport width percentage
+    ViewportWidth(f32),
+    /// Viewport height percentage
+    ViewportHeight(f32),
+}
+
+impl Size {
+    pub(crate) fn to_pixels(self, viewport: Vec2) -> f32 {
+        match self {
+            Self::Pixels(val) => val,
+            Self::ViewportWidth(factor) => viewport.x * factor,
+            Self::ViewportHeight(factor) => viewport.y * factor,
+        }
+    }
+}

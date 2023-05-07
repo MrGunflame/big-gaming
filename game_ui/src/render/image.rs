@@ -40,8 +40,8 @@ impl BuildPrimitiveElement for Image {
         let size = Vec2::new(self.image.width() as f32, self.image.height() as f32);
 
         Bounds {
-            min: Some(size),
-            max: Some(size),
+            min: size,
+            max: size,
         }
     }
 }
