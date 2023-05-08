@@ -34,3 +34,9 @@ pub struct CursorEntered {
 pub struct CursorLeft {
     pub window: Entity,
 }
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct ReceivedCharacter {
+    pub window: Entity,
+    pub char: char,
+}

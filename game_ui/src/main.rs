@@ -103,8 +103,9 @@ fn setup(mut cmds: Commands) {
     events.insert(
         key,
         EventHandlers {
-            cursor_moved: Some(Box::new(|| {
-                dbg!("mv");
+            cursor_moved: Some(Box::new(|| {})),
+            mouse_button_input: Some(Box::new(|input| {
+                dbg!(input);
             })),
             ..Default::default()
         },

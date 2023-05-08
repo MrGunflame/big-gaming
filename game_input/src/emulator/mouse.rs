@@ -1,15 +1,18 @@
 use std::collections::VecDeque;
 
-use bevy::prelude::{EventWriter, Plugin, ResMut, Vec2};
-use bevy_ecs::system::Resource;
+use bevy_app::{App, Plugin};
+use bevy_ecs::prelude::EventWriter;
+use bevy_ecs::system::{ResMut, Resource};
+use glam::Vec2;
 
-use crate::mouse::{ButtonState, MouseButton, MouseButtonInput, MouseMotion};
+use crate::mouse::{MouseButton, MouseButtonInput, MouseMotion};
+use crate::ButtonState;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct MouseEmulatorPlugin;
 
 impl Plugin for MouseEmulatorPlugin {
-    fn build(&self, app: &mut bevy::prelude::App) {
+    fn build(&self, app: &mut App) {
         app.insert_resource(MouseEmulator::new())
             .add_system(emulate_mouse_buttons)
             .add_system(emulate_mouse_motions);

@@ -1,9 +1,6 @@
-use bevy::prelude::{EventReader, EventWriter, Res, Vec2};
+use glam::Vec2;
 
-pub use bevy::input::mouse::MouseButton;
-pub use bevy::input::ButtonState;
-
-use crate::CanMouseMove;
+use crate::ButtonState;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct MouseMotion {
@@ -16,26 +13,23 @@ pub struct MouseButtonInput {
     pub state: ButtonState,
 }
 
-pub(super) fn mouse_motion(
-    can_move: Res<CanMouseMove>,
-    mut reader: EventReader<bevy::input::mouse::MouseMotion>,
-    mut writer: EventWriter<MouseMotion>,
-) {
-    for event in reader.iter() {
-        if can_move.0 {
-            writer.send(MouseMotion { delta: event.delta });
-        }
-    }
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum MouseButton {
+    Left,
+    Right,
+    Middle,
+    Other(u16),
 }
 
-pub(super) fn mouse_buttons(
-    mut reader: EventReader<bevy::input::mouse::MouseButtonInput>,
-    mut writer: EventWriter<MouseButtonInput>,
-) {
-    for event in reader.iter() {
-        writer.send(MouseButtonInput {
-            button: event.button,
-            state: event.state,
-        });
-    }
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub struct MouseWheel {
+    pub unit: MouseScrollUnit,
+    pub x: f32,
+    pub y: f32,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum MouseScrollUnit {
+    Line,
+    Pixel,
 }

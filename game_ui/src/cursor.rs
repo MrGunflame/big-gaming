@@ -24,6 +24,16 @@ impl Cursor {
     }
 
     #[inline]
+    pub fn window(&self) -> Option<Entity> {
+        self.window
+    }
+
+    #[inline]
+    pub fn position(&self) -> Vec2 {
+        self.position
+    }
+
+    #[inline]
     pub fn lock(&mut self, window: &mut WindowState) {
         if !self.is_locked {
             self.lock_unchecked(window);

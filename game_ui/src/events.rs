@@ -2,10 +2,12 @@ use std::collections::HashMap;
 
 use bevy_ecs::prelude::{Component, EventReader};
 use bevy_ecs::query::{Added, Changed, Or};
-use bevy_ecs::system::Query;
+use bevy_ecs::system::{Query, Res};
+use game_input::mouse::MouseButtonInput;
 use game_window::events::CursorMoved;
 use glam::Vec2;
 
+use crate::cursor::Cursor;
 use crate::render::layout::{Key, LayoutTree};
 use crate::render::Rect;
 
@@ -14,6 +16,7 @@ pub struct EventHandlers {
     pub cursor_moved: Option<Box<dyn Fn() + Send + Sync + 'static>>,
     pub cursor_left: Option<Box<dyn Fn() + Send + Sync + 'static>>,
     pub cursor_entered: Option<Box<dyn Fn() + Send + Sync + 'static>>,
+    pub mouse_button_input: Option<Box<dyn Fn(MouseButtonInput) + Send + Sync + 'static>>,
 }
 
 #[derive(Component, Default)]
@@ -69,6 +72,38 @@ pub fn dispatch_cursor_moved_events(windows: Query<&Events>, mut events: EventRe
 
                 if let Some(f) = &handlers.cursor_moved {
                     f();
+                }
+            }
+        }
+    }
+}
+
+pub fn dispatch_mouse_button_input_events(
+    cursor: Res<Cursor>,
+    windows: Query<&Events>,
+    mut events: EventReader<MouseButtonInput>,
+) {
+    if events.is_empty() {
+        return;
+    }
+
+    let Some(window) = cursor.window() else {
+        return;
+    };
+
+    let Ok(window) = windows.get(window) else {
+        return;
+    };
+
+    for event in events.iter() {
+        for (key, rect) in &window.positions {
+            if hit_test(*rect, cursor.position()) {
+                let Some(handlers) = window.events.get(&key) else {
+                    continue;
+                };
+
+                if let Some(f) = &handlers.mouse_button_input {
+                    f(*event);
                 }
             }
         }

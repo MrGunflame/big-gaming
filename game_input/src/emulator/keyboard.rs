@@ -1,14 +1,17 @@
 use std::collections::VecDeque;
 
-use bevy::prelude::{EventWriter, Plugin, ResMut, Resource};
+use bevy_app::{App, Plugin};
+use bevy_ecs::prelude::EventWriter;
+use bevy_ecs::system::{ResMut, Resource};
 
-use crate::keyboard::{ButtonState, KeyCode, KeyboardInput, ScanCode};
+use crate::keyboard::{KeyCode, KeyboardInput, ScanCode};
+use crate::ButtonState;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct KeyboardEmulatorPlugin;
 
 impl Plugin for KeyboardEmulatorPlugin {
-    fn build(&self, app: &mut bevy::prelude::App) {
+    fn build(&self, app: &mut App) {
         app.insert_resource(KeyboardEmulator::new())
             .add_system(emulate_keyboard);
     }

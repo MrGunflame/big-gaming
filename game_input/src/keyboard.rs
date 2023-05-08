@@ -1,7 +1,4 @@
-use bevy::prelude::{EventReader, EventWriter};
-
-pub use bevy::input::ButtonState;
-pub use bevy::prelude::{KeyCode, ScanCode};
+use crate::ButtonState;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct KeyboardInput {
@@ -9,6 +6,11 @@ pub struct KeyboardInput {
     pub key_code: Option<KeyCode>,
     pub state: ButtonState,
 }
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct ScanCode(pub u32);
+
+pub type KeyCode = winit::event::VirtualKeyCode;
 
 // #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 // #[repr(transparent)]
@@ -47,17 +49,4 @@ impl Qwertz {
     pub const W: ScanCode = ScanCode(18);
     pub const E: ScanCode = ScanCode(19);
     pub const R: ScanCode = ScanCode(20);
-}
-
-pub fn keyboard_input(
-    mut reader: EventReader<bevy::input::keyboard::KeyboardInput>,
-    mut writer: EventWriter<KeyboardInput>,
-) {
-    for event in reader.iter() {
-        writer.send(KeyboardInput {
-            scan_code: ScanCode(event.scan_code),
-            key_code: event.key_code,
-            state: event.state,
-        });
-    }
 }

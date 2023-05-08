@@ -1,14 +1,11 @@
-#![feature(const_trait_impl)]
-
-mod event;
-
 pub mod emulator;
 pub mod hotkeys;
 pub mod keyboard;
 pub mod mouse;
 
-use bevy::prelude::{IntoSystemConfig, IntoSystemSetConfig, Plugin, Resource, SystemSet};
-pub use event::*;
+use bevy_app::{App, Plugin};
+use bevy_ecs::schedule::{IntoSystemSetConfig, SystemSet};
+use bevy_ecs::system::Resource;
 use hotkeys::{HotkeyPlugin, HotkeySet};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, SystemSet)]
@@ -21,15 +18,10 @@ pub enum InputSet {
 pub struct InputPlugin;
 
 impl Plugin for InputPlugin {
-    fn build(&self, app: &mut bevy::prelude::App) {
-        app.add_plugin(bevy::input::InputPlugin);
+    fn build(&self, app: &mut App) {
         app.add_event::<keyboard::KeyboardInput>();
         app.add_event::<mouse::MouseMotion>();
         app.add_event::<mouse::MouseButtonInput>();
-
-        app.add_system(keyboard::keyboard_input.in_set(InputSet::Inputs));
-        app.add_system(mouse::mouse_motion.in_set(InputSet::Inputs));
-        app.add_system(mouse::mouse_buttons.in_set(InputSet::Inputs));
 
         app.add_plugin(HotkeyPlugin);
 
@@ -44,3 +36,9 @@ impl Plugin for InputPlugin {
 /// This will be removed in favor of a consumable event reader in the future.
 #[derive(Copy, Clone, Debug, Resource)]
 pub struct CanMouseMove(pub bool);
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum ButtonState {
+    Pressed,
+    Released,
+}

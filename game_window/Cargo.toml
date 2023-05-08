@@ -4,6 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+game_input = { version = "0.1.0", path = "../game_input" }
+
 async-executor = "1.5.1"
 bevy_app = "0.10.1"
 bevy_ecs = "0.10.1"

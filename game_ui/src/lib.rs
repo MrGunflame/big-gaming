@@ -28,6 +28,7 @@ impl Plugin for UiPlugin {
         // Events
         app.add_system(events::update_events_from_layout_tree);
         app.add_system(events::dispatch_cursor_moved_events);
+        app.add_system(events::dispatch_mouse_button_input_events);
     }
 }
 

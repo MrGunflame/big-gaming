@@ -59,15 +59,14 @@ use std::marker::PhantomData;
 use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign};
 use std::sync::atomic::{AtomicU32, Ordering};
 
-use bevy::input::ButtonState;
-use bevy::prelude::{
-    EventReader, EventWriter, IntoSystemConfig, IntoSystemSetConfig, KeyCode, MouseButton, Plugin,
-    Res, ResMut, Resource, ScanCode, SystemSet,
-};
-use bevy_ecs::system::SystemParam;
+use bevy_app::{App, Plugin};
+use bevy_ecs::prelude::{EventReader, EventWriter};
+use bevy_ecs::schedule::{IntoSystemConfig, IntoSystemSetConfig, SystemSet};
+use bevy_ecs::system::{Res, ResMut, Resource, SystemParam};
 
-use crate::keyboard::KeyboardInput;
-use crate::mouse::MouseButtonInput;
+use crate::keyboard::{KeyCode, KeyboardInput, ScanCode};
+use crate::mouse::{MouseButton, MouseButtonInput};
+use crate::ButtonState;
 
 static EVENT_ID: AtomicU32 = AtomicU32::new(1);
 
@@ -82,7 +81,7 @@ pub enum HotkeySet {
 pub struct HotkeyPlugin;
 
 impl Plugin for HotkeyPlugin {
-    fn build(&self, app: &mut bevy::prelude::App) {
+    fn build(&self, app: &mut App) {
         app.insert_resource(Hotkeys::new());
         app.add_event::<Event>();
 
@@ -597,7 +596,7 @@ impl TriggerKind {
     }
 }
 
-impl const BitOr for TriggerKind {
+impl BitOr for TriggerKind {
     type Output = Self;
 
     #[inline]
@@ -613,7 +612,7 @@ impl BitOrAssign for TriggerKind {
     }
 }
 
-impl const BitAnd for TriggerKind {
+impl BitAnd for TriggerKind {
     type Output = Self;
 
     #[inline]

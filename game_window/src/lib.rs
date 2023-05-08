@@ -11,13 +11,17 @@ use bevy_ecs::query::Added;
 use bevy_ecs::system::{Commands, Query, ResMut, Resource, SystemState};
 use bevy_ecs::world::FromWorld;
 use events::{
-    CursorEntered, CursorLeft, CursorMoved, WindowCreated, WindowDestroyed, WindowResized,
+    CursorEntered, CursorLeft, CursorMoved, ReceivedCharacter, WindowCreated, WindowDestroyed,
+    WindowResized,
 };
+use game_input::keyboard::{KeyboardInput, ScanCode};
+use game_input::mouse::{MouseButton, MouseButtonInput, MouseMotion, MouseScrollUnit, MouseWheel};
+use game_input::{ButtonState, InputPlugin};
 use glam::Vec2;
 use systems::create_windows;
 use winit::dpi::{LogicalPosition, Position};
 use winit::error::ExternalError;
-use winit::event::{Event, WindowEvent};
+use winit::event::{DeviceEvent, ElementState, Event, MouseScrollDelta, WindowEvent};
 use winit::event_loop::EventLoop;
 use winit::window::{CursorGrabMode, WindowId};
 
@@ -27,6 +31,10 @@ pub struct WindowPlugin;
 impl Plugin for WindowPlugin {
     fn build(&self, app: &mut App) {
         let event_loop = EventLoop::new();
+
+        // Input plugin so we can send generic device (keyboard/mouse)
+        // events.
+        app.add_plugin(InputPlugin);
 
         app.insert_resource(Windows::default());
 
@@ -125,13 +133,32 @@ pub fn main_loop(mut app: App) {
                 WindowEvent::DroppedFile(_) => {}
                 WindowEvent::HoveredFile(_) => {}
                 WindowEvent::HoveredFileCancelled => {}
-                WindowEvent::ReceivedCharacter(_) => {}
+                WindowEvent::ReceivedCharacter(char) => {
+                    let window = app
+                        .world
+                        .resource::<Windows>()
+                        .windows
+                        .get(&window_id)
+                        .copied()
+                        .unwrap();
+
+                    app.world.send_event(ReceivedCharacter { window, char });
+                }
                 WindowEvent::Focused(_) => {}
                 WindowEvent::KeyboardInput {
                     device_id,
                     input,
                     is_synthetic,
-                } => {}
+                } => {
+                    app.world.send_event(KeyboardInput {
+                        scan_code: ScanCode(input.scancode),
+                        key_code: input.virtual_keycode,
+                        state: match input.state {
+                            ElementState::Pressed => ButtonState::Pressed,
+                            ElementState::Released => ButtonState::Released,
+                        },
+                    });
+                }
                 WindowEvent::ModifiersChanged(_) => {}
                 WindowEvent::Ime(_) => {}
                 WindowEvent::CursorMoved {
@@ -185,7 +212,20 @@ pub fn main_loop(mut app: App) {
                     state,
                     button,
                     modifiers,
-                } => {}
+                } => {
+                    app.world.send_event(MouseButtonInput {
+                        button: match button {
+                            winit::event::MouseButton::Left => MouseButton::Left,
+                            winit::event::MouseButton::Right => MouseButton::Right,
+                            winit::event::MouseButton::Middle => MouseButton::Middle,
+                            winit::event::MouseButton::Other(button) => MouseButton::Other(button),
+                        },
+                        state: match state {
+                            ElementState::Pressed => ButtonState::Pressed,
+                            ElementState::Released => ButtonState::Released,
+                        },
+                    });
+                }
                 WindowEvent::TouchpadMagnify {
                     device_id,
                     delta,
@@ -215,7 +255,38 @@ pub fn main_loop(mut app: App) {
                 WindowEvent::ThemeChanged(_) => {}
                 WindowEvent::Occluded(_) => {}
             },
-            Event::DeviceEvent { device_id, event } => {}
+            Event::DeviceEvent { device_id, event } => match event {
+                DeviceEvent::Added => {}
+                DeviceEvent::Removed => {}
+                DeviceEvent::MouseMotion { delta: (x, y) } => {
+                    app.world.send_event(MouseMotion {
+                        delta: Vec2 {
+                            x: x as f32,
+                            y: y as f32,
+                        },
+                    });
+                }
+                DeviceEvent::MouseWheel { delta } => {
+                    let event = match delta {
+                        MouseScrollDelta::LineDelta(x, y) => MouseWheel {
+                            unit: MouseScrollUnit::Line,
+                            x,
+                            y,
+                        },
+                        MouseScrollDelta::PixelDelta(pos) => MouseWheel {
+                            unit: MouseScrollUnit::Pixel,
+                            x: pos.x as f32,
+                            y: pos.y as f32,
+                        },
+                    };
+
+                    app.world.send_event(event);
+                }
+                DeviceEvent::Motion { axis, value } => {}
+                DeviceEvent::Button { button, state } => {}
+                DeviceEvent::Key(key) => {}
+                DeviceEvent::Text { codepoint } => {}
+            },
             Event::UserEvent(()) => (),
             Event::Suspended => {}
             Event::Resumed => {}
