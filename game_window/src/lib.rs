@@ -15,9 +15,11 @@ use events::{
 };
 use glam::Vec2;
 use systems::create_windows;
+use winit::dpi::{LogicalPosition, Position};
+use winit::error::ExternalError;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::EventLoop;
-use winit::window::WindowId;
+use winit::window::{CursorGrabMode, WindowId};
 
 #[derive(Clone, Debug)]
 pub struct WindowPlugin;
@@ -47,6 +49,24 @@ pub struct Window {
 
 #[derive(Component)]
 pub struct WindowState(pub winit::window::Window);
+
+impl WindowState {
+    pub fn set_cursor_position(&self, position: Vec2) -> Result<(), ExternalError> {
+        self.0
+            .set_cursor_position(Position::Logical(LogicalPosition {
+                x: position.x as f64,
+                y: position.y as f64,
+            }))
+    }
+
+    pub fn set_cursor_visibility(&self, visible: bool) {
+        self.0.set_cursor_visible(visible);
+    }
+
+    pub fn set_cursor_grab(&self, mode: CursorGrabMode) -> Result<(), ExternalError> {
+        self.0.set_cursor_grab(mode)
+    }
+}
 
 struct State {
     /// Is the application currently active?
