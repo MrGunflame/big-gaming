@@ -3,7 +3,6 @@ pub mod style;
 
 mod container;
 mod debug;
-mod events;
 mod image;
 mod systems;
 mod text;
@@ -326,8 +325,8 @@ impl Vertex {
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct Rect {
-    min: Vec2,
-    max: Vec2,
+    pub min: Vec2,
+    pub max: Vec2,
 }
 
 #[derive(Debug, Default)]

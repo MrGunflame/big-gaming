@@ -1,14 +1,16 @@
 use bevy_app::App;
 use bevy_ecs::system::Commands;
+use game_ui::events::{EventHandlers, Events};
 use game_ui::render::layout::LayoutTree;
 use game_ui::render::style::{Bounds, Direction, Position, Style};
 use game_ui::render::{Element, ElementBody, Image, Text};
+use game_ui::widgets::{BuildWidget, Button};
 use game_window::Window;
 
 fn main() {
     let mut app = App::new();
 
-    app.add_plugin(game_ui::render::RenderUiPlugin);
+    app.add_plugin(game_ui::UiPlugin);
     app.add_startup_system(setup);
 
     app.run();
@@ -88,6 +90,26 @@ fn setup(mut cmds: Commands) {
         );
     }
 
+    let mut events = Events::default();
+
+    let button = Button {
+        onclick: Some(Box::new(|| {
+            dbg!("hi");
+        })),
+    }
+    .build();
+
+    let key = tree.push(None, button.element);
+    events.insert(
+        key,
+        EventHandlers {
+            cursor_moved: Some(Box::new(|| {
+                dbg!("mv");
+            })),
+            ..Default::default()
+        },
+    );
+
     // tree.push(
     //     None,
     //     Element {
@@ -133,7 +155,8 @@ fn setup(mut cmds: Commands) {
     cmds.spawn(Window {
         title: "Hello World!".to_owned(),
     })
-    .insert(tree.clone());
+    .insert(tree.clone())
+    .insert(events);
 
     cmds.spawn(Window {
         title: "nr2".to_owned(),

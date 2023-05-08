@@ -1,14 +1,15 @@
 //! UI related systems
-// mod cursor;
+mod cursor;
 // mod interface;
 // mod scenes;
 // mod systems;
 
-// pub mod widgets;
-
+pub mod events;
 pub mod render;
+pub mod widgets;
 
 use bevy_app::{App, Plugin};
+use cursor::Cursor;
 // use cursor::Cursor;
 // pub use interface::{Context, InterfaceState, Widget, WidgetFlags};
 
@@ -20,19 +21,13 @@ impl Plugin for UiPlugin {
 
         app.add_plugin(render::RenderUiPlugin);
 
-        // app.add_plugin(bevy_egui::EguiPlugin)
-        //     .add_plugin(FrameTimeDiagnosticsPlugin)
-        //     .insert_resource(state)
-        //     .insert_resource(Cursor::new())
-        //     .add_startup_system(widgets::register_hotkeys)
-        //     .add_system(systems::capture_pointer_keys)
-        //     .add_system(systems::death)
-        //     .add_system(render_widgets);
+        // Cursor
+        app.insert_resource(Cursor::new());
+        app.add_system(cursor::update_cursor_position);
 
-        // #[cfg(not(feature = "editor"))]
-        // app.add_system(systems::scene_transition);
-
-        // widgets::register_hotkey_systems(app);
+        // Events
+        app.add_system(events::update_events_from_layout_tree);
+        app.add_system(events::dispatch_cursor_moved_events);
     }
 }
 

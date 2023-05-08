@@ -1,9 +1,15 @@
-use bevy::prelude::{Resource, Vec2};
-use bevy::window::{CursorGrabMode, Window};
+use bevy_ecs::prelude::{Entity, EventReader};
+use bevy_ecs::system::{ResMut, Resource};
+use game_window::events::{CursorLeft, CursorMoved};
+use game_window::WindowState;
+use glam::Vec2;
+use winit::window::CursorGrabMode;
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Resource)]
 pub struct Cursor {
     is_locked: bool,
+    /// The window that the cursor is located on.
+    window: Option<Entity>,
     position: Vec2,
 }
 
@@ -12,28 +18,29 @@ impl Cursor {
     pub const fn new() -> Self {
         Self {
             is_locked: false,
+            window: None,
             position: Vec2::splat(0.0),
         }
     }
 
     #[inline]
-    pub fn lock(&mut self, window: &mut Window) {
+    pub fn lock(&mut self, window: &mut WindowState) {
         if !self.is_locked {
             self.lock_unchecked(window);
         }
     }
 
     #[inline]
-    pub fn unlock(&mut self, window: &mut Window) {
+    pub fn unlock(&mut self, window: &mut WindowState) {
         if self.is_locked {
             self.unlock_unchecked(window);
         }
     }
 
     #[inline]
-    pub fn reset(&self, window: &mut Window) {
+    pub fn reset(&self, window: &mut WindowState) {
         if self.is_locked {
-            window.set_cursor_position(Some(self.position));
+            window.set_cursor_position(self.position);
         }
     }
 
@@ -43,19 +50,40 @@ impl Cursor {
     ///
     /// [`lock`]: Self::lock
     #[inline]
-    pub fn lock_unchecked(&mut self, window: &mut Window) {
-        window.cursor.visible = false;
-        window.cursor.grab_mode = CursorGrabMode::Locked;
+    pub fn lock_unchecked(&mut self, window: &mut WindowState) {
+        window.set_cursor_visibility(false);
+        window.set_cursor_grab(CursorGrabMode::Locked);
 
         self.is_locked = true;
-        self.position = window.cursor_position().unwrap_or_default();
+        // self.position = window.cursor_position().unwrap_or_default();
     }
 
     #[inline]
-    pub fn unlock_unchecked(&mut self, window: &mut Window) {
-        window.cursor.visible = true;
-        window.cursor.grab_mode = CursorGrabMode::None;
+    pub fn unlock_unchecked(&mut self, window: &mut WindowState) {
+        window.set_cursor_visibility(true);
+        window.set_cursor_grab(CursorGrabMode::None);
 
         self.is_locked = false;
+    }
+}
+
+pub fn update_cursor_position(
+    mut cursor: ResMut<Cursor>,
+    mut moved: EventReader<CursorMoved>,
+    mut left: EventReader<CursorLeft>,
+) {
+    if cursor.is_locked {
+        moved.clear();
+        left.clear();
+        return;
+    }
+
+    for event in moved.iter() {
+        cursor.window = Some(event.window);
+        cursor.position = event.position;
+    }
+
+    for event in left.iter() {
+        cursor.window = None;
     }
 }
