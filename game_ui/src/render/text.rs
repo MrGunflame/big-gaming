@@ -67,14 +67,13 @@ fn render_to_texture(text: &str, size: f32, max: Vec2) -> ImageBuffer<Rgba<u8>, 
         if let Some(outlined_glyph) = scaled_font.outline_glyph(glyph) {
             let bounds = outlined_glyph.px_bounds();
 
-            outlined_glyph.draw(|x, y, alpha| {
-                let pixel = (alpha * 255.0) as u8;
+            outlined_glyph.draw(|x, y, cov| {
+                let pixel = (cov * 255.0) as u8;
 
                 image.put_pixel(
                     bounds.min.x as u32 + x,
                     bounds.min.y as u32 + y,
-                    // Luma([pixel]),
-                    Rgba([pixel, 0, 0, pixel]),
+                    Rgba([pixel, pixel, pixel, pixel]),
                 );
             });
         }

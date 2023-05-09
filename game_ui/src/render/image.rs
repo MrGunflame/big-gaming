@@ -51,7 +51,7 @@ impl BuildPrimitiveElement for Image {
             queue,
             Rect { min, max },
             &img,
-            [1.0, 1.0, 1.0, 1.0],
+            style.color.to_f32(),
         ))
     }
 

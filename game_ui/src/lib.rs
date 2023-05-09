@@ -8,6 +8,8 @@ pub mod events;
 pub mod render;
 pub mod widgets;
 
+mod reactive;
+
 use bevy_app::{App, Plugin};
 use cursor::Cursor;
 // use cursor::Cursor;

@@ -8,6 +8,7 @@ pub struct Style {
     pub direction: Direction,
     pub growth: Growth,
     pub background: Background,
+    pub color: Color,
 }
 
 /// Flow direction
@@ -107,4 +108,24 @@ pub enum Background {
     None,
     Color(Rgba<u8>),
     Image(ImageBuffer<Rgba<u8>, Vec<u8>>),
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct Color(pub Rgba<u8>);
+
+impl Default for Color {
+    fn default() -> Self {
+        Self(Rgba([255, 255, 255, 255]))
+    }
+}
+
+impl Color {
+    #[inline]
+    pub(crate) fn to_f32(self) -> [f32; 4] {
+        let r = (self.0 .0[0] as f32) / 255.0;
+        let g = (self.0 .0[1] as f32) / 255.0;
+        let b = (self.0 .0[2] as f32) / 255.0;
+        let a = (self.0 .0[3] as f32) / 255.0;
+        [r, g, b, a]
+    }
 }
