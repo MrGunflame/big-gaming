@@ -11,8 +11,8 @@ use bevy_ecs::query::Added;
 use bevy_ecs::system::{Commands, Query, ResMut, Resource, SystemState};
 use bevy_ecs::world::FromWorld;
 use events::{
-    CursorEntered, CursorLeft, CursorMoved, ReceivedCharacter, WindowCreated, WindowDestroyed,
-    WindowResized,
+    CursorEntered, CursorLeft, CursorMoved, ReceivedCharacter, WindowCloseRequested, WindowCreated,
+    WindowDestroyed, WindowResized,
 };
 use game_input::keyboard::{KeyboardInput, ScanCode};
 use game_input::mouse::{MouseButton, MouseButtonInput, MouseMotion, MouseScrollUnit, MouseWheel};
@@ -127,9 +127,23 @@ pub fn main_loop(mut app: App) {
                         .copied()
                         .unwrap();
 
-                    app.world.send_event(WindowDestroyed { window });
+                    app.world.send_event(WindowCloseRequested { window });
                 }
-                WindowEvent::Destroyed => {}
+                WindowEvent::Destroyed => {
+                    let window = app
+                        .world
+                        .resource::<Windows>()
+                        .windows
+                        .get(&window_id)
+                        .copied()
+                        .unwrap();
+
+                    app.world.send_event(WindowDestroyed { window });
+                    app.world
+                        .resource_mut::<Windows>()
+                        .windows
+                        .remove(&window_id);
+                }
                 WindowEvent::DroppedFile(_) => {}
                 WindowEvent::HoveredFile(_) => {}
                 WindowEvent::HoveredFileCancelled => {}

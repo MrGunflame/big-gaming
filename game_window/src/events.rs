@@ -40,3 +40,8 @@ pub struct ReceivedCharacter {
     pub window: Entity,
     pub char: char,
 }
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct WindowCloseRequested {
+    pub window: Entity,
+}
