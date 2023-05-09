@@ -5,6 +5,7 @@ pub struct Style {
     pub bounds: Bounds,
     pub position: Position,
     pub direction: Direction,
+    pub growth: Growth,
 }
 
 /// Flow direction
@@ -80,3 +81,6 @@ impl Default for Bounds {
         }
     }
 }
+
+#[derive(Copy, Clone, Debug, Default, PartialEq)]
+pub struct Growth(pub Option<f32>);

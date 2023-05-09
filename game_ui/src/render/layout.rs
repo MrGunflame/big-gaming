@@ -194,7 +194,7 @@ impl LayoutTree {
             ElementBody::Container() => {
                 // Infer the bounds from the children elements.
                 if let Some(children) = self.children.get(&key) {
-                    let mut bounds = ComputedBounds::default();
+                    let mut bounds = ComputedBounds::ZERO;
                     for key in children {
                         let child_bounds = self.compute_bounds(*key);
 
@@ -219,9 +219,19 @@ impl LayoutTree {
                         }
                     }
 
+                    if elem.style.growth.0.is_some() {
+                        bounds.max = Vec2::splat(f32::INFINITY);
+                    }
+
                     bounds
                 } else {
-                    ComputedBounds::default()
+                    // If the container can grow, it may take any size.
+                    // If the can not grow, it will always have the size zero.
+                    if elem.style.growth.0.is_some() {
+                        ComputedBounds::default()
+                    } else {
+                        ComputedBounds::ZERO
+                    }
                 }
             }
             ElementBody::Image(elem) => elem.bounds(),
@@ -442,6 +452,11 @@ pub(crate) struct ComputedBounds {
 }
 
 impl ComputedBounds {
+    const ZERO: Self = Self {
+        min: Vec2::splat(0.0),
+        max: Vec2::splat(0.0),
+    };
+
     fn new(bounds: Bounds, viewport: Vec2) -> Self {
         Self {
             min: Vec2 {
@@ -469,7 +484,8 @@ impl Default for ComputedBounds {
 mod tests {
     use glam::Vec2;
 
-    use crate::render::style::{Direction, Style};
+    use crate::render::layout::ComputedBounds;
+    use crate::render::style::{Direction, Growth, Style};
     use crate::render::{BuildPrimitiveElement, Text};
 
     use super::{size_per_element, Element, ElementBody, LayoutTree};
@@ -522,5 +538,117 @@ mod tests {
         assert_eq!(layout1.position, Vec2::new(0.0, layout0.height));
         assert_eq!(layout1.width, elem.bounds().min.x);
         assert_eq!(layout1.height, elem.bounds().min.y);
+    }
+
+    #[test]
+    fn compute_bounds_container_growth() {
+        let mut tree = LayoutTree::new();
+        tree.resize(Vec2::splat(1000.0));
+
+        let elem = Element {
+            body: ElementBody::Container(),
+            style: Style {
+                growth: Growth(Some(1.0)),
+                ..Default::default()
+            },
+        };
+
+        let key = tree.push(None, elem);
+        let bounds = tree.compute_bounds(key.0);
+
+        assert_eq!(
+            bounds,
+            ComputedBounds {
+                min: Vec2::splat(0.0),
+                max: Vec2::splat(f32::INFINITY),
+            }
+        );
+    }
+
+    #[test]
+    fn compute_bounds_container_no_growth() {
+        let mut tree = LayoutTree::new();
+        tree.resize(Vec2::splat(1000.0));
+
+        let elem = Element {
+            body: ElementBody::Container(),
+            style: Style {
+                growth: Growth(None),
+                ..Default::default()
+            },
+        };
+
+        let key = tree.push(None, elem);
+        let bounds = tree.compute_bounds(key.0);
+
+        assert_eq!(
+            bounds,
+            ComputedBounds {
+                min: Vec2::splat(0.0),
+                max: Vec2::splat(0.0),
+            }
+        );
+    }
+
+    #[test]
+    fn compute_bounds_container_growth_children() {
+        let mut tree = LayoutTree::new();
+        tree.resize(Vec2::splat(1000.0));
+
+        let root = Element {
+            body: ElementBody::Container(),
+            style: Style {
+                growth: Growth(Some(1.0)),
+                ..Default::default()
+            },
+        };
+        let key = tree.push(None, root);
+
+        let elem = Element {
+            body: ElementBody::Text(Text::new("test", 100.0)),
+            style: Style::default(),
+        };
+        tree.push(Some(key), elem.clone());
+
+        let bounds = tree.compute_bounds(key.0);
+
+        assert_eq!(
+            bounds,
+            ComputedBounds {
+                min: elem.bounds().min,
+                max: Vec2::splat(f32::INFINITY),
+            }
+        );
+    }
+
+    #[test]
+    fn compute_bounds_container_no_growth_children() {
+        let mut tree = LayoutTree::new();
+        tree.resize(Vec2::splat(1000.0));
+
+        let root = Element {
+            body: ElementBody::Container(),
+            style: Style {
+                growth: Growth(None),
+                ..Default::default()
+            },
+        };
+        let key = tree.push(None, root);
+
+        let elem = Element {
+            body: ElementBody::Text(Text::new("test", 100.0)),
+            style: Style::default(),
+        };
+        tree.push(Some(key), elem.clone());
+
+        let bounds = tree.compute_bounds(key.0);
+
+        assert_eq!(
+            bounds,
+            ComputedBounds {
+                min: elem.bounds().min,
+                max: elem.bounds().max,
+            }
+        );
     }
 }

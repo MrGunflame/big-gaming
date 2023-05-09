@@ -4,7 +4,7 @@ use game_ui::events::{EventHandlers, Events};
 use game_ui::render::layout::LayoutTree;
 use game_ui::render::style::{Bounds, Direction, Position, Style};
 use game_ui::render::{Element, ElementBody, Image, Text};
-use game_ui::widgets::{BuildWidget, Button};
+use game_ui::widgets::Button;
 use game_window::Window;
 
 fn main() {
@@ -55,6 +55,8 @@ fn setup(mut cmds: Commands) {
                 position: Position::default(),
                 direction: Direction::Row,
                 bounds: Bounds::default(),
+
+                ..Default::default()
             },
         },
     );
@@ -92,24 +94,15 @@ fn setup(mut cmds: Commands) {
 
     let mut events = Events::default();
 
-    let button = Button {
-        onclick: Some(Box::new(|| {
-            dbg!("hi");
-        })),
-    }
-    .build();
+    // let button = Button {
+    //     onclick: Some(Box::new(|| {
+    //         dbg!("hi");
+    //     })),
+    // }
+    // .build();
 
-    let key = tree.push(None, button.element);
-    events.insert(
-        key,
-        EventHandlers {
-            cursor_moved: Some(Box::new(|| {})),
-            mouse_button_input: Some(Box::new(|input| {
-                dbg!(input);
-            })),
-            ..Default::default()
-        },
-    );
+    // let key = tree.push(None, button.element);
+    // events.insert(key, button.events);
 
     // tree.push(
     //     None,
