@@ -35,6 +35,18 @@ pub enum Position {
     Absolute(Vec2),
 }
 
+impl Position {
+    #[inline]
+    pub const fn is_relative(self) -> bool {
+        matches!(self, Self::Relative)
+    }
+
+    #[inline]
+    pub const fn is_absolute(self) -> bool {
+        matches!(self, Self::Absolute(_))
+    }
+}
+
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum Size {
     Pixels(f32),

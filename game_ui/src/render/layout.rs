@@ -5,7 +5,7 @@ use glam::Vec2;
 
 use super::container::Container;
 use super::image::Image;
-use super::style::{Bounds, Direction, Style};
+use super::style::{Bounds, Direction, Position, Style};
 use super::text::Text;
 use super::BuildPrimitiveElement;
 
@@ -196,6 +196,12 @@ impl LayoutTree {
                 if let Some(children) = self.children.get(&key) {
                     let mut bounds = ComputedBounds::ZERO;
                     for key in children {
+                        // Elements with absolute position are excluded.
+                        let child = &self.elems[*key];
+                        if child.style.position.is_absolute() {
+                            continue;
+                        }
+
                         let child_bounds = self.compute_bounds(*key);
 
                         let min = child_bounds.min;
@@ -255,16 +261,29 @@ impl LayoutTree {
                 size_per_element(end - start, children.len() as u32, elem.style.direction);
 
             for child in children {
+                let child_style = &self.elems[child].style;
+
                 let bounds = self.compute_bounds(child);
                 let layout = &mut self.layouts[child];
 
-                layout.position = next_position;
-                layout.width = f32::clamp(size_per_elem.x, bounds.min.x, bounds.max.x);
-                layout.height = f32::clamp(size_per_elem.y, bounds.min.y, bounds.max.y);
+                match child_style.position {
+                    Position::Relative => {
+                        layout.position = next_position;
+                        layout.width = f32::clamp(size_per_elem.x, bounds.min.x, bounds.max.x);
+                        layout.height = f32::clamp(size_per_elem.y, bounds.min.y, bounds.max.y);
 
-                match elem.style.direction {
-                    Direction::Row => next_position.y += layout.height,
-                    Direction::Column => next_position.x += layout.width,
+                        match elem.style.direction {
+                            Direction::Row => next_position.y += layout.height,
+                            Direction::Column => next_position.x += layout.width,
+                        }
+                    }
+                    Position::Absolute(pos) => {
+                        // Give the absolute element as much space as it wants
+                        // as long as it doesn't overflow the viewport.
+                        layout.position = pos;
+                        layout.width = f32::min(self.size.x - pos.x, bounds.max.x);
+                        layout.height = f32::min(self.size.y - pos.y, bounds.max.y);
+                    }
                 }
 
                 self.layout_element(child);
@@ -485,7 +504,7 @@ mod tests {
     use glam::Vec2;
 
     use crate::render::layout::ComputedBounds;
-    use crate::render::style::{Direction, Growth, Style};
+    use crate::render::style::{Direction, Growth, Position, Style};
     use crate::render::{BuildPrimitiveElement, Text};
 
     use super::{size_per_element, Element, ElementBody, LayoutTree};
@@ -650,5 +669,32 @@ mod tests {
                 max: elem.bounds().max,
             }
         );
+    }
+
+    #[test]
+    fn compute_bounds_ignores_absolute_position() {
+        let mut tree = LayoutTree::new();
+        tree.resize(Vec2::splat(1000.0));
+
+        let root = Element {
+            body: ElementBody::Container(),
+            style: Style {
+                growth: Growth(None),
+                ..Default::default()
+            },
+        };
+        let key = tree.push(None, root);
+
+        let elem = Element {
+            body: ElementBody::Text(Text::new("test", 100.0)),
+            style: Style {
+                position: Position::Absolute(Vec2::splat(0.0)),
+                ..Default::default()
+            },
+        };
+        tree.push(Some(key), elem.clone());
+
+        let bounds = tree.compute_bounds(key.0);
+        assert_eq!(bounds, ComputedBounds::ZERO);
     }
 }
