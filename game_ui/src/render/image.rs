@@ -30,13 +30,18 @@ impl BuildPrimitiveElement for Image {
         let height = (position.max.y - position.min.y) as u32;
 
         let mut img = match &style.background {
-            Background::Color(color) => ImageBuffer::from_fn(width, height, |_, _| *color),
+            Background::None => self.image.clone(),
+            Background::Color(color) => {
+                let mut img = ImageBuffer::from_fn(width, height, |_, _| *color);
+                image::imageops::overlay(&mut img, &self.image, 0, 0);
+                img
+            }
             Background::Image(image) => {
-                image::imageops::resize(image, width, height, FilterType::Nearest)
+                let mut img = image::imageops::resize(image, width, height, FilterType::Nearest);
+                image::imageops::overlay(&mut img, &self.image, 0, 0);
+                img
             }
         };
-
-        image::imageops::overlay(&mut img, &self.image, 0, 0);
 
         debug_border(&mut img);
 

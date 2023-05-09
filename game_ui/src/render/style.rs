@@ -99,14 +99,12 @@ impl Default for Bounds {
 #[derive(Copy, Clone, Debug, Default, PartialEq)]
 pub struct Growth(pub Option<f32>);
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub enum Background {
+    // Note: We have `None` separately since it is a common case
+    // and doesn't require any pixel blending.
+    #[default]
+    None,
     Color(Rgba<u8>),
     Image(ImageBuffer<Rgba<u8>, Vec<u8>>),
-}
-
-impl Default for Background {
-    fn default() -> Self {
-        Self::Color(Rgba([0, 0, 0, 0]))
-    }
 }
