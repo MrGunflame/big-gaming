@@ -11,13 +11,14 @@ use super::{Context, Widget};
 #[derive(Default)]
 pub struct Button {
     pub onclick: Option<Box<dyn Fn() + Send + Sync + 'static>>,
+    pub style: Style,
 }
 
 impl Widget for Button {
     fn create(self, ctx: &mut Context<'_>) -> Key {
         let elem = Element {
             body: ElementBody::Container(),
-            style: Style::default(),
+            style: self.style,
         };
 
         let key = ctx.tree.push(ctx.parent, elem);
@@ -54,6 +55,7 @@ impl Widget for LabeledButton {
     fn create(self, ctx: &mut Context<'_>) -> Key {
         let key = Button {
             onclick: self.onclick,
+            style: Style::default(),
         }
         .create(ctx);
 

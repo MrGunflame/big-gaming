@@ -4,6 +4,7 @@ use image::{ImageBuffer, Rgba, RgbaImage};
 
 use super::image::Image;
 use super::layout::ComputedBounds;
+use super::style::Style;
 use super::BuildPrimitiveElement;
 
 #[derive(Clone, Debug)]
@@ -28,6 +29,7 @@ impl Text {
 impl BuildPrimitiveElement for Text {
     fn build(
         &self,
+        style: &Style,
         layout: super::Rect,
         pipeline: &super::UiPipeline,
         device: &wgpu::Device,
@@ -36,7 +38,7 @@ impl BuildPrimitiveElement for Text {
     ) -> Option<super::PrimitiveElement> {
         let image = render_to_texture(&self.text, self.size, layout.max - layout.min);
 
-        Image { image }.build(layout, pipeline, device, queue, size)
+        Image { image }.build(style, layout, pipeline, device, queue, size)
     }
 
     fn bounds(&self) -> ComputedBounds {

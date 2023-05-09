@@ -38,6 +38,7 @@ use self::layout::{ComputedBounds, LayoutTree};
 
 pub use self::image::Image;
 pub use self::layout::{Element, ElementBody};
+use self::style::Style;
 pub use self::text::Text;
 
 pub struct RenderUiPlugin;
@@ -177,6 +178,7 @@ impl PrimitiveElement {
 trait BuildPrimitiveElement {
     fn build(
         &self,
+        style: &Style,
         layout: Rect,
         pipeline: &UiPipeline,
         device: &Device,
@@ -354,6 +356,7 @@ impl Node for UiPass {
                         let mut elems = vec![];
                         for (elem, layout) in frame.elements().zip(frame.layouts()) {
                             if let Some(elem) = elem.build(
+                                &elem.style,
                                 Rect {
                                     min: layout.position,
                                     max: Vec2::new(

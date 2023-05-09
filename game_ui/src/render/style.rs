@@ -1,11 +1,13 @@
 use glam::Vec2;
+use image::{ImageBuffer, Rgba};
 
-#[derive(Copy, Clone, Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct Style {
     pub bounds: Bounds,
     pub position: Position,
     pub direction: Direction,
     pub growth: Growth,
+    pub background: Background,
 }
 
 /// Flow direction
@@ -96,3 +98,15 @@ impl Default for Bounds {
 
 #[derive(Copy, Clone, Debug, Default, PartialEq)]
 pub struct Growth(pub Option<f32>);
+
+#[derive(Clone, Debug)]
+pub enum Background {
+    Color(Rgba<u8>),
+    Image(ImageBuffer<Rgba<u8>, Vec<u8>>),
+}
+
+impl Default for Background {
+    fn default() -> Self {
+        Self::Color(Rgba([0, 0, 0, 0]))
+    }
+}

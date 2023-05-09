@@ -1,6 +1,7 @@
 use image::ImageBuffer;
 
 use super::layout::ComputedBounds;
+use super::style::Style;
 use super::{BuildPrimitiveElement, Image};
 
 pub struct Container;
@@ -8,6 +9,7 @@ pub struct Container;
 impl BuildPrimitiveElement for Container {
     fn build(
         &self,
+        style: &Style,
         layout: super::Rect,
         pipeline: &super::UiPipeline,
         device: &wgpu::Device,
@@ -20,7 +22,7 @@ impl BuildPrimitiveElement for Container {
         // `Image` will already render a debugging border around
         // the container.
         let image = ImageBuffer::new(width as u32, height as u32);
-        Image { image }.build(layout, pipeline, device, queue, size)
+        Image { image }.build(style, layout, pipeline, device, queue, size)
     }
 
     fn bounds(&self) -> ComputedBounds {

@@ -18,6 +18,7 @@ pub struct Element {
 impl BuildPrimitiveElement for Element {
     fn build(
         &self,
+        style: &Style,
         layout: super::Rect,
         pipeline: &super::UiPipeline,
         device: &wgpu::Device,
@@ -25,9 +26,11 @@ impl BuildPrimitiveElement for Element {
         size: Vec2,
     ) -> Option<super::PrimitiveElement> {
         match &self.body {
-            ElementBody::Container() => Container.build(layout, pipeline, device, queue, size),
-            ElementBody::Image(elem) => elem.build(layout, pipeline, device, queue, size),
-            ElementBody::Text(elem) => elem.build(layout, pipeline, device, queue, size),
+            ElementBody::Container() => {
+                Container.build(style, layout, pipeline, device, queue, size)
+            }
+            ElementBody::Image(elem) => elem.build(style, layout, pipeline, device, queue, size),
+            ElementBody::Text(elem) => elem.build(style, layout, pipeline, device, queue, size),
         }
     }
 
