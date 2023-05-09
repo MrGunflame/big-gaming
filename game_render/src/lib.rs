@@ -10,7 +10,7 @@ use bevy_ecs::prelude::{Entity, EventReader};
 use bevy_ecs::query::QueryState;
 use bevy_ecs::system::{Query, Res, ResMut, Resource};
 use bevy_ecs::world::World;
-use game_window::events::{WindowCreated, WindowDestroyed, WindowResized};
+use game_window::events::{WindowCloseRequested, WindowCreated, WindowDestroyed, WindowResized};
 use game_window::{WindowPlugin, WindowState};
 use graph::{RenderContext, RenderGraph};
 use wgpu::{
@@ -90,6 +90,10 @@ struct SurfaceData {
     surface: Surface,
     format: TextureFormat,
     config: SurfaceConfiguration,
+    /// A handle to the window underlying the `surface`.
+    ///
+    /// NOTE: The surface MUST be dropped before the handle to the window is dropped.
+    _window: WindowState,
 }
 
 /// Create render surfaces for new windows.
@@ -104,9 +108,12 @@ pub fn create_surfaces(
     for event in events.iter() {
         let (_, window) = windows.get(event.window).unwrap();
 
-        let size = window.0.inner_size();
+        let size = window.inner_size();
 
-        let surface = unsafe { instance.0.create_surface(&window.0) }.unwrap();
+        // SAFETY: We store a second reference to the window with the surface.
+        // The window is dropped after the surface.
+        let window = window.clone();
+        let surface = unsafe { instance.0.create_surface(&window) }.unwrap();
 
         let caps = surface.get_capabilities(&adapter.0);
 
@@ -136,6 +143,7 @@ pub fn create_surfaces(
                 surface,
                 format,
                 config,
+                _window: window,
             },
         );
     }
@@ -162,7 +170,7 @@ pub fn resize_surfaces(
 
 pub fn destroy_surfaces(
     mut surfaces: ResMut<WindowSurfaces>,
-    mut events: EventReader<WindowDestroyed>,
+    mut events: EventReader<WindowCloseRequested>,
 ) {
     for event in events.iter() {
         surfaces.windows.remove(&event.window);
@@ -196,7 +204,7 @@ pub fn render_surfaces(
                 let output = match surface.surface.get_current_texture() {
                     Ok(output) => output,
                     Err(err) => {
-                        let size = windows.0.get(&world, *entity).unwrap().0.inner_size();
+                        let size = windows.0.get(&world, *entity).unwrap().inner_size();
                         surface.config.width = size.width;
                         surface.config.height = size.height;
 
