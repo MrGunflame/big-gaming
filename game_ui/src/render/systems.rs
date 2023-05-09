@@ -15,7 +15,7 @@ pub fn layout_tree_size_window_creation(
             continue;
         };
 
-        let size = window.0.inner_size();
+        let size = window.inner_size();
 
         tree.resize(Vec2::new(size.width as f32, size.height as f32));
     }

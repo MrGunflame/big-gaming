@@ -42,3 +42,14 @@ pub enum ButtonState {
     Pressed,
     Released,
 }
+
+impl ButtonState {
+    #[inline]
+    pub const fn is_pressed(self) -> bool {
+        matches!(self, Self::Pressed)
+    }
+
+    pub const fn is_released(self) -> bool {
+        matches!(self, Self::Released)
+    }
+}

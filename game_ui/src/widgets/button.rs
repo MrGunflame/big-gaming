@@ -10,7 +10,7 @@ use super::{Context, Widget};
 
 #[derive(Default)]
 pub struct Button {
-    pub onclick: Option<Box<dyn Fn() + Send + Sync + 'static>>,
+    pub onclick: Option<Box<dyn Fn(Key) + Send + Sync + 'static>>,
     pub style: Style,
 }
 
@@ -25,7 +25,7 @@ impl Widget for Button {
         ctx.events.insert(
             key,
             EventHandlers {
-                mouse_button_input: self.onclick.map(|f| click_handler(f)),
+                mouse_button_input: self.onclick.map(|f| click_handler(f, key)),
                 ..Default::default()
             },
         );
@@ -35,11 +35,12 @@ impl Widget for Button {
 }
 
 fn click_handler(
-    f: Box<dyn Fn() + Send + Sync + 'static>,
+    f: Box<dyn Fn(Key) + Send + Sync + 'static>,
+    key: Key,
 ) -> Box<dyn Fn(MouseButtonInput) + Send + Sync + 'static> {
     Box::new(move |input| {
         if input.state.is_pressed() && input.button.is_left() {
-            f();
+            f(key);
         }
     })
 }
@@ -48,7 +49,7 @@ fn click_handler(
 pub struct LabeledButton {
     pub text: String,
     pub size: f32,
-    pub onclick: Option<Box<dyn Fn() + Send + Sync + 'static>>,
+    pub onclick: Option<Box<dyn Fn(Key) + Send + Sync + 'static>>,
 }
 
 impl Widget for LabeledButton {

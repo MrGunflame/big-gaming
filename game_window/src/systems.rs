@@ -1,10 +1,12 @@
-use bevy_ecs::prelude::{Entity, EventWriter};
+use std::sync::Arc;
+
+use bevy_ecs::prelude::{Entity, EventReader, EventWriter};
 use bevy_ecs::query::Added;
 use bevy_ecs::system::{Commands, Query, ResMut};
 use winit::event_loop::EventLoopWindowTarget;
 use winit::window::WindowBuilder;
 
-use crate::events::WindowCreated;
+use crate::events::{WindowCloseRequested, WindowCreated};
 use crate::{Window, WindowState, Windows};
 
 pub(crate) fn create_windows(
@@ -21,8 +23,19 @@ pub(crate) fn create_windows(
             .unwrap();
 
         windows.windows.insert(window.id(), entity);
-        commands.entity(entity).insert(WindowState(window));
+        commands.entity(entity).insert(WindowState {
+            inner: Arc::new(window),
+        });
 
         writer.send(WindowCreated { window: entity });
+    }
+}
+
+pub(crate) fn close_requested_windows(
+    mut commands: Commands,
+    mut events: EventReader<WindowCloseRequested>,
+) {
+    for event in events.iter() {
+        commands.entity(event.window).despawn();
     }
 }

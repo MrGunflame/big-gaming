@@ -384,6 +384,16 @@ impl LayoutTree {
     pub fn keys(&self) -> impl Iterator<Item = Key> {
         (0..self.elems.len()).map(Key)
     }
+
+    pub fn get_mut(&mut self, key: Key) -> Option<&mut Element> {
+        match self.elems.get_mut(key.0) {
+            Some(elem) => {
+                self.changed = true;
+                Some(elem)
+            }
+            None => None,
+        }
+    }
 }
 
 #[derive(Clone, Debug)]

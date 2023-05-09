@@ -3,6 +3,7 @@ pub mod events;
 mod systems;
 
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::Instant;
 
 use bevy_app::{App, Plugin};
@@ -17,9 +18,12 @@ use events::{
 use game_input::keyboard::{KeyboardInput, ScanCode};
 use game_input::mouse::{MouseButton, MouseButtonInput, MouseMotion, MouseScrollUnit, MouseWheel};
 use game_input::{ButtonState, InputPlugin};
-use glam::Vec2;
+use glam::{DVec2, Vec2};
+use raw_window_handle::{
+    HasRawDisplayHandle, HasRawWindowHandle, RawDisplayHandle, RawWindowHandle,
+};
 use systems::create_windows;
-use winit::dpi::{LogicalPosition, Position};
+use winit::dpi::{LogicalPosition, PhysicalSize, Position};
 use winit::error::ExternalError;
 use winit::event::{DeviceEvent, ElementState, Event, MouseScrollDelta, WindowEvent};
 use winit::event_loop::EventLoop;
@@ -44,6 +48,9 @@ impl Plugin for WindowPlugin {
         app.add_event::<CursorMoved>();
         app.add_event::<CursorEntered>();
         app.add_event::<CursorLeft>();
+        app.add_event::<WindowCloseRequested>();
+
+        app.add_system(systems::close_requested_windows);
 
         app.insert_non_send_resource(event_loop);
         app.set_runner(main_loop);
@@ -55,12 +62,23 @@ pub struct Window {
     pub title: String,
 }
 
-#[derive(Component)]
-pub struct WindowState(pub winit::window::Window);
+#[derive(Clone, Debug, Component)]
+pub struct WindowState {
+    // Note: It is important that the window handle itself sits
+    // behind an Arc and is not immediately dropped once the window
+    // component is despawned. Rendering surfaces require the handle
+    // to be valid until the surface was dropped in the rendering
+    // crate.
+    inner: Arc<winit::window::Window>,
+}
 
 impl WindowState {
+    pub fn inner_size(&self) -> PhysicalSize<u32> {
+        self.inner.inner_size()
+    }
+
     pub fn set_cursor_position(&self, position: Vec2) -> Result<(), ExternalError> {
-        self.0
+        self.inner
             .set_cursor_position(Position::Logical(LogicalPosition {
                 x: position.x as f64,
                 y: position.y as f64,
@@ -68,11 +86,23 @@ impl WindowState {
     }
 
     pub fn set_cursor_visibility(&self, visible: bool) {
-        self.0.set_cursor_visible(visible);
+        self.inner.set_cursor_visible(visible);
     }
 
     pub fn set_cursor_grab(&self, mode: CursorGrabMode) -> Result<(), ExternalError> {
-        self.0.set_cursor_grab(mode)
+        self.inner.set_cursor_grab(mode)
+    }
+}
+
+unsafe impl HasRawDisplayHandle for WindowState {
+    fn raw_display_handle(&self) -> RawDisplayHandle {
+        self.inner.raw_display_handle()
+    }
+}
+
+unsafe impl HasRawWindowHandle for WindowState {
+    fn raw_window_handle(&self) -> RawWindowHandle {
+        self.inner.raw_window_handle()
     }
 }
 
@@ -143,6 +173,11 @@ pub fn main_loop(mut app: App) {
                         .resource_mut::<Windows>()
                         .windows
                         .remove(&window_id);
+
+                    if app.world.resource::<Windows>().windows.is_empty() {
+                        tracing::debug!("last window destroyed, exiting");
+                        std::process::exit(0);
+                    }
                 }
                 WindowEvent::DroppedFile(_) => {}
                 WindowEvent::HoveredFile(_) => {}
@@ -313,9 +348,14 @@ pub fn main_loop(mut app: App) {
                 }
 
                 let mut query = app.world.query::<&WindowState>();
-                for (window, entity) in app.world.resource::<Windows>().windows.iter() {
-                    let window = query.get(&app.world, *entity).unwrap();
-                    window.0.request_redraw();
+                for entity in app.world.resource::<Windows>().windows.values() {
+                    // If the window entity doesn't exist anymore, it was despawned
+                    // in this loop and will get removed in the next update.
+                    let Ok(window) = query.get(&app.world, *entity) else {
+                        continue;
+                    };
+
+                    window.inner.request_redraw();
                 }
             }
             Event::RedrawEventsCleared => {}

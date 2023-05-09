@@ -349,7 +349,7 @@ impl Node for UiPass {
                             continue;
                         }
 
-                        let size = window.0.inner_size();
+                        let size = window.inner_size();
 
                         frame.compute_layout();
 

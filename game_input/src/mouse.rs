@@ -21,6 +21,13 @@ pub enum MouseButton {
     Other(u16),
 }
 
+impl MouseButton {
+    #[inline]
+    pub const fn is_left(self) -> bool {
+        matches!(self, Self::Left)
+    }
+}
+
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct MouseWheel {
     pub unit: MouseScrollUnit,
