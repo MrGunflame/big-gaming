@@ -1,6 +1,9 @@
 use std::sync::Mutex;
 
+use bevy_ecs::prelude::Component;
 use slotmap::{DefaultKey, SlotMap};
+
+use crate::render::layout::LayoutTree;
 
 use self::effect::Effect;
 use self::signal::Signal;
@@ -11,6 +14,9 @@ static CAPTURE_SIGNALS: Mutex<Vec<NodeId>> = Mutex::new(vec![]);
 
 mod effect;
 mod signal;
+
+pub use effect::create_effect;
+pub use signal::create_signal;
 
 pub fn init_runtime() {
     let mut rt = RUNTIME.lock().unwrap();
@@ -24,25 +30,34 @@ pub struct Runtime {
     effects: SlotMap<DefaultKey, Effect>,
 }
 
-impl Runtime {
-    fn uptime_signal<T>(&mut self, id: NodeId, f: impl FnOnce(&mut T))
-    where
-        T: Send + Sync + 'static,
-    {
-        if let Some(signal) = self.signals.get_mut(id.0) {
+fn uptime_signal<T>(id: NodeId, f: impl FnOnce(&mut T))
+where
+    T: Send + Sync + 'static,
+{
+    let effects = with_runtime(|rt| {
+        if let Some(signal) = rt.signals.get_mut(id.0) {
             f(signal.value.downcast_mut().unwrap());
-
-            for effect in &signal.effects {
-                run_effect(*effect);
-            }
+            signal.effects.clone()
+        } else {
+            vec![]
         }
-    }
+    });
 
+    for effect in &effects {
+        run_effect(*effect);
+    }
+}
+
+impl Runtime {
     fn with_signal<T, U>(&self, id: NodeId, f: impl FnOnce(&T) -> U) -> U
     where
         T: Send + Sync + 'static,
     {
         if let Some(signal) = self.signals.get(id.0) {
+            let mut stack = CAPTURE_SIGNALS.lock().unwrap();
+            stack.push(id);
+            drop(stack);
+
             f(signal.value.downcast_ref().unwrap())
         } else {
             panic!("no such nodeid: {:?}", id)
@@ -83,4 +98,23 @@ fn with_runtime<T>(f: impl FnOnce(&mut Runtime) -> T) -> T {
 
 pub struct Scope {
     id: NodeId,
+    parent: Option<NodeId>,
+}
+
+#[derive(Component)]
+pub struct ReactiveRoot {
+    pub(crate) f: Box<dyn Fn(Scope) + Send + Sync + 'static>,
+    pub(crate) is_first_run: bool,
+}
+
+impl ReactiveRoot {
+    pub fn new<F>(f: F) -> Self
+    where
+        F: Fn(Scope) + Send + Sync + 'static,
+    {
+        Self {
+            f: Box::new(f),
+            is_first_run: true,
+        }
+    }
 }

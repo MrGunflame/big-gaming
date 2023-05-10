@@ -75,9 +75,7 @@ where
     where
         F: FnOnce(&mut T),
     {
-        super::with_runtime(|rt| {
-            rt.uptime_signal(self.id, f);
-        });
+        super::uptime_signal(self.id, f)
     }
 }
 
