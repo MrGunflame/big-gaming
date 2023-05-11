@@ -1,5 +1,5 @@
 use ahash::HashMap;
-use bevy::prelude::{App, MouseButton, Res, ResMut, Resource};
+use bevy::prelude::{App, Res, ResMut, Resource};
 use game_common::components::actions::ActionId;
 use game_common::events::{ActionEvent, EntityEvent, Event, EventQueue};
 use game_common::module::ModuleId;
@@ -7,6 +7,7 @@ use game_common::record::{RecordId, RecordReference};
 use game_core::modules::Modules;
 use game_data::record::{Record, RecordBody};
 use game_input::hotkeys::{Hotkey, HotkeyCode, HotkeyId, HotkeyReader, Hotkeys, TriggerKind};
+use game_input::mouse::MouseButton;
 use game_net::snapshot::Command;
 
 use crate::net::ServerConnection;

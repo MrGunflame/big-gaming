@@ -3,8 +3,8 @@ mod events;
 use std::borrow::Cow;
 
 use bevy::prelude::{
-    Camera3d, Commands, Entity, EventReader, IntoSystemConfig, IntoSystemSetConfig, KeyCode,
-    Plugin, Quat, Query, ResMut, SystemSet, Vec3, With, Without,
+    Camera3d, Commands, Entity, EventReader, IntoSystemConfig, IntoSystemSetConfig, Plugin, Quat,
+    Query, ResMut, SystemSet, Vec3, With, Without,
 };
 use game_common::components::actor::{ActorProperties, MovementSpeed};
 use game_common::components::movement::{Jump, Movement, Rotate, RotateQueue};
@@ -12,6 +12,7 @@ use game_common::components::player::HostPlayer;
 use game_input::hotkeys::{
     Event, Hotkey, HotkeyCode, HotkeyFilter, HotkeyId, HotkeyReader, Hotkeys, Key, TriggerKind,
 };
+use game_input::keyboard::KeyCode;
 use game_input::mouse::MouseMotion;
 use game_input::InputSet;
 
@@ -63,7 +64,7 @@ static mut SPRINT: Hotkey = Hotkey {
     id: HotkeyId(0),
     name: Cow::Borrowed("sprint"),
     default: Key {
-        trigger: TriggerKind::JUST_PRESSED | TriggerKind::JUST_RELEASED,
+        trigger: TriggerKind::JUST_PRESSED.and(TriggerKind::JUST_RELEASED),
         code: HotkeyCode::KeyCode {
             key_code: KeyCode::LShift,
         },

@@ -1,8 +1,7 @@
 use std::borrow::Cow;
 
 use bevy::prelude::{
-    Bundle, Camera3d, Commands, Entity, EulerRot, KeyCode, MouseButton, Plugin, Query, Res, ResMut,
-    Transform, Vec3, With,
+    Bundle, Camera3d, Commands, Entity, EulerRot, Plugin, Query, Res, ResMut, Transform, Vec3, With,
 };
 use game_common::components::actor::ActorFigure;
 use game_common::components::combat::{Attack, Health, IncomingDamage, Reload, Resistances};
@@ -10,6 +9,8 @@ use game_common::components::player::HostPlayer;
 use game_input::hotkeys::{
     Hotkey, HotkeyCode, HotkeyFilter, HotkeyId, HotkeyReader, Hotkeys, Key, TriggerKind,
 };
+use game_input::keyboard::KeyCode;
+use game_input::mouse::MouseButton;
 
 #[derive(Copy, Clone, Debug)]
 pub struct CombatPlugin;
