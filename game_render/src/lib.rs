@@ -1,6 +1,8 @@
 pub mod buffer;
+pub mod camera;
 pub mod graph;
 pub mod layout;
+pub mod mesh;
 
 use std::collections::HashMap;
 use std::sync::Arc;
