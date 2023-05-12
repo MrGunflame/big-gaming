@@ -1,5 +1,4 @@
 use core::mem::{self, MaybeUninit};
-use core::ptr;
 
 use alloc::vec::Vec;
 use bytemuck::AnyBitPattern;
@@ -168,45 +167,44 @@ pub struct Component {
 }
 
 impl Component {
-    pub fn to_f32(&self) -> f32 {
-        assert!(self.len() >= mem::size_of::<f32>());
-
-        unsafe { self.to_f32_unchecked() }
-    }
-
+    /// Reads the value `T` from the buffer.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the buffer is not big enough to hold `T`.
+    #[inline]
     pub fn read<T>(&self) -> T
     where
         T: AnyBitPattern,
     {
         assert!(self.len() >= mem::size_of::<T>());
 
-        bytemuck::pod_read_unaligned(&self.bytes)
+        // SAFETY: We have validated that the buffer is big enough for `T`.
+        unsafe { self.read_unchecked() }
     }
 
-    pub fn to_f64(&self) -> f64 {
-        assert!(self.len() >= mem::size_of::<f64>());
+    /// Reads the value `T` from the buffer without checking that the buffer is big enough.
+    ///
+    /// Note that the read is always unaligned and the buffer must not be correctly aligned for `T`.
+    ///
+    /// # Safety
+    ///
+    /// The buffer must have at least `mem::size_of::<T>` bytes.
+    #[inline]
+    pub unsafe fn read_unchecked<T>(&self) -> T
+    where
+        T: AnyBitPattern,
+    {
+        debug_assert!(self.bytes.len() >= mem::size_of::<T>());
 
-        unsafe { self.to_f64_unchecked() }
+        // SAFETY: `T` implements `AnyBitPattern`, which means any
+        // read possible value is inhabitet.
+        // The caller guarantees that `bytes.len() >= size_of::<T>()`.
+        unsafe { (self.bytes.as_ptr() as *const T).read_unaligned() }
     }
 
     pub fn len(&self) -> usize {
         self.bytes.len()
-    }
-
-    pub unsafe fn to_f32_unchecked(&self) -> f32 {
-        unsafe { self.read_unchecked() }
-    }
-
-    pub unsafe fn to_f64_unchecked(&self) -> f64 {
-        unsafe { self.read_unchecked() }
-    }
-
-    unsafe fn read_unchecked<T>(&self) -> T {
-        if cfg!(debug_assertions) {
-            assert!(self.len() >= mem::size_of::<T>());
-        }
-
-        unsafe { ptr::read_unaligned(self.bytes.as_ptr().cast()) }
     }
 }
 
