@@ -50,7 +50,7 @@ pub const OPENGL_TO_WGPU: Mat4 = Mat4::from_cols_array_2d(&[
     [0.0, 0.0, 0.5, 1.0],
 ]);
 
-#[derive(Copy, Clone, Debug, PartialEq, Component)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Component)]
 pub struct Transform {
     pub translation: Vec3,
     pub rotation: Quat,
@@ -102,12 +102,7 @@ pub fn update_camera_projection_matrix(
     cameras: Query<(&Camera, &Transform), Changed<Transform>>,
 ) {
     for (camera, transform) in &cameras {
-        let mat =
-            Mat4::from_translation(transform.translation) * Mat4::from_quat(transform.rotation);
-
-        let uniform = CameraUniform::from(mat);
-
-        dbg!(uniform);
+        let uniform = CameraUniform::new(*transform, camera.projection);
 
         queue
             .0

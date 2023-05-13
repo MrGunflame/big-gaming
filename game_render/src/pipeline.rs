@@ -1,22 +1,20 @@
 use bevy_ecs::prelude::Entity;
-use bevy_ecs::query::{Changed, Or};
 use bevy_ecs::system::Resource;
 use bevy_ecs::world::FromWorld;
-use bytemuck::{bytes_of, Pod, Zeroable};
-use glam::Mat4;
+use bytemuck::{Pod, Zeroable};
+use glam::{Mat4, Vec3};
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
 use wgpu::{
     BindGroup, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor, BindGroupLayoutEntry,
-    BindingResource, BindingType, BlendState, Buffer, BufferBindingType, BufferUsages,
-    ColorTargetState, ColorWrites, Device, Face, FragmentState, FrontFace, IndexFormat,
-    MultisampleState, Operations, PipelineLayoutDescriptor, PolygonMode, PrimitiveState,
-    PrimitiveTopology, RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline,
-    RenderPipelineDescriptor, ShaderModule, ShaderModuleDescriptor, ShaderSource, ShaderStages,
-    TextureFormat, VertexState,
+    BindingType, BlendState, Buffer, BufferBindingType, BufferUsages, ColorTargetState,
+    ColorWrites, Device, Face, FragmentState, FrontFace, IndexFormat, MultisampleState, Operations,
+    PipelineLayoutDescriptor, PolygonMode, PrimitiveState, PrimitiveTopology,
+    RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline, RenderPipelineDescriptor,
+    ShaderModule, ShaderModuleDescriptor, ShaderSource, ShaderStages, TextureFormat, VertexState,
 };
 
+use crate::camera::{Projection, Transform, OPENGL_TO_WGPU};
 use crate::graph::Node;
-use crate::material::MaterialMeshBundle;
 use crate::mesh::{Mesh, Vertex};
 use crate::RenderDevice;
 
@@ -56,7 +54,7 @@ impl MeshPipeline {
 
         let camera_buffer = device.create_buffer_init(&BufferInitDescriptor {
             label: Some("camera_buffer"),
-            contents: bytemuck::cast_slice(&[CameraUniform::new()]),
+            contents: bytemuck::cast_slice(&[CameraUniform::default()]),
             usage: wgpu::BufferUsages::UNIFORM | BufferUsages::COPY_DST,
         });
 
@@ -142,9 +140,22 @@ pub struct CameraUniform {
 }
 
 impl CameraUniform {
-    fn new() -> Self {
+    pub fn new(transform: Transform, projection: Projection) -> Self {
+        let view = Mat4::look_to_rh(
+            transform.translation,
+            (transform.rotation * -Vec3::Z) - transform.translation,
+            Vec3::Y,
+        );
+
+        let proj = Mat4::perspective_rh(
+            projection.fov,
+            projection.aspect_ratio,
+            projection.near,
+            projection.far,
+        );
+
         Self {
-            view_proj: Mat4::IDENTITY.to_cols_array_2d(),
+            view_proj: (super::camera::OPENGL_TO_WGPU * proj * view).to_cols_array_2d(),
         }
     }
 }
@@ -154,6 +165,12 @@ impl From<Mat4> for CameraUniform {
         Self {
             view_proj: value.to_cols_array_2d(),
         }
+    }
+}
+
+impl Default for CameraUniform {
+    fn default() -> Self {
+        Self::new(Transform::default(), Projection::default())
     }
 }
 
