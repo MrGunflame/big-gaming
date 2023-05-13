@@ -2,7 +2,10 @@ pub mod buffer;
 pub mod camera;
 pub mod graph;
 pub mod layout;
+pub mod material;
 pub mod mesh;
+pub mod pipeline;
+pub mod shape;
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -12,9 +15,10 @@ use bevy_ecs::prelude::{Entity, EventReader};
 use bevy_ecs::query::QueryState;
 use bevy_ecs::system::{Query, Res, ResMut, Resource};
 use bevy_ecs::world::World;
-use game_window::events::{WindowCloseRequested, WindowCreated, WindowDestroyed, WindowResized};
+use game_window::events::{WindowCloseRequested, WindowCreated, WindowResized};
 use game_window::{WindowPlugin, WindowState};
 use graph::{RenderContext, RenderGraph};
+use pipeline::MainPass;
 use wgpu::{
     Adapter, Backends, Color, CommandEncoderDescriptor, Device, DeviceDescriptor, Features,
     Instance, InstanceDescriptor, Limits, LoadOp, Operations, PowerPreference, Queue,
@@ -58,7 +62,8 @@ impl Plugin for RenderPlugin {
         app.insert_resource(RenderQueue(Arc::new(queue)));
         app.insert_resource(WindowSurfaces::default());
 
-        let render_graph = RenderGraph::default();
+        let mut render_graph = RenderGraph::default();
+        render_graph.push(MainPass::default());
         app.insert_resource(render_graph);
 
         let query = WindowQuery(app.world.query::<&WindowState>());
@@ -67,6 +72,14 @@ impl Plugin for RenderPlugin {
         app.add_system(create_surfaces);
         app.add_system(destroy_surfaces);
         app.add_system(render_surfaces);
+
+        app.init_resource::<pipeline::MeshPipeline>();
+        app.init_resource::<pipeline::MaterialPipeline>();
+
+        app.insert_resource(camera::Cameras::default());
+        app.add_system(camera::create_cameras);
+        app.add_system(camera::update_camera_aspect_ratio);
+        app.add_system(camera::update_camera_projection_matrix);
     }
 }
 

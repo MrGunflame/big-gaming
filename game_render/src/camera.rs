@@ -1,12 +1,18 @@
+use std::collections::HashMap;
 use std::f32::consts::PI;
 
 use bevy_ecs::prelude::{Component, Entity, EventReader};
-use bevy_ecs::system::Query;
+use bevy_ecs::query::{Added, Changed};
+use bevy_ecs::system::{Query, Res, ResMut, Resource};
 use game_window::events::WindowResized;
 use glam::{Mat3, Mat4, Quat, Vec3};
 
+use crate::pipeline::{CameraUniform, MeshPipeline};
+use crate::RenderQueue;
+
 #[derive(Clone, Debug, Component)]
 pub struct Camera {
+    pub projection: Projection,
     pub target: RenderTarget,
 }
 
@@ -14,7 +20,7 @@ pub struct Camera {
 pub enum RenderTarget {
     /// Render to a window surface.
     Window(Entity),
-    Image(),
+    // TODO: Add a render-to-texture target.
 }
 
 /// Perspective camera projection paramters
@@ -66,12 +72,51 @@ impl Transform {
 }
 
 pub fn update_camera_aspect_ratio(
+    cams: Res<Cameras>,
     mut cameras: Query<&mut Camera>,
     mut events: EventReader<WindowResized>,
 ) {
     for event in events.iter() {
-        // let camera = cameras.get();
+        let Some(entity) = cams.cameras.get(&event.window).copied() else  {
+            continue;
+        };
 
-        event.width as f32 / event.height as f32;
+        let mut camera = cameras.get_mut(entity).unwrap();
+        camera.projection.aspect_ratio = event.width as f32 / event.height as f32;
     }
+}
+
+pub fn create_cameras(mut cams: ResMut<Cameras>, cameras: Query<(Entity, &Camera), Added<Camera>>) {
+    for (entity, camera) in &cameras {
+        match camera.target {
+            RenderTarget::Window(window) => {
+                cams.cameras.insert(window, entity);
+            }
+        }
+    }
+}
+
+pub fn update_camera_projection_matrix(
+    pipeline: Res<MeshPipeline>,
+    queue: Res<RenderQueue>,
+    cameras: Query<(&Camera, &Transform), Changed<Transform>>,
+) {
+    for (camera, transform) in &cameras {
+        let mat =
+            Mat4::from_translation(transform.translation) * Mat4::from_quat(transform.rotation);
+
+        let uniform = CameraUniform::from(mat);
+
+        dbg!(uniform);
+
+        queue
+            .0
+            .write_buffer(&pipeline.camera_buffer, 0, bytemuck::cast_slice(&[uniform]));
+    }
+}
+
+#[derive(Clone, Debug, Default, Resource)]
+pub struct Cameras {
+    // Window => Camera
+    cameras: HashMap<Entity, Entity>,
 }
