@@ -17,6 +17,7 @@ members = [
     "game_wasm",
     "game_render",
     "game_window",
+    "game_asset",
     "tests",
 ]
 
