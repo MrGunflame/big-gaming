@@ -12,6 +12,8 @@ pub struct Mesh {
     topology: PrimitiveTopology,
     indices: Option<Indices>,
     positions: Vec<[f32; 3]>,
+    normals: Vec<[f32; 3]>,
+    uvs: Vec<[f32; 2]>,
 }
 
 impl Mesh {
@@ -20,6 +22,8 @@ impl Mesh {
             topology: PrimitiveTopology::TriangleList,
             indices: None,
             positions: vec![],
+            normals: vec![],
+            uvs: vec![],
         }
     }
 
@@ -31,6 +35,14 @@ impl Mesh {
         self.positions = positions;
     }
 
+    pub fn set_normals(&mut self, normals: Vec<[f32; 3]>) {
+        self.normals = normals;
+    }
+
+    pub fn set_uvs(&mut self, uvs: Vec<[f32; 2]>) {
+        self.uvs = uvs;
+    }
+
     pub fn indicies(&self) -> Option<Indices> {
         self.indices.clone()
     }
@@ -38,7 +50,13 @@ impl Mesh {
     pub fn vertices(&self) -> Vec<Vertex> {
         self.positions
             .iter()
-            .map(|pos| Vertex { position: *pos })
+            .zip(self.normals.iter())
+            .zip(self.uvs.iter())
+            .map(|((pos, norm), uv)| Vertex {
+                position: *pos,
+                normal: *norm,
+                uv: *uv,
+            })
             .collect()
     }
 }
@@ -69,6 +87,8 @@ impl Indices {
 #[repr(C)]
 pub struct Vertex {
     position: [f32; 3],
+    normal: [f32; 3],
+    uv: [f32; 2],
 }
 
 impl Vertex {
@@ -76,11 +96,24 @@ impl Vertex {
         VertexBufferLayout {
             array_stride: std::mem::size_of::<Self>() as BufferAddress,
             step_mode: VertexStepMode::Vertex,
-            attributes: &[VertexAttribute {
-                offset: 0,
-                shader_location: 0,
-                format: VertexFormat::Float32x3,
-            }],
+            attributes: &[
+                VertexAttribute {
+                    offset: 0,
+                    shader_location: 0,
+                    format: VertexFormat::Float32x3,
+                },
+                VertexAttribute {
+                    offset: std::mem::size_of::<[f32; 3]>() as BufferAddress,
+                    shader_location: 1,
+                    format: VertexFormat::Float32x3,
+                },
+                VertexAttribute {
+                    offset: (std::mem::size_of::<[f32; 3]>() + std::mem::size_of::<[f32; 3]>())
+                        as BufferAddress,
+                    shader_location: 2,
+                    format: VertexFormat::Float32x2,
+                },
+            ],
         }
     }
 }
