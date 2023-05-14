@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use ahash::HashMap;
-use bevy::prelude::Resource;
+use bevy_ecs::system::Resource;
 use game_common::entity::EntityId;
 use game_common::world::snapshot::EntityChange;
 use game_common::world::CellId;

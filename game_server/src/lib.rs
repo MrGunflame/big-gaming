@@ -10,7 +10,7 @@ pub mod world;
 
 use std::time::Duration;
 
-use bevy::app::App;
+use bevy_app::App;
 use game_common::archive::loader::ModuleLoader;
 use game_common::archive::GameArchive;
 use game_core::CorePlugins;

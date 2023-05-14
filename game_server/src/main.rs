@@ -1,4 +1,4 @@
-use bevy::prelude::App;
+use bevy_app::App;
 use clap::Parser;
 
 use game_core::modules;

@@ -2,9 +2,11 @@ mod inventory;
 
 use std::time::{Duration, Instant};
 
-use bevy::prelude::{
-    AssetServer, Commands, DespawnRecursiveExt, Plugin, Res, ResMut, Transform, Vec3,
-};
+use bevy_app::{App, Plugin};
+use bevy_asset::AssetServer;
+use bevy_ecs::system::{Commands, Res, ResMut};
+use bevy_hierarchy::DespawnRecursiveExt;
+use bevy_transform::prelude::Transform;
 use game_common::bundles::ActorBundle;
 use game_common::components::combat::Health;
 use game_common::components::components::Components;
@@ -26,6 +28,7 @@ use game_net::snapshot::{Command, CommandQueue, ConnectionMessage, Response, Sta
 use game_script::events::Events;
 use game_script::scripts::Scripts;
 use game_script::ScriptServer;
+use glam::Vec3;
 
 use crate::conn::{Connection, Connections};
 use crate::entity::ServerEntityGenerator;
@@ -35,7 +38,7 @@ use crate::world::level::Level;
 pub struct ServerPlugins;
 
 impl Plugin for ServerPlugins {
-    fn build(&self, app: &mut bevy::prelude::App) {
+    fn build(&self, app: &mut App) {
         app.insert_resource(ServerEntityGenerator::new());
         app.insert_resource(WorldState::new());
         app.insert_resource(EntityMap::default());

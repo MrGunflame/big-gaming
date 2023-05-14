@@ -1,6 +1,6 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use bevy::prelude::Resource;
+use bevy_ecs::system::Resource;
 use game_common::net::ServerEntity;
 
 #[derive(Debug, Resource)]

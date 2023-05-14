@@ -2,7 +2,7 @@ mod cell;
 pub mod level;
 mod terrain;
 
-use bevy::prelude::{IntoSystemConfig, Plugin};
+use bevy_app::{App, Plugin};
 use game_common::world::source::StreamingSources;
 
 use crate::plugins::tick;
@@ -13,7 +13,7 @@ use self::level::Level;
 pub struct WorldPlugin;
 
 impl Plugin for WorldPlugin {
-    fn build(&self, app: &mut bevy::prelude::App) {
+    fn build(&self, app: &mut App) {
         app.insert_resource(Level::new());
         app.insert_resource(StreamingSources::new());
 

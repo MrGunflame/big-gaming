@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use ahash::HashMap;
-use bevy::prelude::{Query, Res, ResMut, Resource, Transform};
+use bevy_ecs::system::Resource;
 use game_common::components::transform::PreviousTransform;
 use game_common::world::cell::Cell;
 use game_common::world::gen::flat::FlatGenerator;

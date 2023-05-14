@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 use std::sync::Arc;
 
-use bevy::prelude::Resource;
+use bevy_ecs::system::Resource;
 use game_net::proto::Frame;
 use parking_lot::Mutex;
 

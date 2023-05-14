@@ -1,6 +1,6 @@
-use bevy::prelude::IVec3;
 use game_common::entity::EntityId;
 use game_common::world::CellId;
+use glam::IVec3;
 
 #[derive(Clone, Debug)]
 pub struct ConnectionState {
@@ -117,8 +117,8 @@ fn cell_distance(origin: CellId, distance: u32) -> Vec<CellId> {
 
 #[cfg(test)]
 mod tests {
-    use bevy::prelude::IVec3;
     use game_common::world::CellId;
+    use glam::IVec3;
 
     use super::cell_distance;
 
