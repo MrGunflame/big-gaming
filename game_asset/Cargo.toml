@@ -1,0 +1,8 @@
+[package]
+name = "game_asset"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bevy_app = "0.10.1"
+bevy_ecs = "0.10.1"
