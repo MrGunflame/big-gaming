@@ -24,7 +24,8 @@ fn setup(mut cmds: Commands) {
     cmds.spawn(Camera {
         target: RenderTarget::Window(id),
         projection: Projection::default(),
-    });
+    })
+    .insert(Transform::default());
 
     cmds.spawn(MaterialMeshBundle {
         mesh: shape::Box {
@@ -39,6 +40,22 @@ fn setup(mut cmds: Commands) {
     })
     .insert(Transform {
         translation: Vec3::new(0.0, 1.0, -5.0),
+        ..Default::default()
+    });
+
+    cmds.spawn(MaterialMeshBundle {
+        mesh: shape::Box {
+            min_x: -0.5,
+            max_x: 0.5,
+            min_y: -0.5,
+            max_y: 0.5,
+            min_z: -0.5,
+            max_z: 0.5,
+        }
+        .into(),
+    })
+    .insert(Transform {
+        translation: Vec3::new(1.0, -0.5, -4.0),
         ..Default::default()
     });
 }

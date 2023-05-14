@@ -87,16 +87,25 @@ impl Default for Transform {
 
 pub fn update_camera_aspect_ratio(
     cams: Res<Cameras>,
-    mut cameras: Query<&mut Camera>,
+    mut cameras: Query<(&mut Camera, Option<&Transform>)>,
     mut events: EventReader<WindowResized>,
+    pipeline: Res<MeshPipeline>,
+    queue: Res<RenderQueue>,
 ) {
     for event in events.iter() {
         let Some(entity) = cams.cameras.get(&event.window).copied() else  {
             continue;
         };
 
-        let mut camera = cameras.get_mut(entity).unwrap();
+        let (mut camera, transform) = cameras.get_mut(entity).unwrap();
         camera.projection.aspect_ratio = event.width as f32 / event.height as f32;
+
+        if let Some(transform) = transform {
+            let uniform = CameraUniform::new(*transform, camera.projection);
+            queue
+                .0
+                .write_buffer(&pipeline.camera_buffer, 0, bytemuck::cast_slice(&[uniform]));
+        }
     }
 }
 
