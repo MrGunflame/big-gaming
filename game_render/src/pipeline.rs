@@ -1,5 +1,6 @@
-use bevy_ecs::prelude::Entity;
-use bevy_ecs::system::Resource;
+use bevy_ecs::prelude::{Component, Entity, Res};
+use bevy_ecs::query::{Added, Changed, With};
+use bevy_ecs::system::{Commands, Query, Resource};
 use bevy_ecs::world::FromWorld;
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec3};
@@ -13,7 +14,7 @@ use wgpu::{
     ShaderModule, ShaderModuleDescriptor, ShaderSource, ShaderStages, TextureFormat, VertexState,
 };
 
-use crate::camera::{Projection, Transform, OPENGL_TO_WGPU};
+use crate::camera::{Projection, Transform};
 use crate::graph::Node;
 use crate::mesh::{Mesh, Vertex};
 use crate::RenderDevice;
@@ -35,16 +36,28 @@ impl MeshPipeline {
     pub fn new(device: &Device) -> Self {
         let bind_group_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
             label: Some("camera_bind_group_layout"),
-            entries: &[BindGroupLayoutEntry {
-                binding: 0,
-                visibility: ShaderStages::VERTEX,
-                ty: BindingType::Buffer {
-                    ty: BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
+            entries: &[
+                BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: ShaderStages::VERTEX,
+                    ty: BindingType::Buffer {
+                        ty: BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
                 },
-                count: None,
-            }],
+                BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: ShaderStages::VERTEX,
+                    ty: BindingType::Buffer {
+                        ty: BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+            ],
         });
 
         let shader = device.create_shader_module(ShaderModuleDescriptor {
@@ -191,11 +204,11 @@ impl Node for MainPass {
     fn update(&mut self, world: &mut bevy_ecs::world::World) {
         world.resource_scope::<RenderDevice, _>(|world, device| {
             world.resource_scope::<MeshPipeline, _>(|world, pipeline| {
-                let mut query = world.query::<(Entity, &Mesh)>();
+                let mut query = world.query::<(Entity, &Mesh, &TransformationMatrix)>();
 
                 self.nodes.clear();
 
-                for (entity, mesh) in query.iter(&world) {
+                for (entity, mesh, mat) in query.iter(&world) {
                     let vertices = device.0.create_buffer_init(&BufferInitDescriptor {
                         label: Some("mesh_vertex_buffer"),
                         contents: bytemuck::cast_slice(&mesh.vertices()),
@@ -214,10 +227,16 @@ impl Node for MainPass {
                     let bind_group = device.0.create_bind_group(&wgpu::BindGroupDescriptor {
                         label: Some("mesh_bind_group"),
                         layout: &pipeline.bind_group_layout,
-                        entries: &[BindGroupEntry {
-                            binding: 0,
-                            resource: pipeline.camera_buffer.as_entire_binding(),
-                        }],
+                        entries: &[
+                            BindGroupEntry {
+                                binding: 0,
+                                resource: pipeline.camera_buffer.as_entire_binding(),
+                            },
+                            BindGroupEntry {
+                                binding: 1,
+                                resource: mat.buffer.as_entire_binding(),
+                            },
+                        ],
                     });
 
                     self.nodes.push(RenderNode {
@@ -256,5 +275,48 @@ impl Node for MainPass {
 
             render_pass.draw_indexed(0..node.num_vertices, 0, 0..1);
         }
+    }
+}
+
+#[derive(Debug, Component)]
+pub struct TransformationMatrix {
+    pub mat: Mat4,
+    pub buffer: Buffer,
+}
+
+pub fn create_transformatio_matrix(
+    device: Res<RenderDevice>,
+    mut commands: Commands,
+    meshes: Query<(Entity, &Transform), (With<Mesh>, Added<Transform>)>,
+) {
+    for (entity, transform) in &meshes {
+        let mat = transform.compute_matrix();
+
+        let buffer = device.0.create_buffer_init(&BufferInitDescriptor {
+            label: Some("transform_matrix_buffer"),
+            contents: bytemuck::cast_slice(&[mat]),
+            usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
+        });
+
+        commands
+            .entity(entity)
+            .insert(TransformationMatrix { mat, buffer });
+    }
+}
+
+pub fn update_transformation_matrix(
+    device: Res<RenderDevice>,
+    mut meshes: Query<(&Transform, &mut TransformationMatrix), Changed<Transform>>,
+) {
+    for (transform, mut mat) in &mut meshes {
+        mat.mat = transform.compute_matrix();
+
+        let buffer = device.0.create_buffer_init(&BufferInitDescriptor {
+            label: Some("transform_matrix_buffer"),
+            contents: bytemuck::cast_slice(&[mat.mat]),
+            usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
+        });
+
+        mat.buffer = buffer;
     }
 }

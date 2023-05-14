@@ -1,9 +1,10 @@
 use bevy_app::App;
 use bevy_ecs::system::Commands;
-use game_render::camera::{Camera, Projection, RenderTarget};
+use game_render::camera::{Camera, Projection, RenderTarget, Transform};
 use game_render::material::MaterialMeshBundle;
 use game_render::{shape, RenderPlugin};
 use game_window::Window;
+use glam::Vec3;
 
 fn main() {
     let mut app = App::new();
@@ -35,5 +36,9 @@ fn setup(mut cmds: Commands) {
             max_z: 0.5,
         }
         .into(),
+    })
+    .insert(Transform {
+        translation: Vec3::new(0.0, 1.0, -5.0),
+        ..Default::default()
     });
 }

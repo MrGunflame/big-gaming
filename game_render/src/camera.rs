@@ -50,7 +50,7 @@ pub const OPENGL_TO_WGPU: Mat4 = Mat4::from_cols_array_2d(&[
     [0.0, 0.0, 0.5, 1.0],
 ]);
 
-#[derive(Copy, Clone, Debug, Default, PartialEq, Component)]
+#[derive(Copy, Clone, Debug, PartialEq, Component)]
 pub struct Transform {
     pub translation: Vec3,
     pub rotation: Quat,
@@ -68,6 +68,20 @@ impl Transform {
         let up = forward.cross(right);
         self.rotation = Quat::from_mat3(&Mat3::from_cols(right, up, forward));
         self
+    }
+
+    pub fn compute_matrix(self) -> Mat4 {
+        Mat4::from_scale_rotation_translation(self.scale, self.rotation, self.translation)
+    }
+}
+
+impl Default for Transform {
+    fn default() -> Self {
+        Self {
+            translation: Vec3::splat(0.0),
+            rotation: Quat::IDENTITY,
+            scale: Vec3::splat(1.0),
+        }
     }
 }
 
