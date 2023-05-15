@@ -6,18 +6,23 @@ use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec3};
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
 use wgpu::{
-    BindGroup, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor, BindGroupLayoutEntry,
-    BindingType, BlendState, Buffer, BufferBindingType, BufferUsages, ColorTargetState,
-    ColorWrites, Device, Face, FragmentState, FrontFace, IndexFormat, MultisampleState, Operations,
-    PipelineLayoutDescriptor, PolygonMode, PrimitiveState, PrimitiveTopology,
+    AddressMode, BindGroup, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
+    BindGroupLayoutEntry, BindingResource, BindingType, BlendState, Buffer, BufferBindingType,
+    BufferUsages, ColorTargetState, ColorWrites, Device, Extent3d, Face, FilterMode, FragmentState,
+    FrontFace, ImageCopyTexture, ImageDataLayout, IndexFormat, MultisampleState, Operations,
+    Origin3d, PipelineLayoutDescriptor, PolygonMode, PrimitiveState, PrimitiveTopology,
     RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline, RenderPipelineDescriptor,
-    ShaderModule, ShaderModuleDescriptor, ShaderSource, ShaderStages, TextureFormat, VertexState,
+    Sampler, SamplerBindingType, SamplerDescriptor, ShaderModule, ShaderModuleDescriptor,
+    ShaderSource, ShaderStages, StencilState, Texture, TextureAspect, TextureDescriptor,
+    TextureDimension, TextureFormat, TextureSampleType, TextureUsages, TextureView,
+    TextureViewDescriptor, TextureViewDimension, VertexState,
 };
 
 use crate::camera::{Projection, Transform};
 use crate::graph::Node;
+use crate::material::Material;
 use crate::mesh::{Mesh, Vertex};
-use crate::RenderDevice;
+use crate::{RenderDevice, RenderQueue};
 
 #[derive(Resource)]
 pub struct MeshPipeline {
@@ -82,6 +87,8 @@ impl MeshPipeline {
 #[derive(Debug, Resource)]
 pub struct MaterialPipeline {
     pipeline: RenderPipeline,
+    bind_group_layout: BindGroupLayout,
+    sampler: Sampler,
 }
 
 impl FromWorld for MaterialPipeline {
@@ -96,9 +103,31 @@ impl FromWorld for MaterialPipeline {
 
 impl MaterialPipeline {
     pub fn new(device: &Device, mesh_pipeline: &MeshPipeline) -> Self {
+        let bind_group_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
+            label: Some("material_bind_group_layout"),
+            entries: &[
+                BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: ShaderStages::FRAGMENT,
+                    ty: BindingType::Texture {
+                        sample_type: TextureSampleType::Float { filterable: true },
+                        view_dimension: TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: ShaderStages::FRAGMENT,
+                    ty: BindingType::Sampler(SamplerBindingType::Filtering),
+                    count: None,
+                },
+            ],
+        });
+
         let pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
             label: Some("render_pipeline_layout"),
-            bind_group_layouts: &[&mesh_pipeline.bind_group_layout],
+            bind_group_layouts: &[&mesh_pipeline.bind_group_layout, &bind_group_layout],
             push_constant_ranges: &[],
         });
 
@@ -142,7 +171,21 @@ impl MaterialPipeline {
             multiview: None,
         });
 
-        Self { pipeline }
+        let sampler = device.create_sampler(&SamplerDescriptor {
+            address_mode_u: AddressMode::ClampToEdge,
+            address_mode_v: AddressMode::ClampToEdge,
+            address_mode_w: AddressMode::ClampToEdge,
+            mag_filter: FilterMode::Linear,
+            min_filter: FilterMode::Nearest,
+            mipmap_filter: FilterMode::Nearest,
+            ..Default::default()
+        });
+
+        Self {
+            pipeline,
+            bind_group_layout,
+            sampler,
+        }
     }
 }
 
@@ -192,7 +235,7 @@ struct RenderNode {
     vertices: Buffer,
     indices: Buffer,
     num_vertices: u32,
-    bind_group: BindGroup,
+    bind_groups: Vec<BindGroup>,
 }
 
 #[derive(Debug, Default)]
@@ -203,49 +246,109 @@ pub struct MainPass {
 impl Node for MainPass {
     fn update(&mut self, world: &mut bevy_ecs::world::World) {
         world.resource_scope::<RenderDevice, _>(|world, device| {
-            world.resource_scope::<MeshPipeline, _>(|world, pipeline| {
-                let mut query = world.query::<(Entity, &Mesh, &TransformationMatrix)>();
+            world.resource_scope::<RenderQueue, _>(|world, queue| {
+                world.resource_scope::<MeshPipeline, _>(|world, pipeline| {
+                    world.resource_scope::<MaterialPipeline, _>(|world, mat_pl| {
+                        let mut query =
+                            world.query::<(Entity, &Mesh, &Material, &TransformationMatrix)>();
 
-                self.nodes.clear();
+                        self.nodes.clear();
 
-                for (entity, mesh, mat) in query.iter(&world) {
-                    let vertices = device.0.create_buffer_init(&BufferInitDescriptor {
-                        label: Some("mesh_vertex_buffer"),
-                        contents: bytemuck::cast_slice(&mesh.vertices()),
-                        usage: BufferUsages::VERTEX,
+                        for (entity, mesh, material, mat) in query.iter(&world) {
+                            let vertices = device.0.create_buffer_init(&BufferInitDescriptor {
+                                label: Some("mesh_vertex_buffer"),
+                                contents: bytemuck::cast_slice(&mesh.vertices()),
+                                usage: BufferUsages::VERTEX,
+                            });
+
+                            let indices = mesh.indicies().unwrap();
+                            let num_vertices = indices.len() as u32;
+
+                            let indices = device.0.create_buffer_init(&BufferInitDescriptor {
+                                label: Some("mesh_index_buffer"),
+                                contents: bytemuck::cast_slice(indices.as_u32()),
+                                usage: BufferUsages::INDEX,
+                            });
+
+                            let bind_group =
+                                device.0.create_bind_group(&wgpu::BindGroupDescriptor {
+                                    label: Some("mesh_bind_group"),
+                                    layout: &pipeline.bind_group_layout,
+                                    entries: &[
+                                        BindGroupEntry {
+                                            binding: 0,
+                                            resource: pipeline.camera_buffer.as_entire_binding(),
+                                        },
+                                        BindGroupEntry {
+                                            binding: 1,
+                                            resource: mat.buffer.as_entire_binding(),
+                                        },
+                                    ],
+                                });
+
+                            let base_texture = device.0.create_texture(&TextureDescriptor {
+                                size: wgpu::Extent3d {
+                                    width: material.color_texture.width(),
+                                    height: material.color_texture.height(),
+                                    depth_or_array_layers: 1,
+                                },
+                                mip_level_count: 1,
+                                sample_count: 1,
+                                dimension: TextureDimension::D2,
+                                format: TextureFormat::Rgba8UnormSrgb,
+                                usage: TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST,
+                                label: Some("base_color_texture"),
+                                view_formats: &[],
+                            });
+
+                            queue.0.write_texture(
+                                ImageCopyTexture {
+                                    texture: &base_texture,
+                                    mip_level: 0,
+                                    origin: Origin3d::ZERO,
+                                    aspect: TextureAspect::All,
+                                },
+                                &material.color_texture,
+                                ImageDataLayout {
+                                    offset: 0,
+                                    bytes_per_row: Some(4 * material.color_texture.width()),
+                                    rows_per_image: Some(material.color_texture.height()),
+                                },
+                                Extent3d {
+                                    width: material.color_texture.width(),
+                                    height: material.color_texture.height(),
+                                    depth_or_array_layers: 1,
+                                },
+                            );
+
+                            let texture_view =
+                                base_texture.create_view(&TextureViewDescriptor::default());
+
+                            let bind_group_mat =
+                                device.0.create_bind_group(&wgpu::BindGroupDescriptor {
+                                    label: Some("material_bind_group"),
+                                    layout: &mat_pl.bind_group_layout,
+                                    entries: &[
+                                        BindGroupEntry {
+                                            binding: 0,
+                                            resource: BindingResource::TextureView(&texture_view),
+                                        },
+                                        BindGroupEntry {
+                                            binding: 1,
+                                            resource: BindingResource::Sampler(&mat_pl.sampler),
+                                        },
+                                    ],
+                                });
+
+                            self.nodes.push(RenderNode {
+                                vertices,
+                                indices,
+                                num_vertices,
+                                bind_groups: vec![bind_group, bind_group_mat],
+                            });
+                        }
                     });
-
-                    let indices = mesh.indicies().unwrap();
-                    let num_vertices = indices.len() as u32;
-
-                    let indices = device.0.create_buffer_init(&BufferInitDescriptor {
-                        label: Some("mesh_index_buffer"),
-                        contents: bytemuck::cast_slice(indices.as_u32()),
-                        usage: BufferUsages::INDEX,
-                    });
-
-                    let bind_group = device.0.create_bind_group(&wgpu::BindGroupDescriptor {
-                        label: Some("mesh_bind_group"),
-                        layout: &pipeline.bind_group_layout,
-                        entries: &[
-                            BindGroupEntry {
-                                binding: 0,
-                                resource: pipeline.camera_buffer.as_entire_binding(),
-                            },
-                            BindGroupEntry {
-                                binding: 1,
-                                resource: mat.buffer.as_entire_binding(),
-                            },
-                        ],
-                    });
-
-                    self.nodes.push(RenderNode {
-                        vertices,
-                        indices,
-                        num_vertices,
-                        bind_group,
-                    });
-                }
+                });
             });
         });
     }
@@ -269,7 +372,10 @@ impl Node for MainPass {
         render_pass.set_pipeline(&pipeline.pipeline);
 
         for node in &self.nodes {
-            render_pass.set_bind_group(0, &node.bind_group, &[]);
+            for (group, bind_group) in node.bind_groups.iter().enumerate() {
+                render_pass.set_bind_group(group as u32, bind_group, &[]);
+            }
+
             render_pass.set_vertex_buffer(0, node.vertices.slice(..));
             render_pass.set_index_buffer(node.indices.slice(..), IndexFormat::Uint32);
 

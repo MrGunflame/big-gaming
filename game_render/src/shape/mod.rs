@@ -128,3 +128,36 @@ impl From<Box> for Mesh {
         mesh
     }
 }
+
+pub struct Plane {
+    pub size: f32,
+}
+
+impl From<Plane> for Mesh {
+    fn from(s: Plane) -> Self {
+        let positions = [
+            [-s.size / 2.0, 0.0, -s.size / 2.0],
+            [s.size / 2.0, 0.0, s.size / 2.0],
+            [-s.size / 2.0, 0.0, s.size / 2.0],
+            [s.size / 2.0, 0.0, -s.size / 2.0],
+        ];
+
+        let normals = [
+            [0.0, 1.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 1.0, 0.0],
+        ];
+
+        let uvs = [[0.0, 0.0], [1.0, 1.0], [0.0, 1.0], [1.0, 0.0]];
+
+        let indicies = vec![0, 1, 2, 0, 3, 1];
+
+        let mut mesh = Mesh::new();
+        mesh.set_positions(positions.to_vec());
+        mesh.set_indices(Indices::U32(indicies));
+        mesh.set_normals(normals.to_vec());
+        mesh.set_uvs(uvs.to_vec());
+        mesh
+    }
+}
