@@ -27,7 +27,7 @@ fn setup(mut cmds: Commands) {
     })
     .insert(Transform::default());
 
-    let img = image::io::Reader::open("./img.png")
+    let img = image::io::Reader::open("../assets/Baker.png")
         .unwrap()
         .decode()
         .unwrap()
@@ -44,7 +44,7 @@ fn setup(mut cmds: Commands) {
         }
         .into(),
         material: Material {
-            color: [1.0, 1.0, 1.0, 1.0],
+            color: [1.0, 0.0, 0.0, 1.0],
             color_texture: img.clone(),
         },
     })

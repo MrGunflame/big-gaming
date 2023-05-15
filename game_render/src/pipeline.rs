@@ -109,6 +109,16 @@ impl MaterialPipeline {
                 BindGroupLayoutEntry {
                     binding: 0,
                     visibility: ShaderStages::FRAGMENT,
+                    ty: BindingType::Buffer {
+                        ty: BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: ShaderStages::FRAGMENT,
                     ty: BindingType::Texture {
                         sample_type: TextureSampleType::Float { filterable: true },
                         view_dimension: TextureViewDimension::D2,
@@ -117,7 +127,7 @@ impl MaterialPipeline {
                     count: None,
                 },
                 BindGroupLayoutEntry {
-                    binding: 1,
+                    binding: 2,
                     visibility: ShaderStages::FRAGMENT,
                     ty: BindingType::Sampler(SamplerBindingType::Filtering),
                     count: None,
@@ -286,6 +296,12 @@ impl Node for MainPass {
                                     ],
                                 });
 
+                            let base_color = device.0.create_buffer_init(&BufferInitDescriptor {
+                                label: Some("base_color"),
+                                contents: bytemuck::cast_slice(&[material.color]),
+                                usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
+                            });
+
                             let base_texture = device.0.create_texture(&TextureDescriptor {
                                 size: wgpu::Extent3d {
                                     width: material.color_texture.width(),
@@ -331,10 +347,14 @@ impl Node for MainPass {
                                     entries: &[
                                         BindGroupEntry {
                                             binding: 0,
-                                            resource: BindingResource::TextureView(&texture_view),
+                                            resource: base_color.as_entire_binding(),
                                         },
                                         BindGroupEntry {
                                             binding: 1,
+                                            resource: BindingResource::TextureView(&texture_view),
+                                        },
+                                        BindGroupEntry {
+                                            binding: 2,
                                             resource: BindingResource::Sampler(&mat_pl.sampler),
                                         },
                                     ],
