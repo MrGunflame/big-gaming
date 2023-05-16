@@ -15,6 +15,18 @@ struct VertexOutput {
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    var color: vec4<f32> = base_color;
-    return color * textureSample(color_texture, color_texture_sampler, in.uv);
+    var color: vec4<f32> = base_color * textureSample(color_texture, color_texture_sampler, in.uv);
+
+    let ambient_light = ambient_light();
+    color.x *= ambient_light.x;
+    color.y *= ambient_light.y;
+    color.z *= ambient_light.z;
+    
+    return color;
+}
+
+fn ambient_light() -> vec3<f32> {
+    let strength = 0.1;
+    let color = vec3(0.0, 0.0, 0.0) * strength;
+    return color;
 }

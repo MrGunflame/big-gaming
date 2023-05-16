@@ -83,6 +83,9 @@ impl Plugin for RenderPlugin {
 
         app.add_system(pipeline::create_transformatio_matrix);
         app.add_system(pipeline::update_transformation_matrix);
+
+        app.add_system(material::prepare_computed_materials);
+        app.add_system(material::prepare_computed_meshes);
     }
 }
 

@@ -47,6 +47,8 @@ fn setup(mut cmds: Commands) {
             color: [1.0, 0.0, 0.0, 1.0],
             color_texture: img.clone(),
         },
+        computed_material: Default::default(),
+        computed_mesh: Default::default(),
     })
     .insert(Transform {
         translation: Vec3::new(0.0, 1.0, -5.0),
@@ -67,6 +69,8 @@ fn setup(mut cmds: Commands) {
             color: [1.0, 1.0, 1.0, 1.0],
             color_texture: img,
         },
+        computed_material: Default::default(),
+        computed_mesh: Default::default(),
     })
     .insert(Transform {
         translation: Vec3::new(1.0, -0.5, -4.0),

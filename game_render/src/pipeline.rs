@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use bevy_ecs::prelude::{Component, Entity, Res};
 use bevy_ecs::query::{Added, Changed, With};
 use bevy_ecs::system::{Commands, Query, Resource};
@@ -20,7 +22,7 @@ use wgpu::{
 
 use crate::camera::{Projection, Transform};
 use crate::graph::Node;
-use crate::material::Material;
+use crate::material::{ComputedMaterial, ComputedMesh, Material};
 use crate::mesh::{Mesh, Vertex};
 use crate::{RenderDevice, RenderQueue};
 
@@ -242,8 +244,8 @@ impl Default for CameraUniform {
 
 #[derive(Debug)]
 struct RenderNode {
-    vertices: Buffer,
-    indices: Buffer,
+    vertices: Arc<Buffer>,
+    indices: Arc<Buffer>,
     num_vertices: u32,
     bind_groups: Vec<BindGroup>,
 }
@@ -256,118 +258,75 @@ pub struct MainPass {
 impl Node for MainPass {
     fn update(&mut self, world: &mut bevy_ecs::world::World) {
         world.resource_scope::<RenderDevice, _>(|world, device| {
-            world.resource_scope::<RenderQueue, _>(|world, queue| {
-                world.resource_scope::<MeshPipeline, _>(|world, pipeline| {
-                    world.resource_scope::<MaterialPipeline, _>(|world, mat_pl| {
-                        let mut query =
-                            world.query::<(Entity, &Mesh, &Material, &TransformationMatrix)>();
+            world.resource_scope::<MeshPipeline, _>(|world, pipeline| {
+                world.resource_scope::<MaterialPipeline, _>(|world, mat_pl| {
+                    let mut query =
+                        world.query::<(&ComputedMesh, &ComputedMaterial, &TransformationMatrix)>();
 
-                        self.nodes.clear();
+                    self.nodes.clear();
 
-                        for (entity, mesh, material, mat) in query.iter(&world) {
-                            let vertices = device.0.create_buffer_init(&BufferInitDescriptor {
-                                label: Some("mesh_vertex_buffer"),
-                                contents: bytemuck::cast_slice(&mesh.vertices()),
-                                usage: BufferUsages::VERTEX,
-                            });
+                    for (mesh, material, mat) in query.iter(&world) {
+                        let Some(vertices) = &mesh.vertices else {
+                                continue;
+                            };
+                        let Some(indices) = &mesh.indicies else {
+                                continue;
+                            };
+                        let num_vertices = mesh.num_vertices;
 
-                            let indices = mesh.indicies().unwrap();
-                            let num_vertices = indices.len() as u32;
-
-                            let indices = device.0.create_buffer_init(&BufferInitDescriptor {
-                                label: Some("mesh_index_buffer"),
-                                contents: bytemuck::cast_slice(indices.as_u32()),
-                                usage: BufferUsages::INDEX,
-                            });
-
-                            let bind_group =
-                                device.0.create_bind_group(&wgpu::BindGroupDescriptor {
-                                    label: Some("mesh_bind_group"),
-                                    layout: &pipeline.bind_group_layout,
-                                    entries: &[
-                                        BindGroupEntry {
-                                            binding: 0,
-                                            resource: pipeline.camera_buffer.as_entire_binding(),
-                                        },
-                                        BindGroupEntry {
-                                            binding: 1,
-                                            resource: mat.buffer.as_entire_binding(),
-                                        },
-                                    ],
-                                });
-
-                            let base_color = device.0.create_buffer_init(&BufferInitDescriptor {
-                                label: Some("base_color"),
-                                contents: bytemuck::cast_slice(&[material.color]),
-                                usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
-                            });
-
-                            let base_texture = device.0.create_texture(&TextureDescriptor {
-                                size: wgpu::Extent3d {
-                                    width: material.color_texture.width(),
-                                    height: material.color_texture.height(),
-                                    depth_or_array_layers: 1,
+                        let bind_group = device.0.create_bind_group(&wgpu::BindGroupDescriptor {
+                            label: Some("mesh_bind_group"),
+                            layout: &pipeline.bind_group_layout,
+                            entries: &[
+                                BindGroupEntry {
+                                    binding: 0,
+                                    resource: pipeline.camera_buffer.as_entire_binding(),
                                 },
-                                mip_level_count: 1,
-                                sample_count: 1,
-                                dimension: TextureDimension::D2,
-                                format: TextureFormat::Rgba8UnormSrgb,
-                                usage: TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST,
-                                label: Some("base_color_texture"),
-                                view_formats: &[],
+                                BindGroupEntry {
+                                    binding: 1,
+                                    resource: mat.buffer.as_entire_binding(),
+                                },
+                            ],
+                        });
+
+                        let Some(base_color) = material.base_color.as_ref() else {
+                                continue;
+                            };
+
+                        let Some(texture_view) = material
+                                .base_color_texture
+                                .as_ref()
+                                .map(|t| t.create_view(&TextureViewDescriptor::default())) else {
+                                    continue;
+                                };
+
+                        let bind_group_mat =
+                            device.0.create_bind_group(&wgpu::BindGroupDescriptor {
+                                label: Some("material_bind_group"),
+                                layout: &mat_pl.bind_group_layout,
+                                entries: &[
+                                    BindGroupEntry {
+                                        binding: 0,
+                                        resource: base_color.as_entire_binding(),
+                                    },
+                                    BindGroupEntry {
+                                        binding: 1,
+                                        resource: BindingResource::TextureView(&texture_view),
+                                    },
+                                    BindGroupEntry {
+                                        binding: 2,
+                                        resource: BindingResource::Sampler(&mat_pl.sampler),
+                                    },
+                                ],
                             });
 
-                            queue.0.write_texture(
-                                ImageCopyTexture {
-                                    texture: &base_texture,
-                                    mip_level: 0,
-                                    origin: Origin3d::ZERO,
-                                    aspect: TextureAspect::All,
-                                },
-                                &material.color_texture,
-                                ImageDataLayout {
-                                    offset: 0,
-                                    bytes_per_row: Some(4 * material.color_texture.width()),
-                                    rows_per_image: Some(material.color_texture.height()),
-                                },
-                                Extent3d {
-                                    width: material.color_texture.width(),
-                                    height: material.color_texture.height(),
-                                    depth_or_array_layers: 1,
-                                },
-                            );
-
-                            let texture_view =
-                                base_texture.create_view(&TextureViewDescriptor::default());
-
-                            let bind_group_mat =
-                                device.0.create_bind_group(&wgpu::BindGroupDescriptor {
-                                    label: Some("material_bind_group"),
-                                    layout: &mat_pl.bind_group_layout,
-                                    entries: &[
-                                        BindGroupEntry {
-                                            binding: 0,
-                                            resource: base_color.as_entire_binding(),
-                                        },
-                                        BindGroupEntry {
-                                            binding: 1,
-                                            resource: BindingResource::TextureView(&texture_view),
-                                        },
-                                        BindGroupEntry {
-                                            binding: 2,
-                                            resource: BindingResource::Sampler(&mat_pl.sampler),
-                                        },
-                                    ],
-                                });
-
-                            self.nodes.push(RenderNode {
-                                vertices,
-                                indices,
-                                num_vertices,
-                                bind_groups: vec![bind_group, bind_group_mat],
-                            });
-                        }
-                    });
+                        self.nodes.push(RenderNode {
+                            vertices: vertices.clone(),
+                            indices: indices.clone(),
+                            num_vertices,
+                            bind_groups: vec![bind_group, bind_group_mat],
+                        });
+                    }
                 });
             });
         });
