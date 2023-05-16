@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use bevy::prelude::Resource;
+use bevy_ecs::system::Resource;
 use game_common::module::{Module, ModuleId};
 
 use super::capabilities::Capabilities;

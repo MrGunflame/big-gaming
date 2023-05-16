@@ -1,63 +1,65 @@
 //! An immutable view of a scene.
 
-use bevy::prelude::{
-    AssetServer, Commands, Component, PointLight, PointLightBundle, Query, Res, Transform,
-};
-use bevy::scene::{Scene, SceneBundle};
-use bevy_egui::EguiContext;
-use game_data::uri::Uri;
+use std::f32::consts::PI;
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ViewsWindowPlugin;
+use bevy_ecs::prelude::Entity;
+use bevy_ecs::system::Commands;
+use game_render::camera::{Camera, CameraBundle, RenderTarget, Transform};
+use game_render::material::{Material, MaterialMeshBundle};
+use game_render::shape;
+use glam::{Quat, Vec3};
 
-impl bevy::prelude::Plugin for ViewsWindowPlugin {
-    fn build(&self, app: &mut bevy::prelude::App) {
-        app.add_system(render_view_windows);
-    }
-}
+pub fn spawn_view_window(commands: &mut Commands, id: Entity) {
+    commands.spawn(CameraBundle {
+        camera: Camera {
+            projection: Default::default(),
+            target: RenderTarget::Window(id),
+        },
+        transform: Transform::default(),
+    });
 
-#[derive(Clone, Debug, Component)]
-pub struct ViewWindow {
-    setup: bool,
-    handle: Uri,
-}
+    // commands.spawn(MaterialMeshBundle {
+    //     mesh: shape::Box {
+    //         min_x: -0.5,
+    //         max_x: 0.5,
+    //         min_y: -0.5,
+    //         max_y: 0.5,
+    //         min_z: -0.5,
+    //         max_z: 0.5,
+    //     }
+    //     .into(),
+    //     material: Material::default(),
+    //     computed_material: Default::default(),
+    //     computed_mesh: Default::default(),
+    // });
 
-impl ViewWindow {
-    pub fn new(handle: Uri) -> Self {
-        Self {
-            setup: true,
-            handle,
-        }
-    }
-}
+    let img = image::io::Reader::open("../assets/Baker.png")
+        .unwrap()
+        .decode()
+        .unwrap()
+        .to_rgba8();
 
-fn render_view_windows(
-    mut commands: Commands,
-    assets: Res<AssetServer>,
-    mut windows: Query<(&mut EguiContext, &mut ViewWindow)>,
-) {
-    for (ctx, mut state) in &mut windows {
-        if state.setup {
-            state.setup = !state.setup;
-
-            let handle = state.handle.as_ref().to_str().unwrap();
-            let scene = assets.load::<Scene, _>(handle);
-
-            commands.spawn(SceneBundle {
-                scene,
-                ..Default::default()
-            });
-
-            // Light
-            commands.spawn(PointLightBundle {
-                point_light: PointLight {
-                    intensity: 1500.0,
-                    shadows_enabled: true,
-                    ..Default::default()
-                },
-                transform: Transform::from_xyz(4.0, 8.0, 4.0),
-                ..Default::default()
-            });
-        }
-    }
+    commands
+        .spawn(MaterialMeshBundle {
+            mesh: shape::Box {
+                min_x: -0.5,
+                max_x: 0.5,
+                min_y: -0.5,
+                max_y: 0.5,
+                min_z: -0.5,
+                max_z: 0.5,
+            }
+            .into(),
+            material: Material {
+                color: [1.0, 0.0, 0.0, 1.0],
+                color_texture: img.clone(),
+            },
+            computed_material: Default::default(),
+            computed_mesh: Default::default(),
+        })
+        .insert(Transform {
+            translation: Vec3::new(0.0, 1.0, -5.0),
+            rotation: Quat::from_axis_angle(Vec3::Y, PI / 3.0),
+            ..Default::default()
+        });
 }

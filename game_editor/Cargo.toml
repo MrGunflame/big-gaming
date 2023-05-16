@@ -5,17 +5,20 @@ edition = "2021"
 
 [dependencies]
 game_common = { version = "0.1.0", path = "../game_common" }
-game_core = { version = "0.1.0", path = "../game_core" }
-game_input = { version = "0.1.0", path = "../game_input" }
-game_ui = { version = "0.1.0", path = "../game_ui", features = ["editor"] }
+# game_core = { version = "0.1.0", path = "../game_core" }
+# game_input = { version = "0.1.0", path = "../game_input" }
+game_ui = { version = "0.1.0", path = "../game_ui" }
 game_data = { version = "0.1.0", path = "../game_data" }
+game_window = { version = "0.1.0", path = "../game_window" }
+game_render = { version = "0.1.0", path = "../game_render" }
 
-bevy = "0.10.0"
-bevy_egui = "0.20.2"
+bevy_ecs = "0.10.0"
+bevy_app = "0.10.0"
 parking_lot = "0.12.1"
-egui_extras = "0.21.0"
 tokio = { version = "1.27.0", features = ["full"] }
 tracing = "0.1.37"
+image = "0.24.6"
+glam = "0.24"
 
 [profile.dev]
 opt-level = 0

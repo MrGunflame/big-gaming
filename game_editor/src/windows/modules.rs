@@ -1,209 +1,29 @@
-//! Module selectors
+use game_ui::render::style::Style;
+use game_ui::render::{Element, ElementBody};
+use game_ui::widgets::{Context, Text, Widget};
 
-use std::path::PathBuf;
+pub fn spawn_modules_window(ctx: &mut Context) {
+    let root = Element {
+        body: ElementBody::Container(),
+        style: Style::default(),
+    };
 
-use bevy::prelude::{Commands, Component, Entity, EventWriter, Query, ResMut, With};
-use bevy_egui::egui::{CentralPanel, TextEdit};
-use bevy_egui::EguiContext;
-use egui_extras::{Column, TableBuilder};
-use game_common::module::{Module, ModuleId, Version};
+    let root = ctx.tree.push(ctx.parent, root);
+    let mut ctx = ctx.child(root);
 
-use crate::backend::{Handle, Task};
-use crate::state::capabilities::Capabilities;
-use crate::state::module::{EditorModule, Modules};
-
-use super::SpawnWindow;
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ModuleWindowPlugin;
-
-impl bevy::prelude::Plugin for ModuleWindowPlugin {
-    fn build(&self, app: &mut bevy::prelude::App) {
-        app.add_system(render_modules);
-
-        app.add_system(render_create_module_windows);
-        app.add_system(render_load_module_windows);
-        app.add_system(render_edit_module_windows);
+    Text {
+        text: "Modules".to_owned(),
+        size: 24.0,
     }
-}
+    .create(&mut ctx);
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Component)]
-pub struct ModuleWindow;
+    let main = ctx.tree.push(
+        Some(root),
+        Element {
+            body: ElementBody::Container(),
+            style: Style::default(),
+        },
+    );
 
-fn render_modules(
-    modules: ResMut<Modules>,
-    mut windows: Query<&mut EguiContext, With<ModuleWindow>>,
-    mut events: EventWriter<SpawnWindow>,
-) {
-    for mut ctx in &mut windows {
-        CentralPanel::default().show(ctx.get_mut(), |ui| {
-            TableBuilder::new(ui)
-                .columns(Column::remainder().resizable(true), 5)
-                .header(20.0, |mut header| {
-                    header.col(|ui| {
-                        ui.heading("ID");
-                    });
-                    header.col(|ui| {
-                        ui.heading("Name");
-                    });
-                    header.col(|ui| {
-                        ui.heading("Dependencies");
-                    });
-                    header.col(|ui| {
-                        ui.heading("Writable");
-                    });
-                    header.col(|ui| {
-                        ui.heading("Edit");
-                    });
-                })
-                .body(|mut body| {
-                    for module in modules.iter() {
-                        body.row(20.0, |mut row| {
-                            row.col(|ui| {
-                                ui.label(module.module.id.to_string());
-                            });
-                            row.col(|ui| {
-                                ui.label(module.module.name.clone());
-                            });
-                            row.col(|ui| {
-                                ui.label(module.module.dependencies.len().to_string());
-                            });
-                            row.col(|ui| {
-                                ui.label(module.capabilities.write().to_string());
-                            });
-                            row.col(|ui| {
-                                if ui.button("Edit").clicked() {
-                                    events.send(SpawnWindow::EditModule(module.clone()));
-                                }
-                            });
-                        });
-                    }
-                });
-
-            if ui.button("Create new").clicked() {
-                events.send(SpawnWindow::CreateModule);
-            }
-
-            if ui.button("Import").clicked() {
-                events.send(SpawnWindow::ImportModule);
-            }
-        });
-    }
-}
-
-#[derive(Clone, Debug, Component)]
-pub struct EditModuleWindow {
-    pub module: EditorModule,
-}
-
-fn render_edit_module_windows(
-    mut commands: Commands,
-    mut windows: Query<(Entity, &mut EguiContext, &mut EditModuleWindow)>,
-    mut modules: ResMut<Modules>,
-) {
-    for (entity, mut ctx, mut state) in &mut windows {
-        CentralPanel::default().show(ctx.get_mut(), |ui| {
-            ui.heading("Edit Module");
-
-            ui.label("ID");
-            ui.label(state.module.module.id.to_string());
-
-            ui.label("Name");
-            ui.add(TextEdit::singleline(&mut state.module.module.name));
-
-            ui.label("Version");
-            ui.label("TBD");
-
-            ui.label("Dependencies");
-            ui.label("TBD");
-
-            if ui.button("Ok").clicked() {
-                modules.insert(state.module.clone());
-
-                commands.entity(entity).despawn();
-            }
-
-            if ui.button("Cancel").clicked() {
-                commands.entity(entity).despawn();
-            }
-        });
-    }
-}
-
-#[derive(Clone, Debug, Component)]
-pub struct CreateModuleWindow {
-    id: ModuleId,
-    name: String,
-}
-
-impl CreateModuleWindow {
-    pub fn new() -> Self {
-        Self {
-            id: ModuleId::random(),
-            name: String::new(),
-        }
-    }
-}
-
-fn render_create_module_windows(
-    mut commands: Commands,
-    mut modules: ResMut<Modules>,
-    mut windows: Query<(Entity, &mut EguiContext, &mut CreateModuleWindow)>,
-) {
-    for (entity, mut ctx, mut state) in &mut windows {
-        CentralPanel::default().show(ctx.get_mut(), |ui| {
-            ui.heading("Create Module");
-
-            ui.label("ID");
-            ui.label(state.id.to_string());
-
-            ui.label("Name");
-            ui.add(TextEdit::singleline(&mut state.name));
-
-            if ui.button("OK").clicked() {
-                let module = EditorModule {
-                    module: Module {
-                        id: state.id,
-                        name: std::mem::take(&mut state.name),
-                        version: Version,
-                        dependencies: vec![],
-                    },
-                    path: PathBuf::from(format!("./{}", state.id)),
-                    capabilities: Capabilities::READ | Capabilities::WRITE,
-                };
-
-                modules.insert(module);
-
-                commands.entity(entity).despawn();
-            }
-        });
-    }
-}
-
-#[derive(Clone, Debug, Default, Component)]
-pub struct LoadModuleWindow {
-    path: String,
-    writable: bool,
-}
-
-fn render_load_module_windows(
-    mut commands: Commands,
-    mut windows: Query<(Entity, &mut EguiContext, &mut LoadModuleWindow)>,
-    mut handle: ResMut<Handle>,
-) {
-    for (entity, mut ctx, mut state) in &mut windows {
-        CentralPanel::default().show(ctx.get_mut(), |ui| {
-            ui.heading("Load module");
-
-            ui.label("Local Path");
-            ui.add(TextEdit::singleline(&mut state.path));
-
-            ui.checkbox(&mut state.writable, "Writable");
-
-            if ui.button("Ok").clicked() {
-                handle.send(Task::ReadModule(state.path.clone().into()));
-                commands.entity(entity).despawn();
-            }
-        });
-    }
+    let mut ctx = ctx.child(main);
 }

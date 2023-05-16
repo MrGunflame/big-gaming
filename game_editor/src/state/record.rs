@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use bevy::prelude::Resource;
+use bevy_ecs::system::Resource;
 use game_common::module::ModuleId;
 use game_common::record::RecordId;
 use game_data::record::Record;
@@ -65,3 +65,4 @@ impl<'a> Iterator for Iter<'a> {
         Some((*id, record))
     }
 }
+

@@ -1,111 +1,79 @@
-use bevy::prelude::{Camera, Camera3dBundle, Commands, EventReader};
-use bevy::render::camera::RenderTarget;
-use bevy::window::{Window, WindowRef};
-use game_common::module::ModuleId;
-use game_common::record::RecordId;
-use game_data::record::RecordKind;
-use game_data::uri::Uri;
-
-use crate::state::module::{EditorModule, Modules};
-use crate::state::record::Records;
-
-use self::error::ErrorWindowsPlugin;
-use self::files::FilesWindowPlugin;
-use self::modules::ModuleWindowPlugin;
-use self::records::RecordsWindowPlugin;
-
-mod error;
-mod files;
 mod modules;
-mod records;
 mod view;
 
-#[derive(Clone, Debug)]
-pub enum SpawnWindow {
-    Modules,
-    EditModule(EditorModule),
-    CreateModule,
-    ImportModule,
-    Templates,
-    Record(ModuleId, RecordId),
-    CreateRecord(RecordKind),
-    Error(String),
-    View(Uri),
-}
+use std::collections::VecDeque;
+use std::sync::Arc;
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct WindowPlugin;
+use bevy_app::Plugin;
+use bevy_ecs::prelude::{EventReader, EventWriter};
+use bevy_ecs::system::{Commands, ResMut, Resource};
+use game_ui::events::Events;
+use game_ui::render::layout::LayoutTree;
+use game_ui::widgets::Context;
+use game_window::Window;
+use parking_lot::RwLock;
 
-impl bevy::prelude::Plugin for WindowPlugin {
-    fn build(&self, app: &mut bevy::prelude::App) {
+pub struct WindowsPlugin;
+
+impl Plugin for WindowsPlugin {
+    fn build(&self, app: &mut bevy_app::App) {
         app.add_event::<SpawnWindow>();
-        app.add_plugin(ErrorWindowsPlugin);
-        app.add_plugin(RecordsWindowPlugin);
-        app.add_plugin(ModuleWindowPlugin);
-        app.add_plugin(FilesWindowPlugin);
+        app.add_system(spawn_windows);
+        app.add_system(spawn_window_queue);
 
-        app.insert_resource(Records::new());
-        app.insert_resource(Modules::new());
-
-        app.add_system(spawn_window);
+        app.insert_resource(SpawnWindowQueue::default());
     }
 }
 
-fn spawn_window(mut events: EventReader<SpawnWindow>, mut commands: Commands) {
+fn spawn_windows(mut commands: Commands, mut events: EventReader<SpawnWindow>) {
     for event in events.iter() {
-        let mut cmds = commands.spawn(Window {
-            title: "window".to_owned(),
-            ..Default::default()
-        });
+        let mut tree = LayoutTree::new();
+        let mut events = Events::default();
+
+        let mut ctx = Context {
+            parent: None,
+            tree: &mut tree,
+            events: &mut events,
+        };
 
         match event {
             SpawnWindow::Modules => {
-                cmds.insert(modules::ModuleWindow);
-            }
-            SpawnWindow::EditModule(module) => {
-                cmds.insert(modules::EditModuleWindow {
-                    module: module.clone(),
+                let mut window = commands.spawn(Window {
+                    title: "test".to_owned(),
                 });
+
+                modules::spawn_modules_window(&mut ctx);
+
+                window.insert((tree, events));
             }
-            SpawnWindow::CreateModule => {
-                cmds.insert(modules::CreateModuleWindow::new());
-            }
-            SpawnWindow::ImportModule => {
-                cmds.insert(files::OpenFilesWindow::new());
-            }
-            SpawnWindow::Templates => {
-                cmds.insert(records::RecordsWindow::new());
-            }
-            SpawnWindow::Record(module, id) => {
-                cmds.insert(records::RecordWindow {
-                    module: *module,
-                    id: *id,
-                    record: None,
-                    add_action: 0,
-                    add_comp: 0,
-                });
-            }
-            SpawnWindow::CreateRecord(kind) => {
-                cmds.insert(records::CreateRecordWindow::new(*kind));
-            }
-            SpawnWindow::Error(text) => {
-                cmds.insert(error::ErrorWindow {
-                    text: text.to_owned(),
-                });
-            }
-            SpawnWindow::View(uri) => {
-                cmds.insert(view::ViewWindow::new(uri.clone()));
+            SpawnWindow::CreateModule => todo!(),
+            SpawnWindow::OpenModule => todo!(),
+            SpawnWindow::View => {
+                let window = commands
+                    .spawn(Window {
+                        title: "test".to_owned(),
+                    })
+                    .id();
+
+                view::spawn_view_window(&mut commands, window);
             }
         }
+    }
+}
 
-        let id = cmds.id();
+pub enum SpawnWindow {
+    Modules,
+    CreateModule,
+    OpenModule,
+    View,
+}
 
-        commands.spawn(Camera3dBundle {
-            camera: Camera {
-                target: RenderTarget::Window(WindowRef::Entity(id)),
-                ..Default::default()
-            },
-            ..Default::default()
-        });
+#[derive(Resource, Default, Clone)]
+pub struct SpawnWindowQueue(pub Arc<RwLock<VecDeque<SpawnWindow>>>);
+
+fn spawn_window_queue(queue: ResMut<SpawnWindowQueue>, mut writer: EventWriter<SpawnWindow>) {
+    let mut queue = queue.0.write();
+    while let Some(event) = queue.pop_front() {
+        writer.send(event);
     }
 }

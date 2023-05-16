@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 use std::path::PathBuf;
 
-use bevy::prelude::Resource;
+use bevy_ecs::system::Resource;
 use tokio::fs::{File, OpenOptions};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::oneshot::error::TryRecvError;

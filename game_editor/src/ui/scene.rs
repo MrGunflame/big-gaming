@@ -3,24 +3,23 @@ use std::collections::VecDeque;
 use bevy::prelude::{DespawnRecursiveExt, Entity, World};
 use bevy_egui::egui::panel::Side;
 use bevy_egui::egui::{SidePanel, Ui};
-use game_ui::{Context, Widget};
 
 use crate::world::EntityOptions;
 
 #[derive(Clone, Debug, Default)]
 pub struct SceneHierarchy {}
 
-impl Widget for SceneHierarchy {
-    fn name(&self) -> &'static str {
-        "editor::scene"
-    }
+// impl Widget for SceneHierarchy {
+//     fn name(&self) -> &'static str {
+//         "editor::scene"
+//     }
 
-    fn render(&mut self, ctx: &mut Context) {
-        SidePanel::new(Side::Right, "scene").show(ctx.ctx, |ui| {
-            render(self, ui, ctx.world);
-        });
-    }
-}
+//     fn render(&mut self, ctx: &mut Context) {
+//         SidePanel::new(Side::Right, "scene").show(ctx.ctx, |ui| {
+//             render(self, ui, ctx.world);
+//         });
+//     }
+// }
 
 fn render(scene: &mut SceneHierarchy, ui: &mut Ui, world: &mut World) {
     let mut query = world.query::<(Entity, &mut EntityOptions)>();
