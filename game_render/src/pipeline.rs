@@ -46,7 +46,7 @@ impl MeshPipeline {
             entries: &[
                 BindGroupLayoutEntry {
                     binding: 0,
-                    visibility: ShaderStages::VERTEX,
+                    visibility: ShaderStages::VERTEX | ShaderStages::FRAGMENT,
                     ty: BindingType::Buffer {
                         ty: BufferBindingType::Uniform,
                         has_dynamic_offset: false,
@@ -204,6 +204,8 @@ impl MaterialPipeline {
 #[derive(Copy, Clone, Debug, Zeroable, Pod)]
 #[repr(C)]
 pub struct CameraUniform {
+    // We only need `[f32; 3]`, but one word for alignment.
+    view_position: [f32; 4],
     view_proj: [[f32; 4]; 4],
 }
 
@@ -223,15 +225,13 @@ impl CameraUniform {
         );
 
         Self {
+            view_position: [
+                transform.translation.x,
+                transform.translation.y,
+                transform.translation.z,
+                0.0,
+            ],
             view_proj: (super::camera::OPENGL_TO_WGPU * proj * view).to_cols_array_2d(),
-        }
-    }
-}
-
-impl From<Mat4> for CameraUniform {
-    fn from(value: Mat4) -> Self {
-        Self {
-            view_proj: value.to_cols_array_2d(),
         }
     }
 }
