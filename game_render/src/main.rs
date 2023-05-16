@@ -1,10 +1,12 @@
+use std::f32::consts::PI;
+
 use bevy_app::App;
 use bevy_ecs::system::Commands;
 use game_render::camera::{Camera, Projection, RenderTarget, Transform};
 use game_render::material::{Material, MaterialMeshBundle};
 use game_render::{shape, RenderPlugin};
 use game_window::Window;
-use glam::Vec3;
+use glam::{Quat, Vec3};
 
 fn main() {
     let mut app = App::new();
@@ -52,6 +54,7 @@ fn setup(mut cmds: Commands) {
     })
     .insert(Transform {
         translation: Vec3::new(0.0, 1.0, -5.0),
+        rotation: Quat::from_axis_angle(Vec3::Y, PI / 3.0),
         ..Default::default()
     });
 
