@@ -5,6 +5,7 @@ use game_window::WindowState;
 use glam::Vec2;
 use winit::window::CursorGrabMode;
 
+// FIXME: This should probably be in another crate, input?
 #[derive(Copy, Clone, Debug, Default, PartialEq, Resource)]
 pub struct Cursor {
     is_locked: bool,

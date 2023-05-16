@@ -22,6 +22,11 @@ impl Plugin for WindowsPlugin {
         app.add_system(spawn_window_queue);
 
         app.insert_resource(SpawnWindowQueue::default());
+
+        app.add_system(view::reset_state_on_cursor_leave);
+        app.add_system(view::zoom_scene);
+        app.add_system(view::update_view_camera);
+        app.add_system(view::update_camera_mode);
     }
 }
 
@@ -49,13 +54,7 @@ fn spawn_windows(mut commands: Commands, mut events: EventReader<SpawnWindow>) {
             SpawnWindow::CreateModule => todo!(),
             SpawnWindow::OpenModule => todo!(),
             SpawnWindow::View => {
-                let window = commands
-                    .spawn(Window {
-                        title: "test".to_owned(),
-                    })
-                    .id();
-
-                view::spawn_view_window(&mut commands, window);
+                view::spawn_view_window(&mut commands);
             }
         }
     }

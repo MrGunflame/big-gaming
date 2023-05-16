@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::f32::consts::PI;
 
-use bevy_ecs::prelude::{Component, Entity, EventReader};
+use bevy_ecs::prelude::{Bundle, Component, Entity, EventReader};
 use bevy_ecs::query::{Added, Changed};
 use bevy_ecs::system::{Query, Res, ResMut, Resource};
 use game_window::events::WindowResized;
@@ -10,13 +10,19 @@ use glam::{Mat3, Mat4, Quat, Vec3};
 use crate::pipeline::{CameraUniform, MeshPipeline};
 use crate::RenderQueue;
 
+#[derive(Clone, Debug, Bundle)]
+pub struct CameraBundle {
+    pub camera: Camera,
+    pub transform: Transform,
+}
+
 #[derive(Clone, Debug, Component)]
 pub struct Camera {
     pub projection: Projection,
     pub target: RenderTarget,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum RenderTarget {
     /// Render to a window surface.
     Window(Entity),

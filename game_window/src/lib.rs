@@ -12,13 +12,13 @@ use bevy_ecs::query::Added;
 use bevy_ecs::system::{Commands, Query, ResMut, Resource, SystemState};
 use bevy_ecs::world::FromWorld;
 use events::{
-    CursorEntered, CursorLeft, CursorMoved, ReceivedCharacter, WindowCloseRequested, WindowCreated,
-    WindowDestroyed, WindowResized,
+    CursorEntered, CursorLeft, CursorMoved, ReceivedCharacter, WindowCloseRequested, WindowClosing,
+    WindowCreated, WindowDestroyed, WindowResized,
 };
 use game_input::keyboard::{KeyboardInput, ScanCode};
 use game_input::mouse::{MouseButton, MouseButtonInput, MouseMotion, MouseScrollUnit, MouseWheel};
 use game_input::{ButtonState, InputPlugin};
-use glam::{DVec2, Vec2};
+use glam::Vec2;
 use raw_window_handle::{
     HasRawDisplayHandle, HasRawWindowHandle, RawDisplayHandle, RawWindowHandle,
 };
@@ -26,7 +26,7 @@ use systems::create_windows;
 use winit::dpi::{LogicalPosition, PhysicalSize, Position};
 use winit::error::ExternalError;
 use winit::event::{DeviceEvent, ElementState, Event, MouseScrollDelta, WindowEvent};
-use winit::event_loop::EventLoop;
+use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::{CursorGrabMode, WindowId};
 
 #[derive(Clone, Debug)]
@@ -49,6 +49,7 @@ impl Plugin for WindowPlugin {
         app.add_event::<CursorEntered>();
         app.add_event::<CursorLeft>();
         app.add_event::<WindowCloseRequested>();
+        app.add_event::<WindowClosing>();
 
         app.add_system(systems::close_requested_windows);
 

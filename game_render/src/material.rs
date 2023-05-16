@@ -27,6 +27,18 @@ pub struct Material {
     pub color_texture: ImageBuffer<Rgba<u8>, Vec<u8>>,
 }
 
+impl Default for Material {
+    fn default() -> Self {
+        let mut color_texture: ImageBuffer<Rgba<u8>, Vec<u8>> = ImageBuffer::new(1, 1);
+        color_texture[(0, 0)] = Rgba([255, 255, 255, 255]);
+
+        Self {
+            color: [1.0, 1.0, 1.0, 1.0],
+            color_texture,
+        }
+    }
+}
+
 #[derive(Debug, Default, Component)]
 pub struct ComputedMesh {
     pub(crate) vertices: Option<Arc<Buffer>>,

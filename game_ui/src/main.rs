@@ -1,6 +1,7 @@
 use bevy_app::App;
 use bevy_ecs::system::Commands;
 use game_ui::events::{EventHandlers, Events};
+use game_ui::reactive::{create_effect, create_signal, ReactiveRoot, Scope};
 use game_ui::render::layout::LayoutTree;
 use game_ui::render::style::{Bounds, Direction, Position, Style};
 use game_ui::render::{Element, ElementBody, Image, Text};
@@ -30,67 +31,67 @@ fn setup(mut cmds: Commands) {
     //     },
     // );
 
-    let img = image::io::Reader::open("../game_render/img.png")
-        .unwrap()
-        .decode()
-        .unwrap()
-        .to_rgba8();
+    // let img = image::io::Reader::open("../game_render/img.png")
+    //     .unwrap()
+    //     .decode()
+    //     .unwrap()
+    //     .to_rgba8();
 
-    let root = tree.push(
-        None,
-        Element {
-            body: ElementBody::Container(),
-            style: Style {
-                direction: Direction::Column,
-                ..Default::default()
-            },
-        },
-    );
+    // let root = tree.push(
+    //     None,
+    //     Element {
+    //         body: ElementBody::Container(),
+    //         style: Style {
+    //             direction: Direction::Column,
+    //             ..Default::default()
+    //         },
+    //     },
+    // );
 
-    let side = tree.push(
-        Some(root),
-        Element {
-            body: ElementBody::Container(),
-            style: Style {
-                position: Position::default(),
-                direction: Direction::Row,
-                bounds: Bounds::default(),
+    // let side = tree.push(
+    //     Some(root),
+    //     Element {
+    //         body: ElementBody::Container(),
+    //         style: Style {
+    //             position: Position::default(),
+    //             direction: Direction::Row,
+    //             bounds: Bounds::default(),
 
-                ..Default::default()
-            },
-        },
-    );
+    //             ..Default::default()
+    //         },
+    //     },
+    // );
 
-    let main = tree.push(
-        Some(root),
-        Element {
-            body: ElementBody::Container(),
-            style: Style {
-                direction: Direction::Column,
-                ..Default::default()
-            },
-        },
-    );
+    // let main = tree.push(
+    //     Some(root),
+    //     Element {
+    //         body: ElementBody::Container(),
+    //         style: Style {
+    //             direction: Direction::Column,
+    //             ..Default::default()
+    //         },
+    //     },
+    // );
 
-    for _ in 0..5 {
-        tree.push(
-            Some(side),
-            Element {
-                body: ElementBody::Text(Text::new("Some record", 100.0)),
-                style: Style::default(),
-            },
-        );
-    }
+    // for _ in 0..5 {
+    //     tree.push(
+    //         Some(side),
+    //         Element {
+    //             body: ElementBody::Text(Text::new("Some record", 100.0)),
+    //             style: Style::default(),
+    //         },
+    //     );
+    // }
 
-    for _ in 0..4 {
-        tree.push(
-            Some(main),
-            Element {
-                body: ElementBody::Image(Image { image: img.clone() }),
-                style: Style::default(),
-            },
-        );
-    }
+    // for _ in 0..4 {
+    //     tree.push(
+    //         Some(main),
+    //         Element {
+    //             body: ElementBody::Image(Image { image: img.clone() }),
+    //             style: Style::default(),
+    //         },
+    //     );
+    // }
 
     let mut events = Events::default();
 
@@ -150,10 +151,23 @@ fn setup(mut cmds: Commands) {
         title: "Hello World!".to_owned(),
     })
     .insert(tree.clone())
-    .insert(events);
+    .insert(events)
+    .insert(ReactiveRoot::new(MainComp));
 
-    cmds.spawn(Window {
-        title: "nr2".to_owned(),
-    })
-    .insert(tree);
+    // cmds.spawn(Window {
+    //     title: "nr2".to_owned(),
+    // })
+    // .insert(tree);
+}
+
+fn MainComp(cx: Scope) {
+    dbg!("run root");
+
+    let (count, set_count) = create_signal(0);
+
+    create_effect(move || {
+        dbg!(count.get());
+    });
+
+    set_count.update(|c| *c += 1);
 }

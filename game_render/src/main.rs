@@ -1,10 +1,14 @@
 use std::f32::consts::PI;
 
 use bevy_app::App;
-use bevy_ecs::system::Commands;
+use bevy_ecs::prelude::EventReader;
+use bevy_ecs::query::With;
+use bevy_ecs::system::{Commands, Query};
+use game_input::keyboard::KeyboardInput;
 use game_render::camera::{Camera, Projection, RenderTarget, Transform};
 use game_render::material::{Material, MaterialMeshBundle};
 use game_render::{shape, RenderPlugin};
+use game_window::events::VirtualKeyCode;
 use game_window::Window;
 use glam::{Quat, Vec3};
 
@@ -12,6 +16,7 @@ fn main() {
     let mut app = App::new();
     app.add_plugin(RenderPlugin);
     app.add_startup_system(setup);
+    app.add_system(move_camera);
 
     app.run();
 }
@@ -87,4 +92,30 @@ fn setup(mut cmds: Commands) {
     //     translation: Vec3::new(0.0, -5.0, 0.0),
     //     ..Default::default()
     // });
+}
+
+fn move_camera(
+    mut events: EventReader<KeyboardInput>,
+    mut cameras: Query<(&mut Transform), With<Camera>>,
+) {
+    let mut camera = cameras.single_mut();
+
+    for event in events.iter() {
+        match event.key_code {
+            Some(VirtualKeyCode::W) => {
+                let rot = camera.rotation * -Vec3::Z;
+                camera.translation += rot;
+            }
+            Some(VirtualKeyCode::S) => {
+                let rot = camera.rotation * -Vec3::Z;
+                camera.translation -= rot;
+            }
+            Some(VirtualKeyCode::A) => {
+                let rot = (camera.rotation * Quat::from_axis_angle(Vec3::Y, 90.0f32.to_radians()))
+                    * -Vec3::Z;
+                camera.translation += rot;
+            }
+            _ => (),
+        }
+    }
 }

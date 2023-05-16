@@ -14,6 +14,11 @@ pub struct WindowResized {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct WindowClosing {
+    pub window: Entity,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct WindowDestroyed {
     pub window: Entity,
 }
@@ -45,3 +50,6 @@ pub struct ReceivedCharacter {
 pub struct WindowCloseRequested {
     pub window: Entity,
 }
+
+// FIXME: Export a custom type from input crate.
+pub use winit::event::VirtualKeyCode;

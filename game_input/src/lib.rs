@@ -22,6 +22,7 @@ impl Plugin for InputPlugin {
         app.add_event::<keyboard::KeyboardInput>();
         app.add_event::<mouse::MouseMotion>();
         app.add_event::<mouse::MouseButtonInput>();
+        app.add_event::<mouse::MouseWheel>();
 
         app.add_plugin(HotkeyPlugin);
 

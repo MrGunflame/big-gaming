@@ -594,6 +594,11 @@ impl TriggerKind {
     pub fn intersects(self, other: Self) -> bool {
         self & other != Self::NONE
     }
+
+    /// Const bitor
+    pub const fn and(self, other: Self) -> Self {
+        Self(self.0 | other.0)
+    }
 }
 
 impl BitOr for TriggerKind {
