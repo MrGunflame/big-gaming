@@ -20,7 +20,7 @@ use wgpu::{
     TextureViewDescriptor, TextureViewDimension, VertexState,
 };
 
-use crate::camera::{Projection, Transform};
+use crate::camera::{Projection, Transform, OPENGL_TO_WGPU};
 use crate::graph::Node;
 use crate::material::{ComputedMaterial, ComputedMesh, Material};
 use crate::mesh::{Mesh, Vertex};
@@ -213,7 +213,7 @@ impl CameraUniform {
     pub fn new(transform: Transform, projection: Projection) -> Self {
         let view = Mat4::look_to_rh(
             transform.translation,
-            (transform.rotation * -Vec3::Z) - transform.translation,
+            transform.rotation * -Vec3::Z,
             Vec3::Y,
         );
 

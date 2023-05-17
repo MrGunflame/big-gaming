@@ -62,4 +62,3 @@ fn specular_light(in:VertexOutput) -> vec3<f32> {
 
     return specular_color;
 }
-

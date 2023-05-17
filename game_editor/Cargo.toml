@@ -11,6 +11,7 @@ game_ui = { version = "0.1.0", path = "../game_ui" }
 game_data = { version = "0.1.0", path = "../game_data" }
 game_window = { version = "0.1.0", path = "../game_window" }
 game_render = { version = "0.1.0", path = "../game_render" }
+game_input = { version = "0.1.0", path = "../game_input" }
 
 bevy_ecs = "0.10.0"
 bevy_app = "0.10.0"
@@ -19,6 +20,7 @@ tokio = { version = "1.27.0", features = ["full"] }
 tracing = "0.1.37"
 image = "0.24.6"
 glam = "0.24"
+bitflags = "2.2.1"
 
 [profile.dev]
 opt-level = 0

@@ -30,34 +30,11 @@ fn fragment(
     @location(2) uv: vec2<f32>,
 ) -> @location(0) vec4<f32> {
 
-    // let origin = vec3(0.0, 0.0, 0.0);
+    let eye_pos = vec3(0.0, 0.1, 0.2);
+    let sun_pos = vec3(0.0, 25.0, -1000.0);
+    let dir = get_ray_dir(uv, eye_pos, sun_pos);
 
-    //if world_position.y >= 100.0 {
-        //return vec4(0.0, 0.0, 0.0, 0.0);
-    //}
-
-    // let f = 10.0 / distance;
-
-    //let r = material.color[0] * f;
-    // let g = material.color[1] * f;
-    // let b = material.color[2] * f;
-
-    // return vec4(r, g, b, 1.0);
-
-    //return material.color;
-    //return vec4(x, y, z, 0.5);
-    // return vec4(0.0, 0.0, 0.0, 0.0);
-    //return vec4(color[0], color[1], color[2], 0.0);
-    // return sin(vec4(world_position[0], world_position[1], world_position[2], 0.0));
-    
-    // Horizon near factor
-//    let f = abs(1.0 / world_position[1]);
-
-    // let h = f / b;
-
-    // return vec4(0.0, 0.0, 0.0, 1.0);
-
-    let color = sky(vec3(1.0, 1.0, 1.0), vec3(0.0, 75.0, -1000.0));
+    let color = sky(dir, sun_pos);
     
     let a = max(color, vec3(0.0, 0.0, 0.0));
     let b = min(a, vec3(1024.0, 1024.0, 1024.0));
@@ -165,3 +142,9 @@ fn sky(dir: vec3<f32>, sun_position: vec3<f32>) -> vec3<f32> {
     return lin + l0;
 }
 
+fn get_ray_dir(uv: vec2<f32>, pos: vec3<f32>, look_at_pos: vec3<f32>) -> vec3<f32> {
+    let forward = normalize(look_at_pos - pos);
+    let right = normalize(cross(vec3(0.0, 1.0, 0.0), forward));
+    let up = cross(forward, right);
+    return normalize(forward + uv.x * right + uv.y + up);
+}

@@ -3,7 +3,7 @@
 use std::f32::consts::PI;
 
 use bevy_ecs::prelude::{Component, EventReader, Res};
-use bevy_ecs::query::With;
+use bevy_ecs::query::{Changed, With};
 use bevy_ecs::system::{Commands, Query};
 use bitflags::bitflags;
 use game_input::keyboard::KeyboardInput;
@@ -76,9 +76,30 @@ pub fn spawn_view_window(commands: &mut Commands) {
         })
         .insert(Transform {
             translation: Vec3::new(0.0, 1.0, -5.0),
-            rotation: Quat::from_axis_angle(Vec3::Y, PI / 3.0),
+            // rotation: Quat::from_axis_angle(Vec3::Y, PI / 3.0),
             ..Default::default()
         });
+
+    commands
+        .spawn(MaterialMeshBundle {
+            mesh: shape::Box {
+                min_x: -0.1,
+                max_x: 0.1,
+                min_y: -0.1,
+                max_y: 0.1,
+                min_z: -0.1,
+                max_z: 0.1,
+            }
+            .into(),
+            material: Material {
+                color: [1.0, 1.0, 1.0, 1.0],
+                color_texture: img.clone(),
+            },
+            computed_material: Default::default(),
+            computed_mesh: Default::default(),
+        })
+        .insert(Transform::default())
+        .insert(OriginMarker);
 }
 
 /// state attached to windows with a view.
@@ -90,6 +111,9 @@ pub struct ViewWindowState {
 
 #[derive(Copy, Clone, Debug, Component)]
 pub struct ViewCamera;
+
+#[derive(Copy, Clone, Debug, Component)]
+pub struct OriginMarker;
 
 bitflags! {
     #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
@@ -241,13 +265,35 @@ pub fn update_view_camera(
                     let q1 = Quat::from_axis_angle(Vec3::Y, -x);
                     let q2 = Quat::from_axis_angle(Vec3::X, -y);
 
+                    dbg!(transform.rotation);
+                    dbg!(transform.rotation * -Vec3::Z);
+
                     transform.rotation = q1 * transform.rotation;
                     transform.rotation = transform.rotation * q2;
+
+                    // Renormalize quat due to FP error creep.
+                    if transform.rotation.is_normalized() {
+                        transform.rotation = transform.rotation.normalize();
+                    }
+
+                    dbg!(transform.rotation);
+                    dbg!(transform.rotation * -Vec3::Z);
 
                     transform.translation = transform.rotation * Vec3::new(0.0, 0.0, distance);
                 }
             }
         }
         _ => (),
+    }
+}
+
+pub fn update_origin(
+    mut windows: Query<&ViewWindowState, Changed<ViewWindowState>>,
+    mut entities: Query<&mut Transform, With<OriginMarker>>,
+) {
+    for window in &mut windows {
+        for mut transform in &mut entities {
+            transform.translation = window.origin;
+        }
     }
 }

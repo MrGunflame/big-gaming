@@ -27,6 +27,7 @@ impl Plugin for WindowsPlugin {
         app.add_system(view::zoom_scene);
         app.add_system(view::update_view_camera);
         app.add_system(view::update_camera_mode);
+        app.add_system(view::update_origin);
     }
 }
 

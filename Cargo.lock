@@ -2962,6 +2962,7 @@ version = "0.1.0"
 dependencies = [
  "bevy_app 0.10.1",
  "bevy_ecs 0.10.1",
+ "parking_lot",
 ]
 
 [[package]]
@@ -3070,10 +3071,14 @@ version = "0.1.0"
 dependencies = [
  "bevy_app 0.10.1",
  "bevy_ecs 0.10.1",
+ "bitflags 2.2.1",
  "game_common",
  "game_data",
+ "game_input",
+ "game_render",
  "game_ui",
  "game_window",
+ "glam 0.24.0",
  "image 0.24.6",
  "parking_lot",
  "tokio",
@@ -3138,8 +3143,10 @@ dependencies = [
  "bevy_ecs 0.10.1",
  "bytemuck",
  "futures-lite",
+ "game_input",
  "game_window",
  "glam 0.24.0",
+ "image 0.24.6",
  "pretty_env_logger",
  "tracing",
  "wgpu 0.16.0",
