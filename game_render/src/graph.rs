@@ -25,4 +25,6 @@ pub struct RenderContext<'a> {
     pub encoder: &'a mut CommandEncoder,
     pub view: &'a TextureView,
     pub device: &'a Device,
+    pub width: u32,
+    pub height: u32,
 }

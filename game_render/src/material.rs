@@ -30,7 +30,8 @@ pub struct Material {
 impl Default for Material {
     fn default() -> Self {
         let mut color_texture: ImageBuffer<Rgba<u8>, Vec<u8>> = ImageBuffer::new(1, 1);
-        color_texture[(0, 0)] = Rgba([255, 255, 255, 255]);
+        color_texture.fill(255);
+        // color_texture[(0, 0)] = Rgba([255, 255, 255, 255]);
 
         Self {
             color: [1.0, 1.0, 1.0, 1.0],

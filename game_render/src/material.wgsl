@@ -26,7 +26,7 @@ struct VertexOutput {
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     var color: vec4<f32> = base_color * textureSample(color_texture, color_texture_sampler, in.uv);
 
-    let light_factor = vec4( specular_light(in), 1.0);
+    let light_factor = vec4(ambient_light() + diffuse_light(in) + specular_light(in), 1.0);
     color *= light_factor;
     
     return color;

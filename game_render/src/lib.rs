@@ -86,6 +86,8 @@ impl Plugin for RenderPlugin {
 
         app.add_system(material::prepare_computed_materials);
         app.add_system(material::prepare_computed_meshes);
+
+        app.add_system(pipeline::update_window_resized);
     }
 }
 
@@ -282,6 +284,8 @@ pub fn render_surfaces(
                     encoder: &mut encoder,
                     view: &view,
                     device: &device.0,
+                    height: output.texture.height(),
+                    width: output.texture.width(),
                 };
 
                 for node in &render_graph.nodes {
