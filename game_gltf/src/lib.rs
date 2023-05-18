@@ -1,16 +1,49 @@
 use std::collections::HashMap;
+use std::fs::File;
+use std::io::Read;
+use std::path::Path;
 
 use bytes::Buf;
 use game_render::mesh::Mesh;
 use glam::Vec3;
 use gltf::accessor::DataType;
 use gltf::accessor::Dimensions;
+use gltf::buffer::Source;
 use gltf::{Accessor, Gltf, Semantic};
 use indexmap::IndexMap;
 
 pub struct GltfData {
     pub gltf: Gltf,
     pub buffers: IndexMap<String, Vec<u8>>,
+}
+
+impl GltfData {
+    pub fn open<P>(path: P) -> Result<Self, ()>
+    where
+        P: AsRef<Path>,
+    {
+        let file = Gltf::open(path).unwrap();
+
+        let mut buffers = IndexMap::new();
+        for buffer in file.buffers() {
+            match buffer.source() {
+                Source::Bin => todo!(),
+                Source::Uri(uri) => {
+                    let mut file = File::open(uri).unwrap();
+
+                    let mut buf = Vec::new();
+                    file.read_to_end(&mut buf).unwrap();
+
+                    buffers.insert(uri.to_owned(), buf);
+                }
+            }
+        }
+
+        Ok(Self {
+            gltf: file,
+            buffers,
+        })
+    }
 }
 
 pub fn load_mesh(gltf: GltfData) -> Mesh {

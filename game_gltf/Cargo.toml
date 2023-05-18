@@ -12,3 +12,8 @@ glam = "0.24.0"
 gltf = "1.1.0"
 indexmap = "1.9.3"
 tracing = "0.1.37"
+
+
+[[test]]
+name = "gltf_box"
+path = "tests/gltf_box/gltf_box.rs"
