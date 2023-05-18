@@ -233,7 +233,7 @@ impl CameraUniform {
         let view = Mat4::look_to_rh(
             transform.translation,
             transform.rotation * -Vec3::Z,
-            Vec3::Y,
+            transform.rotation * Vec3::Y,
         );
 
         let proj = Mat4::perspective_rh(

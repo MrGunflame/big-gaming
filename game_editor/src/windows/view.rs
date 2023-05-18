@@ -15,7 +15,7 @@ use game_render::shape;
 use game_ui::cursor::Cursor;
 use game_window::events::{CursorLeft, VirtualKeyCode};
 use game_window::Window;
-use glam::{Quat, Vec3};
+use glam::{Mat3, Quat, Vec3};
 
 pub fn spawn_view_window(commands: &mut Commands) {
     let id = commands
@@ -100,6 +100,54 @@ pub fn spawn_view_window(commands: &mut Commands) {
         })
         .insert(Transform::default())
         .insert(OriginMarker);
+
+    for (mesh, color) in [
+        (
+            shape::Box {
+                min_x: 0.0,
+                max_x: 1.0,
+                min_y: -0.1,
+                max_y: 0.1,
+                min_z: -0.1,
+                max_z: 0.1,
+            },
+            [1.0, 0.0, 0.0, 1.0],
+        ),
+        (
+            shape::Box {
+                min_x: -0.1,
+                max_x: 0.1,
+                min_y: 0.0,
+                max_y: 1.0,
+                min_z: -0.1,
+                max_z: 0.1,
+            },
+            [0.0, 1.0, 0.0, 1.0],
+        ),
+        (
+            shape::Box {
+                min_x: -0.1,
+                max_x: 0.1,
+                min_y: -0.1,
+                max_y: 0.1,
+                min_z: 0.0,
+                max_z: 1.0,
+            },
+            [0.0, 0.0, 1.0, 1.0],
+        ),
+    ] {
+        commands
+            .spawn(MaterialMeshBundle {
+                mesh: mesh.into(),
+                material: Material {
+                    color,
+                    ..Default::default()
+                },
+                computed_material: Default::default(),
+                computed_mesh: Default::default(),
+            })
+            .insert(Transform::default());
+    }
 }
 
 /// state attached to windows with a view.
@@ -243,7 +291,9 @@ pub fn update_view_camera(
                     .filter(|(_, cam)| cam.target == RenderTarget::Window(window))
                 {
                     let mut distance = (transform.rotation * Vec3::X) * x;
-                    distance.y += y;
+                    // distance.y += y;
+
+                    dbg!(distance);
 
                     transform.translation += distance;
                     state.origin += distance;
@@ -259,14 +309,11 @@ pub fn update_view_camera(
                     .iter_mut()
                     .filter(|(_, cam)| cam.target == RenderTarget::Window(window))
                 {
-                    // Rotate around origin with a constant distance.
+                    // // Rotate around origin with a constant distance.
                     let distance = (transform.translation - state.origin).length().abs();
 
                     let q1 = Quat::from_axis_angle(Vec3::Y, -x);
                     let q2 = Quat::from_axis_angle(Vec3::X, -y);
-
-                    dbg!(transform.rotation);
-                    dbg!(transform.rotation * -Vec3::Z);
 
                     transform.rotation = q1 * transform.rotation;
                     transform.rotation = transform.rotation * q2;
@@ -275,9 +322,6 @@ pub fn update_view_camera(
                     if transform.rotation.is_normalized() {
                         transform.rotation = transform.rotation.normalize();
                     }
-
-                    dbg!(transform.rotation);
-                    dbg!(transform.rotation * -Vec3::Z);
 
                     transform.translation = transform.rotation * Vec3::new(0.0, 0.0, distance);
                 }
