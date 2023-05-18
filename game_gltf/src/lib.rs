@@ -1,3 +1,5 @@
+mod uri;
+
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
@@ -11,6 +13,7 @@ use gltf::accessor::Dimensions;
 use gltf::buffer::Source;
 use gltf::{Accessor, Gltf, Semantic};
 use indexmap::IndexMap;
+use uri::Uri;
 
 pub struct GltfData {
     pub gltf: Gltf,
@@ -22,14 +25,19 @@ impl GltfData {
     where
         P: AsRef<Path>,
     {
-        let file = Gltf::open(path).unwrap();
+        let path = Uri::from(path);
+
+        let file = Gltf::open(path.as_path()).unwrap();
 
         let mut buffers = IndexMap::new();
         for buffer in file.buffers() {
             match buffer.source() {
                 Source::Bin => todo!(),
                 Source::Uri(uri) => {
-                    let mut file = File::open(uri).unwrap();
+                    let mut path = path.clone();
+                    path.push(uri);
+
+                    let mut file = File::open(path.as_path()).unwrap();
 
                     let mut buf = Vec::new();
                     file.read_to_end(&mut buf).unwrap();
