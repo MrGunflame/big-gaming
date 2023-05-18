@@ -1,7 +1,5 @@
 //! An immutable view of a scene.
 
-use std::f32::consts::PI;
-
 use bevy_ecs::prelude::{Component, EventReader, Res};
 use bevy_ecs::query::{Changed, With};
 use bevy_ecs::system::{Commands, Query};
@@ -15,7 +13,7 @@ use game_render::shape;
 use game_ui::cursor::Cursor;
 use game_window::events::{CursorLeft, VirtualKeyCode};
 use game_window::Window;
-use glam::{Mat3, Quat, Vec3};
+use glam::{Quat, Vec3};
 
 pub fn spawn_view_window(commands: &mut Commands) {
     let id = commands
@@ -284,16 +282,14 @@ pub fn update_view_camera(
         mode if mode == Mode::TRANSLATE => {
             for event in events.iter() {
                 let x = event.delta.x * 0.01;
-                let y = event.delta.y * 0.01;
+                let y = -event.delta.y * 0.01;
 
                 for (mut transform, _) in cameras
                     .iter_mut()
                     .filter(|(_, cam)| cam.target == RenderTarget::Window(window))
                 {
                     let mut distance = (transform.rotation * Vec3::X) * x;
-                    // distance.y += y;
-
-                    dbg!(distance);
+                    distance += (transform.rotation * Vec3::Y) * y;
 
                     transform.translation += distance;
                     state.origin += distance;
@@ -323,7 +319,11 @@ pub fn update_view_camera(
                         transform.rotation = transform.rotation.normalize();
                     }
 
-                    transform.translation = transform.rotation * Vec3::new(0.0, 0.0, distance);
+                    // FIXME: FP error creep means that distance will very slowly grow
+                    // over time. Storing the radius instead of computing the distance
+                    // would fix this.
+                    transform.translation =
+                        state.origin + transform.rotation * Vec3::new(0.0, 0.0, distance);
                 }
             }
         }
