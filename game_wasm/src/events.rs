@@ -1,6 +1,28 @@
 //! Events dispatched from the game, handled by a script
 //!
 
+/// A script initialization event.
+///
+/// If present, the handler for this event will be called exactly before the script is being
+/// used. `on_init` guaranteed to be called exactly once before any other handlers in the script
+/// are being called. While `on_init` is being executed, no other handlers are being called.
+///
+/// # Event signature
+///
+/// `fn()`
+///
+/// # Examples
+///
+/// ```
+/// use game_wasm::events::on_init;
+///
+/// #[on_init]
+/// fn on_init() {
+///     info!("Script was initialized!");
+/// }
+/// ```
+pub use game_macros::wasm__event_on_init as on_init;
+
 /// An action event.
 ///
 /// An action event is fired when the action that references this script is called.

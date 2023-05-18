@@ -27,6 +27,7 @@ macro_rules! define_action {
 }
 
 define_action! {
+    on_init => [],
     on_action => ["u64", "u64"],
     on_collision => ["__self::entity::EntityId", "__self::entity::EntityId"],
     on_equip => ["__self::inventory::InventoryId", "__self::entity::EntityId"],

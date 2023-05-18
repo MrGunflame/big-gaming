@@ -97,6 +97,12 @@ impl<'a> Iterator for Iter<'a> {
 
 ///
 /// ```ignore
+/// fn();
+/// ```
+pub type OnInit = TypedFunc<(), ()>;
+
+///
+/// ```ignore
 /// fn(entity: EntityId, invoker: EntityId);
 /// ```
 pub type OnAction = TypedFunc<(u64, u64), ()>;
