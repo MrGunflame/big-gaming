@@ -57,8 +57,6 @@ fn validate_meshes(data: &GltfData) {
     let meshes = data.meshes();
     assert_eq!(meshes.len(), 1);
 
-    dbg!(meshes[0].indicies());
-
     let mesh = &meshes[0];
     assert_eq!(mesh.positions(), POSITIONS);
     assert_eq!(mesh.indicies().unwrap().as_u16(), INDICES);

@@ -4,6 +4,10 @@ use std::fs::File;
 use std::io::Read;
 use std::path::Path;
 
+use base64::alphabet::STANDARD;
+use base64::engine::GeneralPurpose;
+use base64::engine::GeneralPurposeConfig;
+use base64::Engine;
 use bytes::Buf;
 use game_render::mesh::Indices;
 use game_render::mesh::Mesh;
@@ -35,15 +39,22 @@ impl GltfData {
                     buffers.insert(String::from(""), file.blob.clone().unwrap());
                 }
                 Source::Uri(uri) => {
-                    let mut path = path.clone();
-                    path.push(uri);
+                    if let Some(data) = uri.strip_prefix("data:application/octet-stream;base64,") {
+                        let engine = GeneralPurpose::new(&STANDARD, GeneralPurposeConfig::new());
+                        let buf = engine.decode(data).unwrap();
 
-                    let mut file = File::open(path.as_path()).unwrap();
+                        buffers.insert(uri.to_owned(), buf);
+                    } else {
+                        let mut path = path.clone();
+                        path.push(uri);
 
-                    let mut buf = Vec::new();
-                    file.read_to_end(&mut buf).unwrap();
+                        let mut file = File::open(path.as_path()).unwrap();
 
-                    buffers.insert(uri.to_owned(), buf);
+                        let mut buf = Vec::new();
+                        file.read_to_end(&mut buf).unwrap();
+
+                        buffers.insert(uri.to_owned(), buf);
+                    }
                 }
             }
         }

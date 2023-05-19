@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+base64 = "0.21.0"
 bytemuck = "1.13.1"
 bytes = "1.4.0"
 game_render = { version = "0.1.0", path = "../game_render" }
