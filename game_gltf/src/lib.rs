@@ -1,13 +1,12 @@
 mod uri;
 
-use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
 
 use bytes::Buf;
+use game_render::mesh::Indices;
 use game_render::mesh::Mesh;
-use glam::Vec3;
 use gltf::accessor::DataType;
 use gltf::accessor::Dimensions;
 use gltf::buffer::Source;
@@ -32,7 +31,9 @@ impl GltfData {
         let mut buffers = IndexMap::new();
         for buffer in file.buffers() {
             match buffer.source() {
-                Source::Bin => todo!(),
+                Source::Bin => {
+                    buffers.insert(String::from(""), file.blob.clone().unwrap());
+                }
                 Source::Uri(uri) => {
                     let mut path = path.clone();
                     path.push(uri);
@@ -52,65 +53,109 @@ impl GltfData {
             buffers,
         })
     }
-}
 
-pub fn load_mesh(gltf: GltfData) -> Mesh {
-    let scene = gltf.gltf.scenes().nth(0).unwrap();
+    pub fn meshes(&self) -> Vec<Mesh> {
+        let mut meshes = Vec::new();
 
-    for node in scene.nodes() {
-        node.transform();
+        for mesh in self.gltf.meshes() {
+            let mut out_mesh = Mesh::new();
 
-        if let Some(mesh) = node.mesh() {}
-    }
+            for primitive in mesh.primitives() {
+                let attrs = primitive.attributes();
 
-    for mesh in gltf.gltf.meshes() {
-        for primitive in mesh.primitives() {
-            let attrs = primitive.attributes();
-
-            for (semantic, accessor) in attrs {
-                match semantic {
-                    Semantic::Positions => {
-                        let data_type = accessor.data_type();
-
-                        accessor.dimensions();
+                for (semantic, accessor) in attrs {
+                    match semantic {
+                        Semantic::Positions => {
+                            let mut positions = vec![];
+                            self.load_positions(&accessor, &mut positions);
+                            out_mesh.set_positions(positions);
+                        }
+                        _ => (),
                     }
-                    _ => todo!(),
+                }
+
+                if let Some(accessor) = primitive.indices() {
+                    let mut indices = Indices::U16(vec![]);
+                    self.load_indices(&accessor, &mut indices);
+                    out_mesh.set_indices(indices);
                 }
             }
+
+            meshes.push(out_mesh);
+        }
+
+        meshes
+    }
+
+    fn buffer(&self, source: Source, offset: usize, length: usize) -> &[u8] {
+        let buf = match source {
+            Source::Bin => {
+                let (_, buf) = self.buffers.first().unwrap();
+                buf
+            }
+            Source::Uri(uri) => {
+                let buf = self.buffers.get(uri).unwrap();
+                buf
+            }
+        };
+
+        &buf[offset..offset + length]
+    }
+
+    fn load_positions(&self, accessor: &Accessor, positions: &mut Vec<[f32; 3]>) {
+        let data_type = accessor.data_type();
+        let dimensions = accessor.dimensions();
+
+        assert_eq!(data_type, DataType::F32);
+        assert_eq!(dimensions, Dimensions::Vec3);
+
+        let view = accessor.view().unwrap();
+        let buffer = view.buffer();
+
+        let mut buf = self.buffer(buffer.source(), view.offset(), view.length());
+
+        while buf.len() != 0 {
+            let x = buf.get_f32_le();
+            let y = buf.get_f32_le();
+            let z = buf.get_f32_le();
+
+            positions.push([x, y, z]);
         }
     }
 
-    todo!()
-}
+    fn load_indices(&self, accessor: &Accessor, indices: &mut Indices) {
+        let data_type = accessor.data_type();
+        let dimensions = accessor.dimensions();
 
-impl GltfData {
-    fn buffer(&self, uri: &str) -> &[u8] {
-        let buffer = self.buffers.get(uri).unwrap();
-        &buffer
+        assert_eq!(dimensions, Dimensions::Scalar);
+
+        let view = accessor.view().unwrap();
+        let buffer = view.buffer();
+
+        let mut buf = self.buffer(buffer.source(), view.offset(), view.length());
+
+        match data_type {
+            DataType::U16 => {
+                let mut out = vec![];
+
+                while buf.len() != 0 {
+                    let val = buf.get_u16_le();
+                    out.push(val);
+                }
+
+                *indices = Indices::U16(out);
+            }
+            DataType::U32 => {
+                let mut out = vec![];
+
+                while buf.len() != 0 {
+                    let val = buf.get_u32_le();
+                    out.push(val);
+                }
+
+                *indices = Indices::U32(out);
+            }
+            _ => todo!(),
+        }
     }
-}
-
-fn load_positions(data: &GltfData, acessor: &Accessor) -> Vec<Vec3> {
-    let data_type = acessor.data_type();
-    let dimensions = acessor.dimensions();
-
-    assert_eq!(data_type, DataType::F32);
-    assert_eq!(dimensions, Dimensions::Vec3);
-
-    let view = acessor.view().unwrap();
-    let buffer = view.buffer();
-
-    let mut buf =
-        &data.buffer(buffer.name().unwrap())[view.offset()..view.offset() + view.length()];
-
-    let mut vec = vec![];
-    while buf.len() != 0 {
-        let x = buf.get_f32_le();
-        let y = buf.get_f32_le();
-        let z = buf.get_f32_le();
-
-        vec.push(Vec3 { x, y, z });
-    }
-
-    vec
 }

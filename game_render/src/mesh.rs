@@ -35,6 +35,10 @@ impl Mesh {
         self.positions = positions;
     }
 
+    pub fn positions(&self) -> &[[f32; 3]] {
+        &self.positions
+    }
+
     pub fn set_normals(&mut self, normals: Vec<[f32; 3]>) {
         self.normals = normals;
     }
@@ -79,6 +83,13 @@ impl Indices {
         match self {
             Self::U32(val) => val,
             _ => panic!("`Indicies` is not `U32`"),
+        }
+    }
+
+    pub fn as_u16(&self) -> &[u16] {
+        match self {
+            Self::U16(val) => val,
+            _ => panic!("`Indices` is not `U16`"),
         }
     }
 }
