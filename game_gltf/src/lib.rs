@@ -1,5 +1,6 @@
 mod mime;
-mod uri;
+
+pub mod uri;
 
 use std::fs::File;
 use std::io::Read;
@@ -22,6 +23,7 @@ use gltf::Image;
 use gltf::Material;
 use gltf::{Accessor, Gltf, Semantic};
 use indexmap::IndexMap;
+use indexmap::IndexSet;
 use mime::InvalidMimeType;
 use mime::MimeType;
 use thiserror::Error;
@@ -29,9 +31,41 @@ use uri::Uri;
 
 use gltf::image::Source as ImageSource;
 
+/// A fully loaded GLTF file with buffers.
+#[derive(Clone, Debug)]
 pub struct GltfData {
     pub gltf: Gltf,
     pub buffers: IndexMap<String, Vec<u8>>,
+}
+
+/// A GLTF file that is being loaded.
+///
+/// A (non-binary) GLTF file may reference to buffers from external URIs that have to be loaded
+/// before the data in the GLTF file can be accessed.
+///
+/// The URIs that are required for this GLTF file are stored in `queue`.
+#[derive(Clone, Debug)]
+pub struct GltfLoader {
+    data: GltfData,
+    // FIXME: This could be &str since the string buffer
+    // is already in self.gltf.
+    pub queue: IndexSet<String>,
+}
+
+impl GltfLoader {
+    pub fn insert(&mut self, uri: String, buf: Vec<u8>) {
+        self.queue.remove(&uri);
+        self.data.buffers.insert(uri.to_owned(), buf.to_vec());
+    }
+
+    pub fn create(self) -> GltfData {
+        assert!(self.queue.is_empty());
+        self.create_unchecked()
+    }
+
+    pub fn create_unchecked(self) -> GltfData {
+        self.data
+    }
 }
 
 /// An error that can occur when loading an GLTF file.
@@ -58,19 +92,15 @@ pub enum Error {
 }
 
 impl GltfData {
-    pub fn open<P>(path: P) -> Result<Self, Error>
-    where
-        P: AsRef<Path>,
-    {
-        let path = Uri::from(path);
-
-        let file = Gltf::open(path.as_path())?;
-
+    pub fn new(slice: &[u8]) -> Result<GltfLoader, Error> {
+        let gltf = Gltf::from_slice(slice)?;
+        let mut queue = IndexSet::new();
         let mut buffers = IndexMap::new();
-        for buffer in file.buffers() {
+
+        for buffer in gltf.buffers() {
             match buffer.source() {
                 Source::Bin => {
-                    buffers.insert(String::from(""), file.blob.clone().unwrap());
+                    buffers.insert(String::from(""), gltf.blob.clone().unwrap());
                 }
                 Source::Uri(uri) => {
                     if let Some(data) = uri.strip_prefix("data:application/octet-stream;base64,") {
@@ -79,21 +109,13 @@ impl GltfData {
 
                         buffers.insert(uri.to_owned(), buf);
                     } else {
-                        let mut path = path.clone();
-                        path.push(uri);
-
-                        let mut file = File::open(path.as_path())?;
-
-                        let mut buf = Vec::new();
-                        file.read_to_end(&mut buf)?;
-
-                        buffers.insert(uri.to_owned(), buf);
+                        queue.insert(uri.to_owned());
                     }
                 }
             }
         }
 
-        for image in file.images() {
+        for image in gltf.images() {
             if let ImageSource::Uri { uri, mime_type } = image.source() {
                 // Validate the mime type.
                 if let Some(mime_type) = mime_type {
@@ -104,22 +126,40 @@ impl GltfData {
                     }
                 }
 
-                let mut path = path.clone();
-                path.push(uri);
-
-                let mut file = File::open(path.as_path())?;
-
-                let mut buf = Vec::new();
-                file.read_to_end(&mut buf)?;
-
-                buffers.insert(uri.to_owned(), buf);
+                queue.insert(uri.to_owned());
             }
         }
 
-        Ok(Self {
-            gltf: file,
-            buffers,
+        Ok(GltfLoader {
+            data: GltfData { gltf, buffers },
+            queue,
         })
+    }
+
+    pub fn open<P>(path: P) -> Result<Self, Error>
+    where
+        P: AsRef<Path>,
+    {
+        let mut file = File::open(path.as_ref())?;
+
+        let mut buf = Vec::new();
+        file.read_to_end(&mut buf)?;
+
+        let mut loader = Self::new(&buf)?;
+
+        while let Some(uri) = loader.queue.swap_remove_index(0) {
+            let mut path = Uri::from(path.as_ref());
+            path.push(&uri);
+
+            let mut file = File::open(path.as_path())?;
+
+            let mut buf = Vec::new();
+            file.read_to_end(&mut buf)?;
+
+            loader.insert(uri, buf);
+        }
+
+        Ok(loader.create_unchecked())
     }
 
     // FIXME: Do we want to have validation on accessor methods, or do it
