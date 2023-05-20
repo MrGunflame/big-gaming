@@ -4,6 +4,7 @@ pub mod graph;
 pub mod layout;
 pub mod material;
 pub mod mesh;
+pub mod pbr;
 pub mod pipeline;
 pub mod shape;
 

@@ -11,10 +11,16 @@ game_render = { version = "0.1.0", path = "../game_render" }
 glam = "0.24.0"
 
 gltf = "1.1.0"
+image = "0.24.6"
 indexmap = "1.9.3"
+thiserror = "1.0.40"
 tracing = "0.1.37"
 
 
 [[test]]
 name = "gltf_box"
 path = "tests/gltf_box/gltf_box.rs"
+
+[[test]]
+name = "basic_material"
+path = "tests/basic_material/basic_material.rs"

@@ -1,3 +1,4 @@
+mod mime;
 mod uri;
 
 use std::fs::File;
@@ -11,12 +12,19 @@ use base64::Engine;
 use bytes::Buf;
 use game_render::mesh::Indices;
 use game_render::mesh::Mesh;
+use game_render::pbr::AlphaMode;
+use game_render::pbr::PbrMaterial;
 use gltf::accessor::DataType;
 use gltf::accessor::Dimensions;
 use gltf::buffer::Source;
+use gltf::Image;
+use gltf::Material;
 use gltf::{Accessor, Gltf, Semantic};
 use indexmap::IndexMap;
+use mime::MimeType;
 use uri::Uri;
+
+use gltf::image::Source as ImageSource;
 
 pub struct GltfData {
     pub gltf: Gltf,
@@ -59,19 +67,33 @@ impl GltfData {
             }
         }
 
+        for image in file.images() {
+            if let ImageSource::Uri { uri, mime_type } = image.source() {
+                let mut path = path.clone();
+                path.push(uri);
+
+                let mut file = File::open(path.as_path()).unwrap();
+
+                let mut buf = Vec::new();
+                file.read_to_end(&mut buf).unwrap();
+
+                buffers.insert(uri.to_owned(), buf);
+            }
+        }
+
         Ok(Self {
             gltf: file,
             buffers,
         })
     }
 
-    pub fn meshes(&self) -> Vec<Mesh> {
+    pub fn meshes(&self) -> Vec<(Mesh, PbrMaterial)> {
         let mut meshes = Vec::new();
 
         for mesh in self.gltf.meshes() {
-            let mut out_mesh = Mesh::new();
-
             for primitive in mesh.primitives() {
+                let mut out_mesh = Mesh::new();
+
                 let attrs = primitive.attributes();
 
                 for (semantic, accessor) in attrs {
@@ -104,9 +126,11 @@ impl GltfData {
                     self.load_indices(&accessor, &mut indices);
                     out_mesh.set_indices(indices);
                 }
-            }
 
-            meshes.push(out_mesh);
+                let material = self.load_material(primitive.material());
+
+                meshes.push((out_mesh, material));
+            }
         }
 
         meshes
@@ -223,5 +247,69 @@ impl GltfData {
             }
             _ => todo!(),
         }
+    }
+
+    fn load_material(&self, material: Material<'_>) -> PbrMaterial {
+        let alpha_mode = convert_alpha_mode(material.alpha_mode());
+
+        let pbr = material.pbr_metallic_roughness();
+
+        let base_color = pbr.base_color_factor();
+
+        let base_color_texture = if let Some(info) = pbr.base_color_texture() {
+            let image = info.texture().source();
+
+            let buf = self.load_image(image);
+            Some(buf.to_vec())
+        } else {
+            None
+        };
+
+        let roughness = pbr.roughness_factor();
+        let metallic = pbr.metallic_factor();
+
+        let metallic_roughness_texture = if let Some(info) = pbr.metallic_roughness_texture() {
+            let image = info.texture().source();
+
+            let buf = self.load_image(image);
+            Some(buf.to_vec())
+        } else {
+            None
+        };
+
+        PbrMaterial {
+            alpha_mode,
+            base_color,
+            base_color_texture,
+            roughness,
+            metallic,
+            metallic_roughness_texture,
+        }
+    }
+
+    fn load_image(&self, image: Image<'_>) -> &[u8] {
+        match image.source() {
+            ImageSource::View { view, mime_type } => {
+                // Validate mime type
+                mime_type.parse::<MimeType>().unwrap();
+
+                self.buffer(view.buffer().source(), view.offset(), view.length())
+            }
+            ImageSource::Uri { uri, mime_type } => {
+                // Validate mime type
+                mime_type.unwrap().parse::<MimeType>().unwrap();
+
+                let len = self.buffers.get(uri).unwrap().len();
+                self.buffer(Source::Uri(uri), 0, len)
+            }
+        }
+    }
+}
+
+fn convert_alpha_mode(value: gltf::material::AlphaMode) -> AlphaMode {
+    match value {
+        gltf::material::AlphaMode::Opaque => AlphaMode::Opaque,
+        gltf::material::AlphaMode::Mask => AlphaMode::Mask,
+        gltf::material::AlphaMode::Blend => AlphaMode::Blend,
     }
 }
