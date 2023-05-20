@@ -2,7 +2,7 @@ use std::str::FromStr;
 
 use thiserror::Error;
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct MimeType(&'static str);
 
 macro_rules! define_mime_type {
@@ -40,6 +40,21 @@ define_mime_type! {
     IMAGE_JPEG => "image/jpeg";
     IMAGE_TIFF => "image/tiff";
     IMAGE_WEBP => "image/webp";
+}
+
+impl MimeType {
+    pub fn is_image(self) -> bool {
+        match self {
+            val if val == Self::IMAGE_PNG => true,
+            val if val == Self::IMAGE_BMP => true,
+            val if val == Self::IMAGE_AVIF => true,
+            val if val == Self::IMAGE_GIF => true,
+            val if val == Self::IMAGE_JPEG => true,
+            val if val == Self::IMAGE_TIFF => true,
+            val if val == Self::IMAGE_WEBP => true,
+            _ => false,
+        }
+    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Error)]

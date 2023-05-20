@@ -54,7 +54,7 @@ fn gltf_box_glb() {
 }
 
 fn validate_meshes(data: &GltfData) {
-    let meshes = data.meshes();
+    let meshes = data.meshes().unwrap();
     assert_eq!(meshes.len(), 1);
 
     let mesh = &meshes[0].0;

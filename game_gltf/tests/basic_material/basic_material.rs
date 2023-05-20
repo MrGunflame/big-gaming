@@ -29,7 +29,7 @@ fn basic_material_gltf_embedded() {
 }
 
 fn validate_meshes(data: &GltfData) {
-    let meshes = data.meshes();
+    let meshes = data.meshes().unwrap();
 
     let material = &meshes[0].1;
     assert_eq!(material.alpha_mode, ALPHA_MODE);
