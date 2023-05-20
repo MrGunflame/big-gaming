@@ -81,6 +81,20 @@ impl GltfData {
                             self.load_positions(&accessor, &mut positions);
                             out_mesh.set_positions(positions);
                         }
+                        Semantic::Normals => {
+                            let mut normals = vec![];
+                            self.load_normals(&accessor, &mut normals);
+                            out_mesh.set_normals(normals);
+                        }
+                        Semantic::TexCoords(index) => {
+                            if index != 0 {
+                                panic!("multiple texture coordinates not yet supported");
+                            }
+
+                            let mut uvs = vec![];
+                            self.load_uvs(&accessor, &mut uvs);
+                            out_mesh.set_uvs(uvs);
+                        }
                         _ => (),
                     }
                 }
@@ -131,6 +145,47 @@ impl GltfData {
             let z = buf.get_f32_le();
 
             positions.push([x, y, z]);
+        }
+    }
+
+    fn load_normals(&self, accessor: &Accessor, normals: &mut Vec<[f32; 3]>) {
+        let data_type = accessor.data_type();
+        let dimensions = accessor.dimensions();
+
+        assert_eq!(data_type, DataType::F32);
+        assert_eq!(dimensions, Dimensions::Vec3);
+
+        let view = accessor.view().unwrap();
+        let buffer = view.buffer();
+
+        let mut buf = self.buffer(buffer.source(), view.offset(), view.length());
+
+        while buf.len() != 0 {
+            let x = buf.get_f32_le();
+            let y = buf.get_f32_le();
+            let z = buf.get_f32_le();
+
+            normals.push([x, y, z]);
+        }
+    }
+
+    fn load_uvs(&self, accessor: &Accessor, uvs: &mut Vec<[f32; 2]>) {
+        let data_type = accessor.data_type();
+        let dimensions = accessor.dimensions();
+
+        assert_eq!(data_type, DataType::F32);
+        assert_eq!(dimensions, Dimensions::Vec2);
+
+        let view = accessor.view().unwrap();
+        let buffer = view.buffer();
+
+        let mut buf = self.buffer(buffer.source(), view.offset(), view.length());
+
+        while buf.len() != 0 {
+            let x = buf.get_f32_le();
+            let y = buf.get_f32_le();
+
+            uvs.push([x, y]);
         }
     }
 
