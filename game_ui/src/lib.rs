@@ -14,7 +14,7 @@ use bevy_app::{App, Plugin};
 use bevy_ecs::system::Query;
 use bevy_ecs::world::World;
 use cursor::Cursor;
-use reactive::{init_runtime, ReactiveRoot, Runtime, Scope};
+use reactive::{Document, NodeId, Scope};
 use render::layout::LayoutTree;
 // use cursor::Cursor;
 // pub use interface::{Context, InterfaceState, Widget, WidgetFlags};
@@ -23,9 +23,6 @@ pub struct UiPlugin;
 
 impl Plugin for UiPlugin {
     fn build(&self, app: &mut App) {
-        init_runtime();
-        // let state = InterfaceState::new();
-
         app.add_plugin(render::RenderUiPlugin);
 
         // Cursor
@@ -47,11 +44,8 @@ impl Plugin for UiPlugin {
 //     });
 // }
 
-fn drive_reactive_runtime(mut windows: Query<(&mut LayoutTree, &mut ReactiveRoot)>) {
-    for (tree, mut root) in &mut windows {
-        if root.is_first_run {
-            root.is_first_run = false;
-            // (root.f)();
-        }
+fn drive_reactive_runtime(mut windows: Query<(&mut LayoutTree, &mut Document)>) {
+    for (tree, doc) in &mut windows {
+        doc.drive();
     }
 }

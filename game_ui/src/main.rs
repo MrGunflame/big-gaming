@@ -1,7 +1,7 @@
 use bevy_app::App;
 use bevy_ecs::system::Commands;
 use game_ui::events::{EventHandlers, Events};
-use game_ui::reactive::{create_effect, create_signal, ReactiveRoot, Scope};
+use game_ui::reactive::{create_effect, create_signal, Document, Scope};
 use game_ui::render::layout::LayoutTree;
 use game_ui::render::style::{Bounds, Direction, Position, Style};
 use game_ui::render::{Element, ElementBody, Image, Text};
@@ -152,7 +152,7 @@ fn setup(mut cmds: Commands) {
     })
     .insert(tree.clone())
     .insert(events)
-    .insert(ReactiveRoot::new(MainComp));
+    .insert(Document::new(MainComp));
 
     // cmds.spawn(Window {
     //     title: "nr2".to_owned(),
@@ -163,9 +163,9 @@ fn setup(mut cmds: Commands) {
 fn MainComp(cx: Scope) {
     dbg!("run root");
 
-    let (count, set_count) = create_signal(0);
+    let (count, set_count) = create_signal(&cx, 0);
 
-    create_effect(move || {
+    create_effect(&cx, move || {
         dbg!(count.get());
     });
 

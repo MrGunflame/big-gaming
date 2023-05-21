@@ -2,26 +2,19 @@ use std::sync::Arc;
 
 use super::{NodeId, Scope};
 
-pub fn create_effect<F>(f: F)
+pub fn create_effect<F>(cx: &Scope, f: F)
 where
     F: Fn() + Send + Sync + 'static,
 {
-    dbg!("r");
+    let mut effect = Effect { f: Arc::new(f) };
 
-    let effect = Effect {
-        f: Arc::new(f),
-        signals: vec![],
-        is_first_run: true,
-    };
+    let mut doc = cx.document.inner.lock();
+    let mut node = doc.nodes.get_mut(cx.id.0).unwrap();
 
-    let id = super::with_runtime(|rt| rt.effects.insert(effect));
-
-    super::run_effect(NodeId(id));
+    node.effects.push(effect);
 }
 
 #[derive(Clone)]
 pub(super) struct Effect {
     pub(super) f: Arc<dyn Fn() + Send + Sync + 'static>,
-    pub(super) signals: Vec<NodeId>,
-    pub(super) is_first_run: bool,
 }
