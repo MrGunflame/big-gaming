@@ -44,8 +44,8 @@ impl Plugin for UiPlugin {
 //     });
 // }
 
-fn drive_reactive_runtime(mut windows: Query<(&mut LayoutTree, &mut Document)>) {
-    for (tree, doc) in &mut windows {
-        doc.drive();
+fn drive_reactive_runtime(world: &World, windows: Query<&Document>) {
+    for doc in &windows {
+        doc.drive(world);
     }
 }

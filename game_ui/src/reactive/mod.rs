@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use bevy_ecs::prelude::Component;
-use bevy_ecs::system::Resource;
+use bevy_ecs::world::World;
 use parking_lot::Mutex;
 use slotmap::{DefaultKey, SlotMap};
 
@@ -66,7 +66,7 @@ impl Document {
         }
     }
 
-    pub fn drive(&self) {
+    pub fn drive(&self, world: &World) {
         let mut doc = self.inner.lock();
 
         while let Some(signal_id) = doc.signal_queue.pop() {
@@ -74,7 +74,7 @@ impl Document {
             let node = doc.nodes.get(*node_id).unwrap();
 
             for effect in &node.effects {
-                (effect.f)();
+                (effect.f)(world);
             }
         }
     }

@@ -18,6 +18,8 @@ fn main() {
 }
 
 fn setup(mut cmds: Commands) {
+    pretty_env_logger::init();
+
     let mut tree = LayoutTree::new();
     // tree.push(
     //     None,
@@ -165,9 +167,12 @@ fn MainComp(cx: Scope) {
 
     let (count, set_count) = create_signal(&cx, 0);
 
-    create_effect(&cx, move || {
+    create_effect(&cx, move |_| {
         dbg!(count.get());
     });
 
-    set_count.update(|c| *c += 1);
+    std::thread::spawn(move || loop {
+        std::thread::sleep_ms(5000);
+        set_count.update(|c| *c += 1);
+    });
 }

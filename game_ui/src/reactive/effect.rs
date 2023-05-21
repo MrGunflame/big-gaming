@@ -1,10 +1,12 @@
 use std::sync::Arc;
 
+use bevy_ecs::world::World;
+
 use super::{NodeId, Scope};
 
 pub fn create_effect<F>(cx: &Scope, f: F)
 where
-    F: Fn() + Send + Sync + 'static,
+    F: Fn(&World) + Send + Sync + 'static,
 {
     let mut effect = Effect { f: Arc::new(f) };
 
@@ -16,5 +18,5 @@ where
 
 #[derive(Clone)]
 pub(super) struct Effect {
-    pub(super) f: Arc<dyn Fn() + Send + Sync + 'static>,
+    pub(super) f: Arc<dyn Fn(&World) + Send + Sync + 'static>,
 }

@@ -10,6 +10,8 @@ pub fn create_signal<T>(cx: &Scope, value: T) -> (ReadSignal<T>, WriteSignal<T>)
 where
     T: Send + Sync + 'static,
 {
+    tracing::trace!("creating reactive signal for node {:?}", cx.id);
+
     let signal = Signal { effects: vec![] };
 
     let mut doc = cx.document.inner.lock();
@@ -57,6 +59,8 @@ where
     where
         F: FnOnce(&T) -> U,
     {
+        tracing::trace!("Signal({:?})::read", self.id);
+
         let mut cell = self.value.lock();
         f(&cell)
     }
@@ -84,6 +88,8 @@ where
     where
         F: FnOnce(&mut T),
     {
+        tracing::trace!("Signal({:?})::write", self.id);
+
         {
             let mut cell = self.value.lock();
             f(&mut cell);
