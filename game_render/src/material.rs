@@ -64,12 +64,12 @@ pub fn prepare_computed_meshes(
             usage: BufferUsages::VERTEX,
         });
 
-        let indicies = mesh.indicies().unwrap();
+        let indicies = mesh.indicies().unwrap().into_u32();
         let num_vertices = indicies.len() as u32;
 
         let indicies = device.0.create_buffer_init(&BufferInitDescriptor {
             label: Some("mesh_index_buffer"),
-            contents: bytemuck::cast_slice(indicies.as_u32()),
+            contents: bytemuck::cast_slice(&indicies),
             usage: BufferUsages::INDEX,
         });
 

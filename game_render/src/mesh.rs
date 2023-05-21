@@ -105,6 +105,13 @@ impl Indices {
             _ => panic!("`Indices` is not `U16`"),
         }
     }
+
+    pub fn into_u32(self) -> Vec<u32> {
+        match self {
+            Self::U16(val) => val.into_iter().map(u32::from).collect(),
+            Self::U32(val) => val,
+        }
+    }
 }
 
 #[derive(Copy, Clone, Debug, Zeroable, Pod)]
