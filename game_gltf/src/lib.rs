@@ -2,6 +2,7 @@ mod mime;
 
 pub mod uri;
 
+use std::fmt::{self, Display, Formatter};
 use std::fs::File;
 use std::io::Read;
 use std::ops::Range;
@@ -26,6 +27,7 @@ use indexmap::IndexMap;
 use indexmap::IndexSet;
 use mime::InvalidMimeType;
 use mime::MimeType;
+use serde_json::{Number, Value};
 use thiserror::Error;
 use uri::Uri;
 
@@ -89,6 +91,14 @@ pub enum Error {
     InvalidDimensions(Dimensions),
     #[error("invalid buffer view {view:?} for buffer with length {length:?}")]
     InvalidBufferView { view: Range<usize>, length: usize },
+    #[error("scalar value of {value} outside of valid range [{min}, {max}]")]
+    ScalarOutOfRange {
+        value: ScalarValue,
+        min: ScalarValue,
+        max: ScalarValue,
+    },
+    #[error("invalid scalar: {0}")]
+    InvalidScalar(#[from] InvalidScalar),
 }
 
 impl GltfData {
@@ -254,12 +264,32 @@ impl GltfData {
 
         let mut buf = self.buffer(buffer.source(), view.offset(), view.length())?;
 
-        while buf.len() != 0 {
-            let x = read_f32(&mut buf)?;
-            let y = read_f32(&mut buf)?;
-            let z = read_f32(&mut buf)?;
+        match (accessor.min(), accessor.max()) {
+            (Some(min), Some(max)) => {
+                let min = ScalarValue::load(data_type, min)?;
+                let max = ScalarValue::load(data_type, max)?;
 
-            positions.push([x, y, z]);
+                while buf.len() != 0 {
+                    let x = read_f32(&mut buf)?;
+                    let y = read_f32(&mut buf)?;
+                    let z = read_f32(&mut buf)?;
+
+                    validate_scalar_range(x.into(), min, max)?;
+                    validate_scalar_range(y.into(), min, max)?;
+                    validate_scalar_range(z.into(), min, max)?;
+
+                    positions.push([x, y, z]);
+                }
+            }
+            _ => {
+                while buf.len() != 0 {
+                    let x = read_f32(&mut buf)?;
+                    let y = read_f32(&mut buf)?;
+                    let z = read_f32(&mut buf)?;
+
+                    positions.push([x, y, z]);
+                }
+            }
         }
 
         Ok(())
@@ -439,4 +469,136 @@ fn read_u32(buf: &mut &[u8]) -> Result<u32, Error> {
     } else {
         Ok(buf.get_u32_le())
     }
+}
+
+fn validate_scalar_range<T>(value: T, min: T, max: T) -> Result<(), Error>
+where
+    T: Into<ScalarValue>,
+{
+    let value = value.into();
+    let min = min.into();
+    let max = max.into();
+
+    if value < min || value > max {
+        Err(Error::ScalarOutOfRange { value, min, max })
+    } else {
+        Ok(())
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, PartialOrd)]
+pub enum ScalarValue {
+    U8(u8),
+    U16(u16),
+    U32(u32),
+    I8(i8),
+    I16(i16),
+    F32(f32),
+}
+
+impl Display for ScalarValue {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::U8(val) => Display::fmt(val, f),
+            Self::U16(val) => Display::fmt(val, f),
+            Self::U32(val) => Display::fmt(val, f),
+            Self::I8(val) => Display::fmt(val, f),
+            Self::I16(val) => Display::fmt(val, f),
+            Self::F32(val) => Display::fmt(val, f),
+        }
+    }
+}
+
+impl From<u8> for ScalarValue {
+    #[inline]
+    fn from(value: u8) -> Self {
+        Self::U8(value)
+    }
+}
+
+impl From<u16> for ScalarValue {
+    #[inline]
+    fn from(value: u16) -> Self {
+        Self::U16(value)
+    }
+}
+
+impl From<u32> for ScalarValue {
+    #[inline]
+    fn from(value: u32) -> Self {
+        Self::U32(value)
+    }
+}
+
+impl From<i8> for ScalarValue {
+    #[inline]
+    fn from(value: i8) -> Self {
+        Self::I8(value)
+    }
+}
+
+impl From<i16> for ScalarValue {
+    #[inline]
+    fn from(value: i16) -> Self {
+        Self::I16(value)
+    }
+}
+
+impl From<f32> for ScalarValue {
+    #[inline]
+    fn from(value: f32) -> Self {
+        Self::F32(value)
+    }
+}
+
+impl ScalarValue {
+    fn load(data_type: DataType, value: serde_json::Value) -> Result<Self, InvalidScalar> {
+        match value {
+            Value::Number(number) => match data_type {
+                DataType::U8 => match number.as_u64().map(|val| val.try_into().ok()).flatten() {
+                    Some(val) => Ok(Self::U8(val)),
+                    None => Err(InvalidScalar::InvalidU8(number)),
+                },
+                DataType::U16 => match number.as_u64().map(|val| val.try_into().ok()).flatten() {
+                    Some(val) => Ok(Self::U16(val)),
+                    None => Err(InvalidScalar::InvalidU16(number)),
+                },
+                DataType::U32 => match number.as_u64().map(|val| val.try_into().ok()).flatten() {
+                    Some(val) => Ok(Self::U32(val)),
+                    None => Err(InvalidScalar::InvalidU32(number)),
+                },
+                DataType::I8 => match number.as_i64().map(|val| val.try_into().ok()).flatten() {
+                    Some(val) => Ok(Self::I8(val)),
+                    None => Err(InvalidScalar::InvalidI8(number)),
+                },
+                DataType::I16 => match number.as_i64().map(|val| val.try_into().ok()).flatten() {
+                    Some(val) => Ok(Self::I16(val)),
+                    None => Err(InvalidScalar::InvalidI16(number)),
+                },
+                DataType::F32 => match number.as_f64() {
+                    Some(val) => Ok(Self::F32(val as f32)),
+                    None => Err(InvalidScalar::InvalidF32(number)),
+                },
+            },
+            _ => Err(InvalidScalar::NoScalar(value)),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Error)]
+pub enum InvalidScalar {
+    #[error("not a scalar value: {0}")]
+    NoScalar(Value),
+    #[error("invalid u8: {0}")]
+    InvalidU8(Number),
+    #[error("invalid u16: {0}")]
+    InvalidU16(Number),
+    #[error("invalid u32: {0}")]
+    InvalidU32(Number),
+    #[error("invalid i8: {0}")]
+    InvalidI8(Number),
+    #[error("invalid i16: {0}")]
+    InvalidI16(Number),
+    #[error("invalid f32: {0}")]
+    InvalidF32(Number),
 }
