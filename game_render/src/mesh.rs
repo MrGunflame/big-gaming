@@ -52,16 +52,29 @@ impl Mesh {
     }
 
     pub fn vertices(&self) -> Vec<Vertex> {
-        self.positions
-            .iter()
-            .zip(self.normals.iter())
-            .zip(self.uvs.iter())
-            .map(|((pos, norm), uv)| Vertex {
-                position: *pos,
-                normal: *norm,
-                uv: *uv,
-            })
-            .collect()
+        let end = usize::max(
+            usize::max(self.positions.len(), self.normals.len()),
+            self.uvs.len(),
+        );
+        let mut index = 0;
+
+        let mut vertices = Vec::with_capacity(end);
+
+        while index < end {
+            let position = self.positions.get(index).copied().unwrap_or_default();
+            let normal = self.normals.get(index).copied().unwrap_or_default();
+            let uv = self.uvs.get(index).copied().unwrap_or_default();
+
+            vertices.push(Vertex {
+                position,
+                normal,
+                uv,
+            });
+
+            index += 1;
+        }
+
+        vertices
     }
 }
 
