@@ -149,6 +149,8 @@ pub fn create_surfaces(
             .next()
             .unwrap_or(caps.formats[0]);
 
+        tracing::info!("selected display format {:?}", format);
+
         let config = SurfaceConfiguration {
             usage: TextureUsages::RENDER_ATTACHMENT,
             format,
@@ -156,7 +158,7 @@ pub fn create_surfaces(
             height: size.height,
             present_mode: caps.present_modes[0],
             alpha_mode: caps.alpha_modes[0],
-            view_formats: vec![],
+            view_formats: vec![TextureFormat::Bgra8Unorm, TextureFormat::Bgra8UnormSrgb],
         };
 
         surface.configure(&device.0, &config);
@@ -252,9 +254,11 @@ pub fn render_surfaces(
                     }
                 };
 
-                let view = output
-                    .texture
-                    .create_view(&TextureViewDescriptor::default());
+                let view = output.texture.create_view(&TextureViewDescriptor {
+                    label: Some("surface_view"),
+                    format: Some(TextureFormat::Bgra8UnormSrgb),
+                    ..Default::default()
+                });
 
                 let mut encoder = device.0.create_command_encoder(&CommandEncoderDescriptor {
                     label: Some("render_encoder"),
