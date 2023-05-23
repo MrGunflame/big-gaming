@@ -115,6 +115,8 @@ impl LayoutTree {
     }
 
     pub fn remove(&mut self, key: Key) {
+        self.changed = true;
+
         self.elems.remove(key.0);
         self.layouts.remove(&key.0);
 

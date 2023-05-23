@@ -1,9 +1,10 @@
 use std::collections::{HashMap, VecDeque};
+use std::ops::Deref;
 use std::sync::Arc;
 
 use bevy_ecs::prelude::Component;
 use bevy_ecs::world::World;
-use parking_lot::Mutex;
+use parking_lot::{Mutex, MutexGuard};
 use slotmap::{DefaultKey, SlotMap};
 
 use crate::events::Events;
@@ -43,6 +44,10 @@ impl Scope {
     //     }
     // }
 
+    pub fn id(&self) -> Option<NodeId> {
+        self.id
+    }
+
     pub fn push(&self, node: Node) -> Scope {
         dbg!(self.id, self.parent);
 
@@ -68,7 +73,25 @@ impl Scope {
 
         doc.queue.push_back(Event::RemoveNode(id));
     }
+
+    // /// Update in place
+    // pub fn update(&self, id: NodeId) -> &mut Node {
+    //     let mut doc = self.document.inner.lock();
+    // }
 }
+
+// struct NodeMut<'a> {
+//     inner: MutexGuard<'a, DocumentInner>,
+//     id: NodeId,
+// }
+
+// impl<'a> Deref for NodeMut<'a> {
+//     type Target = Node;
+
+//     fn deref(&self) -> &Self::Target {
+//         self.inner.nodes.get(self.id.0).unwrap()
+//     }
+// }
 
 #[derive(Clone, Default, Component)]
 pub struct Document {
@@ -128,34 +151,48 @@ impl Document {
         let mut doc = self.inner.lock();
 
         doc.effect_queue.dedup();
-        for effect_id in doc.effect_queue.clone() {
+        let queue = doc.effect_queue.clone();
+        drop(doc);
+        for effect_id in queue {
             tracing::trace!("call Effect({:?})", effect_id);
 
+            let mut doc = self.inner.lock();
             let effect = doc.effects.get_mut(effect_id.0).unwrap();
 
             if effect.first_run {
                 effect.first_run = false;
+                let effect = effect.clone();
+                drop(doc);
 
                 (effect.f)(world);
 
                 let stack = std::mem::take(&mut *self.signal_stack.lock());
                 tracing::trace!("subscribing Effect({:?}) to signals {:?}", effect_id, stack);
+                let mut doc = self.inner.lock();
+
                 for signal in stack {
                     doc.signal_effects
                         .entry(signal.0)
                         .or_default()
                         .push(effect_id.0);
                 }
+
+                drop(doc);
             } else {
+                let effect = effect.clone();
+                drop(doc);
                 (effect.f)(world);
             }
         }
 
+        let mut doc = self.inner.lock();
         doc.effect_queue.clear();
 
         while let Some(event) = doc.queue.pop_front() {
             match event {
                 Event::PushNode(id, node) => {
+                    tracing::trace!("spawn node {:?}", id);
+
                     let parent = doc
                         .parents
                         .get(&id)
@@ -174,6 +211,8 @@ impl Document {
                     events.insert(key, node.events);
                 }
                 Event::RemoveNode(id) => {
+                    tracing::trace!("despawn node {:?}", id);
+
                     let key = doc.node_mappings.remove(&id).unwrap();
                     tree.remove(key);
                     events.remove(key);

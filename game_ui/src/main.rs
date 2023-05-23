@@ -167,10 +167,6 @@ fn MainComp(cx: Scope) {
 
     let (count, set_count) = create_signal(&cx, 0);
 
-    create_effect(&cx, move |_| {
-        dbg!(count.get());
-    });
-
     // create_effect(&cx, move |_| {
     //     dbg!(count.get());
     // });
@@ -183,6 +179,18 @@ fn MainComp(cx: Scope) {
     });
 
     let cx = Text(&but, "test");
+
+    let cx2 = cx.clone();
+    create_effect(&cx, move |_| {
+        let c = count.get();
+        dbg!(c);
+
+        if c >= 1 {
+            cx2.remove(cx2.id().unwrap());
+        }
+
+        // Text(&cx2, &format!("{}", count.get()));
+    });
 
     // but.push(Node {
     //     element: Element {
