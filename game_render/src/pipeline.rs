@@ -1,32 +1,34 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 
-use bevy_ecs::prelude::{Component, Entity, EventReader, Events, Res};
+use bevy_ecs::prelude::{Component, Entity, EventReader, Res};
 use bevy_ecs::query::{Added, Changed, With};
 use bevy_ecs::system::{Commands, Query, ResMut, Resource};
 use bevy_ecs::world::FromWorld;
 use bytemuck::{Pod, Zeroable};
-use game_window::events::{WindowCloseRequested, WindowResized};
+use game_window::events::{WindowCreated, WindowDestroyed, WindowResized};
+use game_window::WindowState;
 use glam::{Mat4, UVec2, Vec3};
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
 use wgpu::{
     AddressMode, BindGroup, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
     BindGroupLayoutEntry, BindingResource, BindingType, BlendState, Buffer, BufferBindingType,
     BufferUsages, ColorTargetState, ColorWrites, CompareFunction, DepthBiasState,
-    DepthStencilState, Device, Extent3d, Face, FilterMode, FragmentState, FrontFace,
-    ImageCopyTexture, ImageDataLayout, IndexFormat, LoadOp, MultisampleState, Operations, Origin3d,
-    PipelineLayoutDescriptor, PolygonMode, PrimitiveState, PrimitiveTopology,
-    RenderPassColorAttachment, RenderPassDepthStencilAttachment, RenderPassDescriptor,
-    RenderPipeline, RenderPipelineDescriptor, Sampler, SamplerBindingType, SamplerDescriptor,
-    ShaderModule, ShaderModuleDescriptor, ShaderSource, ShaderStages, StencilState, Texture,
-    TextureAspect, TextureDescriptor, TextureDimension, TextureFormat, TextureSampleType,
-    TextureUsages, TextureView, TextureViewDescriptor, TextureViewDimension, VertexState,
+    DepthStencilState, Device, Face, FilterMode, FragmentState, FrontFace, IndexFormat, LoadOp,
+    MultisampleState, Operations, PipelineLayoutDescriptor, PolygonMode, PrimitiveState,
+    PrimitiveTopology, RenderPassColorAttachment, RenderPassDepthStencilAttachment,
+    RenderPassDescriptor, RenderPipeline, RenderPipelineDescriptor, Sampler, SamplerBindingType,
+    SamplerDescriptor, ShaderModule, ShaderModuleDescriptor, ShaderSource, ShaderStages,
+    StencilState, Texture, TextureFormat, TextureSampleType, TextureView, TextureViewDescriptor,
+    TextureViewDimension, VertexState,
 };
 
 use crate::camera::{Projection, Transform, OPENGL_TO_WGPU};
+use crate::depth_stencil::{create_depth_texture, DEPTH_TEXTURE_FORMAT};
 use crate::graph::Node;
-use crate::material::{ComputedMaterial, ComputedMesh, Material};
+use crate::material::{ComputedMaterial, ComputedMesh};
 use crate::mesh::{Mesh, Vertex};
-use crate::{RenderDevice, RenderQueue};
+use crate::RenderDevice;
 
 #[derive(Resource)]
 pub struct MeshPipeline {
@@ -93,9 +95,6 @@ pub struct MaterialPipeline {
     pipeline: RenderPipeline,
     bind_group_layout: BindGroupLayout,
     sampler: Sampler,
-    depth_texture: Texture,
-    depth_texture_view: TextureView,
-    depth_sampler: Sampler,
 }
 
 impl FromWorld for MaterialPipeline {
@@ -206,16 +205,10 @@ impl MaterialPipeline {
             ..Default::default()
         });
 
-        let (depth_texture, depth_texture_view, depth_sampler) =
-            create_depth_texture(&device, UVec2::new(800, 600));
-
         Self {
             pipeline,
             bind_group_layout,
             sampler,
-            depth_sampler,
-            depth_texture,
-            depth_texture_view,
         }
     }
 }
@@ -353,9 +346,15 @@ impl Node for MainPass {
 
     fn render(&self, world: &bevy_ecs::world::World, ctx: &mut crate::graph::RenderContext<'_>) {
         let pipeline = world.resource::<MaterialPipeline>();
+        let windows = world.resource::<RenderWindows>();
 
-        if ctx.width != pipeline.depth_texture.width()
-            || ctx.height != pipeline.depth_texture.height()
+        let Some(window) = windows.windows.get(&ctx.window) else {
+            return;
+        };
+
+        // FIXME: We should avoid this check by making sure any resizes
+        // happen before a render.
+        if window.depth_texture.width() != ctx.width || window.depth_texture.height() != ctx.height
         {
             return;
         }
@@ -371,7 +370,7 @@ impl Node for MainPass {
                 },
             })],
             depth_stencil_attachment: Some(RenderPassDepthStencilAttachment {
-                view: &pipeline.depth_texture_view,
+                view: &window.depth_texture_view,
                 depth_ops: Some(Operations {
                     load: LoadOp::Clear(1.0),
                     store: true,
@@ -438,62 +437,66 @@ pub fn update_transformation_matrix(
     }
 }
 
-const DEPTH_TEXTURE_FORMAT: TextureFormat = TextureFormat::Depth32Float;
+#[derive(Debug, Default, Resource)]
+pub struct RenderWindows {
+    windows: HashMap<Entity, WindowData>,
+}
 
-pub fn update_window_resized(
+#[derive(Debug)]
+pub struct WindowData {
+    depth_texture: Texture,
+    depth_texture_view: TextureView,
+    depth_sampler: Sampler,
+}
+
+pub fn create_render_windows(
     device: Res<RenderDevice>,
-    mut pipeline: ResMut<MaterialPipeline>,
-    mut events: EventReader<WindowResized>,
+    mut windows: ResMut<RenderWindows>,
+    mut events: EventReader<WindowCreated>,
+    window_query: Query<&WindowState>,
 ) {
     for event in events.iter() {
-        let (texture, view, sampler) = create_depth_texture(
-            &device.0,
-            UVec2 {
-                x: event.width,
-                y: event.height,
+        let window = window_query.get(event.window).unwrap();
+        let size = window.inner_size();
+
+        let (depth_texture, depth_texture_view, depth_sampler) =
+            create_depth_texture(&device.0, UVec2::new(size.width, size.height));
+
+        windows.windows.insert(
+            event.window,
+            WindowData {
+                depth_texture,
+                depth_texture_view,
+                depth_sampler,
             },
         );
-
-        pipeline.depth_texture = texture;
-        pipeline.depth_texture_view = view;
-        pipeline.depth_sampler = sampler;
     }
 }
 
-fn create_depth_texture(device: &Device, dimensions: UVec2) -> (Texture, TextureView, Sampler) {
-    let size = Extent3d {
-        width: dimensions.x,
-        height: dimensions.y,
-        depth_or_array_layers: 1,
-    };
+pub fn destroy_render_windows(
+    mut windows: ResMut<RenderWindows>,
+    mut events: EventReader<WindowDestroyed>,
+) {
+    for event in events.iter() {
+        windows.windows.remove(&event.window);
+    }
+}
 
-    let desc = TextureDescriptor {
-        label: Some("depth_texture"),
-        size,
-        mip_level_count: 1,
-        sample_count: 1,
-        dimension: TextureDimension::D2,
-        format: DEPTH_TEXTURE_FORMAT,
-        usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
-        view_formats: &[],
-    };
+pub fn resize_render_windows(
+    device: Res<RenderDevice>,
+    mut windows: ResMut<RenderWindows>,
+    mut events: EventReader<WindowResized>,
+) {
+    for event in events.iter() {
+        let Some(window) = windows.windows.get_mut(&event.window) else {
+            continue;
+        };
 
-    let texture = device.create_texture(&desc);
+        let (depth_texture, depth_texture_view, depth_sampler) =
+            create_depth_texture(&device.0, UVec2::new(event.width, event.height));
 
-    let view = texture.create_view(&TextureViewDescriptor::default());
-
-    let sampler = device.create_sampler(&SamplerDescriptor {
-        address_mode_u: AddressMode::ClampToEdge,
-        address_mode_v: AddressMode::ClampToEdge,
-        address_mode_w: AddressMode::ClampToEdge,
-        mag_filter: FilterMode::Linear,
-        min_filter: FilterMode::Linear,
-        mipmap_filter: FilterMode::Nearest,
-        compare: Some(CompareFunction::LessEqual),
-        lod_min_clamp: 0.0,
-        lod_max_clamp: 100.0,
-        ..Default::default()
-    });
-
-    (texture, view, sampler)
+        window.depth_texture = depth_texture;
+        window.depth_texture_view = depth_texture_view;
+        window.depth_sampler = depth_sampler;
+    }
 }

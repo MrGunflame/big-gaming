@@ -8,6 +8,8 @@ pub mod pbr;
 pub mod pipeline;
 pub mod shape;
 
+mod depth_stencil;
+
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -35,7 +37,7 @@ impl Plugin for RenderPlugin {
         app.add_plugin(WindowPlugin);
 
         let instance = Instance::new(InstanceDescriptor {
-            backends: Backends::all(),
+            backends: Backends::VULKAN,
             dx12_shader_compiler: Default::default(),
         });
 
@@ -88,7 +90,10 @@ impl Plugin for RenderPlugin {
         app.add_system(material::prepare_computed_materials);
         app.add_system(material::prepare_computed_meshes);
 
-        app.add_system(pipeline::update_window_resized);
+        app.insert_resource(pipeline::RenderWindows::default());
+        app.add_system(pipeline::create_render_windows);
+        app.add_system(pipeline::destroy_render_windows);
+        app.add_system(pipeline::resize_render_windows);
     }
 }
 
