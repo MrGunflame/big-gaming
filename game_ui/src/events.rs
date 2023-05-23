@@ -33,6 +33,10 @@ impl Events {
     pub fn remove(&mut self, key: Key) {
         self.events.remove(&key);
     }
+
+    pub fn get_mut(&mut self, key: Key) -> Option<&mut EventHandlers> {
+        self.events.get_mut(&key)
+    }
 }
 
 pub fn update_events_from_layout_tree(

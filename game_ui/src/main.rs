@@ -185,9 +185,25 @@ fn MainComp(cx: Scope) {
         let c = count.get();
         dbg!(c);
 
-        if c >= 1 {
-            cx2.remove(cx2.id().unwrap());
-        }
+        let text = format!("{}", c);
+
+        cx2.update(
+            cx2.id().unwrap(),
+            Node {
+                element: Element {
+                    body: ElementBody::Text(game_ui::render::Text {
+                        text: text.to_owned(),
+                        size: 24.0,
+                    }),
+                    style: Style::default(),
+                },
+                events: EventHandlers::default(),
+            },
+        );
+
+        // if c >= 1 {
+        //     cx2.remove(cx2.id().unwrap());
+        // }
 
         // Text(&cx2, &format!("{}", count.get()));
     });

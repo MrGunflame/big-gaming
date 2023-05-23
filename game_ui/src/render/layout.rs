@@ -135,6 +135,12 @@ impl LayoutTree {
         }
     }
 
+    pub fn replace(&mut self, key: Key, elem: Element) {
+        self.changed = true;
+
+        *self.elems.get_mut(key.0).unwrap() = elem;
+    }
+
     pub fn unchanged(&mut self) {
         self.changed = false;
     }

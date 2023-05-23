@@ -74,24 +74,12 @@ impl Scope {
         doc.queue.push_back(Event::RemoveNode(id));
     }
 
-    // /// Update in place
-    // pub fn update(&self, id: NodeId) -> &mut Node {
-    //     let mut doc = self.document.inner.lock();
-    // }
+    /// Update in place
+    pub fn update(&self, id: NodeId, node: Node) {
+        let mut doc = self.document.inner.lock();
+        doc.queue.push_back(Event::UpdateNode(id, node));
+    }
 }
-
-// struct NodeMut<'a> {
-//     inner: MutexGuard<'a, DocumentInner>,
-//     id: NodeId,
-// }
-
-// impl<'a> Deref for NodeMut<'a> {
-//     type Target = Node;
-
-//     fn deref(&self) -> &Self::Target {
-//         self.inner.nodes.get(self.id.0).unwrap()
-//     }
-// }
 
 #[derive(Clone, Default, Component)]
 pub struct Document {
@@ -217,6 +205,14 @@ impl Document {
                     tree.remove(key);
                     events.remove(key);
                 }
+                Event::UpdateNode(id, node) => {
+                    tracing::trace!("replace node {:?}", id);
+
+                    let key = doc.node_mappings.get(&id).unwrap();
+
+                    tree.replace(*key, node.element);
+                    *events.get_mut(*key).unwrap() = node.events;
+                }
             }
         }
     }
@@ -232,5 +228,6 @@ pub struct NodeStore {
 
 pub enum Event {
     PushNode(NodeId, Node),
+    UpdateNode(NodeId, Node),
     RemoveNode(NodeId),
 }
