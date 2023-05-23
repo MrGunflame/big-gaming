@@ -1,7 +1,7 @@
 use bevy_app::App;
 use bevy_ecs::system::Commands;
 use game_ui::events::{EventHandlers, Events};
-use game_ui::reactive::{create_effect, create_signal, Document, Scope};
+use game_ui::reactive::{create_effect, create_signal, Document, Node, NodeId, Scope};
 use game_ui::render::layout::LayoutTree;
 use game_ui::render::style::{Bounds, Direction, Position, Style};
 use game_ui::render::{Element, ElementBody, Image, Text};
@@ -171,8 +171,37 @@ fn MainComp(cx: Scope) {
         dbg!(count.get());
     });
 
-    std::thread::spawn(move || loop {
-        std::thread::sleep_ms(5000);
-        set_count.update(|c| *c += 1);
+    let but = Button(&cx, || {
+        dbg!("hi");
     });
+
+    but.push(Node {
+        element: Element {
+            body: ElementBody::Text(Text {
+                text: "hello world".to_owned(),
+                size: 24.0,
+            }),
+            style: Style::default(),
+        },
+        events: Default::default(),
+    });
+}
+
+fn Button<F>(cx: &Scope, on_click: F) -> Scope
+where
+    F: Fn() + Send + Sync + 'static,
+{
+    cx.push(Node {
+        element: Element {
+            body: ElementBody::Container(),
+            style: Style::default(),
+        },
+        events: EventHandlers {
+            mouse_button_input: Some(Box::new(move |ev| {
+                dbg!(ev);
+                on_click();
+            })),
+            ..Default::default()
+        },
+    })
 }

@@ -1,5 +1,3 @@
-use std::any::Any;
-use std::fmt::{self, Debug, Formatter};
 use std::sync::Arc;
 
 use parking_lot::Mutex;
@@ -10,13 +8,16 @@ pub fn create_signal<T>(cx: &Scope, value: T) -> (ReadSignal<T>, WriteSignal<T>)
 where
     T: Send + Sync + 'static,
 {
-    tracing::trace!("creating reactive signal for node {:?}", cx.id);
+    tracing::trace!("creating reactive signal for node {:?}", cx.parent);
 
     let signal = Signal { effects: vec![] };
 
     let mut doc = cx.document.inner.lock();
     let id = doc.signals.insert(signal);
-    doc.signal_targets.insert(id, cx.id.0);
+
+    if let Some(sid) = cx.id {
+        doc.signal_targets.insert(id, sid.0);
+    }
 
     let value = Arc::new(Mutex::new(value));
 

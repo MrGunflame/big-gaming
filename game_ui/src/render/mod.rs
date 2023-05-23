@@ -76,6 +76,16 @@ impl PrimitiveElement {
         image: &ImageBuffer<Rgba<u8>, Vec<u8>>,
         color: [f32; 4],
     ) -> Self {
+        if cfg!(debug_assertions) {
+            if image.height() == 0 || image.width() == 0 {
+                panic!(
+                    "attempted to render a image with zero dimension x={}, y={}",
+                    image.width(),
+                    image.height()
+                );
+            }
+        }
+
         let vertices = [
             Vertex {
                 position: [rect.min.x, rect.min.y, 0.0],
@@ -355,6 +365,13 @@ impl Node for UiPass {
 
                         let mut elems = vec![];
                         for (elem, layout) in frame.elements().zip(frame.layouts()) {
+                            tracing::trace!("render {:?} with {:?}", elem, layout);
+
+                            // Don't render elements with a zero size.
+                            if layout.width <= 0.0 || layout.height <= 0.0 {
+                                continue;
+                            }
+
                             if let Some(elem) = elem.build(
                                 &elem.style,
                                 Rect {

@@ -14,6 +14,7 @@ use bevy_app::{App, Plugin};
 use bevy_ecs::system::Query;
 use bevy_ecs::world::World;
 use cursor::Cursor;
+use events::Events;
 use reactive::{Document, NodeId, Scope};
 use render::layout::LayoutTree;
 // use cursor::Cursor;
@@ -44,8 +45,10 @@ impl Plugin for UiPlugin {
 //     });
 // }
 
-fn drive_reactive_runtime(world: &World, windows: Query<&Document>) {
-    for doc in &windows {
-        doc.drive(world);
+fn drive_reactive_runtime(mut windows: Query<(&Document, &mut LayoutTree, &mut Events)>) {
+    let world = World::new();
+
+    for (doc, mut tree, mut events) in &mut windows {
+        doc.drive(&world, &mut tree, &mut events);
     }
 }
