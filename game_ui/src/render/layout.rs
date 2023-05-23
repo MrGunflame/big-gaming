@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use bevy_ecs::prelude::Component;
 use glam::Vec2;
+use slotmap::{DefaultKey, SlotMap};
 
 use super::container::Container;
 use super::image::Image;
@@ -51,26 +52,28 @@ pub enum ElementBody {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct Key(usize);
+pub struct Key(DefaultKey);
 
 #[derive(Clone, Debug, Component)]
 pub struct LayoutTree {
-    elems: Vec<Element>,
-    layouts: Vec<Layout>,
+    elems: SlotMap<DefaultKey, Element>,
+    layouts: HashMap<DefaultKey, Layout>,
     size: Vec2,
     changed: bool,
 
-    children: HashMap<usize, Vec<usize>>,
-    parents: HashMap<usize, usize>,
+    // parent => vec![child]
+    children: HashMap<DefaultKey, Vec<DefaultKey>>,
+    // child => parent
+    parents: HashMap<DefaultKey, DefaultKey>,
     /// Root elements
-    root: Vec<usize>,
+    root: Vec<DefaultKey>,
 }
 
 impl LayoutTree {
     pub fn new() -> Self {
         Self {
-            elems: vec![],
-            layouts: vec![],
+            elems: SlotMap::new(),
+            layouts: HashMap::new(),
             size: Vec2::splat(0.0),
             changed: false,
             children: HashMap::new(),
@@ -85,30 +88,49 @@ impl LayoutTree {
     }
 
     pub fn push(&mut self, parent: Option<Key>, elem: Element) -> Key {
-        let index = self.elems.len();
-
-        self.layouts.push(Layout {
+        let layout = Layout {
             position: Vec2::splat(0.0),
             height: 0.0,
             width: 0.0,
             style: ComputedStyle {
                 bounds: ComputedBounds::new(elem.style.bounds, self.size),
             },
-        });
-        self.elems.push(elem);
+        };
 
-        self.children.insert(index, vec![]);
+        let key = self.elems.insert(elem);
+        self.layouts.insert(key, layout);
+
+        self.children.insert(key, vec![]);
 
         if let Some(Key(parent)) = parent {
-            self.children.get_mut(&parent).unwrap().push(index);
-            self.parents.insert(index, parent);
+            self.children.get_mut(&parent).unwrap().push(key);
+            self.parents.insert(key, parent);
         } else {
-            self.root.push(index);
+            self.root.push(key);
         }
 
         self.changed = true;
 
-        Key(index)
+        Key(key)
+    }
+
+    pub fn remove(&mut self, key: Key) {
+        self.elems.remove(key.0);
+        self.layouts.remove(&key.0);
+
+        self.root.retain(|k| *k != key.0);
+
+        if let Some(children) = self.children.remove(&key.0) {
+            for c in children {
+                self.remove(Key(c));
+            }
+        }
+
+        if let Some(parent) = self.parents.remove(&key.0) {
+            if let Some(children) = self.children.get_mut(&parent) {
+                children.retain(|k| *k != key.0);
+            }
+        }
     }
 
     pub fn unchanged(&mut self) {
@@ -162,7 +184,7 @@ impl LayoutTree {
         for key in &self.root.clone() {
             let bounds = self.compute_bounds(*key);
 
-            let layout = &mut self.layouts[*key];
+            let layout = self.layouts.get_mut(key).unwrap();
 
             // Every elements gets `size_per_elem` or `max`, whichever is lower.
             layout.position = next_position;
@@ -190,7 +212,7 @@ impl LayoutTree {
         // }
     }
 
-    fn compute_bounds(&self, key: usize) -> ComputedBounds {
+    fn compute_bounds(&self, key: DefaultKey) -> ComputedBounds {
         let elem = &self.elems[key];
 
         match &elem.body {
@@ -248,9 +270,9 @@ impl LayoutTree {
         }
     }
 
-    fn layout_element(&mut self, key: usize) {
+    fn layout_element(&mut self, key: DefaultKey) {
         let elem = self.elems[key].clone();
-        let layout = &self.layouts[key];
+        let layout = &self.layouts[&key];
 
         let start = layout.position;
         let end = Vec2::new(
@@ -267,7 +289,7 @@ impl LayoutTree {
                 let child_style = &self.elems[child].style;
 
                 let bounds = self.compute_bounds(child);
-                let layout = &mut self.layouts[child];
+                let layout = self.layouts.get_mut(&child).unwrap();
 
                 match child_style.position {
                     Position::Relative => {
@@ -295,7 +317,7 @@ impl LayoutTree {
     }
 
     fn computed_sizes(&mut self) {
-        for (elem, layout) in self.elems.iter().zip(self.layouts.iter_mut()) {
+        for ((_, elem), (_, layout)) in self.elems.iter().zip(self.layouts.iter_mut()) {
             layout.style.bounds = ComputedBounds::new(elem.style.bounds, self.size);
         }
     }
@@ -355,15 +377,15 @@ impl LayoutTree {
     // }
 
     fn element_positions(&mut self) {
-        for (index, childs) in &self.children {
+        for (key, childs) in &self.children {
             // Get parent position.
-            let layout = &self.layouts[*index];
+            let layout = &self.layouts[key];
 
             let mut width = layout.position.x;
             let mut height = layout.position.y;
 
             for child in childs {
-                let elem = &mut self.layouts[*child];
+                let elem = self.layouts.get_mut(child).unwrap();
                 elem.position = Vec2::new(width, height);
                 width += elem.width;
                 height += elem.height;
@@ -372,17 +394,20 @@ impl LayoutTree {
     }
 
     pub fn elements(&self) -> Elements<'_> {
-        Elements { inner: &self.elems }
+        Elements {
+            iter: self.elems.iter(),
+        }
     }
 
     pub fn layouts(&self) -> Layouts<'_> {
         Layouts {
-            inner: &self.layouts,
+            keys: self.elems.iter(),
+            layouts: &self.layouts,
         }
     }
 
-    pub fn keys(&self) -> impl Iterator<Item = Key> {
-        (0..self.elems.len()).map(Key)
+    pub fn keys<'a>(&'a self) -> impl Iterator<Item = Key> + 'a {
+        self.elems.keys().map(|k| Key(k))
     }
 
     pub fn get_mut(&mut self, key: Key) -> Option<&mut Element> {
@@ -398,16 +423,14 @@ impl LayoutTree {
 
 #[derive(Clone, Debug)]
 pub struct Elements<'a> {
-    inner: &'a [Element],
+    iter: slotmap::basic::Iter<'a, DefaultKey, Element>,
 }
 
 impl<'a> Iterator for Elements<'a> {
     type Item = &'a Element;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let (elem, rem) = self.inner.split_first()?;
-        self.inner = rem;
-        Some(elem)
+        self.iter.next().map(|(_, v)| v)
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -417,22 +440,22 @@ impl<'a> Iterator for Elements<'a> {
 
 impl<'a> ExactSizeIterator for Elements<'a> {
     fn len(&self) -> usize {
-        self.inner.len()
+        self.iter.len()
     }
 }
 
 #[derive(Clone, Debug)]
 pub struct Layouts<'a> {
-    inner: &'a [Layout],
+    // Order is important.
+    keys: slotmap::basic::Iter<'a, DefaultKey, Element>,
+    layouts: &'a HashMap<DefaultKey, Layout>,
 }
 
 impl<'a> Iterator for Layouts<'a> {
     type Item = &'a Layout;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let (elem, rem) = self.inner.split_first()?;
-        self.inner = rem;
-        Some(elem)
+        self.keys.next().map(|(k, _)| self.layouts.get(&k).unwrap())
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -442,7 +465,7 @@ impl<'a> Iterator for Layouts<'a> {
 
 impl<'a> ExactSizeIterator for Layouts<'a> {
     fn len(&self) -> usize {
-        self.inner.len()
+        self.keys.len()
     }
 }
 
@@ -560,8 +583,8 @@ mod tests {
 
         tree.compute_layout();
 
-        let layout0 = tree.layouts[key0.0];
-        let layout1 = tree.layouts[key1.0];
+        let layout0 = tree.layouts[&key0.0];
+        let layout1 = tree.layouts[&key1.0];
 
         assert_eq!(layout0.position, Vec2::splat(0.0));
         assert_eq!(layout0.width, elem.bounds().min.x);
