@@ -19,7 +19,7 @@ mod signal;
 
 pub use effect::create_effect;
 pub use node::Node;
-pub use signal::create_signal;
+pub use signal::{create_signal, ReadSignal, WriteSignal};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct NodeId(DefaultKey);

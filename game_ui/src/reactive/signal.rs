@@ -56,6 +56,13 @@ where
         self.with(T::clone)
     }
 
+    pub fn get_untracked(&self) -> T
+    where
+        T: Clone,
+    {
+        self.with_untracked(T::clone)
+    }
+
     pub fn with<U, F>(&self, f: F) -> U
     where
         F: FnOnce(&T) -> U,
@@ -66,6 +73,14 @@ where
         stack.push(self.id);
         drop(stack);
 
+        let cell = self.value.lock();
+        f(&cell)
+    }
+
+    pub fn with_untracked<U, F>(&self, f: F) -> U
+    where
+        F: FnOnce(&T) -> U,
+    {
         let cell = self.value.lock();
         f(&cell)
     }

@@ -178,44 +178,8 @@ fn MainComp(cx: Scope) {
         set_count.update(|c| *c += 1);
     });
 
-    let cx = Text(&but, "test");
-
-    let cx2 = cx.clone();
-    create_effect(&cx, move |_| {
+    let cx = Text(&but, move || {
         let c = count.get();
-        dbg!(c);
-
-        let text = format!("{}", c);
-
-        cx2.update(
-            cx2.id().unwrap(),
-            Node {
-                element: Element {
-                    body: ElementBody::Text(game_ui::render::Text {
-                        text: text.to_owned(),
-                        size: 24.0,
-                    }),
-                    style: Style::default(),
-                },
-                events: EventHandlers::default(),
-            },
-        );
-
-        // if c >= 1 {
-        //     cx2.remove(cx2.id().unwrap());
-        // }
-
-        // Text(&cx2, &format!("{}", count.get()));
+        format!("{}", c)
     });
-
-    // but.push(Node {
-    //     element: Element {
-    //         body: ElementBody::Text(Text {
-    //             text: "hello world".to_owned(),
-    //             size: 24.0,
-    //         }),
-    //         style: Style::default(),
-    //     },
-    //     events: Default::default(),
-    // });
 }
