@@ -1,6 +1,9 @@
 use std::sync::Arc;
 
 use parking_lot::Mutex;
+use slotmap::DefaultKey;
+
+use crate::reactive::effect::EffectId;
 
 use super::{NodeId, Scope};
 
@@ -14,22 +17,19 @@ where
 
     let mut doc = cx.document.inner.lock();
     let id = doc.signals.insert(signal);
-
-    if let Some(sid) = cx.id {
-        doc.signal_targets.insert(id, sid.0);
-    }
+    doc.signal_targets.insert(id, cx.id.map(|x| x.0));
 
     let value = Arc::new(Mutex::new(value));
 
     (
         ReadSignal {
             cx: cx.clone(),
-            id: NodeId(id),
+            id: SignalId(id),
             value: value.clone(),
         },
         WriteSignal {
             cx: cx.clone(),
-            id: NodeId(id),
+            id: SignalId(id),
             value,
         },
     )
@@ -41,7 +41,7 @@ where
     T: Send + Sync + 'static,
 {
     cx: Scope,
-    id: NodeId,
+    id: SignalId,
     value: Arc<Mutex<T>>,
 }
 
@@ -62,7 +62,11 @@ where
     {
         tracing::trace!("Signal({:?})::read", self.id);
 
-        let mut cell = self.value.lock();
+        let mut stack = self.cx.document.signal_stack.lock();
+        stack.push(self.id);
+        drop(stack);
+
+        let cell = self.value.lock();
         f(&cell)
     }
 }
@@ -73,7 +77,7 @@ where
     T: Send + Sync + 'static,
 {
     cx: Scope,
-    id: NodeId,
+    id: SignalId,
     value: Arc<Mutex<T>>,
 }
 
@@ -97,7 +101,16 @@ where
         }
 
         let mut doc = self.cx.document.inner.lock();
-        doc.signal_queue.push(self.id.0);
+        let effects = doc.signal_effects.get(&self.id.0).unwrap().clone();
+
+        tracing::trace!(
+            "Queued Signal({:?}) effect observers: {:?}",
+            self.id,
+            effects
+        );
+
+        doc.effect_queue
+            .extend(effects.iter().map(|e| EffectId(*e)));
     }
 }
 
@@ -105,3 +118,6 @@ where
 pub(super) struct Signal {
     pub(super) effects: Vec<NodeId>,
 }
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct SignalId(pub DefaultKey);

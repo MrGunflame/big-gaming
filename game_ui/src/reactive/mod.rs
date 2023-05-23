@@ -9,8 +9,8 @@ use slotmap::{DefaultKey, SlotMap};
 use crate::events::Events;
 use crate::render::layout::{Key, LayoutTree};
 
-use self::effect::Effect;
-use self::signal::Signal;
+use self::effect::{Effect, EffectId};
+use self::signal::{Signal, SignalId};
 
 mod effect;
 mod node;
@@ -73,19 +73,29 @@ impl Scope {
 #[derive(Clone, Default, Component)]
 pub struct Document {
     inner: Arc<Mutex<DocumentInner>>,
+    signal_stack: Arc<Mutex<Vec<SignalId>>>,
 }
 
 #[derive(Default)]
 struct DocumentInner {
+    // EffectId
+    effects: SlotMap<DefaultKey, Effect>,
+    // SignalId
+    signals: SlotMap<DefaultKey, Signal>,
+
+    // SignalId => vec![EffectId]
+    signal_effects: HashMap<DefaultKey, Vec<DefaultKey>>,
+
+    // Backlogged queued effects.
+    effect_queue: Vec<EffectId>,
+
     pub nodes: SlotMap<DefaultKey, NodeStore>,
     // parent => vec![child]
     pub children: HashMap<NodeId, Vec<NodeId>>,
     // child => parent, none if parent is root
     pub parents: HashMap<NodeId, Option<NodeId>>,
-    signals: SlotMap<DefaultKey, Signal>,
     // SignalId => NodeId
-    signal_targets: HashMap<DefaultKey, DefaultKey>,
-    signal_queue: Vec<DefaultKey>,
+    signal_targets: HashMap<DefaultKey, Option<DefaultKey>>,
 
     queue: VecDeque<Event>,
 
@@ -117,15 +127,31 @@ impl Document {
     pub fn drive(&self, world: &World, tree: &mut LayoutTree, events: &mut Events) {
         let mut doc = self.inner.lock();
 
-        // Rerun effects
-        while let Some(signal_id) = doc.signal_queue.pop() {
-            let node_id = doc.signal_targets.get(&signal_id).unwrap();
-            let node = doc.nodes.get(*node_id).unwrap();
+        doc.effect_queue.dedup();
+        for effect_id in doc.effect_queue.clone() {
+            tracing::trace!("call Effect({:?})", effect_id);
 
-            for effect in &node.effects {
+            let effect = doc.effects.get_mut(effect_id.0).unwrap();
+
+            if effect.first_run {
+                effect.first_run = false;
+
+                (effect.f)(world);
+
+                let stack = std::mem::take(&mut *self.signal_stack.lock());
+                tracing::trace!("subscribing Effect({:?}) to signals {:?}", effect_id, stack);
+                for signal in stack {
+                    doc.signal_effects
+                        .entry(signal.0)
+                        .or_default()
+                        .push(effect_id.0);
+                }
+            } else {
                 (effect.f)(world);
             }
         }
+
+        doc.effect_queue.clear();
 
         while let Some(event) = doc.queue.pop_front() {
             match event {

@@ -4,8 +4,8 @@ use game_ui::events::{EventHandlers, Events};
 use game_ui::reactive::{create_effect, create_signal, Document, Node, NodeId, Scope};
 use game_ui::render::layout::LayoutTree;
 use game_ui::render::style::{Bounds, Direction, Position, Style};
-use game_ui::render::{Element, ElementBody, Image, Text};
-use game_ui::widgets::Button;
+use game_ui::render::{Element, ElementBody, Image};
+use game_ui::widgets::*;
 use game_window::Window;
 
 fn main() {
@@ -171,37 +171,27 @@ fn MainComp(cx: Scope) {
         dbg!(count.get());
     });
 
-    let but = Button(&cx, || {
+    // create_effect(&cx, move |_| {
+    //     dbg!(count.get());
+    // });
+
+    // Button::render(&cx);
+
+    let but = Button(&cx, move || {
         dbg!("hi");
+        set_count.update(|c| *c += 1);
     });
 
-    but.push(Node {
-        element: Element {
-            body: ElementBody::Text(Text {
-                text: "hello world".to_owned(),
-                size: 24.0,
-            }),
-            style: Style::default(),
-        },
-        events: Default::default(),
-    });
-}
+    let cx = Text(&but, "test");
 
-fn Button<F>(cx: &Scope, on_click: F) -> Scope
-where
-    F: Fn() + Send + Sync + 'static,
-{
-    cx.push(Node {
-        element: Element {
-            body: ElementBody::Container(),
-            style: Style::default(),
-        },
-        events: EventHandlers {
-            mouse_button_input: Some(Box::new(move |ev| {
-                dbg!(ev);
-                on_click();
-            })),
-            ..Default::default()
-        },
-    })
+    // but.push(Node {
+    //     element: Element {
+    //         body: ElementBody::Text(Text {
+    //             text: "hello world".to_owned(),
+    //             size: 24.0,
+    //         }),
+    //         style: Style::default(),
+    //     },
+    //     events: Default::default(),
+    // });
 }

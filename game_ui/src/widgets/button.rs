@@ -1,75 +1,65 @@
+use std::marker::PhantomData;
+
 use game_input::mouse::MouseButtonInput;
 
 use crate::events::EventHandlers;
-use crate::render::layout::Key;
+use crate::reactive::{Node, Scope};
 use crate::render::style::Style;
 use crate::render::{Element, ElementBody};
 
-use super::text::Text;
-use super::{Context, Widget};
-
 #[derive(Default)]
-pub struct Button {
-    pub onclick: Option<Box<dyn Fn(Key) + Send + Sync + 'static>>,
-    pub style: Style,
+pub struct Props<F> {
+    pub onclick: F,
 }
 
-impl Widget for Button {
-    fn create(self, ctx: &mut Context<'_>) -> Key {
-        let elem = Element {
-            body: ElementBody::Container(),
-            style: self.style,
-        };
+pub struct Button<F> {
+    _marker: PhantomData<F>,
+}
 
-        let key = ctx.tree.push(ctx.parent, elem);
-        ctx.events.insert(
-            key,
-            EventHandlers {
-                mouse_button_input: self.onclick.map(|f| click_handler(f, key)),
+use super::Widget;
+
+impl<F> Widget for Button<F>
+where
+    F: Fn() + Send + Sync + 'static,
+{
+    type Properties = Props<F>;
+
+    fn render(cx: &Scope, props: Self::Properties) -> Scope {
+        cx.push(Node {
+            element: Element {
+                body: ElementBody::Container(),
+                style: Style::default(),
+            },
+            events: EventHandlers {
+                mouse_button_input: Some(input_handler(props.onclick)),
                 ..Default::default()
             },
-        );
-
-        key
+        })
     }
 }
 
-fn click_handler(
-    f: Box<dyn Fn(Key) + Send + Sync + 'static>,
-    key: Key,
-) -> Box<dyn Fn(MouseButtonInput) + Send + Sync + 'static> {
-    Box::new(move |input| {
-        if input.state.is_pressed() && input.button.is_left() {
-            f(key);
-        }
+pub fn Button<F>(cx: &Scope, on_click: F) -> Scope
+where
+    F: Fn() + Send + Sync + 'static,
+{
+    cx.push(Node {
+        element: Element {
+            body: ElementBody::Container(),
+            style: Style::default(),
+        },
+        events: EventHandlers {
+            mouse_button_input: Some(input_handler(on_click)),
+            ..Default::default()
+        },
     })
 }
 
-#[derive(Default)]
-pub struct LabeledButton {
-    pub text: String,
-    pub size: f32,
-    pub onclick: Option<Box<dyn Fn(Key) + Send + Sync + 'static>>,
-}
-
-impl Widget for LabeledButton {
-    fn create(self, ctx: &mut Context<'_>) -> Key {
-        let key = Button {
-            onclick: self.onclick,
-            style: Style::default(),
+fn input_handler(
+    f: impl Fn() + Send + Sync + 'static,
+) -> Box<dyn Fn(MouseButtonInput) + Send + Sync + 'static> {
+    Box::new(move |event| {
+        if event.button.is_left() && event.state.is_pressed() {
+            f();
         }
-        .create(ctx);
-
-        let mut ctx = Context {
-            parent: Some(key),
-            tree: ctx.tree,
-            events: ctx.events,
-        };
-
-        Text {
-            text: self.text,
-            size: self.size,
-        }
-        .create(&mut ctx)
-    }
+    })
 }
