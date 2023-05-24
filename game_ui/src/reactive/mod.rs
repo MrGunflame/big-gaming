@@ -135,7 +135,7 @@ impl Document {
         }
     }
 
-    pub fn drive(&self, world: &World, tree: &mut LayoutTree, events: &mut Events) {
+    pub fn run_effects(&self, world: &World) {
         let mut doc = self.inner.lock();
 
         doc.effect_queue.dedup();
@@ -175,6 +175,10 @@ impl Document {
 
         let mut doc = self.inner.lock();
         doc.effect_queue.clear();
+    }
+
+    pub fn flush_node_queue(&self, tree: &mut LayoutTree, events: &mut Events) {
+        let mut doc = self.inner.lock();
 
         while let Some(event) = doc.queue.pop_front() {
             match event {

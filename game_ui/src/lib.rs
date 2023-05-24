@@ -11,6 +11,7 @@ pub mod widgets;
 pub mod reactive;
 
 use bevy_app::{App, Plugin};
+use bevy_ecs::schedule::IntoSystemConfig;
 use bevy_ecs::system::Query;
 use bevy_ecs::world::World;
 use cursor::Cursor;
@@ -37,7 +38,8 @@ impl Plugin for UiPlugin {
         app.add_system(events::dispatch_cursor_moved_events);
         app.add_system(events::dispatch_mouse_button_input_events);
 
-        app.add_system(drive_reactive_runtime);
+        app.add_system(run_effects);
+        app.add_system(flush_node_queue.after(run_effects));
     }
 }
 
@@ -47,10 +49,14 @@ impl Plugin for UiPlugin {
 //     });
 // }
 
-fn drive_reactive_runtime(mut windows: Query<(&Document, &mut LayoutTree, &mut Events)>) {
-    let world = World::new();
+fn run_effects(world: &World, windows: Query<&Document>) {
+    for doc in &windows {
+        doc.run_effects(world)
+    }
+}
 
+fn flush_node_queue(mut windows: Query<(&Document, &mut LayoutTree, &mut Events)>) {
     for (doc, mut tree, mut events) in &mut windows {
-        doc.drive(&world, &mut tree, &mut events);
+        doc.flush_node_queue(&mut tree, &mut events);
     }
 }
