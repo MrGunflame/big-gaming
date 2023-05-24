@@ -19,7 +19,7 @@ members = [
     "game_window",
     "game_asset",
     "game_gltf",
-    "game_ui_view",
+    "game_ui_macros",
     "tests",
 ]
 

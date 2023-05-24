@@ -14,7 +14,7 @@ game_input = { version = "0.1.0", path = "../game_input" }
 game_render = { version = "0.1.0", path = "../game_render" }
 game_window = { version = "0.1.0", path = "../game_window" }
 
-game_ui_view = { version = "0.1.0", path = "../game_ui_view" }
+game_ui_macros = { version = "0.1.0", path = "../game_ui_macros" }
 
 bevy_ecs = "0.10.0"
 bevy_app = "0.10.0"
