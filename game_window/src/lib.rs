@@ -50,6 +50,7 @@ impl Plugin for WindowPlugin {
         app.add_event::<CursorLeft>();
         app.add_event::<WindowCloseRequested>();
         app.add_event::<WindowClosing>();
+        app.add_event::<ReceivedCharacter>();
 
         app.add_system(systems::close_requested_windows);
 

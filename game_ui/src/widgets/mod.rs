@@ -1,9 +1,11 @@
 mod button;
 mod container;
+mod input;
 mod text;
 
 pub use button::{Button, ButtonProps};
 pub use container::{Container, ContainerProps};
+pub use input::{Input, InputProps};
 pub use text::{Text, TextProp, TextProps};
 
 use std::ops::Deref;

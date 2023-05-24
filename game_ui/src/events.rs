@@ -4,7 +4,7 @@ use bevy_ecs::prelude::{Component, EventReader};
 use bevy_ecs::query::{Added, Changed, Or};
 use bevy_ecs::system::{Query, Res};
 use game_input::mouse::MouseButtonInput;
-use game_window::events::CursorMoved;
+use game_window::events::{CursorMoved, ReceivedCharacter};
 use glam::Vec2;
 
 use crate::cursor::Cursor;
@@ -17,6 +17,7 @@ pub struct EventHandlers {
     pub cursor_left: Option<Box<dyn Fn() + Send + Sync + 'static>>,
     pub cursor_entered: Option<Box<dyn Fn() + Send + Sync + 'static>>,
     pub mouse_button_input: Option<Box<dyn Fn(MouseButtonInput) + Send + Sync + 'static>>,
+    pub received_character: Option<Box<dyn Fn(char) + Send + Sync + 'static>>,
 }
 
 #[derive(Component, Default)]
@@ -108,6 +109,38 @@ pub fn dispatch_mouse_button_input_events(
 
                 if let Some(f) = &handlers.mouse_button_input {
                     f(*event);
+                }
+            }
+        }
+    }
+}
+
+pub fn dispatch_received_character_events(
+    cursor: Res<Cursor>,
+    windows: Query<&Events>,
+    mut events: EventReader<ReceivedCharacter>,
+) {
+    if events.is_empty() {
+        return;
+    }
+
+    let Some(window) = cursor.window() else {
+        return;
+    };
+
+    let Ok(window) = windows.get(window) else {
+        return;
+    };
+
+    for event in events.iter() {
+        for (key, rect) in &window.positions {
+            if hit_test(*rect, cursor.position()) {
+                let Some(handlers) = window.events.get(&key) else {
+                    continue;
+                };
+
+                if let Some(f) = &handlers.received_character {
+                    f(event.char);
                 }
             }
         }
