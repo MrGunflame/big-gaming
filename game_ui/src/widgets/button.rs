@@ -1,5 +1,3 @@
-use std::marker::PhantomData;
-
 use game_input::mouse::MouseButtonInput;
 
 use crate::events::EventHandlers;
@@ -7,59 +5,56 @@ use crate::reactive::{Node, Scope};
 use crate::render::style::Style;
 use crate::render::{Element, ElementBody};
 
+use super::Component;
+
 #[derive(Default)]
-pub struct Props<F> {
-    pub onclick: F,
+pub struct ButtonProps {
+    pub on_click: ButtonHandler,
+    pub style: Style,
 }
 
-pub struct Button<F> {
-    _marker: PhantomData<F>,
-}
+pub struct Button;
 
-use super::Widget;
-
-impl<F> Widget for Button<F>
-where
-    F: Fn() + Send + Sync + 'static,
-{
-    type Properties = Props<F>;
+impl Component for Button {
+    type Properties = ButtonProps;
 
     fn render(cx: &Scope, props: Self::Properties) -> Scope {
         cx.push(Node {
             element: Element {
                 body: ElementBody::Container(),
-                style: Style::default(),
+                style: props.style,
             },
             events: EventHandlers {
-                mouse_button_input: Some(input_handler(props.onclick)),
+                mouse_button_input: Some(input_handler(props.on_click.0)),
                 ..Default::default()
             },
         })
     }
 }
 
-pub fn Button<F>(cx: &Scope, on_click: F, style: Style) -> Scope
-where
-    F: Fn() + Send + Sync + 'static,
-{
-    cx.push(Node {
-        element: Element {
-            body: ElementBody::Container(),
-            style,
-        },
-        events: EventHandlers {
-            mouse_button_input: Some(input_handler(on_click)),
-            ..Default::default()
-        },
-    })
-}
-
 fn input_handler(
-    f: impl Fn() + Send + Sync + 'static,
+    f: Box<dyn Fn() + Send + Sync + 'static>,
 ) -> Box<dyn Fn(MouseButtonInput) + Send + Sync + 'static> {
     Box::new(move |event| {
         if event.button.is_left() && event.state.is_pressed() {
             f();
         }
     })
+}
+
+pub struct ButtonHandler(Box<dyn Fn() + Send + Sync + 'static>);
+
+impl Default for ButtonHandler {
+    fn default() -> Self {
+        Self(Box::new(|| {}))
+    }
+}
+
+impl<F> From<F> for ButtonHandler
+where
+    F: Fn() + Send + Sync + 'static,
+{
+    fn from(value: F) -> Self {
+        Self(Box::new(value))
+    }
 }

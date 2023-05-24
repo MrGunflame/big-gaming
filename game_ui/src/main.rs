@@ -173,17 +173,16 @@ fn MainComp(cx: Scope) {
 
     // Button::render(&cx);
 
-    // game_ui_view::view! {
-    //     <Button on_click={move || set_count.update(|c| *c += 1)} style={Style::default()}>
-    //         <Text text={move || format!("{}", count.get())}>
-    //         </Text>
-    //     </Button>
-    // };
-
     game_ui_view::view! {
-        <MyComponent x={4}>
-        </MyComponent>
+        <Button on_click={move || set_count.update(|c| *c += 1)} style={Style::default()}>
+            <Text text={move || format!("{}", count.get())}>
+            </Text>
+        </Button>
     };
+
+    // game_ui_view::view! {
+    //     <Button on_click
+    // };
 }
 
 #[game_ui_view::component]

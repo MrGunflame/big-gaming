@@ -3,46 +3,56 @@ use std::sync::Arc;
 use crate::events::EventHandlers;
 use crate::reactive::{create_effect, Node, Scope};
 use crate::render::style::Style;
-use crate::render::{Element, ElementBody, Text};
+use crate::render::{Element, ElementBody};
 
-pub fn Text<T>(cx: &Scope, text: T) -> Scope
-where
-    T: Into<TextProp>,
-{
-    let cx = cx.push(Node {
-        element: Element {
-            body: ElementBody::Text(Text {
-                text: "text".to_owned(),
-                size: 24.0,
-            }),
-            style: Style::default(),
-        },
-        events: EventHandlers::default(),
-    });
+use super::Component;
 
-    let text = text.into();
+#[derive(Default)]
+pub struct TextProps {
+    pub text: TextProp,
+}
 
-    let cx2 = cx.clone();
-    let id = cx.id().unwrap();
-    create_effect(&cx, move |_| {
-        let string = (text.0)();
+pub struct Text;
 
-        cx2.update(
-            id,
-            Node {
-                element: Element {
-                    body: ElementBody::Text(Text {
-                        text: string,
-                        size: 24.0,
-                    }),
-                    style: Style::default(),
-                },
-                events: EventHandlers::default(),
+impl Component for Text {
+    type Properties = TextProps;
+
+    fn render(cx: &Scope, props: Self::Properties) -> Scope {
+        let text = props.text.clone();
+
+        let cx = cx.push(Node {
+            element: Element {
+                body: ElementBody::Text(crate::render::Text {
+                    text: "".to_owned(),
+                    size: 24.0,
+                }),
+                style: Style::default(),
             },
-        );
-    });
+            events: EventHandlers::default(),
+        });
 
-    cx
+        let cx2 = cx.clone();
+        let id = cx.id().unwrap();
+        create_effect(&cx, move |_| {
+            let string = (text.0)();
+
+            cx2.update(
+                id,
+                Node {
+                    element: Element {
+                        body: ElementBody::Text(crate::render::Text {
+                            text: string,
+                            size: 24.0,
+                        }),
+                        style: Style::default(),
+                    },
+                    events: EventHandlers::default(),
+                },
+            );
+        });
+
+        cx
+    }
 }
 
 #[derive(Clone)]
@@ -67,5 +77,11 @@ impl From<&str> for TextProp {
     fn from(value: &str) -> Self {
         let s = value.to_owned();
         s.into()
+    }
+}
+
+impl Default for TextProp {
+    fn default() -> Self {
+        Self::from("")
     }
 }
