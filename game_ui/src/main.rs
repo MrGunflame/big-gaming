@@ -173,17 +173,10 @@ fn MainComp(cx: Scope) {
 
     // Button::render(&cx);
 
-    let but = Button(
-        &cx,
-        move || {
-            dbg!("hi");
-            set_count.update(|c| *c += 1);
-        },
-        Style::default(),
-    );
-
-    let cx = Text(&but, move || {
-        let c = count.get();
-        format!("{}", c)
-    });
+    game_ui_view::view! {
+        <Button on_click={move || set_count.update(|c| *c += 1)} style={Style::default()}>
+            <Text text={move || format!("{}", count.get())}>
+            </Text>
+        </Button>
+    }
 }
