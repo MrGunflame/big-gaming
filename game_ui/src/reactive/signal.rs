@@ -18,6 +18,7 @@ where
     let mut doc = cx.document.inner.lock();
     let id = doc.signals.insert(signal);
     doc.signal_targets.insert(id, cx.id.map(|x| x.0));
+    doc.signal_effects.insert(id, vec![]);
 
     let value = Arc::new(Mutex::new(value));
 

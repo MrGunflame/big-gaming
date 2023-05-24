@@ -38,14 +38,14 @@ where
     }
 }
 
-pub fn Button<F>(cx: &Scope, on_click: F) -> Scope
+pub fn Button<F>(cx: &Scope, on_click: F, style: Style) -> Scope
 where
     F: Fn() + Send + Sync + 'static,
 {
     cx.push(Node {
         element: Element {
             body: ElementBody::Container(),
-            style: Style::default(),
+            style,
         },
         events: EventHandlers {
             mouse_button_input: Some(input_handler(on_click)),

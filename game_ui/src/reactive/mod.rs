@@ -9,6 +9,7 @@ use slotmap::{DefaultKey, SlotMap};
 
 use crate::events::Events;
 use crate::render::layout::{Key, LayoutTree};
+use crate::render::style::Style;
 
 use self::effect::{Effect, EffectId};
 use self::signal::{Signal, SignalId};
@@ -78,6 +79,11 @@ impl Scope {
     pub fn update(&self, id: NodeId, node: Node) {
         let mut doc = self.document.inner.lock();
         doc.queue.push_back(Event::UpdateNode(id, node));
+    }
+
+    pub fn set_style(&self, id: NodeId, style: Style) {
+        let mut doc = self.document.inner.lock();
+        doc.queue.push_back(Event::UpdateStyle(id, style));
     }
 }
 
@@ -213,6 +219,12 @@ impl Document {
                     tree.replace(*key, node.element);
                     *events.get_mut(*key).unwrap() = node.events;
                 }
+                Event::UpdateStyle(id, style) => {
+                    tracing::trace!("update style {:?}", id);
+
+                    let key = doc.node_mappings.get(&id).unwrap();
+                    tree.get_mut(*key).unwrap().style = style;
+                }
             }
         }
     }
@@ -230,4 +242,5 @@ pub enum Event {
     PushNode(NodeId, Node),
     UpdateNode(NodeId, Node),
     RemoveNode(NodeId),
+    UpdateStyle(NodeId, Style),
 }

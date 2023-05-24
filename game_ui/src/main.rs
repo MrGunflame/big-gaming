@@ -173,10 +173,14 @@ fn MainComp(cx: Scope) {
 
     // Button::render(&cx);
 
-    let but = Button(&cx, move || {
-        dbg!("hi");
-        set_count.update(|c| *c += 1);
-    });
+    let but = Button(
+        &cx,
+        move || {
+            dbg!("hi");
+            set_count.update(|c| *c += 1);
+        },
+        Style::default(),
+    );
 
     let cx = Text(&but, move || {
         let c = count.get();

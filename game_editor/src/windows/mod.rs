@@ -9,8 +9,6 @@ use bevy_ecs::prelude::{EventReader, EventWriter};
 use bevy_ecs::system::{Commands, ResMut, Resource};
 use game_ui::events::Events;
 use game_ui::render::layout::LayoutTree;
-use game_ui::widgets::Context;
-use game_window::Window;
 use parking_lot::RwLock;
 
 pub struct WindowsPlugin;
@@ -36,28 +34,28 @@ fn spawn_windows(mut commands: Commands, mut events: EventReader<SpawnWindow>) {
         let mut tree = LayoutTree::new();
         let mut events = Events::default();
 
-        let mut ctx = Context {
-            parent: None,
-            tree: &mut tree,
-            events: &mut events,
-        };
+        // let mut ctx = Context {
+        //     parent: None,
+        //     tree: &mut tree,
+        //     events: &mut events,
+        // };
 
-        match event {
-            SpawnWindow::Modules => {
-                let mut window = commands.spawn(Window {
-                    title: "test".to_owned(),
-                });
+        // match event {
+        //     SpawnWindow::Modules => {
+        //         let mut window = commands.spawn(Window {
+        //             title: "test".to_owned(),
+        //         });
 
-                modules::spawn_modules_window(&mut ctx);
+        //         modules::spawn_modules_window(&mut ctx);
 
-                window.insert((tree, events));
-            }
-            SpawnWindow::CreateModule => todo!(),
-            SpawnWindow::OpenModule => todo!(),
-            SpawnWindow::View => {
-                view::spawn_view_window(&mut commands);
-            }
-        }
+        //         window.insert((tree, events));
+        //     }
+        //     SpawnWindow::CreateModule => todo!(),
+        //     SpawnWindow::OpenModule => todo!(),
+        //     SpawnWindow::View => {
+        //         view::spawn_view_window(&mut commands);
+        //     }
+        // }
     }
 }
 

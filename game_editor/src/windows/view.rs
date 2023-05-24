@@ -33,6 +33,28 @@ pub fn spawn_view_window(commands: &mut Commands) {
         })
         .insert(ViewCamera);
 
+    let mesh = &game_gltf::GltfData::open("../assets/pistol.glb")
+        .unwrap()
+        .meshes()
+        .unwrap()[0]
+        .0;
+
+    commands
+        .spawn(MaterialMeshBundle {
+            mesh: mesh.clone(),
+            material: Material {
+                color: [1.0, 0.0, 0.0, 1.0],
+                ..Default::default()
+            },
+            computed_material: Default::default(),
+            computed_mesh: Default::default(),
+        })
+        .insert(Transform {
+            translation: Vec3::new(0.0, 1.0, -5.0),
+            // rotation: Quat::from_axis_angle(Vec3::Y, PI / 3.0),
+            ..Default::default()
+        });
+
     // commands.spawn(MaterialMeshBundle {
     //     mesh: shape::Box {
     //         min_x: -0.5,
@@ -54,29 +76,29 @@ pub fn spawn_view_window(commands: &mut Commands) {
         .unwrap()
         .to_rgba8();
 
-    commands
-        .spawn(MaterialMeshBundle {
-            mesh: shape::Box {
-                min_x: -0.5,
-                max_x: 0.5,
-                min_y: -0.5,
-                max_y: 0.5,
-                min_z: -0.5,
-                max_z: 0.5,
-            }
-            .into(),
-            material: Material {
-                color: [1.0, 0.0, 0.0, 1.0],
-                color_texture: img.clone(),
-            },
-            computed_material: Default::default(),
-            computed_mesh: Default::default(),
-        })
-        .insert(Transform {
-            translation: Vec3::new(0.0, 1.0, -5.0),
-            // rotation: Quat::from_axis_angle(Vec3::Y, PI / 3.0),
-            ..Default::default()
-        });
+    // commands
+    //     .spawn(MaterialMeshBundle {
+    //         mesh: shape::Box {
+    //             min_x: -0.5,
+    //             max_x: 0.5,
+    //             min_y: -0.5,
+    //             max_y: 0.5,
+    //             min_z: -0.5,
+    //             max_z: 0.5,
+    //         }
+    //         .into(),
+    //         material: Material {
+    //             color: [1.0, 0.0, 0.0, 1.0],
+    //             color_texture: img.clone(),
+    //         },
+    //         computed_material: Default::default(),
+    //         computed_mesh: Default::default(),
+    //     })
+    //     .insert(Transform {
+    //         translation: Vec3::new(0.0, 1.0, -5.0),
+    //         // rotation: Quat::from_axis_angle(Vec3::Y, PI / 3.0),
+    //         ..Default::default()
+    //     });
 
     commands
         .spawn(MaterialMeshBundle {

@@ -6,6 +6,7 @@ use bevy_app::App;
 use bevy_ecs::prelude::Res;
 use bevy_ecs::system::{Commands, Query};
 use game_ui::events::Events;
+use game_ui::reactive::Document;
 use game_ui::render::style::Background;
 use image::Rgba;
 // use game_common::archive::loader::ModuleLoader;
@@ -14,7 +15,7 @@ use image::Rgba;
 // use game_core::CorePlugins;
 // use game_input::InputPlugin;
 use game_ui::render::layout::LayoutTree;
-use game_ui::widgets::{Context, Widget};
+use game_ui::widgets::Widget;
 use game_ui::UiPlugin;
 use game_window::Window;
 // use plugins::camera::CameraPlugin;
@@ -33,6 +34,8 @@ mod windows;
 // mod world;
 
 fn main() {
+    pretty_env_logger::init();
+
     // let archive = GameArchive::new();
 
     // let loader = ModuleLoader::new(&archive);
@@ -59,16 +62,16 @@ fn setup(mut commands: Commands, queue: Res<ExplorerQueue>, wqueue: Res<SpawnWin
     let mut tree = LayoutTree::new();
     let mut events = Events::default();
 
-    let mut ctx = Context {
-        parent: None,
-        tree: &mut tree,
-        events: &mut events,
-    };
+    // let mut ctx = Context {
+    //     parent: None,
+    //     tree: &mut tree,
+    //     events: &mut events,
+    // };
 
-    ToolBar {
-        queue: wqueue.clone(),
-    }
-    .create(&mut ctx);
+    // ToolBar {
+    //     queue: wqueue.clone(),
+    // }
+    // .create(&mut ctx);
 
     let id = commands
         .spawn(Window {
@@ -76,14 +79,29 @@ fn setup(mut commands: Commands, queue: Res<ExplorerQueue>, wqueue: Res<SpawnWin
         })
         .id();
 
-    Explorer {
-        window: id,
-        queue: queue.clone(),
-        path: PathBuf::from("./"),
-    }
-    .create(&mut ctx);
+    // Explorer {
+    //     window: id,
+    //     queue: queue.clone(),
+    //     path: PathBuf::from("./"),
+    // }
+    // .create(&mut ctx);
 
-    commands.entity(id).insert(tree).insert(events);
+    let document = Document::new(|cx| {
+        Explorer(
+            &cx,
+            PathBuf::from("./"),
+            || {},
+            |x| {
+                dbg!(x);
+            },
+        );
+    });
+
+    commands
+        .entity(id)
+        .insert(tree)
+        .insert(events)
+        .insert(document);
 }
 
 fn explorer_queue(
