@@ -67,7 +67,7 @@ impl ToTokens for Node {
             .iter()
             .map(|(id, expr)| {
                 quote! {
-                    props.#id =  #expr;
+                    props.#id =  #expr.into();
                 }
             })
             .collect();

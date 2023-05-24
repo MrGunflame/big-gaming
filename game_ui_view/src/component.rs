@@ -37,7 +37,7 @@ pub fn component(attr: TokenStream, input: TokenStream) -> TokenStream {
         .iter()
         .map(|(id, ty)| {
             quote! {
-                #id: #ty,
+                #vis #id: #ty,
             }
         })
         .collect();
@@ -45,7 +45,7 @@ pub fn component(attr: TokenStream, input: TokenStream) -> TokenStream {
     let props_ident = Ident::new(&format!("{}Props", ident), Span::call_site());
     let props_struct = quote! {
         #[derive(Default)]
-        struct #props_ident {
+        #vis struct #props_ident {
             #fields
         }
     };
