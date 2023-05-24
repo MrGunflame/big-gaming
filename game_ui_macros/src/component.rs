@@ -11,7 +11,7 @@ pub fn component(attr: TokenStream, input: TokenStream) -> TokenStream {
 
     let item = parse_macro_input!(input as ItemFn);
 
-    let mut props = HashMap::new();
+    let mut props = Vec::new();
     // Skip the Scope arg.
     for arg in item.sig.inputs.clone().into_iter().skip(1) {
         match arg {
@@ -22,7 +22,7 @@ pub fn component(attr: TokenStream, input: TokenStream) -> TokenStream {
                     _ => panic!(),
                 };
 
-                props.insert(ident, pat.ty);
+                props.push((ident, pat.ty));
             }
         }
     }
@@ -44,7 +44,6 @@ pub fn component(attr: TokenStream, input: TokenStream) -> TokenStream {
 
     let props_ident = Ident::new(&format!("{}Props", ident), Span::call_site());
     let props_struct = quote! {
-        #[derive(Default)]
         #vis struct #props_ident {
             #fields
         }

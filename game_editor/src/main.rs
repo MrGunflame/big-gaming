@@ -20,7 +20,7 @@ use game_ui::UiPlugin;
 use game_window::Window;
 // use plugins::camera::CameraPlugin;
 use tokio::runtime::Runtime;
-use widgets::explorer::{Event, Explorer, ExplorerQueue};
+use widgets::explorer::{Entry, Event, Explorer, ExplorerProps};
 use widgets::tool_bar::ToolBar;
 use windows::SpawnWindowQueue;
 
@@ -50,15 +50,13 @@ fn main() {
 
     App::new()
         .insert_resource(handle)
-        .insert_resource(ExplorerQueue::default())
         .add_plugin(UiPlugin)
         .add_startup_system(setup)
-        .add_system(explorer_queue)
         .add_plugin(windows::WindowsPlugin)
         .run();
 }
 
-fn setup(mut commands: Commands, queue: Res<ExplorerQueue>, wqueue: Res<SpawnWindowQueue>) {
+fn setup(mut commands: Commands, wqueue: Res<SpawnWindowQueue>) {
     let mut tree = LayoutTree::new();
     let mut events = Events::default();
 
@@ -86,16 +84,14 @@ fn setup(mut commands: Commands, queue: Res<ExplorerQueue>, wqueue: Res<SpawnWin
     // }
     // .create(&mut ctx);
 
-    let document = Document::new(|cx| {
-        Explorer(
-            &cx,
-            PathBuf::from("./"),
-            || {},
-            |x| {
-                dbg!(x);
-            },
-        );
-    });
+    let document = Document::new();
+
+    let cx = document.root_scope();
+    game_ui::view! {
+        cx,
+        <Explorer path={PathBuf::from("./")} on_cancel={Box::new(||{})} on_open={Box::new(on_open)}>
+        </Explorer>
+    };
 
     commands
         .entity(id)
@@ -104,35 +100,8 @@ fn setup(mut commands: Commands, queue: Res<ExplorerQueue>, wqueue: Res<SpawnWin
         .insert(document);
 }
 
-fn explorer_queue(
-    queue: Res<ExplorerQueue>,
-    mut windows: Query<&mut LayoutTree>,
-    mut commands: Commands,
-) {
-    let mut queue = queue.0.write();
+fn on_cancel() {}
 
-    while let Some(event) = queue.pop_front() {
-        match event {
-            Event::Select {
-                window,
-                key,
-                selected,
-            } => {
-                let mut window = windows.get_mut(window).unwrap();
-
-                let elem = window.get_mut(key).unwrap();
-                elem.style.background = if selected {
-                    Background::Color(Rgba([70, 89, 88, 255]))
-                } else {
-                    Background::None
-                };
-            }
-            Event::Open { entries } => {
-                dbg!(entries);
-            }
-            Event::Cancel { window } => {
-                commands.entity(window).despawn();
-            }
-        }
-    }
+fn on_open(x: Vec<Entry>) {
+    dbg!(x);
 }

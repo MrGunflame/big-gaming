@@ -7,63 +7,57 @@ use std::sync::Arc;
 
 use bevy_ecs::prelude::Entity;
 use bevy_ecs::system::Resource;
-use game_ui::reactive::{create_effect, create_signal, Node, Scope};
+use game_ui::reactive::{create_effect, create_signal, Scope};
 use game_ui::render::layout::Key;
 use game_ui::render::style::{Background, Direction, Growth, Style};
-use game_ui::render::{Element, ElementBody};
-use game_ui::widgets::{Button, Container, Text, Widget};
+use game_ui::widgets::{Button, ButtonProps, Container, ContainerProps, Text, TextProps};
+use game_ui::{component, view};
 use image::Rgba;
-use parking_lot::{Mutex, RwLock};
+use parking_lot::RwLock;
 
+#[component]
 pub fn Explorer(
     cx: &Scope,
     path: PathBuf,
-    on_cancel: impl Fn() + Send + Sync + 'static,
-    on_open: impl Fn(Vec<Entry>) + Send + Sync + 'static,
+    on_cancel: Box<dyn Fn() + Send + Sync + 'static>,
+    on_open: Box<dyn Fn(Vec<Entry>) + Send + Sync + 'static>,
 ) -> Scope {
     let entries = scan(path);
 
     let (selected_entries, set_selected_entries) = create_signal(cx, entries.clone());
 
-    let root = Container(
-        cx,
-        Style {
-            direction: Direction::Column,
-            ..Default::default()
-        },
-    );
+    let root = view! { cx,
+        <Container style={Style { direction: Direction::Column, ..Default::default() }}>
+        </Container>
+    };
 
-    let side = Container(
-        &root,
-        Style {
-            growth: Growth(Some(1.0)),
-            ..Default::default()
-        },
-    );
-    let main = Container(
-        &root,
-        Style {
-            growth: Growth(Some(1.0)),
-            ..Default::default()
-        },
-    );
+    let main = view! { root,
+        <Container style={Style { growth: Growth(Some(1.0)), ..Default::default() }}>
+        </Container>
+    };
+
+    let side = view! { root,
+        <Container style={Style { growth: Growth(Some(1.0)), ..Default::default() }}>
+        </Container>
+    };
 
     for (index, entry) in entries.iter().enumerate() {
         let (select, set_select) = create_signal(cx, false);
         let set_selected_entries = set_selected_entries.clone();
 
-        let but = Button(
-            &main,
-            move || {
-                set_select.update(|v| *v = !*v);
-                set_selected_entries.update(|v| v[index].selected ^= true);
-            },
-            Style::default(),
-        );
+        let on_click = move || {
+            set_select.update(|v| *v = !*v);
+            set_selected_entries.update(|v| v[index].selected ^= true);
+        };
 
-        let id = but.id().unwrap();
+        let cx = view! { side,
+            <Button on_click={on_click.into()} style={Style::default()}>
+            </Button>
+        };
+
+        let id = cx.id().unwrap();
         let cx2 = cx.clone();
-        create_effect(cx, move |_| {
+        create_effect(&cx, move |_| {
             let selected = select.get();
             cx2.set_style(
                 id,
@@ -78,39 +72,33 @@ pub fn Explorer(
             );
         });
 
-        Text(&but, entry.name.to_string_lossy().to_string());
+        view! { cx,
+            <Text text={entry.name.to_string_lossy().to_string().into()}>
+            </Text>
+        };
     }
 
-    let cancel = Button(
-        &main,
-        move || {
-            on_cancel();
-        },
-        Style::default(),
-    );
-    let open = Button(
-        &main,
-        move || {
-            let entries = selected_entries
-                .get()
-                .into_iter()
-                .filter(|e| e.selected)
-                .collect();
-            on_open(entries);
-        },
-        Style::default(),
-    );
+    let on_open = move || {
+        let entries = selected_entries
+            .get()
+            .into_iter()
+            .filter(|e| e.selected)
+            .collect();
+        on_open(entries);
+    };
 
-    Text(&cancel, "Cancel");
-    Text(&open, "Open");
+    view! { side,
+        <Button on_click={on_cancel.into()} style={Style::default()}>
+            <Text text={"Cancel".into()}></Text>
+        </Button>
+    };
+    view! { side,
+        <Button on_click={on_open.into()} style={Style::default()}>
+            <Text text={"Open".into()}></Text>
+        </Button>
+    };
 
     root
-}
-
-pub struct Explorer {
-    pub queue: ExplorerQueue,
-    pub path: PathBuf,
-    pub window: Entity,
 }
 
 fn scan(path: PathBuf) -> Vec<Entry> {
@@ -144,110 +132,6 @@ fn scan(path: PathBuf) -> Vec<Entry> {
     entries
 }
 
-// impl Widget for Explorer {
-//     fn create(self, ctx: &mut Context<'_>) -> Key {
-//         let window = self.window;
-//         let entries = Arc::new(Mutex::new(self.scan()));
-
-//         let root = Element {
-//             body: ElementBody::Container(),
-//             style: Style {
-//                 direction: Direction::Column,
-//                 ..Default::default()
-//             },
-//         };
-//         let root = ctx.tree.push(ctx.parent, root);
-
-//         let side = Element {
-//             body: ElementBody::Container(),
-//             style: Style {
-//                 growth: Growth(Some(1.0)),
-//                 ..Default::default()
-//             },
-//         };
-//         let side = ctx.tree.push(Some(root), side);
-
-//         let main = ctx.tree.push(
-//             Some(root),
-//             Element {
-//                 body: ElementBody::Container(),
-//                 style: Style {
-//                     growth: Growth(Some(1.0)),
-//                     ..Default::default()
-//                 },
-//             },
-//         );
-
-//         let mut ctx = ctx.child(main);
-//         for (index, entry) in entries.lock().iter().enumerate() {
-//             let entries = entries.clone();
-
-//             let queue = self.queue.clone();
-
-//             let button = Button {
-//                 onclick: Some(Box::new(move |key| {
-//                     let mut entry = entries.lock();
-//                     entry[index].selected ^= true;
-
-//                     dbg!("x");
-
-//                     let mut queue = queue.0.write();
-//                     queue.push_back(Event::Select {
-//                         window,
-//                         key,
-//                         selected: entry[index].selected,
-//                     });
-//                 })),
-//                 style: Style {
-//                     direction: Direction::Column,
-//                     growth: Growth(None),
-//                     ..Default::default()
-//                 },
-//             }
-//             .create(&mut ctx);
-
-//             let mut ctx = ctx.child(button);
-
-//             let text = entry.name.to_string_lossy().to_string();
-//             Text { text, size: 24.0 }.create(&mut ctx);
-
-//             let text = file_size(entry.len);
-//             Text { text, size: 24.0 }.create(&mut ctx);
-//         }
-
-//         let queue = self.queue.clone();
-//         LabeledButton {
-//             text: "Open".to_owned(),
-//             size: 24.0,
-//             onclick: Some(Box::new(move |_| {
-//                 let entries = entries.lock();
-
-//                 let entries = entries
-//                     .iter()
-//                     .filter(|entry| entry.selected)
-//                     .cloned()
-//                     .collect();
-
-//                 let mut queue = queue.0.write();
-//                 queue.push_back(Event::Open { entries });
-//             })),
-//         }
-//         .create(&mut ctx);
-
-//         LabeledButton {
-//             text: "Cancel".to_owned(),
-//             size: 24.0,
-//             onclick: Some(Box::new(move |_| {
-//                 let mut queue = self.queue.0.write();
-//                 queue.push_back(Event::Cancel { window });
-//             })),
-//         }
-//         .create(&mut ctx);
-
-//         root
-//     }
-// }
-
 #[derive(Clone, Debug)]
 pub struct Entry {
     pub kind: EntryKind,
@@ -274,9 +158,6 @@ fn file_size(mut bytes: u64) -> String {
 
     format!("{} YiB", bytes)
 }
-
-#[derive(Clone, Debug, Default, Resource)]
-pub struct ExplorerQueue(pub Arc<RwLock<VecDeque<Event>>>);
 
 #[derive(Clone, Debug)]
 pub enum Event {

@@ -120,14 +120,8 @@ struct DocumentInner {
 }
 
 impl Document {
-    pub fn new<F>(f: F) -> Self
-    where
-        F: Fn(Scope) + Send + Sync + 'static,
-    {
-        let this = Self::default();
-        let cx = this.root_scope();
-        f(cx);
-        this
+    pub fn new() -> Self {
+        Self::default()
     }
 
     pub fn root_scope(&self) -> Scope {
