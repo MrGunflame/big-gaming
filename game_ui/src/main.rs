@@ -178,5 +178,10 @@ fn MainComp(cx: Scope) {
             <Text text={move || format!("{}", count.get())}>
             </Text>
         </Button>
-    }
+    };
+}
+
+#[game_ui_view::component]
+fn x(c: &Scope) -> Scope {
+    c.clone()
 }

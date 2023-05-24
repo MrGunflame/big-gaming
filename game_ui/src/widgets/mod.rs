@@ -13,3 +13,9 @@ pub trait Widget {
 
     fn render(cx: &Scope, props: Self::Properties) -> Scope;
 }
+
+pub trait Component {
+    type Properties;
+
+    fn render(cx: &Scope, props: Self::Properties) -> Scope;
+}
