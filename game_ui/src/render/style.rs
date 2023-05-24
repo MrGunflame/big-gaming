@@ -1,5 +1,7 @@
+use bevy_ecs::system::Res;
 use glam::Vec2;
 use image::{ImageBuffer, Rgba};
+use thiserror::Error;
 
 #[derive(Clone, Debug, Default)]
 pub struct Style {
@@ -110,6 +112,12 @@ pub enum Background {
     Image(ImageBuffer<Rgba<u8>, Vec<u8>>),
 }
 
+impl Background {
+    pub fn from_hex(s: &str) -> Result<Self, FromHexError> {
+        Color::from_hex(s).map(|c| Self::Color(c.0))
+    }
+}
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Color(pub Rgba<u8>);
 
@@ -128,4 +136,23 @@ impl Color {
         let a = (self.0 .0[3] as f32) / 255.0;
         [r, g, b, a]
     }
+
+    pub fn from_hex(s: &str) -> Result<Self, FromHexError> {
+        let bytes = hex::decode(s)?;
+
+        let r = *bytes.get(0).ok_or(FromHexError::InvalidLength)?;
+        let g = *bytes.get(1).ok_or(FromHexError::InvalidLength)?;
+        let b = *bytes.get(2).ok_or(FromHexError::InvalidLength)?;
+        let a = 255;
+
+        Ok(Self(Rgba([r, g, b, a])))
+    }
+}
+
+#[derive(Clone, Debug, Error)]
+pub enum FromHexError {
+    #[error(transparent)]
+    Hex(#[from] hex::FromHexError),
+    #[error("invalid length")]
+    InvalidLength,
 }
