@@ -67,7 +67,7 @@ impl ToTokens for Node {
             .iter()
             .map(|(id, expr)| {
                 quote! {
-                    #expr,
+                    props.#id =  #expr;
                 }
             })
             .collect();
@@ -84,7 +84,10 @@ impl ToTokens for Node {
 
         tokens.extend(quote! {
             {
-                let cx = #name(&cx, #attrs);
+                let mut props = <#name as ::game_ui::widgets::Component>::Properties::default();
+                #attrs
+
+                let cx = <#name as ::game_ui::widgets::Component>::render(&cx, props);
                 #children;
 
                 cx

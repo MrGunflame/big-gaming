@@ -173,15 +173,22 @@ fn MainComp(cx: Scope) {
 
     // Button::render(&cx);
 
+    // game_ui_view::view! {
+    //     <Button on_click={move || set_count.update(|c| *c += 1)} style={Style::default()}>
+    //         <Text text={move || format!("{}", count.get())}>
+    //         </Text>
+    //     </Button>
+    // };
+
     game_ui_view::view! {
-        <Button on_click={move || set_count.update(|c| *c += 1)} style={Style::default()}>
-            <Text text={move || format!("{}", count.get())}>
-            </Text>
-        </Button>
+        <MyComponent x={4}>
+        </MyComponent>
     };
 }
 
 #[game_ui_view::component]
-fn x(c: &Scope) -> Scope {
+fn MyComponent(c: &Scope, x: u32) -> Scope {
+    dbg!(x);
+
     c.clone()
 }

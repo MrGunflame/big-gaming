@@ -3,10 +3,13 @@ use std::collections::HashMap;
 use proc_macro::TokenStream;
 use proc_macro2::{Ident, Span, TokenStream as TokenStream2};
 use quote::quote;
-use syn::{parse_macro_input, FnArg, ItemFn, Pat, PatIdent, Type};
+use syn::parse::Parse;
+use syn::{parse_macro_input, FnArg, ItemFn, Pat};
 
 pub fn component(attr: TokenStream, input: TokenStream) -> TokenStream {
-    let mut item = parse_macro_input!(input as ItemFn);
+    parse_macro_input!(attr as Empty);
+
+    let item = parse_macro_input!(input as ItemFn);
 
     let mut props = HashMap::new();
     // Skip the Scope arg.
@@ -51,11 +54,12 @@ pub fn component(attr: TokenStream, input: TokenStream) -> TokenStream {
         .iter()
         .map(|(id, _)| {
             quote! {
-                #id,
+                props.#id,
             }
         })
         .collect();
 
+    let mut item = item;
     // Rename the function to a snake-case to avoid warnings.
     // Note that we can not simply disable the naming lint as that would also
     // disable the lint for the whole function body.
@@ -83,4 +87,16 @@ pub fn component(attr: TokenStream, input: TokenStream) -> TokenStream {
         #component_impl
     }
     .into()
+}
+
+struct Empty;
+
+impl Parse for Empty {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        if input.is_empty() {
+            Ok(Self)
+        } else {
+            Err(input.error("macro does not take any attributes"))
+        }
+    }
 }
