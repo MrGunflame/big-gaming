@@ -153,41 +153,10 @@ fn setup(mut cmds: Commands) {
         title: "Hello World!".to_owned(),
     })
     .insert(tree.clone())
-    .insert(events)
-    .insert(Document::new(MainComp));
+    .insert(events);
 
     // cmds.spawn(Window {
     //     title: "nr2".to_owned(),
     // })
     // .insert(tree);
-}
-
-fn MainComp(cx: Scope) {
-    dbg!("run root");
-
-    let (count, set_count) = create_signal(&cx, 0);
-
-    // create_effect(&cx, move |_| {
-    //     dbg!(count.get());
-    // });
-
-    // Button::render(&cx);
-
-    game_ui_view::view! {
-        <Button on_click={move || set_count.update(|c| *c += 1)} style={Style::default()}>
-            <Text text={move || format!("{}", count.get())}>
-            </Text>
-        </Button>
-    };
-
-    // game_ui_view::view! {
-    //     <Button on_click
-    // };
-}
-
-#[game_ui_view::component]
-fn MyComponent(c: &Scope, x: u32) -> Scope {
-    dbg!(x);
-
-    c.clone()
 }

@@ -20,6 +20,8 @@ use render::layout::LayoutTree;
 // use cursor::Cursor;
 // pub use interface::{Context, InterfaceState, Widget, WidgetFlags};
 
+pub use game_ui_macros::{component, view};
+
 pub struct UiPlugin;
 
 impl Plugin for UiPlugin {

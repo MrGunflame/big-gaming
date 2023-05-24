@@ -5,8 +5,38 @@ use syn::parse::{Parse, ParseStream};
 use syn::{parse_macro_input, ExprBlock, Result, Token};
 
 pub fn view(input: TokenStream) -> TokenStream {
-    let node = parse_macro_input!(input as Node);
+    let node = parse_macro_input!(input as ViewInput);
     node.into_token_stream().into()
+}
+
+struct ViewInput {
+    cx: Ident,
+    node: Node,
+}
+
+impl Parse for ViewInput {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let cx = input.parse()?;
+        input.parse::<Token![,]>()?;
+
+        let node = input.parse()?;
+
+        Ok(Self { cx, node })
+    }
+}
+
+impl ToTokens for ViewInput {
+    fn to_tokens(&self, tokens: &mut TokenStream2) {
+        let cx = &self.cx;
+        let node = &self.node;
+
+        tokens.extend(quote! {
+            {
+                let cx = &#cx;
+                #node
+            }
+        });
+    }
 }
 
 #[derive(Clone, Debug)]
