@@ -351,6 +351,8 @@ impl LayoutTree {
                                 layout.position.x -= layout.width;
                             }
                         }
+
+                        self.layout_element(child);
                     }
                 }
                 Justify::Center => {
@@ -402,7 +404,8 @@ impl LayoutTree {
                             let total_size =
                                 (layout.position.y + layout.height) - layout.position.y;
 
-                            let mut next_pos = (total_size - allocated_space.y) / 2.0;
+                            let mut next_pos =
+                                layout.position.y + ((total_size - allocated_space.y) / 2.0);
 
                             for child in children {
                                 let layout = self.layouts.get_mut(child).unwrap();
@@ -413,7 +416,8 @@ impl LayoutTree {
                         }
                         Direction::Column => {
                             let total_size = (layout.position.x + layout.width) - layout.position.x;
-                            let mut next_pos = (total_size - allocated_space.x) / 2.0;
+                            let mut next_pos =
+                                layout.position.x + ((total_size - allocated_space.x) / 2.0);
 
                             for child in children {
                                 let layout = self.layouts.get_mut(child).unwrap();
@@ -422,6 +426,10 @@ impl LayoutTree {
                                 next_pos += layout.width;
                             }
                         }
+                    }
+
+                    for child in children.clone() {
+                        self.layout_element(child);
                     }
                 }
                 Justify::SpaceBetween => {
@@ -477,7 +485,7 @@ impl LayoutTree {
                             let distance = (total_size - allocated_space.y)
                                 / children.len().saturating_sub(1) as f32;
 
-                            let mut next_pos = 0.0;
+                            let mut next_pos = layout.position.y;
 
                             for child in children {
                                 let layout = self.layouts.get_mut(child).unwrap();
@@ -494,7 +502,7 @@ impl LayoutTree {
                             let distance = (total_size - allocated_space.x)
                                 / children.len().saturating_sub(1) as f32;
 
-                            let mut next_pos = 0.0;
+                            let mut next_pos = layout.position.x;
 
                             for child in children {
                                 let layout = self.layouts.get_mut(child).unwrap();
@@ -504,6 +512,10 @@ impl LayoutTree {
                                 next_pos += distance;
                             }
                         }
+                    }
+
+                    for child in children.clone() {
+                        self.layout_element(child);
                     }
                 }
                 Justify::SpaceAround => {
@@ -562,7 +574,7 @@ impl LayoutTree {
                             let distance =
                                 (total_size - allocated_space.y) / (children.len() + 1) as f32;
 
-                            let mut next_pos = distance;
+                            let mut next_pos = layout.position.y + distance;
 
                             for child in children {
                                 let layout = self.layouts.get_mut(child).unwrap();
@@ -578,7 +590,7 @@ impl LayoutTree {
                             let distance =
                                 (total_size - allocated_space.x) / (children.len() + 1) as f32;
 
-                            let mut next_pos = distance;
+                            let mut next_pos = layout.position.x + distance;
 
                             for child in children {
                                 let layout = self.layouts.get_mut(child).unwrap();
@@ -588,6 +600,10 @@ impl LayoutTree {
                                 next_pos += distance;
                             }
                         }
+                    }
+
+                    for child in children.clone() {
+                        self.layout_element(child);
                     }
                 }
             }
