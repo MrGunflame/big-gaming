@@ -1,7 +1,9 @@
 use std::collections::VecDeque;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use bevy_ecs::system::Resource;
+use parking_lot::Mutex;
 use tokio::fs::{File, OpenOptions};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::oneshot::error::TryRecvError;
@@ -24,8 +26,10 @@ impl Backend {
         (
             Self { rx },
             Handle {
-                tx,
-                recvs: VecDeque::new(),
+                inner: Arc::new(Mutex::new(HandleInner {
+                    tx,
+                    recvs: VecDeque::new(),
+                })),
             },
         )
     }
@@ -113,27 +117,36 @@ pub struct WriteModule {
 
 pub type TaskResult<T> = Result<T, game_data::Error>;
 
-#[derive(Debug, Resource)]
+#[derive(Clone, Debug, Resource)]
 pub struct Handle {
+    inner: Arc<Mutex<HandleInner>>,
+}
+
+#[derive(Debug)]
+struct HandleInner {
     tx: mpsc::Sender<(Task, oneshot::Sender<Response>)>,
     recvs: VecDeque<oneshot::Receiver<Response>>,
 }
 
 impl Handle {
-    pub fn send(&mut self, task: Task) {
+    pub fn send(&self, task: Task) {
+        let mut inner = self.inner.lock();
+
         let (tx, rx) = oneshot::channel();
-        self.tx.try_send((task, tx)).unwrap();
-        self.recvs.push_back(rx);
+        inner.tx.try_send((task, tx)).unwrap();
+        inner.recvs.push_back(rx);
     }
 
-    pub fn recv(&mut self) -> Option<Response> {
+    pub fn recv(&self) -> Option<Response> {
+        let mut inner = self.inner.lock();
+
         let mut index = 0;
-        while index < self.recvs.len() {
-            let rx = &mut self.recvs[index];
+        while index < inner.recvs.len() {
+            let rx = &mut inner.recvs[index];
 
             match rx.try_recv() {
                 Ok(resp) => {
-                    self.recvs.remove(index);
+                    inner.recvs.remove(index);
                     return Some(resp);
                 }
                 Err(TryRecvError::Empty) => (),

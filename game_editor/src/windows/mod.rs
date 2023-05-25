@@ -1,15 +1,24 @@
 mod modules;
+mod open_module;
 mod view;
 
 use std::collections::VecDeque;
 use std::sync::Arc;
 
 use bevy_app::Plugin;
-use bevy_ecs::prelude::{EventReader, EventWriter};
-use bevy_ecs::system::{Commands, ResMut, Resource};
+use bevy_ecs::prelude::{Entity, EventReader, EventWriter, Res};
+use bevy_ecs::system::{Commands, Query, ResMut, Resource};
 use game_ui::events::Events;
+use game_ui::reactive::Document;
 use game_ui::render::layout::LayoutTree;
+use game_ui::view;
+use game_window::Window;
 use parking_lot::RwLock;
+
+use crate::backend::Handle;
+
+use self::modules::*;
+use self::open_module::*;
 
 pub struct WindowsPlugin;
 
@@ -29,10 +38,20 @@ impl Plugin for WindowsPlugin {
     }
 }
 
-fn spawn_windows(mut commands: Commands, mut events: EventReader<SpawnWindow>) {
+fn spawn_windows(
+    mut commands: Commands,
+    mut events: EventReader<SpawnWindow>,
+    queue: ResMut<SpawnWindowQueue>,
+    handle: Res<Handle>,
+) {
     for event in events.iter() {
-        let mut tree = LayoutTree::new();
-        let mut events = Events::default();
+        let window = Window {
+            title: "test".to_owned(),
+        };
+
+        let tree = LayoutTree::new();
+        let events = Events::default();
+        let document = Document::new();
 
         // let mut ctx = Context {
         //     parent: None,
@@ -56,14 +75,46 @@ fn spawn_windows(mut commands: Commands, mut events: EventReader<SpawnWindow>) {
         //         view::spawn_view_window(&mut commands);
         //     }
         // }
+
+        if let SpawnWindow::CloseWindow(id) = event {
+            commands.entity(*id).despawn();
+            continue;
+        }
+
+        let mut cmds = commands.spawn(window);
+        let id = cmds.id();
+
+        let cx = document.root_scope();
+        match event {
+            SpawnWindow::Modules => {
+                view! {
+                    cx,
+                    <Modules queue={queue.clone()}>
+                    </Modules>
+                };
+            }
+            SpawnWindow::OpenModule => {
+                view! {
+                    cx,
+                    <OpenModule window={id} handle={handle.clone()} queue={queue.clone()}>
+                    </OpenModule>
+                };
+            }
+            SpawnWindow::CloseWindow(_) => unreachable!(),
+            _ => todo!(),
+        }
+
+        cmds.insert((tree, events, document));
     }
 }
 
+#[derive(Clone, Debug)]
 pub enum SpawnWindow {
     Modules,
     CreateModule,
     OpenModule,
     View,
+    CloseWindow(Entity),
 }
 
 #[derive(Resource, Default, Clone)]

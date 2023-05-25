@@ -7,13 +7,18 @@ use std::sync::Arc;
 
 use bevy_ecs::prelude::Entity;
 use bevy_ecs::system::Resource;
-use game_ui::reactive::{create_effect, create_signal, Scope};
+use bevy_ecs::world::World;
+use game_ui::reactive::{create_effect, create_signal, ReadSignal, Scope, WriteSignal};
 use game_ui::render::layout::Key;
-use game_ui::render::style::{Background, Direction, Growth, Style};
+use game_ui::render::style::{Background, Direction, Growth, Justify, Style};
 use game_ui::widgets::{Button, ButtonProps, Container, ContainerProps, Text, TextProps};
 use game_ui::{component, view};
 use image::Rgba;
 use parking_lot::RwLock;
+
+const BACKGROUND_COLOR: &str = "353535";
+
+const SELECTED_COLOR: &str = "2a2a2a";
 
 #[component]
 pub fn Explorer(
@@ -27,17 +32,33 @@ pub fn Explorer(
     let (selected_entries, set_selected_entries) = create_signal(cx, entries.clone());
 
     let root = view! { cx,
-        <Container style={Style { direction: Direction::Column, ..Default::default() }}>
-        </Container>
-    };
-
-    let main = view! { root,
-        <Container style={Style { growth: Growth(Some(1.0)), ..Default::default() }}>
+        <Container style={Style {
+            direction: Direction::Column,
+            background: Background::from_hex(BACKGROUND_COLOR).unwrap(),
+            ..Default::default()
+        }}>
         </Container>
     };
 
     let side = view! { root,
         <Container style={Style { growth: Growth(Some(1.0)), ..Default::default() }}>
+        </Container>
+    };
+
+    let main = view! { root,
+        <Container style={Style { growth: Growth(Some(1.0)), justify: Justify::SpaceBetween, ..Default::default() }}>
+        </Container>
+    };
+
+    let upper = view! {
+        main,
+        <Container style={Style::default()}>
+        </Container>
+    };
+
+    let bottom = view! {
+        main,
+        <Container style={Style { direction: Direction::Column, ..Default::default() }}>
         </Container>
     };
 
@@ -63,7 +84,7 @@ pub fn Explorer(
                 id,
                 Style {
                     background: if selected {
-                        Background::Color(Rgba([255, 0, 0, 255]))
+                        Background::from_hex(SELECTED_COLOR).unwrap()
                     } else {
                         Background::None
                     },
@@ -87,12 +108,12 @@ pub fn Explorer(
         on_open(entries);
     };
 
-    view! { side,
+    view! { bottom,
         <Button on_click={on_cancel.into()} style={Style::default()}>
             <Text text={"Cancel".into()}></Text>
         </Button>
     };
-    view! { side,
+    view! { bottom,
         <Button on_click={on_open.into()} style={Style::default()}>
             <Text text={"Open".into()}></Text>
         </Button>

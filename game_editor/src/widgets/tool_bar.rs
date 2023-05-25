@@ -1,12 +1,33 @@
-use game_ui::render::layout::Key;
-use game_ui::render::style::{Direction, Style};
-use game_ui::render::{Element, ElementBody};
-use game_ui::widgets::Widget;
+use game_ui::reactive::Scope;
+use game_ui::render::style::Style;
+use game_ui::{component, view};
 
-use crate::windows::{SpawnWindow, SpawnWindowQueue};
+use game_ui::widgets::*;
 
-pub struct ToolBar {
-    pub queue: SpawnWindowQueue,
+#[component]
+pub fn ToolBar(cx: &Scope, buttons: Vec<ActionButton>) -> Scope {
+    let root = view! {
+        cx,
+        <Container style={Style::default()}>
+        </Container>
+    };
+
+    for button in buttons {
+        view! {
+            root,
+            <Button on_click={button.on_click.into()} style={Style::default()}>
+                <Text text={button.label.into()}>
+                </Text>
+            </Button>
+        };
+    }
+
+    root
+}
+
+pub struct ActionButton {
+    pub label: String,
+    pub on_click: Box<dyn Fn() + Send + Sync + 'static>,
 }
 
 // impl Widget for ToolBar {

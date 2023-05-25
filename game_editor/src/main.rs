@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use backend::Backend;
 
@@ -20,9 +21,13 @@ use game_ui::UiPlugin;
 use game_window::Window;
 // use plugins::camera::CameraPlugin;
 use tokio::runtime::Runtime;
-use widgets::explorer::{Entry, Event, Explorer, ExplorerProps};
+use widgets::explorer::{Entry, Explorer, ExplorerProps};
 use widgets::tool_bar::ToolBar;
 use windows::SpawnWindowQueue;
+
+use widgets::tool_bar::*;
+
+use crate::windows::SpawnWindow;
 
 mod backend;
 mod widgets;
@@ -56,7 +61,7 @@ fn main() {
         .run();
 }
 
-fn setup(mut commands: Commands, wqueue: Res<SpawnWindowQueue>) {
+fn setup(mut commands: Commands, queue: Res<SpawnWindowQueue>) {
     let mut tree = LayoutTree::new();
     let mut events = Events::default();
 
@@ -86,11 +91,43 @@ fn setup(mut commands: Commands, wqueue: Res<SpawnWindowQueue>) {
 
     let document = Document::new();
 
+    let buttons = vec![
+        ActionButton {
+            label: "Modules".to_owned(),
+            on_click: {
+                let queue = queue.clone();
+                Box::new(move || {
+                    let mut queue = queue.0.write();
+                    queue.push_back(SpawnWindow::Modules);
+                })
+            },
+        },
+        ActionButton {
+            label: "Records".to_owned(),
+            on_click: {
+                let queue = queue.clone();
+
+                Box::new(move || {
+                    let mut queue = queue.0.write();
+                    queue.push_back(SpawnWindow::CreateModule);
+                })
+            },
+        },
+    ];
+
     let cx = document.root_scope();
     game_ui::view! {
         cx,
-        <Explorer path={PathBuf::from("./")} on_cancel={Box::new(||{})} on_open={Box::new(on_open)}>
-        </Explorer>
+        <ToolBar buttons={buttons}>
+        </ToolBar>
+    };
+
+    use game_ui::render::style::Style;
+    use game_ui::widgets::*;
+    game_ui::view! {
+        cx,
+        <Input value={String::from("test")} style={Style::default()}>
+        </Input>
     };
 
     commands
@@ -98,10 +135,4 @@ fn setup(mut commands: Commands, wqueue: Res<SpawnWindowQueue>) {
         .insert(tree)
         .insert(events)
         .insert(document);
-}
-
-fn on_cancel() {}
-
-fn on_open(x: Vec<Entry>) {
-    dbg!(x);
 }
