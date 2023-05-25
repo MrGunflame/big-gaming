@@ -816,6 +816,8 @@ impl Default for ComputedBounds {
 
 #[cfg(test)]
 mod tests {
+    use std::os::unix::raw::off_t;
+
     use glam::Vec2;
 
     use crate::render::layout::ComputedBounds;
@@ -824,7 +826,7 @@ mod tests {
     };
     use crate::render::{BuildPrimitiveElement, Text};
 
-    use super::{size_per_element, Element, ElementBody, LayoutTree};
+    use super::{size_per_element, Element, ElementBody, Key, LayoutTree};
 
     #[test]
     fn size_per_element_row() {
@@ -1106,8 +1108,12 @@ mod tests {
         assert_eq!(layout.width, 10.0);
     }
 
-    #[test]
-    fn compute_layout_justify_start() {
+    fn create_justify_test(
+        direction: Direction,
+        justify: Justify,
+        num_elems: u32,
+        size: f32,
+    ) -> (LayoutTree, Vec<Key>) {
         let mut tree = LayoutTree::new();
         tree.resize(Vec2::splat(1000.0));
 
@@ -1116,7 +1122,14 @@ mod tests {
             Element {
                 body: ElementBody::Container(),
                 style: Style {
-                    justify: Justify::Start,
+                    // Claim entire viewport so we can actually test
+                    // child positions.
+                    bounds: Bounds {
+                        min: SizeVec2::splat(Size::Pixels(1000.0)),
+                        max: SizeVec2::splat(Size::Pixels(1000.0)),
+                    },
+                    direction,
+                    justify,
                     ..Default::default()
                 },
             },
@@ -1126,226 +1139,187 @@ mod tests {
             body: ElementBody::Container(),
             style: Style {
                 bounds: Bounds {
-                    min: SizeVec2::splat(Size::Pixels(10.0)),
-                    max: SizeVec2::splat(Size::Pixels(10.0)),
+                    min: SizeVec2::splat(Size::Pixels(size)),
+                    max: SizeVec2::splat(Size::Pixels(size)),
                 },
                 ..Default::default()
             },
         };
 
-        let key0 = tree.push(Some(root), elem.clone());
-        let key1 = tree.push(Some(root), elem.clone());
-        let key2 = tree.push(Some(root), elem.clone());
+        let keys = (0..num_elems)
+            .map(|_| tree.push(Some(root), elem.clone()))
+            .collect();
 
         tree.compute_layout();
+
+        (tree, keys)
+    }
+
+    #[test]
+    fn compute_layout_row_justify_start() {
+        let size = 10.0;
+
+        let (tree, keys) = create_justify_test(Direction::Row, Justify::Start, 3, size);
 
         let mut offset = 0.0;
-        for key in [key0, key1, key2] {
+        for key in keys {
             let layout = tree.layouts[&key.0];
 
             assert_eq!(layout.position, Vec2::new(0.0, offset));
 
-            offset += 10.0;
+            offset += size;
         }
     }
 
     #[test]
-    fn compute_layout_justify_end() {
-        let mut tree = LayoutTree::new();
-        tree.resize(Vec2::splat(1000.0));
+    fn compute_layout_column_justify_start() {
+        let size = 10.0;
 
-        let root = tree.push(
-            None,
-            Element {
-                body: ElementBody::Container(),
-                style: Style {
-                    // Claim entire viewport so we can actually test
-                    // child positions.
-                    bounds: Bounds {
-                        min: SizeVec2::splat(Size::Pixels(1000.0)),
-                        max: SizeVec2::splat(Size::Pixels(1000.0)),
-                    },
-                    justify: Justify::End,
-                    ..Default::default()
-                },
-            },
-        );
-
-        let elem = Element {
-            body: ElementBody::Container(),
-            style: Style {
-                bounds: Bounds {
-                    min: SizeVec2::splat(Size::Pixels(10.0)),
-                    max: SizeVec2::splat(Size::Pixels(10.0)),
-                },
-                ..Default::default()
-            },
-        };
-
-        let key0 = tree.push(Some(root), elem.clone());
-        let key1 = tree.push(Some(root), elem.clone());
-        let key2 = tree.push(Some(root), elem.clone());
-
-        tree.compute_layout();
-
-        let mut offset = 1000.0 - 10.0 * 3.0;
-        for key in [key0, key1, key2] {
-            let layout = tree.layouts[&key.0];
-
-            assert_eq!(layout.position, Vec2::new(0.0, offset));
-
-            offset += 10.0;
-        }
-    }
-
-    #[test]
-    fn compute_layout_justify_center() {
-        let mut tree = LayoutTree::new();
-        tree.resize(Vec2::splat(1000.0));
-
-        let root = tree.push(
-            None,
-            Element {
-                body: ElementBody::Container(),
-                style: Style {
-                    // Claim entire viewport so we can actually test
-                    // child positions.
-                    bounds: Bounds {
-                        min: SizeVec2::splat(Size::Pixels(1000.0)),
-                        max: SizeVec2::splat(Size::Pixels(1000.0)),
-                    },
-                    justify: Justify::Center,
-                    ..Default::default()
-                },
-            },
-        );
-
-        let elem = Element {
-            body: ElementBody::Container(),
-            style: Style {
-                bounds: Bounds {
-                    min: SizeVec2::splat(Size::Pixels(10.0)),
-                    max: SizeVec2::splat(Size::Pixels(10.0)),
-                },
-                ..Default::default()
-            },
-        };
-
-        let key0 = tree.push(Some(root), elem.clone());
-        let key1 = tree.push(Some(root), elem.clone());
-        let key2 = tree.push(Some(root), elem.clone());
-
-        tree.compute_layout();
-
-        let mut offset = (1000.0 / 2.0) - ((10.0 * 3.0) / 2.0);
-        for key in [key0, key1, key2] {
-            let layout = tree.layouts[&key.0];
-
-            assert_eq!(layout.position, Vec2::new(0.0, offset));
-
-            offset += 10.0;
-        }
-    }
-
-    #[test]
-    fn compute_layout_justify_space_between() {
-        let mut tree = LayoutTree::new();
-        tree.resize(Vec2::splat(1000.0));
-
-        let root = tree.push(
-            None,
-            Element {
-                body: ElementBody::Container(),
-                style: Style {
-                    // Claim entire viewport so we can actually test
-                    // child positions.
-                    bounds: Bounds {
-                        min: SizeVec2::splat(Size::Pixels(1000.0)),
-                        max: SizeVec2::splat(Size::Pixels(1000.0)),
-                    },
-                    justify: Justify::SpaceBetween,
-                    ..Default::default()
-                },
-            },
-        );
-
-        let elem = Element {
-            body: ElementBody::Container(),
-            style: Style {
-                bounds: Bounds {
-                    min: SizeVec2::splat(Size::Pixels(10.0)),
-                    max: SizeVec2::splat(Size::Pixels(10.0)),
-                },
-                ..Default::default()
-            },
-        };
-
-        let key0 = tree.push(Some(root), elem.clone());
-        let key1 = tree.push(Some(root), elem.clone());
-        let key2 = tree.push(Some(root), elem.clone());
-
-        tree.compute_layout();
-
-        let distance = (1000.0 - (10.0 * 3.0)) / 2.0;
+        let (tree, keys) = create_justify_test(Direction::Column, Justify::Start, 3, size);
 
         let mut offset = 0.0;
-        for key in [key0, key1, key2] {
+        for key in keys {
             let layout = tree.layouts[&key.0];
 
-            assert_eq!(layout.position, Vec2::new(0.0, offset));
+            assert_eq!(layout.position, Vec2::new(offset, 0.0));
 
-            offset += 10.0 + distance;
+            offset += size;
         }
     }
 
     #[test]
-    fn compute_layout_justify_space_around() {
-        let mut tree = LayoutTree::new();
-        tree.resize(Vec2::splat(1000.0));
+    fn compute_layout_row_justify_end() {
+        let size = 10.0;
 
-        let root = tree.push(
-            None,
-            Element {
-                body: ElementBody::Container(),
-                style: Style {
-                    // Claim entire viewport so we can actually test
-                    // child positions.
-                    bounds: Bounds {
-                        min: SizeVec2::splat(Size::Pixels(1000.0)),
-                        max: SizeVec2::splat(Size::Pixels(1000.0)),
-                    },
-                    justify: Justify::SpaceAround,
-                    ..Default::default()
-                },
-            },
-        );
+        let (tree, keys) = create_justify_test(Direction::Row, Justify::End, 3, size);
 
-        let elem = Element {
-            body: ElementBody::Container(),
-            style: Style {
-                bounds: Bounds {
-                    min: SizeVec2::splat(Size::Pixels(10.0)),
-                    max: SizeVec2::splat(Size::Pixels(10.0)),
-                },
-                ..Default::default()
-            },
-        };
+        let mut offset = 1000.0 - (size * 3.0);
+        for key in keys {
+            let layout = tree.layouts[&key.0];
 
-        let key0 = tree.push(Some(root), elem.clone());
-        let key1 = tree.push(Some(root), elem.clone());
-        let key2 = tree.push(Some(root), elem.clone());
+            assert_eq!(layout.position, Vec2::new(0.0, offset));
 
-        tree.compute_layout();
+            offset += size;
+        }
+    }
 
-        let distance = (1000.0 - (10.0 * 3.0)) / 4.0;
+    #[test]
+    fn compute_layout_column_justify_end() {
+        let size = 10.0;
+
+        let (tree, keys) = create_justify_test(Direction::Column, Justify::End, 3, size);
+
+        let mut offset = 0.0;
+        for key in keys {
+            let layout = tree.layouts[&key.0];
+
+            assert_eq!(layout.position, Vec2::new(offset, 0.0));
+
+            offset += size;
+        }
+    }
+
+    #[test]
+    fn compute_layout_row_justify_center() {
+        let size = 10.0;
+
+        let (tree, keys) = create_justify_test(Direction::Row, Justify::Center, 3, size);
+
+        let mut offset = (1000.0 - (10.0 * 3.0)) / 2.0;
+        for key in keys {
+            let layout = tree.layouts[&key.0];
+
+            assert_eq!(layout.position, Vec2::new(0.0, offset));
+
+            offset += size;
+        }
+    }
+
+    #[test]
+    fn compute_layout_column_justify_center() {
+        let size = 10.0;
+
+        let (tree, keys) = create_justify_test(Direction::Column, Justify::Center, 3, size);
+
+        let mut offset = (1000.0 - (10.0 * 3.0)) / 2.0;
+        for key in keys {
+            let layout = tree.layouts[&key.0];
+
+            assert_eq!(layout.position, Vec2::new(offset, 0.0));
+
+            offset += size;
+        }
+    }
+
+    #[test]
+    fn compute_layout_row_justify_space_between() {
+        let size = 10.0;
+
+        let (tree, keys) = create_justify_test(Direction::Row, Justify::SpaceBetween, 3, size);
+
+        let distance = (1000.0 - (size * 3.0)) / 2.0;
+
+        let mut offset = 0.0;
+        for key in keys {
+            let layout = tree.layouts[&key.0];
+
+            assert_eq!(layout.position, Vec2::new(0.0, offset));
+
+            offset += size + distance;
+        }
+    }
+
+    #[test]
+    fn compute_layout_column_justify_space_between() {
+        let size = 10.0;
+
+        let (tree, keys) = create_justify_test(Direction::Column, Justify::SpaceBetween, 3, size);
+
+        let distance = (1000.0 - (size * 3.0)) / 2.0;
+
+        let mut offset = 0.0;
+        for key in keys {
+            let layout = tree.layouts[&key.0];
+
+            assert_eq!(layout.position, Vec2::new(offset, 0.0));
+
+            offset += size + distance;
+        }
+    }
+
+    #[test]
+    fn compute_layout_row_justify_space_around() {
+        let size = 10.0;
+
+        let (tree, keys) = create_justify_test(Direction::Row, Justify::SpaceAround, 3, size);
+
+        let distance = (1000.0 - (size * 3.0)) / 4.0;
 
         let mut offset = distance;
-        for key in [key0, key1, key2] {
+        for key in keys {
             let layout = tree.layouts[&key.0];
 
             assert_eq!(layout.position, Vec2::new(0.0, offset));
 
-            offset += 10.0 + distance;
+            offset += size + distance;
+        }
+    }
+
+    #[test]
+    fn compute_layout_column_justify_space_around() {
+        let size = 10.0;
+
+        let (tree, keys) = create_justify_test(Direction::Column, Justify::SpaceAround, 3, size);
+
+        let distance = (1000.0 - (size * 3.0)) / 4.0;
+
+        let mut offset = distance;
+        for key in keys {
+            let layout = tree.layouts[&key.0];
+
+            assert_eq!(layout.position, Vec2::new(offset, 0.0));
+
+            offset += size;
         }
     }
 }
