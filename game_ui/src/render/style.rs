@@ -1,4 +1,3 @@
-use bevy_ecs::system::Res;
 use glam::Vec2;
 use image::{ImageBuffer, Rgba};
 use thiserror::Error;
@@ -11,6 +10,7 @@ pub struct Style {
     pub growth: Growth,
     pub background: Background,
     pub color: Color,
+    pub justify: Justify,
 }
 
 /// Flow direction
@@ -155,4 +155,14 @@ pub enum FromHexError {
     Hex(#[from] hex::FromHexError),
     #[error("invalid length")]
     InvalidLength,
+}
+
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
+pub enum Justify {
+    #[default]
+    Start,
+    End,
+    Center,
+    SpaceBetween,
+    SpaceAround,
 }

@@ -8,7 +8,7 @@ use crate::widgets;
 
 use super::container::Container;
 use super::image::Image;
-use super::style::{Bounds, Direction, Position, Style};
+use super::style::{Bounds, Direction, Justify, Position, Style};
 use super::text::Text;
 use super::BuildPrimitiveElement;
 
@@ -261,37 +261,99 @@ impl LayoutTree {
         );
 
         if let Some(children) = self.children.get(&key).cloned() {
-            let mut next_position = layout.position;
-            let size_per_elem =
-                size_per_element(end - start, children.len() as u32, elem.style.direction);
+            match elem.style.justify {
+                Justify::Start => {
+                    let mut next_position = layout.position;
+                    let size_per_elem =
+                        size_per_element(end - start, children.len() as u32, elem.style.direction);
 
-            for child in children {
-                let child_style = &self.elems[child].style;
+                    for child in children {
+                        let child_style = &self.elems[child].style;
 
-                let bounds = self.compute_bounds(child);
-                let layout = self.layouts.get_mut(&child).unwrap();
+                        let bounds = self.compute_bounds(child);
+                        let layout = self.layouts.get_mut(&child).unwrap();
 
-                match child_style.position {
-                    Position::Relative => {
-                        layout.position = next_position;
-                        layout.width = f32::clamp(size_per_elem.x, bounds.min.x, bounds.max.x);
-                        layout.height = f32::clamp(size_per_elem.y, bounds.min.y, bounds.max.y);
+                        match child_style.position {
+                            Position::Relative => {
+                                layout.position = next_position;
+                                layout.width =
+                                    f32::clamp(size_per_elem.x, bounds.min.x, bounds.max.x);
+                                layout.height =
+                                    f32::clamp(size_per_elem.y, bounds.min.y, bounds.max.y);
 
-                        match elem.style.direction {
-                            Direction::Row => next_position.y += layout.height,
-                            Direction::Column => next_position.x += layout.width,
+                                match elem.style.direction {
+                                    Direction::Row => next_position.y += layout.height,
+                                    Direction::Column => next_position.x += layout.width,
+                                }
+                            }
+                            Position::Absolute(pos) => {
+                                // Give the absolute element as much space as it wants
+                                // as long as it doesn't overflow the viewport.
+                                layout.position = pos;
+                                layout.width = f32::min(self.size.x - pos.x, bounds.max.x);
+                                layout.height = f32::min(self.size.y - pos.y, bounds.max.y);
+                            }
                         }
-                    }
-                    Position::Absolute(pos) => {
-                        // Give the absolute element as much space as it wants
-                        // as long as it doesn't overflow the viewport.
-                        layout.position = pos;
-                        layout.width = f32::min(self.size.x - pos.x, bounds.max.x);
-                        layout.height = f32::min(self.size.y - pos.y, bounds.max.y);
+
+                        self.layout_element(child);
                     }
                 }
+                Justify::End => {
+                    let mut next_position = layout.position
+                        + match elem.style.direction {
+                            Direction::Row => Vec2::new(0.0, layout.height),
+                            Direction::Column => Vec2::new(layout.width, 0.0),
+                        };
 
-                self.layout_element(child);
+                    let size_per_elem =
+                        size_per_element(end - start, children.len() as u32, elem.style.direction);
+
+                    for child in children.iter().rev().copied() {
+                        let child_style = &self.elems[child].style;
+
+                        let bounds = self.compute_bounds(child);
+                        let layout = self.layouts.get_mut(&child).unwrap();
+
+                        match child_style.position {
+                            Position::Relative => {
+                                layout.position = next_position;
+                                layout.width =
+                                    f32::clamp(size_per_elem.x, bounds.min.x, bounds.max.x);
+                                layout.height =
+                                    f32::clamp(size_per_elem.y, bounds.min.y, bounds.max.y);
+
+                                match elem.style.direction {
+                                    Direction::Row => next_position.y -= layout.height,
+                                    Direction::Column => next_position.x -= layout.width,
+                                }
+                            }
+                            Position::Absolute(pos) => {
+                                // Give the absolute element as much space as it wants
+                                // as long as it doesn't overflow the viewport.
+                                layout.position = pos;
+                                layout.width = f32::min(self.size.x - pos.x, bounds.max.x);
+                                layout.height = f32::min(self.size.y - pos.y, bounds.max.y);
+                            }
+                        }
+
+                        self.layout_element(child);
+
+                        // Note that we don't know the size of the element we're rendering
+                        // before we actually render it.
+                        // Because of that we start rendering the end of the allocated space
+                        // and then move it back the by size that it rendered.
+                        let layout = self.layouts.get_mut(&child).unwrap();
+                        match elem.style.direction {
+                            Direction::Row => {
+                                layout.position.y -= layout.height;
+                            }
+                            Direction::Column => {
+                                layout.position.x -= layout.width;
+                            }
+                        }
+                    }
+                }
+                _ => todo!(),
             }
         }
     }
@@ -807,47 +869,95 @@ mod tests {
         assert_eq!(layout.width, 10.0);
     }
 
-    // #[test]
-    // fn compute_layout_justify_start() {
-    //     let mut tree = LayoutTree::new();
-    //     tree.resize(Vec2::splat(1000.0));
+    #[test]
+    fn compute_layout_justify_start() {
+        let mut tree = LayoutTree::new();
+        tree.resize(Vec2::splat(1000.0));
 
-    //     let root = tree.push(
-    //         None,
-    //         Element {
-    //             body: ElementBody::Container(),
-    //             style: Style {
-    //                 justify: Justify::Start,
-    //                 ..Default::default()
-    //             },
-    //         },
-    //     );
+        let root = tree.push(
+            None,
+            Element {
+                body: ElementBody::Container(),
+                style: Style {
+                    justify: Justify::Start,
+                    ..Default::default()
+                },
+            },
+        );
 
-    //     let elem = Element {
-    //         body: ElementBody::Container(),
-    //         style: Style {
-    //             bounds: Bounds {
-    //                 min: SizeVec2::splat(Size::Pixels(10.0)),
-    //                 max: SizeVec2::splat(Size::Pixels(10.0)),
-    //             },
-    //             ..Default::default()
-    //         },
-    //     };
+        let elem = Element {
+            body: ElementBody::Container(),
+            style: Style {
+                bounds: Bounds {
+                    min: SizeVec2::splat(Size::Pixels(10.0)),
+                    max: SizeVec2::splat(Size::Pixels(10.0)),
+                },
+                ..Default::default()
+            },
+        };
 
-    //     let key0 = tree.push(Some(root), elem.clone());
-    //     let key1 = tree.push(Some(root), elem.clone());
-    //     let key2 = tree.push(Some(root), elem.clone());
+        let key0 = tree.push(Some(root), elem.clone());
+        let key1 = tree.push(Some(root), elem.clone());
+        let key2 = tree.push(Some(root), elem.clone());
 
-    //     tree.compute_layout();
+        tree.compute_layout();
 
-    //     let mut offset = 0.0;
-    //     for key in [key0, key1, key2] {
-    //         dbg!(key);
-    //         let layout = tree.layouts[&key.0];
+        let mut offset = 0.0;
+        for key in [key0, key1, key2] {
+            let layout = tree.layouts[&key.0];
 
-    //         assert_eq!(layout.position, Vec2::new(offset, 0.0));
+            assert_eq!(layout.position, Vec2::new(0.0, offset));
 
-    //         offset += 10.0;
-    //     }
-    // }
+            offset += 10.0;
+        }
+    }
+
+    #[test]
+    fn compute_layout_justify_end() {
+        let mut tree = LayoutTree::new();
+        tree.resize(Vec2::splat(1000.0));
+
+        let root = tree.push(
+            None,
+            Element {
+                body: ElementBody::Container(),
+                style: Style {
+                    // Claim entire viewport so we can actually test
+                    // child positions.
+                    bounds: Bounds {
+                        min: SizeVec2::splat(Size::Pixels(1000.0)),
+                        max: SizeVec2::splat(Size::Pixels(1000.0)),
+                    },
+                    justify: Justify::End,
+                    ..Default::default()
+                },
+            },
+        );
+
+        let elem = Element {
+            body: ElementBody::Container(),
+            style: Style {
+                bounds: Bounds {
+                    min: SizeVec2::splat(Size::Pixels(10.0)),
+                    max: SizeVec2::splat(Size::Pixels(10.0)),
+                },
+                ..Default::default()
+            },
+        };
+
+        let key0 = tree.push(Some(root), elem.clone());
+        let key1 = tree.push(Some(root), elem.clone());
+        let key2 = tree.push(Some(root), elem.clone());
+
+        tree.compute_layout();
+
+        let mut offset = 1000.0 - 10.0 * 3.0;
+        for key in [key0, key1, key2] {
+            let layout = tree.layouts[&key.0];
+
+            assert_eq!(layout.position, Vec2::new(0.0, offset));
+
+            offset += 10.0;
+        }
+    }
 }
