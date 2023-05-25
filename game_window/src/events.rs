@@ -14,11 +14,6 @@ pub struct WindowResized {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct WindowClosing {
-    pub window: Entity,
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct WindowDestroyed {
     pub window: Entity,
 }

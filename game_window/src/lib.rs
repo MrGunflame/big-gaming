@@ -12,8 +12,8 @@ use bevy_ecs::query::Added;
 use bevy_ecs::system::{Commands, Query, ResMut, Resource, SystemState};
 use bevy_ecs::world::FromWorld;
 use events::{
-    CursorEntered, CursorLeft, CursorMoved, ReceivedCharacter, WindowCloseRequested, WindowClosing,
-    WindowCreated, WindowDestroyed, WindowResized,
+    CursorEntered, CursorLeft, CursorMoved, ReceivedCharacter, WindowCloseRequested, WindowCreated,
+    WindowDestroyed, WindowResized,
 };
 use game_input::keyboard::{KeyboardInput, ScanCode};
 use game_input::mouse::{MouseButton, MouseButtonInput, MouseMotion, MouseScrollUnit, MouseWheel};
@@ -49,7 +49,6 @@ impl Plugin for WindowPlugin {
         app.add_event::<CursorEntered>();
         app.add_event::<CursorLeft>();
         app.add_event::<WindowCloseRequested>();
-        app.add_event::<WindowClosing>();
         app.add_event::<ReceivedCharacter>();
 
         app.add_system(systems::close_requested_windows);

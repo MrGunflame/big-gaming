@@ -16,10 +16,11 @@ use std::sync::Arc;
 use bevy_app::{App, Plugin};
 use bevy_ecs::prelude::{Entity, EventReader};
 use bevy_ecs::query::QueryState;
+use bevy_ecs::removal_detection::RemovedComponents;
 use bevy_ecs::system::{Query, Res, ResMut, Resource};
 use bevy_ecs::world::World;
-use game_window::events::{WindowCloseRequested, WindowCreated, WindowResized};
-use game_window::{WindowPlugin, WindowState};
+use game_window::events::{WindowCreated, WindowResized};
+use game_window::{Window, WindowPlugin, WindowState};
 use graph::{RenderContext, RenderGraph};
 use pipeline::MainPass;
 use wgpu::{
@@ -199,12 +200,13 @@ pub fn resize_surfaces(
     }
 }
 
+// Remove RenderWindows that no longer have
 pub fn destroy_surfaces(
     mut surfaces: ResMut<WindowSurfaces>,
-    mut events: EventReader<WindowCloseRequested>,
+    mut removed: RemovedComponents<Window>,
 ) {
-    for event in events.iter() {
-        surfaces.windows.remove(&event.window);
+    for entity in removed.iter() {
+        surfaces.windows.remove(&entity);
     }
 }
 
