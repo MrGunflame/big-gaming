@@ -573,8 +573,7 @@ impl LayoutTree {
                             }
                         }
                         Direction::Column => {
-                            let total_size =
-                                (layout.position.x + layout.height) - layout.position.x;
+                            let total_size = (layout.position.x + layout.width) - layout.position.x;
 
                             let distance =
                                 (total_size - allocated_space.x) / (children.len() + 1) as f32;
@@ -1209,7 +1208,7 @@ mod tests {
 
         let (tree, keys) = create_justify_test(Direction::Column, Justify::End, 3, size);
 
-        let mut offset = 0.0;
+        let mut offset = 1000.0 - (size * 3.0);
         for key in keys {
             let layout = tree.layouts[&key.0];
 
@@ -1319,7 +1318,7 @@ mod tests {
 
             assert_eq!(layout.position, Vec2::new(offset, 0.0));
 
-            offset += size;
+            offset += size + distance;
         }
     }
 }
