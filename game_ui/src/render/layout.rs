@@ -424,7 +424,6 @@ impl LayoutTree {
                         }
                     }
                 }
-
                 Justify::SpaceBetween => {
                     let mut next_position = layout.position;
                     let size_per_elem =
@@ -507,7 +506,91 @@ impl LayoutTree {
                         }
                     }
                 }
-                _ => todo!(),
+                Justify::SpaceAround => {
+                    let mut next_position = layout.position;
+                    let size_per_elem =
+                        size_per_element(end - start, children.len() as u32, elem.style.direction);
+
+                    for child in children {
+                        let child_style = &self.elems[child].style;
+
+                        let bounds = self.compute_bounds(child);
+                        let layout = self.layouts.get_mut(&child).unwrap();
+
+                        match child_style.position {
+                            Position::Relative => {
+                                layout.position = next_position;
+                                layout.width =
+                                    f32::clamp(size_per_elem.x, bounds.min.x, bounds.max.x);
+                                layout.height =
+                                    f32::clamp(size_per_elem.y, bounds.min.y, bounds.max.y);
+
+                                match elem.style.direction {
+                                    Direction::Row => next_position.y += layout.height,
+                                    Direction::Column => next_position.x += layout.width,
+                                }
+                            }
+                            Position::Absolute(pos) => {
+                                // Give the absolute element as much space as it wants
+                                // as long as it doesn't overflow the viewport.
+                                layout.position = pos;
+                                layout.width = f32::min(self.size.x - pos.x, bounds.max.x);
+                                layout.height = f32::min(self.size.y - pos.y, bounds.max.y);
+                            }
+                        }
+
+                        self.layout_element(child);
+                    }
+
+                    let elem = self.elems[key].clone();
+                    let layout = &self.layouts[&key];
+                    let children = self.children.get(&key).unwrap();
+
+                    // The first element is spaced at `layout.position` and the
+                    // end of the last element at `next_position`.
+                    let allocated_space = next_position - layout.position;
+
+                    match elem.style.direction {
+                        Direction::Row => {
+                            let total_size =
+                                (layout.position.y + layout.height) - layout.position.y;
+
+                            // Distance/emtpy space betweem elements and borders.
+                            // Note that overflows not possible as that would require
+                            // more that `isize::MAX` children to be allocated, which
+                            // is not allowed.
+                            let distance =
+                                (total_size - allocated_space.y) / (children.len() + 1) as f32;
+
+                            let mut next_pos = distance;
+
+                            for child in children {
+                                let layout = self.layouts.get_mut(child).unwrap();
+                                layout.position.y = next_pos;
+
+                                next_pos += layout.height;
+                                next_pos += distance;
+                            }
+                        }
+                        Direction::Column => {
+                            let total_size =
+                                (layout.position.x + layout.height) - layout.position.x;
+
+                            let distance =
+                                (total_size - allocated_space.x) / (children.len() + 1) as f32;
+
+                            let mut next_pos = distance;
+
+                            for child in children {
+                                let layout = self.layouts.get_mut(child).unwrap();
+                                layout.position.x = next_pos;
+
+                                next_pos += layout.width;
+                                next_pos += distance;
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -1206,6 +1289,57 @@ mod tests {
         let distance = (1000.0 - (10.0 * 3.0)) / 2.0;
 
         let mut offset = 0.0;
+        for key in [key0, key1, key2] {
+            let layout = tree.layouts[&key.0];
+
+            assert_eq!(layout.position, Vec2::new(0.0, offset));
+
+            offset += 10.0 + distance;
+        }
+    }
+
+    #[test]
+    fn compute_layout_justify_space_around() {
+        let mut tree = LayoutTree::new();
+        tree.resize(Vec2::splat(1000.0));
+
+        let root = tree.push(
+            None,
+            Element {
+                body: ElementBody::Container(),
+                style: Style {
+                    // Claim entire viewport so we can actually test
+                    // child positions.
+                    bounds: Bounds {
+                        min: SizeVec2::splat(Size::Pixels(1000.0)),
+                        max: SizeVec2::splat(Size::Pixels(1000.0)),
+                    },
+                    justify: Justify::SpaceAround,
+                    ..Default::default()
+                },
+            },
+        );
+
+        let elem = Element {
+            body: ElementBody::Container(),
+            style: Style {
+                bounds: Bounds {
+                    min: SizeVec2::splat(Size::Pixels(10.0)),
+                    max: SizeVec2::splat(Size::Pixels(10.0)),
+                },
+                ..Default::default()
+            },
+        };
+
+        let key0 = tree.push(Some(root), elem.clone());
+        let key1 = tree.push(Some(root), elem.clone());
+        let key2 = tree.push(Some(root), elem.clone());
+
+        tree.compute_layout();
+
+        let distance = (1000.0 - (10.0 * 3.0)) / 4.0;
+
+        let mut offset = distance;
         for key in [key0, key1, key2] {
             let layout = tree.layouts[&key.0];
 
