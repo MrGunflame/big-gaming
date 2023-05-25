@@ -4,8 +4,6 @@ use bevy_ecs::prelude::Component;
 use glam::Vec2;
 use slotmap::{DefaultKey, SlotMap};
 
-use crate::widgets;
-
 use super::container::Container;
 use super::image::Image;
 use super::style::{Bounds, Direction, Justify, Position, Style};
@@ -831,7 +829,6 @@ impl Default for ComputedBounds {
 
 #[cfg(test)]
 mod tests {
-    use std::os::unix::raw::off_t;
 
     use glam::Vec2;
 

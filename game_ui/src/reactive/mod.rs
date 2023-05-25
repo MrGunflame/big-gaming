@@ -144,6 +144,13 @@ impl Document {
         for effect_id in queue {
             tracing::trace!("call Effect({:?})", effect_id);
 
+            if cfg!(debug_assertions) {
+                let doc = self.inner.lock();
+                let effect = doc.effects.get(effect_id.0).unwrap();
+
+                tracing::trace!("Calling Effect {:?}", effect);
+            }
+
             let mut doc = self.inner.lock();
             let effect = doc.effects.get_mut(effect_id.0).unwrap();
 
@@ -191,11 +198,6 @@ impl Document {
                         .map(|p| p.map(|p| doc.node_mappings.get(&p).copied()))
                         .flatten()
                         .flatten();
-
-                    dbg!(&id);
-                    dbg!(&doc.parents);
-                    dbg!(&node.element);
-                    dbg!(parent);
 
                     let key = tree.push(parent, node.element);
 
