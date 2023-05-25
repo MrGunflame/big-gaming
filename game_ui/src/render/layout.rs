@@ -4,6 +4,8 @@ use bevy_ecs::prelude::Component;
 use glam::Vec2;
 use slotmap::{DefaultKey, SlotMap};
 
+use crate::widgets;
+
 use super::container::Container;
 use super::image::Image;
 use super::style::{Bounds, Direction, Position, Style};
@@ -152,39 +154,8 @@ impl LayoutTree {
     pub fn compute_layout(&mut self) {
         self.computed_sizes();
 
-        let mut bounds = ComputedBounds::default();
-        for key in &self.root {
-            let child_bounds = self.compute_bounds(*key);
-
-            // Root elements always flow into Row direction.
-            bounds.min.x = f32::max(bounds.min.x, child_bounds.min.x);
-            bounds.min.y += bounds.min.y;
-
-            bounds.max.x = f32::max(bounds.max.x, child_bounds.max.x);
-            bounds.max.y += bounds.max.y;
-
-            // let elem = &self.elems[*key];
-
-            // let min_width = elem.bounds().min.unwrap_or_default().y;
-            // let min_height = elem.bounds().min.unwrap_or_default().x;
-
-            // Create the layout based on the minimal size.
-            // let layout = &mut self.layouts[*key];
-            // layout.position = Vec2::new(allocated.x, 0.0);
-            // layout.width = min_width;
-            // layout.height = min_height;
-
-            // match direction {
-            //     Direction::Row => {
-            //         allocated.x += min_width;
-            //     }
-            //     Direction::Column => {
-            //         allocated.y += min_height;
-            //     }
-            // }
-
-            // width += min_width;
-        }
+        // Root behaves like an element with default styles,
+        // i.e. row flow direction and start align/justify.
 
         let mut next_position = Vec2::splat(0.0);
         let size_per_elem = size_per_element(self.size, self.root.len() as u32, Direction::Row);
@@ -203,27 +174,12 @@ impl LayoutTree {
 
             self.layout_element(*key);
         }
-
-        // for key in &self.root {
-        //     let elem = &self.elems[*key];
-        //     let layout = &mut self.layouts[*key];
-
-        //     let max = elem.bounds().max.unwrap_or(Vec2::splat(f32::INFINITY));
-        //     layout.width = f32::min(size_per_elem.x, max.x);
-        //     layout.height = f32::min(size_per_elem.y, max.y);
-
-        //     layout.position = next_position;
-        //     match direction {
-        //         Direction::Row => next_position.y += layout.height,
-        //         Direction::Column => next_position.x += layout.width,
-        //     }
-        // }
     }
 
     fn compute_bounds(&self, key: DefaultKey) -> ComputedBounds {
         let elem = &self.elems[key];
 
-        match &elem.body {
+        let mut bounds = match &elem.body {
             ElementBody::Container() => {
                 // Infer the bounds from the children elements.
                 if let Some(children) = self.children.get(&key) {
@@ -275,7 +231,23 @@ impl LayoutTree {
             }
             ElementBody::Image(elem) => elem.bounds(),
             ElementBody::Text(elem) => elem.bounds(),
-        }
+        };
+
+        let min_x = elem.style.bounds.min.x.to_pixels(self.size);
+        let max_x = elem.style.bounds.max.x.to_pixels(self.size);
+        let min_y = elem.style.bounds.min.y.to_pixels(self.size);
+        let max_y = elem.style.bounds.max.y.to_pixels(self.size);
+
+        bounds.min.x = f32::max(bounds.min.x, min_x);
+        bounds.min.y = f32::max(bounds.min.y, min_y);
+
+        bounds.max.x = f32::clamp(bounds.max.x, bounds.min.x, max_x);
+        bounds.max.y = f32::clamp(bounds.max.y, bounds.min.y, max_y);
+
+        debug_assert!(bounds.min.x <= bounds.max.x, "min.x <= max.x {:?}", bounds);
+        debug_assert!(bounds.min.y <= bounds.max.y, "min.y <= min.y {:?}", bounds);
+
+        bounds
     }
 
     fn layout_element(&mut self, key: DefaultKey) {
@@ -548,7 +520,9 @@ mod tests {
     use glam::Vec2;
 
     use crate::render::layout::ComputedBounds;
-    use crate::render::style::{Direction, Growth, Position, Style};
+    use crate::render::style::{
+        Bounds, Direction, Growth, Justify, Position, Size, SizeVec2, Style,
+    };
     use crate::render::{BuildPrimitiveElement, Text};
 
     use super::{size_per_element, Element, ElementBody, LayoutTree};
@@ -741,4 +715,139 @@ mod tests {
         let bounds = tree.compute_bounds(key.0);
         assert_eq!(bounds, ComputedBounds::ZERO);
     }
+
+    #[test]
+    fn compute_bounds_exact_size() {
+        let mut tree = LayoutTree::new();
+        tree.resize(Vec2::splat(1000.0));
+
+        let bounds = Bounds {
+            min: SizeVec2::splat(Size::Pixels(10.0)),
+            max: SizeVec2::splat(Size::Pixels(10.0)),
+        };
+
+        let key = tree.push(
+            None,
+            Element {
+                body: ElementBody::Container(),
+                style: Style {
+                    bounds,
+                    ..Default::default()
+                },
+            },
+        );
+
+        let bounds = tree.compute_bounds(key.0);
+
+        assert_eq!(bounds.min, Vec2::splat(10.0));
+        assert_eq!(bounds.max, Vec2::splat(10.0));
+    }
+
+    #[test]
+    fn compute_layout_exact_size_root() {
+        let mut tree = LayoutTree::new();
+        tree.resize(Vec2::splat(1000.0));
+
+        let bounds = Bounds {
+            min: SizeVec2::splat(Size::Pixels(10.0)),
+            max: SizeVec2::splat(Size::Pixels(10.0)),
+        };
+
+        let key = tree.push(
+            None,
+            Element {
+                body: ElementBody::Container(),
+                style: Style {
+                    bounds,
+                    ..Default::default()
+                },
+            },
+        );
+
+        tree.compute_layout();
+
+        let layout = tree.layouts[&key.0];
+        assert_eq!(layout.height, 10.0);
+        assert_eq!(layout.width, 10.0);
+    }
+
+    #[test]
+    fn compute_layout_exact_size_children() {
+        let mut tree = LayoutTree::new();
+        tree.resize(Vec2::splat(1000.0));
+
+        let bounds = Bounds {
+            min: SizeVec2::splat(Size::Pixels(10.0)),
+            max: SizeVec2::splat(Size::Pixels(10.0)),
+        };
+
+        let root = tree.push(
+            None,
+            Element {
+                body: ElementBody::Container(),
+                style: Style::default(),
+            },
+        );
+
+        let key = tree.push(
+            Some(root),
+            Element {
+                body: ElementBody::Container(),
+                style: Style {
+                    bounds,
+                    ..Default::default()
+                },
+            },
+        );
+
+        tree.compute_layout();
+
+        let layout = tree.layouts[&key.0];
+        assert_eq!(layout.height, 10.0);
+        assert_eq!(layout.width, 10.0);
+    }
+
+    // #[test]
+    // fn compute_layout_justify_start() {
+    //     let mut tree = LayoutTree::new();
+    //     tree.resize(Vec2::splat(1000.0));
+
+    //     let root = tree.push(
+    //         None,
+    //         Element {
+    //             body: ElementBody::Container(),
+    //             style: Style {
+    //                 justify: Justify::Start,
+    //                 ..Default::default()
+    //             },
+    //         },
+    //     );
+
+    //     let elem = Element {
+    //         body: ElementBody::Container(),
+    //         style: Style {
+    //             bounds: Bounds {
+    //                 min: SizeVec2::splat(Size::Pixels(10.0)),
+    //                 max: SizeVec2::splat(Size::Pixels(10.0)),
+    //             },
+    //             ..Default::default()
+    //         },
+    //     };
+
+    //     let key0 = tree.push(Some(root), elem.clone());
+    //     let key1 = tree.push(Some(root), elem.clone());
+    //     let key2 = tree.push(Some(root), elem.clone());
+
+    //     tree.compute_layout();
+
+    //     let mut offset = 0.0;
+    //     for key in [key0, key1, key2] {
+    //         dbg!(key);
+    //         let layout = tree.layouts[&key.0];
+
+    //         assert_eq!(layout.position, Vec2::new(offset, 0.0));
+
+    //         offset += 10.0;
+    //     }
+    // }
 }
