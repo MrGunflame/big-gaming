@@ -140,7 +140,11 @@ fn setup(mut commands: Commands, queue: Res<SpawnWindowQueue>) {
         .insert(document);
 }
 
-fn load_from_backend(handle: Res<Handle>, mut modules: ResMut<Modules>) {
+fn load_from_backend(
+    handle: Res<Handle>,
+    mut modules: ResMut<Modules>,
+    mut queue: Res<SpawnWindowQueue>,
+) {
     while let Some(resp) = handle.recv() {
         match resp {
             Response::LoadModule(res) => match res {
@@ -149,6 +153,11 @@ fn load_from_backend(handle: Res<Handle>, mut modules: ResMut<Modules>) {
                 }
                 Err(err) => {
                     tracing::error!("failed to load module: {}", err);
+
+                    let msg = format!("failed to load module: {}", err);
+
+                    let mut queue = queue.0.write();
+                    queue.push_back(SpawnWindow::Error(msg));
                 }
             },
             Response::WriteModule(res) => todo!(),

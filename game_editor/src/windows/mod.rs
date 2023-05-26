@@ -1,3 +1,4 @@
+mod error;
 mod modules;
 mod open_module;
 mod view;
@@ -17,6 +18,7 @@ use parking_lot::RwLock;
 
 use crate::backend::Handle;
 
+use self::error::*;
 use self::modules::*;
 use self::open_module::*;
 
@@ -101,6 +103,13 @@ fn spawn_windows(
                     </OpenModule>
                 };
             }
+            SpawnWindow::Error(msg) => {
+                view! {
+                    cx,
+                    <Error message={msg}>
+                    </Error>
+                };
+            }
             SpawnWindow::CloseWindow(_) => unreachable!(),
             _ => todo!(),
         }
@@ -116,6 +125,7 @@ pub enum SpawnWindow {
     OpenModule,
     View,
     CloseWindow(Entity),
+    Error(String),
 }
 
 #[derive(Resource, Default, Clone)]

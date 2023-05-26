@@ -1,5 +1,5 @@
 use bevy_ecs::world::World;
-use game_ui::reactive::Scope;
+use game_ui::reactive::{create_effect, create_signal, Scope};
 use game_ui::render::style::Style;
 use game_ui::render::{Element, ElementBody};
 use game_ui::widgets::{Text, Widget};
