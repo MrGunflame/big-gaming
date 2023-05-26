@@ -18,7 +18,9 @@ use parking_lot::RwLock;
 
 const BACKGROUND_COLOR: &str = "353535";
 
-const SELECTED_COLOR: &str = "2a2a2a";
+const SELECTED_COLOR: &str = "047dd3";
+
+// const SELECTED_COLOR: &str = "2a2a2a";
 
 #[component]
 pub fn Explorer(

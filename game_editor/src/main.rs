@@ -1,11 +1,11 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use backend::Backend;
+use backend::{Backend, Handle, Response};
 
 use bevy_app::App;
 use bevy_ecs::prelude::Res;
-use bevy_ecs::system::{Commands, Query};
+use bevy_ecs::system::{Commands, Query, ResMut};
 use game_ui::events::Events;
 use game_ui::reactive::Document;
 use game_ui::render::style::Background;
@@ -19,6 +19,7 @@ use game_ui::render::layout::LayoutTree;
 use game_ui::widgets::Widget;
 use game_ui::UiPlugin;
 use game_window::Window;
+use state::module::Modules;
 // use plugins::camera::CameraPlugin;
 use tokio::runtime::Runtime;
 use widgets::explorer::{Entry, Explorer, ExplorerProps};
@@ -54,10 +55,12 @@ fn main() {
     });
 
     App::new()
+        .insert_resource(Modules::new())
         .insert_resource(handle)
         .add_plugin(UiPlugin)
         .add_startup_system(setup)
         .add_plugin(windows::WindowsPlugin)
+        .add_system(load_from_backend)
         .run();
 }
 
@@ -135,4 +138,20 @@ fn setup(mut commands: Commands, queue: Res<SpawnWindowQueue>) {
         .insert(tree)
         .insert(events)
         .insert(document);
+}
+
+fn load_from_backend(handle: Res<Handle>, mut modules: ResMut<Modules>) {
+    while let Some(resp) = handle.recv() {
+        match resp {
+            Response::LoadModule(res) => match res {
+                Ok(module) => {
+                    modules.insert(module.0);
+                }
+                Err(err) => {
+                    tracing::error!("failed to load module: {}", err);
+                }
+            },
+            Response::WriteModule(res) => todo!(),
+        }
+    }
 }

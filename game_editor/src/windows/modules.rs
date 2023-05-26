@@ -7,15 +7,40 @@ use game_ui::{component, view};
 
 use game_ui::widgets::*;
 
+use crate::state::module;
+
 use super::{SpawnWindow, SpawnWindowQueue};
 
 #[component]
-pub fn Modules(cx: &Scope, queue: SpawnWindowQueue) -> Scope {
+pub fn Modules(cx: &Scope, modules: &module::Modules, queue: SpawnWindowQueue) -> Scope {
     let root = view! {
         cx,
         <Container style={Style::default()}>
         </Container>
     };
+
+    for m in modules.iter() {
+        let row = view! {
+            root,
+            <Container style={Style::default()}>
+            </Container>
+        };
+
+        let id = m.module.id.to_string();
+        let name = m.module.name.clone();
+
+        view! {
+            row,
+            <Text text={id.into()}>
+            </Text>
+        };
+
+        view! {
+            row,
+            <Text text={name.into()}>
+            </Text>
+        };
+    }
 
     let open = view! {
         root,
@@ -34,29 +59,3 @@ fn on_open(queue: SpawnWindowQueue) -> Box<dyn Fn() + Send + Sync + 'static> {
         queue.push_back(SpawnWindow::OpenModule);
     })
 }
-
-// pub fn spawn_modules_window(ctx: &mut Context) {
-//     let root = Element {
-//         body: ElementBody::Container(),
-//         style: Style::default(),
-//     };
-
-//     let root = ctx.tree.push(ctx.parent, root);
-//     let mut ctx = ctx.child(root);
-
-//     Text {
-//         text: "Modules".to_owned(),
-//         size: 24.0,
-//     }
-//     .create(&mut ctx);
-
-//     let main = ctx.tree.push(
-//         Some(root),
-//         Element {
-//             body: ElementBody::Container(),
-//             style: Style::default(),
-//         },
-//     );
-
-//     let mut ctx = ctx.child(main);
-// }
