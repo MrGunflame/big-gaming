@@ -78,6 +78,20 @@ where
         f(&cell)
     }
 
+    pub fn with_mut<U, F>(&mut self, f: F) -> U
+    where
+        F: FnOnce(&mut T) -> U,
+    {
+        tracing::trace!("Signal({:?})::read", self.id);
+
+        let mut stack = self.cx.document.signal_stack.lock();
+        stack.push(self.id);
+        drop(stack);
+
+        let mut cell = self.value.lock();
+        f(&mut cell)
+    }
+
     pub fn with_untracked<U, F>(&self, f: F) -> U
     where
         F: FnOnce(&T) -> U,
