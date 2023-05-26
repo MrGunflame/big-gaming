@@ -47,6 +47,8 @@ impl Backend {
 }
 
 async fn load_module(path: PathBuf) -> TaskResult<(EditorModule, Records)> {
+    tracing::info!("loading module file: {:?}", path);
+
     let mut file = File::open(&path).await?;
 
     let mut buf = Vec::new();
@@ -70,6 +72,8 @@ async fn load_module(path: PathBuf) -> TaskResult<(EditorModule, Records)> {
 }
 
 async fn save_data(payload: WriteModule) -> TaskResult<()> {
+    tracing::info!("saving module file: {:?}", payload.module.path);
+
     let mut file = OpenOptions::new()
         .write(true)
         .create(true)
