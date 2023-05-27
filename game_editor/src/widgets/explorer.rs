@@ -42,10 +42,10 @@ pub fn Explorer(
         </Container>
     };
 
-    let side = view! { root,
-        <Container style={Style { growth: Growth(Some(1.0)), ..Default::default() }}>
-        </Container>
-    };
+    // let side = view! { root,
+    //     <Container style={Style { growth: Growth(None), ..Default::default() }}>
+    //     </Container>
+    // };
 
     let main = view! { root,
         <Container style={Style { growth: Growth(Some(1.0)), justify: Justify::SpaceBetween, ..Default::default() }}>
@@ -73,14 +73,14 @@ pub fn Explorer(
             set_selected_entries.update(|v| v[index].selected ^= true);
         };
 
-        let cx = view! { side,
-            <Button on_click={on_click.into()} style={Style::default()}>
+        let row = view! { upper,
+            <Button on_click={on_click.into()} style={ Style { direction: Direction::Column, ..Default::default() }}>
             </Button>
         };
 
-        let id = cx.id().unwrap();
-        let cx2 = cx.clone();
-        create_effect(&cx, move |_| {
+        let id = row.id().unwrap();
+        let cx2 = row.clone();
+        create_effect(&row, move |_| {
             let selected = select.get();
             cx2.set_style(
                 id,
@@ -90,13 +90,20 @@ pub fn Explorer(
                     } else {
                         Background::None
                     },
+                    direction: Direction::Column,
                     ..Default::default()
                 },
             );
         });
 
-        view! { cx,
+        view! { row,
             <Text text={entry.name.to_string_lossy().to_string().into()}>
+            </Text>
+        };
+
+        view! {
+            row,
+            <Text text={file_size(entry.len).into()}>
             </Text>
         };
     }
