@@ -1,4 +1,6 @@
 use std::collections::HashMap;
+use std::fmt::{self, Debug, Formatter};
+use std::ptr::NonNull;
 
 use bevy_ecs::prelude::{Component, EventReader};
 use bevy_ecs::query::{Added, Changed, Or};
@@ -18,6 +20,22 @@ pub struct EventHandlers {
     pub cursor_entered: Option<Box<dyn Fn() + Send + Sync + 'static>>,
     pub mouse_button_input: Option<Box<dyn Fn(MouseButtonInput) + Send + Sync + 'static>>,
     pub received_character: Option<Box<dyn Fn(char) + Send + Sync + 'static>>,
+}
+
+impl Debug for EventHandlers {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        fn map_to_ptr<T: ?Sized>(e: &Option<Box<T>>) -> Option<NonNull<T>> {
+            e.as_ref().map(|e| e.as_ref().into())
+        }
+
+        f.debug_struct("EventHandlers")
+            .field("cursor_moved", &map_to_ptr(&self.cursor_moved))
+            .field("cursor_left", &map_to_ptr(&self.cursor_left))
+            .field("cursor_entered", &map_to_ptr(&self.cursor_entered))
+            .field("mouse_button_input", &map_to_ptr(&self.mouse_button_input))
+            .field("received_character", &map_to_ptr(&self.received_character))
+            .finish()
+    }
 }
 
 #[derive(Component, Default)]

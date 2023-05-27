@@ -1,10 +1,9 @@
 use std::collections::{HashMap, VecDeque};
-use std::ops::Deref;
 use std::sync::Arc;
 
 use bevy_ecs::prelude::Component;
 use bevy_ecs::world::World;
-use parking_lot::{Mutex, MutexGuard};
+use parking_lot::Mutex;
 use slotmap::{DefaultKey, SlotMap};
 
 use crate::events::Events;
@@ -25,7 +24,7 @@ pub use signal::{create_signal, ReadSignal, WriteSignal};
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct NodeId(DefaultKey);
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Scope {
     document: Document,
     id: Option<NodeId>,
@@ -50,8 +49,6 @@ impl Scope {
     }
 
     pub fn push(&self, node: Node) -> Scope {
-        dbg!(self.id, self.parent);
-
         let mut doc = self.document.inner.lock();
 
         let id = doc.nodes.insert(NodeStore::default());
@@ -87,13 +84,13 @@ impl Scope {
     }
 }
 
-#[derive(Clone, Default, Component)]
+#[derive(Clone, Debug, Default, Component)]
 pub struct Document {
     inner: Arc<Mutex<DocumentInner>>,
     signal_stack: Arc<Mutex<Vec<SignalId>>>,
 }
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 struct DocumentInner {
     // EffectId
     effects: SlotMap<DefaultKey, Effect>,
@@ -190,7 +187,7 @@ impl Document {
         while let Some(event) = doc.queue.pop_front() {
             match event {
                 Event::PushNode(id, node) => {
-                    tracing::trace!("spawn node {:?}", id);
+                    tracing::trace!("spawn node {:?} {:?}", id, node);
 
                     let parent = doc
                         .parents
@@ -230,7 +227,7 @@ impl Document {
     }
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct NodeStore {
     // Effects registered on this node.
     effects: Vec<Effect>,
@@ -238,6 +235,7 @@ pub struct NodeStore {
     signals: Vec<DefaultKey>,
 }
 
+#[derive(Debug)]
 pub enum Event {
     PushNode(NodeId, Node),
     UpdateNode(NodeId, Node),

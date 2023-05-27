@@ -23,7 +23,7 @@ impl Component for Text {
         let cx = cx.push(Node {
             element: Element {
                 body: ElementBody::Text(crate::render::Text {
-                    text: "".to_owned(),
+                    text: (text.0)(),
                     size: 24.0,
                 }),
                 style: Style::default(),

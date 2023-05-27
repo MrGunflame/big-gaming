@@ -27,6 +27,7 @@ use widgets::tool_bar::ToolBar;
 use windows::SpawnWindowQueue;
 
 use widgets::tool_bar::*;
+use windows::modules::CreateModules;
 
 use crate::windows::SpawnWindow;
 
@@ -144,12 +145,18 @@ fn load_from_backend(
     handle: Res<Handle>,
     mut modules: ResMut<Modules>,
     mut queue: Res<SpawnWindowQueue>,
+    create_modules: Res<CreateModules>,
 ) {
     while let Some(resp) = handle.recv() {
         match resp {
             Response::LoadModule(res) => match res {
                 Ok(module) => {
-                    modules.insert(module.0);
+                    modules.insert(module.0.clone());
+
+                    let inner = create_modules.0.lock();
+                    if let Some(sig) = &*inner {
+                        sig.update(|v| v.push(module.0))
+                    }
                 }
                 Err(err) => {
                     tracing::error!("failed to load module: {}", err);

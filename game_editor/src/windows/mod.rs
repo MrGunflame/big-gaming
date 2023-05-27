@@ -1,5 +1,5 @@
 mod error;
-mod modules;
+pub mod modules;
 mod open_module;
 mod view;
 
@@ -32,6 +32,8 @@ impl Plugin for WindowsPlugin {
 
         app.insert_resource(SpawnWindowQueue::default());
 
+        app.insert_resource(CreateModules::default());
+
         app.add_system(view::reset_state_on_cursor_leave);
         app.add_system(view::zoom_scene);
         app.add_system(view::update_view_camera);
@@ -46,6 +48,7 @@ fn spawn_windows(
     queue: ResMut<SpawnWindowQueue>,
     handle: Res<Handle>,
     modules: Res<crate::state::module::Modules>,
+    create_modules: Res<CreateModules>,
 ) {
     for event in events.iter() {
         let window = Window {
@@ -92,7 +95,7 @@ fn spawn_windows(
             SpawnWindow::Modules => {
                 view! {
                     cx,
-                    <Modules queue={queue.clone()} modules={&modules}>
+                    <Modules queue={queue.clone()} modules={&modules} create_modules={create_modules.clone()}>
                     </Modules>
                 };
             }

@@ -78,7 +78,7 @@ where
         f(&cell)
     }
 
-    pub fn with_mut<U, F>(&mut self, f: F) -> U
+    pub fn with_mut<U, F>(&self, f: F) -> U
     where
         F: FnOnce(&mut T) -> U,
     {
@@ -101,7 +101,7 @@ where
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct WriteSignal<T>
 where
     T: Send + Sync + 'static,
@@ -141,6 +141,16 @@ where
 
         doc.effect_queue
             .extend(effects.iter().map(|e| EffectId(*e)));
+    }
+
+    pub fn subscribe(&self) -> ReadSignal<T> {
+        tracing::trace!("Signal({:?})::subscribe", self.id);
+
+        ReadSignal {
+            cx: self.cx.clone(),
+            id: self.id,
+            value: self.value.clone(),
+        }
     }
 }
 
