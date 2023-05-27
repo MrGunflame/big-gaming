@@ -1,6 +1,7 @@
 mod error;
 pub mod modules;
 mod open_module;
+mod records;
 mod view;
 
 use std::collections::VecDeque;
@@ -8,7 +9,7 @@ use std::sync::Arc;
 
 use bevy_app::Plugin;
 use bevy_ecs::prelude::{Entity, EventReader, EventWriter, Res};
-use bevy_ecs::system::{Commands, Query, ResMut, Resource};
+use bevy_ecs::system::{Commands, ResMut, Resource};
 use game_ui::events::Events;
 use game_ui::reactive::Document;
 use game_ui::render::layout::LayoutTree;
@@ -21,6 +22,7 @@ use crate::backend::Handle;
 use self::error::*;
 use self::modules::*;
 use self::open_module::*;
+use self::records::*;
 
 pub struct WindowsPlugin;
 
@@ -113,6 +115,13 @@ fn spawn_windows(
                     </Error>
                 };
             }
+            SpawnWindow::Records => {
+                view! {
+                    cx,
+                    <Records>
+                    </Records>
+                };
+            }
             SpawnWindow::CloseWindow(_) => unreachable!(),
             _ => todo!(),
         }
@@ -126,6 +135,7 @@ pub enum SpawnWindow {
     Modules,
     CreateModule,
     OpenModule,
+    Records,
     View,
     CloseWindow(Entity),
     Error(String),
