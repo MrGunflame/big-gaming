@@ -1,7 +1,51 @@
 use std::ops::{Deref, DerefMut};
 
 use bevy_ecs::component::Component;
-use bevy_transform::components::Transform;
+use glam::{Mat3, Mat4, Quat, Vec3};
+
+#[derive(Copy, Clone, Debug, PartialEq, Component)]
+pub struct Transform {
+    pub translation: Vec3,
+    pub rotation: Quat,
+    pub scale: Vec3,
+}
+
+impl Transform {
+    pub const IDENTITY: Self = Self {
+        translation: Vec3::splat(0.0),
+        rotation: Quat::IDENTITY,
+        scale: Vec3::splat(1.0),
+    };
+
+    pub const fn from_translation(translation: Vec3) -> Self {
+        Self {
+            translation,
+            ..Self::IDENTITY
+        }
+    }
+
+    pub fn looking_at(self, target: Vec3, up: Vec3) -> Self {
+        self.looking_to(target - self.translation, up)
+    }
+
+    pub fn looking_to(mut self, direction: Vec3, up: Vec3) -> Self {
+        let forward = -direction.normalize();
+        let right = up.cross(forward).normalize();
+        let up = forward.cross(right);
+        self.rotation = Quat::from_mat3(&Mat3::from_cols(right, up, forward));
+        self
+    }
+
+    pub fn compute_matrix(self) -> Mat4 {
+        Mat4::from_scale_rotation_translation(self.scale, self.rotation, self.translation)
+    }
+}
+
+impl Default for Transform {
+    fn default() -> Self {
+        Self::IDENTITY
+    }
+}
 
 /// The [`Transform`] of a component at the previous frame.
 ///

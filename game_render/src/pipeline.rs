@@ -6,6 +6,7 @@ use bevy_ecs::query::{Added, Changed, With};
 use bevy_ecs::system::{Commands, Query, ResMut, Resource};
 use bevy_ecs::world::FromWorld;
 use bytemuck::{Pod, Zeroable};
+use game_common::components::transform::Transform;
 use game_window::events::{WindowCreated, WindowDestroyed, WindowResized};
 use game_window::WindowState;
 use glam::{Mat4, UVec2, Vec3};
@@ -23,7 +24,7 @@ use wgpu::{
     TextureViewDimension, VertexState,
 };
 
-use crate::camera::{Projection, Transform, OPENGL_TO_WGPU};
+use crate::camera::{Projection, OPENGL_TO_WGPU};
 use crate::depth_stencil::{create_depth_texture, DEPTH_TEXTURE_FORMAT};
 use crate::graph::Node;
 use crate::material::{ComputedMaterial, ComputedMesh};

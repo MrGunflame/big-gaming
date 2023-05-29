@@ -1,9 +1,9 @@
 //! Conversions between Host and Guest ABIs
 
-use bevy_transform::prelude::Transform;
 use bytemuck::cast;
 use game_common::components::components::Components;
 use game_common::components::items::Item as HostItem;
+use game_common::components::transform::Transform;
 use game_common::entity::EntityId;
 use game_common::record::RecordReference;
 use game_common::world::entity::Entity as HostEntity;

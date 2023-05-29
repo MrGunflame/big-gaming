@@ -168,7 +168,7 @@ impl TerrainMesh {
 
         mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, vertices);
         mesh.set_indices(Some(Indices::U32(indices)));
-        mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
+        // mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
         mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
 
         // mesh.duplicate_vertices();

@@ -2,9 +2,10 @@ use std::collections::VecDeque;
 
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
-use bevy_transform::prelude::Transform;
 
 use crate::id::WeakId;
+
+use super::transform::Transform;
 
 #[derive(Clone, Debug, Default, Component)]
 pub struct AnimationQueue {

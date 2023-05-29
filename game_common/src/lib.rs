@@ -11,7 +11,6 @@
 
 extern crate self as game_common;
 
-pub mod actors;
 pub mod archive;
 pub mod bundles;
 pub mod components;

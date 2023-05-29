@@ -2,8 +2,9 @@
 
 use std::convert::Infallible;
 
-use bevy_transform::components::Transform;
 use bytes::{Buf, BufMut};
+
+use crate::components::transform::Transform;
 
 use super::{Decode, Encode};
 

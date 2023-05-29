@@ -1,8 +1,8 @@
 use bevy_ecs::prelude::Bundle;
-use bevy_transform::prelude::Transform;
 use glam::{Quat, Vec3};
 
 use crate::components::object::{LoadObject, ObjectId};
+use crate::components::transform::Transform;
 
 use super::TransformBundle;
 

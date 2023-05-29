@@ -1019,11 +1019,11 @@ impl Inventories {
 mod tests {
     use std::time::Duration;
 
-    use bevy_transform::prelude::Transform;
     use glam::Vec3;
 
     use crate::components::components::Components;
     use crate::components::object::ObjectId;
+    use crate::components::transform::Transform;
     use crate::record::RecordReference;
     use crate::world::entity::Object;
 
