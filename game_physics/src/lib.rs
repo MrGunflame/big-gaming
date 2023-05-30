@@ -1,8 +1,8 @@
 use std::time::{Duration, Instant};
 
 use bevy_ecs::system::Resource;
+use convert::{ang_vector, point, quat, rotation, vec3, vector};
 use game_common::events::{self, EntityEvent, Event, EventQueue};
-use game_common::math::RotationExt;
 use game_common::world::entity::{Entity, EntityBody};
 use game_common::world::snapshot::EntityChange;
 use game_common::world::world::WorldState;
@@ -15,6 +15,7 @@ use rapier3d::prelude::{
     RigidBodyHandle, RigidBodySet, RigidBodyType, Vector,
 };
 
+mod convert;
 mod handle;
 mod pipeline;
 
@@ -134,15 +135,15 @@ impl Pipeline {
                 } => {
                     if let Some(handle) = self.body_handles.get(*id) {
                         let body = self.bodies.get_mut(handle).unwrap();
-                        body.set_translation((*translation).into(), true);
+                        body.set_translation(vector(*translation), true);
                     } else {
                         tracing::warn!("invalid entity {:?}", id)
                     }
                 }
-                EntityChange::Rotate { id, rotation } => {
+                EntityChange::Rotate { id, rotation: rot } => {
                     if let Some(handle) = self.body_handles.get(*id) {
                         let body = self.bodies.get_mut(handle).unwrap();
-                        body.set_rotation((*rotation).into(), true);
+                        body.set_rotation(rotation(*rot), true);
                     } else {
                         tracing::warn!("invalid entity {:?}", id);
                     }
@@ -171,7 +172,7 @@ impl Pipeline {
             // Terrain can never move.
             EntityBody::Terrain(terrain) => {
                 let body = RigidBodyBuilder::new(RigidBodyType::Fixed)
-                    .translation(terrain.cell.min().into())
+                    .translation(vector(terrain.cell.min()))
                     // .rotation(Vector::new(0.0, 0.0, -1.0))
                     .ccd_enabled(true)
                     .build();
@@ -180,7 +181,7 @@ impl Pipeline {
                 self.body_handles.insert(entity.id, body_handle);
 
                 let (vertices, indices) = terrain.verts_indices();
-                let vertices = vertices.into_iter().map(|vert| vert.into()).collect();
+                let vertices = vertices.into_iter().map(|vert| point(vert)).collect();
 
                 let collider = ColliderBuilder::trimesh(vertices, indices)
                     .active_events(ActiveEvents::COLLISION_EVENTS);
@@ -192,8 +193,8 @@ impl Pipeline {
             }
             _ => {
                 let body = RigidBodyBuilder::new(RigidBodyType::Dynamic)
-                    .translation(entity.transform.translation.into())
-                    .rotation(entity.transform.rotation.dir_vec().into())
+                    .translation(vector(entity.transform.translation))
+                    .rotation(ang_vector(entity.transform.rotation))
                     .ccd_enabled(true)
                     .lock_rotations()
                     .build();
@@ -225,8 +226,8 @@ impl Pipeline {
 
             let id = self.body_handles.get2(handle).unwrap();
             if let Some(mut entity) = view.get_mut(id) {
-                entity.transform.translation = (*body.translation()).into();
-                entity.transform.rotation = (*body.rotation()).into();
+                entity.transform.translation = vec3(*body.translation());
+                entity.transform.rotation = quat(*body.rotation());
             }
         }
     }
