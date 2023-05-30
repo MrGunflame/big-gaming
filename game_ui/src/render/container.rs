@@ -26,6 +26,10 @@ impl BuildPrimitiveElement for Container {
     }
 
     fn bounds(&self, style: &ComputedStyle) -> ComputedBounds {
+        // FIXME: This is actually computed in LayoutTree, but this
+        // is not good.
+        unreachable!();
+
         let width = style.padding.left + style.padding.right;
         let height = style.padding.top + style.padding.bottom;
 

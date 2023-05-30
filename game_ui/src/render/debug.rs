@@ -47,9 +47,6 @@ where
         assert!(image.height() >= (padding.top + padding.bottom) as u32);
     }
 
-    dbg!(image.width(), image.height());
-    dbg!(padding);
-
     // Top
     for y in 0..padding.top as u32 {
         for x in 0..image.width() {

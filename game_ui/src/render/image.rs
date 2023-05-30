@@ -31,6 +31,8 @@ impl BuildPrimitiveElement for Image {
             style.padding.top + style.padding.bottom,
         );
 
+        dbg!(padding);
+
         let width = ((position.max.x - position.min.x) as u32) + padding.x as u32;
         let height = ((position.max.y - position.min.y) as u32) + padding.y as u32;
 
