@@ -11,6 +11,7 @@ pub struct Style {
     pub background: Background,
     pub color: Color,
     pub justify: Justify,
+    pub padding: Padding,
 }
 
 /// Flow direction
@@ -165,4 +166,34 @@ pub enum Justify {
     Center,
     SpaceBetween,
     SpaceAround,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub struct Padding {
+    pub top: Size,
+    pub bottom: Size,
+    pub left: Size,
+    pub right: Size,
+}
+
+impl Padding {
+    pub const fn splat(size: Size) -> Self {
+        Self {
+            top: size,
+            bottom: size,
+            left: size,
+            right: size,
+        }
+    }
+}
+
+impl Default for Padding {
+    fn default() -> Self {
+        Self {
+            top: Size::Pixels(0.0),
+            bottom: Size::Pixels(0.0),
+            left: Size::Pixels(0.0),
+            right: Size::Pixels(0.0),
+        }
+    }
 }

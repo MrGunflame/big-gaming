@@ -1,7 +1,7 @@
+use glam::Vec2;
 use image::ImageBuffer;
 
-use super::layout::ComputedBounds;
-use super::style::Style;
+use super::computed_style::{ComputedBounds, ComputedStyle};
 use super::{BuildPrimitiveElement, Image};
 
 pub struct Container;
@@ -9,7 +9,7 @@ pub struct Container;
 impl BuildPrimitiveElement for Container {
     fn build(
         &self,
-        style: &Style,
+        style: &ComputedStyle,
         layout: super::Rect,
         pipeline: &super::UiPipeline,
         device: &wgpu::Device,
@@ -25,7 +25,13 @@ impl BuildPrimitiveElement for Container {
         Image { image }.build(style, layout, pipeline, device, queue, size)
     }
 
-    fn bounds(&self) -> ComputedBounds {
-        ComputedBounds::default()
+    fn bounds(&self, style: &ComputedStyle) -> ComputedBounds {
+        let width = style.padding.left + style.padding.right;
+        let height = style.padding.top + style.padding.bottom;
+
+        ComputedBounds {
+            min: Vec2::new(width, height),
+            ..Default::default()
+        }
     }
 }

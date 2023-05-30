@@ -1,3 +1,4 @@
+pub mod computed_style;
 pub mod layout;
 pub mod style;
 
@@ -34,7 +35,8 @@ use wgpu::{
     VertexStepMode,
 };
 
-use self::layout::{ComputedBounds, LayoutTree};
+use self::computed_style::{ComputedBounds, ComputedStyle};
+use self::layout::LayoutTree;
 
 pub use self::image::Image;
 pub use self::layout::{Element, ElementBody};
@@ -188,7 +190,7 @@ impl PrimitiveElement {
 trait BuildPrimitiveElement {
     fn build(
         &self,
-        style: &Style,
+        style: &ComputedStyle,
         layout: Rect,
         pipeline: &UiPipeline,
         device: &Device,
@@ -196,7 +198,7 @@ trait BuildPrimitiveElement {
         size: Vec2,
     ) -> Option<PrimitiveElement>;
 
-    fn bounds(&self) -> ComputedBounds;
+    fn bounds(&self, style: &ComputedStyle) -> ComputedBounds;
 }
 
 #[derive(Debug, Resource)]
@@ -373,7 +375,7 @@ impl Node for UiPass {
                             }
 
                             if let Some(elem) = elem.build(
-                                &elem.style,
+                                &layout.style,
                                 Rect {
                                     min: layout.position,
                                     max: Vec2::new(

@@ -3,9 +3,9 @@ use glam::Vec2;
 use image::imageops::FilterType;
 use image::{ImageBuffer, Rgba};
 
+use super::computed_style::{ComputedBounds, ComputedStyle};
 use super::debug::debug_border;
-use super::layout::ComputedBounds;
-use super::style::{Background, Style};
+use super::style::Background;
 use super::{BuildPrimitiveElement, PrimitiveElement, Rect};
 
 #[derive(Clone, Debug)]
@@ -16,7 +16,7 @@ pub struct Image {
 impl BuildPrimitiveElement for Image {
     fn build(
         &self,
-        style: &Style,
+        style: &ComputedStyle,
         position: Rect,
         pipeline: &super::UiPipeline,
         device: &wgpu::Device,
@@ -29,7 +29,7 @@ impl BuildPrimitiveElement for Image {
         let width = (position.max.x - position.min.x) as u32;
         let height = (position.max.y - position.min.y) as u32;
 
-        let mut img = match &style.background {
+        let mut img = match &style.style.background {
             Background::None => self.image.clone(),
             Background::Color(color) => {
                 let mut img = ImageBuffer::from_fn(width, height, |_, _| *color);
@@ -51,11 +51,14 @@ impl BuildPrimitiveElement for Image {
             queue,
             Rect { min, max },
             &img,
-            style.color.to_f32(),
+            style.style.color.to_f32(),
         ))
     }
 
-    fn bounds(&self) -> ComputedBounds {
+    fn bounds(&self, style: &ComputedStyle) -> ComputedBounds {
+        let width = style.padding.left + style.padding.right;
+        let height = style.padding.top + style.padding.bottom;
+
         let size = Vec2::new(self.image.width() as f32, self.image.height() as f32);
 
         ComputedBounds {

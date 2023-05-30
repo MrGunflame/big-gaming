@@ -2,8 +2,8 @@ use ab_glyph::{point, Font, FontRef, Glyph, Point, PxScale, ScaleFont};
 use glam::Vec2;
 use image::{ImageBuffer, Rgba, RgbaImage};
 
+use super::computed_style::{ComputedBounds, ComputedStyle};
 use super::image::Image;
-use super::layout::ComputedBounds;
 use super::style::Style;
 use super::BuildPrimitiveElement;
 
@@ -29,7 +29,7 @@ impl Text {
 impl BuildPrimitiveElement for Text {
     fn build(
         &self,
-        style: &Style,
+        style: &ComputedStyle,
         layout: super::Rect,
         pipeline: &super::UiPipeline,
         device: &wgpu::Device,
@@ -41,9 +41,9 @@ impl BuildPrimitiveElement for Text {
         Image { image }.build(style, layout, pipeline, device, queue, size)
     }
 
-    fn bounds(&self) -> ComputedBounds {
+    fn bounds(&self, style: &ComputedStyle) -> ComputedBounds {
         let image = render_to_texture(&self.text, self.size, Vec2::splat(0.0));
-        Image { image }.bounds()
+        Image { image }.bounds(style)
     }
 }
 

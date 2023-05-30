@@ -4,9 +4,10 @@ use bevy_ecs::prelude::Component;
 use glam::Vec2;
 use slotmap::{DefaultKey, SlotMap};
 
+use super::computed_style::{ComputedBounds, ComputedStyle};
 use super::container::Container;
 use super::image::Image;
-use super::style::{Bounds, Direction, Justify, Position, Style};
+use super::style::{Direction, Justify, Position, Style};
 use super::text::Text;
 use super::BuildPrimitiveElement;
 
@@ -19,7 +20,7 @@ pub struct Element {
 impl BuildPrimitiveElement for Element {
     fn build(
         &self,
-        style: &Style,
+        style: &ComputedStyle,
         layout: super::Rect,
         pipeline: &super::UiPipeline,
         device: &wgpu::Device,
@@ -35,11 +36,11 @@ impl BuildPrimitiveElement for Element {
         }
     }
 
-    fn bounds(&self) -> ComputedBounds {
+    fn bounds(&self, style: &ComputedStyle) -> ComputedBounds {
         match &self.body {
             ElementBody::Container() => ComputedBounds::default(),
-            ElementBody::Image(elem) => elem.bounds(),
-            ElementBody::Text(elem) => elem.bounds(),
+            ElementBody::Image(elem) => elem.bounds(style),
+            ElementBody::Text(elem) => elem.bounds(style),
         }
     }
 }
@@ -92,9 +93,7 @@ impl LayoutTree {
             position: Vec2::splat(0.0),
             height: 0.0,
             width: 0.0,
-            style: ComputedStyle {
-                bounds: ComputedBounds::new(elem.style.bounds, self.size),
-            },
+            style: ComputedStyle::new(elem.style.clone(), self.size),
         };
 
         let key = self.elems.insert(elem);
@@ -138,6 +137,8 @@ impl LayoutTree {
     pub fn replace(&mut self, key: Key, elem: Element) {
         self.changed = true;
 
+        self.layouts.get_mut(&key.0).unwrap().style =
+            ComputedStyle::new(elem.style.clone(), self.size);
         *self.elems.get_mut(key.0).unwrap() = elem;
     }
 
@@ -176,6 +177,7 @@ impl LayoutTree {
 
     fn compute_bounds(&self, key: DefaultKey) -> ComputedBounds {
         let elem = &self.elems[key];
+        let layout = &self.layouts[&key];
 
         let mut bounds = match &elem.body {
             ElementBody::Container() => {
@@ -227,8 +229,8 @@ impl LayoutTree {
                     }
                 }
             }
-            ElementBody::Image(elem) => elem.bounds(),
-            ElementBody::Text(elem) => elem.bounds(),
+            ElementBody::Image(el) => el.bounds(&layout.style),
+            ElementBody::Text(el) => el.bounds(&layout.style),
         };
 
         let min_x = elem.style.bounds.min.x.to_pixels(self.size);
@@ -609,7 +611,11 @@ impl LayoutTree {
     }
 
     fn computed_sizes(&mut self) {
-        for ((_, elem), (_, layout)) in self.elems.iter().zip(self.layouts.iter_mut()) {
+        for (key, elem) in self.elems.iter() {
+            let layout = self.layouts.get_mut(&key).unwrap();
+
+            layout.style = ComputedStyle::new(elem.style.clone(), self.size);
+
             layout.style.bounds = ComputedBounds::new(elem.style.bounds, self.size);
         }
     }
@@ -761,9 +767,9 @@ impl<'a> ExactSizeIterator for Layouts<'a> {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Clone, Debug)]
 pub struct Layout {
-    style: ComputedStyle,
+    pub style: ComputedStyle,
 
     pub position: Vec2,
     pub width: f32,
@@ -787,51 +793,12 @@ fn size_per_element(space: Vec2, num_elems: u32, direction: Direction) -> Vec2 {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
-struct ComputedStyle {
-    bounds: ComputedBounds,
-}
-
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub(crate) struct ComputedBounds {
-    pub(crate) min: Vec2,
-    pub(crate) max: Vec2,
-}
-
-impl ComputedBounds {
-    const ZERO: Self = Self {
-        min: Vec2::splat(0.0),
-        max: Vec2::splat(0.0),
-    };
-
-    fn new(bounds: Bounds, viewport: Vec2) -> Self {
-        Self {
-            min: Vec2 {
-                x: bounds.min.x.to_pixels(viewport),
-                y: bounds.min.y.to_pixels(viewport),
-            },
-            max: Vec2 {
-                x: bounds.max.x.to_pixels(viewport),
-                y: bounds.max.y.to_pixels(viewport),
-            },
-        }
-    }
-}
-
-impl Default for ComputedBounds {
-    fn default() -> Self {
-        Self {
-            min: Vec2::splat(0.0),
-            max: Vec2::splat(f32::INFINITY),
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
 
     use glam::Vec2;
 
+    use crate::render::computed_style::ComputedStyle;
     use crate::render::layout::ComputedBounds;
     use crate::render::style::{
         Bounds, Direction, Growth, Justify, Position, Size, SizeVec2, Style,
@@ -868,8 +835,11 @@ mod tests {
     fn compute_layout_no_children() {
         let mut tree = LayoutTree::new();
         tree.resize(Vec2::splat(1000.0));
+
+        let style = Style::default();
+
         let elem = Element {
-            style: Style::default(),
+            style: style.clone(),
             body: ElementBody::Text(Text::new("test", 100.0)),
         };
 
@@ -878,16 +848,18 @@ mod tests {
 
         tree.compute_layout();
 
-        let layout0 = tree.layouts[&key0.0];
-        let layout1 = tree.layouts[&key1.0];
+        let layout0 = &tree.layouts[&key0.0];
+        let layout1 = &tree.layouts[&key1.0];
+
+        let style = ComputedStyle::new(style, Vec2::splat(1000.0));
 
         assert_eq!(layout0.position, Vec2::splat(0.0));
-        assert_eq!(layout0.width, elem.bounds().min.x);
-        assert_eq!(layout0.height, elem.bounds().min.y);
+        assert_eq!(layout0.width, elem.bounds(&style).min.x);
+        assert_eq!(layout0.height, elem.bounds(&style).min.y);
 
         assert_eq!(layout1.position, Vec2::new(0.0, layout0.height));
-        assert_eq!(layout1.width, elem.bounds().min.x);
-        assert_eq!(layout1.height, elem.bounds().min.y);
+        assert_eq!(layout1.width, elem.bounds(&style).min.x);
+        assert_eq!(layout1.height, elem.bounds(&style).min.y);
     }
 
     #[test]
@@ -945,12 +917,14 @@ mod tests {
         let mut tree = LayoutTree::new();
         tree.resize(Vec2::splat(1000.0));
 
+        let style = Style {
+            growth: Growth(Some(1.0)),
+            ..Default::default()
+        };
+
         let root = Element {
             body: ElementBody::Container(),
-            style: Style {
-                growth: Growth(Some(1.0)),
-                ..Default::default()
-            },
+            style: style.clone(),
         };
         let key = tree.push(None, root);
 
@@ -962,10 +936,12 @@ mod tests {
 
         let bounds = tree.compute_bounds(key.0);
 
+        let style = ComputedStyle::new(style, Vec2::splat(1000.0));
+
         assert_eq!(
             bounds,
             ComputedBounds {
-                min: elem.bounds().min,
+                min: elem.bounds(&style).min,
                 max: Vec2::splat(f32::INFINITY),
             }
         );
@@ -976,12 +952,14 @@ mod tests {
         let mut tree = LayoutTree::new();
         tree.resize(Vec2::splat(1000.0));
 
+        let style = Style {
+            growth: Growth(None),
+            ..Default::default()
+        };
+
         let root = Element {
             body: ElementBody::Container(),
-            style: Style {
-                growth: Growth(None),
-                ..Default::default()
-            },
+            style: style.clone(),
         };
         let key = tree.push(None, root);
 
@@ -993,11 +971,13 @@ mod tests {
 
         let bounds = tree.compute_bounds(key.0);
 
+        let style = ComputedStyle::new(style, Vec2::splat(1000.0));
+
         assert_eq!(
             bounds,
             ComputedBounds {
-                min: elem.bounds().min,
-                max: elem.bounds().max,
+                min: elem.bounds(&style).min,
+                max: elem.bounds(&style).max,
             }
         );
     }
@@ -1079,7 +1059,7 @@ mod tests {
 
         tree.compute_layout();
 
-        let layout = tree.layouts[&key.0];
+        let layout = &tree.layouts[&key.0];
         assert_eq!(layout.height, 10.0);
         assert_eq!(layout.width, 10.0);
     }
@@ -1115,7 +1095,7 @@ mod tests {
 
         tree.compute_layout();
 
-        let layout = tree.layouts[&key.0];
+        let layout = &tree.layouts[&key.0];
         assert_eq!(layout.height, 10.0);
         assert_eq!(layout.width, 10.0);
     }
@@ -1175,7 +1155,7 @@ mod tests {
 
         let mut offset = 0.0;
         for key in keys {
-            let layout = tree.layouts[&key.0];
+            let layout = &tree.layouts[&key.0];
 
             assert_eq!(layout.position, Vec2::new(0.0, offset));
 
@@ -1191,7 +1171,7 @@ mod tests {
 
         let mut offset = 0.0;
         for key in keys {
-            let layout = tree.layouts[&key.0];
+            let layout = &tree.layouts[&key.0];
 
             assert_eq!(layout.position, Vec2::new(offset, 0.0));
 
@@ -1207,7 +1187,7 @@ mod tests {
 
         let mut offset = 1000.0 - (size * 3.0);
         for key in keys {
-            let layout = tree.layouts[&key.0];
+            let layout = &tree.layouts[&key.0];
 
             assert_eq!(layout.position, Vec2::new(0.0, offset));
 
@@ -1223,7 +1203,7 @@ mod tests {
 
         let mut offset = 1000.0 - (size * 3.0);
         for key in keys {
-            let layout = tree.layouts[&key.0];
+            let layout = &tree.layouts[&key.0];
 
             assert_eq!(layout.position, Vec2::new(offset, 0.0));
 
@@ -1239,7 +1219,7 @@ mod tests {
 
         let mut offset = (1000.0 - (10.0 * 3.0)) / 2.0;
         for key in keys {
-            let layout = tree.layouts[&key.0];
+            let layout = &tree.layouts[&key.0];
 
             assert_eq!(layout.position, Vec2::new(0.0, offset));
 
@@ -1255,7 +1235,7 @@ mod tests {
 
         let mut offset = (1000.0 - (10.0 * 3.0)) / 2.0;
         for key in keys {
-            let layout = tree.layouts[&key.0];
+            let layout = &tree.layouts[&key.0];
 
             assert_eq!(layout.position, Vec2::new(offset, 0.0));
 
@@ -1273,7 +1253,7 @@ mod tests {
 
         let mut offset = 0.0;
         for key in keys {
-            let layout = tree.layouts[&key.0];
+            let layout = &tree.layouts[&key.0];
 
             assert_eq!(layout.position, Vec2::new(0.0, offset));
 
@@ -1291,7 +1271,7 @@ mod tests {
 
         let mut offset = 0.0;
         for key in keys {
-            let layout = tree.layouts[&key.0];
+            let layout = &tree.layouts[&key.0];
 
             assert_eq!(layout.position, Vec2::new(offset, 0.0));
 
@@ -1309,7 +1289,7 @@ mod tests {
 
         let mut offset = distance;
         for key in keys {
-            let layout = tree.layouts[&key.0];
+            let layout = &tree.layouts[&key.0];
 
             assert_eq!(layout.position, Vec2::new(0.0, offset));
 
@@ -1327,7 +1307,7 @@ mod tests {
 
         let mut offset = distance;
         for key in keys {
-            let layout = tree.layouts[&key.0];
+            let layout = &tree.layouts[&key.0];
 
             assert_eq!(layout.position, Vec2::new(offset, 0.0));
 
