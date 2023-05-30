@@ -4,7 +4,7 @@ use image::imageops::FilterType;
 use image::{ImageBuffer, Rgba};
 
 use super::computed_style::{ComputedBounds, ComputedStyle};
-use super::debug::debug_border;
+use super::debug::{debug_border, debug_padding};
 use super::style::Background;
 use super::{BuildPrimitiveElement, PrimitiveElement, Rect};
 
@@ -26,24 +26,50 @@ impl BuildPrimitiveElement for Image {
         let min = remap(position.min, size);
         let max = remap(position.max, size);
 
-        let width = (position.max.x - position.min.x) as u32;
-        let height = (position.max.y - position.min.y) as u32;
+        let padding = Vec2::new(
+            style.padding.left + style.padding.right,
+            style.padding.top + style.padding.bottom,
+        );
+
+        let width = ((position.max.x - position.min.x) as u32) + padding.x as u32;
+        let height = ((position.max.y - position.min.y) as u32) + padding.y as u32;
 
         let mut img = match &style.style.background {
-            Background::None => self.image.clone(),
+            Background::None => {
+                let mut img = ImageBuffer::new(width, height);
+                image::imageops::overlay(
+                    &mut img,
+                    &self.image,
+                    style.padding.left as i64,
+                    style.padding.top as i64,
+                );
+
+                img
+            }
             Background::Color(color) => {
                 let mut img = ImageBuffer::from_fn(width, height, |_, _| *color);
-                image::imageops::overlay(&mut img, &self.image, 0, 0);
+                image::imageops::overlay(
+                    &mut img,
+                    &self.image,
+                    style.padding.left as i64,
+                    style.padding.top as i64,
+                );
                 img
             }
             Background::Image(image) => {
                 let mut img = image::imageops::resize(image, width, height, FilterType::Nearest);
-                image::imageops::overlay(&mut img, &self.image, 0, 0);
+                image::imageops::overlay(
+                    &mut img,
+                    &self.image,
+                    style.padding.left as i64,
+                    style.padding.top as i64,
+                );
                 img
             }
         };
 
         debug_border(&mut img);
+        debug_padding(&mut img, style.padding);
 
         Some(PrimitiveElement::new(
             pipeline,
@@ -59,7 +85,10 @@ impl BuildPrimitiveElement for Image {
         let width = style.padding.left + style.padding.right;
         let height = style.padding.top + style.padding.bottom;
 
-        let size = Vec2::new(self.image.width() as f32, self.image.height() as f32);
+        let size = Vec2::new(
+            self.image.width() as f32 + width,
+            self.image.height() as f32 + height,
+        );
 
         ComputedBounds {
             min: size,
