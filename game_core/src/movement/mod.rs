@@ -1,21 +1,24 @@
 use std::time::Duration;
 
-use bevy::prelude::{
-    Commands, Component, Entity, EulerRot, IntoSystemConfig, Plugin, Query, Res, Transform, Vec3,
-    With,
-};
-use bevy::time::Time;
+use bevy_ecs::prelude::{Component, Entity};
+use bevy_ecs::schedule::IntoSystemConfig;
+use bevy_ecs::system::{Commands, Query, Res};
 use game_common::components::actor::{ActorFlag, ActorFlags, MovementSpeed};
 use game_common::components::items::Cooldown;
 use game_common::components::movement::{Jump, Movement, Rotate, Teleport};
-use game_common::components::transform::PreviousTransform;
+use game_common::components::transform::{PreviousTransform, Transform};
+use glam::{EulerRot, Vec3};
+
+use bevy_app::{App, Plugin};
+
+use crate::time::Time;
 
 // FIXME: Different behaivoir in client/server envs
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct MovementPlugin;
 
 impl Plugin for MovementPlugin {
-    fn build(&self, app: &mut bevy::prelude::App) {
+    fn build(&self, app: &mut App) {
         app.add_system(handle_movement_events)
             .add_system(handle_rotate_events)
             .add_system(handle_teleport_events)
@@ -36,7 +39,7 @@ fn handle_movement_events(
         &Movement,
     )>,
 ) {
-    let delta = time.delta_seconds();
+    let delta = time.delta().as_secs_f32();
 
     for (entity, flags, mut transform, speed, movement) in &mut actors {
         if !flags.contains(ActorFlag::CAN_MOVE) {

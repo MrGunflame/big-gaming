@@ -1,12 +1,16 @@
-use bevy::prelude::{Commands, Entity, Plugin, Query, With};
 use game_common::components::actor::{ActorFlag, ActorFlags, Death};
 use game_common::components::combat::{Health, IncomingDamage, Resistances};
+
+use bevy_app::{App, Plugin};
+use bevy_ecs::entity::Entity;
+use bevy_ecs::query::With;
+use bevy_ecs::system::{Commands, Query};
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct CombatPlugin;
 
 impl Plugin for CombatPlugin {
-    fn build(&self, app: &mut bevy::prelude::App) {
+    fn build(&self, app: &mut App) {
         app.add_system(apply_incoming_damage)
             // .add_system(handle_attack_events)
             .add_system(remove_death);

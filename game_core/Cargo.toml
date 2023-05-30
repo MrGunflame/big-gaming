@@ -12,12 +12,14 @@ game_audio = { version = "0.1.0", path = "../game_audio" }
 game_net = { version = "0.1.0", path = "../game_net" }
 game_data = { version = "0.1.0", path = "../game_data" }
 game_script = { version = "0.1.0", path = "../game_script" }
+game_asset = { version = "0.1.0", path = "../game_asset" }
 
-bevy = { version = "0.10.0", features = ["bevy_gltf"] }
 bevy_ecs = "0.10.0"
+bevy_app = "0.10.0"
 tracing = "0.1.37"
 chrono = "0.4.24"
 parking_lot = "0.12.1"
 atty = "0.2.14"
 tokio = { version = "1.27.0", features = ["full"] }
 thiserror = "1.0.40"
+glam = "0.24.0"

@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::time::Instant;
 
-use bevy::prelude::{App, Plugin, Resource};
+use bevy_ecs::system::Resource;
 use game_common::module::ModuleId;
 use game_common::record::{RecordId, RecordReference};
 use game_common::world::world::WorldState;
@@ -14,10 +14,12 @@ use game_script::ScriptServer;
 use thiserror::Error;
 use tokio::runtime::Runtime;
 
+use bevy_app::{App, Plugin};
+
 pub struct ModulePlugin;
 
 impl Plugin for ModulePlugin {
-    fn build(&self, app: &mut bevy::prelude::App) {
+    fn build(&self, app: &mut App) {
         app.insert_resource(Modules::new());
         app.insert_resource(ScriptServer::new());
 

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use bevy::prelude::Resource;
+use bevy_ecs::system::Resource;
 use game_common::record::RecordId;
 use game_data::record::Record;
 use game_script::events::Events;

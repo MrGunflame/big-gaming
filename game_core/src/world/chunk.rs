@@ -1,11 +1,13 @@
 //! Chunk related systems
 
-use bevy::prelude::{Plugin, Res, ResMut, Transform, With};
 use bevy_ecs::entity::Entity;
-use bevy_ecs::system::Query;
+use bevy_ecs::query::With;
+use bevy_ecs::system::{Query, Res, ResMut};
 use game_common::components::player::Player;
-use game_common::components::transform::PreviousTransform;
+use game_common::components::transform::{PreviousTransform, Transform};
 use game_common::world::chunk::{ChunkId, ChunkRegistry};
+
+use bevy_app::{App, Plugin};
 
 #[derive(Clone, Debug)]
 pub struct ChunkPlugin {
@@ -20,7 +22,7 @@ impl ChunkPlugin {
 }
 
 impl Plugin for ChunkPlugin {
-    fn build(&self, app: &mut bevy::prelude::App) {
+    fn build(&self, app: &mut App) {
         app.insert_resource(self.registry.clone())
             .add_system(transfer_entities)
             .add_system(update_player_chunks);

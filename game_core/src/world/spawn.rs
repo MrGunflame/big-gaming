@@ -1,13 +1,17 @@
-use bevy::prelude::{Commands, Entity, Plugin, Query, Transform, With};
+use bevy_app::{App, Plugin};
+use bevy_ecs::prelude::Entity;
+use bevy_ecs::query::With;
+use bevy_ecs::system::{Commands, Query};
 use game_common::components::actor::{ActorFlag, ActorFlags, Spawn, SpawnPoints};
 use game_common::components::combat::Health;
+use game_common::components::transform::Transform;
 
 /// The plugin responsible for spawning and respawning actors.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SpawnPlugin;
 
 impl Plugin for SpawnPlugin {
-    fn build(&self, app: &mut bevy::prelude::App) {
+    fn build(&self, app: &mut App) {
         app.add_system(handle_spawns);
     }
 }

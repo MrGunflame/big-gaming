@@ -1,17 +1,21 @@
-use bevy::prelude::{AssetServer, Commands, Entity, Query, Res, ResMut, Transform};
-use bevy::scene::{Scene, SceneBundle};
+use bevy_ecs::prelude::Entity;
+use bevy_ecs::system::{Commands, Query, Res, ResMut};
+use game_asset::AssetServer;
 use game_common::components::object::LoadObject;
+use game_common::components::transform::Transform;
 use game_common::world::entity::{BuildEntity, EntityQueue};
 use game_common::world::world::WorldState;
 use game_data::record::RecordBody;
+
+use bevy_app::{App, Plugin};
 
 use crate::modules::Modules;
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct LevelPlugin;
 
-impl bevy::app::Plugin for LevelPlugin {
-    fn build(&self, app: &mut bevy::prelude::App) {
+impl Plugin for LevelPlugin {
+    fn build(&self, app: &mut App) {
         // app.insert_resource(Level::new())
         // .insert_resource(StreamingSources::new())
         app.insert_resource(EntityQueue::new())
@@ -124,16 +128,16 @@ fn load_objects(
 
         // Note that for bevys asset loader &str != OsStr/Path.
         // A string must be used for the label to be extracted.
-        let uri = obj.uri.as_ref().to_str().unwrap();
-        let handle = assets.load::<Scene, _>(uri);
+        // let uri = obj.uri.as_ref().to_str().unwrap();
+        // let handle = assets.load::<Scene, _>(uri);
 
-        dbg!(&transform);
-        dbg!(&handle);
-        commands.entity(entity).insert(SceneBundle {
-            scene: handle,
-            transform: *transform,
-            ..Default::default()
-        });
+        // dbg!(&transform);
+        // dbg!(&handle);
+        // commands.entity(entity).insert(SceneBundle {
+        //     scene: handle,
+        //     transform: *transform,
+        //     ..Default::default()
+        // });
 
         // commands.entity(entity).insert(handle);
     }

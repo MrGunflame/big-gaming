@@ -1,11 +1,13 @@
-use bevy::prelude::{Commands, DespawnRecursiveExt, Entity, Plugin, Query};
+use bevy_app::{App, Plugin};
+use bevy_ecs::prelude::Entity;
+use bevy_ecs::system::{Commands, Query};
 use game_common::components::object::Lifetime;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ObjectPlugin;
 
 impl Plugin for ObjectPlugin {
-    fn build(&self, app: &mut bevy::prelude::App) {
+    fn build(&self, app: &mut App) {
         app.add_system(despawn_expired_objects);
     }
 }
@@ -16,6 +18,6 @@ fn despawn_expired_objects(mut commands: Commands, mut objects: Query<(Entity, &
             continue;
         }
 
-        commands.entity(entity).despawn_recursive();
+        commands.entity(entity).despawn();
     }
 }

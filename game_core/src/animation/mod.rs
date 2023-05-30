@@ -1,14 +1,20 @@
 use std::f32::consts::PI;
 
-use bevy::prelude::{Entity, Plugin, Quat, Query, Transform, Vec3, Without};
+use bevy_ecs::system::Query;
 use game_common::components::actor::{ActorModel, ActorProperties};
 use game_common::components::animation::{AnimationQueue, Bone, Skeleton};
+use game_common::components::transform::Transform;
 use game_common::math::RotationExt;
+
+use bevy_app::{App, Plugin};
+use bevy_ecs::entity::Entity;
+use bevy_ecs::query::Without;
+use glam::{Quat, Vec3};
 
 pub struct AnimationPlugin;
 
 impl Plugin for AnimationPlugin {
-    fn build(&self, app: &mut bevy::prelude::App) {
+    fn build(&self, app: &mut App) {
         app.add_system(start_animations)
             .add_system(transform_bones)
             .add_system(sync_actor_rotations);
@@ -49,7 +55,7 @@ fn update_bone(
     bones: &mut Query<(&Bone, &mut Transform)>,
 ) {
     let (bone, mut transform) = bones.get_mut(root).expect("invalid bone");
-    *transform = root_transform * bone.offset;
+    transform.translation = root_transform.translation * bone.offset.translation;
     root_transform = *transform;
 
     // FIXME: Remove the clone and allocation.
