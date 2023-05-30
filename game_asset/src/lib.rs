@@ -1,34 +1,32 @@
 //! Asset loader
+//!
 
-use std::collections::HashMap;
-use std::sync::Arc;
+mod asset;
+mod io;
 
+use bevy_app::{App, Plugin};
 use bevy_ecs::system::Resource;
 
-#[derive(Debug, Resource)]
-pub struct AssetServer {
-    assets: HashMap<HandleId, Asset>,
+pub use crate::asset::{Asset, Assets, Handle, HandleId};
+
+#[derive(Clone, Debug, Default)]
+pub struct AssetPlugin {}
+
+impl Plugin for AssetPlugin {
+    fn build(&self, app: &mut App) {
+        app.insert_resource(AssetServer::new());
+    }
 }
+
+pub trait AssetAppExt {
+    fn add_asset<T: Asset>(&mut self);
+}
+
+#[derive(Debug, Resource)]
+pub struct AssetServer {}
 
 impl AssetServer {
-    pub fn get(&self, handle: &Handle) -> Option<&Asset> {
-        self.assets.get(&handle.id)
-    }
-
-    pub fn contains(&self, handle: &Handle) -> bool {
-        self.assets.contains_key(&handle.id)
+    pub fn new() -> Self {
+        Self {}
     }
 }
-
-#[derive(Clone, Debug)]
-pub struct Asset {
-    pub bytes: Arc<[u8]>,
-}
-
-#[derive(Clone, Debug)]
-pub struct Handle {
-    id: HandleId,
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct HandleId(u64);
