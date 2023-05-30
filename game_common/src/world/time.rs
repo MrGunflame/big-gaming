@@ -31,6 +31,7 @@ const NANOS_PER_SEC: u32 = 1_000_000_000;
 #[derive(
     Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Component, Resource,
 )]
+// FIXME: Rename to WorldTime to distinguish with frame time Time.
 pub struct DateTime {
     nsecs: u128,
 }

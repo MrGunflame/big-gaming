@@ -3,17 +3,16 @@ mod inventory;
 use std::time::{Duration, Instant};
 
 use bevy_app::{App, Plugin};
-use bevy_asset::AssetServer;
 use bevy_ecs::system::{Commands, Res, ResMut};
 use bevy_hierarchy::DespawnRecursiveExt;
-use bevy_transform::prelude::Transform;
 use game_common::bundles::ActorBundle;
 use game_common::components::combat::Health;
 use game_common::components::components::Components;
 use game_common::components::inventory::Inventory;
-use game_common::components::items::{Item, ItemId};
+use game_common::components::items::ItemId;
 use game_common::components::player::Player;
 use game_common::components::race::RaceId;
+use game_common::components::transform::Transform;
 use game_common::entity::{EntityId, EntityMap};
 use game_common::events::{ActionEvent, EntityEvent, Event, EventKind, EventQueue};
 use game_common::record::{RecordId, RecordReference};
@@ -54,7 +53,6 @@ pub fn tick(
     mut world: ResMut<WorldState>,
     queue: Res<CommandQueue>,
     map: Res<EntityMap>,
-    assets: Res<AssetServer>,
     level: Res<Level>,
     mut sources: ResMut<StreamingSources>,
     mut pipeline: ResMut<game_physics::Pipeline>,
@@ -70,7 +68,6 @@ pub fn tick(
         &queue,
         &map,
         &mut world,
-        &assets,
         &mut event_queue,
         &modules,
     );
@@ -113,7 +110,6 @@ fn flush_command_queue(
     queue: &CommandQueue,
     map: &EntityMap,
     world: &mut WorldState,
-    assets: &AssetServer,
     events: &mut EventQueue,
     modules: &Modules,
 ) {
