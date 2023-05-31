@@ -1,8 +1,10 @@
 mod button;
 mod container;
+mod image;
 mod input;
 mod text;
 
+pub use self::image::{Image, ImageProps};
 pub use button::{Button, ButtonProps};
 pub use container::{Container, ContainerProps};
 pub use input::{Input, InputProps};
