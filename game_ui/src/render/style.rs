@@ -101,7 +101,42 @@ impl Default for Bounds {
 }
 
 #[derive(Copy, Clone, Debug, Default, PartialEq)]
-pub struct Growth(pub Option<f32>);
+pub struct Growth {
+    pub x: Option<f32>,
+    pub y: Option<f32>,
+}
+
+impl Growth {
+    pub const NONE: Self = Self { x: None, y: None };
+
+    pub const fn new(x: f32, y: f32) -> Self {
+        Self {
+            x: Some(x),
+            y: Some(y),
+        }
+    }
+
+    pub const fn x(x: f32) -> Self {
+        Self {
+            x: Some(x),
+            y: None,
+        }
+    }
+
+    pub const fn y(y: f32) -> Self {
+        Self {
+            x: None,
+            y: Some(y),
+        }
+    }
+
+    pub const fn splat(factor: f32) -> Self {
+        Self {
+            x: Some(factor),
+            y: Some(factor),
+        }
+    }
+}
 
 #[derive(Clone, Debug, Default)]
 pub enum Background {

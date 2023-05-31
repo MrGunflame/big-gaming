@@ -214,19 +214,29 @@ impl LayoutTree {
                         }
                     }
 
-                    if elem.style.growth.0.is_some() {
-                        bounds.max = Vec2::splat(f32::INFINITY);
+                    if elem.style.growth.x.is_some() {
+                        bounds.max.x = f32::INFINITY;
+                    }
+
+                    if elem.style.growth.y.is_some() {
+                        bounds.max.y = f32::INFINITY;
                     }
 
                     bounds
                 } else {
                     // If the container can grow, it may take any size.
                     // If the can not grow, it will always have the size zero.
-                    if elem.style.growth.0.is_some() {
-                        ComputedBounds::default()
-                    } else {
-                        ComputedBounds::ZERO
+                    let mut bounds = ComputedBounds::ZERO;
+
+                    if elem.style.growth.x.is_some() {
+                        bounds.max.x = f32::INFINITY;
                     }
+
+                    if elem.style.growth.y.is_some() {
+                        bounds.max.y = f32::INFINITY;
+                    }
+
+                    bounds
                 }
             }
             ElementBody::Image(el) => el.bounds(&layout.style),
@@ -873,7 +883,7 @@ mod tests {
         let elem = Element {
             body: ElementBody::Container(),
             style: Style {
-                growth: Growth(Some(1.0)),
+                growth: Growth::splat(1.0),
                 ..Default::default()
             },
         };
@@ -898,7 +908,7 @@ mod tests {
         let elem = Element {
             body: ElementBody::Container(),
             style: Style {
-                growth: Growth(None),
+                growth: Growth::NONE,
                 ..Default::default()
             },
         };
@@ -921,7 +931,7 @@ mod tests {
         tree.resize(Vec2::splat(1000.0));
 
         let style = Style {
-            growth: Growth(Some(1.0)),
+            growth: Growth::splat(1.0),
             ..Default::default()
         };
 
@@ -956,7 +966,7 @@ mod tests {
         tree.resize(Vec2::splat(1000.0));
 
         let style = Style {
-            growth: Growth(None),
+            growth: Growth::NONE,
             ..Default::default()
         };
 
@@ -993,7 +1003,7 @@ mod tests {
         let root = Element {
             body: ElementBody::Container(),
             style: Style {
-                growth: Growth(None),
+                growth: Growth::NONE,
                 ..Default::default()
             },
         };

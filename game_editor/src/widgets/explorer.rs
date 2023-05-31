@@ -55,7 +55,7 @@ pub fn Explorer(
     // };
 
     let main = view! { root,
-        <Container style={Style { growth: Growth(Some(1.0)), justify: Justify::SpaceBetween, ..Default::default() }}>
+        <Container style={Style { growth: Growth::splat(1.0), justify: Justify::SpaceBetween, ..Default::default() }}>
         </Container>
     };
 
@@ -96,7 +96,7 @@ pub fn Explorer(
 
         view! {
             name_col,
-            <Container style={Style { background, growth: Growth(Some(1.0)), ..Default::default() }}>
+            <Container style={Style { background, growth: Growth::x(1.0), ..Default::default() }}>
                 <Text text={entry.name.to_string_lossy().to_string().into()}>
                 </Text>
             </Container>
@@ -120,7 +120,7 @@ pub fn Explorer(
 
         view! {
             date_modified_col,
-            <Container style={Style { background, growth: Growth(Some(1.0)), ..Default::default() }}>
+            <Container style={Style { background, growth: Growth::x(1.0), ..Default::default() }}>
                 <Text text={format_time(entry.modified).into()}>
                 </Text>
             </Container>
@@ -144,7 +144,7 @@ pub fn Explorer(
 
         view! {
             size_col,
-            <Container style={Style { background, growth: Growth(Some(1.0)), ..Default::default() }}>
+            <Container style={Style { background, growth: Growth::x(1.0), ..Default::default() }}>
                 <Text text={file_size(entry.len).into()}>
                 </Text>
             </Container>
