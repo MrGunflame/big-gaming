@@ -24,6 +24,11 @@ const SELECTED_COLOR: &str = "047dd3";
 
 // const SELECTED_COLOR: &str = "2a2a2a";
 
+const TABLE_BACKGROUND_COLOR: [Background; 2] = [
+    Background::Color(Rgba([0x00, 0x00, 0x00, 0xFF])),
+    Background::Color(Rgba([0xFF, 0xFF, 0xFF, 0xFF])),
+];
+
 #[component]
 pub fn Explorer(
     cx: &Scope,
@@ -66,56 +71,136 @@ pub fn Explorer(
         </Container>
     };
 
+    let table = view! {
+        upper,
+        <Container style={Style { direction: Direction::Column, ..Default::default() }}>
+        </Container>
+    };
+
+    let name_col = view! {
+        table,
+        <Container style={Style::default()}>
+        </Container>
+    };
+
+    view! {
+        name_col,
+        <Text text={"Name".into()}>
+        </Text>
+    };
+
     for (index, entry) in entries.iter().enumerate() {
         let (select, set_select) = create_signal(cx, false);
-        let set_selected_entries = set_selected_entries.clone();
 
-        let on_click = move || {
-            set_select.update(|v| *v = !*v);
-            set_selected_entries.update(|v| v[index].selected ^= true);
-        };
-
-        let row = view! { upper,
-            <Button on_click={on_click.into()} style={ Style { direction: Direction::Column, ..Default::default() }}>
-            </Button>
-        };
-
-        let id = row.id().unwrap();
-        let cx2 = row.clone();
-        create_effect(&row, move |_| {
-            let selected = select.get();
-            cx2.set_style(
-                id,
-                Style {
-                    background: if selected {
-                        Background::from_hex(SELECTED_COLOR).unwrap()
-                    } else {
-                        Background::None
-                    },
-                    direction: Direction::Column,
-                    padding: Padding::splat(Size::Pixels(2.0)),
-                    ..Default::default()
-                },
-            );
-        });
-
-        view! { row,
-            <Text text={entry.name.to_string_lossy().to_string().into()}>
-            </Text>
-        };
+        let background = TABLE_BACKGROUND_COLOR[index % 2].clone();
 
         view! {
-            row,
-            <Text text={file_size(entry.len).into()}>
-            </Text>
-        };
-
-        view! {
-            row,
-            <Text text={format_time(entry.modified).into()}>
-            </Text>
+            name_col,
+            <Container style={Style { background, growth: Growth(Some(1.0)), ..Default::default() }}>
+                <Text text={entry.name.to_string_lossy().to_string().into()}>
+                </Text>
+            </Container>
         };
     }
+
+    let date_modified_col = view! {
+        table,
+        <Container style={Style::default()}>
+        </Container>
+    };
+
+    view! {
+        date_modified_col,
+        <Text text={"Date Modified".into()}>
+        </Text>
+    };
+
+    for (index, entry) in entries.iter().enumerate() {
+        let background = TABLE_BACKGROUND_COLOR[index % 2].clone();
+
+        view! {
+            date_modified_col,
+            <Container style={Style { background, growth: Growth(Some(1.0)), ..Default::default() }}>
+                <Text text={format_time(entry.modified).into()}>
+                </Text>
+            </Container>
+        };
+    }
+
+    let size_col = view! {
+        table,
+        <Container style={Style::default()}>
+        </Container>
+    };
+
+    view! {
+        size_col,
+        <Text text={"Size".into()}>
+        </Text>
+    };
+
+    for (index, entry) in entries.iter().enumerate() {
+        let background = TABLE_BACKGROUND_COLOR[index % 2].clone();
+
+        view! {
+            size_col,
+            <Container style={Style { background, growth: Growth(Some(1.0)), ..Default::default() }}>
+                <Text text={file_size(entry.len).into()}>
+                </Text>
+            </Container>
+        };
+    }
+
+    // for (index, entry) in entries.iter().enumerate() {
+    //     let (select, set_select) = create_signal(cx, false);
+    //     let set_selected_entries = set_selected_entries.clone();
+
+    //     let on_click = move || {
+    //         set_select.update(|v| *v = !*v);
+    //         set_selected_entries.update(|v| v[index].selected ^= true);
+    //     };
+
+    //     let row = view! { upper,
+    //         <Button on_click={on_click.into()} style={ Style { direction: Direction::Column, ..Default::default() }}>
+    //         </Button>
+    //     };
+
+    //     let id = row.id().unwrap();
+    //     let cx2 = row.clone();
+    //     create_effect(&row, move |_| {
+    //         let selected = select.get();
+    //         cx2.set_style(
+    //             id,
+    //             Style {
+    //                 background: if selected {
+    //                     Background::from_hex(SELECTED_COLOR).unwrap()
+    //                 } else {
+    //                     Background::None
+    //                 },
+    //                 direction: Direction::Column,
+    //                 padding: Padding::splat(Size::Pixels(2.0)),
+    //                 ..Default::default()
+    //             },
+    //         );
+    //     });
+
+    //     view! { row,
+    //         <Text text={entry.name.to_string_lossy().to_string().into()}>
+    //         </Text>
+    //     };
+
+    //     view! {
+    //         row,
+    //         <Text text={file_size(entry.len).into()}>
+    //         </Text>
+    //     };
+
+    //     view! {
+    //         row,
+    //         <Text text={format_time(entry.modified).into()}>
+    //         </Text>
+    //     };
+    // }
 
     let on_open = move || {
         let entries = selected_entries
