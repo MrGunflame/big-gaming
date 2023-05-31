@@ -4,13 +4,15 @@ use std::collections::VecDeque;
 use std::ffi::OsString;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::SystemTime;
 
 use bevy_ecs::prelude::Entity;
 use bevy_ecs::system::Resource;
 use bevy_ecs::world::World;
+use chrono::{DateTime, Local};
 use game_ui::reactive::{create_effect, create_signal, ReadSignal, Scope, WriteSignal};
 use game_ui::render::layout::Key;
-use game_ui::render::style::{Background, Direction, Growth, Justify, Style};
+use game_ui::render::style::{Background, Direction, Growth, Justify, Padding, Size, Style};
 use game_ui::widgets::{Button, ButtonProps, Container, ContainerProps, Text, TextProps};
 use game_ui::{component, view};
 use image::Rgba;
@@ -91,6 +93,7 @@ pub fn Explorer(
                         Background::None
                     },
                     direction: Direction::Column,
+                    padding: Padding::splat(Size::Pixels(2.0)),
                     ..Default::default()
                 },
             );
@@ -104,6 +107,12 @@ pub fn Explorer(
         view! {
             row,
             <Text text={file_size(entry.len).into()}>
+            </Text>
+        };
+
+        view! {
+            row,
+            <Text text={format_time(entry.modified).into()}>
             </Text>
         };
     }
@@ -150,6 +159,7 @@ fn scan(path: PathBuf) -> Vec<Entry> {
             len: meta.len(),
             selected: false,
             path: entry.path(),
+            modified: meta.modified().ok(),
         });
     }
 
@@ -169,6 +179,7 @@ pub struct Entry {
     pub len: u64,
     pub selected: bool,
     pub path: PathBuf,
+    pub modified: Option<SystemTime>,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -187,6 +198,16 @@ fn file_size(mut bytes: u64) -> String {
     }
 
     format!("{} YiB", bytes)
+}
+
+fn format_time(time: Option<SystemTime>) -> String {
+    if let Some(time) = time {
+        let time = DateTime::<Local>::from(time);
+
+        format!("{}", time.format("%d %b %Y %H %M"))
+    } else {
+        String::new()
+    }
 }
 
 #[derive(Clone, Debug)]
