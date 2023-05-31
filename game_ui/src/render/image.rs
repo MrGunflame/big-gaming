@@ -70,8 +70,12 @@ impl BuildPrimitiveElement for Image {
             }
         };
 
-        debug_border(&mut img);
-        debug_padding(&mut img, style.padding);
+        if cfg!(feature = "debug_render") {
+            if std::env::var("UI_DEBUG_RENDER").is_ok() {
+                debug_border(&mut img);
+                debug_padding(&mut img, style.padding);
+            }
+        }
 
         Some(PrimitiveElement::new(
             pipeline,
