@@ -10,7 +10,7 @@ use bevy_ecs::prelude::Entity;
 use bevy_ecs::system::Resource;
 use bevy_ecs::world::World;
 use chrono::{DateTime, Local};
-use game_ui::reactive::{create_effect, create_signal, ReadSignal, Scope, WriteSignal};
+use game_ui::reactive::{create_effect, create_signal, NodeId, ReadSignal, Scope, WriteSignal};
 use game_ui::render::layout::Key;
 use game_ui::render::style::{Background, Direction, Growth, Justify, Padding, Size, Style};
 use game_ui::widgets::{Button, ButtonProps, Container, ContainerProps, Text, TextProps};
@@ -25,8 +25,8 @@ const SELECTED_COLOR: &str = "047dd3";
 // const SELECTED_COLOR: &str = "2a2a2a";
 
 const TABLE_BACKGROUND_COLOR: [Background; 2] = [
-    Background::Color(Rgba([0x00, 0x00, 0x00, 0xFF])),
-    Background::Color(Rgba([0xFF, 0xFF, 0xFF, 0xFF])),
+    Background::Color(Rgba([0x50, 0x50, 0x50, 0xFF])),
+    Background::Color(Rgba([0x2a, 0x2a, 0x2a, 0xFF])),
 ];
 
 #[component]
@@ -89,18 +89,37 @@ pub fn Explorer(
         </Text>
     };
 
+    let signals: Vec<(ReadSignal<_>, WriteSignal<_>)> = (0..entries.len())
+        .map(|_| create_signal(cx, false))
+        .collect();
+
+    let mut rows: Vec<Vec<NodeId>> = (0..entries.len()).map(|_| vec![]).collect();
+
     for (index, entry) in entries.iter().enumerate() {
-        let (select, set_select) = create_signal(cx, false);
-
         let background = TABLE_BACKGROUND_COLOR[index % 2].clone();
+        let style = Style {
+            background,
+            growth: Growth::x(1.0),
+            padding: Padding::splat(Size::Pixels(2.0)),
+            ..Default::default()
+        };
 
-        view! {
+        let set_selected = signals[index].1.clone();
+        let set_selected_entries = set_selected_entries.clone();
+        let on_click = move || {
+            set_selected.update(|val| *val ^= true);
+            set_selected_entries.update(|val| val[index].selected ^= true);
+        };
+
+        let cx = view! {
             name_col,
-            <Container style={Style { background, growth: Growth::x(1.0), ..Default::default() }}>
+            <Button style={style} on_click={on_click.into()}>
                 <Text text={entry.name.to_string_lossy().to_string().into()}>
                 </Text>
-            </Container>
+            </Button>
         };
+
+        rows[index].push(cx.id().unwrap());
     }
 
     let date_modified_col = view! {
@@ -117,14 +136,29 @@ pub fn Explorer(
 
     for (index, entry) in entries.iter().enumerate() {
         let background = TABLE_BACKGROUND_COLOR[index % 2].clone();
+        let style = Style {
+            background,
+            growth: Growth::x(1.0),
+            padding: Padding::splat(Size::Pixels(2.0)),
+            ..Default::default()
+        };
 
-        view! {
+        let set_selected = signals[index].1.clone();
+        let set_selected_entries = set_selected_entries.clone();
+        let on_click = move || {
+            set_selected.update(|val| *val ^= true);
+            set_selected_entries.update(|val| val[index].selected ^= true);
+        };
+
+        let cx = view! {
             date_modified_col,
-            <Container style={Style { background, growth: Growth::x(1.0), ..Default::default() }}>
+            <Button style={style} on_click={on_click.into()}>
                 <Text text={format_time(entry.modified).into()}>
                 </Text>
-            </Container>
+            </Button>
         };
+
+        rows[index].push(cx.id().unwrap());
     }
 
     let size_col = view! {
@@ -141,14 +175,59 @@ pub fn Explorer(
 
     for (index, entry) in entries.iter().enumerate() {
         let background = TABLE_BACKGROUND_COLOR[index % 2].clone();
+        let style = Style {
+            background,
+            growth: Growth::x(1.0),
+            padding: Padding::splat(Size::Pixels(2.0)),
+            ..Default::default()
+        };
 
-        view! {
+        let set_selected = signals[index].1.clone();
+        let set_selected_entries = set_selected_entries.clone();
+        let on_click = move || {
+            set_selected.update(|val| *val ^= true);
+            set_selected_entries.update(|val| val[index].selected ^= true);
+        };
+
+        let cx = view! {
             size_col,
-            <Container style={Style { background, growth: Growth::x(1.0), ..Default::default() }}>
+            <Button style={style} on_click={on_click.into()}>
                 <Text text={file_size(entry.len).into()}>
                 </Text>
-            </Container>
+            </Button>
         };
+
+        rows[index].push(cx.id().unwrap());
+    }
+
+    for (index, (read, _)) in signals.into_iter().enumerate() {
+        let row = rows.remove(0);
+
+        let cx2 = cx.clone();
+        create_effect(cx, move |_| {
+            let selected = read.get();
+
+            let style = if selected {
+                Style {
+                    background: Background::from_hex(SELECTED_COLOR).unwrap(),
+                    growth: Growth::x(1.0),
+                    padding: Padding::splat(Size::Pixels(2.0)),
+                    ..Default::default()
+                }
+            } else {
+                let background = TABLE_BACKGROUND_COLOR[index % 2].clone();
+                Style {
+                    background,
+                    growth: Growth::x(1.0),
+                    padding: Padding::splat(Size::Pixels(2.0)),
+                    ..Default::default()
+                }
+            };
+
+            for id in &row {
+                cx2.set_style(*id, style.clone());
+            }
+        });
     }
 
     // for (index, entry) in entries.iter().enumerate() {
