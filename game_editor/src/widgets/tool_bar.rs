@@ -1,5 +1,5 @@
 use game_ui::reactive::Scope;
-use game_ui::render::style::Style;
+use game_ui::render::style::{Direction, Padding, Size, Style};
 use game_ui::{component, view};
 
 use game_ui::widgets::*;
@@ -8,14 +8,19 @@ use game_ui::widgets::*;
 pub fn ToolBar(cx: &Scope, buttons: Vec<ActionButton>) -> Scope {
     let root = view! {
         cx,
-        <Container style={Style::default()}>
+        <Container style={Style { direction: Direction::Column, ..Default::default() }}>
         </Container>
+    };
+
+    let style = Style {
+        padding: Padding::splat(Size::Pixels(2.0)),
+        ..Default::default()
     };
 
     for button in buttons {
         view! {
             root,
-            <Button on_click={button.on_click.into()} style={Style::default()}>
+            <Button on_click={button.on_click.into()} style={style.clone()}>
                 <Text text={button.label.into()}>
                 </Text>
             </Button>
