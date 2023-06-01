@@ -357,6 +357,14 @@ impl Node for MainPass {
         // happen before a render.
         if window.depth_texture.width() != ctx.width || window.depth_texture.height() != ctx.height
         {
+            tracing::error!(
+                "depth texture is ({}, {}) but render target is ({}, {})",
+                window.depth_texture.width(),
+                window.depth_texture.height(),
+                ctx.width,
+                ctx.height,
+            );
+
             return;
         }
 
@@ -489,6 +497,13 @@ pub fn resize_render_windows(
     mut events: EventReader<WindowResized>,
 ) {
     for event in events.iter() {
+        tracing::trace!(
+            "resizing depth texture for {:?} to width = {}, height = {}",
+            event.window,
+            event.width,
+            event.height,
+        );
+
         let Some(window) = windows.windows.get_mut(&event.window) else {
             continue;
         };

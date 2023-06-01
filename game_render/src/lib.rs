@@ -76,6 +76,7 @@ impl Plugin for RenderPlugin {
         app.add_system(create_surfaces);
         app.add_system(destroy_surfaces);
         app.add_system(render_surfaces);
+        app.add_system(resize_surfaces);
 
         app.init_resource::<pipeline::MeshPipeline>();
         app.init_resource::<pipeline::MaterialPipeline>();
@@ -187,6 +188,13 @@ pub fn resize_surfaces(
     device: Res<RenderDevice>,
 ) {
     for event in events.iter() {
+        tracing::debug!(
+            "resize window {:?} to ({}, {})",
+            event.window,
+            event.width,
+            event.height,
+        );
+
         if event.width == 0 || event.height == 0 {
             continue;
         }
@@ -243,9 +251,11 @@ pub fn render_surfaces(
 
                         match err {
                             SurfaceError::Outdated => {
+                                tracing::warn!("SurfaceError::Outdated");
                                 surface.surface.configure(&device.0, &surface.config);
                             }
                             SurfaceError::Lost => {
+                                tracing::warn!("SurfaceError::Lost");
                                 surface.surface.configure(&device.0, &surface.config);
                             }
                             SurfaceError::OutOfMemory => {
