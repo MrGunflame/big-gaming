@@ -26,7 +26,7 @@ use systems::create_windows;
 use winit::dpi::{LogicalPosition, PhysicalSize, Position};
 use winit::error::ExternalError;
 use winit::event::{DeviceEvent, ElementState, Event, MouseScrollDelta, WindowEvent};
-use winit::event_loop::{ControlFlow, EventLoop};
+use winit::event_loop::EventLoop;
 use winit::window::{CursorGrabMode, WindowId};
 
 #[derive(Clone, Debug)]
@@ -114,8 +114,41 @@ struct State {
     last_update: Instant,
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+enum Backend {
+    Unknown,
+    X11,
+    Wayland,
+}
+
+impl From<&EventLoop<()>> for Backend {
+    fn from(event_loop: &EventLoop<()>) -> Self {
+        #[cfg(target_family = "unix")]
+        {
+            {
+                use winit::platform::x11::EventLoopWindowTargetExtX11;
+
+                if event_loop.is_x11() {
+                    return Self::X11;
+                }
+            }
+
+            {
+                use winit::platform::wayland::EventLoopWindowTargetExtWayland;
+
+                if event_loop.is_wayland() {
+                    return Self::Wayland;
+                }
+            }
+        }
+
+        Self::Unknown
+    }
+}
+
 pub fn main_loop(mut app: App) {
     let event_loop: EventLoop<()> = app.world.remove_non_send_resource().unwrap();
+    let backend = Backend::from(&event_loop);
 
     let mut state = State {
         active: true,
@@ -256,7 +289,32 @@ pub fn main_loop(mut app: App) {
                     delta,
                     phase,
                     modifiers,
-                } => {}
+                } => {
+                    // `winit 0.28.4` does not emit `DeviceEvent::MouseWheel` for wayland
+                    // event loops. Whether this is a bug or a "feature" is to be determined.
+                    // Until then we have to manually capture MouseWheel events from the window
+                    // and ignore `DeviceEvent::MouseWheel` (in case the behavoir changes in the
+                    // future).
+                    match backend {
+                        Backend::Wayland => {
+                            let event = match delta {
+                                MouseScrollDelta::LineDelta(x, y) => MouseWheel {
+                                    unit: MouseScrollUnit::Line,
+                                    x,
+                                    y,
+                                },
+                                MouseScrollDelta::PixelDelta(pos) => MouseWheel {
+                                    unit: MouseScrollUnit::Pixel,
+                                    x: pos.x as f32,
+                                    y: pos.y as f32,
+                                },
+                            };
+
+                            app.world.send_event(event);
+                        }
+                        _ => (),
+                    }
+                }
                 WindowEvent::MouseInput {
                     device_id,
                     state,
@@ -316,22 +374,27 @@ pub fn main_loop(mut app: App) {
                         },
                     });
                 }
-                DeviceEvent::MouseWheel { delta } => {
-                    let event = match delta {
-                        MouseScrollDelta::LineDelta(x, y) => MouseWheel {
-                            unit: MouseScrollUnit::Line,
-                            x,
-                            y,
-                        },
-                        MouseScrollDelta::PixelDelta(pos) => MouseWheel {
-                            unit: MouseScrollUnit::Pixel,
-                            x: pos.x as f32,
-                            y: pos.y as f32,
-                        },
-                    };
+                DeviceEvent::MouseWheel { delta } => match backend {
+                    // See comment at `WindowEvent::MouseWheel` for
+                    // why this is necessary.
+                    Backend::Wayland => (),
+                    _ => {
+                        let event = match delta {
+                            MouseScrollDelta::LineDelta(x, y) => MouseWheel {
+                                unit: MouseScrollUnit::Line,
+                                x,
+                                y,
+                            },
+                            MouseScrollDelta::PixelDelta(pos) => MouseWheel {
+                                unit: MouseScrollUnit::Pixel,
+                                x: pos.x as f32,
+                                y: pos.y as f32,
+                            },
+                        };
 
-                    app.world.send_event(event);
-                }
+                        app.world.send_event(event);
+                    }
+                },
                 DeviceEvent::Motion { axis, value } => {}
                 DeviceEvent::Button { button, state } => {}
                 DeviceEvent::Key(key) => {}
