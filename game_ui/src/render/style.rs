@@ -149,6 +149,23 @@ pub enum Background {
 }
 
 impl Background {
+    pub const BLACK: Self = Self::Color(Rgba([0x00, 0x00, 0x00, 0xFF]));
+    pub const SILVER: Self = Self::Color(Rgba([0xC0, 0xC0, 0xC0, 0xFF]));
+    pub const GRAY: Self = Self::Color(Rgba([0x80, 0x80, 0x80, 0xFF]));
+    pub const WHITE: Self = Self::Color(Rgba([0xFF, 0xFF, 0xFF, 0xFF]));
+    pub const MAROON: Self = Self::Color(Rgba([0x80, 0x00, 0x00, 0xFF]));
+    pub const RED: Self = Self::Color(Rgba([0xFF, 0x00, 0x00, 0xFF]));
+    pub const PURPLE: Self = Self::Color(Rgba([0x80, 0x00, 0x80, 0xFF]));
+    pub const FUCHSIA: Self = Self::Color(Rgba([0xFF, 0x00, 0xFF, 0xFF]));
+    pub const GREEN: Self = Self::Color(Rgba([0x00, 0x80, 0x00, 0xFF]));
+    pub const LIME: Self = Self::Color(Rgba([0x00, 0xFF, 0x00, 0xFF]));
+    pub const OLIVE: Self = Self::Color(Rgba([0x80, 0x80, 0x00, 0xFF]));
+    pub const YELLOW: Self = Self::Color(Rgba([0xFF, 0xFF, 0x00, 0xFF]));
+    pub const NAVY: Self = Self::Color(Rgba([0x00, 0x00, 0x80, 0xFF]));
+    pub const BLUE: Self = Self::Color(Rgba([0x00, 0x00, 0xFF, 0xFF]));
+    pub const TEAL: Self = Self::Color(Rgba([0x00, 0x80, 0x80, 0xFF]));
+    pub const AQUA: Self = Self::Color(Rgba([0x00, 0xFF, 0xFF, 0xFF]));
+
     pub fn from_hex(s: &str) -> Result<Self, FromHexError> {
         Color::from_hex(s).map(|c| Self::Color(c.0))
     }
