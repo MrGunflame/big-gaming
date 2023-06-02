@@ -121,7 +121,17 @@ impl Document {
 
     pub fn len(&self) -> usize {
         let inner = self.inner.lock();
-        inner.nodes.len()
+
+        let len = inner.nodes.len();
+
+        // Extra assertions for cleanup tests.
+        if cfg!(debug_assertions) && len == 0 {
+            assert_eq!(inner.children.len(), 0);
+            assert_eq!(inner.parents.len(), 0);
+            assert_eq!(inner.node_mappings.len(), 0);
+        }
+
+        len
     }
 
     pub fn is_empty(&self) -> bool {
@@ -207,8 +217,6 @@ impl Document {
                 Event::RemoveNode(id) => {
                     tracing::trace!("despawn node {:?}", id);
 
-                    dbg!(id, &doc);
-
                     let mut delete_queue = vec![id];
 
                     let mut index = 0;
@@ -226,12 +234,16 @@ impl Document {
                         index += 1;
                     }
 
-                    dbg!(&delete_queue);
-
-                    for key in delete_queue {
-                        let key = doc.node_mappings.remove(&key).unwrap();
+                    for node_id in delete_queue {
+                        let key = doc.node_mappings.remove(&node_id).unwrap();
                         tree.remove(key);
                         events.remove(key);
+
+                        // Remove effects registered on the node.
+                        doc.effects.retain(|_, effect| match effect.node {
+                            Some(node) => node != node_id,
+                            None => true,
+                        });
                     }
                 }
                 Event::UpdateNode(id, node) => {
@@ -280,7 +292,7 @@ mod tests {
 
     use super::{Document, Node};
 
-    fn create_node() -> Node {
+    pub(super) fn create_node() -> Node {
         Node {
             element: Element {
                 body: ElementBody::Container(),

@@ -119,16 +119,16 @@ where
         self.update(|cell| *cell = value);
     }
 
-    pub fn update<F>(&self, f: F)
+    pub fn update<F, U>(&self, f: F) -> U
     where
-        F: FnOnce(&mut T),
+        F: FnOnce(&mut T) -> U,
     {
         tracing::trace!("Signal({:?})::write", self.id);
 
-        {
+        let ret = {
             let mut cell = self.value.lock();
-            f(&mut cell);
-        }
+            f(&mut cell)
+        };
 
         let mut doc = self.cx.document.inner.lock();
         let effects = doc.signal_effects.get(&self.id.0).unwrap().clone();
@@ -141,6 +141,8 @@ where
 
         doc.effect_queue
             .extend(effects.iter().map(|e| EffectId(*e)));
+
+        ret
     }
 
     pub fn subscribe(&self) -> ReadSignal<T> {
