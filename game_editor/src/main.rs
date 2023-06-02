@@ -14,6 +14,7 @@ use game_ui::render::layout::LayoutTree;
 use game_ui::UiPlugin;
 use game_window::Window;
 use state::module::Modules;
+use state::record::Records;
 // use plugins::camera::CameraPlugin;
 use tokio::runtime::Runtime;
 use widgets::tool_bar::ToolBar;
@@ -50,6 +51,7 @@ fn main() {
 
     App::new()
         .insert_resource(Modules::new())
+        .insert_resource(Records::new())
         .insert_resource(handle)
         .add_plugin(UiPlugin)
         .add_startup_system(setup)
@@ -147,18 +149,23 @@ fn setup(mut commands: Commands, queue: Res<SpawnWindowQueue>) {
 fn load_from_backend(
     handle: Res<Handle>,
     mut modules: ResMut<Modules>,
+    mut records: ResMut<Records>,
     mut queue: Res<SpawnWindowQueue>,
     create_modules: Res<CreateModules>,
 ) {
     while let Some(resp) = handle.recv() {
         match resp {
             Response::LoadModule(res) => match res {
-                Ok(module) => {
-                    modules.insert(module.0.clone());
+                Ok((module, recs)) => {
+                    for (_, rec) in recs.iter() {
+                        records.push(module.module.id, rec.clone());
+                    }
+
+                    modules.insert(module.clone());
 
                     let inner = create_modules.0.lock();
                     if let Some(sig) = &*inner {
-                        sig.update(|v| v.push(module.0))
+                        sig.update(|v| v.push(module))
                     }
                 }
                 Err(err) => {

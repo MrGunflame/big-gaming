@@ -1,10 +1,12 @@
-use game_data::record::RecordKind;
+use game_data::record::{RecordBody, RecordKind};
 use game_ui::reactive::{create_signal, Scope, WriteSignal};
-use game_ui::render::style::{Background, Bounds, Growth, Size, SizeVec2, Style};
+use game_ui::render::style::{Background, Bounds, Direction, Growth, Size, SizeVec2, Style};
 use game_ui::{component, view};
 
 use game_ui::widgets::*;
 use image::Rgba;
+
+use crate::state;
 
 const DEFAULT_CATEGORY: RecordKind = RecordKind::Item;
 
@@ -23,16 +25,22 @@ const BACKGROUND_COLOR: [Background; 2] = [
 ];
 
 #[component]
-pub fn Records(cx: &Scope) -> Scope {
+pub fn Records(cx: &Scope, records: &state::record::Records) -> Scope {
     let (cat, set_cat) = create_signal(cx, DEFAULT_CATEGORY);
 
     let root = view! {
         cx,
-        <Container style={Style::default()}>
+        <Container style={Style { direction: Direction::Column, ..Default::default() }}>
         </Container>
     };
 
     let categories = view! {
+        root,
+        <Container style={Style::default()}>
+        </Container>
+    };
+
+    let main = view! {
         root,
         <Container style={Style::default()}>
         </Container>
@@ -54,6 +62,45 @@ pub fn Records(cx: &Scope) -> Scope {
                 </Text>
             </Button>
         };
+    }
+
+    for (module_id, record) in records.iter() {
+        if record.body.kind() != DEFAULT_CATEGORY {
+            continue;
+        }
+
+        let mut cols = Vec::new();
+
+        cols.push(record.id.to_string());
+        cols.push(record.name.clone());
+
+        match &record.body {
+            RecordBody::Item(item) => {
+                cols.push(format!("{}g", item.mass.to_grams()));
+                cols.push(item.value.to_string());
+                cols.push(item.components.len().to_string());
+                cols.push(item.actions.len().to_string());
+            }
+            RecordBody::Action(action) => {}
+            RecordBody::Component(component) => {}
+            RecordBody::Object(object) => {
+                cols.push(object.components.len().to_string());
+            }
+        }
+
+        let row = view! {
+            main,
+            <Container style={Style { direction: Direction::Column, ..Default::default() }}>
+            </Container>
+        };
+
+        for col in cols {
+            view! {
+                row,
+                <Text text={col.into()}>
+                </Text>
+            };
+        }
     }
 
     root

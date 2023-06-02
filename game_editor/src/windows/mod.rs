@@ -52,6 +52,7 @@ fn spawn_windows(
     queue: ResMut<SpawnWindowQueue>,
     handle: Res<Handle>,
     modules: Res<crate::state::module::Modules>,
+    records: Res<crate::state::record::Records>,
     create_modules: Res<CreateModules>,
 ) {
     for event in events.iter() {
@@ -132,7 +133,7 @@ fn spawn_windows(
             SpawnWindow::Records => {
                 view! {
                     cx,
-                    <Records>
+                    <Records records={&records}>
                     </Records>
                 };
             }
