@@ -97,8 +97,8 @@ pub enum Error {
         min: ScalarValue,
         max: ScalarValue,
     },
-    #[error("invalid scalar: {0}")]
-    InvalidScalar(#[from] InvalidScalar),
+    #[error("invalid acessor value: {0}")]
+    InvalidAccessor(#[from] InvalidAccessorValue),
 }
 
 impl GltfData {
@@ -266,17 +266,19 @@ impl GltfData {
 
         match (accessor.min(), accessor.max()) {
             (Some(min), Some(max)) => {
-                let min = ScalarValue::load(data_type, min)?;
-                let max = ScalarValue::load(data_type, max)?;
+                let min = AccessorValue::load(Dimensions::Vec3, data_type, min)?;
+                let max = AccessorValue::load(Dimensions::Vec3, data_type, max)?;
 
                 while buf.len() != 0 {
                     let x = read_f32(&mut buf)?;
                     let y = read_f32(&mut buf)?;
                     let z = read_f32(&mut buf)?;
 
-                    validate_scalar_range(x.into(), min, max)?;
-                    validate_scalar_range(y.into(), min, max)?;
-                    validate_scalar_range(z.into(), min, max)?;
+                    validate_accessor_range(
+                        AccessorValue::Vec3([x.into(), y.into(), z.into()]),
+                        min,
+                        max,
+                    )?;
 
                     positions.push([x, y, z]);
                 }
@@ -471,18 +473,144 @@ fn read_u32(buf: &mut &[u8]) -> Result<u32, Error> {
     }
 }
 
-fn validate_scalar_range<T>(value: T, min: T, max: T) -> Result<(), Error>
+fn validate_accessor_range<T>(value: T, min: T, max: T) -> Result<(), Error>
 where
-    T: Into<ScalarValue>,
+    T: Into<AccessorValue>,
 {
     let value = value.into();
     let min = min.into();
     let max = max.into();
 
-    if value < min || value > max {
-        Err(Error::ScalarOutOfRange { value, min, max })
-    } else {
-        Ok(())
+    match (value, min, max) {
+        (AccessorValue::Scalar(value), AccessorValue::Scalar(min), AccessorValue::Scalar(max)) => {
+            if value < min || value > max {
+                return Err(Error::ScalarOutOfRange { value, min, max });
+            }
+        }
+        (AccessorValue::Vec2(value), AccessorValue::Vec2(min), AccessorValue::Vec2(max)) => {
+            for index in 0..2 {
+                let value = value[index];
+                let min = min[index];
+                let max = max[index];
+
+                if value < min || value > max {
+                    return Err(Error::ScalarOutOfRange { value, min, max });
+                }
+            }
+        }
+        (AccessorValue::Vec3(value), AccessorValue::Vec3(min), AccessorValue::Vec3(max)) => {
+            for index in 0..3 {
+                let value = value[index];
+                let min = min[index];
+                let max = max[index];
+
+                if value < min || value > max {
+                    return Err(Error::ScalarOutOfRange { value, min, max });
+                }
+            }
+        }
+        (AccessorValue::Vec4(value), AccessorValue::Vec4(min), AccessorValue::Vec4(max)) => {
+            for index in 0..4 {
+                let value = value[index];
+                let min = min[index];
+                let max = max[index];
+
+                if value < min || value > max {
+                    return Err(Error::ScalarOutOfRange { value, min, max });
+                }
+            }
+        }
+        _ => todo!(),
+    }
+
+    Ok(())
+}
+
+#[derive(Clone, Debug, PartialEq, Error)]
+pub enum InvalidAccessorValue {
+    #[error("invalid dimensions: {0}, expected {1:?}")]
+    InvalidDimensions(u64, Dimensions),
+    #[error("invalid scalar: {0}")]
+    InvalidScalar(#[from] InvalidScalar),
+    #[error("no value: {0}")]
+    NoArray(serde_json::Value),
+}
+
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum AccessorValue {
+    Scalar(ScalarValue),
+    Vec2([ScalarValue; 2]),
+    Vec3([ScalarValue; 3]),
+    Vec4([ScalarValue; 4]),
+    Mat2([[ScalarValue; 2]; 2]),
+    Mat3([[ScalarValue; 3]; 3]),
+    Mat4([[ScalarValue; 4]; 4]),
+}
+
+impl AccessorValue {
+    fn load(
+        dimensions: Dimensions,
+        data_type: DataType,
+        value: serde_json::Value,
+    ) -> Result<Self, InvalidAccessorValue> {
+        match dimensions {
+            Dimensions::Scalar => {
+                let e = ScalarValue::load(data_type, value)?;
+                Ok(Self::Scalar(e))
+            }
+            Dimensions::Vec2 => match value.as_array() {
+                Some(array) => {
+                    if array.len() != 2 {
+                        return Err(InvalidAccessorValue::InvalidDimensions(
+                            array.len() as u64,
+                            Dimensions::Vec2,
+                        ));
+                    }
+
+                    let e0 = ScalarValue::load(data_type, array[0].clone())?;
+                    let e1 = ScalarValue::load(data_type, array[1].clone())?;
+
+                    Ok(Self::Vec2([e0, e1]))
+                }
+                None => Err(InvalidAccessorValue::NoArray(value)),
+            },
+            Dimensions::Vec3 => match value.as_array() {
+                Some(array) => {
+                    if array.len() != 3 {
+                        return Err(InvalidAccessorValue::InvalidDimensions(
+                            array.len() as u64,
+                            Dimensions::Vec3,
+                        ));
+                    }
+
+                    let e0 = ScalarValue::load(data_type, array[0].clone())?;
+                    let e1 = ScalarValue::load(data_type, array[1].clone())?;
+                    let e2 = ScalarValue::load(data_type, array[2].clone())?;
+
+                    Ok(Self::Vec3([e0, e1, e2]))
+                }
+                None => Err(InvalidAccessorValue::NoArray(value)),
+            },
+            Dimensions::Vec4 => match value.as_array() {
+                Some(array) => {
+                    if array.len() != 4 {
+                        return Err(InvalidAccessorValue::InvalidDimensions(
+                            array.len() as u64,
+                            Dimensions::Vec4,
+                        ));
+                    }
+
+                    let e0 = ScalarValue::load(data_type, array[0].clone())?;
+                    let e1 = ScalarValue::load(data_type, array[1].clone())?;
+                    let e2 = ScalarValue::load(data_type, array[2].clone())?;
+                    let e3 = ScalarValue::load(data_type, array[3].clone())?;
+
+                    Ok(Self::Vec4([e0, e1, e2, e3]))
+                }
+                None => Err(InvalidAccessorValue::NoArray(value)),
+            },
+            _ => todo!(),
+        }
     }
 }
 
