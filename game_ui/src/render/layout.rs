@@ -83,6 +83,14 @@ impl LayoutTree {
         }
     }
 
+    pub fn len(&self) -> usize {
+        self.elems.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     pub fn size(&self) -> Vec2 {
         self.size
     }

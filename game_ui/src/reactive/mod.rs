@@ -27,9 +27,8 @@ pub struct NodeId(DefaultKey);
 #[derive(Debug, Clone)]
 pub struct Scope {
     document: Document,
-    id: Option<NodeId>,
     // Ref to parent, or none if root.
-    parent: Option<NodeId>,
+    id: Option<NodeId>,
 }
 
 impl Scope {
@@ -55,14 +54,13 @@ impl Scope {
         doc.queue.push_back(Event::PushNode(NodeId(id), node));
 
         doc.parents.insert(NodeId(id), self.id);
-        if let Some(parent) = self.parent {
+        if let Some(parent) = self.id {
             doc.children.entry(parent).or_default().push(NodeId(id));
         }
 
         Scope {
             document: self.document.clone(),
             id: Some(NodeId(id)),
-            parent: self.id,
         }
     }
 
@@ -121,14 +119,19 @@ impl Document {
         Self::default()
     }
 
-    pub fn root_scope(&self) -> Scope {
-        let mut doc = self.inner.lock();
-        let id = doc.nodes.insert(NodeStore::default());
+    pub fn len(&self) -> usize {
+        let inner = self.inner.lock();
+        inner.nodes.len()
+    }
 
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    pub fn root_scope(&self) -> Scope {
         Scope {
             document: self.clone(),
             id: None,
-            parent: None,
         }
     }
 
@@ -204,9 +207,32 @@ impl Document {
                 Event::RemoveNode(id) => {
                     tracing::trace!("despawn node {:?}", id);
 
-                    let key = doc.node_mappings.remove(&id).unwrap();
-                    tree.remove(key);
-                    events.remove(key);
+                    dbg!(id, &doc);
+
+                    let mut delete_queue = vec![id];
+
+                    let mut index = 0;
+                    while index < delete_queue.len() {
+                        let key = delete_queue[index];
+
+                        doc.nodes.remove(key.0);
+                        doc.parents.remove(&key);
+
+                        if let Some(children) = doc.children.remove(&key) {
+                            dbg!(&children);
+                            delete_queue.extend(children);
+                        }
+
+                        index += 1;
+                    }
+
+                    dbg!(&delete_queue);
+
+                    for key in delete_queue {
+                        let key = doc.node_mappings.remove(&key).unwrap();
+                        tree.remove(key);
+                        events.remove(key);
+                    }
                 }
                 Event::UpdateNode(id, node) => {
                     tracing::trace!("replace node {:?}", id);
@@ -241,4 +267,79 @@ pub enum Event {
     UpdateNode(NodeId, Node),
     RemoveNode(NodeId),
     UpdateStyle(NodeId, Style),
+}
+
+#[cfg(test)]
+mod tests {
+    use bevy_ecs::world::World;
+
+    use crate::events::{EventHandlers, Events};
+    use crate::render::layout::LayoutTree;
+    use crate::render::style::Style;
+    use crate::render::{Element, ElementBody};
+
+    use super::{Document, Node};
+
+    fn create_node() -> Node {
+        Node {
+            element: Element {
+                body: ElementBody::Container(),
+                style: Style::default(),
+            },
+            events: EventHandlers::default(),
+        }
+    }
+
+    #[test]
+    fn document_cleanup() {
+        let doc = Document::new();
+        let cx = doc.root_scope();
+
+        let mut tree = LayoutTree::new();
+        let mut events = Events::new();
+        let world = World::new();
+
+        let id = cx.push(create_node()).id().unwrap();
+
+        doc.run_effects(&world);
+        doc.flush_node_queue(&mut tree, &mut events);
+
+        cx.remove(id);
+
+        doc.run_effects(&world);
+        doc.flush_node_queue(&mut tree, &mut events);
+
+        assert!(doc.is_empty());
+        assert!(tree.is_empty());
+        assert!(events.is_empty());
+    }
+
+    #[test]
+    fn document_cleanup_children() {
+        let doc = Document::new();
+        let cx = doc.root_scope();
+
+        let mut tree = LayoutTree::new();
+        let mut events = Events::new();
+        let world = World::new();
+
+        let id = {
+            let cx = cx.push(create_node());
+            cx.push(create_node());
+            cx.push(create_node());
+            cx.id().unwrap()
+        };
+
+        doc.run_effects(&world);
+        doc.flush_node_queue(&mut tree, &mut events);
+
+        cx.remove(id);
+
+        doc.run_effects(&world);
+        doc.flush_node_queue(&mut tree, &mut events);
+
+        assert!(doc.is_empty());
+        assert!(tree.is_empty());
+        assert!(events.is_empty());
+    }
 }

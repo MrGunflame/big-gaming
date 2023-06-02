@@ -54,3 +54,34 @@ impl Debug for Effect {
         v.finish()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use bevy_ecs::world::World;
+    use parking_lot::Mutex;
+
+    use crate::reactive::Document;
+
+    use super::create_effect;
+
+    #[test]
+    fn effect_call_on_creation() {
+        let doc = Document::new();
+        let cx = doc.root_scope();
+
+        let value = Arc::new(Mutex::new(0));
+
+        {
+            let value = value.clone();
+            create_effect(&cx, move |_| {
+                *value.lock() += 1;
+            });
+        }
+
+        doc.run_effects(&World::new());
+
+        assert_eq!(*value.lock(), 1);
+    }
+}

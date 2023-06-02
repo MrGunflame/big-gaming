@@ -11,7 +11,7 @@ pub fn create_signal<T>(cx: &Scope, value: T) -> (ReadSignal<T>, WriteSignal<T>)
 where
     T: Send + Sync + 'static,
 {
-    tracing::trace!("creating reactive signal for node {:?}", cx.parent);
+    tracing::trace!("creating reactive signal for node {:?}", cx.id);
 
     let signal = Signal { effects: vec![] };
 
@@ -161,3 +161,24 @@ pub(super) struct Signal {
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct SignalId(pub DefaultKey);
+
+#[cfg(test)]
+mod tests {
+    use crate::reactive::Document;
+
+    use super::create_signal;
+
+    #[test]
+    fn signal_update() {
+        let doc = Document::new();
+        let cx = doc.root_scope();
+
+        let (reader, writer) = create_signal(&cx, 0);
+
+        assert_eq!(reader.get(), 0);
+
+        writer.update(|val| *val += 1);
+
+        assert_eq!(reader.get(), 1);
+    }
+}

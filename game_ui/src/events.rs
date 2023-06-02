@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::f32::consts::E;
 use std::fmt::{self, Debug, Formatter};
 use std::ptr::NonNull;
 
@@ -45,6 +46,13 @@ pub struct Events {
 }
 
 impl Events {
+    pub fn new() -> Self {
+        Self {
+            events: HashMap::new(),
+            positions: Vec::new(),
+        }
+    }
+
     pub fn insert(&mut self, key: Key, handlers: EventHandlers) {
         self.events.insert(key, handlers);
     }
@@ -55,6 +63,14 @@ impl Events {
 
     pub fn get_mut(&mut self, key: Key) -> Option<&mut EventHandlers> {
         self.events.get_mut(&key)
+    }
+
+    pub fn len(&self) -> usize {
+        self.events.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 }
 
