@@ -221,7 +221,7 @@ mod tests {
     }
 
     #[test]
-    fn effect_cleanup_wuth_shared_signal() {
+    fn effect_cleanup_with_shared_signal() {
         let doc = Document::new();
         let cx = doc.root_scope();
 
