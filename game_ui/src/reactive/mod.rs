@@ -234,16 +234,41 @@ impl Document {
                         index += 1;
                     }
 
+                    let mut delete_effects = vec![];
+
                     for node_id in delete_queue {
                         let key = doc.node_mappings.remove(&node_id).unwrap();
                         tree.remove(key);
                         events.remove(key);
 
                         // Remove effects registered on the node.
-                        doc.effects.retain(|_, effect| match effect.node {
-                            Some(node) => node != node_id,
+                        doc.effects.retain(|effect_id, effect| match effect.node {
+                            Some(node) => {
+                                if node == node_id {
+                                    delete_effects.push(effect_id);
+                                    false
+                                } else {
+                                    true
+                                }
+                            }
                             None => true,
                         });
+                    }
+
+                    let mut delete_signals = vec![];
+
+                    for id in delete_effects {
+                        for (signal_id, effects) in doc.signal_effects.iter_mut() {
+                            effects.retain(|effect_id| *effect_id != id);
+
+                            if effects.len() == 0 {
+                                delete_signals.push(*signal_id);
+                            }
+                        }
+                    }
+
+                    for id in delete_signals {
+                        doc.signal_effects.remove(&id);
                     }
                 }
                 Event::UpdateNode(id, node) => {

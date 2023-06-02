@@ -122,6 +122,34 @@ mod tests {
     }
 
     #[test]
+    fn effect_untracked_signal() {
+        let doc = Document::new();
+        let cx = doc.root_scope();
+
+        let value = Arc::new(Mutex::new(0));
+
+        let (reader, writer) = create_signal(&cx, 0);
+
+        {
+            let value = value.clone();
+            create_effect(&cx, move |_| {
+                let val = reader.get_untracked();
+                *value.lock() = val;
+            });
+        }
+
+        doc.run_effects(&World::new());
+
+        for _ in 0..10 {
+            writer.update(|val| *val += 1);
+
+            doc.run_effects(&World::new());
+
+            assert_eq!(*value.lock(), 0);
+        }
+    }
+
+    #[test]
     fn effect_cleanup() {
         let doc = Document::new();
         let cx = doc.root_scope();
@@ -150,6 +178,88 @@ mod tests {
         {
             let inner = doc.inner.lock();
             assert_eq!(inner.effects.len(), 0);
+        }
+    }
+
+    #[test]
+    fn effect_cleanup_with_single_signal() {
+        let doc = Document::new();
+        let cx = doc.root_scope();
+
+        let mut tree = LayoutTree::new();
+        let mut events = Events::new();
+        let world = World::new();
+
+        let cx = cx.push(create_node());
+
+        let (reader, _) = create_signal(&cx, ());
+
+        create_effect(&cx, move |_| {
+            let _ = reader.get();
+        });
+
+        doc.run_effects(&world);
+        doc.flush_node_queue(&mut tree, &mut events);
+
+        {
+            let inner = doc.inner.lock();
+            assert_eq!(inner.signal_effects.len(), 1);
+
+            let entry = inner.signal_effects.values().nth(0).unwrap();
+            assert_eq!(entry.len(), 1);
+        }
+
+        cx.remove(cx.id().unwrap());
+
+        doc.run_effects(&world);
+        doc.flush_node_queue(&mut tree, &mut events);
+
+        {
+            let inner = doc.inner.lock();
+            assert_eq!(inner.signal_effects.len(), 0);
+        }
+    }
+
+    #[test]
+    fn effect_cleanup_wuth_shared_signal() {
+        let doc = Document::new();
+        let cx = doc.root_scope();
+
+        let mut tree = LayoutTree::new();
+        let mut events = Events::new();
+        let world = World::new();
+
+        let cx = cx.push(create_node());
+
+        let (reader, _) = create_signal(&cx, ());
+
+        for _ in 0..2 {
+            let reader = reader.clone();
+
+            create_effect(&cx, move |_| {
+                let _ = reader.get();
+            });
+        }
+
+        doc.run_effects(&world);
+        doc.flush_node_queue(&mut tree, &mut events);
+
+        {
+            let inner = doc.inner.lock();
+            assert_eq!(inner.signal_effects.len(), 1);
+
+            let entry = inner.signal_effects.values().nth(0).unwrap();
+            assert_eq!(entry.len(), 2);
+        }
+
+        cx.remove(cx.id().unwrap());
+
+        doc.run_effects(&world);
+        doc.flush_node_queue(&mut tree, &mut events);
+
+        {
+            let inner = doc.inner.lock();
+            assert_eq!(inner.signal_effects.len(), 0);
         }
     }
 }
