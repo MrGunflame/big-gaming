@@ -83,6 +83,10 @@ impl LayoutTree {
         }
     }
 
+    pub fn size(&self) -> Vec2 {
+        self.size
+    }
+
     pub fn resize(&mut self, size: Vec2) {
         self.size = size;
         self.changed = true;
