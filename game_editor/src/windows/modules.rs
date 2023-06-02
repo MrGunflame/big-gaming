@@ -101,8 +101,16 @@ pub fn Modules(
 
     let open = view! {
         root,
-        <Button style={Style::default()} on_click={on_open(queue).into()}>
+        <Button style={Style::default()} on_click={on_open(queue.clone()).into()}>
             <Text text={"Open".into()}>
+            </Text>
+        </Button>
+    };
+
+    view! {
+        root,
+        <Button style={Style::default()} on_click={on_create(queue).into()}>
+            <Text text={"Create".into()}>
             </Text>
         </Button>
     };
@@ -114,6 +122,13 @@ fn on_open(queue: SpawnWindowQueue) -> Box<dyn Fn() + Send + Sync + 'static> {
     Box::new(move || {
         let mut queue = queue.0.write();
         queue.push_back(SpawnWindow::OpenModule);
+    })
+}
+
+fn on_create(queue: SpawnWindowQueue) -> Box<dyn Fn() + Send + Sync + 'static> {
+    Box::new(move || {
+        let mut queue = queue.0.write();
+        queue.push_back(SpawnWindow::CreateModule);
     })
 }
 

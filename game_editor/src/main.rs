@@ -110,6 +110,16 @@ fn setup(mut commands: Commands, queue: Res<SpawnWindowQueue>) {
                 })
             },
         },
+        ActionButton {
+            label: "View".to_owned(),
+            on_click: {
+                let queue = queue.clone();
+                Box::new(move || {
+                    let mut queue = queue.0.write();
+                    queue.push_back(SpawnWindow::View);
+                })
+            },
+        },
     ];
 
     let cx = document.root_scope();

@@ -1,3 +1,4 @@
+mod create_module;
 mod error;
 pub mod modules;
 mod open_module;
@@ -19,6 +20,7 @@ use parking_lot::RwLock;
 
 use crate::backend::Handle;
 
+use self::create_module::*;
 use self::error::*;
 use self::modules::*;
 use self::open_module::*;
@@ -84,6 +86,11 @@ fn spawn_windows(
         //     }
         // }
 
+        if let SpawnWindow::View = event {
+            view::spawn_view_window(&mut commands);
+            continue;
+        }
+
         if let SpawnWindow::CloseWindow(id) = event {
             commands.entity(*id).despawn();
             continue;
@@ -106,6 +113,13 @@ fn spawn_windows(
                     cx,
                     <OpenModule window={id} handle={handle.clone()} queue={queue.clone()}>
                     </OpenModule>
+                };
+            }
+            SpawnWindow::CreateModule => {
+                view! {
+                    cx,
+                    <CreateModule>
+                    </CreateModule>
                 };
             }
             SpawnWindow::Error(msg) => {
