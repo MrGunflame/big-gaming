@@ -70,28 +70,17 @@ pub union EntityBody {
 unsafe impl Zeroable for EntityBody {}
 unsafe impl Pod for EntityBody {}
 
+// Assert that EntityBody has no padding.
+const _: fn() = || {
+    let _: [(); core::mem::size_of::<EntityBody>()] = [(); core::mem::size_of::<RecordReference>()];
+    let _: [(); core::mem::align_of::<EntityBody>()] =
+        [(); core::mem::align_of::<RecordReference>()];
+    let _: [(); core::mem::size_of::<EntityBody>()] =
+        [(); core::mem::size_of::<[u8; core::mem::size_of::<RecordReference>()]>()];
+};
+
 #[derive(Copy, Clone, Debug, Zeroable, Pod)]
 #[repr(C)]
 pub struct Item {
     pub id: RecordReference,
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::record::RecordReference;
-
-    use super::EntityBody;
-
-    #[test]
-    fn assert_entity_body_size_align() {
-        assert_eq!(
-            core::mem::size_of::<RecordReference>(),
-            core::mem::size_of::<EntityBody>()
-        );
-
-        assert_eq!(
-            core::mem::align_of::<RecordReference>(),
-            core::mem::align_of::<EntityBody>()
-        );
-    }
 }
