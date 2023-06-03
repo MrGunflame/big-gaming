@@ -23,17 +23,24 @@ impl Component for Input {
     fn render(cx: &Scope, props: Self::Properties) -> Scope {
         let (value, set_value) = create_signal(cx, Buffer::new(props.value));
 
+        let (focus, set_focus) = create_signal(cx, false);
+
         let root = cx.push(Node {
             element: Element {
                 body: ElementBody::Container(),
                 style: props.style,
             },
             events: ElementEventHandlers {
-                local: EventHandlers {
+                global: EventHandlers {
                     keyboard_input: Some(Box::new({
                         let set_value = set_value.clone();
+                        let focus = focus.clone();
 
                         move |event| {
+                            if !focus.get_untracked() {
+                                return;
+                            }
+
                             if !event.state.is_pressed() {
                                 return;
                             }
@@ -55,29 +62,58 @@ impl Component for Input {
                             }
                         }
                     })),
-                    received_character: Some(Box::new(move |char| match char {
-                        // Return creates a newline.
-                        '\r' => {
-                            set_value.update(|string| {
-                                string.push('\n');
-                            });
-                        }
-                        // Backspace
-                        '\u{8}' => set_value.update(|string| {
-                            string.remove_prev();
-                        }),
-                        // Delete
-                        '\u{7F}' => set_value.update(|string| {
-                            string.remove_next();
-                        }),
-                        _ => {
-                            if !char.is_control() {
-                                set_value.update(|string| string.push(char));
+                    received_character: Some(Box::new({
+                        let focus = focus.clone();
+
+                        move |char| {
+                            if !focus.get_untracked() {
+                                return;
                             }
+
+                            match char {
+                                // Return creates a newline.
+                                '\r' => {
+                                    set_value.update(|string| {
+                                        string.push('\n');
+                                    });
+                                }
+                                // Backspace
+                                '\u{8}' => set_value.update(|string| {
+                                    string.remove_prev();
+                                }),
+                                // Delete
+                                '\u{7F}' => set_value.update(|string| {
+                                    string.remove_next();
+                                }),
+                                _ => {
+                                    if !char.is_control() {
+                                        set_value.update(|string| string.push(char));
+                                    }
+                                }
+                            }
+                        }
+                    })),
+                    mouse_button_input: Some(Box::new({
+                        let set_focus = set_focus.clone();
+
+                        // Whenever we receive a click we remove focus from the input
+                        // element. If the cursor clicks the input element the local
+                        // handlers catches this afterwards.
+                        // FIXME: This is exploiting the fact that global handlers are
+                        // called before local ones, which is currently unspecified.
+                        move |_event| {
+                            set_focus.set(false);
                         }
                     })),
                     ..Default::default()
                 },
+                local: EventHandlers {
+                    mouse_button_input: Some(Box::new(move |_event| {
+                        set_focus.set(true);
+                    })),
+                    ..Default::default()
+                },
+
                 ..Default::default()
             },
         });
@@ -98,7 +134,11 @@ impl Component for Input {
                     let buffer = value.get();
 
                     let mut string = buffer.to_string();
-                    string.insert(buffer.cursor, '|');
+
+                    if focus.get() {
+                        string.insert(buffer.cursor, '|');
+                    }
+
                     string
                 })
                 .into(),

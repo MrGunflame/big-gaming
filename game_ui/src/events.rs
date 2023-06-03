@@ -114,11 +114,15 @@ pub fn dispatch_cursor_moved_events(windows: Query<&Events>, mut events: EventRe
         };
 
         for (key, rect) in &window.positions {
-            if hit_test(*rect, event.position) {
-                let Some(handlers) = window.events.get(&key) else {
-                    continue;
-                };
+            let Some(handlers) = window.events.get(&key) else {
+                continue;
+            };
 
+            if let Some(f) = &handlers.global.cursor_moved {
+                f();
+            }
+
+            if hit_test(*rect, event.position) {
                 if let Some(f) = &handlers.local.cursor_moved {
                     f();
                 }
@@ -146,11 +150,15 @@ pub fn dispatch_mouse_button_input_events(
 
     for event in events.iter() {
         for (key, rect) in &window.positions {
-            if hit_test(*rect, cursor.position()) {
-                let Some(handlers) = window.events.get(&key) else {
-                    continue;
-                };
+            let Some(handlers) = window.events.get(&key) else {
+                continue;
+            };
 
+            if let Some(f) = &handlers.global.mouse_button_input {
+                f(*event);
+            }
+
+            if hit_test(*rect, cursor.position()) {
                 if let Some(f) = &handlers.local.mouse_button_input {
                     f(*event);
                 }
@@ -178,11 +186,15 @@ pub fn dispatch_mouse_wheel_events(
 
     for event in events.iter() {
         for (key, rect) in &window.positions {
-            if hit_test(*rect, cursor.position()) {
-                let Some(handlers) = window.events.get(&key) else {
-                    continue;
-                };
+            let Some(handlers) = window.events.get(&key) else {
+                continue;
+            };
 
+            if let Some(f) = &handlers.global.mouse_wheel {
+                f(*event);
+            }
+
+            if hit_test(*rect, cursor.position()) {
                 if let Some(f) = &handlers.local.mouse_wheel {
                     f(*event);
                 }
@@ -210,11 +222,15 @@ pub fn dispatch_received_character_events(
 
     for event in events.iter() {
         for (key, rect) in &window.positions {
-            if hit_test(*rect, cursor.position()) {
-                let Some(handlers) = window.events.get(&key) else {
-                    continue;
-                };
+            let Some(handlers) = window.events.get(&key) else {
+                continue;
+            };
 
+            if let Some(f) = &handlers.global.received_character {
+                f(event.char);
+            }
+
+            if hit_test(*rect, cursor.position()) {
                 if let Some(f) = &handlers.local.received_character {
                     f(event.char);
                 }
@@ -242,11 +258,15 @@ pub fn dispatch_keyboard_input_events(
 
     for event in events.iter() {
         for (key, rect) in &window.positions {
-            if hit_test(*rect, cursor.position()) {
-                let Some(handlers) = window.events.get(&key) else {
-                    continue;
-                };
+            let Some(handlers) = window.events.get(&key) else {
+                continue;
+            };
 
+            if let Some(f) = &handlers.global.keyboard_input {
+                f(*event);
+            }
+
+            if hit_test(*rect, cursor.position()) {
                 if let Some(f) = &handlers.local.keyboard_input {
                     f(*event);
                 }
