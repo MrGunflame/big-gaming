@@ -150,6 +150,36 @@ mod tests {
     }
 
     #[test]
+    fn effect_signal_no_duplicate() {
+        let doc = Document::new();
+        let cx = doc.root_scope();
+
+        let mut tree = LayoutTree::new();
+        let mut events = Events::new();
+        let world = World::new();
+
+        let cx = cx.push(create_node());
+
+        let (reader, _) = create_signal(&cx, ());
+
+        create_effect(&cx, move |_| {
+            let _ = reader.get();
+            let _ = reader.get();
+        });
+
+        doc.run_effects(&world);
+        doc.flush_node_queue(&mut tree, &mut events);
+
+        {
+            let inner = doc.inner.lock();
+            assert_eq!(inner.effects.len(), 1);
+
+            let entry = inner.signal_effects.values().nth(0).unwrap();
+            assert_eq!(entry.len(), 1);
+        }
+    }
+
+    #[test]
     fn effect_cleanup() {
         let doc = Document::new();
         let cx = doc.root_scope();

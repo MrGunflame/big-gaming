@@ -171,9 +171,12 @@ impl Document {
 
                 (effect.f)(world);
 
-                let stack = std::mem::take(&mut *self.signal_stack.lock());
+                let mut stack = std::mem::take(&mut *self.signal_stack.lock());
                 tracing::trace!("subscribing Effect({:?}) to signals {:?}", effect_id, stack);
                 let mut doc = self.inner.lock();
+
+                // We only want to track each effect once.
+                stack.dedup();
 
                 for signal in stack {
                     doc.signal_effects
