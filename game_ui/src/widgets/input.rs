@@ -3,7 +3,7 @@ use std::ops::Deref;
 use winit::event::VirtualKeyCode;
 
 use crate::events::EventHandlers;
-use crate::reactive::{create_signal, Node, Scope};
+use crate::reactive::{create_effect, create_signal, Node, Scope};
 use crate::render::style::Style;
 use crate::render::{Element, ElementBody};
 
@@ -12,6 +12,7 @@ use super::{Component, Text, TextProps};
 pub struct InputProps {
     pub value: String,
     pub style: Style,
+    pub on_change: Box<dyn Fn(String) + Send + Sync + 'static>,
 }
 
 pub struct Input;
@@ -77,6 +78,15 @@ impl Component for Input {
                 ..Default::default()
             },
         });
+
+        {
+            let value = value.clone();
+            create_effect(cx, move |_| {
+                let buffer = value.get();
+
+                (props.on_change)(buffer.string);
+            });
+        }
 
         Text::render(
             &root,

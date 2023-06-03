@@ -133,11 +133,6 @@ fn setup(mut commands: Commands, queue: Res<SpawnWindowQueue>) {
 
     use game_ui::render::style::Style;
     use game_ui::widgets::*;
-    game_ui::view! {
-        cx,
-        <Input value={String::from("test")} style={Style::default()}>
-        </Input>
-    };
 
     commands
         .entity(id)

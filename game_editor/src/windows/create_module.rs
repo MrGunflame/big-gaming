@@ -1,5 +1,5 @@
-use game_common::module::ModuleId;
-use game_ui::reactive::Scope;
+use game_common::module::{Module, ModuleId};
+use game_ui::reactive::{create_effect, create_signal, Scope};
 use game_ui::render::style::{
     Background, Bounds, Direction, Growth, Justify, Size, SizeVec2, Style,
 };
@@ -9,6 +9,8 @@ use game_ui::widgets::*;
 
 #[component]
 pub fn CreateModule(cx: &Scope) -> Scope {
+    let (name, set_name) = create_signal(cx, String::new());
+
     let root = view! {
         cx,
         <Container style={Style { justify: Justify::SpaceBetween, growth: Growth::splat(1.0), ..Default::default() }}>
@@ -60,7 +62,7 @@ pub fn CreateModule(cx: &Scope) -> Scope {
 
     view! {
         val_col,
-        <Input value={String::new()} style={style}>
+        <Input value={String::new()} style={style} on_change={Box::new(move |s|{ set_name.update(|val| *val = s)})}>
         </Input>
     };
 
