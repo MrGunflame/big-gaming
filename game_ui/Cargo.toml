@@ -36,3 +36,11 @@ tracing = "0.1.37"
 pretty_env_logger = "0.5.0"
 hex = "0.4.3"
 thiserror = "1.0.40"
+
+[dev-dependencies]
+criterion = { version = "0.4", features = ["html_reports"] }
+
+[[bench]]
+name = "layout_flat"
+path = "benches/layout.rs"
+harness = false
