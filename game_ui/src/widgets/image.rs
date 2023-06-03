@@ -1,6 +1,6 @@
 use image::{ImageBuffer, Rgba};
 
-use crate::events::EventHandlers;
+use crate::events::ElementEventHandlers;
 use crate::reactive::{Node, Scope};
 use crate::render::style::Style;
 use crate::render::{self, Element, ElementBody};
@@ -23,7 +23,7 @@ impl Component for Image {
                 body: ElementBody::Image(render::Image { image: props.image }),
                 style: props.style,
             },
-            events: EventHandlers::default(),
+            events: ElementEventHandlers::default(),
         });
 
         cx

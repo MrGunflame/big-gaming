@@ -14,6 +14,12 @@ use crate::cursor::Cursor;
 use crate::render::layout::{Key, LayoutTree};
 use crate::render::Rect;
 
+#[derive(Debug, Default)]
+pub struct ElementEventHandlers {
+    pub local: EventHandlers,
+    pub global: EventHandlers,
+}
+
 #[derive(Default)]
 pub struct EventHandlers {
     pub cursor_moved: Option<Box<dyn Fn() + Send + Sync + 'static>>,
@@ -45,7 +51,7 @@ impl Debug for EventHandlers {
 
 #[derive(Component, Default)]
 pub struct Events {
-    events: HashMap<Key, EventHandlers>,
+    events: HashMap<Key, ElementEventHandlers>,
     positions: Vec<(Key, Rect)>,
 }
 
@@ -57,7 +63,7 @@ impl Events {
         }
     }
 
-    pub fn insert(&mut self, key: Key, handlers: EventHandlers) {
+    pub fn insert(&mut self, key: Key, handlers: ElementEventHandlers) {
         self.events.insert(key, handlers);
     }
 
@@ -65,7 +71,7 @@ impl Events {
         self.events.remove(&key);
     }
 
-    pub fn get_mut(&mut self, key: Key) -> Option<&mut EventHandlers> {
+    pub fn get_mut(&mut self, key: Key) -> Option<&mut ElementEventHandlers> {
         self.events.get_mut(&key)
     }
 
@@ -113,7 +119,7 @@ pub fn dispatch_cursor_moved_events(windows: Query<&Events>, mut events: EventRe
                     continue;
                 };
 
-                if let Some(f) = &handlers.cursor_moved {
+                if let Some(f) = &handlers.local.cursor_moved {
                     f();
                 }
             }
@@ -145,7 +151,7 @@ pub fn dispatch_mouse_button_input_events(
                     continue;
                 };
 
-                if let Some(f) = &handlers.mouse_button_input {
+                if let Some(f) = &handlers.local.mouse_button_input {
                     f(*event);
                 }
             }
@@ -177,7 +183,7 @@ pub fn dispatch_mouse_wheel_events(
                     continue;
                 };
 
-                if let Some(f) = &handlers.mouse_wheel {
+                if let Some(f) = &handlers.local.mouse_wheel {
                     f(*event);
                 }
             }
@@ -209,7 +215,7 @@ pub fn dispatch_received_character_events(
                     continue;
                 };
 
-                if let Some(f) = &handlers.received_character {
+                if let Some(f) = &handlers.local.received_character {
                     f(event.char);
                 }
             }
@@ -241,7 +247,7 @@ pub fn dispatch_keyboard_input_events(
                     continue;
                 };
 
-                if let Some(f) = &handlers.keyboard_input {
+                if let Some(f) = &handlers.local.keyboard_input {
                     f(*event);
                 }
             }

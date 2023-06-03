@@ -313,7 +313,7 @@ pub enum Event {
 mod tests {
     use bevy_ecs::world::World;
 
-    use crate::events::{EventHandlers, Events};
+    use crate::events::{ElementEventHandlers, Events};
     use crate::render::layout::LayoutTree;
     use crate::render::style::Style;
     use crate::render::{Element, ElementBody};
@@ -326,7 +326,7 @@ mod tests {
                 body: ElementBody::Container(),
                 style: Style::default(),
             },
-            events: EventHandlers::default(),
+            events: ElementEventHandlers::default(),
         }
     }
 

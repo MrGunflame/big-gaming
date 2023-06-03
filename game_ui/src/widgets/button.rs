@@ -1,6 +1,6 @@
 use game_input::mouse::MouseButtonInput;
 
-use crate::events::EventHandlers;
+use crate::events::{ElementEventHandlers, EventHandlers};
 use crate::reactive::{Node, Scope};
 use crate::render::style::Style;
 use crate::render::{Element, ElementBody};
@@ -24,8 +24,11 @@ impl Component for Button {
                 body: ElementBody::Container(),
                 style: props.style,
             },
-            events: EventHandlers {
-                mouse_button_input: Some(input_handler(props.on_click.0)),
+            events: ElementEventHandlers {
+                local: EventHandlers {
+                    mouse_button_input: Some(input_handler(props.on_click.0)),
+                    ..Default::default()
+                },
                 ..Default::default()
             },
         })

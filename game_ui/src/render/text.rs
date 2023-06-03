@@ -4,7 +4,6 @@ use image::{ImageBuffer, Rgba, RgbaImage};
 
 use super::computed_style::{ComputedBounds, ComputedStyle};
 use super::image::Image;
-use super::style::Style;
 use super::BuildPrimitiveElement;
 
 #[derive(Clone, Debug)]

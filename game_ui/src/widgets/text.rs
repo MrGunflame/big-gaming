@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::events::EventHandlers;
+use crate::events::ElementEventHandlers;
 use crate::reactive::{create_effect, Node, Scope};
 use crate::render::style::Style;
 use crate::render::{Element, ElementBody};
@@ -28,7 +28,7 @@ impl Component for Text {
                 }),
                 style: Style::default(),
             },
-            events: EventHandlers::default(),
+            events: ElementEventHandlers::default(),
         });
 
         let cx2 = cx.clone();
@@ -46,7 +46,7 @@ impl Component for Text {
                         }),
                         style: Style::default(),
                     },
-                    events: EventHandlers::default(),
+                    events: ElementEventHandlers::default(),
                 },
             );
         });

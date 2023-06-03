@@ -2,7 +2,7 @@ use std::ops::Deref;
 
 use winit::event::VirtualKeyCode;
 
-use crate::events::EventHandlers;
+use crate::events::{ElementEventHandlers, EventHandlers};
 use crate::reactive::{create_effect, create_signal, Node, Scope};
 use crate::render::style::Style;
 use crate::render::{Element, ElementBody};
@@ -28,53 +28,56 @@ impl Component for Input {
                 body: ElementBody::Container(),
                 style: props.style,
             },
-            events: EventHandlers {
-                keyboard_input: Some(Box::new({
-                    let set_value = set_value.clone();
+            events: ElementEventHandlers {
+                local: EventHandlers {
+                    keyboard_input: Some(Box::new({
+                        let set_value = set_value.clone();
 
-                    move |event| {
-                        if !event.state.is_pressed() {
-                            return;
-                        }
+                        move |event| {
+                            if !event.state.is_pressed() {
+                                return;
+                            }
 
-                        match event.key_code {
-                            Some(VirtualKeyCode::Left) => {
-                                set_value.update(|string| string.move_back());
+                            match event.key_code {
+                                Some(VirtualKeyCode::Left) => {
+                                    set_value.update(|string| string.move_back());
+                                }
+                                Some(VirtualKeyCode::Right) => {
+                                    set_value.update(|string| string.move_forward());
+                                }
+                                Some(VirtualKeyCode::Home) => {
+                                    set_value.update(|string| string.move_to_start());
+                                }
+                                Some(VirtualKeyCode::End) => {
+                                    set_value.update(|string| string.move_to_end());
+                                }
+                                _ => (),
                             }
-                            Some(VirtualKeyCode::Right) => {
-                                set_value.update(|string| string.move_forward());
-                            }
-                            Some(VirtualKeyCode::Home) => {
-                                set_value.update(|string| string.move_to_start());
-                            }
-                            Some(VirtualKeyCode::End) => {
-                                set_value.update(|string| string.move_to_end());
-                            }
-                            _ => (),
                         }
-                    }
-                })),
-                received_character: Some(Box::new(move |char| match char {
-                    // Return creates a newline.
-                    '\r' => {
-                        set_value.update(|string| {
-                            string.push('\n');
-                        });
-                    }
-                    // Backspace
-                    '\u{8}' => set_value.update(|string| {
-                        string.remove_prev();
-                    }),
-                    // Delete
-                    '\u{7F}' => set_value.update(|string| {
-                        string.remove_next();
-                    }),
-                    _ => {
-                        if !char.is_control() {
-                            set_value.update(|string| string.push(char));
+                    })),
+                    received_character: Some(Box::new(move |char| match char {
+                        // Return creates a newline.
+                        '\r' => {
+                            set_value.update(|string| {
+                                string.push('\n');
+                            });
                         }
-                    }
-                })),
+                        // Backspace
+                        '\u{8}' => set_value.update(|string| {
+                            string.remove_prev();
+                        }),
+                        // Delete
+                        '\u{7F}' => set_value.update(|string| {
+                            string.remove_next();
+                        }),
+                        _ => {
+                            if !char.is_control() {
+                                set_value.update(|string| string.push(char));
+                            }
+                        }
+                    })),
+                    ..Default::default()
+                },
                 ..Default::default()
             },
         });
