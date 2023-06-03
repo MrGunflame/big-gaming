@@ -1,10 +1,10 @@
 use game_render::layout::remap;
-use glam::{DVec2, UVec2, Vec2};
+use glam::Vec2;
 use image::imageops::FilterType;
 use image::{ImageBuffer, Rgba};
 
 use super::computed_style::{ComputedBorderRadius, ComputedBounds, ComputedStyle};
-use super::debug::{debug_border, debug_padding};
+use super::debug::{debug_border, debug_padding, is_debug_render_enabled};
 use super::style::Background;
 use super::{BuildPrimitiveElement, PrimitiveElement, Rect};
 
@@ -70,11 +70,9 @@ impl BuildPrimitiveElement for Image {
 
         apply_border_radius(&mut img, style.border_radius);
 
-        if cfg!(feature = "debug_render") {
-            if std::env::var("UI_DEBUG_RENDER").is_ok() {
-                debug_border(&mut img);
-                debug_padding(&mut img, style.padding);
-            }
+        if is_debug_render_enabled() {
+            debug_border(&mut img);
+            debug_padding(&mut img, style.padding);
         }
 
         Some(PrimitiveElement::new(
@@ -107,7 +105,7 @@ fn apply_border_radius(
     img: &mut ImageBuffer<Rgba<u8>, Vec<u8>>,
     border_radius: ComputedBorderRadius,
 ) {
-    let pixel = if cfg!(feature = "debug_render") {
+    let pixel = if is_debug_render_enabled() {
         Rgba([255, 255, 0, 255])
     } else {
         Rgba([0, 0, 0, 0])

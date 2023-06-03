@@ -1,14 +1,40 @@
 use std::ops::{Deref, DerefMut};
+use std::sync::OnceLock;
 
 use image::{ImageBuffer, Pixel, Rgba};
 
 use super::computed_style::ComputedPadding;
+
+static DEBUG_RENDER_ENABLED: OnceLock<bool> = OnceLock::new();
+
+pub fn is_debug_render_enabled() -> bool {
+    if cfg!(feature = "debug_render") {
+        *DEBUG_RENDER_ENABLED.get_or_init(|| {
+            if let Ok(val) = std::env::var("UI_DEBUG_RENDER") {
+                match val.as_str() {
+                    "true" | "1" => true,
+                    "false" | "0" => false,
+                    _ => {
+                        tracing::warn!("invalid value for UI_DEBUG_RENDER env variable");
+                        false
+                    }
+                }
+            } else {
+                false
+            }
+        })
+    } else {
+        false
+    }
+}
 
 /// Render a debugging border around the image.
 pub fn debug_border<C>(image: &mut ImageBuffer<Rgba<u8>, C>)
 where
     C: Deref<Target = [<Rgba<u8> as Pixel>::Subpixel]> + DerefMut,
 {
+    assert!(is_debug_render_enabled());
+
     if image.width() == 0 || image.height() == 0 {
         return;
     }
@@ -42,6 +68,8 @@ pub fn debug_padding<C>(image: &mut ImageBuffer<Rgba<u8>, C>, padding: ComputedP
 where
     C: Deref<Target = [<Rgba<u8> as Pixel>::Subpixel]> + DerefMut,
 {
+    assert!(is_debug_render_enabled());
+
     if cfg!(debug_assertions) {
         assert!(image.width() >= (padding.left + padding.right) as u32);
         assert!(image.height() >= (padding.top + padding.bottom) as u32);
