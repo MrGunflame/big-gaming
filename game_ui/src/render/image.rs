@@ -1,9 +1,9 @@
 use game_render::layout::remap;
-use glam::Vec2;
+use glam::{DVec2, UVec2, Vec2};
 use image::imageops::FilterType;
 use image::{ImageBuffer, Rgba};
 
-use super::computed_style::{ComputedBounds, ComputedStyle};
+use super::computed_style::{ComputedBorderRadius, ComputedBounds, ComputedStyle};
 use super::debug::{debug_border, debug_padding};
 use super::style::Background;
 use super::{BuildPrimitiveElement, PrimitiveElement, Rect};
@@ -68,6 +68,8 @@ impl BuildPrimitiveElement for Image {
             }
         };
 
+        apply_border_radius(&mut img, style.border_radius);
+
         if cfg!(feature = "debug_render") {
             if std::env::var("UI_DEBUG_RENDER").is_ok() {
                 debug_border(&mut img);
@@ -97,6 +99,95 @@ impl BuildPrimitiveElement for Image {
         ComputedBounds {
             min: size,
             max: size,
+        }
+    }
+}
+
+fn apply_border_radius(
+    img: &mut ImageBuffer<Rgba<u8>, Vec<u8>>,
+    border_radius: ComputedBorderRadius,
+) {
+    let pixel = if cfg!(feature = "debug_render") {
+        Rgba([255, 255, 0, 255])
+    } else {
+        Rgba([0, 0, 0, 0])
+    };
+
+    let mut pixel_written = [0, 0, 0, 0];
+
+    // Top left
+    let start = Vec2::new(0.0, 0.0);
+    let end = Vec2::new(
+        start.x + border_radius.top_left.ceil(),
+        start.y + border_radius.top_left.ceil(),
+    );
+
+    for x in start.x as u32..end.x as u32 {
+        for y in start.y as u32..end.y as u32 {
+            let distance = (end - Vec2::new(x as f32, y as f32)).length();
+
+            if distance > border_radius.top_left {
+                img.put_pixel(x, y, pixel);
+
+                pixel_written[0] += 1;
+            }
+        }
+    }
+
+    // Bottom left
+    let start = Vec2::new(0.0, img.height() as f32);
+    let end = Vec2::new(
+        start.x + border_radius.bottom_left.ceil(),
+        start.y - border_radius.bottom_left.floor(),
+    );
+
+    for x in start.x as u32..end.x as u32 {
+        for y in end.y as u32..start.y as u32 {
+            let distance = (end - Vec2::new(x as f32, y as f32)).length();
+
+            if distance > border_radius.bottom_left {
+                img.put_pixel(x, y, pixel);
+
+                pixel_written[1] += 1;
+            }
+        }
+    }
+
+    // Top right
+    let start = Vec2::new(img.width() as f32, 0.0);
+    let end = Vec2::new(
+        start.x - border_radius.top_right.floor(),
+        start.y + border_radius.top_right.ceil(),
+    );
+
+    for x in end.x as u32..start.x as u32 {
+        for y in start.y as u32..end.y as u32 {
+            let distance = (end - Vec2::new(x as f32, y as f32 as f32)).length();
+
+            if distance > border_radius.top_right {
+                img.put_pixel(x, y, pixel);
+
+                pixel_written[2] += 1;
+            }
+        }
+    }
+
+    // Bottom right
+    let start = Vec2::new(img.width() as f32, img.height() as f32);
+    let end = Vec2::new(
+        start.x - border_radius.bottom_right.floor(),
+        start.y - border_radius.bottom_right.floor(),
+    );
+
+    for x in end.x as u32..start.x as u32 {
+        for y in end.y as u32..start.y as u32 {
+            let distance = (end - Vec2::new(x as f32, y as f32)).length();
+
+            if distance > border_radius.bottom_right {
+                img.put_pixel(x, y, pixel);
+
+                pixel_written[3] += 1;
+            }
         }
     }
 }

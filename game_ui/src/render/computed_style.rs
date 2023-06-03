@@ -8,6 +8,7 @@ pub struct ComputedStyle {
     pub style: Style,
     pub bounds: ComputedBounds,
     pub padding: ComputedPadding,
+    pub border_radius: ComputedBorderRadius,
 }
 
 impl ComputedStyle {
@@ -19,6 +20,12 @@ impl ComputedStyle {
                 bottom: style.padding.bottom.to_pixels(viewport),
                 left: style.padding.left.to_pixels(viewport),
                 right: style.padding.right.to_pixels(viewport),
+            },
+            border_radius: ComputedBorderRadius {
+                top_left: style.border_radius.top_left.to_pixels(viewport),
+                bottom_left: style.border_radius.bottom_left.to_pixels(viewport),
+                top_right: style.border_radius.top_right.to_pixels(viewport),
+                bottom_right: style.border_radius.bottom_right.to_pixels(viewport),
             },
             style,
         }
@@ -66,4 +73,12 @@ pub struct ComputedPadding {
     pub bottom: f32,
     pub left: f32,
     pub right: f32,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Default)]
+pub struct ComputedBorderRadius {
+    pub top_left: f32,
+    pub top_right: f32,
+    pub bottom_left: f32,
+    pub bottom_right: f32,
 }

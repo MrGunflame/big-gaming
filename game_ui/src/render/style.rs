@@ -12,6 +12,7 @@ pub struct Style {
     pub color: Color,
     pub justify: Justify,
     pub padding: Padding,
+    pub border_radius: BorderRadius,
 }
 
 /// Flow direction
@@ -246,6 +247,36 @@ impl Default for Padding {
             bottom: Size::Pixels(0.0),
             left: Size::Pixels(0.0),
             right: Size::Pixels(0.0),
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub struct BorderRadius {
+    pub top_left: Size,
+    pub bottom_left: Size,
+    pub top_right: Size,
+    pub bottom_right: Size,
+}
+
+impl BorderRadius {
+    pub const fn splat(size: Size) -> Self {
+        Self {
+            top_left: size,
+            bottom_left: size,
+            top_right: size,
+            bottom_right: size,
+        }
+    }
+}
+
+impl Default for BorderRadius {
+    fn default() -> Self {
+        Self {
+            top_left: Size::Pixels(0.0),
+            bottom_left: Size::Pixels(0.0),
+            top_right: Size::Pixels(0.0),
+            bottom_right: Size::Pixels(0.0),
         }
     }
 }
