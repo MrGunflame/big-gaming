@@ -1,6 +1,8 @@
 use game_common::module::ModuleId;
 use game_ui::reactive::Scope;
-use game_ui::render::style::{Background, Bounds, Size, SizeVec2, Style};
+use game_ui::render::style::{
+    Background, Bounds, Direction, Growth, Justify, Size, SizeVec2, Style,
+};
 use game_ui::{component, view};
 
 use game_ui::widgets::*;
@@ -9,27 +11,41 @@ use game_ui::widgets::*;
 pub fn CreateModule(cx: &Scope) -> Scope {
     let root = view! {
         cx,
-        <Container style={Style::default()}>
+        <Container style={Style { justify: Justify::SpaceBetween, growth: Growth::splat(1.0), ..Default::default() }}>
         </Container>
     };
 
     let id = ModuleId::random();
 
-    view! {
+    let table = view! {
         root,
-        <Text text={"ID".into()}>
-        </Text>
+        <Container style={Style { direction: Direction::Column, ..Default::default() }}>
+        </Container>
+    };
+
+    let key_col = view! {
+        table,
+        <Container style={Style::default()}>
+        </Container>
+    };
+
+    for key in ["ID", "Name"] {
+        view! {
+            key_col,
+            <Text text={key.into()}>
+            </Text>
+        };
+    }
+
+    let val_col = view! {
+        table,
+        <Container style={Style::default()}>
+        </Container>
     };
 
     view! {
-        root,
+        val_col,
         <Text text={id.to_string().into()}>
-        </Text>
-    };
-
-    view! {
-        root,
-        <Text text={"Name".into()}>
         </Text>
     };
 
@@ -43,23 +59,21 @@ pub fn CreateModule(cx: &Scope) -> Scope {
     };
 
     view! {
-        root,
+        val_col,
         <Input value={String::new()} style={style}>
         </Input>
     };
 
-    view! {
+    let bottom = view! {
         root,
-        <Button style={Style::default()} on_click={on_create().into()}>
-            <Text text={"Create".into()}>
-            </Text>
-        </Button>
+        <Container style={Style { direction: Direction::Column, justify: Justify::Center, growth: Growth::x(1.0), ..Default::default() }}>
+        </Container>
     };
 
     view! {
-        root,
-        <Button style={Style::default()} on_click={on_cancel().into()}>
-            <Text text={"Cancel".into()}>
+        bottom,
+        <Button style={Style::default()} on_click={on_create().into()}>
+            <Text text={"OK".into()}>
             </Text>
         </Button>
     };
