@@ -43,6 +43,12 @@ impl Component for Input {
                             Some(VirtualKeyCode::Right) => {
                                 set_value.update(|string| string.move_forward());
                             }
+                            Some(VirtualKeyCode::Home) => {
+                                set_value.update(|string| string.move_to_start());
+                            }
+                            Some(VirtualKeyCode::End) => {
+                                set_value.update(|string| string.move_to_end());
+                            }
                             _ => (),
                         }
                     }
@@ -75,7 +81,14 @@ impl Component for Input {
         Text::render(
             &root,
             TextProps {
-                text: (move || value.get().to_string()).into(),
+                text: (move || {
+                    let buffer = value.get();
+
+                    let mut string = buffer.to_string();
+                    string.insert(buffer.cursor, '|');
+                    string
+                })
+                .into(),
             },
         );
 
@@ -143,6 +156,14 @@ impl Buffer {
                 self.cursor -= ch.len_utf8();
             }
         }
+    }
+
+    fn move_to_start(&mut self) {
+        self.cursor = 0;
+    }
+
+    fn move_to_end(&mut self) {
+        self.cursor = self.string.len();
     }
 }
 

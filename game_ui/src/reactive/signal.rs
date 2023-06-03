@@ -119,6 +119,10 @@ where
         self.update(|cell| *cell = value);
     }
 
+    pub fn set_untracked(&self, value: T) {
+        self.update_untracked(|cell| *cell = value);
+    }
+
     pub fn update<F, U>(&self, f: F) -> U
     where
         F: FnOnce(&mut T) -> U,
@@ -145,6 +149,16 @@ where
         ret
     }
 
+    pub fn update_untracked<F, U>(&self, f: F) -> U
+    where
+        F: FnOnce(&mut T) -> U,
+    {
+        tracing::trace!("Signal({:?})::write_untracked", self.id);
+
+        let mut cell = self.value.lock();
+        f(&mut cell)
+    }
+
     pub fn subscribe(&self) -> ReadSignal<T> {
         tracing::trace!("Signal({:?})::subscribe", self.id);
 
@@ -153,6 +167,21 @@ where
             id: self.id,
             value: self.value.clone(),
         }
+    }
+
+    /// Manually mark the value as changed.
+    pub fn wake(&self) {
+        let mut doc = self.cx.document.inner.lock();
+        let effects = doc.signal_effects.get(&self.id.0).unwrap().clone();
+
+        tracing::trace!(
+            "Queued Signal({:?}) effect observers: {:?}",
+            self.id,
+            effects
+        );
+
+        doc.effect_queue
+            .extend(effects.iter().map(|e| EffectId(*e)));
     }
 }
 
