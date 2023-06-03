@@ -105,13 +105,15 @@ fn apply_border_radius(
     img: &mut ImageBuffer<Rgba<u8>, Vec<u8>>,
     border_radius: ComputedBorderRadius,
 ) {
+    if img.width() == 0 || img.height() == 0 {
+        return;
+    }
+
     let pixel = if is_debug_render_enabled() {
         Rgba([255, 255, 0, 255])
     } else {
         Rgba([0, 0, 0, 0])
     };
-
-    let mut pixel_written = [0, 0, 0, 0];
 
     // Top left
     let start = Vec2::new(0.0, 0.0);
@@ -125,9 +127,9 @@ fn apply_border_radius(
             let distance = (end - Vec2::new(x as f32, y as f32)).length();
 
             if distance > border_radius.top_left {
-                img.put_pixel(x, y, pixel);
-
-                pixel_written[0] += 1;
+                if let Some(p) = img.get_pixel_mut_checked(x, y) {
+                    *p = pixel;
+                }
             }
         }
     }
@@ -136,7 +138,7 @@ fn apply_border_radius(
     let start = Vec2::new(0.0, img.height() as f32);
     let end = Vec2::new(
         start.x + border_radius.bottom_left.ceil(),
-        start.y - border_radius.bottom_left.floor(),
+        start.y - border_radius.bottom_left.floor() - 1.0,
     );
 
     for x in start.x as u32..end.x as u32 {
@@ -144,9 +146,9 @@ fn apply_border_radius(
             let distance = (end - Vec2::new(x as f32, y as f32)).length();
 
             if distance > border_radius.bottom_left {
-                img.put_pixel(x, y, pixel);
-
-                pixel_written[1] += 1;
+                if let Some(p) = img.get_pixel_mut_checked(x, y) {
+                    *p = pixel;
+                }
             }
         }
     }
@@ -154,7 +156,7 @@ fn apply_border_radius(
     // Top right
     let start = Vec2::new(img.width() as f32, 0.0);
     let end = Vec2::new(
-        start.x - border_radius.top_right.floor(),
+        start.x - border_radius.top_right.floor() - 1.0,
         start.y + border_radius.top_right.ceil(),
     );
 
@@ -163,9 +165,9 @@ fn apply_border_radius(
             let distance = (end - Vec2::new(x as f32, y as f32 as f32)).length();
 
             if distance > border_radius.top_right {
-                img.put_pixel(x, y, pixel);
-
-                pixel_written[2] += 1;
+                if let Some(p) = img.get_pixel_mut_checked(x, y) {
+                    *p = pixel;
+                }
             }
         }
     }
@@ -173,8 +175,8 @@ fn apply_border_radius(
     // Bottom right
     let start = Vec2::new(img.width() as f32, img.height() as f32);
     let end = Vec2::new(
-        start.x - border_radius.bottom_right.floor(),
-        start.y - border_radius.bottom_right.floor(),
+        start.x - border_radius.bottom_right.floor() - 1.0,
+        start.y - border_radius.bottom_right.floor() - 1.0,
     );
 
     for x in end.x as u32..start.x as u32 {
@@ -182,10 +184,58 @@ fn apply_border_radius(
             let distance = (end - Vec2::new(x as f32, y as f32)).length();
 
             if distance > border_radius.bottom_right {
-                img.put_pixel(x, y, pixel);
-
-                pixel_written[3] += 1;
+                if let Some(p) = img.get_pixel_mut_checked(x, y) {
+                    *p = pixel;
+                }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use image::ImageBuffer;
+
+    use crate::render::computed_style::ComputedBorderRadius;
+
+    use super::apply_border_radius;
+
+    #[test]
+    fn border_radius() {
+        let mut image = ImageBuffer::new(100, 100);
+        let border_radius = ComputedBorderRadius {
+            top_left: 10.0,
+            bottom_left: 10.0,
+            top_right: 10.0,
+            bottom_right: 10.0,
+        };
+
+        apply_border_radius(&mut image, border_radius);
+    }
+
+    #[test]
+    fn border_radius_image_empty() {
+        let mut image = ImageBuffer::new(0, 0);
+        let border_radius = ComputedBorderRadius {
+            top_left: 10.0,
+            bottom_left: 10.0,
+            top_right: 10.0,
+            bottom_right: 10.0,
+        };
+
+        apply_border_radius(&mut image, border_radius);
+    }
+
+    #[test]
+    fn border_radius_image_too_small() {
+        let mut image = ImageBuffer::new(10, 10);
+        let border_radius = ComputedBorderRadius {
+            top_left: 20.0,
+            bottom_left: 20.0,
+            top_right: 20.0,
+            bottom_right: 20.0,
+        };
+
+        apply_border_radius(&mut image, border_radius);
     }
 }
