@@ -1,12 +1,12 @@
 use std::collections::HashMap;
-use std::f32::consts::E;
 use std::fmt::{self, Debug, Formatter};
 use std::ptr::NonNull;
 
 use bevy_ecs::prelude::{Component, EventReader};
 use bevy_ecs::query::{Added, Changed, Or};
 use bevy_ecs::system::{Query, Res};
-use game_input::mouse::MouseButtonInput;
+use game_input::keyboard::KeyboardInput;
+use game_input::mouse::{MouseButtonInput, MouseWheel};
 use game_window::events::{CursorMoved, ReceivedCharacter};
 use glam::Vec2;
 
@@ -20,6 +20,8 @@ pub struct EventHandlers {
     pub cursor_left: Option<Box<dyn Fn() + Send + Sync + 'static>>,
     pub cursor_entered: Option<Box<dyn Fn() + Send + Sync + 'static>>,
     pub mouse_button_input: Option<Box<dyn Fn(MouseButtonInput) + Send + Sync + 'static>>,
+    pub mouse_wheel: Option<Box<dyn Fn(MouseWheel) + Send + Sync + 'static>>,
+    pub keyboard_input: Option<Box<dyn Fn(KeyboardInput) + Send + Sync + 'static>>,
     pub received_character: Option<Box<dyn Fn(char) + Send + Sync + 'static>>,
 }
 
@@ -34,6 +36,8 @@ impl Debug for EventHandlers {
             .field("cursor_left", &map_to_ptr(&self.cursor_left))
             .field("cursor_entered", &map_to_ptr(&self.cursor_entered))
             .field("mouse_button_input", &map_to_ptr(&self.mouse_button_input))
+            .field("mouse_wheel", &map_to_ptr(&self.mouse_wheel))
+            .field("keyboard_input", &map_to_ptr(&self.keyboard_input))
             .field("received_character", &map_to_ptr(&self.received_character))
             .finish()
     }
@@ -149,6 +153,38 @@ pub fn dispatch_mouse_button_input_events(
     }
 }
 
+pub fn dispatch_mouse_wheel_events(
+    cursor: Res<Cursor>,
+    windows: Query<&Events>,
+    mut events: EventReader<MouseWheel>,
+) {
+    if events.is_empty() {
+        return;
+    }
+
+    let Some(window) = cursor.window() else {
+        return;
+    };
+
+    let Ok(window) = windows.get(window) else {
+        return;
+    };
+
+    for event in events.iter() {
+        for (key, rect) in &window.positions {
+            if hit_test(*rect, cursor.position()) {
+                let Some(handlers) = window.events.get(&key) else {
+                    continue;
+                };
+
+                if let Some(f) = &handlers.mouse_wheel {
+                    f(*event);
+                }
+            }
+        }
+    }
+}
+
 pub fn dispatch_received_character_events(
     cursor: Res<Cursor>,
     windows: Query<&Events>,
@@ -175,6 +211,38 @@ pub fn dispatch_received_character_events(
 
                 if let Some(f) = &handlers.received_character {
                     f(event.char);
+                }
+            }
+        }
+    }
+}
+
+pub fn dispatch_keyboard_input_events(
+    cursor: Res<Cursor>,
+    windows: Query<&Events>,
+    mut events: EventReader<KeyboardInput>,
+) {
+    if events.is_empty() {
+        return;
+    }
+
+    let Some(window) = cursor.window() else {
+        return;
+    };
+
+    let Ok(window) = windows.get(window) else {
+        return;
+    };
+
+    for event in events.iter() {
+        for (key, rect) in &window.positions {
+            if hit_test(*rect, cursor.position()) {
+                let Some(handlers) = window.events.get(&key) else {
+                    continue;
+                };
+
+                if let Some(f) = &handlers.keyboard_input {
+                    f(*event);
                 }
             }
         }

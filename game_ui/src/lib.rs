@@ -38,6 +38,8 @@ impl Plugin for UiPlugin {
         app.add_system(events::dispatch_cursor_moved_events);
         app.add_system(events::dispatch_mouse_button_input_events);
         app.add_system(events::dispatch_received_character_events);
+        app.add_system(events::dispatch_keyboard_input_events);
+        app.add_system(events::dispatch_mouse_wheel_events);
 
         app.add_system(run_effects);
         app.add_system(flush_node_queue.after(run_effects));

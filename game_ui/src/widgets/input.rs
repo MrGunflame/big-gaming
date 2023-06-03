@@ -1,5 +1,7 @@
 use std::ops::Deref;
 
+use winit::event::VirtualKeyCode;
+
 use crate::events::EventHandlers;
 use crate::reactive::{create_signal, Node, Scope};
 use crate::render::style::Style;
@@ -26,6 +28,25 @@ impl Component for Input {
                 style: props.style,
             },
             events: EventHandlers {
+                keyboard_input: Some(Box::new({
+                    let set_value = set_value.clone();
+
+                    move |event| {
+                        if !event.state.is_pressed() {
+                            return;
+                        }
+
+                        match event.key_code {
+                            Some(VirtualKeyCode::Left) => {
+                                set_value.update(|string| string.move_back());
+                            }
+                            Some(VirtualKeyCode::Right) => {
+                                set_value.update(|string| string.move_forward());
+                            }
+                            _ => (),
+                        }
+                    }
+                })),
                 received_character: Some(Box::new(move |char| match char {
                     // Return creates a newline.
                     '\r' => {
@@ -82,7 +103,7 @@ impl Buffer {
     }
 
     fn push(&mut self, ch: char) {
-        self.string.push(ch);
+        self.string.insert(self.cursor, ch);
         self.cursor += ch.len_utf8();
     }
 
@@ -105,6 +126,22 @@ impl Buffer {
         if let Some(ch) = s.chars().last() {
             self.string.remove(self.cursor - ch.len_utf8());
             self.cursor -= ch.len_utf8();
+        }
+    }
+
+    fn move_forward(&mut self) {
+        if let Some(s) = self.string.get(self.cursor..) {
+            if let Some(ch) = s.chars().next() {
+                self.cursor += ch.len_utf8();
+            }
+        }
+    }
+
+    fn move_back(&mut self) {
+        if let Some(s) = self.string.get(..self.cursor) {
+            if let Some(ch) = s.chars().last() {
+                self.cursor -= ch.len_utf8();
+            }
         }
     }
 }
@@ -171,5 +208,47 @@ mod tests {
 
         assert_eq!(buffer.string, "test");
         assert_eq!(buffer.cursor, 4);
+    }
+
+    #[test]
+    fn buffer_move_forward_ok() {
+        let string = String::from("öäü");
+
+        let mut buffer = Buffer::new(string);
+        buffer.cursor = 0;
+        buffer.move_forward();
+
+        assert_eq!(buffer.cursor, 2);
+    }
+
+    #[test]
+    fn buffer_move_forward_eol() {
+        let string = String::from("öäü");
+
+        let mut buffer = Buffer::new(string);
+        buffer.move_forward();
+
+        assert_eq!(buffer.cursor, 6);
+    }
+
+    #[test]
+    fn buffer_move_back_ok() {
+        let string = String::from("öäü");
+
+        let mut buffer = Buffer::new(string);
+        buffer.move_back();
+
+        assert_eq!(buffer.cursor, 4);
+    }
+
+    #[test]
+    fn buffer_move_back_eol() {
+        let string = String::from("öäü");
+
+        let mut buffer = Buffer::new(string);
+        buffer.cursor = 0;
+        buffer.move_back();
+
+        assert_eq!(buffer.cursor, 0);
     }
 }
