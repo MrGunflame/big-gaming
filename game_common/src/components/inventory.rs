@@ -193,26 +193,26 @@ impl InsertionError {
 pub struct EquipmentSlot(NonZeroU8);
 
 impl EquipmentSlot {
-    pub const MAIN_HAND: Self = Self(NonZeroU8::new(1).unwrap());
+    pub const MAIN_HAND: Self = Self(unsafe { NonZeroU8::new_unchecked(1) });
 
-    pub const HEAD: Self = Self(NonZeroU8::new(64).unwrap());
-    pub const EYES: Self = Self(NonZeroU8::new(65).unwrap());
-    pub const MASK: Self = Self(NonZeroU8::new(66).unwrap());
+    pub const HEAD: Self = Self(unsafe { NonZeroU8::new_unchecked(64) });
+    pub const EYES: Self = Self(unsafe { NonZeroU8::new_unchecked(65) });
+    pub const MASK: Self = Self(unsafe { NonZeroU8::new_unchecked(66) });
 
-    pub const LEFT_ARM: Self = Self(NonZeroU8::new(67).unwrap());
-    pub const LEFT_HAND: Self = Self(NonZeroU8::new(68).unwrap());
+    pub const LEFT_ARM: Self = Self(unsafe { NonZeroU8::new_unchecked(67) });
+    pub const LEFT_HAND: Self = Self(unsafe { NonZeroU8::new_unchecked(68) });
 
-    pub const RIGHT_ARM: Self = Self(NonZeroU8::new(69).unwrap());
-    pub const RIGHT_HAND: Self = Self(NonZeroU8::new(70).unwrap());
+    pub const RIGHT_ARM: Self = Self(unsafe { NonZeroU8::new_unchecked(69) });
+    pub const RIGHT_HAND: Self = Self(unsafe { NonZeroU8::new_unchecked(70) });
 
-    pub const TORSO: Self = Self(NonZeroU8::new(71).unwrap());
-    pub const PANTS: Self = Self(NonZeroU8::new(72).unwrap());
+    pub const TORSO: Self = Self(unsafe { NonZeroU8::new_unchecked(71) });
+    pub const PANTS: Self = Self(unsafe { NonZeroU8::new_unchecked(72) });
 
-    pub const LEFT_LEG: Self = Self(NonZeroU8::new(73).unwrap());
-    pub const LEFT_FOOT: Self = Self(NonZeroU8::new(74).unwrap());
+    pub const LEFT_LEG: Self = Self(unsafe { NonZeroU8::new_unchecked(73) });
+    pub const LEFT_FOOT: Self = Self(unsafe { NonZeroU8::new_unchecked(74) });
 
-    pub const RIGHT_LEG: Self = Self(NonZeroU8::new(75).unwrap());
-    pub const RIGHT_FOOT: Self = Self(NonZeroU8::new(76).unwrap());
+    pub const RIGHT_LEG: Self = Self(unsafe { NonZeroU8::new_unchecked(75) });
+    pub const RIGHT_FOOT: Self = Self(unsafe { NonZeroU8::new_unchecked(76) });
 }
 
 #[derive(Clone, Debug)]

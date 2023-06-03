@@ -68,7 +68,7 @@ impl Mass {
     }
 }
 
-impl const Add for Mass {
+impl Add for Mass {
     type Output = Self;
 
     #[inline]
@@ -77,14 +77,14 @@ impl const Add for Mass {
     }
 }
 
-impl const AddAssign for Mass {
+impl AddAssign for Mass {
     #[inline]
     fn add_assign(&mut self, rhs: Self) {
         *self = *self + rhs;
     }
 }
 
-impl const Sub for Mass {
+impl Sub for Mass {
     type Output = Self;
 
     #[inline]
@@ -93,14 +93,14 @@ impl const Sub for Mass {
     }
 }
 
-impl const SubAssign for Mass {
+impl SubAssign for Mass {
     #[inline]
     fn sub_assign(&mut self, rhs: Self) {
         *self = *self - rhs;
     }
 }
 
-impl const Mul<u32> for Mass {
+impl Mul<u32> for Mass {
     type Output = Self;
 
     #[inline]
@@ -109,7 +109,7 @@ impl const Mul<u32> for Mass {
     }
 }
 
-impl const MulAssign<u32> for Mass {
+impl MulAssign<u32> for Mass {
     #[inline]
     fn mul_assign(&mut self, rhs: u32) {
         *self = *self * rhs;

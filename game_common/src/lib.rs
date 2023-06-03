@@ -3,9 +3,6 @@
 //!
 //!
 #![deny(unsafe_op_in_unsafe_fn)]
-#![feature(const_trait_impl)]
-#![feature(const_option)]
-#![feature(const_mut_refs)]
 
 // Allow usage of proc macros on the crate.
 

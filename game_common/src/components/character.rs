@@ -19,14 +19,17 @@ pub struct Attributes {
 impl Attributes {
     #[inline]
     pub fn new() -> Self {
-        Self { strength: 0, endurance: 0 }
+        Self {
+            strength: 0,
+            endurance: 0,
+        }
     }
 
     #[inline]
     pub fn get(&self, attribute: Attribute) -> u8 {
         match attribute {
-            Attribute::STRENGTH => self.strength,
-            Attribute::ENDURANCE => self.endurance,
+            a if a == Attribute::STRENGTH => self.strength,
+            a if a == Attribute::ENDURANCE => self.endurance,
             _ => unreachable!(),
         }
     }
@@ -34,8 +37,8 @@ impl Attributes {
     #[inline]
     pub fn set(&mut self, attribute: Attribute, value: u8) {
         match attribute {
-            Attribute::STRENGTH => self.strength = value,
-            Attribute::ENDURANCE => self.endurance = value,
+            a if a == Attribute::STRENGTH => self.strength = value,
+            a if a == Attribute::ENDURANCE => self.endurance = value,
             _ => unreachable!(),
         }
     }
@@ -45,8 +48,8 @@ impl Attributes {
 pub struct Attribute(NonZeroU8);
 
 impl Attribute {
-    pub const STRENGTH: Self = Self(NonZeroU8::new(1).unwrap());
-    pub const ENDURANCE: Self = Self(NonZeroU8::new(2).unwrap());
+    pub const STRENGTH: Self = Self(unsafe { NonZeroU8::new_unchecked(1) });
+    pub const ENDURANCE: Self = Self(unsafe { NonZeroU8::new_unchecked(2) });
 }
 
 /// A unique identifer for a [`Trait`].

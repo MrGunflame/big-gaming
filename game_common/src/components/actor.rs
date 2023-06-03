@@ -18,8 +18,8 @@ pub struct Actor;
 pub struct ActorState(NonZeroU32);
 
 impl ActorState {
-    pub const DEFAULT: Self = Self(NonZeroU32::new(1).unwrap());
-    pub const DEAD: Self = Self(NonZeroU32::new(2).unwrap());
+    pub const DEFAULT: Self = Self(unsafe { NonZeroU32::new_unchecked(1) });
+    pub const DEAD: Self = Self(unsafe { NonZeroU32::new_unchecked(2) });
 
     pub fn is_default(self) -> bool {
         self == Self::DEFAULT
@@ -39,16 +39,16 @@ pub struct ActorFlag(NonZeroU32);
 
 impl ActorFlag {
     /// Is the [`Actor`] dead?
-    pub const DEAD: Self = Self(NonZeroU32::new(1).unwrap());
+    pub const DEAD: Self = Self(unsafe { NonZeroU32::new_unchecked(1) });
 
     /// Can the [`Actor`] move?
-    pub const CAN_MOVE: Self = Self(NonZeroU32::new(16).unwrap());
+    pub const CAN_MOVE: Self = Self(unsafe { NonZeroU32::new_unchecked(16) });
 
     /// Can the [`Actor`] rotate?
-    pub const CAN_ROTATE: Self = Self(NonZeroU32::new(17).unwrap());
+    pub const CAN_ROTATE: Self = Self(unsafe { NonZeroU32::new_unchecked(17) });
 
     /// Can the [`Actor`] attack?
-    pub const CAN_ATTACK: Self = Self(NonZeroU32::new(18).unwrap());
+    pub const CAN_ATTACK: Self = Self(unsafe { NonZeroU32::new_unchecked(18) });
 }
 
 #[derive(Clone, Debug, Component)]
@@ -145,7 +145,7 @@ pub struct Limb(pub NonZeroU8);
 
 impl Limb {
     #[inline]
-    pub const fn new(id: u8) -> Self {
+    pub fn new(id: u8) -> Self {
         Self(NonZeroU8::new(id).unwrap())
     }
 
