@@ -11,6 +11,7 @@ use game_ui::reactive::Document;
 // use game_core::CorePlugins;
 // use game_input::InputPlugin;
 use game_ui::render::layout::LayoutTree;
+use game_ui::render::style::{Background, BorderRadius, Bounds, Size, SizeVec2};
 use game_ui::UiPlugin;
 use game_window::Window;
 use state::module::Modules;
@@ -129,6 +130,21 @@ fn setup(mut commands: Commands, queue: Res<SpawnWindowQueue>) {
         cx,
         <ToolBar buttons={buttons}>
         </ToolBar>
+    };
+
+    let style = Style {
+        background: Background::RED,
+        bounds: Bounds {
+            min: SizeVec2::splat(Size::Pixels(64.0)),
+            max: SizeVec2::splat(Size::Pixels(64.0)),
+        },
+        border_radius: BorderRadius::splat(Size::Pixels(16.0)),
+        ..Default::default()
+    };
+
+    game_ui::view! {cx,
+        <Container style={style}>
+        </Container>
     };
 
     use game_ui::render::style::Style;

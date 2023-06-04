@@ -183,6 +183,21 @@ where
         doc.effect_queue
             .extend(effects.iter().map(|e| EffectId(*e)));
     }
+
+    pub fn with<U, F>(&self, f: F) -> U
+    where
+        F: FnOnce(&T) -> U,
+    {
+        let cell = self.value.lock();
+        f(&cell)
+    }
+
+    pub fn get(&self) -> T
+    where
+        T: Clone,
+    {
+        self.with(T::clone)
+    }
 }
 
 #[derive(Clone, Debug)]

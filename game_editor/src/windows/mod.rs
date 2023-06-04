@@ -51,7 +51,6 @@ fn spawn_windows(
     mut events: EventReader<SpawnWindow>,
     queue: ResMut<SpawnWindowQueue>,
     handle: Res<Handle>,
-    modules: Res<crate::state::module::Modules>,
     records: Res<crate::state::record::Records>,
     create_modules: Res<CreateModules>,
 ) {
@@ -105,7 +104,7 @@ fn spawn_windows(
             SpawnWindow::Modules => {
                 view! {
                     cx,
-                    <Modules queue={queue.clone()} modules={&modules} create_modules={create_modules.clone()}>
+                    <Modules queue={queue.clone()} create_modules={create_modules.clone()}>
                     </Modules>
                 };
             }

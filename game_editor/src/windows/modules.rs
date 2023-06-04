@@ -1,12 +1,9 @@
-use std::collections::VecDeque;
 use std::sync::Arc;
 
 use bevy_ecs::system::Resource;
-use bevy_ecs::world::World;
-use game_ui::reactive::{create_effect, create_signal, Scope, WriteSignal};
+use game_ui::reactive::{create_effect, create_signal, NodeId, Scope, WriteSignal};
 use game_ui::render::style::{Direction, Style};
-use game_ui::render::{Element, ElementBody};
-use game_ui::widgets::{Text, Widget};
+use game_ui::widgets::Text;
 use game_ui::{component, view};
 
 use game_ui::widgets::*;
@@ -17,12 +14,7 @@ use crate::state::module::{self, EditorModule};
 use super::{SpawnWindow, SpawnWindowQueue};
 
 #[component]
-pub fn Modules(
-    cx: &Scope,
-    modules: &module::Modules,
-    queue: SpawnWindowQueue,
-    create_modules: CreateModules,
-) -> Scope {
+pub fn Modules(cx: &Scope, queue: SpawnWindowQueue, create_modules: CreateModules) -> Scope {
     let root = view! {
         cx,
         <Container style={Style::default()}>
@@ -30,7 +22,7 @@ pub fn Modules(
     };
 
     let mut create_modules = create_modules.0.lock();
-    let mut reader = match &*create_modules {
+    let reader = match &*create_modules {
         Some(sig) => sig.subscribe(),
         None => {
             let (reader, writer) = create_signal(&root, vec![]);
@@ -45,12 +37,22 @@ pub fn Modules(
         </Container>
     };
 
+    let rows: Mutex<Vec<NodeId>> = Mutex::new(vec![]);
     let cx = mods.clone();
-    create_effect(&mods, move |_| {
-        // FIXME: This will take for all windows.
-        let modules = reader.with_mut(|m| std::mem::take(m));
+    create_effect(&mods, move |world| {
+        // Read to track signal.
+        reader.get();
 
-        for m in modules {
+        let mut rows = rows.lock();
+
+        for id in &*rows {
+            cx.remove(*id);
+        }
+        rows.clear();
+
+        let modules = world.resource::<module::Modules>();
+
+        for m in modules.iter() {
             let row = view! {
                 cx,
                 <Container style={Style { direction: Direction::Column, ..Default::default() }}>
@@ -58,9 +60,7 @@ pub fn Modules(
             };
 
             let id = m.module.id.to_string();
-            let name = m.module.name;
-
-            dbg!(&id, &name);
+            let name = m.module.name.clone();
 
             view! {
                 row,
@@ -73,31 +73,10 @@ pub fn Modules(
                 <Text text={name.into()}>
                 </Text>
             };
+
+            rows.push(row.id().unwrap());
         }
     });
-
-    for m in modules.iter() {
-        let row = view! {
-            mods,
-            <Container style={Style { direction: Direction::Column, ..Default::default() }}>
-            </Container>
-        };
-
-        let id = m.module.id.to_string();
-        let name = m.module.name.clone();
-
-        view! {
-            row,
-            <Text text={id.into()}>
-            </Text>
-        };
-
-        view! {
-            row,
-            <Text text={name.into()}>
-            </Text>
-        };
-    }
 
     let open = view! {
         root,

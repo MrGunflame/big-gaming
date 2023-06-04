@@ -1,7 +1,7 @@
 use game_common::module::{Module, ModuleId};
 use game_ui::reactive::{create_effect, create_signal, Scope};
 use game_ui::render::style::{
-    Background, Bounds, Direction, Growth, Justify, Size, SizeVec2, Style,
+    Background, BorderRadius, Bounds, Direction, Growth, Justify, Padding, Size, SizeVec2, Style,
 };
 use game_ui::{component, view};
 
@@ -56,7 +56,9 @@ pub fn CreateModule(cx: &Scope) -> Scope {
             min: SizeVec2::splat(Size::Pixels(50.0)),
             ..Default::default()
         },
-        background: Background::BLACK,
+        background: Background::GRAY,
+        padding: Padding::splat(Size::Pixels(2.0)),
+        border_radius: BorderRadius::splat(Size::Pixels(2.0)),
         ..Default::default()
     };
 

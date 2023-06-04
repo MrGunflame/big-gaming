@@ -1,10 +1,13 @@
 use game_data::record::{RecordBody, RecordKind};
-use game_ui::reactive::{create_signal, Scope, WriteSignal};
-use game_ui::render::style::{Background, Bounds, Direction, Growth, Size, SizeVec2, Style};
+use game_ui::reactive::{create_effect, create_signal, Scope, WriteSignal};
+use game_ui::render::style::{Background, Direction, Growth, Style};
 use game_ui::{component, view};
 
 use game_ui::widgets::*;
 use image::Rgba;
+use parking_lot::Mutex;
+
+use crate::widgets::entries::*;
 
 use crate::state;
 
@@ -46,6 +49,8 @@ pub fn Records(cx: &Scope, records: &state::record::Records) -> Scope {
         </Container>
     };
 
+    let mut cats = vec![];
+
     for (index, category) in CATEGORIES.iter().enumerate() {
         let background = BACKGROUND_COLOR[index % 2].clone();
 
@@ -55,53 +60,109 @@ pub fn Records(cx: &Scope, records: &state::record::Records) -> Scope {
             ..Default::default()
         };
 
-        view! {
+        let cx = view! {
             categories,
             <Button style={style} on_click={change_category(*category, set_cat.clone()).into()}>
                 <Text text={category_str(*category).into()}>
                 </Text>
             </Button>
         };
+
+        cats.push((*category, cx.id().unwrap()));
     }
 
-    for (module_id, record) in records.iter() {
-        if record.body.kind() != DEFAULT_CATEGORY {
-            continue;
+    {
+        let cat = cat.clone();
+        let cx2 = cx.clone();
+        create_effect(cx, move |_| {
+            let cat = cat.get();
+
+            for (index, (category, id)) in cats.iter().enumerate() {
+                let background = if *category == cat {
+                    SELECTED_COLOR.clone()
+                } else {
+                    BACKGROUND_COLOR[index % 2].clone()
+                };
+
+                let style = Style {
+                    background,
+                    growth: Growth::x(1.0),
+                    ..Default::default()
+                };
+
+                cx2.set_style(*id, style);
+            }
+        });
+    }
+
+    let rows = Mutex::new(vec![]);
+    create_effect(cx, move |world| {
+        let cat = cat.get();
+
+        let records = world.resource::<state::record::Records>();
+
+        let mut rows = rows.lock();
+
+        for id in &*rows {
+            main.remove(*id);
+        }
+        rows.clear();
+
+        let mut keys = vec!["ID".into(), "Name".into()];
+        match cat {
+            RecordKind::Item => {
+                keys.push("Mass".into());
+                keys.push("Value".into());
+                keys.push("Components".into());
+                keys.push("Actions".into());
+            }
+            RecordKind::Object => {
+                keys.push("Components".into());
+            }
+            _ => (),
         }
 
-        let mut cols = Vec::new();
+        let mut entries = Vec::new();
 
-        cols.push(record.id.to_string());
-        cols.push(record.name.clone());
+        for (module_id, record) in records.iter() {
+            if record.body.kind() != cat {
+                continue;
+            }
 
-        match &record.body {
-            RecordBody::Item(item) => {
-                cols.push(format!("{}g", item.mass.to_grams()));
-                cols.push(item.value.to_string());
-                cols.push(item.components.len().to_string());
-                cols.push(item.actions.len().to_string());
+            let mut row = Vec::new();
+
+            row.push(record.id.to_string());
+            row.push(record.name.clone());
+
+            match &record.body {
+                RecordBody::Item(item) => {
+                    row.push(format!("{}g", item.mass.to_grams()));
+                    row.push(item.value.to_string());
+                    row.push(item.components.len().to_string());
+                    row.push(item.actions.len().to_string());
+                }
+                RecordBody::Action(action) => {}
+                RecordBody::Component(component) => {}
+                RecordBody::Object(object) => {
+                    row.push(object.components.len().to_string());
+                }
             }
-            RecordBody::Action(action) => {}
-            RecordBody::Component(component) => {}
-            RecordBody::Object(object) => {
-                cols.push(object.components.len().to_string());
-            }
+
+            entries.push(row);
         }
 
-        let row = view! {
+        let entries = EntriesData { keys, entries };
+
+        let id = view! {
             main,
-            <Container style={Style { direction: Direction::Column, ..Default::default() }}>
+            <Container style={Style { growth: Growth::splat(1.0), ..Default::default() }}>
+                <Entries data={entries}>
+                </Entries>
             </Container>
         };
 
-        for col in cols {
-            view! {
-                row,
-                <Text text={col.into()}>
-                </Text>
-            };
-        }
-    }
+        rows.push(id.id().unwrap());
+    });
 
     root
 }
@@ -111,7 +172,11 @@ fn change_category(
     set_cat: WriteSignal<RecordKind>,
 ) -> Box<dyn Fn() + Send + Sync + 'static> {
     Box::new(move || {
-        set_cat.update(|cat| *cat = category);
+        // To prevent unnecessary rerenders only update the category
+        // if it actually changed.
+        if set_cat.get() != category {
+            set_cat.update(|cat| *cat = category);
+        }
     })
 }
 
@@ -120,6 +185,6 @@ fn category_str(kind: RecordKind) -> &'static str {
         RecordKind::Item => "Items",
         RecordKind::Action => "Actions",
         RecordKind::Component => "Components",
-        RecordKind::Object => "Object",
+        RecordKind::Object => "Objects",
     }
 }
