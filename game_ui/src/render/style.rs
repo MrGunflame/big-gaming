@@ -230,6 +230,13 @@ pub struct Padding {
 }
 
 impl Padding {
+    pub const NONE: Self = Self {
+        top: Size::Pixels(0.0),
+        bottom: Size::Pixels(0.0),
+        left: Size::Pixels(0.0),
+        right: Size::Pixels(0.0),
+    };
+
     pub const fn splat(size: Size) -> Self {
         Self {
             top: size,
@@ -242,12 +249,7 @@ impl Padding {
 
 impl Default for Padding {
     fn default() -> Self {
-        Self {
-            top: Size::Pixels(0.0),
-            bottom: Size::Pixels(0.0),
-            left: Size::Pixels(0.0),
-            right: Size::Pixels(0.0),
-        }
+        Self::NONE
     }
 }
 

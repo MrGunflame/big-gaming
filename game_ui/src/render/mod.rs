@@ -4,7 +4,7 @@ pub mod style;
 
 mod container;
 mod debug;
-mod image;
+pub mod image;
 mod systems;
 mod text;
 

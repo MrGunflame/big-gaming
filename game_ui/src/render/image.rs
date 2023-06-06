@@ -1,3 +1,5 @@
+mod overlay;
+
 use game_render::layout::remap;
 use glam::Vec2;
 use image::imageops::FilterType;
@@ -26,47 +28,8 @@ impl BuildPrimitiveElement for Image {
         let min = remap(position.min, size);
         let max = remap(position.max, size);
 
-        let padding = Vec2::new(
-            style.padding.left + style.padding.right,
-            style.padding.top + style.padding.bottom,
-        );
-
-        let width = ((position.max.x - position.min.x) as u32) + padding.x as u32;
-        let height = ((position.max.y - position.min.y) as u32) + padding.y as u32;
-
-        let mut img = match &style.style.background {
-            Background::None => {
-                let mut img = ImageBuffer::new(width, height);
-                image::imageops::overlay(
-                    &mut img,
-                    &self.image,
-                    style.padding.left as i64,
-                    style.padding.top as i64,
-                );
-
-                img
-            }
-            Background::Color(color) => {
-                let mut img = ImageBuffer::from_fn(width, height, |_, _| *color);
-                image::imageops::overlay(
-                    &mut img,
-                    &self.image,
-                    style.padding.left as i64,
-                    style.padding.top as i64,
-                );
-                img
-            }
-            Background::Image(image) => {
-                let mut img = image::imageops::resize(image, width, height, FilterType::Nearest);
-                image::imageops::overlay(
-                    &mut img,
-                    &self.image,
-                    style.padding.left as i64,
-                    style.padding.top as i64,
-                );
-                img
-            }
-        };
+        let mut img = self.image.clone();
+        apply_background(&mut img, style);
 
         apply_border_radius(&mut img, style.border_radius);
 
@@ -97,6 +60,83 @@ impl BuildPrimitiveElement for Image {
         ComputedBounds {
             min: size,
             max: size,
+        }
+    }
+}
+
+pub fn apply_background(img: &mut ImageBuffer<Rgba<u8>, Vec<u8>>, style: &ComputedStyle) {
+    let width = img.width() as u32 + (style.padding.left + style.padding.right) as u32;
+    let height = img.height() as u32 + (style.padding.top + style.padding.bottom) as u32;
+
+    match &style.style.background {
+        Background::None => {
+            if style.padding.top == 0.0
+                && style.padding.bottom == 0.0
+                && style.padding.left == 0.0
+                && style.padding.right == 0.0
+            {
+                return;
+            }
+
+            let mut buffer = ImageBuffer::new(width, height);
+
+            let start_x = style.padding.left as u32;
+            let start_y = style.padding.top as u32;
+
+            for x in start_x..start_x + img.width() {
+                for y in start_y..start_y + img.height() {
+                    let px = img.get_pixel(x - start_x, y - start_y);
+
+                    buffer.put_pixel(x, y, *px);
+                }
+            }
+
+            *img = buffer;
+        }
+        Background::Color(color) => {
+            let size = (width as usize)
+                .checked_mul(height as usize)
+                .map(|r| r.checked_mul(std::mem::size_of::<Rgba<u8>>()))
+                .flatten()
+                .unwrap();
+
+            let mut buf: Vec<u8> = Vec::with_capacity(size);
+            unsafe {
+                // Note that if the above statement doesn't overflow,
+                // this wont either.
+                let pixels = width as usize * height as usize;
+
+                for index in 0..pixels {
+                    let offset = index * std::mem::size_of::<Rgba<u8>>();
+
+                    let ptr = buf.as_mut_ptr().add(offset);
+
+                    std::ptr::write(ptr.cast::<[u8; 4]>(), color.0);
+                }
+
+                buf.set_len(size);
+            }
+
+            let mut buffer = ImageBuffer::from_raw(width, height, buf).unwrap();
+
+            image::imageops::overlay(
+                &mut buffer,
+                img,
+                style.padding.left as i64,
+                style.padding.top as i64,
+            );
+
+            *img = buffer;
+        }
+        Background::Image(image) => {
+            let buffer =
+                image::imageops::resize(image, img.width(), img.height(), FilterType::Nearest);
+            image::imageops::overlay(
+                img,
+                &buffer,
+                style.padding.left as i64,
+                style.padding.top as i64,
+            );
         }
     }
 }
@@ -194,11 +234,144 @@ fn apply_border_radius(
 
 #[cfg(test)]
 mod tests {
-    use image::ImageBuffer;
+    use std::borrow::Borrow;
+    use std::fmt::Debug;
 
-    use crate::render::computed_style::ComputedBorderRadius;
+    use glam::Vec2;
+    use image::{GenericImageView, ImageBuffer, Pixel, Rgba};
 
-    use super::apply_border_radius;
+    use crate::render::computed_style::{ComputedBorderRadius, ComputedStyle};
+    use crate::render::style::{Background, Padding, Size, Style};
+
+    use super::{apply_background, apply_border_radius};
+
+    /// Asserts that image `a` contains image `b`, starting at position `(x, y)`.
+    #[track_caller]
+    fn assert_sub_image<T, U, I, J, P>(a: T, b: U, x: u32, y: u32)
+    where
+        T: Borrow<I>,
+        U: Borrow<J>,
+        I: GenericImageView<Pixel = P>,
+        J: GenericImageView<Pixel = P>,
+        P: Pixel + Debug + PartialEq,
+    {
+        let a = a.borrow();
+        let b = b.borrow();
+
+        assert!(a.width() >= b.width());
+        assert!(a.height() >= b.height());
+
+        let start_x = x;
+        let start_y = y;
+        let end_x = start_x + b.width();
+        let end_y = start_y + b.height();
+
+        for x in start_x..end_x {
+            for y in start_y..end_y {
+                let src_px = a.get_pixel(x, y);
+                let dst_px = b.get_pixel(x - start_x, y - start_y);
+
+                assert_eq!(src_px, dst_px);
+            }
+        }
+    }
+
+    #[test]
+    fn background_none_no_padding() {
+        let viewport = Vec2::splat(1000.0);
+
+        let image = ImageBuffer::new(100, 100);
+
+        let style = ComputedStyle::new(
+            Style {
+                background: Background::None,
+                padding: Padding::NONE,
+                ..Default::default()
+            },
+            viewport,
+        );
+
+        let src = image.clone();
+        let mut out = image;
+        apply_background(&mut out, &style);
+
+        assert_eq!(out.width(), src.width());
+        assert_eq!(out.height(), src.height());
+
+        assert_eq!(src, out);
+    }
+
+    #[test]
+    fn background_none_padding() {
+        let viewport = Vec2::splat(1000.0);
+
+        let image = ImageBuffer::new(100, 100);
+
+        let style = ComputedStyle::new(
+            Style {
+                background: Background::None,
+                padding: Padding::splat(Size::Pixels(2.0)),
+                ..Default::default()
+            },
+            viewport,
+        );
+
+        let src = image.clone();
+        let mut out = image;
+        apply_background(&mut out, &style);
+
+        assert_eq!(out.width(), 100 + 4);
+        assert_eq!(out.height(), 100 + 4);
+
+        assert_sub_image(out, src, 2, 2);
+    }
+
+    #[test]
+    fn background_color_no_padding() {
+        let viewport = Vec2::splat(1000.0);
+        let color = Rgba([123, 124, 125, 126]);
+
+        let image = ImageBuffer::new(100, 100);
+
+        let style = ComputedStyle::new(
+            Style {
+                background: Background::Color(color),
+                ..Default::default()
+            },
+            viewport,
+        );
+
+        let src = image.clone();
+        let mut out = image;
+        apply_background(&mut out, &style);
+
+        assert_eq!(out.width(), src.width());
+        assert_eq!(out.height(), src.height());
+    }
+
+    #[test]
+    fn background_color_padding() {
+        let viewport = Vec2::splat(1000.0);
+        let color = Rgba([123, 124, 125, 126]);
+
+        let image = ImageBuffer::new(100, 100);
+
+        let style = ComputedStyle::new(
+            Style {
+                background: Background::Color(color),
+                padding: Padding::splat(Size::Pixels(2.0)),
+                ..Default::default()
+            },
+            viewport,
+        );
+
+        let src = image.clone();
+        let mut out = image;
+        apply_background(&mut out, &style);
+
+        assert_eq!(out.width(), src.width() + 4);
+        assert_eq!(out.height(), src.height() + 4);
+    }
 
     #[test]
     fn border_radius() {
