@@ -115,7 +115,7 @@ struct RuntimeInner {
     // SignalId
     signals: SlotMap<DefaultKey, Signal>,
     // Backlogged queued effects.
-    effect_queue: Vec<EffectId>,
+    effect_queue: HashSet<EffectId>,
 
     // SignalId => vec![EffectId]
     signal_effects: HashMap<DefaultKey, Vec<DefaultKey>>,
@@ -127,7 +127,6 @@ struct RuntimeInner {
 pub struct Document {
     runtime: Runtime,
     inner: Arc<Mutex<DocumentInner>>,
-    signal_stack: Arc<Mutex<Vec<SignalId>>>,
 }
 
 #[derive(Debug, Default)]
@@ -153,7 +152,6 @@ impl Document {
         Self {
             runtime,
             inner: Arc::default(),
-            signal_stack: Arc::default(),
         }
     }
 
@@ -192,8 +190,7 @@ impl Document {
 
         let mut rt = self.runtime.inner.lock();
 
-        let mut queue = rt.effect_queue.clone();
-        queue.dedup();
+        let queue = rt.effect_queue.clone();
 
         for effect_id in queue {
             if !doc.effects.contains(&effect_id) {
@@ -261,10 +258,8 @@ impl Document {
             }
 
             doc = self.inner.lock();
-        }
 
-        for effect_id in doc.effects.iter() {
-            rt.effect_queue.retain(|id| *id != *effect_id);
+            rt.effect_queue.remove(&effect_id);
         }
     }
 

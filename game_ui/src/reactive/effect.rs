@@ -30,7 +30,7 @@ where
     tracing::trace!("creating Effect({:?}) at {}", key, Location::caller());
 
     // Immediately queue the effect for execution.
-    rt.effect_queue.push(EffectId(key));
+    rt.effect_queue.insert(EffectId(key));
 }
 
 #[derive(Clone)]
