@@ -67,6 +67,13 @@ impl BuildPrimitiveElement for Image {
 }
 
 pub fn apply_background(img: &mut ImageBuffer<Rgba<u8>, Vec<u8>>, style: &ComputedStyle) {
+    // Assert that we don't break `overlay_unchecked` invariants.
+    // `image + padding` MUST BE `>= image`.
+    assert!(style.padding.left.is_sign_positive());
+    assert!(style.padding.right.is_sign_positive());
+    assert!(style.padding.top.is_sign_positive());
+    assert!(style.padding.bottom.is_sign_positive());
+
     let width = img.width() as u32 + (style.padding.left + style.padding.right) as u32;
     let height = img.height() as u32 + (style.padding.top + style.padding.bottom) as u32;
 
@@ -133,15 +140,18 @@ pub fn apply_background(img: &mut ImageBuffer<Rgba<u8>, Vec<u8>>, style: &Comput
             *img = buffer;
         }
         Background::Image(image) => {
-            let buffer =
-                image::imageops::resize(image, img.width(), img.height(), FilterType::Nearest);
+            let mut buffer = image::imageops::resize(image, width, height, FilterType::Nearest);
 
-            image::imageops::overlay(
-                img,
-                &buffer,
-                style.padding.left as i64,
-                style.padding.top as i64,
-            );
+            unsafe {
+                overlay_unchecked(
+                    &mut buffer,
+                    &img,
+                    style.padding.left as u32,
+                    style.padding.top as u32,
+                );
+            }
+
+            *img = buffer;
         }
     }
 }
