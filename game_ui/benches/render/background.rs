@@ -22,7 +22,7 @@ fn run_bench(c: &mut Criterion) {
             },
         ),
         (
-            "background none/paddin",
+            "background none/padding",
             Style {
                 background: Background::None,
                 padding: Padding::splat(Size::Pixels(2.0)),
