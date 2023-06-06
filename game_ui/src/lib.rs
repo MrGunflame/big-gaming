@@ -1,4 +1,5 @@
 //! UI related systems
+#[deny(unsafe_op_in_unsafe_fn)]
 pub mod cursor;
 // mod interface;
 // mod scenes;

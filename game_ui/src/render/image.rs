@@ -5,6 +5,8 @@ use glam::Vec2;
 use image::imageops::FilterType;
 use image::{ImageBuffer, Rgba};
 
+use self::overlay::overlay_unchecked;
+
 use super::computed_style::{ComputedBorderRadius, ComputedBounds, ComputedStyle};
 use super::debug::{debug_border, debug_padding, is_debug_render_enabled};
 use super::style::Background;
@@ -119,18 +121,21 @@ pub fn apply_background(img: &mut ImageBuffer<Rgba<u8>, Vec<u8>>, style: &Comput
 
             let mut buffer = ImageBuffer::from_raw(width, height, buf).unwrap();
 
-            image::imageops::overlay(
-                &mut buffer,
-                img,
-                style.padding.left as i64,
-                style.padding.top as i64,
-            );
+            unsafe {
+                overlay_unchecked(
+                    &mut buffer,
+                    &img,
+                    style.padding.left as u32,
+                    style.padding.top as u32,
+                );
+            };
 
             *img = buffer;
         }
         Background::Image(image) => {
             let buffer =
                 image::imageops::resize(image, img.width(), img.height(), FilterType::Nearest);
+
             image::imageops::overlay(
                 img,
                 &buffer,
