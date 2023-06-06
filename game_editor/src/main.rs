@@ -61,7 +61,11 @@ fn main() {
         .run();
 }
 
-fn setup(mut commands: Commands, queue: Res<SpawnWindowQueue>) {
+fn setup(
+    mut commands: Commands,
+    queue: Res<SpawnWindowQueue>,
+    rt: Res<game_ui::reactive::Runtime>,
+) {
     let mut tree = LayoutTree::new();
     let mut events = Events::default();
 
@@ -89,7 +93,7 @@ fn setup(mut commands: Commands, queue: Res<SpawnWindowQueue>) {
     // }
     // .create(&mut ctx);
 
-    let document = Document::new();
+    let document = Document::new(rt.clone());
 
     let buttons = vec![
         ActionButton {

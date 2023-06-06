@@ -12,7 +12,7 @@ use bevy_app::Plugin;
 use bevy_ecs::prelude::{Entity, EventReader, EventWriter, Res};
 use bevy_ecs::system::{Commands, ResMut, Resource};
 use game_ui::events::Events;
-use game_ui::reactive::Document;
+use game_ui::reactive::{Document, Runtime};
 use game_ui::render::layout::LayoutTree;
 use game_ui::view;
 use game_window::Window;
@@ -53,6 +53,7 @@ fn spawn_windows(
     handle: Res<Handle>,
     records: Res<crate::state::record::Records>,
     create_modules: Res<CreateModules>,
+    rt: Res<Runtime>,
 ) {
     for event in events.iter() {
         let window = Window {
@@ -61,7 +62,7 @@ fn spawn_windows(
 
         let tree = LayoutTree::new();
         let events = Events::default();
-        let document = Document::new();
+        let document = Document::new(rt.clone());
 
         // let mut ctx = Context {
         //     parent: None,

@@ -1,8 +1,12 @@
-use game_ui::reactive::Scope;
+use game_ui::events::{ElementEventHandlers, EventHandlers};
+use game_ui::reactive::{Node, Scope};
 use game_ui::render::style::{Direction, Style};
+use game_ui::render::{Element, ElementBody};
 use game_ui::{component, view};
 
 use game_ui::widgets::*;
+
+use crate::widgets::context_menu::*;
 
 #[derive(Clone, Debug)]
 pub struct EntriesData {
@@ -16,6 +20,12 @@ pub fn Entries(cx: &Scope, data: EntriesData) -> Scope {
         cx,
         <Container style={Style { direction: Direction::Column, ..Default::default() }}>
         </Container>
+    };
+
+    let root = view! {
+        root,
+        <ContextMenu spawn_menu={spawn_ctx_menu()}>
+        </ContextMenu>
     };
 
     let mut cols = Vec::with_capacity(data.keys.len());
@@ -62,4 +72,16 @@ pub fn Entries(cx: &Scope, data: EntriesData) -> Scope {
     }
 
     root
+}
+
+fn spawn_ctx_menu() -> Box<dyn Fn(Scope) + Send + Sync + 'static> {
+    Box::new(|cx| {
+        dbg!("x");
+
+        view! {
+            cx,
+            <Text text={"Hello World".into()}>
+            </Text>
+        };
+    })
 }
