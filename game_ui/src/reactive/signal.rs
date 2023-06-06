@@ -4,7 +4,7 @@ use parking_lot::Mutex;
 use slotmap::DefaultKey;
 
 use crate::reactive::effect::EffectId;
-use crate::reactive::SIGNAL_STACK;
+use crate::reactive::ACTIVE_EFFECT;
 
 use super::{NodeId, Scope};
 
@@ -72,9 +72,6 @@ where
     where
         F: FnOnce(&T) -> U,
     {
-        tracing::trace!("Signal({:?})::read", self.id);
-        tracing::trace!("{:p}", Arc::as_ptr(&self.cx.document.signal_stack));
-
         self.track();
 
         let cell = self.value.lock();
@@ -85,8 +82,6 @@ where
     where
         F: FnOnce(&mut T) -> U,
     {
-        tracing::trace!("Signal({:?})::read", self.id);
-
         self.track();
 
         let mut cell = self.value.lock();
@@ -104,8 +99,11 @@ where
     pub fn track(&self) {
         tracing::trace!("Signal({:?})::read", self.id);
 
-        SIGNAL_STACK.with(|cell| {
-            cell.borrow_mut().push(self.id);
+        ACTIVE_EFFECT.with(|cell| {
+            let mut data = cell.borrow_mut();
+            if data.first_run {
+                data.stack.push(self.id);
+            }
         });
     }
 }

@@ -16,7 +16,7 @@ use bevy_ecs::system::Query;
 use bevy_ecs::world::World;
 use cursor::Cursor;
 use events::Events;
-use reactive::{Document, NodeId, Scope};
+use reactive::{Document, NodeId, Runtime, Scope};
 use render::layout::LayoutTree;
 // use cursor::Cursor;
 // pub use interface::{Context, InterfaceState, Widget, WidgetFlags};
@@ -28,6 +28,8 @@ pub struct UiPlugin;
 impl Plugin for UiPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugin(render::RenderUiPlugin);
+
+        app.insert_resource(Runtime::new());
 
         // Cursor
         app.insert_resource(Cursor::new());

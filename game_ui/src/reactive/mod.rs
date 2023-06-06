@@ -24,7 +24,16 @@ pub use node::Node;
 pub use signal::{create_signal, ReadSignal, WriteSignal};
 
 thread_local! {
-    static SIGNAL_STACK: RefCell<Vec<SignalId>> = RefCell::new(Vec::new());
+    static ACTIVE_EFFECT: RefCell<ActiveEffect> = RefCell::new(ActiveEffect {
+        first_run: false,
+        stack: Vec::new(),
+    });
+}
+
+#[derive(Clone, Debug)]
+struct ActiveEffect {
+    first_run: bool,
+    stack: Vec<SignalId>,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -179,7 +188,7 @@ impl Document {
     }
 
     pub fn run_effects(&self, world: &World) {
-        let doc = self.inner.lock();
+        let mut doc = self.inner.lock();
 
         let mut rt = self.runtime.inner.lock();
 
@@ -199,29 +208,59 @@ impl Document {
                 tracing::trace!("Calling Effect {:?}", effect);
             }
 
-            let effect = rt.effects.get_mut(effect_id.0).unwrap();
+            let mut effect = rt.effects.get_mut(effect_id.0).unwrap().clone();
+
+            // Drop the document so that effect callee has full access
+            // to the document.
+            drop(rt);
+            drop(doc);
 
             if effect.first_run {
                 effect.first_run = false;
 
+                ACTIVE_EFFECT.with(|cell| {
+                    let mut data = cell.borrow_mut();
+                    data.first_run = true;
+                });
+
                 (effect.f)(world);
 
-                let mut stack = SIGNAL_STACK.with(|cell| cell.take());
+                let mut stack = ACTIVE_EFFECT.with(|cell| {
+                    let mut data = cell.borrow_mut();
+                    data.first_run = false;
+                    std::mem::take(&mut data.stack)
+                });
                 tracing::trace!("subscribing Effect({:?}) to signals {:?}", effect_id, stack);
 
                 // We only want to track each effect once.
                 stack.dedup();
 
+                rt = self.runtime.inner.lock();
                 for signal in stack {
                     rt.signal_effects
                         .entry(signal.0)
                         .or_default()
                         .push(effect_id.0);
                 }
+
+                *rt.effects.get_mut(effect_id.0).unwrap() = effect;
             } else {
+                // `first_run` is set to `false` at the end of a first effect
+                // call.
+                if cfg!(debug_assertions) {
+                    ACTIVE_EFFECT.with(|cell| {
+                        let data = cell.borrow();
+                        assert!(!data.first_run);
+                    });
+                }
+
                 let effect = effect.clone();
                 (effect.f)(world);
+
+                rt = self.runtime.inner.lock();
             }
+
+            doc = self.inner.lock();
         }
 
         for effect_id in doc.effects.iter() {
