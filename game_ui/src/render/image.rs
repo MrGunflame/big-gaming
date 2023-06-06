@@ -369,7 +369,7 @@ mod tests {
         let viewport = Vec2::splat(1000.0);
         let color = Rgba([123, 124, 125, 126]);
 
-        let image = ImageBuffer::new(100, 100);
+        let image = ImageBuffer::from_pixel(100, 100, Rgba([0, 0, 0, 255]));
 
         let style = ComputedStyle::new(
             Style {
@@ -386,6 +386,58 @@ mod tests {
 
         assert_eq!(out.width(), src.width() + 4);
         assert_eq!(out.height(), src.height() + 4);
+
+        assert_sub_image(out, src, 2, 2);
+    }
+
+    #[test]
+    fn background_image_no_padding() {
+        let viewport = Vec2::splat(1000.0);
+        let bg = ImageBuffer::from_pixel(100, 100, Rgba([123, 124, 125, 126]));
+
+        let image = ImageBuffer::new(100, 100);
+
+        let style = ComputedStyle::new(
+            Style {
+                background: Background::Image(bg),
+                padding: Padding::NONE,
+                ..Default::default()
+            },
+            viewport,
+        );
+
+        let src = image.clone();
+        let mut out = image;
+        apply_background(&mut out, &style);
+
+        assert_eq!(out.width(), src.width());
+        assert_eq!(out.height(), src.height());
+    }
+
+    #[test]
+    fn background_image_padding() {
+        let viewport = Vec2::splat(1000.0);
+        let bg = ImageBuffer::from_pixel(100, 100, Rgba([123, 124, 125, 126]));
+
+        let image = ImageBuffer::from_pixel(100, 100, Rgba([0, 0, 0, 255]));
+
+        let style = ComputedStyle::new(
+            Style {
+                background: Background::Image(bg),
+                padding: Padding::splat(Size::Pixels(2.0)),
+                ..Default::default()
+            },
+            viewport,
+        );
+
+        let src = image.clone();
+        let mut out = image;
+        apply_background(&mut out, &style);
+
+        assert_eq!(out.width(), src.width() + 4);
+        assert_eq!(out.height(), src.height() + 4);
+
+        assert_sub_image(out, src, 2, 2);
     }
 
     #[test]

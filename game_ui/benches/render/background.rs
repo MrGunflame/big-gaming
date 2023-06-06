@@ -45,6 +45,30 @@ fn run_bench(c: &mut Criterion) {
                 ..Default::default()
             },
         ),
+        (
+            "background image (128x128) /no padding",
+            Style {
+                background: Background::Image(ImageBuffer::from_pixel(
+                    128,
+                    128,
+                    Rgba([123, 124, 125, 126]),
+                )),
+                padding: Padding::NONE,
+                ..Default::default()
+            },
+        ),
+        (
+            "background image (128x128)/padding",
+            Style {
+                background: Background::Image(ImageBuffer::from_pixel(
+                    128,
+                    128,
+                    Rgba([123, 124, 125, 126]),
+                )),
+                padding: Padding::splat(Size::Pixels(2.0)),
+                ..Default::default()
+            },
+        ),
     ] {
         exec_bench(c, name, style);
     }
