@@ -44,3 +44,8 @@ criterion = { version = "0.4", features = ["html_reports"] }
 name = "layout_flat"
 path = "benches/layout.rs"
 harness = false
+
+[[bench]]
+name = "background"
+path = "benches/render/background.rs"
+harness = false
