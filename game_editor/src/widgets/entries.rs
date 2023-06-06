@@ -18,14 +18,14 @@ pub struct EntriesData {
 pub fn Entries(cx: &Scope, data: EntriesData) -> Scope {
     let root = view! {
         cx,
-        <Container style={Style { direction: Direction::Column, ..Default::default() }}>
-        </Container>
+        <ContextMenu spawn_menu={spawn_ctx_menu()}>
+        </ContextMenu>
     };
 
     let root = view! {
         root,
-        <ContextMenu spawn_menu={spawn_ctx_menu()}>
-        </ContextMenu>
+        <Container style={Style { direction: Direction::Column, ..Default::default() }}>
+        </Container>
     };
 
     let mut cols = Vec::with_capacity(data.keys.len());
