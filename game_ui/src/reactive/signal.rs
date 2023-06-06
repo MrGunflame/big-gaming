@@ -4,6 +4,7 @@ use parking_lot::Mutex;
 use slotmap::DefaultKey;
 
 use crate::reactive::effect::EffectId;
+use crate::reactive::SIGNAL_STACK;
 
 use super::{NodeId, Scope};
 
@@ -16,9 +17,12 @@ where
     let signal = Signal { effects: vec![] };
 
     let mut doc = cx.document.inner.lock();
-    let id = doc.signals.insert(signal);
+
+    let mut rt = cx.document.runtime.inner.lock();
+
+    let id = rt.signals.insert(signal);
     doc.signal_targets.insert(id, cx.id.map(|x| x.0));
-    doc.signal_effects.insert(id, vec![]);
+    rt.signal_effects.insert(id, vec![]);
 
     let value = Arc::new(Mutex::new(value));
 
@@ -36,7 +40,7 @@ where
     )
 }
 
-#[derive(Clone)]
+#[derive(Debug)]
 pub struct ReadSignal<T>
 where
     T: Send + Sync + 'static,
@@ -69,10 +73,9 @@ where
         F: FnOnce(&T) -> U,
     {
         tracing::trace!("Signal({:?})::read", self.id);
+        tracing::trace!("{:p}", Arc::as_ptr(&self.cx.document.signal_stack));
 
-        let mut stack = self.cx.document.signal_stack.lock();
-        stack.push(self.id);
-        drop(stack);
+        self.track();
 
         let cell = self.value.lock();
         f(&cell)
@@ -84,9 +87,7 @@ where
     {
         tracing::trace!("Signal({:?})::read", self.id);
 
-        let mut stack = self.cx.document.signal_stack.lock();
-        stack.push(self.id);
-        drop(stack);
+        self.track();
 
         let mut cell = self.value.lock();
         f(&mut cell)
@@ -99,9 +100,30 @@ where
         let cell = self.value.lock();
         f(&cell)
     }
+
+    pub fn track(&self) {
+        tracing::trace!("Signal({:?})::read", self.id);
+
+        SIGNAL_STACK.with(|cell| {
+            cell.borrow_mut().push(self.id);
+        });
+    }
 }
 
-#[derive(Debug, Clone)]
+impl<T> Clone for ReadSignal<T>
+where
+    T: Send + Sync + 'static,
+{
+    fn clone(&self) -> Self {
+        Self {
+            cx: self.cx.clone(),
+            id: self.id,
+            value: self.value.clone(),
+        }
+    }
+}
+
+#[derive(Debug)]
 pub struct WriteSignal<T>
 where
     T: Send + Sync + 'static,
@@ -134,17 +156,7 @@ where
             f(&mut cell)
         };
 
-        let mut doc = self.cx.document.inner.lock();
-        let effects = doc.signal_effects.get(&self.id.0).unwrap().clone();
-
-        tracing::trace!(
-            "Queued Signal({:?}) effect observers: {:?}",
-            self.id,
-            effects
-        );
-
-        doc.effect_queue
-            .extend(effects.iter().map(|e| EffectId(*e)));
+        self.wake();
 
         ret
     }
@@ -171,8 +183,9 @@ where
 
     /// Manually mark the value as changed.
     pub fn wake(&self) {
-        let mut doc = self.cx.document.inner.lock();
-        let effects = doc.signal_effects.get(&self.id.0).unwrap().clone();
+        let mut rt = self.cx.document.runtime.inner.lock();
+
+        let effects = rt.signal_effects.get(&self.id.0).unwrap().clone();
 
         tracing::trace!(
             "Queued Signal({:?}) effect observers: {:?}",
@@ -180,8 +193,7 @@ where
             effects
         );
 
-        doc.effect_queue
-            .extend(effects.iter().map(|e| EffectId(*e)));
+        rt.effect_queue.extend(effects.iter().map(|e| EffectId(*e)));
     }
 
     pub fn with<U, F>(&self, f: F) -> U
@@ -200,6 +212,19 @@ where
     }
 }
 
+impl<T> Clone for WriteSignal<T>
+where
+    T: Send + Sync + 'static,
+{
+    fn clone(&self) -> Self {
+        Self {
+            cx: self.cx.clone(),
+            id: self.id,
+            value: self.value.clone(),
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub(super) struct Signal {
     pub(super) effects: Vec<NodeId>,
@@ -211,13 +236,21 @@ pub struct SignalId(pub DefaultKey);
 #[cfg(test)]
 mod tests {
 
-    use crate::reactive::Document;
+    use std::sync::Arc;
+
+    use bevy_ecs::world::World;
+    use parking_lot::Mutex;
+
+    use crate::events::Events;
+    use crate::reactive::{create_effect, Document, Runtime};
+    use crate::render::layout::LayoutTree;
 
     use super::create_signal;
 
     #[test]
     fn signal_update() {
-        let doc = Document::new();
+        let rt = Runtime::new();
+        let doc = Document::new(rt);
         let cx = doc.root_scope();
 
         let (reader, writer) = create_signal(&cx, 0);
@@ -227,5 +260,88 @@ mod tests {
         writer.update(|val| *val += 1);
 
         assert_eq!(reader.get(), 1);
+    }
+
+    #[test]
+    fn signal_called_across_documents() {
+        let count = 2;
+
+        let value = Arc::new(Mutex::new(0));
+
+        let rt = Runtime::new();
+        let docs: Vec<_> = (0..count).map(|_| Document::new(rt.clone())).collect();
+
+        let (reader, writer) = create_signal(&docs[0].root_scope(), 0);
+
+        for doc in &docs {
+            let cx = doc.root_scope();
+
+            let reader = reader.clone();
+            let value = value.clone();
+
+            create_effect(&cx, move |_| {
+                let _ = reader.get();
+
+                *value.lock() += 1;
+            });
+        }
+
+        let mut tree = LayoutTree::new();
+        let mut events = Events::new();
+        let world = World::new();
+
+        for doc in &docs {
+            doc.run_effects(&world);
+            doc.flush_node_queue(&mut tree, &mut events);
+        }
+
+        assert_eq!(*value.lock(), count);
+
+        writer.wake();
+
+        for doc in &docs {
+            doc.run_effects(&world);
+            doc.flush_node_queue(&mut tree, &mut events);
+        }
+
+        assert_eq!(*value.lock(), count * 2);
+    }
+
+    #[test]
+    fn signal_moved_across_documents() {
+        let value = Arc::new(Mutex::new(0));
+
+        let rt = Runtime::new();
+        let src = Document::new(rt.clone());
+        let dst = Document::new(rt);
+
+        let world = World::new();
+
+        let (reader, writer) = create_signal(&src.root_scope(), 0);
+
+        {
+            let value = value.clone();
+            create_effect(&dst.root_scope(), move |_| {
+                let _ = reader.get();
+
+                *value.lock() += 1;
+            });
+        }
+
+        tracing::trace!("src");
+        src.run_effects(&world);
+        tracing::trace!("dst");
+        dst.run_effects(&world);
+
+        assert_eq!(*value.lock(), 1);
+
+        writer.wake();
+
+        tracing::trace!("src");
+        src.run_effects(&world);
+        tracing::trace!("dst");
+        dst.run_effects(&world);
+
+        assert_eq!(*value.lock(), 2);
     }
 }

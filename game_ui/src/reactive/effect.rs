@@ -22,11 +22,15 @@ where
     };
 
     let mut doc = cx.document.inner.lock();
+    let mut rt = cx.document.runtime.inner.lock();
 
-    let key = doc.effects.insert(effect);
+    let key = rt.effects.insert(effect);
+    doc.effects.insert(EffectId(key));
+
+    tracing::trace!("creating Effect({:?}) at {}", key, Location::caller());
 
     // Immediately queue the effect for execution.
-    doc.effect_queue.push(EffectId(key));
+    rt.effect_queue.push(EffectId(key));
 }
 
 #[derive(Clone)]
@@ -65,7 +69,7 @@ mod tests {
     use parking_lot::Mutex;
 
     use crate::events::Events;
-    use crate::reactive::{create_signal, Document};
+    use crate::reactive::{create_signal, Document, Runtime};
     use crate::render::layout::LayoutTree;
 
     use super::super::tests::create_node;
@@ -73,7 +77,8 @@ mod tests {
 
     #[test]
     fn effect_call_on_creation() {
-        let doc = Document::new();
+        let rt = Runtime::new();
+        let doc = Document::new(rt);
         let cx = doc.root_scope();
 
         let value = Arc::new(Mutex::new(0));
@@ -92,7 +97,8 @@ mod tests {
 
     #[test]
     fn effect_tracks_signal() {
-        let doc = Document::new();
+        let rt = Runtime::new();
+        let doc = Document::new(rt);
         let cx = doc.root_scope();
 
         let value = Arc::new(Mutex::new(0));
@@ -123,7 +129,8 @@ mod tests {
 
     #[test]
     fn effect_untracked_signal() {
-        let doc = Document::new();
+        let rt = Runtime::new();
+        let doc = Document::new(rt);
         let cx = doc.root_scope();
 
         let value = Arc::new(Mutex::new(0));
@@ -151,7 +158,8 @@ mod tests {
 
     #[test]
     fn effect_signal_no_duplicate() {
-        let doc = Document::new();
+        let rt = Runtime::new();
+        let doc = Document::new(rt);
         let cx = doc.root_scope();
 
         let mut tree = LayoutTree::new();
@@ -171,7 +179,7 @@ mod tests {
         doc.flush_node_queue(&mut tree, &mut events);
 
         {
-            let inner = doc.inner.lock();
+            let inner = doc.runtime.inner.lock();
             assert_eq!(inner.effects.len(), 1);
 
             let entry = inner.signal_effects.values().nth(0).unwrap();
@@ -181,7 +189,8 @@ mod tests {
 
     #[test]
     fn effect_cleanup() {
-        let doc = Document::new();
+        let rt = Runtime::new();
+        let doc = Document::new(rt);
         let cx = doc.root_scope();
 
         let mut tree = LayoutTree::new();
@@ -213,7 +222,8 @@ mod tests {
 
     #[test]
     fn effect_cleanup_with_single_signal() {
-        let doc = Document::new();
+        let rt = Runtime::new();
+        let doc = Document::new(rt);
         let cx = doc.root_scope();
 
         let mut tree = LayoutTree::new();
@@ -232,7 +242,7 @@ mod tests {
         doc.flush_node_queue(&mut tree, &mut events);
 
         {
-            let inner = doc.inner.lock();
+            let inner = doc.runtime.inner.lock();
             assert_eq!(inner.signal_effects.len(), 1);
 
             let entry = inner.signal_effects.values().nth(0).unwrap();
@@ -245,14 +255,15 @@ mod tests {
         doc.flush_node_queue(&mut tree, &mut events);
 
         {
-            let inner = doc.inner.lock();
+            let inner = doc.runtime.inner.lock();
             assert_eq!(inner.signal_effects.len(), 0);
         }
     }
 
     #[test]
     fn effect_cleanup_with_shared_signal() {
-        let doc = Document::new();
+        let rt = Runtime::new();
+        let doc = Document::new(rt);
         let cx = doc.root_scope();
 
         let mut tree = LayoutTree::new();
@@ -275,7 +286,7 @@ mod tests {
         doc.flush_node_queue(&mut tree, &mut events);
 
         {
-            let inner = doc.inner.lock();
+            let inner = doc.runtime.inner.lock();
             assert_eq!(inner.signal_effects.len(), 1);
 
             let entry = inner.signal_effects.values().nth(0).unwrap();
@@ -288,7 +299,7 @@ mod tests {
         doc.flush_node_queue(&mut tree, &mut events);
 
         {
-            let inner = doc.inner.lock();
+            let inner = doc.runtime.inner.lock();
             assert_eq!(inner.signal_effects.len(), 0);
         }
     }

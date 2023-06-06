@@ -1,7 +1,9 @@
-use std::collections::{HashMap, VecDeque};
+use std::cell::RefCell;
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 
 use bevy_ecs::prelude::Component;
+use bevy_ecs::system::Resource;
 use bevy_ecs::world::World;
 use parking_lot::Mutex;
 use slotmap::{DefaultKey, SlotMap};
@@ -20,6 +22,10 @@ mod signal;
 pub use effect::create_effect;
 pub use node::Node;
 pub use signal::{create_signal, ReadSignal, WriteSignal};
+
+thread_local! {
+    static SIGNAL_STACK: RefCell<Vec<SignalId>> = RefCell::new(Vec::new());
+}
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct NodeId(DefaultKey);
@@ -82,24 +88,43 @@ impl Scope {
     }
 }
 
-#[derive(Clone, Debug, Default, Component)]
+#[derive(Clone, Debug, Default, Resource)]
+pub struct Runtime {
+    inner: Arc<Mutex<RuntimeInner>>,
+}
+
+impl Runtime {
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+#[derive(Debug, Default)]
+struct RuntimeInner {
+    // EffectId
+    effects: SlotMap<DefaultKey, Effect>,
+    // SignalId
+    signals: SlotMap<DefaultKey, Signal>,
+    // Backlogged queued effects.
+    effect_queue: Vec<EffectId>,
+
+    // SignalId => vec![EffectId]
+    signal_effects: HashMap<DefaultKey, Vec<DefaultKey>>,
+}
+
+// Note that `Document` has no `Default` impl to prevent accidental
+// creation on a new `Runtime` (which has a `Default` impl).
+#[derive(Clone, Debug, Component)]
 pub struct Document {
+    runtime: Runtime,
     inner: Arc<Mutex<DocumentInner>>,
     signal_stack: Arc<Mutex<Vec<SignalId>>>,
 }
 
 #[derive(Debug, Default)]
 struct DocumentInner {
-    // EffectId
-    effects: SlotMap<DefaultKey, Effect>,
-    // SignalId
-    signals: SlotMap<DefaultKey, Signal>,
-
-    // SignalId => vec![EffectId]
-    signal_effects: HashMap<DefaultKey, Vec<DefaultKey>>,
-
-    // Backlogged queued effects.
-    effect_queue: Vec<EffectId>,
+    // Effects in this document
+    effects: HashSet<EffectId>,
 
     pub nodes: SlotMap<DefaultKey, NodeStore>,
     // parent => vec![child]
@@ -115,8 +140,12 @@ struct DocumentInner {
 }
 
 impl Document {
-    pub fn new() -> Self {
-        Self::default()
+    pub fn new(runtime: Runtime) -> Self {
+        Self {
+            runtime,
+            inner: Arc::default(),
+            signal_stack: Arc::default(),
+        }
     }
 
     pub fn len(&self) -> usize {
@@ -145,60 +174,64 @@ impl Document {
         }
     }
 
-    pub fn run_effects(&self, world: &World) {
-        let mut doc = self.inner.lock();
+    pub fn runtime(&self) -> &Runtime {
+        &self.runtime
+    }
 
-        doc.effect_queue.dedup();
-        let queue = doc.effect_queue.clone();
-        drop(doc);
+    pub fn run_effects(&self, world: &World) {
+        let doc = self.inner.lock();
+
+        let mut rt = self.runtime.inner.lock();
+
+        let mut queue = rt.effect_queue.clone();
+        queue.dedup();
+
         for effect_id in queue {
+            if !doc.effects.contains(&effect_id) {
+                continue;
+            }
+
             tracing::trace!("call Effect({:?})", effect_id);
 
             if cfg!(debug_assertions) {
-                let doc = self.inner.lock();
-                let effect = doc.effects.get(effect_id.0).unwrap();
+                let effect = rt.effects.get(effect_id.0).unwrap();
 
                 tracing::trace!("Calling Effect {:?}", effect);
             }
 
-            let mut doc = self.inner.lock();
-            let effect = doc.effects.get_mut(effect_id.0).unwrap();
+            let effect = rt.effects.get_mut(effect_id.0).unwrap();
 
             if effect.first_run {
                 effect.first_run = false;
-                let effect = effect.clone();
-                drop(doc);
 
                 (effect.f)(world);
 
-                let mut stack = std::mem::take(&mut *self.signal_stack.lock());
+                let mut stack = SIGNAL_STACK.with(|cell| cell.take());
                 tracing::trace!("subscribing Effect({:?}) to signals {:?}", effect_id, stack);
-                let mut doc = self.inner.lock();
 
                 // We only want to track each effect once.
                 stack.dedup();
 
                 for signal in stack {
-                    doc.signal_effects
+                    rt.signal_effects
                         .entry(signal.0)
                         .or_default()
                         .push(effect_id.0);
                 }
-
-                drop(doc);
             } else {
                 let effect = effect.clone();
-                drop(doc);
                 (effect.f)(world);
             }
         }
 
-        let mut doc = self.inner.lock();
-        doc.effect_queue.clear();
+        for effect_id in doc.effects.iter() {
+            rt.effect_queue.retain(|id| *id != *effect_id);
+        }
     }
 
     pub fn flush_node_queue(&self, tree: &mut LayoutTree, events: &mut Events) {
         let mut doc = self.inner.lock();
+        let mut rt = self.runtime.inner.lock();
 
         while let Some(event) = doc.queue.pop_front() {
             match event {
@@ -230,7 +263,6 @@ impl Document {
                         doc.parents.remove(&key);
 
                         if let Some(children) = doc.children.remove(&key) {
-                            dbg!(&children);
                             delete_queue.extend(children);
                         }
 
@@ -245,9 +277,10 @@ impl Document {
                         events.remove(key);
 
                         // Remove effects registered on the node.
-                        doc.effects.retain(|effect_id, effect| match effect.node {
+                        rt.effects.retain(|effect_id, effect| match effect.node {
                             Some(node) => {
                                 if node == node_id {
+                                    doc.effects.remove(&EffectId(effect_id));
                                     delete_effects.push(effect_id);
                                     false
                                 } else {
@@ -261,7 +294,7 @@ impl Document {
                     let mut delete_signals = vec![];
 
                     for id in delete_effects {
-                        for (signal_id, effects) in doc.signal_effects.iter_mut() {
+                        for (signal_id, effects) in rt.signal_effects.iter_mut() {
                             effects.retain(|effect_id| *effect_id != id);
 
                             if effects.len() == 0 {
@@ -271,7 +304,7 @@ impl Document {
                     }
 
                     for id in delete_signals {
-                        doc.signal_effects.remove(&id);
+                        rt.signal_effects.remove(&id);
                     }
                 }
                 Event::UpdateNode(id, node) => {
@@ -314,6 +347,7 @@ mod tests {
     use bevy_ecs::world::World;
 
     use crate::events::{ElementEventHandlers, Events};
+    use crate::reactive::Runtime;
     use crate::render::layout::LayoutTree;
     use crate::render::style::Style;
     use crate::render::{Element, ElementBody};
@@ -332,7 +366,8 @@ mod tests {
 
     #[test]
     fn document_cleanup() {
-        let doc = Document::new();
+        let rt = Runtime::new();
+        let doc = Document::new(rt);
         let cx = doc.root_scope();
 
         let mut tree = LayoutTree::new();
@@ -356,7 +391,8 @@ mod tests {
 
     #[test]
     fn document_cleanup_children() {
-        let doc = Document::new();
+        let rt = Runtime::new();
+        let doc = Document::new(rt);
         let cx = doc.root_scope();
 
         let mut tree = LayoutTree::new();
