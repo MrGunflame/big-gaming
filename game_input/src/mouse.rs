@@ -26,6 +26,11 @@ impl MouseButton {
     pub const fn is_left(self) -> bool {
         matches!(self, Self::Left)
     }
+
+    #[inline]
+    pub const fn is_right(self) -> bool {
+        matches!(self, Self::Right)
+    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
