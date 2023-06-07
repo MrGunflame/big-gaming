@@ -267,7 +267,7 @@ impl Document {
         let mut doc = self.inner.lock();
         let mut rt = self.runtime.inner.lock();
 
-        while let Some(event) = doc.queue.pop_front() {
+        'out: while let Some(event) = doc.queue.pop_front() {
             match event {
                 Event::PushNode(id, node) => {
                     tracing::trace!("spawn node {:?} {:?}", id, node);
@@ -306,7 +306,13 @@ impl Document {
                     let mut delete_effects = vec![];
 
                     for node_id in delete_queue {
-                        let key = doc.node_mappings.remove(&node_id).unwrap();
+                        // Note that it is possible for the same node be queued for deletion
+                        // twice if the parent and the children have both been requested
+                        // for deletion manually in the same tick.
+                        let Some(key) = doc.node_mappings.remove(&node_id) else {
+                            continue 'out;
+                        };
+
                         tree.remove(key);
                         events.remove(key);
 
