@@ -1,23 +1,38 @@
-use game_common::module::{Module, ModuleId};
-use game_ui::reactive::{create_effect, create_signal, Scope};
+use game_common::module::{Dependency, Module, ModuleId, Version};
+use game_ui::reactive::{create_signal, ReadSignal, Scope};
 use game_ui::render::style::{
     Background, BorderRadius, Bounds, Direction, Growth, Justify, Padding, Size, SizeVec2, Style,
 };
 use game_ui::{component, view};
 
 use game_ui::widgets::*;
+use image::Rgba;
+
+use crate::state::capabilities::Capabilities;
+use crate::state::module::{EditorModule, Modules};
+
+const BACKGROUND_COLOR: Background = Background::Color(Rgba([0x35, 0x35, 0x35, 0xFF]));
 
 #[component]
-pub fn CreateModule(cx: &Scope) -> Scope {
+pub fn CreateModule(cx: &Scope, modules: Modules) -> Scope {
+    let (id, set_id) = create_signal(cx, ModuleId::random());
     let (name, set_name) = create_signal(cx, String::new());
+    let (version, set_version) = create_signal(cx, Version);
+    let (dependencies, set_dependencies) = create_signal(cx, Vec::new());
+
+    let style = Style {
+        justify: Justify::SpaceBetween,
+        growth: Growth::splat(1.0),
+        background: BACKGROUND_COLOR,
+        padding: Padding::splat(Size::Pixels(5.0)),
+        ..Default::default()
+    };
 
     let root = view! {
         cx,
-        <Container style={Style { justify: Justify::SpaceBetween, growth: Growth::splat(1.0), ..Default::default() }}>
+        <Container style={style}>
         </Container>
     };
-
-    let id = ModuleId::random();
 
     let table = view! {
         root,
@@ -47,7 +62,7 @@ pub fn CreateModule(cx: &Scope) -> Scope {
 
     view! {
         val_col,
-        <Text text={id.to_string().into()}>
+        <Text text={id.get_untracked().to_string().into()}>
         </Text>
     };
 
@@ -74,9 +89,19 @@ pub fn CreateModule(cx: &Scope) -> Scope {
         </Container>
     };
 
+    let on_create = on_create(
+        modules,
+        Fields {
+            id,
+            name,
+            version,
+            dependencies,
+        },
+    );
+
     view! {
         bottom,
-        <Button style={Style::default()} on_click={on_create().into()}>
+        <Button style={Style::default()} on_click={on_create.into()}>
             <Text text={"OK".into()}>
             </Text>
         </Button>
@@ -85,10 +110,27 @@ pub fn CreateModule(cx: &Scope) -> Scope {
     cx.clone()
 }
 
-fn on_create() -> Box<dyn Fn() + Send + Sync + 'static> {
-    Box::new(move || {})
+fn on_create(modules: Modules, fields: Fields) -> Box<dyn Fn() + Send + Sync + 'static> {
+    Box::new(move || {
+        let module = EditorModule {
+            module: Module {
+                id: fields.id.get_untracked(),
+                name: fields.name.get_untracked(),
+                version: fields.version.get_untracked(),
+                dependencies: fields.dependencies.get_untracked(),
+            },
+            path: None,
+            capabilities: Capabilities::READ | Capabilities::WRITE,
+        };
+
+        modules.insert(module);
+    })
 }
 
-fn on_cancel() -> Box<dyn Fn() + Send + Sync + 'static> {
-    Box::new(move || {})
+#[derive(Debug)]
+struct Fields {
+    id: ReadSignal<ModuleId>,
+    name: ReadSignal<String>,
+    version: ReadSignal<Version>,
+    dependencies: ReadSignal<Vec<Dependency>>,
 }

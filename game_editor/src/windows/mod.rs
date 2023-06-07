@@ -1,4 +1,5 @@
 mod create_module;
+mod create_record;
 mod error;
 pub mod modules;
 mod open_module;
@@ -11,6 +12,7 @@ use std::sync::Arc;
 use bevy_app::Plugin;
 use bevy_ecs::prelude::{Entity, EventReader, EventWriter, Res};
 use bevy_ecs::system::{Commands, ResMut, Resource};
+use game_data::record::RecordKind;
 use game_ui::events::Events;
 use game_ui::reactive::{Document, Runtime};
 use game_ui::render::layout::LayoutTree;
@@ -21,6 +23,7 @@ use parking_lot::RwLock;
 use crate::backend::Handle;
 
 use self::create_module::*;
+use self::create_record::*;
 use self::error::*;
 use self::modules::*;
 use self::open_module::*;
@@ -54,6 +57,7 @@ fn spawn_windows(
     records: Res<crate::state::record::Records>,
     create_modules: Res<CreateModules>,
     rt: Res<Runtime>,
+    modules: Res<crate::state::module::Modules>,
 ) {
     for event in events.iter() {
         let window = Window {
@@ -119,7 +123,7 @@ fn spawn_windows(
             SpawnWindow::CreateModule => {
                 view! {
                     cx,
-                    <CreateModule>
+                    <CreateModule modules={modules.clone()}>
                     </CreateModule>
                 };
             }
@@ -138,6 +142,13 @@ fn spawn_windows(
                 };
             }
             SpawnWindow::CloseWindow(_) => unreachable!(),
+            SpawnWindow::CreateRecord(kind) => {
+                view! {
+                    cx,
+                    <CreateRecord>
+                    </CreateRecord>
+                };
+            }
             _ => todo!(),
         }
 
@@ -154,6 +165,7 @@ pub enum SpawnWindow {
     View,
     CloseWindow(Entity),
     Error(String),
+    CreateRecord(RecordKind),
 }
 
 #[derive(Resource, Default, Clone)]

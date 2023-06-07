@@ -1,11 +1,10 @@
 use game_ui::events::{ElementEventHandlers, EventHandlers};
 use game_ui::reactive::{Node, Scope};
-use game_ui::render::style::{Background, Direction, Style};
+use game_ui::render::style::{Background, Direction, Padding, Size, Style};
 use game_ui::render::{Element, ElementBody};
 use game_ui::{component, view};
 
 use game_ui::widgets::*;
-use image::Rgba;
 
 use crate::widgets::context_menu::*;
 
@@ -78,7 +77,8 @@ pub fn Entries(cx: &Scope, data: EntriesData) -> Scope {
 fn spawn_ctx_menu() -> Box<dyn Fn(Scope) + Send + Sync + 'static> {
     Box::new(|cx| {
         let style = Style {
-            background: Background::AQUA,
+            background: Background::BLACK,
+            padding: Padding::splat(Size::Pixels(2.0)),
             ..Default::default()
         };
 

@@ -64,7 +64,7 @@ async fn load_module(path: PathBuf) -> TaskResult<(EditorModule, Records)> {
     Ok((
         EditorModule {
             module: data.header.module,
-            path,
+            path: Some(path),
             capabilities: Capabilities::NONE,
         },
         records,
@@ -77,7 +77,7 @@ async fn save_data(payload: WriteModule) -> TaskResult<()> {
     let mut file = OpenOptions::new()
         .write(true)
         .create(true)
-        .open(payload.module.path)
+        .open(payload.module.path.unwrap())
         .await?;
 
     let id = payload.module.module.id;

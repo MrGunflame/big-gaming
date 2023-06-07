@@ -2,66 +2,80 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use bevy_ecs::system::Resource;
 use game_common::module::{Module, ModuleId};
+use parking_lot::RwLock;
 
 use super::capabilities::Capabilities;
 
 #[derive(Clone, Debug, Resource)]
 pub struct Modules {
-    modules: HashMap<ModuleId, EditorModule>,
+    modules: Arc<RwLock<HashMap<ModuleId, EditorModule>>>,
 }
 
 impl Modules {
     pub fn new() -> Self {
         Self {
-            modules: HashMap::new(),
+            modules: Arc::default(),
         }
     }
 
     pub fn len(&self) -> usize {
-        self.modules.len()
+        let modules = self.modules.read();
+        modules.len()
     }
 
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
 
-    pub fn insert(&mut self, module: EditorModule) {
-        self.modules.insert(module.module.id, module);
+    pub fn insert(&self, module: EditorModule) {
+        let mut modules = self.modules.write();
+        modules.insert(module.module.id, module);
     }
 
-    pub fn get(&self, id: ModuleId) -> Option<&EditorModule> {
-        self.modules.get(&id)
+    pub fn get(&self, id: ModuleId) -> Option<EditorModule> {
+        let modules = self.modules.write();
+        modules.get(&id).cloned()
     }
 
-    pub fn remove(&mut self, id: ModuleId) {
-        self.modules.remove(&id);
+    pub fn remove(&self, id: ModuleId) {
+        let mut modules = self.modules.write();
+        modules.remove(&id);
     }
 
     pub fn iter(&self) -> ModuleIter<'_> {
-        ModuleIter {
-            iter: self.modules.values(),
-        }
+        let modules = self.modules.read();
+        let keys = modules.keys().copied().collect::<Vec<_>>().into_iter();
+
+        ModuleIter { inner: self, keys }
     }
 }
 
 pub struct ModuleIter<'a> {
-    iter: std::collections::hash_map::Values<'a, ModuleId, EditorModule>,
+    inner: &'a Modules,
+    keys: std::vec::IntoIter<ModuleId>,
 }
 
 impl<'a> Iterator for ModuleIter<'a> {
-    type Item = &'a EditorModule;
+    type Item = EditorModule;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.iter.next()
+        while let Some(key) = self.keys.next() {
+            if let Some(val) = self.inner.get(key) {
+                return Some(val);
+            }
+        }
+
+        None
     }
 }
 
 #[derive(Clone, Debug)]
 pub struct EditorModule {
     pub module: Module,
-    pub path: PathBuf,
+    pub path: Option<PathBuf>,
     pub capabilities: Capabilities,
 }
