@@ -109,7 +109,7 @@ fn spawn_windows(
             SpawnWindow::Modules => {
                 view! {
                     cx,
-                    <Modules queue={queue.clone()} create_modules={create_modules.clone()}>
+                    <Modules queue={queue.clone()} modules={modules.clone()} create_modules={create_modules.clone()}>
                     </Modules>
                 };
             }
