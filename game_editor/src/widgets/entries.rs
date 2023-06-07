@@ -1,4 +1,5 @@
-use game_ui::events::{ElementEventHandlers, EventHandlers};
+use game_input::mouse::MouseButtonInput;
+use game_ui::events::{Context, ElementEventHandlers, EventHandlers};
 use game_ui::reactive::{Node, Scope};
 use game_ui::render::style::{Background, Direction, Padding, Size, Style};
 use game_ui::render::{Element, ElementBody};
@@ -98,8 +99,8 @@ fn spawn_ctx_menu() -> Box<dyn Fn(Scope) + Send + Sync + 'static> {
     })
 }
 
-fn new_record() -> Box<dyn Fn() + Send + Sync + 'static> {
-    Box::new(|| {
+fn new_record() -> Box<dyn Fn(Context<MouseButtonInput>) + Send + Sync + 'static> {
+    Box::new(|_| {
         dbg!("x");
     })
 }

@@ -1,22 +1,19 @@
 //! The file explorer.
 
-use std::collections::VecDeque;
 use std::ffi::OsString;
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::time::SystemTime;
 
 use bevy_ecs::prelude::Entity;
-use bevy_ecs::system::Resource;
-use bevy_ecs::world::World;
 use chrono::{DateTime, Local};
+use game_input::mouse::MouseButtonInput;
+use game_ui::events::Context;
 use game_ui::reactive::{create_effect, create_signal, NodeId, ReadSignal, Scope, WriteSignal};
 use game_ui::render::layout::Key;
 use game_ui::render::style::{Background, Direction, Growth, Justify, Padding, Size, Style};
 use game_ui::widgets::{Button, ButtonProps, Container, ContainerProps, Text, TextProps};
 use game_ui::{component, view};
 use image::Rgba;
-use parking_lot::RwLock;
 
 const BACKGROUND_COLOR: &str = "353535";
 
@@ -33,7 +30,6 @@ const TABLE_BACKGROUND_COLOR: [Background; 2] = [
 pub fn Explorer(
     cx: &Scope,
     path: PathBuf,
-    on_cancel: Box<dyn Fn() + Send + Sync + 'static>,
     on_open: Box<dyn Fn(Vec<Entry>) + Send + Sync + 'static>,
 ) -> Scope {
     let entries = scan(path);
@@ -106,7 +102,7 @@ pub fn Explorer(
 
         let set_selected = signals[index].1.clone();
         let set_selected_entries = set_selected_entries.clone();
-        let on_click = move || {
+        let on_click = move |_| {
             set_selected.update(|val| *val ^= true);
             set_selected_entries.update(|val| val[index].selected ^= true);
         };
@@ -145,7 +141,7 @@ pub fn Explorer(
 
         let set_selected = signals[index].1.clone();
         let set_selected_entries = set_selected_entries.clone();
-        let on_click = move || {
+        let on_click = move |_| {
             set_selected.update(|val| *val ^= true);
             set_selected_entries.update(|val| val[index].selected ^= true);
         };
@@ -184,7 +180,7 @@ pub fn Explorer(
 
         let set_selected = signals[index].1.clone();
         let set_selected_entries = set_selected_entries.clone();
-        let on_click = move || {
+        let on_click = move |_| {
             set_selected.update(|val| *val ^= true);
             set_selected_entries.update(|val| val[index].selected ^= true);
         };
@@ -281,13 +277,17 @@ pub fn Explorer(
     //     };
     // }
 
-    let on_open = move || {
+    let on_open = move |_| {
         let entries = selected_entries
             .get()
             .into_iter()
             .filter(|e| e.selected)
             .collect();
         on_open(entries);
+    };
+
+    let on_cancel = move |ctx: Context<MouseButtonInput>| {
+        ctx.window.close();
     };
 
     view! { bottom,

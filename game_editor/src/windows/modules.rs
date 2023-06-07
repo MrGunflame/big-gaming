@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
 use bevy_ecs::system::Resource;
+use game_input::mouse::MouseButtonInput;
+use game_ui::events::Context;
 use game_ui::reactive::{create_effect, create_signal, NodeId, Scope, WriteSignal};
 use game_ui::render::style::{Direction, Style};
 use game_ui::widgets::Text;
@@ -97,15 +99,19 @@ pub fn Modules(cx: &Scope, queue: SpawnWindowQueue, create_modules: CreateModule
     root
 }
 
-fn on_open(queue: SpawnWindowQueue) -> Box<dyn Fn() + Send + Sync + 'static> {
-    Box::new(move || {
+fn on_open(
+    queue: SpawnWindowQueue,
+) -> Box<dyn Fn(Context<MouseButtonInput>) + Send + Sync + 'static> {
+    Box::new(move |_| {
         let mut queue = queue.0.write();
         queue.push_back(SpawnWindow::OpenModule);
     })
 }
 
-fn on_create(queue: SpawnWindowQueue) -> Box<dyn Fn() + Send + Sync + 'static> {
-    Box::new(move || {
+fn on_create(
+    queue: SpawnWindowQueue,
+) -> Box<dyn Fn(Context<MouseButtonInput>) + Send + Sync + 'static> {
+    Box::new(move |_| {
         let mut queue = queue.0.write();
         queue.push_back(SpawnWindow::CreateModule);
     })

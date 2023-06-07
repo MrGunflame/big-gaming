@@ -100,7 +100,7 @@ fn setup(
             label: "Modules".to_owned(),
             on_click: {
                 let queue = queue.clone();
-                Box::new(move || {
+                Box::new(move |_| {
                     let mut queue = queue.0.write();
                     queue.push_back(SpawnWindow::Modules);
                 })
@@ -111,7 +111,7 @@ fn setup(
             on_click: {
                 let queue = queue.clone();
 
-                Box::new(move || {
+                Box::new(move |_| {
                     let mut queue = queue.0.write();
                     queue.push_back(SpawnWindow::Records);
                 })
@@ -121,7 +121,7 @@ fn setup(
             label: "View".to_owned(),
             on_click: {
                 let queue = queue.clone();
-                Box::new(move || {
+                Box::new(move |_| {
                     let mut queue = queue.0.write();
                     queue.push_back(SpawnWindow::View);
                 })

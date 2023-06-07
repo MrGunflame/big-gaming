@@ -1,4 +1,6 @@
 use game_common::module::{Dependency, Module, ModuleId, Version};
+use game_input::mouse::MouseButtonInput;
+use game_ui::events::Context;
 use game_ui::reactive::{create_signal, ReadSignal, Scope};
 use game_ui::render::style::{
     Background, BorderRadius, Bounds, Direction, Growth, Justify, Padding, Size, SizeVec2, Style,
@@ -110,8 +112,11 @@ pub fn CreateModule(cx: &Scope, modules: Modules) -> Scope {
     cx.clone()
 }
 
-fn on_create(modules: Modules, fields: Fields) -> Box<dyn Fn() + Send + Sync + 'static> {
-    Box::new(move || {
+fn on_create(
+    modules: Modules,
+    fields: Fields,
+) -> Box<dyn Fn(Context<MouseButtonInput>) + Send + Sync + 'static> {
+    Box::new(move |ctx| {
         let module = EditorModule {
             module: Module {
                 id: fields.id.get_untracked(),
@@ -124,6 +129,8 @@ fn on_create(modules: Modules, fields: Fields) -> Box<dyn Fn() + Send + Sync + '
         };
 
         modules.insert(module);
+
+        ctx.window.close();
     })
 }
 

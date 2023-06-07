@@ -36,26 +36,26 @@ impl Component for Button {
 }
 
 fn input_handler(
-    f: Box<dyn Fn() + Send + Sync + 'static>,
+    f: Box<dyn Fn(Context<MouseButtonInput>) + Send + Sync + 'static>,
 ) -> Box<dyn Fn(Context<MouseButtonInput>) + Send + Sync + 'static> {
     Box::new(move |ctx| {
         if ctx.event.button.is_left() && ctx.event.state.is_pressed() {
-            f();
+            f(ctx);
         }
     })
 }
 
-pub struct ButtonHandler(Box<dyn Fn() + Send + Sync + 'static>);
+pub struct ButtonHandler(Box<dyn Fn(Context<MouseButtonInput>) + Send + Sync + 'static>);
 
 impl Default for ButtonHandler {
     fn default() -> Self {
-        Self(Box::new(|| {}))
+        Self(Box::new(|_| {}))
     }
 }
 
 impl<F> From<F> for ButtonHandler
 where
-    F: Fn() + Send + Sync + 'static,
+    F: Fn(Context<MouseButtonInput>) + Send + Sync + 'static,
 {
     fn from(value: F) -> Self {
         Self(Box::new(value))

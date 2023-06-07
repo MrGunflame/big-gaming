@@ -1,4 +1,6 @@
 use game_data::record::{RecordBody, RecordKind};
+use game_input::mouse::MouseButtonInput;
+use game_ui::events::Context;
 use game_ui::reactive::{create_effect, create_signal, Scope, WriteSignal};
 use game_ui::render::style::{Background, Direction, Growth, Style};
 use game_ui::{component, view};
@@ -170,8 +172,8 @@ pub fn Records(cx: &Scope, records: &state::record::Records) -> Scope {
 fn change_category(
     category: RecordKind,
     set_cat: WriteSignal<RecordKind>,
-) -> Box<dyn Fn() + Send + Sync + 'static> {
-    Box::new(move || {
+) -> Box<dyn Fn(Context<MouseButtonInput>) + Send + Sync + 'static> {
+    Box::new(move |_| {
         // To prevent unnecessary rerenders only update the category
         // if it actually changed.
         if set_cat.get() != category {

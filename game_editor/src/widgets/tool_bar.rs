@@ -1,3 +1,5 @@
+use game_input::mouse::MouseButtonInput;
+use game_ui::events::Context;
 use game_ui::reactive::Scope;
 use game_ui::render::style::{Direction, Padding, Size, Style};
 use game_ui::{component, view};
@@ -32,7 +34,7 @@ pub fn ToolBar(cx: &Scope, buttons: Vec<ActionButton>) -> Scope {
 
 pub struct ActionButton {
     pub label: String,
-    pub on_click: Box<dyn Fn() + Send + Sync + 'static>,
+    pub on_click: Box<dyn Fn(Context<MouseButtonInput>) + Send + Sync + 'static>,
 }
 
 // impl Widget for ToolBar {
