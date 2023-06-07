@@ -3,7 +3,7 @@ use std::panic::Location;
 use std::sync::Arc;
 
 use bevy_ecs::world::World;
-use slotmap::DefaultKey;
+use slotmap::{new_key_type, DefaultKey};
 
 use super::{NodeId, Scope};
 
@@ -25,12 +25,12 @@ where
     let mut rt = cx.document.runtime.inner.lock();
 
     let key = rt.effects.insert(effect);
-    doc.effects.insert(EffectId(key));
+    doc.effects.insert(key);
 
     tracing::trace!("creating Effect({:?}) at {}", key, Location::caller());
 
     // Immediately queue the effect for execution.
-    rt.effect_queue.insert(EffectId(key));
+    rt.effect_queue.insert(key);
 }
 
 #[derive(Clone)]
@@ -43,14 +43,16 @@ pub(super) struct Effect {
     pub location: &'static Location<'static>,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct EffectId(pub DefaultKey);
+new_key_type! {
+    pub struct EffectId;
+}
 
 impl Debug for Effect {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let mut v = f.debug_struct("Effect");
 
-        v.field("f", &Arc::as_ptr(&self.f))
+        v.field("node", &self.node)
+            .field("f", &Arc::as_ptr(&self.f))
             .field("signals", &self.signals)
             .field("first_run", &self.first_run);
 

@@ -6,7 +6,7 @@ use bevy_ecs::prelude::Component;
 use bevy_ecs::system::Resource;
 use bevy_ecs::world::World;
 use parking_lot::Mutex;
-use slotmap::{DefaultKey, SlotMap};
+use slotmap::{new_key_type, SlotMap};
 
 use crate::events::Events;
 use crate::render::layout::{Key, LayoutTree};
@@ -36,8 +36,9 @@ struct ActiveEffect {
     stack: Vec<SignalId>,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct NodeId(DefaultKey);
+new_key_type! {
+    pub struct NodeId;
+}
 
 #[derive(Debug, Clone)]
 pub struct Scope {
@@ -65,17 +66,17 @@ impl Scope {
     pub fn push(&self, node: Node) -> Scope {
         let mut doc = self.document.inner.lock();
 
-        let id = doc.nodes.insert(NodeStore::default());
-        doc.queue.push_back(Event::PushNode(NodeId(id), node));
+        let id = doc.nodes.insert(());
+        doc.queue.push_back(Event::PushNode(id, node));
 
-        doc.parents.insert(NodeId(id), self.id);
+        doc.parents.insert(id, self.id);
         if let Some(parent) = self.id {
-            doc.children.entry(parent).or_default().push(NodeId(id));
+            doc.children.entry(parent).or_default().push(id);
         }
 
         Scope {
             document: self.document.clone(),
-            id: Some(NodeId(id)),
+            id: Some(id),
         }
     }
 
@@ -111,14 +112,14 @@ impl Runtime {
 #[derive(Debug, Default)]
 struct RuntimeInner {
     // EffectId
-    effects: SlotMap<DefaultKey, Effect>,
+    effects: SlotMap<EffectId, Effect>,
     // SignalId
-    signals: SlotMap<DefaultKey, Signal>,
+    signals: SlotMap<SignalId, Signal>,
     // Backlogged queued effects.
     effect_queue: HashSet<EffectId>,
 
     // SignalId => vec![EffectId]
-    signal_effects: HashMap<DefaultKey, Vec<DefaultKey>>,
+    signal_effects: HashMap<SignalId, Vec<EffectId>>,
 }
 
 // Note that `Document` has no `Default` impl to prevent accidental
@@ -134,13 +135,13 @@ struct DocumentInner {
     // Effects in this document
     effects: HashSet<EffectId>,
 
-    pub nodes: SlotMap<DefaultKey, NodeStore>,
+    pub nodes: SlotMap<NodeId, ()>,
     // parent => vec![child]
     pub children: HashMap<NodeId, Vec<NodeId>>,
     // child => parent, none if parent is root
     pub parents: HashMap<NodeId, Option<NodeId>>,
     // SignalId => NodeId
-    signal_targets: HashMap<DefaultKey, Option<DefaultKey>>,
+    signal_targets: HashMap<SignalId, Option<NodeId>>,
 
     queue: VecDeque<Event>,
 
@@ -200,12 +201,12 @@ impl Document {
             tracing::trace!("call Effect({:?})", effect_id);
 
             if cfg!(debug_assertions) {
-                let effect = rt.effects.get(effect_id.0).unwrap();
+                let effect = rt.effects.get(effect_id).unwrap();
 
                 tracing::trace!("Calling Effect {:?}", effect);
             }
 
-            let mut effect = rt.effects.get_mut(effect_id.0).unwrap().clone();
+            let mut effect = rt.effects.get_mut(effect_id).unwrap().clone();
 
             // Drop the document so that effect callee has full access
             // to the document.
@@ -234,13 +235,10 @@ impl Document {
 
                 rt = self.runtime.inner.lock();
                 for signal in stack {
-                    rt.signal_effects
-                        .entry(signal.0)
-                        .or_default()
-                        .push(effect_id.0);
+                    rt.signal_effects.entry(signal).or_default().push(effect_id);
                 }
 
-                *rt.effects.get_mut(effect_id.0).unwrap() = effect;
+                *rt.effects.get_mut(effect_id).unwrap() = effect;
             } else {
                 // `first_run` is set to `false` at the end of a first effect
                 // call.
@@ -293,7 +291,7 @@ impl Document {
                     while index < delete_queue.len() {
                         let key = delete_queue[index];
 
-                        doc.nodes.remove(key.0);
+                        doc.nodes.remove(key);
                         doc.parents.remove(&key);
 
                         if let Some(children) = doc.children.remove(&key) {
@@ -320,7 +318,7 @@ impl Document {
                         rt.effects.retain(|effect_id, effect| match effect.node {
                             Some(node) => {
                                 if node == node_id {
-                                    doc.effects.remove(&EffectId(effect_id));
+                                    doc.effects.remove(&effect_id);
                                     delete_effects.push(effect_id);
                                     false
                                 } else {
@@ -364,14 +362,6 @@ impl Document {
             }
         }
     }
-}
-
-#[derive(Clone, Debug, Default)]
-pub struct NodeStore {
-    // Effects registered on this node.
-    effects: Vec<Effect>,
-    // Signals registred on this node.
-    signals: Vec<DefaultKey>,
 }
 
 #[derive(Debug)]

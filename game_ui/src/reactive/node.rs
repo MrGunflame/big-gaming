@@ -1,4 +1,4 @@
-use crate::events::{ElementEventHandlers, EventHandlers};
+use crate::events::ElementEventHandlers;
 use crate::render::Element;
 
 #[derive(Debug)]

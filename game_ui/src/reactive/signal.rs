@@ -1,27 +1,34 @@
+use std::panic::Location;
 use std::sync::Arc;
 
 use parking_lot::Mutex;
-use slotmap::DefaultKey;
+use slotmap::new_key_type;
 
-use crate::reactive::effect::EffectId;
 use crate::reactive::ACTIVE_EFFECT;
 
-use super::{NodeId, Scope};
+use super::Scope;
 
+#[track_caller]
 pub fn create_signal<T>(cx: &Scope, value: T) -> (ReadSignal<T>, WriteSignal<T>)
 where
     T: Send + Sync + 'static,
 {
-    tracing::trace!("creating reactive signal for node {:?}", cx.id);
+    tracing::trace!(
+        "creating reactive signal for node {:?} at {}",
+        cx.id,
+        Location::caller(),
+    );
 
-    let signal = Signal { effects: vec![] };
+    let signal = Signal {
+        location: Location::caller(),
+    };
 
     let mut doc = cx.document.inner.lock();
 
     let mut rt = cx.document.runtime.inner.lock();
 
     let id = rt.signals.insert(signal);
-    doc.signal_targets.insert(id, cx.id.map(|x| x.0));
+    doc.signal_targets.insert(id, cx.id);
     rt.signal_effects.insert(id, vec![]);
 
     let value = Arc::new(Mutex::new(value));
@@ -29,12 +36,12 @@ where
     (
         ReadSignal {
             cx: cx.clone(),
-            id: SignalId(id),
+            id,
             value: value.clone(),
         },
         WriteSignal {
             cx: cx.clone(),
-            id: SignalId(id),
+            id,
             value,
         },
     )
@@ -183,7 +190,7 @@ where
     pub fn wake(&self) {
         let mut rt = self.cx.document.runtime.inner.lock();
 
-        let effects = rt.signal_effects.get(&self.id.0).unwrap().clone();
+        let effects = rt.signal_effects.get(&self.id).unwrap().clone();
 
         tracing::trace!(
             "Queued Signal({:?}) effect observers: {:?}",
@@ -191,7 +198,7 @@ where
             effects
         );
 
-        rt.effect_queue.extend(effects.iter().map(|e| EffectId(*e)));
+        rt.effect_queue.extend(effects.iter().map(|e| *e));
     }
 
     pub fn with<U, F>(&self, f: F) -> U
@@ -225,11 +232,15 @@ where
 
 #[derive(Clone, Debug)]
 pub(super) struct Signal {
-    pub(super) effects: Vec<NodeId>,
+    // Location exists purely for the derived debug impl.
+    #[cfg(debug_assertions)]
+    #[allow(unused)]
+    pub location: &'static Location<'static>,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct SignalId(pub DefaultKey);
+new_key_type! {
+    pub struct SignalId;
+}
 
 #[cfg(test)]
 mod tests {
