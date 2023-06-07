@@ -36,16 +36,16 @@ impl Component for Input {
                         let set_value = set_value.clone();
                         let focus = focus.clone();
 
-                        move |event| {
+                        move |ctx| {
                             if !focus.get_untracked() {
                                 return;
                             }
 
-                            if !event.state.is_pressed() {
+                            if !ctx.event.state.is_pressed() {
                                 return;
                             }
 
-                            match event.key_code {
+                            match ctx.event.key_code {
                                 Some(VirtualKeyCode::Left) => {
                                     set_value.update(|string| string.move_back());
                                 }
@@ -65,12 +65,12 @@ impl Component for Input {
                     received_character: Some(Box::new({
                         let focus = focus.clone();
 
-                        move |char| {
+                        move |ctx| {
                             if !focus.get_untracked() {
                                 return;
                             }
 
-                            match char {
+                            match ctx.event.char {
                                 // Return creates a newline.
                                 '\r' => {
                                     set_value.update(|string| {
@@ -85,7 +85,7 @@ impl Component for Input {
                                 '\u{7F}' => set_value.update(|string| {
                                     string.remove_next();
                                 }),
-                                _ => {
+                                char => {
                                     if !char.is_control() {
                                         set_value.update(|string| string.push(char));
                                     }

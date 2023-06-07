@@ -14,6 +14,12 @@ use crate::cursor::Cursor;
 use crate::render::layout::{Key, LayoutTree};
 use crate::render::Rect;
 
+#[derive(Copy, Clone, Debug)]
+pub struct Context<T> {
+    pub cursor: Cursor,
+    pub event: T,
+}
+
 #[derive(Debug, Default)]
 pub struct ElementEventHandlers {
     pub local: EventHandlers,
@@ -22,13 +28,13 @@ pub struct ElementEventHandlers {
 
 #[derive(Default)]
 pub struct EventHandlers {
-    pub cursor_moved: Option<Box<dyn Fn() + Send + Sync + 'static>>,
-    pub cursor_left: Option<Box<dyn Fn() + Send + Sync + 'static>>,
-    pub cursor_entered: Option<Box<dyn Fn() + Send + Sync + 'static>>,
-    pub mouse_button_input: Option<Box<dyn Fn(MouseButtonInput) + Send + Sync + 'static>>,
-    pub mouse_wheel: Option<Box<dyn Fn(MouseWheel) + Send + Sync + 'static>>,
-    pub keyboard_input: Option<Box<dyn Fn(KeyboardInput) + Send + Sync + 'static>>,
-    pub received_character: Option<Box<dyn Fn(char) + Send + Sync + 'static>>,
+    pub cursor_moved: Option<Box<dyn Fn(Context<CursorMoved>) + Send + Sync + 'static>>,
+    pub cursor_left: Option<Box<dyn Fn(Context<()>) + Send + Sync + 'static>>,
+    pub cursor_entered: Option<Box<dyn Fn(Context<()>) + Send + Sync + 'static>>,
+    pub mouse_button_input: Option<Box<dyn Fn(Context<MouseButtonInput>) + Send + Sync + 'static>>,
+    pub mouse_wheel: Option<Box<dyn Fn(Context<MouseWheel>) + Send + Sync + 'static>>,
+    pub keyboard_input: Option<Box<dyn Fn(Context<KeyboardInput>) + Send + Sync + 'static>>,
+    pub received_character: Option<Box<dyn Fn(Context<ReceivedCharacter>) + Send + Sync + 'static>>,
 }
 
 impl Debug for EventHandlers {
@@ -107,10 +113,19 @@ pub fn update_events_from_layout_tree(
     }
 }
 
-pub fn dispatch_cursor_moved_events(windows: Query<&Events>, mut events: EventReader<CursorMoved>) {
+pub fn dispatch_cursor_moved_events(
+    cursor: Res<Cursor>,
+    windows: Query<&Events>,
+    mut events: EventReader<CursorMoved>,
+) {
     for event in events.iter() {
         let Ok(window) = windows.get(event.window) else {
             continue;
+        };
+
+        let ctx = Context {
+            cursor: *cursor,
+            event: *event,
         };
 
         for (key, rect) in &window.positions {
@@ -119,12 +134,12 @@ pub fn dispatch_cursor_moved_events(windows: Query<&Events>, mut events: EventRe
             };
 
             if let Some(f) = &handlers.global.cursor_moved {
-                f();
+                f(ctx);
             }
 
             if hit_test(*rect, event.position) {
                 if let Some(f) = &handlers.local.cursor_moved {
-                    f();
+                    f(ctx);
                 }
             }
         }
@@ -154,13 +169,18 @@ pub fn dispatch_mouse_button_input_events(
                 continue;
             };
 
+            let ctx = Context {
+                cursor: *cursor,
+                event: *event,
+            };
+
             if let Some(f) = &handlers.global.mouse_button_input {
-                f(*event);
+                f(ctx);
             }
 
             if hit_test(*rect, cursor.position()) {
                 if let Some(f) = &handlers.local.mouse_button_input {
-                    f(*event);
+                    f(ctx);
                 }
             }
         }
@@ -190,13 +210,18 @@ pub fn dispatch_mouse_wheel_events(
                 continue;
             };
 
+            let ctx = Context {
+                cursor: *cursor,
+                event: *event,
+            };
+
             if let Some(f) = &handlers.global.mouse_wheel {
-                f(*event);
+                f(ctx);
             }
 
             if hit_test(*rect, cursor.position()) {
                 if let Some(f) = &handlers.local.mouse_wheel {
-                    f(*event);
+                    f(ctx);
                 }
             }
         }
@@ -226,13 +251,18 @@ pub fn dispatch_received_character_events(
                 continue;
             };
 
+            let ctx = Context {
+                cursor: *cursor,
+                event: *event,
+            };
+
             if let Some(f) = &handlers.global.received_character {
-                f(event.char);
+                f(ctx);
             }
 
             if hit_test(*rect, cursor.position()) {
                 if let Some(f) = &handlers.local.received_character {
-                    f(event.char);
+                    f(ctx);
                 }
             }
         }
@@ -262,13 +292,18 @@ pub fn dispatch_keyboard_input_events(
                 continue;
             };
 
+            let ctx = Context {
+                cursor: *cursor,
+                event: *event,
+            };
+
             if let Some(f) = &handlers.global.keyboard_input {
-                f(*event);
+                f(ctx);
             }
 
             if hit_test(*rect, cursor.position()) {
                 if let Some(f) = &handlers.local.keyboard_input {
-                    f(*event);
+                    f(ctx);
                 }
             }
         }

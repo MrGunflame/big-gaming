@@ -1,10 +1,11 @@
 use game_ui::events::{ElementEventHandlers, EventHandlers};
 use game_ui::reactive::{Node, Scope};
-use game_ui::render::style::{Direction, Style};
+use game_ui::render::style::{Background, Direction, Style};
 use game_ui::render::{Element, ElementBody};
 use game_ui::{component, view};
 
 use game_ui::widgets::*;
+use image::Rgba;
 
 use crate::widgets::context_menu::*;
 
@@ -76,12 +77,29 @@ pub fn Entries(cx: &Scope, data: EntriesData) -> Scope {
 
 fn spawn_ctx_menu() -> Box<dyn Fn(Scope) + Send + Sync + 'static> {
     Box::new(|cx| {
-        dbg!("x");
-
-        view! {
-            cx,
-            <Text text={"Hello World".into()}>
-            </Text>
+        let style = Style {
+            background: Background::AQUA,
+            ..Default::default()
         };
+
+        let root = view! {
+            cx,
+            <Container style={style}>
+            </Container>
+        };
+
+        let new_record = view! {
+            root,
+            <Button on_click={new_record().into()} style={Style::default()}>
+                <Text text={"New".into()}>
+                </Text>
+            </Button>
+        };
+    })
+}
+
+fn new_record() -> Box<dyn Fn() + Send + Sync + 'static> {
+    Box::new(|| {
+        dbg!("x");
     })
 }

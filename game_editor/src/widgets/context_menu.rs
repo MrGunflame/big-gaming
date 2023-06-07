@@ -33,10 +33,11 @@ pub fn ContextMenu(cx: &Scope, spawn_menu: Box<dyn Fn(Scope) + Send + Sync + 'st
                 mouse_button_input: Some(Box::new({
                     let set_state = set_state.clone();
 
-                    move |event| {
-                        if event.state.is_pressed() && event.button.is_right() {
+                    move |ctx| {
+                        if ctx.event.state.is_pressed() && ctx.event.button.is_right() {
                             set_state.update(|state| {
                                 state.is_active = true;
+                                state.position = ctx.cursor.position();
                             });
                         }
                     }
@@ -64,7 +65,7 @@ pub fn ContextMenu(cx: &Scope, spawn_menu: Box<dyn Fn(Scope) + Send + Sync + 'st
                         element: Element {
                             body: ElementBody::Container(),
                             style: Style {
-                                position: Position::Absolute(Vec2::splat(0.0)),
+                                position: Position::Absolute(state.position),
                                 ..Default::default()
                             },
                         },
@@ -74,20 +75,18 @@ pub fn ContextMenu(cx: &Scope, spawn_menu: Box<dyn Fn(Scope) + Send + Sync + 'st
                                     let set_state = set_state.clone();
 
                                     move |event| {
-                                        dbg!("true");
                                         set_state.update(|state| state.is_active = true);
                                     }
                                 })),
                                 ..Default::default()
                             },
                             global: EventHandlers {
-                                mouse_button_input: Some(Box::new(move |event| {
-                                    dbg!("false");
+                                mouse_button_input: Some(Box::new(move |ctx| {
                                     //set_state.update(|state| state.is_active = false);
                                 })),
-                                keyboard_input: Some(Box::new(move |event| {
-                                    if event.state.is_pressed()
-                                        && event.key_code == Some(VirtualKeyCode::Escape)
+                                keyboard_input: Some(Box::new(move |ctx| {
+                                    if ctx.event.state.is_pressed()
+                                        && ctx.event.key_code == Some(VirtualKeyCode::Escape)
                                     {
                                         set_state.update(|state| state.is_active = false);
                                     }

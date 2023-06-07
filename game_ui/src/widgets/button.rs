@@ -1,6 +1,6 @@
 use game_input::mouse::MouseButtonInput;
 
-use crate::events::{ElementEventHandlers, EventHandlers};
+use crate::events::{Context, ElementEventHandlers, EventHandlers};
 use crate::reactive::{Node, Scope};
 use crate::render::style::Style;
 use crate::render::{Element, ElementBody};
@@ -37,9 +37,9 @@ impl Component for Button {
 
 fn input_handler(
     f: Box<dyn Fn() + Send + Sync + 'static>,
-) -> Box<dyn Fn(MouseButtonInput) + Send + Sync + 'static> {
-    Box::new(move |event| {
-        if event.button.is_left() && event.state.is_pressed() {
+) -> Box<dyn Fn(Context<MouseButtonInput>) + Send + Sync + 'static> {
+    Box::new(move |ctx| {
+        if ctx.event.button.is_left() && ctx.event.state.is_pressed() {
             f();
         }
     })
