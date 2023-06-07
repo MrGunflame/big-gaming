@@ -1,9 +1,10 @@
+pub mod cursor;
 pub mod events;
 
 mod systems;
 
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 use std::time::Instant;
 
 use bevy_app::{App, Plugin};
@@ -11,6 +12,7 @@ use bevy_ecs::prelude::{Component, Entity, EventWriter};
 use bevy_ecs::query::Added;
 use bevy_ecs::system::{Commands, Query, ResMut, Resource, SystemState};
 use bevy_ecs::world::FromWorld;
+use cursor::CursorIcon;
 use events::{
     CursorEntered, CursorLeft, CursorMoved, ReceivedCharacter, WindowCloseRequested, WindowCreated,
     WindowDestroyed, WindowResized,
@@ -92,6 +94,14 @@ impl WindowState {
 
     pub fn set_cursor_grab(&self, mode: CursorGrabMode) -> Result<(), ExternalError> {
         self.inner.set_cursor_grab(mode)
+    }
+
+    pub fn set_title(&self, title: &str) {
+        self.inner.set_title(title);
+    }
+
+    pub fn set_cursor_icon(&self, icon: CursorIcon) {
+        self.inner.set_cursor_icon(icon)
     }
 }
 

@@ -1,23 +1,66 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::fmt::{self, Debug, Formatter};
 use std::ptr::NonNull;
+use std::sync::Arc;
 
-use bevy_ecs::prelude::{Component, EventReader};
+use bevy_ecs::prelude::{Component, Entity, EventReader};
 use bevy_ecs::query::{Added, Changed, Or};
-use bevy_ecs::system::{Query, Res};
+use bevy_ecs::system::{Query, Res, Resource};
 use game_input::keyboard::KeyboardInput;
 use game_input::mouse::{MouseButtonInput, MouseWheel};
+use game_window::cursor::CursorIcon;
 use game_window::events::{CursorMoved, ReceivedCharacter};
 use glam::Vec2;
+use parking_lot::Mutex;
 
 use crate::cursor::Cursor;
 use crate::render::layout::{Key, LayoutTree};
 use crate::render::Rect;
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Clone, Debug, Default, Resource)]
+pub struct WindowEventQueue {
+    pub(crate) inner: Arc<Mutex<VecDeque<WindowEvent>>>,
+}
+
+#[derive(Clone, Debug)]
 pub struct Context<T> {
     pub cursor: Cursor,
     pub event: T,
+    pub window: WindowContext,
+    _priv: (),
+}
+
+#[derive(Clone, Debug)]
+pub struct WindowContext {
+    window: Entity,
+    queue: Arc<Mutex<VecDeque<WindowEvent>>>,
+}
+
+impl WindowContext {
+    pub fn close(&self) {
+        let mut queue = self.queue.lock();
+        queue.push_back(WindowEvent::Close(self.window));
+    }
+
+    pub fn set_title<T>(&self, title: T)
+    where
+        T: ToString,
+    {
+        let mut queue = self.queue.lock();
+        queue.push_back(WindowEvent::SetTitle(self.window, title.to_string()));
+    }
+
+    pub fn set_cursor_icon(&self, icon: CursorIcon) {
+        let mut queue = self.queue.lock();
+        queue.push_back(WindowEvent::SetCursorIcon(self.window, icon));
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) enum WindowEvent {
+    Close(Entity),
+    SetTitle(Entity, String),
+    SetCursorIcon(Entity, CursorIcon),
 }
 
 #[derive(Debug, Default)]
@@ -114,6 +157,7 @@ pub fn update_events_from_layout_tree(
 }
 
 pub fn dispatch_cursor_moved_events(
+    queue: Res<WindowEventQueue>,
     cursor: Res<Cursor>,
     windows: Query<&Events>,
     mut events: EventReader<CursorMoved>,
@@ -123,18 +167,23 @@ pub fn dispatch_cursor_moved_events(
             continue;
         };
 
-        let ctx = Context {
-            cursor: *cursor,
-            event: *event,
-        };
-
         for (key, rect) in &window.positions {
             let Some(handlers) = window.events.get(&key) else {
                 continue;
             };
 
+            let ctx = Context {
+                cursor: *cursor,
+                event: *event,
+                window: WindowContext {
+                    window: event.window,
+                    queue: queue.inner.clone(),
+                },
+                _priv: (),
+            };
+
             if let Some(f) = &handlers.global.cursor_moved {
-                f(ctx);
+                f(ctx.clone());
             }
 
             if hit_test(*rect, event.position) {
@@ -147,6 +196,7 @@ pub fn dispatch_cursor_moved_events(
 }
 
 pub fn dispatch_mouse_button_input_events(
+    queue: Res<WindowEventQueue>,
     cursor: Res<Cursor>,
     windows: Query<&Events>,
     mut events: EventReader<MouseButtonInput>,
@@ -172,10 +222,15 @@ pub fn dispatch_mouse_button_input_events(
             let ctx = Context {
                 cursor: *cursor,
                 event: *event,
+                window: WindowContext {
+                    window: cursor.window().unwrap(),
+                    queue: queue.inner.clone(),
+                },
+                _priv: (),
             };
 
             if let Some(f) = &handlers.global.mouse_button_input {
-                f(ctx);
+                f(ctx.clone());
             }
 
             if hit_test(*rect, cursor.position()) {
@@ -188,6 +243,7 @@ pub fn dispatch_mouse_button_input_events(
 }
 
 pub fn dispatch_mouse_wheel_events(
+    queue: Res<WindowEventQueue>,
     cursor: Res<Cursor>,
     windows: Query<&Events>,
     mut events: EventReader<MouseWheel>,
@@ -213,10 +269,15 @@ pub fn dispatch_mouse_wheel_events(
             let ctx = Context {
                 cursor: *cursor,
                 event: *event,
+                window: WindowContext {
+                    window: cursor.window().unwrap(),
+                    queue: queue.inner.clone(),
+                },
+                _priv: (),
             };
 
             if let Some(f) = &handlers.global.mouse_wheel {
-                f(ctx);
+                f(ctx.clone());
             }
 
             if hit_test(*rect, cursor.position()) {
@@ -229,6 +290,7 @@ pub fn dispatch_mouse_wheel_events(
 }
 
 pub fn dispatch_received_character_events(
+    queue: Res<WindowEventQueue>,
     cursor: Res<Cursor>,
     windows: Query<&Events>,
     mut events: EventReader<ReceivedCharacter>,
@@ -254,10 +316,15 @@ pub fn dispatch_received_character_events(
             let ctx = Context {
                 cursor: *cursor,
                 event: *event,
+                window: WindowContext {
+                    window: cursor.window().unwrap(),
+                    queue: queue.inner.clone(),
+                },
+                _priv: (),
             };
 
             if let Some(f) = &handlers.global.received_character {
-                f(ctx);
+                f(ctx.clone());
             }
 
             if hit_test(*rect, cursor.position()) {
@@ -270,6 +337,7 @@ pub fn dispatch_received_character_events(
 }
 
 pub fn dispatch_keyboard_input_events(
+    queue: Res<WindowEventQueue>,
     cursor: Res<Cursor>,
     windows: Query<&Events>,
     mut events: EventReader<KeyboardInput>,
@@ -295,10 +363,15 @@ pub fn dispatch_keyboard_input_events(
             let ctx = Context {
                 cursor: *cursor,
                 event: *event,
+                window: WindowContext {
+                    window: cursor.window().unwrap(),
+                    queue: queue.inner.clone(),
+                },
+                _priv: (),
             };
 
             if let Some(f) = &handlers.global.keyboard_input {
-                f(ctx);
+                f(ctx.clone());
             }
 
             if hit_test(*rect, cursor.position()) {
