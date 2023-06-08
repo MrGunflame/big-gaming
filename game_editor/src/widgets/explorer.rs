@@ -277,13 +277,15 @@ pub fn Explorer(
     //     };
     // }
 
-    let on_open = move |_| {
+    let on_open = move |ctx: Context<MouseButtonInput>| {
         let entries = selected_entries
             .get()
             .into_iter()
             .filter(|e| e.selected)
             .collect();
         on_open(entries);
+
+        ctx.window.close();
     };
 
     let on_cancel = move |ctx: Context<MouseButtonInput>| {

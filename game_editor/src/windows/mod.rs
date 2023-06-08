@@ -10,7 +10,7 @@ use std::collections::VecDeque;
 use std::sync::Arc;
 
 use bevy_app::Plugin;
-use bevy_ecs::prelude::{Entity, EventReader, EventWriter, Res};
+use bevy_ecs::prelude::{EventReader, EventWriter, Res};
 use bevy_ecs::system::{Commands, ResMut, Resource};
 use game_data::record::RecordKind;
 use game_ui::events::Events;
@@ -96,11 +96,6 @@ fn spawn_windows(
             continue;
         }
 
-        if let SpawnWindow::CloseWindow(id) = event {
-            commands.entity(*id).despawn();
-            continue;
-        }
-
         let mut cmds = commands.spawn(window);
         let id = cmds.id();
 
@@ -116,7 +111,7 @@ fn spawn_windows(
             SpawnWindow::OpenModule => {
                 view! {
                     cx,
-                    <OpenModule window={id} handle={handle.clone()} queue={queue.clone()}>
+                    <OpenModule window={id} handle={handle.clone()}>
                     </OpenModule>
                 };
             }
@@ -141,7 +136,6 @@ fn spawn_windows(
                     </Records>
                 };
             }
-            SpawnWindow::CloseWindow(_) => unreachable!(),
             SpawnWindow::CreateRecord(kind) => {
                 view! {
                     cx,
@@ -163,7 +157,6 @@ pub enum SpawnWindow {
     OpenModule,
     Records,
     View,
-    CloseWindow(Entity),
     Error(String),
     CreateRecord(RecordKind),
 }
