@@ -367,8 +367,6 @@ impl Node for UiPass {
 
                         let mut elems = vec![];
                         for (elem, layout) in frame.elements().zip(frame.layouts()) {
-                            tracing::trace!("render {:?} with {:?}", elem, layout);
-
                             // Don't render elements with a zero size.
                             if layout.width <= 0.0 || layout.height <= 0.0 {
                                 continue;

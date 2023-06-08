@@ -1,8 +1,7 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use bevy_ecs::prelude::Component;
 use glam::Vec2;
-use slotmap::{DefaultKey, SlotMap};
 
 use super::computed_style::{ComputedBounds, ComputedStyle};
 use super::container::Container;
@@ -52,28 +51,33 @@ pub enum ElementBody {
     Text(Text),
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct Key(DefaultKey);
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Key(u64);
 
 #[derive(Clone, Debug, Component)]
 pub struct LayoutTree {
-    elems: SlotMap<DefaultKey, Element>,
-    layouts: HashMap<DefaultKey, Layout>,
+    next_id: u64,
+    // Note that the order is important; we want to render elements
+    // inserted after their parents to be render after the parent
+    // was rendered.
+    elems: BTreeMap<Key, Element>,
+    layouts: HashMap<Key, Layout>,
     size: Vec2,
     changed: bool,
 
     // parent => vec![child]
-    children: HashMap<DefaultKey, Vec<DefaultKey>>,
+    children: HashMap<Key, Vec<Key>>,
     // child => parent
-    parents: HashMap<DefaultKey, DefaultKey>,
+    parents: HashMap<Key, Key>,
     /// Root elements
-    root: Vec<DefaultKey>,
+    root: Vec<Key>,
 }
 
 impl LayoutTree {
     pub fn new() -> Self {
         Self {
-            elems: SlotMap::new(),
+            next_id: 0,
+            elems: BTreeMap::new(),
             layouts: HashMap::new(),
             size: Vec2::splat(0.0),
             changed: false,
@@ -108,12 +112,14 @@ impl LayoutTree {
             style: ComputedStyle::new(elem.style.clone(), self.size),
         };
 
-        let key = self.elems.insert(elem);
+        let key = Key(self.next_id);
+        self.next_id += 1;
+        self.elems.insert(key, elem);
         self.layouts.insert(key, layout);
 
         self.children.insert(key, vec![]);
 
-        if let Some(Key(parent)) = parent {
+        if let Some(parent) = parent {
             self.children.get_mut(&parent).unwrap().push(key);
             self.parents.insert(key, parent);
         } else {
@@ -122,26 +128,26 @@ impl LayoutTree {
 
         self.changed = true;
 
-        Key(key)
+        key
     }
 
     pub fn remove(&mut self, key: Key) {
         self.changed = true;
 
-        self.elems.remove(key.0);
-        self.layouts.remove(&key.0);
+        self.elems.remove(&key);
+        self.layouts.remove(&key);
 
-        self.root.retain(|k| *k != key.0);
+        self.root.retain(|k| *k != key);
 
-        if let Some(children) = self.children.remove(&key.0) {
+        if let Some(children) = self.children.remove(&key) {
             for c in children {
-                self.remove(Key(c));
+                self.remove(c);
             }
         }
 
-        if let Some(parent) = self.parents.remove(&key.0) {
+        if let Some(parent) = self.parents.remove(&key) {
             if let Some(children) = self.children.get_mut(&parent) {
-                children.retain(|k| *k != key.0);
+                children.retain(|k| *k != key);
             }
         }
     }
@@ -149,9 +155,9 @@ impl LayoutTree {
     pub fn replace(&mut self, key: Key, elem: Element) {
         self.changed = true;
 
-        self.layouts.get_mut(&key.0).unwrap().style =
+        self.layouts.get_mut(&key).unwrap().style =
             ComputedStyle::new(elem.style.clone(), self.size);
-        *self.elems.get_mut(key.0).unwrap() = elem;
+        *self.elems.get_mut(&key).unwrap() = elem;
     }
 
     pub fn unchanged(&mut self) {
@@ -187,8 +193,8 @@ impl LayoutTree {
         }
     }
 
-    fn compute_bounds(&self, key: DefaultKey) -> ComputedBounds {
-        let elem = &self.elems[key];
+    fn compute_bounds(&self, key: Key) -> ComputedBounds {
+        let elem = &self.elems[&key];
         let layout = &self.layouts[&key];
 
         let mut bounds = match &elem.body {
@@ -198,7 +204,7 @@ impl LayoutTree {
                     let mut bounds = ComputedBounds::ZERO;
                     for key in children {
                         // Elements with absolute position are excluded.
-                        let child = &self.elems[*key];
+                        let child = &self.elems[key];
                         if child.style.position.is_absolute() {
                             continue;
                         }
@@ -277,8 +283,8 @@ impl LayoutTree {
         bounds
     }
 
-    fn layout_element(&mut self, key: DefaultKey) {
-        let elem = self.elems[key].clone();
+    fn layout_element(&mut self, key: Key) {
+        let elem = self.elems[&key].clone();
         let layout = &self.layouts[&key];
 
         let mut start = layout.position;
@@ -302,7 +308,7 @@ impl LayoutTree {
                         size_per_element(end - start, children.len() as u32, elem.style.direction);
 
                     for child in children {
-                        let child_style = &self.elems[child].style;
+                        let child_style = &self.elems[&child].style;
 
                         let bounds = self.compute_bounds(child);
                         let layout = self.layouts.get_mut(&child).unwrap();
@@ -343,7 +349,7 @@ impl LayoutTree {
                         size_per_element(end - start, children.len() as u32, elem.style.direction);
 
                     for child in children.iter().rev().copied() {
-                        let child_style = &self.elems[child].style;
+                        let child_style = &self.elems[&child].style;
 
                         let bounds = self.compute_bounds(child);
                         let layout = self.layouts.get_mut(&child).unwrap();
@@ -395,7 +401,7 @@ impl LayoutTree {
                         size_per_element(end - start, children.len() as u32, elem.style.direction);
 
                     for child in children {
-                        let child_style = &self.elems[child].style;
+                        let child_style = &self.elems[&child].style;
 
                         let bounds = self.compute_bounds(child);
                         let layout = self.layouts.get_mut(&child).unwrap();
@@ -425,7 +431,7 @@ impl LayoutTree {
                         self.layout_element(child);
                     }
 
-                    let elem = self.elems[key].clone();
+                    let elem = self.elems[&key].clone();
                     let children = self.children.get(&key).unwrap();
 
                     // The first element is spaced at `layout.position` and the
@@ -468,7 +474,7 @@ impl LayoutTree {
                         size_per_element(end - start, children.len() as u32, elem.style.direction);
 
                     for child in children {
-                        let child_style = &self.elems[child].style;
+                        let child_style = &self.elems[&child].style;
 
                         let bounds = self.compute_bounds(child);
                         let layout = self.layouts.get_mut(&child).unwrap();
@@ -498,7 +504,7 @@ impl LayoutTree {
                         self.layout_element(child);
                     }
 
-                    let elem = self.elems[key].clone();
+                    let elem = self.elems[&key].clone();
                     let children = self.children.get(&key).unwrap();
 
                     // The first element is spaced at `layout.position` and the
@@ -551,7 +557,7 @@ impl LayoutTree {
                         size_per_element(end - start, children.len() as u32, elem.style.direction);
 
                     for child in children {
-                        let child_style = &self.elems[child].style;
+                        let child_style = &self.elems[&child].style;
 
                         let bounds = self.compute_bounds(child);
                         let layout = self.layouts.get_mut(&child).unwrap();
@@ -581,7 +587,7 @@ impl LayoutTree {
                         self.layout_element(child);
                     }
 
-                    let elem = self.elems[key].clone();
+                    let elem = self.elems[&key].clone();
                     let children = self.children.get(&key).unwrap();
 
                     // The first element is spaced at `layout.position` and the
@@ -730,11 +736,11 @@ impl LayoutTree {
     }
 
     pub fn keys<'a>(&'a self) -> impl Iterator<Item = Key> + 'a {
-        self.elems.keys().map(|k| Key(k))
+        self.elems.keys().copied()
     }
 
     pub fn get_mut(&mut self, key: Key) -> Option<&mut Element> {
-        match self.elems.get_mut(key.0) {
+        match self.elems.get_mut(&key) {
             Some(elem) => {
                 self.changed = true;
                 Some(elem)
@@ -746,7 +752,7 @@ impl LayoutTree {
 
 #[derive(Clone, Debug)]
 pub struct Elements<'a> {
-    iter: slotmap::basic::Iter<'a, DefaultKey, Element>,
+    iter: std::collections::btree_map::Iter<'a, Key, Element>,
 }
 
 impl<'a> Iterator for Elements<'a> {
@@ -770,8 +776,8 @@ impl<'a> ExactSizeIterator for Elements<'a> {
 #[derive(Clone, Debug)]
 pub struct Layouts<'a> {
     // Order is important.
-    keys: slotmap::basic::Iter<'a, DefaultKey, Element>,
-    layouts: &'a HashMap<DefaultKey, Layout>,
+    keys: std::collections::btree_map::Iter<'a, Key, Element>,
+    layouts: &'a HashMap<Key, Layout>,
 }
 
 impl<'a> Iterator for Layouts<'a> {
@@ -873,8 +879,8 @@ mod tests {
 
         tree.compute_layout();
 
-        let layout0 = &tree.layouts[&key0.0];
-        let layout1 = &tree.layouts[&key1.0];
+        let layout0 = &tree.layouts[&key0];
+        let layout1 = &tree.layouts[&key1];
 
         let style = ComputedStyle::new(style, Vec2::splat(1000.0));
 
@@ -901,7 +907,7 @@ mod tests {
         };
 
         let key = tree.push(None, elem);
-        let bounds = tree.compute_bounds(key.0);
+        let bounds = tree.compute_bounds(key);
 
         assert_eq!(
             bounds,
@@ -926,7 +932,7 @@ mod tests {
         };
 
         let key = tree.push(None, elem);
-        let bounds = tree.compute_bounds(key.0);
+        let bounds = tree.compute_bounds(key);
 
         assert_eq!(
             bounds,
@@ -959,7 +965,7 @@ mod tests {
         };
         tree.push(Some(key), elem.clone());
 
-        let bounds = tree.compute_bounds(key.0);
+        let bounds = tree.compute_bounds(key);
 
         let style = ComputedStyle::new(style, Vec2::splat(1000.0));
 
@@ -994,7 +1000,7 @@ mod tests {
         };
         tree.push(Some(key), elem.clone());
 
-        let bounds = tree.compute_bounds(key.0);
+        let bounds = tree.compute_bounds(key);
 
         let style = ComputedStyle::new(style, Vec2::splat(1000.0));
 
@@ -1030,7 +1036,7 @@ mod tests {
         };
         tree.push(Some(key), elem.clone());
 
-        let bounds = tree.compute_bounds(key.0);
+        let bounds = tree.compute_bounds(key);
         assert_eq!(bounds, ComputedBounds::ZERO);
     }
 
@@ -1055,7 +1061,7 @@ mod tests {
             },
         );
 
-        let bounds = tree.compute_bounds(key.0);
+        let bounds = tree.compute_bounds(key);
 
         assert_eq!(bounds.min, Vec2::splat(10.0));
         assert_eq!(bounds.max, Vec2::splat(10.0));
@@ -1084,7 +1090,7 @@ mod tests {
 
         tree.compute_layout();
 
-        let layout = &tree.layouts[&key.0];
+        let layout = &tree.layouts[&key];
         assert_eq!(layout.height, 10.0);
         assert_eq!(layout.width, 10.0);
     }
@@ -1120,7 +1126,7 @@ mod tests {
 
         tree.compute_layout();
 
-        let layout = &tree.layouts[&key.0];
+        let layout = &tree.layouts[&key];
         assert_eq!(layout.height, 10.0);
         assert_eq!(layout.width, 10.0);
     }
@@ -1180,7 +1186,7 @@ mod tests {
 
         let mut offset = 0.0;
         for key in keys {
-            let layout = &tree.layouts[&key.0];
+            let layout = &tree.layouts[&key];
 
             assert_eq!(layout.position, Vec2::new(0.0, offset));
 
@@ -1196,7 +1202,7 @@ mod tests {
 
         let mut offset = 0.0;
         for key in keys {
-            let layout = &tree.layouts[&key.0];
+            let layout = &tree.layouts[&key];
 
             assert_eq!(layout.position, Vec2::new(offset, 0.0));
 
@@ -1212,7 +1218,7 @@ mod tests {
 
         let mut offset = 1000.0 - (size * 3.0);
         for key in keys {
-            let layout = &tree.layouts[&key.0];
+            let layout = &tree.layouts[&key];
 
             assert_eq!(layout.position, Vec2::new(0.0, offset));
 
@@ -1228,7 +1234,7 @@ mod tests {
 
         let mut offset = 1000.0 - (size * 3.0);
         for key in keys {
-            let layout = &tree.layouts[&key.0];
+            let layout = &tree.layouts[&key];
 
             assert_eq!(layout.position, Vec2::new(offset, 0.0));
 
@@ -1244,7 +1250,7 @@ mod tests {
 
         let mut offset = (1000.0 - (10.0 * 3.0)) / 2.0;
         for key in keys {
-            let layout = &tree.layouts[&key.0];
+            let layout = &tree.layouts[&key];
 
             assert_eq!(layout.position, Vec2::new(0.0, offset));
 
@@ -1260,7 +1266,7 @@ mod tests {
 
         let mut offset = (1000.0 - (10.0 * 3.0)) / 2.0;
         for key in keys {
-            let layout = &tree.layouts[&key.0];
+            let layout = &tree.layouts[&key];
 
             assert_eq!(layout.position, Vec2::new(offset, 0.0));
 
@@ -1278,7 +1284,7 @@ mod tests {
 
         let mut offset = 0.0;
         for key in keys {
-            let layout = &tree.layouts[&key.0];
+            let layout = &tree.layouts[&key];
 
             assert_eq!(layout.position, Vec2::new(0.0, offset));
 
@@ -1296,7 +1302,7 @@ mod tests {
 
         let mut offset = 0.0;
         for key in keys {
-            let layout = &tree.layouts[&key.0];
+            let layout = &tree.layouts[&key];
 
             assert_eq!(layout.position, Vec2::new(offset, 0.0));
 
@@ -1314,7 +1320,7 @@ mod tests {
 
         let mut offset = distance;
         for key in keys {
-            let layout = &tree.layouts[&key.0];
+            let layout = &tree.layouts[&key];
 
             assert_eq!(layout.position, Vec2::new(0.0, offset));
 
@@ -1332,7 +1338,7 @@ mod tests {
 
         let mut offset = distance;
         for key in keys {
-            let layout = &tree.layouts[&key.0];
+            let layout = &tree.layouts[&key];
 
             assert_eq!(layout.position, Vec2::new(offset, 0.0));
 
@@ -1362,7 +1368,7 @@ mod tests {
 
         tree.compute_layout();
 
-        let layout = &tree.layouts[&key.0];
+        let layout = &tree.layouts[&key];
 
         assert_eq!(layout.position, Vec2::splat(0.0));
     }
@@ -1402,7 +1408,7 @@ mod tests {
 
         let mut offset = Vec2::new(10.0, 10.0);
         for key in keys {
-            let layout = &tree.layouts[&key.0];
+            let layout = &tree.layouts[&key];
 
             assert_eq!(layout.position, offset);
 

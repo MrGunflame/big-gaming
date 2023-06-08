@@ -13,13 +13,8 @@ pub fn create_signal<T>(cx: &Scope, value: T) -> (ReadSignal<T>, WriteSignal<T>)
 where
     T: Send + Sync + 'static,
 {
-    tracing::trace!(
-        "creating reactive signal for node {:?} at {}",
-        cx.id,
-        Location::caller(),
-    );
-
     let signal = Signal {
+        #[cfg(debug_assertions)]
         location: Location::caller(),
     };
 
@@ -32,6 +27,13 @@ where
     rt.signal_effects.insert(id, vec![]);
 
     let value = Arc::new(Mutex::new(value));
+
+    tracing::trace!(
+        "creating Signal({:?}) with owner {:?} at {}",
+        id,
+        cx.id,
+        Location::caller(),
+    );
 
     (
         ReadSignal {
@@ -188,6 +190,8 @@ where
 
     /// Manually mark the value as changed.
     pub fn wake(&self) {
+        tracing::trace!("waking Signal({:?})", self.id);
+
         let mut rt = self.cx.document.runtime.inner.lock();
 
         let effects = rt.signal_effects.get(&self.id).unwrap().clone();
