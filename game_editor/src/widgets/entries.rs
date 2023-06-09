@@ -89,10 +89,18 @@ fn spawn_ctx_menu() -> Box<dyn Fn(Scope) + Send + Sync + 'static> {
             </Container>
         };
 
-        let new_record = view! {
+        view! {
             root,
             <Button on_click={new_record().into()} style={Style::default()}>
                 <Text text={"New".into()}>
+                </Text>
+            </Button>
+        };
+
+        view! {
+            root,
+            <Button on_click={remove_record().into()} style={Style::default()}>
+                <Text text={"Delete".into()}>
                 </Text>
             </Button>
         };
@@ -102,5 +110,11 @@ fn spawn_ctx_menu() -> Box<dyn Fn(Scope) + Send + Sync + 'static> {
 fn new_record() -> Box<dyn Fn(Context<MouseButtonInput>) + Send + Sync + 'static> {
     Box::new(|_| {
         dbg!("x");
+    })
+}
+
+fn remove_record() -> Box<dyn Fn(Context<MouseButtonInput>) + Send + Sync + 'static> {
+    Box::new(|_| {
+        dbg!("rm");
     })
 }

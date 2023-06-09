@@ -1,7 +1,8 @@
 //! The file explorer.
 
 use std::ffi::OsString;
-use std::path::PathBuf;
+use std::io;
+use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 use bevy_ecs::prelude::Entity;
@@ -11,9 +12,10 @@ use game_ui::events::Context;
 use game_ui::reactive::{create_effect, create_signal, NodeId, ReadSignal, Scope, WriteSignal};
 use game_ui::render::layout::Key;
 use game_ui::render::style::{Background, Direction, Growth, Justify, Padding, Size, Style};
-use game_ui::widgets::{Button, ButtonProps, Container, ContainerProps, Text, TextProps};
+use game_ui::widgets::*;
 use game_ui::{component, view};
 use image::Rgba;
+use parking_lot::Mutex;
 
 const BACKGROUND_COLOR: &str = "353535";
 
@@ -27,14 +29,8 @@ const TABLE_BACKGROUND_COLOR: [Background; 2] = [
 ];
 
 #[component]
-pub fn Explorer(
-    cx: &Scope,
-    path: PathBuf,
-    on_open: Box<dyn Fn(Vec<Entry>) + Send + Sync + 'static>,
-) -> Scope {
-    let entries = scan(path);
-
-    let (selected_entries, set_selected_entries) = create_signal(cx, entries.clone());
+pub fn Explorer(cx: &Scope, on_open: Box<dyn Fn(Vec<Entry>) + Send + Sync + 'static>) -> Scope {
+    let (path, set_path) = create_signal(cx, PathBuf::from("/"));
 
     let root = view! { cx,
         <Container style={Style {
@@ -44,6 +40,8 @@ pub fn Explorer(
         }}>
         </Container>
     };
+
+    let (selected_entries, set_selected_entries) = create_signal::<Vec<Entry>>(cx, vec![]);
 
     // let side = view! { root,
     //     <Container style={Style { growth: Growth(None), ..Default::default() }}>
@@ -67,164 +65,202 @@ pub fn Explorer(
         </Container>
     };
 
-    let table = view! {
+    view! {
         upper,
-        <Container style={Style { direction: Direction::Column, ..Default::default() }}>
-        </Container>
+        <Topbar path={path.clone()} directory_up_sig={set_path.clone()}>
+        </Topbar>
     };
 
-    let name_col = view! {
-        table,
-        <Container style={Style::default()}>
-        </Container>
-    };
+    let id = Mutex::new(None);
+    let cx = upper.clone();
+    create_effect(&cx.clone(), move |_| {
+        let path = path.get();
 
-    view! {
-        name_col,
-        <Text text={"Name".into()}>
-        </Text>
-    };
+        let entries = match scan(&path) {
+            Ok(entries) => entries,
+            Err(err) => {
+                tracing::error!("failed to load {:?}: {}", path, err);
 
-    let signals: Vec<(ReadSignal<_>, WriteSignal<_>)> = (0..entries.len())
-        .map(|_| create_signal(cx, false))
-        .collect();
+                // If loading fails (usually for "permission denied") we go
+                // back to the last directory.
+                if path.parent().is_some() {
+                    set_path.update(|path| path.pop());
+                }
 
-    let mut rows: Vec<Vec<NodeId>> = (0..entries.len()).map(|_| vec![]).collect();
-
-    for (index, entry) in entries.iter().enumerate() {
-        let background = TABLE_BACKGROUND_COLOR[index % 2].clone();
-        let style = Style {
-            background,
-            growth: Growth::x(1.0),
-            padding: Padding::splat(Size::Pixels(2.0)),
-            ..Default::default()
+                return;
+            }
         };
 
-        let set_selected = signals[index].1.clone();
-        let set_selected_entries = set_selected_entries.clone();
-        let on_click = move |_| {
-            set_selected.update(|val| *val ^= true);
-            set_selected_entries.update(|val| val[index].selected ^= true);
+        let mut id = id.lock();
+        if let Some(id) = &*id {
+            cx.remove(*id);
+        }
+
+        let table = view! {
+            upper,
+            <Container style={Style { direction: Direction::Column, ..Default::default() }}>
+            </Container>
         };
 
-        let cx = view! {
+        *id = Some(table.id().unwrap());
+        drop(id);
+
+        let name_col = view! {
+            table,
+            <Container style={Style::default()}>
+            </Container>
+        };
+
+        view! {
             name_col,
-            <Button style={style} on_click={on_click.into()}>
-                <Text text={entry.name.to_string_lossy().to_string().into()}>
-                </Text>
-            </Button>
+            <Text text={"Name".into()}>
+            </Text>
         };
 
-        rows[index].push(cx.id().unwrap());
-    }
+        let signals: Vec<(ReadSignal<_>, WriteSignal<_>)> = (0..entries.len())
+            .map(|_| create_signal(&cx, false))
+            .collect();
 
-    let date_modified_col = view! {
-        table,
-        <Container style={Style::default()}>
-        </Container>
-    };
+        let mut rows: Vec<Vec<NodeId>> = (0..entries.len()).map(|_| vec![]).collect();
 
-    view! {
-        date_modified_col,
-        <Text text={"Date Modified".into()}>
-        </Text>
-    };
+        set_selected_entries.update_untracked(|val| *val = entries.clone());
 
-    for (index, entry) in entries.iter().enumerate() {
-        let background = TABLE_BACKGROUND_COLOR[index % 2].clone();
-        let style = Style {
-            background,
-            growth: Growth::x(1.0),
-            padding: Padding::splat(Size::Pixels(2.0)),
-            ..Default::default()
-        };
+        let on_click = |index: usize, set_selected: WriteSignal<bool>, entry: Entry| {
+            let set_selected_entries = set_selected_entries.clone();
+            let set_path = set_path.clone();
+            move |_: Context<MouseButtonInput>| {
+                set_selected.update(|val| *val ^= true);
+                set_selected_entries.update(|val| val[index].selected ^= true);
 
-        let set_selected = signals[index].1.clone();
-        let set_selected_entries = set_selected_entries.clone();
-        let on_click = move |_| {
-            set_selected.update(|val| *val ^= true);
-            set_selected_entries.update(|val| val[index].selected ^= true);
-        };
-
-        let cx = view! {
-            date_modified_col,
-            <Button style={style} on_click={on_click.into()}>
-                <Text text={format_time(entry.modified).into()}>
-                </Text>
-            </Button>
-        };
-
-        rows[index].push(cx.id().unwrap());
-    }
-
-    let size_col = view! {
-        table,
-        <Container style={Style::default()}>
-        </Container>
-    };
-
-    view! {
-        size_col,
-        <Text text={"Size".into()}>
-        </Text>
-    };
-
-    for (index, entry) in entries.iter().enumerate() {
-        let background = TABLE_BACKGROUND_COLOR[index % 2].clone();
-        let style = Style {
-            background,
-            growth: Growth::x(1.0),
-            padding: Padding::splat(Size::Pixels(2.0)),
-            ..Default::default()
-        };
-
-        let set_selected = signals[index].1.clone();
-        let set_selected_entries = set_selected_entries.clone();
-        let on_click = move |_| {
-            set_selected.update(|val| *val ^= true);
-            set_selected_entries.update(|val| val[index].selected ^= true);
-        };
-
-        let cx = view! {
-            size_col,
-            <Button style={style} on_click={on_click.into()}>
-                <Text text={file_size(entry.len).into()}>
-                </Text>
-            </Button>
-        };
-
-        rows[index].push(cx.id().unwrap());
-    }
-
-    for (index, (read, _)) in signals.into_iter().enumerate() {
-        let row = rows.remove(0);
-
-        let cx2 = cx.clone();
-        create_effect(cx, move |_| {
-            let selected = read.get();
-
-            let style = if selected {
-                Style {
-                    background: Background::from_hex(SELECTED_COLOR).unwrap(),
-                    growth: Growth::x(1.0),
-                    padding: Padding::splat(Size::Pixels(2.0)),
-                    ..Default::default()
+                if entry.kind == EntryKind::Directory {
+                    set_path.update(|path| path.push(&entry.name));
                 }
-            } else {
-                let background = TABLE_BACKGROUND_COLOR[index % 2].clone();
-                Style {
-                    background,
-                    growth: Growth::x(1.0),
-                    padding: Padding::splat(Size::Pixels(2.0)),
-                    ..Default::default()
-                }
+            }
+        };
+
+        for (index, entry) in entries.iter().enumerate() {
+            let background = TABLE_BACKGROUND_COLOR[index % 2].clone();
+            let style = Style {
+                background,
+                growth: Growth::x(1.0),
+                padding: Padding::splat(Size::Pixels(2.0)),
+                ..Default::default()
             };
 
-            for id in &row {
-                cx2.set_style(*id, style.clone());
-            }
-        });
-    }
+            let set_selected = signals[index].1.clone();
+            let on_click = on_click(index, set_selected, entry.clone());
+
+            let cx = view! {
+                name_col,
+                <Button style={style} on_click={on_click.into()}>
+                    <Text text={entry.name.to_string_lossy().to_string().into()}>
+                    </Text>
+                </Button>
+            };
+
+            rows[index].push(cx.id().unwrap());
+        }
+
+        let date_modified_col = view! {
+            table,
+            <Container style={Style::default()}>
+            </Container>
+        };
+
+        view! {
+            date_modified_col,
+            <Text text={"Date Modified".into()}>
+            </Text>
+        };
+
+        for (index, entry) in entries.iter().enumerate() {
+            let background = TABLE_BACKGROUND_COLOR[index % 2].clone();
+            let style = Style {
+                background,
+                growth: Growth::x(1.0),
+                padding: Padding::splat(Size::Pixels(2.0)),
+                ..Default::default()
+            };
+
+            let set_selected = signals[index].1.clone();
+            let on_click = on_click(index, set_selected, entry.clone());
+
+            let cx = view! {
+                date_modified_col,
+                <Button style={style} on_click={on_click.into()}>
+                    <Text text={format_time(entry.modified).into()}>
+                    </Text>
+                </Button>
+            };
+
+            rows[index].push(cx.id().unwrap());
+        }
+
+        let size_col = view! {
+            table,
+            <Container style={Style::default()}>
+            </Container>
+        };
+
+        view! {
+            size_col,
+            <Text text={"Size".into()}>
+            </Text>
+        };
+
+        for (index, entry) in entries.iter().enumerate() {
+            let background = TABLE_BACKGROUND_COLOR[index % 2].clone();
+            let style = Style {
+                background,
+                growth: Growth::x(1.0),
+                padding: Padding::splat(Size::Pixels(2.0)),
+                ..Default::default()
+            };
+
+            let set_selected = signals[index].1.clone();
+            let on_click = on_click(index, set_selected, entry.clone());
+
+            let cx = view! {
+                size_col,
+                <Button style={style} on_click={on_click.into()}>
+                    <Text text={file_size(entry.len).into()}>
+                    </Text>
+                </Button>
+            };
+
+            rows[index].push(cx.id().unwrap());
+        }
+
+        for (index, (read, _)) in signals.into_iter().enumerate() {
+            let row = rows.remove(0);
+
+            let cx2 = cx.clone();
+            create_effect(&cx, move |_| {
+                let selected = read.get();
+
+                let style = if selected {
+                    Style {
+                        background: Background::from_hex(SELECTED_COLOR).unwrap(),
+                        growth: Growth::x(1.0),
+                        padding: Padding::splat(Size::Pixels(2.0)),
+                        ..Default::default()
+                    }
+                } else {
+                    let background = TABLE_BACKGROUND_COLOR[index % 2].clone();
+                    Style {
+                        background,
+                        growth: Growth::x(1.0),
+                        padding: Padding::splat(Size::Pixels(2.0)),
+                        ..Default::default()
+                    }
+                };
+
+                for id in &row {
+                    cx2.set_style(*id, style.clone());
+                }
+            });
+        }
+    });
 
     // for (index, entry) in entries.iter().enumerate() {
     //     let (select, set_select) = create_signal(cx, false);
@@ -306,14 +342,14 @@ pub fn Explorer(
     root
 }
 
-fn scan(path: PathBuf) -> Vec<Entry> {
+fn scan(path: impl AsRef<Path>) -> io::Result<Vec<Entry>> {
     let mut entries = Vec::new();
 
-    let dir = std::fs::read_dir(&path).unwrap();
+    let dir = std::fs::read_dir(&path)?;
     for entry in dir {
-        let entry = entry.unwrap();
+        let entry = entry?;
 
-        let meta = entry.metadata().unwrap();
+        let meta = entry.metadata()?;
 
         entries.push(Entry {
             kind: if meta.is_file() {
@@ -335,7 +371,7 @@ fn scan(path: PathBuf) -> Vec<Entry> {
             .then(a.name.cmp(&b.name))
     });
 
-    entries
+    Ok(entries)
 }
 
 #[derive(Clone, Debug)]
@@ -389,4 +425,50 @@ pub enum Event {
     Open {
         entries: Vec<Entry>,
     },
+}
+
+#[component]
+fn Topbar(cx: &Scope, path: ReadSignal<PathBuf>, directory_up_sig: WriteSignal<PathBuf>) -> Scope {
+    let style = Style {
+        direction: Direction::Column,
+        ..Default::default()
+    };
+
+    let root = view! {
+        cx,
+        <Container style={style}>
+        </Container>
+    };
+
+    for (text, cb) in [("UP", directory_up(directory_up_sig))] {
+        view! {
+            root,
+            <Button on_click={cb.into()} style={Style::default()}>
+                <Text text={text.into()}>
+                </Text>
+            </Button>
+        };
+    }
+
+    let text = move || path.get().to_string_lossy().to_string();
+
+    view! {
+        root,
+        <Container style={Style::default()}>
+            <Text text={text.into()}>
+            </Text>
+        </Container>
+    };
+
+    root
+}
+
+fn directory_up(
+    writer: WriteSignal<PathBuf>,
+) -> Box<dyn Fn(Context<MouseButtonInput>) + Send + Sync + 'static> {
+    Box::new(move |_| {
+        writer.update(|path| {
+            path.pop();
+        });
+    })
 }

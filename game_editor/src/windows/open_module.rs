@@ -13,7 +13,7 @@ use super::{SpawnWindow, SpawnWindowQueue};
 pub fn OpenModule(cx: &Scope, window: Entity, handle: Handle) -> Scope {
     view! {
         cx,
-        <Explorer path={PathBuf::from("./")} on_open={on_open(handle, window)}>
+        <Explorer on_open={on_open(handle, window)}>
         </Explorer>
     }
 }
