@@ -6,12 +6,14 @@ use bevy_ecs::system::Resource;
 use game_common::module::ModuleId;
 use game_common::record::RecordId;
 use game_data::record::Record;
-use parking_lot::RwLock;
+use game_ui::reactive::{ReadSignal, WriteSignal};
+use parking_lot::{Mutex, RwLock};
 
 #[derive(Clone, Debug, Resource)]
 pub struct Records {
     records: Arc<RwLock<HashMap<(ModuleId, RecordId), Record>>>,
     next_id: Arc<AtomicU32>,
+    signal: Arc<Mutex<Option<WriteSignal<()>>>>,
 }
 
 impl Records {
@@ -20,6 +22,7 @@ impl Records {
             records: Arc::default(),
 
             next_id: Arc::new(AtomicU32::new(1)),
+            signal: Arc::default(),
         }
     }
 
@@ -47,6 +50,10 @@ impl Records {
         let mut records = self.records.write();
         records.insert((module, record.id), record);
 
+        if let Some(signal) = &*self.signal.lock() {
+            signal.wake();
+        }
+
         RecordId(id)
     }
 
@@ -54,6 +61,10 @@ impl Records {
         let mut records = self.records.write();
         if let Some(rec) = records.get_mut(&(module, record.id)) {
             *rec = record;
+        }
+
+        if let Some(signal) = &*self.signal.lock() {
+            signal.wake();
         }
     }
 
@@ -63,6 +74,17 @@ impl Records {
         drop(records);
 
         Iter { keys, inner: self }
+    }
+
+    pub fn signal(&self, insert: impl FnOnce() -> WriteSignal<()>) -> ReadSignal<()> {
+        let mut signal = self.signal.lock();
+        match &*signal {
+            Some(signal) => signal.subscribe(),
+            None => {
+                *signal = Some(insert());
+                signal.as_ref().unwrap().subscribe()
+            }
+        }
     }
 }
 

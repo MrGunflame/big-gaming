@@ -32,7 +32,7 @@ const BACKGROUND_COLOR: [Background; 2] = [
 ];
 
 #[component]
-pub fn Records(cx: &Scope, queue: SpawnWindowQueue) -> Scope {
+pub fn Records(cx: &Scope, queue: SpawnWindowQueue, records: state::record::Records) -> Scope {
     let (cat, set_cat) = create_signal(cx, DEFAULT_CATEGORY);
 
     let root = view! {
@@ -99,9 +99,16 @@ pub fn Records(cx: &Scope, queue: SpawnWindowQueue) -> Scope {
         });
     }
 
+    let reader = records.signal(|| {
+        let (_, writer) = create_signal(cx, ());
+        writer
+    });
+
     let cat_sig = cat;
     let rows = Mutex::new(vec![]);
     create_effect(cx, move |world| {
+        let _ = reader.get();
+
         let cat = cat_sig.get();
 
         let records = world.resource::<state::record::Records>();
