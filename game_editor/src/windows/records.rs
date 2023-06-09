@@ -1,7 +1,7 @@
 use game_data::record::{RecordBody, RecordKind};
 use game_input::mouse::MouseButtonInput;
 use game_ui::events::Context;
-use game_ui::reactive::{create_effect, create_signal, Scope, WriteSignal};
+use game_ui::reactive::{create_effect, create_signal, ReadSignal, Scope, WriteSignal};
 use game_ui::render::style::{Background, Direction, Growth, Style};
 use game_ui::{component, view};
 
@@ -12,6 +12,8 @@ use parking_lot::Mutex;
 use crate::widgets::entries::*;
 
 use crate::state;
+
+use super::{SpawnWindow, SpawnWindowQueue};
 
 const DEFAULT_CATEGORY: RecordKind = RecordKind::Item;
 
@@ -30,7 +32,7 @@ const BACKGROUND_COLOR: [Background; 2] = [
 ];
 
 #[component]
-pub fn Records(cx: &Scope, records: &state::record::Records) -> Scope {
+pub fn Records(cx: &Scope, queue: SpawnWindowQueue) -> Scope {
     let (cat, set_cat) = create_signal(cx, DEFAULT_CATEGORY);
 
     let root = view! {
@@ -97,9 +99,10 @@ pub fn Records(cx: &Scope, records: &state::record::Records) -> Scope {
         });
     }
 
+    let cat_sig = cat;
     let rows = Mutex::new(vec![]);
     create_effect(cx, move |world| {
-        let cat = cat.get();
+        let cat = cat_sig.get();
 
         let records = world.resource::<state::record::Records>();
 
@@ -153,7 +156,11 @@ pub fn Records(cx: &Scope, records: &state::record::Records) -> Scope {
             entries.push(row);
         }
 
-        let entries = EntriesData { keys, entries };
+        let entries = EntriesData {
+            keys,
+            entries,
+            add_entry: Some(add_record(queue.clone(), cat_sig.clone())),
+        };
 
         let id = view! {
             main,
@@ -189,4 +196,16 @@ fn category_str(kind: RecordKind) -> &'static str {
         RecordKind::Component => "Components",
         RecordKind::Object => "Objects",
     }
+}
+
+fn add_record(
+    queue: SpawnWindowQueue,
+    kind: ReadSignal<RecordKind>,
+) -> Box<dyn Fn(Context<MouseButtonInput>) + Send + Sync + 'static> {
+    Box::new(move |_| {
+        let kind = kind.get_untracked();
+
+        let mut queue = queue.0.write();
+        queue.push_back(SpawnWindow::CreateRecord(kind));
+    })
 }

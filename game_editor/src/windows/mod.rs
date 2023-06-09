@@ -132,14 +132,14 @@ fn spawn_windows(
             SpawnWindow::Records => {
                 view! {
                     cx,
-                    <Records records={&records}>
+                    <Records queue={queue.clone()}>
                     </Records>
                 };
             }
             SpawnWindow::CreateRecord(kind) => {
                 view! {
                     cx,
-                    <CreateRecord>
+                    <CreateRecord kind={*kind}>
                     </CreateRecord>
                 };
             }

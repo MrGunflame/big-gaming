@@ -372,6 +372,13 @@ impl Node for UiPass {
                                 continue;
                             }
 
+                            // Don't render elements that start outside of the viewport.
+                            if layout.position.x > size.width as f32
+                                || layout.position.y > size.height as f32
+                            {
+                                continue;
+                            }
+
                             if let Some(elem) = elem.build(
                                 &layout.style,
                                 Rect {

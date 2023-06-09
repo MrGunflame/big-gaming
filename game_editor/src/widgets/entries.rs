@@ -1,25 +1,26 @@
+use std::sync::Arc;
+
 use game_input::mouse::MouseButtonInput;
-use game_ui::events::{Context, ElementEventHandlers, EventHandlers};
-use game_ui::reactive::{Node, Scope};
+use game_ui::events::Context;
+use game_ui::reactive::Scope;
 use game_ui::render::style::{Background, Direction, Padding, Size, Style};
-use game_ui::render::{Element, ElementBody};
 use game_ui::{component, view};
 
 use game_ui::widgets::*;
 
 use crate::widgets::context_menu::*;
 
-#[derive(Clone, Debug)]
 pub struct EntriesData {
     pub keys: Vec<String>,
     pub entries: Vec<Vec<String>>,
+    pub add_entry: Option<Box<dyn Fn(Context<MouseButtonInput>) + Send + Sync + 'static>>,
 }
 
 #[component]
 pub fn Entries(cx: &Scope, data: EntriesData) -> Scope {
     let root = view! {
         cx,
-        <ContextMenu spawn_menu={spawn_ctx_menu()}>
+        <ContextMenu spawn_menu={spawn_ctx_menu(data.add_entry)}>
         </ContextMenu>
     };
 
@@ -75,8 +76,13 @@ pub fn Entries(cx: &Scope, data: EntriesData) -> Scope {
     root
 }
 
-fn spawn_ctx_menu() -> Box<dyn Fn(Scope) + Send + Sync + 'static> {
-    Box::new(|cx| {
+fn spawn_ctx_menu(
+    add_entry: Option<Box<dyn Fn(Context<MouseButtonInput>) + Send + Sync + 'static>>,
+) -> Box<dyn Fn(Scope) + Send + Sync + 'static> {
+    let add_entry: Option<Arc<dyn Fn(Context<MouseButtonInput>) + Send + Sync + 'static>> =
+        add_entry.map(|f| Arc::from(f));
+
+    Box::new(move |cx| {
         let style = Style {
             background: Background::BLACK,
             padding: Padding::splat(Size::Pixels(2.0)),
@@ -89,13 +95,15 @@ fn spawn_ctx_menu() -> Box<dyn Fn(Scope) + Send + Sync + 'static> {
             </Container>
         };
 
-        view! {
-            root,
-            <Button on_click={new_record().into()} style={Style::default()}>
-                <Text text={"New".into()}>
-                </Text>
-            </Button>
-        };
+        if let Some(f) = &add_entry {
+            view! {
+                root,
+                <Button on_click={f.clone().into()} style={Style::default()}>
+                    <Text text={"New".into()}>
+                    </Text>
+                </Button>
+            };
+        }
 
         view! {
             root,
@@ -104,12 +112,6 @@ fn spawn_ctx_menu() -> Box<dyn Fn(Scope) + Send + Sync + 'static> {
                 </Text>
             </Button>
         };
-    })
-}
-
-fn new_record() -> Box<dyn Fn(Context<MouseButtonInput>) + Send + Sync + 'static> {
-    Box::new(|_| {
-        dbg!("x");
     })
 }
 

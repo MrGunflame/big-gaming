@@ -81,7 +81,7 @@ pub fn CreateModule(cx: &Scope, modules: Modules) -> Scope {
 
     view! {
         val_col,
-        <Input value={String::new()} style={style} on_change={Box::new(move |s|{ set_name.update(|val| *val = s)})}>
+        <Input value={String::new()} style={style} on_change={Box::new(move |s|{ set_name.update(|val| *val = s)}).into()}>
         </Input>
     };
 

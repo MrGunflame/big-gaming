@@ -3,7 +3,7 @@ use std::ops::Deref;
 use winit::event::VirtualKeyCode;
 
 use crate::events::{ElementEventHandlers, EventHandlers};
-use crate::reactive::{create_effect, create_signal, Node, Scope};
+use crate::reactive::{create_effect, create_signal, Node, Scope, WriteSignal};
 use crate::render::style::Style;
 use crate::render::{Element, ElementBody};
 
@@ -12,7 +12,7 @@ use super::{Component, Text, TextProps};
 pub struct InputProps {
     pub value: String,
     pub style: Style,
-    pub on_change: Box<dyn Fn(String) + Send + Sync + 'static>,
+    pub on_change: InputChangeHandler,
 }
 
 pub struct Input;
@@ -123,7 +123,7 @@ impl Component for Input {
             create_effect(cx, move |_| {
                 let buffer = value.get();
 
-                (props.on_change)(buffer.string);
+                (props.on_change.0)(buffer.string);
             });
         }
 
@@ -146,6 +146,25 @@ impl Component for Input {
         );
 
         root
+    }
+}
+
+pub struct InputChangeHandler(Box<dyn Fn(String) + Send + Sync + 'static>);
+
+impl<F> From<F> for InputChangeHandler
+where
+    F: Fn(String) + Send + Sync + 'static,
+{
+    fn from(value: F) -> Self {
+        Self(Box::new(value))
+    }
+}
+
+impl From<WriteSignal<String>> for InputChangeHandler {
+    fn from(writer: WriteSignal<String>) -> Self {
+        Self(Box::new(move |val| {
+            writer.update(|v| *v = val);
+        }))
     }
 }
 

@@ -3,8 +3,8 @@ use std::sync::Arc;
 use bevy_ecs::system::Resource;
 use game_input::mouse::MouseButtonInput;
 use game_ui::events::Context;
-use game_ui::reactive::{create_effect, create_signal, NodeId, Scope, WriteSignal};
-use game_ui::render::style::{Direction, Style};
+use game_ui::reactive::{create_effect, create_signal, Scope, WriteSignal};
+use game_ui::render::style::Style;
 use game_ui::widgets::Text;
 use game_ui::{component, view};
 
@@ -57,6 +57,7 @@ pub fn Modules(
         let data = EntriesData {
             keys: vec!["ID".to_owned(), "Name".to_owned()],
             entries,
+            add_entry: None,
         };
 
         let id = &mut *id.lock();

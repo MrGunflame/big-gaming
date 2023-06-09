@@ -356,8 +356,11 @@ impl Document {
                 Event::UpdateStyle(id, style) => {
                     tracing::trace!("update style {:?}", id);
 
-                    let key = doc.node_mappings.get(&id).unwrap();
-                    tree.get_mut(*key).unwrap().style = style;
+                    if let Some(key) = doc.node_mappings.get(&id) {
+                        tree.get_mut(*key).unwrap().style = style;
+                    } else {
+                        tracing::warn!("requested node {:?} does not exist", id);
+                    }
                 }
             }
         }

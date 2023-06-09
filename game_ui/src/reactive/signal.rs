@@ -194,7 +194,9 @@ where
 
         let mut rt = self.cx.document.runtime.inner.lock();
 
-        let effects = rt.signal_effects.get(&self.id).unwrap().clone();
+        let Some(effects) = rt.signal_effects.get(&self.id).cloned() else {
+            return;
+        };
 
         tracing::trace!(
             "Queued Signal({:?}) effect observers: {:?}",

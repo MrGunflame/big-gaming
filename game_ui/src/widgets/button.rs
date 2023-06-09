@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use game_input::mouse::MouseButtonInput;
 
 use crate::events::{Context, ElementEventHandlers, EventHandlers};
@@ -36,7 +38,7 @@ impl Component for Button {
 }
 
 fn input_handler(
-    f: Box<dyn Fn(Context<MouseButtonInput>) + Send + Sync + 'static>,
+    f: Arc<dyn Fn(Context<MouseButtonInput>) + Send + Sync + 'static>,
 ) -> Box<dyn Fn(Context<MouseButtonInput>) + Send + Sync + 'static> {
     Box::new(move |ctx| {
         if ctx.event.button.is_left() && ctx.event.state.is_pressed() {
@@ -45,11 +47,11 @@ fn input_handler(
     })
 }
 
-pub struct ButtonHandler(Box<dyn Fn(Context<MouseButtonInput>) + Send + Sync + 'static>);
+pub struct ButtonHandler(Arc<dyn Fn(Context<MouseButtonInput>) + Send + Sync + 'static>);
 
 impl Default for ButtonHandler {
     fn default() -> Self {
-        Self(Box::new(|_| {}))
+        Self(Arc::new(|_| {}))
     }
 }
 
@@ -58,6 +60,12 @@ where
     F: Fn(Context<MouseButtonInput>) + Send + Sync + 'static,
 {
     fn from(value: F) -> Self {
-        Self(Box::new(value))
+        Self(Arc::from(value))
+    }
+}
+
+impl From<Arc<dyn Fn(Context<MouseButtonInput>) + Send + Sync + 'static>> for ButtonHandler {
+    fn from(value: Arc<dyn Fn(Context<MouseButtonInput>) + Send + Sync + 'static>) -> Self {
+        Self(value)
     }
 }
