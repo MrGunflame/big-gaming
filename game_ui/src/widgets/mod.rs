@@ -1,13 +1,17 @@
 mod button;
+mod checkbox;
 mod container;
 mod image;
 mod input;
+mod selection;
 mod text;
 
 pub use self::image::{Image, ImageProps};
 pub use button::{Button, ButtonProps};
+pub use checkbox::{Checkbox, CheckboxChangeHandler, CheckboxProps};
 pub use container::{Container, ContainerProps};
 pub use input::{Input, InputProps};
+pub use selection::{Selection, SelectionProps};
 pub use text::{Text, TextProp, TextProps};
 
 use std::ops::Deref;

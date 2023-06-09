@@ -173,7 +173,7 @@ fn load_from_backend(
             Response::LoadModule(res) => match res {
                 Ok((module, recs)) => {
                     for (_, rec) in recs.iter() {
-                        records.push(module.module.id, rec.clone());
+                        records.insert(module.module.id, rec.clone());
                     }
 
                     modules.insert(module.clone());

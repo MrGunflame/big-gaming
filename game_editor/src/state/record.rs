@@ -1,68 +1,86 @@
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::Arc;
 
 use bevy_ecs::system::Resource;
 use game_common::module::ModuleId;
 use game_common::record::RecordId;
 use game_data::record::Record;
+use parking_lot::RwLock;
 
 #[derive(Clone, Debug, Resource)]
 pub struct Records {
-    records: HashMap<(ModuleId, RecordId), Record>,
-    next_id: u32,
+    records: Arc<RwLock<HashMap<(ModuleId, RecordId), Record>>>,
+    next_id: Arc<AtomicU32>,
 }
 
 impl Records {
     pub fn new() -> Self {
         Self {
-            records: HashMap::new(),
+            records: Arc::default(),
 
-            next_id: 0,
+            next_id: Arc::new(AtomicU32::new(1)),
         }
     }
 
     pub fn len(&self) -> usize {
-        self.records.len()
+        let records = self.records.read();
+        records.len()
     }
 
-    pub fn get(&self, module: ModuleId, id: RecordId) -> Option<&Record> {
-        self.records.get(&(module, id))
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 
-    pub fn insert(&mut self, module: ModuleId, record: Record) {
-        if record.id.0 >= self.next_id {
-            self.next_id = record.id.0.checked_add(1).unwrap();
+    pub fn get(&self, module: ModuleId, id: RecordId) -> Option<Record> {
+        let records = self.records.read();
+
+        records.get(&(module, id)).cloned()
+    }
+
+    pub fn insert(&self, module: ModuleId, mut record: Record) -> RecordId {
+        let id = self.next_id.fetch_add(1, Ordering::Relaxed);
+        assert_ne!(id, 0, "record id overflow");
+
+        record.id = RecordId(id);
+
+        let mut records = self.records.write();
+        records.insert((module, record.id), record);
+
+        RecordId(id)
+    }
+
+    pub fn update(&self, module: ModuleId, record: Record) {
+        let mut records = self.records.write();
+        if let Some(rec) = records.get_mut(&(module, record.id)) {
+            *rec = record;
         }
-
-        self.records.insert((module, record.id), record);
-    }
-
-    pub fn push(&mut self, module: ModuleId, mut record: Record) -> RecordId {
-        let id = RecordId(self.next_id);
-        self.next_id = self.next_id.checked_add(1).unwrap();
-
-        record.id = id;
-        self.records.insert((module, id), record);
-
-        id
     }
 
     pub fn iter(&self) -> Iter<'_> {
-        Iter {
-            iter: self.records.iter(),
-        }
+        let records = self.records.read();
+        let keys = records.keys().map(|k| *k).collect::<Vec<_>>().into_iter();
+        drop(records);
+
+        Iter { keys, inner: self }
     }
 }
 
 pub struct Iter<'a> {
-    iter: std::collections::hash_map::Iter<'a, (ModuleId, RecordId), Record>,
+    keys: std::vec::IntoIter<(ModuleId, RecordId)>,
+    inner: &'a Records,
 }
 
 impl<'a> Iterator for Iter<'a> {
-    type Item = (ModuleId, &'a Record);
+    type Item = (ModuleId, Record);
 
     fn next(&mut self) -> Option<Self::Item> {
-        let ((id, _), record) = self.iter.next()?;
-        Some((*id, record))
+        while let Some((module_id, record_id)) = self.keys.next() {
+            if let Some(record) = self.inner.get(module_id, record_id) {
+                return Some((module_id, record));
+            }
+        }
+
+        None
     }
 }
-

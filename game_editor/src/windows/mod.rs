@@ -139,7 +139,7 @@ fn spawn_windows(
             SpawnWindow::CreateRecord(kind) => {
                 view! {
                     cx,
-                    <CreateRecord kind={*kind}>
+                    <CreateRecord kind={*kind} records={records.clone()} modules={modules.clone()}>
                     </CreateRecord>
                 };
             }
