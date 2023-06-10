@@ -30,7 +30,9 @@ const TABLE_BACKGROUND_COLOR: [Background; 2] = [
 
 #[component]
 pub fn Explorer(cx: &Scope, on_open: Box<dyn Fn(Vec<Entry>) + Send + Sync + 'static>) -> Scope {
-    let (path, set_path) = create_signal(cx, PathBuf::from("/"));
+    let dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/"));
+
+    let (path, set_path) = create_signal(cx, dir);
 
     let root = view! { cx,
         <Container style={Style {

@@ -98,7 +98,6 @@ pub fn ContextMenu(cx: &Scope, spawn_menu: Box<dyn Fn(Scope) + Send + Sync + 'st
 
                     state.menu_cx = Some(menu.clone());
 
-                    dbg!("spawn");
                     spawn_menu(menu);
                 }
             }

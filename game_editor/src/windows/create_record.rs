@@ -1,5 +1,6 @@
 use game_common::module::ModuleId;
 use game_common::record::RecordId;
+use game_common::units::Mass;
 use game_data::components::item::ItemRecord;
 use game_data::record::{Record, RecordBody, RecordKind};
 use game_data::uri::Uri;
@@ -54,7 +55,10 @@ pub fn CreateRecord(cx: &Scope, kind: RecordKind, records: Records, modules: Mod
     };
 
     let opts: Vec<ModuleId> = modules.iter().map(|m| m.module.id).collect();
-    let opts_string = opts.iter().map(|id| id.to_string()).collect();
+    let opts_string = modules
+        .iter()
+        .map(|m| format!("{} ({})", m.module.name, m.module.id))
+        .collect();
 
     let on_change = move |index| {
         let id = opts[index];
@@ -92,7 +96,16 @@ pub fn CreateRecord(cx: &Scope, kind: RecordKind, records: Records, modules: Mod
         </Input>
     };
 
-    let fields = Fields { module_id, name };
+    let body = match kind {
+        RecordKind::Item => RecordBodyFields::Item(render_item(&root)),
+        _ => todo!(),
+    };
+
+    let fields = Fields {
+        module_id,
+        name,
+        body,
+    };
 
     view! {
         root,
@@ -120,16 +133,25 @@ fn create_record(
 
         ctx.window.close();
 
+        let body = match &fields.body {
+            RecordBodyFields::Item(item) => {
+                let value = item.value.get_untracked();
+                let mass = item.mass.get_untracked();
+
+                RecordBody::Item(ItemRecord {
+                    mass,
+                    value,
+                    uri: Uri::new(),
+                    components: Default::default(),
+                    actions: Default::default(),
+                })
+            }
+        };
+
         let record = Record {
             id: RecordId(0),
             name,
-            body: RecordBody::Item(ItemRecord {
-                mass: Default::default(),
-                value: Default::default(),
-                uri: Uri::new(),
-                components: Default::default(),
-                actions: Default::default(),
-            }),
+            body,
         };
 
         records.insert(module_id, record);
@@ -139,4 +161,45 @@ fn create_record(
 struct Fields {
     module_id: ReadSignal<ModuleId>,
     name: ReadSignal<String>,
+    body: RecordBodyFields,
+}
+
+enum RecordBodyFields {
+    Item(ItemFields),
+}
+
+struct ItemFields {
+    mass: ReadSignal<Mass>,
+    value: ReadSignal<u64>,
+}
+
+fn render_item(cx: &Scope) -> ItemFields {
+    let (value, set_value) = create_signal(cx, 0);
+    let (mass, set_mass) = create_signal(cx, Mass::default());
+
+    let value_change = move |s: String| {
+        if let Ok(val) = s.parse() {
+            set_value.update(|v| *v = val);
+        }
+    };
+
+    view! {
+        cx,
+        <Input value={value.get_untracked().to_string()} style={Style::default()} on_change={value_change.into()}>
+        </Input>
+    };
+
+    let mass_change = move |s: String| {
+        if let Ok(val) = s.parse() {
+            set_mass.update(|v| *v = Mass::from_grams(val));
+        }
+    };
+
+    view! {
+        cx,
+        <Input value={mass.get_untracked().to_grams().to_string()} style={Style::default()} on_change={mass_change.into()}>
+        </Input>
+    };
+
+    ItemFields { mass, value }
 }
