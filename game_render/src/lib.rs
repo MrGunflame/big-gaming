@@ -19,9 +19,12 @@ use bevy_ecs::query::QueryState;
 use bevy_ecs::removal_detection::RemovedComponents;
 use bevy_ecs::system::{Query, Res, ResMut, Resource};
 use bevy_ecs::world::World;
+use game_asset::AssetAppExt;
 use game_window::events::{WindowCreated, WindowResized};
 use game_window::{Window, WindowPlugin, WindowState};
 use graph::{RenderContext, RenderGraph};
+use mesh::Mesh;
+use pbr::{PbrMaterial, RenderMaterialAssets};
 use pipeline::MainPass;
 use wgpu::{
     Adapter, Backends, Color, CommandEncoderDescriptor, Device, DeviceDescriptor, Features,
@@ -60,6 +63,10 @@ impl Plugin for RenderPlugin {
         ))
         .unwrap();
 
+        app.add_asset::<Mesh>();
+        app.add_asset::<PbrMaterial>();
+        app.insert_resource(RenderMaterialAssets::default());
+
         app.insert_resource(RenderInstance(instance));
         app.insert_resource(RenderAdapter(Arc::new(adapter)));
         app.insert_resource(RenderDevice(device));
@@ -89,7 +96,7 @@ impl Plugin for RenderPlugin {
         app.add_system(pipeline::create_transformatio_matrix);
         app.add_system(pipeline::update_transformation_matrix);
 
-        app.add_system(material::prepare_computed_materials);
+        app.add_system(pbr::prepare_materials);
         app.add_system(material::prepare_computed_meshes);
 
         app.insert_resource(pipeline::RenderWindows::default());

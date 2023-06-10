@@ -1,5 +1,6 @@
 use bevy_ecs::prelude::Component;
 use bytemuck::{Pod, Zeroable};
+use game_asset::Asset;
 use wgpu::{
     BufferAddress, PrimitiveTopology, VertexAttribute, VertexBufferLayout, VertexFormat,
     VertexStepMode,
@@ -148,3 +149,5 @@ impl Vertex {
         }
     }
 }
+
+impl Asset for Mesh {}

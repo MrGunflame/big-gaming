@@ -29,6 +29,7 @@ use crate::depth_stencil::{create_depth_texture, DEPTH_TEXTURE_FORMAT};
 use crate::graph::Node;
 use crate::material::{ComputedMaterial, ComputedMesh};
 use crate::mesh::{Mesh, Vertex};
+use crate::pbr::RenderMaterialAssets;
 use crate::RenderDevice;
 
 #[derive(Resource)]
@@ -93,9 +94,9 @@ impl MeshPipeline {
 
 #[derive(Debug, Resource)]
 pub struct MaterialPipeline {
-    pipeline: RenderPipeline,
-    bind_group_layout: BindGroupLayout,
-    sampler: Sampler,
+    pub pipeline: RenderPipeline,
+    pub bind_group_layout: BindGroupLayout,
+    pub sampler: Sampler,
 }
 
 impl FromWorld for MaterialPipeline {
@@ -270,84 +271,89 @@ pub struct MainPass {
 
 impl Node for MainPass {
     fn update(&mut self, world: &mut bevy_ecs::world::World) {
-        world.resource_scope::<RenderDevice, _>(|world, device| {
-            world.resource_scope::<MeshPipeline, _>(|world, pipeline| {
-                world.resource_scope::<MaterialPipeline, _>(|world, mat_pl| {
-                    let mut query =
-                        world.query::<(&ComputedMesh, &ComputedMaterial, &TransformationMatrix)>();
+        // world.resource_scope::<RenderDevice, _>(|world, device| {
+        //     world.resource_scope::<MeshPipeline, _>(|world, pipeline| {
+        //         world.resource_scope::<MaterialPipeline, _>(|world, mat_pl| {
+        //             let mut nodes = world.resource_mut::<RenderMaterialAssets>();
 
-                    self.nodes.clear();
+        //             for node in &mut nodes.entities {}
 
-                    for (mesh, material, mat) in query.iter(&world) {
-                        let Some(vertices) = &mesh.vertices else {
-                                continue;
-                            };
-                        let Some(indices) = &mesh.indicies else {
-                                continue;
-                            };
-                        let num_vertices = mesh.num_vertices;
+        //             let mut query =
+        //                 world.query::<(&ComputedMesh, &ComputedMaterial, &TransformationMatrix)>();
 
-                        let bind_group = device.0.create_bind_group(&wgpu::BindGroupDescriptor {
-                            label: Some("mesh_bind_group"),
-                            layout: &pipeline.bind_group_layout,
-                            entries: &[
-                                BindGroupEntry {
-                                    binding: 0,
-                                    resource: pipeline.camera_buffer.as_entire_binding(),
-                                },
-                                BindGroupEntry {
-                                    binding: 1,
-                                    resource: mat.buffer.as_entire_binding(),
-                                },
-                            ],
-                        });
+        //             self.nodes.clear();
 
-                        let Some(base_color) = material.base_color.as_ref() else {
-                                continue;
-                            };
+        //             for (mesh, material, mat) in query.iter(&world) {
+        //                 let Some(vertices) = &mesh.vertices else {
+        //                         continue;
+        //                     };
+        //                 let Some(indices) = &mesh.indicies else {
+        //                         continue;
+        //                     };
+        //                 let num_vertices = mesh.num_vertices;
 
-                        let Some(texture_view) = material
-                                .base_color_texture
-                                .as_ref()
-                                .map(|t| t.create_view(&TextureViewDescriptor::default())) else {
-                                    continue;
-                                };
+        //                 let bind_group = device.0.create_bind_group(&wgpu::BindGroupDescriptor {
+        //                     label: Some("mesh_bind_group"),
+        //                     layout: &pipeline.bind_group_layout,
+        //                     entries: &[
+        //                         BindGroupEntry {
+        //                             binding: 0,
+        //                             resource: pipeline.camera_buffer.as_entire_binding(),
+        //                         },
+        //                         BindGroupEntry {
+        //                             binding: 1,
+        //                             resource: mat.buffer.as_entire_binding(),
+        //                         },
+        //                     ],
+        //                 });
 
-                        let bind_group_mat =
-                            device.0.create_bind_group(&wgpu::BindGroupDescriptor {
-                                label: Some("material_bind_group"),
-                                layout: &mat_pl.bind_group_layout,
-                                entries: &[
-                                    BindGroupEntry {
-                                        binding: 0,
-                                        resource: base_color.as_entire_binding(),
-                                    },
-                                    BindGroupEntry {
-                                        binding: 1,
-                                        resource: BindingResource::TextureView(&texture_view),
-                                    },
-                                    BindGroupEntry {
-                                        binding: 2,
-                                        resource: BindingResource::Sampler(&mat_pl.sampler),
-                                    },
-                                ],
-                            });
+        //                 let Some(base_color) = material.base_color.as_ref() else {
+        //                         continue;
+        //                     };
 
-                        self.nodes.push(RenderNode {
-                            vertices: vertices.clone(),
-                            indices: indices.clone(),
-                            num_vertices,
-                            bind_groups: vec![bind_group, bind_group_mat],
-                        });
-                    }
-                });
-            });
-        });
+        //                 let Some(texture_view) = material
+        //                         .base_color_texture
+        //                         .as_ref()
+        //                         .map(|t| t.create_view(&TextureViewDescriptor::default())) else {
+        //                             continue;
+        //                         };
+
+        //                 let bind_group_mat =
+        //                     device.0.create_bind_group(&wgpu::BindGroupDescriptor {
+        //                         label: Some("material_bind_group"),
+        //                         layout: &mat_pl.bind_group_layout,
+        //                         entries: &[
+        //                             BindGroupEntry {
+        //                                 binding: 0,
+        //                                 resource: base_color.as_entire_binding(),
+        //                             },
+        //                             BindGroupEntry {
+        //                                 binding: 1,
+        //                                 resource: BindingResource::TextureView(&texture_view),
+        //                             },
+        //                             BindGroupEntry {
+        //                                 binding: 2,
+        //                                 resource: BindingResource::Sampler(&mat_pl.sampler),
+        //                             },
+        //                         ],
+        //                     });
+
+        //                 self.nodes.push(RenderNode {
+        //                     vertices: vertices.clone(),
+        //                     indices: indices.clone(),
+        //                     num_vertices,
+        //                     bind_groups: vec![bind_group, bind_group_mat],
+        //                 });
+        //             }
+        //         });
+        //     });
+        // });
     }
 
     fn render(&self, world: &bevy_ecs::world::World, ctx: &mut crate::graph::RenderContext<'_>) {
         let pipeline = world.resource::<MaterialPipeline>();
         let windows = world.resource::<RenderWindows>();
+        let nodes = world.resource::<RenderMaterialAssets>();
 
         let Some(window) = windows.windows.get(&ctx.window) else {
             return;
@@ -390,7 +396,7 @@ impl Node for MainPass {
 
         render_pass.set_pipeline(&pipeline.pipeline);
 
-        for node in &self.nodes {
+        for node in &nodes.entities {
             for (group, bind_group) in node.bind_groups.iter().enumerate() {
                 render_pass.set_bind_group(group as u32, bind_group, &[]);
             }

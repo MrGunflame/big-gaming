@@ -3,11 +3,14 @@ use std::f32::consts::PI;
 use bevy_app::App;
 use bevy_ecs::prelude::EventReader;
 use bevy_ecs::query::With;
-use bevy_ecs::system::{Commands, Query};
+use bevy_ecs::system::{Commands, Query, ResMut};
+use game_asset::Assets;
+use game_common::bundles::TransformBundle;
 use game_common::components::transform::Transform;
 use game_input::keyboard::KeyboardInput;
 use game_render::camera::{Camera, Projection, RenderTarget};
-use game_render::material::{Material, MaterialMeshBundle};
+use game_render::mesh::Mesh;
+use game_render::pbr::{PbrBundle, PbrMaterial};
 use game_render::{shape, RenderPlugin};
 use game_window::events::VirtualKeyCode;
 use game_window::Window;
@@ -22,7 +25,11 @@ fn main() {
     app.run();
 }
 
-fn setup(mut cmds: Commands) {
+fn setup(
+    mut cmds: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<PbrMaterial>>,
+) {
     let id = cmds
         .spawn(Window {
             title: "test".to_owned(),
@@ -41,49 +48,57 @@ fn setup(mut cmds: Commands) {
         .unwrap()
         .to_rgba8();
 
-    cmds.spawn(MaterialMeshBundle {
-        mesh: shape::Box {
-            min_x: -0.5,
-            max_x: 0.5,
-            min_y: -0.5,
-            max_y: 0.5,
-            min_z: -0.5,
-            max_z: 0.5,
-        }
-        .into(),
-        material: Material {
-            color: [1.0, 0.0, 0.0, 1.0],
-            color_texture: img.clone(),
+    cmds.spawn(PbrBundle {
+        mesh: meshes.insert(
+            shape::Box {
+                min_x: -0.5,
+                max_x: 0.5,
+                min_y: -0.5,
+                max_y: 0.5,
+                min_z: -0.5,
+                max_z: 0.5,
+            }
+            .into(),
+        ),
+        material: materials.insert(PbrMaterial {
+            base_color: [1.0, 0.0, 0.0, 1.0],
+            base_color_texture: img.clone(),
+            ..Default::default()
+        }),
+        transform: TransformBundle {
+            transform: Transform {
+                translation: Vec3::new(0.0, 1.0, -5.0),
+                rotation: Quat::from_axis_angle(Vec3::Y, PI / 3.0),
+                ..Default::default()
+            },
+            ..Default::default()
         },
-        computed_material: Default::default(),
-        computed_mesh: Default::default(),
-    })
-    .insert(Transform {
-        translation: Vec3::new(0.0, 1.0, -5.0),
-        rotation: Quat::from_axis_angle(Vec3::Y, PI / 3.0),
-        ..Default::default()
     });
 
-    cmds.spawn(MaterialMeshBundle {
-        mesh: shape::Box {
-            min_x: -0.5,
-            max_x: 0.5,
-            min_y: -0.5,
-            max_y: 0.5,
-            min_z: -0.5,
-            max_z: 0.5,
-        }
-        .into(),
-        material: Material {
-            color: [1.0, 1.0, 1.0, 1.0],
-            color_texture: img,
+    cmds.spawn(PbrBundle {
+        mesh: meshes.insert(
+            shape::Box {
+                min_x: -0.5,
+                max_x: 0.5,
+                min_y: -0.5,
+                max_y: 0.5,
+                min_z: -0.5,
+                max_z: 0.5,
+            }
+            .into(),
+        ),
+        material: materials.insert(PbrMaterial {
+            base_color: [1.0, 1.0, 1.0, 1.0],
+            base_color_texture: img,
+            ..Default::default()
+        }),
+        transform: TransformBundle {
+            transform: Transform {
+                translation: Vec3::new(1.0, -0.5, -4.0),
+                ..Default::default()
+            },
+            ..Default::default()
         },
-        computed_material: Default::default(),
-        computed_mesh: Default::default(),
-    })
-    .insert(Transform {
-        translation: Vec3::new(1.0, -0.5, -4.0),
-        ..Default::default()
     });
 
     // cmds.spawn(MaterialMeshBundle {
