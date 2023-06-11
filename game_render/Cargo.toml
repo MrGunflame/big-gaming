@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 game_window = { version = "0.1.0", path = "../game_window" }
 game_common = { versionr = "0.1.0", path = "../game_common" }
+game_asset = { version = "0.1.0", path = "../game_asset" }
 
 bevy_app = "0.10.1"
 bevy_ecs = "0.10.1"

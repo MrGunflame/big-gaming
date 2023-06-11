@@ -4,7 +4,7 @@
 mod asset;
 mod io;
 
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::fmt::Display;
 use std::path::Path;
 use std::sync::Arc;
@@ -16,6 +16,7 @@ use parking_lot::Mutex;
 use slotmap::{DefaultKey, SlotMap};
 use thiserror::Error;
 use tokio::runtime::Runtime;
+use tokio::task::AbortHandle;
 
 pub use crate::asset::{Asset, Assets, Handle, HandleId};
 
@@ -39,6 +40,7 @@ pub struct AssetServer {
     assets: SlotMap<DefaultKey, Entry>,
     events: Arc<Mutex<VecDeque<Event>>>,
     rt: Runtime,
+    tasks: HashMap<DefaultKey, AbortHandle>,
 }
 
 impl AssetServer {
@@ -49,6 +51,7 @@ impl AssetServer {
             assets: SlotMap::new(),
             events: Arc::default(),
             rt,
+            tasks: HashMap::new(),
         }
     }
 
@@ -63,11 +66,13 @@ impl AssetServer {
 
         let path = path.as_ref().to_owned();
         let events = self.events.clone();
-        self.rt.spawn(async move {
+        let handle = self.rt.spawn(async move {
             let buf = io::load_file(path).await.unwrap();
             let mut events = events.lock();
             events.push_back(Event::Create(AssetId(id), buf));
         });
+
+        self.tasks.insert(id, handle.abort_handle());
 
         AssetHandle {
             id: AssetId(id),
@@ -86,8 +91,11 @@ impl AssetServer {
     }
 
     pub fn remove(&mut self, id: AssetId) {
-        // TODO: Shut down running loader tasks.
         self.assets.remove(id.0);
+
+        if let Some(handle) = self.tasks.remove(&id.0) {
+            handle.abort();
+        }
     }
 }
 
@@ -166,6 +174,8 @@ fn flush_asset_server_events(
                 }
             }
             Event::Create(id, buf) => {
+                server.tasks.remove(&id.0);
+
                 // If `None` all handles are already removed.
                 if let Some(asset) = server.assets.get_mut(id.0) {
                     asset.data = Some(buf);
