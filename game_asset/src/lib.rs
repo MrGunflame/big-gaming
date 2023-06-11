@@ -5,6 +5,7 @@ mod asset;
 mod io;
 
 use std::collections::VecDeque;
+use std::fmt::Display;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -188,4 +189,10 @@ pub enum Error {
     InvalidId,
     #[error("asset is still loading")]
     Loading,
+}
+
+pub trait LoadAsset: Sized {
+    type Error: Display;
+
+    fn load(bytes: &[u8]) -> Result<Self, Self::Error>;
 }

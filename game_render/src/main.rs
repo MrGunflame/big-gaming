@@ -9,8 +9,10 @@ use game_common::bundles::TransformBundle;
 use game_common::components::transform::Transform;
 use game_input::keyboard::KeyboardInput;
 use game_render::camera::{Camera, Projection, RenderTarget};
+use game_render::color::Color;
 use game_render::mesh::Mesh;
 use game_render::pbr::{PbrBundle, PbrMaterial};
+use game_render::texture::Image;
 use game_render::{shape, RenderPlugin};
 use game_window::events::VirtualKeyCode;
 use game_window::Window;
@@ -48,6 +50,13 @@ fn setup(
         .unwrap()
         .to_rgba8();
 
+    let img = Image {
+        format: game_render::texture::TextureFormat::Rgba8UnormSrgb,
+        width: img.width(),
+        height: img.height(),
+        bytes: img.into_raw(),
+    };
+
     cmds.spawn(PbrBundle {
         mesh: meshes.insert(
             shape::Box {
@@ -61,7 +70,7 @@ fn setup(
             .into(),
         ),
         material: materials.insert(PbrMaterial {
-            base_color: [1.0, 0.0, 0.0, 1.0],
+            base_color: Color([1.0, 0.0, 0.0, 1.0]),
             base_color_texture: img.clone(),
             ..Default::default()
         }),
@@ -88,7 +97,7 @@ fn setup(
             .into(),
         ),
         material: materials.insert(PbrMaterial {
-            base_color: [1.0, 1.0, 1.0, 1.0],
+            base_color: Color([1.0, 1.0, 1.0, 1.0]),
             base_color_texture: img,
             ..Default::default()
         }),

@@ -3,7 +3,6 @@ use bevy_ecs::system::{Query, ResMut, Resource};
 use game_asset::{Asset, Assets, Handle};
 use game_common::bundles::TransformBundle;
 use game_common::components::transform::Transform;
-use image::{ImageBuffer, Rgba};
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
 use wgpu::{
     BindGroup, BindGroupDescriptor, BindGroupEntry, BindingResource, Buffer, BufferUsages,
@@ -11,8 +10,10 @@ use wgpu::{
     TextureDimension, TextureFormat, TextureUsages, TextureViewDescriptor,
 };
 
+use crate::color::Color;
 use crate::mesh::Mesh;
 use crate::pipeline::{MaterialPipeline, MeshPipeline};
+use crate::texture::Image;
 use crate::{RenderDevice, RenderQueue};
 
 #[derive(Clone, Debug, Bundle)]
@@ -26,23 +27,33 @@ pub struct PbrBundle {
 #[derive(Clone, Debug)]
 pub struct PbrMaterial {
     pub alpha_mode: AlphaMode,
-    pub base_color: [f32; 4],
-    pub base_color_texture: ImageBuffer<Rgba<u8>, Vec<u8>>,
+    pub base_color: Color,
+    pub base_color_texture: Image,
 
     pub roughness: f32,
     pub metallic: f32,
-    pub metallic_roughness_texture: Option<Vec<u8>>,
+    pub metallic_roughness_texture: Image,
 }
 
 impl Default for PbrMaterial {
     fn default() -> Self {
         Self {
             alpha_mode: AlphaMode::default(),
-            base_color: [1.0, 1.0, 1.0, 1.0],
-            base_color_texture: ImageBuffer::from_pixel(1, 1, Rgba([255, 255, 255, 255])),
+            base_color: Color([1.0, 1.0, 1.0, 1.0]),
+            base_color_texture: Image {
+                bytes: vec![255],
+                format: crate::texture::TextureFormat::Rgba8UnormSrgb,
+                width: 1,
+                height: 1,
+            },
             roughness: 0.0,
             metallic: 0.0,
-            metallic_roughness_texture: None,
+            metallic_roughness_texture: Image {
+                bytes: vec![255],
+                format: crate::texture::TextureFormat::Rgba8UnormSrgb,
+                width: 1,
+                height: 1,
+            },
         }
     }
 }
@@ -119,8 +130,8 @@ pub fn prepare_materials(
         });
 
         let size = Extent3d {
-            width: material.base_color_texture.width(),
-            height: material.base_color_texture.height(),
+            width: material.base_color_texture.width,
+            height: material.base_color_texture.height,
             depth_or_array_layers: 1,
         };
 
@@ -142,11 +153,11 @@ pub fn prepare_materials(
                 origin: Origin3d::ZERO,
                 aspect: TextureAspect::All,
             },
-            &material.base_color_texture,
+            &material.base_color_texture.bytes,
             ImageDataLayout {
                 offset: 0,
-                bytes_per_row: Some(4 * material.base_color_texture.width()),
-                rows_per_image: Some(material.base_color_texture.height()),
+                bytes_per_row: Some(4 * material.base_color_texture.width),
+                rows_per_image: Some(material.base_color_texture.height),
             },
             size,
         );

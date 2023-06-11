@@ -3,6 +3,7 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 
 use bevy_app::App;
+use bevy_ecs::prelude::Component;
 use bevy_ecs::system::{ResMut, Resource};
 use parking_lot::Mutex;
 use slotmap::{DefaultKey, SlotMap};
@@ -14,7 +15,7 @@ pub trait Asset: Send + Sync + 'static {}
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct HandleId(DefaultKey);
 
-#[derive(Debug)]
+#[derive(Debug, Component)]
 pub struct Handle<T>
 where
     T: Asset,
@@ -22,6 +23,15 @@ where
     id: HandleId,
     events: Arc<Mutex<VecDeque<Event>>>,
     _marker: PhantomData<fn() -> T>,
+}
+
+impl<T> Handle<T>
+where
+    T: Asset,
+{
+    pub fn id(&self) -> HandleId {
+        self.id
+    }
 }
 
 impl<T> Clone for Handle<T>
@@ -70,13 +80,17 @@ where
         }
     }
 
-    pub fn insert(&mut self, asset: T) -> HandleId {
+    pub fn insert(&mut self, asset: T) -> Handle<T> {
         let id = self.assets.insert(Entry {
             asset,
             ref_count: 1,
         });
 
-        HandleId(id)
+        Handle {
+            id: HandleId(id),
+            events: self.events.clone(),
+            _marker: PhantomData,
+        }
     }
 
     pub fn remove(&mut self, id: HandleId) -> Option<T> {
