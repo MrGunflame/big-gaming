@@ -125,7 +125,7 @@ pub fn prepare_materials(
     device: Res<RenderDevice>,
     queue: Res<RenderQueue>,
     nodes: Query<(&Handle<Mesh>, &Handle<PbrMaterial>, &Transform)>,
-    meshes: ResMut<Assets<Mesh>>,
+    mut meshes: ResMut<Assets<Mesh>>,
     materials: ResMut<Assets<PbrMaterial>>,
     mut render_assets: ResMut<RenderMaterialAssets>,
     material_pipeline: Res<MaterialPipeline>,
@@ -135,13 +135,15 @@ pub fn prepare_materials(
     render_assets.entities.clear();
 
     for (mesh, material, transform) in &nodes {
-        let Some(mesh) = meshes.get(mesh.id()) else {
+        let Some(mesh) = meshes.get_mut(mesh.id()) else {
             continue;
         };
 
         let Some(material) = materials.get(material.id()) else {
             continue;
         };
+
+        mesh.compute_tangents();
 
         let transform_buffer = device.0.create_buffer_init(&BufferInitDescriptor {
             label: Some("mesh_transform"),

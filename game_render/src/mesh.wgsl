@@ -16,6 +16,8 @@ struct VertexInput {
     @location(0) position: vec3<f32>,
     @location(1) normal: vec3<f32>,
     @location(2) uv: vec2<f32>,
+    @location(3) tangent: vec3<f32>,
+    @location(4) bitangent: vec3<f32>,
 }
 
 struct VertexOutput {
@@ -23,6 +25,9 @@ struct VertexOutput {
     @location(0) world_position: vec3<f32>,
     @location(1) world_normal: vec3<f32>,
     @location(2) uv: vec2<f32>,
+    @location(3) tangent_light_pos: vec3<f32>,
+    @location(4) tangent_view_pos: vec3<f32>,
+    @location(5) tangent_pos: vec3<f32>,
 }
 
 @vertex
@@ -34,9 +39,23 @@ fn vs_main(model: VertexInput) -> VertexOutput {
     out.world_position = world_position.xyz;
     
     // Normal
-    let world_normal = mesh.mat * vec4<f32>(model.normal, 0.0);
-    out.world_normal = normalize(world_normal.xyz);
+    let normal = normalize((mesh.mat * vec4<f32>(model.normal, 0.0)).xyz);
+    let tangent = normalize((mesh.mat * vec4<f32>(model.tangent, 0.0)).xyz);
+    let bitangent = normalize((mesh.mat * vec4<f32>(model.bitangent, 0.0)).xyz);
+    let tangent_matrix = transpose(mat3x3(
+        tangent,
+        bitangent,
+        normal,
+    ));
+
+    let light_pos = vec3(-1.0, 0.0, 0.0);
+    out.tangent_light_pos = tangent_matrix * light_pos;
+    out.tangent_view_pos = tangent_matrix * camera.position.xyz;
+    out.tangent_pos = tangent_matrix * world_position.xyz;
+
+    // out.world_normal = normalize(world_normal.xyz);
     
     out.uv = model.uv;
+
     return out;
 }
