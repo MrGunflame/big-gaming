@@ -6,9 +6,9 @@ use game_common::bundles::TransformBundle;
 use game_common::components::transform::Transform;
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
 use wgpu::{
-    BindGroup, BindGroupDescriptor, BindGroupEntry, BindingResource, Buffer, BufferUsages,
-    Extent3d, ImageCopyTexture, ImageDataLayout, Origin3d, TextureAspect, TextureDescriptor,
-    TextureDimension, TextureFormat, TextureUsages, TextureViewDescriptor,
+    BindGroup, BindGroupDescriptor, BindGroupEntry, BindingResource, Buffer, BufferUsages, Device,
+    Extent3d, ImageCopyTexture, ImageDataLayout, Origin3d, Queue, TextureAspect, TextureDescriptor,
+    TextureDimension, TextureUsages, TextureView, TextureViewDescriptor,
 };
 
 use crate::color::Color;
@@ -20,6 +20,7 @@ use crate::{RenderDevice, RenderQueue};
 #[derive(Resource)]
 pub struct PbrResources {
     default_base_color_texture: ImageHandle,
+    default_normal_texture: ImageHandle,
     default_metallic_roughness_texture: ImageHandle,
 }
 
@@ -28,6 +29,14 @@ impl PbrResources {
         let default_base_color_texture = images.insert(Image {
             bytes: vec![255, 255, 255, 255],
             format: crate::texture::TextureFormat::Rgba8UnormSrgb,
+            width: 1,
+            height: 1,
+        });
+
+        let default_normal_texture = images.insert(Image {
+            // B channel facing towards local Z.
+            bytes: vec![0, 0, 255, 255],
+            format: crate::texture::TextureFormat::Rgba8Unorm,
             width: 1,
             height: 1,
         });
@@ -41,6 +50,7 @@ impl PbrResources {
 
         Self {
             default_base_color_texture,
+            default_normal_texture,
             default_metallic_roughness_texture,
         }
     }
@@ -66,6 +76,8 @@ pub struct PbrMaterial {
     pub base_color: Color,
     pub base_color_texture: Option<ImageHandle>,
 
+    pub normal_texture: Option<ImageHandle>,
+
     pub roughness: f32,
     pub metallic: f32,
     pub metallic_roughness_texture: Option<ImageHandle>,
@@ -77,6 +89,7 @@ impl Default for PbrMaterial {
             alpha_mode: AlphaMode::default(),
             base_color: Color([1.0, 1.0, 1.0, 1.0]),
             base_color_texture: None,
+            normal_texture: None,
             roughness: 0.0,
             metallic: 0.0,
             metallic_roughness_texture: None,
@@ -157,50 +170,25 @@ pub fn prepare_materials(
             usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
         });
 
-        let material_base_color_texture = {
-            let handle = material
+        let base_color_texture = setup_render_texture(
+            material
                 .base_color_texture
                 .as_ref()
-                .unwrap_or(&pbr_res.default_base_color_texture);
-
-            images.get(handle).unwrap()
-        };
-
-        let size = Extent3d {
-            width: material_base_color_texture.width,
-            height: material_base_color_texture.height,
-            depth_or_array_layers: 1,
-        };
-
-        let base_color_texture = device.0.create_texture(&TextureDescriptor {
-            label: Some("pbr_material_base_color_texture"),
-            size,
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: TextureDimension::D2,
-            format: TextureFormat::Rgba8UnormSrgb,
-            usage: TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST,
-            view_formats: &[],
-        });
-
-        queue.0.write_texture(
-            ImageCopyTexture {
-                texture: &base_color_texture,
-                mip_level: 0,
-                origin: Origin3d::ZERO,
-                aspect: TextureAspect::All,
-            },
-            &material_base_color_texture.bytes,
-            ImageDataLayout {
-                offset: 0,
-                bytes_per_row: Some(4 * material_base_color_texture.width),
-                rows_per_image: Some(material_base_color_texture.height),
-            },
-            size,
+                .unwrap_or(&pbr_res.default_base_color_texture),
+            &images,
+            &device.0,
+            &queue.0,
         );
 
-        let base_color_texture_view =
-            base_color_texture.create_view(&TextureViewDescriptor::default());
+        let normal_texture = setup_render_texture(
+            material
+                .normal_texture
+                .as_ref()
+                .unwrap_or(&pbr_res.default_normal_texture),
+            &images,
+            &device.0,
+            &queue.0,
+        );
 
         let material_bind_group = device.0.create_bind_group(&BindGroupDescriptor {
             label: Some("material_bind_group"),
@@ -212,10 +200,18 @@ pub fn prepare_materials(
                 },
                 BindGroupEntry {
                     binding: 1,
-                    resource: BindingResource::TextureView(&base_color_texture_view),
+                    resource: BindingResource::TextureView(&base_color_texture),
                 },
                 BindGroupEntry {
                     binding: 2,
+                    resource: BindingResource::Sampler(&material_pipeline.sampler),
+                },
+                BindGroupEntry {
+                    binding: 3,
+                    resource: BindingResource::TextureView(&normal_texture),
+                },
+                BindGroupEntry {
+                    binding: 4,
                     resource: BindingResource::Sampler(&material_pipeline.sampler),
                 },
             ],
@@ -244,4 +240,48 @@ pub fn prepare_materials(
             bind_groups: vec![mesh_bind_group, material_bind_group],
         });
     }
+}
+
+fn setup_render_texture(
+    handle: &ImageHandle,
+    images: &Images,
+    device: &Device,
+    queue: &Queue,
+) -> TextureView {
+    let texture_data = images.get(handle).unwrap();
+
+    let size = Extent3d {
+        width: texture_data.width,
+        height: texture_data.height,
+        depth_or_array_layers: 1,
+    };
+
+    let texture = device.create_texture(&TextureDescriptor {
+        label: None,
+        size,
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: TextureDimension::D2,
+        format: texture_data.format,
+        usage: TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST,
+        view_formats: &[],
+    });
+
+    queue.write_texture(
+        ImageCopyTexture {
+            texture: &texture,
+            mip_level: 0,
+            origin: Origin3d::ZERO,
+            aspect: TextureAspect::All,
+        },
+        &texture_data.bytes,
+        ImageDataLayout {
+            offset: 0,
+            bytes_per_row: Some(4 * texture_data.width),
+            rows_per_image: Some(texture_data.height),
+        },
+        size,
+    );
+
+    texture.create_view(&TextureViewDescriptor::default())
 }

@@ -94,8 +94,9 @@ pub fn spawn_view_window(
             .into(),
         ),
         material: materials.insert(PbrMaterial {
-            base_color: Color([1.0, 0.0, 0.0, 1.0]),
-            base_color_texture: Some(images.load("../assets/Baker.png")),
+            base_color: Color([1.0, 1.0, 1.0, 1.0]),
+            base_color_texture: Some(images.load("../assets/diffuse.png")),
+            normal_texture: Some(images.load("../assets/normal.png")),
             ..Default::default()
         }),
         transform: TransformBundle {

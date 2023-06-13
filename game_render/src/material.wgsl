@@ -6,6 +6,11 @@ var color_texture: texture_2d<f32>;
 @group(1) @ binding(2)
 var color_texture_sampler: sampler;
 
+@group(1) @binding(3)
+var normal_texture: texture_2d<f32>;
+@group(1) @binding(4)
+var normal_sampler: sampler;
+
 @group(0) @binding(0)
 var<uniform> camera: CameraProjection;
 
@@ -13,7 +18,6 @@ struct CameraProjection {
     position: vec4<f32>,
     view_proj: mat4x4<f32>,
 }
-
 
 struct VertexOutput {
     @builtin(position) position: vec4<f32>,
@@ -25,6 +29,7 @@ struct VertexOutput {
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     var color: vec4<f32> = base_color * textureSample(color_texture, color_texture_sampler, in.uv);
+    let normal = textureSample(normal_texture, normal_sampler, in.uv);
 
     //let light_factor = vec4(ambient_light() + diffuse_light(in) + specular_light(in), 1.0);
     //color *= light_factor;

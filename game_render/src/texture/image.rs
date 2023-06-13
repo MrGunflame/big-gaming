@@ -9,6 +9,8 @@ use game_asset::{Asset, LoadAsset};
 use image::load_from_memory;
 use parking_lot::Mutex;
 
+pub use wgpu::TextureFormat;
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum ImageFormat {
@@ -21,13 +23,6 @@ pub struct Image {
     pub format: TextureFormat,
     pub width: u32,
     pub height: u32,
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-#[non_exhaustive]
-pub enum TextureFormat {
-    Rgba8Unorm,
-    Rgba8UnormSrgb,
 }
 
 impl Asset for Image {}
