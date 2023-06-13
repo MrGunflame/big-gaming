@@ -100,13 +100,20 @@ fn setup(
         },
     });
 
-    // cmds.spawn(MaterialMeshBundle {
-    //     mesh: shape::Plane { size: 100.0 }.into(),
-    // })
-    // .insert(Transform {
-    //     translation: Vec3::new(0.0, -5.0, 0.0),
-    //     ..Default::default()
-    // });
+    cmds.spawn(PbrBundle {
+        mesh: meshes.insert(shape::Plane { size: 100.0 }.into()),
+        material: materials.insert(PbrMaterial {
+            base_color: Color([1.0, 1.0, 0.0, 1.0]),
+            ..Default::default()
+        }),
+        transform: TransformBundle {
+            transform: Transform {
+                translation: Vec3::new(0.0, -5.0, 0.0),
+                ..Default::default()
+            },
+            ..Default::default()
+        },
+    });
 }
 
 fn move_camera(
@@ -129,6 +136,11 @@ fn move_camera(
                 let rot = (camera.rotation * Quat::from_axis_angle(Vec3::Y, 90.0f32.to_radians()))
                     * -Vec3::Z;
                 camera.translation += rot;
+            }
+            Some(VirtualKeyCode::D) => {
+                let rot = (camera.rotation * Quat::from_axis_angle(Vec3::Y, 90.0f32.to_radians()))
+                    * -Vec3::Z;
+                camera.translation -= rot;
             }
             _ => (),
         }
