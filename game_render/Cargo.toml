@@ -19,3 +19,4 @@ wgpu = "0.16.0"
 image = "0.24.6"
 
 game_input = { version = "0.1.0", path = "../game_input" }
+parking_lot = "0.12.1"

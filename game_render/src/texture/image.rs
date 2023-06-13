@@ -1,11 +1,13 @@
 use std::collections::{HashMap, VecDeque};
 use std::io::Read;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use bevy_app::{App, Plugin};
 use bevy_ecs::system::{ResMut, Resource};
 use game_asset::{Asset, LoadAsset};
 use image::load_from_memory;
+use parking_lot::Mutex;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
@@ -53,14 +55,16 @@ impl Plugin for ImagePlugin {
         app.insert_resource(Images::new());
 
         app.add_system(load_images);
+        app.add_system(update_image_handles);
     }
 }
 
-#[derive(Clone, Debug, Default, Resource)]
+#[derive(Debug, Default, Resource)]
 pub struct Images {
     next_id: u64,
-    images: HashMap<ImageHandle, Image>,
-    load_queue: VecDeque<(ImageHandle, PathBuf)>,
+    images: HashMap<u64, Entry>,
+    load_queue: VecDeque<(u64, PathBuf)>,
+    events: Arc<Mutex<VecDeque<Event>>>,
 }
 
 impl Images {
@@ -69,27 +73,33 @@ impl Images {
             next_id: 0,
             images: HashMap::new(),
             load_queue: VecDeque::new(),
+            events: Arc::default(),
         }
     }
 
     pub fn insert(&mut self, image: Image) -> ImageHandle {
         let id = self.next_id();
-        self.images.insert(id, image);
-        id
+        self.images.insert(
+            id,
+            Entry {
+                data: image,
+                ref_count: 1,
+            },
+        );
+        ImageHandle {
+            id,
+            events: self.events.clone(),
+        }
     }
 
-    pub fn get(&self, handle: ImageHandle) -> Option<&Image> {
-        self.images.get(&handle)
+    pub fn get(&self, handle: &ImageHandle) -> Option<&Image> {
+        self.images.get(&handle.id).map(|entry| &entry.data)
     }
 
-    pub fn remove(&mut self, handle: ImageHandle) -> Option<Image> {
-        self.images.remove(&handle)
-    }
-
-    fn next_id(&mut self) -> ImageHandle {
+    fn next_id(&mut self) -> u64 {
         let id = self.next_id;
         self.next_id += 1;
-        ImageHandle(id)
+        id
     }
 
     pub fn load<P>(&mut self, path: P) -> ImageHandle
@@ -98,12 +108,41 @@ impl Images {
     {
         let id = self.next_id();
         self.load_queue.push_back((id, path.as_ref().into()));
-        id
+        ImageHandle {
+            id,
+            events: self.events.clone(),
+        }
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct ImageHandle(u64);
+#[derive(Debug)]
+struct Entry {
+    data: Image,
+    ref_count: usize,
+}
+
+#[derive(Debug)]
+pub struct ImageHandle {
+    id: u64,
+    events: Arc<Mutex<VecDeque<Event>>>,
+}
+
+impl Clone for ImageHandle {
+    fn clone(&self) -> Self {
+        self.events.lock().push_back(Event::Clone(self.id));
+
+        Self {
+            id: self.id,
+            events: self.events.clone(),
+        }
+    }
+}
+
+impl Drop for ImageHandle {
+    fn drop(&mut self) {
+        self.events.lock().push_back(Event::Drop(self.id));
+    }
+}
 
 fn load_images(mut images: ResMut<Images>) {
     while let Some((handle, path)) = images.load_queue.pop_front() {
@@ -116,12 +155,43 @@ fn load_images(mut images: ResMut<Images>) {
 
         images.images.insert(
             handle,
-            Image {
-                format: TextureFormat::Rgba8UnormSrgb,
-                width: img.width(),
-                height: img.height(),
-                bytes: img.into_raw(),
+            Entry {
+                data: Image {
+                    format: TextureFormat::Rgba8UnormSrgb,
+                    width: img.width(),
+                    height: img.height(),
+                    bytes: img.into_raw(),
+                },
+                ref_count: 1,
             },
         );
     }
+}
+
+fn update_image_handles(mut images: ResMut<Images>) {
+    let images = &mut *images;
+
+    let mut events = images.events.lock();
+    while let Some(event) = events.pop_front() {
+        match event {
+            Event::Clone(id) => {
+                let entry = images.images.get_mut(&id).unwrap();
+                entry.ref_count += 1;
+            }
+            Event::Drop(id) => {
+                let entry = images.images.get_mut(&id).unwrap();
+                entry.ref_count -= 1;
+
+                if entry.ref_count == 0 {
+                    images.images.remove(&id);
+                }
+            }
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+enum Event {
+    Drop(u64),
+    Clone(u64),
 }

@@ -45,20 +45,7 @@ fn setup(
     })
     .insert(Transform::default());
 
-    let img = image::io::Reader::open("../assets/Baker.png")
-        .unwrap()
-        .decode()
-        .unwrap()
-        .to_rgba8();
-
-    let img = Image {
-        format: game_render::texture::TextureFormat::Rgba8UnormSrgb,
-        width: img.width(),
-        height: img.height(),
-        bytes: img.into_raw(),
-    };
-
-    let handle = images.insert(img);
+    let handle = images.load("../assets/Baker.png");
 
     cmds.spawn(PbrBundle {
         mesh: meshes.insert(
@@ -74,7 +61,7 @@ fn setup(
         ),
         material: materials.insert(PbrMaterial {
             base_color: Color([1.0, 0.0, 0.0, 1.0]),
-            base_color_texture: Some(handle),
+            base_color_texture: Some(handle.clone()),
             ..Default::default()
         }),
         transform: TransformBundle {

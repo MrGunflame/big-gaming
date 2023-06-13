@@ -160,7 +160,8 @@ pub fn prepare_materials(
         let material_base_color_texture = {
             let handle = material
                 .base_color_texture
-                .unwrap_or(pbr_res.default_base_color_texture);
+                .as_ref()
+                .unwrap_or(&pbr_res.default_base_color_texture);
 
             images.get(handle).unwrap()
         };
