@@ -12,7 +12,11 @@ use std::sync::Arc;
 use bevy_app::Plugin;
 use bevy_ecs::prelude::{EventReader, EventWriter, Res};
 use bevy_ecs::system::{Commands, ResMut, Resource};
+use game_asset::Assets;
 use game_data::record::RecordKind;
+use game_render::mesh::Mesh;
+use game_render::pbr::PbrMaterial;
+use game_render::texture::Images;
 use game_ui::events::Events;
 use game_ui::reactive::{Document, Runtime};
 use game_ui::render::layout::LayoutTree;
@@ -58,6 +62,9 @@ fn spawn_windows(
     create_modules: Res<CreateModules>,
     rt: Res<Runtime>,
     modules: Res<crate::state::module::Modules>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<PbrMaterial>>,
+    mut images: ResMut<Images>,
 ) {
     for event in events.iter() {
         let window = Window {
@@ -92,7 +99,7 @@ fn spawn_windows(
         // }
 
         if let SpawnWindow::View = event {
-            view::spawn_view_window(&mut commands);
+            view::spawn_view_window(&mut commands, &mut meshes, &mut materials, &mut images);
             continue;
         }
 

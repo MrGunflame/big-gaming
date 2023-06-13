@@ -4,19 +4,29 @@ use bevy_ecs::prelude::{Component, EventReader, Res};
 use bevy_ecs::query::{Changed, With};
 use bevy_ecs::system::{Commands, Query};
 use bitflags::bitflags;
+use game_asset::Assets;
+use game_common::bundles::TransformBundle;
 use game_common::components::transform::Transform;
 use game_input::keyboard::KeyboardInput;
 use game_input::mouse::{MouseButton, MouseButtonInput, MouseMotion, MouseWheel};
 use game_input::ButtonState;
 use game_render::camera::{Camera, CameraBundle, RenderTarget};
-use game_render::material::{Material, MaterialMeshBundle};
+use game_render::color::Color;
+use game_render::mesh::Mesh;
+use game_render::pbr::{PbrBundle, PbrMaterial};
 use game_render::shape;
+use game_render::texture::Images;
 use game_ui::cursor::Cursor;
 use game_window::events::{CursorLeft, VirtualKeyCode};
 use game_window::Window;
 use glam::{Quat, Vec3};
 
-pub fn spawn_view_window(commands: &mut Commands) {
+pub fn spawn_view_window(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<PbrMaterial>,
+    images: &mut Images,
+) {
     let id = commands
         .spawn(Window {
             title: "test".to_owned(),
@@ -34,27 +44,27 @@ pub fn spawn_view_window(commands: &mut Commands) {
         })
         .insert(ViewCamera);
 
-    let mesh = &game_gltf::GltfData::open("../assets/pistol.glb")
-        .unwrap()
-        .meshes()
-        .unwrap()[0]
-        .0;
+    // let mesh = &game_gltf::GltfData::open("../assets/pistol.glb")
+    //     .unwrap()
+    //     .meshes()
+    //     .unwrap()[0]
+    //     .0;
 
-    commands
-        .spawn(MaterialMeshBundle {
-            mesh: mesh.clone(),
-            material: Material {
-                color: [1.0, 0.0, 0.0, 1.0],
-                ..Default::default()
-            },
-            computed_material: Default::default(),
-            computed_mesh: Default::default(),
-        })
-        .insert(Transform {
-            translation: Vec3::new(0.0, 1.0, -5.0),
-            // rotation: Quat::from_axis_angle(Vec3::Y, PI / 3.0),
-            ..Default::default()
-        });
+    // commands
+    //     .spawn(MaterialMeshBundle {
+    //         mesh: mesh.clone(),
+    //         material: Material {
+    //             color: [1.0, 0.0, 0.0, 1.0],
+    //             ..Default::default()
+    //         },
+    //         computed_material: Default::default(),
+    //         computed_mesh: Default::default(),
+    //     })
+    //     .insert(Transform {
+    //         translation: Vec3::new(0.0, 1.0, -5.0),
+    //         // rotation: Quat::from_axis_angle(Vec3::Y, PI / 3.0),
+    //         ..Default::default()
+    //     });
 
     // commands.spawn(MaterialMeshBundle {
     //     mesh: shape::Box {
@@ -71,55 +81,55 @@ pub fn spawn_view_window(commands: &mut Commands) {
     //     computed_mesh: Default::default(),
     // });
 
-    let img = image::io::Reader::open("../assets/Baker.png")
-        .unwrap()
-        .decode()
-        .unwrap()
-        .to_rgba8();
-
-    // commands
-    //     .spawn(MaterialMeshBundle {
-    //         mesh: shape::Box {
-    //             min_x: -0.5,
-    //             max_x: 0.5,
-    //             min_y: -0.5,
-    //             max_y: 0.5,
-    //             min_z: -0.5,
-    //             max_z: 0.5,
-    //         }
-    //         .into(),
-    //         material: Material {
-    //             color: [1.0, 0.0, 0.0, 1.0],
-    //             color_texture: img.clone(),
-    //         },
-    //         computed_material: Default::default(),
-    //         computed_mesh: Default::default(),
-    //     })
-    //     .insert(Transform {
-    //         translation: Vec3::new(0.0, 1.0, -5.0),
-    //         // rotation: Quat::from_axis_angle(Vec3::Y, PI / 3.0),
-    //         ..Default::default()
-    //     });
-
-    commands
-        .spawn(MaterialMeshBundle {
-            mesh: shape::Box {
-                min_x: -0.1,
-                max_x: 0.1,
-                min_y: -0.1,
-                max_y: 0.1,
-                min_z: -0.1,
-                max_z: 0.1,
+    commands.spawn(PbrBundle {
+        mesh: meshes.insert(
+            shape::Box {
+                min_x: -0.5,
+                max_x: 0.5,
+                min_y: -0.5,
+                max_y: 0.5,
+                min_z: -0.5,
+                max_z: 0.5,
             }
             .into(),
-            material: Material {
-                color: [1.0, 1.0, 1.0, 1.0],
-                color_texture: img.clone(),
+        ),
+        material: materials.insert(PbrMaterial {
+            base_color: Color([1.0, 0.0, 0.0, 1.0]),
+            base_color_texture: Some(images.load("../assets/Baker.png")),
+            ..Default::default()
+        }),
+        transform: TransformBundle {
+            transform: Transform {
+                translation: Vec3::new(0.0, 1.0, -5.0),
+                // rotation: Quat::from_axis_angle(Vec3::Y, PI / 3.0),
+                ..Default::default()
             },
-            computed_material: Default::default(),
-            computed_mesh: Default::default(),
+            ..Default::default()
+        },
+    });
+
+    commands
+        .spawn(PbrBundle {
+            mesh: meshes.insert(
+                shape::Box {
+                    min_x: -0.1,
+                    max_x: 0.1,
+                    min_y: -0.1,
+                    max_y: 0.1,
+                    min_z: -0.1,
+                    max_z: 0.1,
+                }
+                .into(),
+            ),
+            material: materials.insert(PbrMaterial {
+                base_color: Color([1.0, 1.0, 1.0, 1.0]),
+                ..Default::default()
+            }),
+            transform: TransformBundle {
+                transform: Transform::default(),
+                ..Default::default()
+            },
         })
-        .insert(Transform::default())
         .insert(OriginMarker);
 
     for (mesh, color) in [
@@ -157,17 +167,17 @@ pub fn spawn_view_window(commands: &mut Commands) {
             [0.0, 0.0, 1.0, 1.0],
         ),
     ] {
-        commands
-            .spawn(MaterialMeshBundle {
-                mesh: mesh.into(),
-                material: Material {
-                    color,
-                    ..Default::default()
-                },
-                computed_material: Default::default(),
-                computed_mesh: Default::default(),
-            })
-            .insert(Transform::default());
+        commands.spawn(PbrBundle {
+            mesh: meshes.insert(mesh.into()),
+            material: materials.insert(PbrMaterial {
+                base_color: Color(color),
+                ..Default::default()
+            }),
+            transform: TransformBundle {
+                transform: Transform::default(),
+                ..Default::default()
+            },
+        });
     }
 }
 
