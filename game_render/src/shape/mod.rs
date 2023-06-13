@@ -135,11 +135,14 @@ pub struct Plane {
 
 impl From<Plane> for Mesh {
     fn from(s: Plane) -> Self {
+        let min = -s.size / 2.0;
+        let max = s.size / 2.0;
+
         let positions = [
-            [-s.size / 2.0, 0.0, -s.size / 2.0],
-            [s.size / 2.0, 0.0, s.size / 2.0],
-            [-s.size / 2.0, 0.0, s.size / 2.0],
-            [s.size / 2.0, 0.0, -s.size / 2.0],
+            [max, 0.0, min],
+            [min, 0.0, min],
+            [min, 0.0, max],
+            [max, 0.0, max],
         ];
 
         let normals = [
@@ -151,7 +154,7 @@ impl From<Plane> for Mesh {
 
         let uvs = [[0.0, 0.0], [1.0, 1.0], [0.0, 1.0], [1.0, 0.0]];
 
-        let indicies = vec![0, 1, 2, 0, 3, 1];
+        let indicies = vec![0, 1, 2, 2, 3, 0];
 
         let mut mesh = Mesh::new();
         mesh.set_positions(positions.to_vec());
