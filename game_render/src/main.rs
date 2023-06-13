@@ -12,7 +12,7 @@ use game_render::camera::{Camera, Projection, RenderTarget};
 use game_render::color::Color;
 use game_render::mesh::Mesh;
 use game_render::pbr::{PbrBundle, PbrMaterial};
-use game_render::texture::Image;
+use game_render::texture::{Image, Images};
 use game_render::{shape, RenderPlugin};
 use game_window::events::VirtualKeyCode;
 use game_window::Window;
@@ -31,6 +31,7 @@ fn setup(
     mut cmds: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<PbrMaterial>>,
+    mut images: ResMut<Images>,
 ) {
     let id = cmds
         .spawn(Window {
@@ -57,6 +58,8 @@ fn setup(
         bytes: img.into_raw(),
     };
 
+    let handle = images.insert(img);
+
     cmds.spawn(PbrBundle {
         mesh: meshes.insert(
             shape::Box {
@@ -71,7 +74,7 @@ fn setup(
         ),
         material: materials.insert(PbrMaterial {
             base_color: Color([1.0, 0.0, 0.0, 1.0]),
-            base_color_texture: img.clone(),
+            base_color_texture: Some(handle),
             ..Default::default()
         }),
         transform: TransformBundle {
@@ -98,7 +101,7 @@ fn setup(
         ),
         material: materials.insert(PbrMaterial {
             base_color: Color([1.0, 1.0, 1.0, 1.0]),
-            base_color_texture: img,
+            base_color_texture: Some(handle),
             ..Default::default()
         }),
         transform: TransformBundle {

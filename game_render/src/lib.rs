@@ -28,6 +28,7 @@ use graph::{RenderContext, RenderGraph};
 use mesh::Mesh;
 use pbr::{PbrMaterial, RenderMaterialAssets};
 use pipeline::MainPass;
+use texture::ImagePlugin;
 use wgpu::{
     Adapter, Backends, Color, CommandEncoderDescriptor, Device, DeviceDescriptor, Features,
     Instance, InstanceDescriptor, Limits, LoadOp, Operations, PowerPreference, Queue,
@@ -41,6 +42,10 @@ pub struct RenderPlugin;
 impl Plugin for RenderPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugin(WindowPlugin);
+
+        app.add_plugin(ImagePlugin);
+
+        app.init_resource::<pbr::PbrResources>();
 
         let instance = Instance::new(InstanceDescriptor {
             backends: Backends::VULKAN,
