@@ -9,7 +9,7 @@ use bytemuck::{Pod, Zeroable};
 use game_common::components::transform::Transform;
 use game_window::events::{WindowCreated, WindowDestroyed, WindowResized};
 use game_window::WindowState;
-use glam::{Mat4, UVec2, Vec3};
+use glam::{Mat3, Mat4, UVec2, Vec3};
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
 use wgpu::{
     AddressMode, BindGroup, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
@@ -440,15 +440,48 @@ pub fn create_transformatio_matrix(
     for (entity, transform) in &meshes {
         let mat = transform.compute_matrix();
 
+        let buf = TransformUniform {
+            transform: transform.compute_matrix().to_cols_array_2d(),
+            normal: Mat3::from_quat(transform.rotation).to_cols_array_2d(),
+            _pad0: [0; 3],
+        };
+
         let buffer = device.0.create_buffer_init(&BufferInitDescriptor {
             label: Some("transform_matrix_buffer"),
-            contents: bytemuck::cast_slice(&[mat]),
+            contents: bytemuck::cast_slice(&[buf]),
             usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
         });
 
         commands
             .entity(entity)
             .insert(TransformationMatrix { mat, buffer });
+    }
+}
+
+#[derive(Copy, Clone, Debug, Zeroable, Pod)]
+#[repr(C)]
+pub struct TransformUniform {
+    transform: [[f32; 4]; 4],
+    // rotation matrix for normals/tangents
+    // Note that we can't use the transform matrix for non-uniform
+    // scaling values.
+    normal: [[f32; 3]; 3],
+    // align to 16
+    _pad0: [u32; 3],
+}
+
+impl From<Transform> for TransformUniform {
+    fn from(value: Transform) -> Self {
+        Self {
+            transform: Mat4::from_scale_rotation_translation(
+                value.scale,
+                value.rotation,
+                value.translation,
+            )
+            .to_cols_array_2d(),
+            normal: Mat3::from_quat(value.rotation).to_cols_array_2d(),
+            _pad0: [0; 3],
+        }
     }
 }
 
@@ -459,9 +492,15 @@ pub fn update_transformation_matrix(
     for (transform, mut mat) in &mut meshes {
         mat.mat = transform.compute_matrix();
 
+        let buf = TransformUniform {
+            transform: transform.compute_matrix().to_cols_array_2d(),
+            normal: Mat3::from_quat(transform.rotation).to_cols_array_2d(),
+            _pad0: [0; 3],
+        };
+
         let buffer = device.0.create_buffer_init(&BufferInitDescriptor {
             label: Some("transform_matrix_buffer"),
-            contents: bytemuck::cast_slice(&[mat.mat]),
+            contents: bytemuck::cast_slice(&[buf]),
             usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
         });
 

@@ -46,7 +46,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     color *= light;
     
-    // return color;
+    //return color;
     return show_normals(in);
 }
 
@@ -82,7 +82,8 @@ fn show_normals(in: VertexOutput) -> vec4<f32> {
     let normal = textureSample(normal_texture, normal_sampler, in.uv).xyz;
 
     //let tangent_normal = normal.xyz * 2.0 - 1.0;
-    let n = in.tangent_view_pos;
+    //let n = normal * 2.0 - 1.0;
+    let n = (in.tangent_light_pos - in.tangent_pos) * normal;
 
     return vec4(n, 1.0);
 }

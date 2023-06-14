@@ -5,6 +5,7 @@ struct CameraProjection {
 
 struct MeshMatrix {
     mat: mat4x4<f32>,
+    normal: mat3x3<f32>,
 };
 
 @group(0) @binding(0)
@@ -39,9 +40,9 @@ fn vs_main(model: VertexInput) -> VertexOutput {
     out.world_position = world_position.xyz;
     
     // Normal
-    let normal = normalize((mesh.mat * vec4<f32>(model.normal, 0.0)).xyz);
-    let tangent = normalize((mesh.mat * vec4<f32>(model.tangent, 0.0)).xyz);
-    let bitangent = normalize((mesh.mat * vec4<f32>(model.bitangent, 0.0)).xyz);
+    let normal = normalize(mesh.normal * model.normal);
+    let tangent = normalize(mesh.normal * model.tangent);
+    let bitangent = normalize(mesh.normal * model.bitangent);
     let tangent_matrix = transpose(mat3x3(
         tangent,
         bitangent,

@@ -13,7 +13,7 @@ use wgpu::{
 
 use crate::color::Color;
 use crate::mesh::Mesh;
-use crate::pipeline::{MaterialPipeline, MeshPipeline};
+use crate::pipeline::{MaterialPipeline, MeshPipeline, TransformUniform, TransformationMatrix};
 use crate::texture::{Image, ImageHandle, Images};
 use crate::{RenderDevice, RenderQueue};
 
@@ -147,7 +147,7 @@ pub fn prepare_materials(
 
         let transform_buffer = device.0.create_buffer_init(&BufferInitDescriptor {
             label: Some("mesh_transform"),
-            contents: bytemuck::cast_slice(&[transform.compute_matrix()]),
+            contents: bytemuck::cast_slice(&[TransformUniform::from(*transform)]),
             usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
         });
 
