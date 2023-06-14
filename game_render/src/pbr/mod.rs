@@ -13,7 +13,7 @@ use wgpu::{
 
 use crate::color::Color;
 use crate::mesh::Mesh;
-use crate::pipeline::{MaterialPipeline, MeshPipeline};
+use crate::pipeline::{MaterialPipeline, MeshPipeline, TransformUniform, TransformationMatrix};
 use crate::texture::{Image, ImageHandle, Images};
 use crate::{RenderDevice, RenderQueue};
 
@@ -125,7 +125,7 @@ pub fn prepare_materials(
     device: Res<RenderDevice>,
     queue: Res<RenderQueue>,
     nodes: Query<(&Handle<Mesh>, &Handle<PbrMaterial>, &Transform)>,
-    meshes: ResMut<Assets<Mesh>>,
+    mut meshes: ResMut<Assets<Mesh>>,
     materials: ResMut<Assets<PbrMaterial>>,
     mut render_assets: ResMut<RenderMaterialAssets>,
     material_pipeline: Res<MaterialPipeline>,
@@ -135,7 +135,7 @@ pub fn prepare_materials(
     render_assets.entities.clear();
 
     for (mesh, material, transform) in &nodes {
-        let Some(mesh) = meshes.get(mesh.id()) else {
+        let Some(mesh) = meshes.get_mut(mesh.id()) else {
             continue;
         };
 
@@ -143,9 +143,11 @@ pub fn prepare_materials(
             continue;
         };
 
+        mesh.compute_tangents();
+
         let transform_buffer = device.0.create_buffer_init(&BufferInitDescriptor {
             label: Some("mesh_transform"),
-            contents: bytemuck::cast_slice(&[transform.compute_matrix()]),
+            contents: bytemuck::cast_slice(&[TransformUniform::from(*transform)]),
             usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
         });
 
