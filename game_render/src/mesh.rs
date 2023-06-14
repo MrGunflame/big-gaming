@@ -120,14 +120,14 @@ impl Mesh {
             let bitangent = (delta_pos2 * delta_uv1.x - delta_pos1 * delta_uv2.x) * -f;
 
             self.tangents[c[0] as usize] =
-                (Vec3::from_array(self.tangents[c[0] as usize]) * tangent).to_array();
+                (Vec3::from_array(self.tangents[c[0] as usize]) + tangent).to_array();
             self.tangents[c[1] as usize] =
                 (Vec3::from_array(self.tangents[c[1] as usize]) + tangent).to_array();
             self.tangents[c[2] as usize] =
                 (Vec3::from_array(self.tangents[c[2] as usize]) + tangent).to_array();
 
             self.bitangents[c[0] as usize] =
-                (Vec3::from_array(self.bitangents[c[0] as usize]) * bitangent).to_array();
+                (Vec3::from_array(self.bitangents[c[0] as usize]) + bitangent).to_array();
             self.bitangents[c[1] as usize] =
                 (Vec3::from_array(self.bitangents[c[1] as usize]) + bitangent).to_array();
             self.bitangents[c[2] as usize] =
@@ -239,3 +239,28 @@ impl Vertex {
 }
 
 impl Asset for Mesh {}
+
+#[cfg(test)]
+mod tests {
+    use super::{Indices, Mesh};
+
+    #[test]
+    fn mesh_computed_tangents() {
+        let mut mesh = Mesh::new();
+        mesh.set_positions(vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0]]);
+        mesh.set_uvs(vec![[0.0, 0.0], [1.0, 0.0], [1.0, 1.0]]);
+        mesh.set_indices(Indices::U32(vec![0, 1, 2]));
+        mesh.set_normals(vec![[0.0, 0.0, 1.0], [0.0, 0.0, 1.0], [0.0, 0.0, 1.0]]);
+
+        mesh.compute_tangents();
+
+        assert_eq!(
+            mesh.tangents,
+            vec![[1.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 0.0, 0.0]]
+        );
+        assert_eq!(
+            mesh.bitangents,
+            vec![[0.0, -1.0, 0.0], [0.0, -1.0, 0.0], [0.0, -1.0, 0.0]]
+        );
+    }
+}
