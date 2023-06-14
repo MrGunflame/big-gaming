@@ -39,15 +39,15 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     var l: DirectionalLight;
     l.direction = vec3(1.0, 0.0, 0.0);
     l.color = vec3(1.0, 1.0, 1.0);
-    l.ambient = 0.0;
+    l.ambient = 0.1;
     l.diffuse = 1.0;
     l.specular = 1.0;
     let light = directional_light(in, l, tangent_normal);
 
     color *= light;
     
-    //return color;
-    return show_normals(in);
+    return color;
+    //return show_normals(in);
 }
 
 struct DirectionalLight {
