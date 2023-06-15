@@ -13,17 +13,18 @@ use glam::{Mat3, Mat4, UVec2, Vec3, Vec4};
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
 use wgpu::{
     AddressMode, BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout,
-    BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindingResource, BindingType, BlendState,
-    Buffer, BufferAddress, BufferBindingType, BufferDescriptor, BufferUsages, Color,
-    ColorTargetState, ColorWrites, CompareFunction, DepthBiasState, DepthStencilState, Device,
-    Extent3d, Face, FilterMode, FragmentState, FrontFace, ImageCopyBuffer, ImageCopyTexture,
-    IndexFormat, LoadOp, MultisampleState, Operations, PipelineLayoutDescriptor, PolygonMode,
-    PrimitiveState, PrimitiveTopology, RenderPassColorAttachment, RenderPassDepthStencilAttachment,
-    RenderPassDescriptor, RenderPipeline, RenderPipelineDescriptor, Sampler, SamplerBindingType,
-    SamplerDescriptor, ShaderModule, ShaderModuleDescriptor, ShaderSource, ShaderStages,
-    StencilState, Texture, TextureDescriptor, TextureDimension, TextureFormat, TextureSampleType,
-    TextureUsages, TextureView, TextureViewDescriptor, TextureViewDimension, VertexAttribute,
-    VertexBufferLayout, VertexFormat, VertexState, VertexStepMode,
+    BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindingResource, BindingType, BlendComponent,
+    BlendFactor, BlendOperation, BlendState, Buffer, BufferAddress, BufferBindingType,
+    BufferDescriptor, BufferUsages, Color, ColorTargetState, ColorWrites, CompareFunction,
+    DepthBiasState, DepthStencilState, Device, Extent3d, Face, FilterMode, FragmentState,
+    FrontFace, ImageCopyBuffer, ImageCopyTexture, IndexFormat, LoadOp, MultisampleState,
+    Operations, PipelineLayoutDescriptor, PolygonMode, PrimitiveState, PrimitiveTopology,
+    RenderPassColorAttachment, RenderPassDepthStencilAttachment, RenderPassDescriptor,
+    RenderPipeline, RenderPipelineDescriptor, Sampler, SamplerBindingType, SamplerDescriptor,
+    ShaderModule, ShaderModuleDescriptor, ShaderSource, ShaderStages, StencilState, Texture,
+    TextureDescriptor, TextureDimension, TextureFormat, TextureSampleType, TextureUsages,
+    TextureView, TextureViewDescriptor, TextureViewDimension, VertexAttribute, VertexBufferLayout,
+    VertexFormat, VertexState, VertexStepMode,
 };
 
 use crate::camera::{Projection, OPENGL_TO_WGPU};
@@ -460,7 +461,7 @@ impl Node for MainPass {
         // Final pass
         {
             let device = world.resource::<RenderDevice>();
-            let data = world.resource::<RenderPass>();
+            let data = world.resource::<LightingPipeline>();
             let mesh_pipeline = world.resource::<MeshPipeline>();
 
             let bind_group = device.0.create_bind_group(&BindGroupDescriptor {
@@ -496,7 +497,7 @@ impl Node for MainPass {
                     view: &ctx.view,
                     resolve_target: None,
                     ops: Operations {
-                        load: LoadOp::Load,
+                        load: LoadOp::Clear(Color::BLACK),
                         store: true,
                     },
                 })],
@@ -505,25 +506,30 @@ impl Node for MainPass {
 
             render_pass.set_pipeline(&data.pipeline);
 
-            render_pass.set_bind_group(0, &bind_group, &[]);
-            render_pass.set_vertex_buffer(0, data.vertices.slice(..));
-            render_pass.set_index_buffer(data.indices.slice(..), IndexFormat::Uint16);
+            for node in &nodes.lights {
+                render_pass.set_bind_group(0, &bind_group, &[]);
+                render_pass.set_bind_group(1, &node.bind_group, &[]);
 
-            render_pass.draw_indexed(0..RenderPass::NUM_VERTICES, 0, 0..1);
+                render_pass.set_vertex_buffer(0, data.vertices.slice(..));
+                render_pass.set_index_buffer(data.indices.slice(..), IndexFormat::Uint16);
+
+                render_pass.draw_indexed(0..LightingPipeline::NUM_VERTICES, 0, 0..1);
+            }
         }
     }
 }
 
 #[derive(Debug, Resource)]
-pub(crate) struct RenderPass {
+pub struct LightingPipeline {
     pipeline: RenderPipeline,
     vertices: Buffer,
     indices: Buffer,
     bind_group_layout: BindGroupLayout,
     sampler: Sampler,
+    pub light_bind_group_layout: BindGroupLayout,
 }
 
-impl RenderPass {
+impl LightingPipeline {
     const INDICES: &[u16] = &[0, 1, 2, 2, 3, 0];
     const NUM_VERTICES: u32 = Self::INDICES.len() as u32;
 
@@ -576,19 +582,19 @@ impl RenderPass {
         }
 
         let vertices = device.create_buffer_init(&BufferInitDescriptor {
-            label: Some("render_pass_vertex_buffer"),
+            label: Some("lighting_pass_vertex_buffer"),
             contents: bytemuck::cast_slice(VERTICES),
             usage: BufferUsages::VERTEX,
         });
 
         let indices = device.create_buffer_init(&BufferInitDescriptor {
-            label: Some("render_pass_index_buffer"),
+            label: Some("lighting_pass_index_buffer"),
             contents: bytemuck::cast_slice(Self::INDICES),
             usage: BufferUsages::INDEX,
         });
 
         let bind_group_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
-            label: Some("final_render_pass_bind_group_layout"),
+            label: Some("lighting_pass_bind_group_layout"),
             entries: &[
                 BindGroupLayoutEntry {
                     binding: 0,
@@ -639,19 +645,33 @@ impl RenderPass {
             ],
         });
 
+        let light_bind_group_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
+            label: Some("lighting_pass_bind_group_layout"),
+            entries: &[BindGroupLayoutEntry {
+                binding: 0,
+                visibility: ShaderStages::FRAGMENT,
+                ty: BindingType::Buffer {
+                    ty: BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            }],
+        });
+
         let pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
-            label: Some("render_pass_pipeline_layout"),
-            bind_group_layouts: &[&bind_group_layout],
+            label: Some("lighting_pass_pipeline_layout"),
+            bind_group_layouts: &[&bind_group_layout, &light_bind_group_layout],
             push_constant_ranges: &[],
         });
 
         let shader = device.create_shader_module(ShaderModuleDescriptor {
-            label: Some("final_pass_shader"),
-            source: ShaderSource::Wgsl(include_str!("final_pass.wgsl").into()),
+            label: Some("lighting_pass_shader"),
+            source: ShaderSource::Wgsl(include_str!("lighting_pass.wgsl").into()),
         });
 
         let pipeline = device.create_render_pipeline(&RenderPipelineDescriptor {
-            label: Some("final_pass_pipeline"),
+            label: Some("lighting_pass_pipeline"),
             layout: Some(&pipeline_layout),
             vertex: VertexState {
                 module: &shader,
@@ -663,7 +683,14 @@ impl RenderPass {
                 entry_point: "fs_main",
                 targets: &[Some(ColorTargetState {
                     format: TextureFormat::Bgra8UnormSrgb,
-                    blend: Some(BlendState::ALPHA_BLENDING),
+                    blend: Some(BlendState {
+                        color: BlendComponent {
+                            src_factor: BlendFactor::One,
+                            dst_factor: BlendFactor::One,
+                            operation: BlendOperation::Add,
+                        },
+                        alpha: BlendComponent::OVER,
+                    }),
                     write_mask: ColorWrites::ALL,
                 })],
             }),
@@ -701,11 +728,12 @@ impl RenderPass {
             indices,
             bind_group_layout,
             sampler,
+            light_bind_group_layout,
         }
     }
 }
 
-impl FromWorld for RenderPass {
+impl FromWorld for LightingPipeline {
     fn from_world(world: &mut bevy_ecs::world::World) -> Self {
         world.resource_scope::<RenderDevice, _>(|world, device| Self::new(&device.0))
     }
@@ -897,4 +925,13 @@ impl GBuffer {
             }),
         ]
     }
+}
+
+#[derive(Copy, Clone, Debug, Zeroable, Pod)]
+#[repr(C)]
+pub(crate) struct LightUniform {
+    pub color: [f32; 3],
+    pub _pad0: u32,
+    pub position: [f32; 3],
+    pub _pad1: u32,
 }

@@ -5,7 +5,7 @@ use crate::color::Color;
 
 #[derive(Copy, Clone, Debug, Component)]
 pub struct DirectionalLight {
-    pub color: Color,
+    pub color: [f32; 3],
     pub illuminance: f32,
 }
 
