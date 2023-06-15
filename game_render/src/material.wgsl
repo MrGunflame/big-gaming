@@ -27,6 +27,9 @@ struct VertexOutput {
     @location(3) tangent_light_pos: vec3<f32>,
     @location(4) tangent_view_pos: vec3<f32>,
     @location(5) tangent_pos: vec3<f32>,
+    @location(6) normal_matrix_0: vec4<f32>,
+    @location(7) normal_matrix_1: vec4<f32>,
+    @location(8) normal_matrix_2: vec4<f32>,
 };
 
 // GBuffer output
@@ -56,9 +59,11 @@ fn fs_main(in: VertexOutput) -> GBuffer {
     //return color;
     //return show_normals(in);
 
+    let normal_matrix = mat3x3(in.normal_matrix_0.xyz, in.normal_matrix_1.xyz, in.normal_matrix_2.xyz);
+
     var gbuffer: GBuffer;
     gbuffer.position = vec4(in.world_position, 1.0);
-    gbuffer.normal = vec4(in.world_normal, 1.0);
+    gbuffer.normal = vec4((normal.xyz) * normal_matrix, 1.0);
     gbuffer.albedo = color;
     return gbuffer;
 }
