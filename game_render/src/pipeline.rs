@@ -14,16 +14,16 @@ use wgpu::util::{BufferInitDescriptor, DeviceExt};
 use wgpu::{
     AddressMode, BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout,
     BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindingResource, BindingType, BlendState,
-    Buffer, BufferAddress, BufferBindingType, BufferUsages, Color, ColorTargetState, ColorWrites,
-    CompareFunction, DepthBiasState, DepthStencilState, Device, Extent3d, Face, FilterMode,
-    FragmentState, FrontFace, IndexFormat, LoadOp, MultisampleState, Operations,
-    PipelineLayoutDescriptor, PolygonMode, PrimitiveState, PrimitiveTopology,
-    RenderPassColorAttachment, RenderPassDepthStencilAttachment, RenderPassDescriptor,
-    RenderPipeline, RenderPipelineDescriptor, Sampler, SamplerBindingType, SamplerDescriptor,
-    ShaderModule, ShaderModuleDescriptor, ShaderSource, ShaderStages, StencilState, Texture,
-    TextureDescriptor, TextureDimension, TextureFormat, TextureSampleType, TextureUsages,
-    TextureView, TextureViewDescriptor, TextureViewDimension, VertexAttribute, VertexBufferLayout,
-    VertexFormat, VertexState, VertexStepMode,
+    Buffer, BufferAddress, BufferBindingType, BufferDescriptor, BufferUsages, Color,
+    ColorTargetState, ColorWrites, CompareFunction, DepthBiasState, DepthStencilState, Device,
+    Extent3d, Face, FilterMode, FragmentState, FrontFace, ImageCopyBuffer, ImageCopyTexture,
+    IndexFormat, LoadOp, MultisampleState, Operations, PipelineLayoutDescriptor, PolygonMode,
+    PrimitiveState, PrimitiveTopology, RenderPassColorAttachment, RenderPassDepthStencilAttachment,
+    RenderPassDescriptor, RenderPipeline, RenderPipelineDescriptor, Sampler, SamplerBindingType,
+    SamplerDescriptor, ShaderModule, ShaderModuleDescriptor, ShaderSource, ShaderStages,
+    StencilState, Texture, TextureDescriptor, TextureDimension, TextureFormat, TextureSampleType,
+    TextureUsages, TextureView, TextureViewDescriptor, TextureViewDimension, VertexAttribute,
+    VertexBufferLayout, VertexFormat, VertexState, VertexStepMode,
 };
 
 use crate::camera::{Projection, OPENGL_TO_WGPU};
@@ -504,16 +504,20 @@ impl RenderPass {
     fn new(device: &Device) -> Self {
         const VERTICES: &[Vertex] = &[
             Vertex {
-                position: [0.0, 1.0],
+                position: [-1.0, 1.0],
+                uv: [0.0, 0.0],
             },
             Vertex {
-                position: [0.0, 0.0],
+                position: [-1.0, -1.0],
+                uv: [0.0, 1.0],
             },
             Vertex {
-                position: [1.0, 0.0],
+                position: [1.0, -1.0],
+                uv: [1.0, 1.0],
             },
             Vertex {
                 position: [1.0, 1.0],
+                uv: [1.0, 0.0],
             },
         ];
 
@@ -521,6 +525,7 @@ impl RenderPass {
         #[repr(C)]
         struct Vertex {
             position: [f32; 2],
+            uv: [f32; 2],
         }
 
         impl Vertex {
@@ -528,11 +533,18 @@ impl RenderPass {
                 VertexBufferLayout {
                     array_stride: std::mem::size_of::<Self>() as BufferAddress,
                     step_mode: VertexStepMode::Vertex,
-                    attributes: &[VertexAttribute {
-                        offset: 0,
-                        shader_location: 0,
-                        format: VertexFormat::Float32x2,
-                    }],
+                    attributes: &[
+                        VertexAttribute {
+                            offset: 0,
+                            shader_location: 0,
+                            format: VertexFormat::Float32x2,
+                        },
+                        VertexAttribute {
+                            offset: std::mem::size_of::<[f32; 2]>() as BufferAddress,
+                            shader_location: 1,
+                            format: VertexFormat::Float32x2,
+                        },
+                    ],
                 }
             }
         }

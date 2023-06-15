@@ -5,6 +5,7 @@ var d_sampler: sampler;
 
 struct VertexInput {
     @location(0) position: vec2<f32>,
+    @location(1) uv: vec2<f32>,
 }
 
 struct VertexOutput {
@@ -16,8 +17,8 @@ struct VertexOutput {
 fn vs_main(in: VertexInput) -> VertexOutput {
     var out: VertexOutput;
 
-    out.clip_position = vec4(in.position.x * 2.0 - 1.0, in.position.y * 2.0 - 1.0, 0.0, 0.0);
-    out.uv = in.position;
+    out.clip_position = vec4(in.position.x, in.position.y, 0.0, 1.0);
+    out.uv = in.uv;
     
     return out;
 }

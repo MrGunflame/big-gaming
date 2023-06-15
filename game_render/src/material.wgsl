@@ -56,7 +56,7 @@ fn fs_main(in: VertexOutput) -> GBuffer {
     //return show_normals(in);
 
     var gbuffer: GBuffer;
-    gbuffer.position = vec4(1.0, 1.0, 1.0, 1.0);
+    gbuffer.position = vec4(color.x, color.y, color.z, 1.0);
     gbuffer.normal = vec4(1.0, 1.0, 1.0, 1.0);
     return gbuffer;
 }
