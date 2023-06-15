@@ -461,6 +461,7 @@ impl Node for MainPass {
         {
             let device = world.resource::<RenderDevice>();
             let data = world.resource::<RenderPass>();
+            let mesh_pipeline = world.resource::<MeshPipeline>();
 
             let bind_group = device.0.create_bind_group(&BindGroupDescriptor {
                 label: Some("final_pass_bind_group"),
@@ -468,11 +469,23 @@ impl Node for MainPass {
                 entries: &[
                     BindGroupEntry {
                         binding: 0,
-                        resource: BindingResource::TextureView(&normal_view),
+                        resource: BindingResource::TextureView(&position_view),
                     },
                     BindGroupEntry {
                         binding: 1,
                         resource: BindingResource::Sampler(&data.sampler),
+                    },
+                    BindGroupEntry {
+                        binding: 2,
+                        resource: BindingResource::TextureView(&normal_view),
+                    },
+                    BindGroupEntry {
+                        binding: 3,
+                        resource: BindingResource::TextureView(&albdeo_view),
+                    },
+                    BindGroupEntry {
+                        binding: 4,
+                        resource: mesh_pipeline.camera_buffer.as_entire_binding(),
                     },
                 ],
             });
@@ -591,6 +604,36 @@ impl RenderPass {
                     binding: 1,
                     visibility: ShaderStages::FRAGMENT,
                     ty: BindingType::Sampler(SamplerBindingType::Filtering),
+                    count: None,
+                },
+                BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: ShaderStages::FRAGMENT,
+                    ty: BindingType::Texture {
+                        sample_type: TextureSampleType::Float { filterable: true },
+                        view_dimension: TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                BindGroupLayoutEntry {
+                    binding: 3,
+                    visibility: ShaderStages::FRAGMENT,
+                    ty: BindingType::Texture {
+                        sample_type: TextureSampleType::Float { filterable: true },
+                        view_dimension: TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                BindGroupLayoutEntry {
+                    binding: 4,
+                    visibility: ShaderStages::FRAGMENT,
+                    ty: BindingType::Buffer {
+                        ty: BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
                     count: None,
                 },
             ],

@@ -57,7 +57,7 @@ fn fs_main(in: VertexOutput) -> GBuffer {
     //return show_normals(in);
 
     var gbuffer: GBuffer;
-    gbuffer.position = in.position;
+    gbuffer.position = vec4(in.world_position, 1.0);
     gbuffer.normal = vec4(in.world_normal, 1.0);
     gbuffer.albedo = color;
     return gbuffer;
