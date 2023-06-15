@@ -9,25 +9,26 @@ use bytemuck::{Pod, Zeroable};
 use game_common::components::transform::Transform;
 use game_window::events::{WindowCreated, WindowDestroyed, WindowResized};
 use game_window::WindowState;
-use glam::{Mat3, Mat4, UVec2, Vec3};
+use glam::{Mat3, Mat4, UVec2, Vec3, Vec4};
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
 use wgpu::{
-    AddressMode, BindGroup, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
-    BindGroupLayoutEntry, BindingResource, BindingType, BlendState, Buffer, BufferBindingType,
-    BufferUsages, ColorTargetState, ColorWrites, CompareFunction, DepthBiasState,
-    DepthStencilState, Device, Face, FilterMode, FragmentState, FrontFace, IndexFormat, LoadOp,
-    MultisampleState, Operations, PipelineLayoutDescriptor, PolygonMode, PrimitiveState,
-    PrimitiveTopology, RenderPassColorAttachment, RenderPassDepthStencilAttachment,
+    AddressMode, BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout,
+    BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindingResource, BindingType, BlendState,
+    Buffer, BufferAddress, BufferBindingType, BufferDescriptor, BufferUsages, Color,
+    ColorTargetState, ColorWrites, CompareFunction, DepthBiasState, DepthStencilState, Device,
+    Extent3d, Face, FilterMode, FragmentState, FrontFace, ImageCopyBuffer, ImageCopyTexture,
+    IndexFormat, LoadOp, MultisampleState, Operations, PipelineLayoutDescriptor, PolygonMode,
+    PrimitiveState, PrimitiveTopology, RenderPassColorAttachment, RenderPassDepthStencilAttachment,
     RenderPassDescriptor, RenderPipeline, RenderPipelineDescriptor, Sampler, SamplerBindingType,
     SamplerDescriptor, ShaderModule, ShaderModuleDescriptor, ShaderSource, ShaderStages,
-    StencilState, Texture, TextureFormat, TextureSampleType, TextureView, TextureViewDescriptor,
-    TextureViewDimension, VertexState,
+    StencilState, Texture, TextureDescriptor, TextureDimension, TextureFormat, TextureSampleType,
+    TextureUsages, TextureView, TextureViewDescriptor, TextureViewDimension, VertexAttribute,
+    VertexBufferLayout, VertexFormat, VertexState, VertexStepMode,
 };
 
 use crate::camera::{Projection, OPENGL_TO_WGPU};
 use crate::depth_stencil::{create_depth_texture, DEPTH_TEXTURE_FORMAT};
 use crate::graph::Node;
-use crate::material::{ComputedMaterial, ComputedMesh};
 use crate::mesh::{Mesh, Vertex};
 use crate::pbr::RenderMaterialAssets;
 use crate::RenderDevice;
@@ -190,11 +191,7 @@ impl MaterialPipeline {
             fragment: Some(FragmentState {
                 module: &shader,
                 entry_point: "fs_main",
-                targets: &[Some(ColorTargetState {
-                    format: TextureFormat::Bgra8UnormSrgb,
-                    blend: Some(BlendState::ALPHA_BLENDING),
-                    write_mask: ColorWrites::ALL,
-                })],
+                targets: GBuffer::targets(),
             }),
             primitive: PrimitiveState {
                 topology: PrimitiveTopology::TriangleList,
@@ -391,16 +388,50 @@ impl Node for MainPass {
             return;
         }
 
+        // Geometry pass
+
+        let position_view = window
+            .g_buffer
+            .position
+            .create_view(&TextureViewDescriptor::default());
+        let normal_view = window
+            .g_buffer
+            .normal
+            .create_view(&TextureViewDescriptor::default());
+
+        let albdeo_view = window
+            .g_buffer
+            .albedo
+            .create_view(&TextureViewDescriptor::default());
+
         let mut render_pass = ctx.encoder.begin_render_pass(&RenderPassDescriptor {
             label: Some("main_pass"),
-            color_attachments: &[Some(RenderPassColorAttachment {
-                view: &ctx.view,
-                resolve_target: None,
-                ops: Operations {
-                    load: wgpu::LoadOp::Load,
-                    store: true,
-                },
-            })],
+            color_attachments: &[
+                Some(RenderPassColorAttachment {
+                    view: &position_view,
+                    resolve_target: None,
+                    ops: Operations {
+                        load: LoadOp::Clear(Color::BLACK),
+                        store: true,
+                    },
+                }),
+                Some(RenderPassColorAttachment {
+                    view: &normal_view,
+                    resolve_target: None,
+                    ops: Operations {
+                        load: LoadOp::Clear(Color::BLACK),
+                        store: true,
+                    },
+                }),
+                Some(RenderPassColorAttachment {
+                    view: &albdeo_view,
+                    resolve_target: None,
+                    ops: Operations {
+                        load: LoadOp::Clear(Color::BLACK),
+                        store: true,
+                    },
+                }),
+            ],
             depth_stencil_attachment: Some(RenderPassDepthStencilAttachment {
                 view: &window.depth_texture_view,
                 depth_ops: Some(Operations {
@@ -423,38 +454,260 @@ impl Node for MainPass {
 
             render_pass.draw_indexed(0..node.num_vertices, 0, 0..1);
         }
+
+        drop(render_pass);
+
+        // Final pass
+        {
+            let device = world.resource::<RenderDevice>();
+            let data = world.resource::<RenderPass>();
+            let mesh_pipeline = world.resource::<MeshPipeline>();
+
+            let bind_group = device.0.create_bind_group(&BindGroupDescriptor {
+                label: Some("final_pass_bind_group"),
+                layout: &data.bind_group_layout,
+                entries: &[
+                    BindGroupEntry {
+                        binding: 0,
+                        resource: BindingResource::TextureView(&position_view),
+                    },
+                    BindGroupEntry {
+                        binding: 1,
+                        resource: BindingResource::Sampler(&data.sampler),
+                    },
+                    BindGroupEntry {
+                        binding: 2,
+                        resource: BindingResource::TextureView(&normal_view),
+                    },
+                    BindGroupEntry {
+                        binding: 3,
+                        resource: BindingResource::TextureView(&albdeo_view),
+                    },
+                    BindGroupEntry {
+                        binding: 4,
+                        resource: mesh_pipeline.camera_buffer.as_entire_binding(),
+                    },
+                ],
+            });
+
+            let mut render_pass = ctx.encoder.begin_render_pass(&RenderPassDescriptor {
+                label: Some("render_pass"),
+                color_attachments: &[Some(RenderPassColorAttachment {
+                    view: &ctx.view,
+                    resolve_target: None,
+                    ops: Operations {
+                        load: LoadOp::Load,
+                        store: true,
+                    },
+                })],
+                depth_stencil_attachment: None,
+            });
+
+            render_pass.set_pipeline(&data.pipeline);
+
+            render_pass.set_bind_group(0, &bind_group, &[]);
+            render_pass.set_vertex_buffer(0, data.vertices.slice(..));
+            render_pass.set_index_buffer(data.indices.slice(..), IndexFormat::Uint16);
+
+            render_pass.draw_indexed(0..RenderPass::NUM_VERTICES, 0, 0..1);
+        }
     }
 }
 
-#[derive(Debug, Component)]
-pub struct TransformationMatrix {
-    pub mat: Mat4,
-    pub buffer: Buffer,
+#[derive(Debug, Resource)]
+pub(crate) struct RenderPass {
+    pipeline: RenderPipeline,
+    vertices: Buffer,
+    indices: Buffer,
+    bind_group_layout: BindGroupLayout,
+    sampler: Sampler,
 }
 
-pub fn create_transformatio_matrix(
-    device: Res<RenderDevice>,
-    mut commands: Commands,
-    meshes: Query<(Entity, &Transform), (With<Mesh>, Added<Transform>)>,
-) {
-    for (entity, transform) in &meshes {
-        let mat = transform.compute_matrix();
+impl RenderPass {
+    const INDICES: &[u16] = &[0, 1, 2, 2, 3, 0];
+    const NUM_VERTICES: u32 = Self::INDICES.len() as u32;
 
-        let buf = TransformUniform {
-            transform: transform.compute_matrix().to_cols_array_2d(),
-            normal: Mat3::from_quat(transform.rotation).to_cols_array_2d(),
-            _pad0: [0; 3],
-        };
+    fn new(device: &Device) -> Self {
+        const VERTICES: &[Vertex] = &[
+            Vertex {
+                position: [-1.0, 1.0],
+                uv: [0.0, 0.0],
+            },
+            Vertex {
+                position: [-1.0, -1.0],
+                uv: [0.0, 1.0],
+            },
+            Vertex {
+                position: [1.0, -1.0],
+                uv: [1.0, 1.0],
+            },
+            Vertex {
+                position: [1.0, 1.0],
+                uv: [1.0, 0.0],
+            },
+        ];
 
-        let buffer = device.0.create_buffer_init(&BufferInitDescriptor {
-            label: Some("transform_matrix_buffer"),
-            contents: bytemuck::cast_slice(&[buf]),
-            usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
+        #[derive(Copy, Clone, Debug, Zeroable, Pod)]
+        #[repr(C)]
+        struct Vertex {
+            position: [f32; 2],
+            uv: [f32; 2],
+        }
+
+        impl Vertex {
+            fn layout<'a>() -> VertexBufferLayout<'a> {
+                VertexBufferLayout {
+                    array_stride: std::mem::size_of::<Self>() as BufferAddress,
+                    step_mode: VertexStepMode::Vertex,
+                    attributes: &[
+                        VertexAttribute {
+                            offset: 0,
+                            shader_location: 0,
+                            format: VertexFormat::Float32x2,
+                        },
+                        VertexAttribute {
+                            offset: std::mem::size_of::<[f32; 2]>() as BufferAddress,
+                            shader_location: 1,
+                            format: VertexFormat::Float32x2,
+                        },
+                    ],
+                }
+            }
+        }
+
+        let vertices = device.create_buffer_init(&BufferInitDescriptor {
+            label: Some("render_pass_vertex_buffer"),
+            contents: bytemuck::cast_slice(VERTICES),
+            usage: BufferUsages::VERTEX,
         });
 
-        commands
-            .entity(entity)
-            .insert(TransformationMatrix { mat, buffer });
+        let indices = device.create_buffer_init(&BufferInitDescriptor {
+            label: Some("render_pass_index_buffer"),
+            contents: bytemuck::cast_slice(Self::INDICES),
+            usage: BufferUsages::INDEX,
+        });
+
+        let bind_group_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
+            label: Some("final_render_pass_bind_group_layout"),
+            entries: &[
+                BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: ShaderStages::FRAGMENT,
+                    ty: BindingType::Texture {
+                        sample_type: TextureSampleType::Float { filterable: true },
+                        view_dimension: TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: ShaderStages::FRAGMENT,
+                    ty: BindingType::Sampler(SamplerBindingType::Filtering),
+                    count: None,
+                },
+                BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: ShaderStages::FRAGMENT,
+                    ty: BindingType::Texture {
+                        sample_type: TextureSampleType::Float { filterable: true },
+                        view_dimension: TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                BindGroupLayoutEntry {
+                    binding: 3,
+                    visibility: ShaderStages::FRAGMENT,
+                    ty: BindingType::Texture {
+                        sample_type: TextureSampleType::Float { filterable: true },
+                        view_dimension: TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                BindGroupLayoutEntry {
+                    binding: 4,
+                    visibility: ShaderStages::FRAGMENT,
+                    ty: BindingType::Buffer {
+                        ty: BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+            ],
+        });
+
+        let pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
+            label: Some("render_pass_pipeline_layout"),
+            bind_group_layouts: &[&bind_group_layout],
+            push_constant_ranges: &[],
+        });
+
+        let shader = device.create_shader_module(ShaderModuleDescriptor {
+            label: Some("final_pass_shader"),
+            source: ShaderSource::Wgsl(include_str!("final_pass.wgsl").into()),
+        });
+
+        let pipeline = device.create_render_pipeline(&RenderPipelineDescriptor {
+            label: Some("final_pass_pipeline"),
+            layout: Some(&pipeline_layout),
+            vertex: VertexState {
+                module: &shader,
+                entry_point: "vs_main",
+                buffers: &[Vertex::layout()],
+            },
+            fragment: Some(FragmentState {
+                module: &shader,
+                entry_point: "fs_main",
+                targets: &[Some(ColorTargetState {
+                    format: TextureFormat::Bgra8UnormSrgb,
+                    blend: Some(BlendState::ALPHA_BLENDING),
+                    write_mask: ColorWrites::ALL,
+                })],
+            }),
+            primitive: PrimitiveState {
+                topology: PrimitiveTopology::TriangleList,
+                strip_index_format: None,
+                front_face: FrontFace::Ccw,
+                cull_mode: Some(Face::Back),
+                polygon_mode: PolygonMode::Fill,
+                unclipped_depth: false,
+                conservative: false,
+            },
+            depth_stencil: None,
+            multisample: MultisampleState {
+                count: 1,
+                mask: !0,
+                alpha_to_coverage_enabled: false,
+            },
+            multiview: None,
+        });
+
+        let sampler = device.create_sampler(&SamplerDescriptor {
+            address_mode_u: AddressMode::ClampToEdge,
+            address_mode_v: AddressMode::ClampToEdge,
+            address_mode_w: AddressMode::ClampToEdge,
+            mag_filter: FilterMode::Linear,
+            min_filter: FilterMode::Nearest,
+            mipmap_filter: FilterMode::Nearest,
+            ..Default::default()
+        });
+
+        Self {
+            pipeline,
+            vertices,
+            indices,
+            bind_group_layout,
+            sampler,
+        }
+    }
+}
+
+impl FromWorld for RenderPass {
+    fn from_world(world: &mut bevy_ecs::world::World) -> Self {
+        world.resource_scope::<RenderDevice, _>(|world, device| Self::new(&device.0))
     }
 }
 
@@ -465,13 +718,16 @@ pub struct TransformUniform {
     // rotation matrix for normals/tangents
     // Note that we can't use the transform matrix for non-uniform
     // scaling values.
-    normal: [[f32; 3]; 3],
-    // align to 16
-    _pad0: [u32; 3],
+    normal: [[f32; 4]; 3],
 }
 
 impl From<Transform> for TransformUniform {
     fn from(value: Transform) -> Self {
+        let normal = Mat3::from_quat(value.rotation);
+        let normal_x = Vec4::new(normal.x_axis.x, normal.x_axis.y, normal.x_axis.z, 0.0);
+        let normal_y = Vec4::new(normal.y_axis.x, normal.y_axis.y, normal.y_axis.z, 0.0);
+        let normal_z = Vec4::new(normal.z_axis.x, normal.z_axis.y, normal.z_axis.z, 0.0);
+
         Self {
             transform: Mat4::from_scale_rotation_translation(
                 value.scale,
@@ -479,32 +735,12 @@ impl From<Transform> for TransformUniform {
                 value.translation,
             )
             .to_cols_array_2d(),
-            normal: Mat3::from_quat(value.rotation).to_cols_array_2d(),
-            _pad0: [0; 3],
+            normal: [
+                normal_x.to_array(),
+                normal_y.to_array(),
+                normal_z.to_array(),
+            ],
         }
-    }
-}
-
-pub fn update_transformation_matrix(
-    device: Res<RenderDevice>,
-    mut meshes: Query<(&Transform, &mut TransformationMatrix), Changed<Transform>>,
-) {
-    for (transform, mut mat) in &mut meshes {
-        mat.mat = transform.compute_matrix();
-
-        let buf = TransformUniform {
-            transform: transform.compute_matrix().to_cols_array_2d(),
-            normal: Mat3::from_quat(transform.rotation).to_cols_array_2d(),
-            _pad0: [0; 3],
-        };
-
-        let buffer = device.0.create_buffer_init(&BufferInitDescriptor {
-            label: Some("transform_matrix_buffer"),
-            contents: bytemuck::cast_slice(&[buf]),
-            usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
-        });
-
-        mat.buffer = buffer;
     }
 }
 
@@ -518,6 +754,7 @@ pub struct WindowData {
     depth_texture: Texture,
     depth_texture_view: TextureView,
     depth_sampler: Sampler,
+    g_buffer: GBuffer,
 }
 
 pub fn create_render_windows(
@@ -539,6 +776,7 @@ pub fn create_render_windows(
                 depth_texture,
                 depth_texture_view,
                 depth_sampler,
+                g_buffer: GBuffer::new(&device.0, size.width, size.height),
             },
         );
     }
@@ -576,5 +814,87 @@ pub fn resize_render_windows(
         window.depth_texture = depth_texture;
         window.depth_texture_view = depth_texture_view;
         window.depth_sampler = depth_sampler;
+
+        window.g_buffer = GBuffer::new(&device.0, event.width, event.height);
+    }
+}
+
+#[derive(Debug)]
+struct GBuffer {
+    position: Texture,
+    normal: Texture,
+    albedo: Texture,
+}
+
+impl GBuffer {
+    const FORMAT_POSITION: TextureFormat = TextureFormat::Rgba16Float;
+    const FORMAT_NORMAL: TextureFormat = TextureFormat::Rgba16Float;
+    const FORMAT_ALBEDO: TextureFormat = TextureFormat::Rgba16Float;
+
+    fn new(device: &Device, width: u32, height: u32) -> Self {
+        let size = Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        };
+
+        let position = device.create_texture(&TextureDescriptor {
+            label: Some("g_buffer_position"),
+            size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: TextureDimension::D2,
+            format: Self::FORMAT_POSITION,
+            usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        });
+
+        let normal = device.create_texture(&TextureDescriptor {
+            label: Some("g_buffer_normal"),
+            size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: TextureDimension::D2,
+            format: Self::FORMAT_NORMAL,
+            usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        });
+
+        let albedo = device.create_texture(&TextureDescriptor {
+            label: Some("g_buffer_albedo"),
+            size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: TextureDimension::D2,
+            format: Self::FORMAT_ALBEDO,
+            usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        });
+
+        GBuffer {
+            position,
+            normal,
+            albedo,
+        }
+    }
+
+    fn targets() -> &'static [Option<ColorTargetState>] {
+        &[
+            Some(ColorTargetState {
+                format: Self::FORMAT_POSITION,
+                blend: None,
+                write_mask: ColorWrites::ALL,
+            }),
+            Some(ColorTargetState {
+                format: Self::FORMAT_NORMAL,
+                blend: None,
+                write_mask: ColorWrites::ALL,
+            }),
+            Some(ColorTargetState {
+                format: Self::FORMAT_ALBEDO,
+                blend: None,
+                write_mask: ColorWrites::ALL,
+            }),
+        ]
     }
 }

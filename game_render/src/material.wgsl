@@ -27,10 +27,20 @@ struct VertexOutput {
     @location(3) tangent_light_pos: vec3<f32>,
     @location(4) tangent_view_pos: vec3<f32>,
     @location(5) tangent_pos: vec3<f32>,
+    @location(6) normal_matrix_0: vec4<f32>,
+    @location(7) normal_matrix_1: vec4<f32>,
+    @location(8) normal_matrix_2: vec4<f32>,
 };
 
+// GBuffer output
+struct GBuffer {
+    @location(0) position: vec4<f32>,
+    @location(1) normal: vec4<f32>,
+    @location(2) albedo: vec4<f32>,
+}
+
 @fragment
-fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+fn fs_main(in: VertexOutput) -> GBuffer {
     var color: vec4<f32> = base_color * textureSample(color_texture, color_texture_sampler, in.uv);
     let normal = textureSample(normal_texture, normal_sampler, in.uv);
 
@@ -44,10 +54,18 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     l.specular = 1.0;
     let light = directional_light(in, l, tangent_normal);
 
-    color *= light;
+    //color *= light;
     
-    return color;
+    //return color;
     //return show_normals(in);
+
+    let normal_matrix = mat3x3(in.normal_matrix_0.xyz, in.normal_matrix_1.xyz, in.normal_matrix_2.xyz);
+
+    var gbuffer: GBuffer;
+    gbuffer.position = vec4(in.world_position, 1.0);
+    gbuffer.normal = vec4((normal.xyz) * normal_matrix, 1.0);
+    gbuffer.albedo = color;
+    return gbuffer;
 }
 
 struct DirectionalLight {
