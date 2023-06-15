@@ -29,8 +29,14 @@ struct VertexOutput {
     @location(5) tangent_pos: vec3<f32>,
 };
 
+// GBuffer output
+struct GBuffer {
+    @location(0) position: vec4<f32>,
+    @location(1) normal: vec4<f32>,
+}
+
 @fragment
-fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+fn fs_main(in: VertexOutput) -> GBuffer {
     var color: vec4<f32> = base_color * textureSample(color_texture, color_texture_sampler, in.uv);
     let normal = textureSample(normal_texture, normal_sampler, in.uv);
 
@@ -46,8 +52,13 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     color *= light;
     
-    return color;
+    //return color;
     //return show_normals(in);
+
+    var gbuffer: GBuffer;
+    gbuffer.position = vec4(1.0, 1.0, 1.0, 1.0);
+    gbuffer.normal = vec4(1.0, 1.0, 1.0, 1.0);
+    return gbuffer;
 }
 
 struct DirectionalLight {
