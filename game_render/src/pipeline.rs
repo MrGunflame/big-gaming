@@ -9,7 +9,7 @@ use bytemuck::{Pod, Zeroable};
 use game_common::components::transform::Transform;
 use game_window::events::{WindowCreated, WindowDestroyed, WindowResized};
 use game_window::WindowState;
-use glam::{Mat3, Mat4, UVec2, Vec3};
+use glam::{Mat3, Mat4, UVec2, Vec3, Vec4};
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
 use wgpu::{
     AddressMode, BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout,
@@ -399,6 +399,11 @@ impl Node for MainPass {
             .normal
             .create_view(&TextureViewDescriptor::default());
 
+        let albdeo_view = window
+            .g_buffer
+            .albedo
+            .create_view(&TextureViewDescriptor::default());
+
         let mut render_pass = ctx.encoder.begin_render_pass(&RenderPassDescriptor {
             label: Some("main_pass"),
             color_attachments: &[
@@ -412,6 +417,14 @@ impl Node for MainPass {
                 }),
                 Some(RenderPassColorAttachment {
                     view: &normal_view,
+                    resolve_target: None,
+                    ops: Operations {
+                        load: LoadOp::Clear(Color::BLACK),
+                        store: true,
+                    },
+                }),
+                Some(RenderPassColorAttachment {
+                    view: &albdeo_view,
                     resolve_target: None,
                     ops: Operations {
                         load: LoadOp::Clear(Color::BLACK),
@@ -455,7 +468,7 @@ impl Node for MainPass {
                 entries: &[
                     BindGroupEntry {
                         binding: 0,
-                        resource: BindingResource::TextureView(&position_view),
+                        resource: BindingResource::TextureView(&normal_view),
                     },
                     BindGroupEntry {
                         binding: 1,
@@ -655,38 +668,6 @@ impl FromWorld for RenderPass {
     }
 }
 
-#[derive(Debug, Component)]
-pub struct TransformationMatrix {
-    pub mat: Mat4,
-    pub buffer: Buffer,
-}
-
-pub fn create_transformatio_matrix(
-    device: Res<RenderDevice>,
-    mut commands: Commands,
-    meshes: Query<(Entity, &Transform), (With<Mesh>, Added<Transform>)>,
-) {
-    for (entity, transform) in &meshes {
-        let mat = transform.compute_matrix();
-
-        let buf = TransformUniform {
-            transform: transform.compute_matrix().to_cols_array_2d(),
-            normal: Mat3::from_quat(transform.rotation).to_cols_array_2d(),
-            _pad0: [0; 3],
-        };
-
-        let buffer = device.0.create_buffer_init(&BufferInitDescriptor {
-            label: Some("transform_matrix_buffer"),
-            contents: bytemuck::cast_slice(&[buf]),
-            usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
-        });
-
-        commands
-            .entity(entity)
-            .insert(TransformationMatrix { mat, buffer });
-    }
-}
-
 #[derive(Copy, Clone, Debug, Zeroable, Pod)]
 #[repr(C)]
 pub struct TransformUniform {
@@ -694,13 +675,16 @@ pub struct TransformUniform {
     // rotation matrix for normals/tangents
     // Note that we can't use the transform matrix for non-uniform
     // scaling values.
-    normal: [[f32; 3]; 3],
-    // align to 16
-    _pad0: [u32; 3],
+    normal: [[f32; 4]; 3],
 }
 
 impl From<Transform> for TransformUniform {
     fn from(value: Transform) -> Self {
+        let normal = Mat3::from_quat(value.rotation);
+        let normal_x = Vec4::new(normal.x_axis.x, normal.x_axis.y, normal.x_axis.z, 0.0);
+        let normal_y = Vec4::new(normal.y_axis.x, normal.y_axis.y, normal.y_axis.z, 0.0);
+        let normal_z = Vec4::new(normal.z_axis.x, normal.z_axis.y, normal.z_axis.z, 0.0);
+
         Self {
             transform: Mat4::from_scale_rotation_translation(
                 value.scale,
@@ -708,32 +692,12 @@ impl From<Transform> for TransformUniform {
                 value.translation,
             )
             .to_cols_array_2d(),
-            normal: Mat3::from_quat(value.rotation).to_cols_array_2d(),
-            _pad0: [0; 3],
+            normal: [
+                normal_x.to_array(),
+                normal_y.to_array(),
+                normal_z.to_array(),
+            ],
         }
-    }
-}
-
-pub fn update_transformation_matrix(
-    device: Res<RenderDevice>,
-    mut meshes: Query<(&Transform, &mut TransformationMatrix), Changed<Transform>>,
-) {
-    for (transform, mut mat) in &mut meshes {
-        mat.mat = transform.compute_matrix();
-
-        let buf = TransformUniform {
-            transform: transform.compute_matrix().to_cols_array_2d(),
-            normal: Mat3::from_quat(transform.rotation).to_cols_array_2d(),
-            _pad0: [0; 3],
-        };
-
-        let buffer = device.0.create_buffer_init(&BufferInitDescriptor {
-            label: Some("transform_matrix_buffer"),
-            contents: bytemuck::cast_slice(&[buf]),
-            usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
-        });
-
-        mat.buffer = buffer;
     }
 }
 
@@ -816,11 +780,13 @@ pub fn resize_render_windows(
 struct GBuffer {
     position: Texture,
     normal: Texture,
+    albedo: Texture,
 }
 
 impl GBuffer {
     const FORMAT_POSITION: TextureFormat = TextureFormat::Rgba16Float;
     const FORMAT_NORMAL: TextureFormat = TextureFormat::Rgba16Float;
+    const FORMAT_ALBEDO: TextureFormat = TextureFormat::Rgba16Float;
 
     fn new(device: &Device, width: u32, height: u32) -> Self {
         let size = Extent3d {
@@ -851,7 +817,22 @@ impl GBuffer {
             view_formats: &[],
         });
 
-        GBuffer { position, normal }
+        let albedo = device.create_texture(&TextureDescriptor {
+            label: Some("g_buffer_albedo"),
+            size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: TextureDimension::D2,
+            format: Self::FORMAT_ALBEDO,
+            usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        });
+
+        GBuffer {
+            position,
+            normal,
+            albedo,
+        }
     }
 
     fn targets() -> &'static [Option<ColorTargetState>] {
@@ -863,6 +844,11 @@ impl GBuffer {
             }),
             Some(ColorTargetState {
                 format: Self::FORMAT_NORMAL,
+                blend: None,
+                write_mask: ColorWrites::ALL,
+            }),
+            Some(ColorTargetState {
+                format: Self::FORMAT_ALBEDO,
                 blend: None,
                 write_mask: ColorWrites::ALL,
             }),

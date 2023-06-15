@@ -33,6 +33,7 @@ struct VertexOutput {
 struct GBuffer {
     @location(0) position: vec4<f32>,
     @location(1) normal: vec4<f32>,
+    @location(2) albedo: vec4<f32>,
 }
 
 @fragment
@@ -50,14 +51,15 @@ fn fs_main(in: VertexOutput) -> GBuffer {
     l.specular = 1.0;
     let light = directional_light(in, l, tangent_normal);
 
-    color *= light;
+    //color *= light;
     
     //return color;
     //return show_normals(in);
 
     var gbuffer: GBuffer;
-    gbuffer.position = vec4(color.x, color.y, color.z, 1.0);
-    gbuffer.normal = vec4(1.0, 1.0, 1.0, 1.0);
+    gbuffer.position = in.position;
+    gbuffer.normal = vec4(in.world_normal, 1.0);
+    gbuffer.albedo = color;
     return gbuffer;
 }
 

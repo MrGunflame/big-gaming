@@ -13,7 +13,7 @@ use wgpu::{
 
 use crate::color::Color;
 use crate::mesh::Mesh;
-use crate::pipeline::{MaterialPipeline, MeshPipeline, TransformUniform, TransformationMatrix};
+use crate::pipeline::{MaterialPipeline, MeshPipeline, TransformUniform};
 use crate::texture::{Image, ImageHandle, Images};
 use crate::{RenderDevice, RenderQueue};
 
