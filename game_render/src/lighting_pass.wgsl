@@ -55,7 +55,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let albedo = textureSample(g_albedo, g_sampler, in.uv);
 
     var l: DirectionalLight;
-    l.direction = -light.position;
+    l.position = light.position;
     l.color = light.color;
     l.ambient = 0.01;
     l.diffuse = 1.0;
@@ -67,10 +67,11 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     return vec4(color, 1.0);
     //return normal;
+    //return show_shadow_map(in.uv);
 }
 
 struct DirectionalLight {
-    direction: vec3<f32>,
+    position: vec3<f32>,
     color: vec3<f32>,
     ambient: f32,
     diffuse: f32,
@@ -84,10 +85,10 @@ fn directional_light(in: VertexOutput, light: DirectionalLight) -> vec3<f32> {
 
     let light_space_position = light.space_matrix * vec4(pos, 1.0);
     
-    //let light_pos = normalize(-light.direction);
+    //let light_pos = normalize(light.position);
 
     //let light_dir = normalize(in.tangent_light_pos - in.tangent_pos);
-    let light_dir = normalize(light.direction);
+    let light_dir = normalize(-light.position);
 
     // Ambient
     let ambient = light.color * light.ambient;
@@ -104,12 +105,17 @@ fn directional_light(in: VertexOutput, light: DirectionalLight) -> vec3<f32> {
     let specular = light.color * specular_strength;
 
     // Shadow mapping
-    let shadow = shadow_occlusion(light_space_position);
+    let shadow = shadow_occlusion2(in);
 
-    return shadow * (ambient + diffuse + specular);
+    return shadow * (ambient + diffuse + specular) + ambient;
+    //return vec3(shadow, shadow, shadow);
 }
 
-fn shadow_occlusion(position: vec4<f32>) -> f32 {
+fn shadow_occlusion(in: VertexOutput) -> f32 {
+    let pos = textureSample(g_position, g_sampler, in.uv).xyz;
+    
+    let position = light.space_matrix * vec4(pos, 1.0);
+
     if (position.w <= 0.0) {
         return 0.0;
     }
@@ -133,7 +139,46 @@ fn shadow_occlusion(position: vec4<f32>) -> f32 {
         //return 0.0;
     //}
 
+    return textureSampleCompareLevel(shadow_texture, shadow_sampler, light_local, position.z * proj_correction);
+}
 
+fn shadow_occlusion2(in: VertexOutput) -> f32 {
+    let pos = textureSample(g_position, g_sampler, in.uv).xyz;
 
-    return textureSampleCompareLevel(shadow_texture, shadow_sampler, light_local, position.w * proj_correction);
+    let light_space_pos = light.space_matrix * vec4(pos, 1.0);
+
+    var proj_coords = light_space_pos.xyz / light_space_pos.w;
+    proj_coords = proj_coords * 0.5 + 0.5;
+
+    let closest_depth = textureSampleCompareLevel(shadow_texture, shadow_sampler, proj_coords.xy, 1.0);
+    
+    let current_depth = proj_coords.z;
+
+    if current_depth > closest_depth {
+        return 1.0;
+    } else {
+        return 0.0;
+    }
+}
+
+fn show_shadow_map(uv: vec2<f32>) -> vec4<f32> {
+    let pos = textureSample(g_position, g_sampler, uv).xyz;
+
+//    let position = light.space_matrix * vec4(pos, 1.0);
+    
+    //let proj_correction = 1.0 / position.w;
+
+    //let light_local = position.xy * vec2<f32>(0.5, -0.5) * proj_correction * vec2<f32>(0.5, 0.5);
+
+    let light_pos = light.space_matrix * vec4(pos, 1.0);
+
+    let proj_coords = light_pos.xyz / light_pos.w;
+
+    let position = light.space_matrix * vec4(pos, 1.0);
+
+    var v = textureSampleCompareLevel(shadow_texture, shadow_sampler, proj_coords.xy, 1.0);
+
+    return vec4(v, v, v, 1.0);
+    //return vec4(pos,1.0);
+    //return vec4(proj_coords,1.0);
 }

@@ -1132,21 +1132,21 @@ impl ShadowPipeline {
             },
             depth_stencil: Some(DepthStencilState {
                 format: DEPTH_TEXTURE_FORMAT,
-                depth_compare: CompareFunction::Less,
+                depth_compare: CompareFunction::LessEqual,
                 depth_write_enabled: true,
                 stencil: StencilState::default(),
-                bias: DepthBiasState::default(),
+                bias: DepthBiasState {
+                    constant: 2,
+                    slope_scale: 2.0,
+                    clamp: 0.0,
+                },
             }),
             multisample: MultisampleState {
                 count: 1,
                 mask: !0,
                 alpha_to_coverage_enabled: false,
             },
-            fragment: Some(FragmentState {
-                module: &shader,
-                entry_point: "fs_main",
-                targets: &[],
-            }),
+            fragment: None,
             multiview: None,
         });
 

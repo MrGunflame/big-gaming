@@ -12,6 +12,7 @@ use wgpu::{
     TextureDimension, TextureUsages, TextureView, TextureViewDescriptor,
 };
 
+use crate::camera::OPENGL_TO_WGPU;
 use crate::color::Color;
 use crate::light::DirectionalLight;
 use crate::mesh::Mesh;
@@ -312,18 +313,19 @@ pub fn prepare_lights(
 
     for (light, transform) in &lights {
         let light_space_matrix = {
-            let near_plane = 1.0;
-            let far_plane = 7.5;
+            //let projection = Mat4::orthographic_rh(-10.0, 10.0, -10.0, 10.0, near_plane, far_plane);
 
-            let projection = Mat4::orthographic_rh(-10.0, 10.0, -10.0, 10.0, near_plane, far_plane);
+            let proj = Mat4::perspective_rh(90.0f32.to_radians(), 16.0 / 9.0, 0.1, 1000.0);
 
-            let light_view = Mat4::look_at_rh(
-                Vec3::new(-2.0, 4.0, -1.0),
-                Vec3::new(0.0, 0.0, 0.0),
-                Vec3::new(0.0, 1.0, 0.0),
+            //let proj = Mat4::orthographic_rh(-10.0, 10.0, -10.0, 10.0, 0.1, 1000.0);
+
+            let view = Mat4::look_to_rh(
+                transform.translation,
+                transform.rotation * -Vec3::Z,
+                transform.rotation * Vec3::Y,
             );
 
-            projection * light_view
+            OPENGL_TO_WGPU * proj * view
         };
 
         let uniform = LightUniform {
