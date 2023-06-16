@@ -28,7 +28,7 @@ use game_window::{Window, WindowPlugin, WindowState};
 use graph::{RenderContext, RenderGraph};
 use mesh::Mesh;
 use pbr::{PbrMaterial, RenderMaterialAssets};
-use pipeline::{LightingPipeline, MainPass};
+use pipeline::{LightingPipeline, MainPass, ShadowPipeline};
 use texture::ImagePlugin;
 use wgpu::{
     Adapter, Backends, Color, CommandEncoderDescriptor, Device, DeviceDescriptor, Features,
@@ -96,6 +96,7 @@ impl Plugin for RenderPlugin {
         app.init_resource::<pipeline::MeshPipeline>();
         app.init_resource::<pipeline::MaterialPipeline>();
         app.init_resource::<LightingPipeline>();
+        app.init_resource::<ShadowPipeline>();
 
         app.insert_resource(camera::Cameras::default());
         app.add_system(camera::create_cameras);

@@ -458,6 +458,55 @@ impl Node for MainPass {
 
         drop(render_pass);
 
+        // Shadow
+        {
+            let device = world.resource::<RenderDevice>();
+            let pl = world.resource::<ShadowPipeline>();
+
+            for light in &nodes.lights {
+                for node in &nodes.entities {
+                    let bind_group = device.0.create_bind_group(&BindGroupDescriptor {
+                        label: Some("shadow_pass_bind_group"),
+                        layout: &pl.bind_group_layout,
+                        entries: &[
+                            BindGroupEntry {
+                                binding: 0,
+                                resource: light.light_space_matrix.as_entire_binding(),
+                            },
+                            BindGroupEntry {
+                                binding: 1,
+                                resource: node.transform_buffer.as_entire_binding(),
+                            },
+                        ],
+                    });
+
+                    let mut render_pass = ctx.encoder.begin_render_pass(&RenderPassDescriptor {
+                        label: Some("shadow_pass"),
+                        color_attachments: &[],
+                        depth_stencil_attachment: Some(RenderPassDepthStencilAttachment {
+                            view: &pl.depth_texture_view,
+                            depth_ops: Some(Operations {
+                                load: LoadOp::Clear(1.0),
+                                store: true,
+                            }),
+                            stencil_ops: None,
+                        }),
+                    });
+
+                    render_pass.set_pipeline(&pl.pipeline);
+
+                    render_pass.set_bind_group(0, &bind_group, &[]);
+
+                    render_pass.set_vertex_buffer(0, node.vertices.slice(..));
+                    render_pass.set_index_buffer(node.indices.slice(..), IndexFormat::Uint32);
+
+                    render_pass.draw_indexed(0..node.num_vertices, 0, 0..1);
+
+                    return;
+                }
+            }
+        }
+
         // Final pass
         {
             let device = world.resource::<RenderDevice>();
@@ -934,4 +983,113 @@ pub(crate) struct LightUniform {
     pub _pad0: u32,
     pub position: [f32; 3],
     pub _pad1: u32,
+}
+
+#[derive(Debug, Resource)]
+pub struct ShadowPipeline {
+    pipeline: RenderPipeline,
+    bind_group_layout: BindGroupLayout,
+    depth_texture: Texture,
+    depth_texture_view: TextureView,
+    depth_sampler: Sampler,
+}
+
+impl ShadowPipeline {
+    fn new(device: &Device) -> Self {
+        let bind_group_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
+            label: Some("shadow_pass_bind_group_layout"),
+            entries: &[
+                BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: ShaderStages::VERTEX,
+                    ty: BindingType::Buffer {
+                        ty: BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: ShaderStages::VERTEX,
+                    ty: BindingType::Buffer {
+                        ty: BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+            ],
+        });
+
+        let pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
+            label: Some("shadow_pass_pipeline_layout"),
+            bind_group_layouts: &[&bind_group_layout],
+            push_constant_ranges: &[],
+        });
+
+        let shader = device.create_shader_module(ShaderModuleDescriptor {
+            label: Some("shadow_pass_shader"),
+            source: ShaderSource::Wgsl(include_str!("shadow_depth_pass.wgsl").into()),
+        });
+
+        let (depth_texture, depth_texture_view, depth_sampler) =
+            create_depth_texture(device, UVec2::new(1024, 1024));
+
+        let pipeline = device.create_render_pipeline(&RenderPipelineDescriptor {
+            label: Some("shadow_pass_pipeline"),
+            layout: Some(&pipeline_layout),
+            vertex: VertexState {
+                module: &shader,
+                entry_point: "vs_main",
+                buffers: &[Vertex::layout()],
+            },
+            primitive: PrimitiveState {
+                topology: PrimitiveTopology::TriangleList,
+                strip_index_format: None,
+                front_face: FrontFace::Ccw,
+                cull_mode: Some(Face::Back),
+                polygon_mode: PolygonMode::Fill,
+                unclipped_depth: false,
+                conservative: false,
+            },
+            depth_stencil: Some(DepthStencilState {
+                format: DEPTH_TEXTURE_FORMAT,
+                depth_compare: CompareFunction::Less,
+                depth_write_enabled: true,
+                stencil: StencilState::default(),
+                bias: DepthBiasState::default(),
+            }),
+            multisample: MultisampleState {
+                count: 1,
+                mask: !0,
+                alpha_to_coverage_enabled: false,
+            },
+            fragment: Some(FragmentState {
+                module: &shader,
+                entry_point: "fs_main",
+                targets: &[],
+            }),
+            multiview: None,
+        });
+
+        Self {
+            pipeline,
+            bind_group_layout,
+            depth_sampler,
+            depth_texture,
+            depth_texture_view,
+        }
+    }
+}
+
+impl FromWorld for ShadowPipeline {
+    fn from_world(world: &mut bevy_ecs::world::World) -> Self {
+        world.resource_scope::<RenderDevice, _>(|_, device| Self::new(&device.0))
+    }
+}
+
+/// Used for debugging
+pub struct DepthTexturePipeline {
+    pipeline: RenderPipeline,
 }

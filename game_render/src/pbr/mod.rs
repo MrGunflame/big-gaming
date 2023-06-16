@@ -4,6 +4,7 @@ use bevy_ecs::world::{FromWorld, World};
 use game_asset::{Asset, Assets, Handle};
 use game_common::bundles::TransformBundle;
 use game_common::components::transform::Transform;
+use glam::{Mat4, Vec3};
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
 use wgpu::{
     BindGroup, BindGroupDescriptor, BindGroupEntry, BindingResource, Buffer, BufferUsages, Device,
@@ -122,10 +123,13 @@ pub struct RenderNode {
     pub num_vertices: u32,
     pub transform: Transform,
     pub bind_groups: Vec<BindGroup>,
+    pub transform_buffer: Buffer,
 }
 
 pub struct LightNode {
     pub bind_group: BindGroup,
+    /// Light space transform matrix
+    pub light_space_matrix: Buffer,
 }
 
 pub fn prepare_materials(
@@ -248,6 +252,7 @@ pub fn prepare_materials(
             num_vertices,
             transform: *transform,
             bind_groups: vec![mesh_bind_group, material_bind_group],
+            transform_buffer,
         });
     }
 }
@@ -328,6 +333,30 @@ pub fn prepare_lights(
             }],
         });
 
-        render_assets.lights.push(LightNode { bind_group });
+        let light_space_matrix = {
+            let near_plane = 1.0;
+            let far_plane = 7.5;
+
+            let projection = Mat4::orthographic_rh(-10.0, 10.0, -10.0, 10.0, near_plane, far_plane);
+
+            let light_view = Mat4::look_at_rh(
+                Vec3::new(-2.0, 4.0, -1.0),
+                Vec3::new(0.0, 0.0, 0.0),
+                Vec3::new(0.0, 1.0, 0.0),
+            );
+
+            projection * light_view
+        };
+
+        let light_space_matrix = device.0.create_buffer_init(&BufferInitDescriptor {
+            label: Some("light_space_matrix_buffer"),
+            contents: bytemuck::cast_slice(&[light_space_matrix]),
+            usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
+        });
+
+        render_assets.lights.push(LightNode {
+            bind_group,
+            light_space_matrix,
+        });
     }
 }
