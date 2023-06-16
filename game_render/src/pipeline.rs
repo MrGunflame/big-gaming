@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use bevy_ecs::prelude::{Component, Entity, EventReader, Res};
 use bevy_ecs::query::{Added, Changed, With};
-use bevy_ecs::system::{Commands, Query, ResMut, Resource};
+use bevy_ecs::system::{Commands, NonSend, Query, ResMut, Resource};
 use bevy_ecs::world::FromWorld;
 use bytemuck::{Pod, Zeroable};
 use game_common::components::transform::Transform;
@@ -15,16 +15,16 @@ use wgpu::{
     AddressMode, BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout,
     BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindingResource, BindingType, BlendComponent,
     BlendFactor, BlendOperation, BlendState, Buffer, BufferAddress, BufferBindingType,
-    BufferDescriptor, BufferUsages, Color, ColorTargetState, ColorWrites, CompareFunction,
-    DepthBiasState, DepthStencilState, Device, Extent3d, Face, FilterMode, FragmentState,
-    FrontFace, ImageCopyBuffer, ImageCopyTexture, IndexFormat, LoadOp, MultisampleState,
-    Operations, PipelineLayoutDescriptor, PolygonMode, PrimitiveState, PrimitiveTopology,
-    RenderPassColorAttachment, RenderPassDepthStencilAttachment, RenderPassDescriptor,
-    RenderPipeline, RenderPipelineDescriptor, Sampler, SamplerBindingType, SamplerDescriptor,
-    ShaderModule, ShaderModuleDescriptor, ShaderSource, ShaderStages, StencilState, Texture,
-    TextureDescriptor, TextureDimension, TextureFormat, TextureSampleType, TextureUsages,
-    TextureView, TextureViewDescriptor, TextureViewDimension, VertexAttribute, VertexBufferLayout,
-    VertexFormat, VertexState, VertexStepMode,
+    BufferDescriptor, BufferUsages, Color, ColorTargetState, ColorWrites, CommandEncoder,
+    CompareFunction, DepthBiasState, DepthStencilState, Device, Extent3d, Face, FilterMode,
+    FragmentState, FrontFace, ImageCopyBuffer, ImageCopyTexture, IndexFormat, LoadOp,
+    MultisampleState, Operations, PipelineLayoutDescriptor, PolygonMode, PrimitiveState,
+    PrimitiveTopology, RenderPassColorAttachment, RenderPassDepthStencilAttachment,
+    RenderPassDescriptor, RenderPipeline, RenderPipelineDescriptor, Sampler, SamplerBindingType,
+    SamplerDescriptor, ShaderModule, ShaderModuleDescriptor, ShaderSource, ShaderStages,
+    StencilState, Texture, TextureDescriptor, TextureDimension, TextureFormat, TextureSampleType,
+    TextureUsages, TextureView, TextureViewDescriptor, TextureViewDimension, VertexAttribute,
+    VertexBufferLayout, VertexFormat, VertexState, VertexStepMode,
 };
 
 use crate::camera::{Projection, OPENGL_TO_WGPU};
@@ -459,12 +459,16 @@ impl Node for MainPass {
         drop(render_pass);
 
         // Shadow
+        let mut shadows = vec![];
         {
             let device = world.resource::<RenderDevice>();
             let pl = world.resource::<ShadowPipeline>();
 
-            for light in &nodes.lights {
-                for node in &nodes.entities {
+            let mut bind_groups = vec![];
+            for (i, light) in nodes.lights.iter().enumerate() {
+                bind_groups.push(vec![]);
+
+                for node in nodes.entities.iter() {
                     let bind_group = device.0.create_bind_group(&BindGroupDescriptor {
                         label: Some("shadow_pass_bind_group"),
                         layout: &pl.bind_group_layout,
@@ -480,30 +484,72 @@ impl Node for MainPass {
                         ],
                     });
 
-                    let mut render_pass = ctx.encoder.begin_render_pass(&RenderPassDescriptor {
-                        label: Some("shadow_pass"),
-                        color_attachments: &[],
-                        depth_stencil_attachment: Some(RenderPassDepthStencilAttachment {
-                            view: &pl.depth_texture_view,
-                            depth_ops: Some(Operations {
-                                load: LoadOp::Clear(1.0),
-                                store: true,
-                            }),
-                            stencil_ops: None,
-                        }),
-                    });
+                    bind_groups[i].push(bind_group);
+                }
+            }
 
+            for (i, light) in nodes.lights.iter().enumerate() {
+                let (depth_texture, depth_texture_view, depth_sampler) =
+                    create_depth_texture(&device.0, UVec2::new(1024, 1024));
+
+                let mut render_pass = ctx.encoder.begin_render_pass(&RenderPassDescriptor {
+                    label: Some("shadow_pass"),
+                    color_attachments: &[],
+                    depth_stencil_attachment: Some(RenderPassDepthStencilAttachment {
+                        view: &depth_texture_view,
+                        depth_ops: Some(Operations {
+                            load: LoadOp::Clear(1.0),
+                            store: true,
+                        }),
+                        stencil_ops: None,
+                    }),
+                });
+
+                for (i2, node) in nodes.entities.iter().enumerate() {
                     render_pass.set_pipeline(&pl.pipeline);
 
-                    render_pass.set_bind_group(0, &bind_group, &[]);
+                    render_pass.set_bind_group(0, &bind_groups[i][i2], &[]);
 
                     render_pass.set_vertex_buffer(0, node.vertices.slice(..));
                     render_pass.set_index_buffer(node.indices.slice(..), IndexFormat::Uint32);
 
                     render_pass.draw_indexed(0..node.num_vertices, 0, 0..1);
-
-                    return;
                 }
+
+                let sampler = device.0.create_sampler(&SamplerDescriptor {
+                    label: None,
+                    address_mode_u: AddressMode::ClampToEdge,
+                    address_mode_v: AddressMode::ClampToEdge,
+                    address_mode_w: AddressMode::ClampToEdge,
+                    mag_filter: FilterMode::Linear,
+                    min_filter: FilterMode::Linear,
+                    mipmap_filter: FilterMode::Nearest,
+                    compare: Some(CompareFunction::LessEqual),
+                    ..Default::default()
+                });
+
+                let lpl = world.resource::<LightingPipeline>();
+
+                let shadow_bind_group = device.0.create_bind_group(&BindGroupDescriptor {
+                    label: Some("final_pass_shadow_bind_group"),
+                    layout: &lpl.shadow_bind_group_layout,
+                    entries: &[
+                        BindGroupEntry {
+                            binding: 0,
+                            resource: BindingResource::TextureView(
+                                &depth_texture.create_view(&TextureViewDescriptor::default()),
+                            ),
+                        },
+                        BindGroupEntry {
+                            binding: 1,
+                            resource: BindingResource::Sampler(&sampler),
+                        },
+                    ],
+                });
+
+                shadows.push(shadow_bind_group);
+
+                drop(render_pass);
             }
         }
 
@@ -555,9 +601,10 @@ impl Node for MainPass {
 
             render_pass.set_pipeline(&data.pipeline);
 
-            for node in &nodes.lights {
+            for (i, node) in nodes.lights.iter().enumerate() {
                 render_pass.set_bind_group(0, &bind_group, &[]);
                 render_pass.set_bind_group(1, &node.bind_group, &[]);
+                render_pass.set_bind_group(2, &shadows[i], &[]);
 
                 render_pass.set_vertex_buffer(0, data.vertices.slice(..));
                 render_pass.set_index_buffer(data.indices.slice(..), IndexFormat::Uint16);
@@ -576,6 +623,7 @@ pub struct LightingPipeline {
     bind_group_layout: BindGroupLayout,
     sampler: Sampler,
     pub light_bind_group_layout: BindGroupLayout,
+    pub shadow_bind_group_layout: BindGroupLayout,
 }
 
 impl LightingPipeline {
@@ -708,9 +756,36 @@ impl LightingPipeline {
             }],
         });
 
+        let shadow_bind_group_layout =
+            device.create_bind_group_layout(&BindGroupLayoutDescriptor {
+                label: Some("lighting_pass_shadow_bind_group"),
+                entries: &[
+                    BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: ShaderStages::FRAGMENT,
+                        ty: BindingType::Texture {
+                            sample_type: TextureSampleType::Depth,
+                            view_dimension: TextureViewDimension::D2,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                    BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: ShaderStages::FRAGMENT,
+                        ty: BindingType::Sampler(SamplerBindingType::Comparison),
+                        count: None,
+                    },
+                ],
+            });
+
         let pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
             label: Some("lighting_pass_pipeline_layout"),
-            bind_group_layouts: &[&bind_group_layout, &light_bind_group_layout],
+            bind_group_layouts: &[
+                &bind_group_layout,
+                &light_bind_group_layout,
+                &shadow_bind_group_layout,
+            ],
             push_constant_ranges: &[],
         });
 
@@ -778,6 +853,7 @@ impl LightingPipeline {
             bind_group_layout,
             sampler,
             light_bind_group_layout,
+            shadow_bind_group_layout,
         }
     }
 }
@@ -983,6 +1059,7 @@ pub(crate) struct LightUniform {
     pub _pad0: u32,
     pub position: [f32; 3],
     pub _pad1: u32,
+    pub space_matrix: [[f32; 4]; 4],
 }
 
 #[derive(Debug, Resource)]
@@ -1090,6 +1167,208 @@ impl FromWorld for ShadowPipeline {
 }
 
 /// Used for debugging
+#[derive(Debug, Resource)]
 pub struct DepthTexturePipeline {
     pipeline: RenderPipeline,
+    bind_group_layout: BindGroupLayout,
+    vertices: Buffer,
+    indices: Buffer,
+    sampler: Sampler,
+}
+
+impl DepthTexturePipeline {
+    const INDICES: &[u16] = &[0, 1, 2, 2, 3, 0];
+    const NUM_VERTICES: u32 = Self::INDICES.len() as u32;
+
+    fn new(device: &Device) -> Self {
+        const VERTICES: &[Vertex] = &[
+            Vertex {
+                position: [-1.0, 1.0],
+                uv: [0.0, 0.0],
+            },
+            Vertex {
+                position: [-1.0, -1.0],
+                uv: [0.0, 1.0],
+            },
+            Vertex {
+                position: [1.0, -1.0],
+                uv: [1.0, 1.0],
+            },
+            Vertex {
+                position: [1.0, 1.0],
+                uv: [1.0, 0.0],
+            },
+        ];
+
+        #[derive(Copy, Clone, Debug, Zeroable, Pod)]
+        #[repr(C)]
+        struct Vertex {
+            position: [f32; 2],
+            uv: [f32; 2],
+        }
+
+        impl Vertex {
+            fn layout<'a>() -> VertexBufferLayout<'a> {
+                VertexBufferLayout {
+                    array_stride: std::mem::size_of::<Self>() as BufferAddress,
+                    step_mode: VertexStepMode::Vertex,
+                    attributes: &[
+                        VertexAttribute {
+                            offset: 0,
+                            shader_location: 0,
+                            format: VertexFormat::Float32x2,
+                        },
+                        VertexAttribute {
+                            offset: std::mem::size_of::<[f32; 2]>() as BufferAddress,
+                            shader_location: 1,
+                            format: VertexFormat::Float32x2,
+                        },
+                    ],
+                }
+            }
+        }
+
+        let vertices = device.create_buffer_init(&BufferInitDescriptor {
+            label: Some("depth_texture_vetex_buffer"),
+            contents: bytemuck::cast_slice(VERTICES),
+            usage: BufferUsages::VERTEX,
+        });
+
+        let indices = device.create_buffer_init(&BufferInitDescriptor {
+            label: Some("depth_texture_index_buffer"),
+            contents: bytemuck::cast_slice(Self::INDICES),
+            usage: BufferUsages::INDEX,
+        });
+
+        let bind_group_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
+            label: Some("depth_texture_bind_group_layout"),
+            entries: &[
+                BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: ShaderStages::FRAGMENT,
+                    ty: BindingType::Texture {
+                        sample_type: TextureSampleType::Float { filterable: true },
+                        view_dimension: TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: ShaderStages::FRAGMENT,
+                    ty: BindingType::Sampler(SamplerBindingType::Filtering),
+                    count: None,
+                },
+            ],
+        });
+
+        let pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
+            label: Some("depth_texture_pipeline_layout"),
+            bind_group_layouts: &[&bind_group_layout],
+            push_constant_ranges: &[],
+        });
+
+        let shader = device.create_shader_module(ShaderModuleDescriptor {
+            label: Some("depth_texture_shader"),
+            source: ShaderSource::Wgsl(include_str!("render_depth_texture.wgsl").into()),
+        });
+
+        let pipeline = device.create_render_pipeline(&RenderPipelineDescriptor {
+            label: Some("depth_texture_pipeline"),
+            layout: Some(&pipeline_layout),
+            vertex: VertexState {
+                module: &shader,
+                entry_point: "vs_main",
+                buffers: &[Vertex::layout()],
+            },
+            primitive: PrimitiveState {
+                topology: PrimitiveTopology::TriangleList,
+                strip_index_format: None,
+                front_face: FrontFace::Ccw,
+                cull_mode: Some(Face::Back),
+                polygon_mode: PolygonMode::Fill,
+                unclipped_depth: false,
+                conservative: false,
+            },
+            depth_stencil: None,
+            multisample: MultisampleState {
+                count: 1,
+                mask: !0,
+                alpha_to_coverage_enabled: false,
+            },
+            fragment: Some(FragmentState {
+                module: &shader,
+                entry_point: "fs_main",
+                targets: &[],
+            }),
+            multiview: None,
+        });
+
+        let sampler = device.create_sampler(&SamplerDescriptor {
+            label: Some("depth_texture_sampler"),
+            address_mode_u: AddressMode::ClampToEdge,
+            address_mode_v: AddressMode::ClampToEdge,
+            address_mode_w: AddressMode::ClampToEdge,
+            mag_filter: FilterMode::Nearest,
+            min_filter: FilterMode::Nearest,
+            mipmap_filter: FilterMode::Nearest,
+            ..Default::default()
+        });
+
+        Self {
+            pipeline,
+            bind_group_layout,
+            vertices,
+            indices,
+            sampler,
+        }
+    }
+
+    fn render(
+        &self,
+        device: &Device,
+        view: &TextureView,
+        encoder: &mut CommandEncoder,
+        target: &TextureView,
+    ) {
+        let bind_group = device.create_bind_group(&BindGroupDescriptor {
+            label: Some("depth_texture_bind_group"),
+            layout: &self.bind_group_layout,
+            entries: &[
+                BindGroupEntry {
+                    binding: 0,
+                    resource: BindingResource::TextureView(view),
+                },
+                BindGroupEntry {
+                    binding: 1,
+                    resource: BindingResource::Sampler(&self.sampler),
+                },
+            ],
+        });
+
+        let mut render_pass = encoder.begin_render_pass(&RenderPassDescriptor {
+            label: Some("depth_texture_pass"),
+            color_attachments: &[Some(RenderPassColorAttachment {
+                view: target,
+                resolve_target: None,
+                ops: Operations {
+                    load: LoadOp::Load,
+                    store: true,
+                },
+            })],
+            depth_stencil_attachment: None,
+        });
+
+        render_pass.set_pipeline(&self.pipeline);
+        render_pass.set_bind_group(0, &bind_group, &[]);
+        render_pass.set_vertex_buffer(0, self.vertices.slice(..));
+        render_pass.set_index_buffer(self.indices.slice(..), IndexFormat::Uint16);
+        render_pass.draw_indexed(0..Self::NUM_VERTICES, 0, 0..1);
+    }
+}
+
+impl FromWorld for DepthTexturePipeline {
+    fn from_world(world: &mut bevy_ecs::world::World) -> Self {
+        world.resource_scope::<RenderDevice, _>(|_, device| Self::new(&device.0))
+    }
 }

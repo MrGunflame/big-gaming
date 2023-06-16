@@ -311,11 +311,27 @@ pub fn prepare_lights(
     render_assets.lights.clear();
 
     for (light, transform) in &lights {
+        let light_space_matrix = {
+            let near_plane = 1.0;
+            let far_plane = 7.5;
+
+            let projection = Mat4::orthographic_rh(-10.0, 10.0, -10.0, 10.0, near_plane, far_plane);
+
+            let light_view = Mat4::look_at_rh(
+                Vec3::new(-2.0, 4.0, -1.0),
+                Vec3::new(0.0, 0.0, 0.0),
+                Vec3::new(0.0, 1.0, 0.0),
+            );
+
+            projection * light_view
+        };
+
         let uniform = LightUniform {
             color: light.color,
             position: transform.translation.to_array(),
             _pad0: 0,
             _pad1: 0,
+            space_matrix: light_space_matrix.to_cols_array_2d(),
         };
 
         let buffer = device.0.create_buffer_init(&BufferInitDescriptor {
@@ -332,21 +348,6 @@ pub fn prepare_lights(
                 resource: buffer.as_entire_binding(),
             }],
         });
-
-        let light_space_matrix = {
-            let near_plane = 1.0;
-            let far_plane = 7.5;
-
-            let projection = Mat4::orthographic_rh(-10.0, 10.0, -10.0, 10.0, near_plane, far_plane);
-
-            let light_view = Mat4::look_at_rh(
-                Vec3::new(-2.0, 4.0, -1.0),
-                Vec3::new(0.0, 0.0, 0.0),
-                Vec3::new(0.0, 1.0, 0.0),
-            );
-
-            projection * light_view
-        };
 
         let light_space_matrix = device.0.create_buffer_init(&BufferInitDescriptor {
             label: Some("light_space_matrix_buffer"),

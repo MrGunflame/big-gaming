@@ -28,7 +28,7 @@ use game_window::{Window, WindowPlugin, WindowState};
 use graph::{RenderContext, RenderGraph};
 use mesh::Mesh;
 use pbr::{PbrMaterial, RenderMaterialAssets};
-use pipeline::{LightingPipeline, MainPass, ShadowPipeline};
+use pipeline::{DepthTexturePipeline, LightingPipeline, MainPass, ShadowPipeline};
 use texture::ImagePlugin;
 use wgpu::{
     Adapter, Backends, Color, CommandEncoderDescriptor, Device, DeviceDescriptor, Features,
@@ -61,9 +61,11 @@ impl Plugin for RenderPlugin {
             }))
             .unwrap();
 
+        let features = Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES;
+
         let (device, queue) = futures_lite::future::block_on(adapter.request_device(
             &DeviceDescriptor {
-                features: Features::empty(),
+                features,
                 limits: Limits::default(),
                 label: None,
             },
