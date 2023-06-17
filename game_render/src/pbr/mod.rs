@@ -129,8 +129,6 @@ pub struct RenderNode {
 
 pub struct LightNode {
     pub bind_group: BindGroup,
-    /// Light space transform matrix
-    pub light_space_matrix: Buffer,
 }
 
 pub fn prepare_materials(
@@ -312,28 +310,11 @@ pub fn prepare_lights(
     render_assets.lights.clear();
 
     for (light, transform) in &lights {
-        let light_space_matrix = {
-            //let projection = Mat4::orthographic_rh(-10.0, 10.0, -10.0, 10.0, near_plane, far_plane);
-
-            let proj = Mat4::perspective_rh(90.0f32.to_radians(), 16.0 / 9.0, 0.1, 1000.0);
-
-            //let proj = Mat4::orthographic_rh(-10.0, 10.0, -10.0, 10.0, 0.1, 1000.0);
-
-            let view = Mat4::look_to_rh(
-                transform.translation,
-                transform.rotation * -Vec3::Z,
-                transform.rotation * Vec3::Y,
-            );
-
-            OPENGL_TO_WGPU * proj * view
-        };
-
         let uniform = LightUniform {
             color: light.color,
             position: transform.translation.to_array(),
             _pad0: 0,
             _pad1: 0,
-            space_matrix: light_space_matrix.to_cols_array_2d(),
         };
 
         let buffer = device.0.create_buffer_init(&BufferInitDescriptor {
@@ -351,15 +332,6 @@ pub fn prepare_lights(
             }],
         });
 
-        let light_space_matrix = device.0.create_buffer_init(&BufferInitDescriptor {
-            label: Some("light_space_matrix_buffer"),
-            contents: bytemuck::cast_slice(&[light_space_matrix]),
-            usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
-        });
-
-        render_assets.lights.push(LightNode {
-            bind_group,
-            light_space_matrix,
-        });
+        render_assets.lights.push(LightNode { bind_group });
     }
 }
