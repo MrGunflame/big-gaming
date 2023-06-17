@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 
 use bevy_app::{App, Plugin};
 use bevy_ecs::schedule::{IntoSystemConfig, SystemSet};
-use bevy_ecs::system::{Res, ResMut};
+use bevy_ecs::system::ResMut;
 use game_common::components::actions::Actions;
 use game_common::components::components::Components;
 use game_common::components::items::Item;
@@ -42,12 +42,9 @@ pub struct NetPlugin {}
 
 impl Plugin for NetPlugin {
     fn build(&self, app: &mut App) {
-        let queue = CommandQueue::new();
-
         let mut world = WorldState::new();
         world.insert(Instant::now() - Duration::from_millis(50));
 
-        app.insert_resource(queue);
         app.insert_resource(world);
         app.init_resource::<ServerConnection>();
         app.insert_resource(DeltaQueue::new());
@@ -119,18 +116,12 @@ pub fn spawn_conn(
     rx.recv().unwrap()
 }
 
-fn flush_command_queue(
-    queue: Res<CommandQueue>,
-    // mut entities: Query<(&mut Transform,)>,
-    // hosts: Query<bevy::ecs::entity::Entity, With<HostPlayer>>,
-    mut conn: ResMut<ServerConnection>,
-    mut world: ResMut<WorldState>,
-) {
+fn flush_command_queue(mut conn: ResMut<ServerConnection>, mut world: ResMut<WorldState>) {
     // Limit the maximum number of iterations in this frame.
     let mut iterations = 0;
     const MAX_ITERATIONS: usize = 8192;
 
-    while let Some(msg) = queue.pop() {
+    while let Some(msg) = conn.queue.pop() {
         match msg.command {
             Command::Connected => {
                 conn.writer.update(GameState::World);

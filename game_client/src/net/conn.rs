@@ -20,6 +20,7 @@ pub struct ServerConnection {
     pub host: EntityId,
     pub interpolation_period: InterpolationPeriod,
     pub writer: GameStateWriter,
+    pub queue: CommandQueue,
 }
 
 impl ServerConnection {
@@ -31,6 +32,7 @@ impl ServerConnection {
             overrides: LocalOverrides::new(),
             host: EntityId::dangling(),
             writer,
+            queue: CommandQueue::new(),
         }
     }
 
@@ -63,10 +65,12 @@ impl ServerConnection {
         self.entities.get_entity(id)
     }
 
-    pub fn connect<T>(&mut self, queue: CommandQueue, addr: T)
+    pub fn connect<T>(&mut self, addr: T)
     where
         T: ToSocketAddrs,
     {
+        self.reset_queue();
+
         fn inner(
             queue: CommandQueue,
             addr: impl ToSocketAddrs,
@@ -80,7 +84,7 @@ impl ServerConnection {
             super::spawn_conn(queue, addr)
         }
 
-        match inner(queue, addr) {
+        match inner(self.queue.clone(), addr) {
             Ok(handle) => {
                 self.handle = Some(handle);
                 self.writer.update(GameState::Connecting);
@@ -97,8 +101,13 @@ impl ServerConnection {
         // The connection will automatically shut down after the last
         // handle was dropped.
         self.handle = None;
+        self.reset_queue();
 
         self.writer.update(GameState::MainMenu);
+    }
+
+    fn reset_queue(&mut self) {
+        self.queue = CommandQueue::new();
     }
 }
 
