@@ -3,7 +3,6 @@ use bevy_ecs::system::{Commands, Query, Res, ResMut};
 use game_common::components::actor::{ActorFlag, ActorFlags, ActorProperties, MovementSpeed};
 use game_common::components::movement::{Movement, RotateQueue};
 use game_common::components::transform::Transform;
-use game_common::entity::EntityMap;
 use game_common::math::RotationExt;
 use game_common::world::world::WorldState;
 use game_core::time::Time;
@@ -12,7 +11,7 @@ use game_net::snapshot::Command;
 use crate::net::ServerConnection;
 
 pub fn handle_movement_events(
-    conn: Res<ServerConnection>,
+    mut conn: ResMut<ServerConnection>,
     mut commands: Commands,
     time: Res<Time>,
     mut actors: Query<(
@@ -23,7 +22,6 @@ pub fn handle_movement_events(
         &Movement,
     )>,
     mut world: ResMut<WorldState>,
-    map: ResMut<EntityMap>,
 ) {
     let delta = time.delta().as_secs_f32();
 
@@ -51,7 +49,7 @@ pub fn handle_movement_events(
             return;
         };
 
-        let id = map.get_entity(entity).unwrap();
+        let id = conn.entities.get_entity(entity).unwrap();
 
         // The host entity may not exist yet. (If the player was spawned before the rendering
         // interpolation period was reached.)
@@ -74,10 +72,9 @@ pub fn handle_movement_events(
 }
 
 pub fn handle_rotate_events(
-    conn: Res<ServerConnection>,
+    mut conn: ResMut<ServerConnection>,
     mut actors: Query<(Entity, &ActorFlags, &mut ActorProperties, &mut RotateQueue)>,
     mut world: ResMut<WorldState>,
-    map: ResMut<EntityMap>,
 ) {
     for (entity, flags, props, mut rotate) in &mut actors {
         if !flags.contains(ActorFlag::CAN_ROTATE) {
@@ -103,7 +100,7 @@ pub fn handle_rotate_events(
                 return;
             };
 
-            let id = map.get_entity(entity).unwrap();
+            let id = conn.entities.get_entity(entity).unwrap();
 
             // The host entity may not exist yet. (If the player was spawned before the rendering
             // interpolation period was reached.)

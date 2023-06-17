@@ -10,7 +10,6 @@ use game_common::components::inventory::Inventory;
 use game_common::components::items::{Item,  };
 use game_common::components::player::HostPlayer;
 use game_common::components::transform::Transform;
-use game_common::entity::EntityMap;
 use game_common::record::{RecordReference, RecordId};
 use game_common::world::entity::{Entity, EntityBody};
 use game_common::world::snapshot::EntityChange;
@@ -29,9 +28,11 @@ use super::ServerConnection;
 pub fn apply_world_delta(
     mut world: ResMut<WorldState>,
     mut queue: ResMut<DeltaQueue>,
-    conn: Res<ServerConnection>,
+    mut conn: ResMut<ServerConnection>,
 ) {
-    let mut period = conn.interpolation_period().write();
+    let conn = &mut *conn;
+
+    let period =&mut conn.interpolation_period;
 
     // Don't start a new period until the previous ended.
     if period.end > Instant::now() - Duration::from_millis(100) {
@@ -44,7 +45,7 @@ pub fn apply_world_delta(
 
     // Apply client-side prediction
     let view = world.at_mut(0).unwrap();
-    conn.overrides().read().apply(view);
+    conn.overrides.apply(view);
     // drop(view);
 
     let (Some(curr), Some(next)) = (world.at(0), world.at(1)) else {
@@ -85,7 +86,6 @@ pub fn flush_delta_queue(
         // access the WorldState.
         Option<&mut Inventory>,
     )>,
-    map: Res<EntityMap>,
     mut backlog: ResMut<Backlog>,
     conn: Res<ServerConnection>,
     modules: Res<Modules>,
@@ -97,8 +97,7 @@ mut hotkeys: ResMut<Hotkeys>
     // in place within the same batch before they are spawned into the world.
     let mut buffer: Vec<DelayedEntity> = vec![];
 
-    // Drop the lock ASAP.
-    let period = { *conn.interpolation_period().read() };
+    let period = { conn.interpolation_period };
 
     while let Some(change) = queue.pop() {
         match change {
@@ -108,7 +107,7 @@ mut hotkeys: ResMut<Hotkeys>
                 buffer.push(entity.into());
             }
             EntityChange::Destroy { id } => {
-                let Some(entity) = map.get(id) else {
+                let Some(entity) = conn.entities.get(id) else {
                     tracing::warn!("attempted to destroy a non-existent entity: {:?}", id);
                     continue;
                 };
@@ -122,7 +121,7 @@ mut hotkeys: ResMut<Hotkeys>
                 translation,
                 cell,
             } => {
-                let Some(entity) = map.get(id) else {
+                let Some(entity) = conn.entities.get(id) else {
                     if let Some(entity) = buffer.iter_mut().find(|e|e.entity.id==id) {
                         entity.entity.transform.translation = translation;
                     } else {
@@ -146,7 +145,7 @@ mut hotkeys: ResMut<Hotkeys>
                 }
             }
             EntityChange::Rotate { id, rotation } => {
-                let Some(entity) = map.get(id) else {
+                let Some(entity) = conn.entities.get(id) else {
                     if let Some(entity) = buffer.iter_mut().find(|e| e.entity.id == id) {
                         entity.entity.transform.rotation = rotation;
                     } else {
@@ -169,7 +168,7 @@ mut hotkeys: ResMut<Hotkeys>
                 }
             }
             EntityChange::CreateHost { id } => {
-                let Some(entity) = map.get(id) else {
+                let Some(entity) = conn.entities.get(id) else {
                     if let Some(entity) = buffer.iter_mut().find(|e| e.entity.id == id) {
                         entity.host = true;
                     } else {
@@ -185,7 +184,7 @@ mut hotkeys: ResMut<Hotkeys>
                     .insert(StreamingSource::new());
             }
             EntityChange::DestroyHost { id } => {
-                let Some(entity) = map.get(id) else {
+                let Some(entity) = conn.entities.get(id) else {
                     if let Some(entity) = buffer.iter_mut().find(|e| e.entity.id == id) {
                         entity.host = false;
                     } else {
@@ -201,7 +200,7 @@ mut hotkeys: ResMut<Hotkeys>
                     .remove::<StreamingSource>();
             }
             EntityChange::Health { id, health } => {
-                let Some(entity) = map.get(id) else {
+                let Some(entity) = conn.entities.get(id) else {
                     if let Some(entity) = buffer.iter_mut().find(|e| e.entity.id == id ) {
                         if let EntityBody::Actor(actor) = &mut entity.entity.body {
                             actor.health = health;
@@ -266,7 +265,7 @@ mut hotkeys: ResMut<Hotkeys>
                     hidden: false,
                 };
 
-                let Some(entity) = map.get(event.entity) else {
+                let Some(entity) = conn.entities.get(event.entity) else {
                     if let Some(entity) = buffer.iter_mut().find(|e| e.entity.id == event.entity) {
                         entity.inventory.insert(item).unwrap();
                     } else {
@@ -291,7 +290,7 @@ mut hotkeys: ResMut<Hotkeys>
     for entity in buffer {
         let id = entity.entity.id;
         let entity = spawn_entity(&mut commands,  entity);
-        map.insert(id, entity);
+        conn.entities.insert(id, entity);
     }
 }
 

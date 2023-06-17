@@ -77,9 +77,9 @@ fn dispatch_player_action_hotkeys(
     actions: Res<ActiveActions>,
     mut events: HotkeyReader<Hotkey>,
     mut queue: ResMut<EventQueue>,
-    conn: Res<ServerConnection>,
+    mut conn: ResMut<ServerConnection>,
 ) {
-    let host = conn.host();
+    let host = conn.host;
 
     for event in events.iter() {
         let Some(actions) = actions.get(event.id) else {

@@ -14,7 +14,6 @@ use game_common::components::actions::Actions;
 use game_common::components::components::Components;
 use game_common::components::items::Item;
 use game_common::components::transform::Transform;
-use game_common::entity::EntityMap;
 use game_common::units::Mass;
 use game_common::world::entity::{Entity, EntityBody};
 use game_common::world::world::WorldState;
@@ -26,8 +25,9 @@ use game_net::Socket;
 use glam::Vec3;
 use tokio::runtime::Runtime;
 
+use crate::state::GameState;
+
 pub use self::conn::ServerConnection;
-use self::conn::State;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, SystemSet)]
 pub enum NetSet {
@@ -44,21 +44,17 @@ impl Plugin for NetPlugin {
     fn build(&self, app: &mut App) {
         let queue = CommandQueue::new();
 
-        let map = EntityMap::default();
-
         let mut world = WorldState::new();
         world.insert(Instant::now() - Duration::from_millis(50));
 
         app.insert_resource(queue);
         app.insert_resource(world);
-        app.insert_resource(map.clone());
-        app.insert_resource(ServerConnection::new(map));
+        app.init_resource::<ServerConnection>();
         app.insert_resource(DeltaQueue::new());
         app.insert_resource(Backlog::new());
 
         app.add_system(flush_command_queue.in_set(NetSet::ReadCommands));
 
-        app.add_system(conn::update_connection_state);
         app.add_system(world::apply_world_delta);
         app.add_system(world::flush_delta_queue);
 
@@ -127,7 +123,7 @@ fn flush_command_queue(
     queue: Res<CommandQueue>,
     // mut entities: Query<(&mut Transform,)>,
     // hosts: Query<bevy::ecs::entity::Entity, With<HostPlayer>>,
-    conn: Res<ServerConnection>,
+    mut conn: ResMut<ServerConnection>,
     mut world: ResMut<WorldState>,
 ) {
     // Limit the maximum number of iterations in this frame.
@@ -137,11 +133,11 @@ fn flush_command_queue(
     while let Some(msg) = queue.pop() {
         match msg.command {
             Command::Connected => {
-                conn.push_state(State::Connected);
+                conn.writer.update(GameState::World);
                 continue;
             }
             Command::Disconnected => {
-                conn.push_state(State::Disconnected);
+                conn.writer.update(GameState::MainMenu);
                 continue;
             }
             _ => (),
@@ -205,7 +201,7 @@ fn flush_command_queue(
             Command::EntityAction { id: _, action: _ } => todo!(),
             Command::SpawnHost { id } => {
                 view.spawn_host(id);
-                conn.set_host(id);
+                conn.host = id;
             }
             Command::InventoryItemAdd { entity, id, item } => {
                 let item = Item {
@@ -246,7 +242,7 @@ fn flush_command_queue(
             Command::Connected => (),
             Command::Disconnected => (),
             Command::ReceivedCommands { ids } => {
-                let mut ov = conn.overrides().write();
+                let mut ov = &mut conn.overrides;
                 for id in ids {
                     ov.remove(id.id);
                 }

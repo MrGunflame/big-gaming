@@ -23,6 +23,5 @@ pub mod net;
 pub mod proto;
 pub mod record;
 pub mod savefile;
-pub mod scene;
 pub mod units;
 pub mod world;

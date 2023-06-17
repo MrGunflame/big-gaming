@@ -13,10 +13,11 @@ mod world;
 
 use bevy_app::App;
 use clap::Parser;
-use game_common::scene::SceneTransition;
 use game_core::CorePlugins;
+use game_render::RenderPlugin;
 use net::NetPlugin;
 use plugins::actions::ActionsPlugin;
+use state::InternalGameState;
 
 #[derive(Clone, Debug, Default, Parser)]
 #[command(author, version, about, long_about = None)]
@@ -30,6 +31,10 @@ fn main() {
 
     let mut app = App::new();
 
+    app.add_plugin(RenderPlugin);
+
+    app.init_resource::<InternalGameState>();
+
     // Window setup
     app.add_startup_system(window::spawn_primary_window);
     app.add_system(window::destroy_primary_window);
@@ -42,12 +47,6 @@ fn main() {
 
     if let Some(addr) = args.connect {
         tracing::info!("Connecting to {}", addr);
-
-        // Transition to server connection scene.
-        app.world.send_event(SceneTransition {
-            from: game_common::scene::Scene::Loading,
-            to: game_common::scene::Scene::ServerConnect { addr },
-        });
     }
 
     app.run();
