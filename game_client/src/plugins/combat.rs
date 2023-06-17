@@ -1,10 +1,10 @@
 use std::borrow::Cow;
 
-use bevy::prelude::{
-    Bundle, Camera3d, Commands, Entity, EulerRot, Plugin, Query, Res, ResMut, Transform, Vec3, With,
-};
-use game_common::components::actor::ActorFigure;
-use game_common::components::combat::{Attack, Health, IncomingDamage, Reload, Resistances};
+use bevy_app::{App, Plugin};
+use bevy_ecs::prelude::Entity;
+use bevy_ecs::query::With;
+use bevy_ecs::system::{Commands, Query, ResMut};
+use game_common::components::combat::Reload;
 use game_common::components::player::HostPlayer;
 use game_input::hotkeys::{
     Hotkey, HotkeyCode, HotkeyFilter, HotkeyId, HotkeyReader, Hotkeys, Key, TriggerKind,
@@ -38,7 +38,7 @@ static mut RELOAD: Hotkey = Hotkey {
 };
 
 impl Plugin for CombatPlugin {
-    fn build(&self, app: &mut bevy::prelude::App) {
+    fn build(&self, app: &mut App) {
         app.add_startup_system(register_events)
             // .add_system(attack_events)
             .add_system(reload_events);
@@ -111,22 +111,5 @@ fn reload_events(
 
     for _ in events.iter() {
         commands.entity(entity).insert(Reload);
-    }
-}
-
-#[derive(Bundle)]
-pub struct CombatBundle {
-    pub incoming_damage: IncomingDamage,
-    pub health: Health,
-    pub resistances: Resistances,
-}
-
-impl CombatBundle {
-    pub fn new() -> Self {
-        Self {
-            incoming_damage: IncomingDamage::new(),
-            health: Health::new(50),
-            resistances: Resistances::new(),
-        }
     }
 }

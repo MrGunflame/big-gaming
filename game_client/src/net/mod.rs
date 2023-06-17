@@ -7,10 +7,13 @@ use std::net::SocketAddr;
 use std::sync::{mpsc, Arc};
 use std::time::{Duration, Instant};
 
-use bevy::prelude::{IntoSystemConfig, Res, ResMut, SystemSet, Transform, Vec3};
+use bevy_app::{App, Plugin};
+use bevy_ecs::schedule::{IntoSystemConfig, SystemSet};
+use bevy_ecs::system::{Res, ResMut};
 use game_common::components::actions::Actions;
 use game_common::components::components::Components;
 use game_common::components::items::Item;
+use game_common::components::transform::Transform;
 use game_common::entity::EntityMap;
 use game_common::units::Mass;
 use game_common::world::entity::{Entity, EntityBody};
@@ -20,6 +23,7 @@ use game_net::conn::{Connection, ConnectionHandle, ConnectionMode};
 use game_net::proto::{Decode, Packet};
 use game_net::snapshot::{Command, CommandQueue, ConnectionMessage, DeltaQueue};
 use game_net::Socket;
+use glam::Vec3;
 use tokio::runtime::Runtime;
 
 pub use self::conn::ServerConnection;
@@ -36,8 +40,8 @@ pub enum NetSet {
 #[derive(Clone, Debug, Default)]
 pub struct NetPlugin {}
 
-impl bevy::prelude::Plugin for NetPlugin {
-    fn build(&self, app: &mut bevy::prelude::App) {
+impl Plugin for NetPlugin {
+    fn build(&self, app: &mut App) {
         let queue = CommandQueue::new();
 
         let map = EntityMap::default();

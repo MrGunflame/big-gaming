@@ -1,10 +1,11 @@
 use std::borrow::Cow;
 
-use bevy::prelude::{KeyCode, Query, ResMut};
+use bevy_ecs::system::{Query, ResMut};
 use game_common::components::camera::CameraMode;
 use game_input::hotkeys::{
     Hotkey, HotkeyCode, HotkeyFilter, HotkeyId, HotkeyReader, Hotkeys, TriggerKind,
 };
+use game_input::keyboard::KeyCode;
 
 static mut TOGGLE_CAMERA: Hotkey = Hotkey {
     id: HotkeyId(0),

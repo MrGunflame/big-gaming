@@ -1,5 +1,8 @@
-use bevy::prelude::{App, Commands, Query, Transform, Vec3};
+use bevy_app::App;
 use bevy_ecs::entity::Entity;
+use bevy_ecs::system::{Commands, Query};
+use game_common::components::transform::Transform;
+use glam::Vec3;
 
 use crate::actions::Rotate;
 use crate::sense::Vision;

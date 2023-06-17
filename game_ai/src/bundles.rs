@@ -1,4 +1,4 @@
-use bevy::prelude::Bundle;
+use bevy_ecs::prelude::Bundle;
 
 use crate::components::{Accuracy, AiController, Perception};
 use crate::sense::Vision;

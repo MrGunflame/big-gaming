@@ -1,3 +1,4 @@
+mod image;
 mod mime;
 
 pub mod uri;
@@ -13,6 +14,7 @@ use base64::engine::GeneralPurpose;
 use base64::engine::GeneralPurposeConfig;
 use base64::Engine;
 use bytes::Buf;
+use game_render::color::Color;
 use game_render::mesh::Indices;
 use game_render::mesh::Mesh;
 use game_render::pbr::AlphaMode;
@@ -99,6 +101,8 @@ pub enum Error {
     },
     #[error("invalid acessor value: {0}")]
     InvalidAccessor(#[from] InvalidAccessorValue),
+    #[error("failed to load image: {0}")]
+    LoadImage(#[from] ::image::ImageError),
 }
 
 impl GltfData {
@@ -413,14 +417,14 @@ impl GltfData {
             let image = info.texture().source();
 
             let buf = self.load_image(image)?;
-            Some(buf.to_vec())
+            Some(crate::image::parse_image(buf)?)
         } else {
             None
         };
 
         Ok(PbrMaterial {
             alpha_mode,
-            base_color,
+            base_color: Color(base_color),
             base_color_texture,
             roughness,
             metallic,

@@ -1,7 +1,9 @@
 use std::time::Instant;
 
-use bevy::prelude::{Commands, Entity, Query, Transform};
+use bevy_ecs::prelude::Entity;
+use bevy_ecs::system::{Commands, Query};
 use game_common::components::entity::InterpolateTranslation;
+use game_common::components::transform::Transform;
 
 pub fn interpolate_translation(
     mut commands: Commands,

@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 
-use bevy::prelude::{Quat, Vec3};
 use game_common::entity::EntityId;
 use game_common::world::world::WorldViewMut;
 use game_net::snapshot::CommandId;
+use glam::{Quat, Vec3};
 
 #[derive(Clone, Debug)]
 pub struct LocalOverrides {

@@ -1,20 +1,15 @@
 use std::time::{Duration, Instant};
 
-use bevy::prelude::{
-    AssetServer, Commands, DespawnRecursiveExt, Query, Res, ResMut, Transform, Vec3,
-};
-use bevy::transform::TransformBundle;
-use game_common::actors::human::Human;
-use game_common::bundles::{ActorBundle, ObjectBundle};
+use bevy_ecs::system::{ResMut,Res, Commands, Query};
 use game_common::components::actions::{Actions, ActionId};
 use game_common::components::actor::ActorProperties;
 use game_common::components::combat::Health;
 use game_common::components::components::{ Components, Component};
 use game_common::components::entity::InterpolateTranslation;
 use game_common::components::inventory::Inventory;
-use game_common::components::items::{Item,  LoadItem};
+use game_common::components::items::{Item,  };
 use game_common::components::player::HostPlayer;
-use game_common::components::terrain::LoadTerrain;
+use game_common::components::transform::Transform;
 use game_common::entity::EntityMap;
 use game_common::record::{RecordReference, RecordId};
 use game_common::world::entity::{Entity, EntityBody};
@@ -27,7 +22,6 @@ use game_input::hotkeys::Hotkeys;
 use game_net::backlog::Backlog;
 use game_net::snapshot::DeltaQueue;
 
-use crate::bundles::VisibilityBundle;
 use crate::plugins::actions::ActiveActions;
 
 use super::ServerConnection;
@@ -83,7 +77,7 @@ pub fn flush_delta_queue(
     mut commands: Commands,
     mut queue: ResMut<DeltaQueue>,
     mut entities: Query<(
-        bevy::ecs::entity::Entity,
+        bevy_ecs::entity::Entity,
         &mut Transform,
         Option<&mut Health>,
         Option<&mut ActorProperties>,
@@ -92,7 +86,6 @@ pub fn flush_delta_queue(
         Option<&mut Inventory>,
     )>,
     map: Res<EntityMap>,
-    assets: Res<AssetServer>,
     mut backlog: ResMut<Backlog>,
     conn: Res<ServerConnection>,
     modules: Res<Modules>,
@@ -122,7 +115,7 @@ mut hotkeys: ResMut<Hotkeys>
 
                 tracing::info!("despawning entity {:?}", id);
 
-                commands.entity(entity).despawn_recursive();
+                //commands.entity(entity).despawn_recursive();
             }
             EntityChange::Translate {
                 id,
@@ -297,80 +290,80 @@ mut hotkeys: ResMut<Hotkeys>
 
     for entity in buffer {
         let id = entity.entity.id;
-        let entity = spawn_entity(&mut commands, &assets, entity);
+        let entity = spawn_entity(&mut commands,  entity);
         map.insert(id, entity);
     }
 }
 
 fn spawn_entity(
     commands: &mut Commands,
-    assets: &AssetServer,
     entity: DelayedEntity,
-) -> bevy::ecs::entity::Entity {
-    match &entity.entity.body {
-        EntityBody::Terrain(terrain) => {
-            let id = commands
-                .spawn(LoadTerrain {
-                    cell: terrain.cell,
-                    mesh: terrain.clone(),
-                })
-                .insert(TransformBundle {
-                    local: entity.entity.transform,
-                    global: Default::default(),
-                })
-                .insert(VisibilityBundle::new())
-                .insert(entity.entity)
-                .id();
+) -> bevy_ecs::entity::Entity {
+    todo!();
+    // match &entity.entity.body {
+    //     EntityBody::Terrain(terrain) => {
+    //         let id = commands
+    //             .spawn(LoadTerrain {
+    //                 cell: terrain.cell,
+    //                 mesh: terrain.clone(),
+    //             })
+    //             .insert(TransformBundle {
+    //                 local: entity.entity.transform,
+    //                 global: Default::default(),
+    //             })
+    //             .insert(VisibilityBundle::new())
+    //             .insert(entity.entity)
+    //             .id();
 
-            id
-        }
-        EntityBody::Object(object) => {
-            let id = commands
-                .spawn(
-                    ObjectBundle::new(object.id)
-                        .translation(entity.entity.transform.translation)
-                        .rotation(entity.entity.transform.rotation),
-                )
-                .insert(entity.entity)
-                .insert(VisibilityBundle::new())
-                .id();
+    //         id
+    //     }
+    //     EntityBody::Object(object) => {
+    //         let id = commands
+    //             .spawn(
+    //                 ObjectBundle::new(object.id)
+    //                     .translation(entity.entity.transform.translation)
+    //                     .rotation(entity.entity.transform.rotation),
+    //             )
+    //             .insert(entity.entity)
+    //             .insert(VisibilityBundle::new())
+    //             .id();
 
-            id
-        }
-        EntityBody::Actor(act) => {
-            let mut actor = ActorBundle::default();
-            actor.transform.transform.translation = entity.entity.transform.translation;
-            actor.transform.transform.rotation = entity.entity.transform.rotation;
-            actor.combat.health = act.health;
+    //         id
+    //     }
+    //     EntityBody::Actor(act) => {
+    //         let mut actor = ActorBundle::default();
+    //         actor.transform.transform.translation = entity.entity.transform.translation;
+    //         actor.transform.transform.rotation = entity.entity.transform.rotation;
+    //         actor.combat.health = act.health;
 
-            actor.properties.eyes = Vec3::new(0.0, 1.6, -0.1);
+    //         actor.properties.eyes = Vec3::new(0.0, 1.6, -0.1);
 
-            let mut cmds = commands.spawn(actor);
-            cmds.insert(entity.entity);
-            Human::default().spawn(assets, &mut cmds);
+    //         let mut cmds = commands.spawn(actor);
+    //         cmds.insert(entity.entity);
+    //         Human::default().spawn(assets, &mut cmds);
 
-            if entity.host {
-                cmds.insert(HostPlayer)
-                    .insert(StreamingSource::new())
-                    .insert(entity.inventory).insert(VisibilityBundle::new());
-            }
+    //         if entity.host {
+    //             cmds.insert(HostPlayer)
+    //                 .insert(StreamingSource::new())
+    //                 .insert(entity.inventory).insert(VisibilityBundle::new());
+    //         }
 
-            cmds.id()
-        }
-        EntityBody::Item(item) => {
-            let id = commands
-                .spawn(LoadItem::new(item.id))
-                .insert(TransformBundle {
-                    local: entity.entity.transform,
-                    global: Default::default(),
-                })
-                .insert(VisibilityBundle::new())
-                .insert(entity.entity)
-                .id();
+    //         cmds.id()
+    //     }
+    //     EntityBody::Item(item) => {
+    //         let id = commands
+    //             .spawn(LoadItem::new(item.id))
+    //             .insert(TransformBundle {
+    //                 local: entity.entity.transform,
+    //                 global: Default::default(),
+    //             })
+    //             .insert(VisibilityBundle::new())
+    //             .insert(entity.entity)
+    //             .id();
 
-            id
-        }
-    }
+    //         id
+    //     }
+    // }
 }
 
 #[derive(Clone, Debug)]

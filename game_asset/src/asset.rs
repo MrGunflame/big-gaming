@@ -100,6 +100,10 @@ where
     pub fn get(&self, id: HandleId) -> Option<&T> {
         self.assets.get(id.0).map(|e| &e.asset)
     }
+
+    pub fn get_mut(&mut self, id: HandleId) -> Option<&mut T> {
+        self.assets.get_mut(id.0).map(|e| &mut e.asset)
+    }
 }
 
 #[derive(Clone, Debug)]

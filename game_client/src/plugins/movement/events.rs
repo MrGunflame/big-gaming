@@ -1,10 +1,12 @@
-use bevy::prelude::{Commands, Entity, Query, Res, ResMut, Transform};
-use bevy::time::Time;
+use bevy_ecs::prelude::Entity;
+use bevy_ecs::system::{Commands, Query, Res, ResMut};
 use game_common::components::actor::{ActorFlag, ActorFlags, ActorProperties, MovementSpeed};
 use game_common::components::movement::{Movement, RotateQueue};
+use game_common::components::transform::Transform;
 use game_common::entity::EntityMap;
 use game_common::math::RotationExt;
 use game_common::world::world::WorldState;
+use game_core::time::Time;
 use game_net::snapshot::Command;
 
 use crate::net::ServerConnection;
@@ -23,7 +25,7 @@ pub fn handle_movement_events(
     mut world: ResMut<WorldState>,
     map: ResMut<EntityMap>,
 ) {
-    let delta = time.delta_seconds();
+    let delta = time.delta().as_secs_f32();
 
     for (entity, flags, mut transform, speed, movement) in &mut actors {
         if !flags.contains(ActorFlag::CAN_MOVE) {

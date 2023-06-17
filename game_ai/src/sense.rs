@@ -1,9 +1,11 @@
-use bevy::prelude::{App, Query, Transform, With};
-use bevy_ecs::component::Component;
-use bevy_ecs::entity::Entity;
+use bevy_app::App;
+use bevy_ecs::prelude::{Component, Entity};
+use bevy_ecs::query::With;
+use bevy_ecs::system::Query;
 use game_common::components::actor::Actor;
 use game_common::components::combat::Resistances;
 use game_common::components::items::Item;
+use game_common::components::transform::Transform;
 
 pub(super) fn senses(app: &mut App) {
     // app.add_system(vision_sense).add_system(equipment_sense);

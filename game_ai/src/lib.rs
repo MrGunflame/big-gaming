@@ -1,4 +1,4 @@
-use bevy::prelude::Plugin;
+use bevy_app::{App, Plugin};
 
 pub mod bundles;
 pub mod components;
@@ -10,7 +10,7 @@ mod thinker;
 pub struct AiPlugin;
 
 impl Plugin for AiPlugin {
-    fn build(&self, app: &mut bevy::prelude::App) {
+    fn build(&self, app: &mut App) {
         sense::senses(app);
         thinker::thinkers(app);
         actions::actions(app);

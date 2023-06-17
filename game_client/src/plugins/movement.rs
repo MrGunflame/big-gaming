@@ -2,10 +2,11 @@ mod events;
 
 use std::borrow::Cow;
 
-use bevy::prelude::{
-    Camera3d, Commands, Entity, EventReader, IntoSystemConfig, IntoSystemSetConfig, Plugin, Quat,
-    Query, ResMut, SystemSet, Vec3, With, Without,
-};
+use bevy_app::{App, Plugin};
+use bevy_ecs::prelude::{Entity, EventReader};
+use bevy_ecs::query::{With, Without};
+use bevy_ecs::schedule::{IntoSystemConfig, IntoSystemSetConfig, SystemSet};
+use bevy_ecs::system::{Commands, Query, ResMut};
 use game_common::components::actor::{ActorProperties, MovementSpeed};
 use game_common::components::movement::{Jump, Movement, Rotate, RotateQueue};
 use game_common::components::player::HostPlayer;
@@ -15,6 +16,8 @@ use game_input::hotkeys::{
 use game_input::keyboard::KeyCode;
 use game_input::mouse::MouseMotion;
 use game_input::InputSet;
+use game_render::camera::Camera;
+use glam::{Quat, Vec3};
 
 static mut MOVE_FORWARD: Hotkey = Hotkey {
     id: HotkeyId(0),
@@ -134,7 +137,7 @@ pub enum MovementSet {
 pub struct MovementPlugin;
 
 impl Plugin for MovementPlugin {
-    fn build(&self, app: &mut bevy::prelude::App) {
+    fn build(&self, app: &mut App) {
         app.add_startup_system(register_events);
 
         app.add_system(movement_events.in_set(MovementSet::Read));
@@ -326,7 +329,7 @@ fn mouse_movement(
     mut events: EventReader<MouseMotion>,
     mut players: Query<
         (&mut RotateQueue, &mut ActorProperties),
-        (With<HostPlayer>, Without<Camera3d>),
+        (With<HostPlayer>, Without<Camera>),
     >,
 ) {
     let Ok((mut queue, mut props)) = players.get_single_mut() else {

@@ -1,5 +1,6 @@
 use ahash::HashMap;
-use bevy::prelude::{App, Res, ResMut, Resource};
+use bevy_app::{App, Plugin};
+use bevy_ecs::system::{Res, ResMut, Resource};
 use game_common::components::actions::ActionId;
 use game_common::events::{ActionEvent, EntityEvent, Event, EventQueue};
 use game_common::module::ModuleId;
@@ -15,7 +16,7 @@ use crate::net::ServerConnection;
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ActionsPlugin;
 
-impl bevy::prelude::Plugin for ActionsPlugin {
+impl Plugin for ActionsPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(ActiveActions::default());
         app.insert_resource(HotkeyMap::default());

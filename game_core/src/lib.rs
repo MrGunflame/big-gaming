@@ -8,7 +8,6 @@ use world::{LevelPlugin, ObjectPlugin, SpawnPlugin, WorldTimePlugin};
 
 use bevy_app::{App, Plugin};
 
-pub mod ai;
 pub mod animation;
 pub mod combat;
 pub mod modules;

@@ -2,7 +2,8 @@ use std::net::ToSocketAddrs;
 use std::sync::Arc;
 use std::time::Instant;
 
-use bevy::prelude::{Entity, EventWriter, Res, Resource};
+use bevy_ecs::prelude::{Entity, EventWriter};
+use bevy_ecs::system::{Res, Resource};
 use game_common::entity::{EntityId, EntityMap};
 use game_common::scene::{Scene, SceneTransition, ServerError};
 use game_net::conn::{ConnectionHandle, ConnectionId};
