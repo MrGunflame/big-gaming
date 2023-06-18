@@ -1,16 +1,17 @@
 #![deny(unsafe_op_in_unsafe_fn)]
 
 mod assets;
+mod entities;
 mod net;
 mod plugins;
 mod prev_transform;
 mod state;
 mod utils;
 mod window;
-mod world;
 
 use bevy_app::App;
 use clap::Parser;
+use entities::LoadEntityPlugin;
 use game_core::logger::Logger;
 use game_core::CorePlugins;
 use game_render::RenderPlugin;
@@ -46,6 +47,7 @@ fn main() {
     app.add_plugin(CorePlugins);
     app.add_plugin(NetPlugin::default());
     app.add_plugin(ActionsPlugin);
+    app.add_plugin(LoadEntityPlugin);
 
     game_core::modules::load_modules(&mut app);
 

@@ -1,26 +1,24 @@
 use std::time::{Duration, Instant};
 
-use bevy_ecs::system::{ResMut,Res, Commands, Query};
-use game_common::components::actions::{Actions, ActionId};
-use game_common::components::actor::ActorProperties;
+use bevy_ecs::system::{Commands, Query, Res, ResMut};
 use game_common::components::combat::Health;
-use game_common::components::components::{ Components, Component};
-use game_common::components::entity::InterpolateTranslation;
 use game_common::components::inventory::Inventory;
-use game_common::components::items::{Item,  };
 use game_common::components::player::HostPlayer;
 use game_common::components::transform::Transform;
-use game_common::record::{RecordReference, RecordId};
+use game_common::entity::EntityId;
 use game_common::world::entity::{Entity, EntityBody};
 use game_common::world::snapshot::EntityChange;
 use game_common::world::source::StreamingSource;
 use game_common::world::world::{WorldState, WorldViewRef};
 use game_core::modules::Modules;
-use game_data::record::{ RecordBody, };
 use game_input::hotkeys::Hotkeys;
 use game_net::backlog::Backlog;
 use game_net::snapshot::DeltaQueue;
 
+use crate::entities::actor::LoadActor;
+use crate::entities::item::LoadItem;
+use crate::entities::object::LoadObject;
+use crate::entities::terrain::LoadTerrain;
 use crate::plugins::actions::ActiveActions;
 
 use super::ServerConnection;
@@ -32,7 +30,7 @@ pub fn apply_world_delta(
 ) {
     let conn = &mut *conn;
 
-    let period =&mut conn.interpolation_period;
+    let period = &mut conn.interpolation_period;
 
     // Don't start a new period until the previous ended.
     if period.end > Instant::now() - Duration::from_millis(100) {
@@ -81,7 +79,6 @@ pub fn flush_delta_queue(
         bevy_ecs::entity::Entity,
         &mut Transform,
         Option<&mut Health>,
-        Option<&mut ActorProperties>,
         // FIXME: We prolly don't want this on entity directly and just
         // access the WorldState.
         Option<&mut Inventory>,
@@ -89,216 +86,175 @@ pub fn flush_delta_queue(
     mut backlog: ResMut<Backlog>,
     conn: Res<ServerConnection>,
     modules: Res<Modules>,
-mut active_actions: ResMut<ActiveActions>,
-mut hotkeys: ResMut<Hotkeys>
+    mut active_actions: ResMut<ActiveActions>,
+    mut hotkeys: ResMut<Hotkeys>,
 ) {
     // Since events are received in batches, and commands are not applied until
     // the system is done, we buffer all created entities so we can modify them
     // in place within the same batch before they are spawned into the world.
-    let mut buffer: Vec<DelayedEntity> = vec![];
+    let mut buffer = Buffer::new();
 
-    let period = { conn.interpolation_period };
-
-    while let Some(change) = queue.pop() {
-        match change {
-            EntityChange::Create { entity } => {
-                tracing::info!("spawning entity {:?}", entity.id);
-
-                buffer.push(entity.into());
-            }
-            EntityChange::Destroy { id } => {
-                let Some(entity) = conn.entities.get(id) else {
-                    tracing::warn!("attempted to destroy a non-existent entity: {:?}", id);
-                    continue;
-                };
-
-                tracing::info!("despawning entity {:?}", id);
-
-                //commands.entity(entity).despawn_recursive();
-            }
-            EntityChange::Translate {
-                id,
-                translation,
-                cell,
-            } => {
-                let Some(entity) = conn.entities.get(id) else {
-                    if let Some(entity) = buffer.iter_mut().find(|e|e.entity.id==id) {
-                        entity.entity.transform.translation = translation;
-                    } else {
-                        backlog.push(id, EntityChange::Translate { id, translation, cell });
-                    }
-
-                    continue;
-                };
-
-                if let Ok((ent, mut transform, _, _, _)) = entities.get_mut(entity) {
-                    commands.entity(ent).insert(InterpolateTranslation {
-                        src: transform.translation,
-                        dst: translation,
-                        start: period.start,
-                        end: period.end,
-                    });
-
-                    // transform.translation = translation;
-                } else {
-                    tracing::warn!("attempted to translate unknown entity {:?}", id);
-                }
-            }
-            EntityChange::Rotate { id, rotation } => {
-                let Some(entity) = conn.entities.get(id) else {
-                    if let Some(entity) = buffer.iter_mut().find(|e| e.entity.id == id) {
-                        entity.entity.transform.rotation = rotation;
-                    } else {
-                        backlog.push(id, EntityChange::Rotate { id, rotation });
-                    }
-
-                    continue;
-                };
-
-                if let Ok((ent, mut transform, _, props, _)) = entities.get_mut(entity) {
-                    if let Some(mut props) = props {
-                        // Actor
-                        props.rotation = rotation;
-                    } else {
-                        // Object
-                        transform.rotation = rotation;
-                    }
-                } else {
-                    tracing::warn!("attempted to rotate unknown entity {:?}", id);
-                }
-            }
-            EntityChange::CreateHost { id } => {
-                let Some(entity) = conn.entities.get(id) else {
-                    if let Some(entity) = buffer.iter_mut().find(|e| e.entity.id == id) {
-                        entity.host = true;
-                    } else {
-                        backlog.push(id, EntityChange::CreateHost { id });
-                    }
-
-                    continue;
-                };
-
-                commands
-                    .entity(entity)
-                    .insert(HostPlayer)
-                    .insert(StreamingSource::new());
-            }
-            EntityChange::DestroyHost { id } => {
-                let Some(entity) = conn.entities.get(id) else {
-                    if let Some(entity) = buffer.iter_mut().find(|e| e.entity.id == id) {
-                        entity.host = false;
-                    } else {
-                        backlog.push(id, EntityChange::DestroyHost { id });
-                    }
-
-                    continue;
-                };
-
-                commands
-                    .entity(entity)
-                    .remove::<HostPlayer>()
-                    .remove::<StreamingSource>();
-            }
-            EntityChange::Health { id, health } => {
-                let Some(entity) = conn.entities.get(id) else {
-                    if let Some(entity) = buffer.iter_mut().find(|e| e.entity.id == id ) {
-                        if let EntityBody::Actor(actor) = &mut entity.entity.body {
-                            actor.health = health;
-                        }
-                    } else {
-                        backlog.push(id, EntityChange::Health { id, health });
-                    }
-
-                    continue;
-                };
-
-                let (_, _, h, _, _) = entities.get_mut(entity).unwrap();
-                if let Some(mut h) = h {
-                    *h = health;
-                } else {
-                    tracing::warn!("tried to apply health to a non-actor entity");
-                }
-            }
-            EntityChange::UpdateStreamingSource { id, state } => (),
-            EntityChange::InventoryItemAdd(event) => {
-                let base_item = match modules
-                    .get(event.item.0.module)
-                    .unwrap()
-                    .records
-                    .get(RecordId(event.item.0.record.0))
-                    .unwrap()
-                    .body
-                {
-                    RecordBody::Item(ref item) => item,
-                    _ => panic!("expected item"),
-                };
-
-                let mut actions = Actions::new();
-                for a in &base_item.actions {
-                    actions.push(ActionId(RecordReference{
-                        module: a.module,
-                        record: game_common::record::RecordId(a.record.0)
-                    }));
-
-                    let action = modules.get(a.module).unwrap().records.get(a.record).unwrap().clone();
-
-                    active_actions.register(&mut hotkeys, a.module, action);
-                }
-
-                let mut components = Components::new();
-                for c in &base_item.components{
-                    let id = RecordReference{
-                        module: c.record.module,
-                        record: game_common::record::RecordId(c.record.record.0)
-                    };
-
-                    components.insert(id, Component{ bytes: c.value.clone() });
-                }
-
-                let item = Item {
-                    id: event.item,
-                    resistances: None,
-                    actions,
-                    components,
-                    mass: base_item.mass,
-                    equipped: false,
-                    hidden: false,
-                };
-
-                let Some(entity) = conn.entities.get(event.entity) else {
-                    if let Some(entity) = buffer.iter_mut().find(|e| e.entity.id == event.entity) {
-                        entity.inventory.insert(item).unwrap();
-                    } else {
-                        backlog.push(event.entity, EntityChange::InventoryItemAdd(event));
-                    }
-                
-                    continue;
-                };
-
-                let (_, _, _, _, inv) = entities.get_mut(entity).unwrap();
-                let mut inv = inv.unwrap();
-                inv.insert(item).unwrap();
-
-
-
-            }
-            EntityChange::InventoryItemRemove(event) => todo!(),
-            EntityChange::InventoryDestroy(event) => todo!(),
-        }
+    while let Some(event) = queue.pop() {
+        handle_event(
+            &mut commands,
+            &mut entities,
+            event,
+            &mut buffer,
+            &conn,
+            &mut backlog,
+        );
     }
 
-    for entity in buffer {
+    for entity in buffer.entities {
         let id = entity.entity.id;
-        let entity = spawn_entity(&mut commands,  entity);
+        let entity = spawn_entity(&mut commands, entity);
         conn.entities.insert(id, entity);
     }
 }
 
-fn spawn_entity(
+fn handle_event(
     commands: &mut Commands,
-    entity: DelayedEntity,
-) -> bevy_ecs::entity::Entity {
-    todo!();
+    entities: &mut Query<(
+        bevy_ecs::entity::Entity,
+        &mut Transform,
+        Option<&mut Health>,
+        Option<&mut Inventory>,
+    )>,
+    event: EntityChange,
+    buffer: &mut Buffer,
+    conn: &ServerConnection,
+    backlog: &mut Backlog,
+) {
+    // Create and Destroy require special treatment.
+    if !matches!(
+        event,
+        EntityChange::Create { entity: _ } | EntityChange::Destroy { id: _ }
+    ) {
+        let entity_id = event.entity();
+        if conn.entities.get(entity_id).is_none() {
+            if let Some(entity) = buffer.get_mut(entity_id) {
+                match event {
+                    EntityChange::Create { entity: _ } => {}
+                    EntityChange::Destroy { id: _ } => {}
+                    EntityChange::Translate {
+                        id: _,
+                        translation,
+                        cell: _,
+                    } => {
+                        entity.entity.transform.translation = translation;
+                    }
+                    EntityChange::Rotate { id: _, rotation } => {
+                        entity.entity.transform.rotation = rotation;
+                    }
+                    EntityChange::Health { id, health } => match &mut entity.entity.body {
+                        EntityBody::Actor(actor) => actor.health = health,
+                        _ => {
+                            tracing::warn!("tried to apply health to a non-actor entity: {:?}", id);
+                        }
+                    },
+                    EntityChange::CreateHost { id: _ } => entity.host = true,
+                    EntityChange::DestroyHost { id: _ } => entity.host = false,
+                    EntityChange::UpdateStreamingSource { id, state } => todo!(),
+                    EntityChange::InventoryItemAdd(event) => {}
+                    EntityChange::InventoryItemRemove(event) => todo!(),
+                    EntityChange::InventoryDestroy(event) => todo!(),
+                }
+            } else {
+                backlog.push(entity_id, event);
+            }
+
+            return;
+        }
+    }
+
+    match event {
+        EntityChange::Create { entity } => {
+            tracing::debug!("spawning entity {:?}", entity);
+
+            buffer.push(entity);
+        }
+        EntityChange::Destroy { id } => {
+            let Some(entity) = conn.entities.get(id) else {
+                tracing::warn!("attempted to destroy a non-existent entity: {:?}", id);
+                return;
+            };
+
+            if !buffer.remove(id) {
+                // DESPAWN
+            }
+        }
+        EntityChange::Translate {
+            id,
+            translation,
+            cell,
+        } => {
+            let entity = conn.entities.get(id).unwrap();
+
+            if let Ok((_, mut transform, _, _)) = entities.get_mut(entity) {
+                transform.translation = translation;
+            }
+        }
+        EntityChange::Rotate { id, rotation } => {
+            let entity = conn.entities.get(id).unwrap();
+
+            if let Ok((_, mut transform, _, _)) = entities.get_mut(entity) {
+                transform.rotation = rotation;
+            }
+        }
+        EntityChange::CreateHost { id } => {
+            let entity = conn.entities.get(id).unwrap();
+
+            commands
+                .entity(entity)
+                .insert(HostPlayer)
+                .insert(StreamingSource::new());
+        }
+        EntityChange::DestroyHost { id } => {
+            let entity = conn.entities.get(id).unwrap();
+
+            commands
+                .entity(entity)
+                .remove::<HostPlayer>()
+                .remove::<StreamingSource>();
+        }
+        EntityChange::Health { id, health } => {
+            let entity = conn.entities.get(id).unwrap();
+
+            if let Ok((_, _, Some(mut h), _)) = entities.get_mut(entity) {
+                *h = health;
+            }
+        }
+        EntityChange::UpdateStreamingSource { id, state } => todo!(),
+        EntityChange::InventoryItemAdd(event) => todo!(),
+        EntityChange::InventoryItemRemove(event) => todo!(),
+        EntityChange::InventoryDestroy(event) => todo!(),
+    }
+}
+
+fn spawn_entity(commands: &mut Commands, entity: DelayedEntity) -> bevy_ecs::entity::Entity {
+    match entity.entity.body {
+        EntityBody::Terrain(terrain) => commands.spawn(LoadTerrain { mesh: terrain }).id(),
+        EntityBody::Object(object) => commands
+            .spawn(LoadObject {
+                transform: entity.entity.transform,
+                id: object.id,
+            })
+            .id(),
+        EntityBody::Actor(actor) => commands
+            .spawn(LoadActor {
+                transform: entity.entity.transform,
+                race: actor.race,
+                health: actor.health,
+            })
+            .id(),
+        EntityBody::Item(item) => commands
+            .spawn(LoadItem {
+                transform: entity.entity.transform,
+                id: item.id,
+            })
+            .id(),
+    }
+
     // match &entity.entity.body {
     //     EntityBody::Terrain(terrain) => {
     //         let id = commands
@@ -382,3 +338,39 @@ impl From<Entity> for DelayedEntity {
     }
 }
 
+struct Buffer {
+    entities: Vec<DelayedEntity>,
+}
+
+impl Buffer {
+    fn new() -> Self {
+        Self {
+            entities: Vec::new(),
+        }
+    }
+
+    pub fn push<E>(&mut self, entity: E)
+    where
+        E: Into<DelayedEntity>,
+    {
+        self.entities.push(entity.into());
+    }
+
+    pub fn get_mut(&mut self, id: EntityId) -> Option<&mut DelayedEntity> {
+        self.entities.iter_mut().find(|e| e.entity.id == id)
+    }
+
+    pub fn remove(&mut self, id: EntityId) -> bool {
+        let mut removed = false;
+        self.entities.retain(|e| {
+            if e.entity.id != id {
+                true
+            } else {
+                removed = true;
+                false
+            }
+        });
+
+        removed
+    }
+}

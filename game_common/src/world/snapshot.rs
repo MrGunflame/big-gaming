@@ -84,6 +84,28 @@ pub enum EntityChange {
     InventoryDestroy(InventoryDestroy),
 }
 
+impl EntityChange {
+    pub const fn entity(&self) -> EntityId {
+        match self {
+            Self::Create { entity } => entity.id,
+            Self::Destroy { id } => *id,
+            Self::Translate {
+                id,
+                translation: _,
+                cell: _,
+            } => *id,
+            Self::Rotate { id, rotation: _ } => *id,
+            Self::Health { id, health: _ } => *id,
+            Self::CreateHost { id } => *id,
+            Self::DestroyHost { id } => *id,
+            Self::UpdateStreamingSource { id, state: _ } => *id,
+            Self::InventoryItemAdd(event) => event.entity,
+            Self::InventoryItemRemove(event) => event.entity,
+            Self::InventoryDestroy(event) => event.entity,
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct InventoryItemAdd {
     pub entity: EntityId,

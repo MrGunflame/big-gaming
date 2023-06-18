@@ -128,7 +128,7 @@ fn flush_command_queue(mut conn: ResMut<ServerConnection>, mut world: ResMut<Wor
                 continue;
             }
             Command::Disconnected => {
-                conn.writer.update(GameState::MainMenu);
+                conn.shutdown();
                 continue;
             }
             _ => (),

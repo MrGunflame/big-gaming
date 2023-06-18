@@ -30,7 +30,7 @@ impl EntityId {
     }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Resource)]
 pub struct EntityMap {
     inner: Arc<RwLock<EntityMapInner>>,
 }

@@ -15,6 +15,7 @@ game_net = { version = "0.1.0", path = "../game_net" }
 game_data = { version = "0.1.0", path = "../game_data" }
 game_render = { version = "0.1.0", path = "../game_render" }
 game_window = { version = "0.1.0", path = "../game_window" }
+game_asset = { version = "0.1.0", path = "../game_asset" }
 
 bevy_ecs = "0.10.0"
 bevy_app = "0.10.0"
