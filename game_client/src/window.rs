@@ -1,20 +1,22 @@
 use bevy_ecs::prelude::{Entity, EventReader};
 use bevy_ecs::system::{Res, Resource};
-use bevy_ecs::world::World;
+use bevy_ecs::world::{FromWorld, World};
 use game_window::events::WindowDestroyed;
 use game_window::Window;
 
 #[derive(Copy, Clone, Debug, Resource)]
 pub struct PrimaryWindow(pub Entity);
 
-pub fn spawn_primary_window(world: &mut World) {
-    let id = world
-        .spawn(Window {
-            title: "Game client".to_owned(),
-        })
-        .id();
+impl FromWorld for PrimaryWindow {
+    fn from_world(world: &mut World) -> Self {
+        let id = world
+            .spawn(Window {
+                title: "Game client".to_owned(),
+            })
+            .id();
 
-    world.insert_resource(PrimaryWindow(id));
+        Self(id)
+    }
 }
 
 pub fn destroy_primary_window(

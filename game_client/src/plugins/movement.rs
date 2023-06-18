@@ -10,14 +10,19 @@ use bevy_ecs::system::{Commands, Query, ResMut};
 use game_common::components::actor::{ActorProperties, MovementSpeed};
 use game_common::components::movement::{Jump, Movement, Rotate, RotateQueue};
 use game_common::components::player::HostPlayer;
+use game_common::components::transform::Transform;
 use game_input::hotkeys::{
     Event, Hotkey, HotkeyCode, HotkeyFilter, HotkeyId, HotkeyReader, Hotkeys, Key, TriggerKind,
 };
-use game_input::keyboard::KeyCode;
+use game_input::keyboard::{KeyCode, KeyboardInput};
 use game_input::mouse::MouseMotion;
 use game_input::InputSet;
+use game_net::proto;
 use game_render::camera::Camera;
+use game_window::events::VirtualKeyCode;
 use glam::{Quat, Vec3};
+
+use super::camera::PrimaryCamera;
 
 static mut MOVE_FORWARD: Hotkey = Hotkey {
     id: HotkeyId(0),
@@ -141,7 +146,7 @@ impl Plugin for MovementPlugin {
         app.add_startup_system(register_events);
 
         app.add_system(movement_events.in_set(MovementSet::Read));
-        app.add_system(mouse_movement.in_set(MovementSet::Read));
+        app.add_system(camera_rotation.in_set(MovementSet::Read));
         app.add_system(toggle_sprint.in_set(MovementSet::Read));
         app.add_system(jump_events.in_set(MovementSet::Read));
 
@@ -322,6 +327,58 @@ impl Angle {
 
     fn to_radians(self) -> Option<f32> {
         self.to_degrees().map(f32::to_radians)
+    }
+}
+
+pub fn camera_rotation(
+    mut events: EventReader<MouseMotion>,
+
+    mut cameras: Query<(&Camera, &mut Transform), With<PrimaryCamera>>,
+) {
+    let (_, mut transform) = cameras.single_mut();
+
+    for event in events.iter() {
+        let yaw = event.delta.x * 0.001;
+        let pitch = event.delta.y * 0.001;
+
+        let q1 = Quat::from_axis_angle(Vec3::Y, -yaw);
+        let q2 = Quat::from_axis_angle(Vec3::X, -pitch);
+
+        transform.rotation = q1 * transform.rotation;
+        transform.rotation = transform.rotation * q2;
+
+        dbg!(transform.rotation * -Vec3::Z);
+    }
+}
+
+pub fn keyboard_input(
+    mut events: EventReader<KeyboardInput>,
+    mut cameras: Query<(&Camera, &mut Transform), With<PrimaryCamera>>,
+) {
+    let (_, mut transform) = cameras.single_mut();
+
+    for event in events.iter() {
+        match event.key_code {
+            Some(VirtualKeyCode::W) => {
+                transform.translation.z -= 0.1;
+            }
+            Some(VirtualKeyCode::A) => {
+                transform.translation.x -= 0.1;
+            }
+            Some(VirtualKeyCode::S) => {
+                transform.translation.z += 0.1;
+            }
+            Some(VirtualKeyCode::D) => {
+                transform.translation.x += 0.1;
+            }
+            Some(VirtualKeyCode::Q) => {
+                transform.translation.y += 0.1;
+            }
+            Some(VirtualKeyCode::E) => {
+                transform.translation.y -= 0.1;
+            }
+            _ => (),
+        }
     }
 }
 

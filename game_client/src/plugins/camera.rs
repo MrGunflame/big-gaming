@@ -1,19 +1,26 @@
 mod events;
 
 use bevy_app::{App, Plugin};
+use bevy_ecs::prelude::Component;
 use bevy_ecs::query::{With, Without};
 use bevy_ecs::schedule::IntoSystemConfig;
 use bevy_ecs::system::{Commands, Query, Res};
+use game_common::bundles::TransformBundle;
 use game_common::components::actor::ActorProperties;
 use game_common::components::camera::CameraMode;
 use game_common::components::player::HostPlayer;
 use game_common::components::transform::Transform;
 use game_render::camera::{Camera, CameraBundle, Projection, RenderTarget};
+use game_render::light::{DirectionalLight, DirectionalLightBundle};
 use glam::{Mat3, Quat, Vec3};
 
 use crate::window::PrimaryWindow;
 
 use super::movement::MovementSet;
+
+/// The camera controlled by the hosting player.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Component)]
+pub struct PrimaryCamera;
 
 pub struct CameraPlugin;
 
@@ -22,7 +29,9 @@ impl Plugin for CameraPlugin {
         app.add_startup_system(setup_camera)
             .add_startup_system(events::register_events)
             .add_system(events::toggle_camera_position)
-            .add_system(synchronize_player_camera.after(MovementSet::Apply));
+            .add_system(super::movement::camera_rotation)
+            .add_system(super::movement::keyboard_input);
+        // .add_system(synchronize_player_camera.after(MovementSet::Apply));
     }
 }
 
@@ -41,7 +50,22 @@ fn setup_camera(mut commands: Commands, target: Res<PrimaryWindow>) {
                 target: RenderTarget::Window(target.0),
             },
         })
-        .insert(CameraMode::FirstPerson);
+        .insert(CameraMode::FirstPerson)
+        .insert(PrimaryCamera);
+
+    commands.spawn(DirectionalLightBundle {
+        light: DirectionalLight {
+            color: [1.0; 3],
+            illuminance: 1.0,
+        },
+        transform: TransformBundle {
+            transform: Transform {
+                translation: Vec3::splat(-1.0),
+                ..Default::default()
+            },
+            ..Default::default()
+        },
+    });
 }
 
 fn synchronize_player_camera(

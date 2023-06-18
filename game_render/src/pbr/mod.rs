@@ -92,7 +92,7 @@ impl Default for PbrMaterial {
     fn default() -> Self {
         Self {
             alpha_mode: AlphaMode::default(),
-            base_color: Color([1.0, 1.0, 1.0, 1.0]),
+            base_color: Color::WHITE,
             base_color_texture: None,
             normal_texture: None,
             roughness: 0.0,

@@ -17,7 +17,9 @@ use game_core::CorePlugins;
 use game_render::RenderPlugin;
 use net::NetPlugin;
 use plugins::actions::ActionsPlugin;
+use plugins::CameraPlugin;
 use state::InternalGameState;
+use window::PrimaryWindow;
 
 use crate::net::ServerConnection;
 
@@ -41,13 +43,14 @@ fn main() {
     app.add_system(state::update_game_state);
 
     // Window setup
-    app.add_startup_system(window::spawn_primary_window);
+    app.init_resource::<PrimaryWindow>();
     app.add_system(window::destroy_primary_window);
 
     app.add_plugin(CorePlugins);
     app.add_plugin(NetPlugin::default());
     app.add_plugin(ActionsPlugin);
     app.add_plugin(LoadEntityPlugin);
+    app.add_plugin(CameraPlugin);
 
     game_core::modules::load_modules(&mut app);
 

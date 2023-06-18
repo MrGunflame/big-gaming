@@ -59,6 +59,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let color = albedo.xyz * li;
 
     return vec4(color, 1.0);
+    //return vec4(normal.xyz, 1.0);
 }
 
 struct DirectionalLight {

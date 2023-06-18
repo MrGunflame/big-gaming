@@ -60,6 +60,11 @@ impl Mesh {
     }
 
     pub fn vertices(&self) -> Vec<Vertex> {
+        // assert_eq!(self.positions.len(), self.normals.len());
+        // assert_eq!(self.positions.len(), self.uvs.len());
+        // assert_eq!(self.positions.len(), self.tangents.len());
+        // assert_eq!(self.bitangents.len(), self.bitangents.len());
+
         let end = usize::max(
             usize::max(self.positions.len(), self.normals.len()),
             self.uvs.len(),
