@@ -1,5 +1,8 @@
 mod image;
+mod material;
+mod mesh;
 mod mime;
+mod scene;
 
 pub mod uri;
 
@@ -14,17 +17,18 @@ use base64::engine::GeneralPurpose;
 use base64::engine::GeneralPurposeConfig;
 use base64::Engine;
 use bytes::Buf;
+use game_common::components::transform::Transform;
 use game_render::color::Color;
 use game_render::mesh::Indices;
 use game_render::mesh::Mesh;
 use game_render::pbr::AlphaMode;
-use game_render::pbr::PbrMaterial;
+use glam::{Quat, Vec3};
 use gltf::accessor::DataType;
 use gltf::accessor::Dimensions;
 use gltf::buffer::Source;
-use gltf::Image;
 use gltf::Material;
 use gltf::{Accessor, Gltf, Semantic};
+use gltf::{Image, Node};
 use indexmap::IndexMap;
 use indexmap::IndexSet;
 use mime::InvalidMimeType;
@@ -32,6 +36,10 @@ use mime::MimeType;
 use serde_json::{Number, Value};
 use thiserror::Error;
 use uri::Uri;
+
+pub use material::GltfMaterial;
+pub use mesh::{GltfMesh, GltfNode, GltfPrimitive};
+pub use scene::GltfScene;
 
 use gltf::image::Source as ImageSource;
 
@@ -178,53 +186,94 @@ impl GltfData {
 
     // FIXME: Do we want to have validation on accessor methods, or do it
     // on loading the object instead?.
-    pub fn meshes(&self) -> Result<Vec<(Mesh, PbrMaterial)>, Error> {
-        let mut meshes = Vec::new();
+    pub fn scenes(&self) -> Result<Vec<GltfScene>, Error> {
+        let mut scenes = Vec::new();
 
-        for mesh in self.gltf.meshes() {
-            for primitive in mesh.primitives() {
-                let mut out_mesh = Mesh::new();
-
-                let attrs = primitive.attributes();
-
-                for (semantic, accessor) in attrs {
-                    match semantic {
-                        Semantic::Positions => {
-                            let mut positions = vec![];
-                            self.load_positions(&accessor, &mut positions)?;
-                            out_mesh.set_positions(positions);
-                        }
-                        Semantic::Normals => {
-                            let mut normals = vec![];
-                            self.load_normals(&accessor, &mut normals)?;
-                            out_mesh.set_normals(normals);
-                        }
-                        Semantic::TexCoords(index) => {
-                            if index != 0 {
-                                panic!("multiple texture coordinates not yet supported");
-                            }
-
-                            let mut uvs = vec![];
-                            self.load_uvs(&accessor, &mut uvs)?;
-                            out_mesh.set_uvs(uvs);
-                        }
-                        _ => (),
-                    }
-                }
-
-                if let Some(accessor) = primitive.indices() {
-                    let mut indices = Indices::U16(vec![]);
-                    self.load_indices(&accessor, &mut indices)?;
-                    out_mesh.set_indices(indices);
-                }
-
-                let material = self.load_material(primitive.material())?;
-
-                meshes.push((out_mesh, material));
+        for scene in self.gltf.scenes() {
+            let mut nodes = Vec::new();
+            for node in scene.nodes() {
+                nodes.push(self.load_node(node)?);
             }
+
+            scenes.push(GltfScene { nodes });
         }
 
-        Ok(meshes)
+        Ok(scenes)
+    }
+
+    fn load_node(&self, node: Node<'_>) -> Result<GltfNode, Error> {
+        let children = node
+            .children()
+            .into_iter()
+            .map(|node| self.load_node(node))
+            .collect::<Result<Vec<_>, Error>>()?;
+
+        let mesh = if let Some(mesh) = node.mesh() {
+            Some(self.load_mesh(mesh)?)
+        } else {
+            None
+        };
+
+        let (translation, rotation, scale) = node.transform().decomposed();
+        let transform = Transform {
+            translation: Vec3::from_array(translation),
+            rotation: Quat::from_array(rotation),
+            scale: Vec3::from_array(scale),
+        };
+
+        // TODO: Error instead of panicking.
+        assert!(transform.rotation.is_normalized());
+
+        Ok(GltfNode {
+            children,
+            mesh,
+            transform,
+        })
+    }
+
+    fn load_mesh(&self, mesh: gltf::Mesh<'_>) -> Result<GltfMesh, Error> {
+        let mut primitives = Vec::new();
+
+        for primitive in mesh.primitives() {
+            let mut mesh = Mesh::new();
+
+            for (semantic, accessor) in primitive.attributes() {
+                match semantic {
+                    Semantic::Positions => {
+                        let mut positions = Vec::new();
+                        self.load_positions(&accessor, &mut positions)?;
+                        mesh.set_positions(positions);
+                    }
+                    Semantic::Normals => {
+                        let mut normals = Vec::new();
+                        self.load_normals(&accessor, &mut normals)?;
+                        mesh.set_normals(normals);
+                    }
+                    Semantic::TexCoords(index) => {
+                        if index != 0 {
+                            panic!("multiple texture coordinates not yet supported");
+                        }
+
+                        let mut uvs = vec![];
+                        self.load_uvs(&accessor, &mut uvs)?;
+                        mesh.set_uvs(uvs);
+                    }
+                    _ => todo!(),
+                }
+            }
+
+            if let Some(accessor) = primitive.indices() {
+                let mut indices = Indices::U16(vec![]);
+                self.load_indices(&accessor, &mut indices)?;
+                mesh.set_indices(indices);
+            }
+
+            let material = self.load_material(primitive.material())?;
+
+            primitives.push(GltfPrimitive { mesh, material });
+        }
+
+        Ok(GltfMesh { primitives })
     }
 
     fn buffer(&self, source: Source, offset: usize, length: usize) -> Result<&[u8], Error> {
@@ -394,7 +443,7 @@ impl GltfData {
         Ok(())
     }
 
-    fn load_material(&self, material: Material<'_>) -> Result<PbrMaterial, Error> {
+    fn load_material(&self, material: Material<'_>) -> Result<GltfMaterial, Error> {
         let alpha_mode = convert_alpha_mode(material.alpha_mode());
 
         let pbr = material.pbr_metallic_roughness();
@@ -417,12 +466,12 @@ impl GltfData {
             let image = info.texture().source();
 
             let buf = self.load_image(image)?;
-            Some(crate::image::parse_image(buf)?)
+            Some(buf.to_vec())
         } else {
             None
         };
 
-        Ok(PbrMaterial {
+        Ok(GltfMaterial {
             alpha_mode,
             base_color: Color(base_color),
             base_color_texture,

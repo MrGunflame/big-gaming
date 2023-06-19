@@ -35,29 +35,33 @@ const INDICES: &[u16] = &[
 #[test]
 fn gltf_box_gltf() {
     let data = GltfData::open("./tests/gltf_box/gltf_box.gltf").unwrap();
-
-    validate_meshes(&data);
+    validate_output(&data);
 }
 
 #[test]
 fn test_box_gltf_embedded() {
     let data = GltfData::open("./tests/gltf_box/gltf_box_embedded.gltf").unwrap();
-
-    validate_meshes(&data);
+    validate_output(&data);
 }
 
 #[test]
 fn gltf_box_glb() {
     let data = GltfData::open("./tests/gltf_box/gltf_box.glb").unwrap();
-
-    validate_meshes(&data);
+    validate_output(&data);
 }
 
-fn validate_meshes(data: &GltfData) {
-    let meshes = data.meshes().unwrap();
-    assert_eq!(meshes.len(), 1);
+fn validate_output(data: &GltfData) {
+    let scenes = data.scenes().unwrap();
+    assert_eq!(scenes.len(), 1);
 
-    let mesh = &meshes[0].0;
+    let nodes = &scenes[0].nodes;
+    assert_eq!(nodes.len(), 1);
+
+    let primitives = &nodes[0].mesh.as_ref().unwrap().primitives;
+    assert_eq!(primitives.len(), 1);
+
+    let mesh = &primitives[0].mesh;
+
     assert_eq!(mesh.positions(), POSITIONS);
     assert_eq!(mesh.indicies().unwrap().as_u16(), INDICES);
 }
