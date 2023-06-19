@@ -1,0 +1,10 @@
+[package]
+name = "game_scene"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+game_common = { version = "0.1.0", path = "../game_common" }
+parking_lot = "0.12.1"
+bevy_ecs = "0.10.1"
+bevy_app = "0.10.1"
