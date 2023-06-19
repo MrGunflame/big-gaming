@@ -1,6 +1,6 @@
 use std::collections::{HashMap, VecDeque};
 use std::io::Read;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use bevy_app::{App, Plugin};
@@ -58,7 +58,7 @@ impl Plugin for ImagePlugin {
 pub struct Images {
     next_id: u64,
     images: HashMap<u64, Entry>,
-    load_queue: VecDeque<(u64, PathBuf)>,
+    load_queue: VecDeque<(u64, LoadImage)>,
     events: Arc<Mutex<VecDeque<Event>>>,
 }
 
@@ -97,12 +97,12 @@ impl Images {
         id
     }
 
-    pub fn load<P>(&mut self, path: P) -> ImageHandle
+    pub fn load<S>(&mut self, source: S) -> ImageHandle
     where
-        P: AsRef<Path>,
+        S: Into<LoadImage>,
     {
         let id = self.next_id();
-        self.load_queue.push_back((id, path.as_ref().into()));
+        self.load_queue.push_back((id, source.into()));
         ImageHandle {
             id,
             events: self.events.clone(),
@@ -140,11 +140,17 @@ impl Drop for ImageHandle {
 }
 
 fn load_images(mut images: ResMut<Images>) {
-    while let Some((handle, path)) = images.load_queue.pop_front() {
-        let mut file = std::fs::File::open(path).unwrap();
+    while let Some((handle, source)) = images.load_queue.pop_front() {
+        let buf = match source {
+            LoadImage::Buffer(buf) => buf,
+            LoadImage::File(path) => {
+                let mut file = std::fs::File::open(path).unwrap();
 
-        let mut buf = Vec::new();
-        file.read_to_end(&mut buf).unwrap();
+                let mut buf = Vec::new();
+                file.read_to_end(&mut buf).unwrap();
+                buf
+            }
+        };
 
         let img = image::load_from_memory(&buf).unwrap().to_rgba8();
 
@@ -189,4 +195,28 @@ fn update_image_handles(mut images: ResMut<Images>) {
 enum Event {
     Drop(u64),
     Clone(u64),
+}
+
+#[derive(Clone, Debug)]
+pub enum LoadImage {
+    Buffer(Vec<u8>),
+    File(PathBuf),
+}
+
+impl From<Vec<u8>> for LoadImage {
+    fn from(value: Vec<u8>) -> Self {
+        Self::Buffer(value)
+    }
+}
+
+impl From<PathBuf> for LoadImage {
+    fn from(value: PathBuf) -> Self {
+        Self::File(value)
+    }
+}
+
+impl<'a> From<&'a str> for LoadImage {
+    fn from(value: &'a str) -> Self {
+        Self::from(PathBuf::from(value))
+    }
 }
