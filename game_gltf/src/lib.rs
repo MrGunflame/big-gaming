@@ -459,6 +459,15 @@ impl GltfData {
             None
         };
 
+        let normal_texture = if let Some(info) = material.normal_texture() {
+            let image = info.texture().source();
+
+            let buf = self.load_image(image)?;
+            Some(buf.to_vec())
+        } else {
+            None
+        };
+
         let roughness = pbr.roughness_factor();
         let metallic = pbr.metallic_factor();
 
@@ -475,6 +484,7 @@ impl GltfData {
             alpha_mode,
             base_color: Color(base_color),
             base_color_texture,
+            normal_texture,
             roughness,
             metallic,
             metallic_roughness_texture,

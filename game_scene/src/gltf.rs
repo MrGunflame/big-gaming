@@ -45,6 +45,7 @@ pub(crate) fn gltf_to_scene(
 
 fn create_material(material: GltfMaterial, images: &mut Images) -> PbrMaterial {
     let base_color_texture = material.base_color_texture.map(|buf| images.load(buf));
+    let normal_texture = material.normal_texture.map(|buf| images.load(buf));
     let metallic_roughness_texture = material
         .metallic_roughness_texture
         .map(|buf| images.load(buf));
@@ -53,7 +54,7 @@ fn create_material(material: GltfMaterial, images: &mut Images) -> PbrMaterial {
         alpha_mode: material.alpha_mode,
         base_color: material.base_color,
         base_color_texture,
-        normal_texture: None,
+        normal_texture,
         roughness: material.roughness,
         metallic: material.metallic,
         metallic_roughness_texture,
