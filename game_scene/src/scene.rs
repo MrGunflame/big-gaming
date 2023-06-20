@@ -1,4 +1,4 @@
-use bevy_ecs::prelude::Entity;
+use bevy_ecs::prelude::{Bundle, Entity};
 use bevy_ecs::system::{Commands, Query, Res};
 use game_common::bundles::TransformBundle;
 use game_common::components::transform::Transform;
@@ -27,4 +27,11 @@ pub(crate) fn spawn_scene(
 
         commands.entity(entity).remove::<SceneHandle>();
     }
+}
+
+#[derive(Clone, Debug, Bundle)]
+pub struct SceneBundle {
+    pub scene: SceneHandle,
+    #[bundle]
+    pub transform: TransformBundle,
 }

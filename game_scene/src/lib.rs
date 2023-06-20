@@ -3,9 +3,11 @@ mod scene;
 #[cfg(feature = "gltf")]
 mod gltf;
 
+pub use scene::SceneBundle;
+
 use std::collections::{HashMap, VecDeque};
 use std::io::Read;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use bevy_app::{App, Plugin};
@@ -55,7 +57,7 @@ impl Scenes {
         self.scenes.insert(
             id,
             Entry {
-                data: scene,
+                data: Some(scene),
                 ref_count: 1,
             },
         );
@@ -67,13 +69,35 @@ impl Scenes {
     }
 
     pub fn get(&self, handle: &SceneHandle) -> Option<&Scene> {
-        self.scenes.get(&handle.id).map(|entry| &entry.data)
+        self.scenes
+            .get(&handle.id)
+            .map(|entry| entry.data.as_ref())
+            .flatten()
     }
 
     fn next_id(&mut self) -> u64 {
         let id = self.next_id;
         self.next_id += 1;
         id
+    }
+
+    pub fn load<S>(&mut self, source: S) -> SceneHandle
+    where
+        S: AsRef<Path>,
+    {
+        let id = self.next_id();
+        self.scenes.insert(
+            id,
+            Entry {
+                data: None,
+                ref_count: 1,
+            },
+        );
+        self.load_queue.push_back((id, source.as_ref().into()));
+        SceneHandle {
+            id,
+            events: self.events.clone(),
+        }
     }
 }
 
@@ -102,7 +126,7 @@ impl Drop for SceneHandle {
 
 #[derive(Debug)]
 struct Entry {
-    data: Scene,
+    data: Option<Scene>,
     ref_count: usize,
 }
 
@@ -158,7 +182,10 @@ fn load_scenes(
             &mut images,
         );
 
-        scenes.scenes.insert(handle, Entry { data, ref_count: 1 });
+        // If `None` all handles are already dropped.
+        if let Some(entry) = scenes.scenes.get_mut(&handle) {
+            entry.data = Some(data);
+        }
     }
 }
 
