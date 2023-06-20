@@ -159,6 +159,28 @@ impl MaterialPipeline {
                     ty: BindingType::Sampler(SamplerBindingType::Filtering),
                     count: None,
                 },
+                // ROUGHNESS
+                BindGroupLayoutEntry {
+                    binding: 5,
+                    visibility: ShaderStages::FRAGMENT,
+                    ty: BindingType::Buffer {
+                        ty: BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                // METALLIC
+                BindGroupLayoutEntry {
+                    binding: 6,
+                    visibility: ShaderStages::FRAGMENT,
+                    ty: BindingType::Buffer {
+                        ty: BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
             ],
         });
 
@@ -405,6 +427,11 @@ impl Node for MainPass {
             .albedo
             .create_view(&TextureViewDescriptor::default());
 
+        let metallic_roughness = window
+            .g_buffer
+            .metallic_roughness
+            .create_view(&TextureViewDescriptor::default());
+
         let mut render_pass = ctx.encoder.begin_render_pass(&RenderPassDescriptor {
             label: Some("main_pass"),
             color_attachments: &[
@@ -426,6 +453,14 @@ impl Node for MainPass {
                 }),
                 Some(RenderPassColorAttachment {
                     view: &albdeo_view,
+                    resolve_target: None,
+                    ops: Operations {
+                        load: LoadOp::Clear(Color::BLACK),
+                        store: true,
+                    },
+                }),
+                Some(RenderPassColorAttachment {
+                    view: &metallic_roughness,
                     resolve_target: None,
                     ops: Operations {
                         load: LoadOp::Clear(Color::BLACK),
@@ -490,6 +525,10 @@ impl Node for MainPass {
                     BindGroupEntry {
                         binding: 4,
                         resource: mesh_pipeline.camera_buffer.as_entire_binding(),
+                    },
+                    BindGroupEntry {
+                        binding: 5,
+                        resource: BindingResource::TextureView(&metallic_roughness),
                     },
                 ],
             });
@@ -642,6 +681,16 @@ impl LightingPipeline {
                         ty: BufferBindingType::Uniform,
                         has_dynamic_offset: false,
                         min_binding_size: None,
+                    },
+                    count: None,
+                },
+                BindGroupLayoutEntry {
+                    binding: 5,
+                    visibility: ShaderStages::FRAGMENT,
+                    ty: BindingType::Texture {
+                        sample_type: TextureSampleType::Float { filterable: true },
+                        view_dimension: TextureViewDimension::D2,
+                        multisampled: false,
                     },
                     count: None,
                 },
@@ -855,12 +904,14 @@ struct GBuffer {
     position: Texture,
     normal: Texture,
     albedo: Texture,
+    metallic_roughness: Texture,
 }
 
 impl GBuffer {
     const FORMAT_POSITION: TextureFormat = TextureFormat::Rgba16Float;
     const FORMAT_NORMAL: TextureFormat = TextureFormat::Rgba16Float;
     const FORMAT_ALBEDO: TextureFormat = TextureFormat::Rgba16Float;
+    const FORMAT_METALLIC_ROUGHNESS: TextureFormat = TextureFormat::Rgba8UnormSrgb;
 
     fn new(device: &Device, width: u32, height: u32) -> Self {
         let size = Extent3d {
@@ -902,10 +953,22 @@ impl GBuffer {
             view_formats: &[],
         });
 
+        let metallic_roughness = device.create_texture(&TextureDescriptor {
+            label: Some("g_buffer_metallic_roughness"),
+            size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: TextureDimension::D2,
+            format: Self::FORMAT_METALLIC_ROUGHNESS,
+            usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        });
+
         GBuffer {
             position,
             normal,
             albedo,
+            metallic_roughness,
         }
     }
 
@@ -923,6 +986,11 @@ impl GBuffer {
             }),
             Some(ColorTargetState {
                 format: Self::FORMAT_ALBEDO,
+                blend: None,
+                write_mask: ColorWrites::ALL,
+            }),
+            Some(ColorTargetState {
+                format: Self::FORMAT_METALLIC_ROUGHNESS,
                 blend: None,
                 write_mask: ColorWrites::ALL,
             }),

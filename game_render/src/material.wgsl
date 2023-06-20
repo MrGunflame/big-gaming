@@ -10,6 +10,10 @@ var color_texture_sampler: sampler;
 var normal_texture: texture_2d<f32>;
 @group(1) @binding(4)
 var normal_sampler: sampler;
+@group(1) @binding(5)
+var<uniform> roughness: f32;
+@group(1) @binding(6)
+var<uniform> metallic: f32;
 
 @group(0) @binding(0)
 var<uniform> camera: CameraProjection;
@@ -37,6 +41,7 @@ struct GBuffer {
     @location(0) position: vec4<f32>,
     @location(1) normal: vec4<f32>,
     @location(2) albedo: vec4<f32>,
+    @location(3) metallic_roughness: vec4<f32>,
 }
 
 @fragment
@@ -65,6 +70,8 @@ fn fs_main(in: VertexOutput) -> GBuffer {
     gbuffer.position = vec4(in.world_position, 1.0);
     gbuffer.normal = vec4((normal.xyz) * normal_matrix, 1.0);
     gbuffer.albedo = color;
+    gbuffer.metallic_roughness.b = metallic;
+    gbuffer.metallic_roughness.g = roughness;
     return gbuffer;
 }
 
