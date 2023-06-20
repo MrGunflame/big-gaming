@@ -35,9 +35,9 @@ struct VertexOutput {
     @location(3) tangent_light_pos: vec3<f32>,
     @location(4) tangent_view_pos: vec3<f32>,
     @location(5) tangent_pos: vec3<f32>,
-    @location(6) normal_matrix_0: vec4<f32>,
-    @location(7) normal_matrix_1: vec4<f32>,
-    @location(8) normal_matrix_2: vec4<f32>,
+    @location(6) tbn_0: vec3<f32>,
+    @location(7) tbn_1: vec3<f32>,
+    @location(8) tbn_2: vec3<f32>,
 };
 
 // GBuffer output
@@ -50,71 +50,21 @@ struct GBuffer {
 
 @fragment
 fn fs_main(in: VertexOutput) -> GBuffer {
+    let tbn = mat3x3(in.tbn_0, in.tbn_1, in.tbn_2);
+
     var color: vec4<f32> = base_color * textureSample(color_texture, color_texture_sampler, in.uv);
-    let normal = textureSample(normal_texture, normal_sampler, in.uv);
+    var normal = textureSample(normal_texture, normal_sampler, in.uv).xyz;
     let local_metallic = textureSample(metallic_roughness_texture, metallic_roughness_sampler, in.uv).b;
     let local_roughness = textureSample(metallic_roughness_texture, metallic_roughness_sampler, in.uv).g;
 
-    let tangent_normal = normal.xyz * 2.0 - 1.0;
-
-    var l: DirectionalLight;
-    l.direction = vec3(1.0, 0.0, 0.0);
-    l.color = vec3(1.0, 1.0, 1.0);
-    l.ambient = 0.1;
-    l.diffuse = 1.0;
-    l.specular = 1.0;
-    let light = directional_light(in, l, tangent_normal);
-
-    //color *= light;
-    
-    //return color;
-    //return show_normals(in);
-
-    let normal_matrix = mat3x3(in.normal_matrix_0.xyz, in.normal_matrix_1.xyz, in.normal_matrix_2.xyz);
+    //normal = normal * 2.0 - 1.0;
+    normal = normalize(tbn * normal);
 
     var gbuffer: GBuffer;
     gbuffer.position = vec4(in.world_position, 1.0);
-    gbuffer.normal = vec4((normal.xyz) * normal_matrix, 1.0);
+    gbuffer.normal = vec4(normal, 1.0);
     gbuffer.albedo = color;
     gbuffer.metallic_roughness.b = local_metallic * metallic;
     gbuffer.metallic_roughness.g = local_roughness * roughness;
     return gbuffer;
-}
-
-struct DirectionalLight {
-    direction: vec3<f32>,
-    color: vec3<f32>,
-    ambient: f32,
-    diffuse: f32,
-    specular: f32,
-}
-
-fn directional_light(in: VertexOutput, light: DirectionalLight, tangent_normal: vec3<f32>) -> vec4<f32> {
-    let light_dir = normalize(in.tangent_light_pos - in.tangent_pos);
-
-    // Ambient
-    let ambient = light.color * light.ambient;
-
-    // Diffuse
-    let diffuse_strength = max(dot(tangent_normal, light_dir), 0.0);
-    let diffuse = light.color * diffuse_strength;
-
-    // Specular
-    let view_dir = normalize(in.tangent_view_pos - in.tangent_pos);
-    let half_dir = normalize(view_dir + light_dir);
-
-    let specular_strength = pow(max(dot(tangent_normal, half_dir), 0.0), 32.0);
-    let specular = light.color * specular_strength;
-
-    return vec4(ambient + diffuse + specular, 1.0);
-}
-
-fn show_normals(in: VertexOutput) -> vec4<f32> {
-    let normal = textureSample(normal_texture, normal_sampler, in.uv).xyz;
-
-    //let tangent_normal = normal.xyz * 2.0 - 1.0;
-    //let n = normal * 2.0 - 1.0;
-    let n = (in.tangent_light_pos - in.tangent_pos) * normal;
-
-    return vec4(n, 1.0);
 }

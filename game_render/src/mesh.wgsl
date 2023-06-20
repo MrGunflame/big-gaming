@@ -36,9 +36,9 @@ struct VertexOutput {
     @location(3) tangent_light_pos: vec3<f32>,
     @location(4) tangent_view_pos: vec3<f32>,
     @location(5) tangent_pos: vec3<f32>,
-    @location(6) normal_matrix_0: vec4<f32>,
-    @location(7) normal_matrix_1: vec4<f32>,
-    @location(8) normal_matrix_2: vec4<f32>,
+    @location(6) tbn_0: vec3<f32>,
+    @location(7) tbn_1: vec3<f32>,
+    @location(8) tbn_2: vec3<f32>,
 }
 
 @vertex
@@ -56,21 +56,15 @@ fn vs_main(model: VertexInput) -> VertexOutput {
     let normal = normalize(normal_matrix * model.normal);
     let tangent = normalize(normal_matrix * model.tangent);
     let bitangent = normalize(normal_matrix * model.bitangent);
-    let tangent_matrix = transpose(mat3x3(
+    let tangent_matrix = mat3x3(
         tangent,
         bitangent,
         normal,
-    ));
-
-    let normal_mat = mat3x3(
-        tangent.x, bitangent.x, normal.x,
-        tangent.y, bitangent.y, normal.y,
-        tangent.z, bitangent.z, normal.z,
     );
 
-    out.normal_matrix_0 = vec4(tangent.x, bitangent.x, normal.x, 0.0);
-    out.normal_matrix_1 = vec4(tangent.y, bitangent.y, normal.y, 0.0);
-    out.normal_matrix_2 = vec4(tangent.z, bitangent.z, normal.z, 0.0);
+    out.tbn_0 = tangent_matrix.x;
+    out.tbn_1 = tangent_matrix.y;
+    out.tbn_2 = tangent_matrix.z;
 
     let light_pos = vec3(-1.0, 0.0, 0.0);
     out.tangent_light_pos = tangent_matrix * light_pos;

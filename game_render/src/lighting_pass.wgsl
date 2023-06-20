@@ -57,7 +57,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     var l: DirectionalLight;
     l.position = light.position;
     l.color = light.color;
-    l.ambient = 0.01;
+    l.ambient = 0.5;
     l.diffuse = 1.0;
     l.specular = 1.0;
     let li = directional_light(in, l);
@@ -66,7 +66,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     return vec4(li, 1.0);
 
     //return vec4(color, 1.0);
-    //return vec4(albedo.xyz, 1.0);
+    //return vec4(normal.xyz, 1.0);
 }
 
 struct DirectionalLight {
@@ -124,7 +124,7 @@ fn directional_light(in: VertexOutput, light: DirectionalLight) -> vec3<f32> {
     var color = ambient + lo;
     
     // HDR
-    //color = color / (color + vec3(1.0));
+    color = color / (color + vec3(1.0));
     // Gamma correct
     //color = pow(color, vec3(1.0 / 2.2));
 
