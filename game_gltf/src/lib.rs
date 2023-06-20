@@ -1,3 +1,4 @@
+mod accessor;
 mod image;
 mod material;
 mod mesh;
@@ -12,6 +13,7 @@ use std::io::Read;
 use std::ops::Range;
 use std::path::Path;
 
+use accessor::{ItemReader, Normals, Positions, Tangents, Uvs};
 use base64::alphabet::STANDARD;
 use base64::engine::GeneralPurpose;
 use base64::engine::GeneralPurposeConfig;
@@ -241,6 +243,8 @@ impl GltfData {
             assert_eq!(primitive.mode(), Mode::Triangles);
 
             for (semantic, accessor) in primitive.attributes() {
+                assert!(accessor.sparse().is_none());
+
                 match semantic {
                     Semantic::Positions => {
                         let mut positions = Vec::new();
@@ -279,6 +283,8 @@ impl GltfData {
             }
 
             let material = self.load_material(primitive.material())?;
+
+            mesh::validate_mesh(&mesh);
 
             primitives.push(GltfPrimitive { mesh, material });
         }
@@ -322,40 +328,38 @@ impl GltfData {
             return Err(Error::InvalidDimensions(dimensions));
         }
 
-        let view = accessor.view().unwrap();
-        let buffer = view.buffer();
+        let reader: ItemReader<'_, Positions> = ItemReader::new(accessor, self);
+        positions.extend(reader);
 
-        let mut buf = self.buffer(buffer.source(), view.offset(), view.length())?;
+        // match (accessor.min(), accessor.max()) {
+        //     (Some(min), Some(max)) => {
+        //         let min = AccessorValue::load(Dimensions::Vec3, data_type, min)?;
+        //         let max = AccessorValue::load(Dimensions::Vec3, data_type, max)?;
 
-        match (accessor.min(), accessor.max()) {
-            (Some(min), Some(max)) => {
-                let min = AccessorValue::load(Dimensions::Vec3, data_type, min)?;
-                let max = AccessorValue::load(Dimensions::Vec3, data_type, max)?;
+        //         for _ in 0..accessor.count() {
+        //             let x = read_f32(&mut buf)?;
+        //             let y = read_f32(&mut buf)?;
+        //             let z = read_f32(&mut buf)?;
 
-                while buf.len() != 0 {
-                    let x = read_f32(&mut buf)?;
-                    let y = read_f32(&mut buf)?;
-                    let z = read_f32(&mut buf)?;
+        //             validate_accessor_range(
+        //                 AccessorValue::Vec3([x.into(), y.into(), z.into()]),
+        //                 min,
+        //                 max,
+        //             )?;
 
-                    validate_accessor_range(
-                        AccessorValue::Vec3([x.into(), y.into(), z.into()]),
-                        min,
-                        max,
-                    )?;
+        //             positions.push([x, y, z]);
+        //         }
+        //     }
+        //     _ => {
+        //         for _ in 0..accessor.count() {
+        //             let x = read_f32(&mut buf)?;
+        //             let y = read_f32(&mut buf)?;
+        //             let z = read_f32(&mut buf)?;
 
-                    positions.push([x, y, z]);
-                }
-            }
-            _ => {
-                while buf.len() != 0 {
-                    let x = read_f32(&mut buf)?;
-                    let y = read_f32(&mut buf)?;
-                    let z = read_f32(&mut buf)?;
-
-                    positions.push([x, y, z]);
-                }
-            }
-        }
+        //             positions.push([x, y, z]);
+        //         }
+        //     }
+        // }
 
         Ok(())
     }
@@ -371,18 +375,8 @@ impl GltfData {
             return Err(Error::InvalidDimensions(dimensions));
         }
 
-        let view = accessor.view().unwrap();
-        let buffer = view.buffer();
-
-        let mut buf = self.buffer(buffer.source(), view.offset(), view.length())?;
-
-        while buf.len() != 0 {
-            let x = read_f32(&mut buf)?;
-            let y = read_f32(&mut buf)?;
-            let z = read_f32(&mut buf)?;
-
-            normals.push([x, y, z]);
-        }
+        let reader: ItemReader<'_, Normals> = ItemReader::new(accessor, self);
+        normals.extend(reader);
 
         Ok(())
     }
@@ -402,19 +396,8 @@ impl GltfData {
             return Err(Error::InvalidDimensions(dimensions));
         }
 
-        let view = accessor.view().unwrap();
-        let buffer = view.buffer();
-
-        let mut buf = self.buffer(buffer.source(), view.offset(), view.length())?;
-
-        while buf.len() != 0 {
-            let x = read_f32(&mut buf)?;
-            let y = read_f32(&mut buf)?;
-            let z = read_f32(&mut buf)?;
-            let w = read_f32(&mut buf)?;
-
-            tangents.push([x, y, z, w]);
-        }
+        let reader: ItemReader<'_, Tangents> = ItemReader::new(accessor, self);
+        tangents.extend(reader);
 
         Ok(())
     }
@@ -430,17 +413,8 @@ impl GltfData {
             return Err(Error::InvalidDimensions(dimensions));
         }
 
-        let view = accessor.view().unwrap();
-        let buffer = view.buffer();
-
-        let mut buf = self.buffer(buffer.source(), view.offset(), view.length())?;
-
-        while buf.len() != 0 {
-            let x = read_f32(&mut buf)?;
-            let y = read_f32(&mut buf)?;
-
-            uvs.push([x, y]);
-        }
+        let reader: ItemReader<'_, Uvs> = ItemReader::new(accessor, self);
+        uvs.extend(reader);
 
         Ok(())
     }
@@ -453,34 +427,43 @@ impl GltfData {
             return Err(Error::InvalidDimensions(dimensions));
         }
 
-        let view = accessor.view().unwrap();
-        let buffer = view.buffer();
+        let alignment = match data_type {
+            DataType::U16 => 2,
+            DataType::U32 => 4,
+            _ => return Err(Error::InvalidDataType(data_type)),
+        };
 
-        let mut buf = self.buffer(buffer.source(), view.offset(), view.length())?;
+        let view = accessor.view().unwrap();
+
+        // viewOffset MUST be a multiple of the component type, i.e. correctly
+        // aligned.
+        assert!(view.offset() % alignment == 0);
 
         match data_type {
             DataType::U16 => {
                 let mut out = vec![];
 
-                while buf.len() != 0 {
-                    let val = read_u16(&mut buf)?;
-                    out.push(val);
-                }
+                let reader: ItemReader<'_, u16> = ItemReader::new(accessor, self);
+                out.extend(reader);
 
                 *indices = Indices::U16(out);
             }
             DataType::U32 => {
                 let mut out = vec![];
 
-                while buf.len() != 0 {
-                    let val = read_u32(&mut buf)?;
-                    out.push(val);
-                }
+                let reader: ItemReader<'_, u32> = ItemReader::new(accessor, self);
+                out.extend(reader);
 
                 *indices = Indices::U32(out);
             }
-            _ => return Err(Error::InvalidDataType(data_type)),
+            _ => (),
         }
+
+        assert!(
+            indices.len() % 3 == 0,
+            "Indices % 3 != 0; len = {}",
+            indices.len()
+        );
 
         Ok(())
     }

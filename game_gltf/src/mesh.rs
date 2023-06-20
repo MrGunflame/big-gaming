@@ -1,5 +1,5 @@
 use game_common::components::transform::Transform;
-use game_render::mesh::Mesh;
+use game_render::mesh::{Indices, Mesh};
 
 use crate::GltfMaterial;
 
@@ -19,4 +19,22 @@ pub struct GltfNode {
     pub children: Vec<GltfNode>,
     pub mesh: Option<GltfMesh>,
     pub transform: Transform,
+}
+
+pub(crate) fn validate_mesh(mesh: &Mesh) {
+    // Indices must be in bounds.
+    if let Some(indices) = mesh.indicies() {
+        match indices {
+            Indices::U16(indices) => {
+                for index in indices {
+                    mesh.positions()[index as usize];
+                }
+            }
+            Indices::U32(indices) => {
+                for index in indices {
+                    mesh.positions()[index as usize];
+                }
+            }
+        }
+    }
 }
