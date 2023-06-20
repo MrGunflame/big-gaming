@@ -308,10 +308,11 @@ pub fn main_loop(mut app: App) {
                     match backend {
                         Backend::Wayland => {
                             let event = match delta {
+                                // Direction is inverted compared to X11.
                                 MouseScrollDelta::LineDelta(x, y) => MouseWheel {
                                     unit: MouseScrollUnit::Line,
-                                    x,
-                                    y,
+                                    x: -x,
+                                    y: -y,
                                 },
                                 MouseScrollDelta::PixelDelta(pos) => MouseWheel {
                                     unit: MouseScrollUnit::Pixel,
