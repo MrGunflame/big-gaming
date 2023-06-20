@@ -57,7 +57,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     var l: DirectionalLight;
     l.position = light.position;
     l.color = light.color;
-    l.ambient = 0.5;
+    l.ambient = 0.1;
     l.diffuse = 1.0;
     l.specular = 1.0;
     let li = directional_light(in, l);
