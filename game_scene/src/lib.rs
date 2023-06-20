@@ -3,6 +3,7 @@ mod scene;
 #[cfg(feature = "gltf")]
 mod gltf;
 
+use game_gltf::uri::Uri;
 pub use scene::SceneBundle;
 
 use std::collections::{HashMap, VecDeque};
@@ -160,14 +161,18 @@ fn load_scenes(
     mut images: ResMut<Images>,
 ) {
     while let Some((handle, path)) = scenes.load_queue.pop_front() {
-        let mut file = std::fs::File::open(path).unwrap();
+        let uri = Uri::from(path);
+
+        let mut file = std::fs::File::open(uri.as_path()).unwrap();
 
         let mut buf = Vec::new();
         file.read_to_end(&mut buf).unwrap();
 
         let mut gltf = GltfData::new(&buf).unwrap();
         while let Some(path) = gltf.queue.pop() {
-            let mut file = std::fs::File::open(&path).unwrap();
+            let mut uri = uri.clone();
+            uri.push(&path);
+            let mut file = std::fs::File::open(uri.as_path()).unwrap();
 
             let mut buf = Vec::new();
             file.read_to_end(&mut buf).unwrap();
