@@ -1,10 +1,10 @@
-use core::num;
 use std::collections::HashMap;
 
 use bevy_ecs::prelude::{Bundle, Entity, Res};
 use bevy_ecs::query::{Added, Changed, Or, With};
 use bevy_ecs::system::{Query, ResMut, Resource};
 use bevy_ecs::world::{FromWorld, World};
+use bytemuck::bytes_of;
 use game_asset::{Asset, Assets, Handle};
 use game_common::bundles::TransformBundle;
 use game_common::components::transform::Transform;
@@ -17,7 +17,6 @@ use wgpu::{
     TextureDimension, TextureUsages, TextureView, TextureViewDescriptor,
 };
 
-use crate::camera::OPENGL_TO_WGPU;
 use crate::color::Color;
 use crate::light::DirectionalLight;
 use crate::mesh::Mesh;
@@ -100,7 +99,7 @@ impl Default for PbrMaterial {
             base_color: Color::WHITE,
             base_color_texture: None,
             normal_texture: None,
-            roughness: 0.0,
+            roughness: 0.5,
             metallic: 0.0,
             metallic_roughness_texture: None,
         }
@@ -161,6 +160,18 @@ pub fn update_material_bind_groups(
             usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
         });
 
+        let roughness = device.0.create_buffer_init(&BufferInitDescriptor {
+            label: Some("pbr_material_roughness"),
+            contents: bytemuck::cast_slice(&[material.roughness]),
+            usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
+        });
+
+        let metallic = device.0.create_buffer_init(&BufferInitDescriptor {
+            label: Some("pbr_material_metallic"),
+            contents: bytemuck::cast_slice(&[material.metallic]),
+            usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
+        });
+
         let base_color_texture = setup_render_texture(
             material
                 .base_color_texture
@@ -176,6 +187,16 @@ pub fn update_material_bind_groups(
                 .normal_texture
                 .as_ref()
                 .unwrap_or(&pbr_res.default_normal_texture),
+            &images,
+            &device.0,
+            &queue.0,
+        );
+
+        let metallic_roughness_texture = setup_render_texture(
+            material
+                .metallic_roughness_texture
+                .as_ref()
+                .unwrap_or(&pbr_res.default_metallic_roughness_texture),
             &images,
             &device.0,
             &queue.0,
@@ -203,6 +224,22 @@ pub fn update_material_bind_groups(
                 },
                 BindGroupEntry {
                     binding: 4,
+                    resource: BindingResource::Sampler(&material_pipeline.sampler),
+                },
+                BindGroupEntry {
+                    binding: 5,
+                    resource: roughness.as_entire_binding(),
+                },
+                BindGroupEntry {
+                    binding: 6,
+                    resource: metallic.as_entire_binding(),
+                },
+                BindGroupEntry {
+                    binding: 7,
+                    resource: BindingResource::TextureView(&metallic_roughness_texture),
+                },
+                BindGroupEntry {
+                    binding: 8,
                     resource: BindingResource::Sampler(&material_pipeline.sampler),
                 },
             ],
