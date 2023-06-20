@@ -213,9 +213,9 @@ impl MaterialPipeline {
         });
 
         let sampler = device.create_sampler(&SamplerDescriptor {
-            address_mode_u: AddressMode::ClampToEdge,
-            address_mode_v: AddressMode::ClampToEdge,
-            address_mode_w: AddressMode::ClampToEdge,
+            address_mode_u: AddressMode::Repeat,
+            address_mode_v: AddressMode::Repeat,
+            address_mode_w: AddressMode::Repeat,
             mag_filter: FilterMode::Linear,
             min_filter: FilterMode::Nearest,
             mipmap_filter: FilterMode::Nearest,
@@ -445,10 +445,13 @@ impl Node for MainPass {
 
         render_pass.set_pipeline(&pipeline.pipeline);
 
-        for node in &nodes.entities {
-            for (group, bind_group) in node.bind_groups.iter().enumerate() {
-                render_pass.set_bind_group(group as u32, bind_group, &[]);
+        for node in nodes.entities.values() {
+            if node.material_bind_group.is_none() {
+                continue;
             }
+
+            render_pass.set_bind_group(0, &node.transform_bind_group, &[]);
+            render_pass.set_bind_group(1, &node.material_bind_group.as_ref().unwrap(), &[]);
 
             render_pass.set_vertex_buffer(0, node.vertices.slice(..));
             render_pass.set_index_buffer(node.indices.slice(..), IndexFormat::Uint32);

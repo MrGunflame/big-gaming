@@ -1,10 +1,15 @@
-use bevy_ecs::prelude::{Bundle, Res};
+use core::num;
+use std::collections::HashMap;
+
+use bevy_ecs::prelude::{Bundle, Entity, Res};
+use bevy_ecs::query::{Added, Changed, Or, With};
 use bevy_ecs::system::{Query, ResMut, Resource};
 use bevy_ecs::world::{FromWorld, World};
 use game_asset::{Asset, Assets, Handle};
 use game_common::bundles::TransformBundle;
 use game_common::components::transform::Transform;
 use glam::{Mat4, Vec3};
+use parking_lot::ReentrantMutexGuard;
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
 use wgpu::{
     BindGroup, BindGroupDescriptor, BindGroupEntry, BindingResource, Buffer, BufferUsages, Device,
@@ -114,7 +119,7 @@ impl Asset for PbrMaterial {}
 
 #[derive(Resource, Default)]
 pub struct RenderMaterialAssets {
-    pub entities: Vec<RenderNode>,
+    pub entities: HashMap<Entity, RenderNode>,
     pub lights: Vec<LightNode>,
 }
 
@@ -123,59 +128,32 @@ pub struct RenderNode {
     pub indices: Buffer,
     pub num_vertices: u32,
     pub transform: Transform,
-    pub bind_groups: Vec<BindGroup>,
     pub transform_buffer: Buffer,
+    pub transform_bind_group: BindGroup,
+    pub material_bind_group: Option<BindGroup>,
 }
 
 pub struct LightNode {
     pub bind_group: BindGroup,
 }
 
-pub fn prepare_materials(
-    images: ResMut<Images>,
+pub fn update_material_bind_groups(
     device: Res<RenderDevice>,
     queue: Res<RenderQueue>,
-    nodes: Query<(&Handle<Mesh>, &Handle<PbrMaterial>, &Transform)>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    materials: ResMut<Assets<PbrMaterial>>,
-    mut render_assets: ResMut<RenderMaterialAssets>,
+    materials: Res<Assets<PbrMaterial>>,
     material_pipeline: Res<MaterialPipeline>,
-    mesh_pipeline: Res<MeshPipeline>,
+    images: Res<Images>,
+    nodes: Query<
+        (Entity, &Handle<Mesh>, &Handle<PbrMaterial>, &Transform),
+        Or<(Changed<Handle<PbrMaterial>>, Added<Handle<PbrMaterial>>)>,
+    >,
     pbr_res: Res<PbrResources>,
+    mut render_assets: ResMut<RenderMaterialAssets>,
 ) {
-    render_assets.entities.clear();
-
-    for (mesh, material, transform) in &nodes {
-        let Some(mesh) = meshes.get_mut(mesh.id()) else {
-            continue;
-        };
-
+    for (entity, mesh, material, transform) in &nodes {
         let Some(material) = materials.get(material.id()) else {
             continue;
         };
-
-        mesh.compute_tangents();
-
-        let transform_buffer = device.0.create_buffer_init(&BufferInitDescriptor {
-            label: Some("mesh_transform"),
-            contents: bytemuck::cast_slice(&[TransformUniform::from(*transform)]),
-            usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
-        });
-
-        let mesh_bind_group = device.0.create_bind_group(&BindGroupDescriptor {
-            label: Some("mesh_bind_group"),
-            layout: &mesh_pipeline.bind_group_layout,
-            entries: &[
-                BindGroupEntry {
-                    binding: 0,
-                    resource: mesh_pipeline.camera_buffer.as_entire_binding(),
-                },
-                BindGroupEntry {
-                    binding: 1,
-                    resource: transform_buffer.as_entire_binding(),
-                },
-            ],
-        });
 
         let base_color = device.0.create_buffer_init(&BufferInitDescriptor {
             label: Some("pbr_material_base_color"),
@@ -230,6 +208,58 @@ pub fn prepare_materials(
             ],
         });
 
+        render_assets
+            .entities
+            .get_mut(&entity)
+            .unwrap()
+            .material_bind_group = Some(material_bind_group);
+    }
+}
+
+pub fn prepare_materials(
+    images: ResMut<Images>,
+    device: Res<RenderDevice>,
+    queue: Res<RenderQueue>,
+    nodes: Query<(Entity, &Handle<Mesh>, &Handle<PbrMaterial>, &Transform)>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    materials: ResMut<Assets<PbrMaterial>>,
+    mut render_assets: ResMut<RenderMaterialAssets>,
+    material_pipeline: Res<MaterialPipeline>,
+    mesh_pipeline: Res<MeshPipeline>,
+    pbr_res: Res<PbrResources>,
+) {
+    for (entity, mesh, material, transform) in &nodes {
+        let Some(mesh) = meshes.get_mut(mesh.id()) else {
+            continue;
+        };
+
+        let Some(material) = materials.get(material.id()) else {
+            continue;
+        };
+
+        mesh.compute_tangents();
+
+        let transform_buffer = device.0.create_buffer_init(&BufferInitDescriptor {
+            label: Some("mesh_transform"),
+            contents: bytemuck::cast_slice(&[TransformUniform::from(*transform)]),
+            usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
+        });
+
+        let transform_bind_group = device.0.create_bind_group(&BindGroupDescriptor {
+            label: Some("mesh_bind_group"),
+            layout: &mesh_pipeline.bind_group_layout,
+            entries: &[
+                BindGroupEntry {
+                    binding: 0,
+                    resource: mesh_pipeline.camera_buffer.as_entire_binding(),
+                },
+                BindGroupEntry {
+                    binding: 1,
+                    resource: transform_buffer.as_entire_binding(),
+                },
+            ],
+        });
+
         let vertices = device.0.create_buffer_init(&BufferInitDescriptor {
             label: Some("mesh_vertex_buffer"),
             contents: bytemuck::cast_slice(&mesh.vertices()),
@@ -245,14 +275,30 @@ pub fn prepare_materials(
             usage: BufferUsages::INDEX,
         });
 
-        render_assets.entities.push(RenderNode {
-            vertices,
-            indices,
-            num_vertices,
-            transform: *transform,
-            bind_groups: vec![mesh_bind_group, material_bind_group],
-            transform_buffer,
-        });
+        match render_assets.entities.get_mut(&entity) {
+            Some(node) => {
+                node.vertices = vertices;
+                node.indices = indices;
+                node.num_vertices = num_vertices;
+                node.transform = *transform;
+                node.transform_buffer = transform_buffer;
+                node.transform_bind_group = transform_bind_group;
+            }
+            None => {
+                render_assets.entities.insert(
+                    entity,
+                    RenderNode {
+                        vertices,
+                        indices,
+                        num_vertices,
+                        transform: *transform,
+                        transform_buffer,
+                        transform_bind_group,
+                        material_bind_group: None,
+                    },
+                );
+            }
+        }
     }
 }
 

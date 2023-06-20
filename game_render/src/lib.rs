@@ -20,6 +20,7 @@ use bevy_app::{App, Plugin};
 use bevy_ecs::prelude::{Entity, EventReader};
 use bevy_ecs::query::QueryState;
 use bevy_ecs::removal_detection::RemovedComponents;
+use bevy_ecs::schedule::IntoSystemConfig;
 use bevy_ecs::system::{Query, Res, ResMut, Resource};
 use bevy_ecs::world::World;
 use game_asset::AssetAppExt;
@@ -106,6 +107,7 @@ impl Plugin for RenderPlugin {
 
         app.add_system(pbr::prepare_materials);
         app.add_system(pbr::prepare_lights);
+        app.add_system(pbr::update_material_bind_groups.after(pbr::prepare_materials));
 
         app.insert_resource(pipeline::RenderWindows::default());
         app.add_system(pipeline::create_render_windows);
