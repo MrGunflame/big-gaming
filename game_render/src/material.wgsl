@@ -14,6 +14,10 @@ var normal_sampler: sampler;
 var<uniform> roughness: f32;
 @group(1) @binding(6)
 var<uniform> metallic: f32;
+@group(1) @binding(7)
+var metallic_roughness_texture: texture_2d<f32>;
+@group(1) @binding(8)
+var metallic_roughness_sampler: sampler;
 
 @group(0) @binding(0)
 var<uniform> camera: CameraProjection;
@@ -48,6 +52,8 @@ struct GBuffer {
 fn fs_main(in: VertexOutput) -> GBuffer {
     var color: vec4<f32> = base_color * textureSample(color_texture, color_texture_sampler, in.uv);
     let normal = textureSample(normal_texture, normal_sampler, in.uv);
+    let local_metallic = textureSample(metallic_roughness_texture, metallic_roughness_sampler, in.uv).b;
+    let local_roughness = textureSample(metallic_roughness_texture, metallic_roughness_sampler, in.uv).g;
 
     let tangent_normal = normal.xyz * 2.0 - 1.0;
 
@@ -70,8 +76,8 @@ fn fs_main(in: VertexOutput) -> GBuffer {
     gbuffer.position = vec4(in.world_position, 1.0);
     gbuffer.normal = vec4((normal.xyz) * normal_matrix, 1.0);
     gbuffer.albedo = color;
-    gbuffer.metallic_roughness.b = metallic;
-    gbuffer.metallic_roughness.g = roughness;
+    gbuffer.metallic_roughness.b = local_metallic * metallic;
+    gbuffer.metallic_roughness.g = local_roughness * roughness;
     return gbuffer;
 }
 

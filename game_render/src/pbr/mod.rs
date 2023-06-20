@@ -99,7 +99,7 @@ impl Default for PbrMaterial {
             base_color: Color::WHITE,
             base_color_texture: None,
             normal_texture: None,
-            roughness: 0.0,
+            roughness: 0.5,
             metallic: 0.0,
             metallic_roughness_texture: None,
         }
@@ -192,6 +192,16 @@ pub fn update_material_bind_groups(
             &queue.0,
         );
 
+        let metallic_roughness_texture = setup_render_texture(
+            material
+                .metallic_roughness_texture
+                .as_ref()
+                .unwrap_or(&pbr_res.default_metallic_roughness_texture),
+            &images,
+            &device.0,
+            &queue.0,
+        );
+
         let material_bind_group = device.0.create_bind_group(&BindGroupDescriptor {
             label: Some("material_bind_group"),
             layout: &material_pipeline.bind_group_layout,
@@ -223,6 +233,14 @@ pub fn update_material_bind_groups(
                 BindGroupEntry {
                     binding: 6,
                     resource: metallic.as_entire_binding(),
+                },
+                BindGroupEntry {
+                    binding: 7,
+                    resource: BindingResource::TextureView(&metallic_roughness_texture),
+                },
+                BindGroupEntry {
+                    binding: 8,
+                    resource: BindingResource::Sampler(&material_pipeline.sampler),
                 },
             ],
         });

@@ -1,3 +1,5 @@
+const PI: f32 = 3.14159265358979323846264338327950288;
+
 @group(0) @binding(0)
 var g_position: texture_2d<f32>;
 @group(0) @binding(1)
@@ -8,6 +10,8 @@ var g_normal: texture_2d<f32>;
 var g_albedo: texture_2d<f32>;
 @group(0) @binding(4)
 var<uniform> camera: CameraProjection;
+@group(0) @binding(5)
+var g_metallic_roughness: texture_2d<f32>;
 
 @group(1) @binding(0)
 var<uniform> light: Light;
@@ -46,7 +50,9 @@ fn vs_main(in: VertexInput) -> VertexOutput {
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let pos = textureSample(g_position, g_sampler, in.uv);
     let normal = textureSample(g_normal, g_sampler, in.uv);
-    let albedo = textureSample(g_albedo, g_sampler, in.uv);
+    let albedo = textureSample(g_albedo, g_sampler, in.uv).xyz;
+    let metallic = textureSample(g_metallic_roughness, g_sampler, in.uv).b;
+    let roughness = textureSample(g_metallic_roughness, g_sampler, in.uv).g;
 
     var l: DirectionalLight;
     l.position = light.position;
@@ -56,9 +62,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     l.specular = 1.0;
     let li = directional_light(in, l);
 
-    let color = albedo.xyz * li;
+    //let color = albedo.xyz * li;
+    return vec4(li, 1.0);
 
-    return vec4(color, 1.0);
+    //return vec4(color, 1.0);
     //return vec4(albedo.xyz, 1.0);
 }
 
@@ -71,27 +78,92 @@ struct DirectionalLight {
 }
 
 fn directional_light(in: VertexOutput, light: DirectionalLight) -> vec3<f32> {
+    let albedo = pow(textureSample(g_albedo, g_sampler, in.uv).xyz, vec3(2.2));
     let pos = textureSample(g_position, g_sampler, in.uv).xyz;
     let normal = textureSample(g_normal, g_sampler, in.uv).xyz;
+    let metallic = textureSample(g_metallic_roughness, g_sampler, in.uv).b;
+    let roughness = textureSample(g_metallic_roughness, g_sampler, in.uv).g;
 
-    //let light_pos = normalize(light.position);
-
-    //let light_dir = normalize(in.tangent_light_pos - in.tangent_pos);
     let light_dir = normalize(-light.position);
 
-    // Ambient
-    let ambient = light.color * light.ambient;
-
     // Diffuse
-    let diffuse_strength = max(dot(normal, light_dir), 0.0);
-    let diffuse = light.color * diffuse_strength;
+    //let diffuse_strength = max(dot(normal, light_dir), 0.0);
+    //let diffuse = light.color * diffuse_strength;
 
     // Specular
     let view_dir = normalize(camera.position.xyz - pos);
     let half_dir = normalize(view_dir + light_dir);
 
-    let specular_strength = pow(max(dot(normal, half_dir), 0.0), 32.0);
-    let specular = light.color * specular_strength;
+    //let specular_strength = pow(max(dot(normal, half_dir), 0.0), 32.0);
+    //let specular = light.color * specular_strength;
 
-    return ambient + diffuse + specular;
+    let radiance = light.color;
+
+    var f0 = vec3(0.04);
+    f0 = mix(f0, albedo, metallic);
+
+    // Cook-torrance BRDF
+    let ndf = distribution_ggx(normal, half_dir, roughness);
+    let g = geometry_smith(normal, view_dir, light_dir, roughness);
+    let f = fresnel_schlick(max(dot(half_dir, view_dir), 0.0), f0);
+
+    let ks = f;
+    var kd = vec3(1.0) - ks;
+    kd *= 1.0 - metallic;
+
+    let numerator = ndf * g * f;
+    let denominator = 4.0 * max(dot(normal, view_dir), 0.0) * max(dot(normal, light_dir), 0.0) + 0.0001;
+    let specular = numerator / denominator;
+
+    let n_dot_l = max(dot(normal, light_dir), 0.0);
+    let lo = (kd * albedo / PI + specular) * radiance * n_dot_l;
+
+    // Ambient
+    let ambient = light.color * light.ambient * albedo;
+
+    var color = ambient + lo;
+    
+    // HDR
+    //color = color / (color + vec3(1.0));
+    // Gamma correct
+    //color = pow(color, vec3(1.0 / 2.2));
+
+    return color;
+}
+
+fn fresnel_schlick(cos_theta: f32, f0: vec3<f32>) -> vec3<f32> {
+    return f0 + (1.0 - f0) * pow(clamp(1.0 - cos_theta, 0.0, 1.0), 5.0);
+}
+
+fn distribution_ggx(n: vec3<f32>, h: vec3<f32>, roughness: f32) -> f32 {
+    let a = roughness * roughness;
+    let a2 = a * a;
+    let n_dot_h = max(dot(n, h), 0.0);
+    let n_dot_h2 = n_dot_h * n_dot_h;
+
+    let num = a2;
+    var denom = (n_dot_h2 * (a2 - 1.0) + 1.0);
+    denom = PI * denom * denom;
+
+    return num / denom;
+}
+
+fn geometry_schlick_ggx(n_dot_v: f32, roughness: f32) -> f32 {
+    let r = roughness + 1.0;
+    let k = (r * r) / 8.0;
+
+    let num = n_dot_v;
+    let denom = n_dot_v * (1.0 - k) + k;
+
+    return num / denom;
+}
+
+fn geometry_smith(n: vec3<f32>, v: vec3<f32>, l: vec3<f32>, roughness: f32) -> f32 {
+    let n_dot_v = max(dot(n, v), 0.0);
+    let n_dot_l = max(dot(n, l), 0.0);
+
+    let ggx2 = geometry_schlick_ggx(n_dot_v, roughness);
+    let ggx1 = geometry_schlick_ggx(n_dot_l, roughness);
+
+    return ggx1 * ggx2;
 }
