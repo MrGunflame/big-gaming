@@ -562,9 +562,21 @@ impl Node for MainPass {
                 depth_stencil_attachment: None,
             });
 
-            render_pass.set_pipeline(&data.pipeline);
+            render_pass.set_pipeline(&data.pipelines.directional);
 
-            for (i, node) in nodes.lights.iter().enumerate() {
+            for node in nodes.directional_lights.iter() {
+                render_pass.set_bind_group(0, &bind_group, &[]);
+                render_pass.set_bind_group(1, &node.bind_group, &[]);
+
+                render_pass.set_vertex_buffer(0, data.vertices.slice(..));
+                render_pass.set_index_buffer(data.indices.slice(..), IndexFormat::Uint16);
+
+                render_pass.draw_indexed(0..LightingPipeline::NUM_VERTICES, 0, 0..1);
+            }
+
+            render_pass.set_pipeline(&data.pipelines.point);
+
+            for node in nodes.point_lights.iter() {
                 render_pass.set_bind_group(0, &bind_group, &[]);
                 render_pass.set_bind_group(1, &node.bind_group, &[]);
 
@@ -579,7 +591,7 @@ impl Node for MainPass {
 
 #[derive(Debug, Resource)]
 pub struct LightingPipeline {
-    pipeline: RenderPipeline,
+    pipelines: LightPipelines,
     vertices: Buffer,
     indices: Buffer,
     bind_group_layout: BindGroupLayout,
@@ -738,7 +750,7 @@ impl LightingPipeline {
             source: ShaderSource::Wgsl(include_str!("lighting_pass.wgsl").into()),
         });
 
-        let pipeline = device.create_render_pipeline(&RenderPipelineDescriptor {
+        let directional = device.create_render_pipeline(&RenderPipelineDescriptor {
             label: Some("lighting_pass_pipeline"),
             layout: Some(&pipeline_layout),
             vertex: VertexState {
@@ -780,6 +792,53 @@ impl LightingPipeline {
             multiview: None,
         });
 
+        let point_light_shader = device.create_shader_module(ShaderModuleDescriptor {
+            label: Some("point_light_shader"),
+            source: ShaderSource::Wgsl(include_str!("point_light.wgsl").into()),
+        });
+
+        let point = device.create_render_pipeline(&RenderPipelineDescriptor {
+            label: Some("point_light_pipeline"),
+            layout: Some(&pipeline_layout),
+            vertex: VertexState {
+                module: &point_light_shader,
+                entry_point: "vs_main",
+                buffers: &[Vertex::layout()],
+            },
+            primitive: PrimitiveState {
+                topology: PrimitiveTopology::TriangleList,
+                strip_index_format: None,
+                front_face: FrontFace::Ccw,
+                cull_mode: Some(Face::Back),
+                polygon_mode: PolygonMode::Fill,
+                unclipped_depth: false,
+                conservative: false,
+            },
+            depth_stencil: None,
+            multisample: MultisampleState {
+                count: 1,
+                mask: !0,
+                alpha_to_coverage_enabled: false,
+            },
+            fragment: Some(FragmentState {
+                module: &point_light_shader,
+                entry_point: "fs_main",
+                targets: &[Some(ColorTargetState {
+                    format: TextureFormat::Bgra8UnormSrgb,
+                    blend: Some(BlendState {
+                        color: BlendComponent {
+                            src_factor: BlendFactor::One,
+                            dst_factor: BlendFactor::One,
+                            operation: BlendOperation::Add,
+                        },
+                        alpha: BlendComponent::OVER,
+                    }),
+                    write_mask: ColorWrites::ALL,
+                })],
+            }),
+            multiview: None,
+        });
+
         let sampler = device.create_sampler(&SamplerDescriptor {
             address_mode_u: AddressMode::ClampToEdge,
             address_mode_v: AddressMode::ClampToEdge,
@@ -791,7 +850,7 @@ impl LightingPipeline {
         });
 
         Self {
-            pipeline,
+            pipelines: LightPipelines { directional, point },
             vertices,
             indices,
             bind_group_layout,
@@ -800,6 +859,14 @@ impl LightingPipeline {
         }
     }
 }
+
+#[derive(Debug)]
+struct LightPipelines {
+    directional: RenderPipeline,
+    point: RenderPipeline,
+}
+
+impl LightPipelines {}
 
 impl FromWorld for LightingPipeline {
     fn from_world(world: &mut bevy_ecs::world::World) -> Self {
@@ -1017,6 +1084,15 @@ impl GBuffer {
 #[derive(Copy, Clone, Debug, Zeroable, Pod)]
 #[repr(C)]
 pub(crate) struct LightUniform {
+    pub color: [f32; 3],
+    pub _pad0: u32,
+    pub position: [f32; 3],
+    pub _pad1: u32,
+}
+
+#[derive(Copy, Clone, Debug, Zeroable, Pod)]
+#[repr(C)]
+pub(crate) struct PointLightUniform {
     pub color: [f32; 3],
     pub _pad0: u32,
     pub position: [f32; 3],

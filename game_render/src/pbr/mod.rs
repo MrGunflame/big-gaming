@@ -18,10 +18,11 @@ use wgpu::{
 };
 
 use crate::color::Color;
-use crate::light::DirectionalLight;
+use crate::light::{DirectionalLight, PointLight};
 use crate::mesh::Mesh;
 use crate::pipeline::{
-    LightUniform, LightingPipeline, MaterialPipeline, MeshPipeline, TransformUniform,
+    LightUniform, LightingPipeline, MaterialPipeline, MeshPipeline, PointLightUniform,
+    TransformUniform,
 };
 use crate::texture::{Image, ImageHandle, Images};
 use crate::{RenderDevice, RenderQueue};
@@ -119,7 +120,8 @@ impl Asset for PbrMaterial {}
 #[derive(Resource, Default)]
 pub struct RenderMaterialAssets {
     pub entities: HashMap<Entity, RenderNode>,
-    pub lights: Vec<LightNode>,
+    pub directional_lights: Vec<DirectionalLightNode>,
+    pub point_lights: Vec<PointLightNode>,
 }
 
 pub struct RenderNode {
@@ -132,7 +134,11 @@ pub struct RenderNode {
     pub material_bind_group: Option<BindGroup>,
 }
 
-pub struct LightNode {
+pub struct DirectionalLightNode {
+    pub bind_group: BindGroup,
+}
+
+pub struct PointLightNode {
     pub bind_group: BindGroup,
 }
 
@@ -383,14 +389,14 @@ fn setup_render_texture(
     texture.create_view(&TextureViewDescriptor::default())
 }
 
-pub fn prepare_lights(
+pub fn prepare_directional_lights(
     mut render_assets: ResMut<RenderMaterialAssets>,
     lights: Query<(&DirectionalLight, &Transform)>,
     device: Res<RenderDevice>,
     queue: Res<RenderQueue>,
     pipeline: Res<LightingPipeline>,
 ) {
-    render_assets.lights.clear();
+    render_assets.directional_lights.clear();
 
     for (light, transform) in &lights {
         let uniform = LightUniform {
@@ -415,6 +421,45 @@ pub fn prepare_lights(
             }],
         });
 
-        render_assets.lights.push(LightNode { bind_group });
+        render_assets
+            .directional_lights
+            .push(DirectionalLightNode { bind_group });
+    }
+}
+
+pub fn prepare_point_lights(
+    mut render_assets: ResMut<RenderMaterialAssets>,
+    lights: Query<(&PointLight, &Transform)>,
+    device: Res<RenderDevice>,
+    pipeline: Res<LightingPipeline>,
+) {
+    render_assets.point_lights.clear();
+
+    for (light, transform) in &lights {
+        let uniform = PointLightUniform {
+            color: light.color.rgb(),
+            position: transform.translation.to_array(),
+            _pad0: 0,
+            _pad1: 0,
+        };
+
+        let buffer = device.0.create_buffer_init(&BufferInitDescriptor {
+            label: Some("point_light_buffer"),
+            contents: bytemuck::cast_slice(&[uniform]),
+            usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
+        });
+
+        let bind_group = device.0.create_bind_group(&BindGroupDescriptor {
+            label: Some("point_light_bind_group"),
+            layout: &pipeline.light_bind_group_layout,
+            entries: &[BindGroupEntry {
+                binding: 0,
+                resource: buffer.as_entire_binding(),
+            }],
+        });
+
+        render_assets
+            .point_lights
+            .push(PointLightNode { bind_group });
     }
 }

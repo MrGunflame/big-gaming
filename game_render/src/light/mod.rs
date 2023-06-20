@@ -15,3 +15,15 @@ pub struct DirectionalLightBundle {
     #[bundle]
     pub transform: TransformBundle,
 }
+
+#[derive(Copy, Clone, Debug, Component)]
+pub struct PointLight {
+    pub color: Color,
+}
+
+#[derive(Clone, Debug, Bundle)]
+pub struct PointLightBundle {
+    pub light: PointLight,
+    #[bundle]
+    pub transform: TransformBundle,
+}
