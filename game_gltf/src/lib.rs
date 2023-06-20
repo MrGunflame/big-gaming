@@ -26,6 +26,7 @@ use glam::{Quat, Vec3};
 use gltf::accessor::DataType;
 use gltf::accessor::Dimensions;
 use gltf::buffer::Source;
+use gltf::mesh::Mode;
 use gltf::Material;
 use gltf::{Accessor, Gltf, Semantic};
 use gltf::{Image, Node};
@@ -237,6 +238,8 @@ impl GltfData {
         for primitive in mesh.primitives() {
             let mut mesh = Mesh::new();
 
+            assert_eq!(primitive.mode(), Mode::Triangles);
+
             for (semantic, accessor) in primitive.attributes() {
                 match semantic {
                     Semantic::Positions => {
@@ -258,7 +261,14 @@ impl GltfData {
                         self.load_uvs(&accessor, &mut uvs)?;
                         mesh.set_uvs(uvs);
                     }
-                    _ => todo!(),
+                    Semantic::Tangents => {
+                        let mut tangents = vec![];
+                        self.load_tangents(&accessor, &mut tangents)?;
+                        let t = tangents;
+                    }
+                    _ => {
+                        todo!()
+                    }
                 }
             }
 
@@ -372,6 +382,38 @@ impl GltfData {
             let z = read_f32(&mut buf)?;
 
             normals.push([x, y, z]);
+        }
+
+        Ok(())
+    }
+
+    fn load_tangents(
+        &self,
+        accessor: &Accessor,
+        tangents: &mut Vec<[f32; 4]>,
+    ) -> Result<(), Error> {
+        let data_type = accessor.data_type();
+        if data_type != DataType::F32 {
+            return Err(Error::InvalidDataType(data_type));
+        }
+
+        let dimensions = accessor.dimensions();
+        if dimensions != Dimensions::Vec4 {
+            return Err(Error::InvalidDimensions(dimensions));
+        }
+
+        let view = accessor.view().unwrap();
+        let buffer = view.buffer();
+
+        let mut buf = self.buffer(buffer.source(), view.offset(), view.length())?;
+
+        while buf.len() != 0 {
+            let x = read_f32(&mut buf)?;
+            let y = read_f32(&mut buf)?;
+            let z = read_f32(&mut buf)?;
+            let w = read_f32(&mut buf)?;
+
+            tangents.push([x, y, z, w]);
         }
 
         Ok(())
