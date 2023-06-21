@@ -1,10 +1,11 @@
 pub mod cursor;
 pub mod events;
+pub mod window;
 
 mod systems;
 
 use std::collections::HashMap;
-use std::sync::{Arc, Weak};
+use std::sync::Arc;
 use std::time::Instant;
 
 use bevy_app::{App, Plugin};
@@ -12,7 +13,7 @@ use bevy_ecs::prelude::{Component, Entity, EventWriter};
 use bevy_ecs::query::Added;
 use bevy_ecs::system::{Commands, Query, ResMut, Resource, SystemState};
 use bevy_ecs::world::FromWorld;
-use cursor::CursorIcon;
+use cursor::{Cursor, CursorIcon};
 use events::{
     CursorEntered, CursorLeft, CursorMoved, ReceivedCharacter, WindowCloseRequested, WindowCreated,
     WindowDestroyed, WindowResized,
@@ -29,7 +30,9 @@ use winit::dpi::{LogicalPosition, PhysicalSize, Position};
 use winit::error::ExternalError;
 use winit::event::{DeviceEvent, ElementState, Event, MouseScrollDelta, WindowEvent};
 use winit::event_loop::EventLoop;
-use winit::window::{CursorGrabMode, WindowId};
+use winit::window::WindowId;
+
+pub use winit::window::CursorGrabMode;
 
 #[derive(Clone, Debug)]
 pub struct WindowPlugin;
@@ -41,6 +44,10 @@ impl Plugin for WindowPlugin {
         // Input plugin so we can send generic device (keyboard/mouse)
         // events.
         app.add_plugin(InputPlugin);
+
+        app.insert_resource(Cursor::new());
+        app.add_system(cursor::update_cursor_position);
+        app.add_system(cursor::flush_cursor_events);
 
         app.insert_resource(Windows::default());
 

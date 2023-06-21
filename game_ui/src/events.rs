@@ -8,12 +8,11 @@ use bevy_ecs::query::{Added, Changed, Or};
 use bevy_ecs::system::{Query, Res, Resource};
 use game_input::keyboard::KeyboardInput;
 use game_input::mouse::{MouseButtonInput, MouseWheel};
-use game_window::cursor::CursorIcon;
+use game_window::cursor::{Cursor, CursorIcon};
 use game_window::events::{CursorMoved, ReceivedCharacter};
 use glam::Vec2;
 use parking_lot::Mutex;
 
-use crate::cursor::Cursor;
 use crate::render::layout::{Key, LayoutTree};
 use crate::render::Rect;
 
@@ -173,7 +172,7 @@ pub fn dispatch_cursor_moved_events(
             };
 
             let ctx = Context {
-                cursor: *cursor,
+                cursor: cursor.clone(),
                 event: *event,
                 window: WindowContext {
                     window: event.window,
@@ -220,7 +219,7 @@ pub fn dispatch_mouse_button_input_events(
             };
 
             let ctx = Context {
-                cursor: *cursor,
+                cursor: cursor.clone(),
                 event: *event,
                 window: WindowContext {
                     window: cursor.window().unwrap(),
@@ -267,7 +266,7 @@ pub fn dispatch_mouse_wheel_events(
             };
 
             let ctx = Context {
-                cursor: *cursor,
+                cursor: cursor.clone(),
                 event: *event,
                 window: WindowContext {
                     window: cursor.window().unwrap(),
@@ -314,7 +313,7 @@ pub fn dispatch_received_character_events(
             };
 
             let ctx = Context {
-                cursor: *cursor,
+                cursor: cursor.clone(),
                 event: *event,
                 window: WindowContext {
                     window: cursor.window().unwrap(),
@@ -361,7 +360,7 @@ pub fn dispatch_keyboard_input_events(
             };
 
             let ctx = Context {
-                cursor: *cursor,
+                cursor: cursor.clone(),
                 event: *event,
                 window: WindowContext {
                     window: cursor.window().unwrap(),

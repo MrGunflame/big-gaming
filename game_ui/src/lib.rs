@@ -1,10 +1,5 @@
 //! UI related systems
 #[deny(unsafe_op_in_unsafe_fn)]
-pub mod cursor;
-// mod interface;
-// mod scenes;
-// mod systems;
-
 pub mod events;
 pub mod render;
 pub mod widgets;
@@ -15,7 +10,6 @@ use bevy_app::{App, Plugin};
 use bevy_ecs::schedule::IntoSystemConfig;
 use bevy_ecs::system::{Commands, Query, Res};
 use bevy_ecs::world::World;
-use cursor::Cursor;
 use events::{Events, WindowEvent, WindowEventQueue};
 use game_window::WindowState;
 use reactive::{Document, Runtime};
@@ -31,10 +25,6 @@ impl Plugin for UiPlugin {
 
         app.insert_resource(Runtime::new());
         app.insert_resource(WindowEventQueue::default());
-
-        // Cursor
-        app.insert_resource(Cursor::new());
-        app.add_system(cursor::update_cursor_position);
 
         // Events
         app.add_system(events::update_events_from_layout_tree);
