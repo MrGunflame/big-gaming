@@ -5,11 +5,8 @@ use game_common::bundles::TransformBundle;
 use game_common::components::transform::Transform;
 use game_common::world::terrain::{Projection, TerrainMesh};
 use game_common::world::CELL_SIZE_UINT;
-use game_render::color::Color;
 use game_render::mesh::{Indices, Mesh};
 use game_render::pbr::{PbrBundle, PbrMaterial};
-use game_render::shape;
-use game_render::texture::Images;
 use glam::{UVec2, Vec3};
 
 #[derive(Clone, Debug, Component)]
@@ -22,10 +19,11 @@ pub fn load_terrain(
     entities: Query<(Entity, &LoadTerrain)>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<PbrMaterial>>,
-    mut images: ResMut<Images>,
 ) {
     for (entity, terrain) in &entities {
         let translation = terrain.mesh.cell.min();
+
+        tracing::trace!("spawning terrain at {:?}", translation);
 
         let mesh = build_mesh(&terrain.mesh);
 
@@ -52,34 +50,6 @@ pub fn load_terrain(
             });
 
         commands.entity(entity).remove::<LoadTerrain>();
-
-        commands.spawn(PbrBundle {
-            mesh: meshes.insert(
-                shape::Box {
-                    min_x: -0.5,
-                    max_x: 0.5,
-                    min_y: -0.5,
-                    max_y: 0.5,
-                    min_z: -0.5,
-                    max_z: 0.5,
-                }
-                .into(),
-            ),
-            material: materials.insert(PbrMaterial {
-                base_color: Color([1.0, 1.0, 1.0, 1.0]),
-                base_color_texture: Some(images.load("../assets/diffuse.png")),
-                normal_texture: Some(images.load("../assets/normal.png")),
-                ..Default::default()
-            }),
-            transform: TransformBundle {
-                transform: Transform {
-                    translation: Vec3::new(0.0, 1.0, -5.0),
-                    // rotation: Quat::from_axis_angle(Vec3::Y, PI / 3.0),
-                    ..Default::default()
-                },
-                ..Default::default()
-            },
-        });
     }
 }
 

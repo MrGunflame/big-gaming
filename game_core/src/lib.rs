@@ -11,7 +11,6 @@ use bevy_app::{App, Plugin};
 pub mod animation;
 pub mod combat;
 pub mod modules;
-pub mod movement;
 pub mod time;
 pub mod world;
 

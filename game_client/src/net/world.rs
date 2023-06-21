@@ -245,6 +245,7 @@ fn spawn_entity(commands: &mut Commands, entity: DelayedEntity) -> bevy_ecs::ent
                 transform: entity.entity.transform,
                 race: actor.race,
                 health: actor.health,
+                host: entity.host,
             })
             .id(),
         EntityBody::Item(item) => commands

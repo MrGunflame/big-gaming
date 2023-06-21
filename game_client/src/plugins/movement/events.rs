@@ -1,4 +1,5 @@
 use bevy_ecs::prelude::Entity;
+use bevy_ecs::query::With;
 use bevy_ecs::system::{Commands, Query, Res, ResMut};
 use game_common::components::actor::{ActorFlag, ActorFlags, ActorProperties, MovementSpeed};
 use game_common::components::movement::{Movement, RotateQueue};

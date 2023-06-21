@@ -61,8 +61,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     l.diffuse = 1.0;
     l.specular = 1.0;
     l.constant = 0.0;
-    l.linear = 0.0;
-    l.quadratic = 0.1;
+    l.linear = 0.1;
+    l.quadratic = 0.0;
     let li = point_light(in, l);
 
     //let color = albedo.xyz * li;
@@ -91,7 +91,8 @@ fn point_light(in: VertexOutput, light: PointLight) -> vec3<f32> {
     let roughness = textureSample(g_metallic_roughness, g_sampler, in.uv).g;
 
     let distance = length(light.position - pos);
-    let attenuation = 10.0 / (light.constant + light.linear * distance + light.quadratic * (distance * distance));
+    // Don't divide by 0.
+    let attenuation = 10.0 / max((light.constant + light.linear * distance + light.quadratic * (distance * distance)), 0.0001);
 
     let light_dir = normalize(light.position - pos);
 

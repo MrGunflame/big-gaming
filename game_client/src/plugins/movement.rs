@@ -3,23 +3,21 @@ mod events;
 use std::borrow::Cow;
 
 use bevy_app::{App, Plugin};
-use bevy_ecs::prelude::{Entity, EventReader};
+use bevy_ecs::prelude::EventReader;
 use bevy_ecs::query::{With, Without};
 use bevy_ecs::schedule::{IntoSystemConfig, IntoSystemSetConfig, SystemSet};
-use bevy_ecs::system::{Commands, Query, ResMut};
+use bevy_ecs::system::{Query, Res, ResMut};
 use game_common::components::actor::{ActorProperties, MovementSpeed};
-use game_common::components::movement::{Jump, Movement, Rotate, RotateQueue};
+use game_common::components::camera::CameraMode;
 use game_common::components::player::HostPlayer;
 use game_common::components::transform::Transform;
+use game_core::time::Time;
 use game_input::hotkeys::{
     Event, Hotkey, HotkeyCode, HotkeyFilter, HotkeyId, HotkeyReader, Hotkeys, Key, TriggerKind,
 };
-use game_input::keyboard::{KeyCode, KeyboardInput};
+use game_input::keyboard::KeyCode;
 use game_input::mouse::MouseMotion;
 use game_input::InputSet;
-use game_net::proto;
-use game_render::camera::Camera;
-use game_window::events::VirtualKeyCode;
 use glam::{Quat, Vec3};
 
 use super::camera::PrimaryCamera;
@@ -145,10 +143,8 @@ impl Plugin for MovementPlugin {
     fn build(&self, app: &mut App) {
         app.add_startup_system(register_events);
 
-        app.add_system(movement_events.in_set(MovementSet::Read));
-        app.add_system(camera_rotation.in_set(MovementSet::Read));
-        app.add_system(toggle_sprint.in_set(MovementSet::Read));
-        app.add_system(jump_events.in_set(MovementSet::Read));
+        app.add_system(translation_events);
+        app.add_system(rotation_events);
 
         app.add_system(events::handle_movement_events.in_set(MovementSet::Apply));
         app.add_system(events::handle_rotate_events.in_set(MovementSet::Apply));
@@ -171,6 +167,7 @@ fn register_events(mut hotkeys: ResMut<Hotkeys>) {
     let mut move_forward = unsafe { &mut MOVE_FORWARD };
     let id = hotkeys.register(move_forward.clone());
     move_forward.id = id;
+
     drop(move_forward);
 
     let mut move_back = unsafe { &mut MOVE_BACK };
@@ -199,29 +196,15 @@ fn register_events(mut hotkeys: ResMut<Hotkeys>) {
     drop(jump);
 }
 
-fn toggle_sprint(
-    mut players: Query<&mut MovementSpeed, With<HostPlayer>>,
-    mut events: HotkeyReader<Sprint>,
-) {
-    let Ok(mut speed) = players.get_single_mut() else {
-        return;
-    };
-
-    for event in events.iter() {
-        if event.trigger.just_pressed() {
-            **speed = 5.0;
-        } else {
-            **speed = 3.0;
-        }
-    }
-}
-
-fn movement_events(
-    mut commands: Commands,
+pub fn translation_events(
+    time: Res<Time>,
+    mut players: Query<(&mut Transform, &MovementSpeed), With<HostPlayer>>,
+    mut cameras: Query<(&mut Transform, &CameraMode), (Without<HostPlayer>, With<PrimaryCamera>)>,
     mut events: HotkeyReader<MovementEvent>,
-    players: Query<Entity, With<HostPlayer>>,
 ) {
-    let Ok(entity) = players.get_single() else {
+    let (mut camera, mode) = cameras.single_mut();
+
+    let Ok((mut transform, speed)) = players.get_single_mut() else {
         return;
     };
 
@@ -236,33 +219,68 @@ fn movement_events(
             angle.back();
         }
 
-        if MovementEvent::right(event) {
-            angle.right();
-        }
-
         if MovementEvent::left(event) {
             angle.left();
+        }
+
+        if MovementEvent::right(event) {
+            angle.right();
         }
     }
 
     if let Some(angle) = angle.to_radians() {
-        commands.entity(entity).insert(Movement {
-            direction: Quat::from_axis_angle(Vec3::Y, angle),
-        });
+        let delta = time.delta().as_secs_f32();
+
+        match mode {
+            // In detached mode control the camera directly.
+            CameraMode::Detached => {
+                let direction = camera.rotation * Quat::from_axis_angle(Vec3::Y, angle) * -Vec3::Z;
+
+                let distance = direction * 1.0 * delta;
+                camera.translation += distance;
+            }
+            // Otherwise control the player actor.
+            _ => {
+                let direction =
+                    transform.rotation * Quat::from_axis_angle(Vec3::Y, angle) * -Vec3::Z;
+
+                let distance = direction * speed.0 * delta;
+                transform.translation += distance;
+            }
+        }
+
+        dbg!(camera);
     }
 }
 
-fn jump_events(
-    mut commands: Commands,
-    players: Query<Entity, With<HostPlayer>>,
-    mut events: HotkeyReader<JumpEvent>,
+pub fn rotation_events(
+    mut events: EventReader<MouseMotion>,
+    mut players: Query<&mut ActorProperties, With<HostPlayer>>,
+    mut cameras: Query<(&mut Transform, &CameraMode), (Without<HostPlayer>, With<PrimaryCamera>)>,
 ) {
-    let Ok(entity) = players.get_single() else {
+    let (mut camera, mode) = cameras.single_mut();
+
+    let Ok(mut props) = players.get_single_mut() else {
         return;
     };
 
-    for _ in events.iter() {
-        commands.entity(entity).insert(Jump);
+    for event in events.iter() {
+        let yaw = event.delta.x * 0.001;
+        let pitch = event.delta.y * 0.001;
+
+        let q1 = Quat::from_axis_angle(Vec3::Y, -yaw);
+        let q2 = Quat::from_axis_angle(Vec3::X, -pitch);
+
+        match mode {
+            CameraMode::Detached => {
+                camera.rotation = q1 * camera.rotation;
+                camera.rotation = camera.rotation * q2;
+            }
+            _ => {
+                props.rotation = q1 * props.rotation;
+                props.rotation = props.rotation * q2;
+            }
+        }
     }
 }
 
@@ -327,124 +345,5 @@ impl Angle {
 
     fn to_radians(self) -> Option<f32> {
         self.to_degrees().map(f32::to_radians)
-    }
-}
-
-pub fn camera_rotation(
-    mut events: EventReader<MouseMotion>,
-
-    mut cameras: Query<(&Camera, &mut Transform), With<PrimaryCamera>>,
-) {
-    let (_, mut transform) = cameras.single_mut();
-
-    for event in events.iter() {
-        let yaw = event.delta.x * 0.001;
-        let pitch = event.delta.y * 0.001;
-
-        let q1 = Quat::from_axis_angle(Vec3::Y, -yaw);
-        let q2 = Quat::from_axis_angle(Vec3::X, -pitch);
-
-        transform.rotation = q1 * transform.rotation;
-        transform.rotation = transform.rotation * q2;
-
-        dbg!(transform.rotation * -Vec3::Z);
-    }
-}
-
-pub fn keyboard_input(
-    mut events: EventReader<KeyboardInput>,
-    mut cameras: Query<(&Camera, &mut Transform), With<PrimaryCamera>>,
-) {
-    let (_, mut transform) = cameras.single_mut();
-
-    for event in events.iter() {
-        match event.key_code {
-            Some(VirtualKeyCode::W) => {
-                transform.translation.z -= 0.1;
-            }
-            Some(VirtualKeyCode::A) => {
-                transform.translation.x -= 0.1;
-            }
-            Some(VirtualKeyCode::S) => {
-                transform.translation.z += 0.1;
-            }
-            Some(VirtualKeyCode::D) => {
-                transform.translation.x += 0.1;
-            }
-            Some(VirtualKeyCode::Q) => {
-                transform.translation.y += 0.1;
-            }
-            Some(VirtualKeyCode::E) => {
-                transform.translation.y -= 0.1;
-            }
-            _ => (),
-        }
-    }
-}
-
-fn mouse_movement(
-    mut events: EventReader<MouseMotion>,
-    mut players: Query<
-        (&mut RotateQueue, &mut ActorProperties),
-        (With<HostPlayer>, Without<Camera>),
-    >,
-) {
-    let Ok((mut queue, mut props)) = players.get_single_mut() else {
-        return;
-    };
-
-    let mut changed = false;
-
-    for event in events.iter() {
-        let yaw = event.delta.x * 0.001;
-        let pitch = event.delta.y * 0.001;
-
-        // let yaw = camera.rotation.yaw() - yaw;
-        // let mut pitch = camera.rotation.pitch() - pitch;
-
-        // if pitch < -(PI / 2.0) {
-        //     pitch = -(PI / 2.0);
-        // } else if pitch > PI / 2.0 {
-        //     pitch = PI / 2.0;
-        // }
-
-        // let quat = camera.rotation.with_yaw(yaw).with_pitch(pitch);
-        // let quat = Quat::from_euler(EulerRot::YXZ, yaw, pitch, 0.0);
-
-        let q1 = Quat::from_axis_angle(Vec3::Y, -yaw);
-        let q2 = Quat::from_axis_angle(Vec3::X, -pitch);
-
-        // let quat = Quat::from_euler(EulerRot::YXZ, y - yaw, pitch, z);
-
-        // camera.rotation.to_axis_angle();
-        // camera.rotate_axis(-Vec3::Y, yaw);
-        // camera.rotate(quat);
-
-        // camera.rotation = q1 * camera.rotation;
-        // camera.rotation = camera.rotation * q2;
-        props.rotation = q1 * props.rotation;
-        props.rotation = props.rotation * q2;
-
-        // *camera_rot = camera_rot
-        //     .add_yaw(Degrees(yaw))
-        //     .saturating_add_pitch(Degrees(pitch));
-
-        // *player_rot = camera_rot.with_pitch(Radians(0.0));
-        // player.rotation = q1 * player.rotation;
-        // commands.entity(entity).insert(Rotate {
-        //     destination: q1 * player.rotation,
-        // });
-
-        // player.rotation = q1 * player.rotation;
-        // rotation = q1 * rotation;
-        // rotation = rotation * q2;
-
-        changed = true;
-    }
-
-    if changed {
-        queue.0.push_back(Rotate {
-            destination: props.rotation,
-        });
     }
 }

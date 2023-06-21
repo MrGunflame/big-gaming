@@ -10,14 +10,17 @@ mod utils;
 mod window;
 
 use bevy_app::App;
+use bevy_ecs::system::Commands;
 use clap::Parser;
 use entities::LoadEntityPlugin;
 use game_core::logger::Logger;
 use game_core::CorePlugins;
+use game_render::light::{DirectionalLight, DirectionalLightBundle};
 use game_render::RenderPlugin;
+use game_scene::ScenePlugin;
 use net::NetPlugin;
 use plugins::actions::ActionsPlugin;
-use plugins::CameraPlugin;
+use plugins::{CameraPlugin, MovementPlugin};
 use state::InternalGameState;
 use window::PrimaryWindow;
 
@@ -51,6 +54,10 @@ fn main() {
     app.add_plugin(ActionsPlugin);
     app.add_plugin(LoadEntityPlugin);
     app.add_plugin(CameraPlugin);
+    app.add_plugin(ScenePlugin);
+    app.add_plugin(MovementPlugin);
+
+    app.add_startup_system(spawn_light);
 
     game_core::modules::load_modules(&mut app);
 
@@ -61,4 +68,14 @@ fn main() {
     }
 
     app.run();
+}
+
+fn spawn_light(mut commands: Commands) {
+    commands.spawn(DirectionalLightBundle {
+        light: DirectionalLight {
+            color: [1.0, 1.0, 1.0],
+            illuminance: 1.0,
+        },
+        transform: Default::default(),
+    });
 }

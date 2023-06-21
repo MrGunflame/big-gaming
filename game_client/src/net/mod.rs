@@ -1,4 +1,5 @@
 mod conn;
+pub mod input;
 mod interpolate;
 mod prediction;
 mod world;
@@ -56,6 +57,9 @@ impl Plugin for NetPlugin {
         app.add_system(world::flush_delta_queue);
 
         app.add_system(interpolate::interpolate_translation);
+
+        app.add_system(input::handle_translation_changes);
+        app.add_system(input::handle_rotation_changes);
     }
 }
 

@@ -43,6 +43,7 @@ pub(super) fn toggle_camera_position(
         *mode = match *mode {
             CameraMode::FirstPerson => CameraMode::ThirdPerson { distance: 5.0 },
             CameraMode::ThirdPerson { distance: _ } => CameraMode::FirstPerson,
+            CameraMode::Detached => CameraMode::Detached,
         };
     }
 }

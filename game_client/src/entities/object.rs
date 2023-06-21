@@ -1,4 +1,5 @@
-use bevy_ecs::prelude::Component;
+use bevy_ecs::prelude::{Component, Entity};
+use bevy_ecs::system::{Commands, Query};
 use game_common::components::object::ObjectId;
 use game_common::components::transform::Transform;
 
@@ -6,4 +7,10 @@ use game_common::components::transform::Transform;
 pub struct LoadObject {
     pub id: ObjectId,
     pub transform: Transform,
+}
+
+pub fn load_object(mut commands: Commands, entities: Query<(Entity, &LoadObject)>) {
+    for (entity, object) in &entities {
+        tracing::trace!("spawning object at {:?}", object.transform.translation);
+    }
 }
