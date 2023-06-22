@@ -3,6 +3,7 @@
 use animation::AnimationPlugin;
 use combat::CombatPlugin;
 use game_asset::AssetPlugin;
+use hierarchy::HierarchyPlugin;
 use modules::ModulePlugin;
 use world::{LevelPlugin, ObjectPlugin, SpawnPlugin, WorldTimePlugin};
 
@@ -10,8 +11,10 @@ use bevy_app::{App, Plugin};
 
 pub mod animation;
 pub mod combat;
+pub mod hierarchy;
 pub mod modules;
 pub mod time;
+pub mod transform;
 pub mod world;
 
 pub mod logger;
@@ -31,5 +34,6 @@ impl Plugin for CorePlugins {
         app.add_plugin(SpawnPlugin);
         app.add_plugin(AnimationPlugin);
         app.add_plugin(ModulePlugin);
+        app.add_plugin(HierarchyPlugin);
     }
 }

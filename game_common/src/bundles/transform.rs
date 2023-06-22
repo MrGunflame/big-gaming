@@ -1,11 +1,12 @@
 use bevy_ecs::bundle::Bundle;
 
-use crate::components::transform::{PreviousTransform, Transform};
+use crate::components::transform::{GlobalTransform, PreviousTransform, Transform};
 
 #[derive(Copy, Clone, Debug, Default, Bundle)]
 pub struct TransformBundle {
     pub transform: Transform,
     pub previous_transform: PreviousTransform,
+    pub global_transform: GlobalTransform,
 }
 
 impl TransformBundle {
@@ -13,6 +14,7 @@ impl TransformBundle {
         Self {
             transform,
             previous_transform: PreviousTransform(transform),
+            global_transform: GlobalTransform(transform),
         }
     }
 }

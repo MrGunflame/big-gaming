@@ -101,3 +101,6 @@ impl MulAssign for Transform {
         *self = *self * rhs;
     }
 }
+
+#[derive(Copy, Clone, Debug, Default, PartialEq, Component)]
+pub struct GlobalTransform(pub Transform);
