@@ -14,6 +14,7 @@ pub mod components;
 pub mod ecs;
 pub mod entity;
 pub mod events;
+pub mod hierarchy;
 pub mod id;
 pub mod localization;
 pub mod math;

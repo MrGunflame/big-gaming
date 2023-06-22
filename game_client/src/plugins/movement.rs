@@ -15,9 +15,12 @@ use game_core::time::Time;
 use game_input::hotkeys::{
     Event, Hotkey, HotkeyCode, HotkeyFilter, HotkeyId, HotkeyReader, Hotkeys, Key, TriggerKind,
 };
-use game_input::keyboard::KeyCode;
+use game_input::keyboard::{KeyCode, KeyboardInput};
 use game_input::mouse::MouseMotion;
 use game_input::InputSet;
+use game_window::cursor::Cursor;
+use game_window::events::VirtualKeyCode;
+use game_window::{CursorGrabMode, WindowState};
 use glam::{Quat, Vec3};
 
 use super::camera::PrimaryCamera;
@@ -152,6 +155,8 @@ impl Plugin for MovementPlugin {
 
         app.configure_set(InputSet::Hotkeys.before(MovementSet::Read));
         app.configure_set(MovementSet::Read.before(MovementSet::Apply));
+
+        app.add_system(lock_mouse);
     }
 }
 
@@ -345,5 +350,17 @@ impl Angle {
 
     fn to_radians(self) -> Option<f32> {
         self.to_degrees().map(f32::to_radians)
+    }
+}
+
+fn lock_mouse(mut cursor: ResMut<Cursor>, mut events: EventReader<KeyboardInput>) {
+    for event in events.iter().filter(|e| e.state.is_pressed()) {
+        if let Some(VirtualKeyCode::Escape) = event.key_code {
+            if cursor.is_locked() {
+                cursor.unlock()
+            } else {
+                cursor.lock()
+            }
+        }
     }
 }

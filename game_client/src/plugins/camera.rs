@@ -3,7 +3,6 @@ mod events;
 use bevy_app::{App, Plugin};
 use bevy_ecs::prelude::Component;
 use bevy_ecs::query::{With, Without};
-use bevy_ecs::schedule::IntoSystemConfig;
 use bevy_ecs::system::{Commands, Query, Res, ResMut};
 use game_asset::Assets;
 use game_common::bundles::TransformBundle;
@@ -57,7 +56,7 @@ fn setup_camera(mut commands: Commands, target: Res<PrimaryWindow>) {
                 target: RenderTarget::Window(target.0),
             },
         })
-        .insert(CameraMode::Detached)
+        .insert(CameraMode::FirstPerson)
         .insert(PrimaryCamera);
 
     commands.spawn(DirectionalLightBundle {
