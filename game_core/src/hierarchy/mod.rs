@@ -1,12 +1,25 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet, VecDeque};
 
 use bevy_app::{App, Plugin};
 use bevy_ecs::prelude::{Component, Entity};
+use bevy_ecs::query::{Added, Changed, Or};
+use bevy_ecs::removal_detection::RemovedComponents;
+use bevy_ecs::schedule::IntoSystemConfig;
+use bevy_ecs::system::{Commands, Query, ResMut, Resource};
 
 pub struct HierarchyPlugin;
 
 impl Plugin for HierarchyPlugin {
-    fn build(&self, app: &mut App) {}
+    fn build(&self, app: &mut App) {
+        app.insert_resource(EntityChildren::default());
+        app.add_system(update_children);
+        app.add_system(despawn_children.after(update_children));
+    }
+}
+
+#[derive(Default, Resource)]
+struct EntityChildren {
+    entities: HashMap<Entity, HashSet<Entity>>,
 }
 
 #[derive(Clone, Debug, Component)]
@@ -83,5 +96,34 @@ impl<'a> Iterator for Iter<'a> {
 
     fn size_hint(&self) -> (usize, Option<usize>) {
         self.entities.size_hint()
+    }
+}
+
+fn despawn_children(
+    mut commands: Commands,
+    mut childs: ResMut<EntityChildren>,
+    mut entities: RemovedComponents<Children>,
+) {
+    let mut queued = VecDeque::new();
+
+    for entity in entities.iter() {
+        queued.push_back(entity);
+    }
+
+    while let Some(entity) = queued.pop_front() {
+        commands.entity(entity).despawn();
+
+        if let Some(children) = childs.entities.remove(&entity) {
+            queued.extend(children);
+        }
+    }
+}
+
+fn update_children(
+    mut childs: ResMut<EntityChildren>,
+    entities: Query<(Entity, &Children), Or<(Changed<Children>, Added<Children>)>>,
+) {
+    for (entity, children) in &entities {
+        *childs.entities.entry(entity).or_default() = children.entities.clone();
     }
 }
