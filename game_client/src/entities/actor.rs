@@ -37,8 +37,11 @@ pub fn load_actor(
             direction.y.asin()
         };
 
-        let mut cmds = commands.spawn(SceneBundle {
-            scene: scenes.load("../assets/metal.glb"),
+        let mut cmds = commands.entity(entity);
+        cmds.remove::<LoadActor>();
+
+        cmds.insert(SceneBundle {
+            scene: scenes.load("../assets/bricks.glb"),
             transform: TransformBundle {
                 transform: Transform {
                     translation: actor.transform.translation,
@@ -58,7 +61,5 @@ pub fn load_actor(
         if actor.host {
             cmds.insert(HostPlayer);
         }
-
-        commands.entity(entity).remove::<LoadActor>();
     }
 }

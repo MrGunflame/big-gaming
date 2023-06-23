@@ -109,6 +109,7 @@ impl Plugin for RenderPlugin {
         app.add_system(pbr::prepare_directional_lights);
         app.add_system(pbr::update_material_bind_groups.after(pbr::prepare_materials));
         app.add_system(pbr::prepare_point_lights);
+        app.add_system(pbr::remove_render_nodes);
 
         app.insert_resource(pipeline::RenderWindows::default());
         app.add_system(pipeline::create_render_windows);

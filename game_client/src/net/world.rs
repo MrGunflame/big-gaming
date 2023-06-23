@@ -125,6 +125,11 @@ fn handle_event(
     conn: &ServerConnection,
     backlog: &mut Backlog,
 ) {
+    tracing::trace!(
+        concat!("handle ", stringify!(WorldState), " event: {:?}"),
+        event
+    );
+
     // Create and Destroy require special treatment.
     if !matches!(
         event,
@@ -180,7 +185,7 @@ fn handle_event(
             };
 
             if !buffer.remove(id) {
-                // DESPAWN
+                commands.entity(entity).despawn();
             }
         }
         EntityChange::Translate {

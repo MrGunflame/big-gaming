@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use bevy_ecs::prelude::{Bundle, Entity, Res};
 use bevy_ecs::query::{Added, Changed, Or};
+use bevy_ecs::removal_detection::RemovedComponents;
 use bevy_ecs::system::{Query, ResMut, Resource};
 use bevy_ecs::world::{FromWorld, World};
 use game_asset::{Asset, Assets, Handle};
@@ -139,6 +140,20 @@ pub struct PointLightNode {
     pub bind_group: BindGroup,
 }
 
+pub fn remove_render_nodes(
+    mut res: ResMut<RenderMaterialAssets>,
+    mut materials: RemovedComponents<Handle<PbrMaterial>>,
+    mut meshes: RemovedComponents<Handle<Mesh>>,
+) {
+    for entity in meshes.iter() {
+        res.entities.remove(&entity);
+    }
+
+    for entity in materials.iter() {
+        res.entities.remove(&entity);
+    }
+}
+
 pub fn update_material_bind_groups(
     device: Res<RenderDevice>,
     queue: Res<RenderQueue>,
@@ -262,9 +277,7 @@ pub fn update_material_bind_groups(
 }
 
 pub fn prepare_materials(
-    images: ResMut<Images>,
     device: Res<RenderDevice>,
-    queue: Res<RenderQueue>,
     nodes: Query<(
         Entity,
         &Handle<Mesh>,
@@ -272,18 +285,11 @@ pub fn prepare_materials(
         &GlobalTransform,
     )>,
     meshes: Res<Assets<Mesh>>,
-    materials: Res<Assets<PbrMaterial>>,
     mut render_assets: ResMut<RenderMaterialAssets>,
-    material_pipeline: Res<MaterialPipeline>,
     mesh_pipeline: Res<MeshPipeline>,
-    pbr_res: Res<PbrResources>,
 ) {
     for (entity, mesh, material, transform) in &nodes {
         let Some(mesh) = meshes.get(mesh.id()) else {
-            continue;
-        };
-
-        let Some(material) = materials.get(material.id()) else {
             continue;
         };
 

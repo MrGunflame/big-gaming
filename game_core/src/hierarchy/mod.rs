@@ -111,7 +111,9 @@ fn despawn_children(
     }
 
     while let Some(entity) = queued.pop_front() {
-        commands.entity(entity).despawn();
+        if let Some(mut cmds) = commands.get_entity(entity) {
+            cmds.despawn();
+        }
 
         if let Some(children) = childs.entities.remove(&entity) {
             queued.extend(children);

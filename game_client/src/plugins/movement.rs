@@ -350,13 +350,27 @@ impl Angle {
     }
 }
 
-fn lock_mouse(mut cursor: ResMut<Cursor>, mut events: EventReader<KeyboardInput>) {
+fn lock_mouse(
+    mut cursor: ResMut<Cursor>,
+    mut events: EventReader<KeyboardInput>,
+    mut cameras: Query<&mut CameraMode>,
+) {
     for event in events.iter().filter(|e| e.state.is_pressed()) {
         if let Some(VirtualKeyCode::Escape) = event.key_code {
             if cursor.is_locked() {
                 cursor.unlock()
             } else {
                 cursor.lock()
+            }
+        }
+
+        if let Some(VirtualKeyCode::Tab) = event.key_code {
+            for mut mode in &mut cameras {
+                if mode.is_detached() {
+                    *mode = CameraMode::FirstPerson;
+                } else {
+                    *mode = CameraMode::Detached;
+                }
             }
         }
     }
