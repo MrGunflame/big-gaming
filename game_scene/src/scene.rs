@@ -29,7 +29,7 @@ pub(crate) fn spawn_scene(
                     mesh: node.mesh.clone(),
                     material: node.material.clone(),
                     transform: TransformBundle {
-                        transform: *transform * node.transform,
+                        transform: node.transform,
                         ..Default::default()
                     },
                 })
