@@ -125,6 +125,7 @@ impl From<Box> for Mesh {
         mesh.set_indices(Indices::U32(indicies));
         mesh.set_normals(normals.to_vec());
         mesh.set_uvs(uvs.to_vec());
+        mesh.compute_tangents();
         mesh
     }
 }
@@ -161,6 +162,7 @@ impl From<Plane> for Mesh {
         mesh.set_indices(Indices::U32(indicies));
         mesh.set_normals(normals.to_vec());
         mesh.set_uvs(uvs.to_vec());
+        mesh.compute_tangents();
         mesh
     }
 }

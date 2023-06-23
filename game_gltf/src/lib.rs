@@ -242,6 +242,8 @@ impl GltfData {
 
             assert_eq!(primitive.mode(), Mode::Triangles);
 
+            let mut tangents_set = false;
+
             for (semantic, accessor) in primitive.attributes() {
                 assert!(accessor.sparse().is_none());
 
@@ -256,6 +258,11 @@ impl GltfData {
                         self.load_normals(&accessor, &mut normals)?;
                         mesh.set_normals(normals);
                     }
+                    Semantic::Tangents => {
+                        let mut tangents = vec![];
+                        self.load_tangents(&accessor, &mut tangents)?;
+                        let t = tangents;
+                    }
                     Semantic::TexCoords(index) => {
                         if index != 0 {
                             panic!("multiple texture coordinates not yet supported");
@@ -265,11 +272,7 @@ impl GltfData {
                         self.load_uvs(&accessor, &mut uvs)?;
                         mesh.set_uvs(uvs);
                     }
-                    Semantic::Tangents => {
-                        let mut tangents = vec![];
-                        self.load_tangents(&accessor, &mut tangents)?;
-                        let t = tangents;
-                    }
+                    Semantic::Colors(x) => {}
                     _ => {
                         todo!()
                     }
@@ -280,6 +283,10 @@ impl GltfData {
                 let mut indices = Indices::U16(vec![]);
                 self.load_indices(&accessor, &mut indices)?;
                 mesh.set_indices(indices);
+            }
+
+            if !tangents_set {
+                mesh.compute_tangents();
             }
 
             let material = self.load_material(primitive.material())?;
@@ -327,6 +334,10 @@ impl GltfData {
         if dimensions != Dimensions::Vec3 {
             return Err(Error::InvalidDimensions(dimensions));
         }
+
+        let min = accessor
+            .min()
+            .map(|min| AccessorValue::load(Dimensions::Vec3, data_type, min));
 
         let reader: ItemReader<'_, Positions> = ItemReader::new(accessor, self);
         positions.extend(reader);

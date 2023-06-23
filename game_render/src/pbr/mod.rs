@@ -271,23 +271,21 @@ pub fn prepare_materials(
         &Handle<PbrMaterial>,
         &GlobalTransform,
     )>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    materials: ResMut<Assets<PbrMaterial>>,
+    meshes: Res<Assets<Mesh>>,
+    materials: Res<Assets<PbrMaterial>>,
     mut render_assets: ResMut<RenderMaterialAssets>,
     material_pipeline: Res<MaterialPipeline>,
     mesh_pipeline: Res<MeshPipeline>,
     pbr_res: Res<PbrResources>,
 ) {
     for (entity, mesh, material, transform) in &nodes {
-        let Some(mesh) = meshes.get_mut(mesh.id()) else {
+        let Some(mesh) = meshes.get(mesh.id()) else {
             continue;
         };
 
         let Some(material) = materials.get(material.id()) else {
             continue;
         };
-
-        mesh.compute_tangents();
 
         let transform_buffer = device.0.create_buffer_init(&BufferInitDescriptor {
             label: Some("mesh_transform"),
