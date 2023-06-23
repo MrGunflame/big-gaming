@@ -24,9 +24,10 @@ pub fn update_global_transform(
 
     for (entity, transform, _, children) in &entities {
         debug_assert!(
-            transform.translation.is_finite(),
-            "Transform with invalid translation value: {:?}",
-            transform.translation
+            transform.is_valid(),
+            "Entity {:?} with invalid Transform: {:?}",
+            entity,
+            transform
         );
 
         transforms.insert(entity, *transform);
@@ -45,7 +46,7 @@ pub fn update_global_transform(
             if let Some(transform) = transforms.get(&parent) {
                 let local_transform = transforms.get(child).unwrap();
 
-                transforms.insert(*child, *transform * *local_transform);
+                transforms.insert(*child, transform.mul_transform(*local_transform));
                 parents.remove(child);
             }
         }
@@ -55,9 +56,10 @@ pub fn update_global_transform(
         let (_, _, mut global, _) = entities.get_mut(entity).unwrap();
 
         debug_assert!(
-            transform.translation.is_finite(),
-            "GlobalTransform with invalid translation value: {:?}",
-            transform.translation
+            transform.is_valid(),
+            "Entity {:?} with invalid GlobalTransform: {:?}",
+            entity,
+            transform
         );
 
         global.0 = transform;

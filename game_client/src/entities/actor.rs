@@ -25,7 +25,12 @@ pub fn load_actor(
     for (entity, actor) in &entities {
         tracing::trace!("spawning actor at {:?}", actor.transform.translation);
 
-        let direction = actor.transform.rotation * -Vec3::Z;
+        // Extract the rotation angle around Y, removing all other
+        // components.
+        let mut direction = actor.transform.rotation * -Vec3::Z;
+        // Clamp in range of [-1, -1] in case direction is slightly above due
+        // to FP error creep.
+        direction.y = direction.y.clamp(-1.0, 1.0);
         let angle = if direction.x.is_sign_negative() {
             -direction.y.asin()
         } else {

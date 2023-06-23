@@ -48,7 +48,10 @@ pub fn handle_rotation_changes(
 
     // Extract the rotation angle around Y, removing all other
     // components.
-    let direction = props.rotation * -Vec3::Z;
+    let mut direction = props.rotation * -Vec3::Z;
+    // Clamp in range of [-1, -1] in case direction is slightly above due
+    // to FP error creep.
+    direction.y = direction.y.clamp(-1.0, 1.0);
     let angle = if direction.x.is_sign_negative() {
         -direction.y.asin()
     } else {

@@ -20,7 +20,6 @@ use game_input::mouse::MouseMotion;
 use game_input::InputSet;
 use game_window::cursor::Cursor;
 use game_window::events::VirtualKeyCode;
-use game_window::{CursorGrabMode, WindowState};
 use glam::{Quat, Vec3};
 
 use super::camera::PrimaryCamera;
@@ -253,8 +252,6 @@ pub fn translation_events(
                 transform.translation += distance;
             }
         }
-
-        dbg!(camera);
     }
 }
 

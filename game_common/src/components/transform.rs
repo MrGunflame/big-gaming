@@ -41,6 +41,11 @@ impl Transform {
     }
 
     pub fn mul_transform(self, transform: Transform) -> Self {
+        if cfg!(debug_assertions) {
+            assert_transform(self);
+            assert_transform(transform);
+        }
+
         let translation = self.transform_point(transform.translation);
         let rotation = self.rotation * transform.rotation;
         let scale = self.scale * transform.scale;
@@ -56,6 +61,13 @@ impl Transform {
         point = self.rotation * point;
         point += self.translation;
         point
+    }
+
+    pub fn is_valid(self) -> bool {
+        self.translation.is_finite()
+            && self.rotation.is_finite()
+            && self.rotation.is_normalized()
+            && self.scale.is_finite()
     }
 }
 
@@ -104,3 +116,22 @@ impl MulAssign for Transform {
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Component)]
 pub struct GlobalTransform(pub Transform);
+
+#[track_caller]
+fn assert_transform(transform: Transform) {
+    assert!(
+        transform.translation.is_finite(),
+        "invalid translation value: {:?}",
+        transform.translation,
+    );
+    assert!(
+        transform.translation.is_finite() && transform.rotation.is_normalized(),
+        "invalid rotation value: {:?}",
+        transform.rotation,
+    );
+    assert!(
+        transform.scale.is_finite(),
+        "invalid scale value: {:?}",
+        transform.scale,
+    );
+}
