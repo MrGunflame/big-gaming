@@ -5,6 +5,7 @@ use combat::CombatPlugin;
 use game_asset::AssetPlugin;
 use hierarchy::HierarchyPlugin;
 use modules::ModulePlugin;
+use transform::TransformPlugin;
 use world::{LevelPlugin, ObjectPlugin, SpawnPlugin, WorldTimePlugin};
 
 use bevy_app::{App, Plugin};
@@ -35,5 +36,6 @@ impl Plugin for CorePlugins {
         app.add_plugin(AnimationPlugin);
         app.add_plugin(ModulePlugin);
         app.add_plugin(HierarchyPlugin);
+        app.add_plugin(TransformPlugin);
     }
 }

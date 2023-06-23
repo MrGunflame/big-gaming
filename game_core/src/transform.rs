@@ -23,6 +23,12 @@ pub fn update_global_transform(
     let mut parents = HashMap::new();
 
     for (entity, transform, _, children) in &entities {
+        debug_assert!(
+            transform.translation.is_finite(),
+            "Transform with invalid translation value: {:?}",
+            transform.translation
+        );
+
         transforms.insert(entity, *transform);
 
         if let Some(children) = children {
@@ -47,6 +53,13 @@ pub fn update_global_transform(
 
     for (entity, transform) in transforms.into_iter() {
         let (_, _, mut global, _) = entities.get_mut(entity).unwrap();
+
+        debug_assert!(
+            transform.translation.is_finite(),
+            "GlobalTransform with invalid translation value: {:?}",
+            transform.translation
+        );
+
         global.0 = transform;
     }
 }

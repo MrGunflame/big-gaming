@@ -1,15 +1,12 @@
 use std::collections::HashMap;
 
 use bevy_ecs::prelude::{Bundle, Entity, Res};
-use bevy_ecs::query::{Added, Changed, Or, With};
+use bevy_ecs::query::{Added, Changed, Or};
 use bevy_ecs::system::{Query, ResMut, Resource};
 use bevy_ecs::world::{FromWorld, World};
-use bytemuck::bytes_of;
 use game_asset::{Asset, Assets, Handle};
 use game_common::bundles::TransformBundle;
-use game_common::components::transform::Transform;
-use glam::{Mat4, Vec3};
-use parking_lot::ReentrantMutexGuard;
+use game_common::components::transform::{GlobalTransform, Transform};
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
 use wgpu::{
     BindGroup, BindGroupDescriptor, BindGroupEntry, BindingResource, Buffer, BufferUsages, Device,
@@ -149,7 +146,12 @@ pub fn update_material_bind_groups(
     material_pipeline: Res<MaterialPipeline>,
     images: Res<Images>,
     nodes: Query<
-        (Entity, &Handle<Mesh>, &Handle<PbrMaterial>, &Transform),
+        (
+            Entity,
+            &Handle<Mesh>,
+            &Handle<PbrMaterial>,
+            &GlobalTransform,
+        ),
         Or<(Changed<Handle<PbrMaterial>>, Added<Handle<PbrMaterial>>)>,
     >,
     pbr_res: Res<PbrResources>,
@@ -263,7 +265,12 @@ pub fn prepare_materials(
     images: ResMut<Images>,
     device: Res<RenderDevice>,
     queue: Res<RenderQueue>,
-    nodes: Query<(Entity, &Handle<Mesh>, &Handle<PbrMaterial>, &Transform)>,
+    nodes: Query<(
+        Entity,
+        &Handle<Mesh>,
+        &Handle<PbrMaterial>,
+        &GlobalTransform,
+    )>,
     mut meshes: ResMut<Assets<Mesh>>,
     materials: ResMut<Assets<PbrMaterial>>,
     mut render_assets: ResMut<RenderMaterialAssets>,
@@ -284,7 +291,7 @@ pub fn prepare_materials(
 
         let transform_buffer = device.0.create_buffer_init(&BufferInitDescriptor {
             label: Some("mesh_transform"),
-            contents: bytemuck::cast_slice(&[TransformUniform::from(*transform)]),
+            contents: bytemuck::cast_slice(&[TransformUniform::from(transform.0)]),
             usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
         });
 
@@ -323,7 +330,7 @@ pub fn prepare_materials(
                 node.vertices = vertices;
                 node.indices = indices;
                 node.num_vertices = num_vertices;
-                node.transform = *transform;
+                node.transform = transform.0;
                 node.transform_buffer = transform_buffer;
                 node.transform_bind_group = transform_bind_group;
             }
@@ -334,7 +341,7 @@ pub fn prepare_materials(
                         vertices,
                         indices,
                         num_vertices,
-                        transform: *transform,
+                        transform: transform.0,
                         transform_buffer,
                         transform_bind_group,
                         material_bind_group: None,
@@ -391,7 +398,7 @@ fn setup_render_texture(
 
 pub fn prepare_directional_lights(
     mut render_assets: ResMut<RenderMaterialAssets>,
-    lights: Query<(&DirectionalLight, &Transform)>,
+    lights: Query<(&DirectionalLight, &GlobalTransform)>,
     device: Res<RenderDevice>,
     queue: Res<RenderQueue>,
     pipeline: Res<LightingPipeline>,
@@ -401,7 +408,7 @@ pub fn prepare_directional_lights(
     for (light, transform) in &lights {
         let uniform = LightUniform {
             color: light.color,
-            position: transform.translation.to_array(),
+            position: transform.0.translation.to_array(),
             _pad0: 0,
             _pad1: 0,
         };
@@ -429,7 +436,7 @@ pub fn prepare_directional_lights(
 
 pub fn prepare_point_lights(
     mut render_assets: ResMut<RenderMaterialAssets>,
-    lights: Query<(&PointLight, &Transform)>,
+    lights: Query<(&PointLight, &GlobalTransform)>,
     device: Res<RenderDevice>,
     pipeline: Res<LightingPipeline>,
 ) {
@@ -438,7 +445,7 @@ pub fn prepare_point_lights(
     for (light, transform) in &lights {
         let uniform = PointLightUniform {
             color: light.color.rgb(),
-            position: transform.translation.to_array(),
+            position: transform.0.translation.to_array(),
             _pad0: 0,
             _pad1: 0,
         };

@@ -25,19 +25,12 @@ pub fn load_actor(
     for (entity, actor) in &entities {
         tracing::trace!("spawning actor at {:?}", actor.transform.translation);
 
-        dbg!(actor.transform);
-        dbg!(actor.transform.rotation * -Vec3::Z);
-
         let direction = actor.transform.rotation * -Vec3::Z;
         let angle = if direction.x.is_sign_negative() {
             -direction.y.asin()
         } else {
             direction.y.asin()
         };
-
-        dbg!(angle);
-        dbg!(Quat::from_axis_angle(Vec3::Y, angle));
-        dbg!(Quat::from_axis_angle(Vec3::Y, angle) * -Vec3::Z);
 
         let mut cmds = commands.spawn(SceneBundle {
             scene: scenes.load("../assets/metal.glb"),
@@ -50,8 +43,6 @@ pub fn load_actor(
                 ..Default::default()
             },
         });
-
-        dbg!(actor.transform.rotation.to_axis_angle());
 
         cmds.insert(MovementSpeed::default());
         cmds.insert(ActorProperties {

@@ -15,4 +15,5 @@ parking_lot = "0.12.1"
 bevy_ecs = "0.10.1"
 bevy_app = "0.10.1"
 
+game_core = { version = "0.1.0", path = "../game_core" }
 game_gltf = { version = "0.1.0", path = "../game_gltf", optional = true }
