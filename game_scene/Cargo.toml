@@ -17,3 +17,4 @@ bevy_app = "0.10.1"
 
 game_core = { version = "0.1.0", path = "../game_core" }
 game_gltf = { version = "0.1.0", path = "../game_gltf", optional = true }
+tracing = "0.1.37"

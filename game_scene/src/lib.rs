@@ -7,6 +7,7 @@ use game_gltf::uri::Uri;
 pub use scene::SceneBundle;
 
 use std::collections::{HashMap, VecDeque};
+use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -163,7 +164,13 @@ fn load_scenes(
     while let Some((handle, path)) = scenes.load_queue.pop_front() {
         let uri = Uri::from(path);
 
-        let mut file = std::fs::File::open(uri.as_path()).unwrap();
+        let mut file = match File::open(uri.as_path()) {
+            Ok(file) => file,
+            Err(err) => {
+                tracing::error!("failed to load scene from {:?}: {}", uri, err);
+                continue;
+            }
+        };
 
         let mut buf = Vec::new();
         file.read_to_end(&mut buf).unwrap();

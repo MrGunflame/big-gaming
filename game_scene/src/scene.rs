@@ -19,7 +19,10 @@ pub(crate) fn spawn_scene(
     mut materials: ResMut<Assets<PbrMaterial>>,
 ) {
     for (entity, scene, transform) in &entities {
-        let scene = scenes.get(scene).unwrap();
+        let scene = match scenes.get(scene) {
+            Some(scene) => scene,
+            None => continue,
+        };
 
         let mut children = Children::new();
 
