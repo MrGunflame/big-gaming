@@ -1,5 +1,5 @@
 use bevy_ecs::prelude::{Component, Entity};
-use bevy_ecs::system::{Commands, Query, ResMut};
+use bevy_ecs::system::{Commands, Query, Res, ResMut};
 use game_common::bundles::TransformBundle;
 use game_common::components::actor::{ActorProperties, MovementSpeed};
 use game_common::components::combat::Health;
@@ -7,8 +7,12 @@ use game_common::components::inventory::Inventory;
 use game_common::components::player::HostPlayer;
 use game_common::components::race::RaceId;
 use game_common::components::transform::Transform;
+use game_core::modules::Modules;
+use game_input::hotkeys::Hotkeys;
 use game_scene::{SceneBundle, Scenes};
 use glam::{Quat, Vec3};
+
+use crate::plugins::actions::ActiveActions;
 
 #[derive(Clone, Debug, Component)]
 pub struct LoadActor {
@@ -23,6 +27,9 @@ pub fn load_actor(
     mut commands: Commands,
     entities: Query<(Entity, &LoadActor)>,
     mut scenes: ResMut<Scenes>,
+    mut active_actions: ResMut<ActiveActions>,
+    mut hotkeys: ResMut<Hotkeys>,
+    mut modules: Res<Modules>,
 ) {
     for (entity, actor) in &entities {
         tracing::trace!("spawning actor at {:?}", actor.transform.translation);
@@ -63,6 +70,20 @@ pub fn load_actor(
 
         if actor.host {
             cmds.insert(HostPlayer);
+        }
+
+        // Load actions
+        for item in &actor.inventory {
+            let module = modules.get(item.item.id.0.module).unwrap();
+            let record = module.records.get(item.item.id.0.record).unwrap();
+            let item = record.body.as_item().unwrap();
+
+            for action in &item.actions {
+                let module = modules.get(action.module).unwrap();
+                let record = module.records.get(action.record).unwrap().clone();
+
+                active_actions.register(&mut hotkeys, action.module, record);
+            }
         }
     }
 }

@@ -46,6 +46,8 @@ pub struct ActiveActions {
 
 impl ActiveActions {
     pub fn register(&mut self, hotkeys: &mut Hotkeys, module: ModuleId, record: Record) {
+        tracing::info!("registered action for {:?}", record);
+
         assert!(matches!(record.body, RecordBody::Action(_)));
 
         let id = hotkeys.register(Hotkey {

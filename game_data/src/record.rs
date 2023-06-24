@@ -78,6 +78,7 @@ impl RecordBody {
         }
     }
 
+    #[deprecated]
     pub fn unwrap_item(self) -> ItemRecord {
         match self {
             Self::Item(item) => item,
@@ -85,6 +86,7 @@ impl RecordBody {
         }
     }
 
+    #[deprecated]
     pub fn unwrap_action(self) -> ActionRecord {
         match self {
             Self::Action(action) => action,
@@ -92,6 +94,7 @@ impl RecordBody {
         }
     }
 
+    #[deprecated]
     pub fn unwrap_componen(self) -> ComponentRecord {
         match self {
             Self::Component(component) => component,
@@ -99,10 +102,67 @@ impl RecordBody {
         }
     }
 
+    #[deprecated]
     pub fn unwrap_object(self) -> ObjectRecord {
         match self {
             Self::Object(object) => object,
             _ => self.panic_invalid_record("object"),
+        }
+    }
+
+    pub fn as_item(&self) -> Option<&ItemRecord> {
+        match self {
+            Self::Item(item) => Some(item),
+            _ => None,
+        }
+    }
+
+    pub fn as_action(&self) -> Option<&ActionRecord> {
+        match self {
+            Self::Action(action) => Some(action),
+            _ => None,
+        }
+    }
+
+    pub fn as_component(&self) -> Option<&ComponentRecord> {
+        match self {
+            Self::Component(component) => Some(component),
+            _ => None,
+        }
+    }
+
+    pub fn as_object(&self) -> Option<&ObjectRecord> {
+        match self {
+            Self::Object(object) => Some(object),
+            _ => None,
+        }
+    }
+
+    pub fn into_item(self) -> Option<ItemRecord> {
+        match self {
+            Self::Item(item) => Some(item),
+            _ => None,
+        }
+    }
+
+    pub fn into_action(self) -> Option<ActionRecord> {
+        match self {
+            Self::Action(action) => Some(action),
+            _ => None,
+        }
+    }
+
+    pub fn into_component(self) -> Option<ComponentRecord> {
+        match self {
+            Self::Component(component) => Some(component),
+            _ => None,
+        }
+    }
+
+    pub fn into_object(self) -> Option<ObjectRecord> {
+        match self {
+            Self::Object(object) => Some(object),
+            _ => None,
         }
     }
 
