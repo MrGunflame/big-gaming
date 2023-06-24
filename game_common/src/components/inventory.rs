@@ -11,6 +11,7 @@ use ahash::{HashSet, RandomState};
 use bevy_ecs::component::Component;
 use bytemuck::{Pod, Zeroable};
 use indexmap::IndexMap;
+use thiserror::Error;
 
 use crate::units::Mass;
 
@@ -159,6 +160,14 @@ impl Inventory {
             iter: self.items.iter(),
         }
     }
+
+    pub fn clear(&mut self) {
+        self.items.clear();
+        self.equipped.clear();
+        self.count = 0;
+        self.mass = Mass::new();
+        self.next_id = InventoryId(0);
+    }
 }
 
 impl<'a> IntoIterator for &'a Inventory {
@@ -170,13 +179,15 @@ impl<'a> IntoIterator for &'a Inventory {
         self.iter()
     }
 }
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Error)]
 pub enum InsertionError {
     /// The insertion failed because the [`Inventory`] already contains the maximum number of
     /// total items.
+    #[error("inventory reached maximum number of items")]
     MaxItems(Item),
     /// The insertion failed because the [`Inventory`] already carries the maximum combined
     /// [`Mass`].
+    #[error("inventory reached maximum total mass")]
     MaxMass(Item),
 }
 

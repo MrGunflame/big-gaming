@@ -16,6 +16,7 @@ use game_net::backlog::Backlog;
 use game_net::snapshot::DeltaQueue;
 
 use crate::entities::actor::LoadActor;
+use crate::entities::inventory::{AddInventoryItem, DestroyInventory, RemoveInventoryItem};
 use crate::entities::item::LoadItem;
 use crate::entities::object::LoadObject;
 use crate::entities::terrain::LoadTerrain;
@@ -230,9 +231,28 @@ fn handle_event(
             }
         }
         EntityChange::UpdateStreamingSource { id, state } => todo!(),
-        EntityChange::InventoryItemAdd(event) => todo!(),
-        EntityChange::InventoryItemRemove(event) => todo!(),
-        EntityChange::InventoryDestroy(event) => todo!(),
+        EntityChange::InventoryItemAdd(event) => {
+            let entity = conn.entities.get(event.entity).unwrap();
+
+            commands.spawn(AddInventoryItem {
+                entity,
+                slot: event.id,
+                id: event.item,
+            });
+        }
+        EntityChange::InventoryItemRemove(event) => {
+            let entity = conn.entities.get(event.entity).unwrap();
+
+            commands.spawn(RemoveInventoryItem {
+                entity,
+                slot: event.id,
+            });
+        }
+        EntityChange::InventoryDestroy(event) => {
+            let entity = conn.entities.get(event.entity).unwrap();
+
+            commands.spawn(DestroyInventory { entity });
+        }
     }
 }
 
