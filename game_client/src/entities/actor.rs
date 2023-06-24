@@ -3,6 +3,7 @@ use bevy_ecs::system::{Commands, Query, ResMut};
 use game_common::bundles::TransformBundle;
 use game_common::components::actor::{ActorProperties, MovementSpeed};
 use game_common::components::combat::Health;
+use game_common::components::inventory::Inventory;
 use game_common::components::player::HostPlayer;
 use game_common::components::race::RaceId;
 use game_common::components::transform::Transform;
@@ -15,6 +16,7 @@ pub struct LoadActor {
     pub race: RaceId,
     pub health: Health,
     pub host: bool,
+    pub inventory: Inventory,
 }
 
 pub fn load_actor(
@@ -52,6 +54,7 @@ pub fn load_actor(
             },
         });
 
+        cmds.insert(actor.inventory.clone());
         cmds.insert(MovementSpeed::default());
         cmds.insert(ActorProperties {
             rotation: actor.transform.rotation,

@@ -1,6 +1,6 @@
 use bevy_ecs::prelude::{Component, Entity};
 use bevy_ecs::system::{Commands, Query, Res};
-use game_common::components::actions::Actions;
+use game_common::components::actions::{ActionId, Actions};
 use game_common::components::components;
 use game_common::components::components::Components;
 use game_common::components::inventory::{Inventory, InventoryId};
@@ -28,11 +28,11 @@ pub struct DestroyInventory {
 pub fn add_inventory_item(
     mut commands: Commands,
     events: Query<(Entity, &AddInventoryItem)>,
-    mut actors: Query<&mut Inventory>,
+    mut actors: Query<Option<&mut Inventory>>,
     modules: Res<Modules>,
 ) {
     for (entity, event) in events.iter() {
-        let mut inventory = actors.get_mut(event.entity).unwrap();
+        let inventory = actors.get_mut(event.entity).unwrap();
 
         let module = modules.get(event.id.0.module).unwrap();
         let record = module.records.get(event.id.0.record).unwrap();
@@ -44,8 +44,11 @@ pub fn add_inventory_item(
         }
 
         let mut actions = Actions::new();
+        for action in item.actions {
+            actions.push(ActionId(action));
+        }
 
-        if let Err(err) = inventory.insert(Item {
+        let item = Item {
             id: event.id,
             resistances: None,
             mass: item.mass,
@@ -53,7 +56,18 @@ pub fn add_inventory_item(
             components,
             equipped: false,
             hidden: false,
-        }) {
+        };
+
+        let res = match inventory {
+            Some(mut inventory) => inventory.insert(item),
+            None => {
+                let mut inventory = Inventory::new();
+                let res = inventory.insert(item);
+                commands.entity(event.entity).insert(inventory);
+                res
+            }
+        };
+        if let Err(err) = res {
             tracing::error!("failed to insert item into inventory: {}", err);
         }
 

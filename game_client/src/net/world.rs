@@ -1,13 +1,16 @@
 use std::time::{Duration, Instant};
 
 use bevy_ecs::system::{Commands, Query, Res, ResMut};
+use game_common::components::actions::{ActionId, Actions};
 use game_common::components::combat::Health;
+use game_common::components::components::{self, Components};
 use game_common::components::inventory::Inventory;
+use game_common::components::items::Item;
 use game_common::components::player::HostPlayer;
 use game_common::components::transform::Transform;
 use game_common::entity::EntityId;
 use game_common::world::entity::{Entity, EntityBody};
-use game_common::world::snapshot::EntityChange;
+use game_common::world::snapshot::{EntityChange, InventoryItemAdd};
 use game_common::world::source::StreamingSource;
 use game_common::world::world::{WorldState, WorldViewRef};
 use game_core::modules::Modules;
@@ -103,6 +106,7 @@ pub fn flush_delta_queue(
             &mut buffer,
             &conn,
             &mut backlog,
+            &modules,
         );
     }
 
@@ -125,6 +129,7 @@ fn handle_event(
     buffer: &mut Buffer,
     conn: &ServerConnection,
     backlog: &mut Backlog,
+    modules: &Modules,
 ) {
     tracing::trace!(
         concat!("handle ", stringify!(WorldState), " event: {:?}"),
@@ -161,9 +166,15 @@ fn handle_event(
                     EntityChange::CreateHost { id: _ } => entity.host = true,
                     EntityChange::DestroyHost { id: _ } => entity.host = false,
                     EntityChange::UpdateStreamingSource { id, state } => todo!(),
-                    EntityChange::InventoryItemAdd(event) => {}
-                    EntityChange::InventoryItemRemove(event) => todo!(),
-                    EntityChange::InventoryDestroy(event) => todo!(),
+                    EntityChange::InventoryItemAdd(event) => {
+                        add_inventory_item(&mut entity.inventory, modules, event);
+                    }
+                    EntityChange::InventoryItemRemove(event) => {
+                        entity.inventory.remove(event.id);
+                    }
+                    EntityChange::InventoryDestroy(event) => {
+                        entity.inventory.clear();
+                    }
                 }
             } else {
                 backlog.push(entity_id, event);
@@ -271,6 +282,7 @@ fn spawn_entity(commands: &mut Commands, entity: DelayedEntity) -> bevy_ecs::ent
                 race: actor.race,
                 health: actor.health,
                 host: entity.host,
+                inventory: entity.inventory,
             })
             .id(),
         EntityBody::Item(item) => commands
@@ -398,5 +410,35 @@ impl Buffer {
         });
 
         removed
+    }
+}
+
+fn add_inventory_item(inventory: &mut Inventory, modules: &Modules, event: InventoryItemAdd) {
+    let module = modules.get(event.item.0.module).unwrap();
+    let record = module.records.get(event.item.0.record).unwrap();
+    let item = record.clone().body.unwrap_item();
+
+    let mut components = Components::new();
+    for comp in item.components {
+        components.insert(comp.record, components::Component { bytes: comp.value });
+    }
+
+    let mut actions = Actions::new();
+    for action in item.actions {
+        actions.push(ActionId(action));
+    }
+
+    let item = Item {
+        id: event.item,
+        resistances: None,
+        mass: item.mass,
+        actions,
+        components,
+        equipped: false,
+        hidden: false,
+    };
+
+    if let Err(err) = inventory.insert(item) {
+        tracing::error!("failed to insert item into inventory: {}", err);
     }
 }
