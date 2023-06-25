@@ -91,10 +91,10 @@ pub fn synchronize_player_camera(
             camera.rotation = props.rotation;
         }
         CameraMode::ThirdPerson { distance } => {
-            let rotation_matrix = Mat3::from_quat(player.rotation);
+            let dir = props.rotation * -Vec3::Z;
 
-            camera.translation =
-                player.translation + rotation_matrix * Vec3::new(0.0, 0.0, 0.0 + *distance);
+            camera.translation = player.translation + -(dir * *distance);
+            camera.rotation = props.rotation;
         }
         // We don't want to sync in detached mode.
         CameraMode::Detached => (),

@@ -291,10 +291,18 @@ pub fn rotation_events(
             CameraMode::Detached => {
                 camera.rotation = q1 * camera.rotation;
                 camera.rotation = camera.rotation * q2;
+
+                if !camera.rotation.is_normalized() {
+                    camera.rotation = camera.rotation.normalize();
+                }
             }
             _ => {
                 props.rotation = q1 * props.rotation;
                 props.rotation = props.rotation * q2;
+
+                if !props.rotation.is_normalized() {
+                    props.rotation = props.rotation.normalize();
+                }
 
                 is_changed = true;
             }

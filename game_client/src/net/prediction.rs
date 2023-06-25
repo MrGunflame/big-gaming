@@ -30,8 +30,6 @@ impl LocalOverrides {
     }
 
     pub fn remove(&mut self, id: CommandId) {
-        dbg!(id);
-        dbg!(&self);
         let mut empty = vec![];
 
         for (eid, entity) in self.entities.iter_mut() {
