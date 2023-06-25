@@ -48,14 +48,14 @@ impl Cursor {
 
     #[inline]
     pub fn lock(&mut self) {
-        if !self.is_locked {
+        if !self.is_locked && self.window.is_some() {
             self.lock_unchecked();
         }
     }
 
     #[inline]
     pub fn unlock(&mut self) {
-        if self.is_locked {
+        if self.is_locked && self.window.is_some() {
             self.unlock_unchecked();
         }
     }
