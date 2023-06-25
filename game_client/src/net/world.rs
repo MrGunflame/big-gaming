@@ -2,6 +2,7 @@ use std::time::{Duration, Instant};
 
 use bevy_ecs::system::{Commands, Query, Res, ResMut};
 use game_common::components::actions::{ActionId, Actions};
+use game_common::components::actor::ActorProperties;
 use game_common::components::combat::Health;
 use game_common::components::components::{self, Components};
 use game_common::components::inventory::Inventory;
@@ -86,6 +87,7 @@ pub fn flush_delta_queue(
         // FIXME: We prolly don't want this on entity directly and just
         // access the WorldState.
         Option<&mut Inventory>,
+        Option<&mut ActorProperties>,
     )>,
     mut backlog: ResMut<Backlog>,
     conn: Res<ServerConnection>,
@@ -124,6 +126,7 @@ fn handle_event(
         &mut Transform,
         Option<&mut Health>,
         Option<&mut Inventory>,
+        Option<&mut ActorProperties>,
     )>,
     event: EntityChange,
     buffer: &mut Buffer,
@@ -207,15 +210,15 @@ fn handle_event(
         } => {
             let entity = conn.entities.get(id).unwrap();
 
-            if let Ok((_, mut transform, _, _)) = entities.get_mut(entity) {
+            if let Ok((_, mut transform, _, _, _)) = entities.get_mut(entity) {
                 transform.translation = translation;
             }
         }
         EntityChange::Rotate { id, rotation } => {
             let entity = conn.entities.get(id).unwrap();
 
-            if let Ok((_, mut transform, _, _)) = entities.get_mut(entity) {
-                transform.rotation = rotation;
+            if let Ok((_, _, _, _, Some(mut props))) = entities.get_mut(entity) {
+                props.rotation = rotation;
             }
         }
         EntityChange::CreateHost { id } => {
@@ -237,7 +240,7 @@ fn handle_event(
         EntityChange::Health { id, health } => {
             let entity = conn.entities.get(id).unwrap();
 
-            if let Ok((_, _, Some(mut h), _)) = entities.get_mut(entity) {
+            if let Ok((_, _, Some(mut h), _, _)) = entities.get_mut(entity) {
                 *h = health;
             }
         }
