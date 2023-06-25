@@ -18,9 +18,12 @@ use game_input::hotkeys::{
 use game_input::keyboard::{KeyCode, KeyboardInput};
 use game_input::mouse::MouseMotion;
 use game_input::InputSet;
+use game_net::snapshot::Command;
 use game_window::cursor::Cursor;
 use game_window::events::VirtualKeyCode;
 use glam::{Quat, Vec3};
+
+use crate::net::ServerConnection;
 
 use super::camera::PrimaryCamera;
 
@@ -201,6 +204,7 @@ fn register_events(mut hotkeys: ResMut<Hotkeys>) {
 }
 
 pub fn translation_events(
+    mut conn: ResMut<ServerConnection>,
     time: Res<Time>,
     mut players: Query<(&mut Transform, &MovementSpeed), With<HostPlayer>>,
     mut cameras: Query<(&mut Transform, &CameraMode), (Without<HostPlayer>, With<PrimaryCamera>)>,
@@ -250,21 +254,31 @@ pub fn translation_events(
 
                 let distance = direction * speed.0 * delta;
                 transform.translation += distance;
+
+                let id = conn.host;
+                conn.send(Command::EntityTranslate {
+                    id,
+                    translation: transform.translation,
+                });
             }
         }
     }
 }
 
 pub fn rotation_events(
+    mut conn: ResMut<ServerConnection>,
     mut events: EventReader<MouseMotion>,
-    mut players: Query<&mut ActorProperties, With<HostPlayer>>,
+    mut players: Query<(&mut ActorProperties, &mut Transform), With<HostPlayer>>,
     mut cameras: Query<(&mut Transform, &CameraMode), (Without<HostPlayer>, With<PrimaryCamera>)>,
 ) {
     let (mut camera, mode) = cameras.single_mut();
 
-    let Ok(mut props) = players.get_single_mut() else {
+    let Ok((mut props, mut player)) = players.get_single_mut() else {
         return;
     };
+
+    // true if we need to notify the server about the new value.
+    let mut is_changed = false;
 
     for event in events.iter() {
         let yaw = event.delta.x * 0.001;
@@ -281,8 +295,33 @@ pub fn rotation_events(
             _ => {
                 props.rotation = q1 * props.rotation;
                 props.rotation = props.rotation * q2;
+
+                is_changed = true;
             }
         }
+    }
+
+    if is_changed {
+        let id = conn.host;
+
+        conn.send(Command::EntityRotate {
+            id,
+            rotation: props.rotation,
+        });
+
+        // Extract the rotation angle around Y, removing all other
+        // components.
+        let mut direction = props.rotation * -Vec3::Z;
+        // Clamp in range of [-1, -1] in case direction is slightly above due
+        // to FP error creep.
+        direction.y = direction.y.clamp(-1.0, 1.0);
+        let angle = if direction.x.is_sign_negative() {
+            -direction.y.asin()
+        } else {
+            direction.y.asin()
+        };
+
+        player.rotation = Quat::from_axis_angle(Vec3::Y, angle);
     }
 }
 
