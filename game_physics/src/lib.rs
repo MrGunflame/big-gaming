@@ -1,17 +1,19 @@
 use std::time::{Duration, Instant};
 
 use bevy_ecs::system::Resource;
-use convert::{ang_vector, point, quat, rotation, vec3, vector};
+use convert::{point, quat, rotation, vec3, vector};
 use game_common::events::{self, EntityEvent, Event, EventQueue};
 use game_common::world::entity::{Entity, EntityBody};
 use game_common::world::snapshot::EntityChange;
 use game_common::world::world::WorldState;
+use glam::{Quat, Vec3};
 use handle::HandleMap;
+use nalgebra::Isometry;
 use parking_lot::Mutex;
 use rapier3d::prelude::{
     ActiveEvents, BroadPhase, CCDSolver, ColliderBuilder, ColliderHandle, ColliderSet,
     CollisionEvent, ContactPair, EventHandler, ImpulseJointSet, IntegrationParameters,
-    IslandManager, MultibodyJointSet, NarrowPhase, PhysicsPipeline, RigidBodyBuilder,
+    IslandManager, LockedAxes, MultibodyJointSet, NarrowPhase, PhysicsPipeline, RigidBodyBuilder,
     RigidBodyHandle, RigidBodySet, RigidBodyType, Vector,
 };
 
@@ -172,8 +174,10 @@ impl Pipeline {
             // Terrain can never move.
             EntityBody::Terrain(terrain) => {
                 let body = RigidBodyBuilder::new(RigidBodyType::Fixed)
-                    .translation(vector(terrain.cell.min()))
-                    // .rotation(Vector::new(0.0, 0.0, -1.0))
+                    .position(Isometry {
+                        translation: vector(terrain.cell.min()).into(),
+                        rotation: rotation(Quat::IDENTITY),
+                    })
                     .ccd_enabled(true)
                     .build();
 
@@ -191,12 +195,34 @@ impl Pipeline {
 
                 (body_handle, col_handle)
             }
-            _ => {
+            EntityBody::Object(object) => {
                 let body = RigidBodyBuilder::new(RigidBodyType::Dynamic)
-                    .translation(vector(entity.transform.translation))
-                    .rotation(ang_vector(entity.transform.rotation))
+                    .position(Isometry {
+                        translation: vector(entity.transform.translation).into(),
+                        rotation: rotation(entity.transform.rotation),
+                    })
+                    .ccd_enabled(true)
+                    .build();
+
+                let body_handle = self.bodies.insert(body);
+                let collider = ColliderBuilder::cuboid(1.0, 1.0, 1.0)
+                    .active_events(ActiveEvents::COLLISION_EVENTS);
+
+                let col_handle =
+                    self.colliders
+                        .insert_with_parent(collider, body_handle, &mut self.bodies);
+
+                (body_handle, col_handle)
+            }
+            EntityBody::Actor(actor) => {
+                let body = RigidBodyBuilder::new(RigidBodyType::Dynamic)
+                    .position(Isometry {
+                        translation: vector(entity.transform.translation).into(),
+                        rotation: rotation(extract_actor_rotation(entity.transform.rotation)),
+                    })
                     .ccd_enabled(true)
                     .lock_rotations()
+                    .locked_axes(LockedAxes::ROTATION_LOCKED)
                     .build();
 
                 let body_handle = self.bodies.insert(body);
@@ -207,6 +233,9 @@ impl Pipeline {
                         .insert_with_parent(collider, body_handle, &mut self.bodies);
 
                 (body_handle, col_handle)
+            }
+            EntityBody::Item(item) => {
+                todo!()
             }
         };
 
@@ -299,4 +328,16 @@ impl EventHandler for CollisionHandler {
 #[derive(Copy, Clone, Debug)]
 pub struct Collision {
     handles: [ColliderHandle; 2],
+}
+
+fn extract_actor_rotation(input: Quat) -> Quat {
+    let mut direction = input * -Vec3::Z;
+    direction.y = direction.y.clamp(-1.0, 1.0);
+    let angle = if direction.x.is_sign_negative() {
+        -direction.y.asin()
+    } else {
+        direction.y.asin()
+    };
+
+    Quat::from_axis_angle(Vec3::Y, angle)
 }
