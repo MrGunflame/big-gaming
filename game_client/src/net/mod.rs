@@ -20,7 +20,7 @@ use game_common::world::world::WorldState;
 use game_net::backlog::Backlog;
 use game_net::conn::{Connection, ConnectionHandle, ConnectionMode};
 use game_net::proto::{Decode, Packet};
-use game_net::snapshot::{Command, CommandQueue, ConnectionMessage, DeltaQueue};
+use game_net::snapshot::{Command, CommandQueue, ConnectionMessage};
 use game_net::Socket;
 use glam::Vec3;
 use tokio::runtime::Runtime;
@@ -47,13 +47,11 @@ impl Plugin for NetPlugin {
 
         app.insert_resource(world);
         app.init_resource::<ServerConnection>();
-        app.insert_resource(DeltaQueue::new());
         app.insert_resource(Backlog::new());
 
         app.add_system(flush_command_queue.in_set(NetSet::ReadCommands));
 
         app.add_system(world::apply_world_delta);
-        app.add_system(world::flush_delta_queue);
 
         app.add_system(interpolate::interpolate_translation);
     }

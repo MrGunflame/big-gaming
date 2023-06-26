@@ -17,7 +17,6 @@ use game_common::world::world::{WorldState, WorldViewRef};
 use game_core::modules::Modules;
 use game_input::hotkeys::Hotkeys;
 use game_net::backlog::Backlog;
-use game_net::snapshot::DeltaQueue;
 
 use crate::entities::actor::LoadActor;
 use crate::entities::inventory::{AddInventoryItem, DestroyInventory, RemoveInventoryItem};
@@ -30,8 +29,19 @@ use super::ServerConnection;
 
 pub fn apply_world_delta(
     mut world: ResMut<WorldState>,
-    mut queue: ResMut<DeltaQueue>,
     mut conn: ResMut<ServerConnection>,
+    mut commands: Commands,
+    mut entities: Query<(
+        bevy_ecs::entity::Entity,
+        &mut Transform,
+        Option<&mut Health>,
+        // FIXME: We prolly don't want this on entity directly and just
+        // access the WorldState.
+        Option<&mut Inventory>,
+        Option<&mut ActorProperties>,
+    )>,
+    mut backlog: ResMut<Backlog>,
+    modules: Res<Modules>,
 ) {
     let conn = &mut *conn;
 
@@ -70,43 +80,20 @@ pub fn apply_world_delta(
 
     let delta = WorldViewRef::delta(Some(curr), next);
 
-    for change in delta {
-        queue.push(change);
-    }
+    // Apply world delta.
 
-    world.pop();
-}
-
-pub fn flush_delta_queue(
-    mut commands: Commands,
-    mut queue: ResMut<DeltaQueue>,
-    mut entities: Query<(
-        bevy_ecs::entity::Entity,
-        &mut Transform,
-        Option<&mut Health>,
-        // FIXME: We prolly don't want this on entity directly and just
-        // access the WorldState.
-        Option<&mut Inventory>,
-        Option<&mut ActorProperties>,
-    )>,
-    mut backlog: ResMut<Backlog>,
-    conn: Res<ServerConnection>,
-    modules: Res<Modules>,
-    mut active_actions: ResMut<ActiveActions>,
-    mut hotkeys: ResMut<Hotkeys>,
-) {
     // Since events are received in batches, and commands are not applied until
     // the system is done, we buffer all created entities so we can modify them
     // in place within the same batch before they are spawned into the world.
     let mut buffer = Buffer::new();
 
-    while let Some(event) = queue.pop() {
+    for event in delta {
         handle_event(
             &mut commands,
             &mut entities,
             event,
             &mut buffer,
-            &conn,
+            conn,
             &mut backlog,
             &modules,
         );
@@ -117,6 +104,8 @@ pub fn flush_delta_queue(
         let entity = spawn_entity(&mut commands, entity);
         conn.entities.insert(id, entity);
     }
+
+    world.pop();
 }
 
 fn handle_event(

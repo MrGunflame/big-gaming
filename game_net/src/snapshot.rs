@@ -226,28 +226,3 @@ impl TransferCell {
 }
 
 pub struct Patch {}
-
-#[derive(Clone, Debug, Default, Resource)]
-pub struct DeltaQueue {
-    queue: VecDeque<EntityChange>,
-}
-
-impl DeltaQueue {
-    pub fn new() -> Self {
-        Self {
-            queue: VecDeque::new(),
-        }
-    }
-
-    pub fn push(&mut self, change: EntityChange) {
-        self.queue.push_back(change);
-    }
-
-    pub fn peek(&mut self) -> Option<&EntityChange> {
-        self.queue.front()
-    }
-
-    pub fn pop(&mut self) -> Option<EntityChange> {
-        self.queue.pop_front()
-    }
-}
