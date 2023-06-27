@@ -8,11 +8,12 @@ use bevy_ecs::world::{FromWorld, World};
 use game_asset::{Asset, Assets, Handle};
 use game_common::bundles::TransformBundle;
 use game_common::components::transform::{GlobalTransform, Transform};
+use glam::UVec2;
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
 use wgpu::{
     BindGroup, BindGroupDescriptor, BindGroupEntry, BindingResource, Buffer, BufferUsages, Device,
     Extent3d, ImageCopyTexture, ImageDataLayout, Origin3d, Queue, TextureAspect, TextureDescriptor,
-    TextureDimension, TextureUsages, TextureView, TextureViewDescriptor,
+    TextureDimension, TextureFormat, TextureUsages, TextureView, TextureViewDescriptor,
 };
 
 use crate::color::Color;
@@ -34,27 +35,24 @@ pub struct PbrResources {
 
 impl PbrResources {
     pub fn new(images: &mut Images) -> Self {
-        let default_base_color_texture = images.insert(Image {
-            bytes: vec![255, 255, 255, 255],
-            format: crate::texture::TextureFormat::Rgba8UnormSrgb,
-            width: 1,
-            height: 1,
-        });
+        let default_base_color_texture = images.insert(Image::new(
+            UVec2::splat(1),
+            TextureFormat::Rgba8UnormSrgb,
+            vec![255, 255, 255, 255],
+        ));
 
-        let default_normal_texture = images.insert(Image {
-            // B channel facing towards local Z.
-            bytes: vec![0, 0, 255, 255],
-            format: crate::texture::TextureFormat::Rgba8Unorm,
-            width: 1,
-            height: 1,
-        });
+        // B channel facing towards local Z.
+        let default_normal_texture = images.insert(Image::new(
+            UVec2::splat(1),
+            TextureFormat::Rgba8Unorm,
+            vec![0, 0, 255, 255],
+        ));
 
-        let default_metallic_roughness_texture = images.insert(Image {
-            bytes: vec![255, 255, 255, 255],
-            format: crate::texture::TextureFormat::Rgba8UnormSrgb,
-            width: 1,
-            height: 1,
-        });
+        let default_metallic_roughness_texture = images.insert(Image::new(
+            UVec2::splat(1),
+            TextureFormat::Rgba8UnormSrgb,
+            vec![255, 255, 255, 255],
+        ));
 
         Self {
             default_base_color_texture,
@@ -365,8 +363,8 @@ fn setup_render_texture(
     let texture_data = images.get(handle).unwrap();
 
     let size = Extent3d {
-        width: texture_data.width,
-        height: texture_data.height,
+        width: texture_data.width(),
+        height: texture_data.height(),
         depth_or_array_layers: 1,
     };
 
@@ -376,7 +374,7 @@ fn setup_render_texture(
         mip_level_count: 1,
         sample_count: 1,
         dimension: TextureDimension::D2,
-        format: texture_data.format,
+        format: texture_data.format(),
         usage: TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST,
         view_formats: &[],
     });
@@ -388,11 +386,11 @@ fn setup_render_texture(
             origin: Origin3d::ZERO,
             aspect: TextureAspect::All,
         },
-        &texture_data.bytes,
+        texture_data.as_bytes(),
         ImageDataLayout {
             offset: 0,
-            bytes_per_row: Some(4 * texture_data.width),
-            rows_per_image: Some(texture_data.height),
+            bytes_per_row: Some(4 * texture_data.width()),
+            rows_per_image: Some(texture_data.height()),
         },
         size,
     );
