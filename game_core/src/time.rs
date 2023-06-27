@@ -4,7 +4,8 @@
 
 use std::time::{Duration, Instant};
 
-use bevy_app::{App, Plugin};
+use bevy_app::{App, CoreSet, Plugin};
+use bevy_ecs::schedule::IntoSystemConfig;
 use bevy_ecs::system::{ResMut, Resource};
 
 #[derive(Copy, Clone, Debug, Default)]
@@ -13,7 +14,8 @@ pub struct TimePlugin;
 impl Plugin for TimePlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(Time::new());
-        app.add_system(advance_time);
+
+        app.add_system(advance_time.in_base_set(CoreSet::First));
     }
 }
 
@@ -39,6 +41,10 @@ impl Time {
 
     pub fn delta(&self) -> Duration {
         self.delta
+    }
+
+    pub fn last_update(&self) -> Instant {
+        self.last_update
     }
 
     fn update(&mut self) {

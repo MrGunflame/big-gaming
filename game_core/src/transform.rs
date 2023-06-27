@@ -1,17 +1,26 @@
 use std::collections::HashMap;
 
-use bevy_app::Plugin;
+use bevy_app::{CoreSet, Plugin};
 use bevy_ecs::prelude::Entity;
+use bevy_ecs::schedule::{IntoSystemConfig, SystemSet};
 use bevy_ecs::system::Query;
 use game_common::components::transform::{GlobalTransform, Transform};
 
-use crate::hierarchy::Children;
+use crate::hierarchy::{Children, HierarchySet};
+
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash, SystemSet)]
+pub struct TransformSet;
 
 pub struct TransformPlugin;
 
 impl Plugin for TransformPlugin {
     fn build(&self, app: &mut bevy_app::App) {
-        app.add_system(update_global_transform);
+        app.add_system(
+            update_global_transform
+                .in_base_set(CoreSet::PostUpdate)
+                .in_set(TransformSet)
+                .after(HierarchySet),
+        );
     }
 }
 

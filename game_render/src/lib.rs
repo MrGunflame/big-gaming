@@ -16,14 +16,15 @@ mod depth_stencil;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use bevy_app::{App, Plugin};
+use bevy_app::{App, CoreSet, Plugin};
 use bevy_ecs::prelude::{Entity, EventReader};
 use bevy_ecs::query::QueryState;
 use bevy_ecs::removal_detection::RemovedComponents;
-use bevy_ecs::schedule::IntoSystemConfig;
+use bevy_ecs::schedule::{IntoSystemConfig, IntoSystemSetConfig, SystemSet};
 use bevy_ecs::system::{Query, Res, ResMut, Resource};
 use bevy_ecs::world::World;
 use game_asset::AssetAppExt;
+use game_core::transform::TransformSet;
 use game_window::events::{WindowCreated, WindowResized};
 use game_window::{Window, WindowPlugin, WindowState};
 use graph::{RenderContext, RenderGraph};
@@ -37,6 +38,13 @@ use wgpu::{
     RenderPassColorAttachment, RenderPassDescriptor, RequestAdapterOptions, Surface,
     SurfaceConfiguration, SurfaceError, TextureFormat, TextureUsages, TextureViewDescriptor,
 };
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, SystemSet)]
+pub enum RenderSet {
+    UpdateSurfaces,
+    Update,
+    Render,
+}
 
 #[derive(Copy, Clone, Debug, Default)]
 pub struct RenderPlugin;
@@ -91,30 +99,55 @@ impl Plugin for RenderPlugin {
         let query = WindowQuery(app.world.query::<&WindowState>());
         app.insert_resource(query);
 
-        app.add_system(create_surfaces);
-        app.add_system(destroy_surfaces);
-        app.add_system(render_surfaces);
-        app.add_system(resize_surfaces);
+        app.add_system(create_surfaces.in_set(RenderSet::UpdateSurfaces));
+        app.add_system(destroy_surfaces.in_set(RenderSet::UpdateSurfaces));
+        app.add_system(
+            resize_surfaces
+                .in_set(RenderSet::UpdateSurfaces)
+                .after(create_surfaces),
+        );
+
+        app.add_system(render_surfaces.in_set(RenderSet::Render));
 
         app.init_resource::<pipeline::MeshPipeline>();
         app.init_resource::<pipeline::MaterialPipeline>();
         app.init_resource::<LightingPipeline>();
 
         app.insert_resource(camera::Cameras::default());
-        app.add_system(camera::create_cameras);
-        app.add_system(camera::update_camera_aspect_ratio);
-        app.add_system(camera::update_camera_projection_matrix);
+        app.add_system(camera::create_cameras.in_set(RenderSet::Update));
+        app.add_system(camera::update_camera_aspect_ratio.in_set(RenderSet::Update));
+        app.add_system(camera::update_camera_projection_matrix.in_set(RenderSet::Update));
 
-        app.add_system(pbr::prepare_materials);
-        app.add_system(pbr::prepare_directional_lights);
-        app.add_system(pbr::update_material_bind_groups.after(pbr::prepare_materials));
-        app.add_system(pbr::prepare_point_lights);
-        app.add_system(pbr::remove_render_nodes);
+        app.add_system(pbr::prepare_materials.in_set(RenderSet::Update));
+        app.add_system(pbr::prepare_directional_lights.in_set(RenderSet::Update));
+        app.add_system(
+            pbr::update_material_bind_groups
+                .after(pbr::prepare_materials)
+                .in_set(RenderSet::Update),
+        );
+        app.add_system(pbr::prepare_point_lights.in_set(RenderSet::Update));
+        app.add_system(pbr::remove_render_nodes.in_set(RenderSet::Update));
 
         app.insert_resource(pipeline::RenderWindows::default());
         app.add_system(pipeline::create_render_windows);
         app.add_system(pipeline::destroy_render_windows);
         app.add_system(pipeline::resize_render_windows);
+
+        app.configure_set(
+            RenderSet::Render
+                .after(RenderSet::Update)
+                .in_base_set(CoreSet::PostUpdate),
+        );
+        app.configure_set(
+            RenderSet::Update
+                .after(RenderSet::UpdateSurfaces)
+                .in_base_set(CoreSet::PostUpdate),
+        );
+        app.configure_set(
+            RenderSet::UpdateSurfaces
+                .after(TransformSet)
+                .in_base_set(CoreSet::PostUpdate),
+        );
     }
 }
 

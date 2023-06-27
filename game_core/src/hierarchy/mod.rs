@@ -1,19 +1,31 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 
-use bevy_app::{App, Plugin};
+use bevy_app::{App, CoreSet, Plugin};
 use bevy_ecs::prelude::{Component, Entity};
 use bevy_ecs::query::{Added, Changed, Or};
 use bevy_ecs::removal_detection::RemovedComponents;
-use bevy_ecs::schedule::IntoSystemConfig;
+use bevy_ecs::schedule::{IntoSystemConfig, SystemSet};
 use bevy_ecs::system::{Commands, Query, ResMut, Resource};
+
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash, SystemSet)]
+pub struct HierarchySet;
 
 pub struct HierarchyPlugin;
 
 impl Plugin for HierarchyPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(EntityChildren::default());
-        app.add_system(update_children);
-        app.add_system(despawn_children.after(update_children));
+        app.add_system(
+            update_children
+                .in_base_set(CoreSet::PostUpdate)
+                .in_set(HierarchySet),
+        );
+        app.add_system(
+            despawn_children
+                .in_base_set(CoreSet::PostUpdate)
+                .in_set(HierarchySet)
+                .after(update_children),
+        );
     }
 }
 
