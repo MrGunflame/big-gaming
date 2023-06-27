@@ -5,6 +5,7 @@ use game_common::components::actions::{ActionId, Actions};
 use game_common::components::actor::ActorProperties;
 use game_common::components::combat::Health;
 use game_common::components::components::{self, Components};
+use game_common::components::entity::InterpolateTranslation;
 use game_common::components::inventory::Inventory;
 use game_common::components::items::Item;
 use game_common::components::player::HostPlayer;
@@ -15,7 +16,6 @@ use game_common::world::snapshot::{EntityChange, InventoryItemAdd};
 use game_common::world::source::StreamingSource;
 use game_common::world::world::{WorldState, WorldViewRef};
 use game_core::modules::Modules;
-use game_input::hotkeys::Hotkeys;
 use game_net::backlog::Backlog;
 
 use crate::entities::actor::LoadActor;
@@ -23,8 +23,8 @@ use crate::entities::inventory::{AddInventoryItem, DestroyInventory, RemoveInven
 use crate::entities::item::LoadItem;
 use crate::entities::object::LoadObject;
 use crate::entities::terrain::LoadTerrain;
-use crate::plugins::actions::ActiveActions;
 
+use super::conn::InterpolationPeriod;
 use super::ServerConnection;
 
 pub fn apply_world_delta(
@@ -96,6 +96,7 @@ pub fn apply_world_delta(
             conn,
             &mut backlog,
             &modules,
+            conn.interpolation_period,
         );
     }
 
@@ -122,6 +123,7 @@ fn handle_event(
     conn: &ServerConnection,
     backlog: &mut Backlog,
     modules: &Modules,
+    period: InterpolationPeriod,
 ) {
     tracing::trace!(
         concat!("handle ", stringify!(WorldState), " event: {:?}"),
@@ -200,6 +202,12 @@ fn handle_event(
             let entity = conn.entities.get(id).unwrap();
 
             if let Ok((_, mut transform, _, _, _)) = entities.get_mut(entity) {
+                // commands.entity(entity).insert(InterpolateTranslation {
+                //     src: transform.translation,
+                //     dst: translation,
+                //     start: period.start,
+                //     end: period.end,
+                // });
                 transform.translation = translation;
             }
         }

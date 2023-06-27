@@ -3,6 +3,7 @@ mod events;
 use bevy_app::{App, Plugin};
 use bevy_ecs::prelude::Component;
 use bevy_ecs::query::{With, Without};
+use bevy_ecs::schedule::IntoSystemConfig;
 use bevy_ecs::system::{Commands, Query, Res, ResMut};
 use game_asset::Assets;
 use game_common::bundles::TransformBundle;
@@ -20,6 +21,8 @@ use glam::{Mat3, Quat, Vec3};
 
 use crate::window::PrimaryWindow;
 
+use super::movement;
+
 /// The camera controlled by the hosting player.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Component)]
 pub struct PrimaryCamera;
@@ -30,7 +33,11 @@ impl Plugin for CameraPlugin {
     fn build(&self, app: &mut App) {
         app.add_startup_system(events::register_events);
 
-        app.add_system(synchronize_player_camera);
+        app.add_system(
+            synchronize_player_camera
+                .after(movement::rotation_events)
+                .after(movement::translation_events),
+        );
         app.add_system(events::toggle_camera_position);
 
         app.add_startup_system(setup_camera);
@@ -76,7 +83,7 @@ fn setup_camera(mut commands: Commands, target: Res<PrimaryWindow>) {
 
 pub fn synchronize_player_camera(
     players: Query<(&Transform, &ActorProperties), With<HostPlayer>>,
-    mut cameras: Query<(&mut Transform, &CameraMode), Without<HostPlayer>>,
+    mut cameras: Query<(&mut Transform, &CameraMode), (Without<HostPlayer>, With<PrimaryCamera>)>,
 ) {
     let Ok((player, props)) = players.get_single() else {
         return;

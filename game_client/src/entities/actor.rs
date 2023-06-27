@@ -13,6 +13,7 @@ use game_scene::{SceneBundle, Scenes};
 use glam::{Quat, Vec3};
 
 use crate::plugins::actions::ActiveActions;
+use crate::utils::extract_actor_rotation;
 
 #[derive(Clone, Debug, Component)]
 pub struct LoadActor {
@@ -29,22 +30,10 @@ pub fn load_actor(
     mut scenes: ResMut<Scenes>,
     mut active_actions: ResMut<ActiveActions>,
     mut hotkeys: ResMut<Hotkeys>,
-    mut modules: Res<Modules>,
+    modules: Res<Modules>,
 ) {
     for (entity, actor) in &entities {
         tracing::trace!("spawning actor at {:?}", actor.transform.translation);
-
-        // Extract the rotation angle around Y, removing all other
-        // components.
-        let mut direction = actor.transform.rotation * -Vec3::Z;
-        // Clamp in range of [-1, -1] in case direction is slightly above due
-        // to FP error creep.
-        direction.y = direction.y.clamp(-1.0, 1.0);
-        let angle = if direction.x.is_sign_negative() {
-            -direction.y.asin()
-        } else {
-            direction.y.asin()
-        };
 
         let mut cmds = commands.entity(entity);
         cmds.remove::<LoadActor>();
@@ -54,7 +43,7 @@ pub fn load_actor(
             transform: TransformBundle {
                 transform: Transform {
                     translation: actor.transform.translation,
-                    rotation: Quat::from_axis_angle(Vec3::Y, angle),
+                    rotation: extract_actor_rotation(actor.transform.rotation),
                     ..Default::default()
                 },
                 ..Default::default()

@@ -1,11 +1,9 @@
-mod events;
-
 use std::borrow::Cow;
 
 use bevy_app::{App, Plugin};
 use bevy_ecs::prelude::EventReader;
 use bevy_ecs::query::{With, Without};
-use bevy_ecs::schedule::{IntoSystemConfig, IntoSystemSetConfig, SystemSet};
+use bevy_ecs::schedule::{IntoSystemSetConfig, SystemSet};
 use bevy_ecs::system::{Query, Res, ResMut};
 use game_common::components::actor::{ActorProperties, MovementSpeed};
 use game_common::components::camera::CameraMode;
@@ -24,6 +22,7 @@ use game_window::events::VirtualKeyCode;
 use glam::{Quat, Vec3};
 
 use crate::net::ServerConnection;
+use crate::utils::extract_actor_rotation;
 
 use super::camera::PrimaryCamera;
 
@@ -150,10 +149,6 @@ impl Plugin for MovementPlugin {
 
         app.add_system(translation_events);
         app.add_system(rotation_events);
-
-        app.add_system(events::handle_movement_events.in_set(MovementSet::Apply));
-        app.add_system(events::handle_rotate_events.in_set(MovementSet::Apply));
-        // app.add_system(events::handle_jump_events.in_set(MovementSet::Apply));
 
         app.configure_set(InputSet::Hotkeys.before(MovementSet::Read));
         app.configure_set(MovementSet::Read.before(MovementSet::Apply));
@@ -317,19 +312,7 @@ pub fn rotation_events(
             rotation: props.rotation,
         });
 
-        // Extract the rotation angle around Y, removing all other
-        // components.
-        let mut direction = props.rotation * -Vec3::Z;
-        // Clamp in range of [-1, -1] in case direction is slightly above due
-        // to FP error creep.
-        direction.y = direction.y.clamp(-1.0, 1.0);
-        let angle = if direction.x.is_sign_negative() {
-            -direction.y.asin()
-        } else {
-            direction.y.asin()
-        };
-
-        player.rotation = Quat::from_axis_angle(Vec3::Y, angle);
+        player.rotation = extract_actor_rotation(props.rotation);
     }
 }
 
