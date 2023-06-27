@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use bevy::prelude::App;
+use bevy_app::App;
 use game_server::config::Config;
 use tokio::runtime::Runtime;
 
