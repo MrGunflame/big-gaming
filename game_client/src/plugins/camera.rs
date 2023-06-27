@@ -63,7 +63,7 @@ fn setup_camera(mut commands: Commands, target: Res<PrimaryWindow>) {
                 target: RenderTarget::Window(target.0),
             },
         })
-        .insert(CameraMode::FirstPerson)
+        .insert(CameraMode::ThirdPerson { distance: 10.0 })
         .insert(PrimaryCamera);
 
     commands.spawn(DirectionalLightBundle {

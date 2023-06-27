@@ -5,7 +5,6 @@ use game_common::components::actions::{ActionId, Actions};
 use game_common::components::actor::ActorProperties;
 use game_common::components::combat::Health;
 use game_common::components::components::{self, Components};
-use game_common::components::entity::InterpolateTranslation;
 use game_common::components::inventory::Inventory;
 use game_common::components::items::Item;
 use game_common::components::player::HostPlayer;
@@ -23,6 +22,8 @@ use crate::entities::inventory::{AddInventoryItem, DestroyInventory, RemoveInven
 use crate::entities::item::LoadItem;
 use crate::entities::object::LoadObject;
 use crate::entities::terrain::LoadTerrain;
+use crate::net::interpolate::{InterpolateRotation, InterpolateTranslation};
+use crate::utils::extract_actor_rotation;
 
 use super::conn::InterpolationPeriod;
 use super::ServerConnection;
@@ -201,21 +202,34 @@ fn handle_event(
         } => {
             let entity = conn.entities.get(id).unwrap();
 
-            if let Ok((_, mut transform, _, _, _)) = entities.get_mut(entity) {
-                // commands.entity(entity).insert(InterpolateTranslation {
-                //     src: transform.translation,
-                //     dst: translation,
-                //     start: period.start,
-                //     end: period.end,
-                // });
-                transform.translation = translation;
+            if let Ok((_, transform, _, _, _)) = entities.get_mut(entity) {
+                commands.entity(entity).insert(InterpolateTranslation {
+                    src: transform.translation,
+                    dst: translation,
+                    start: period.start,
+                    end: period.end,
+                });
             }
         }
         EntityChange::Rotate { id, rotation } => {
             let entity = conn.entities.get(id).unwrap();
 
-            if let Ok((_, _, _, _, Some(mut props))) = entities.get_mut(entity) {
-                props.rotation = rotation;
+            if let Ok((_, transform, _, _, props)) = entities.get_mut(entity) {
+                if let Some(props) = props {
+                    commands.entity(entity).insert(InterpolateRotation {
+                        src: props.rotation,
+                        dst: rotation,
+                        start: period.start,
+                        end: period.end,
+                    });
+                } else {
+                    commands.entity(entity).insert(InterpolateRotation {
+                        src: transform.rotation,
+                        dst: rotation,
+                        start: period.start,
+                        end: period.end,
+                    });
+                }
             }
         }
         EntityChange::CreateHost { id } => {

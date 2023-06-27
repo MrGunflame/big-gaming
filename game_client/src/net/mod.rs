@@ -51,9 +51,10 @@ impl Plugin for NetPlugin {
 
         app.add_system(flush_command_queue.in_set(NetSet::ReadCommands));
 
-        app.add_system(world::apply_world_delta);
+        app.add_system(world::apply_world_delta.after(flush_command_queue));
 
-        app.add_system(interpolate::interpolate_translation);
+        app.add_system(interpolate::interpolate_translation.after(world::apply_world_delta));
+        app.add_system(interpolate::interpolate_rotation.after(world::apply_world_delta));
     }
 }
 
