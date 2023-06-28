@@ -3,6 +3,7 @@ use backend::{Backend, Handle, Response};
 use bevy_app::App;
 use bevy_ecs::prelude::Res;
 use bevy_ecs::system::{Commands, ResMut};
+use game_scene::ScenePlugin;
 use game_ui::events::Events;
 use game_ui::reactive::Document;
 // use game_common::archive::loader::ModuleLoader;
@@ -54,6 +55,7 @@ fn main() {
         .insert_resource(Modules::new())
         .insert_resource(Records::new())
         .insert_resource(handle)
+        .add_plugin(ScenePlugin)
         .add_plugin(UiPlugin)
         .add_startup_system(setup)
         .add_plugin(windows::WindowsPlugin)

@@ -12,20 +12,23 @@ use game_input::mouse::{MouseButton, MouseButtonInput, MouseMotion, MouseWheel};
 use game_input::ButtonState;
 use game_render::camera::{Camera, CameraBundle, RenderTarget};
 use game_render::color::Color;
+use game_render::light::{DirectionalLight, DirectionalLightBundle, PointLight, PointLightBundle};
 use game_render::mesh::Mesh;
 use game_render::pbr::{PbrBundle, PbrMaterial};
 use game_render::shape;
-use game_render::texture::Images;
-use game_ui::cursor::Cursor;
+use game_render::texture::{Image, Images, TextureFormat};
+use game_scene::Scenes;
+use game_window::cursor::Cursor;
 use game_window::events::{CursorLeft, VirtualKeyCode};
 use game_window::Window;
-use glam::{Quat, Vec3};
+use glam::{Quat, UVec2, Vec3};
 
 pub fn spawn_view_window(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
     materials: &mut Assets<PbrMaterial>,
     images: &mut Images,
+    scenes: &mut Scenes,
 ) {
     let id = commands
         .spawn(Window {
@@ -82,32 +85,189 @@ pub fn spawn_view_window(
     // });
 
     commands.spawn(PbrBundle {
-        mesh: meshes.insert(
-            shape::Box {
-                min_x: -0.5,
-                max_x: 0.5,
-                min_y: -0.5,
-                max_y: 0.5,
-                min_z: -0.5,
-                max_z: 0.5,
-            }
-            .into(),
-        ),
+        mesh: meshes.insert(shape::Plane { size: 100.0 }.into()),
         material: materials.insert(PbrMaterial {
             base_color: Color([1.0, 1.0, 1.0, 1.0]),
-            base_color_texture: Some(images.load("../assets/diffuse.png")),
-            normal_texture: Some(images.load("../assets/normal.png")),
             ..Default::default()
         }),
         transform: TransformBundle {
             transform: Transform {
-                translation: Vec3::new(0.0, 1.0, -5.0),
-                // rotation: Quat::from_axis_angle(Vec3::Y, PI / 3.0),
+                translation: Vec3::new(0.0, -1.0, 0.0),
                 ..Default::default()
             },
             ..Default::default()
         },
     });
+
+    // commands.spawn(DirectionalLightBundle {
+    //     light: DirectionalLight {
+    //         color: [1.0, 1.0, 1.0],
+    //         illuminance: 1.0,
+    //     },
+    //     transform: TransformBundle {
+    //         transform: Transform {
+    //             translation: Vec3::new(1.0, 0.0, 5.0),
+    //             ..Default::default()
+    //         },
+    //         ..Default::default()
+    //     },
+    // });
+
+    commands.spawn(PointLightBundle {
+        light: PointLight {
+            color: Color::WHITE,
+        },
+        transform: TransformBundle {
+            transform: Transform {
+                translation: Vec3::new(1.0, 2.0, 5.0),
+                ..Default::default()
+            },
+            ..Default::default()
+        },
+    });
+
+    // commands.spawn(DirectionalLightBundle {
+    //     light: DirectionalLight {
+    //         color: [0.1, 0.1, 1.0],
+    //         illuminance: 1.0,
+    //     },
+    //     transform: TransformBundle {
+    //         transform: Transform {
+    //             translation: Vec3::new(-1.0, 0.0, 0.0),
+    //             ..Default::default()
+    //         },
+    //         ..Default::default()
+    //     },
+    // });
+
+    // commands.spawn(DirectionalLightBundle {
+    //     light: DirectionalLight {
+    //         color: [1.0, 0.1, 0.1],
+    //         illuminance: 1.0,
+    //     },
+    //     transform: TransformBundle {
+    //         transform: Transform {
+    //             translation: Vec3::new(0.0, 0.0, 1.0),
+    //             ..Default::default()
+    //         },
+    //         ..Default::default()
+    //     },
+    // });
+
+    // commands.spawn(SceneBundle {
+    //     scene: scenes.load("/tmp/glTF-Sample-Models/2.0/Sponza/glTF/Sponza.gltf"),
+    //     transform: TransformBundle {
+    //         transform: Transform {
+    //             translation: Vec3::new(0.0, 1.0, 5.0),
+    //             ..Default::default()
+    //         },
+    //         ..Default::default()
+    //     },
+    // });
+
+    let metallic = image::io::Reader::open(
+        "/home/robert/Downloads/rustediron1-alt2-bl/rustediron2_metallic.png",
+    )
+    .unwrap()
+    .decode()
+    .unwrap()
+    .to_luma8();
+
+    let roughness = image::io::Reader::open(
+        "/home/robert/Downloads/rustediron1-alt2-bl/rustediron2_roughness.png",
+    )
+    .unwrap()
+    .decode()
+    .unwrap()
+    .to_luma8();
+
+    let mut out: image::ImageBuffer<image::Rgba<u8>, Vec<u8>> =
+        image::ImageBuffer::new(metallic.width(), metallic.height());
+    for x in 0..metallic.width() {
+        for y in 0..metallic.height() {
+            let m = metallic.get_pixel(x, y).0[0];
+            let r = roughness.get_pixel(x, y).0[0];
+
+            out.put_pixel(x, y, image::Rgba([0, r, m, 0]));
+        }
+    }
+
+    let mr = Image::new(
+        UVec2::new(out.width(), out.height()),
+        TextureFormat::Rgba8UnormSrgb,
+        out.into_raw(),
+    );
+
+    // for i in 0..10 {
+    //     for j in 0..10 {
+    //         commands.spawn(PbrBundle {
+    //             mesh: meshes.insert(
+    //                 shape::Box {
+    //                     min_x: -0.5,
+    //                     max_x: 0.5,
+    //                     min_y: -0.5,
+    //                     max_y: 0.5,
+    //                     min_z: -0.5,
+    //                     max_z: 0.5,
+    //                 }
+    //                 .into(),
+    //             ),
+    //             material: materials.insert(PbrMaterial {
+    //                 base_color: Color([1.0, 1.0, 1.0, 1.0]),
+    //                 // base_color_texture: Some(images.load("../assets/diffuse.png")),
+    //                 base_color_texture: Some(images.load(
+    //                     "/home/robert/Downloads/rustediron1-alt2-bl/rustediron2_basecolor.png",
+    //                 )),
+    //                 roughness: 1.0 / i as f32,
+    //                 metallic: 1.0 / j as f32,
+    //                 // normal_texture: Some(images.load("../assets/normal.png")),
+    //                 normal_texture: Some(
+    //                     images.load(
+    //                         "/home/robert/Downloads/rustediron1-alt2-bl/rustediron2_normal.png",
+    //                     ),
+    //                 ),
+    //                 metallic_roughness_texture: Some(images.insert(mr.clone())),
+    //                 ..Default::default()
+    //             }),
+    //             transform: TransformBundle {
+    //                 transform: Transform {
+    //                     translation: Vec3::new(0.0 + i as f32, 1.0 + j as f32, -5.0),
+    //                     // rotation: Quat::from_axis_angle(Vec3::Y, PI / 3.0),
+    //                     ..Default::default()
+    //                 },
+    //                 ..Default::default()
+    //             },
+    //         });
+    //     }
+    // }
+
+    // commands.spawn(PbrBundle {
+    //     mesh: meshes.insert(
+    //         shape::Box {
+    //             min_x: -0.5,
+    //             max_x: 0.5,
+    //             min_y: -0.5,
+    //             max_y: 0.5,
+    //             min_z: -0.5,
+    //             max_z: 0.5,
+    //         }
+    //         .into(),
+    //     ),
+    //     material: materials.insert(PbrMaterial {
+    //         base_color: Color([1.0, 1.0, 1.0, 1.0]),
+    //         base_color_texture: Some(images.load("../assets/diffuse.png")),
+    //         // normal_texture: Some(images.load("../assets/normal.png")),
+    //         ..Default::default()
+    //     }),
+    //     transform: TransformBundle {
+    //         transform: Transform {
+    //             translation: Vec3::new(0.0, 1.0, -5.0),
+    //             // rotation: Quat::from_axis_angle(Vec3::Y, PI / 3.0),
+    //             ..Default::default()
+    //         },
+    //         ..Default::default()
+    //     },
+    // });
 
     commands
         .spawn(PbrBundle {

@@ -177,6 +177,32 @@ fn render_item(cx: &Scope) -> ItemFields {
     let (value, set_value) = create_signal(cx, 0);
     let (mass, set_mass) = create_signal(cx, Mass::default());
 
+    let item = view! {
+        cx,
+        <Container style={Style::default()}>
+        </Container>
+    };
+
+    let name_col = view! {
+        item,
+        <Container style={Style::default()}>
+        </Container>
+    };
+
+    for text in ["Value", "Mass"] {
+        view! {
+            name_col,
+            <Text text={text.into()}>
+            </Text>
+        };
+    }
+
+    let val_col = view! {
+        item,
+        <Container style={Style::default()}>
+        </Container>
+    };
+
     let value_change = move |s: String| {
         if let Ok(val) = s.parse() {
             set_value.update(|v| *v = val);
@@ -184,7 +210,7 @@ fn render_item(cx: &Scope) -> ItemFields {
     };
 
     view! {
-        cx,
+        val_col,
         <Input value={value.get_untracked().to_string()} style={Style::default()} on_change={value_change.into()}>
         </Input>
     };
@@ -196,7 +222,7 @@ fn render_item(cx: &Scope) -> ItemFields {
     };
 
     view! {
-        cx,
+        val_col,
         <Input value={mass.get_untracked().to_grams().to_string()} style={Style::default()} on_change={mass_change.into()}>
         </Input>
     };

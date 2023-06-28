@@ -17,6 +17,7 @@ use game_data::record::RecordKind;
 use game_render::mesh::Mesh;
 use game_render::pbr::PbrMaterial;
 use game_render::texture::Images;
+use game_scene::Scenes;
 use game_ui::events::Events;
 use game_ui::reactive::{Document, Runtime};
 use game_ui::render::layout::LayoutTree;
@@ -65,6 +66,7 @@ fn spawn_windows(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<PbrMaterial>>,
     mut images: ResMut<Images>,
+    mut scenes: ResMut<Scenes>,
 ) {
     for event in events.iter() {
         let window = Window {
@@ -99,7 +101,13 @@ fn spawn_windows(
         // }
 
         if let SpawnWindow::View = event {
-            view::spawn_view_window(&mut commands, &mut meshes, &mut materials, &mut images);
+            view::spawn_view_window(
+                &mut commands,
+                &mut meshes,
+                &mut materials,
+                &mut images,
+                &mut scenes,
+            );
             continue;
         }
 
