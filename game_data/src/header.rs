@@ -6,7 +6,7 @@ use crate::{Decode, Encode, EofError};
 
 pub const MAGIC: [u8; 4] = [0, 0, 0, 0];
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Error)]
+#[derive(Clone, Debug, PartialEq, Eq, Error)]
 pub enum HeaderError {
     #[error("failed to read header magic: {0}")]
     Magic(<[u8; 4] as Decode>::Error),
@@ -100,6 +100,16 @@ impl Decode for ModuleId {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Error)]
+pub enum ModuleError {
+    #[error("failed to decode id: {0}")]
+    Id(<ModuleId as Decode>::Error),
+    #[error("failed to decode name: {0}")]
+    Name(<String as Decode>::Error),
+    #[error("failed to decode dependencies: {0}")]
+    Dependencies(<Vec<Dependency> as Decode>::Error),
+}
+
 impl Encode for Module {
     fn encode<B>(&self, mut buf: B)
     where
@@ -108,31 +118,20 @@ impl Encode for Module {
         self.id.encode(&mut buf);
         self.name.encode(&mut buf);
         // self.version
-
-        (self.dependencies.len() as u32).encode(&mut buf);
-        for dep in &self.dependencies {
-            dep.encode(&mut buf);
-        }
+        self.dependencies.encode(&mut buf);
     }
 }
 
 impl Decode for Module {
-    type Error = EofError;
+    type Error = ModuleError;
 
     fn decode<B>(mut buf: B) -> Result<Self, Self::Error>
     where
         B: Buf,
     {
-        let id = ModuleId::decode(&mut buf)?;
-        let name = String::decode(&mut buf)?;
-
-        let len = u32::decode(&mut buf)?;
-        let mut dependencies = Vec::new();
-
-        for _ in 0..len {
-            let dependency = Dependency::decode(&mut buf)?;
-            dependencies.push(dependency);
-        }
+        let id = ModuleId::decode(&mut buf).map_err(ModuleError::Id)?;
+        let name = String::decode(&mut buf).map_err(ModuleError::Name)?;
+        let dependencies = Vec::decode(&mut buf).map_err(ModuleError::Dependencies)?;
 
         Ok(Self {
             id,
@@ -141,6 +140,14 @@ impl Decode for Module {
             dependencies,
         })
     }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Error)]
+pub enum DependencyError {
+    #[error("failed to decode id: {0}")]
+    Id(<ModuleId as Decode>::Error),
+    #[error("failed to decode name: {0}")]
+    Name(<String as Decode>::Error),
 }
 
 impl Encode for Dependency {
@@ -157,14 +164,14 @@ impl Encode for Dependency {
 }
 
 impl Decode for Dependency {
-    type Error = EofError;
+    type Error = DependencyError;
 
     fn decode<B>(mut buf: B) -> Result<Self, Self::Error>
     where
         B: Buf,
     {
-        let id = ModuleId::decode(&mut buf)?;
-        let name = String::decode(&mut buf)?;
+        let id = ModuleId::decode(&mut buf).map_err(DependencyError::Id)?;
+        let name = String::decode(&mut buf).map_err(DependencyError::Name)?;
 
         Ok(Self {
             id,

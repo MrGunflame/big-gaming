@@ -8,7 +8,7 @@ use thiserror::Error;
 use crate::uri::Uri;
 use crate::{Decode, Encode};
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Error)]
+#[derive(Clone, Debug, PartialEq, Eq, Error)]
 pub enum ItemRecordError {
     #[error("failed to decode item mass: {0}")]
     Mass(<Mass as Decode>::Error),

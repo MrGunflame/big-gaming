@@ -6,7 +6,7 @@ use crate::{Decode, Encode};
 
 use super::item::ItemComponent;
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Error)]
+#[derive(Clone, Debug, PartialEq, Eq, Error)]
 pub enum ObjectRecordError {
     #[error("failed to decode uri: {0}")]
     Uri(<Uri as Decode>::Error),

@@ -3,12 +3,14 @@
 use std::error::Error as StdError;
 use std::hash::{Hash, Hasher};
 use std::mem::MaybeUninit;
+use std::string::FromUtf8Error;
 
 use bytes::{Buf, BufMut};
 use game_common::module::Module;
 use header::{Header, HeaderError};
 use record::{Record, RecordError};
 use thiserror::Error;
+use varint::VarU64;
 
 pub mod components;
 pub mod header;
@@ -102,47 +104,29 @@ impl Encode for str {
     where
         B: BufMut,
     {
-        (self.len() as u64).encode(&mut buf);
+        let len: VarU64 = self.len().into();
+        len.encode(&mut buf);
         buf.put_slice(self.as_bytes());
     }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Error)]
 pub enum StringError {
-    #[error(transparent)]
-    Eof(#[from] EofError),
+    #[error("failed to decode string bytes: {0}")]
+    Bytes(ListError<u8>),
+    #[error("invalid utf8: {0}")]
+    InvalidUtf8(FromUtf8Error),
 }
 
 impl Decode for String {
-    type Error = EofError;
+    type Error = StringError;
 
-    fn decode<B>(mut buf: B) -> Result<Self, Self::Error>
+    fn decode<B>(buf: B) -> Result<Self, Self::Error>
     where
         B: Buf,
     {
-        let mut len = u64::decode(&mut buf)? as usize;
-        // 20MB max buffer to prevent memory exhaustion.
-        let mut bytes = Vec::with_capacity(std::cmp::min(len, 20_000_000));
-
-        while len > 0 {
-            if buf.remaining() == 0 {
-                return Err(EofError {
-                    on: "String",
-                    consumed: 0,
-                    expected: 0,
-                });
-            }
-
-            let chunk = buf.chunk();
-            let end = std::cmp::min(chunk.len(), len);
-
-            bytes.extend(&chunk[..end]);
-
-            len -= end;
-            buf.advance(end);
-        }
-
-        Ok(Self::from_utf8(bytes).unwrap())
+        let bytes = Vec::decode(buf).map_err(StringError::Bytes)?;
+        Self::from_utf8(bytes).map_err(StringError::InvalidUtf8)
     }
 }
 
@@ -208,7 +192,8 @@ where
     where
         B: BufMut,
     {
-        (self.len() as u64).encode(&mut buf);
+        let len: VarU64 = self.len().into();
+        len.encode(&mut buf);
 
         for elem in self {
             elem.encode(&mut buf);
@@ -223,7 +208,7 @@ where
     <T as Decode>::Error: StdError,
 {
     #[error("failed to decode list length: {0}")]
-    Length(<u64 as Decode>::Error),
+    Length(<VarU64 as Decode>::Error),
     #[error("failed to decode list element: {0}")]
     Element(<T as Decode>::Error),
 }
@@ -300,11 +285,11 @@ where
     where
         B: Buf,
     {
-        let len = u64::decode(&mut buf).map_err(ListError::Length)?;
+        let len = VarU64::decode(&mut buf).map_err(ListError::Length)?;
 
         let mut list = Vec::new();
 
-        for _ in 0..len {
+        for _ in 0..len.into() {
             let elem = T::decode(&mut buf).map_err(ListError::Element)?;
             list.push(elem);
         }
@@ -407,5 +392,29 @@ mod tests {
 
         let buf = [0; 2];
         u32::decode(&buf[..]).unwrap_err();
+    }
+
+    #[test]
+    fn test_string_encode() {
+        let input = "Hello World";
+        let output = [
+            "Hello World".len().try_into().unwrap(),
+            b'H',
+            b'e',
+            b'l',
+            b'l',
+            b'o',
+            b' ',
+            b'W',
+            b'o',
+            b'r',
+            b'l',
+            b'd',
+        ];
+
+        let mut buf = Vec::new();
+        input.encode(&mut buf);
+
+        assert_eq!(buf, output);
     }
 }

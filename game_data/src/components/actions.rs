@@ -4,7 +4,7 @@ use thiserror::Error;
 use crate::uri::Uri;
 use crate::{Decode, Encode};
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Error)]
+#[derive(Clone, Debug, PartialEq, Eq, Error)]
 pub enum ActionRecordError {
     #[error("failed to decode action description: {0}")]
     Description(<String as Decode>::Error),

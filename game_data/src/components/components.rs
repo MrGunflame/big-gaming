@@ -5,7 +5,7 @@ use thiserror::Error;
 use crate::uri::Uri;
 use crate::{Decode, Encode};
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Error)]
+#[derive(Clone, Debug, PartialEq, Eq, Error)]
 pub enum ComponentRecordError {
     #[error("failed to decode component description: {0}")]
     Description(<String as Decode>::Error),
@@ -181,7 +181,7 @@ impl Encode for ComponentType {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Error)]
+#[derive(Clone, Debug, PartialEq, Eq, Error)]
 pub enum ComponentTypeError {
     #[error("failed to decode component type byte: {0}")]
     Byte(<u8 as Decode>::Error),
@@ -415,7 +415,7 @@ impl Encode for Map {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Error)]
+#[derive(Clone, Debug, PartialEq, Eq, Error)]
 pub enum MapError {
     #[error("failed to decode map length: {0}")]
     Length(<u64 as Decode>::Error),

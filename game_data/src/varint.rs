@@ -6,6 +6,7 @@ use crate::{Decode, Encode};
 const CONTINUE_BIT: u8 = 1 << 7;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[repr(transparent)]
 pub struct VarU64(pub u64);
 
 impl Encode for VarU64 {
@@ -68,3 +69,21 @@ impl Decode for VarU64 {
         }
     }
 }
+
+// On 64-bit platforms we can cast without issues.
+#[cfg(target_pointer_width = "64")]
+const _: fn() = || {
+    const _: [u8; std::mem::size_of::<usize>()] = [0; std::mem::size_of::<VarU64>()];
+
+    impl From<usize> for VarU64 {
+        fn from(value: usize) -> Self {
+            Self(value as u64)
+        }
+    }
+
+    impl From<VarU64> for usize {
+        fn from(value: VarU64) -> Self {
+            value.0 as usize
+        }
+    }
+};

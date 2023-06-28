@@ -341,7 +341,7 @@ impl Decode for Record {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Error)]
+#[derive(Clone, Debug, PartialEq, Eq, Error)]
 pub enum RecordError {
     #[error("failed to decode record id: {0}")]
     Id(<RecordId as Decode>::Error),
