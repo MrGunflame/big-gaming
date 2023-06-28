@@ -1,7 +1,8 @@
 use core::mem::{self, MaybeUninit};
+use core::ptr::NonNull;
 
 use alloc::vec::Vec;
-use bytemuck::AnyBitPattern;
+use bytemuck::{AnyBitPattern, NoUninit, Pod};
 use glam::{Quat, Vec3};
 
 use crate::entity::EntityId;
@@ -206,6 +207,78 @@ impl Component {
     pub fn len(&self) -> usize {
         self.bytes.len()
     }
+
+    pub fn write<T>(&mut self, value: T)
+    where
+        T: NoUninit,
+    {
+        let arr = &[value];
+        let slice: &[u8] = bytemuck::cast_slice(arr);
+
+        self.bytes.resize(slice.len(), 0);
+
+        assert!(self.bytes.len() >= slice.len());
+
+        unsafe {
+            let dst = self.bytes.as_mut_ptr();
+            let src = slice.as_ptr();
+            let count = slice.len();
+
+            core::ptr::copy_nonoverlapping(src, dst, count);
+        }
+    }
+
+    pub unsafe fn write_unchecked<T>(&mut self, value: T)
+    where
+        T: NoUninit,
+    {
+        if T::IS_ZST {
+            return;
+        }
+
+        let slice = bytemuck::bytes_of(&value);
+
+        unsafe {
+            let dst = self.bytes.as_mut_ptr();
+            let src = slice.as_ptr();
+            let count = slice.len();
+
+            core::ptr::copy_nonoverlapping(src, dst, count);
+        }
+    }
+
+    pub fn update<T, F>(&mut self, f: F)
+    where
+        T: Pod,
+        F: FnOnce(&mut T),
+    {
+        if T::IS_ZST {
+            // Any correctly aligned non-zero pointer is valid for ZST `T`s.
+            let mut ptr = NonNull::<T>::dangling();
+            let val = unsafe { ptr.as_mut() };
+            f(val);
+            return;
+        }
+
+        assert!(self.bytes.len() >= mem::size_of::<T>());
+
+        // If the buffer is already correctly aligned for `T` we can just
+        // cast the pointer into `self.bytes` to `T`.
+        // Otherwise we need to copy and write back the value.
+
+        // Also note that some `T`s are always aligned.
+
+        let ptr = self.bytes.as_mut_ptr();
+
+        if ptr.align_offset(mem::align_of::<T>()) == 0 {
+            let value = unsafe { &mut *(ptr as *mut T) };
+            f(value);
+        } else {
+            let mut value = unsafe { self.read_unchecked() };
+            f(&mut value);
+            unsafe { self.write_unchecked(value) };
+        }
+    }
 }
 
 impl AsRef<[u8]> for Component {
@@ -309,4 +382,85 @@ impl private::Sealed for Item {}
 
 mod private {
     pub trait Sealed {}
+}
+
+trait IsZst {
+    const IS_ZST: bool;
+}
+
+impl<T> IsZst for T {
+    const IS_ZST: bool = mem::size_of::<Self>() == 0;
+}
+
+#[cfg(test)]
+mod tests {
+    use core::mem;
+
+    use alloc::vec;
+    use alloc::vec::Vec;
+    use bytemuck::{Pod, Zeroable};
+
+    use super::Component;
+
+    #[test]
+    fn component_update_zst() {
+        #[derive(Copy, Clone, Debug, Zeroable, Pod)]
+        #[repr(transparent)]
+        struct Target;
+
+        let mut component = Component { bytes: Vec::new() };
+        component.update::<Target, _>(|val| {
+            *val = Target;
+        });
+
+        assert_eq!(component.bytes, vec![]);
+    }
+
+    #[test]
+    fn component_update_aligned() {
+        #[derive(Copy, Clone, Debug, Zeroable, Pod)]
+        #[repr(C, align(1))]
+        struct Target(u8);
+
+        let mut component = Component { bytes: vec![0] };
+        assert!(
+            component
+                .bytes
+                .as_ptr()
+                .align_offset(mem::align_of::<Target>())
+                == 0
+        );
+
+        component.update::<Target, _>(|val| {
+            *val = Target(1);
+        });
+
+        assert_eq!(component.bytes, vec![1]);
+    }
+
+    #[test]
+    fn component_update_not_aligned() {
+        #[derive(Copy, Clone, Debug, Zeroable, Pod)]
+        #[repr(C, align(32))]
+        struct Target([u8; 32]);
+
+        // FIXME: Does this actually guarantee that buf is not aligned?
+        // The assert will fail the test if it is not.
+        let buf = vec![0; 32];
+
+        let mut component = Component { bytes: buf };
+        assert!(
+            component
+                .bytes
+                .as_ptr()
+                .align_offset(mem::align_of::<Target>())
+                != 0
+        );
+
+        component.update::<Target, _>(|val| {
+            *val = Target([1; 32]);
+        });
+
+        assert_eq!(component.bytes, vec![1; 32]);
+    }
 }

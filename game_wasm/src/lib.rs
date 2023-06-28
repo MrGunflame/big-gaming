@@ -1,8 +1,10 @@
 //! WASM host bindings
 #![no_std]
-
 #[deny(unsafe_op_in_unsafe_fn)]
 extern crate alloc;
+
+#[cfg(test)]
+extern crate std;
 
 #[cfg(feature = "raw")]
 pub mod raw;
