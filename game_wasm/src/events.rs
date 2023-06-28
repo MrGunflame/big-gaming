@@ -14,6 +14,7 @@
 /// # Examples
 ///
 /// ```
+/// use game_wasm::info;
 /// use game_wasm::events::on_init;
 ///
 /// #[on_init]
@@ -41,12 +42,13 @@ pub use game_macros::wasm__event_on_action as on_action;
 /// # Examples
 ///
 /// ```
+/// use game_wasm::info;
 /// use game_wasm::entity::EntityId;
 /// use game_wasm::events::on_collision;
 ///
 /// #[on_collision]
 /// fn on_collision(entity: EntityId, other: EntityId) {
-///     info!("{} collided with {}!", entity, other);
+///     info!("{:?} collided with {:?}!", entity, other);
 /// }
 /// ```
 ///
@@ -65,13 +67,14 @@ pub use game_macros::wasm__event_on_collision as on_collision;
 /// # Examples
 ///
 /// ```
+/// use game_wasm::info;
 /// use game_wasm::entity::EntityId;
 /// use game_wasm::events::on_equip;
 /// use game_wasm::inventory::InventoryId;
 ///
 /// #[on_equip]
 /// fn on_equip(item: InventoryId, actor: EntityId) {
-///     info!("{} equipped {}!", actor, item);
+///     info!("{:?} equipped {:?}!", actor, item);
 /// }
 /// ```
 ///
@@ -90,13 +93,14 @@ pub use game_macros::wasm__event_on_equip as on_equip;
 /// # Examples
 ///
 /// ```
+/// use game_wasm::info;
 /// use game_wasm::entity::EntityId;
 /// use game_wasm::events::on_unequip;
 /// use game_wasm::inventory::InventoryId;
 ///
 /// #[on_unequip]
 /// fn on_unequip(item: InventoryId, actor: EntityId) {
-///     info!("{} unequipped {}!", actor, item);
+///     info!("{:?} unequipped {:?}!", actor, item);
 /// }
 /// ```
 ///

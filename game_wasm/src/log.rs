@@ -26,3 +26,53 @@ pub fn log(level: Level, content: &str) {
         raw::log(level.0, ptr, len);
     }
 }
+
+#[macro_export]
+macro_rules! error {
+    ($($arg:tt)*) => {{
+        extern crate alloc;
+        let level = $crate::log::Level::ERROR;
+        let content = alloc::format!($($arg)*);
+        $crate::log::log(level, &content);
+    }};
+}
+
+#[macro_export]
+macro_rules! warn {
+    ($($arg:tt)*) => {{
+        extern crate alloc;
+        let level = $crate::log::Level::WARN;
+        let content = alloc::format!($($arg)*);
+        $crate::log::log(level, &content);
+    }};
+}
+
+#[macro_export]
+macro_rules! info {
+    ($($arg:tt)*) => {{
+        extern crate alloc;
+        let level = $crate::log::Level::INFO;
+        let content = alloc::format!($($arg)*);
+        $crate::log::log(level, &content);
+    }};
+}
+
+#[macro_export]
+macro_rules! debug {
+    ($($arg:tt)*) => {{
+        extern crate alloc;
+        let level = $crate::log::Level::DEBUG;
+        let content = alloc::format!($($arg)*);
+        $crate::log::log(level, &content);
+    }};
+}
+
+#[macro_export]
+macro_rules! trace {
+    ($($arg:tt)*) => {{
+        extern crate alloc;
+        let level = $crate::log::Level::TRACE;
+        let content = alloc::format!($($arg)*);
+        $crate::log::log(level, &content);
+    }};
+}
