@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use bevy_ecs::system::Resource;
@@ -11,6 +12,7 @@ use game_ui::{component, view};
 use game_ui::widgets::*;
 use parking_lot::Mutex;
 
+use crate::backend::{Handle, Task, WriteModule};
 use crate::state;
 use crate::state::module::EditorModule;
 
@@ -22,6 +24,8 @@ use super::{SpawnWindow, SpawnWindowQueue};
 pub fn Modules(
     cx: &Scope,
     modules: state::module::Modules,
+    records: state::record::Records,
+    handle: Handle,
     queue: SpawnWindowQueue,
     create_modules: CreateModules,
 ) -> Scope {
@@ -43,39 +47,42 @@ pub fn Modules(
     });
 
     let id = Mutex::new(None);
-    create_effect(cx, move |_| {
-        let _ = reader.get();
+    {
+        let modules = modules.clone();
+        create_effect(cx, move |world| {
+            let _ = reader.get();
 
-        let mut entries = Vec::new();
-        for module in modules.iter() {
-            entries.push(vec![
-                module.module.id.to_string(),
-                module.module.name.clone(),
-            ]);
-        }
-
-        let data = EntriesData {
-            keys: vec!["ID".to_owned(), "Name".to_owned()],
-            entries,
-            add_entry: None,
-        };
-
-        let id = &mut *id.lock();
-        match id {
-            Some(id) => {
-                mods.remove(*id);
+            let mut entries = Vec::new();
+            for module in modules.iter() {
+                entries.push(vec![
+                    module.module.id.to_string(),
+                    module.module.name.clone(),
+                ]);
             }
-            None => {}
-        }
 
-        let cx = view! {
-            mods,
-            <Entries data={data}>
-            </Entries>
-        };
+            let data = EntriesData {
+                keys: vec!["ID".to_owned(), "Name".to_owned()],
+                entries,
+                add_entry: None,
+            };
 
-        *id = Some(cx.id().unwrap());
-    });
+            let id = &mut *id.lock();
+            match id {
+                Some(id) => {
+                    mods.remove(*id);
+                }
+                None => {}
+            }
+
+            let cx = view! {
+                mods,
+                <Entries data={data}>
+                </Entries>
+            };
+
+            *id = Some(cx.id().unwrap());
+        });
+    }
 
     let open = view! {
         root,
@@ -89,6 +96,14 @@ pub fn Modules(
         root,
         <Button style={Style::default()} on_click={on_create(queue).into()}>
             <Text text={"Create".into()}>
+            </Text>
+        </Button>
+    };
+
+    view! {
+        root,
+        <Button style={Style::default()} on_click={on_save(modules, records, handle).into()}>
+            <Text text={"Save".into()}>
             </Text>
         </Button>
     };
@@ -116,3 +131,28 @@ fn on_create(
 
 #[derive(Clone, Debug, Default, Resource)]
 pub struct CreateModules(pub Arc<Mutex<Option<WriteSignal<Vec<EditorModule>>>>>);
+
+fn on_save(
+    modules: state::module::Modules,
+    records: state::record::Records,
+    handle: Handle,
+) -> Box<dyn Fn(Context<MouseButtonInput>) + Send + Sync + 'static> {
+    Box::new(move |_| {
+        for mut module in modules.iter() {
+            if module.path.is_none() {
+                module.path = Some(PathBuf::from(module.module.id.to_string()));
+            }
+
+            // let records = records
+            //     .iter()
+            //     .filter(|(id, record)| *id == module.module.id)
+            //     .map(|(_, record)| record)
+            //     .collect::<Vec<_>>();
+
+            handle.send(Task::WriteModule(WriteModule {
+                module: module,
+                records: records.clone(),
+            }));
+        }
+    })
+}

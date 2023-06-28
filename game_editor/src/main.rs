@@ -194,7 +194,16 @@ fn load_from_backend(
                     queue.push_back(SpawnWindow::Error(msg));
                 }
             },
-            Response::WriteModule(res) => todo!(),
+            Response::WriteModule(res) => match res {
+                Ok(()) => {}
+                Err(err) => {
+                    let mut queue = queue.0.write();
+                    queue.push_back(SpawnWindow::Error(format!(
+                        "failed to save modules: {}",
+                        err
+                    )));
+                }
+            },
         }
     }
 }
