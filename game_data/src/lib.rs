@@ -361,11 +361,17 @@ mod tests {
         let buf = [0, 1, 2, 3, 4];
         assert_eq!(<[u8; 5]>::decode(&buf[..]).unwrap(), [0, 1, 2, 3, 4]);
 
-        let buf = [0, 1, 2];
-        <[u8; 5]>::decode(&buf[..]).unwrap_err();
-
         let buf = [0, 1, 2, 3, 4, 5, 6, 7];
         assert_eq!(<[u8; 5]>::decode(&buf[..]).unwrap(), [0, 1, 2, 3, 4]);
+    }
+
+    #[test]
+    fn test_array_decode_fail_too_small() {
+        let buf = [0, 1, 2];
+        let err = <[u8; 5]>::decode(&buf[..]).unwrap_err();
+
+        assert_eq!(err.consumed, 3);
+        assert_eq!(err.expected, 5);
     }
 
     #[test]
