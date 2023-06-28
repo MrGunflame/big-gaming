@@ -15,7 +15,6 @@ pub enum ActionRecordError {
 #[derive(Clone, Debug)]
 pub struct ActionRecord {
     pub description: String,
-    pub script: Uri,
 }
 
 impl Encode for ActionRecord {
@@ -24,7 +23,6 @@ impl Encode for ActionRecord {
         B: BufMut,
     {
         self.description.encode(&mut buf);
-        self.script.encode(&mut buf);
     }
 }
 
@@ -36,11 +34,7 @@ impl Decode for ActionRecord {
         B: Buf,
     {
         let description = String::decode(&mut buf).map_err(ActionRecordError::Description)?;
-        let script = Uri::decode(&mut buf).map_err(ActionRecordError::Script)?;
 
-        Ok(Self {
-            description,
-            script,
-        })
+        Ok(Self { description })
     }
 }

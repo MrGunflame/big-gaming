@@ -1,10 +1,8 @@
 use std::collections::{HashMap, HashSet};
-use std::time::Instant;
 
 use bevy_ecs::system::Resource;
 use game_common::module::ModuleId;
 use game_common::record::{RecordId, RecordReference};
-use game_common::world::world::WorldState;
 use game_data::loader::FileLoader;
 use game_data::record::{Record, RecordBody, RecordKind};
 use game_data::DataBuffer;
@@ -134,60 +132,40 @@ pub fn load_modules(app: &mut App) {
 fn load_module(data: DataBuffer, modules: &mut Modules, server: &mut ScriptServer) {
     let mut records = Records::new();
     for record in &data.records {
-        let mut world = WorldState::new();
-        world.insert(Instant::now());
-
         // In case a linked asset is not present we still want to load
         // the record to not break linked records.
         records.insert(record.clone());
 
+        let mut scripts = Vec::new();
+        for script in &record.scripts {
+            let script = match Script::load(&server, script.as_ref()) {
+                Ok(script) => script,
+                Err(err) => {
+                    tracing::error!(
+                        "failed to load script for record {} from local path {:?}: {}",
+                        record.name,
+                        script.as_ref(),
+                        err,
+                    );
+
+                    continue;
+                }
+            };
+
+            let events = script.events();
+
+            let handle = server.insert(script);
+
+            scripts.push(ScriptRecord { handle, events });
+        }
+
+        records.insert_scripts(record.id, scripts);
+
         match &record.body {
-            RecordBody::Item(_) => {
-                records.insert_scripts(record.id, vec![]);
-            }
-            RecordBody::Object(_) => {
-                records.insert_scripts(record.id, vec![]);
-            }
-            RecordBody::Action(action) => {
-                let script = match Script::load(&server, action.script.as_ref()) {
-                    Ok(script) => script,
-                    Err(err) => {
-                        tracing::error!(
-                            "failed to load script for record {} from local path {:?}: {}",
-                            record.name,
-                            action.script.as_ref(),
-                            err,
-                        );
-                        continue;
-                    }
-                };
-
-                let events = script.events();
-
-                let handle = server.insert(script);
-
-                records.insert_scripts(record.id, vec![ScriptRecord { handle, events }]);
-            }
-            RecordBody::Component(component) => {
-                let script = match Script::load(&server, component.script.as_ref()) {
-                    Ok(script) => script,
-                    Err(err) => {
-                        tracing::error!(
-                            "failed to load script for record {} from local path {:?}: {}",
-                            record.name,
-                            component.script.as_ref(),
-                            err,
-                        );
-
-                        continue;
-                    }
-                };
-
-                let events = script.events();
-                let handle = server.insert(script);
-
-                records.insert_scripts(record.id, vec![ScriptRecord { handle, events }]);
-            }
+            RecordBody::Item(_) => {}
+            RecordBody::Object(_) => {}
+            RecordBody::Action(action) => {}
+            RecordBody::Component(component) => {}
         }
     }
 

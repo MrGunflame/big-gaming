@@ -155,11 +155,9 @@ fn create_record(
             }
             RecordBodyFields::Action => RecordBody::Action(ActionRecord {
                 description: String::new(),
-                script: Uri::new(),
             }),
             RecordBodyFields::Component => RecordBody::Component(ComponentRecord {
                 description: String::new(),
-                script: Uri::new(),
             }),
             RecordBodyFields::Object(object) => {
                 let model = object.model.get_untracked();
@@ -175,6 +173,7 @@ fn create_record(
             id: RecordId(0),
             name,
             body,
+            scripts: Vec::new(),
         };
 
         records.insert(module_id, record);

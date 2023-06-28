@@ -16,7 +16,6 @@ pub enum ComponentRecordError {
 #[derive(Clone, Debug)]
 pub struct ComponentRecord {
     pub description: String,
-    pub script: Uri,
 }
 
 impl Encode for ComponentRecord {
@@ -25,7 +24,6 @@ impl Encode for ComponentRecord {
         B: BufMut,
     {
         self.description.encode(&mut buf);
-        self.script.encode(&mut buf);
     }
 }
 
@@ -37,12 +35,8 @@ impl Decode for ComponentRecord {
         B: Buf,
     {
         let description = String::decode(&mut buf).map_err(ComponentRecordError::Description)?;
-        let script = Uri::decode(&mut buf).map_err(ComponentRecordError::Script)?;
 
-        Ok(Self {
-            description,
-            script,
-        })
+        Ok(Self { description })
     }
 }
 
