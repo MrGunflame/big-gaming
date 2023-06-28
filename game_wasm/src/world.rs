@@ -441,12 +441,23 @@ mod tests {
     #[test]
     fn component_update_not_aligned() {
         #[derive(Copy, Clone, Debug, Zeroable, Pod)]
-        #[repr(C, align(32))]
+        #[repr(C, align(8))]
         struct Target([u8; 32]);
 
-        // FIXME: Does this actually guarantee that buf is not aligned?
-        // The assert will fail the test if it is not.
-        let buf = vec![0; 32];
+        // If the buffer is aligned, manually "unalign" it by moving the pointer 1 byte
+        // forward.
+        let mut buf = vec![0; 64];
+        let is_aligned = buf.as_ptr().align_offset(mem::align_of::<Target>()) == 0;
+        if is_aligned {
+            // TODO: Can use `Vec::into_raw_parts` once stable.
+            let ptr = buf.as_mut_ptr();
+            let len = buf.len();
+            let cap = buf.capacity();
+
+            mem::forget(buf);
+
+            buf = unsafe { Vec::from_raw_parts(ptr.add(1), len - 1, cap - 1) };
+        }
 
         let mut component = Component { bytes: buf };
         assert!(
@@ -461,6 +472,24 @@ mod tests {
             *val = Target([1; 32]);
         });
 
-        assert_eq!(component.bytes, vec![1; 32]);
+        // If the buffer was orignally aligned we have to truncate the first
+        // byte.
+        let mut output = if is_aligned { vec![0; 63] } else { vec![0; 64] };
+        for index in 0..32 {
+            output[index] = 1;
+        }
+
+        assert_eq!(component.bytes, output);
+
+        // Drop the orignal buffer so miri shuts up about leaks.
+        if is_aligned {
+            let ptr = component.bytes.as_mut_ptr();
+            let len = component.bytes.len();
+            let cap = component.bytes.capacity();
+
+            mem::forget(component);
+
+            drop(unsafe { Vec::from_raw_parts(ptr.sub(1), len + 1, cap + 1) });
+        };
     }
 }
