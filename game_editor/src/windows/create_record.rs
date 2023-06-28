@@ -1,7 +1,12 @@
+use std::path::PathBuf;
+
 use game_common::module::ModuleId;
 use game_common::record::RecordId;
 use game_common::units::Mass;
+use game_data::components::actions::ActionRecord;
+use game_data::components::components::ComponentRecord;
 use game_data::components::item::ItemRecord;
+use game_data::components::objects::ObjectRecord;
 use game_data::record::{Record, RecordBody, RecordKind};
 use game_data::uri::Uri;
 use game_input::mouse::MouseButtonInput;
@@ -98,7 +103,9 @@ pub fn CreateRecord(cx: &Scope, kind: RecordKind, records: Records, modules: Mod
 
     let body = match kind {
         RecordKind::Item => RecordBodyFields::Item(render_item(&root)),
-        _ => todo!(),
+        RecordKind::Action => RecordBodyFields::Action,
+        RecordKind::Component => RecordBodyFields::Component,
+        RecordKind::Object => RecordBodyFields::Object(render_object(&root)),
     };
 
     let fields = Fields {
@@ -146,6 +153,22 @@ fn create_record(
                     actions: Default::default(),
                 })
             }
+            RecordBodyFields::Action => RecordBody::Action(ActionRecord {
+                description: String::new(),
+                script: Uri::new(),
+            }),
+            RecordBodyFields::Component => RecordBody::Component(ComponentRecord {
+                description: String::new(),
+                script: Uri::new(),
+            }),
+            RecordBodyFields::Object(object) => {
+                let model = object.model.get_untracked();
+
+                RecordBody::Object(ObjectRecord {
+                    uri: Uri::from(PathBuf::from(model)),
+                    components: Default::default(),
+                })
+            }
         };
 
         let record = Record {
@@ -166,6 +189,9 @@ struct Fields {
 
 enum RecordBodyFields {
     Item(ItemFields),
+    Action,
+    Component,
+    Object(ObjectFields),
 }
 
 struct ItemFields {
@@ -228,4 +254,50 @@ fn render_item(cx: &Scope) -> ItemFields {
     };
 
     ItemFields { mass, value }
+}
+
+struct ObjectFields {
+    model: ReadSignal<String>,
+}
+
+fn render_object(cx: &Scope) -> ObjectFields {
+    let (model, set_model) = create_signal(cx, String::new());
+
+    let root = view! {
+        cx,
+        <Container style={Style::default()}>
+        </Container>
+    };
+
+    let name_col = view! {
+        root,
+        <Container style={Style::default()}>
+        </Container>
+    };
+
+    for text in ["Model"] {
+        view! {
+            name_col,
+            <Text text={text.into()}>
+            </Text>
+        };
+    }
+
+    let val_col = view! {
+        root,
+        <Container style={Style::default()}>
+        </Container>
+    };
+
+    let on_change = move |s: String| {
+        set_model.set(s);
+    };
+
+    view! {
+        val_col,
+        <Input value={model.get_untracked().to_string()} style={Style::default()} on_change={on_change.into()}>
+        </Input>
+    };
+
+    ObjectFields { model }
 }
