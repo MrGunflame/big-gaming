@@ -11,13 +11,14 @@ use game_data::record::{Record, RecordBody, RecordKind};
 use game_data::uri::Uri;
 use game_input::mouse::MouseButtonInput;
 use game_ui::events::Context;
-use game_ui::reactive::{create_signal, ReadSignal, Scope};
+use game_ui::reactive::{create_effect, create_signal, ReadSignal, Scope};
 use game_ui::render::style::{
     Background, Bounds, Direction, Justify, Padding, Size, SizeVec2, Style,
 };
 use game_ui::{component, view};
 
 use game_ui::widgets::*;
+use parking_lot::Mutex;
 
 use crate::state::module::Modules;
 use crate::state::record::Records;
@@ -108,9 +109,12 @@ pub fn CreateRecord(cx: &Scope, kind: RecordKind, records: Records, modules: Mod
         RecordKind::Object => RecordBodyFields::Object(render_object(&root)),
     };
 
+    let scripts = render_script_section(&root);
+
     let fields = Fields {
         module_id,
         name,
+        scripts,
         body,
     };
 
@@ -139,6 +143,13 @@ fn create_record(
         }
 
         ctx.window.close();
+
+        let scripts = fields
+            .scripts
+            .get_untracked()
+            .into_iter()
+            .map(|s| Uri::from(PathBuf::from(s)))
+            .collect();
 
         let body = match &fields.body {
             RecordBodyFields::Item(item) => {
@@ -172,8 +183,8 @@ fn create_record(
         let record = Record {
             id: RecordId(0),
             name,
+            scripts,
             body,
-            scripts: Vec::new(),
         };
 
         records.insert(module_id, record);
@@ -183,6 +194,7 @@ fn create_record(
 struct Fields {
     module_id: ReadSignal<ModuleId>,
     name: ReadSignal<String>,
+    scripts: ReadSignal<Vec<String>>,
     body: RecordBodyFields,
 }
 
@@ -299,4 +311,89 @@ fn render_object(cx: &Scope) -> ObjectFields {
     };
 
     ObjectFields { model }
+}
+
+fn render_script_section(cx: &Scope) -> ReadSignal<Vec<String>> {
+    let (scripts, set_scripts) = create_signal(cx, Vec::<String>::new());
+
+    let root = view! {
+        cx,
+        <Container style={Style::default()}>
+        </Container>
+    };
+
+    let script_list = view! {
+        root,
+        <Container style={Style::default()}>
+        </Container>
+    };
+
+    {
+        let scripts = scripts.clone();
+        let id = Mutex::new(None);
+        let cx2 = cx.clone();
+        create_effect(cx, move |_| {
+            let id = &mut *id.lock();
+            if let Some(id) = id {
+                cx2.remove(*id);
+            }
+
+            let root = view! {
+                script_list,
+                <Container style={Style::default()}>
+                </Container>
+            };
+            *id = root.id();
+
+            let scripts = scripts.get();
+
+            for script in scripts {
+                view! {
+                    root,
+                    <Text text={script.into()}>
+                    </Text>
+                };
+            }
+        });
+    }
+
+    let (new_script, set_new_script) = create_signal(cx, String::new());
+
+    let on_change = move |s| {
+        set_new_script.set(s);
+    };
+
+    let on_click = move |_| {
+        set_scripts.update(|v| {
+            v.push(new_script.get_untracked());
+        });
+    };
+
+    let style = Style {
+        bounds: Bounds {
+            min: SizeVec2 {
+                x: Size::Pixels(100.0),
+                y: Size::Pixels(20.0),
+            },
+            ..Default::default()
+        },
+        background: Background::GRAY,
+        ..Default::default()
+    };
+
+    view! {
+        root,
+        <Input style={style} value={"".to_owned()} on_change={on_change.into()}>
+        </Input>
+    };
+
+    view! {
+        root,
+        <Button style={Style::default()} on_click={on_click.into()}>
+            <Text text={"New Script".into()}>
+            </Text>
+        </Button>
+    };
+
+    scripts
 }
