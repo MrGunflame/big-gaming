@@ -1,158 +1,61 @@
 #![deny(unsafe_op_in_unsafe_fn)]
-#![feature(const_option)]
-
-mod effects;
-pub mod sound;
-pub mod track;
-
-use std::collections::VecDeque;
-use std::io::Cursor;
-use std::sync::Arc;
 
 use bevy_app::{App, Plugin};
-use bevy_asset::{AddAsset, AssetLoader, Assets, Handle, LoadedAsset};
-use bevy_ecs::system::{NonSendMut, Res, Resource};
-use bevy_reflect::TypeUuid;
+use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use cpal::{default_host, Host};
 
-use kira::manager::backend::cpal::CpalBackend;
-use kira::manager::{AudioManager, AudioManagerSettings};
-use kira::sound::static_sound::{StaticSoundData, StaticSoundSettings};
-use parking_lot::RwLock;
-
-#[derive(Clone, Debug, TypeUuid)]
-#[uuid = "ec630975-6b47-4006-9f16-d8b1eeb3584c"]
-pub struct AudioSource {
-    pub bytes: Arc<[u8]>,
-}
-
-impl AsRef<[u8]> for AudioSource {
-    fn as_ref(&self) -> &[u8] {
-        &self.bytes
-    }
-}
-
-pub struct AudioPlugin {}
-
-impl AudioPlugin {
-    pub fn new() -> Self {
-        Self {}
-    }
-}
+pub struct AudioPlugin;
 
 impl Plugin for AudioPlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(AudioServer {
-            queue: RwLock::default(),
-        })
-        .insert_non_send_resource(AudioBackend::new())
-        .add_asset::<AudioSource>()
-        .init_asset_loader::<AudioLoader>()
-        .add_system(play_queued_audio);
-    }
-}
+        let host = default_host();
+        let device = host
+            .default_output_device()
+            .expect("no default output device");
 
-#[derive(Copy, Clone, Debug, Default)]
-struct AudioLoader;
+        let config = device
+            .supported_output_configs()
+            .unwrap()
+            .next()
+            .unwrap()
+            .with_max_sample_rate()
+            .config();
 
-impl AssetLoader for AudioLoader {
-    fn load<'a>(
-        &'a self,
-        bytes: &'a [u8],
-        load_context: &'a mut bevy_asset::LoadContext,
-    ) -> bevy_asset::BoxedFuture<'a, Result<(), bevy_asset::Error>> {
-        load_context.set_default_asset(LoadedAsset::new(AudioSource {
-            bytes: bytes.into(),
-        }));
-        Box::pin(async move { Ok(()) })
-    }
+        dbg!(&config);
 
-    fn extensions(&self) -> &[&str] {
-        &["flac", "wav", "ogg"]
-    }
-}
+        let sample_rate = config.sample_rate.0 as f32;
+        let channels = config.channels as usize;
 
-#[derive(Resource)]
-pub struct AudioServer {
-    queue: RwLock<VecDeque<Handle<AudioSource>>>,
-}
-
-struct AudioBackend {
-    manager: Option<AudioManager<CpalBackend>>,
-}
-
-impl AudioBackend {
-    fn new() -> Self {
-        let manager = match AudioManager::new(AudioManagerSettings::default()) {
-            Ok(man) => Some(man),
-            Err(err) => {
-                tracing::error!("Failed to attach to audio sink: {}", err);
-                None
-            }
+        // Produce a sinusoid of maximum amplitude.
+        let mut sample_clock = 0f32;
+        let mut next_value = move || {
+            sample_clock = (sample_clock + 1.0) % sample_rate;
+            (sample_clock * 440.0 * 2.0 * std::f32::consts::PI / sample_rate).sin()
         };
 
-        Self { manager }
+        let stream = device
+            .build_output_stream(
+                &config,
+                move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
+                    write_data(data, channels, &mut next_value);
+                },
+                move |err| {
+                    panic!("{}", err);
+                },
+                None,
+            )
+            .unwrap();
+        stream.play().unwrap();
+
+        loop {}
     }
 }
 
-impl Default for AudioBackend {
-    #[inline]
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl AudioServer {
-    pub fn play(&self, source: Handle<AudioSource>) -> AudioHandle {
-        let mut queue = self.queue.write();
-        queue.push_back(source);
-
-        AudioHandle { id: StreamId(0) }
-    }
-}
-
-pub struct AudioHandle {
-    id: StreamId,
-}
-
-impl AudioHandle {
-    pub fn play(&self) {}
-
-    pub fn pause(&self) {}
-
-    pub fn toggle(&self) {}
-
-    pub fn stop(&self) {}
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-#[repr(transparent)]
-struct StreamId(u64);
-
-fn play_queued_audio(
-    mut backend: NonSendMut<AudioBackend>,
-    audio: Res<AudioServer>,
-    assets: Res<Assets<AudioSource>>,
-) {
-    let Some(manager) = &mut backend.manager else {
-        return;
-    };
-
-    let mut queue = audio.queue.write();
-
-    let mut index = 0;
-    while index < queue.len() {
-        let handle = &queue[index];
-
-        let Some(source) = assets.get(handle) else {
-            index += 1;
-            continue;
-        };
-
-        let reader = Cursor::new(source.clone());
-        let data = StaticSoundData::from_cursor(reader, StaticSoundSettings::default()).unwrap();
-
-        let handle = manager.play(data).unwrap();
-
-        queue.remove(index);
+fn write_data(output: &mut [f32], channels: usize, next_sample: &mut dyn FnMut() -> f32) {
+    for frame in output.chunks_mut(channels) {
+        let val = next_sample();
+        for sample in frame.iter_mut() {
+            *sample = val;
+        }
     }
 }
