@@ -1,5 +1,6 @@
 use std::collections::{HashMap, VecDeque};
 use std::future::Future;
+use std::marker::PhantomData;
 use std::net::SocketAddr;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -59,7 +60,10 @@ impl Default for ConnectionId {
     }
 }
 
-pub struct Connection {
+pub struct Connection<M>
+where
+    M: ConnectionMode,
+{
     pub id: ConnectionId,
     /// Input stream from the socket
     stream: mpsc::Receiver<Packet>,
@@ -75,7 +79,6 @@ pub struct Connection {
     peer: SocketAddr,
     backlog: Backlog,
     frame_queue: FrameQueue,
-    mode: ConnectionMode,
     write: Option<WriteRequest>,
     interval: TickInterval,
     last_time: Instant,
@@ -88,14 +91,18 @@ pub struct Connection {
     buffer: FrameBuffer,
     write_queue: WriteQueue,
     ack_list: AckList,
+
+    _mode: PhantomData<fn() -> M>,
 }
 
-impl Connection {
+impl<M> Connection<M>
+where
+    M: ConnectionMode,
+{
     pub fn new(
         peer: SocketAddr,
         queue: CommandQueue,
         socket: Arc<Socket>,
-        mode: ConnectionMode,
     ) -> (Self, ConnectionHandle) {
         let id = ConnectionId::new();
 
@@ -113,7 +120,6 @@ impl Connection {
             peer,
             backlog: Backlog::new(),
             frame_queue: FrameQueue::new(),
-            mode,
             write: None,
             interval: TickInterval::new(),
             last_time: Instant::now(),
@@ -126,9 +132,11 @@ impl Connection {
             buffer: FrameBuffer::new(),
             write_queue: WriteQueue::new(),
             ack_list: AckList::default(),
+
+            _mode: PhantomData,
         };
 
-        if mode == ConnectionMode::Connect {
+        if M::IS_CONNECT {
             conn.prepare_connect();
         }
 
@@ -366,9 +374,9 @@ impl Connection {
             return Poll::Ready(());
         };
 
-        match (state, self.mode) {
+        match state {
             // Connect mode
-            (HandshakeState::Hello, ConnectionMode::Connect) => {
+            HandshakeState::Hello if M::IS_CONNECT => {
                 assert_eq!(body.kind, HandshakeType::HELLO);
 
                 if body.kind != HandshakeType::HELLO {
@@ -388,7 +396,7 @@ impl Connection {
 
                 return self.send(resp, ConnectionState::Handshake(HandshakeState::Agreement));
             }
-            (HandshakeState::Agreement, ConnectionMode::Connect) => {
+            HandshakeState::Agreement if M::IS_CONNECT => {
                 if body.kind != HandshakeType::AGREEMENT {
                     tracing::info!("abort: expected AGREEMENT, but got {:?}", body.kind);
                     self.abort();
@@ -404,7 +412,7 @@ impl Connection {
                 });
             }
             // Listen mode
-            (HandshakeState::Hello, ConnectionMode::Listen) => {
+            HandshakeState::Hello if M::IS_LISTEN => {
                 if body.kind != HandshakeType::HELLO {
                     tracing::info!("reject: expected HELLO, but got {:?}", body.kind);
                     return self.reject(HandshakeType::REJ_ROGUE);
@@ -421,7 +429,7 @@ impl Connection {
 
                 return self.send(resp, ConnectionState::Handshake(HandshakeState::Agreement));
             }
-            (HandshakeState::Agreement, ConnectionMode::Listen) => {
+            HandshakeState::Agreement if M::IS_LISTEN => {
                 if body.kind != HandshakeType::AGREEMENT {
                     tracing::info!("reject: expected AGREEMENT, but got {:?}", body.kind);
                     return self.reject(HandshakeType::REJ_ROGUE);
@@ -445,6 +453,8 @@ impl Connection {
 
                 return self.send(resp, ConnectionState::Connected);
             }
+            // `M` is configured incorrectly. It must be either `IS_LISTEN` OR `IS_CONNECT`.
+            HandshakeState::Hello | HandshakeState::Agreement => unreachable!(),
         }
 
         Poll::Pending
@@ -557,7 +567,7 @@ impl Connection {
 
     fn shutdown(&mut self) -> Poll<Result<(), ErrorKind>> {
         // If the connection active we need to notify that the player left.
-        if self.mode.is_listen() && self.state == ConnectionState::Connected {
+        if M::IS_LISTEN && self.state == ConnectionState::Connected {
             self.queue.push(ConnectionMessage {
                 id: None,
                 conn: self.id,
@@ -650,7 +660,10 @@ impl Connection {
     }
 }
 
-impl Future for Connection {
+impl<M> Future for Connection<M>
+where
+    M: ConnectionMode,
+{
     type Output = Result<(), Error>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
@@ -827,22 +840,25 @@ impl Backlog {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub enum ConnectionMode {
-    Connect,
-    Listen,
+pub trait ConnectionMode {
+    const IS_CONNECT: bool;
+    const IS_LISTEN: bool;
 }
 
-impl ConnectionMode {
-    #[inline]
-    pub const fn is_connect(self) -> bool {
-        matches!(self, Self::Connect)
-    }
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Connect;
 
-    #[inline]
-    pub const fn is_listen(self) -> bool {
-        matches!(self, Self::Listen)
-    }
+impl ConnectionMode for Connect {
+    const IS_CONNECT: bool = true;
+    const IS_LISTEN: bool = false;
+}
+
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Listen;
+
+impl ConnectionMode for Listen {
+    const IS_CONNECT: bool = false;
+    const IS_LISTEN: bool = true;
 }
 
 #[derive(Debug)]

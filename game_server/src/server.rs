@@ -8,7 +8,7 @@ use std::task::{Context, Poll};
 use bytes::BytesMut;
 use futures::stream::FuturesUnordered;
 use futures::{FutureExt, StreamExt};
-use game_net::conn::{Connection, ConnectionMode};
+use game_net::conn::{Connection, ConnectionMode, Listen};
 use game_net::proto::{Decode, Error, Packet};
 use game_net::socket::Socket;
 use tokio::task::JoinHandle;
@@ -102,7 +102,7 @@ async fn handle_packet(addr: SocketAddr, socket: Arc<Socket>, state: &State, pac
     //     return;
     // }
 
-    let (conn, handle) = Connection::new(addr, state.queue.clone(), socket, ConnectionMode::Listen);
+    let (conn, handle) = Connection::<Listen>::new(addr, state.queue.clone(), socket);
 
     {
         let state = state.clone();

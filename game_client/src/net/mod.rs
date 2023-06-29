@@ -18,7 +18,7 @@ use game_common::units::Mass;
 use game_common::world::entity::{Entity, EntityBody};
 use game_common::world::world::WorldState;
 use game_net::backlog::Backlog;
-use game_net::conn::{Connection, ConnectionHandle, ConnectionMode};
+use game_net::conn::{Connect, Connection, ConnectionHandle, ConnectionMode};
 use game_net::proto::{Decode, Packet};
 use game_net::snapshot::{Command, CommandQueue, ConnectionMessage};
 use game_net::Socket;
@@ -75,8 +75,7 @@ pub fn spawn_conn(
                     return;
                 }
             };
-            let (mut conn, handle) =
-                Connection::new(addr, queue.clone(), sock.clone(), ConnectionMode::Connect);
+            let (mut conn, handle) = Connection::<Connect>::new(addr, queue.clone(), sock.clone());
 
             tokio::task::spawn(async move {
                 if let Err(err) = (&mut conn).await {
