@@ -104,8 +104,6 @@ pub fn apply_world_delta(
     }
 
     for entity in buffer.entities {
-        dbg!(&entity);
-
         let id = entity.entity.id;
         let entity = spawn_entity(&mut commands, entity);
         conn.entities.insert(id, entity);
@@ -207,44 +205,40 @@ fn handle_event(
         } => {
             let entity = conn.entities.get(id).unwrap();
 
-            if let Ok((_, mut transform, _, _, _, i)) = entities.get_mut(entity) {
+            if let Ok((_, transform, _, _, _, i)) = entities.get_mut(entity) {
                 match i {
                     Some(i) => {}
                     None => (),
                 }
                 // assert!(i.is_none());
 
-                // commands.entity(entity).insert(InterpolateTranslation {
-                //     src: transform.translation,
-                //     dst: translation,
-                //     start: period.start,
-                //     end: period.end,
-                // });
-
-                transform.translation = translation;
+                commands.entity(entity).insert(InterpolateTranslation {
+                    src: transform.translation,
+                    dst: translation,
+                    start: period.start,
+                    end: period.end,
+                });
             }
         }
         EntityChange::Rotate { id, rotation } => {
             let entity = conn.entities.get(id).unwrap();
 
             if let Ok((_, mut transform, _, _, props, _)) = entities.get_mut(entity) {
-                // if let Some(props) = props {
-                //     commands.entity(entity).insert(InterpolateRotation {
-                //         src: props.rotation,
-                //         dst: rotation,
-                //         start: period.start,
-                //         end: period.end,
-                //     });
-                // } else {
-                //     commands.entity(entity).insert(InterpolateRotation {
-                //         src: transform.rotation,
-                //         dst: rotation,
-                //         start: period.start,
-                //         end: period.end,
-                //     });
-                // }
-
-                transform.rotation = rotation;
+                if let Some(props) = props {
+                    commands.entity(entity).insert(InterpolateRotation {
+                        src: props.rotation,
+                        dst: rotation,
+                        start: period.start,
+                        end: period.end,
+                    });
+                } else {
+                    commands.entity(entity).insert(InterpolateRotation {
+                        src: transform.rotation,
+                        dst: rotation,
+                        start: period.start,
+                        end: period.end,
+                    });
+                }
             }
         }
         EntityChange::CreateHost { id } => {
