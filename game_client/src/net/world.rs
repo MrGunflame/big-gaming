@@ -11,7 +11,7 @@ use game_common::entity::EntityId;
 use game_common::world::entity::{Entity, EntityBody};
 use game_common::world::snapshot::{EntityChange, InventoryItemAdd};
 use game_common::world::source::StreamingSource;
-use game_common::world::world::{WorldState, WorldViewRef};
+use game_common::world::world::WorldState;
 use game_core::modules::Modules;
 use game_net::backlog::Backlog;
 
@@ -47,14 +47,16 @@ pub fn apply_world_delta(
     let cf = conn.control_fame();
     let period = &mut conn.interpolation_period;
 
-    // Don't start a new period until the previous ended.
-    if period.end > cf {
-        return;
-    }
+    //dbg!(cf, &period);
 
-    if world.len() < 2 {
-        return;
-    }
+    // Don't start a new period until the previous ended.
+    // if period.end > cf {
+    //     return;
+    // }
+
+    // if world.len() < 2 {
+    //     return;
+    // }
 
     // Apply client-side prediction
     let view = world.at_mut(0).unwrap();
@@ -75,10 +77,11 @@ pub fn apply_world_delta(
         }
     }
 
-    //period.start = curr.control_frame();
-    //period.end = next.creation();
+    period.start = curr.control_frame();
+    period.end = next.control_frame();
 
-    let delta = WorldViewRef::delta(Some(curr), next);
+    let delta = curr.deltas();
+    //let delta = WorldViewRef::delta(Some(curr), next);
 
     // Apply world delta.
 
@@ -91,7 +94,7 @@ pub fn apply_world_delta(
         handle_event(
             &mut commands,
             &mut entities,
-            event,
+            event.clone(),
             &mut buffer,
             conn,
             &mut backlog,
@@ -101,6 +104,8 @@ pub fn apply_world_delta(
     }
 
     for entity in buffer.entities {
+        dbg!(&entity);
+
         let id = entity.entity.id;
         let entity = spawn_entity(&mut commands, entity);
         conn.entities.insert(id, entity);
@@ -202,43 +207,44 @@ fn handle_event(
         } => {
             let entity = conn.entities.get(id).unwrap();
 
-            if let Ok((_, transform, _, _, _, i)) = entities.get_mut(entity) {
+            if let Ok((_, mut transform, _, _, _, i)) = entities.get_mut(entity) {
                 match i {
-                    Some(i) => {
-                        dbg!(period);
-                        dbg!(i);
-                    }
+                    Some(i) => {}
                     None => (),
                 }
                 // assert!(i.is_none());
 
-                commands.entity(entity).insert(InterpolateTranslation {
-                    src: transform.translation,
-                    dst: translation,
-                    start: period.start,
-                    end: period.end,
-                });
+                // commands.entity(entity).insert(InterpolateTranslation {
+                //     src: transform.translation,
+                //     dst: translation,
+                //     start: period.start,
+                //     end: period.end,
+                // });
+
+                transform.translation = translation;
             }
         }
         EntityChange::Rotate { id, rotation } => {
             let entity = conn.entities.get(id).unwrap();
 
-            if let Ok((_, transform, _, _, props, _)) = entities.get_mut(entity) {
-                if let Some(props) = props {
-                    commands.entity(entity).insert(InterpolateRotation {
-                        src: props.rotation,
-                        dst: rotation,
-                        start: period.start,
-                        end: period.end,
-                    });
-                } else {
-                    commands.entity(entity).insert(InterpolateRotation {
-                        src: transform.rotation,
-                        dst: rotation,
-                        start: period.start,
-                        end: period.end,
-                    });
-                }
+            if let Ok((_, mut transform, _, _, props, _)) = entities.get_mut(entity) {
+                // if let Some(props) = props {
+                //     commands.entity(entity).insert(InterpolateRotation {
+                //         src: props.rotation,
+                //         dst: rotation,
+                //         start: period.start,
+                //         end: period.end,
+                //     });
+                // } else {
+                //     commands.entity(entity).insert(InterpolateRotation {
+                //         src: transform.rotation,
+                //         dst: rotation,
+                //         start: period.start,
+                //         end: period.end,
+                //     });
+                // }
+
+                transform.rotation = rotation;
             }
         }
         EntityChange::CreateHost { id } => {

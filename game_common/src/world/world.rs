@@ -21,7 +21,6 @@ pub use metrics::WorldMetrics;
 use super::control_frame::ControlFrame;
 use super::entity::{Entity, EntityBody};
 use super::inventory::InventoriesMut;
-use super::snapshot::InventoryDestroy;
 use super::source::{StreamingSource, StreamingState};
 
 /// The world state at constant time intervals.
@@ -48,11 +47,27 @@ impl WorldState {
     }
 
     pub fn get(&self, cf: ControlFrame) -> Option<WorldViewRef<'_>> {
-        let index = self.get_index(cf)?;
-        self.snapshots
-            .get(index)
-            .map(|s| WorldViewRef { snapshot: s, index })
+        let mut index = 0;
+
+        while index < self.snapshots.len() {
+            let snapshot = &self.snapshots[index];
+
+            if cf == snapshot.control_frame {
+                return Some(WorldViewRef { snapshot, index });
+            }
+
+            index += 1;
+        }
+
+        None
     }
+
+    // pub fn get(&self, cf: ControlFrame) -> Option<WorldViewRef<'_>> {
+    //     let index = self.get_index(cf)?;
+    //     self.snapshots
+    //         .get(index)
+    //         .map(|s| WorldViewRef { snapshot: s, index })
+    // }
 
     pub fn get_mut(&mut self, cf: ControlFrame) -> Option<WorldViewMut<'_>> {
         let index = self.get_index(cf)?;
@@ -251,98 +266,6 @@ impl<'a> WorldViewRef<'a> {
         self.snapshot.cells.values().flatten()
     }
 
-    /// Creates a delta from `self` to `next`.
-    pub fn delta(this: Option<Self>, next: WorldViewRef<'_>) -> Vec<EntityChange> {
-        let mut entities = next.snapshot.entities.clone();
-        let mut hosts = next.snapshot.hosts.clone();
-
-        let mut delta = Vec::new();
-
-        if let Some(view) = this {
-            for entity in view.iter() {
-                match entities.entities.remove(&entity.id) {
-                    Some(new) => {
-                        if entity.transform.translation != new.transform.translation {
-                            delta.push(EntityChange::Translate {
-                                id: entity.id,
-                                translation: new.transform.translation,
-                                cell: TransferCell::new(
-                                    entity.transform.translation,
-                                    new.transform.translation,
-                                ),
-                            });
-                        }
-
-                        if entity.transform.rotation != new.transform.rotation {
-                            delta.push(EntityChange::Rotate {
-                                id: entity.id,
-                                rotation: new.transform.rotation,
-                            });
-                        }
-
-                        match (&entity.body, &new.body) {
-                            (EntityBody::Actor(prev), EntityBody::Actor(next)) => {
-                                if prev.health != next.health {
-                                    delta.push(EntityChange::Health {
-                                        id: entity.id,
-                                        health: next.health,
-                                    });
-                                }
-                            }
-                            _ => (),
-                        }
-                    }
-                    None => {
-                        delta.push(EntityChange::Destroy { id: entity.id });
-                    }
-                }
-            }
-
-            for id in view.snapshot.hosts.entities.keys().copied() {
-                match hosts.entities.remove(&id) {
-                    Some(()) => {}
-                    None => {
-                        delta.push(EntityChange::Destroy { id });
-                    }
-                }
-            }
-        }
-
-        for entity in entities.entities.into_values() {
-            delta.push(EntityChange::Create { entity });
-        }
-
-        for id in hosts.entities.into_keys() {
-            delta.push(EntityChange::CreateHost { id });
-        }
-
-        if let Some(this) = this {
-            let prev = &this.snapshot.inventories;
-            let mut curr = next.snapshot.inventories.clone();
-
-            for (key, inv1) in prev.inventories.iter() {
-                match curr.inventories.remove(&key) {
-                    Some(inv2) => {
-                        delta.extend(super::inventory::delta_inventory(*key, inv1, &inv2));
-                    }
-                    // Inventory removed
-                    None => {
-                        delta.push(EntityChange::InventoryDestroy(InventoryDestroy {
-                            entity: *key,
-                        }));
-                    }
-                }
-            }
-
-            let empty_inv = Inventory::new();
-            for (key, inv) in curr.inventories.iter() {
-                delta.extend(super::inventory::delta_inventory(*key, &empty_inv, inv));
-            }
-        }
-
-        delta
-    }
-
     pub fn control_frame(&self) -> ControlFrame {
         self.snapshot.control_frame
     }
@@ -445,10 +368,22 @@ impl<'a> WorldViewMut<'a> {
         assert!(self.snapshot().entities.get(id).is_some());
 
         self.snapshot().hosts.insert(id);
+
+        let entity = self.get(id).unwrap();
+        self.new_deltas
+            .entry(CellId::from(entity.transform.translation))
+            .or_default()
+            .push(EntityChange::CreateHost { id });
     }
 
     pub fn despawn_host(&mut self, id: EntityId) {
         self.snapshot().hosts.remove(id);
+
+        let entity = self.get(id).unwrap();
+        self.new_deltas
+            .entry(CellId::from(entity.transform.translation))
+            .or_default()
+            .push(EntityChange::CreateHost { id });
     }
 
     /// Sets the streaming state of the entity.
@@ -1198,6 +1133,48 @@ mod tests {
 
             let cell = view.cell(CellId::from(Vec3::new(64.0, 0.0, 0.0)));
             assert!(cell.get(id).is_some());
+        }
+    }
+
+    #[test]
+    fn world_view_delta() {
+        let mut world = WorldState::new();
+
+        let cf0 = ControlFrame(0);
+        let cf1 = ControlFrame(1);
+
+        world.insert(cf0);
+        world.insert(cf1);
+
+        let mut view0 = world.get_mut(cf0).unwrap();
+        view0.spawn(create_test_entity());
+        drop(view0);
+
+        // Events propagate to newest snapshot
+        let view0 = world.get(cf0).unwrap();
+        let view1 = world.get(cf1).unwrap();
+
+        for view in [view0, view1] {
+            let events = view.deltas().collect::<Vec<_>>();
+
+            assert_eq!(events.len(), 1);
+            for event in events {
+                match event {
+                    EntityChange::Create { entity: _ } => (),
+                    _ => panic!("unexpected event: {:?}", event),
+                }
+            }
+        }
+    }
+
+    fn create_test_entity() -> Entity {
+        Entity {
+            id: EntityId::dangling(),
+            transform: Transform::default(),
+            body: EntityBody::Object(Object {
+                id: ObjectId(RecordReference::STUB),
+            }),
+            components: Components::new(),
         }
     }
 }

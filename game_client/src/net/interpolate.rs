@@ -1,5 +1,3 @@
-use std::time::Instant;
-
 use bevy_ecs::prelude::{Component, Entity};
 use bevy_ecs::system::{Commands, Query, Res};
 use game_common::components::actor::ActorProperties;
@@ -26,8 +24,6 @@ impl InterpolateTranslation {
         let d2 = now - self.start;
 
         let s = d2.0 as f32 / d1.0 as f32;
-
-        dbg!(s);
 
         Vec3::lerp(self.src, self.dst, f32::clamp(s, 0.0, 1.0))
     }
@@ -62,10 +58,6 @@ pub fn interpolate_translation(
 
     for (entity, mut transform, interpolate) in &mut entities {
         let now = conn.control_fame() - (interpolate.end - interpolate.start);
-
-        dbg!(time.last_update());
-        dbg!(interpolate.end - interpolate.start);
-        dbg!(now);
 
         transform.translation = interpolate.get(now);
 

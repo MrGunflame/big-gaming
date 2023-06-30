@@ -196,8 +196,6 @@ fn flush_command_queue(mut conn: ResMut<ServerConnection>, mut world: ResMut<Wor
                 conn.host = id;
             }
             Command::InventoryItemAdd { entity, id, item } => {
-                dbg!(entity, id, item);
-
                 let item = Item {
                     id: item,
                     components: Components::default(),
