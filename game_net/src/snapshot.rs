@@ -4,16 +4,14 @@ use game_common::components::combat::Health;
 use game_common::components::inventory::InventoryId;
 use game_common::components::items::ItemId;
 use game_common::entity::EntityId;
+use game_common::world::control_frame::ControlFrame;
 use game_common::world::entity::EntityBody;
-use game_common::world::snapshot::EntityChange;
 use game_common::world::CellId;
 use glam::{Quat, Vec3};
 use parking_lot::Mutex;
 use std::collections::VecDeque;
-use std::fs::OpenOptions;
 use std::ops::{Add, AddAssign, Sub, SubAssign};
 use std::sync::Arc;
-use std::time::Instant;
 
 use crate::conn::ConnectionId;
 
@@ -74,7 +72,7 @@ pub enum Status {
 pub struct ConnectionMessage {
     pub id: Option<CommandId>,
     pub conn: ConnectionId,
-    pub snapshot: Instant,
+    pub control_frame: ControlFrame,
     pub command: Command,
 }
 

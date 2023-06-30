@@ -4,27 +4,32 @@ use bevy_ecs::prelude::{Component, Entity};
 use bevy_ecs::system::{Commands, Query, Res};
 use game_common::components::actor::ActorProperties;
 use game_common::components::transform::Transform;
+use game_common::world::control_frame::ControlFrame;
 use game_core::time::Time;
 use glam::{Quat, Vec3};
 
 use crate::utils::extract_actor_rotation;
 
+use super::ServerConnection;
+
 #[derive(Copy, Clone, Debug, Component)]
 pub struct InterpolateTranslation {
     pub src: Vec3,
     pub dst: Vec3,
-    pub start: Instant,
-    pub end: Instant,
+    pub start: ControlFrame,
+    pub end: ControlFrame,
 }
 
 impl InterpolateTranslation {
-    fn get(&self, now: Instant) -> Vec3 {
+    fn get(&self, now: ControlFrame) -> Vec3 {
         let d1 = self.end - self.start;
         let d2 = now - self.start;
 
-        let s = d2.as_secs_f64() / d1.as_secs_f64();
+        let s = d2.0 as f32 / d1.0 as f32;
 
-        Vec3::lerp(self.src, self.dst, f32::clamp(s as f32, 0.0, 1.0))
+        dbg!(s);
+
+        Vec3::lerp(self.src, self.dst, f32::clamp(s, 0.0, 1.0))
     }
 }
 
@@ -32,30 +37,35 @@ impl InterpolateTranslation {
 pub struct InterpolateRotation {
     pub src: Quat,
     pub dst: Quat,
-    pub start: Instant,
-    pub end: Instant,
+    pub start: ControlFrame,
+    pub end: ControlFrame,
 }
 
 impl InterpolateRotation {
-    fn get(&self, now: Instant) -> Quat {
+    fn get(&self, now: ControlFrame) -> Quat {
         let d1 = self.end - self.start;
         let d2 = now - self.start;
 
-        let s = d2.as_secs_f64() / d1.as_secs_f64();
+        let s = d2.0 as f32 / d1.0 as f32;
 
-        Quat::slerp(self.src, self.dst, f32::clamp(s as f32, 0.0, 1.0))
+        Quat::slerp(self.src, self.dst, f32::clamp(s, 0.0, 1.0))
     }
 }
 
 pub fn interpolate_translation(
     time: Res<Time>,
+    conn: Res<ServerConnection>,
     mut commands: Commands,
     mut entities: Query<(Entity, &mut Transform, &InterpolateTranslation)>,
 ) {
     let now = time.last_update();
 
     for (entity, mut transform, interpolate) in &mut entities {
-        let now = now - (interpolate.end - interpolate.start);
+        let now = conn.control_fame() - (interpolate.end - interpolate.start);
+
+        dbg!(time.last_update());
+        dbg!(interpolate.end - interpolate.start);
+        dbg!(now);
 
         transform.translation = interpolate.get(now);
 
@@ -67,6 +77,7 @@ pub fn interpolate_translation(
 
 pub fn interpolate_rotation(
     time: Res<Time>,
+    conn: Res<ServerConnection>,
     mut commands: Commands,
     mut entities: Query<(
         Entity,
@@ -75,10 +86,8 @@ pub fn interpolate_rotation(
         &InterpolateRotation,
     )>,
 ) {
-    let now = time.last_update();
-
     for (entity, mut transform, props, interpolate) in &mut entities {
-        let now = now - (interpolate.end - interpolate.start);
+        let now = conn.control_fame() - (interpolate.end - interpolate.start);
 
         if let Some(mut props) = props {
             props.rotation = interpolate.get(now);
@@ -95,25 +104,22 @@ pub fn interpolate_rotation(
 
 #[cfg(test)]
 mod tests {
-    use std::time::{Duration, Instant};
-
+    use game_common::world::control_frame::ControlFrame;
     use glam::Vec3;
 
     use super::InterpolateTranslation;
 
     #[test]
     fn interpolate_translation() {
-        let now = Instant::now();
-
         let lerp = InterpolateTranslation {
             src: Vec3::splat(0.0),
             dst: Vec3::splat(1.0),
-            start: now,
-            end: now + Duration::from_secs(1),
+            start: ControlFrame(0),
+            end: ControlFrame(10),
         };
 
-        assert_eq!(lerp.get(now), Vec3::splat(0.0));
-        assert_eq!(lerp.get(now + Duration::from_millis(500)), Vec3::splat(0.5));
-        assert_eq!(lerp.get(now + Duration::from_secs(1)), Vec3::splat(1.0));
+        assert_eq!(lerp.get(ControlFrame(0)), Vec3::splat(0.0));
+        assert_eq!(lerp.get(ControlFrame(5)), Vec3::splat(0.5));
+        assert_eq!(lerp.get(ControlFrame(10)), Vec3::splat(1.0));
     }
 }

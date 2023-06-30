@@ -1,5 +1,3 @@
-use std::time::{Duration, Instant};
-
 use bevy_ecs::system::{Commands, Query, Res, ResMut};
 use game_common::components::actions::{ActionId, Actions};
 use game_common::components::actor::ActorProperties;
@@ -23,7 +21,6 @@ use crate::entities::item::LoadItem;
 use crate::entities::object::LoadObject;
 use crate::entities::terrain::LoadTerrain;
 use crate::net::interpolate::{InterpolateRotation, InterpolateTranslation};
-use crate::utils::extract_actor_rotation;
 
 use super::conn::InterpolationPeriod;
 use super::ServerConnection;
@@ -40,16 +37,18 @@ pub fn apply_world_delta(
         // access the WorldState.
         Option<&mut Inventory>,
         Option<&mut ActorProperties>,
+        Option<&InterpolateTranslation>,
     )>,
     mut backlog: ResMut<Backlog>,
     modules: Res<Modules>,
 ) {
     let conn = &mut *conn;
 
+    let cf = conn.control_fame();
     let period = &mut conn.interpolation_period;
 
     // Don't start a new period until the previous ended.
-    if period.end > Instant::now() - Duration::from_millis(100) {
+    if period.end > cf {
         return;
     }
 
@@ -66,18 +65,18 @@ pub fn apply_world_delta(
         return;
     };
 
-    debug_assert_ne!(curr.creation(), next.creation());
+    debug_assert_ne!(curr.control_frame(), next.control_frame());
 
     // The end of the previous snapshot should be the current snapshot.
     if cfg!(debug_assertions) {
         // Ignore the start, where start == end.
         if period.start != period.end {
-            assert_eq!(period.end, curr.creation());
+            assert_eq!(period.end, curr.control_frame());
         }
     }
 
-    period.start = curr.creation();
-    period.end = next.creation();
+    //period.start = curr.control_frame();
+    //period.end = next.creation();
 
     let delta = WorldViewRef::delta(Some(curr), next);
 
@@ -118,6 +117,7 @@ fn handle_event(
         Option<&mut Health>,
         Option<&mut Inventory>,
         Option<&mut ActorProperties>,
+        Option<&InterpolateTranslation>,
     )>,
     event: EntityChange,
     buffer: &mut Buffer,
@@ -202,7 +202,16 @@ fn handle_event(
         } => {
             let entity = conn.entities.get(id).unwrap();
 
-            if let Ok((_, transform, _, _, _)) = entities.get_mut(entity) {
+            if let Ok((_, transform, _, _, _, i)) = entities.get_mut(entity) {
+                match i {
+                    Some(i) => {
+                        dbg!(period);
+                        dbg!(i);
+                    }
+                    None => (),
+                }
+                // assert!(i.is_none());
+
                 commands.entity(entity).insert(InterpolateTranslation {
                     src: transform.translation,
                     dst: translation,
@@ -214,7 +223,7 @@ fn handle_event(
         EntityChange::Rotate { id, rotation } => {
             let entity = conn.entities.get(id).unwrap();
 
-            if let Ok((_, transform, _, _, props)) = entities.get_mut(entity) {
+            if let Ok((_, transform, _, _, props, _)) = entities.get_mut(entity) {
                 if let Some(props) = props {
                     commands.entity(entity).insert(InterpolateRotation {
                         src: props.rotation,
@@ -251,7 +260,7 @@ fn handle_event(
         EntityChange::Health { id, health } => {
             let entity = conn.entities.get(id).unwrap();
 
-            if let Ok((_, _, Some(mut h), _, _)) = entities.get_mut(entity) {
+            if let Ok((_, _, Some(mut h), _, _, _)) = entities.get_mut(entity) {
                 *h = health;
             }
         }

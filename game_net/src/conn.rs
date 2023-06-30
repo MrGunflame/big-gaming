@@ -10,6 +10,7 @@ use std::time::{Duration, Instant};
 
 use futures::FutureExt;
 use game_common::entity::EntityId;
+use game_common::world::control_frame::ControlFrame;
 use thiserror::Error;
 use tokio::sync::mpsc;
 use tokio::time::MissedTickBehavior;
@@ -66,11 +67,11 @@ where
 {
     pub id: ConnectionId,
     /// Input stream from the socket
-    stream: mpsc::Receiver<Packet>,
+    socket_stream: mpsc::Receiver<Packet>,
     socket: Arc<Socket>,
 
     /// Direction (from self)
-    chan_out: mpsc::Receiver<ConnectionMessage>,
+    local_stream: mpsc::Receiver<ConnectionMessage>,
 
     state: ConnectionState,
 
@@ -92,6 +93,12 @@ where
     write_queue: WriteQueue,
     ack_list: AckList,
 
+    /// Control frame offset of the connection to the server.
+    /// None if not initialized.
+    ///
+    /// `client_cf = server_cf - client_cf_offset`
+    control_frame_offset: Option<ControlFrame>,
+
     _mode: PhantomData<fn() -> M>,
 }
 
@@ -111,10 +118,10 @@ where
 
         let mut conn = Self {
             id,
-            stream: rx,
+            socket_stream: rx,
             socket,
             state: ConnectionState::Handshake(HandshakeState::Hello),
-            chan_out: out_rx,
+            local_stream: out_rx,
             queue,
             entities: Entities::new(),
             peer,
@@ -132,6 +139,8 @@ where
             buffer: FrameBuffer::new(),
             write_queue: WriteQueue::new(),
             ack_list: AckList::default(),
+
+            control_frame_offset: None,
 
             _mode: PhantomData,
         };
@@ -160,7 +169,7 @@ where
             return Poll::Ready(Ok(()));
         }
 
-        while let Poll::Ready(packet) = self.stream.poll_recv(cx) {
+        while let Poll::Ready(packet) = self.socket_stream.poll_recv(cx) {
             tracing::debug!("recv {:?}", packet);
 
             self.last_time = Instant::now();
@@ -183,7 +192,7 @@ where
             return Poll::Pending;
         }
 
-        while let Poll::Ready(msg) = self.chan_out.poll_recv(cx) {
+        while let Poll::Ready(msg) = self.local_stream.poll_recv(cx) {
             let Some(msg) = msg else {
                 return self.shutdown();
             };
@@ -222,15 +231,16 @@ where
                 }
             };
 
-            self.frame_queue.push(frame, msgid, msg.snapshot);
+            self.frame_queue.push(frame, msgid, msg.control_frame);
 
             if let Some(id) = msg.command.id() {
                 if let Some(vec) = self.backlog.remove(id) {
                     tracing::info!("flushing commands for {:?}", id);
 
                     self.frame_queue.extend(
-                        vec.into_iter()
-                            .map(|cmd| (self.entities.pack(&cmd).unwrap(), msgid, msg.snapshot)),
+                        vec.into_iter().map(|cmd| {
+                            (self.entities.pack(&cmd).unwrap(), msgid, msg.control_frame)
+                        }),
                     );
                 }
             }
@@ -244,13 +254,24 @@ where
 
         let timestamp = Timestamp::new(self.start_time.elapsed());
 
-        while let Some((frame, id, snapshot)) = self.frame_queue.pop() {
+        while let Some((frame, id, cf)) = self.frame_queue.pop() {
             let sequence = self.next_server_sequence;
             self.next_server_sequence += 1;
+
+            let offset = match self.control_frame_offset {
+                Some(offset) => offset,
+                None => {
+                    self.control_frame_offset = Some(cf);
+                    cf
+                }
+            };
+
+            let control_frame = cf - offset;
 
             self.buffer.push(Request {
                 id,
                 sequence,
+                control_frame,
                 frame,
             });
         }
@@ -279,7 +300,7 @@ where
                 header: Header {
                     packet_type: PacketType::DATA,
                     sequence,
-                    timestamp,
+                    control_frame: req.control_frame,
                 },
                 body: PacketBody::Frames(vec![req.frame.clone()]),
             };
@@ -344,13 +365,11 @@ where
         // TODO: Handle out-of-order / duplicates / drops
         self.next_peer_sequence += 1;
 
-        let snapshot = self.start_time + header.timestamp.to_duration();
-
         for frame in frames {
             let Some(cmd) = self.entities.unpack(frame) else {
-                    tracing::debug!("failed to translate cmd");
-                    continue;
-                };
+                tracing::debug!("failed to translate cmd");
+                continue;
+            };
 
             let msgid = self.ack_list.next_cmd_id;
             self.ack_list.next_cmd_id.0 += 1;
@@ -360,7 +379,7 @@ where
             self.queue.push(ConnectionMessage {
                 id: Some(msgid),
                 conn: self.id,
-                snapshot,
+                control_frame: header.control_frame,
                 command: cmd,
             });
         }
@@ -407,7 +426,7 @@ where
                 self.queue.push(ConnectionMessage {
                     id: None,
                     conn: self.id,
-                    snapshot: self.start_time,
+                    control_frame: ControlFrame(0),
                     command: Command::Connected,
                 });
             }
@@ -447,7 +466,7 @@ where
                 self.queue.push(ConnectionMessage {
                     id: None,
                     conn: self.id,
-                    snapshot: self.start_time,
+                    control_frame: ControlFrame(0),
                     command: Command::Connected,
                 });
 
@@ -472,7 +491,7 @@ where
             self.queue.push(ConnectionMessage {
                 id: None,
                 conn: self.id,
-                snapshot: Instant::now(),
+                control_frame: ControlFrame(0),
                 command: Command::ReceivedCommands {
                     ids: ids
                         .into_iter()
@@ -555,7 +574,7 @@ where
             self.queue.push(ConnectionMessage {
                 id: None,
                 conn: self.id,
-                snapshot: self.start_time,
+                control_frame: ControlFrame(0),
                 command: Command::Disconnected,
             });
         }
@@ -571,7 +590,7 @@ where
             self.queue.push(ConnectionMessage {
                 id: None,
                 conn: self.id,
-                snapshot: self.start_time,
+                control_frame: ControlFrame(0),
                 command: Command::Disconnected,
             });
         }
@@ -593,54 +612,13 @@ where
         let sequence = self.next_server_sequence;
         self.next_server_sequence += 1;
 
-        let timestamp = Timestamp::new(self.start_time.elapsed());
-
         let packet = Packet {
             header: Header {
                 packet_type: body.packet_type(),
                 sequence,
-                timestamp,
+                control_frame: ControlFrame(0),
             },
             body,
-        };
-
-        let socket = self.socket.clone();
-        let peer = self.peer;
-        self.write = Some(WriteRequest {
-            future: Box::pin(async move {
-                let mut buf = Vec::with_capacity(1500);
-                packet.encode(&mut buf).unwrap();
-                if let Err(err) = socket.send_to(&buf, peer).await {
-                    tracing::error!("Failed to send packet: {}", err);
-                }
-            }),
-            state,
-        });
-
-        Poll::Ready(())
-    }
-
-    fn send_data(
-        &mut self,
-        body: Vec<Frame>,
-        cmds: Vec<CommandId>,
-        snapshot: Instant,
-        state: ConnectionState,
-    ) -> Poll<()> {
-        let sequence = self.next_server_sequence;
-        self.next_server_sequence += 1;
-
-        self.commands.cmds.insert(sequence, cmds);
-
-        let timestamp = Timestamp::new(snapshot - self.start_time);
-
-        let packet = Packet {
-            header: Header {
-                packet_type: PacketType::DATA,
-                sequence,
-                timestamp,
-            },
-            body: PacketBody::Frames(body),
         };
 
         let socket = self.socket.clone();
@@ -729,7 +707,7 @@ enum HandshakeState {
 
 #[derive(Clone, Debug)]
 pub struct FrameQueue {
-    queue: VecDeque<(Frame, CommandId, Instant)>,
+    queue: VecDeque<(Frame, CommandId, ControlFrame)>,
 }
 
 impl FrameQueue {
@@ -739,17 +717,17 @@ impl FrameQueue {
         }
     }
 
-    pub fn push(&mut self, frame: Frame, id: CommandId, ts: Instant) {
-        self.queue.push_back((frame, id, ts));
+    pub fn push(&mut self, frame: Frame, id: CommandId, cf: ControlFrame) {
+        self.queue.push_back((frame, id, cf));
     }
 
-    pub fn pop(&mut self) -> Option<(Frame, CommandId, Instant)> {
+    pub fn pop(&mut self) -> Option<(Frame, CommandId, ControlFrame)> {
         self.queue.pop_front()
     }
 }
 
-impl Extend<(Frame, CommandId, Instant)> for FrameQueue {
-    fn extend<T: IntoIterator<Item = (Frame, CommandId, Instant)>>(&mut self, iter: T) {
+impl Extend<(Frame, CommandId, ControlFrame)> for FrameQueue {
+    fn extend<T: IntoIterator<Item = (Frame, CommandId, ControlFrame)>>(&mut self, iter: T) {
         self.queue.extend(iter);
     }
 }

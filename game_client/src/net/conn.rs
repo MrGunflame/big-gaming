@@ -1,10 +1,12 @@
 use std::net::ToSocketAddrs;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use bevy_ecs::prelude::Entity;
-use bevy_ecs::system::Resource;
+use bevy_ecs::system::{ResMut, Resource};
 use bevy_ecs::world::{FromWorld, World};
 use game_common::entity::{EntityId, EntityMap};
+use game_common::world::control_frame::ControlFrame;
+use game_core::time::Time;
 use game_net::conn::{ConnectionHandle, ConnectionId};
 use game_net::snapshot::{Command, CommandQueue, ConnectionMessage};
 
@@ -21,6 +23,8 @@ pub struct ServerConnection {
     pub interpolation_period: InterpolationPeriod,
     pub writer: GameStateWriter,
     pub queue: CommandQueue,
+
+    game_tick: GameTick,
 }
 
 impl ServerConnection {
@@ -33,6 +37,10 @@ impl ServerConnection {
             host: EntityId::dangling(),
             writer,
             queue: CommandQueue::new(),
+            game_tick: GameTick {
+                current_control_frame: ControlFrame(0),
+                last_update: Instant::now(),
+            },
         }
     }
 
@@ -41,7 +49,7 @@ impl ServerConnection {
             let cmd_id = handle.send_cmd(ConnectionMessage {
                 id: None,
                 conn: ConnectionId(0),
-                snapshot: Instant::now(),
+                control_frame: self.game_tick.current_control_frame,
                 command: cmd.clone(),
             });
 
@@ -106,6 +114,11 @@ impl ServerConnection {
         self.writer.update(GameState::MainMenu);
     }
 
+    /// Returns the current control frame.
+    pub fn control_fame(&self) -> ControlFrame {
+        self.game_tick.current_control_frame
+    }
+
     fn reset_queue(&mut self) {
         self.queue = CommandQueue::new();
     }
@@ -120,17 +133,28 @@ impl FromWorld for ServerConnection {
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct InterpolationPeriod {
-    pub start: Instant,
-    pub end: Instant,
+    pub start: ControlFrame,
+    pub end: ControlFrame,
 }
 
 impl InterpolationPeriod {
     fn new() -> Self {
-        let now = Instant::now();
-
         Self {
-            start: now,
-            end: now,
+            start: ControlFrame(0),
+            end: ControlFrame(0),
         }
+    }
+}
+
+#[derive(Debug)]
+struct GameTick {
+    current_control_frame: ControlFrame,
+    last_update: Instant,
+}
+
+pub fn tick_game(time: ResMut<Time>, mut conn: ResMut<ServerConnection>) {
+    if time.last_update() - conn.game_tick.last_update >= Duration::from_secs(1) / 60 {
+        conn.game_tick.current_control_frame += 1;
+        conn.game_tick.last_update = time.last_update();
     }
 }

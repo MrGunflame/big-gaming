@@ -9,8 +9,6 @@ mod state;
 mod utils;
 mod window;
 
-use std::io::Write;
-
 use bevy_app::App;
 use bevy_ecs::system::Commands;
 use clap::Parser;

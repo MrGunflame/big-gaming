@@ -49,13 +49,14 @@ use game_common::components::object::ObjectId;
 use game_common::components::race::RaceId;
 use game_common::id::WeakId;
 use game_common::record::RecordReference;
+use game_common::world::control_frame::ControlFrame;
 use game_common::world::entity::{Actor, EntityBody, Object};
 use game_common::world::terrain::{Heightmap, TerrainMesh};
 use game_common::world::CellId;
 pub use game_macros::{net__decode as Decode, net__encode as Encode};
 
 use std::convert::Infallible;
-use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign};
+use std::ops::{Add, AddAssign, BitAnd, BitAndAssign, BitOr, BitOrAssign, Sub, SubAssign};
 
 use bytes::{Buf, BufMut};
 use game_common::net::ServerEntity;
@@ -368,7 +369,7 @@ impl From<u16> for InvalidPacketType {
 pub struct Header {
     pub packet_type: PacketType,
     pub sequence: Sequence,
-    pub timestamp: Timestamp,
+    pub control_frame: ControlFrame,
 }
 
 impl Encode for Header {
@@ -395,7 +396,7 @@ impl Encode for Header {
         };
 
         word0.encode(&mut buf)?;
-        self.timestamp.encode(&mut buf)?;
+        self.control_frame.encode(&mut buf)?;
         Ok(())
     }
 }
@@ -408,7 +409,7 @@ impl Decode for Header {
         B: Buf,
     {
         let word0 = u32::decode(&mut buf)?;
-        let timestamp = Timestamp::decode(&mut buf)?;
+        let control_frame = ControlFrame::decode(&mut buf)?;
 
         let packet_type;
         let sequence;
@@ -428,7 +429,7 @@ impl Decode for Header {
         Ok(Self {
             packet_type,
             sequence,
-            timestamp,
+            control_frame,
         })
     }
 }
@@ -1287,5 +1288,27 @@ impl Decode for InventoryId {
         B: Buf,
     {
         u64::decode(buf).map(Self::from_raw)
+    }
+}
+
+impl Encode for ControlFrame {
+    type Error = <u32 as Encode>::Error;
+
+    fn encode<B>(&self, buf: B) -> Result<(), Self::Error>
+    where
+        B: BufMut,
+    {
+        self.0.encode(buf)
+    }
+}
+
+impl Decode for ControlFrame {
+    type Error = <u32 as Decode>::Error;
+
+    fn decode<B>(buf: B) -> Result<Self, Self::Error>
+    where
+        B: Buf,
+    {
+        u32::decode(buf).map(Self)
     }
 }

@@ -5,7 +5,6 @@ mod world;
 
 use std::net::SocketAddr;
 use std::sync::{mpsc, Arc};
-use std::time::{Duration, Instant};
 
 use bevy_app::{App, Plugin};
 use bevy_ecs::schedule::{IntoSystemConfig, SystemSet};
@@ -15,10 +14,11 @@ use game_common::components::components::Components;
 use game_common::components::items::Item;
 use game_common::components::transform::Transform;
 use game_common::units::Mass;
+use game_common::world::control_frame::ControlFrame;
 use game_common::world::entity::{Entity, EntityBody};
 use game_common::world::world::WorldState;
 use game_net::backlog::Backlog;
-use game_net::conn::{Connect, Connection, ConnectionHandle, ConnectionMode};
+use game_net::conn::{Connect, Connection, ConnectionHandle};
 use game_net::proto::{Decode, Packet};
 use game_net::snapshot::{Command, CommandQueue, ConnectionMessage};
 use game_net::Socket;
@@ -43,11 +43,14 @@ pub struct NetPlugin {}
 impl Plugin for NetPlugin {
     fn build(&self, app: &mut App) {
         let mut world = WorldState::new();
-        world.insert(Instant::now() - Duration::from_millis(50));
+        // Initial empty world state.
+        world.insert(ControlFrame(0));
 
         app.insert_resource(world);
         app.init_resource::<ServerConnection>();
         app.insert_resource(Backlog::new());
+
+        app.add_system(conn::tick_game);
 
         app.add_system(flush_command_queue.in_set(NetSet::ReadCommands));
 
@@ -84,7 +87,7 @@ pub fn spawn_conn(
                         id: None,
                         conn: conn.id,
                         command: Command::Disconnected,
-                        snapshot: Instant::now(),
+                        control_frame: ControlFrame(0),
                     });
                 }
             });
@@ -134,19 +137,19 @@ fn flush_command_queue(mut conn: ResMut<ServerConnection>, mut world: ResMut<Wor
 
         // Snapshot arrived after we already consumed the frame.
         if let Some(view) = world.back() {
-            if msg.snapshot < view.creation() {
-                let diff = view.creation() - msg.snapshot;
-                tracing::warn!("dropping snapshot; arrived {:?} too late", diff);
+            if msg.control_frame < view.control_frame() {
+                let diff = view.control_frame() - msg.control_frame;
+                tracing::warn!("dropping snapshot; arrived {:?} CFs too late", diff);
 
                 continue;
             }
         }
 
-        if world.get(msg.snapshot).is_none() {
-            world.insert(msg.snapshot);
+        if world.get(msg.control_frame).is_none() {
+            world.insert(msg.control_frame);
         }
 
-        let mut view = world.get_mut(msg.snapshot).unwrap();
+        let mut view = world.get_mut(msg.control_frame).unwrap();
 
         match msg.command {
             Command::EntityCreate {

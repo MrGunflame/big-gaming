@@ -237,6 +237,7 @@ mod tests {
     use game_common::components::object::ObjectId;
     use game_common::net::ServerEntity;
     use game_common::record::RecordReference;
+    use game_common::world::control_frame::ControlFrame;
     use game_common::world::entity::{EntityBody, Object};
     use glam::{Quat, Vec3};
 
@@ -254,6 +255,7 @@ mod tests {
         buffer.push(Request {
             id: CommandId(0),
             sequence: Sequence::new(0),
+            control_frame: ControlFrame(0),
             frame: Frame::EntityTranslate(EntityTranslate {
                 entity: ServerEntity(1),
                 translation: Vec3::splat(1.0),
@@ -263,6 +265,7 @@ mod tests {
         buffer.push(Request {
             id: CommandId(1),
             sequence: Sequence::new(1),
+            control_frame: ControlFrame(0),
             frame: Frame::EntityTranslate(EntityTranslate {
                 entity: ServerEntity(1),
                 translation: Vec3::splat(2.0),
@@ -272,6 +275,7 @@ mod tests {
         buffer.push(Request {
             id: CommandId(2),
             sequence: Sequence::new(2),
+            control_frame: ControlFrame(0),
             frame: Frame::EntityTranslate(EntityTranslate {
                 entity: ServerEntity(2),
                 translation: Vec3::splat(3.0),
@@ -305,6 +309,7 @@ mod tests {
         buffer.push(Request {
             id: CommandId(0),
             sequence: Sequence::new(0),
+            control_frame: ControlFrame(0),
             frame: Frame::EntityTranslate(EntityTranslate {
                 entity: ServerEntity(1),
                 translation: Vec3::splat(1.0),
@@ -313,6 +318,7 @@ mod tests {
         buffer.push(Request {
             id: CommandId(1),
             sequence: Sequence::new(1),
+            control_frame: ControlFrame(0),
             frame: Frame::EntityDestroy(EntityDestroy {
                 entity: ServerEntity(1),
             }),
@@ -335,6 +341,7 @@ mod tests {
         buffer.push(Request {
             id: CommandId(0),
             sequence: Sequence::new(0),
+            control_frame: ControlFrame(0),
             frame: Frame::EntityCreate(EntityCreate {
                 entity: ServerEntity(1),
                 translation: Vec3::splat(0.0),
@@ -347,6 +354,7 @@ mod tests {
         buffer.push(Request {
             id: CommandId(1),
             sequence: Sequence::new(1),
+            control_frame: ControlFrame(0),
             frame: Frame::EntityTranslate(EntityTranslate {
                 entity: ServerEntity(1),
                 translation: Vec3::splat(1.0),
@@ -355,6 +363,7 @@ mod tests {
         buffer.push(Request {
             id: CommandId(2),
             sequence: Sequence::new(2),
+            control_frame: ControlFrame(0),
             frame: Frame::EntityDestroy(EntityDestroy {
                 entity: ServerEntity(1),
             }),
@@ -373,6 +382,7 @@ mod tests {
         buffer.push(Request {
             id: CommandId(0),
             sequence: Sequence::new(0),
+            control_frame: ControlFrame(0),
             frame: Frame::SpawnHost(SpawnHost {
                 entity: ServerEntity(1),
             }),
@@ -380,6 +390,7 @@ mod tests {
         buffer.push(Request {
             id: CommandId(1),
             sequence: Sequence::new(1),
+            control_frame: ControlFrame(0),
             frame: Frame::SpawnHost(SpawnHost {
                 entity: ServerEntity(1),
             }),
@@ -387,6 +398,7 @@ mod tests {
         buffer.push(Request {
             id: CommandId(2),
             sequence: Sequence::new(1),
+            control_frame: ControlFrame(0),
             frame: Frame::SpawnHost(SpawnHost {
                 entity: ServerEntity(1),
             }),
@@ -394,6 +406,7 @@ mod tests {
         buffer.push(Request {
             id: CommandId(3),
             sequence: Sequence::new(4),
+            control_frame: ControlFrame(0),
             frame: Frame::SpawnHost(SpawnHost {
                 entity: ServerEntity(1),
             }),

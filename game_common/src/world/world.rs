@@ -3,7 +3,6 @@ pub mod metrics;
 use std::collections::{HashMap, VecDeque};
 use std::fmt::{self, Debug, Formatter};
 use std::ops::{Deref, DerefMut};
-use std::time::Instant;
 
 use bevy_ecs::system::Resource;
 
@@ -19,6 +18,7 @@ use crate::world::snapshot::{EntityChange, TransferCell};
 
 pub use metrics::WorldMetrics;
 
+use super::control_frame::ControlFrame;
 use super::entity::{Entity, EntityBody};
 use super::inventory::InventoriesMut;
 use super::snapshot::InventoryDestroy;
@@ -47,15 +47,15 @@ impl WorldState {
         }
     }
 
-    pub fn get(&self, ts: Instant) -> Option<WorldViewRef<'_>> {
-        let index = self.get_index(ts)?;
+    pub fn get(&self, cf: ControlFrame) -> Option<WorldViewRef<'_>> {
+        let index = self.get_index(cf)?;
         self.snapshots
             .get(index)
             .map(|s| WorldViewRef { snapshot: s, index })
     }
 
-    pub fn get_mut(&mut self, ts: Instant) -> Option<WorldViewMut<'_>> {
-        let index = self.get_index(ts)?;
+    pub fn get_mut(&mut self, cf: ControlFrame) -> Option<WorldViewMut<'_>> {
+        let index = self.get_index(cf)?;
         self.snapshots.get_mut(index)?;
 
         Some(WorldViewMut {
@@ -65,8 +65,8 @@ impl WorldState {
         })
     }
 
-    pub fn index(&self, ts: Instant) -> Option<usize> {
-        self.get_index(ts)
+    pub fn index(&self, cf: ControlFrame) -> Option<usize> {
+        self.get_index(cf)
     }
 
     pub fn len(&self) -> usize {
@@ -77,10 +77,10 @@ impl WorldState {
         self.len() == 0
     }
 
-    pub fn insert(&mut self, ts: Instant) {
+    pub fn insert(&mut self, cf: ControlFrame) {
         #[cfg(debug_assertions)]
         if let Some(snapshot) = self.snapshots.back() {
-            assert!(snapshot.creation < ts);
+            assert!(snapshot.control_frame < cf);
         }
 
         self.metrics.snapshots.inc();
@@ -88,12 +88,12 @@ impl WorldState {
         let snapshot = match self.snapshots.back() {
             Some(snapshot) => {
                 let mut snap = snapshot.clone();
-                snap.creation = ts;
+                snap.control_frame = cf;
                 snap.cells.clear();
                 snap
             }
             None => Snapshot {
-                creation: ts,
+                control_frame: cf,
                 entities: Entities::default(),
                 hosts: Hosts::new(),
                 cells: HashMap::new(),
@@ -105,8 +105,8 @@ impl WorldState {
         self.snapshots.push_back(snapshot);
     }
 
-    pub fn remove(&mut self, ts: Instant) {
-        let Some(index) = self.get_index(ts) else {
+    pub fn remove(&mut self, cf: ControlFrame) {
+        let Some(index) = self.get_index(cf) else {
             return;
         };
 
@@ -179,13 +179,13 @@ impl WorldState {
         })
     }
 
-    fn get_index(&self, ts: Instant) -> Option<usize> {
+    fn get_index(&self, cf: ControlFrame) -> Option<usize> {
         let mut index = 0;
 
         while index < self.snapshots.len() {
             let snapshot = &self.snapshots[index];
 
-            if ts <= snapshot.creation {
+            if cf <= snapshot.control_frame {
                 return Some(index);
             }
 
@@ -343,9 +343,8 @@ impl<'a> WorldViewRef<'a> {
         delta
     }
 
-    #[inline]
-    pub fn creation(&self) -> Instant {
-        self.snapshot.creation
+    pub fn control_frame(&self) -> ControlFrame {
+        self.snapshot.control_frame
     }
 }
 
@@ -488,9 +487,8 @@ impl<'a> WorldViewMut<'a> {
         }
     }
 
-    #[inline]
-    pub fn creation(&self) -> Instant {
-        self.world.snapshots.get(self.index).unwrap().creation
+    pub fn control_frame(&self) -> ControlFrame {
+        self.snapshot_ref().control_frame
     }
 
     pub fn inventories(&self) -> &Inventories {
@@ -691,7 +689,7 @@ impl Entities {
 
 #[derive(Clone, Debug)]
 pub(crate) struct Snapshot {
-    creation: Instant,
+    control_frame: ControlFrame,
     entities: Entities,
     hosts: Hosts,
     streaming_sources: StreamingSources,
@@ -1017,8 +1015,6 @@ impl Inventories {
 
 #[cfg(test)]
 mod tests {
-    use std::time::Duration;
-
     use glam::Vec3;
 
     use crate::components::components::Components;
@@ -1033,7 +1029,7 @@ mod tests {
         ($world:expr, $in:expr) => {
             assert!({
                 if let Some(v) = $world.get($in) {
-                    v.creation() == $in
+                    v.control_frame() == $in
                 } else {
                     false
                 }
@@ -1042,7 +1038,7 @@ mod tests {
         ($world:expr, $in:expr, $out:expr) => {
             assert!({
                 if let Some(v) = $world.get($in) {
-                    v.creation() == $out
+                    v.control_frame() == $out
                 } else {
                     false
                 }
@@ -1051,45 +1047,42 @@ mod tests {
     }
 
     #[test]
-    fn test_world_times() {
+    fn test_world_frames() {
         let mut world = WorldState::new();
 
         assert_eq!(world.len(), 0);
         assert_eq!(world.is_empty(), true);
 
-        let now = Instant::now();
+        let cf0 = ControlFrame(0);
+        let cf1 = ControlFrame(5);
+        let cf2 = ControlFrame(10);
 
-        let t1 = now;
-        let t2 = now + Duration::from_millis(10);
-        let t3 = now + Duration::from_millis(20);
-
-        world.insert(t1);
+        world.insert(cf0);
         assert_eq!(world.len(), 1);
-        assert_get!(world, t1);
+        assert_get!(world, cf0);
 
-        world.insert(t2);
+        world.insert(cf1);
         assert_eq!(world.len(), 2);
-        assert_get!(world, t2);
+        assert_get!(world, cf1);
 
-        world.insert(t3);
+        world.insert(cf2);
         assert_eq!(world.len(), 3);
-        assert_get!(world, t3);
+        assert_get!(world, cf2);
 
-        assert_get!(world, t1 + Duration::from_millis(5), t2);
+        assert_get!(world, ControlFrame(3), cf1);
     }
 
     #[test]
     fn test_world() {
         let mut world = WorldState::new();
 
-        let now = Instant::now();
-        let t0 = now;
-        let t1 = now + Duration::from_millis(10);
+        let cf0 = ControlFrame(0);
+        let cf1 = ControlFrame(1);
 
-        world.insert(t0);
+        world.insert(cf0);
 
         let mut view = world.at_mut(0).unwrap();
-        assert_eq!(view.creation(), t0);
+        assert_eq!(view.control_frame(), cf0);
 
         let id = view.spawn(Entity {
             id: EntityId::dangling(),
@@ -1104,7 +1097,7 @@ mod tests {
         drop(view);
 
         // Spawned entity should exist in new snapshot.
-        world.insert(t1);
+        world.insert(cf1);
 
         let view = world.at(0).unwrap();
         assert!(view.get(id).is_some());
@@ -1116,18 +1109,17 @@ mod tests {
     fn test_world_modify() {
         let mut world = WorldState::new();
 
-        let now = Instant::now();
-        let t0 = now;
-        let t1 = now + Duration::from_millis(10);
-        let t2 = now + Duration::from_millis(20);
-        let t3 = now + Duration::from_millis(30);
+        let cf0 = ControlFrame(0);
+        let cf1 = ControlFrame(5);
+        let cf2 = ControlFrame(10);
+        let cf3 = ControlFrame(15);
 
-        world.insert(t0);
-        world.insert(t1);
-        world.insert(t2);
-        world.insert(t3);
+        world.insert(cf0);
+        world.insert(cf1);
+        world.insert(cf2);
+        world.insert(cf3);
 
-        let mut view = world.get_mut(t1).unwrap();
+        let mut view = world.get_mut(cf1).unwrap();
 
         let id = view.spawn(Entity {
             id: EntityId::dangling(),
@@ -1140,12 +1132,12 @@ mod tests {
 
         drop(view);
 
-        let view = world.get(t0).unwrap();
+        let view = world.get(cf0).unwrap();
         assert!(view.get(id).is_none());
         assert_eq!(view.deltas().count(), 0);
 
-        for ts in [t1, t2, t3] {
-            let view = world.get(ts).unwrap();
+        for cf in [cf1, cf2, cf3] {
+            let view = world.get(cf).unwrap();
             assert!(view.get(id).is_some());
 
             assert_eq!(view.deltas().count(), 1);
@@ -1156,14 +1148,13 @@ mod tests {
     fn test_world_cells() {
         let mut world = WorldState::new();
 
-        let now = Instant::now();
-        let t0 = now;
-        let t1 = now + Duration::from_millis(10);
+        let cf0 = ControlFrame(0);
+        let cf1 = ControlFrame(5);
 
-        world.insert(t0);
-        world.insert(t1);
+        world.insert(cf0);
+        world.insert(cf1);
 
-        let mut view = world.get_mut(t0).unwrap();
+        let mut view = world.get_mut(cf0).unwrap();
 
         let id = view.spawn(Entity {
             id: EntityId::dangling(),
@@ -1177,15 +1168,15 @@ mod tests {
         drop(view);
 
         // Translate entity from cell (0, 0, 0) to cell (1, 0, 0)
-        let mut view = world.get_mut(t1).unwrap();
+        let mut view = world.get_mut(cf1).unwrap();
         let mut entity = view.get_mut(id).unwrap();
         entity.transform.translation = Vec3::new(64.0, 0.0, 0.0);
         drop(entity);
         drop(view);
 
-        // Entity unmoved in t0
+        // Entity unmoved in cf0
         {
-            let view = world.get(t0).unwrap();
+            let view = world.get(cf0).unwrap();
             let entity = view.get(id).unwrap();
             assert_eq!(entity.transform.translation, Vec3::new(0.0, 0.0, 0.0));
 
@@ -1196,9 +1187,9 @@ mod tests {
             assert!(cell.get(id).is_none());
         }
 
-        // Moved in t1
+        // Moved in cf1
         {
-            let view = world.get(t1).unwrap();
+            let view = world.get(cf1).unwrap();
             let entity = view.get(id).unwrap();
             assert_eq!(entity.transform.translation, Vec3::new(64.0, 0.0, 0.0));
 

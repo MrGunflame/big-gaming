@@ -16,6 +16,7 @@ use game_common::components::transform::Transform;
 use game_common::entity::{EntityId, EntityMap};
 use game_common::events::{ActionEvent, EntityEvent, Event, EventKind, EventQueue};
 use game_common::record::{RecordId, RecordReference};
+use game_common::world::control_frame::ControlFrame;
 use game_common::world::entity::{Actor, Entity, EntityBody};
 use game_common::world::snapshot::EntityChange;
 use game_common::world::source::{StreamingSource, StreamingSources, StreamingState};
@@ -33,6 +34,7 @@ use crate::conn::{Connection, Connections};
 use crate::entity::ServerEntityGenerator;
 use crate::net::state::Cells;
 use crate::world::level::Level;
+use crate::ServerTick;
 
 pub struct ServerPlugins;
 
@@ -60,8 +62,9 @@ pub fn tick(
     server: Res<ScriptServer>,
     mut scripts: ResMut<Scripts>,
     modules: Res<Modules>,
+    mut state: ResMut<ServerTick>,
 ) {
-    update_client_heads(&conns, &mut world);
+    update_client_heads(&conns, &mut world, &mut state);
     flush_command_queue(
         commands,
         &conns,
@@ -85,13 +88,14 @@ pub fn tick(
     update_snapshots(&conns, &world);
 }
 
-fn update_client_heads(conns: &Connections, world: &mut WorldState) {
-    world.insert(Instant::now());
+fn update_client_heads(conns: &Connections, world: &mut WorldState, state: &mut ServerTick) {
+    world.insert(state.control_frame);
 
     for conn in conns.iter() {
         let old_head = conn.state().write().head;
 
-        let client_time = Instant::now() - Duration::from_millis(100);
+        //let client_time = Instant::now() - Duration::from_millis(100);
+        let client_time = state.control_frame - 5;
         let head = world.index(client_time).unwrap_or(world.len() - 1);
 
         // assert_ne!(old_head, head);
@@ -222,7 +226,7 @@ fn flush_command_queue(
                 inventory::add_item(
                     &mut inv,
                     ItemId(RecordReference {
-                        module: "8f356647e8f846bbbf1baebc0b3cf40d".parse().unwrap(),
+                        module: "e9aa65d7953b4132beed9bbcff89e00a".parse().unwrap(),
                         record: RecordId(3),
                     }),
                     &modules,
@@ -231,7 +235,7 @@ fn flush_command_queue(
                 map.insert(id, ent);
                 // FIXME: This should not be set in this snapshot, but in the most
                 // recent one.
-                conn.set_host(id, view.creation());
+                conn.set_host(id, view.control_frame());
 
                 let mut state = conn.state().write();
                 state.id = Some(id);
@@ -386,7 +390,7 @@ fn update_client(conn: &Connection, world: &WorldState) {
                 conn.handle().send_cmd(ConnectionMessage {
                     id: None,
                     conn: ConnectionId(0),
-                    snapshot: curr.creation(),
+                    control_frame: curr.control_frame(),
                     command: Command::EntityCreate {
                         id: entity.id,
                         translation: entity.transform.translation,
@@ -401,7 +405,7 @@ fn update_client(conn: &Connection, world: &WorldState) {
                         conn.handle().send_cmd(ConnectionMessage {
                             id: None,
                             conn: ConnectionId(0),
-                            snapshot: curr.creation(),
+                            control_frame: curr.control_frame(),
                             command: Command::InventoryItemAdd {
                                 entity: entity.id,
                                 id: item.id,
@@ -516,7 +520,7 @@ fn update_client(conn: &Connection, world: &WorldState) {
         }
     }
 
-    conn.push(changes, curr.creation());
+    conn.push(changes, curr.control_frame());
 
     // Acknowledge client commands.
     let ids = conn.take_proc_msg();
@@ -524,7 +528,7 @@ fn update_client(conn: &Connection, world: &WorldState) {
         conn.handle().send_cmd(ConnectionMessage {
             id: None,
             conn: conn.id(),
-            snapshot: Instant::now(),
+            control_frame: ControlFrame(0),
             command: Command::ReceivedCommands {
                 ids: ids
                     .into_iter()

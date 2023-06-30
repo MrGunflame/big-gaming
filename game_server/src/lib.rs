@@ -11,8 +11,10 @@ pub mod world;
 use std::time::Duration;
 
 use bevy_app::App;
+use bevy_ecs::system::Resource;
 use game_common::archive::loader::ModuleLoader;
 use game_common::archive::GameArchive;
+use game_common::world::control_frame::ControlFrame;
 use game_core::CorePlugins;
 use plugins::ServerPlugins;
 use tokio::time::{interval, MissedTickBehavior};
@@ -44,6 +46,10 @@ pub async fn run(mut app: App, config: Config) {
     app.insert_resource(queue);
     app.insert_resource(conns);
 
+    app.insert_resource(ServerTick {
+        control_frame: ControlFrame(0),
+    });
+
     app.add_plugin(ServerPlugins);
 
     let timestep = Duration::from_secs(1) / state.config.timestep;
@@ -68,5 +74,12 @@ pub async fn run(mut app: App, config: Config) {
     loop {
         app.update();
         interval.tick().await;
+
+        app.world.resource_mut::<ServerTick>().control_frame.0 += 1;
     }
+}
+
+#[derive(Resource)]
+pub struct ServerTick {
+    control_frame: ControlFrame,
 }
