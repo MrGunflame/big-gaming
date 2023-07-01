@@ -1,9 +1,8 @@
-use bevy_ecs::prelude::{Component, Entity};
-use bevy_ecs::system::{Commands, Query, Res};
+use bevy_ecs::prelude::Component;
+use bevy_ecs::system::{Query, Res};
 use game_common::components::actor::ActorProperties;
 use game_common::components::transform::Transform;
 use game_common::world::control_frame::ControlFrame;
-use game_core::time::Time;
 use glam::{Quat, Vec3};
 
 use crate::utils::extract_actor_rotation;
@@ -89,14 +88,10 @@ impl InterpolateRotationInner {
 }
 
 pub fn interpolate_translation(
-    time: Res<Time>,
     conn: Res<ServerConnection>,
-    mut commands: Commands,
-    mut entities: Query<(Entity, &mut Transform, &mut InterpolateTranslation)>,
+    mut entities: Query<(&mut Transform, &mut InterpolateTranslation)>,
 ) {
-    let now = time.last_update();
-
-    for (entity, mut transform, mut interpolate) in &mut entities {
+    for (mut transform, mut interpolate) in &mut entities {
         let Some(inner) = interpolate.inner else {
             continue;
         };
@@ -112,16 +107,14 @@ pub fn interpolate_translation(
 }
 
 pub fn interpolate_rotation(
-    time: Res<Time>,
     conn: Res<ServerConnection>,
     mut entities: Query<(
-        Entity,
         &mut Transform,
         Option<&mut ActorProperties>,
         &mut InterpolateRotation,
     )>,
 ) {
-    for (entity, mut transform, props, mut interpolate) in &mut entities {
+    for (mut transform, props, mut interpolate) in &mut entities {
         let Some(inner) = interpolate.inner else {
             continue;
         };
@@ -129,14 +122,10 @@ pub fn interpolate_rotation(
         let now = conn.control_fame() - (inner.end - inner.start);
 
         if let Some(mut props) = props {
-            // props.rotation = interpolate.get(now);
-            // transform.rotation = extract_actor_rotation(props.rotation);
-            props.rotation = inner.dst;
-            transform.rotation = inner.dst;
+            props.rotation = inner.get(now);
+            transform.rotation = extract_actor_rotation(props.rotation);
         } else {
-            // transform.rotation = interpolate.get(now);
-
-            transform.rotation = inner.dst;
+            transform.rotation = inner.get(now);
         }
 
         if now >= inner.end {
