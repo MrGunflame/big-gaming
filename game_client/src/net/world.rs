@@ -208,6 +208,21 @@ fn handle_event(
             let entity = conn.entities.get(id).unwrap();
 
             if let Ok((_, transform, _, _, _, mut interpolate, _)) = entities.get_mut(entity) {
+                // Translation is predicted, do not interpolate.
+                if let Some(translation) = conn
+                    .overrides
+                    .get_entity(id)
+                    .map(|p| p.translation())
+                    .flatten()
+                {
+                    // Predictected values should already be applied.
+                    if cfg!(debug_assertions) {
+                        assert_eq!(transform.translation, translation);
+                    }
+
+                    return;
+                }
+
                 interpolate.set(transform.translation, translation, period.start, period.end);
             }
         }
@@ -217,6 +232,25 @@ fn handle_event(
             if let Ok((_, mut transform, _, _, props, _, mut interpolate)) =
                 entities.get_mut(entity)
             {
+                // Rotation is predicted, do not interpolate.
+                if let Some(rotation) = conn
+                    .overrides
+                    .get_entity(id)
+                    .map(|p| p.rotation())
+                    .flatten()
+                {
+                    // Predictected values should already be applied.
+                    if cfg!(debug_assertions) {
+                        if let Some(props) = props {
+                            assert_eq!(props.rotation, rotation);
+                        } else {
+                            assert_eq!(transform.rotation, rotation);
+                        }
+                    }
+
+                    return;
+                }
+
                 if let Some(props) = props {
                     interpolate.set(props.rotation, rotation, period.start, period.end);
                 } else {
