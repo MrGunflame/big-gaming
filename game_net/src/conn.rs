@@ -17,7 +17,7 @@ use tokio::time::MissedTickBehavior;
 
 use crate::buffer::FrameBuffer;
 use crate::entity::Entities;
-use crate::proto::ack::{Ack, Nak};
+use crate::proto::ack::{Ack, AckAck, Nak};
 use crate::proto::handshake::{Handshake, HandshakeFlags, HandshakeType};
 use crate::proto::sequence::Sequence;
 use crate::proto::shutdown::{Shutdown, ShutdownReason};
@@ -88,6 +88,8 @@ where
 
     next_peer_sequence: Sequence,
 
+    next_ack_sequence: Sequence,
+
     commands: Commands,
     buffer: FrameBuffer,
     write_queue: WriteQueue,
@@ -134,6 +136,7 @@ where
             interval: TickInterval::new(),
             last_time: Instant::now(),
             next_server_sequence: Sequence::default(),
+            next_ack_sequence: Sequence::default(),
             start_time: Instant::now(),
             next_peer_sequence: Sequence::default(),
             commands: Commands {
@@ -208,8 +211,16 @@ where
                 // We can now acknowledge that we have processed the commands.
                 Command::ReceivedCommands { ids } => {
                     for resp in ids {
+                        dbg!(resp);
                         let seq = self.ack_list.list.remove(&resp.id).unwrap();
+                        dbg!(seq);
                         // The last sequence acknowledged by the game loop.
+                        if seq < self.ack_list.ack_seq {
+                            panic!(
+                                "ack sequence went backwards: {:?} < {:?}",
+                                seq, self.ack_list.ack_seq
+                            );
+                        }
                         self.ack_list.ack_seq = seq;
                     }
 
@@ -365,6 +376,7 @@ where
             PacketBody::Handshake(body) => self.handle_handshake(packet.header, body),
             PacketBody::Shutdown(body) => self.handle_shutdown(packet.header, body),
             PacketBody::Ack(body) => self.handle_ack(packet.header, body),
+            PacketBody::AckAck(body) => self.handle_ackack(packet.header, body),
             PacketBody::Nak(body) => self.handle_nak(packet.header, body),
             PacketBody::Frames(body) => self.handle_data(packet.header, body),
         }
@@ -372,7 +384,13 @@ where
 
     fn handle_data(&mut self, header: Header, frames: Vec<Frame>) -> Poll<()> {
         // TODO: Handle out-of-order / duplicates / drops
-        self.next_peer_sequence += 1;
+        // if header.sequence < self.next_peer_sequence {
+        //     tracing::warn!("dropping duplicate packet {:?}", header.sequence);
+        //     return Poll::Ready(());
+        // }
+
+        self.next_peer_sequence = header.sequence + 1;
+        // self.next_peer_sequence += 1;
 
         for frame in frames {
             let Some(cmd) = self.entities.unpack(frame) else {
@@ -385,6 +403,9 @@ where
 
             self.ack_list.list.insert(msgid, header.sequence);
 
+            dbg!(header.sequence);
+            dbg!(&cmd);
+            dbg!(&msgid);
             self.queue.push(ConnectionMessage {
                 id: Some(msgid),
                 conn: self.id,
@@ -496,7 +517,10 @@ where
     fn handle_ack(&mut self, header: Header, body: Ack) -> Poll<()> {
         let sequence = body.sequence;
 
-        if let Some(ids) = self.commands.cmds.remove(&sequence) {
+        dbg!(sequence);
+        dbg!(&self.commands.cmds);
+        let ids = self.commands.remove(sequence);
+        if !ids.is_empty() {
             self.queue.push(ConnectionMessage {
                 id: None,
                 conn: self.id,
@@ -513,6 +537,15 @@ where
             });
         }
 
+        // Respond with ACKACK
+        let req = AckAck {
+            ack_sequence: body.ack_sequence,
+        };
+
+        self.send(req, ConnectionState::Connected)
+    }
+
+    fn handle_ackack(&mut self, header: Header, body: AckAck) -> Poll<()> {
         Poll::Pending
     }
 
@@ -545,9 +578,13 @@ where
 
         // Send periodic ACKs while connected.
         if self.state == ConnectionState::Connected && tick.is_ack() {
+            let ack_sequence = self.next_ack_sequence;
+            self.next_ack_sequence += 1;
+
             let _ = self.send(
                 Ack {
                     sequence: self.ack_list.ack_seq,
+                    ack_sequence,
                 },
                 ConnectionState::Connected,
             );
@@ -888,6 +925,26 @@ impl Tick {
 
 struct Commands {
     cmds: HashMap<Sequence, Vec<CommandId>>,
+}
+
+impl Commands {
+    /// Remove all commands where sequence  < `seq`.
+    fn remove(&mut self, seq: Sequence) -> Vec<CommandId> {
+        let mut out = Vec::new();
+
+        self.cmds.retain(|s, cmds| {
+            // Note that an ACK sequence (`seq`) is the last received sequence + 1,
+            // so `seq` itself was not yet acknowledged.
+            if seq > *s {
+                out.extend(cmds.iter().copied());
+                false
+            } else {
+                true
+            }
+        });
+
+        out
+    }
 }
 
 struct WriteQueue {

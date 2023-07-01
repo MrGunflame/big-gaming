@@ -253,6 +253,7 @@ fn flush_command_queue(mut conn: ResMut<ServerConnection>, mut world: ResMut<Wor
             Command::Connected => (),
             Command::Disconnected => (),
             Command::ReceivedCommands { ids } => {
+                dbg!(&ids);
                 let mut ov = &mut conn.overrides;
                 for cmd in ids {
                     conn.overrides.validate_pre_removal(cmd.id, &view);

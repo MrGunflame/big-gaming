@@ -9,10 +9,18 @@ pub struct Ack {
     ///
     /// In other words the first sequence number that has not yet been received.
     pub sequence: Sequence,
+
+    /// Sequence number of the ACK.
+    pub ack_sequence: Sequence,
 }
 
 #[derive(Copy, Clone, Debug, Encode, Decode)]
 pub struct Nak {
     /// The lost sequence number.
     pub sequence: Sequence,
+}
+
+#[derive(Copy, Clone, Debug, Encode, Decode)]
+pub struct AckAck {
+    pub ack_sequence: Sequence,
 }

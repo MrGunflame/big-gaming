@@ -20,9 +20,6 @@ impl LocalOverrides {
     pub fn push(&mut self, id: EntityId, cmd: CommandId, pred: Prediction) {
         let entry = self.entities.entry(id).or_default();
 
-        dbg!(entry.patches.len());
-        dbg!(&pred);
-
         entry.patches.insert(
             pred.kind(),
             Patch {
@@ -110,7 +107,6 @@ impl LocalOverrides {
             let mut ent = view.get_mut(*id).unwrap();
 
             for pred in self.get(*id).unwrap() {
-                dbg!(pred);
                 match pred {
                     Prediction::Translation(translation) => {
                         tracing::trace!(
