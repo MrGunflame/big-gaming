@@ -379,11 +379,12 @@ impl<'a> WorldViewMut<'a> {
     pub fn despawn_host(&mut self, id: EntityId) {
         self.snapshot().hosts.remove(id);
 
-        let entity = self.get(id).unwrap();
-        self.new_deltas
-            .entry(CellId::from(entity.transform.translation))
-            .or_default()
-            .push(EntityChange::CreateHost { id });
+        if let Some(entity) = self.get(id) {
+            self.new_deltas
+                .entry(CellId::from(entity.transform.translation))
+                .or_default()
+                .push(EntityChange::CreateHost { id });
+        }
     }
 
     /// Sets the streaming state of the entity.
