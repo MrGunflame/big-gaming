@@ -10,15 +10,35 @@ use crate::utils::extract_actor_rotation;
 
 use super::ServerConnection;
 
-#[derive(Copy, Clone, Debug, Component)]
+// No `Copy` impl to prevent accidental move-out.
+#[derive(Clone, Debug, Default, Component)]
 pub struct InterpolateTranslation {
-    pub src: Vec3,
-    pub dst: Vec3,
-    pub start: ControlFrame,
-    pub end: ControlFrame,
+    // Note that the interpolation system runs directly after apply the world
+    // delta. We can't afford to wait for `Commands` to insert the component,
+    // so we use a `None` value as a no-interplation value.
+    inner: Option<InterpolateTranslationInner>,
 }
 
 impl InterpolateTranslation {
+    pub fn set(&mut self, src: Vec3, dst: Vec3, start: ControlFrame, end: ControlFrame) {
+        self.inner = Some(InterpolateTranslationInner {
+            src,
+            dst,
+            start,
+            end,
+        });
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+struct InterpolateTranslationInner {
+    src: Vec3,
+    dst: Vec3,
+    start: ControlFrame,
+    end: ControlFrame,
+}
+
+impl InterpolateTranslationInner {
     fn get(&self, now: ControlFrame) -> Vec3 {
         let d1 = self.end - self.start;
         let d2 = now - self.start;
@@ -29,15 +49,35 @@ impl InterpolateTranslation {
     }
 }
 
-#[derive(Copy, Clone, Debug, Component)]
+// No `Copy` impl to prevent accidental move-out.
+#[derive(Clone, Debug, Default, Component)]
 pub struct InterpolateRotation {
-    pub src: Quat,
-    pub dst: Quat,
-    pub start: ControlFrame,
-    pub end: ControlFrame,
+    // Note that the interpolation system runs directly after apply the world
+    // delta. We can't afford to wait for `Commands` to insert the component,
+    // so we use a `None` value as a no-interplation value.
+    inner: Option<InterpolateRotationInner>,
 }
 
 impl InterpolateRotation {
+    pub fn set(&mut self, src: Quat, dst: Quat, start: ControlFrame, end: ControlFrame) {
+        self.inner = Some(InterpolateRotationInner {
+            src,
+            dst,
+            start,
+            end,
+        });
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+struct InterpolateRotationInner {
+    src: Quat,
+    dst: Quat,
+    start: ControlFrame,
+    end: ControlFrame,
+}
+
+impl InterpolateRotationInner {
     fn get(&self, now: ControlFrame) -> Quat {
         let d1 = self.end - self.start;
         let d2 = now - self.start;
@@ -52,17 +92,21 @@ pub fn interpolate_translation(
     time: Res<Time>,
     conn: Res<ServerConnection>,
     mut commands: Commands,
-    mut entities: Query<(Entity, &mut Transform, &InterpolateTranslation)>,
+    mut entities: Query<(Entity, &mut Transform, &mut InterpolateTranslation)>,
 ) {
     let now = time.last_update();
 
-    for (entity, mut transform, interpolate) in &mut entities {
-        let now = conn.control_fame() - (interpolate.end - interpolate.start);
+    for (entity, mut transform, mut interpolate) in &mut entities {
+        let Some(inner) = interpolate.inner else {
+            continue;
+        };
 
-        transform.translation = interpolate.get(now);
+        let now = conn.control_fame() - (inner.end - inner.start);
 
-        if now >= interpolate.end {
-            commands.entity(entity).remove::<InterpolateTranslation>();
+        transform.translation = inner.get(now);
+
+        if now >= inner.end {
+            interpolate.inner = None;
         }
     }
 }
@@ -70,26 +114,33 @@ pub fn interpolate_translation(
 pub fn interpolate_rotation(
     time: Res<Time>,
     conn: Res<ServerConnection>,
-    mut commands: Commands,
     mut entities: Query<(
         Entity,
         &mut Transform,
         Option<&mut ActorProperties>,
-        &InterpolateRotation,
+        &mut InterpolateRotation,
     )>,
 ) {
-    for (entity, mut transform, props, interpolate) in &mut entities {
-        let now = conn.control_fame() - (interpolate.end - interpolate.start);
+    for (entity, mut transform, props, mut interpolate) in &mut entities {
+        let Some(inner) = interpolate.inner else {
+            continue;
+        };
+
+        let now = conn.control_fame() - (inner.end - inner.start);
 
         if let Some(mut props) = props {
-            props.rotation = interpolate.get(now);
-            transform.rotation = extract_actor_rotation(props.rotation);
+            // props.rotation = interpolate.get(now);
+            // transform.rotation = extract_actor_rotation(props.rotation);
+            props.rotation = inner.dst;
+            transform.rotation = inner.dst;
         } else {
-            transform.rotation = interpolate.get(now);
+            // transform.rotation = interpolate.get(now);
+
+            transform.rotation = inner.dst;
         }
 
-        if now >= interpolate.end {
-            commands.entity(entity).remove::<InterpolateRotation>();
+        if now >= inner.end {
+            interpolate.inner = None;
         }
     }
 }
@@ -99,11 +150,11 @@ mod tests {
     use game_common::world::control_frame::ControlFrame;
     use glam::Vec3;
 
-    use super::InterpolateTranslation;
+    use crate::net::interpolate::InterpolateTranslationInner;
 
     #[test]
     fn interpolate_translation() {
-        let lerp = InterpolateTranslation {
+        let lerp = InterpolateTranslationInner {
             src: Vec3::splat(0.0),
             dst: Vec3::splat(1.0),
             start: ControlFrame(0),

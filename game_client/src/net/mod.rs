@@ -1,5 +1,5 @@
 mod conn;
-mod interpolate;
+pub mod interpolate;
 mod prediction;
 mod world;
 

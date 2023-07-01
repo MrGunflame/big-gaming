@@ -948,6 +948,36 @@ impl Inventories {
     }
 }
 
+pub trait AsView {
+    fn len(&self) -> usize;
+
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    fn get(&self, id: EntityId) -> Option<&Entity>;
+}
+
+impl<'a> AsView for WorldViewRef<'a> {
+    fn get(&self, id: EntityId) -> Option<&Entity> {
+        self.snapshot.entities.get(id)
+    }
+
+    fn len(&self) -> usize {
+        self.snapshot.entities.entities.len()
+    }
+}
+
+impl<'a> AsView for &'a WorldViewMut<'a> {
+    fn get(&self, id: EntityId) -> Option<&Entity> {
+        self.snapshot_ref().entities.get(id)
+    }
+
+    fn len(&self) -> usize {
+        self.snapshot_ref().entities.entities.len()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use glam::Vec3;

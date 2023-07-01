@@ -1,4 +1,4 @@
-use bevy_ecs::prelude::{Component, Entity};
+use bevy_ecs::prelude::{Bundle, Component, Entity};
 use bevy_ecs::system::{Commands, Query, Res, ResMut};
 use game_common::bundles::TransformBundle;
 use game_common::components::actor::{ActorProperties, MovementSpeed};
@@ -10,8 +10,9 @@ use game_common::components::transform::Transform;
 use game_core::modules::Modules;
 use game_input::hotkeys::Hotkeys;
 use game_scene::{SceneBundle, Scenes};
-use glam::{Quat, Vec3};
+use glam::Vec3;
 
+use crate::net::interpolate::{InterpolateRotation, InterpolateTranslation};
 use crate::plugins::actions::ActiveActions;
 use crate::utils::extract_actor_rotation;
 
@@ -22,6 +23,18 @@ pub struct LoadActor {
     pub health: Health,
     pub host: bool,
     pub inventory: Inventory,
+}
+
+#[derive(Bundle)]
+struct ActorBundle {
+    #[bundle]
+    scene: SceneBundle,
+    speed: MovementSpeed,
+    props: ActorProperties,
+    inventory: Inventory,
+
+    interpolate_translation: InterpolateTranslation,
+    interpolate_rotation: InterpolateRotation,
 }
 
 pub fn load_actor(
@@ -38,23 +51,26 @@ pub fn load_actor(
         let mut cmds = commands.entity(entity);
         cmds.remove::<LoadActor>();
 
-        cmds.insert(SceneBundle {
-            scene: scenes.load("../assets/bricks.glb"),
-            transform: TransformBundle {
-                transform: Transform {
-                    translation: actor.transform.translation,
-                    rotation: extract_actor_rotation(actor.transform.rotation),
+        cmds.insert(ActorBundle {
+            scene: SceneBundle {
+                scene: scenes.load("../assets/bricks.glb"),
+                transform: TransformBundle {
+                    transform: Transform {
+                        translation: actor.transform.translation,
+                        rotation: extract_actor_rotation(actor.transform.rotation),
+                        ..Default::default()
+                    },
                     ..Default::default()
                 },
-                ..Default::default()
             },
-        });
-
-        cmds.insert(actor.inventory.clone());
-        cmds.insert(MovementSpeed::default());
-        cmds.insert(ActorProperties {
-            rotation: actor.transform.rotation,
-            eyes: Vec3::splat(0.0),
+            inventory: actor.inventory.clone(),
+            speed: MovementSpeed::default(),
+            props: ActorProperties {
+                rotation: actor.transform.rotation,
+                eyes: Vec3::splat(0.0),
+            },
+            interpolate_translation: InterpolateTranslation::default(),
+            interpolate_rotation: InterpolateRotation::default(),
         });
 
         if actor.host {

@@ -101,11 +101,16 @@ impl LocalOverrides {
             .map(|entity| entity.patches.values().map(|patch| &patch.value))
     }
 
+    pub fn get_entity(&self, entity: EntityId) -> Option<&EntityPatches> {
+        self.entities.get(&entity)
+    }
+
     pub fn apply(&self, mut view: WorldViewMut<'_>) {
         for (id, entity) in self.entities.iter() {
             let mut ent = view.get_mut(*id).unwrap();
 
             for pred in self.get(*id).unwrap() {
+                dbg!(pred);
                 match pred {
                     Prediction::Translation(translation) => {
                         tracing::trace!(
@@ -134,8 +139,22 @@ impl LocalOverrides {
 }
 
 #[derive(Clone, Debug, Default)]
-struct EntityPatches {
+pub struct EntityPatches {
     patches: HashMap<PredictionKind, Patch>,
+}
+
+impl EntityPatches {
+    pub fn translation(&self) -> Option<Vec3> {
+        self.patches
+            .get(&PredictionKind::Translation)
+            .map(|p| p.value.as_translation().unwrap())
+    }
+
+    pub fn rotation(&self) -> Option<Quat> {
+        self.patches
+            .get(&PredictionKind::Rotation)
+            .map(|p| p.value.as_rotation().unwrap())
+    }
 }
 
 #[derive(Clone, Debug)]

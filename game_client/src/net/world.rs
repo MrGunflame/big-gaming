@@ -37,7 +37,8 @@ pub fn apply_world_delta(
         // access the WorldState.
         Option<&mut Inventory>,
         Option<&mut ActorProperties>,
-        Option<&InterpolateTranslation>,
+        &mut InterpolateTranslation,
+        &mut InterpolateRotation,
     )>,
     mut backlog: ResMut<Backlog>,
     modules: Res<Modules>,
@@ -120,7 +121,8 @@ fn handle_event(
         Option<&mut Health>,
         Option<&mut Inventory>,
         Option<&mut ActorProperties>,
-        Option<&InterpolateTranslation>,
+        &mut InterpolateTranslation,
+        &mut InterpolateRotation,
     )>,
     event: EntityChange,
     buffer: &mut Buffer,
@@ -205,40 +207,23 @@ fn handle_event(
         } => {
             let entity = conn.entities.get(id).unwrap();
 
-            if let Ok((_, transform, _, _, _, i)) = entities.get_mut(entity) {
-                match i {
-                    Some(i) => {}
-                    None => (),
-                }
-                // assert!(i.is_none());
-
-                commands.entity(entity).insert(InterpolateTranslation {
-                    src: transform.translation,
-                    dst: translation,
-                    start: period.start,
-                    end: period.end,
-                });
+            if let Ok((_, transform, _, _, _, mut interpolate, _)) = entities.get_mut(entity) {
+                interpolate.set(transform.translation, translation, period.start, period.end);
             }
         }
         EntityChange::Rotate { id, rotation } => {
             let entity = conn.entities.get(id).unwrap();
 
-            if let Ok((_, mut transform, _, _, props, _)) = entities.get_mut(entity) {
+            if let Ok((_, mut transform, _, _, props, _, mut interpolate)) =
+                entities.get_mut(entity)
+            {
                 if let Some(props) = props {
-                    commands.entity(entity).insert(InterpolateRotation {
-                        src: props.rotation,
-                        dst: rotation,
-                        start: period.start,
-                        end: period.end,
-                    });
+                    interpolate.set(props.rotation, rotation, period.start, period.end);
                 } else {
-                    commands.entity(entity).insert(InterpolateRotation {
-                        src: transform.rotation,
-                        dst: rotation,
-                        start: period.start,
-                        end: period.end,
-                    });
+                    interpolate.set(transform.rotation, rotation, period.start, period.end);
                 }
+
+                // transform.rotation = rotation;
             }
         }
         EntityChange::CreateHost { id } => {
@@ -260,7 +245,7 @@ fn handle_event(
         EntityChange::Health { id, health } => {
             let entity = conn.entities.get(id).unwrap();
 
-            if let Ok((_, _, Some(mut h), _, _, _)) = entities.get_mut(entity) {
+            if let Ok((_, _, Some(mut h), _, _, _, _)) = entities.get_mut(entity) {
                 *h = health;
             }
         }
