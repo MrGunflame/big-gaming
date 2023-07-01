@@ -100,6 +100,9 @@ where
     control_frame_offset: Option<ControlFrame>,
 
     _mode: PhantomData<fn() -> M>,
+
+    #[cfg(debug_assertions)]
+    debug_validator: crate::validator::DebugValidator,
 }
 
 impl<M> Connection<M>
@@ -143,6 +146,9 @@ where
             control_frame_offset: None,
 
             _mode: PhantomData,
+
+            #[cfg(debug_assertions)]
+            debug_validator: crate::validator::DebugValidator::new(),
         };
 
         if M::IS_CONNECT {
@@ -352,6 +358,9 @@ where
     ///
     /// Returns `Poll::Ready` on state change.
     fn handle_packet(&mut self, packet: Packet) -> Poll<()> {
+        #[cfg(debug_assertions)]
+        self.debug_validator.push(&packet);
+
         match packet.body {
             PacketBody::Handshake(body) => self.handle_handshake(packet.header, body),
             PacketBody::Shutdown(body) => self.handle_shutdown(packet.header, body),
