@@ -7,7 +7,7 @@ use std::net::SocketAddr;
 use std::sync::{mpsc, Arc};
 
 use bevy_app::{App, Plugin};
-use bevy_ecs::schedule::{IntoSystemConfig, SystemSet};
+use bevy_ecs::schedule::{IntoSystemConfig, IntoSystemSetConfig, SystemSet};
 use bevy_ecs::system::ResMut;
 use game_common::components::actions::Actions;
 use game_common::components::components::Components;
@@ -31,9 +31,26 @@ pub use self::conn::ServerConnection;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, SystemSet)]
 pub enum NetSet {
-    ReadCommands,
+    /// Step control tick
+    Tick,
+    /// Read incoming server frames
+    Read,
+    /// Flush frames into world
     FlushBuffers,
-    WriteCommands,
+    /// Write back inputs
+    //Write,
+    /// Lerp transform
+    Interpolate,
+}
+
+impl NetSet {
+    pub fn first() -> Self {
+        Self::Tick
+    }
+
+    pub fn last() -> Self {
+        Self::Interpolate
+    }
 }
 
 /// Client-side network plugin
@@ -50,14 +67,16 @@ impl Plugin for NetPlugin {
         app.init_resource::<ServerConnection>();
         app.insert_resource(Backlog::new());
 
-        app.add_system(conn::tick_game);
+        app.add_system(conn::tick_game.in_set(NetSet::Tick));
+        app.add_system(flush_command_queue.in_set(NetSet::Read));
+        app.add_system(world::apply_world_delta.in_set(NetSet::FlushBuffers));
 
-        app.add_system(flush_command_queue.in_set(NetSet::ReadCommands));
+        app.add_system(interpolate::interpolate_translation.in_set(NetSet::Interpolate));
+        app.add_system(interpolate::interpolate_rotation.in_set(NetSet::Interpolate));
 
-        app.add_system(world::apply_world_delta.after(flush_command_queue));
-
-        app.add_system(interpolate::interpolate_translation.after(world::apply_world_delta));
-        app.add_system(interpolate::interpolate_rotation.after(world::apply_world_delta));
+        app.configure_set(NetSet::Interpolate.after(NetSet::FlushBuffers));
+        app.configure_set(NetSet::FlushBuffers.after(NetSet::Read));
+        app.configure_set(NetSet::Read.after(NetSet::Tick));
     }
 }
 

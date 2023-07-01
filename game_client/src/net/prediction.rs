@@ -20,6 +20,9 @@ impl LocalOverrides {
     pub fn push(&mut self, id: EntityId, cmd: CommandId, pred: Prediction) {
         let entry = self.entities.entry(id).or_default();
 
+        dbg!(entry.patches.len());
+        dbg!(&pred);
+
         entry.patches.insert(
             pred.kind(),
             Patch {
@@ -75,6 +78,8 @@ impl LocalOverrides {
     }
 
     pub fn remove(&mut self, id: CommandId) {
+        panic!("rm");
+
         let mut empty = vec![];
 
         for (eid, entity) in self.entities.iter_mut() {

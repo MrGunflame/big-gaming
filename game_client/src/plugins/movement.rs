@@ -3,7 +3,7 @@ use std::borrow::Cow;
 use bevy_app::{App, Plugin};
 use bevy_ecs::prelude::EventReader;
 use bevy_ecs::query::{With, Without};
-use bevy_ecs::schedule::{IntoSystemSetConfig, SystemSet};
+use bevy_ecs::schedule::{IntoSystemConfig, IntoSystemSetConfig, SystemSet};
 use bevy_ecs::system::{Query, Res, ResMut};
 use game_common::components::actor::{ActorProperties, MovementSpeed};
 use game_common::components::camera::CameraMode;
@@ -21,7 +21,7 @@ use game_window::cursor::Cursor;
 use game_window::events::VirtualKeyCode;
 use glam::{Quat, Vec3};
 
-use crate::net::ServerConnection;
+use crate::net::{NetSet, ServerConnection};
 use crate::utils::extract_actor_rotation;
 
 use super::camera::PrimaryCamera;
@@ -137,7 +137,6 @@ impl HotkeyFilter for Sprint {
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, SystemSet)]
 pub enum MovementSet {
     Read,
-    Apply,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -147,11 +146,13 @@ impl Plugin for MovementPlugin {
     fn build(&self, app: &mut App) {
         app.add_startup_system(register_events);
 
-        app.add_system(translation_events);
-        app.add_system(rotation_events);
+        app.add_system(translation_events.in_set(MovementSet::Read));
+        app.add_system(rotation_events.in_set(MovementSet::Read));
 
-        app.configure_set(InputSet::Hotkeys.before(MovementSet::Read));
-        app.configure_set(MovementSet::Read.before(MovementSet::Apply));
+        // Run transform updates AFTER inputs are ready, but BEFORE
+        // updating server events.
+        app.configure_set(MovementSet::Read.after(InputSet::Hotkeys));
+        app.configure_set(MovementSet::Read.before(NetSet::first()));
 
         app.add_system(lock_mouse);
     }
