@@ -8,7 +8,7 @@ use crate::serial;
 use super::{Decode, Encode};
 
 const BITS: usize = 31;
-const SEQUENCE_MAX: u32 = 1 << BITS;
+const SEQUENCE_MAX: u32 = (1 << BITS) - 1;
 
 /// A sequence number
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -16,7 +16,10 @@ const SEQUENCE_MAX: u32 = 1 << BITS;
 pub struct Sequence(u32);
 
 impl Sequence {
+    pub const MAX: Self = Self(SEQUENCE_MAX);
+
     #[inline]
+    #[track_caller]
     pub fn new(n: u32) -> Self {
         if cfg!(debug_assertions) && n > SEQUENCE_MAX {
             panic!(
@@ -34,6 +37,7 @@ impl Sequence {
     }
 
     #[inline]
+    #[track_caller]
     pub fn from_bits(bits: u32) -> Self {
         if cfg!(debug_assertions) && bits > SEQUENCE_MAX {
             panic!(

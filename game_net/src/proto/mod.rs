@@ -1331,12 +1331,65 @@ impl Decode for ControlFrame {
     }
 }
 
+/// An inclusive sequence range.
+///
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct SequenceRange {
+    pub start: Sequence,
+    pub end: Sequence,
+}
+
+impl Encode for SequenceRange {
+    type Error = <Sequence as Encode>::Error;
+
+    fn encode<B>(&self, mut buf: B) -> Result<(), Self::Error>
+    where
+        B: BufMut,
+    {
+        if self.start == self.end {
+            self.start.encode(buf)
+        } else {
+            let start = self.start.to_bits() | (1 << 31);
+            let end = self.end;
+
+            start.encode(&mut buf)?;
+            end.encode(buf)
+        }
+    }
+}
+
+impl Decode for SequenceRange {
+    type Error = <u32 as Decode>::Error;
+
+    fn decode<B>(mut buf: B) -> Result<Self, Self::Error>
+    where
+        B: Buf,
+    {
+        let mut start = u32::decode(&mut buf)?;
+
+        if start & (1 << 31) == 0 {
+            Ok(Self {
+                start: Sequence::from_bits(start),
+                end: Sequence::from_bits(start),
+            })
+        } else {
+            start &= (1 << 31) - 1;
+            let end = u32::decode(&mut buf)?;
+
+            Ok(Self {
+                start: Sequence::from_bits(start),
+                end: Sequence::from_bits(end),
+            })
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use game_common::world::control_frame::ControlFrame;
 
     use super::sequence::Sequence;
-    use super::{Decode, Encode, Header, PacketType};
+    use super::{Decode, Encode, Header, PacketType, SequenceRange};
 
     #[test]
     fn header_encode_sequence() {
@@ -1383,5 +1436,77 @@ mod tests {
 
         assert_eq!(header.packet_type, PacketType::DATA);
         assert_eq!(header.sequence, sequence);
+    }
+
+    #[test]
+    fn sequence_range_single_encode() {
+        let start = Sequence::MAX;
+        let end = Sequence::MAX;
+        let range = SequenceRange { start, end };
+
+        let mut buf = Vec::new();
+        range.encode(&mut buf).unwrap();
+
+        let output = [
+            0b0111_1111, // Start/End
+            0b1111_1111, // Start/End
+            0b1111_1111, // Start/End
+            0b1111_1111, // Start/End
+        ];
+        assert_eq!(buf, output);
+    }
+
+    #[test]
+    fn sequence_range_range_encode() {
+        let start = Sequence::new(0);
+        let end = Sequence::MAX;
+        let range = SequenceRange { start, end };
+
+        let mut buf = Vec::new();
+        range.encode(&mut buf).unwrap();
+
+        let output = [
+            0b1000_0000, // Start
+            0b0000_0000, // Start
+            0b0000_0000, // Start
+            0b0000_0000, // Start
+            0b0111_1111, // End
+            0b1111_1111, // End
+            0b1111_1111, // End
+            0b1111_1111, // End
+        ];
+        assert_eq!(buf, output);
+    }
+
+    #[test]
+    fn sequence_range_single_decode() {
+        let input = [
+            0b0111_1111, // Start/End
+            0b1111_1111, // Start/End
+            0b1111_1111, // Start/End
+            0b1111_1111, // Start/End
+        ];
+
+        let range = SequenceRange::decode(&input[..]).unwrap();
+        assert_eq!(range.start, Sequence::MAX);
+        assert_eq!(range.end, Sequence::MAX);
+    }
+
+    #[test]
+    fn sequence_range_range_decode() {
+        let input = [
+            0b1000_0000, // Start
+            0b0000_0000, // Start
+            0b0000_0000, // Start
+            0b0000_0000, // Start
+            0b0111_1111, // End
+            0b1111_1111, // End
+            0b1111_1111, // End
+            0b1111_1111, // End
+        ];
+
+        let range = SequenceRange::decode(&input[..]).unwrap();
+        assert_eq!(range.start, Sequence::new(0));
+        assert_eq!(range.end, Sequence::MAX);
     }
 }

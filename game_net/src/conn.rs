@@ -22,7 +22,7 @@ use crate::proto::handshake::{Handshake, HandshakeFlags, HandshakeType};
 use crate::proto::sequence::Sequence;
 use crate::proto::shutdown::{Shutdown, ShutdownReason};
 use crate::proto::timestamp::Timestamp;
-use crate::proto::{Encode, Frame, Header, Packet, PacketBody, PacketType};
+use crate::proto::{Encode, Frame, Header, Packet, PacketBody, PacketType, SequenceRange};
 use crate::request::Request;
 use crate::snapshot::{Command, CommandId, CommandQueue, ConnectionMessage, Response, Status};
 use crate::socket::Socket;
@@ -95,6 +95,9 @@ where
     write_queue: WriteQueue,
     ack_list: AckList,
 
+    /// List of lost packets from the peer.
+    loss_list: LossList,
+
     /// Control frame offset of the connection to the server.
     /// None if not initialized.
     ///
@@ -145,6 +148,7 @@ where
             buffer: FrameBuffer::new(),
             write_queue: WriteQueue::new(),
             ack_list: AckList::default(),
+            loss_list: LossList::new(),
 
             control_frame_offset: None,
 
@@ -381,14 +385,33 @@ where
     }
 
     fn handle_data(&mut self, header: Header, frames: Vec<Frame>) -> Poll<()> {
-        // TODO: Handle out-of-order / duplicates / drops
-        // if header.sequence < self.next_peer_sequence {
-        //     tracing::warn!("dropping duplicate packet {:?}", header.sequence);
-        //     return Poll::Ready(());
-        // }
+        // Drop out-of-order or duplicates.
+        if header.sequence < self.next_peer_sequence && !self.loss_list.remove(header.sequence) {
+            tracing::warn!("dropping duplicate packet {:?}", header.sequence);
+            return Poll::Ready(());
+        }
 
-        self.next_peer_sequence = header.sequence + 1;
-        // self.next_peer_sequence += 1;
+        // Prepare NAK if we lost a packet.
+        let nak = if self.next_peer_sequence != header.sequence {
+            Some(Nak {
+                sequences: SequenceRange {
+                    start: self.next_peer_sequence,
+                    end: header.sequence - 1,
+                },
+            })
+        } else {
+            None
+        };
+
+        // We lost all segments from self.next_peer_sequence..header.sequence.
+        while self.next_peer_sequence != header.sequence {
+            self.loss_list.push(self.next_peer_sequence);
+            self.next_peer_sequence += 1;
+        }
+        self.next_peer_sequence += 1;
+
+        // Caught up to most recent packet.
+        debug_assert_eq!(self.next_peer_sequence, header.sequence + 1);
 
         for frame in frames {
             let Some(cmd) = self.entities.unpack(frame) else {
@@ -401,9 +424,6 @@ where
 
             self.ack_list.list.insert(msgid, header.sequence);
 
-            dbg!(header.sequence);
-            dbg!(&cmd);
-            dbg!(&msgid);
             self.queue.push(ConnectionMessage {
                 id: Some(msgid),
                 conn: self.id,
@@ -412,7 +432,11 @@ where
             });
         }
 
-        Poll::Ready(())
+        if let Some(nak) = nak {
+            self.send(nak, ConnectionState::Connected)
+        } else {
+            Poll::Ready(())
+        }
     }
 
     fn handle_handshake(&mut self, header: Header, body: Handshake) -> Poll<()> {
@@ -979,4 +1003,78 @@ pub struct AckList {
     list: HashMap<CommandId, Sequence>,
     next_cmd_id: CommandId,
     ack_seq: Sequence,
+}
+
+/// A list of lost packets.
+#[derive(Clone, Debug, Default)]
+struct LossList {
+    buffer: Vec<Sequence>,
+}
+
+impl LossList {
+    fn new() -> Self {
+        Self { buffer: Vec::new() }
+    }
+
+    fn push(&mut self, seq: Sequence) {
+        // The new sequence MUST be `> buffer.last()`.
+        if cfg!(debug_assertions) {
+            if let Some(n) = self.buffer.last() {
+                if seq <= *n {
+                    panic!(
+                        "Tried to push {:?} to LossList with last sequence {:?}",
+                        seq, n
+                    );
+                }
+            }
+        }
+
+        self.buffer.push(seq);
+    }
+
+    /// Returns `true` if `seq` was removed.
+    fn remove(&mut self, seq: Sequence) -> bool {
+        let mut index = 0;
+        while let Some(s) = self.buffer.get(index) {
+            if *s == seq {
+                self.buffer.remove(index);
+                return true;
+            }
+
+            if *s > seq {
+                return false;
+            }
+
+            index += 1;
+        }
+
+        false
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::proto::sequence::Sequence;
+
+    use super::LossList;
+
+    #[test]
+    fn loss_list_remove() {
+        let mut input: Vec<u32> = (0..32).collect();
+
+        let mut list = LossList::new();
+
+        for seq in &input {
+            list.push(Sequence::new(*seq));
+        }
+
+        while !input.is_empty() {
+            // Always remove the middle element.
+            let index = input.len() / 2;
+            let value = input.remove(index);
+
+            let res = list.remove(Sequence::new(value));
+            assert!(res);
+        }
+    }
 }

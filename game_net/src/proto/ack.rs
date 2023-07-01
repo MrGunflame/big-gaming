@@ -1,7 +1,7 @@
 use std::convert::Infallible;
 
 use super::sequence::Sequence;
-use super::{Decode, Encode, Error};
+use super::{Decode, Encode, Error, SequenceRange};
 
 #[derive(Copy, Clone, Debug, Encode, Decode)]
 pub struct Ack {
@@ -16,8 +16,8 @@ pub struct Ack {
 
 #[derive(Copy, Clone, Debug, Encode, Decode)]
 pub struct Nak {
-    /// The lost sequence number.
-    pub sequence: Sequence,
+    /// The lost sequence number range.
+    pub sequences: SequenceRange,
 }
 
 #[derive(Copy, Clone, Debug, Encode, Decode)]
