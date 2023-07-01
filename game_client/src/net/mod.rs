@@ -20,7 +20,7 @@ use game_common::world::world::WorldState;
 use game_net::backlog::Backlog;
 use game_net::conn::{Connect, Connection, ConnectionHandle};
 use game_net::proto::{Decode, Packet};
-use game_net::snapshot::{Command, CommandQueue, ConnectionMessage};
+use game_net::snapshot::{Command, CommandQueue, ConnectionMessage, Response, Status};
 use game_net::Socket;
 use glam::Vec3;
 use tokio::runtime::Runtime;
@@ -141,7 +141,17 @@ fn flush_command_queue(mut conn: ResMut<ServerConnection>, mut world: ResMut<Wor
     let mut iterations = 0;
     const MAX_ITERATIONS: usize = 8192;
 
+    // Collect all processed commands to notify the server.
+    let mut ids = Vec::new();
+
     while let Some(msg) = conn.queue.pop() {
+        if let Some(id) = msg.id {
+            ids.push(Response {
+                id,
+                status: Status::Received,
+            });
+        }
+
         match msg.command {
             Command::Connected => {
                 conn.writer.update(GameState::World);
@@ -149,6 +159,16 @@ fn flush_command_queue(mut conn: ResMut<ServerConnection>, mut world: ResMut<Wor
             }
             Command::Disconnected => {
                 conn.shutdown();
+                continue;
+            }
+            Command::ReceivedCommands { ids } => {
+                let view = world.back().unwrap();
+
+                for cmd in ids {
+                    conn.overrides.validate_pre_removal(cmd.id, view);
+                    conn.overrides.remove(cmd.id);
+                }
+
                 continue;
             }
             _ => (),
@@ -252,14 +272,7 @@ fn flush_command_queue(mut conn: ResMut<ServerConnection>, mut world: ResMut<Wor
             }
             Command::Connected => (),
             Command::Disconnected => (),
-            Command::ReceivedCommands { ids } => {
-                dbg!(&ids);
-                let mut ov = &mut conn.overrides;
-                for cmd in ids {
-                    conn.overrides.validate_pre_removal(cmd.id, &view);
-                    conn.overrides.remove(cmd.id);
-                }
-            }
+            Command::ReceivedCommands { ids: _ } => unreachable!(),
         }
 
         iterations += 1;
@@ -267,4 +280,6 @@ fn flush_command_queue(mut conn: ResMut<ServerConnection>, mut world: ResMut<Wor
             break;
         }
     }
+
+    conn.send(Command::ReceivedCommands { ids });
 }

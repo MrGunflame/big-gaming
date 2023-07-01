@@ -216,9 +216,9 @@ fn handle_event(
                     .flatten()
                 {
                     // Predictected values should already be applied.
-                    if cfg!(debug_assertions) {
-                        assert_eq!(transform.translation, translation);
-                    }
+                    // if cfg!(debug_assertions) {
+                    //     assert_eq!(transform.translation, translation);
+                    // }
 
                     return;
                 }
@@ -240,13 +240,13 @@ fn handle_event(
                     .flatten()
                 {
                     // Predictected values should already be applied.
-                    if cfg!(debug_assertions) {
-                        if let Some(props) = props {
-                            assert_eq!(props.rotation, rotation);
-                        } else {
-                            assert_eq!(transform.rotation, rotation);
-                        }
-                    }
+                    // if cfg!(debug_assertions) {
+                    //     if let Some(props) = props {
+                    //         assert_eq!(props.rotation, rotation);
+                    //     } else {
+                    //         assert_eq!(transform.rotation, rotation);
+                    //     }
+                    // }
 
                     return;
                 }

@@ -211,9 +211,7 @@ where
                 // We can now acknowledge that we have processed the commands.
                 Command::ReceivedCommands { ids } => {
                     for resp in ids {
-                        dbg!(resp);
                         let seq = self.ack_list.list.remove(&resp.id).unwrap();
-                        dbg!(seq);
                         // The last sequence acknowledged by the game loop.
                         if seq < self.ack_list.ack_seq {
                             panic!(
@@ -517,8 +515,6 @@ where
     fn handle_ack(&mut self, header: Header, body: Ack) -> Poll<()> {
         let sequence = body.sequence;
 
-        dbg!(sequence);
-        dbg!(&self.commands.cmds);
         let ids = self.commands.remove(sequence);
         if !ids.is_empty() {
             self.queue.push(ConnectionMessage {
@@ -928,14 +924,12 @@ struct Commands {
 }
 
 impl Commands {
-    /// Remove all commands where sequence  < `seq`.
+    /// Remove all commands where sequence  <= `seq`.
     fn remove(&mut self, seq: Sequence) -> Vec<CommandId> {
         let mut out = Vec::new();
 
         self.cmds.retain(|s, cmds| {
-            // Note that an ACK sequence (`seq`) is the last received sequence + 1,
-            // so `seq` itself was not yet acknowledged.
-            if seq > *s {
+            if seq >= *s {
                 out.extend(cmds.iter().copied());
                 false
             } else {
