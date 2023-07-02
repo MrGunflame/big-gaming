@@ -33,8 +33,8 @@ use glam::Vec3;
 use crate::conn::{Connection, Connections};
 use crate::entity::ServerEntityGenerator;
 use crate::net::state::Cells;
+use crate::state::State;
 use crate::world::level::Level;
-use crate::ServerTick;
 
 pub struct ServerPlugins;
 
@@ -62,7 +62,7 @@ pub fn tick(
     server: Res<ScriptServer>,
     mut scripts: ResMut<Scripts>,
     modules: Res<Modules>,
-    mut state: ResMut<ServerTick>,
+    mut state: ResMut<State>,
 ) {
     update_client_heads(&conns, &mut world, &mut state);
     flush_command_queue(
@@ -89,14 +89,16 @@ pub fn tick(
     update_snapshots(&conns, &world);
 }
 
-fn update_client_heads(conns: &Connections, world: &mut WorldState, state: &mut ServerTick) {
-    world.insert(state.control_frame);
+fn update_client_heads(conns: &Connections, world: &mut WorldState, state: &mut State) {
+    let control_frame = *state.control_frame.lock();
+
+    world.insert(*state.control_frame.lock());
 
     for conn in conns.iter() {
         let old_head = conn.state().write().head;
 
         //let client_time = Instant::now() - Duration::from_millis(100);
-        let client_time = state.control_frame - 5;
+        let client_time = control_frame - 5;
         let head = world.index(client_time).unwrap_or(world.len() - 1);
 
         // assert_ne!(old_head, head);

@@ -84,6 +84,7 @@ impl ServerConnection {
         fn inner(
             queue: CommandQueue,
             addr: impl ToSocketAddrs,
+            cf: ControlFrame,
         ) -> Result<ConnectionHandle, Box<dyn std::error::Error + Send + Sync + 'static>> {
             // TODO: Use async API
             let addr = match addr.to_socket_addrs()?.nth(0) {
@@ -91,10 +92,14 @@ impl ServerConnection {
                 None => panic!("empty dns result"),
             };
 
-            super::spawn_conn(queue, addr)
+            super::spawn_conn(queue, addr, cf)
         }
 
-        match inner(self.queue.clone(), addr) {
+        match inner(
+            self.queue.clone(),
+            addr,
+            self.game_tick.current_control_frame,
+        ) {
             Ok(handle) => {
                 self.handle = Some(handle);
                 self.writer.update(GameState::Connecting);
@@ -186,6 +191,22 @@ pub fn tick_game(
 
         debug_assert!(world.get(conn.game_tick.current_control_frame).is_none());
         world.insert(conn.game_tick.current_control_frame);
+
+        // Snapshots render..head should now exist.
+        if cfg!(debug_assertions) {
+            let control_frame = conn.control_frame();
+            let mut start = match control_frame.render {
+                Some(render) => render,
+                None => ControlFrame(0),
+            };
+            let end = control_frame.head;
+
+            while start != end + 1 {
+                assert!(world.get(start).is_some());
+
+                start += 1;
+            }
+        }
     }
 }
 

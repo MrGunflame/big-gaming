@@ -83,6 +83,7 @@ impl Plugin for NetPlugin {
 pub fn spawn_conn(
     queue: CommandQueue,
     addr: SocketAddr,
+    control_frame: ControlFrame,
 ) -> Result<ConnectionHandle, Box<dyn std::error::Error + Send + Sync + 'static>> {
     let (tx, rx) = mpsc::channel();
 
@@ -97,7 +98,8 @@ pub fn spawn_conn(
                     return;
                 }
             };
-            let (mut conn, handle) = Connection::<Connect>::new(addr, queue.clone(), sock.clone());
+            let (mut conn, handle) =
+                Connection::<Connect>::new(addr, queue.clone(), sock.clone(), control_frame);
 
             tokio::task::spawn(async move {
                 if let Err(err) = (&mut conn).await {
@@ -195,8 +197,9 @@ fn flush_command_queue(mut conn: ResMut<ServerConnection>, mut world: ResMut<Wor
             //    passed or is still too far in the future.
             // 2. The client's clock is desynced and creating new snapshots too slow/fast.
             // 3. The server's clock is desynced and creating new snapshots too slow/fast.
-            let tail = world.back().unwrap();
-            tracing::warn!("received snapshot for unknwon control frame: {:?} (tail = {:?})", msg.control_frame, tail.control_frame());
+            let front = world.front().unwrap();
+            let back = world.back().unwrap();
+            tracing::warn!("received snapshot for unknwon control frame: {:?} (snapshots  {:?}..{:?} exist)", msg.control_frame, front.control_frame(), back.control_frame());
             continue;
         };
 

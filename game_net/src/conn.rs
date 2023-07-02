@@ -101,11 +101,8 @@ where
     /// Packets that have been sent and are buffered until an ACK is received for them.
     inflight_packets: InflightPackets,
 
-    /// Control frame offset of the connection to the server.
-    /// None if not initialized.
-    ///
-    /// `client_cf = server_cf - client_cf_offset`
-    control_frame_offset: Option<ControlFrame>,
+    start_control_frame: ControlFrame,
+    peer_start_control_frame: ControlFrame,
 
     _mode: PhantomData<fn() -> M>,
 
@@ -121,6 +118,7 @@ where
         peer: SocketAddr,
         queue: CommandQueue,
         socket: Arc<Socket>,
+        control_frame: ControlFrame,
     ) -> (Self, ConnectionHandle) {
         let id = ConnectionId::new();
 
@@ -154,7 +152,8 @@ where
             loss_list: LossList::new(),
             inflight_packets: InflightPackets::new(),
 
-            control_frame_offset: None,
+            start_control_frame: control_frame,
+            peer_start_control_frame: ControlFrame::default(),
 
             _mode: PhantomData,
 
@@ -275,26 +274,14 @@ where
     fn write_snapshot(&mut self) {
         // Merge FrameQueue into FrameBuffer, compact then send.
 
-        let timestamp = Timestamp::new(self.start_time.elapsed());
-
         while let Some((frame, id, cf)) = self.frame_queue.pop() {
             let sequence = self.next_server_sequence;
             self.next_server_sequence += 1;
 
-            let offset = match self.control_frame_offset {
-                Some(offset) => offset,
-                None => {
-                    self.control_frame_offset = Some(cf);
-                    cf
-                }
-            };
-
-            let control_frame = cf - offset;
-
             self.buffer.push(Request {
                 id,
                 sequence,
-                control_frame,
+                control_frame: cf,
                 frame,
             });
         }
@@ -428,10 +415,21 @@ where
 
             self.ack_list.list.insert(msgid, header.sequence);
 
+            // Convert back to local control frame.
+            let control_frame =
+                header.control_frame - (self.peer_start_control_frame - self.start_control_frame);
+
+            dbg!(
+                header.control_frame,
+                control_frame,
+                self.peer_start_control_frame,
+                self.start_control_frame
+            );
+
             self.queue.push(ConnectionMessage {
                 id: Some(msgid),
                 conn: self.id,
-                control_frame: header.control_frame,
+                control_frame,
                 command: cmd,
             });
         }
@@ -452,8 +450,6 @@ where
         match state {
             // Connect mode
             HandshakeState::Hello if M::IS_CONNECT => {
-                assert_eq!(body.kind, HandshakeType::HELLO);
-
                 if body.kind != HandshakeType::HELLO {
                     tracing::info!("abort: expected HELLO, but got {:?}", body.kind);
                     self.abort();
@@ -461,15 +457,25 @@ where
                 }
 
                 // Send AGREEMENT
-                let resp = Handshake {
-                    version: 0,
-                    kind: HandshakeType::AGREEMENT,
-                    flags: HandshakeFlags::default(),
-                    mtu: 1500,
-                    flow_window: 8192,
+                let resp = Packet {
+                    header: Header {
+                        packet_type: PacketType::HANDSHAKE,
+                        sequence: Sequence::default(),
+                        control_frame: self.start_control_frame,
+                    },
+                    body: PacketBody::Handshake(Handshake {
+                        version: 0,
+                        kind: HandshakeType::AGREEMENT,
+                        flags: HandshakeFlags::default(),
+                        mtu: 1500,
+                        flow_window: 8192,
+                    }),
                 };
 
-                return self.send(resp, ConnectionState::Handshake(HandshakeState::Agreement));
+                self.peer_start_control_frame = header.control_frame;
+
+                return self
+                    .send_packet(resp, ConnectionState::Handshake(HandshakeState::Agreement));
             }
             HandshakeState::Agreement if M::IS_CONNECT => {
                 if body.kind != HandshakeType::AGREEMENT {
@@ -494,15 +500,25 @@ where
                 }
 
                 // Send HELLO
-                let resp = Handshake {
-                    version: 0,
-                    kind: HandshakeType::HELLO,
-                    flags: HandshakeFlags::default(),
-                    mtu: 1500,
-                    flow_window: 8192,
+                let resp = Packet {
+                    header: Header {
+                        packet_type: PacketType::HANDSHAKE,
+                        sequence: Sequence::default(),
+                        control_frame: self.start_control_frame,
+                    },
+                    body: PacketBody::Handshake(Handshake {
+                        version: 0,
+                        kind: HandshakeType::HELLO,
+                        flags: HandshakeFlags::default(),
+                        mtu: 1500,
+                        flow_window: 8192,
+                    }),
                 };
 
-                return self.send(resp, ConnectionState::Handshake(HandshakeState::Agreement));
+                self.peer_start_control_frame = header.control_frame;
+
+                return self
+                    .send_packet(resp, ConnectionState::Handshake(HandshakeState::Agreement));
             }
             HandshakeState::Agreement if M::IS_LISTEN => {
                 if body.kind != HandshakeType::AGREEMENT {
@@ -510,12 +526,19 @@ where
                     return self.reject(HandshakeType::REJ_ROGUE);
                 }
 
-                let resp = Handshake {
-                    version: 0,
-                    kind: HandshakeType::AGREEMENT,
-                    flags: HandshakeFlags::default(),
-                    mtu: 1500,
-                    flow_window: 8192,
+                let resp = Packet {
+                    header: Header {
+                        packet_type: PacketType::HANDSHAKE,
+                        sequence: Sequence::default(),
+                        control_frame: self.start_control_frame,
+                    },
+                    body: PacketBody::Handshake(Handshake {
+                        version: 0,
+                        kind: HandshakeType::AGREEMENT,
+                        flags: HandshakeFlags::default(),
+                        mtu: 1500,
+                        flow_window: 8192,
+                    }),
                 };
 
                 // Signal the game that the player spawns.
@@ -526,7 +549,7 @@ where
                     command: Command::Connected,
                 });
 
-                return self.send(resp, ConnectionState::Connected);
+                return self.send_packet(resp, ConnectionState::Connected);
             }
             // `M` is configured incorrectly. It must be either `IS_LISTEN` OR `IS_CONNECT`.
             HandshakeState::Hello | HandshakeState::Agreement => unreachable!(),
@@ -590,16 +613,22 @@ where
     }
 
     fn prepare_connect(&mut self) {
-        let req = Handshake {
-            version: 0,
-            kind: HandshakeType::HELLO,
-            flags: HandshakeFlags::default(),
-            mtu: 1500,
-            flow_window: 8192,
+        let packet = Packet {
+            header: Header {
+                packet_type: PacketType::HANDSHAKE,
+                sequence: Sequence::default(),
+                control_frame: self.start_control_frame,
+            },
+            body: PacketBody::Handshake(Handshake {
+                version: 0,
+                kind: HandshakeType::HELLO,
+                flags: HandshakeFlags::default(),
+                mtu: 1500,
+                flow_window: 8192,
+            }),
         };
 
-        // connect is only called initially (before the future was first polled).
-        let _ = self.send(req, ConnectionState::Handshake(HandshakeState::Hello));
+        self.send_packet(packet, ConnectionState::Handshake(HandshakeState::Hello));
     }
 
     fn poll_tick(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), ErrorKind>> {
@@ -703,6 +732,23 @@ where
             body,
         };
 
+        let socket = self.socket.clone();
+        let peer = self.peer;
+        self.write = Some(WriteRequest {
+            future: Box::pin(async move {
+                let mut buf = Vec::with_capacity(1500);
+                packet.encode(&mut buf).unwrap();
+                if let Err(err) = socket.send_to(&buf, peer).await {
+                    tracing::error!("Failed to send packet: {}", err);
+                }
+            }),
+            state,
+        });
+
+        Poll::Ready(())
+    }
+
+    fn send_packet(&mut self, packet: Packet, state: ConnectionState) -> Poll<()> {
         let socket = self.socket.clone();
         let peer = self.peer;
         self.write = Some(WriteRequest {

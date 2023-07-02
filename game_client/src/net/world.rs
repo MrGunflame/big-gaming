@@ -136,8 +136,6 @@ fn handle_event(
     modules: &Modules,
     period: InterpolationPeriod,
 ) {
-    dbg!(&event);
-
     tracing::trace!(
         concat!("handle ", stringify!(WorldState), " event: {:?}"),
         event
