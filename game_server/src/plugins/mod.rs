@@ -80,6 +80,7 @@ pub fn tick(
 
     game_script::plugin::flush_event_queue(&mut event_queue, &mut world, &server, &scripts);
 
+    #[cfg(feature = "physics")]
     pipeline.step(&mut world, &mut event_queue);
 
     update_scripts(&world, &mut scripts, &modules);

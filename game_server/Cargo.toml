@@ -5,6 +5,13 @@ edition = "2021"
 authors = ["MrGunflame <git@robbsrv.de>"]
 license = "GPL-3.0-or-later"
 
+[features]
+default = ["physics"]
+# Enable game physics.
+# Note that disabling physics is only useful for testing. The game might not function
+# correctly without physics.
+physics = []
+
 [dependencies]
 ahash = "0.8.3"
 bevy_ecs = "0.10.0"
