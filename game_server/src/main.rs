@@ -3,7 +3,7 @@ use clap::Parser;
 
 use game_core::modules;
 use game_server::config::Config;
-use tokio::runtime::Runtime;
+use tokio::runtime::{Builder, UnhandledPanic};
 
 #[derive(Debug, Parser)]
 #[command(author, version, about, long_about = None)]
@@ -20,6 +20,10 @@ fn main() {
 
     modules::load_modules(&mut app);
 
-    let rt = Runtime::new().unwrap();
+    let rt = Builder::new_multi_thread()
+        .enable_all()
+        .unhandled_panic(UnhandledPanic::ShutdownRuntime)
+        .build()
+        .unwrap();
     rt.block_on(game_server::run(app, config));
 }
