@@ -21,7 +21,6 @@ use crate::proto::ack::{Ack, AckAck, Nak};
 use crate::proto::handshake::{Handshake, HandshakeFlags, HandshakeType};
 use crate::proto::sequence::Sequence;
 use crate::proto::shutdown::{Shutdown, ShutdownReason};
-use crate::proto::timestamp::Timestamp;
 use crate::proto::{Encode, Frame, Header, Packet, PacketBody, PacketType, SequenceRange};
 use crate::request::Request;
 use crate::snapshot::{Command, CommandId, CommandQueue, ConnectionMessage, Response, Status};
@@ -150,7 +149,7 @@ where
             write_queue: WriteQueue::new(),
             ack_list: AckList::default(),
             loss_list: LossList::new(),
-            inflight_packets: InflightPackets::new(),
+            inflight_packets: InflightPackets::new(8192),
 
             start_control_frame: control_frame,
             peer_start_control_frame: ControlFrame::default(),
@@ -315,6 +314,7 @@ where
                 body: PacketBody::Frames(vec![req.frame.clone()]),
             };
 
+            self.inflight_packets.insert(packet.clone());
             self.write_queue.push(packet);
         }
 
@@ -1069,31 +1069,40 @@ pub struct AckList {
 
 #[derive(Clone, Debug)]
 struct InflightPackets {
-    // TODO: This can probably be a linear array since we only retain
-    // a limited ascended order of sequences.
-    packets: HashMap<Sequence, Packet>,
+    packets: Box<[Option<Packet>]>,
 }
 
 impl InflightPackets {
-    fn new() -> Self {
+    fn new(size: usize) -> Self {
+        let packets = vec![None; size];
+
         Self {
-            packets: HashMap::new(),
+            packets: packets.into_boxed_slice(),
         }
     }
 
-    fn insert(&mut self, packet: Packet, commands: &[CommandId]) {
-        let seq = packet.header.sequence;
-        debug_assert!(!self.packets.contains_key(&seq));
-
-        self.packets.insert(seq, packet);
+    fn insert(&mut self, packet: Packet) {
+        let index = packet.header.sequence.to_bits() as usize % self.packets.len();
+        self.packets[index] = Some(packet);
     }
 
     fn get(&self, seq: Sequence) -> Option<&Packet> {
-        self.packets.get(&seq)
-    }
+        let index = seq.to_bits() as usize % self.packets.len();
 
-    fn remove(&mut self, seq: Sequence) {
-        self.packets.remove(&seq);
+        // The index always exists.
+        if let Some(packet) = self.packets.get(index).unwrap() {
+            if packet.header.sequence == seq {
+                return Some(packet);
+            }
+        }
+
+        None
+    }
+}
+
+impl Default for InflightPackets {
+    fn default() -> Self {
+        Self::new(8192)
     }
 }
 
@@ -1146,9 +1155,12 @@ impl LossList {
 
 #[cfg(test)]
 mod tests {
-    use crate::proto::sequence::Sequence;
+    use game_common::world::control_frame::ControlFrame;
 
-    use super::LossList;
+    use crate::proto::sequence::Sequence;
+    use crate::proto::{Header, Packet, PacketBody, PacketType};
+
+    use super::{InflightPackets, LossList};
 
     #[test]
     fn loss_list_remove() {
@@ -1167,6 +1179,48 @@ mod tests {
 
             let res = list.remove(Sequence::new(value));
             assert!(res);
+        }
+    }
+
+    fn create_packet(seq: Sequence) -> Packet {
+        Packet {
+            header: Header {
+                packet_type: PacketType::DATA,
+                sequence: seq,
+                control_frame: ControlFrame::new(),
+            },
+            body: PacketBody::Frames(vec![]),
+        }
+    }
+
+    #[test]
+    fn inflight_packets() {
+        let mut packets = InflightPackets::default();
+        for seq in 0..1024 {
+            packets.insert(create_packet(Sequence::new(seq)));
+        }
+
+        for seq in 0..1024 {
+            assert!(packets.get(Sequence::new(seq)).is_some());
+        }
+    }
+
+    #[test]
+    fn inflight_packets_overflow() {
+        let size = 8192;
+
+        let mut packets = InflightPackets::new(size);
+        for seq in 0..size as u32 * 2 {
+            packets.insert(create_packet(Sequence::new(seq)));
+        }
+
+        // First size dropped.
+        for seq in 0..size as u32 {
+            assert!(packets.get(Sequence::new(seq)).is_none());
+        }
+
+        for seq in size as u32..size as u32 * 2 {
+            assert!(packets.get(Sequence::new(seq)).is_some());
         }
     }
 }

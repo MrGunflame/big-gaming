@@ -49,6 +49,10 @@ impl Socket {
         tracing::trace!("read {} bytes from {}", len, addr);
         Ok((len, addr))
     }
+
+    pub fn local_addr(&self) -> io::Result<SocketAddr> {
+        self.socket.local_addr()
+    }
 }
 
 #[cfg(unix)]
