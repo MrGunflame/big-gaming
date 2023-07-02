@@ -45,28 +45,33 @@ pub fn apply_world_delta(
 ) {
     let conn = &mut *conn;
 
-    let cf = conn.control_fame();
+    let cf = conn.control_frame();
     let period = &mut conn.interpolation_period;
 
-    //dbg!(cf, &period);
+    // Don't start rendering if the initial interpoation window is not
+    // yet filled.
+    let Some(render_cf) = cf.render else {
+        return;
+    };
 
     // Don't start a new period until the previous ended.
-    // if period.end > cf {
-    //     return;
-    // }
+    if period.end > render_cf {
+        return;
+    }
 
-    // if world.len() < 2 {
-    //     return;
-    // }
+    // Need at least 2 snapshots.
+    if world.len() < 2 {
+        return;
+    }
 
     // Apply client-side prediction
     let view = world.at_mut(0).unwrap();
     conn.overrides.apply(view);
     // drop(view);
 
-    let (Some(curr), Some(next)) = (world.at(0), world.at(1)) else {
-        return;
-    };
+    // We probed that at least 2 snapshots exist.
+    let curr = world.at(0).unwrap();
+    let next = world.at(1).unwrap();
 
     debug_assert_ne!(curr.control_frame(), next.control_frame());
 
@@ -131,6 +136,8 @@ fn handle_event(
     modules: &Modules,
     period: InterpolationPeriod,
 ) {
+    dbg!(&event);
+
     tracing::trace!(
         concat!("handle ", stringify!(WorldState), " event: {:?}"),
         event

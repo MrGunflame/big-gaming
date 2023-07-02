@@ -178,17 +178,27 @@ fn flush_command_queue(mut conn: ResMut<ServerConnection>, mut world: ResMut<Wor
         if let Some(view) = world.back() {
             if msg.control_frame < view.control_frame() {
                 let diff = view.control_frame() - msg.control_frame;
-                tracing::warn!("dropping snapshot; arrived {:?} CFs too late", diff);
+                tracing::warn!(
+                    "dropping snapshot {:?}; arrived {:?} CFs too late (tail = {:?})",
+                    msg.control_frame,
+                    diff,
+                    view.control_frame(),
+                );
 
                 continue;
             }
         }
 
-        if world.get(msg.control_frame).is_none() {
-            world.insert(msg.control_frame);
-        }
-
-        let mut view = world.get_mut(msg.control_frame).unwrap();
+        let Some(mut view) = world.get_mut(msg.control_frame) else {
+            // If the control frame does not exist on the client ast least one of these issues are to blame:
+            // 1. The server is sending garbage data, refereing to a control frame that has either already
+            //    passed or is still too far in the future.
+            // 2. The client's clock is desynced and creating new snapshots too slow/fast.
+            // 3. The server's clock is desynced and creating new snapshots too slow/fast.
+            let tail = world.back().unwrap();
+            tracing::warn!("received snapshot for unknwon control frame: {:?} (tail = {:?})", msg.control_frame, tail.control_frame());
+            continue;
+        };
 
         match msg.command {
             Command::EntityCreate {
@@ -197,6 +207,7 @@ fn flush_command_queue(mut conn: ResMut<ServerConnection>, mut world: ResMut<Wor
                 rotation,
                 data,
             } => {
+                dbg!("push");
                 view.spawn(Entity {
                     id,
                     transform: Transform {

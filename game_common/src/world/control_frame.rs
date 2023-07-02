@@ -4,6 +4,13 @@ use std::ops::{Add, AddAssign, Sub, SubAssign};
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ControlFrame(pub u32);
 
+impl ControlFrame {
+    #[inline]
+    pub fn checked_sub(self, rhs: Self) -> Option<Self> {
+        self.0.checked_sub(rhs.0).map(Self)
+    }
+}
+
 impl Add for ControlFrame {
     type Output = Self;
 

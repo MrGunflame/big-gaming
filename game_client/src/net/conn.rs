@@ -6,6 +6,7 @@ use bevy_ecs::system::{ResMut, Resource};
 use bevy_ecs::world::{FromWorld, World};
 use game_common::entity::{EntityId, EntityMap};
 use game_common::world::control_frame::ControlFrame;
+use game_common::world::world::WorldState;
 use game_core::time::Time;
 use game_net::conn::{ConnectionHandle, ConnectionId};
 use game_net::snapshot::{Command, CommandQueue, ConnectionMessage};
@@ -40,6 +41,7 @@ impl ServerConnection {
             game_tick: GameTick {
                 current_control_frame: ControlFrame(0),
                 last_update: Instant::now(),
+                initial_idle_passed: false,
             },
         }
     }
@@ -115,8 +117,25 @@ impl ServerConnection {
     }
 
     /// Returns the current control frame.
-    pub fn control_fame(&self) -> ControlFrame {
-        self.game_tick.current_control_frame
+    pub fn control_frame(&mut self) -> CurrentControlFrame {
+        // Render interpolation period of 100ms.
+        let interpolation_period = ControlFrame(6);
+
+        let head = self.game_tick.current_control_frame;
+
+        // If the initial idle phase passed, ControlFrame wraps around.
+        let render = if self.game_tick.initial_idle_passed {
+            Some(head - interpolation_period)
+        } else {
+            if let Some(cf) = head.checked_sub(interpolation_period) {
+                self.game_tick.initial_idle_passed = true;
+                Some(cf)
+            } else {
+                None
+            }
+        };
+
+        CurrentControlFrame { head, render }
     }
 
     fn reset_queue(&mut self) {
@@ -149,12 +168,31 @@ impl InterpolationPeriod {
 #[derive(Debug)]
 struct GameTick {
     current_control_frame: ControlFrame,
+    /// Whether the initial idle phase passed. In this phase the renderer is waiting for the
+    /// initial interpolation window to build up.
+    // TODO: Maybe make this AtomicBool to prevent `control_frame()` being `&mut self`.
+    initial_idle_passed: bool,
     last_update: Instant,
 }
 
-pub fn tick_game(time: ResMut<Time>, mut conn: ResMut<ServerConnection>) {
+pub fn tick_game(
+    time: ResMut<Time>,
+    mut conn: ResMut<ServerConnection>,
+    mut world: ResMut<WorldState>,
+) {
     if time.last_update() - conn.game_tick.last_update >= Duration::from_secs(1) / 60 {
         conn.game_tick.current_control_frame += 1;
         conn.game_tick.last_update = time.last_update();
+
+        debug_assert!(world.get(conn.game_tick.current_control_frame).is_none());
+        world.insert(conn.game_tick.current_control_frame);
     }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct CurrentControlFrame {
+    /// The newest snapshot of the world.
+    pub head: ControlFrame,
+    /// The snapshot of the world that should be rendered, `None` if not ready.
+    pub render: Option<ControlFrame>,
 }

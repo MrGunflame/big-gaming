@@ -1,5 +1,5 @@
 use bevy_ecs::prelude::Component;
-use bevy_ecs::system::{Query, Res};
+use bevy_ecs::system::{Query, ResMut};
 use game_common::components::actor::ActorProperties;
 use game_common::components::transform::Transform;
 use game_common::world::control_frame::ControlFrame;
@@ -88,7 +88,7 @@ impl InterpolateRotationInner {
 }
 
 pub fn interpolate_translation(
-    conn: Res<ServerConnection>,
+    mut conn: ResMut<ServerConnection>,
     mut entities: Query<(&mut Transform, &mut InterpolateTranslation)>,
 ) {
     for (mut transform, mut interpolate) in &mut entities {
@@ -96,7 +96,7 @@ pub fn interpolate_translation(
             continue;
         };
 
-        let now = conn.control_fame() - (inner.end - inner.start);
+        let now = conn.control_frame().render.unwrap() - (inner.end - inner.start);
 
         transform.translation = inner.get(now);
 
@@ -107,7 +107,7 @@ pub fn interpolate_translation(
 }
 
 pub fn interpolate_rotation(
-    conn: Res<ServerConnection>,
+    mut conn: ResMut<ServerConnection>,
     mut entities: Query<(
         &mut Transform,
         Option<&mut ActorProperties>,
@@ -119,7 +119,7 @@ pub fn interpolate_rotation(
             continue;
         };
 
-        let now = conn.control_fame() - (inner.end - inner.start);
+        let now = conn.control_frame().render.unwrap() - (inner.end - inner.start);
 
         if let Some(mut props) = props {
             props.rotation = inner.get(now);
