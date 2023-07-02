@@ -131,7 +131,6 @@ fn flush_command_queue(
         };
 
         if let Some(id) = msg.id {
-            dbg!(id);
             conn.push_proc_msg(id);
         }
 
@@ -526,7 +525,6 @@ fn update_client(conn: &Connection, world: &WorldState) {
     // Acknowledge client commands.
     let ids = conn.take_proc_msg();
     if !ids.is_empty() {
-        dbg!(&ids);
         conn.handle().send_cmd(ConnectionMessage {
             id: None,
             conn: conn.id(),
