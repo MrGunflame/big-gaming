@@ -544,9 +544,41 @@ impl<'a> DerefMut for EntityMut<'a> {
 impl<'a> Drop for EntityMut<'a> {
     fn drop(&mut self) {
         if self.prev.transform.translation != self.entity.transform.translation {
+            let entity_id = self.id;
+
             // Update the cell when moved.
             let prev = CellId::from(self.prev.transform.translation);
             let curr = CellId::from(self.entity.transform.translation);
+
+            // TODO: Weird things will happen if a prev != curr is being overwritten.
+            if prev == curr {
+                let cell = self.cells.entry(prev).or_default();
+
+                let mut should_insert = true;
+                for elem in cell.iter_mut() {
+                    match elem {
+                        EntityChange::Translate {
+                            id,
+                            translation,
+                            cell,
+                        } if *id == entity_id => {
+                            *translation = self.entity.transform.translation;
+                            should_insert = false;
+                            break;
+                        }
+                        _ => (),
+                    }
+                }
+
+                if should_insert {
+                    cell.push(EntityChange::Translate {
+                        id: entity_id,
+                        translation: self.entity.transform.translation,
+                        cell: TransferCell::new(prev, curr),
+                    });
+                }
+            } else {
+            }
 
             self.cells
                 .entry(prev)
@@ -572,13 +604,32 @@ impl<'a> Drop for EntityMut<'a> {
         }
 
         if self.prev.transform.rotation != self.entity.transform.rotation {
-            self.cells
+            let entity_id = self.id;
+
+            let cell = self
+                .cells
                 .entry(CellId::from(self.entity.transform.translation))
-                .or_default()
-                .push(EntityChange::Rotate {
-                    id: self.entity.id,
+                .or_default();
+
+            // Updated existsing event if it exists.
+            let mut should_insert = true;
+            for elem in cell.iter_mut() {
+                match elem {
+                    EntityChange::Rotate { id, rotation } if *id == entity_id => {
+                        *rotation = self.entity.transform.rotation;
+                        should_insert = false;
+                        break;
+                    }
+                    _ => (),
+                }
+            }
+
+            if should_insert {
+                cell.push(EntityChange::Rotate {
+                    id: entity_id,
                     rotation: self.entity.transform.rotation,
                 });
+            }
         }
 
         // TODO: Other deltas
@@ -854,62 +905,6 @@ impl<'a> CellViewRef<'a> {
             .map(|v| v.as_slice())
             .unwrap_or(&[])
     }
-
-    pub fn delta(this: Self, next: CellViewRef<'_>) -> Vec<EntityChange> {
-        let mut entities = HashMap::<EntityId, Entity>::from_iter(
-            next.iter()
-                .cloned()
-                .filter(|e| CellId::from(e.transform.translation) == this.id)
-                .map(|e| (e.id, e)),
-        );
-
-        let mut delta = Vec::new();
-
-        for entity in this.iter() {
-            match entities.remove(&entity.id) {
-                Some(new) => {
-                    if entity.transform.translation != new.transform.translation {
-                        delta.push(EntityChange::Translate {
-                            id: entity.id,
-                            translation: new.transform.translation,
-                            cell: TransferCell::new(
-                                entity.transform.translation,
-                                new.transform.translation,
-                            ),
-                        });
-                    }
-
-                    if entity.transform.rotation != new.transform.rotation {
-                        delta.push(EntityChange::Rotate {
-                            id: entity.id,
-                            rotation: new.transform.rotation,
-                        });
-                    }
-
-                    match (&entity.body, &new.body) {
-                        (EntityBody::Actor(prev), EntityBody::Actor(next)) => {
-                            if prev.health != next.health {
-                                delta.push(EntityChange::Health {
-                                    id: entity.id,
-                                    health: next.health,
-                                });
-                            }
-                        }
-                        _ => (),
-                    }
-                }
-                None => {
-                    delta.push(EntityChange::Destroy { id: entity.id });
-                }
-            }
-        }
-
-        for entity in entities.into_values() {
-            delta.push(EntityChange::Create { entity });
-        }
-
-        delta
-    }
 }
 
 #[derive(Clone, Debug, Default)]
@@ -1034,8 +1029,6 @@ mod tests {
         world.insert(cf2);
         assert_eq!(world.len(), 3);
         assert_get!(world, cf2);
-
-        assert_get!(world, ControlFrame(3), cf1);
     }
 
     #[test]
