@@ -98,6 +98,9 @@ where
     /// List of lost packets from the peer.
     loss_list: LossList,
 
+    /// Packets that have been sent and are buffered until an ACK is received for them.
+    inflight_packets: InflightPackets,
+
     /// Control frame offset of the connection to the server.
     /// None if not initialized.
     ///
@@ -149,6 +152,7 @@ where
             write_queue: WriteQueue::new(),
             ack_list: AckList::default(),
             loss_list: LossList::new(),
+            inflight_packets: InflightPackets::new(),
 
             control_frame_offset: None,
 
@@ -570,7 +574,19 @@ where
     }
 
     fn handle_nak(&mut self, header: Header, body: Nak) -> Poll<()> {
-        Poll::Pending
+        let mut start = body.sequences.start;
+        let end = body.sequences.end;
+
+        // This is an inclusive range.
+        while start <= end {
+            if let Some(packet) = self.inflight_packets.get(start) {
+                self.write_queue.push(packet.clone());
+            }
+
+            start += 1;
+        }
+
+        Poll::Ready(())
     }
 
     fn prepare_connect(&mut self) {
@@ -1003,6 +1019,36 @@ pub struct AckList {
     list: HashMap<CommandId, Sequence>,
     next_cmd_id: CommandId,
     ack_seq: Sequence,
+}
+
+#[derive(Clone, Debug)]
+struct InflightPackets {
+    // TODO: This can probably be a linear array since we only retain
+    // a limited ascended order of sequences.
+    packets: HashMap<Sequence, Packet>,
+}
+
+impl InflightPackets {
+    fn new() -> Self {
+        Self {
+            packets: HashMap::new(),
+        }
+    }
+
+    fn insert(&mut self, packet: Packet, commands: &[CommandId]) {
+        let seq = packet.header.sequence;
+        debug_assert!(!self.packets.contains_key(&seq));
+
+        self.packets.insert(seq, packet);
+    }
+
+    fn get(&self, seq: Sequence) -> Option<&Packet> {
+        self.packets.get(&seq)
+    }
+
+    fn remove(&mut self, seq: Sequence) {
+        self.packets.remove(&seq);
+    }
 }
 
 /// A list of lost packets.
