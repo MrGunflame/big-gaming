@@ -23,7 +23,7 @@ use game_net::proto::{Decode, Packet};
 use game_net::snapshot::{Command, CommandQueue, ConnectionMessage, Response, Status};
 use game_net::Socket;
 use glam::Vec3;
-use tokio::runtime::Runtime;
+use tokio::runtime::{Builder, UnhandledPanic};
 
 use crate::state::GameState;
 
@@ -88,7 +88,11 @@ pub fn spawn_conn(
     let (tx, rx) = mpsc::channel();
 
     std::thread::spawn(move || {
-        let rt = Runtime::new().unwrap();
+        let rt = Builder::new_current_thread()
+            .enable_all()
+            .unhandled_panic(UnhandledPanic::ShutdownRuntime)
+            .build()
+            .unwrap();
 
         rt.block_on(async move {
             let sock = match Socket::connect(addr) {

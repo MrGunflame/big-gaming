@@ -98,8 +98,6 @@ pub fn apply_world_delta(
     let mut buffer = Buffer::new();
 
     for event in delta {
-        dbg!(&event);
-
         handle_event(
             &mut commands,
             &mut entities,
