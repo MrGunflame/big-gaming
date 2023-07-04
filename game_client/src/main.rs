@@ -13,7 +13,7 @@ use bevy_app::App;
 use bevy_ecs::system::Commands;
 use clap::Parser;
 use entities::LoadEntityPlugin;
-use game_core::logger::Logger;
+use game_core::logger::{self, Logger};
 use game_core::CorePlugins;
 use game_render::light::{DirectionalLight, DirectionalLightBundle};
 use game_render::RenderPlugin;
@@ -34,7 +34,7 @@ struct Args {
 }
 
 fn main() {
-    Logger::new().init();
+    logger::init();
 
     let args = Args::parse();
 

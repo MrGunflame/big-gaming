@@ -7,9 +7,11 @@ use bevy_ecs::world::{FromWorld, World};
 use game_common::entity::{EntityId, EntityMap};
 use game_common::world::control_frame::ControlFrame;
 use game_common::world::world::WorldState;
+use game_core::counter::UpdateCounter;
 use game_core::time::Time;
 use game_net::conn::{ConnectionHandle, ConnectionId};
 use game_net::snapshot::{Command, CommandQueue, ConnectionMessage};
+use tracing::{span, Level};
 
 use crate::state::{GameState, GameStateWriter};
 
@@ -42,6 +44,7 @@ impl ServerConnection {
                 current_control_frame: ControlFrame(0),
                 last_update: Instant::now(),
                 initial_idle_passed: false,
+                counter: UpdateCounter::new(),
             },
         }
     }
@@ -178,6 +181,7 @@ struct GameTick {
     // TODO: Maybe make this AtomicBool to prevent `control_frame()` being `&mut self`.
     initial_idle_passed: bool,
     last_update: Instant,
+    counter: UpdateCounter,
 }
 
 pub fn tick_game(
@@ -188,6 +192,7 @@ pub fn tick_game(
     if time.last_update() - conn.game_tick.last_update >= Duration::from_secs(1) / 60 {
         conn.game_tick.current_control_frame += 1;
         conn.game_tick.last_update = time.last_update();
+        conn.game_tick.counter.update();
 
         debug_assert!(world.get(conn.game_tick.current_control_frame).is_none());
         world.insert(conn.game_tick.current_control_frame);
@@ -207,6 +212,12 @@ pub fn tick_game(
                 start += 1;
             }
         }
+
+        tracing::info!(
+            "Stepping control frame to {:?} (UPS = {})",
+            conn.game_tick.current_control_frame,
+            conn.game_tick.counter.ups(),
+        );
     }
 }
 

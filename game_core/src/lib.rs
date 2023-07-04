@@ -10,6 +10,7 @@ use world::{LevelPlugin, ObjectPlugin, SpawnPlugin, WorldTimePlugin};
 use bevy_app::{App, Plugin};
 
 pub mod combat;
+pub mod counter;
 pub mod hierarchy;
 pub mod modules;
 pub mod time;
