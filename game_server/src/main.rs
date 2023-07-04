@@ -12,7 +12,16 @@ struct Args {}
 fn main() {
     game_core::logger::init();
 
-    let config = Config::from_file("./config.toml").unwrap();
+    let mut config_path = std::env::current_dir().unwrap();
+    config_path.push("config.toml");
+
+    let config = match Config::from_file(&config_path) {
+        Ok(config) => config,
+        Err(err) => {
+            tracing::error!("failed to load config file from {:?}: {}", config_path, err);
+            return;
+        }
+    };
 
     let mut app = App::new();
 
