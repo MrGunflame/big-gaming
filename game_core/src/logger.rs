@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::fmt::{self, Debug, Display, Formatter, Write};
+use std::io::IsTerminal;
 use std::num::NonZeroU64;
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -37,10 +38,12 @@ impl Logger {
             })
             .unwrap_or(LevelFilter::INFO);
 
+        let is_tty = std::io::stdout().is_terminal();
+
         Self {
             id: AtomicU64::new(1),
             spans: RwLock::new(HashMap::new()),
-            is_tty: atty::is(atty::Stream::Stdout),
+            is_tty,
             level,
         }
     }
