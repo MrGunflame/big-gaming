@@ -211,7 +211,7 @@ pub fn tick_game(
             }
         }
 
-        tracing::info!(
+        tracing::debug!(
             "Stepping control frame to {:?} (UPS = {})",
             conn.game_tick.current_control_frame,
             conn.game_tick.counter.ups(),

@@ -81,6 +81,6 @@ pub async fn run(mut app: App, config: Config) {
 
         ups.update();
 
-        tracing::info!("Stepping Control frame to {:?} (UPS = {})", cf, ups.ups());
+        tracing::debug!("Stepping Control frame to {:?} (UPS = {})", cf, ups.ups());
     }
 }
