@@ -128,7 +128,7 @@ fn flush_command_queue(
 
         // Get the world state at the time the client sent the command.
         // let Some(mut view) = world.at_mut(head) else {
-        let Some(mut view) = world.front_mut() else {
+        let Some(mut view) = world.back_mut() else {
             tracing::warn!("No snapshots yet");
             return;
         };
@@ -283,7 +283,7 @@ fn flush_command_queue(
 }
 
 fn update_scripts(world: &WorldState, scripts: &mut Scripts, modules: &Modules) {
-    let Some(view) = world.front() else {
+    let Some(view) = world.back() else {
         return;
     };
 
@@ -368,7 +368,7 @@ fn update_client(conn: &Connection, world: &WorldState) {
     //     return;
     // };
 
-    let Some(curr) = world.front() else {
+    let Some(curr) = world.back() else {
         return;
     };
 

@@ -48,6 +48,8 @@ pub fn load_actor(
     for (entity, actor) in &entities {
         tracing::trace!("spawning actor at {:?}", actor.transform.translation);
 
+        dbg!(actor);
+
         let mut cmds = commands.entity(entity);
         cmds.remove::<LoadActor>();
 

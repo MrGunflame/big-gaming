@@ -65,9 +65,10 @@ pub fn apply_world_delta(
     }
 
     // Apply client-side prediction
-    let view = world.at_mut(0).unwrap();
-    conn.overrides.apply(view);
-    // drop(view);
+    for index in 0..world.len() {
+        let view = world.at_mut(index).unwrap();
+        conn.overrides.apply(view);
+    }
 
     // We probed that at least 2 snapshots exist.
     let curr = world.at(0).unwrap();
@@ -97,6 +98,8 @@ pub fn apply_world_delta(
     let mut buffer = Buffer::new();
 
     for event in delta {
+        dbg!(&event);
+
         handle_event(
             &mut commands,
             &mut entities,

@@ -164,7 +164,7 @@ fn flush_command_queue(mut conn: ResMut<ServerConnection>, mut world: ResMut<Wor
                 continue;
             }
             Command::ReceivedCommands { ids } => {
-                let view = world.back().unwrap();
+                let view = world.front().unwrap();
 
                 for cmd in ids {
                     conn.overrides.validate_pre_removal(cmd.id, view);
@@ -210,6 +210,7 @@ fn flush_command_queue(mut conn: ResMut<ServerConnection>, mut world: ResMut<Wor
                 rotation,
                 data,
             } => {
+                dbg!(id);
                 view.spawn(Entity {
                     id,
                     transform: Transform {

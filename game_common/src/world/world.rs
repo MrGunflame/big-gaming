@@ -144,35 +144,39 @@ impl WorldState {
         }
     }
 
+    /// Returns the newest snapshot.
     pub fn back(&self) -> Option<WorldViewRef<'_>> {
-        self.snapshots.front().map(|s| WorldViewRef {
-            snapshot: s,
-            index: 0,
-        })
-    }
-
-    pub fn back_mut(&mut self) -> Option<WorldViewMut<'_>> {
-        self.snapshots.front_mut()?;
-
-        Some(WorldViewMut {
-            world: self,
-            index: 0,
-            new_deltas: HashMap::new(),
-        })
-    }
-
-    pub fn front(&self) -> Option<WorldViewRef<'_>> {
         self.snapshots.back().map(|s| WorldViewRef {
             snapshot: s,
             index: self.len() - 1,
         })
     }
 
-    pub fn front_mut(&mut self) -> Option<WorldViewMut<'_>> {
+    /// Returns the newest snapshot.
+    pub fn back_mut(&mut self) -> Option<WorldViewMut<'_>> {
         self.snapshots.back_mut()?;
 
         Some(WorldViewMut {
             index: self.len() - 1,
+            world: self,
+            new_deltas: HashMap::new(),
+        })
+    }
+
+    /// Returns the oldest snapshot.
+    pub fn front(&self) -> Option<WorldViewRef<'_>> {
+        self.snapshots.front().map(|s| WorldViewRef {
+            snapshot: s,
+            index: 0,
+        })
+    }
+
+    /// Returns the oldest snapshot.
+    pub fn front_mut(&mut self) -> Option<WorldViewMut<'_>> {
+        self.snapshots.front_mut()?;
+
+        Some(WorldViewMut {
+            index: 0,
             world: self,
             new_deltas: HashMap::new(),
         })
@@ -1199,6 +1203,40 @@ mod tests {
                 id: ObjectId(RecordReference::STUB),
             }),
             components: Components::new(),
+        }
+    }
+
+    #[test]
+    fn world_patch_forward() {
+        let mut world = WorldState::new();
+
+        let cfs: Vec<_> = (0..10)
+            .map(|index| {
+                let cf = ControlFrame(index);
+                world.insert(cf);
+                cf
+            })
+            .collect();
+
+        for cf in &cfs {
+            let view = world.get(*cf).unwrap();
+            assert_eq!(view.len(), 0);
+        }
+
+        let mut view = world.get_mut(cfs[cfs.len() / 2]).unwrap();
+        view.spawn(create_test_entity());
+        drop(view);
+
+        for cf in &cfs[..cfs.len() / 2] {
+            let view = world.get(*cf).unwrap();
+            assert_eq!(view.len(), 0);
+            assert_eq!(view.deltas().count(), 0);
+        }
+
+        for cf in &cfs[cfs.len() / 2..] {
+            let view = world.get(*cf).unwrap();
+            assert_eq!(view.len(), 1);
+            assert_eq!(view.deltas().count(), 1);
         }
     }
 }
