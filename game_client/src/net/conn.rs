@@ -11,7 +11,6 @@ use game_core::counter::UpdateCounter;
 use game_core::time::Time;
 use game_net::conn::{ConnectionHandle, ConnectionId};
 use game_net::snapshot::{Command, CommandQueue, ConnectionMessage};
-use tracing::{span, Level};
 
 use crate::state::{GameState, GameStateWriter};
 
@@ -41,8 +40,8 @@ impl ServerConnection {
             writer,
             queue: CommandQueue::new(),
             game_tick: GameTick {
+                interval: Interval::new(),
                 current_control_frame: ControlFrame(0),
-                last_update: Instant::now(),
                 initial_idle_passed: false,
                 counter: UpdateCounter::new(),
             },
@@ -175,12 +174,12 @@ impl InterpolationPeriod {
 
 #[derive(Debug)]
 struct GameTick {
+    interval: Interval,
     current_control_frame: ControlFrame,
     /// Whether the initial idle phase passed. In this phase the renderer is waiting for the
     /// initial interpolation window to build up.
     // TODO: Maybe make this AtomicBool to prevent `control_frame()` being `&mut self`.
     initial_idle_passed: bool,
-    last_update: Instant,
     counter: UpdateCounter,
 }
 
@@ -189,9 +188,8 @@ pub fn tick_game(
     mut conn: ResMut<ServerConnection>,
     mut world: ResMut<WorldState>,
 ) {
-    if time.last_update() - conn.game_tick.last_update >= Duration::from_secs(1) / 60 {
+    while conn.game_tick.interval.is_ready(time.last_update()) {
         conn.game_tick.current_control_frame += 1;
-        conn.game_tick.last_update = time.last_update();
         conn.game_tick.counter.update();
 
         debug_assert!(world.get(conn.game_tick.current_control_frame).is_none());
@@ -227,4 +225,31 @@ pub struct CurrentControlFrame {
     pub head: ControlFrame,
     /// The snapshot of the world that should be rendered, `None` if not ready.
     pub render: Option<ControlFrame>,
+}
+
+#[derive(Debug)]
+struct Interval {
+    last_update: Instant,
+    /// The uniform timestep duration of a control frame.
+    timestep: Duration,
+}
+
+impl Interval {
+    fn new() -> Self {
+        Self {
+            last_update: Instant::now(),
+            timestep: Duration::from_secs(1) / 60,
+        }
+    }
+
+    fn is_ready(&mut self, now: Instant) -> bool {
+        let elapsed = now - self.last_update;
+
+        if elapsed >= self.timestep {
+            self.last_update += self.timestep;
+            true
+        } else {
+            false
+        }
+    }
 }

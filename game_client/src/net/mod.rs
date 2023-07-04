@@ -177,19 +177,19 @@ fn flush_command_queue(mut conn: ResMut<ServerConnection>, mut world: ResMut<Wor
         }
 
         // Snapshot arrived after we already consumed the frame.
-        if let Some(view) = world.back() {
-            if msg.control_frame < view.control_frame() {
-                let diff = view.control_frame() - msg.control_frame;
-                tracing::warn!(
-                    "dropping snapshot {:?}; arrived {:?} CFs too late (tail = {:?})",
-                    msg.control_frame,
-                    diff,
-                    view.control_frame(),
-                );
+        // if let Some(view) = world.back() {
+        //     if msg.control_frame < view.control_frame() {
+        //         let diff = view.control_frame() - msg.control_frame;
+        //         tracing::warn!(
+        //             "dropping snapshot {:?}; arrived {:?} CFs too late (tail = {:?})",
+        //             msg.control_frame,
+        //             diff,
+        //             view.control_frame(),
+        //         );
 
-                continue;
-            }
-        }
+        //         continue;
+        //     }
+        // }
 
         let Some(mut view) = world.get_mut(msg.control_frame) else {
             // If the control frame does not exist on the client ast least one of these issues are to blame:
