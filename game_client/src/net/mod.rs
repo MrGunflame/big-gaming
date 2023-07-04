@@ -199,7 +199,7 @@ fn flush_command_queue(mut conn: ResMut<ServerConnection>, mut world: ResMut<Wor
             // 3. The server's clock is desynced and creating new snapshots too slow/fast.
             let front = world.front().unwrap();
             let back = world.back().unwrap();
-            tracing::warn!("received snapshot for unknwon control frame: {:?} (snapshots  {:?}..{:?} exist)", msg.control_frame, front.control_frame(), back.control_frame());
+            tracing::warn!("received snapshot for unknwon control frame: {:?} (snapshots  {:?}..={:?} exist)", msg.control_frame, front.control_frame(), back.control_frame());
             continue;
         };
 
@@ -210,7 +210,6 @@ fn flush_command_queue(mut conn: ResMut<ServerConnection>, mut world: ResMut<Wor
                 rotation,
                 data,
             } => {
-                dbg!("push");
                 view.spawn(Entity {
                     id,
                     transform: Transform {
