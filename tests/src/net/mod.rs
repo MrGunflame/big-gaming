@@ -2,6 +2,7 @@ use std::net::SocketAddr;
 use std::str::FromStr;
 use std::sync::Arc;
 
+use game_common::world::control_frame::ControlFrame;
 use game_net::conn::{Connect, Connection, ConnectionHandle, ConnectionMode};
 use game_net::proto::{Decode, Packet};
 use game_net::snapshot::CommandQueue;
@@ -15,7 +16,7 @@ fn connect(queue: CommandQueue) -> ConnectionHandle {
 
     let socket = Arc::new(Socket::connect("127.0.0.1:6942").unwrap());
 
-    let (conn, handle) = Connection::<Connect>::new(addr, queue, socket.clone());
+    let (conn, handle) = Connection::<Connect>::new(addr, queue, socket.clone(), ControlFrame(0));
 
     {
         let handle = handle.clone();
