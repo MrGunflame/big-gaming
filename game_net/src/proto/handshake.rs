@@ -12,6 +12,7 @@ use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign};
 
 use bytes::{Buf, BufMut};
 
+use super::sequence::Sequence;
 use super::{Decode, Encode, Error};
 
 ///
@@ -23,6 +24,8 @@ use super::{Decode, Encode, Error};
 /// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 /// | MTU                           | Flow window                   |
 /// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+/// | ISN                                                           |
+/// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 /// ```
 #[derive(Copy, Clone, Debug, Encode, Decode)]
 pub struct Handshake {
@@ -31,6 +34,7 @@ pub struct Handshake {
     pub flags: HandshakeFlags,
     pub mtu: u16,
     pub flow_window: u16,
+    pub initial_sequence: Sequence,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, thiserror::Error)]
