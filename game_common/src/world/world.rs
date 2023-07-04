@@ -294,6 +294,10 @@ impl<'a> WorldViewMut<'a> {
         self.world.snapshots.get_mut(self.index).unwrap()
     }
 
+    pub fn deltas(&mut self) -> &mut HashMap<CellId, Vec<EntityChange>> {
+        &mut self.snapshot().cells
+    }
+
     pub fn get(&self, id: EntityId) -> Option<&Entity> {
         self.snapshot_ref().entities.get(id)
     }
@@ -685,7 +689,7 @@ pub(crate) struct Snapshot {
     hosts: Hosts,
     streaming_sources: StreamingSources,
     // Deltas for every cell
-    cells: HashMap<CellId, Vec<EntityChange>>,
+    pub cells: HashMap<CellId, Vec<EntityChange>>,
     pub(crate) inventories: Inventories,
 }
 
@@ -748,13 +752,6 @@ impl Snapshot {
 
         match delta {
             EntityChange::Create { entity } => {
-                self.cells
-                    .entry(CellId::from(entity.transform.translation))
-                    .or_default()
-                    .push(EntityChange::Create {
-                        entity: entity.clone(),
-                    });
-
                 self.entities.insert(entity);
             }
             EntityChange::Destroy { id } => {
@@ -764,11 +761,6 @@ impl Snapshot {
                 };
 
                 self.entities.despawn(id);
-
-                self.cells
-                    .entry(CellId::from(translation))
-                    .or_default()
-                    .push(EntityChange::Destroy { id });
             }
             EntityChange::Translate {
                 id,
@@ -780,24 +772,10 @@ impl Snapshot {
                 } else {
                     tracing::warn!("tried to translate a non-existant entity");
                 }
-
-                self.cells
-                    .entry(CellId::from(translation))
-                    .or_default()
-                    .push(EntityChange::Translate {
-                        id,
-                        translation,
-                        cell,
-                    });
             }
             EntityChange::Rotate { id, rotation } => {
                 if let Some(entity) = self.entities.get_mut(id) {
                     entity.transform.rotation = rotation;
-
-                    self.cells
-                        .entry(CellId::from(entity.transform.translation))
-                        .or_default()
-                        .push(EntityChange::Rotate { id, rotation });
                 } else {
                     tracing::warn!("tried to rotate a non-existant entity");
                 }
@@ -817,11 +795,6 @@ impl Snapshot {
             }
             EntityChange::UpdateStreamingSource { id, state } => {
                 let entity = self.entities.get(id).unwrap();
-
-                self.cells
-                    .entry(CellId::from(entity.transform.translation))
-                    .or_default()
-                    .push(EntityChange::UpdateStreamingSource { id, state });
 
                 match state {
                     StreamingState::Create => {
@@ -1069,45 +1042,6 @@ mod tests {
     }
 
     #[test]
-    fn test_world_modify() {
-        let mut world = WorldState::new();
-
-        let cf0 = ControlFrame(0);
-        let cf1 = ControlFrame(5);
-        let cf2 = ControlFrame(10);
-        let cf3 = ControlFrame(15);
-
-        world.insert(cf0);
-        world.insert(cf1);
-        world.insert(cf2);
-        world.insert(cf3);
-
-        let mut view = world.get_mut(cf1).unwrap();
-
-        let id = view.spawn(Entity {
-            id: EntityId::dangling(),
-            transform: Transform::default(),
-            body: EntityBody::Object(Object {
-                id: ObjectId(RecordReference::STUB),
-            }),
-            components: Components::new(),
-        });
-
-        drop(view);
-
-        let view = world.get(cf0).unwrap();
-        assert!(view.get(id).is_none());
-        assert_eq!(view.deltas().count(), 0);
-
-        for cf in [cf1, cf2, cf3] {
-            let view = world.get(cf).unwrap();
-            assert!(view.get(id).is_some());
-
-            assert_eq!(view.deltas().count(), 1);
-        }
-    }
-
-    #[test]
     fn test_world_cells() {
         let mut world = WorldState::new();
 
@@ -1165,7 +1099,7 @@ mod tests {
     }
 
     #[test]
-    fn world_view_delta() {
+    fn world_view_delta_events() {
         let mut world = WorldState::new();
 
         let cf0 = ControlFrame(0);
@@ -1180,17 +1114,13 @@ mod tests {
 
         // Events propagate to newest snapshot
         let view0 = world.get(cf0).unwrap();
-        let view1 = world.get(cf1).unwrap();
 
-        for view in [view0, view1] {
-            let events = view.deltas().collect::<Vec<_>>();
-
-            assert_eq!(events.len(), 1);
-            for event in events {
-                match event {
-                    EntityChange::Create { entity: _ } => (),
-                    _ => panic!("unexpected event: {:?}", event),
-                }
+        let events = view0.deltas().collect::<Vec<_>>();
+        assert_eq!(events.len(), 1);
+        for event in events {
+            match event {
+                EntityChange::Create { entity: _ } => (),
+                _ => panic!("unexpected event: {:?}", event),
             }
         }
     }
@@ -1206,17 +1136,23 @@ mod tests {
         }
     }
 
-    #[test]
-    fn world_patch_forward() {
+    fn create_test_world(num_snapshots: u32) -> (WorldState, Vec<ControlFrame>) {
         let mut world = WorldState::new();
 
-        let cfs: Vec<_> = (0..10)
+        let cfs = (0..num_snapshots)
             .map(|index| {
                 let cf = ControlFrame(index);
                 world.insert(cf);
                 cf
             })
             .collect();
+
+        (world, cfs)
+    }
+
+    #[test]
+    fn world_patch_forward() {
+        let (mut world, cfs) = create_test_world(10);
 
         for cf in &cfs {
             let view = world.get(*cf).unwrap();
@@ -1233,10 +1169,36 @@ mod tests {
             assert_eq!(view.deltas().count(), 0);
         }
 
-        for cf in &cfs[cfs.len() / 2..] {
-            let view = world.get(*cf).unwrap();
+        {
+            let view = world.get(cfs[cfs.len() / 2]).unwrap();
             assert_eq!(view.len(), 1);
             assert_eq!(view.deltas().count(), 1);
+        }
+
+        for cf in &cfs[(cfs.len() / 2) + 1..] {
+            let view = world.get(*cf).unwrap();
+            assert_eq!(view.len(), 1);
+            assert_eq!(view.deltas().count(), 0);
+        }
+    }
+
+    #[test]
+    fn world_patch_not_backwards() {
+        let (mut world, cfs) = create_test_world(10);
+
+        for cf in &cfs {
+            let view = world.get(*cf).unwrap();
+            assert_eq!(view.len(), 0);
+        }
+
+        let mut view = world.get_mut(cfs[cfs.len() - 1]).unwrap();
+        view.spawn(create_test_entity());
+        drop(view);
+
+        for cf in &cfs[..cfs.len() - 2] {
+            let view = world.get(*cf).unwrap();
+            assert_eq!(view.len(), 0);
+            assert_eq!(view.deltas().count(), 0);
         }
     }
 }

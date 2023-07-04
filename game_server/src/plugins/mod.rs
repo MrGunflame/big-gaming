@@ -2,6 +2,7 @@ mod inventory;
 
 use std::time::{Duration, Instant};
 
+use ahash::HashMap;
 use bevy_app::{App, Plugin};
 use bevy_ecs::system::{Commands, Res, ResMut};
 use bevy_hierarchy::DespawnRecursiveExt;
@@ -64,6 +65,8 @@ pub fn tick(
     modules: Res<Modules>,
     mut state: ResMut<State>,
 ) {
+    let mut delta_queue = DeltaQueue::default();
+
     update_client_heads(&conns, &mut world, &mut state);
     flush_command_queue(
         commands,
@@ -73,6 +76,7 @@ pub fn tick(
         &mut world,
         &mut event_queue,
         &modules,
+        &mut delta_queue,
     );
 
     crate::world::level::update_streaming_sources(&mut sources, &world);
@@ -86,7 +90,7 @@ pub fn tick(
     update_scripts(&world, &mut scripts, &modules);
 
     // Push snapshots last always
-    update_snapshots(&conns, &world);
+    update_snapshots(&conns, &world, &delta_queue);
 }
 
 fn update_client_heads(conns: &Connections, world: &mut WorldState, state: &mut State) {
@@ -119,6 +123,7 @@ fn flush_command_queue(
     world: &mut WorldState,
     events: &mut EventQueue,
     modules: &Modules,
+    delta_queue: &mut DeltaQueue,
 ) {
     while let Some(msg) = queue.pop() {
         tracing::trace!("got command {:?}", msg.command);
@@ -278,6 +283,13 @@ fn flush_command_queue(
             Command::ReceivedCommands { ids: _ } => (),
         }
 
+        for (cell, events) in view.deltas() {
+            let entry = delta_queue.cells.entry(*cell).or_default();
+            entry.extend(events.clone());
+        }
+
+        view.deltas().clear();
+
         drop(view);
     }
 }
@@ -351,13 +363,14 @@ fn update_snapshots(
     // FIXME: Make dedicated type for all shared entities.
     // mut entities: Query<(&mut Entity, &Transform)>,
     world: &WorldState,
+    delta_queue: &DeltaQueue,
 ) {
     for conn in connections.iter() {
-        update_client(&conn, world);
+        update_client(&conn, world, &delta_queue);
     }
 }
 
-fn update_client(conn: &Connection, world: &WorldState) {
+fn update_client(conn: &Connection, world: &WorldState, delta_queue: &DeltaQueue) {
     let mut state = conn.state().write();
 
     let Some(id) = state.id else {
@@ -462,13 +475,13 @@ fn update_client(conn: &Connection, world: &WorldState) {
 
         // Host in same cell
     } else {
-        // let prev_cell = prev.cell(cell_id);
-        let curr_cell = curr.cell(cell_id);
-
         changes.extend(
-            curr_cell
-                .deltas()
+            delta_queue
+                .cells
                 .iter()
+                .filter(|(id, _)| **id == cell_id)
+                .map(|(_, d)| d)
+                .flatten()
                 .cloned()
                 .map(|d| match &d {
                     EntityChange::Translate {
@@ -547,3 +560,11 @@ fn update_client(conn: &Connection, world: &WorldState) {
 
 #[cfg(test)]
 mod tests {}
+
+/// A list of events that need to be sent out this frame.
+#[derive(Clone, Debug, Default)]
+pub struct DeltaQueue {
+    // Subdivide by cells so that every client can get only what they
+    // need.
+    cells: HashMap<CellId, Vec<EntityChange>>,
+}
