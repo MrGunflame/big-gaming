@@ -1,10 +1,14 @@
 use std::net::ToSocketAddrs;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use bevy_ecs::prelude::Entity;
-use bevy_ecs::system::Resource;
+use bevy_ecs::system::{ResMut, Resource};
 use bevy_ecs::world::{FromWorld, World};
 use game_common::entity::{EntityId, EntityMap};
+use game_common::world::control_frame::ControlFrame;
+use game_common::world::world::WorldState;
+use game_core::counter::UpdateCounter;
+use game_core::time::Time;
 use game_net::conn::{ConnectionHandle, ConnectionId};
 use game_net::snapshot::{Command, CommandQueue, ConnectionMessage};
 
@@ -21,6 +25,8 @@ pub struct ServerConnection {
     pub interpolation_period: InterpolationPeriod,
     pub writer: GameStateWriter,
     pub queue: CommandQueue,
+
+    game_tick: GameTick,
 }
 
 impl ServerConnection {
@@ -33,6 +39,12 @@ impl ServerConnection {
             host: EntityId::dangling(),
             writer,
             queue: CommandQueue::new(),
+            game_tick: GameTick {
+                interval: Interval::new(),
+                current_control_frame: ControlFrame(0),
+                initial_idle_passed: false,
+                counter: UpdateCounter::new(),
+            },
         }
     }
 
@@ -41,7 +53,7 @@ impl ServerConnection {
             let cmd_id = handle.send_cmd(ConnectionMessage {
                 id: None,
                 conn: ConnectionId(0),
-                snapshot: Instant::now(),
+                control_frame: self.game_tick.current_control_frame,
                 command: cmd.clone(),
             });
 
@@ -74,6 +86,7 @@ impl ServerConnection {
         fn inner(
             queue: CommandQueue,
             addr: impl ToSocketAddrs,
+            cf: ControlFrame,
         ) -> Result<ConnectionHandle, Box<dyn std::error::Error + Send + Sync + 'static>> {
             // TODO: Use async API
             let addr = match addr.to_socket_addrs()?.nth(0) {
@@ -81,10 +94,14 @@ impl ServerConnection {
                 None => panic!("empty dns result"),
             };
 
-            super::spawn_conn(queue, addr)
+            super::spawn_conn(queue, addr, cf)
         }
 
-        match inner(self.queue.clone(), addr) {
+        match inner(
+            self.queue.clone(),
+            addr,
+            self.game_tick.current_control_frame,
+        ) {
             Ok(handle) => {
                 self.handle = Some(handle);
                 self.writer.update(GameState::Connecting);
@@ -106,6 +123,28 @@ impl ServerConnection {
         self.writer.update(GameState::MainMenu);
     }
 
+    /// Returns the current control frame.
+    pub fn control_frame(&mut self) -> CurrentControlFrame {
+        // Render interpolation period of 100ms.
+        let interpolation_period = ControlFrame(6);
+
+        let head = self.game_tick.current_control_frame;
+
+        // If the initial idle phase passed, ControlFrame wraps around.
+        let render = if self.game_tick.initial_idle_passed {
+            Some(head - interpolation_period)
+        } else {
+            if let Some(cf) = head.checked_sub(interpolation_period) {
+                self.game_tick.initial_idle_passed = true;
+                Some(cf)
+            } else {
+                None
+            }
+        };
+
+        CurrentControlFrame { head, render }
+    }
+
     fn reset_queue(&mut self) {
         self.queue = CommandQueue::new();
     }
@@ -120,17 +159,97 @@ impl FromWorld for ServerConnection {
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct InterpolationPeriod {
-    pub start: Instant,
-    pub end: Instant,
+    pub start: ControlFrame,
+    pub end: ControlFrame,
 }
 
 impl InterpolationPeriod {
     fn new() -> Self {
-        let now = Instant::now();
-
         Self {
-            start: now,
-            end: now,
+            start: ControlFrame(0),
+            end: ControlFrame(0),
+        }
+    }
+}
+
+#[derive(Debug)]
+struct GameTick {
+    interval: Interval,
+    current_control_frame: ControlFrame,
+    /// Whether the initial idle phase passed. In this phase the renderer is waiting for the
+    /// initial interpolation window to build up.
+    // TODO: Maybe make this AtomicBool to prevent `control_frame()` being `&mut self`.
+    initial_idle_passed: bool,
+    counter: UpdateCounter,
+}
+
+pub fn tick_game(
+    time: ResMut<Time>,
+    mut conn: ResMut<ServerConnection>,
+    mut world: ResMut<WorldState>,
+) {
+    while conn.game_tick.interval.is_ready(time.last_update()) {
+        conn.game_tick.current_control_frame += 1;
+        conn.game_tick.counter.update();
+
+        debug_assert!(world.get(conn.game_tick.current_control_frame).is_none());
+        world.insert(conn.game_tick.current_control_frame);
+
+        // Snapshots render..head should now exist.
+        if cfg!(debug_assertions) {
+            let control_frame = conn.control_frame();
+            let mut start = match control_frame.render {
+                Some(render) => render,
+                None => ControlFrame(0),
+            };
+            let end = control_frame.head;
+
+            while start != end + 1 {
+                assert!(world.get(start).is_some());
+
+                start += 1;
+            }
+        }
+
+        tracing::debug!(
+            "Stepping control frame to {:?} (UPS = {})",
+            conn.game_tick.current_control_frame,
+            conn.game_tick.counter.ups(),
+        );
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct CurrentControlFrame {
+    /// The newest snapshot of the world.
+    pub head: ControlFrame,
+    /// The snapshot of the world that should be rendered, `None` if not ready.
+    pub render: Option<ControlFrame>,
+}
+
+#[derive(Debug)]
+struct Interval {
+    last_update: Instant,
+    /// The uniform timestep duration of a control frame.
+    timestep: Duration,
+}
+
+impl Interval {
+    fn new() -> Self {
+        Self {
+            last_update: Instant::now(),
+            timestep: Duration::from_secs(1) / 60,
+        }
+    }
+
+    fn is_ready(&mut self, now: Instant) -> bool {
+        let elapsed = now - self.last_update;
+
+        if elapsed >= self.timestep {
+            self.last_update += self.timestep;
+            true
+        } else {
+            false
         }
     }
 }

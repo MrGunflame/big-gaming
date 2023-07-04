@@ -2,6 +2,7 @@ mod inventory;
 
 use std::time::{Duration, Instant};
 
+use ahash::HashMap;
 use bevy_app::{App, Plugin};
 use bevy_ecs::system::{Commands, Res, ResMut};
 use bevy_hierarchy::DespawnRecursiveExt;
@@ -16,6 +17,7 @@ use game_common::components::transform::Transform;
 use game_common::entity::{EntityId, EntityMap};
 use game_common::events::{ActionEvent, EntityEvent, Event, EventKind, EventQueue};
 use game_common::record::{RecordId, RecordReference};
+use game_common::world::control_frame::ControlFrame;
 use game_common::world::entity::{Actor, Entity, EntityBody};
 use game_common::world::snapshot::EntityChange;
 use game_common::world::source::{StreamingSource, StreamingSources, StreamingState};
@@ -32,6 +34,7 @@ use glam::Vec3;
 use crate::conn::{Connection, Connections};
 use crate::entity::ServerEntityGenerator;
 use crate::net::state::Cells;
+use crate::state::State;
 use crate::world::level::Level;
 
 pub struct ServerPlugins;
@@ -60,8 +63,11 @@ pub fn tick(
     server: Res<ScriptServer>,
     mut scripts: ResMut<Scripts>,
     modules: Res<Modules>,
+    mut state: ResMut<State>,
 ) {
-    update_client_heads(&conns, &mut world);
+    let mut delta_queue = DeltaQueue::default();
+
+    update_client_heads(&conns, &mut world, &mut state);
     flush_command_queue(
         commands,
         &conns,
@@ -70,6 +76,7 @@ pub fn tick(
         &mut world,
         &mut event_queue,
         &modules,
+        &mut delta_queue,
     );
 
     crate::world::level::update_streaming_sources(&mut sources, &world);
@@ -77,21 +84,25 @@ pub fn tick(
 
     game_script::plugin::flush_event_queue(&mut event_queue, &mut world, &server, &scripts);
 
+    #[cfg(feature = "physics")]
     pipeline.step(&mut world, &mut event_queue);
 
     update_scripts(&world, &mut scripts, &modules);
 
     // Push snapshots last always
-    update_snapshots(&conns, &world);
+    update_snapshots(&conns, &world, &delta_queue);
 }
 
-fn update_client_heads(conns: &Connections, world: &mut WorldState) {
-    world.insert(Instant::now());
+fn update_client_heads(conns: &Connections, world: &mut WorldState, state: &mut State) {
+    let control_frame = *state.control_frame.lock();
+
+    world.insert(*state.control_frame.lock());
 
     for conn in conns.iter() {
         let old_head = conn.state().write().head;
 
-        let client_time = Instant::now() - Duration::from_millis(100);
+        //let client_time = Instant::now() - Duration::from_millis(100);
+        let client_time = control_frame - 5;
         let head = world.index(client_time).unwrap_or(world.len() - 1);
 
         // assert_ne!(old_head, head);
@@ -112,6 +123,7 @@ fn flush_command_queue(
     world: &mut WorldState,
     events: &mut EventQueue,
     modules: &Modules,
+    delta_queue: &mut DeltaQueue,
 ) {
     while let Some(msg) = queue.pop() {
         tracing::trace!("got command {:?}", msg.command);
@@ -121,7 +133,7 @@ fn flush_command_queue(
 
         // Get the world state at the time the client sent the command.
         // let Some(mut view) = world.at_mut(head) else {
-        let Some(mut view) = world.front_mut() else {
+        let Some(mut view) = world.back_mut() else {
             tracing::warn!("No snapshots yet");
             return;
         };
@@ -222,7 +234,7 @@ fn flush_command_queue(
                 inventory::add_item(
                     &mut inv,
                     ItemId(RecordReference {
-                        module: "8f356647e8f846bbbf1baebc0b3cf40d".parse().unwrap(),
+                        module: "e9aa65d7953b4132beed9bbcff89e00a".parse().unwrap(),
                         record: RecordId(3),
                     }),
                     &modules,
@@ -231,7 +243,7 @@ fn flush_command_queue(
                 map.insert(id, ent);
                 // FIXME: This should not be set in this snapshot, but in the most
                 // recent one.
-                conn.set_host(id, view.creation());
+                conn.set_host(id, view.control_frame());
 
                 let mut state = conn.state().write();
                 state.id = Some(id);
@@ -271,12 +283,19 @@ fn flush_command_queue(
             Command::ReceivedCommands { ids: _ } => (),
         }
 
+        for (cell, events) in view.deltas() {
+            let entry = delta_queue.cells.entry(*cell).or_default();
+            entry.extend(events.clone());
+        }
+
+        view.deltas().clear();
+
         drop(view);
     }
 }
 
 fn update_scripts(world: &WorldState, scripts: &mut Scripts, modules: &Modules) {
-    let Some(view) = world.front() else {
+    let Some(view) = world.back() else {
         return;
     };
 
@@ -344,13 +363,14 @@ fn update_snapshots(
     // FIXME: Make dedicated type for all shared entities.
     // mut entities: Query<(&mut Entity, &Transform)>,
     world: &WorldState,
+    delta_queue: &DeltaQueue,
 ) {
     for conn in connections.iter() {
-        update_client(&conn, world);
+        update_client(&conn, world, &delta_queue);
     }
 }
 
-fn update_client(conn: &Connection, world: &WorldState) {
+fn update_client(conn: &Connection, world: &WorldState, delta_queue: &DeltaQueue) {
     let mut state = conn.state().write();
 
     let Some(id) = state.id else {
@@ -361,7 +381,7 @@ fn update_client(conn: &Connection, world: &WorldState) {
     //     return;
     // };
 
-    let Some(curr) = world.front() else {
+    let Some(curr) = world.back() else {
         return;
     };
 
@@ -386,7 +406,7 @@ fn update_client(conn: &Connection, world: &WorldState) {
                 conn.handle().send_cmd(ConnectionMessage {
                     id: None,
                     conn: ConnectionId(0),
-                    snapshot: curr.creation(),
+                    control_frame: curr.control_frame(),
                     command: Command::EntityCreate {
                         id: entity.id,
                         translation: entity.transform.translation,
@@ -401,7 +421,7 @@ fn update_client(conn: &Connection, world: &WorldState) {
                         conn.handle().send_cmd(ConnectionMessage {
                             id: None,
                             conn: ConnectionId(0),
-                            snapshot: curr.creation(),
+                            control_frame: curr.control_frame(),
                             command: Command::InventoryItemAdd {
                                 entity: entity.id,
                                 id: item.id,
@@ -455,13 +475,13 @@ fn update_client(conn: &Connection, world: &WorldState) {
 
         // Host in same cell
     } else {
-        // let prev_cell = prev.cell(cell_id);
-        let curr_cell = curr.cell(cell_id);
-
         changes.extend(
-            curr_cell
-                .deltas()
+            delta_queue
+                .cells
                 .iter()
+                .filter(|(id, _)| **id == cell_id)
+                .map(|(_, d)| d)
+                .flatten()
                 .cloned()
                 .map(|d| match &d {
                     EntityChange::Translate {
@@ -516,7 +536,7 @@ fn update_client(conn: &Connection, world: &WorldState) {
         }
     }
 
-    conn.push(changes, curr.creation());
+    conn.push(changes, curr.control_frame());
 
     // Acknowledge client commands.
     let ids = conn.take_proc_msg();
@@ -524,7 +544,7 @@ fn update_client(conn: &Connection, world: &WorldState) {
         conn.handle().send_cmd(ConnectionMessage {
             id: None,
             conn: conn.id(),
-            snapshot: Instant::now(),
+            control_frame: ControlFrame(0),
             command: Command::ReceivedCommands {
                 ids: ids
                     .into_iter()
@@ -540,3 +560,11 @@ fn update_client(conn: &Connection, world: &WorldState) {
 
 #[cfg(test)]
 mod tests {}
+
+/// A list of events that need to be sent out this frame.
+#[derive(Clone, Debug, Default)]
+pub struct DeltaQueue {
+    // Subdivide by cells so that every client can get only what they
+    // need.
+    cells: HashMap<CellId, Vec<EntityChange>>,
+}

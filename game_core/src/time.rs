@@ -47,7 +47,7 @@ impl Time {
         self.last_update
     }
 
-    fn update(&mut self) {
+    pub fn update(&mut self) {
         let now = Instant::now();
 
         self.delta = now - self.last_update;

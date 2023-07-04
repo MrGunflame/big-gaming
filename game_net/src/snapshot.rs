@@ -4,55 +4,16 @@ use game_common::components::combat::Health;
 use game_common::components::inventory::InventoryId;
 use game_common::components::items::ItemId;
 use game_common::entity::EntityId;
+use game_common::world::control_frame::ControlFrame;
 use game_common::world::entity::EntityBody;
-use game_common::world::snapshot::EntityChange;
 use game_common::world::CellId;
 use glam::{Quat, Vec3};
 use parking_lot::Mutex;
 use std::collections::VecDeque;
-use std::fs::OpenOptions;
 use std::ops::{Add, AddAssign, Sub, SubAssign};
 use std::sync::Arc;
-use std::time::Instant;
 
 use crate::conn::ConnectionId;
-
-/// A temporary identifier for a snapshot.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[repr(transparent)]
-pub struct SnapshotId(pub u32);
-
-impl Add<u32> for SnapshotId {
-    type Output = Self;
-
-    #[inline]
-    fn add(self, rhs: u32) -> Self::Output {
-        Self(self.0.wrapping_add(rhs))
-    }
-}
-
-impl AddAssign<u32> for SnapshotId {
-    #[inline]
-    fn add_assign(&mut self, rhs: u32) {
-        *self = *self + rhs;
-    }
-}
-
-impl Sub<u32> for SnapshotId {
-    type Output = Self;
-
-    #[inline]
-    fn sub(self, rhs: u32) -> Self::Output {
-        Self(self.0.wrapping_sub(rhs))
-    }
-}
-
-impl SubAssign<u32> for SnapshotId {
-    #[inline]
-    fn sub_assign(&mut self, rhs: u32) {
-        *self = *self - rhs;
-    }
-}
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Response {
@@ -74,7 +35,7 @@ pub enum Status {
 pub struct ConnectionMessage {
     pub id: Option<CommandId>,
     pub conn: ConnectionId,
-    pub snapshot: Instant,
+    pub control_frame: ControlFrame,
     pub command: Command,
 }
 

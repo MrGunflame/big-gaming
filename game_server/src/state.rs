@@ -4,16 +4,18 @@ use std::ops::Deref;
 use std::sync::Arc;
 
 use ahash::AHashMap;
+use bevy_ecs::system::Resource;
+use game_common::world::control_frame::ControlFrame;
 use game_net::conn::ConnectionHandle;
 use game_net::snapshot::CommandQueue;
-use parking_lot::RwLock;
+use parking_lot::{Mutex, RwLock};
 
 use crate::config::Config;
 use crate::conn::Connections;
 
 pub type ConnectionKey = SocketAddr;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Resource)]
 pub struct State(Arc<StateInner>);
 
 impl State {
@@ -23,6 +25,7 @@ impl State {
             pool: ConnectionPool::new(),
             queue: CommandQueue::default(),
             conns: Connections::default(),
+            control_frame: Mutex::default(),
         }))
     }
 }
@@ -42,6 +45,8 @@ pub struct StateInner {
     pub pool: ConnectionPool,
     pub queue: CommandQueue,
     pub conns: Connections,
+    // TODO: This can probably be AtomicU32, but needs to be consitent.
+    pub control_frame: Mutex<ControlFrame>,
 }
 
 #[derive(Debug)]

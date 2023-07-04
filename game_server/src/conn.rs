@@ -1,11 +1,11 @@
 use std::borrow::Borrow;
 use std::iter::FusedIterator;
 use std::sync::Arc;
-use std::time::Instant;
 
 use ahash::HashMap;
 use bevy_ecs::system::Resource;
 use game_common::entity::EntityId;
+use game_common::world::control_frame::ControlFrame;
 use game_common::world::snapshot::EntityChange;
 use game_common::world::CellId;
 use game_net::conn::{ConnectionHandle, ConnectionId};
@@ -120,7 +120,7 @@ impl Connection {
         &self.inner.handle
     }
 
-    pub fn push<T>(&self, deltas: T, snapshot: Instant)
+    pub fn push<T>(&self, deltas: T, control_frame: ControlFrame)
     where
         T: IntoDeltas,
     {
@@ -155,7 +155,7 @@ impl Connection {
             self.inner.handle.send_cmd(ConnectionMessage {
                 id: None,
                 conn: ConnectionId(0),
-                snapshot,
+                control_frame,
                 command: cmd,
             });
         }
@@ -169,12 +169,12 @@ impl Connection {
         self.state().read().id
     }
 
-    pub fn set_host(&self, id: EntityId, snapshot: Instant) {
+    pub fn set_host(&self, id: EntityId, control_frame: ControlFrame) {
         self.state().write().id = Some(id);
         self.handle().send_cmd(ConnectionMessage {
             id: None,
             conn: ConnectionId(0),
-            snapshot,
+            control_frame,
             command: Command::SpawnHost { id },
         });
     }

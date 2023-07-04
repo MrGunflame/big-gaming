@@ -8,6 +8,7 @@ use crate::serial;
 use super::{Decode, Encode};
 
 const BITS: usize = 31;
+const SEQUENCE_MAX: u32 = (1 << BITS) - 1;
 
 /// A sequence number
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -15,8 +16,18 @@ const BITS: usize = 31;
 pub struct Sequence(u32);
 
 impl Sequence {
+    pub const MAX: Self = Self(SEQUENCE_MAX);
+
     #[inline]
+    #[track_caller]
     pub fn new(n: u32) -> Self {
+        if cfg!(debug_assertions) && n > SEQUENCE_MAX {
+            panic!(
+                "{} exceeds the maximum sequence value of {}",
+                n, SEQUENCE_MAX
+            );
+        }
+
         Self(n)
     }
 
@@ -26,7 +37,15 @@ impl Sequence {
     }
 
     #[inline]
+    #[track_caller]
     pub fn from_bits(bits: u32) -> Self {
+        if cfg!(debug_assertions) && bits > SEQUENCE_MAX {
+            panic!(
+                "{} exceeds the maximum sequence value of {}",
+                bits, SEQUENCE_MAX
+            );
+        }
+
         Self(bits)
     }
 }
@@ -105,5 +124,23 @@ impl Decode for Sequence {
         B: Buf,
     {
         u32::decode(buf).map(Self)
+    }
+}
+
+mod tests {
+    use super::Sequence;
+
+    // Sequence functions only panics with debug assertions.
+    #[test]
+    #[cfg_attr(debug_assertions, should_panic)]
+    fn sequence_new_overflow_panics_with_debug_assertions() {
+        let _ = Sequence::new(u32::MAX);
+    }
+
+    // Sequence functions only panics with debug assertions.
+    #[test]
+    #[cfg_attr(debug_assertions, should_panic)]
+    fn sequence_from_bits_overflow_panics_with_debug_assertions() {
+        let _ = Sequence::from_bits(u32::MAX);
     }
 }

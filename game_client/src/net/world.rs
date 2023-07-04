@@ -1,5 +1,3 @@
-use std::time::{Duration, Instant};
-
 use bevy_ecs::system::{Commands, Query, Res, ResMut};
 use game_common::components::actions::{ActionId, Actions};
 use game_common::components::actor::ActorProperties;
@@ -13,7 +11,7 @@ use game_common::entity::EntityId;
 use game_common::world::entity::{Entity, EntityBody};
 use game_common::world::snapshot::{EntityChange, InventoryItemAdd};
 use game_common::world::source::StreamingSource;
-use game_common::world::world::{WorldState, WorldViewRef};
+use game_common::world::world::WorldState;
 use game_core::modules::Modules;
 use game_net::backlog::Backlog;
 
@@ -23,7 +21,6 @@ use crate::entities::item::LoadItem;
 use crate::entities::object::LoadObject;
 use crate::entities::terrain::LoadTerrain;
 use crate::net::interpolate::{InterpolateRotation, InterpolateTranslation};
-use crate::utils::extract_actor_rotation;
 
 use super::conn::InterpolationPeriod;
 use super::ServerConnection;
@@ -40,46 +37,58 @@ pub fn apply_world_delta(
         // access the WorldState.
         Option<&mut Inventory>,
         Option<&mut ActorProperties>,
+        &mut InterpolateTranslation,
+        &mut InterpolateRotation,
     )>,
     mut backlog: ResMut<Backlog>,
     modules: Res<Modules>,
 ) {
     let conn = &mut *conn;
 
+    let cf = conn.control_frame();
     let period = &mut conn.interpolation_period;
 
+    // Don't start rendering if the initial interpoation window is not
+    // yet filled.
+    let Some(render_cf) = cf.render else {
+        return;
+    };
+
     // Don't start a new period until the previous ended.
-    if period.end > Instant::now() - Duration::from_millis(100) {
+    if period.end > render_cf {
         return;
     }
 
+    // Need at least 2 snapshots.
     if world.len() < 2 {
         return;
     }
 
     // Apply client-side prediction
-    let view = world.at_mut(0).unwrap();
-    conn.overrides.apply(view);
-    // drop(view);
+    for index in 0..world.len() {
+        let view = world.at_mut(index).unwrap();
+        conn.overrides.apply(view);
+    }
 
-    let (Some(curr), Some(next)) = (world.at(0), world.at(1)) else {
-        return;
-    };
+    // We probed that at least 2 snapshots exist.
+    let curr = world.at(0).unwrap();
+    let next = world.at(1).unwrap();
 
-    debug_assert_ne!(curr.creation(), next.creation());
+    debug_assert_ne!(curr.control_frame(), next.control_frame());
 
     // The end of the previous snapshot should be the current snapshot.
     if cfg!(debug_assertions) {
         // Ignore the start, where start == end.
         if period.start != period.end {
-            assert_eq!(period.end, curr.creation());
+            assert_eq!(period.end, curr.control_frame());
         }
     }
 
-    period.start = curr.creation();
-    period.end = next.creation();
+    period.start = curr.control_frame();
+    period.end = next.control_frame();
 
-    let delta = WorldViewRef::delta(Some(curr), next);
+    let delta = curr.deltas();
+    //let delta = WorldViewRef::delta(Some(curr), next);
 
     // Apply world delta.
 
@@ -92,7 +101,7 @@ pub fn apply_world_delta(
         handle_event(
             &mut commands,
             &mut entities,
-            event,
+            event.clone(),
             &mut buffer,
             conn,
             &mut backlog,
@@ -118,6 +127,8 @@ fn handle_event(
         Option<&mut Health>,
         Option<&mut Inventory>,
         Option<&mut ActorProperties>,
+        &mut InterpolateTranslation,
+        &mut InterpolateRotation,
     )>,
     event: EntityChange,
     buffer: &mut Buffer,
@@ -202,34 +213,57 @@ fn handle_event(
         } => {
             let entity = conn.entities.get(id).unwrap();
 
-            if let Ok((_, transform, _, _, _)) = entities.get_mut(entity) {
-                commands.entity(entity).insert(InterpolateTranslation {
-                    src: transform.translation,
-                    dst: translation,
-                    start: period.start,
-                    end: period.end,
-                });
+            if let Ok((_, transform, _, _, _, mut interpolate, _)) = entities.get_mut(entity) {
+                // Translation is predicted, do not interpolate.
+                if let Some(translation) = conn
+                    .overrides
+                    .get_entity(id)
+                    .map(|p| p.translation())
+                    .flatten()
+                {
+                    // Predictected values should already be applied.
+                    // if cfg!(debug_assertions) {
+                    //     assert_eq!(transform.translation, translation);
+                    // }
+
+                    return;
+                }
+
+                interpolate.set(transform.translation, translation, period.start, period.end);
             }
         }
         EntityChange::Rotate { id, rotation } => {
             let entity = conn.entities.get(id).unwrap();
 
-            if let Ok((_, transform, _, _, props)) = entities.get_mut(entity) {
-                if let Some(props) = props {
-                    commands.entity(entity).insert(InterpolateRotation {
-                        src: props.rotation,
-                        dst: rotation,
-                        start: period.start,
-                        end: period.end,
-                    });
-                } else {
-                    commands.entity(entity).insert(InterpolateRotation {
-                        src: transform.rotation,
-                        dst: rotation,
-                        start: period.start,
-                        end: period.end,
-                    });
+            if let Ok((_, mut transform, _, _, props, _, mut interpolate)) =
+                entities.get_mut(entity)
+            {
+                // Rotation is predicted, do not interpolate.
+                if let Some(rotation) = conn
+                    .overrides
+                    .get_entity(id)
+                    .map(|p| p.rotation())
+                    .flatten()
+                {
+                    // Predictected values should already be applied.
+                    // if cfg!(debug_assertions) {
+                    //     if let Some(props) = props {
+                    //         assert_eq!(props.rotation, rotation);
+                    //     } else {
+                    //         assert_eq!(transform.rotation, rotation);
+                    //     }
+                    // }
+
+                    return;
                 }
+
+                if let Some(props) = props {
+                    interpolate.set(props.rotation, rotation, period.start, period.end);
+                } else {
+                    interpolate.set(transform.rotation, rotation, period.start, period.end);
+                }
+
+                // transform.rotation = rotation;
             }
         }
         EntityChange::CreateHost { id } => {
@@ -251,7 +285,7 @@ fn handle_event(
         EntityChange::Health { id, health } => {
             let entity = conn.entities.get(id).unwrap();
 
-            if let Ok((_, _, Some(mut h), _, _)) = entities.get_mut(entity) {
+            if let Ok((_, _, Some(mut h), _, _, _, _)) = entities.get_mut(entity) {
                 *h = health;
             }
         }

@@ -1,0 +1,3 @@
+[build]
+# Allow us to disable tokio panic recovery.
+rustflags = ["--cfg", "tokio_unstable"]

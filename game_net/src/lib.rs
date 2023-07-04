@@ -33,5 +33,6 @@ pub mod snapshot;
 pub mod socket;
 mod stream;
 mod timestamp;
+mod validator;
 
 pub use socket::Socket;

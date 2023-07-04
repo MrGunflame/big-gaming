@@ -13,9 +13,11 @@ use std::time::Duration;
 use bevy_app::App;
 use game_common::archive::loader::ModuleLoader;
 use game_common::archive::GameArchive;
+use game_core::counter::UpdateCounter;
 use game_core::CorePlugins;
 use plugins::ServerPlugins;
 use tokio::time::{interval, MissedTickBehavior};
+use tracing::{span, Level};
 use world::WorldPlugin;
 
 use crate::config::Config;
@@ -31,6 +33,9 @@ pub fn prepare(app: &mut App) {
 }
 
 pub async fn run(mut app: App, config: Config) {
+    let root = span!(Level::INFO, "Server");
+    let _guard = root.enter();
+
     let state = State::new(config);
 
     let queue = state.queue.clone();
@@ -45,6 +50,7 @@ pub async fn run(mut app: App, config: Config) {
     app.insert_resource(conns);
 
     app.add_plugin(ServerPlugins);
+    app.insert_resource(state.clone());
 
     let timestep = Duration::from_secs(1) / state.config.timestep;
 
@@ -65,8 +71,16 @@ pub async fn run(mut app: App, config: Config) {
     let mut interval = interval(timestep.into());
     interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
+    let mut ups = UpdateCounter::new();
     loop {
         app.update();
         interval.tick().await;
+
+        let mut cf = app.world.resource::<State>().control_frame.lock();
+        *cf += 1;
+
+        ups.update();
+
+        tracing::debug!("Stepping Control frame to {:?} (UPS = {})", cf, ups.ups());
     }
 }

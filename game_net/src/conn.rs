@@ -10,18 +10,18 @@ use std::time::{Duration, Instant};
 
 use futures::FutureExt;
 use game_common::entity::EntityId;
+use game_common::world::control_frame::ControlFrame;
 use thiserror::Error;
 use tokio::sync::mpsc;
 use tokio::time::MissedTickBehavior;
 
 use crate::buffer::FrameBuffer;
 use crate::entity::Entities;
-use crate::proto::ack::{Ack, Nak};
+use crate::proto::ack::{Ack, AckAck, Nak};
 use crate::proto::handshake::{Handshake, HandshakeFlags, HandshakeType};
 use crate::proto::sequence::Sequence;
 use crate::proto::shutdown::{Shutdown, ShutdownReason};
-use crate::proto::timestamp::Timestamp;
-use crate::proto::{Encode, Frame, Header, Packet, PacketBody, PacketType};
+use crate::proto::{Encode, Frame, Header, Packet, PacketBody, PacketType, SequenceRange};
 use crate::request::Request;
 use crate::snapshot::{Command, CommandId, CommandQueue, ConnectionMessage, Response, Status};
 use crate::socket::Socket;
@@ -66,11 +66,11 @@ where
 {
     pub id: ConnectionId,
     /// Input stream from the socket
-    stream: mpsc::Receiver<Packet>,
+    socket_stream: mpsc::Receiver<Packet>,
     socket: Arc<Socket>,
 
     /// Direction (from self)
-    chan_out: mpsc::Receiver<ConnectionMessage>,
+    local_stream: mpsc::Receiver<ConnectionMessage>,
 
     state: ConnectionState,
 
@@ -82,17 +82,31 @@ where
     write: Option<WriteRequest>,
     interval: TickInterval,
     last_time: Instant,
-    next_server_sequence: Sequence,
     start_time: Instant,
 
+    next_local_sequence: Sequence,
     next_peer_sequence: Sequence,
+
+    next_ack_sequence: Sequence,
 
     commands: Commands,
     buffer: FrameBuffer,
     write_queue: WriteQueue,
     ack_list: AckList,
 
+    /// List of lost packets from the peer.
+    loss_list: LossList,
+
+    /// Packets that have been sent and are buffered until an ACK is received for them.
+    inflight_packets: InflightPackets,
+
+    start_control_frame: ControlFrame,
+    peer_start_control_frame: ControlFrame,
+
     _mode: PhantomData<fn() -> M>,
+
+    #[cfg(debug_assertions)]
+    debug_validator: crate::validator::DebugValidator,
 }
 
 impl<M> Connection<M>
@@ -103,6 +117,7 @@ where
         peer: SocketAddr,
         queue: CommandQueue,
         socket: Arc<Socket>,
+        control_frame: ControlFrame,
     ) -> (Self, ConnectionHandle) {
         let id = ConnectionId::new();
 
@@ -111,10 +126,10 @@ where
 
         let mut conn = Self {
             id,
-            stream: rx,
+            socket_stream: rx,
             socket,
             state: ConnectionState::Handshake(HandshakeState::Hello),
-            chan_out: out_rx,
+            local_stream: out_rx,
             queue,
             entities: Entities::new(),
             peer,
@@ -123,7 +138,8 @@ where
             write: None,
             interval: TickInterval::new(),
             last_time: Instant::now(),
-            next_server_sequence: Sequence::default(),
+            next_local_sequence: Sequence::default(),
+            next_ack_sequence: Sequence::default(),
             start_time: Instant::now(),
             next_peer_sequence: Sequence::default(),
             commands: Commands {
@@ -132,8 +148,16 @@ where
             buffer: FrameBuffer::new(),
             write_queue: WriteQueue::new(),
             ack_list: AckList::default(),
+            loss_list: LossList::new(),
+            inflight_packets: InflightPackets::new(8192),
+
+            start_control_frame: control_frame,
+            peer_start_control_frame: ControlFrame::default(),
 
             _mode: PhantomData,
+
+            #[cfg(debug_assertions)]
+            debug_validator: crate::validator::DebugValidator::new(),
         };
 
         if M::IS_CONNECT {
@@ -160,7 +184,7 @@ where
             return Poll::Ready(Ok(()));
         }
 
-        while let Poll::Ready(packet) = self.stream.poll_recv(cx) {
+        while let Poll::Ready(packet) = self.socket_stream.poll_recv(cx) {
             tracing::debug!("recv {:?}", packet);
 
             self.last_time = Instant::now();
@@ -183,7 +207,7 @@ where
             return Poll::Pending;
         }
 
-        while let Poll::Ready(msg) = self.chan_out.poll_recv(cx) {
+        while let Poll::Ready(msg) = self.local_stream.poll_recv(cx) {
             let Some(msg) = msg else {
                 return self.shutdown();
             };
@@ -195,6 +219,12 @@ where
                     for resp in ids {
                         let seq = self.ack_list.list.remove(&resp.id).unwrap();
                         // The last sequence acknowledged by the game loop.
+                        if seq < self.ack_list.ack_seq {
+                            panic!(
+                                "ack sequence went backwards: {:?} < {:?}",
+                                seq, self.ack_list.ack_seq
+                            );
+                        }
                         self.ack_list.ack_seq = seq;
                     }
 
@@ -222,15 +252,16 @@ where
                 }
             };
 
-            self.frame_queue.push(frame, msgid, msg.snapshot);
+            self.frame_queue.push(frame, msgid, msg.control_frame);
 
             if let Some(id) = msg.command.id() {
                 if let Some(vec) = self.backlog.remove(id) {
                     tracing::info!("flushing commands for {:?}", id);
 
                     self.frame_queue.extend(
-                        vec.into_iter()
-                            .map(|cmd| (self.entities.pack(&cmd).unwrap(), msgid, msg.snapshot)),
+                        vec.into_iter().map(|cmd| {
+                            (self.entities.pack(&cmd).unwrap(), msgid, msg.control_frame)
+                        }),
                     );
                 }
             }
@@ -242,15 +273,14 @@ where
     fn write_snapshot(&mut self) {
         // Merge FrameQueue into FrameBuffer, compact then send.
 
-        let timestamp = Timestamp::new(self.start_time.elapsed());
-
-        while let Some((frame, id, snapshot)) = self.frame_queue.pop() {
-            let sequence = self.next_server_sequence;
-            self.next_server_sequence += 1;
+        while let Some((frame, id, cf)) = self.frame_queue.pop() {
+            let sequence = self.next_local_sequence;
+            self.next_local_sequence += 1;
 
             self.buffer.push(Request {
                 id,
                 sequence,
+                control_frame: cf,
                 frame,
             });
         }
@@ -270,20 +300,18 @@ where
         // }
 
         for req in &self.buffer {
-            let sequence = self.next_server_sequence;
-            self.next_server_sequence += 1;
-
-            self.commands.cmds.insert(sequence, vec![req.id]);
+            self.commands.cmds.insert(req.sequence, vec![req.id]);
 
             let packet = Packet {
                 header: Header {
                     packet_type: PacketType::DATA,
-                    sequence,
-                    timestamp,
+                    sequence: req.sequence,
+                    control_frame: req.control_frame,
                 },
                 body: PacketBody::Frames(vec![req.frame.clone()]),
             };
 
+            self.inflight_packets.insert(packet.clone());
             self.write_queue.push(packet);
         }
 
@@ -331,41 +359,83 @@ where
     ///
     /// Returns `Poll::Ready` on state change.
     fn handle_packet(&mut self, packet: Packet) -> Poll<()> {
+        #[cfg(debug_assertions)]
+        self.debug_validator.push(&packet);
+
         match packet.body {
             PacketBody::Handshake(body) => self.handle_handshake(packet.header, body),
             PacketBody::Shutdown(body) => self.handle_shutdown(packet.header, body),
             PacketBody::Ack(body) => self.handle_ack(packet.header, body),
+            PacketBody::AckAck(body) => self.handle_ackack(packet.header, body),
             PacketBody::Nak(body) => self.handle_nak(packet.header, body),
             PacketBody::Frames(body) => self.handle_data(packet.header, body),
         }
     }
 
     fn handle_data(&mut self, header: Header, frames: Vec<Frame>) -> Poll<()> {
-        // TODO: Handle out-of-order / duplicates / drops
+        // Drop out-of-order or duplicates.
+        if header.sequence < self.next_peer_sequence && !self.loss_list.remove(header.sequence) {
+            tracing::warn!("dropping duplicate packet {:?}", header.sequence);
+            return Poll::Ready(());
+        }
+
+        // Prepare NAK if we lost a packet.
+        let nak = if self.next_peer_sequence != header.sequence {
+            Some(Packet {
+                header: Header {
+                    packet_type: PacketType::NAK,
+                    sequence: Sequence::new(0),
+                    control_frame: ControlFrame(0),
+                },
+                body: PacketBody::Nak(Nak {
+                    sequences: SequenceRange {
+                        start: self.next_peer_sequence,
+                        end: header.sequence - 1,
+                    },
+                }),
+            })
+        } else {
+            None
+        };
+
+        // We lost all segments from self.next_peer_sequence..header.sequence.
+        while self.next_peer_sequence != header.sequence {
+            self.loss_list.push(self.next_peer_sequence);
+            self.next_peer_sequence += 1;
+        }
         self.next_peer_sequence += 1;
 
-        let snapshot = self.start_time + header.timestamp.to_duration();
+        // Caught up to most recent packet.
+        debug_assert_eq!(self.next_peer_sequence, header.sequence + 1);
 
         for frame in frames {
             let Some(cmd) = self.entities.unpack(frame) else {
-                    tracing::debug!("failed to translate cmd");
-                    continue;
-                };
+                tracing::debug!("failed to translate cmd");
+                continue;
+            };
 
             let msgid = self.ack_list.next_cmd_id;
             self.ack_list.next_cmd_id.0 += 1;
 
             self.ack_list.list.insert(msgid, header.sequence);
 
+            // Convert back to local control frame.
+            let control_frame =
+                header.control_frame - (self.peer_start_control_frame - self.start_control_frame);
+
             self.queue.push(ConnectionMessage {
                 id: Some(msgid),
                 conn: self.id,
-                snapshot,
+                control_frame,
                 command: cmd,
             });
         }
 
-        Poll::Ready(())
+        if let Some(nak) = nak {
+            self.send_packet(nak, ConnectionState::Connected)
+        } else {
+            Poll::Ready(())
+        }
     }
 
     fn handle_handshake(&mut self, header: Header, body: Handshake) -> Poll<()> {
@@ -377,8 +447,6 @@ where
         match state {
             // Connect mode
             HandshakeState::Hello if M::IS_CONNECT => {
-                assert_eq!(body.kind, HandshakeType::HELLO);
-
                 if body.kind != HandshakeType::HELLO {
                     tracing::info!("abort: expected HELLO, but got {:?}", body.kind);
                     self.abort();
@@ -386,15 +454,29 @@ where
                 }
 
                 // Send AGREEMENT
-                let resp = Handshake {
-                    version: 0,
-                    kind: HandshakeType::AGREEMENT,
-                    flags: HandshakeFlags::default(),
-                    mtu: 1500,
-                    flow_window: 8192,
+                let resp = Packet {
+                    header: Header {
+                        packet_type: PacketType::HANDSHAKE,
+                        sequence: Sequence::default(),
+                        control_frame: self.start_control_frame,
+                    },
+                    body: PacketBody::Handshake(Handshake {
+                        version: 0,
+                        kind: HandshakeType::AGREEMENT,
+                        flags: HandshakeFlags::default(),
+                        mtu: 1500,
+                        flow_window: 8192,
+                        initial_sequence: self.next_local_sequence,
+                    }),
                 };
 
-                return self.send(resp, ConnectionState::Handshake(HandshakeState::Agreement));
+                self.next_peer_sequence = body.initial_sequence;
+                self.peer_start_control_frame = header.control_frame;
+
+                self.ack_list.ack_seq = self.next_peer_sequence;
+
+                return self
+                    .send_packet(resp, ConnectionState::Handshake(HandshakeState::Agreement));
             }
             HandshakeState::Agreement if M::IS_CONNECT => {
                 if body.kind != HandshakeType::AGREEMENT {
@@ -403,11 +485,19 @@ where
                     return Poll::Ready(());
                 }
 
+                if self.next_peer_sequence != body.initial_sequence {
+                    tracing::warn!(
+                        "peer changed initial sequence between HELLO ({}) and AGREEMENT ({})",
+                        self.next_peer_sequence.to_bits(),
+                        body.initial_sequence.to_bits(),
+                    );
+                }
+
                 self.state = ConnectionState::Connected;
                 self.queue.push(ConnectionMessage {
                     id: None,
                     conn: self.id,
-                    snapshot: self.start_time,
+                    control_frame: ControlFrame(0),
                     command: Command::Connected,
                 });
             }
@@ -418,16 +508,33 @@ where
                     return self.reject(HandshakeType::REJ_ROGUE);
                 }
 
+                let initial_sequence = create_initial_sequence();
+                self.next_local_sequence = initial_sequence;
+
                 // Send HELLO
-                let resp = Handshake {
-                    version: 0,
-                    kind: HandshakeType::HELLO,
-                    flags: HandshakeFlags::default(),
-                    mtu: 1500,
-                    flow_window: 8192,
+                let resp = Packet {
+                    header: Header {
+                        packet_type: PacketType::HANDSHAKE,
+                        sequence: Sequence::default(),
+                        control_frame: self.start_control_frame,
+                    },
+                    body: PacketBody::Handshake(Handshake {
+                        version: 0,
+                        kind: HandshakeType::HELLO,
+                        flags: HandshakeFlags::default(),
+                        mtu: 1500,
+                        flow_window: 8192,
+                        initial_sequence,
+                    }),
                 };
 
-                return self.send(resp, ConnectionState::Handshake(HandshakeState::Agreement));
+                self.next_peer_sequence = body.initial_sequence;
+                self.peer_start_control_frame = header.control_frame;
+
+                self.ack_list.ack_seq = self.next_peer_sequence;
+
+                return self
+                    .send_packet(resp, ConnectionState::Handshake(HandshakeState::Agreement));
             }
             HandshakeState::Agreement if M::IS_LISTEN => {
                 if body.kind != HandshakeType::AGREEMENT {
@@ -435,23 +542,39 @@ where
                     return self.reject(HandshakeType::REJ_ROGUE);
                 }
 
-                let resp = Handshake {
-                    version: 0,
-                    kind: HandshakeType::AGREEMENT,
-                    flags: HandshakeFlags::default(),
-                    mtu: 1500,
-                    flow_window: 8192,
+                if self.next_peer_sequence != body.initial_sequence {
+                    tracing::warn!(
+                        "peer changed initial sequence between HELLO ({}) and AGREEMENT ({})",
+                        self.next_peer_sequence.to_bits(),
+                        body.initial_sequence.to_bits(),
+                    );
+                }
+
+                let resp = Packet {
+                    header: Header {
+                        packet_type: PacketType::HANDSHAKE,
+                        sequence: Sequence::default(),
+                        control_frame: self.start_control_frame,
+                    },
+                    body: PacketBody::Handshake(Handshake {
+                        version: 0,
+                        kind: HandshakeType::AGREEMENT,
+                        flags: HandshakeFlags::default(),
+                        mtu: 1500,
+                        flow_window: 8192,
+                        initial_sequence: self.next_local_sequence,
+                    }),
                 };
 
                 // Signal the game that the player spawns.
                 self.queue.push(ConnectionMessage {
                     id: None,
                     conn: self.id,
-                    snapshot: self.start_time,
+                    control_frame: ControlFrame(0),
                     command: Command::Connected,
                 });
 
-                return self.send(resp, ConnectionState::Connected);
+                return self.send_packet(resp, ConnectionState::Connected);
             }
             // `M` is configured incorrectly. It must be either `IS_LISTEN` OR `IS_CONNECT`.
             HandshakeState::Hello | HandshakeState::Agreement => unreachable!(),
@@ -468,11 +591,12 @@ where
     fn handle_ack(&mut self, header: Header, body: Ack) -> Poll<()> {
         let sequence = body.sequence;
 
-        if let Some(ids) = self.commands.cmds.remove(&sequence) {
+        let ids = self.commands.remove(sequence);
+        if !ids.is_empty() {
             self.queue.push(ConnectionMessage {
                 id: None,
                 conn: self.id,
-                snapshot: Instant::now(),
+                control_frame: ControlFrame(0),
                 command: Command::ReceivedCommands {
                     ids: ids
                         .into_iter()
@@ -485,24 +609,62 @@ where
             });
         }
 
+        // Respond with ACKACK
+        let packet = Packet {
+            header: Header {
+                packet_type: PacketType::ACKACK,
+                sequence: Sequence::new(0),
+                control_frame: ControlFrame(0),
+            },
+            body: PacketBody::AckAck(AckAck {
+                ack_sequence: body.ack_sequence,
+            }),
+        };
+
+        self.send_packet(packet, ConnectionState::Connected)
+    }
+
+    fn handle_ackack(&mut self, header: Header, body: AckAck) -> Poll<()> {
         Poll::Pending
     }
 
     fn handle_nak(&mut self, header: Header, body: Nak) -> Poll<()> {
-        Poll::Pending
+        let mut start = body.sequences.start;
+        let end = body.sequences.end;
+
+        // This is an inclusive range.
+        while start <= end {
+            if let Some(packet) = self.inflight_packets.get(start) {
+                self.write_queue.push(packet.clone());
+            }
+
+            start += 1;
+        }
+
+        Poll::Ready(())
     }
 
     fn prepare_connect(&mut self) {
-        let req = Handshake {
-            version: 0,
-            kind: HandshakeType::HELLO,
-            flags: HandshakeFlags::default(),
-            mtu: 1500,
-            flow_window: 8192,
+        let initial_sequence = create_initial_sequence();
+        self.next_local_sequence = initial_sequence;
+
+        let packet = Packet {
+            header: Header {
+                packet_type: PacketType::HANDSHAKE,
+                sequence: Sequence::default(),
+                control_frame: self.start_control_frame,
+            },
+            body: PacketBody::Handshake(Handshake {
+                version: 0,
+                kind: HandshakeType::HELLO,
+                flags: HandshakeFlags::default(),
+                mtu: 1500,
+                flow_window: 8192,
+                initial_sequence,
+            }),
         };
 
-        // connect is only called initially (before the future was first polled).
-        let _ = self.send(req, ConnectionState::Handshake(HandshakeState::Hello));
+        self.send_packet(packet, ConnectionState::Handshake(HandshakeState::Hello));
     }
 
     fn poll_tick(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), ErrorKind>> {
@@ -517,12 +679,22 @@ where
 
         // Send periodic ACKs while connected.
         if self.state == ConnectionState::Connected && tick.is_ack() {
-            let _ = self.send(
-                Ack {
-                    sequence: self.ack_list.ack_seq,
+            let ack_sequence = self.next_ack_sequence;
+            self.next_ack_sequence += 1;
+
+            let packet = Packet {
+                header: Header {
+                    packet_type: PacketType::ACK,
+                    sequence: Sequence::new(0),
+                    control_frame: ControlFrame(0),
                 },
-                ConnectionState::Connected,
-            );
+                body: PacketBody::Ack(Ack {
+                    sequence: self.ack_list.ack_seq,
+                    ack_sequence,
+                }),
+            };
+
+            self.send_packet(packet, ConnectionState::Connected);
             Poll::Ready(Ok(()))
         } else if self.state == ConnectionState::Connected && tick.is_fire() {
             self.write_snapshot();
@@ -534,18 +706,25 @@ where
 
     fn reject(&mut self, reason: HandshakeType) -> Poll<()> {
         // Don't accidently send a non-rejection.
-        #[cfg(debug_assertions)]
-        assert!(reason.is_rejection());
+        debug_assert!(reason.is_rejection());
 
-        let resp = Handshake {
-            version: 0,
-            kind: reason,
-            flags: HandshakeFlags::default(),
-            mtu: 1500,
-            flow_window: 8192,
+        let resp = Packet {
+            header: Header {
+                packet_type: PacketType::HANDSHAKE,
+                sequence: Sequence::new(0),
+                control_frame: ControlFrame(0),
+            },
+            body: PacketBody::Handshake(Handshake {
+                version: 0,
+                kind: reason,
+                flags: HandshakeFlags::default(),
+                mtu: 1500,
+                flow_window: 8192,
+                initial_sequence: Sequence::new(0),
+            }),
         };
 
-        self.send(resp, ConnectionState::Closed)
+        self.send_packet(resp, ConnectionState::Closed)
     }
 
     /// Closes the connection without doing a shutdown process.
@@ -555,7 +734,7 @@ where
             self.queue.push(ConnectionMessage {
                 id: None,
                 conn: self.id,
-                snapshot: self.start_time,
+                control_frame: ControlFrame(0),
                 command: Command::Disconnected,
             });
         }
@@ -571,78 +750,27 @@ where
             self.queue.push(ConnectionMessage {
                 id: None,
                 conn: self.id,
-                snapshot: self.start_time,
+                control_frame: ControlFrame(0),
                 command: Command::Disconnected,
             });
         }
 
-        let packet = Shutdown {
-            reason: ShutdownReason::CLOSE,
+        let packet = Packet {
+            header: Header {
+                packet_type: PacketType::SHUTDOWN,
+                sequence: Sequence::new(0),
+                control_frame: ControlFrame(0),
+            },
+            body: PacketBody::Shutdown(Shutdown {
+                reason: ShutdownReason::CLOSE,
+            }),
         };
 
-        let _ = self.send(packet, ConnectionState::Closed);
+        self.send_packet(packet, ConnectionState::Closed);
         Poll::Ready(Ok(()))
     }
 
-    fn send<T>(&mut self, body: T, state: ConnectionState) -> Poll<()>
-    where
-        T: Into<PacketBody>,
-    {
-        let body = body.into();
-
-        let sequence = self.next_server_sequence;
-        self.next_server_sequence += 1;
-
-        let timestamp = Timestamp::new(self.start_time.elapsed());
-
-        let packet = Packet {
-            header: Header {
-                packet_type: body.packet_type(),
-                sequence,
-                timestamp,
-            },
-            body,
-        };
-
-        let socket = self.socket.clone();
-        let peer = self.peer;
-        self.write = Some(WriteRequest {
-            future: Box::pin(async move {
-                let mut buf = Vec::with_capacity(1500);
-                packet.encode(&mut buf).unwrap();
-                if let Err(err) = socket.send_to(&buf, peer).await {
-                    tracing::error!("Failed to send packet: {}", err);
-                }
-            }),
-            state,
-        });
-
-        Poll::Ready(())
-    }
-
-    fn send_data(
-        &mut self,
-        body: Vec<Frame>,
-        cmds: Vec<CommandId>,
-        snapshot: Instant,
-        state: ConnectionState,
-    ) -> Poll<()> {
-        let sequence = self.next_server_sequence;
-        self.next_server_sequence += 1;
-
-        self.commands.cmds.insert(sequence, cmds);
-
-        let timestamp = Timestamp::new(snapshot - self.start_time);
-
-        let packet = Packet {
-            header: Header {
-                packet_type: PacketType::DATA,
-                sequence,
-                timestamp,
-            },
-            body: PacketBody::Frames(body),
-        };
-
+    fn send_packet(&mut self, packet: Packet, state: ConnectionState) -> Poll<()> {
         let socket = self.socket.clone();
         let peer = self.peer;
         self.write = Some(WriteRequest {
@@ -729,7 +857,7 @@ enum HandshakeState {
 
 #[derive(Clone, Debug)]
 pub struct FrameQueue {
-    queue: VecDeque<(Frame, CommandId, Instant)>,
+    queue: VecDeque<(Frame, CommandId, ControlFrame)>,
 }
 
 impl FrameQueue {
@@ -739,17 +867,17 @@ impl FrameQueue {
         }
     }
 
-    pub fn push(&mut self, frame: Frame, id: CommandId, ts: Instant) {
-        self.queue.push_back((frame, id, ts));
+    pub fn push(&mut self, frame: Frame, id: CommandId, cf: ControlFrame) {
+        self.queue.push_back((frame, id, cf));
     }
 
-    pub fn pop(&mut self) -> Option<(Frame, CommandId, Instant)> {
+    pub fn pop(&mut self) -> Option<(Frame, CommandId, ControlFrame)> {
         self.queue.pop_front()
     }
 }
 
-impl Extend<(Frame, CommandId, Instant)> for FrameQueue {
-    fn extend<T: IntoIterator<Item = (Frame, CommandId, Instant)>>(&mut self, iter: T) {
+impl Extend<(Frame, CommandId, ControlFrame)> for FrameQueue {
+    fn extend<T: IntoIterator<Item = (Frame, CommandId, ControlFrame)>>(&mut self, iter: T) {
         self.queue.extend(iter);
     }
 }
@@ -903,6 +1031,24 @@ struct Commands {
     cmds: HashMap<Sequence, Vec<CommandId>>,
 }
 
+impl Commands {
+    /// Remove all commands where sequence  <= `seq`.
+    fn remove(&mut self, seq: Sequence) -> Vec<CommandId> {
+        let mut out = Vec::new();
+
+        self.cmds.retain(|s, cmds| {
+            if seq >= *s {
+                out.extend(cmds.iter().copied());
+                false
+            } else {
+                true
+            }
+        });
+
+        out
+    }
+}
+
 struct WriteQueue {
     packets: VecDeque<Packet>,
 }
@@ -941,4 +1087,167 @@ pub struct AckList {
     list: HashMap<CommandId, Sequence>,
     next_cmd_id: CommandId,
     ack_seq: Sequence,
+}
+
+#[derive(Clone, Debug)]
+struct InflightPackets {
+    packets: Box<[Option<Packet>]>,
+}
+
+impl InflightPackets {
+    fn new(size: usize) -> Self {
+        let packets = vec![None; size];
+
+        Self {
+            packets: packets.into_boxed_slice(),
+        }
+    }
+
+    fn insert(&mut self, packet: Packet) {
+        let index = packet.header.sequence.to_bits() as usize % self.packets.len();
+        self.packets[index] = Some(packet);
+    }
+
+    fn get(&self, seq: Sequence) -> Option<&Packet> {
+        let index = seq.to_bits() as usize % self.packets.len();
+
+        // The index always exists.
+        if let Some(packet) = self.packets.get(index).unwrap() {
+            if packet.header.sequence == seq {
+                return Some(packet);
+            }
+        }
+
+        None
+    }
+}
+
+impl Default for InflightPackets {
+    fn default() -> Self {
+        Self::new(8192)
+    }
+}
+
+/// A list of lost packets.
+#[derive(Clone, Debug, Default)]
+struct LossList {
+    buffer: Vec<Sequence>,
+}
+
+impl LossList {
+    fn new() -> Self {
+        Self { buffer: Vec::new() }
+    }
+
+    fn push(&mut self, seq: Sequence) {
+        // The new sequence MUST be `> buffer.last()`.
+        if cfg!(debug_assertions) {
+            if let Some(n) = self.buffer.last() {
+                if seq <= *n {
+                    panic!(
+                        "Tried to push {:?} to LossList with last sequence {:?}",
+                        seq, n
+                    );
+                }
+            }
+        }
+
+        self.buffer.push(seq);
+    }
+
+    /// Returns `true` if `seq` was removed.
+    fn remove(&mut self, seq: Sequence) -> bool {
+        let mut index = 0;
+        while let Some(s) = self.buffer.get(index) {
+            if *s == seq {
+                self.buffer.remove(index);
+                return true;
+            }
+
+            if *s > seq {
+                return false;
+            }
+
+            index += 1;
+        }
+
+        false
+    }
+}
+
+fn create_initial_sequence() -> Sequence {
+    let bits = rand::random::<u32>() & ((1 << 31) - 1);
+    Sequence::new(bits)
+}
+
+#[cfg(test)]
+mod tests {
+    use game_common::world::control_frame::ControlFrame;
+
+    use crate::proto::sequence::Sequence;
+    use crate::proto::{Header, Packet, PacketBody, PacketType};
+
+    use super::{InflightPackets, LossList};
+
+    #[test]
+    fn loss_list_remove() {
+        let mut input: Vec<u32> = (0..32).collect();
+
+        let mut list = LossList::new();
+
+        for seq in &input {
+            list.push(Sequence::new(*seq));
+        }
+
+        while !input.is_empty() {
+            // Always remove the middle element.
+            let index = input.len() / 2;
+            let value = input.remove(index);
+
+            let res = list.remove(Sequence::new(value));
+            assert!(res);
+        }
+    }
+
+    fn create_packet(seq: Sequence) -> Packet {
+        Packet {
+            header: Header {
+                packet_type: PacketType::DATA,
+                sequence: seq,
+                control_frame: ControlFrame::new(),
+            },
+            body: PacketBody::Frames(vec![]),
+        }
+    }
+
+    #[test]
+    fn inflight_packets() {
+        let mut packets = InflightPackets::default();
+        for seq in 0..1024 {
+            packets.insert(create_packet(Sequence::new(seq)));
+        }
+
+        for seq in 0..1024 {
+            assert!(packets.get(Sequence::new(seq)).is_some());
+        }
+    }
+
+    #[test]
+    fn inflight_packets_overflow() {
+        let size = 8192;
+
+        let mut packets = InflightPackets::new(size);
+        for seq in 0..size as u32 * 2 {
+            packets.insert(create_packet(Sequence::new(seq)));
+        }
+
+        // First size dropped.
+        for seq in 0..size as u32 {
+            assert!(packets.get(Sequence::new(seq)).is_none());
+        }
+
+        for seq in size as u32..size as u32 * 2 {
+            assert!(packets.get(Sequence::new(seq)).is_some());
+        }
+    }
 }

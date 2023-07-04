@@ -13,7 +13,7 @@ use game_common::world::CellId;
 use parking_lot::RwLock;
 
 pub fn update_streaming_sources(mut sources: &mut StreamingSources, world: &WorldState) {
-    let Some(view) = world.front() else {
+    let Some(view) = world.back() else {
         return;
     };
 
@@ -85,7 +85,7 @@ pub fn update_streaming_sources(mut sources: &mut StreamingSources, world: &Worl
 }
 
 pub fn update_level(sources: &StreamingSources, level: &Level, mut world: &mut WorldState) {
-    let Some(mut view) = world.front_mut() else {
+    let Some(mut view) = world.back_mut() else {
         return;
     };
 
@@ -108,7 +108,7 @@ pub fn update_level(sources: &StreamingSources, level: &Level, mut world: &mut W
     }
 
     drop(view);
-    let view = world.front().unwrap();
+    let view = world.back().unwrap();
 
     for id in sources.iter() {
         let view = view.cell(id);

@@ -1,29 +1,29 @@
 mod conn;
-mod interpolate;
+pub mod interpolate;
 mod prediction;
 mod world;
 
 use std::net::SocketAddr;
 use std::sync::{mpsc, Arc};
-use std::time::{Duration, Instant};
 
 use bevy_app::{App, Plugin};
-use bevy_ecs::schedule::{IntoSystemConfig, SystemSet};
+use bevy_ecs::schedule::{IntoSystemConfig, IntoSystemSetConfig, SystemSet};
 use bevy_ecs::system::ResMut;
 use game_common::components::actions::Actions;
 use game_common::components::components::Components;
 use game_common::components::items::Item;
 use game_common::components::transform::Transform;
 use game_common::units::Mass;
+use game_common::world::control_frame::ControlFrame;
 use game_common::world::entity::{Entity, EntityBody};
 use game_common::world::world::WorldState;
 use game_net::backlog::Backlog;
-use game_net::conn::{Connect, Connection, ConnectionHandle, ConnectionMode};
+use game_net::conn::{Connect, Connection, ConnectionHandle};
 use game_net::proto::{Decode, Packet};
-use game_net::snapshot::{Command, CommandQueue, ConnectionMessage};
+use game_net::snapshot::{Command, CommandQueue, ConnectionMessage, Response, Status};
 use game_net::Socket;
 use glam::Vec3;
-use tokio::runtime::Runtime;
+use tokio::runtime::{Builder, UnhandledPanic};
 
 use crate::state::GameState;
 
@@ -31,9 +31,26 @@ pub use self::conn::ServerConnection;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, SystemSet)]
 pub enum NetSet {
-    ReadCommands,
+    /// Step control tick
+    Tick,
+    /// Read incoming server frames
+    Read,
+    /// Flush frames into world
     FlushBuffers,
-    WriteCommands,
+    /// Write back inputs
+    //Write,
+    /// Lerp transform
+    Interpolate,
+}
+
+impl NetSet {
+    pub fn first() -> Self {
+        Self::Tick
+    }
+
+    pub fn last() -> Self {
+        Self::Interpolate
+    }
 }
 
 /// Client-side network plugin
@@ -43,29 +60,39 @@ pub struct NetPlugin {}
 impl Plugin for NetPlugin {
     fn build(&self, app: &mut App) {
         let mut world = WorldState::new();
-        world.insert(Instant::now() - Duration::from_millis(50));
+        // Initial empty world state.
+        world.insert(ControlFrame(0));
 
         app.insert_resource(world);
         app.init_resource::<ServerConnection>();
         app.insert_resource(Backlog::new());
 
-        app.add_system(flush_command_queue.in_set(NetSet::ReadCommands));
+        app.add_system(conn::tick_game.in_set(NetSet::Tick));
+        app.add_system(flush_command_queue.in_set(NetSet::Read));
+        app.add_system(world::apply_world_delta.in_set(NetSet::FlushBuffers));
 
-        app.add_system(world::apply_world_delta.after(flush_command_queue));
+        app.add_system(interpolate::interpolate_translation.in_set(NetSet::Interpolate));
+        app.add_system(interpolate::interpolate_rotation.in_set(NetSet::Interpolate));
 
-        app.add_system(interpolate::interpolate_translation.after(world::apply_world_delta));
-        app.add_system(interpolate::interpolate_rotation.after(world::apply_world_delta));
+        app.configure_set(NetSet::Interpolate.after(NetSet::FlushBuffers));
+        app.configure_set(NetSet::FlushBuffers.after(NetSet::Read));
+        app.configure_set(NetSet::Read.after(NetSet::Tick));
     }
 }
 
 pub fn spawn_conn(
     queue: CommandQueue,
     addr: SocketAddr,
+    control_frame: ControlFrame,
 ) -> Result<ConnectionHandle, Box<dyn std::error::Error + Send + Sync + 'static>> {
     let (tx, rx) = mpsc::channel();
 
     std::thread::spawn(move || {
-        let rt = Runtime::new().unwrap();
+        let rt = Builder::new_current_thread()
+            .enable_all()
+            .unhandled_panic(UnhandledPanic::ShutdownRuntime)
+            .build()
+            .unwrap();
 
         rt.block_on(async move {
             let sock = match Socket::connect(addr) {
@@ -75,7 +102,8 @@ pub fn spawn_conn(
                     return;
                 }
             };
-            let (mut conn, handle) = Connection::<Connect>::new(addr, queue.clone(), sock.clone());
+            let (mut conn, handle) =
+                Connection::<Connect>::new(addr, queue.clone(), sock.clone(), control_frame);
 
             tokio::task::spawn(async move {
                 if let Err(err) = (&mut conn).await {
@@ -84,7 +112,7 @@ pub fn spawn_conn(
                         id: None,
                         conn: conn.id,
                         command: Command::Disconnected,
-                        snapshot: Instant::now(),
+                        control_frame: ControlFrame(0),
                     });
                 }
             });
@@ -119,7 +147,17 @@ fn flush_command_queue(mut conn: ResMut<ServerConnection>, mut world: ResMut<Wor
     let mut iterations = 0;
     const MAX_ITERATIONS: usize = 8192;
 
+    // Collect all processed commands to notify the server.
+    let mut ids = Vec::new();
+
     while let Some(msg) = conn.queue.pop() {
+        if let Some(id) = msg.id {
+            ids.push(Response {
+                id,
+                status: Status::Received,
+            });
+        }
+
         match msg.command {
             Command::Connected => {
                 conn.writer.update(GameState::World);
@@ -129,24 +167,45 @@ fn flush_command_queue(mut conn: ResMut<ServerConnection>, mut world: ResMut<Wor
                 conn.shutdown();
                 continue;
             }
+            Command::ReceivedCommands { ids } => {
+                let view = world.front().unwrap();
+
+                for cmd in ids {
+                    conn.overrides.validate_pre_removal(cmd.id, view);
+                    conn.overrides.remove(cmd.id);
+                }
+
+                continue;
+            }
             _ => (),
         }
 
         // Snapshot arrived after we already consumed the frame.
-        if let Some(view) = world.back() {
-            if msg.snapshot < view.creation() {
-                let diff = view.creation() - msg.snapshot;
-                tracing::warn!("dropping snapshot; arrived {:?} too late", diff);
+        // if let Some(view) = world.back() {
+        //     if msg.control_frame < view.control_frame() {
+        //         let diff = view.control_frame() - msg.control_frame;
+        //         tracing::warn!(
+        //             "dropping snapshot {:?}; arrived {:?} CFs too late (tail = {:?})",
+        //             msg.control_frame,
+        //             diff,
+        //             view.control_frame(),
+        //         );
 
-                continue;
-            }
-        }
+        //         continue;
+        //     }
+        // }
 
-        if world.get(msg.snapshot).is_none() {
-            world.insert(msg.snapshot);
-        }
-
-        let mut view = world.get_mut(msg.snapshot).unwrap();
+        let Some(mut view) = world.get_mut(msg.control_frame) else {
+            // If the control frame does not exist on the client ast least one of these issues are to blame:
+            // 1. The server is sending garbage data, refereing to a control frame that has either already
+            //    passed or is still too far in the future.
+            // 2. The client's clock is desynced and creating new snapshots too slow/fast.
+            // 3. The server's clock is desynced and creating new snapshots too slow/fast.
+            let front = world.front().unwrap();
+            let back = world.back().unwrap();
+            tracing::warn!("received snapshot for unknwon control frame: {:?} (snapshots  {:?}..={:?} exist)", msg.control_frame, front.control_frame(), back.control_frame());
+            continue;
+        };
 
         match msg.command {
             Command::EntityCreate {
@@ -155,6 +214,7 @@ fn flush_command_queue(mut conn: ResMut<ServerConnection>, mut world: ResMut<Wor
                 rotation,
                 data,
             } => {
+                dbg!(id);
                 view.spawn(Entity {
                     id,
                     transform: Transform {
@@ -193,8 +253,6 @@ fn flush_command_queue(mut conn: ResMut<ServerConnection>, mut world: ResMut<Wor
                 conn.host = id;
             }
             Command::InventoryItemAdd { entity, id, item } => {
-                dbg!(entity, id, item);
-
                 let item = Item {
                     id: item,
                     components: Components::default(),
@@ -232,12 +290,7 @@ fn flush_command_queue(mut conn: ResMut<ServerConnection>, mut world: ResMut<Wor
             }
             Command::Connected => (),
             Command::Disconnected => (),
-            Command::ReceivedCommands { ids } => {
-                let mut ov = &mut conn.overrides;
-                for id in ids {
-                    ov.remove(id.id);
-                }
-            }
+            Command::ReceivedCommands { ids: _ } => unreachable!(),
         }
 
         iterations += 1;
@@ -245,4 +298,6 @@ fn flush_command_queue(mut conn: ResMut<ServerConnection>, mut world: ResMut<Wor
             break;
         }
     }
+
+    conn.send(Command::ReceivedCommands { ids });
 }

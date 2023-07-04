@@ -49,20 +49,21 @@ use game_common::components::object::ObjectId;
 use game_common::components::race::RaceId;
 use game_common::id::WeakId;
 use game_common::record::RecordReference;
+use game_common::world::control_frame::ControlFrame;
 use game_common::world::entity::{Actor, EntityBody, Object};
 use game_common::world::terrain::{Heightmap, TerrainMesh};
 use game_common::world::CellId;
 pub use game_macros::{net__decode as Decode, net__encode as Encode};
 
 use std::convert::Infallible;
-use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign};
+use std::ops::{Add, AddAssign, BitAnd, BitAndAssign, BitOr, BitOrAssign, Sub, SubAssign};
 
 use bytes::{Buf, BufMut};
 use game_common::net::ServerEntity;
 use glam::{Quat, UVec2, Vec3};
 use thiserror::Error;
 
-use self::ack::{Ack, Nak};
+use self::ack::{Ack, AckAck, Nak};
 use self::handshake::{Handshake, InvalidHandshakeFlags, InvalidHandshakeType};
 use self::sequence::Sequence;
 use self::shutdown::Shutdown;
@@ -286,6 +287,7 @@ impl PacketType {
     pub const SHUTDOWN: Self = Self(1);
 
     pub const ACK: Self = Self(2);
+    pub const ACKACK: Self = Self(3);
     pub const NAK: Self = Self(4);
 
     pub const DATA: Self = Self(5);
@@ -322,6 +324,7 @@ impl TryFrom<u16> for PacketType {
             Self::HANDSHAKE => Ok(Self::HANDSHAKE),
             Self::SHUTDOWN => Ok(Self::SHUTDOWN),
             Self::ACK => Ok(Self::ACK),
+            Self::ACKACK => Ok(Self::ACKACK),
             Self::NAK => Ok(Self::NAK),
             Self::DATA => Ok(Self::DATA),
             _ => Err(InvalidPacketType(value)),
@@ -368,7 +371,7 @@ impl From<u16> for InvalidPacketType {
 pub struct Header {
     pub packet_type: PacketType,
     pub sequence: Sequence,
-    pub timestamp: Timestamp,
+    pub control_frame: ControlFrame,
 }
 
 impl Encode for Header {
@@ -395,7 +398,7 @@ impl Encode for Header {
         };
 
         word0.encode(&mut buf)?;
-        self.timestamp.encode(&mut buf)?;
+        self.control_frame.encode(&mut buf)?;
         Ok(())
     }
 }
@@ -408,14 +411,14 @@ impl Decode for Header {
         B: Buf,
     {
         let word0 = u32::decode(&mut buf)?;
-        let timestamp = Timestamp::decode(&mut buf)?;
+        let control_frame = ControlFrame::decode(&mut buf)?;
 
         let packet_type;
         let sequence;
         // DATA
-        if word0 & 1 << 31 == 0 {
+        if word0 & (1 << 31) == 0 {
             packet_type = PacketType::DATA;
-            sequence = Sequence::from_bits(word0 >> 1);
+            sequence = Sequence::from_bits(word0 & (u32::MAX >> 1));
 
             // CONTROL
         } else {
@@ -428,7 +431,7 @@ impl Decode for Header {
         Ok(Self {
             packet_type,
             sequence,
-            timestamp,
+            control_frame,
         })
     }
 }
@@ -987,6 +990,7 @@ pub enum PacketBody {
     Handshake(Handshake),
     Shutdown(Shutdown),
     Ack(Ack),
+    AckAck(AckAck),
     Nak(Nak),
     Frames(Vec<Frame>),
 }
@@ -998,6 +1002,7 @@ impl PacketBody {
             Self::Handshake(_) => PacketType::HANDSHAKE,
             Self::Shutdown(_) => PacketType::SHUTDOWN,
             Self::Ack(_) => PacketType::ACK,
+            Self::AckAck(_) => PacketType::ACKACK,
             Self::Nak(_) => PacketType::NAK,
             Self::Frames(_) => PacketType::DATA,
         }
@@ -1022,6 +1027,13 @@ impl From<Ack> for PacketBody {
     #[inline]
     fn from(value: Ack) -> Self {
         Self::Ack(value)
+    }
+}
+
+impl From<AckAck> for PacketBody {
+    #[inline]
+    fn from(value: AckAck) -> Self {
+        Self::AckAck(value)
     }
 }
 
@@ -1056,6 +1068,12 @@ impl Encode for Packet {
             }
             PacketBody::Ack(body) => {
                 header.packet_type = PacketType::ACK;
+                header.encode(&mut buf)?;
+
+                body.encode(&mut buf)?;
+            }
+            PacketBody::AckAck(body) => {
+                header.packet_type = PacketType::ACKACK;
                 header.encode(&mut buf)?;
 
                 body.encode(&mut buf)?;
@@ -1101,6 +1119,7 @@ impl Decode for Packet {
             PacketType::HANDSHAKE => PacketBody::Handshake(Handshake::decode(buf)?),
             PacketType::SHUTDOWN => PacketBody::Shutdown(Shutdown::decode(buf)?),
             PacketType::ACK => PacketBody::Ack(Ack::decode(buf)?),
+            PacketType::ACKACK => PacketBody::AckAck(AckAck::decode(buf)?),
             PacketType::NAK => PacketBody::Nak(Nak::decode(buf)?),
             _ => unreachable!(),
         };
@@ -1287,5 +1306,207 @@ impl Decode for InventoryId {
         B: Buf,
     {
         u64::decode(buf).map(Self::from_raw)
+    }
+}
+
+impl Encode for ControlFrame {
+    type Error = <u32 as Encode>::Error;
+
+    fn encode<B>(&self, buf: B) -> Result<(), Self::Error>
+    where
+        B: BufMut,
+    {
+        self.0.encode(buf)
+    }
+}
+
+impl Decode for ControlFrame {
+    type Error = <u32 as Decode>::Error;
+
+    fn decode<B>(buf: B) -> Result<Self, Self::Error>
+    where
+        B: Buf,
+    {
+        u32::decode(buf).map(Self)
+    }
+}
+
+/// An inclusive sequence range.
+///
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct SequenceRange {
+    pub start: Sequence,
+    pub end: Sequence,
+}
+
+impl Encode for SequenceRange {
+    type Error = <Sequence as Encode>::Error;
+
+    fn encode<B>(&self, mut buf: B) -> Result<(), Self::Error>
+    where
+        B: BufMut,
+    {
+        if self.start == self.end {
+            self.start.encode(buf)
+        } else {
+            let start = self.start.to_bits() | (1 << 31);
+            let end = self.end;
+
+            start.encode(&mut buf)?;
+            end.encode(buf)
+        }
+    }
+}
+
+impl Decode for SequenceRange {
+    type Error = <u32 as Decode>::Error;
+
+    fn decode<B>(mut buf: B) -> Result<Self, Self::Error>
+    where
+        B: Buf,
+    {
+        let mut start = u32::decode(&mut buf)?;
+
+        if start & (1 << 31) == 0 {
+            Ok(Self {
+                start: Sequence::from_bits(start),
+                end: Sequence::from_bits(start),
+            })
+        } else {
+            start &= (1 << 31) - 1;
+            let end = u32::decode(&mut buf)?;
+
+            Ok(Self {
+                start: Sequence::from_bits(start),
+                end: Sequence::from_bits(end),
+            })
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use game_common::world::control_frame::ControlFrame;
+
+    use super::sequence::Sequence;
+    use super::{Decode, Encode, Header, PacketType, SequenceRange};
+
+    #[test]
+    fn header_encode_sequence() {
+        let sequence: u32 = u32::MAX >> 1;
+
+        let header = Header {
+            packet_type: PacketType::DATA,
+            sequence: Sequence::from_bits(sequence),
+            control_frame: ControlFrame(0),
+        };
+
+        let mut buf = Vec::new();
+        header.encode(&mut buf).unwrap();
+
+        let output = [
+            0b0111_1111, // Sequence 0
+            0b1111_1111, // Sequence 1
+            0b1111_1111, // Sequence 2
+            0b1111_1111, // Sequence 3
+            0b0000_0000, // ControlFrame 0
+            0b0000_0000, // ControlFrame 1
+            0b0000_0000, // Reserved
+            0b0000_0000, // Reserved
+        ];
+        assert_eq!(buf, output);
+    }
+
+    #[test]
+    fn header_decode_sequence() {
+        let input = [
+            0b0111_1111, // Sequence 0
+            0b1111_1111, // Sequence 1
+            0b1111_1111, // Sequence 2
+            0b1111_1111, // Sequence 3
+            0b0000_0000, // ControlFrame 0
+            0b0000_0000, // ControlFrame 1
+            0b0000_0000, // Reserved
+            0b0000_0000, // Reserved
+        ];
+
+        let sequence = Sequence::from_bits(u32::MAX >> 1);
+
+        let header = Header::decode(&input[..]).unwrap();
+
+        assert_eq!(header.packet_type, PacketType::DATA);
+        assert_eq!(header.sequence, sequence);
+    }
+
+    #[test]
+    fn sequence_range_single_encode() {
+        let start = Sequence::MAX;
+        let end = Sequence::MAX;
+        let range = SequenceRange { start, end };
+
+        let mut buf = Vec::new();
+        range.encode(&mut buf).unwrap();
+
+        let output = [
+            0b0111_1111, // Start/End
+            0b1111_1111, // Start/End
+            0b1111_1111, // Start/End
+            0b1111_1111, // Start/End
+        ];
+        assert_eq!(buf, output);
+    }
+
+    #[test]
+    fn sequence_range_range_encode() {
+        let start = Sequence::new(0);
+        let end = Sequence::MAX;
+        let range = SequenceRange { start, end };
+
+        let mut buf = Vec::new();
+        range.encode(&mut buf).unwrap();
+
+        let output = [
+            0b1000_0000, // Start
+            0b0000_0000, // Start
+            0b0000_0000, // Start
+            0b0000_0000, // Start
+            0b0111_1111, // End
+            0b1111_1111, // End
+            0b1111_1111, // End
+            0b1111_1111, // End
+        ];
+        assert_eq!(buf, output);
+    }
+
+    #[test]
+    fn sequence_range_single_decode() {
+        let input = [
+            0b0111_1111, // Start/End
+            0b1111_1111, // Start/End
+            0b1111_1111, // Start/End
+            0b1111_1111, // Start/End
+        ];
+
+        let range = SequenceRange::decode(&input[..]).unwrap();
+        assert_eq!(range.start, Sequence::MAX);
+        assert_eq!(range.end, Sequence::MAX);
+    }
+
+    #[test]
+    fn sequence_range_range_decode() {
+        let input = [
+            0b1000_0000, // Start
+            0b0000_0000, // Start
+            0b0000_0000, // Start
+            0b0000_0000, // Start
+            0b0111_1111, // End
+            0b1111_1111, // End
+            0b1111_1111, // End
+            0b1111_1111, // End
+        ];
+
+        let range = SequenceRange::decode(&input[..]).unwrap();
+        assert_eq!(range.start, Sequence::new(0));
+        assert_eq!(range.end, Sequence::MAX);
     }
 }

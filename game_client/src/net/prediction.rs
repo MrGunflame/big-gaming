@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use game_common::entity::EntityId;
-use game_common::world::world::WorldViewMut;
+use game_common::world::world::{AsView, WorldViewMut};
 use game_net::snapshot::CommandId;
 use glam::{Quat, Vec3};
 
@@ -29,6 +29,51 @@ impl LocalOverrides {
         );
     }
 
+    /// Validate an entity before removal.
+    pub fn validate_pre_removal<V>(&self, id: CommandId, view: V)
+    where
+        V: AsView,
+    {
+        for (entity, entry) in &self.entities {
+            for (kind, patch) in &entry.patches {
+                if patch.command == id {
+                    let entity = view.get(*entity).unwrap();
+
+                    match kind {
+                        PredictionKind::Translation => {
+                            let server = entity.transform.translation;
+                            let client = patch.value.as_translation().unwrap();
+
+                            if server != client {
+                                tracing::warn!(
+                                    "client-side misprediction: server is at {:?}, client is at {:?} (diff = {:?})",
+                                    server,
+                                    client,
+                                    server - client,
+                                );
+                            }
+                        }
+                        PredictionKind::Rotation => {
+                            let server = entity.transform.rotation;
+                            let client = patch.value.as_rotation().unwrap();
+
+                            if server != client {
+                                tracing::warn!(
+                                    "client-side misprediction: server is at {:?}, client is at {:?} (diff = {:?})",
+                                    server,
+                                    client,
+                                    server - client,
+                                );
+                            }
+                        }
+                    }
+
+                    return;
+                }
+            }
+        }
+    }
+
     pub fn remove(&mut self, id: CommandId) {
         let mut empty = vec![];
 
@@ -51,6 +96,10 @@ impl LocalOverrides {
             .map(|entity| entity.patches.values().map(|patch| &patch.value))
     }
 
+    pub fn get_entity(&self, entity: EntityId) -> Option<&EntityPatches> {
+        self.entities.get(&entity)
+    }
+
     pub fn apply(&self, mut view: WorldViewMut<'_>) {
         for (id, entity) in self.entities.iter() {
             let mut ent = view.get_mut(*id).unwrap();
@@ -58,7 +107,7 @@ impl LocalOverrides {
             for pred in self.get(*id).unwrap() {
                 match pred {
                     Prediction::Translation(translation) => {
-                        tracing::info!(
+                        tracing::trace!(
                             "applying client-side prediction to entity {:?} for translation {:?} -> {:?}",
                             id,
                             ent.transform.translation,
@@ -68,7 +117,7 @@ impl LocalOverrides {
                         ent.transform.translation = *translation
                     }
                     Prediction::Rotation(rotation) => {
-                        tracing::info!(
+                        tracing::trace!(
                             "applying client-side prediction to entity {:?} for rotation {:?} -> {:?}",
                             id,
                             ent.transform.rotation,
@@ -84,8 +133,22 @@ impl LocalOverrides {
 }
 
 #[derive(Clone, Debug, Default)]
-struct EntityPatches {
+pub struct EntityPatches {
     patches: HashMap<PredictionKind, Patch>,
+}
+
+impl EntityPatches {
+    pub fn translation(&self) -> Option<Vec3> {
+        self.patches
+            .get(&PredictionKind::Translation)
+            .map(|p| p.value.as_translation().unwrap())
+    }
+
+    pub fn rotation(&self) -> Option<Quat> {
+        self.patches
+            .get(&PredictionKind::Rotation)
+            .map(|p| p.value.as_rotation().unwrap())
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -105,6 +168,20 @@ impl Prediction {
         match self {
             Self::Translation(_) => PredictionKind::Translation,
             Self::Rotation(_) => PredictionKind::Rotation,
+        }
+    }
+
+    fn as_translation(&self) -> Option<Vec3> {
+        match self {
+            Self::Translation(val) => Some(*val),
+            _ => None,
+        }
+    }
+
+    fn as_rotation(&self) -> Option<Quat> {
+        match self {
+            Self::Rotation(val) => Some(*val),
+            _ => None,
         }
     }
 }
