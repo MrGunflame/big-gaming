@@ -17,7 +17,7 @@ pub fn update_level_cells(world: &mut WorldState, level: &mut Level) {
         let entity = view.get(id).unwrap();
         let cell = CellId::from(entity.transform.translation);
 
-        let area = square(cell, 1);
+        let area = square(cell, source.distance);
         cells.extend(area);
     }
 

@@ -27,6 +27,7 @@ use game_script::scripts::Scripts;
 use game_script::ScriptServer;
 use glam::Vec3;
 
+use crate::config::Config;
 use crate::conn::{Connection, Connections};
 use crate::entity::ServerEntityGenerator;
 use crate::net::state::{Cells, ConnectionState};
@@ -72,6 +73,7 @@ pub fn tick(
         &mut event_queue,
         &modules,
         &mut delta_queue,
+        &state.config,
     );
 
     crate::world::level::update_level_cells(&mut world, &mut level);
@@ -118,6 +120,7 @@ fn flush_command_queue(
     events: &mut EventQueue,
     modules: &Modules,
     delta_queue: &mut DeltaQueue,
+    config: &Config,
 ) {
     while let Some(msg) = queue.pop() {
         tracing::trace!("got command {:?}", msg.command);
@@ -204,7 +207,7 @@ fn flush_command_queue(
                     id,
                     StreamingSource {
                         state: StreamingState::Create,
-                        distance: 1,
+                        distance: config.player_streaming_source_distance,
                     },
                 );
 
@@ -396,6 +399,8 @@ fn update_client(conn: &Connection, world: &WorldState, delta_queue: &DeltaQueue
     let host = curr.get(id).unwrap();
     let cell_id = CellId::from(host.transform.translation);
 
+    let streaming_source = curr.streaming_sources().get(id).unwrap();
+
     // Send full state
     // The delta from the current frame is "included" in the full update.
     if state.full_update {
@@ -451,7 +456,7 @@ fn update_client(conn: &Connection, world: &WorldState, delta_queue: &DeltaQueue
     if state.cells.origin() != cell_id {
         tracing::info!("Moving host from {:?} to {:?}", state.cells, cell_id);
 
-        state.cells.set(cell_id);
+        state.cells.set(cell_id, streaming_source.distance);
     }
 
     let events = update_player_cells(curr, state);
@@ -494,10 +499,13 @@ fn player_move_cells(
     view: WorldViewRef<'_>,
     state: &mut ConnectionState,
     host: &Entity,
+    streaming_source: &StreamingSource,
 ) -> Vec<EntityChange> {
     let mut events = Vec::new();
 
-    let update = state.cells.set(host.transform.translation.into());
+    let update = state
+        .cells
+        .set(host.transform.translation.into(), streaming_source.distance);
 
     for id in update.unloaded() {
         let cell = view.cell(id);
@@ -704,6 +712,8 @@ mod tests {
 
     #[test]
     fn player_update_cells_entity_translate_parallel() {
+        let distance = 0;
+
         let mut world = WorldState::new();
         let cf = ControlFrame(0);
         world.insert(cf);
@@ -715,7 +725,7 @@ mod tests {
         update_player_cells(&view, &mut state);
 
         let new_cell = CellId::from_i32(IVec3::splat(1));
-        state.cells.set(new_cell);
+        state.cells.set(new_cell, distance);
 
         let mut entity = view.get_mut(entity_id).unwrap();
         entity.transform.translation = new_cell.min();

@@ -53,12 +53,12 @@ impl Cells {
         self.origin
     }
 
-    pub fn set(&mut self, origin: CellId) -> UpdateCells {
+    pub fn set(&mut self, origin: CellId, distance: u32) -> UpdateCells {
         debug_assert_ne!(self.origin, origin);
 
         self.origin = origin;
 
-        let new_cells = square(origin, 1);
+        let new_cells = square(origin, distance);
         let old_cells = &self.cells;
 
         let mut loaded = vec![];
