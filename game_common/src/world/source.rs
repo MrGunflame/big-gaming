@@ -11,6 +11,11 @@ use super::CellId;
 #[derive(Clone, Debug, Component)]
 pub struct StreamingSource {
     pub state: StreamingState,
+    /// The size of the area being loaded around this source.
+    ///
+    /// A `distance` of `0` also corresponds to only the cell that the entity resides in. Defaults
+    /// to `0`.
+    pub distance: u32,
 }
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
@@ -50,6 +55,7 @@ impl StreamingSource {
     pub fn new() -> Self {
         Self {
             state: StreamingState::Create,
+            distance: 0,
         }
     }
 }

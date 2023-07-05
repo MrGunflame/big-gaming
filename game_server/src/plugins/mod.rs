@@ -16,9 +16,9 @@ use game_common::world::control_frame::ControlFrame;
 use game_common::world::delta_queue::DeltaQueue;
 use game_common::world::entity::{Actor, Entity, EntityBody};
 use game_common::world::snapshot::EntityChange;
-use game_common::world::source::{StreamingSource, StreamingSources, StreamingState};
+use game_common::world::source::{StreamingSource, StreamingState};
 use game_common::world::world::{AsView, WorldState, WorldViewRef};
-use game_common::world::{cell, CellId};
+use game_common::world::CellId;
 use game_core::modules::Modules;
 use game_net::conn::ConnectionId;
 use game_net::snapshot::{Command, CommandQueue, ConnectionMessage, Response, Status};
@@ -200,7 +200,13 @@ fn flush_command_queue(
                     components: Components::new(),
                 });
 
-                view.upate_streaming_source(id, StreamingState::Create);
+                view.upate_streaming_source(
+                    id,
+                    StreamingSource {
+                        state: StreamingState::Create,
+                        distance: 1,
+                    },
+                );
 
                 let mut actor = ActorBundle::default();
                 actor.transform.transform.translation.y += 5.0;

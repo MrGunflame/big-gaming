@@ -75,10 +75,6 @@ pub enum EntityChange {
     DestroyHost {
         id: EntityId,
     },
-    UpdateStreamingSource {
-        id: EntityId,
-        state: StreamingState,
-    },
     InventoryItemAdd(InventoryItemAdd),
     InventoryItemRemove(InventoryItemRemove),
     InventoryDestroy(InventoryDestroy),
@@ -98,7 +94,6 @@ impl EntityChange {
             Self::Health { id, health: _ } => *id,
             Self::CreateHost { id } => *id,
             Self::DestroyHost { id } => *id,
-            Self::UpdateStreamingSource { id, state: _ } => *id,
             Self::InventoryItemAdd(event) => event.entity,
             Self::InventoryItemRemove(event) => event.entity,
             Self::InventoryDestroy(event) => event.entity,

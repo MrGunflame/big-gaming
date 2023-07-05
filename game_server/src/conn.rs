@@ -7,12 +7,11 @@ use bevy_ecs::system::Resource;
 use game_common::entity::EntityId;
 use game_common::world::control_frame::ControlFrame;
 use game_common::world::snapshot::EntityChange;
-use game_common::world::CellId;
 use game_net::conn::{ConnectionHandle, ConnectionId};
 use game_net::snapshot::{Command, CommandId, ConnectionMessage};
 use parking_lot::RwLock;
 
-use crate::net::state::{Cells, ConnectionState, KnownEntities};
+use crate::net::state::ConnectionState;
 
 /// List of connections
 // FIXME: Maybe merge with ConnectionPool.
@@ -134,7 +133,6 @@ impl Connection {
                     cell: _,
                 } => Command::EntityTranslate { id, translation },
                 EntityChange::Rotate { id, rotation } => Command::EntityRotate { id, rotation },
-                EntityChange::UpdateStreamingSource { id: _, state: _ } => continue,
                 EntityChange::InventoryItemAdd(event) => Command::InventoryItemAdd {
                     entity: event.entity,
                     id: event.id,

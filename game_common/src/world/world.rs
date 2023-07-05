@@ -396,34 +396,23 @@ impl<'a> WorldViewMut<'a> {
     }
 
     /// Sets the streaming state of the entity.
-    pub fn upate_streaming_source(&mut self, id: EntityId, state: StreamingState) {
+    pub fn upate_streaming_source(&mut self, id: EntityId, source: StreamingSource) {
+        assert!(self.get(id).is_some());
+
         #[cfg(debug_assertions)]
-        if state != StreamingState::Create {
+        if source.state != StreamingState::Create {
             assert!(self.snapshot().streaming_sources.get(id).is_some());
         }
 
-        let translation = self
-            .snapshot()
-            .entities
-            .get(id)
-            .unwrap()
-            .transform
-            .translation;
-
-        self.new_deltas
-            .entry(CellId::from(translation))
-            .or_default()
-            .push(EntityChange::UpdateStreamingSource { id, state });
-
-        match state {
+        match source.state {
             StreamingState::Create => {
-                self.snapshot().streaming_sources.insert(id, state);
+                self.snapshot().streaming_sources.insert(id, source);
             }
             StreamingState::Active => {
-                self.snapshot().streaming_sources.insert(id, state);
+                self.snapshot().streaming_sources.insert(id, source);
             }
             StreamingState::Destroy => {
-                self.snapshot().streaming_sources.insert(id, state);
+                self.snapshot().streaming_sources.insert(id, source);
             }
             StreamingState::Destroyed => {
                 self.snapshot().streaming_sources.remove(id);
@@ -740,8 +729,8 @@ impl StreamingSources {
         self.entities.get(&id)
     }
 
-    fn insert(&mut self, id: EntityId, state: StreamingState) {
-        self.entities.insert(id, StreamingSource { state });
+    fn insert(&mut self, id: EntityId, source: StreamingSource) {
+        self.entities.insert(id, source);
     }
 
     fn remove(&mut self, id: EntityId) {
@@ -800,24 +789,6 @@ impl Snapshot {
             }
             EntityChange::DestroyHost { id } => {
                 self.hosts.remove(id);
-            }
-            EntityChange::UpdateStreamingSource { id, state } => {
-                let entity = self.entities.get(id).unwrap();
-
-                match state {
-                    StreamingState::Create => {
-                        self.streaming_sources.insert(id, state);
-                    }
-                    StreamingState::Active => {
-                        self.streaming_sources.insert(id, state);
-                    }
-                    StreamingState::Destroy => {
-                        self.streaming_sources.insert(id, state);
-                    }
-                    StreamingState::Destroyed => {
-                        self.streaming_sources.remove(id);
-                    }
-                };
             }
             EntityChange::InventoryItemAdd(event) => {
                 let inventory = self.inventories.get_mut_or_insert(event.entity);
