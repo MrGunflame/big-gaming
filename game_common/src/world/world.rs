@@ -31,6 +31,12 @@ pub struct WorldState {
     head: usize,
     metrics: WorldMetrics,
 
+    // The entity id must go global across all snapshots.
+    // FIXME: Snapshots should only contain a sparse array of entity ids
+    // with deltas. Then we can store the dense array for all snapshots
+    // directly here.
+    next_entity_id: u64,
+
     #[cfg(feature = "tracing")]
     resource_span: Span,
 }
@@ -43,6 +49,7 @@ impl WorldState {
             #[cfg(feature = "tracing")]
             resource_span: span!(Level::DEBUG, "WorldState"),
             metrics: WorldMetrics::new(),
+            next_entity_id: 0,
         }
     }
 
@@ -286,6 +293,10 @@ pub struct WorldViewMut<'a> {
 }
 
 impl<'a> WorldViewMut<'a> {
+    pub fn len(&self) -> usize {
+        self.snapshot_ref().entities.entities.len()
+    }
+
     pub(crate) fn snapshot_ref(&self) -> &Snapshot {
         self.world.snapshots.get(self.index).unwrap()
     }
@@ -328,8 +339,13 @@ impl<'a> WorldViewMut<'a> {
             entity.cell()
         );
 
-        let id = self.snapshot().entities.spawn(entity.clone());
+        let id = EntityId::from_raw(self.world.next_entity_id);
+        self.world.next_entity_id += 1;
+        // Don't overflow, we can't reuse ids at this point.
+        assert_ne!(self.world.next_entity_id, u64::MAX);
+
         entity.id = id;
+        self.snapshot().entities.spawn(entity.clone());
 
         self.new_deltas
             .entry(entity.cell())
@@ -636,7 +652,6 @@ impl<'a> Drop for EntityMut<'a> {
 
 #[derive(Clone, Debug, Default)]
 struct Entities {
-    next_id: u64,
     entities: HashMap<EntityId, Entity>,
 }
 
@@ -653,22 +668,13 @@ impl Entities {
         self.entities.insert(entity.id, entity);
     }
 
-    fn spawn(&mut self, mut entity: Entity) -> EntityId {
-        let id = self.next_id();
-        entity.id = id;
-
+    /// The id must be set before insertion.
+    fn spawn(&mut self, mut entity: Entity) {
         self.entities.insert(entity.id, entity);
-        id
     }
 
     fn despawn(&mut self, id: EntityId) -> Option<Entity> {
         self.entities.remove(&id)
-    }
-
-    fn next_id(&mut self) -> EntityId {
-        let id = EntityId::from_raw(self.next_id);
-        self.next_id += 1;
-        id
     }
 }
 
@@ -1193,6 +1199,35 @@ mod tests {
             let view = world.get(*cf).unwrap();
             assert_eq!(view.len(), 0);
             assert_eq!(view.deltas().count(), 0);
+        }
+    }
+
+    #[test]
+    fn world_unique_id_over_snapshots() {
+        let mut world = WorldState::new();
+
+        for index in 0..10 {
+            let cf = ControlFrame(index);
+            world.insert(cf);
+        }
+
+        let mut ids = Vec::new();
+        for index in 0..10 {
+            let cf = ControlFrame(index);
+
+            let mut view = world.get_mut(cf).unwrap();
+            ids.extend((0..10).map(|_| view.spawn(create_test_entity())));
+        }
+
+        // No duplicates
+        for (index, id) in ids.iter().enumerate() {
+            for (index2, id2) in ids.iter().enumerate() {
+                if index == index2 {
+                    continue;
+                }
+
+                assert_ne!(id, id2);
+            }
         }
     }
 }
