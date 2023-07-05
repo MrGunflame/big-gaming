@@ -442,6 +442,10 @@ impl<'a> WorldViewMut<'a> {
     pub fn inventories_mut(&mut self) -> InventoriesMut<'_, 'a> {
         InventoriesMut { view: self }
     }
+
+    pub fn streaming_sources(&self) -> &StreamingSources {
+        &self.snapshot_ref().streaming_sources
+    }
 }
 
 impl<'a> Debug for WorldViewMut<'a> {
@@ -742,6 +746,10 @@ impl StreamingSources {
 
     fn remove(&mut self, id: EntityId) {
         self.entities.remove(&id);
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (EntityId, &StreamingSource)> {
+        self.entities.iter().map(|(id, s)| (*id, s))
     }
 }
 

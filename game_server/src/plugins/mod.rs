@@ -52,8 +52,7 @@ pub fn tick(
     mut world: ResMut<WorldState>,
     queue: Res<CommandQueue>,
     map: Res<EntityMap>,
-    level: Res<Level>,
-    mut sources: ResMut<StreamingSources>,
+    mut level: ResMut<Level>,
     mut pipeline: ResMut<game_physics::Pipeline>,
     mut event_queue: ResMut<EventQueue>,
     server: Res<ScriptServer>,
@@ -75,8 +74,7 @@ pub fn tick(
         &mut delta_queue,
     );
 
-    crate::world::level::update_streaming_sources(&mut sources, &world);
-    crate::world::level::update_level(&sources, &level, &mut world);
+    crate::world::level::update_level_cells(&mut world, &mut level);
 
     game_script::plugin::flush_event_queue(&mut event_queue, &mut world, &server, &scripts);
 

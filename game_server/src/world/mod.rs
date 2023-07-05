@@ -14,7 +14,7 @@ pub struct WorldPlugin;
 
 impl Plugin for WorldPlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(Level::new());
+        app.insert_resource(Level::default());
         app.insert_resource(StreamingSources::new());
 
         // app.add_system(level::update_streaming_sources.after(tick));
