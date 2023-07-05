@@ -12,7 +12,7 @@ use game_net::conn::{ConnectionHandle, ConnectionId};
 use game_net::snapshot::{Command, CommandId, ConnectionMessage};
 use parking_lot::RwLock;
 
-use crate::net::state::{Cells, ConnectionState};
+use crate::net::state::{Cells, ConnectionState, KnownEntities};
 
 /// List of connections
 // FIXME: Maybe merge with ConnectionPool.
@@ -30,12 +30,7 @@ impl Connections {
             Connection {
                 inner: Arc::new(ConnectionInner {
                     id: handle.id,
-                    state: RwLock::new(ConnectionState {
-                        full_update: true,
-                        cells: Cells::new(CellId::new(0.0, 0.0, 0.0)),
-                        id: None,
-                        head: 0,
-                    }),
+                    state: RwLock::new(ConnectionState::new()),
                     handle,
                     processed_messages: RwLock::new(Vec::new()),
                 }),

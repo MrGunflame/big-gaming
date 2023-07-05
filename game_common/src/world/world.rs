@@ -929,6 +929,8 @@ pub trait AsView {
     }
 
     fn get(&self, id: EntityId) -> Option<&Entity>;
+
+    fn cell(&self, id: CellId) -> CellViewRef<'_>;
 }
 
 impl<'a> AsView for WorldViewRef<'a> {
@@ -939,6 +941,14 @@ impl<'a> AsView for WorldViewRef<'a> {
     fn len(&self) -> usize {
         self.snapshot.entities.entities.len()
     }
+
+    fn cell(&self, id: CellId) -> CellViewRef<'_> {
+        CellViewRef {
+            id,
+            entities: &self.snapshot.entities,
+            cells: &self.snapshot.cells,
+        }
+    }
 }
 
 impl<'a> AsView for &'a WorldViewMut<'a> {
@@ -948,6 +958,14 @@ impl<'a> AsView for &'a WorldViewMut<'a> {
 
     fn len(&self) -> usize {
         self.snapshot_ref().entities.entities.len()
+    }
+
+    fn cell(&self, id: CellId) -> CellViewRef<'_> {
+        CellViewRef {
+            id,
+            entities: &self.snapshot_ref().entities,
+            cells: &self.snapshot_ref().cells,
+        }
     }
 }
 
