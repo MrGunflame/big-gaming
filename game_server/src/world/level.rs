@@ -1,6 +1,6 @@
 use ahash::{HashMap, HashSet};
 use bevy_ecs::system::Resource;
-use game_common::world::cell::Cell;
+use game_common::world::cell::{square, Cell};
 use game_common::world::gen::flat::FlatGenerator;
 use game_common::world::gen::Generator;
 use game_common::world::world::WorldState;
@@ -17,7 +17,8 @@ pub fn update_level_cells(world: &mut WorldState, level: &mut Level) {
         let entity = view.get(id).unwrap();
         let cell = CellId::from(entity.transform.translation);
 
-        cells.insert(cell);
+        let area = square(cell, 1);
+        cells.extend(area);
     }
 
     for cell in &cells {
