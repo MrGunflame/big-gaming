@@ -171,7 +171,6 @@ fn handle_event(
                     },
                     EntityChange::CreateHost { id: _ } => entity.host = true,
                     EntityChange::DestroyHost { id: _ } => entity.host = false,
-                    EntityChange::UpdateStreamingSource { id, state } => todo!(),
                     EntityChange::InventoryItemAdd(event) => {
                         add_inventory_item(&mut entity.inventory, modules, event);
                     }
@@ -289,7 +288,6 @@ fn handle_event(
                 *h = health;
             }
         }
-        EntityChange::UpdateStreamingSource { id, state } => todo!(),
         EntityChange::InventoryItemAdd(event) => {
             let entity = conn.entities.get(event.entity).unwrap();
 

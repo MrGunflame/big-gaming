@@ -238,14 +238,39 @@ impl Cell {
     }
 }
 
+/// Returns all cells around center.
+pub fn square(center: CellId, distance: u32) -> Vec<CellId> {
+    debug_assert!(distance as i32 >= 0);
+
+    let distance = distance as i32;
+    let mut cells = vec![];
+
+    let center = center.to_i32();
+    for x in center.x - distance..=center.x + distance {
+        for y in center.y - distance..=center.y + distance {
+            for z in center.z - distance..=center.z + distance {
+                cells.push(CellId::from_i32(IVec3::new(
+                    center.x + x,
+                    center.y + y,
+                    center.z + z,
+                )));
+            }
+        }
+    }
+
+    cells
+}
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct EntityId(u32);
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashSet;
+
     use glam::{IVec3, Vec3};
 
-    use super::{CellId, CELL_SIZE};
+    use super::{square, CellId, CELL_SIZE};
 
     #[test]
     fn cell_size_min() {
@@ -336,5 +361,69 @@ mod tests {
     fn cell_id_min_negative() {
         let id = CellId::new(-0.0, -32.0, -64.0);
         assert_eq!(id.min(), Vec3::new(-64.0, -64.0, -128.0));
+    }
+
+    #[test]
+    fn cell_id_square_0() {
+        let center = CellId::from_i32(IVec3::new(0, 0, 0));
+        let distance = 0;
+
+        let res = square(center, distance);
+        match_cells_exact(&res, &[center]);
+    }
+
+    #[test]
+    fn cell_id_square_1() {
+        let center = CellId::from_i32(IVec3::new(0, 0, 0));
+        let distance = 1;
+
+        let res = square(center, distance);
+        match_cells_exact(
+            &res,
+            &[
+                center,
+                CellId::from_i32(IVec3::new(0, 0, 1)),
+                CellId::from_i32(IVec3::new(0, 0, -1)),
+                CellId::from_i32(IVec3::new(0, 1, 0)),
+                CellId::from_i32(IVec3::new(0, 1, 1)),
+                CellId::from_i32(IVec3::new(0, 1, -1)),
+                CellId::from_i32(IVec3::new(0, -1, 0)),
+                CellId::from_i32(IVec3::new(0, -1, 1)),
+                CellId::from_i32(IVec3::new(0, -1, -1)),
+                CellId::from_i32(IVec3::new(1, 0, 0)),
+                CellId::from_i32(IVec3::new(1, 0, 1)),
+                CellId::from_i32(IVec3::new(1, 0, -1)),
+                CellId::from_i32(IVec3::new(1, 1, 0)),
+                CellId::from_i32(IVec3::new(1, 1, 1)),
+                CellId::from_i32(IVec3::new(1, 1, -1)),
+                CellId::from_i32(IVec3::new(1, -1, 0)),
+                CellId::from_i32(IVec3::new(1, -1, 1)),
+                CellId::from_i32(IVec3::new(1, -1, -1)),
+                CellId::from_i32(IVec3::new(-1, 0, 0)),
+                CellId::from_i32(IVec3::new(-1, 0, 1)),
+                CellId::from_i32(IVec3::new(-1, 0, -1)),
+                CellId::from_i32(IVec3::new(-1, 1, 0)),
+                CellId::from_i32(IVec3::new(-1, 1, 1)),
+                CellId::from_i32(IVec3::new(-1, 1, -1)),
+                CellId::from_i32(IVec3::new(-1, -1, 0)),
+                CellId::from_i32(IVec3::new(-1, -1, 1)),
+                CellId::from_i32(IVec3::new(-1, -1, -1)),
+            ],
+        );
+    }
+
+    #[track_caller]
+    fn match_cells_exact(lhs: &[CellId], rhs: &[CellId]) {
+        let mut lhs: HashSet<_> = lhs.iter().copied().collect();
+
+        for id in rhs {
+            if !lhs.remove(&id) {
+                panic!("missing {:?} in lhs", id);
+            }
+        }
+
+        for id in lhs {
+            panic!("missing {:?} in rhs", id);
+        }
     }
 }

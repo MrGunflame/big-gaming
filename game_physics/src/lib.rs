@@ -101,7 +101,7 @@ impl Pipeline {
             steps += 1;
         }
 
-        tracing::info!("stepping physics for {} steps", steps);
+        tracing::trace!("stepping physics for {} steps", steps);
 
         self.emit_events(events);
 
@@ -109,7 +109,7 @@ impl Pipeline {
     }
 
     fn prepare_init(&mut self, world: &mut WorldState) {
-        let Some(view) = world.front() else {
+        let Some(view) = world.back() else {
             return;
         };
 
@@ -121,7 +121,7 @@ impl Pipeline {
     }
 
     fn prepare_poll(&mut self, world: &mut WorldState) {
-        let Some(view) = world.front() else {
+        let Some(view) = world.back() else {
             return;
         };
 
@@ -215,7 +215,7 @@ impl Pipeline {
                 (body_handle, col_handle)
             }
             EntityBody::Actor(actor) => {
-                let body = RigidBodyBuilder::new(RigidBodyType::Dynamic)
+                let body = RigidBodyBuilder::new(RigidBodyType::KinematicPositionBased)
                     .position(Isometry {
                         translation: vector(entity.transform.translation).into(),
                         rotation: rotation(extract_actor_rotation(entity.transform.rotation)),
@@ -244,7 +244,7 @@ impl Pipeline {
     }
 
     fn write_back(&mut self, world: &mut WorldState) {
-        let Some(mut view) = world.front_mut() else {
+        let Some(mut view) = world.back_mut() else {
             return;
         };
 

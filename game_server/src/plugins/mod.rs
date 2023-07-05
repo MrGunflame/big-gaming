@@ -1,27 +1,23 @@
 mod inventory;
 
-use std::time::{Duration, Instant};
-
-use ahash::HashMap;
+use ahash::HashSet;
 use bevy_app::{App, Plugin};
 use bevy_ecs::system::{Commands, Res, ResMut};
 use bevy_hierarchy::DespawnRecursiveExt;
 use game_common::bundles::ActorBundle;
 use game_common::components::combat::Health;
 use game_common::components::components::Components;
-use game_common::components::inventory::Inventory;
-use game_common::components::items::ItemId;
 use game_common::components::player::Player;
 use game_common::components::race::RaceId;
 use game_common::components::transform::Transform;
 use game_common::entity::{EntityId, EntityMap};
 use game_common::events::{ActionEvent, EntityEvent, Event, EventKind, EventQueue};
-use game_common::record::{RecordId, RecordReference};
 use game_common::world::control_frame::ControlFrame;
+use game_common::world::delta_queue::DeltaQueue;
 use game_common::world::entity::{Actor, Entity, EntityBody};
 use game_common::world::snapshot::EntityChange;
-use game_common::world::source::{StreamingSource, StreamingSources, StreamingState};
-use game_common::world::world::WorldState;
+use game_common::world::source::{StreamingSource, StreamingState};
+use game_common::world::world::{AsView, WorldState, WorldViewRef};
 use game_common::world::CellId;
 use game_core::modules::Modules;
 use game_net::conn::ConnectionId;
@@ -31,9 +27,10 @@ use game_script::scripts::Scripts;
 use game_script::ScriptServer;
 use glam::Vec3;
 
+use crate::config::Config;
 use crate::conn::{Connection, Connections};
 use crate::entity::ServerEntityGenerator;
-use crate::net::state::Cells;
+use crate::net::state::{Cells, ConnectionState};
 use crate::state::State;
 use crate::world::level::Level;
 
@@ -56,8 +53,7 @@ pub fn tick(
     mut world: ResMut<WorldState>,
     queue: Res<CommandQueue>,
     map: Res<EntityMap>,
-    level: Res<Level>,
-    mut sources: ResMut<StreamingSources>,
+    mut level: ResMut<Level>,
     mut pipeline: ResMut<game_physics::Pipeline>,
     mut event_queue: ResMut<EventQueue>,
     server: Res<ScriptServer>,
@@ -77,10 +73,10 @@ pub fn tick(
         &mut event_queue,
         &modules,
         &mut delta_queue,
+        &state.config,
     );
 
-    crate::world::level::update_streaming_sources(&mut sources, &world);
-    crate::world::level::update_level(&sources, &level, &mut world);
+    crate::world::level::update_level_cells(&mut world, &mut level);
 
     game_script::plugin::flush_event_queue(&mut event_queue, &mut world, &server, &scripts);
 
@@ -124,6 +120,7 @@ fn flush_command_queue(
     events: &mut EventQueue,
     modules: &Modules,
     delta_queue: &mut DeltaQueue,
+    config: &Config,
 ) {
     while let Some(msg) = queue.pop() {
         tracing::trace!("got command {:?}", msg.command);
@@ -155,10 +152,23 @@ fn flush_command_queue(
             Command::EntityTranslate { id, translation } => {
                 let mut entity = view.get_mut(id).unwrap();
                 entity.transform.translation = translation;
+
+                let cell = CellId::from(translation);
+                delta_queue.push(
+                    cell,
+                    EntityChange::Translate {
+                        id,
+                        translation,
+                        cell: None,
+                    },
+                );
             }
             Command::EntityRotate { id, rotation } => {
                 let mut entity = view.get_mut(id).unwrap();
                 entity.transform.rotation = rotation;
+
+                let cell = CellId::from(entity.transform.translation);
+                delta_queue.push(cell, EntityChange::Rotate { id, rotation });
             }
             Command::EntityVelocity { id, linvel, angvel } => {
                 let ent = map.get(id).unwrap();
@@ -179,6 +189,8 @@ fn flush_command_queue(
                         action,
                     }),
                 });
+
+                // TODO
             }
             Command::Connected => {
                 let id = view.spawn(Entity {
@@ -191,7 +203,13 @@ fn flush_command_queue(
                     components: Components::new(),
                 });
 
-                view.upate_streaming_source(id, StreamingState::Create);
+                view.upate_streaming_source(
+                    id,
+                    StreamingSource {
+                        state: StreamingState::Create,
+                        distance: config.player_streaming_source_distance,
+                    },
+                );
 
                 let mut actor = ActorBundle::default();
                 actor.transform.transform.translation.y += 5.0;
@@ -225,20 +243,20 @@ fn flush_command_queue(
                 //         rotation: Quat::default(),
                 //     });
 
-                let inventory = Inventory::new();
-                view.inventories_mut().insert(id, inventory);
+                // let inventory = Inventory::new();
+                // view.inventories_mut().insert(id, inventory);
 
-                let mut invs = view.inventories_mut();
-                let mut inv = invs.get_mut_or_insert(id);
+                // let mut invs = view.inventories_mut();
+                // let mut inv = invs.get_mut_or_insert(id);
 
-                inventory::add_item(
-                    &mut inv,
-                    ItemId(RecordReference {
-                        module: "e9aa65d7953b4132beed9bbcff89e00a".parse().unwrap(),
-                        record: RecordId(3),
-                    }),
-                    &modules,
-                );
+                // inventory::add_item(
+                //     &mut inv,
+                //     ItemId(RecordReference {
+                //         module: "e9aa65d7953b4132beed9bbcff89e00a".parse().unwrap(),
+                //         record: RecordId(3),
+                //     }),
+                //     &modules,
+                // );
 
                 map.insert(id, ent);
                 // FIXME: This should not be set in this snapshot, but in the most
@@ -282,13 +300,6 @@ fn flush_command_queue(
             }
             Command::ReceivedCommands { ids: _ } => (),
         }
-
-        for (cell, events) in view.deltas() {
-            let entry = delta_queue.cells.entry(*cell).or_default();
-            entry.extend(events.clone());
-        }
-
-        view.deltas().clear();
 
         drop(view);
     }
@@ -371,7 +382,7 @@ fn update_snapshots(
 }
 
 fn update_client(conn: &Connection, world: &WorldState, delta_queue: &DeltaQueue) {
-    let mut state = conn.state().write();
+    let state = &mut *conn.state().write();
 
     let Some(id) = state.id else {
         return;
@@ -388,6 +399,8 @@ fn update_client(conn: &Connection, world: &WorldState, delta_queue: &DeltaQueue
     let host = curr.get(id).unwrap();
     let cell_id = CellId::from(host.transform.translation);
 
+    let streaming_source = curr.streaming_sources().get(id).unwrap();
+
     // Send full state
     // The delta from the current frame is "included" in the full update.
     if state.full_update {
@@ -403,6 +416,8 @@ fn update_client(conn: &Connection, world: &WorldState, delta_queue: &DeltaQueue
             let cell = curr.cell(*id);
 
             for entity in cell.iter() {
+                state.known_entities.insert(entity.clone());
+
                 conn.handle().send_cmd(ConnectionMessage {
                     id: None,
                     conn: ConnectionId(0),
@@ -436,97 +451,19 @@ fn update_client(conn: &Connection, world: &WorldState, delta_queue: &DeltaQueue
         return;
     }
 
-    let mut changes = Vec::new();
-
-    // Host changed cells
-    if !state.cells.contains(cell_id) {
+    // `Cells::set` may allocate so avoid calling it unless
+    // necessary.
+    if state.cells.origin() != cell_id {
         tracing::info!("Moving host from {:?} to {:?}", state.cells, cell_id);
 
-        // Host changed cells
-        let update = state.cells.set(host.transform.translation.into());
-
-        // Destroy all entities in unloaded cells.
-        for id in update.unloaded() {
-            let cell = curr.cell(id);
-
-            // Destroy all entities (for the client) from the unloaded cell.
-            for entity in cell.iter() {
-                debug_assert_ne!(entity.id, host.id);
-
-                changes.push(EntityChange::Destroy { id: entity.id });
-            }
-        }
-
-        // Create all entities in loaded cells.
-        for cell_id in update.loaded() {
-            let cell = curr.cell(cell_id);
-
-            for entity in cell.iter() {
-                // Don't duplicate the player actor.
-                if entity.id == host.id {
-                    continue;
-                }
-
-                changes.push(EntityChange::Create {
-                    entity: entity.clone(),
-                });
-            }
-        }
-
-        // Host in same cell
-    } else {
-        changes.extend(
-            delta_queue
-                .cells
-                .iter()
-                .filter(|(id, _)| **id == cell_id)
-                .map(|(_, d)| d)
-                .flatten()
-                .cloned()
-                .map(|d| match &d {
-                    EntityChange::Translate {
-                        id,
-                        translation: _,
-                        cell,
-                    } => {
-                        // Note that CellIds returned from translation close to borders
-                        // are not well-defined.
-                        // This is a fix that would cause the host to get destroyed and
-                        // recreated in the same tick.
-                        // FIXME: This still doesn't seem like a good solution.
-                        if *id == host.id {
-                            return d;
-                        }
-
-                        if let Some(cell) = cell {
-                            // The cell that the entity moved into is not loaded by the
-                            // client. Remove the entity from the client view.
-                            if !state.cells.contains(cell.to) {
-                                EntityChange::Destroy { id: *id }
-                            // The cell that the entity moved from was not loaded by the
-                            // client. Add the entity to the client view.
-                            } else if !state.cells.contains(cell.from) {
-                                let entity = curr.get(*id).unwrap();
-
-                                EntityChange::Create {
-                                    entity: entity.clone(),
-                                }
-                            } else {
-                                d
-                            }
-                        } else {
-                            d
-                        }
-                    }
-                    _ => d,
-                })
-                .collect::<Vec<_>>(),
-        );
+        state.cells.set(cell_id, streaming_source.distance);
     }
+
+    let events = update_player_cells(curr, state);
 
     // The host should never be destroyed.
     if cfg!(debug_assertions) {
-        for event in &changes {
+        for event in &events {
             match event {
                 EntityChange::Destroy { id } => {
                     assert_ne!(*id, host.id);
@@ -536,7 +473,7 @@ fn update_client(conn: &Connection, world: &WorldState, delta_queue: &DeltaQueue
         }
     }
 
-    conn.push(changes, curr.control_frame());
+    conn.push(events, curr.control_frame());
 
     // Acknowledge client commands.
     let ids = conn.take_proc_msg();
@@ -558,13 +495,252 @@ fn update_client(conn: &Connection, world: &WorldState, delta_queue: &DeltaQueue
     }
 }
 
-#[cfg(test)]
-mod tests {}
+fn player_move_cells(
+    view: WorldViewRef<'_>,
+    state: &mut ConnectionState,
+    host: &Entity,
+    streaming_source: &StreamingSource,
+) -> Vec<EntityChange> {
+    let mut events = Vec::new();
 
-/// A list of events that need to be sent out this frame.
-#[derive(Clone, Debug, Default)]
-pub struct DeltaQueue {
-    // Subdivide by cells so that every client can get only what they
-    // need.
-    cells: HashMap<CellId, Vec<EntityChange>>,
+    let update = state
+        .cells
+        .set(host.transform.translation.into(), streaming_source.distance);
+
+    for id in update.unloaded() {
+        let cell = view.cell(id);
+
+        for entity in cell.iter() {
+            debug_assert_ne!(entity.id, host.id);
+
+            state.known_entities.remove(entity.id);
+            events.push(EntityChange::Destroy { id: entity.id });
+        }
+    }
+
+    for id in update.loaded() {
+        let cell = view.cell(id);
+
+        for entity in cell.iter() {
+            // Note that it is possible that an entity changed cells in
+            // the exact same snapshot as the player. In this case the entity
+            // must not be recreated. This check also handles the player entity
+            // itself.
+            if state.known_entities.contains(entity.id) {
+                continue;
+            }
+
+            events.push(EntityChange::Create {
+                entity: entity.clone(),
+            });
+        }
+    }
+
+    events
+}
+
+/// Update a player that hasn't moved cells.
+fn update_player_cells<V>(view: V, state: &mut ConnectionState) -> Vec<EntityChange>
+where
+    V: AsView,
+{
+    let mut events = Vec::new();
+
+    let mut stale_entities: HashSet<_> = state.known_entities.entities.keys().copied().collect();
+
+    for id in state.cells.iter() {
+        let cell = view.cell(id);
+
+        for entity in cell.iter() {
+            if !state.known_entities.contains(entity.id) {
+                state.known_entities.insert(entity.clone());
+
+                events.push(EntityChange::Create {
+                    entity: entity.clone(),
+                });
+
+                continue;
+            }
+
+            stale_entities.remove(&entity.id);
+
+            let known = state.known_entities.get_mut(entity.id).unwrap();
+
+            if known.transform.translation != entity.transform.translation {
+                known.transform.translation = entity.transform.translation;
+
+                events.push(EntityChange::Translate {
+                    id: entity.id,
+                    translation: entity.transform.translation,
+                    cell: None,
+                });
+            }
+
+            if known.transform.rotation != entity.transform.rotation {
+                known.transform.rotation = entity.transform.rotation;
+
+                events.push(EntityChange::Rotate {
+                    id: entity.id,
+                    rotation: entity.transform.rotation,
+                });
+            }
+        }
+    }
+
+    // Despawn all entities that were not existent in any of the player's cells.
+    for id in stale_entities {
+        events.push(EntityChange::Destroy { id });
+    }
+
+    events
+}
+
+#[cfg(test)]
+mod tests {
+    use game_common::components::object::ObjectId;
+    use game_common::components::transform::Transform;
+    use game_common::entity::EntityId;
+    use game_common::record::RecordReference;
+    use game_common::world::control_frame::ControlFrame;
+    use game_common::world::entity::{Entity, EntityBody, Object};
+    use game_common::world::snapshot::EntityChange;
+    use game_common::world::world::WorldState;
+    use game_common::world::CellId;
+    use glam::{IVec3, Vec3};
+
+    use crate::net::state::ConnectionState;
+
+    use super::update_player_cells;
+
+    fn create_test_entity() -> Entity {
+        Entity {
+            id: EntityId::dangling(),
+            transform: Transform::default(),
+            body: EntityBody::Object(Object {
+                id: ObjectId(RecordReference::STUB),
+            }),
+            components: Default::default(),
+        }
+    }
+
+    #[test]
+    fn player_update_cells_spawn_entity() {
+        let mut world = WorldState::new();
+        let cf = ControlFrame(0);
+        world.insert(cf);
+
+        let mut view = world.get_mut(cf).unwrap();
+        view.spawn(create_test_entity());
+
+        let mut state = ConnectionState::new();
+        let events = update_player_cells(&view, &mut state);
+
+        assert_eq!(events.len(), 1);
+        assert!(matches!(events[0], EntityChange::Create { entity: _ }));
+    }
+
+    #[test]
+    fn player_update_cells_translate_entity() {
+        let mut world = WorldState::new();
+        let cf = ControlFrame(0);
+        world.insert(cf);
+
+        let mut view = world.get_mut(cf).unwrap();
+        let entity_id = view.spawn(create_test_entity());
+
+        let mut state = ConnectionState::new();
+        update_player_cells(&view, &mut state);
+
+        let mut entity = view.get_mut(entity_id).unwrap();
+        entity.transform.translation = Vec3::splat(1.0);
+        drop(entity);
+
+        let events = update_player_cells(&view, &mut state);
+
+        assert_eq!(events.len(), 1);
+        assert!(matches!(
+            events[0],
+            EntityChange::Translate {
+                id: _,
+                translation: _,
+                cell: _
+            }
+        ));
+    }
+
+    #[test]
+    fn player_upate_cells_despawn_entity() {
+        let mut world = WorldState::new();
+        let cf = ControlFrame(0);
+        world.insert(cf);
+
+        let mut view = world.get_mut(cf).unwrap();
+        let entity_id = view.spawn(create_test_entity());
+
+        let mut state = ConnectionState::new();
+        update_player_cells(&view, &mut state);
+
+        view.despawn(entity_id);
+
+        let events = update_player_cells(&view, &mut state);
+
+        assert_eq!(events.len(), 1);
+        assert!(matches!(events[0], EntityChange::Destroy { id: _ }));
+    }
+
+    #[test]
+    fn player_update_cells_entity_leave_cells() {
+        let mut world = WorldState::new();
+        let cf = ControlFrame(0);
+        world.insert(cf);
+
+        let mut view = world.get_mut(cf).unwrap();
+        let entity_id = view.spawn(create_test_entity());
+
+        let mut state = ConnectionState::new();
+        update_player_cells(&view, &mut state);
+
+        let mut entity = view.get_mut(entity_id).unwrap();
+        entity.transform.translation = Vec3::splat(1024.0);
+        drop(entity);
+
+        let events = update_player_cells(&view, &mut state);
+
+        assert_eq!(events.len(), 1);
+        assert!(matches!(events[0], EntityChange::Destroy { id: _ }));
+    }
+
+    #[test]
+    fn player_update_cells_entity_translate_parallel() {
+        let distance = 0;
+
+        let mut world = WorldState::new();
+        let cf = ControlFrame(0);
+        world.insert(cf);
+
+        let mut view = world.get_mut(cf).unwrap();
+        let entity_id = view.spawn(create_test_entity());
+
+        let mut state = ConnectionState::new();
+        update_player_cells(&view, &mut state);
+
+        let new_cell = CellId::from_i32(IVec3::splat(1));
+        state.cells.set(new_cell, distance);
+
+        let mut entity = view.get_mut(entity_id).unwrap();
+        entity.transform.translation = new_cell.min();
+        drop(entity);
+
+        let events = update_player_cells(&view, &mut state);
+
+        assert_eq!(events.len(), 1);
+        assert!(matches!(
+            events[0],
+            EntityChange::Translate {
+                id: _,
+                translation: _,
+                cell: _
+            }
+        ));
+    }
 }

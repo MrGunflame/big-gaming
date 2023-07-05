@@ -1,6 +1,8 @@
+use ahash::HashMap;
 use game_common::entity::EntityId;
+use game_common::world::cell::square;
+use game_common::world::entity::Entity;
 use game_common::world::CellId;
-use glam::IVec3;
 
 #[derive(Clone, Debug)]
 pub struct ConnectionState {
@@ -13,6 +15,20 @@ pub struct ConnectionState {
     ///
     /// `head - 1..head` is the delta period.
     pub head: usize,
+
+    pub known_entities: KnownEntities,
+}
+
+impl ConnectionState {
+    pub fn new() -> Self {
+        Self {
+            full_update: true,
+            cells: Cells::new(CellId::new(0.0, 0.0, 0.0)),
+            id: None,
+            head: 0,
+            known_entities: KnownEntities::new(),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -24,7 +40,7 @@ pub struct Cells {
 
 impl Cells {
     pub fn new(origin: CellId) -> Self {
-        let cells = cell_distance(origin, 1);
+        let cells = square(origin, 1);
 
         Self { origin, cells }
     }
@@ -37,12 +53,12 @@ impl Cells {
         self.origin
     }
 
-    pub fn set(&mut self, origin: CellId) -> UpdateCells {
+    pub fn set(&mut self, origin: CellId, distance: u32) -> UpdateCells {
         debug_assert_ne!(self.origin, origin);
 
         self.origin = origin;
 
-        let new_cells = cell_distance(origin, 1);
+        let new_cells = square(origin, distance);
         let old_cells = &self.cells;
 
         let mut loaded = vec![];
@@ -68,6 +84,10 @@ impl Cells {
     pub fn cells(&self) -> &[CellId] {
         &self.cells
     }
+
+    pub fn iter(&self) -> impl Iterator<Item = CellId> + '_ {
+        self.cells().iter().copied()
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -86,102 +106,32 @@ impl UpdateCells {
     }
 }
 
-/// Returns all cells within the given distance.
-fn cell_distance(origin: CellId, distance: u32) -> Vec<CellId> {
-    let mut cells = vec![origin];
-
-    let orig = origin.to_i32();
-
-    let len = distance as i32;
-
-    // X
-    for i in 0..len {
-        cells.push(CellId::from_i32(IVec3::new(orig.x + i + 1, orig.y, orig.z)));
-        cells.push(CellId::from_i32(IVec3::new(orig.x - i - 1, orig.y, orig.z)));
-    }
-
-    // Y
-    for i in 0..len {
-        cells.push(CellId::from_i32(IVec3::new(orig.x, orig.y + i + 1, orig.z)));
-        cells.push(CellId::from_i32(IVec3::new(orig.x, orig.y - i - 1, orig.z)));
-    }
-
-    // Z
-    for i in 0..len {
-        cells.push(CellId::from_i32(IVec3::new(orig.x, orig.y, orig.z + i + 1)));
-        cells.push(CellId::from_i32(IVec3::new(orig.x, orig.y, orig.z - i - 1)));
-    }
-
-    cells
+/// Entities that client is aware of.
+#[derive(Clone, Debug, Default)]
+pub struct KnownEntities {
+    pub entities: HashMap<EntityId, Entity>,
 }
 
-#[cfg(test)]
-mod tests {
-    use game_common::world::CellId;
-    use glam::IVec3;
-
-    use super::cell_distance;
-
-    #[test]
-    fn test_distance_0() {
-        let origin = CellId::new(0.0, 0.0, 0.0);
-        let distance = 0;
-
-        let cells = [origin];
-
-        let res = cell_distance(origin, distance);
-        assert_cells(&res, &cells);
-    }
-
-    #[test]
-    fn test_distance_1() {
-        let origin = CellId::from_i32(IVec3::new(0, 0, 0));
-        let distance = 1;
-
-        let cells = [
-            origin,
-            // X
-            CellId::from_i32(IVec3::new(1, 0, 0)),
-            CellId::from_i32(IVec3::new(-1, 0, 0)),
-            // Y
-            CellId::from_i32(IVec3::new(0, 1, 0)),
-            CellId::from_i32(IVec3::new(0, -1, 0)),
-            // Z
-            CellId::from_i32(IVec3::new(0, 0, 1)),
-            CellId::from_i32(IVec3::new(0, 0, -1)),
-        ];
-
-        let res = cell_distance(origin, distance);
-        assert_cells(&res, &cells);
-    }
-
-    /// Asserts the cells ignoring order.
-    fn assert_cells(lhs: &[CellId], rhs: &[CellId]) {
-        let mut lhs = lhs.to_owned();
-        let mut rhs = rhs.to_owned();
-
-        while !lhs.is_empty() && !rhs.is_empty() {
-            let left = lhs[0];
-
-            if let Some((index, _)) = rhs.iter().enumerate().find(|(_, right)| left == **right) {
-                rhs.remove(index);
-                lhs.remove(0);
-            } else {
-                dbg!(&lhs);
-                dbg!(&rhs);
-
-                panic!(
-                    "found cell that was not expected: {:?} (expected one of {:?})",
-                    left, rhs
-                );
-            }
+impl KnownEntities {
+    pub fn new() -> Self {
+        Self {
+            entities: HashMap::default(),
         }
+    }
 
-        assert!(
-            lhs.is_empty(),
-            "returned more cells than expected: {:?}",
-            lhs
-        );
-        assert!(rhs.is_empty(), "missing expected cells: {:?}", rhs);
+    pub fn insert(&mut self, entity: Entity) {
+        self.entities.insert(entity.id, entity);
+    }
+
+    pub fn remove(&mut self, id: EntityId) {
+        self.entities.remove(&id);
+    }
+
+    pub fn contains(&mut self, id: EntityId) -> bool {
+        self.entities.contains_key(&id)
+    }
+
+    pub fn get_mut(&mut self, id: EntityId) -> Option<&mut Entity> {
+        self.entities.get_mut(&id)
     }
 }
