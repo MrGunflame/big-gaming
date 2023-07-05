@@ -214,7 +214,6 @@ fn flush_command_queue(mut conn: ResMut<ServerConnection>, mut world: ResMut<Wor
                 rotation,
                 data,
             } => {
-                dbg!(id);
                 view.spawn(Entity {
                     id,
                     transform: Transform {
@@ -227,16 +226,22 @@ fn flush_command_queue(mut conn: ResMut<ServerConnection>, mut world: ResMut<Wor
                 });
             }
             Command::EntityDestroy { id } => {
-                view.despawn(id);
+                if view.despawn(id).is_none() {
+                    tracing::warn!("attempted to destroy a non-existant entity {:?}", id);
+                }
             }
-            Command::EntityTranslate { id, translation } => {
-                let mut entity = view.get_mut(id).unwrap();
-                entity.transform.translation = translation;
-            }
-            Command::EntityRotate { id, rotation } => {
-                let mut entity = view.get_mut(id).unwrap();
-                entity.transform.rotation = rotation;
-            }
+            Command::EntityTranslate { id, translation } => match view.get_mut(id) {
+                Some(mut entity) => entity.transform.translation = translation,
+                None => {
+                    tracing::warn!("received translation for unknown entity {:?}", id);
+                }
+            },
+            Command::EntityRotate { id, rotation } => match view.get_mut(id) {
+                Some(mut entity) => entity.transform.rotation = rotation,
+                None => {
+                    tracing::warn!("received rotation for unknown entity {:?}", id);
+                }
+            },
             Command::EntityVelocity { id, linvel, angvel } => {}
             Command::EntityHealth { id, health } => {
                 let mut entity = view.get_mut(id).unwrap();

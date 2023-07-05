@@ -339,17 +339,14 @@ impl<'a> WorldViewMut<'a> {
         id
     }
 
-    pub fn despawn(&mut self, id: EntityId) {
+    /// Despawns and returns the entity.
+    pub fn despawn(&mut self, id: EntityId) -> Option<Entity> {
+        let entity = self.snapshot().entities.despawn(id)?;
+
         self.world.metrics.entities.dec();
         self.world.metrics.deltas.inc();
 
-        let translation = self
-            .snapshot()
-            .entities
-            .get(id)
-            .unwrap()
-            .transform
-            .translation;
+        let translation = entity.transform.translation;
 
         #[cfg(feature = "tracing")]
         event!(
@@ -360,8 +357,6 @@ impl<'a> WorldViewMut<'a> {
             CellId::from(translation).to_f32()
         );
 
-        self.snapshot().entities.despawn(id);
-
         self.new_deltas
             .entry(CellId::from(translation))
             .or_default()
@@ -369,6 +364,8 @@ impl<'a> WorldViewMut<'a> {
 
         // Despawn host with the entity if exists.
         self.despawn_host(id);
+
+        Some(entity)
     }
 
     pub fn spawn_host(&mut self, id: EntityId) {
@@ -391,7 +388,7 @@ impl<'a> WorldViewMut<'a> {
             self.new_deltas
                 .entry(CellId::from(entity.transform.translation))
                 .or_default()
-                .push(EntityChange::CreateHost { id });
+                .push(EntityChange::DestroyHost { id });
         }
     }
 
@@ -664,8 +661,8 @@ impl Entities {
         id
     }
 
-    fn despawn(&mut self, id: EntityId) {
-        self.entities.remove(&id);
+    fn despawn(&mut self, id: EntityId) -> Option<Entity> {
+        self.entities.remove(&id)
     }
 
     fn next_id(&mut self) -> EntityId {
