@@ -378,6 +378,8 @@ impl<'a> WorldViewMut<'a> {
             .or_default()
             .push(EntityChange::Destroy { id });
 
+        self.snapshot().streaming_sources.remove(id);
+
         // Despawn host with the entity if exists.
         self.despawn_host(id);
 
