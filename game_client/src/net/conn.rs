@@ -12,6 +12,7 @@ use game_core::time::Time;
 use game_net::conn::{ConnectionHandle, ConnectionId};
 use game_net::snapshot::{Command, CommandQueue, ConnectionMessage};
 
+use crate::config::Config;
 use crate::state::{GameState, GameStateWriter};
 
 use super::prediction::{LocalOverrides, Prediction};
@@ -27,10 +28,13 @@ pub struct ServerConnection {
     pub queue: CommandQueue,
 
     game_tick: GameTick,
+
+    /// How many frames to backlog and interpolate over.
+    interplation_frames: ControlFrame,
 }
 
 impl ServerConnection {
-    pub fn new(writer: GameStateWriter) -> Self {
+    pub fn new(writer: GameStateWriter, config: &Config) -> Self {
         Self {
             handle: None,
             entities: EntityMap::default(),
@@ -40,11 +44,12 @@ impl ServerConnection {
             writer,
             queue: CommandQueue::new(),
             game_tick: GameTick {
-                interval: Interval::new(),
+                interval: Interval::new(config.timestep),
                 current_control_frame: ControlFrame(0),
                 initial_idle_passed: false,
                 counter: UpdateCounter::new(),
             },
+            interplation_frames: ControlFrame(config.network.interpolation_frames),
         }
     }
 
@@ -125,8 +130,7 @@ impl ServerConnection {
 
     /// Returns the current control frame.
     pub fn control_frame(&mut self) -> CurrentControlFrame {
-        // Render interpolation period of 100ms.
-        let interpolation_period = ControlFrame(6);
+        let interpolation_period = self.interplation_frames;
 
         let head = self.game_tick.current_control_frame;
 
@@ -153,7 +157,8 @@ impl ServerConnection {
 impl FromWorld for ServerConnection {
     fn from_world(world: &mut World) -> Self {
         let writer = world.resource::<GameStateWriter>().clone();
-        Self::new(writer)
+        let config = world.resource::<Config>();
+        Self::new(writer, &config)
     }
 }
 
@@ -235,10 +240,10 @@ struct Interval {
 }
 
 impl Interval {
-    fn new() -> Self {
+    fn new(timestep: u32) -> Self {
         Self {
             last_update: Instant::now(),
-            timestep: Duration::from_secs(1) / 60,
+            timestep: Duration::from_secs(1) / timestep,
         }
     }
 

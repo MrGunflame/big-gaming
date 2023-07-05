@@ -1,6 +1,7 @@
 #![deny(unsafe_op_in_unsafe_fn)]
 
 mod assets;
+mod config;
 mod entities;
 mod net;
 mod plugins;
@@ -12,6 +13,7 @@ mod window;
 use bevy_app::App;
 use bevy_ecs::system::Commands;
 use clap::Parser;
+use config::Config;
 use entities::LoadEntityPlugin;
 use game_core::logger::{self, Logger};
 use game_core::CorePlugins;
@@ -38,7 +40,19 @@ fn main() {
 
     let args = Args::parse();
 
+    let mut config_path = std::env::current_dir().unwrap();
+    config_path.push("config.toml");
+    let config = match Config::from_file(&config_path) {
+        Ok(config) => config,
+        Err(err) => {
+            tracing::error!("failed to load config file from {:?}: {}", config_path, err);
+            return;
+        }
+    };
+
     let mut app = App::new();
+
+    app.insert_resource(config);
 
     app.add_plugin(RenderPlugin);
 
