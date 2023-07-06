@@ -180,6 +180,8 @@ fn handle_event(
                     EntityChange::InventoryDestroy(event) => {
                         entity.inventory.clear();
                     }
+                    EntityChange::CreateStreamingSource { id, source } => {}
+                    EntityChange::RemoveStreamingSource { id } => {}
                 }
             } else {
                 backlog.push(entity_id, event);
@@ -310,6 +312,8 @@ fn handle_event(
 
             commands.spawn(DestroyInventory { entity });
         }
+        EntityChange::CreateStreamingSource { id, source } => {}
+        EntityChange::RemoveStreamingSource { id } => {}
     }
 }
 

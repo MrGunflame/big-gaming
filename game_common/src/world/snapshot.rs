@@ -8,7 +8,7 @@ use crate::entity::EntityId;
 use crate::world::cell::CellId;
 
 use super::entity::Entity;
-use super::source::StreamingState;
+use super::source::StreamingSource;
 
 /// A temporary identifier for a snapshot.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -78,6 +78,13 @@ pub enum EntityChange {
     InventoryItemAdd(InventoryItemAdd),
     InventoryItemRemove(InventoryItemRemove),
     InventoryDestroy(InventoryDestroy),
+    CreateStreamingSource {
+        id: EntityId,
+        source: StreamingSource,
+    },
+    RemoveStreamingSource {
+        id: EntityId,
+    },
 }
 
 impl EntityChange {
@@ -97,6 +104,8 @@ impl EntityChange {
             Self::InventoryItemAdd(event) => event.entity,
             Self::InventoryItemRemove(event) => event.entity,
             Self::InventoryDestroy(event) => event.entity,
+            Self::CreateStreamingSource { id, source: _ } => *id,
+            Self::RemoveStreamingSource { id } => *id,
         }
     }
 }

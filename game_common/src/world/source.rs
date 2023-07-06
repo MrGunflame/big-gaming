@@ -8,9 +8,8 @@ use bevy_ecs::system::Resource;
 use super::CellId;
 
 /// An entity that (un)loads cells as it moves.
-#[derive(Clone, Debug, Component)]
+#[derive(Copy, Clone, Debug, Component)]
 pub struct StreamingSource {
-    pub state: StreamingState,
     /// The size of the area being loaded around this source.
     ///
     /// A `distance` of `0` also corresponds to only the cell that the entity resides in. Defaults
@@ -18,45 +17,9 @@ pub struct StreamingSource {
     pub distance: u32,
 }
 
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
-pub enum StreamingState {
-    /// The `StreamingSource` was just created.
-    ///
-    /// This signals the level loader that it should also load all cells which are already
-    /// occupied by the current source.
-    #[default]
-    Create,
-    /// The `StreamingSource` is normally active.
-    ///
-    /// This signals the level loader that it should only load/unload cells as the source moves.
-    Active,
-    /// The `StreamingSource` is being destroyed.
-    ///
-    /// This  signals the level loader that it should all cells currently loaded by the source.
-    Destroy,
-    Destroyed,
-}
-
-impl StreamingState {
-    pub const fn is_create(self) -> bool {
-        matches!(self, Self::Create)
-    }
-
-    pub const fn is_active(self) -> bool {
-        matches!(self, Self::Active)
-    }
-
-    pub const fn is_destroy(self) -> bool {
-        matches!(self, Self::Destroy)
-    }
-}
-
 impl StreamingSource {
     pub fn new() -> Self {
-        Self {
-            state: StreamingState::Create,
-            distance: 0,
-        }
+        Self { distance: 0 }
     }
 }
 

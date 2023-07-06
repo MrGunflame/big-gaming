@@ -1,6 +1,7 @@
 use ahash::HashMap;
 use game_common::entity::EntityId;
 use game_common::world::cell::square;
+use game_common::world::control_frame::ControlFrame;
 use game_common::world::entity::Entity;
 use game_common::world::CellId;
 
@@ -12,9 +13,7 @@ pub struct ConnectionState {
     /// The entity that is the host.
     pub id: Option<EntityId>,
     /// The snapshot index that the client's view is located at (currently modified).
-    ///
-    /// `head - 1..head` is the delta period.
-    pub head: usize,
+    pub client_cf: ControlFrame,
 
     pub known_entities: KnownEntities,
 }
@@ -25,7 +24,7 @@ impl ConnectionState {
             full_update: true,
             cells: Cells::new(CellId::new(0.0, 0.0, 0.0)),
             id: None,
-            head: 0,
+            client_cf: ControlFrame(0),
             known_entities: KnownEntities::new(),
         }
     }

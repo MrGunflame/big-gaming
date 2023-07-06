@@ -21,7 +21,7 @@ pub use metrics::WorldMetrics;
 use super::control_frame::ControlFrame;
 use super::entity::{Entity, EntityBody};
 use super::inventory::InventoriesMut;
-use super::source::{StreamingSource, StreamingState};
+use super::source::StreamingSource;
 
 /// The world state at constant time intervals.
 #[derive(Clone, Debug, Resource)]
@@ -357,6 +357,12 @@ impl<'a> WorldViewMut<'a> {
 
     /// Despawns and returns the entity.
     pub fn despawn(&mut self, id: EntityId) -> Option<Entity> {
+        // streaming source needs to be destoryed first, otherwise
+        // `remove_streaming_source` does nothing.
+        if self.get(id).is_some() {
+            self.remove_streaming_source(id);
+        }
+
         let entity = self.snapshot().entities.despawn(id)?;
 
         self.world.metrics.entities.dec();
@@ -377,8 +383,6 @@ impl<'a> WorldViewMut<'a> {
             .entry(CellId::from(translation))
             .or_default()
             .push(EntityChange::Destroy { id });
-
-        self.snapshot().streaming_sources.remove(id);
 
         // Despawn host with the entity if exists.
         self.despawn_host(id);
@@ -411,28 +415,30 @@ impl<'a> WorldViewMut<'a> {
     }
 
     /// Sets the streaming state of the entity.
-    pub fn upate_streaming_source(&mut self, id: EntityId, source: StreamingSource) {
+    pub fn insert_streaming_source(&mut self, id: EntityId, source: StreamingSource) {
         assert!(self.get(id).is_some());
 
-        #[cfg(debug_assertions)]
-        if source.state != StreamingState::Create {
-            assert!(self.snapshot().streaming_sources.get(id).is_some());
-        }
+        self.snapshot().streaming_sources.insert(id, source);
 
-        match source.state {
-            StreamingState::Create => {
-                self.snapshot().streaming_sources.insert(id, source);
-            }
-            StreamingState::Active => {
-                self.snapshot().streaming_sources.insert(id, source);
-            }
-            StreamingState::Destroy => {
-                self.snapshot().streaming_sources.insert(id, source);
-            }
-            StreamingState::Destroyed => {
-                self.snapshot().streaming_sources.remove(id);
-            }
-        }
+        let entity = self.get(id).unwrap();
+        self.new_deltas
+            .entry(entity.transform.translation.into())
+            .or_default()
+            .push(EntityChange::CreateStreamingSource { id, source });
+    }
+
+    pub fn remove_streaming_source(&mut self, id: EntityId) -> Option<StreamingSource> {
+        let entity = self.get(id)?;
+        let cell = entity.transform.translation.into();
+
+        let source = self.snapshot().streaming_sources.remove(id)?;
+
+        self.new_deltas
+            .entry(cell)
+            .or_default()
+            .push(EntityChange::RemoveStreamingSource { id });
+
+        Some(source)
     }
 
     pub fn control_frame(&self) -> ControlFrame {
@@ -738,8 +744,8 @@ impl StreamingSources {
         self.entities.insert(id, source);
     }
 
-    fn remove(&mut self, id: EntityId) {
-        self.entities.remove(&id);
+    fn remove(&mut self, id: EntityId) -> Option<StreamingSource> {
+        self.entities.remove(&id)
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (EntityId, &StreamingSource)> {
@@ -818,6 +824,12 @@ impl Snapshot {
             }
             EntityChange::InventoryDestroy(event) => {
                 self.inventories.remove(event.entity);
+            }
+            EntityChange::CreateStreamingSource { id, source } => {
+                self.streaming_sources.insert(id, source);
+            }
+            EntityChange::RemoveStreamingSource { id } => {
+                self.streaming_sources.remove(id);
             }
         }
     }

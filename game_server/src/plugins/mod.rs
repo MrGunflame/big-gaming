@@ -10,10 +10,9 @@ use game_common::components::transform::Transform;
 use game_common::entity::EntityId;
 use game_common::events::{ActionEvent, EntityEvent, Event, EventKind, EventQueue};
 use game_common::world::control_frame::ControlFrame;
-use game_common::world::delta_queue::DeltaQueue;
 use game_common::world::entity::{Actor, Entity, EntityBody};
 use game_common::world::snapshot::EntityChange;
-use game_common::world::source::{StreamingSource, StreamingState};
+use game_common::world::source::StreamingSource;
 use game_common::world::world::{AsView, WorldState};
 use game_common::world::CellId;
 use game_core::modules::Modules;
@@ -84,15 +83,14 @@ fn update_client_heads(conns: &Connections, world: &mut WorldState, state: &mut 
     world.insert(*state.control_frame.lock());
 
     for conn in conns.iter() {
-        let old_head = conn.state().write().head;
+        // The const client interpolation delay.
+        // FIXME: This should be announced by the client at connection time instead
+        // of being hardcoded. It also should accout for RTT.
+        let client_const_delay = ControlFrame(6);
 
-        //let client_time = Instant::now() - Duration::from_millis(100);
-        let client_time = control_frame - 5;
-        let head = world.index(client_time).unwrap_or(world.len() - 1);
+        let client_cf = control_frame - client_const_delay;
 
-        // assert_ne!(old_head, head);
-
-        conn.state().write().head = head;
+        conn.state().write().client_cf = client_cf;
     }
 
     if world.len() > 120 {
@@ -112,14 +110,30 @@ fn flush_command_queue(
         tracing::trace!("got command {:?}", msg.command);
 
         let conn = connections.get(msg.conn).unwrap();
-        let head = conn.state().read().head;
+        let client_cf = conn.state().read().client_cf;
 
-        // Get the world state at the time the client sent the command.
-        // let Some(mut view) = world.at_mut(head) else {
-        let Some(mut view) = world.back_mut() else {
-            tracing::warn!("No snapshots yet");
-            return;
-        };
+        // Fetch the world state at the client's computed render time.
+        // Note that the client may be too far in the past to go back.
+        // In that case we must chose the oldest snapshot.
+        let mut view;
+        {
+            let opt = world.get_mut(client_cf);
+            if let Some(v) = opt {
+                view = v;
+            } else {
+                // Note that this `drop` is necessary as `Option<WorldViewMut>` has a `Drop`
+                // impl, even thought at this point it never actually needs to drop anything
+                // because it is `None`.
+                drop(opt);
+                match world.front_mut() {
+                    Some(v) => view = v,
+                    None => {
+                        tracing::warn!("no snapshots");
+                        return;
+                    }
+                }
+            }
+        }
 
         if let Some(id) = msg.id {
             conn.push_proc_msg(id);
@@ -170,40 +184,12 @@ fn flush_command_queue(
                     components: Components::new(),
                 });
 
-                view.upate_streaming_source(
+                view.insert_streaming_source(
                     id,
                     StreamingSource {
-                        state: StreamingState::Create,
                         distance: config.player_streaming_source_distance,
                     },
                 );
-
-                // connections
-                //     .get_mut(msg.id)
-                //     .unwrap()
-                //     .data
-                //     .handle
-                //     .send_cmd(Command::EntityCreate {
-                //         id,
-                //         kind: EntityKind::Actor(()),
-                //         translation: Vec3::new(0.0, 1000.0, 0.0),
-                //         rotation: Quat::default(),
-                //     });
-
-                // let inventory = Inventory::new();
-                // view.inventories_mut().insert(id, inventory);
-
-                // let mut invs = view.inventories_mut();
-                // let mut inv = invs.get_mut_or_insert(id);
-
-                // inventory::add_item(
-                //     &mut inv,
-                //     ItemId(RecordReference {
-                //         module: "e9aa65d7953b4132beed9bbcff89e00a".parse().unwrap(),
-                //         record: RecordId(3),
-                //     }),
-                //     &modules,
-                // );
 
                 // FIXME: This should not be set in this snapshot, but in the most
                 // recent one.
