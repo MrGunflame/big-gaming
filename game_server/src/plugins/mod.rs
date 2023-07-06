@@ -17,7 +17,7 @@ use game_common::world::delta_queue::DeltaQueue;
 use game_common::world::entity::{Actor, Entity, EntityBody};
 use game_common::world::snapshot::EntityChange;
 use game_common::world::source::{StreamingSource, StreamingState};
-use game_common::world::world::{AsView, WorldState, WorldViewRef};
+use game_common::world::world::{AsView, WorldState};
 use game_common::world::CellId;
 use game_core::modules::Modules;
 use game_net::conn::ConnectionId;
@@ -495,50 +495,6 @@ fn update_client(conn: &Connection, world: &WorldState, delta_queue: &DeltaQueue
     }
 }
 
-fn player_move_cells(
-    view: WorldViewRef<'_>,
-    state: &mut ConnectionState,
-    host: &Entity,
-    streaming_source: &StreamingSource,
-) -> Vec<EntityChange> {
-    let mut events = Vec::new();
-
-    let update = state
-        .cells
-        .set(host.transform.translation.into(), streaming_source.distance);
-
-    for id in update.unloaded() {
-        let cell = view.cell(id);
-
-        for entity in cell.iter() {
-            debug_assert_ne!(entity.id, host.id);
-
-            state.known_entities.remove(entity.id);
-            events.push(EntityChange::Destroy { id: entity.id });
-        }
-    }
-
-    for id in update.loaded() {
-        let cell = view.cell(id);
-
-        for entity in cell.iter() {
-            // Note that it is possible that an entity changed cells in
-            // the exact same snapshot as the player. In this case the entity
-            // must not be recreated. This check also handles the player entity
-            // itself.
-            if state.known_entities.contains(entity.id) {
-                continue;
-            }
-
-            events.push(EntityChange::Create {
-                entity: entity.clone(),
-            });
-        }
-    }
-
-    events
-}
-
 /// Update a player that hasn't moved cells.
 fn update_player_cells<V>(view: V, state: &mut ConnectionState) -> Vec<EntityChange>
 where
@@ -722,6 +678,7 @@ mod tests {
         let entity_id = view.spawn(create_test_entity());
 
         let mut state = ConnectionState::new();
+        state.cells.set(CellId::from_i32(IVec3::new(0, 0, 0)), 0);
         update_player_cells(&view, &mut state);
 
         let new_cell = CellId::from_i32(IVec3::splat(1));

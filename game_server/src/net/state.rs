@@ -53,32 +53,13 @@ impl Cells {
         self.origin
     }
 
-    pub fn set(&mut self, origin: CellId, distance: u32) -> UpdateCells {
-        debug_assert_ne!(self.origin, origin);
-
+    pub fn set(&mut self, origin: CellId, distance: u32) {
         self.origin = origin;
 
-        let new_cells = square(origin, distance);
-        let old_cells = &self.cells;
+        dbg!(origin);
 
-        let mut loaded = vec![];
-        let mut unloaded = vec![];
-
-        for id in &new_cells {
-            if !old_cells.contains(&id) {
-                loaded.push(*id);
-            }
-        }
-
-        for id in old_cells {
-            if !new_cells.contains(&id) {
-                unloaded.push(*id);
-            }
-        }
-
-        self.cells = new_cells;
-
-        UpdateCells { loaded, unloaded }
+        self.cells = square(origin, distance);
+        dbg!(&self.cells);
     }
 
     pub fn cells(&self) -> &[CellId] {
@@ -87,22 +68,6 @@ impl Cells {
 
     pub fn iter(&self) -> impl Iterator<Item = CellId> + '_ {
         self.cells().iter().copied()
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct UpdateCells {
-    loaded: Vec<CellId>,
-    unloaded: Vec<CellId>,
-}
-
-impl UpdateCells {
-    pub fn loaded<'a>(&'a self) -> impl Iterator<Item = CellId> + 'a {
-        self.loaded.iter().copied()
-    }
-
-    pub fn unloaded<'a>(&'a self) -> impl Iterator<Item = CellId> + 'a {
-        self.unloaded.iter().copied()
     }
 }
 
