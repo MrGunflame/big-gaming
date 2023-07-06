@@ -51,4 +51,6 @@ reexport_attribute_macro! {
     wasm__event_on_collision => wasm::events::on_collision,
     wasm__event_on_equip => wasm::events::on_equip,
     wasm__event_on_unequip => wasm::events::on_unequip,
+    wasm__event_on_cell_load => wasm::events::on_cell_load,
+    wasm__event_on_cell_unload => wasm::events::on_cell_unload,
 }

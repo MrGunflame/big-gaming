@@ -2,6 +2,7 @@ use std::marker::PhantomData;
 use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign};
 
 use game_common::events::EventKind;
+use game_common::world::CellId;
 use wasmtime::TypedFunc;
 
 /// Events exposed by a script.
@@ -124,3 +125,15 @@ pub type OnEquip = TypedFunc<(u64, u64), ()>;
 /// fn(item: InventoryId, actor: EntityId);
 /// ```
 pub type OnUnequip = TypedFunc<(u64, u64), ()>;
+
+///
+/// ```ignore
+/// fn(x: u32, y: u32, z: u32);
+/// ```
+pub type OnCellLoad = TypedFunc<(u32, u32, u32), ()>;
+
+///
+/// ```ignore
+/// fn(x: u32, y: u32, z: u32);
+/// ```
+pub type OnCellUnload = TypedFunc<(u32, u32, u32), ()>;

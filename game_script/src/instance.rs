@@ -2,9 +2,10 @@ use game_common::components::inventory::InventoryId;
 use game_common::entity::EntityId;
 use game_common::events::Event;
 use game_common::world::world::WorldViewMut;
+use game_common::world::CellId;
 use wasmtime::{Engine, Instance, Linker, Module, Store};
 
-use crate::events::{Events, OnAction, OnCollision, OnEquip, OnUnequip};
+use crate::events::{Events, OnAction, OnCellLoad, OnCellUnload, OnCollision, OnEquip, OnUnequip};
 use crate::queue::CommandQueue;
 
 pub struct ScriptInstance<'world> {
@@ -65,6 +66,18 @@ impl<'world> ScriptInstance<'world> {
     pub fn on_unequip(&mut self, item: InventoryId, entity: EntityId) -> wasmtime::Result<()> {
         let func: OnUnequip = self.inner.get_typed_func(&mut self.store, "on_unequip")?;
         func.call(&mut self.store, (item.into_raw(), entity.into_raw()))
+    }
+
+    pub fn on_cell_load(&mut self, id: CellId) -> wasmtime::Result<()> {
+        let func: OnCellLoad = self.inner.get_typed_func(&mut self.store, "on_cell_load")?;
+        func.call(&mut self.store, id.as_parts())
+    }
+
+    pub fn on_cell_unload(&mut self, id: CellId) -> wasmtime::Result<()> {
+        let func: OnCellUnload = self
+            .inner
+            .get_typed_func(&mut self.store, "on_cell_unload")?;
+        func.call(&mut self.store, id.as_parts())
     }
 }
 

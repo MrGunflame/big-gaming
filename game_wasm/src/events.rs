@@ -107,3 +107,7 @@ pub use game_macros::wasm__event_on_equip as on_equip;
 /// [`EntityId`]: crate::entity::EntityId
 /// [`InventoryId`]: crate::inventory::InventoryId
 pub use game_macros::wasm__event_on_unequip as on_unequip;
+
+pub use game_macros::wasm__event_on_cell_load as on_cell_load;
+
+pub use game_macros::wasm__event_on_cell_unload as on_cell_unload;
