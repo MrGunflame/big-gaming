@@ -1,0 +1,9 @@
+[package]
+name = "game_worldgen"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bytes = "1.4.0"
+game_common = { version = "0.1.0", path = "../game_common" }
+glam = "0.24.1"
