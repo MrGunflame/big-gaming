@@ -24,4 +24,5 @@ pub mod proto;
 pub mod record;
 pub mod savefile;
 pub mod units;
+pub mod utils;
 pub mod world;
