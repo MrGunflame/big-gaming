@@ -249,8 +249,6 @@ pub fn square(center: CellId, distance: u32) -> Vec<CellId> {
     for x in center.x - distance..=center.x + distance {
         for y in center.y - distance..=center.y + distance {
             for z in center.z - distance..=center.z + distance {
-                dbg!(x, y, z);
-
                 cells.push(CellId::from_i32(IVec3::new(x, y, z)));
             }
         }
