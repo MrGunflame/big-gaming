@@ -2,15 +2,12 @@ mod inventory;
 
 use ahash::HashSet;
 use bevy_app::{App, Plugin};
-use bevy_ecs::system::{Commands, Res, ResMut};
-use bevy_hierarchy::DespawnRecursiveExt;
-use game_common::bundles::ActorBundle;
+use bevy_ecs::system::{Res, ResMut};
 use game_common::components::combat::Health;
 use game_common::components::components::Components;
-use game_common::components::player::Player;
 use game_common::components::race::RaceId;
 use game_common::components::transform::Transform;
-use game_common::entity::{EntityId, EntityMap};
+use game_common::entity::EntityId;
 use game_common::events::{ActionEvent, EntityEvent, Event, EventKind, EventQueue};
 use game_common::world::control_frame::ControlFrame;
 use game_common::world::delta_queue::DeltaQueue;
@@ -40,7 +37,6 @@ impl Plugin for ServerPlugins {
     fn build(&self, app: &mut App) {
         app.insert_resource(ServerEntityGenerator::new());
         app.insert_resource(WorldState::new());
-        app.insert_resource(EntityMap::default());
 
         app.add_system(tick);
     }
@@ -48,11 +44,9 @@ impl Plugin for ServerPlugins {
 
 // All systems need to run sequentially.
 pub fn tick(
-    commands: Commands,
     conns: Res<Connections>,
     mut world: ResMut<WorldState>,
     queue: Res<CommandQueue>,
-    map: Res<EntityMap>,
     mut level: ResMut<Level>,
     mut pipeline: ResMut<game_physics::Pipeline>,
     mut event_queue: ResMut<EventQueue>,
@@ -61,18 +55,13 @@ pub fn tick(
     modules: Res<Modules>,
     mut state: ResMut<State>,
 ) {
-    let mut delta_queue = DeltaQueue::default();
-
     update_client_heads(&conns, &mut world, &mut state);
     flush_command_queue(
-        commands,
         &conns,
         &queue,
-        &map,
         &mut world,
         &mut event_queue,
         &modules,
-        &mut delta_queue,
         &state.config,
     );
 
@@ -86,7 +75,7 @@ pub fn tick(
     update_scripts(&world, &mut scripts, &modules);
 
     // Push snapshots last always
-    update_snapshots(&conns, &world, &delta_queue);
+    update_snapshots(&conns, &world);
 }
 
 fn update_client_heads(conns: &Connections, world: &mut WorldState, state: &mut State) {
@@ -112,14 +101,11 @@ fn update_client_heads(conns: &Connections, world: &mut WorldState, state: &mut 
 }
 
 fn flush_command_queue(
-    mut commands: Commands,
     connections: &Connections,
     queue: &CommandQueue,
-    map: &EntityMap,
     world: &mut WorldState,
     events: &mut EventQueue,
     modules: &Modules,
-    delta_queue: &mut DeltaQueue,
     config: &Config,
 ) {
     while let Some(msg) = queue.pop() {
@@ -152,31 +138,12 @@ fn flush_command_queue(
             Command::EntityTranslate { id, translation } => {
                 let mut entity = view.get_mut(id).unwrap();
                 entity.transform.translation = translation;
-
-                let cell = CellId::from(translation);
-                delta_queue.push(
-                    cell,
-                    EntityChange::Translate {
-                        id,
-                        translation,
-                        cell: None,
-                    },
-                );
             }
             Command::EntityRotate { id, rotation } => {
                 let mut entity = view.get_mut(id).unwrap();
                 entity.transform.rotation = rotation;
-
-                let cell = CellId::from(entity.transform.translation);
-                delta_queue.push(cell, EntityChange::Rotate { id, rotation });
             }
-            Command::EntityVelocity { id, linvel, angvel } => {
-                let ent = map.get(id).unwrap();
-
-                // let (ent, _, mut velocity) = entities.get_mut(ent).unwrap();
-                // velocity.linvel = linvel;
-                // velocity.angvel = angvel;
-            }
+            Command::EntityVelocity { id, linvel, angvel } => {}
             Command::EntityHealth { id: _, health: _ } => {
                 tracing::warn!("received EntityHealth from client, ignored");
             }
@@ -211,26 +178,6 @@ fn flush_command_queue(
                     },
                 );
 
-                let mut actor = ActorBundle::default();
-                actor.transform.transform.translation.y += 5.0;
-                actor.properties.eyes = Vec3::new(0.0, 1.6, -0.1);
-
-                let mut cmds = commands.spawn(actor);
-                cmds.insert(Player)
-                    .insert(StreamingSource::default())
-                    .insert(Entity {
-                        id,
-                        transform: Transform::default(),
-                        body: EntityBody::Actor(Actor {
-                            race: RaceId(1.into()),
-                            health: Health::new(50),
-                        }),
-                        components: Components::new(),
-                    });
-                // Human::default().spawn(&assets, &mut cmds);
-
-                let ent = cmds.id();
-
                 // connections
                 //     .get_mut(msg.id)
                 //     .unwrap()
@@ -258,7 +205,6 @@ fn flush_command_queue(
                 //     &modules,
                 // );
 
-                map.insert(id, ent);
                 // FIXME: This should not be set in this snapshot, but in the most
                 // recent one.
                 conn.set_host(id, view.control_frame());
@@ -271,9 +217,9 @@ fn flush_command_queue(
             }
             Command::Disconnected => {
                 if let Some(id) = conn.host() {
-                    view.despawn(id);
-                    let entity = map.get(id).unwrap();
-                    commands.entity(entity).despawn_recursive();
+                    if view.despawn(id).is_none() {
+                        tracing::warn!("attempted to destroy an unknown entity {:?}", id);
+                    }
                 }
 
                 // Remove the player from the connections ref.
@@ -374,14 +320,13 @@ fn update_snapshots(
     // FIXME: Make dedicated type for all shared entities.
     // mut entities: Query<(&mut Entity, &Transform)>,
     world: &WorldState,
-    delta_queue: &DeltaQueue,
 ) {
     for conn in connections.iter() {
-        update_client(&conn, world, &delta_queue);
+        update_client(&conn, world);
     }
 }
 
-fn update_client(conn: &Connection, world: &WorldState, delta_queue: &DeltaQueue) {
+fn update_client(conn: &Connection, world: &WorldState) {
     let state = &mut *conn.state().write();
 
     let Some(id) = state.id else {
