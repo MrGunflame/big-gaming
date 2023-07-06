@@ -915,6 +915,8 @@ pub trait AsView {
     fn get(&self, id: EntityId) -> Option<&Entity>;
 
     fn cell(&self, id: CellId) -> CellViewRef<'_>;
+
+    fn iter(&self) -> EntitiesIter<'_>;
 }
 
 impl<'a> AsView for WorldViewRef<'a> {
@@ -931,6 +933,12 @@ impl<'a> AsView for WorldViewRef<'a> {
             id,
             entities: &self.snapshot.entities,
             cells: &self.snapshot.cells,
+        }
+    }
+
+    fn iter(&self) -> EntitiesIter {
+        EntitiesIter {
+            inner: self.snapshot.entities.entities.values(),
         }
     }
 }
@@ -950,6 +958,25 @@ impl<'a> AsView for &'a WorldViewMut<'a> {
             entities: &self.snapshot_ref().entities,
             cells: &self.snapshot_ref().cells,
         }
+    }
+
+    fn iter(&self) -> EntitiesIter<'_> {
+        EntitiesIter {
+            inner: self.snapshot_ref().entities.entities.values(),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct EntitiesIter<'a> {
+    inner: std::collections::hash_map::Values<'a, EntityId, Entity>,
+}
+
+impl<'a> Iterator for EntitiesIter<'a> {
+    type Item = &'a Entity;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.next()
     }
 }
 
