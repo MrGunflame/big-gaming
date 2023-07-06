@@ -25,3 +25,12 @@ impl Config {
         Ok(toml::from_str(s)?)
     }
 }
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            timestep: 60,
+            player_streaming_source_distance: 2,
+        }
+    }
+}

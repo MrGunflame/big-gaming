@@ -20,7 +20,7 @@ fn spawn_server() {
     tokio::task::spawn(async move {
         let app = App::new();
 
-        game_server::run(app, Config { timestep: 20 }).await;
+        game_server::run(app, Config::default()).await;
     });
 }
 
