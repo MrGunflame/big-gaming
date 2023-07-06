@@ -16,7 +16,13 @@ fn connect(queue: CommandQueue) -> ConnectionHandle {
 
     let socket = Arc::new(Socket::connect("127.0.0.1:6942").unwrap());
 
-    let (conn, handle) = Connection::<Connect>::new(addr, queue, socket.clone(), ControlFrame(0));
+    let (conn, handle) = Connection::<Connect>::new(
+        addr,
+        queue,
+        socket.clone(),
+        ControlFrame(0),
+        ControlFrame(0),
+    );
 
     {
         let handle = handle.clone();
