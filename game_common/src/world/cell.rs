@@ -249,11 +249,9 @@ pub fn square(center: CellId, distance: u32) -> Vec<CellId> {
     for x in center.x - distance..=center.x + distance {
         for y in center.y - distance..=center.y + distance {
             for z in center.z - distance..=center.z + distance {
-                cells.push(CellId::from_i32(IVec3::new(
-                    center.x + x,
-                    center.y + y,
-                    center.z + z,
-                )));
+                dbg!(x, y, z);
+
+                cells.push(CellId::from_i32(IVec3::new(x, y, z)));
             }
         }
     }
@@ -366,6 +364,15 @@ mod tests {
     #[test]
     fn cell_id_square_0() {
         let center = CellId::from_i32(IVec3::new(0, 0, 0));
+        let distance = 0;
+
+        let res = square(center, distance);
+        match_cells_exact(&res, &[center]);
+    }
+
+    #[test]
+    fn cell_id_square_0_non_zero() {
+        let center = CellId::from_i32(IVec3::new(1, 2, 3));
         let distance = 0;
 
         let res = square(center, distance);
