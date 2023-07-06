@@ -1,5 +1,6 @@
 use std::fmt::{Arguments, Debug};
 
+use glam::{Quat, Vec2, Vec3, Vec4};
 use num_traits::Float;
 
 /// Floating-point approximate equality comparssion.
@@ -27,20 +28,107 @@ macro_rules! assert_approx_eq {
     }};
 }
 
+pub trait ApproxFloatEq {
+    type Primitive: Float;
+    type ElementIter: Iterator<Item = Self::Primitive>;
+
+    fn elements(&self) -> Self::ElementIter;
+}
+
+impl ApproxFloatEq for f32 {
+    type Primitive = f32;
+    type ElementIter = F32Iter;
+
+    fn elements(&self) -> Self::ElementIter {
+        F32Iter { value: Some(*self) }
+    }
+}
+
+impl ApproxFloatEq for f64 {
+    type Primitive = f64;
+    type ElementIter = F64Iter;
+
+    fn elements(&self) -> Self::ElementIter {
+        F64Iter { value: Some(*self) }
+    }
+}
+
+pub struct F32Iter {
+    value: Option<f32>,
+}
+
+impl Iterator for F32Iter {
+    type Item = f32;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.value.take()
+    }
+}
+
+pub struct F64Iter {
+    value: Option<f64>,
+}
+
+impl Iterator for F64Iter {
+    type Item = f64;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.value.take()
+    }
+}
+
+macro_rules! impl_vec {
+    ($vec:ty,$iter:ident, $dim:expr) => {
+        impl ApproxFloatEq for $vec {
+            type Primitive = f32;
+            type ElementIter = $iter;
+
+            fn elements(&self) -> $iter {
+                $iter {
+                    values: self.to_array(),
+                    index: 0,
+                }
+            }
+        }
+
+        pub struct $iter {
+            values: [f32; $dim],
+            index: usize,
+        }
+
+        impl Iterator for $iter {
+            type Item = f32;
+
+            fn next(&mut self) -> Option<Self::Item> {
+                let val = *self.values.get(self.index)?;
+                self.index += 1;
+                Some(val)
+            }
+        }
+    };
+}
+
+impl_vec!(Vec2, Vec2Iter, 2);
+impl_vec!(Vec3, Vec3Iter, 3);
+impl_vec!(Vec4, Vec4Iter, 4);
+impl_vec!(Quat, QuatIter, 4);
+
 #[track_caller]
 #[doc(hidden)]
 pub fn approx_eq_assertion<T>(lhs: T, rhs: T, args: Option<Arguments<'_>>)
 where
-    T: Float + Debug,
+    T: ApproxFloatEq + Debug,
 {
-    if (lhs - rhs).abs() > T::epsilon() {
-        approx_eq_assertion_failed(lhs, rhs, args);
+    for (lhs_elem, rhs_elem) in lhs.elements().zip(rhs.elements()) {
+        if (lhs_elem - rhs_elem).abs() > <T::Primitive as Float>::epsilon() {
+            approx_eq_assertion_failed(lhs, rhs, args);
+        }
     }
 }
 
 #[track_caller]
 #[doc(hidden)]
-fn approx_eq_assertion_failed<T>(lhs: T, rhs: T, args: Option<Arguments<'_>>)
+fn approx_eq_assertion_failed<T>(lhs: T, rhs: T, args: Option<Arguments<'_>>) -> !
 where
     T: Debug,
 {
