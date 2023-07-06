@@ -5,6 +5,7 @@ pub mod style;
 mod container;
 mod debug;
 pub mod image;
+pub mod remap;
 mod systems;
 mod text;
 

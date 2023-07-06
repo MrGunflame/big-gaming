@@ -2,7 +2,6 @@ pub mod buffer;
 pub mod camera;
 pub mod color;
 pub mod graph;
-pub mod layout;
 pub mod light;
 pub mod material;
 pub mod mesh;

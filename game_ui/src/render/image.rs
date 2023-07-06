@@ -1,6 +1,5 @@
 mod overlay;
 
-use game_render::layout::remap;
 use glam::Vec2;
 use image::imageops::FilterType;
 use image::{ImageBuffer, Rgba};
@@ -9,6 +8,7 @@ use self::overlay::overlay_unchecked;
 
 use super::computed_style::{ComputedBorderRadius, ComputedBounds, ComputedStyle};
 use super::debug::{debug_border, debug_padding, is_debug_render_enabled};
+use super::remap::remap;
 use super::style::Background;
 use super::{BuildPrimitiveElement, PrimitiveElement, Rect};
 
