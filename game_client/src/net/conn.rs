@@ -53,6 +53,10 @@ impl ServerConnection {
         }
     }
 
+    pub fn is_connected(&self) -> bool {
+        self.handle.is_some()
+    }
+
     pub fn send(&mut self, cmd: Command) {
         if let Some(handle) = &self.handle {
             let cmd_id = handle.send_cmd(ConnectionMessage {

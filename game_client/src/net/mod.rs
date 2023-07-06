@@ -143,6 +143,10 @@ pub fn spawn_conn(
 }
 
 fn flush_command_queue(mut conn: ResMut<ServerConnection>, mut world: ResMut<WorldState>) {
+    if !conn.is_connected() {
+        return;
+    }
+
     // Limit the maximum number of iterations in this frame.
     let mut iterations = 0;
     const MAX_ITERATIONS: usize = 8192;
