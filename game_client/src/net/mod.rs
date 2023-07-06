@@ -84,6 +84,7 @@ pub fn spawn_conn(
     queue: CommandQueue,
     addr: SocketAddr,
     control_frame: ControlFrame,
+    const_delay: ControlFrame,
 ) -> Result<ConnectionHandle, Box<dyn std::error::Error + Send + Sync + 'static>> {
     let (tx, rx) = mpsc::channel();
 
@@ -102,8 +103,13 @@ pub fn spawn_conn(
                     return;
                 }
             };
-            let (mut conn, handle) =
-                Connection::<Connect>::new(addr, queue.clone(), sock.clone(), control_frame);
+            let (mut conn, handle) = Connection::<Connect>::new(
+                addr,
+                queue.clone(),
+                sock.clone(),
+                control_frame,
+                const_delay,
+            );
 
             tokio::task::spawn(async move {
                 if let Err(err) = (&mut conn).await {
@@ -163,7 +169,7 @@ fn flush_command_queue(mut conn: ResMut<ServerConnection>, mut world: ResMut<Wor
         }
 
         match msg.command {
-            Command::Connected => {
+            Command::Connected(_) => {
                 conn.writer.update(GameState::World);
                 continue;
             }
@@ -297,7 +303,7 @@ fn flush_command_queue(mut conn: ResMut<ServerConnection>, mut world: ResMut<Wor
             } => {
                 todo!();
             }
-            Command::Connected => (),
+            Command::Connected(_) => (),
             Command::Disconnected => (),
             Command::ReceivedCommands { ids: _ } => unreachable!(),
         }

@@ -225,7 +225,7 @@ impl Entities {
                     action: *action,
                 }))
             }
-            Command::Connected => None,
+            Command::Connected(_) => None,
             Command::Disconnected => None,
             Command::SpawnHost { id } => {
                 let id = self.get(*id)?;

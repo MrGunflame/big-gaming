@@ -26,6 +26,8 @@ use super::{Decode, Encode, Error};
 /// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 /// | ISN                                                           |
 /// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+/// | Const Delay                   | Reserved                      |
+/// +-+-++-+-+-+-+-+-+-++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 /// ```
 #[derive(Copy, Clone, Debug, Encode, Decode)]
 pub struct Handshake {
@@ -35,6 +37,9 @@ pub struct Handshake {
     pub mtu: u16,
     pub flow_window: u16,
     pub initial_sequence: Sequence,
+    /// Constant delay in control frames.
+    pub const_delay: u16,
+    pub resv0: u16,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, thiserror::Error)]

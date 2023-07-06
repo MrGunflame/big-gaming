@@ -10,7 +10,6 @@ use game_common::world::CellId;
 use glam::{Quat, Vec3};
 use parking_lot::Mutex;
 use std::collections::VecDeque;
-use std::ops::{Add, AddAssign, Sub, SubAssign};
 use std::sync::Arc;
 
 use crate::conn::ConnectionId;
@@ -41,7 +40,7 @@ pub struct ConnectionMessage {
 
 #[derive(Clone, Debug)]
 pub enum Command {
-    Connected,
+    Connected(Connected),
     Disconnected,
     EntityCreate {
         id: EntityId,
@@ -96,6 +95,12 @@ pub enum Command {
     },
 }
 
+#[derive(Copy, Clone, Debug)]
+pub struct Connected {
+    /// The negotiated interpolation/buffer delay of the peer.
+    pub peer_delay: ControlFrame,
+}
+
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
 #[repr(transparent)]
 pub struct CommandId(pub u32);
@@ -103,7 +108,7 @@ pub struct CommandId(pub u32);
 impl Command {
     pub const fn id(&self) -> Option<EntityId> {
         match self {
-            Self::Connected => None,
+            Self::Connected(_) => None,
             Self::Disconnected => None,
             Self::EntityCreate {
                 id,

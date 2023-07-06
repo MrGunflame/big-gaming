@@ -16,6 +16,9 @@ pub struct ConnectionState {
     pub client_cf: ControlFrame,
 
     pub known_entities: KnownEntities,
+
+    /// Constant interpolation buffer/delay of the peer.
+    pub peer_delay: ControlFrame,
 }
 
 impl ConnectionState {
@@ -26,6 +29,7 @@ impl ConnectionState {
             id: None,
             client_cf: ControlFrame(0),
             known_entities: KnownEntities::new(),
+            peer_delay: ControlFrame(0),
         }
     }
 }

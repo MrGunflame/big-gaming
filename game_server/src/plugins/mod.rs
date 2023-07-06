@@ -83,14 +83,12 @@ fn update_client_heads(conns: &Connections, world: &mut WorldState, state: &mut 
     world.insert(*state.control_frame.lock());
 
     for conn in conns.iter() {
+        let mut state = conn.state().write();
+
         // The const client interpolation delay.
-        // FIXME: This should be announced by the client at connection time instead
-        // of being hardcoded. It also should accout for RTT.
-        let client_const_delay = ControlFrame(6);
+        let client_cf = control_frame - state.peer_delay;
 
-        let client_cf = control_frame - client_const_delay;
-
-        conn.state().write().client_cf = client_cf;
+        state.client_cf = client_cf;
     }
 
     if world.len() > 120 {
@@ -173,7 +171,7 @@ fn flush_command_queue(
 
                 // TODO
             }
-            Command::Connected => {
+            Command::Connected(event) => {
                 let id = view.spawn(Entity {
                     id: EntityId::dangling(),
                     transform: Transform::from_translation(Vec3::new(10.0, 32.0, 10.0)),
@@ -196,7 +194,13 @@ fn flush_command_queue(
                 conn.set_host(id, view.control_frame());
 
                 let mut state = conn.state().write();
+
+                // At the connection time the delay must be 0, meaning the player is spawned
+                // without delay.
+                debug_assert_eq!(state.peer_delay, ControlFrame(0));
+
                 state.id = Some(id);
+                state.peer_delay = event.peer_delay;
                 state.cells = Cells::new(CellId::new(0.0, 0.0, 0.0));
 
                 tracing::info!("spawning host {:?} in cell", msg.id);

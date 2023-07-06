@@ -8,6 +8,7 @@ use std::task::{Context, Poll};
 use bytes::BytesMut;
 use futures::stream::FuturesUnordered;
 use futures::{FutureExt, StreamExt};
+use game_common::world::control_frame::ControlFrame;
 use game_net::conn::{Connection, Listen};
 use game_net::proto::{Decode, Error, Packet};
 use game_net::socket::Socket;
@@ -104,8 +105,13 @@ async fn handle_packet(addr: SocketAddr, socket: Arc<Socket>, state: &State, pac
 
     let control_frame = *state.control_frame.lock();
 
-    let (conn, handle) =
-        Connection::<Listen>::new(addr, state.queue.clone(), socket, control_frame);
+    let (conn, handle) = Connection::<Listen>::new(
+        addr,
+        state.queue.clone(),
+        socket,
+        control_frame,
+        ControlFrame(0),
+    );
 
     {
         let state = state.clone();

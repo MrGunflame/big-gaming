@@ -23,7 +23,9 @@ use crate::proto::sequence::Sequence;
 use crate::proto::shutdown::{Shutdown, ShutdownReason};
 use crate::proto::{Encode, Frame, Header, Packet, PacketBody, PacketType, SequenceRange};
 use crate::request::Request;
-use crate::snapshot::{Command, CommandId, CommandQueue, ConnectionMessage, Response, Status};
+use crate::snapshot::{
+    Command, CommandId, CommandQueue, Connected, ConnectionMessage, Response, Status,
+};
 use crate::socket::Socket;
 
 #[derive(Debug, Error)]
@@ -103,6 +105,9 @@ where
     start_control_frame: ControlFrame,
     peer_start_control_frame: ControlFrame,
 
+    /// Local constant buffer in control frames.
+    const_delay: u16,
+
     _mode: PhantomData<fn() -> M>,
 
     #[cfg(debug_assertions)]
@@ -118,6 +123,7 @@ where
         queue: CommandQueue,
         socket: Arc<Socket>,
         control_frame: ControlFrame,
+        const_delay: ControlFrame,
     ) -> (Self, ConnectionHandle) {
         let id = ConnectionId::new();
 
@@ -155,6 +161,8 @@ where
             peer_start_control_frame: ControlFrame::default(),
 
             _mode: PhantomData,
+
+            const_delay: const_delay.0 as u16,
 
             #[cfg(debug_assertions)]
             debug_validator: crate::validator::DebugValidator::new(),
@@ -467,6 +475,8 @@ where
                         mtu: 1500,
                         flow_window: 8192,
                         initial_sequence: self.next_local_sequence,
+                        const_delay: self.const_delay,
+                        resv0: 0,
                     }),
                 };
 
@@ -498,7 +508,9 @@ where
                     id: None,
                     conn: self.id,
                     control_frame: ControlFrame(0),
-                    command: Command::Connected,
+                    command: Command::Connected(Connected {
+                        peer_delay: ControlFrame(body.const_delay.into()),
+                    }),
                 });
             }
             // Listen mode
@@ -525,6 +537,8 @@ where
                         mtu: 1500,
                         flow_window: 8192,
                         initial_sequence,
+                        const_delay: self.const_delay,
+                        resv0: 0,
                     }),
                 };
 
@@ -563,6 +577,8 @@ where
                         mtu: 1500,
                         flow_window: 8192,
                         initial_sequence: self.next_local_sequence,
+                        const_delay: self.const_delay,
+                        resv0: 0,
                     }),
                 };
 
@@ -571,7 +587,9 @@ where
                     id: None,
                     conn: self.id,
                     control_frame: ControlFrame(0),
-                    command: Command::Connected,
+                    command: Command::Connected(Connected {
+                        peer_delay: ControlFrame(body.const_delay.into()),
+                    }),
                 });
 
                 return self.send_packet(resp, ConnectionState::Connected);
@@ -661,6 +679,8 @@ where
                 mtu: 1500,
                 flow_window: 8192,
                 initial_sequence,
+                const_delay: self.const_delay,
+                resv0: 0,
             }),
         };
 
@@ -721,6 +741,8 @@ where
                 mtu: 1500,
                 flow_window: 8192,
                 initial_sequence: Sequence::new(0),
+                const_delay: 0,
+                resv0: 0,
             }),
         };
 

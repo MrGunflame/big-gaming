@@ -96,6 +96,7 @@ impl ServerConnection {
             queue: CommandQueue,
             addr: impl ToSocketAddrs,
             cf: ControlFrame,
+            const_delay: ControlFrame,
         ) -> Result<ConnectionHandle, Box<dyn std::error::Error + Send + Sync + 'static>> {
             // TODO: Use async API
             let addr = match addr.to_socket_addrs()?.nth(0) {
@@ -103,13 +104,14 @@ impl ServerConnection {
                 None => panic!("empty dns result"),
             };
 
-            super::spawn_conn(queue, addr, cf)
+            super::spawn_conn(queue, addr, cf, const_delay)
         }
 
         match inner(
             self.queue.clone(),
             addr,
             self.game_tick.current_control_frame,
+            self.interplation_frames,
         ) {
             Ok(handle) => {
                 self.handle = Some(handle);
