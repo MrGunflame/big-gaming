@@ -26,7 +26,6 @@ pub mod delta_queue;
 pub mod entity;
 pub mod gen;
 pub mod interaction;
-mod level;
 pub mod snapshot;
 pub mod source;
 pub mod terrain;
@@ -35,5 +34,4 @@ pub mod world;
 
 pub mod inventory;
 
-pub use cell::{Cell, CellId, CELL_SIZE, CELL_SIZE_UINT};
-pub use level::Level;
+pub use cell::{CellId, CELL_SIZE, CELL_SIZE_UINT};

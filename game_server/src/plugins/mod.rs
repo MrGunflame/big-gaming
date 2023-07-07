@@ -64,7 +64,7 @@ pub fn tick(
         &state.config,
     );
 
-    crate::world::level::update_level_cells(&mut world, &mut level);
+    crate::world::level::update_level_cells(&mut world, &mut level, &modules);
 
     game_script::plugin::flush_event_queue(&mut event_queue, &mut world, &server, &scripts);
 
@@ -189,8 +189,6 @@ fn flush_command_queue(
                     },
                 );
 
-                // FIXME: This should not be set in this snapshot, but in the most
-                // recent one.
                 conn.set_host(id, view.control_frame());
 
                 let mut state = conn.state().write();

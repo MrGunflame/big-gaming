@@ -32,6 +32,7 @@ game_script = { version = "0.1.0", path = "../game_script" }
 toml = "0.7.3"
 serde = { version = "1.0.160", features = ["derive"] }
 glam = "0.24.0"
+game_data = { version = "0.1.0", path = "../game_data" }
 
 [profile.dev]
 opt-level = 0
