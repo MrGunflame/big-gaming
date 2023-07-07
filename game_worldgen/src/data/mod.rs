@@ -1,5 +1,7 @@
 //! The world data format.
 
+use std::collections::HashMap;
+
 use bytes::{Buf, BufMut};
 use game_common::components::components::{Component, Components};
 use game_common::components::transform::Transform;
@@ -11,16 +13,83 @@ use glam::{Quat, Vec3};
 
 #[derive(Clone, Debug)]
 pub struct Cells {
-    id: CellId,
-    entities: Vec<Entity>,
+    pub cells: HashMap<CellId, Vec<Entity>>,
+}
+
+impl Encode for Cells {
+    fn encode<B>(&self, mut buf: B)
+    where
+        B: BufMut,
+    {
+        (self.cells.len() as u64).encode(&mut buf);
+        for (id, entities) in &self.cells {
+            id.encode(&mut buf);
+            (entities.len() as u64).encode(&mut buf);
+            for entity in entities {
+                entity.encode(&mut buf);
+            }
+        }
+    }
+}
+
+impl Decode for Cells {
+    type Error = ();
+
+    fn decode<B>(mut buf: B) -> Result<Self, Self::Error>
+    where
+        B: Buf,
+    {
+        let len = u64::decode(&mut buf).unwrap();
+        let mut cells = HashMap::new();
+        for _ in 0..len {
+            let id = CellId::decode(&mut buf).unwrap();
+            let len = u64::decode(&mut buf).unwrap();
+            let mut entities = Vec::new();
+            for _ in 0..len {
+                let entity = Entity::decode(&mut buf).unwrap();
+                entities.push(entity);
+            }
+
+            cells.insert(id, entities);
+        }
+
+        Ok(Self { cells })
+    }
+}
+
+impl Encode for CellId {
+    fn encode<B>(&self, mut buf: B)
+    where
+        B: BufMut,
+    {
+        let (x, y, z) = self.as_parts();
+        x.encode(&mut buf);
+        y.encode(&mut buf);
+        z.encode(&mut buf);
+    }
+}
+
+impl Decode for CellId {
+    type Error = ();
+
+    fn decode<B>(mut buf: B) -> Result<Self, Self::Error>
+    where
+        B: Buf,
+    {
+        let x = u32::decode(&mut buf).unwrap();
+        let y = u32::decode(&mut buf).unwrap();
+        let z = u32::decode(&mut buf).unwrap();
+
+        Ok(CellId::from_parts(x, y, z))
+    }
 }
 
 #[derive(Clone, Debug)]
 pub struct Entity {
-    id: RecordReference,
-    kind: EntityKind,
-    transform: Transform,
-    components: Components,
+    pub id: RecordReference,
+    pub kind: EntityKind,
+    pub transform: Transform,
+    pub components: Components,
 }
 
 impl Encode for Entity {
