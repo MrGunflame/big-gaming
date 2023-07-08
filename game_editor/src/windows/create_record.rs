@@ -155,11 +155,12 @@ fn create_record(
             RecordBodyFields::Item(item) => {
                 let value = item.value.get_untracked();
                 let mass = item.mass.get_untracked();
+                let scene = item.scene.get_untracked();
 
                 RecordBody::Item(ItemRecord {
                     mass,
                     value,
-                    uri: Uri::new(),
+                    scene: Uri::from(PathBuf::from(scene)),
                     components: Default::default(),
                     actions: Default::default(),
                 })
@@ -208,11 +209,13 @@ enum RecordBodyFields {
 struct ItemFields {
     mass: ReadSignal<Mass>,
     value: ReadSignal<u64>,
+    scene: ReadSignal<String>,
 }
 
 fn render_item(cx: &Scope) -> ItemFields {
     let (value, set_value) = create_signal(cx, 0);
     let (mass, set_mass) = create_signal(cx, Mass::default());
+    let (scene, set_scene) = create_signal(cx, String::new());
 
     let item = view! {
         cx,
@@ -226,7 +229,7 @@ fn render_item(cx: &Scope) -> ItemFields {
         </Container>
     };
 
-    for text in ["Value", "Mass"] {
+    for text in ["Value", "Mass", "Scene"] {
         view! {
             name_col,
             <Text text={text.into()}>
@@ -246,9 +249,18 @@ fn render_item(cx: &Scope) -> ItemFields {
         }
     };
 
+    let style = Style {
+        bounds: Bounds {
+            min: SizeVec2::splat(Size::Pixels(20.0)),
+            ..Default::default()
+        },
+        background: Background::GRAY,
+        ..Default::default()
+    };
+
     view! {
         val_col,
-        <Input value={value.get_untracked().to_string()} style={Style::default()} on_change={value_change.into()}>
+        <Input value={value.get_untracked().to_string()} style={style.clone()} on_change={value_change.into()}>
         </Input>
     };
 
@@ -260,11 +272,21 @@ fn render_item(cx: &Scope) -> ItemFields {
 
     view! {
         val_col,
-        <Input value={mass.get_untracked().to_grams().to_string()} style={Style::default()} on_change={mass_change.into()}>
+        <Input value={mass.get_untracked().to_grams().to_string()} style={style.clone()} on_change={mass_change.into()}>
         </Input>
     };
 
-    ItemFields { mass, value }
+    let scene_change = move |s| {
+        set_scene.update(|v| *v = s);
+    };
+
+    view! {
+        val_col,
+        <Input value={scene.get_untracked()} style={style} on_change={scene_change.into()}>
+        </Input>
+    };
+
+    ItemFields { mass, value, scene }
 }
 
 struct ObjectFields {

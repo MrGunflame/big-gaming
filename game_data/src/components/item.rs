@@ -26,7 +26,7 @@ pub enum ItemRecordError {
 pub struct ItemRecord {
     pub mass: Mass,
     pub value: u64,
-    pub uri: Uri,
+    pub scene: Uri,
     pub components: Vec<ItemComponent>,
     pub actions: Vec<RecordReference>,
 }
@@ -38,7 +38,7 @@ impl Encode for ItemRecord {
     {
         self.mass.encode(&mut buf);
         self.value.encode(&mut buf);
-        self.uri.encode(&mut buf);
+        self.scene.encode(&mut buf);
         self.components.encode(&mut buf);
         self.actions.encode(&mut buf);
     }
@@ -53,14 +53,14 @@ impl Decode for ItemRecord {
     {
         let mass = Mass::decode(&mut buf).map_err(ItemRecordError::Mass)?;
         let value = u64::decode(&mut buf).map_err(ItemRecordError::Value)?;
-        let uri = Uri::decode(&mut buf).map_err(ItemRecordError::Uri)?;
+        let scene = Uri::decode(&mut buf).map_err(ItemRecordError::Uri)?;
         let components = Vec::decode(&mut buf).map_err(ItemRecordError::Components)?;
         let actions = Vec::decode(&mut buf).map_err(ItemRecordError::Actions)?;
 
         Ok(Self {
             mass,
             value,
-            uri,
+            scene,
             components,
             actions,
         })
