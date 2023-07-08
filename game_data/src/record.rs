@@ -62,6 +62,12 @@ pub struct Record {
     pub body: RecordBody,
 }
 
+impl Record {
+    pub const fn kind(&self) -> RecordKind {
+        self.body.kind()
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum RecordBody {
     Item(ItemRecord),

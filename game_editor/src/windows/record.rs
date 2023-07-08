@@ -24,14 +24,76 @@ use crate::state::module::Modules;
 use crate::state::record::Records;
 
 #[component]
-pub fn CreateRecord(cx: &Scope, kind: RecordKind, records: Records, modules: Modules) -> Scope {
-    let (module_id, set_module_id) = create_signal(cx, ModuleId::CORE);
-    let (name, set_name) = create_signal(cx, String::new());
+pub fn EditRecord(
+    cx: &Scope,
+    module_id: ModuleId,
+    record: Record,
+    records: Records,
+    modules: Modules,
+) -> Scope {
+    let root = view! {
+        cx,
+        <Container style={Style { padding: Padding::splat(Size::Pixels(5.0)), justify: Justify::SpaceBetween, ..Default::default() }}>
+        </Container>
+    };
 
+    let record_id = record.id;
+    let fields = render_record(&root, &modules, record.kind(), Some((module_id, record)));
+
+    view! {
+        root,
+        <Button style={Style::default()} on_click={create_record(records, fields, Some(record_id)).into()}>
+            <Text text={"OK".into()}>
+            </Text>
+        </Button>
+    };
+
+    root
+}
+
+#[component]
+pub fn CreateRecord(cx: &Scope, kind: RecordKind, records: Records, modules: Modules) -> Scope {
     let root = view! {
         cx,
         <Container style={Style{ padding: Padding::splat(Size::Pixels(5.0)), justify: Justify::SpaceBetween, ..Default::default() }}>
         </Container>
+    };
+
+    let fields = render_record(&root, &modules, kind, None);
+
+    view! {
+        root,
+        <Button style={Style::default()} on_click={create_record(records, fields, None).into()}>
+            <Text text={"OK".into()}>
+            </Text>
+        </Button>
+    };
+
+    root
+}
+
+fn render_record(
+    root: &Scope,
+    modules: &Modules,
+    kind: RecordKind,
+    record: Option<(ModuleId, Record)>,
+) -> Fields {
+    let (module_id, set_module_id) = {
+        let value = match &record {
+            Some((module_id, _)) => *module_id,
+            None => ModuleId::CORE,
+        };
+
+        create_signal(root, value)
+    };
+
+    let (name, set_name) = {
+        let value = match &record {
+            Some((_, record)) => record.name.clone(),
+            None => String::new(),
+        };
+
+        create_signal(root, value)
     };
 
     let metadata = view! {
@@ -102,36 +164,40 @@ pub fn CreateRecord(cx: &Scope, kind: RecordKind, records: Records, modules: Mod
         </Input>
     };
 
-    let body = match kind {
-        RecordKind::Item => RecordBodyFields::Item(render_item(&root)),
-        RecordKind::Action => RecordBodyFields::Action,
-        RecordKind::Component => RecordBodyFields::Component,
-        RecordKind::Object => RecordBodyFields::Object(render_object(&root)),
+    let body = match &record {
+        Some((_, record)) => match &record.body {
+            RecordBody::Item(item) => {
+                RecordBodyFields::Item(render_item(&root, Some(item.clone())))
+            }
+            RecordBody::Action(action) => RecordBodyFields::Action,
+            RecordBody::Component(component) => RecordBodyFields::Component,
+            RecordBody::Object(object) => {
+                RecordBodyFields::Object(render_object(&root, Some(object.clone())))
+            }
+        },
+        None => match kind {
+            RecordKind::Item => RecordBodyFields::Item(render_item(&root, None)),
+            RecordKind::Action => RecordBodyFields::Action,
+            RecordKind::Component => RecordBodyFields::Component,
+            RecordKind::Object => RecordBodyFields::Object(render_object(&root, None)),
+        },
     };
 
     let scripts = render_script_section(&root);
 
-    let fields = Fields {
+    Fields {
         module_id,
         name,
         scripts,
         body,
-    };
-
-    view! {
-        root,
-        <Button style={Style::default()} on_click={create_record(records, fields).into()}>
-            <Text text={"OK".into()}>
-            </Text>
-        </Button>
-    };
-
-    root
+    }
 }
 
 fn create_record(
     records: Records,
     fields: Fields,
+    // Record id if updating.
+    record_id: Option<RecordId>,
 ) -> Box<dyn Fn(Context<MouseButtonInput>) + Send + Sync + 'static> {
     Box::new(move |ctx| {
         let module_id = fields.module_id.get_untracked();
@@ -181,14 +247,28 @@ fn create_record(
             }
         };
 
-        let record = Record {
-            id: RecordId(0),
-            name,
-            scripts,
-            body,
-        };
+        match record_id {
+            Some(id) => {
+                let record = Record {
+                    id,
+                    name,
+                    scripts,
+                    body,
+                };
 
-        records.insert(module_id, record);
+                records.update(module_id, record);
+            }
+            None => {
+                let record = Record {
+                    id: RecordId(0),
+                    name,
+                    scripts,
+                    body,
+                };
+
+                records.insert(module_id, record);
+            }
+        }
     })
 }
 
@@ -212,10 +292,33 @@ struct ItemFields {
     scene: ReadSignal<String>,
 }
 
-fn render_item(cx: &Scope) -> ItemFields {
-    let (value, set_value) = create_signal(cx, 0);
-    let (mass, set_mass) = create_signal(cx, Mass::default());
-    let (scene, set_scene) = create_signal(cx, String::new());
+fn render_item(cx: &Scope, item: Option<ItemRecord>) -> ItemFields {
+    let (value, set_value) = {
+        let value = match &item {
+            Some(item) => item.value,
+            None => 0,
+        };
+
+        create_signal(cx, value)
+    };
+
+    let (mass, set_mass) = {
+        let value = match &item {
+            Some(item) => item.mass,
+            None => Mass::default(),
+        };
+
+        create_signal(cx, value)
+    };
+
+    let (scene, set_scene) = {
+        let value = match &item {
+            Some(item) => item.scene.as_ref().to_string_lossy().to_string(),
+            None => String::new(),
+        };
+
+        create_signal(cx, value)
+    };
 
     let item = view! {
         cx,
@@ -293,8 +396,15 @@ struct ObjectFields {
     model: ReadSignal<String>,
 }
 
-fn render_object(cx: &Scope) -> ObjectFields {
-    let (model, set_model) = create_signal(cx, String::new());
+fn render_object(cx: &Scope, object: Option<ObjectRecord>) -> ObjectFields {
+    let (model, set_model) = {
+        let value = match object {
+            Some(object) => object.uri.as_ref().to_string_lossy().to_string(),
+            None => String::new(),
+        };
+
+        create_signal(cx, value)
+    };
 
     let root = view! {
         cx,

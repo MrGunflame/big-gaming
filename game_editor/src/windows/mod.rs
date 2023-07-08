@@ -1,8 +1,8 @@
 mod create_module;
-mod create_record;
 mod error;
 pub mod modules;
 mod open_module;
+mod record;
 mod records;
 mod view;
 
@@ -13,7 +13,8 @@ use bevy_app::Plugin;
 use bevy_ecs::prelude::{EventReader, EventWriter, Res};
 use bevy_ecs::system::{Commands, ResMut, Resource};
 use game_asset::Assets;
-use game_data::record::RecordKind;
+use game_common::module::ModuleId;
+use game_data::record::{Record, RecordKind};
 use game_render::mesh::Mesh;
 use game_render::pbr::PbrMaterial;
 use game_render::texture::Images;
@@ -28,10 +29,10 @@ use parking_lot::RwLock;
 use crate::backend::Handle;
 
 use self::create_module::*;
-use self::create_record::*;
 use self::error::*;
 use self::modules::*;
 use self::open_module::*;
+use self::record::*;
 use self::records::*;
 
 pub struct WindowsPlugin;
@@ -164,6 +165,13 @@ fn spawn_windows(
                     </CreateRecord>
                 };
             }
+            SpawnWindow::EditRecord(module_id, record) => {
+                view! {
+                    cx,
+                    <EditRecord record={record.clone()} modules={modules.clone()} records={records.clone()} module_id={*module_id}>
+                    </EditRecord>
+                };
+            }
             _ => todo!(),
         }
 
@@ -180,6 +188,7 @@ pub enum SpawnWindow {
     View,
     Error(String),
     CreateRecord(RecordKind),
+    EditRecord(ModuleId, Record),
 }
 
 #[derive(Resource, Default, Clone)]
