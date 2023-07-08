@@ -1,4 +1,5 @@
-use game_data::record::{RecordBody, RecordKind};
+use game_common::module::ModuleId;
+use game_data::record::{Record, RecordBody, RecordKind};
 use game_input::mouse::MouseButtonInput;
 use game_ui::events::Context;
 use game_ui::reactive::{create_effect, create_signal, ReadSignal, Scope, WriteSignal};
@@ -136,6 +137,8 @@ pub fn Records(cx: &Scope, queue: SpawnWindowQueue, records: state::record::Reco
 
         let mut entries = Vec::new();
 
+        let mut entry_records = Vec::new();
+
         for (module_id, record) in records.iter() {
             if record.body.kind() != cat {
                 continue;
@@ -161,12 +164,16 @@ pub fn Records(cx: &Scope, queue: SpawnWindowQueue, records: state::record::Reco
             }
 
             entries.push(row);
+
+            entry_records.push((module_id, record));
         }
 
         let entries = EntriesData {
             keys,
             entries,
             add_entry: Some(add_record(queue.clone(), cat_sig.clone())),
+            edit_entry: Some(edit_record(queue.clone(), entry_records.clone())),
+            remove_entry: Some(remove_record(entry_records, records.clone())),
         };
 
         let id = view! {
@@ -214,5 +221,28 @@ fn add_record(
 
         let mut queue = queue.0.write();
         queue.push_back(SpawnWindow::CreateRecord(kind));
+    })
+}
+
+fn edit_record(
+    queue: SpawnWindowQueue,
+    entries: Vec<(ModuleId, Record)>,
+) -> Box<dyn Fn(usize) + Send + Sync + 'static> {
+    Box::new(move |index| {
+        let (module_id, record) = entries[index].clone();
+
+        let mut queue = queue.0.write();
+        queue.push_back(SpawnWindow::EditRecord(module_id, record));
+    })
+}
+
+fn remove_record(
+    entries: Vec<(ModuleId, Record)>,
+    records: state::record::Records,
+) -> Box<dyn Fn(usize) + Send + Sync + 'static> {
+    Box::new(move |index| {
+        let (module_id, record) = entries[index].clone();
+
+        records.remove(module_id, record.id);
     })
 }

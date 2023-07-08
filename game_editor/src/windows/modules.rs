@@ -64,6 +64,8 @@ pub fn Modules(
                 keys: vec!["ID".to_owned(), "Name".to_owned()],
                 entries,
                 add_entry: None,
+                edit_entry: None,
+                remove_entry: None,
             };
 
             let id = &mut *id.lock();
