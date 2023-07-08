@@ -1,5 +1,8 @@
 //! The world data format.
 
+#[cfg(feature = "json")]
+pub mod json;
+
 use std::collections::HashMap;
 
 use bytes::{Buf, BufMut};
