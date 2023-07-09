@@ -90,6 +90,10 @@ impl Records {
     pub fn remove(&self, module: ModuleId, id: RecordId) {
         let mut records = self.records.write();
         records.remove(&(module, id));
+
+        if let Some(signal) = &*self.signal.lock() {
+            signal.wake();
+        }
     }
 }
 
