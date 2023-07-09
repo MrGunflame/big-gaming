@@ -12,7 +12,7 @@ pub struct ConnectionState {
     /// Cells loaded by the peer.
     pub cells: Cells,
     /// The entity that is the host.
-    pub id: Option<EntityId>,
+    pub host: HostState,
     /// The snapshot index that the client's view is located at (currently modified).
     pub client_cf: ControlFrame,
 
@@ -29,7 +29,7 @@ impl ConnectionState {
         Self {
             full_update: true,
             cells: Cells::new(CellId::new(0.0, 0.0, 0.0)),
-            id: None,
+            host: HostState::default(),
             client_cf: ControlFrame(0),
             known_entities: KnownEntities::new(),
             peer_delay: ControlFrame(0),
@@ -106,4 +106,9 @@ impl KnownEntities {
     pub fn get_mut(&mut self, id: EntityId) -> Option<&mut Entity> {
         self.entities.get_mut(&id)
     }
+}
+
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+pub struct HostState {
+    pub entity: Option<EntityId>,
 }

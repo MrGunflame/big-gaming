@@ -193,23 +193,6 @@ impl Connection {
         &self.inner.state
     }
 
-    pub fn host(&self) -> Option<EntityId> {
-        self.state().read().id
-    }
-
-    pub fn set_host(&self, id: EntityId, control_frame: ControlFrame) {
-        let mut state = self.state().write();
-        state.id = Some(id);
-        let entity_id = state.entities.get(id).unwrap();
-
-        self.handle().send_cmd(ConnectionMessage {
-            id: None,
-            conn: ConnectionId(0),
-            control_frame,
-            command: Command::SpawnHost(SpawnHost { id: entity_id }),
-        });
-    }
-
     pub fn push_proc_msg(&self, id: CommandId) {
         let mut inner = self.inner.processed_messages.write();
         inner.push(id);

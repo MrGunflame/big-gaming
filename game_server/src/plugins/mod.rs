@@ -18,7 +18,8 @@ use game_common::world::CellId;
 use game_core::modules::Modules;
 use game_net::conn::ConnectionId;
 use game_net::snapshot::{
-    Command, CommandQueue, ConnectionMessage, EntityCreate, InventoryItemAdd, Response, Status,
+    Command, CommandQueue, ConnectionMessage, EntityCreate, InventoryItemAdd, Response, SpawnHost,
+    Status,
 };
 use game_script::events::Events;
 use game_script::scripts::Scripts;
@@ -139,7 +140,7 @@ fn flush_command_queue(
             conn.push_proc_msg(id);
         }
 
-        let state = conn.state().read();
+        let mut state = conn.state().write();
 
         match msg.command {
             Command::EntityCreate(event) => {}
@@ -190,7 +191,7 @@ fn flush_command_queue(
                     components: Components::new(),
                 });
 
-                conn.state().write().entities.insert(id);
+                state.entities.insert(id);
 
                 view.insert_streaming_source(
                     id,
@@ -199,22 +200,18 @@ fn flush_command_queue(
                     },
                 );
 
-                conn.set_host(id, view.control_frame());
-
-                let mut state = conn.state().write();
-
                 // At the connection time the delay must be 0, meaning the player is spawned
                 // without delay.
                 debug_assert_eq!(state.peer_delay, ControlFrame(0));
 
-                state.id = Some(id);
+                state.host.entity = Some(id);
                 state.peer_delay = event.peer_delay;
                 state.cells = Cells::new(CellId::new(0.0, 0.0, 0.0));
 
                 tracing::info!("spawning host {:?} in cell", msg.id);
             }
             Command::Disconnected => {
-                if let Some(id) = conn.host() {
+                if let Some(id) = state.host.entity {
                     if view.despawn(id).is_none() {
                         tracing::warn!("attempted to destroy an unknown entity {:?}", id);
                     }
@@ -318,7 +315,7 @@ fn update_snapshots(
 fn update_client(conn: &Connection, world: &WorldState) {
     let state = &mut *conn.state().write();
 
-    let Some(id) = state.id else {
+    let Some(host_id) = state.host.entity else {
         return;
     };
 
@@ -330,10 +327,10 @@ fn update_client(conn: &Connection, world: &WorldState) {
         return;
     };
 
-    let host = curr.get(id).unwrap();
+    let host = curr.get(host_id).unwrap();
     let cell_id = CellId::from(host.transform.translation);
 
-    let streaming_source = curr.streaming_sources().get(id).unwrap();
+    let streaming_source = curr.streaming_sources().get(host_id).unwrap();
 
     // Send full state
     // The delta from the current frame is "included" in the full update.
@@ -383,6 +380,15 @@ fn update_client(conn: &Connection, world: &WorldState) {
                 }
             }
         }
+
+        // Also sent the host.
+        let id = state.entities.get(host_id).unwrap();
+        conn.handle().send_cmd(ConnectionMessage {
+            id: None,
+            conn: ConnectionId(0),
+            control_frame: curr.control_frame(),
+            command: Command::SpawnHost(SpawnHost { id }),
+        });
 
         return;
     }
