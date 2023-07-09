@@ -1,7 +1,6 @@
 use std::net::ToSocketAddrs;
 use std::time::{Duration, Instant};
 
-use bevy_ecs::prelude::Entity;
 use bevy_ecs::system::{ResMut, Resource};
 use bevy_ecs::world::{FromWorld, World};
 use game_common::entity::{EntityId, EntityMap};
@@ -80,10 +79,6 @@ impl ServerConnection {
         } else {
             tracing::warn!("attempted to send a command, but the peer is not connected");
         }
-    }
-
-    pub fn lookup(&self, id: Entity) -> Option<EntityId> {
-        self.entities.get_entity(id)
     }
 
     pub fn connect<T>(&mut self, addr: T)

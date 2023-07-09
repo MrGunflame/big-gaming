@@ -19,7 +19,6 @@
 //!
 
 pub mod cell;
-pub mod chunk;
 pub mod component;
 pub mod control_frame;
 pub mod delta_queue;

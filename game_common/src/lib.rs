@@ -8,19 +8,16 @@
 
 extern crate self as game_common;
 
-pub mod archive;
 pub mod bundles;
 pub mod components;
 pub mod ecs;
 pub mod entity;
 pub mod events;
 pub mod id;
-pub mod localization;
 pub mod math;
 pub mod metrics;
 pub mod module;
 pub mod net;
-pub mod proto;
 pub mod record;
 pub mod savefile;
 pub mod units;

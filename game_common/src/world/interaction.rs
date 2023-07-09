@@ -1,8 +1,6 @@
 use std::borrow::Borrow;
 use std::fmt::{self, Debug, Formatter};
 
-use crate::localization::LocalizedString;
-
 use ahash::AHashMap;
 use bevy_ecs::component::Component;
 
@@ -10,7 +8,7 @@ use bevy_ecs::component::Component;
 #[derive(Debug, Component)]
 pub struct Interactable {
     /// An optional displayed name of the object.
-    pub name: Option<LocalizedString>,
+    pub name: Option<String>,
     pub interactions: Interactions,
 }
 
@@ -47,7 +45,7 @@ impl Interactions {
 
 pub struct Interaction {
     pub id: InteractionId,
-    pub title: LocalizedString,
+    pub title: String,
     pub executor: Box<dyn FnMut() + Send + Sync + 'static>,
 }
 

@@ -8,7 +8,7 @@ use crate::components::components::{Component, Components};
 use crate::components::transform::Transform;
 use crate::record::RecordReference;
 
-use super::terrain::{Heightmap, TerrainMesh};
+use super::terrain::Heightmap;
 use super::CellId;
 pub mod flat;
 

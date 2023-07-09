@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 use std::sync::Arc;
 
 use bevy_ecs::prelude::{Entity, EventReader};
-use bevy_ecs::system::{Query, ResMut, Resource};
+use bevy_ecs::system::{Query, Res, ResMut, Resource};
 use glam::Vec2;
 use parking_lot::Mutex;
 use winit::window::CursorGrabMode;
@@ -121,12 +121,12 @@ pub fn update_cursor_position(
         cursor.position = event.position;
     }
 
-    for event in left.iter() {
+    for _ in left.iter() {
         cursor.window = None;
     }
 }
 
-pub fn flush_cursor_events(mut cursor: ResMut<Cursor>, windows: Query<&WindowState>) {
+pub fn flush_cursor_events(cursor: Res<Cursor>, windows: Query<&WindowState>) {
     while let Some((entity, event)) = cursor.queue.lock().pop_front() {
         let window = windows.get(entity).unwrap();
 

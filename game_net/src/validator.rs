@@ -4,7 +4,6 @@ use std::collections::HashMap;
 
 use game_common::net::ServerEntity;
 use game_common::world::control_frame::ControlFrame;
-use glam::{Quat, Vec3};
 use indexmap::IndexMap;
 
 use crate::proto::{Frame, Packet, PacketBody};

@@ -15,34 +15,6 @@ impl Axis {
         #[cfg(debug_assertions)]
         assert!(self.direction.is_normalized());
 
-        // let mut mesh = Mesh::new(PrimitiveTopology::TriangleList);
-        // mesh.insert_attribute(
-        //     Mesh::ATTRIBUTE_POSITION,
-        //     vec![[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [1.0, 1.0, 0.0]],
-        // );
-        // mesh.set_indices(Some(Indices::U32(vec![0, 1, 2])));
-
-        // mesh.insert_attribute(
-        //     Mesh::ATTRIBUTE_NORMAL,
-        //     vec![[0.0, 1.0, 0.0], [0.0, 1.0, 0.0], [0.0, 1.0, 0.0]],
-        // );
-        // // mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, vec![[0.0, 1.0], ]);
-
-        // let mut positions: Vec<[f32; 3]> = Vec::new();
-
-        // Cone
-        // let origin = Vec3::new(0.0, 0.0, 0.0);
-        // let radius = 5.0;
-        // let height = 5.0;
-        // let subdivisions = 3;
-
-        // let tip = origin + Vec3::new(0.0, height, 0.0);
-        // positions.push([tip.x, tip.y, tip.z]);
-
-        // for side in 0..=subdivisions {
-        //     positions.push([]);
-        // }
-
         let mesh = shape::Box {
             min_x: -0.01,
             max_x: (self.direction.x * self.length).max(0.01),

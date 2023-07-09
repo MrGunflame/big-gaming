@@ -7,8 +7,6 @@ pub mod world;
 use core::marker::PhantomData;
 use core::ptr::NonNull;
 
-use bytemuck::{Pod, Zeroable};
-
 /// The pointer-sized type.
 ///
 /// For `wasm32-unknown-unknown` this is equivalent to `usize`.

@@ -31,7 +31,6 @@ pub mod ack;
 pub mod handshake;
 pub mod sequence;
 pub mod shutdown;
-pub mod timestamp;
 
 mod action;
 mod combat;
@@ -56,7 +55,7 @@ use game_common::world::CellId;
 pub use game_macros::{net__decode as Decode, net__encode as Encode};
 
 use std::convert::Infallible;
-use std::ops::{Add, AddAssign, BitAnd, BitAndAssign, BitOr, BitOrAssign, Sub, SubAssign};
+use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign};
 
 use bytes::{Buf, BufMut};
 use game_common::net::ServerEntity;
@@ -67,7 +66,6 @@ use self::ack::{Ack, AckAck, Nak};
 use self::handshake::{Handshake, InvalidHandshakeFlags, InvalidHandshakeType};
 use self::sequence::Sequence;
 use self::shutdown::Shutdown;
-use self::timestamp::Timestamp;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Error)]
 #[error(transparent)]
@@ -697,7 +695,7 @@ impl Decode for InventoryItemUpdate {
         let entity = ServerEntity::decode(&mut buf)?;
         let id = InventoryId::decode(&mut buf)?;
 
-        let mut flags = ItemUpdateFlags::decode(&mut buf)?;
+        let flags = ItemUpdateFlags::decode(&mut buf)?;
 
         let mut equipped = None;
         if flags & ItemUpdateFlags::EQUIPPED != ItemUpdateFlags(0) {

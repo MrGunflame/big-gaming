@@ -24,7 +24,6 @@ mod buffer;
 pub mod conn;
 pub mod entity;
 pub mod host;
-mod output;
 pub mod proto;
 mod request;
 pub mod sequence;
@@ -32,7 +31,6 @@ mod serial;
 pub mod snapshot;
 pub mod socket;
 mod stream;
-mod timestamp;
 mod validator;
 
 pub use socket::Socket;

@@ -11,8 +11,6 @@ pub mod world;
 use std::time::Duration;
 
 use bevy_app::App;
-use game_common::archive::loader::ModuleLoader;
-use game_common::archive::GameArchive;
 use game_core::counter::UpdateCounter;
 use game_core::CorePlugins;
 use plugins::ServerPlugins;
@@ -40,11 +38,6 @@ pub async fn run(mut app: App, config: Config) {
 
     let queue = state.queue.clone();
     let conns = state.conns.clone();
-
-    let archive = GameArchive::new();
-    let loader = ModuleLoader::new(&archive);
-    loader.load("../mods/core").unwrap();
-    app.insert_resource(archive);
 
     app.insert_resource(queue);
     app.insert_resource(conns);

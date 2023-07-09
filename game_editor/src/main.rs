@@ -6,18 +6,12 @@ use bevy_ecs::system::{Commands, ResMut};
 use game_scene::ScenePlugin;
 use game_ui::events::Events;
 use game_ui::reactive::Document;
-// use game_common::archive::loader::ModuleLoader;
-// use game_common::archive::GameArchive;
-// use game_common::world::world::WorldState;
-// use game_core::CorePlugins;
-// use game_input::InputPlugin;
 use game_ui::render::layout::LayoutTree;
 use game_ui::render::style::{Background, BorderRadius, Bounds, Size, SizeVec2};
 use game_ui::UiPlugin;
 use game_window::Window;
 use state::module::Modules;
 use state::record::Records;
-// use plugins::camera::CameraPlugin;
 use tokio::runtime::Runtime;
 use widgets::tool_bar::ToolBar;
 use windows::SpawnWindowQueue;
@@ -28,13 +22,9 @@ use windows::modules::CreateModules;
 use crate::windows::SpawnWindow;
 
 mod backend;
-mod widgets;
-// mod picker;
-// mod plugins;
 mod state;
-// mod ui;
+mod widgets;
 mod windows;
-// mod world;
 
 fn main() {
     pretty_env_logger::init();

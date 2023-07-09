@@ -1,11 +1,9 @@
 #![deny(unsafe_op_in_unsafe_fn)]
 
-mod assets;
 mod config;
 mod entities;
 mod net;
 mod plugins;
-mod prev_transform;
 mod state;
 mod utils;
 mod window;
@@ -15,7 +13,7 @@ use bevy_ecs::system::Commands;
 use clap::Parser;
 use config::Config;
 use entities::LoadEntityPlugin;
-use game_core::logger::{self, Logger};
+use game_core::logger::{self};
 use game_core::CorePlugins;
 use game_render::light::{DirectionalLight, DirectionalLightBundle};
 use game_render::RenderPlugin;
