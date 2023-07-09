@@ -18,8 +18,8 @@ use game_common::world::CellId;
 use game_core::modules::Modules;
 use game_net::conn::ConnectionId;
 use game_net::snapshot::{
-    Command, CommandQueue, ConnectionMessage, EntityCreate, InventoryItemAdd, Response, SpawnHost,
-    Status,
+    Command, CommandQueue, ConnectionMessage, EntityCreate, EntityDestroy, EntityRotate,
+    EntityTranslate, InventoryItemAdd, Response, SpawnHost, Status,
 };
 use game_script::events::Events;
 use game_script::scripts::Scripts;
@@ -337,6 +337,9 @@ fn update_client(conn: &Connection, world: &WorldState) {
     if state.full_update {
         state.full_update = false;
 
+        state.entities.clear();
+        state.known_entities.clear();
+
         tracing::info!(
             "sending full update to host in cell {:?} for cells: {:?}",
             cell_id,
@@ -415,7 +418,61 @@ fn update_client(conn: &Connection, world: &WorldState) {
         }
     }
 
-    conn.push(events, curr.control_frame());
+    for event in events {
+        let cmd = match event {
+            EntityChange::Create { entity } => {
+                let entity_id = state.entities.insert(entity.id);
+                state.known_entities.insert(entity.clone());
+
+                Command::EntityCreate(EntityCreate {
+                    id: entity_id,
+                    translation: entity.transform.translation,
+                    rotation: entity.transform.rotation,
+                    data: entity.body,
+                })
+            }
+            EntityChange::Destroy { id } => {
+                let entity_id = state.entities.remove(id).unwrap();
+                state.known_entities.remove(id);
+
+                Command::EntityDestroy(EntityDestroy { id: entity_id })
+            }
+            EntityChange::Translate {
+                id,
+                translation,
+                cell: _,
+            } => {
+                let entity_id = state.entities.get(id).unwrap();
+                let entity = state.known_entities.get_mut(id).unwrap();
+
+                entity.transform.translation = translation;
+
+                Command::EntityTranslate(EntityTranslate {
+                    id: entity_id,
+                    translation,
+                })
+            }
+            EntityChange::Rotate { id, rotation } => {
+                let entity_id = state.entities.get(id).unwrap();
+                let entity = state.known_entities.get_mut(id).unwrap();
+
+                entity.transform.rotation = rotation;
+
+                Command::EntityRotate(EntityRotate {
+                    id: entity_id,
+                    rotation,
+                })
+            }
+            _ => todo!(),
+        };
+
+        conn.handle().send_cmd(ConnectionMessage {
+            id: None,
+            conn: ConnectionId(0),
+            control_frame: curr.control_frame(),
+            command: cmd,
+        });
+    }
 
     // Acknowledge client commands.
     let ids = conn.take_proc_msg();
@@ -437,7 +494,7 @@ fn update_client(conn: &Connection, world: &WorldState) {
 }
 
 /// Update a player that hasn't moved cells.
-fn update_player_cells<V>(view: V, state: &mut ConnectionState) -> Vec<EntityChange>
+fn update_player_cells<V>(view: V, state: &ConnectionState) -> Vec<EntityChange>
 where
     V: AsView,
 {
@@ -450,8 +507,6 @@ where
 
         for entity in cell.iter() {
             if !state.known_entities.contains(entity.id) {
-                state.known_entities.insert(entity.clone());
-
                 events.push(EntityChange::Create {
                     entity: entity.clone(),
                 });
@@ -461,11 +516,9 @@ where
 
             stale_entities.remove(&entity.id);
 
-            let known = state.known_entities.get_mut(entity.id).unwrap();
+            let known = state.known_entities.get(entity.id).unwrap();
 
             if known.transform.translation != entity.transform.translation {
-                known.transform.translation = entity.transform.translation;
-
                 events.push(EntityChange::Translate {
                     id: entity.id,
                     translation: entity.transform.translation,
@@ -474,8 +527,6 @@ where
             }
 
             if known.transform.rotation != entity.transform.rotation {
-                known.transform.rotation = entity.transform.rotation;
-
                 events.push(EntityChange::Rotate {
                     id: entity.id,
                     rotation: entity.transform.rotation,

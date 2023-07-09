@@ -100,12 +100,20 @@ impl KnownEntities {
         self.entities.remove(&id);
     }
 
-    pub fn contains(&mut self, id: EntityId) -> bool {
+    pub fn contains(&self, id: EntityId) -> bool {
         self.entities.contains_key(&id)
     }
 
     pub fn get_mut(&mut self, id: EntityId) -> Option<&mut Entity> {
         self.entities.get_mut(&id)
+    }
+
+    pub fn get(&self, id: EntityId) -> Option<&Entity> {
+        self.entities.get(&id)
+    }
+
+    pub fn clear(&mut self) {
+        self.entities.clear();
     }
 }
 

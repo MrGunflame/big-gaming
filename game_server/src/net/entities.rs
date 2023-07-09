@@ -49,6 +49,11 @@ impl Entities {
         self.remote.insert(id, local);
         id
     }
+
+    pub fn clear(&mut self) {
+        self.host.clear();
+        self.remote.clear();
+    }
 }
 
 pub trait ServerEntityTranslation {

@@ -4,14 +4,9 @@ use std::sync::Arc;
 
 use ahash::HashMap;
 use bevy_ecs::system::Resource;
-use game_common::entity::EntityId;
-use game_common::world::control_frame::ControlFrame;
 use game_common::world::snapshot::EntityChange;
 use game_net::conn::{ConnectionHandle, ConnectionId};
-use game_net::snapshot::{
-    Command, CommandId, ConnectionMessage, EntityCreate, EntityDestroy, EntityRotate,
-    EntityTranslate, InventoryItemAdd, InventoryItemRemove, SpawnHost,
-};
+use game_net::snapshot::CommandId;
 use parking_lot::RwLock;
 
 use crate::net::state::ConnectionState;
@@ -115,78 +110,6 @@ impl Connection {
 
     pub fn handle(&self) -> &ConnectionHandle {
         &self.inner.handle
-    }
-
-    pub fn push<T>(&self, deltas: T, control_frame: ControlFrame)
-    where
-        T: IntoDeltas,
-    {
-        for delta in deltas.into_deltas() {
-            let mut state = self.state().write();
-
-            let cmd = match delta {
-                EntityChange::Create { entity } => {
-                    let entity_id = state.entities.insert(entity.id);
-
-                    Command::EntityCreate(EntityCreate {
-                        id: entity_id,
-                        translation: entity.transform.translation,
-                        rotation: entity.transform.rotation,
-                        data: entity.body,
-                    })
-                }
-                EntityChange::Destroy { id } => {
-                    let entity_id = state.entities.get(id).unwrap();
-
-                    Command::EntityDestroy(EntityDestroy { id: entity_id })
-                }
-                EntityChange::Translate {
-                    id,
-                    translation,
-                    cell: _,
-                } => {
-                    let entity_id = state.entities.get(id).unwrap();
-
-                    Command::EntityTranslate(EntityTranslate {
-                        id: entity_id,
-                        translation,
-                    })
-                }
-                EntityChange::Rotate { id, rotation } => {
-                    let entity_id = state.entities.get(id).unwrap();
-
-                    Command::EntityRotate(EntityRotate {
-                        id: entity_id,
-                        rotation,
-                    })
-                }
-                EntityChange::InventoryItemAdd(event) => {
-                    let entity_id = state.entities.get(event.entity).unwrap();
-
-                    Command::InventoryItemAdd(InventoryItemAdd {
-                        entity: entity_id,
-                        slot: event.id,
-                        item: event.item,
-                    })
-                }
-                EntityChange::InventoryItemRemove(event) => {
-                    let entity_id = state.entities.get(event.entity).unwrap();
-
-                    Command::InventoryItemRemove(InventoryItemRemove {
-                        entity: entity_id,
-                        slot: event.id,
-                    })
-                }
-                _ => todo!(),
-            };
-
-            self.inner.handle.send_cmd(ConnectionMessage {
-                id: None,
-                conn: ConnectionId(0),
-                control_frame,
-                command: cmd,
-            });
-        }
     }
 
     pub fn state(&self) -> &RwLock<ConnectionState> {
