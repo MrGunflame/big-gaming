@@ -234,83 +234,88 @@ fn flush_command_queue(mut conn: ResMut<ServerConnection>, mut world: ResMut<Wor
 
                 conn.server_entities.insert(id, event.id);
             }
-            Command::EntityDestroy(event) => {
-                let id = conn.server_entities.get(event.id).unwrap();
-
-                if view.despawn(id).is_none() {
-                    tracing::warn!("attempted to destroy a non-existant entity {:?}", id);
+            Command::EntityDestroy(event) => match conn.server_entities.remove(event.id) {
+                Some(id) => {
+                    if view.despawn(id).is_none() {
+                        tracing::warn!("attempted to destroy a non-existant entity {:?}", id);
+                    }
                 }
-            }
-            Command::EntityTranslate(event) => {
-                let id = conn.server_entities.get(event.id).unwrap();
-
-                match view.get_mut(id) {
+                None => (),
+            },
+            Command::EntityTranslate(event) => match conn.server_entities.get(event.id) {
+                Some(id) => match view.get_mut(id) {
                     Some(mut entity) => entity.transform.translation = event.translation,
                     None => {
                         tracing::warn!("received translation for unknown entity {:?}", id);
                     }
-                }
-            }
-            Command::EntityRotate(event) => {
-                let id = conn.server_entities.get(event.id).unwrap();
-
-                match view.get_mut(id) {
+                },
+                None => (),
+            },
+            Command::EntityRotate(event) => match conn.server_entities.get(event.id) {
+                Some(id) => match view.get_mut(id) {
                     Some(mut entity) => entity.transform.rotation = event.rotation,
                     None => {
                         tracing::warn!("received rotation for unknown entity {:?}", id);
                     }
-                }
-            }
-            Command::EntityHealth(event) => {
-                let id = conn.server_entities.get(event.id).unwrap();
+                },
+                None => (),
+            },
+            Command::EntityHealth(event) => match conn.server_entities.get(event.id) {
+                Some(id) => {
+                    let mut entity = view.get_mut(id).unwrap();
 
-                let mut entity = view.get_mut(id).unwrap();
-
-                if let EntityBody::Actor(actor) = &mut entity.body {
-                    actor.health = event.health;
-                } else {
-                    tracing::warn!("tried to apply health to a non-actor entity");
+                    if let EntityBody::Actor(actor) = &mut entity.body {
+                        actor.health = event.health;
+                    } else {
+                        tracing::warn!("tried to apply health to a non-actor entity");
+                    }
                 }
-            }
+                None => (),
+            },
             Command::EntityAction(event) => todo!(),
-            Command::SpawnHost(event) => {
-                let id = conn.server_entities.get(event.id).unwrap();
-
-                view.spawn_host(id);
-                conn.host = id;
-            }
+            Command::SpawnHost(event) => match conn.server_entities.get(event.id) {
+                Some(id) => {
+                    view.spawn_host(id);
+                    conn.host = id;
+                }
+                None => (),
+            },
             Command::InventoryItemAdd(event) => {
-                let id = conn.server_entities.get(event.entity).unwrap();
+                match conn.server_entities.get(event.entity) {
+                    Some(id) => {
+                        let item = Item {
+                            id: event.item,
+                            components: Components::default(),
+                            mass: Mass::default(),
+                            actions: Actions::default(),
+                            resistances: None,
+                            equipped: false,
+                            hidden: false,
+                        };
 
-                let item = Item {
-                    id: event.item,
-                    components: Components::default(),
-                    mass: Mass::default(),
-                    actions: Actions::default(),
-                    resistances: None,
-                    equipped: false,
-                    hidden: false,
-                };
+                        let mut inventories = view.inventories_mut();
 
-                let mut inventories = view.inventories_mut();
-
-                let mut inventory = inventories.get_mut_or_insert(id);
-                // FIXME: Don't unwrap
-                inventory.insert(item).unwrap();
-            }
-            Command::InventoryItemRemove(event) => {
-                let id = conn.server_entities.get(event.entity).unwrap();
-
-                let mut inventories = view.inventories_mut();
-
-                if let Some(mut inventory) = inventories.get_mut(id) {
-                    inventory.remove(event.slot);
-                } else {
-                    tracing::warn!(
-                        "requested inventory on entity that has no inventory (or does not exist)"
-                    );
+                        let mut inventory = inventories.get_mut_or_insert(id);
+                        // FIXME: Don't unwrap
+                        inventory.insert(item).unwrap();
+                    }
+                    None => (),
                 }
             }
+            Command::InventoryItemRemove(event) => match conn.server_entities.get(event.entity) {
+                Some(id) => {
+                    let mut inventories = view.inventories_mut();
+
+                    if let Some(mut inventory) = inventories.get_mut(id) {
+                        inventory.remove(event.slot);
+                    } else {
+                        tracing::warn!(
+                                "requested inventory on entity that has no inventory (or does not exist)"
+                            );
+                    }
+                }
+                None => (),
+            },
             Command::InventoryUpdate(event) => {
                 todo!();
             }
