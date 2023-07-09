@@ -5,7 +5,7 @@ use bevy_ecs::system::Resource;
 use game_input::mouse::MouseButtonInput;
 use game_ui::events::Context;
 use game_ui::reactive::{create_effect, create_signal, Scope, WriteSignal};
-use game_ui::render::style::Style;
+use game_ui::render::style::{Growth, Style};
 use game_ui::widgets::Text;
 use game_ui::{component, view};
 
@@ -37,7 +37,7 @@ pub fn Modules(
 
     let mods = view! {
         root,
-        <Container style={Style::default()}>
+        <Container style={Style { growth: Growth::splat(1.0), ..Default::default() }}>
         </Container>
     };
 
