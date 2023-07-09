@@ -9,12 +9,12 @@ use game_common::world::world::WorldState;
 use game_core::counter::UpdateCounter;
 use game_core::time::Time;
 use game_net::conn::{ConnectionHandle, ConnectionId};
-use game_net::entity::Entities;
 use game_net::snapshot::{Command, CommandQueue, ConnectionMessage};
 
 use crate::config::Config;
 use crate::state::{GameState, GameStateWriter};
 
+use super::entities::Entities;
 use super::prediction::{LocalOverrides, Prediction};
 
 #[derive(Debug, Resource)]

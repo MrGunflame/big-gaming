@@ -1,4 +1,5 @@
 mod conn;
+mod entities;
 pub mod interpolate;
 mod prediction;
 mod world;
@@ -231,7 +232,7 @@ fn flush_command_queue(mut conn: ResMut<ServerConnection>, mut world: ResMut<Wor
                     components: Components::new(),
                 });
 
-                conn.server_entities.insert_client(id, event.id);
+                conn.server_entities.insert(id, event.id);
             }
             Command::EntityDestroy(event) => {
                 let id = conn.server_entities.get(event.id).unwrap();

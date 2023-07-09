@@ -4,7 +4,8 @@ use game_common::world::cell::square;
 use game_common::world::control_frame::ControlFrame;
 use game_common::world::entity::Entity;
 use game_common::world::CellId;
-use game_net::entity::Entities;
+
+use super::entities::Entities;
 
 #[derive(Clone, Debug)]
 pub struct ConnectionState {
