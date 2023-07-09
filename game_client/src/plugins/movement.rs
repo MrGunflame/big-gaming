@@ -16,7 +16,7 @@ use game_input::hotkeys::{
 use game_input::keyboard::{KeyCode, KeyboardInput};
 use game_input::mouse::MouseMotion;
 use game_input::InputSet;
-use game_net::snapshot::Command;
+use game_net::snapshot::{Command, EntityRotate, EntityTranslate};
 use game_window::cursor::Cursor;
 use game_window::events::VirtualKeyCode;
 use glam::{Quat, Vec3};
@@ -251,11 +251,12 @@ pub fn translation_events(
                 let distance = direction * speed.0 * delta;
                 transform.translation += distance;
 
-                let id = conn.host;
-                conn.send(Command::EntityTranslate {
-                    id,
+                let entity_id = conn.server_entities.get(conn.host).unwrap();
+
+                conn.send(Command::EntityTranslate(EntityTranslate {
+                    id: entity_id,
                     translation: transform.translation,
-                });
+                }));
             }
         }
     }
@@ -306,12 +307,12 @@ pub fn rotation_events(
     }
 
     if is_changed {
-        let id = conn.host;
+        let entity_id = conn.server_entities.get(conn.host).unwrap();
 
-        conn.send(Command::EntityRotate {
-            id,
+        conn.send(Command::EntityRotate(EntityRotate {
+            id: entity_id,
             rotation: props.rotation,
-        });
+        }));
 
         player.rotation = extract_actor_rotation(props.rotation);
     }

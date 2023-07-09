@@ -9,14 +9,13 @@ use std::task::{ready, Context, Poll};
 use std::time::{Duration, Instant};
 
 use futures::FutureExt;
-use game_common::entity::EntityId;
 use game_common::world::control_frame::ControlFrame;
 use thiserror::Error;
 use tokio::sync::mpsc;
 use tokio::time::MissedTickBehavior;
 
 use crate::buffer::FrameBuffer;
-use crate::entity::Entities;
+use crate::entity::{pack_command, unpack_command};
 use crate::proto::ack::{Ack, AckAck, Nak};
 use crate::proto::handshake::{Handshake, HandshakeFlags, HandshakeType};
 use crate::proto::sequence::Sequence;
@@ -77,9 +76,7 @@ where
     state: ConnectionState,
 
     queue: CommandQueue,
-    entities: Entities,
     peer: SocketAddr,
-    backlog: Backlog,
     frame_queue: FrameQueue,
     write: Option<WriteRequest>,
     interval: TickInterval,
@@ -137,9 +134,7 @@ where
             state: ConnectionState::Handshake(HandshakeState::Hello),
             local_stream: out_rx,
             queue,
-            entities: Entities::new(),
             peer,
-            backlog: Backlog::new(),
             frame_queue: FrameQueue::new(),
             write: None,
             interval: TickInterval::new(),
@@ -223,7 +218,7 @@ where
             match &msg.command {
                 // The game loop has processed the commands.
                 // We can now acknowledge that we have processed the commands.
-                Command::ReceivedCommands { ids } => {
+                Command::ReceivedCommands(ids) => {
                     for resp in ids {
                         let seq = self.ack_list.list.remove(&resp.id).unwrap();
                         // The last sequence acknowledged by the game loop.
@@ -243,36 +238,16 @@ where
 
             let msgid = msg.id.unwrap();
 
-            let frame = match self.entities.pack(&msg.command) {
+            let frame = match pack_command(&msg.command) {
                 Some(frame) => frame,
                 None => {
-                    tracing::info!(
-                        "backlogging command {:?} for entity {:?}",
-                        msg,
-                        msg.command.id()
-                    );
-
-                    if let Some(id) = msg.command.id() {
-                        self.backlog.insert(id, msg.command);
-                    }
+                    tracing::trace!("skipping command: {:?}", msg.command,);
 
                     continue;
                 }
             };
 
             self.frame_queue.push(frame, msgid, msg.control_frame);
-
-            if let Some(id) = msg.command.id() {
-                if let Some(vec) = self.backlog.remove(id) {
-                    tracing::info!("flushing commands for {:?}", id);
-
-                    self.frame_queue.extend(
-                        vec.into_iter().map(|cmd| {
-                            (self.entities.pack(&cmd).unwrap(), msgid, msg.control_frame)
-                        }),
-                    );
-                }
-            }
         }
 
         Poll::Pending
@@ -417,7 +392,7 @@ where
         debug_assert_eq!(self.next_peer_sequence, header.sequence + 1);
 
         for frame in frames {
-            let Some(cmd) = self.entities.unpack(frame) else {
+            let Some(cmd) = unpack_command(frame) else {
                 tracing::debug!("failed to translate cmd");
                 continue;
             };
@@ -615,15 +590,14 @@ where
                 id: None,
                 conn: self.id,
                 control_frame: ControlFrame(0),
-                command: Command::ReceivedCommands {
-                    ids: ids
-                        .into_iter()
+                command: Command::ReceivedCommands(
+                    ids.into_iter()
                         .map(|id| Response {
                             id,
                             status: Status::Received,
                         })
                         .collect(),
-                },
+                ),
             });
         }
 
@@ -927,68 +901,6 @@ impl ConnectionHandle {
 }
 
 pub struct ConnectionKey {}
-
-/// Command backlog
-///
-/// Commands in the backlog are held until the entity with the given
-/// id exists.
-#[derive(Clone, Debug)]
-pub struct Backlog {
-    commands: HashMap<EntityId, Vec<Command>>,
-    /// Total number of commands pushed.
-    ///
-    /// Only used when `debug_assertions` is enabled: When pushing too many commands without ever
-    /// removing them, [`insert`] will panic above the threshold [`MAX_LEN`].
-    ///
-    /// [`insert`]: Self::insert
-    /// [`MAX_LEN`]: Self::MAX_LEN
-    #[cfg(debug_assertions)]
-    len: usize,
-}
-
-impl Backlog {
-    #[cfg(debug_assertions)]
-    const MAX_LEN: usize = 8192;
-
-    pub fn new() -> Self {
-        Self {
-            commands: HashMap::new(),
-            #[cfg(debug_assertions)]
-            len: 0,
-        }
-    }
-
-    pub fn insert(&mut self, id: EntityId, cmd: Command) {
-        #[cfg(debug_assertions)]
-        {
-            self.len += 1;
-            if self.len > Self::MAX_LEN {
-                panic!("exceeded maximum backlog len of {} commands", Self::MAX_LEN);
-            }
-        }
-
-        match self.commands.get_mut(&id) {
-            Some(vec) => vec.push(cmd),
-            None => {
-                self.commands.insert(id, vec![cmd]);
-            }
-        }
-    }
-
-    pub fn remove(&mut self, id: EntityId) -> Option<Vec<Command>> {
-        match self.commands.remove(&id) {
-            Some(cmds) => {
-                #[cfg(debug_assertions)]
-                {
-                    self.len -= cmds.len();
-                }
-
-                Some(cmds)
-            }
-            None => None,
-        }
-    }
-}
 
 pub trait ConnectionMode {
     const IS_CONNECT: bool;

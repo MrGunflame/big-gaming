@@ -4,6 +4,7 @@ use game_common::world::cell::square;
 use game_common::world::control_frame::ControlFrame;
 use game_common::world::entity::Entity;
 use game_common::world::CellId;
+use game_net::entity::Entities;
 
 #[derive(Clone, Debug)]
 pub struct ConnectionState {
@@ -19,6 +20,8 @@ pub struct ConnectionState {
 
     /// Constant interpolation buffer/delay of the peer.
     pub peer_delay: ControlFrame,
+
+    pub entities: Entities,
 }
 
 impl ConnectionState {
@@ -30,6 +33,7 @@ impl ConnectionState {
             client_cf: ControlFrame(0),
             known_entities: KnownEntities::new(),
             peer_delay: ControlFrame(0),
+            entities: Entities::new(),
         }
     }
 }

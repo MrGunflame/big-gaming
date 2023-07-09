@@ -3,7 +3,7 @@ use game_common::components::actions::ActionId;
 use game_common::components::combat::Health;
 use game_common::components::inventory::InventoryId;
 use game_common::components::items::ItemId;
-use game_common::entity::EntityId;
+use game_common::net::ServerEntity;
 use game_common::world::control_frame::ControlFrame;
 use game_common::world::entity::EntityBody;
 use game_common::world::CellId;
@@ -42,57 +42,17 @@ pub struct ConnectionMessage {
 pub enum Command {
     Connected(Connected),
     Disconnected,
-    EntityCreate {
-        id: EntityId,
-        translation: Vec3,
-        rotation: Quat,
-        data: EntityBody,
-    },
-    EntityDestroy {
-        id: EntityId,
-    },
-    EntityTranslate {
-        id: EntityId,
-        translation: Vec3,
-    },
-    EntityRotate {
-        id: EntityId,
-        rotation: Quat,
-    },
-    EntityVelocity {
-        id: EntityId,
-        linvel: Vec3,
-        angvel: Vec3,
-    },
-    EntityHealth {
-        id: EntityId,
-        health: Health,
-    },
-    EntityAction {
-        id: EntityId,
-        action: ActionId,
-    },
-    SpawnHost {
-        id: EntityId,
-    },
-    ReceivedCommands {
-        ids: Vec<Response>,
-    },
-    InventoryItemAdd {
-        entity: EntityId,
-        id: InventoryId,
-        item: ItemId,
-    },
-    InventoryItemRemove {
-        entity: EntityId,
-        id: InventoryId,
-    },
-    InventoryUpdate {
-        entity: EntityId,
-        id: InventoryId,
-        equipped: Option<bool>,
-        hidden: Option<bool>,
-    },
+    EntityCreate(EntityCreate),
+    EntityDestroy(EntityDestroy),
+    EntityTranslate(EntityTranslate),
+    EntityRotate(EntityRotate),
+    EntityHealth(EntityHealth),
+    EntityAction(EntityAction),
+    SpawnHost(SpawnHost),
+    ReceivedCommands(Vec<Response>),
+    InventoryItemAdd(InventoryItemAdd),
+    InventoryItemRemove(InventoryItemRemove),
+    InventoryUpdate(InventoryUpdate),
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -101,45 +61,89 @@ pub struct Connected {
     pub peer_delay: ControlFrame,
 }
 
+#[derive(Clone, Debug)]
+pub struct EntityCreate {
+    pub id: ServerEntity,
+    pub translation: Vec3,
+    pub rotation: Quat,
+    pub data: EntityBody,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct EntityDestroy {
+    pub id: ServerEntity,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct EntityTranslate {
+    pub id: ServerEntity,
+    pub translation: Vec3,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct EntityRotate {
+    pub id: ServerEntity,
+    pub rotation: Quat,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct EntityHealth {
+    pub id: ServerEntity,
+    pub health: Health,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct EntityAction {
+    pub id: ServerEntity,
+    pub action: ActionId,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct SpawnHost {
+    pub id: ServerEntity,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct InventoryItemAdd {
+    pub entity: ServerEntity,
+    pub slot: InventoryId,
+    pub item: ItemId,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct InventoryItemRemove {
+    pub entity: ServerEntity,
+    pub slot: InventoryId,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct InventoryUpdate {
+    pub entity: ServerEntity,
+    pub slot: InventoryId,
+    pub equipped: Option<bool>,
+    pub hidden: Option<bool>,
+}
+
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
 #[repr(transparent)]
 pub struct CommandId(pub u32);
 
 impl Command {
-    pub const fn id(&self) -> Option<EntityId> {
+    pub const fn id(&self) -> Option<ServerEntity> {
         match self {
             Self::Connected(_) => None,
             Self::Disconnected => None,
-            Self::EntityCreate {
-                id,
-                translation: _,
-                rotation: _,
-                data: _,
-            } => Some(*id),
-            Self::EntityDestroy { id } => Some(*id),
-            Self::EntityTranslate { id, translation: _ } => Some(*id),
-            Self::EntityRotate { id, rotation: _ } => Some(*id),
-            Self::EntityVelocity {
-                id,
-                linvel: _,
-                angvel: _,
-            } => Some(*id),
-            Self::EntityHealth { id, health: _ } => Some(*id),
-            Self::EntityAction { id, action: _ } => Some(*id),
-            Self::SpawnHost { id } => Some(*id),
-            Self::InventoryItemAdd {
-                entity,
-                id: _,
-                item: _,
-            } => Some(*entity),
-            Self::InventoryItemRemove { entity, id: _ } => Some(*entity),
-            Self::InventoryUpdate {
-                entity,
-                id: _,
-                equipped: _,
-                hidden: _,
-            } => Some(*entity),
-            Self::ReceivedCommands { ids: _ } => None,
+            Self::EntityCreate(cmd) => Some(cmd.id),
+            Self::EntityDestroy(cmd) => Some(cmd.id),
+            Self::EntityTranslate(cmd) => Some(cmd.id),
+            Self::EntityRotate(cmd) => Some(cmd.id),
+            Self::EntityHealth(cmd) => Some(cmd.id),
+            Self::EntityAction(cmd) => Some(cmd.id),
+            Self::SpawnHost(cmd) => Some(cmd.id),
+            Self::InventoryItemAdd(cmd) => Some(cmd.entity),
+            Self::InventoryItemRemove(cmd) => Some(cmd.entity),
+            Self::InventoryUpdate(cmd) => Some(cmd.entity),
+            Self::ReceivedCommands(_) => None,
         }
     }
 }

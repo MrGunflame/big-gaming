@@ -6,17 +6,24 @@ use game_common::entity::EntityId;
 use game_common::net::ServerEntity;
 
 use crate::proto::{
-    EntityAction, EntityCreate, EntityDestroy, EntityHealth, EntityRotate, EntityTranslate,
-    EntityVelocity, Frame, InventoryItemAdd, InventoryItemRemove, InventoryItemUpdate, SpawnHost,
+    EntityAction, EntityCreate, EntityDestroy, EntityHealth, EntityRotate, EntityTranslate, Frame,
+    InventoryItemAdd, InventoryItemRemove, InventoryItemUpdate, SpawnHost,
 };
 use crate::snapshot::Command;
+
+use crate::snapshot::{
+    EntityAction as EntityActionCommand, EntityCreate as EntityCreateCommand,
+    EntityDestroy as EntityDestroyCommand, EntityHealth as EntityHealthCommand,
+    EntityRotate as EntityRotateCommand, EntityTranslate as EntityTranslateCommand,
+    InventoryItemAdd as InventoryItemAddCommand, InventoryItemRemove as InventoryItemRemoveCommand,
+    InventoryUpdate as InventoryUpdateCommand, SpawnHost as SpawnHostCommand,
+};
 
 #[derive(Clone, Debug, Default)]
 pub struct Entities {
     host: HashMap<EntityId, ServerEntity>,
     remote: HashMap<ServerEntity, EntityId>,
     next_server_id: u64,
-    next_id: u64,
 }
 
 impl Entities {
@@ -25,18 +32,7 @@ impl Entities {
             host: HashMap::new(),
             remote: HashMap::new(),
             next_server_id: 0,
-            next_id: 0,
         }
-    }
-
-    pub fn insert(&mut self, local: EntityId, remote: ServerEntity) {
-        if cfg!(debug_assertions) {
-            assert!(!self.host.contains_key(&local));
-            assert!(!self.remote.contains_key(&remote));
-        }
-
-        self.host.insert(local, remote);
-        self.remote.insert(remote, local);
     }
 
     pub fn remove<E>(&mut self, entity: E) -> Option<E::Target>
@@ -63,215 +59,119 @@ impl Entities {
         self.len() == 0
     }
 
-    /// Unpacks a raw [`Frame`] into a game [`Command`].
-    pub fn unpack(&mut self, frame: Frame) -> Option<Command> {
-        match frame {
-            Frame::EntityCreate(frame) => {
-                let id = EntityId::from_raw(self.next_id);
-                self.next_id += 1;
-
-                self.insert(id, frame.entity);
-
-                Some(Command::EntityCreate {
-                    id,
-                    translation: frame.translation,
-                    rotation: frame.rotation,
-                    data: frame.data,
-                })
-            }
-            Frame::EntityDestroy(frame) => {
-                let id = self.get(frame.entity)?;
-                self.remove(id);
-
-                Some(Command::EntityDestroy { id })
-            }
-            Frame::EntityTranslate(frame) => {
-                let id = self.get(frame.entity)?;
-
-                Some(Command::EntityTranslate {
-                    id,
-                    translation: frame.translation,
-                })
-            }
-            Frame::EntityRotate(frame) => {
-                let id = self.get(frame.entity)?;
-
-                Some(Command::EntityRotate {
-                    id,
-                    rotation: frame.rotation,
-                })
-            }
-            Frame::EntityVelocity(frame) => {
-                let id = self.get(frame.entity)?;
-
-                Some(Command::EntityVelocity {
-                    id,
-                    linvel: frame.linvel,
-                    angvel: frame.angvel,
-                })
-            }
-            Frame::EntityHealth(frame) => {
-                let id = self.get(frame.entity)?;
-
-                Some(Command::EntityHealth {
-                    id,
-                    health: frame.health,
-                })
-            }
-            Frame::EntityAction(frame) => {
-                let id = self.get(frame.entity)?;
-
-                Some(Command::EntityAction {
-                    id,
-                    action: frame.action,
-                })
-            }
-            Frame::SpawnHost(frame) => {
-                let id = self.get(frame.entity)?;
-
-                Some(Command::SpawnHost { id })
-            }
-            Frame::InventoryItemAdd(frame) => {
-                let entity = self.get(frame.entity)?;
-
-                Some(Command::InventoryItemAdd {
-                    entity,
-                    id: frame.id,
-                    item: frame.item,
-                })
-            }
-            Frame::InventoryItemRemove(frame) => {
-                let entity = self.get(frame.entity)?;
-
-                Some(Command::InventoryItemRemove {
-                    entity,
-                    id: frame.id,
-                })
-            }
-            Frame::InventoryItemUpdate(frame) => {
-                let entity = self.get(frame.entity)?;
-
-                Some(Command::InventoryUpdate {
-                    entity,
-                    id: frame.id,
-                    equipped: frame.equipped,
-                    hidden: frame.hidden,
-                })
-            }
-        }
-    }
-
-    pub fn pack(&mut self, cmd: &Command) -> Option<Frame> {
-        match cmd {
-            Command::EntityCreate {
-                id,
-                translation,
-                rotation,
-                data,
-            } => {
-                let entity = self.new_id();
-                self.insert(*id, entity);
-
-                Some(Frame::EntityCreate(EntityCreate {
-                    entity,
-                    translation: *translation,
-                    rotation: *rotation,
-                    data: data.clone(),
-                }))
-            }
-            Command::EntityDestroy { id } => {
-                let id = self.remove(*id)?;
-
-                Some(Frame::EntityDestroy(EntityDestroy { entity: id }))
-            }
-            Command::EntityTranslate { id, translation } => {
-                let id = self.get(*id)?;
-
-                Some(Frame::EntityTranslate(EntityTranslate {
-                    entity: id,
-                    translation: *translation,
-                }))
-            }
-            Command::EntityRotate { id, rotation } => {
-                let id = self.get(*id)?;
-
-                Some(Frame::EntityRotate(EntityRotate {
-                    entity: id,
-                    rotation: *rotation,
-                }))
-            }
-            Command::EntityVelocity { id, linvel, angvel } => {
-                let id = self.get(*id)?;
-
-                Some(Frame::EntityVelocity(EntityVelocity {
-                    entity: id,
-                    linvel: *linvel,
-                    angvel: *angvel,
-                }))
-            }
-            Command::EntityHealth { id, health } => {
-                let entity = self.get(*id)?;
-
-                Some(Frame::EntityHealth(EntityHealth {
-                    entity,
-                    health: *health,
-                }))
-            }
-            Command::EntityAction { id, action } => {
-                let entity = self.get(*id)?;
-
-                Some(Frame::EntityAction(EntityAction {
-                    entity,
-                    action: *action,
-                }))
-            }
-            Command::Connected(_) => None,
-            Command::Disconnected => None,
-            Command::SpawnHost { id } => {
-                let id = self.get(*id)?;
-
-                Some(Frame::SpawnHost(SpawnHost { entity: id }))
-            }
-            Command::InventoryItemAdd { entity, id, item } => {
-                let entity = self.get(*entity)?;
-
-                Some(Frame::InventoryItemAdd(InventoryItemAdd {
-                    entity,
-                    id: *id,
-                    item: *item,
-                }))
-            }
-            Command::InventoryItemRemove { entity, id } => {
-                let entity = self.get(*entity)?;
-
-                Some(Frame::InventoryItemRemove(InventoryItemRemove {
-                    entity,
-                    id: *id,
-                }))
-            }
-            Command::InventoryUpdate {
-                entity,
-                id,
-                equipped,
-                hidden,
-            } => {
-                let entity = self.get(*entity)?;
-
-                Some(Frame::InventoryItemUpdate(InventoryItemUpdate {
-                    entity,
-                    id: *id,
-                    equipped: *equipped,
-                    hidden: *hidden,
-                }))
-            }
-            Command::ReceivedCommands { ids: _ } => None,
-        }
-    }
-
-    fn new_id(&mut self) -> ServerEntity {
-        let id = self.next_server_id;
+    pub fn insert(&mut self, local: EntityId) -> ServerEntity {
+        let id = ServerEntity(self.next_server_id);
         self.next_server_id += 1;
-        ServerEntity(id)
+
+        self.host.insert(local, id);
+        self.remote.insert(id, local);
+        id
+    }
+
+    pub fn insert_client(&mut self, local: EntityId, remote: ServerEntity) {
+        self.host.insert(local, remote);
+        self.remote.insert(remote, local);
+    }
+}
+
+pub(crate) fn unpack_command(frame: Frame) -> Option<Command> {
+    match frame {
+        Frame::EntityCreate(frame) => Some(Command::EntityCreate(EntityCreateCommand {
+            id: frame.entity,
+            translation: frame.translation,
+            rotation: frame.rotation,
+            data: frame.data,
+        })),
+        Frame::EntityDestroy(frame) => Some(Command::EntityDestroy(EntityDestroyCommand {
+            id: frame.entity,
+        })),
+        Frame::EntityTranslate(frame) => Some(Command::EntityTranslate(EntityTranslateCommand {
+            id: frame.entity,
+            translation: frame.translation,
+        })),
+        Frame::EntityRotate(frame) => Some(Command::EntityRotate(EntityRotateCommand {
+            id: frame.entity,
+            rotation: frame.rotation,
+        })),
+        Frame::EntityHealth(frame) => Some(Command::EntityHealth(EntityHealthCommand {
+            id: frame.entity,
+            health: frame.health,
+        })),
+        Frame::EntityAction(frame) => Some(Command::EntityAction(EntityActionCommand {
+            id: frame.entity,
+            action: frame.action,
+        })),
+        Frame::SpawnHost(frame) => Some(Command::SpawnHost(SpawnHostCommand { id: frame.entity })),
+        Frame::InventoryItemAdd(frame) => {
+            Some(Command::InventoryItemAdd(InventoryItemAddCommand {
+                entity: frame.entity,
+                slot: frame.id,
+                item: frame.item,
+            }))
+        }
+        Frame::InventoryItemRemove(frame) => {
+            Some(Command::InventoryItemRemove(InventoryItemRemoveCommand {
+                entity: frame.entity,
+                slot: frame.id,
+            }))
+        }
+        Frame::InventoryItemUpdate(frame) => {
+            Some(Command::InventoryUpdate(InventoryUpdateCommand {
+                entity: frame.entity,
+                slot: frame.id,
+                equipped: frame.equipped,
+                hidden: frame.hidden,
+            }))
+        }
+    }
+}
+
+pub(crate) fn pack_command(cmd: &Command) -> Option<Frame> {
+    match cmd {
+        Command::EntityCreate(cmd) => Some(Frame::EntityCreate(EntityCreate {
+            entity: cmd.id,
+            translation: cmd.translation,
+            rotation: cmd.rotation,
+            data: cmd.data.clone(),
+        })),
+        Command::EntityDestroy(cmd) => Some(Frame::EntityDestroy(EntityDestroy { entity: cmd.id })),
+        Command::EntityTranslate(cmd) => Some(Frame::EntityTranslate(EntityTranslate {
+            entity: cmd.id,
+            translation: cmd.translation,
+        })),
+        Command::EntityRotate(cmd) => Some(Frame::EntityRotate(EntityRotate {
+            entity: cmd.id,
+            rotation: cmd.rotation,
+        })),
+        Command::EntityHealth(cmd) => Some(Frame::EntityHealth(EntityHealth {
+            entity: cmd.id,
+            health: cmd.health,
+        })),
+        Command::EntityAction(cmd) => Some(Frame::EntityAction(EntityAction {
+            entity: cmd.id,
+            action: cmd.action,
+        })),
+        Command::SpawnHost(cmd) => Some(Frame::SpawnHost(SpawnHost { entity: cmd.id })),
+        Command::InventoryItemAdd(cmd) => Some(Frame::InventoryItemAdd(InventoryItemAdd {
+            entity: cmd.entity,
+            id: cmd.slot,
+            item: cmd.item,
+        })),
+        Command::InventoryItemRemove(cmd) => {
+            Some(Frame::InventoryItemRemove(InventoryItemRemove {
+                entity: cmd.entity,
+                id: cmd.slot,
+            }))
+        }
+        Command::InventoryUpdate(cmd) => Some(Frame::InventoryItemUpdate(InventoryItemUpdate {
+            entity: cmd.entity,
+            id: cmd.slot,
+            equipped: cmd.equipped,
+            hidden: cmd.hidden,
+        })),
+        Command::Connected(_) => None,
+        Command::Disconnected => None,
+        Command::ReceivedCommands(_) => None,
     }
 }
 
@@ -337,12 +237,12 @@ mod tests {
         assert_eq!(entities.len(), 0);
         assert_eq!(entities.is_empty(), true);
 
-        entities.insert(EntityId::from_raw(0), ServerEntity(0));
+        entities.insert(EntityId::from_raw(0));
         assert_eq!(entities.get(EntityId::from_raw(0)), Some(ServerEntity(0)));
         assert_eq!(entities.get(ServerEntity(0)), Some(EntityId::from_raw(0)));
         assert_eq!(entities.len(), 1);
 
-        entities.insert(EntityId::from_raw(1), ServerEntity(1));
+        entities.insert(EntityId::from_raw(1));
         assert_eq!(entities.get(EntityId::from_raw(1)), Some(ServerEntity(1)));
         assert_eq!(entities.get(ServerEntity(1)), Some(EntityId::from_raw(1)));
         assert_eq!(entities.len(), 2);

@@ -9,6 +9,7 @@ use game_common::world::world::WorldState;
 use game_core::counter::UpdateCounter;
 use game_core::time::Time;
 use game_net::conn::{ConnectionHandle, ConnectionId};
+use game_net::entity::Entities;
 use game_net::snapshot::{Command, CommandQueue, ConnectionMessage};
 
 use crate::config::Config;
@@ -30,6 +31,8 @@ pub struct ServerConnection {
 
     /// How many frames to backlog and interpolate over.
     interplation_frames: ControlFrame,
+
+    pub server_entities: Entities,
 }
 
 impl ServerConnection {
@@ -49,6 +52,7 @@ impl ServerConnection {
                 counter: UpdateCounter::new(),
             },
             interplation_frames: ControlFrame(config.network.interpolation_frames),
+            server_entities: Entities::new(),
         }
     }
 
@@ -66,13 +70,20 @@ impl ServerConnection {
             });
 
             match cmd {
-                Command::EntityTranslate { id, translation } => {
-                    let ov = &mut self.overrides;
-                    ov.push(id, cmd_id, Prediction::Translation(translation));
+                Command::EntityTranslate(event) => {
+                    let entity_id = self.server_entities.get(event.id).unwrap();
+
+                    self.overrides.push(
+                        entity_id,
+                        cmd_id,
+                        Prediction::Translation(event.translation),
+                    );
                 }
-                Command::EntityRotate { id, rotation } => {
-                    let ov = &mut self.overrides;
-                    ov.push(id, cmd_id, Prediction::Rotation(rotation));
+                Command::EntityRotate(event) => {
+                    let entity_id = self.server_entities.get(event.id).unwrap();
+
+                    self.overrides
+                        .push(entity_id, cmd_id, Prediction::Rotation(event.rotation));
                 }
                 _ => (),
             }

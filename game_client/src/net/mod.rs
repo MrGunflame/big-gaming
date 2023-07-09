@@ -13,6 +13,7 @@ use game_common::components::actions::Actions;
 use game_common::components::components::Components;
 use game_common::components::items::Item;
 use game_common::components::transform::Transform;
+use game_common::entity::EntityId;
 use game_common::units::Mass;
 use game_common::world::control_frame::ControlFrame;
 use game_common::world::entity::{Entity, EntityBody};
@@ -177,7 +178,7 @@ fn flush_command_queue(mut conn: ResMut<ServerConnection>, mut world: ResMut<Wor
                 conn.shutdown();
                 continue;
             }
-            Command::ReceivedCommands { ids } => {
+            Command::ReceivedCommands(ids) => {
                 let view = world.front().unwrap();
 
                 for cmd in ids {
@@ -218,58 +219,70 @@ fn flush_command_queue(mut conn: ResMut<ServerConnection>, mut world: ResMut<Wor
         };
 
         match msg.command {
-            Command::EntityCreate {
-                id,
-                translation,
-                rotation,
-                data,
-            } => {
-                view.spawn(Entity {
-                    id,
+            Command::EntityCreate(event) => {
+                let id = view.spawn(Entity {
+                    id: EntityId::dangling(),
                     transform: Transform {
-                        translation,
-                        rotation,
+                        translation: event.translation,
+                        rotation: event.rotation,
                         scale: Vec3::splat(1.0),
                     },
-                    body: data,
+                    body: event.data,
                     components: Components::new(),
                 });
+
+                conn.server_entities.insert_client(id, event.id);
             }
-            Command::EntityDestroy { id } => {
+            Command::EntityDestroy(event) => {
+                let id = conn.server_entities.get(event.id).unwrap();
+
                 if view.despawn(id).is_none() {
                     tracing::warn!("attempted to destroy a non-existant entity {:?}", id);
                 }
             }
-            Command::EntityTranslate { id, translation } => match view.get_mut(id) {
-                Some(mut entity) => entity.transform.translation = translation,
-                None => {
-                    tracing::warn!("received translation for unknown entity {:?}", id);
+            Command::EntityTranslate(event) => {
+                let id = conn.server_entities.get(event.id).unwrap();
+
+                match view.get_mut(id) {
+                    Some(mut entity) => entity.transform.translation = event.translation,
+                    None => {
+                        tracing::warn!("received translation for unknown entity {:?}", id);
+                    }
                 }
-            },
-            Command::EntityRotate { id, rotation } => match view.get_mut(id) {
-                Some(mut entity) => entity.transform.rotation = rotation,
-                None => {
-                    tracing::warn!("received rotation for unknown entity {:?}", id);
+            }
+            Command::EntityRotate(event) => {
+                let id = conn.server_entities.get(event.id).unwrap();
+
+                match view.get_mut(id) {
+                    Some(mut entity) => entity.transform.rotation = event.rotation,
+                    None => {
+                        tracing::warn!("received rotation for unknown entity {:?}", id);
+                    }
                 }
-            },
-            Command::EntityVelocity { id, linvel, angvel } => {}
-            Command::EntityHealth { id, health } => {
+            }
+            Command::EntityHealth(event) => {
+                let id = conn.server_entities.get(event.id).unwrap();
+
                 let mut entity = view.get_mut(id).unwrap();
 
                 if let EntityBody::Actor(actor) = &mut entity.body {
-                    actor.health = health;
+                    actor.health = event.health;
                 } else {
                     tracing::warn!("tried to apply health to a non-actor entity");
                 }
             }
-            Command::EntityAction { id: _, action: _ } => todo!(),
-            Command::SpawnHost { id } => {
+            Command::EntityAction(event) => todo!(),
+            Command::SpawnHost(event) => {
+                let id = conn.server_entities.get(event.id).unwrap();
+
                 view.spawn_host(id);
                 conn.host = id;
             }
-            Command::InventoryItemAdd { entity, id, item } => {
+            Command::InventoryItemAdd(event) => {
+                let id = conn.server_entities.get(event.entity).unwrap();
+
                 let item = Item {
-                    id: item,
+                    id: event.item,
                     components: Components::default(),
                     mass: Mass::default(),
                     actions: Actions::default(),
@@ -280,32 +293,29 @@ fn flush_command_queue(mut conn: ResMut<ServerConnection>, mut world: ResMut<Wor
 
                 let mut inventories = view.inventories_mut();
 
-                let mut inventory = inventories.get_mut_or_insert(entity);
+                let mut inventory = inventories.get_mut_or_insert(id);
                 // FIXME: Don't unwrap
                 inventory.insert(item).unwrap();
             }
-            Command::InventoryItemRemove { entity, id } => {
+            Command::InventoryItemRemove(event) => {
+                let id = conn.server_entities.get(event.entity).unwrap();
+
                 let mut inventories = view.inventories_mut();
 
-                if let Some(mut inventory) = inventories.get_mut(entity) {
-                    inventory.remove(id);
+                if let Some(mut inventory) = inventories.get_mut(id) {
+                    inventory.remove(event.slot);
                 } else {
                     tracing::warn!(
                         "requested inventory on entity that has no inventory (or does not exist)"
                     );
                 }
             }
-            Command::InventoryUpdate {
-                entity,
-                id,
-                equipped,
-                hidden,
-            } => {
+            Command::InventoryUpdate(event) => {
                 todo!();
             }
             Command::Connected(_) => (),
             Command::Disconnected => (),
-            Command::ReceivedCommands { ids: _ } => unreachable!(),
+            Command::ReceivedCommands(_) => unreachable!(),
         }
 
         iterations += 1;
@@ -314,5 +324,5 @@ fn flush_command_queue(mut conn: ResMut<ServerConnection>, mut world: ResMut<Wor
         }
     }
 
-    conn.send(Command::ReceivedCommands { ids });
+    conn.send(Command::ReceivedCommands(ids));
 }

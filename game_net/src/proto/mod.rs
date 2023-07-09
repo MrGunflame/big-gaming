@@ -596,16 +596,6 @@ pub struct EntityRotate {
     pub rotation: Quat,
 }
 
-/// Updates the velocity of an entity. Contains the absolute velocity.
-#[derive(Copy, Clone, Debug, Encode, Decode)]
-pub struct EntityVelocity {
-    pub entity: ServerEntity,
-    /// The linear velocity of the entity.
-    pub linvel: Vec3,
-    /// The angular velocity of the entity.
-    pub angvel: Vec3,
-}
-
 /// Updates the health of an entity.
 #[derive(Copy, Clone, Debug, Encode, Decode)]
 pub struct EntityHealth {
@@ -835,7 +825,6 @@ pub enum Frame {
     EntityDestroy(EntityDestroy),
     EntityTranslate(EntityTranslate),
     EntityRotate(EntityRotate),
-    EntityVelocity(EntityVelocity),
     EntityHealth(EntityHealth),
     EntityAction(EntityAction),
     SpawnHost(SpawnHost),
@@ -851,7 +840,6 @@ impl Frame {
             Self::EntityDestroy(frame) => frame.entity,
             Self::EntityTranslate(frame) => frame.entity,
             Self::EntityRotate(frame) => frame.entity,
-            Self::EntityVelocity(frame) => frame.entity,
             Self::EntityHealth(frame) => frame.entity,
             Self::EntityAction(frame) => frame.entity,
             Self::SpawnHost(frame) => frame.entity,
@@ -884,10 +872,6 @@ impl Encode for Frame {
             }
             Self::EntityRotate(frame) => {
                 FrameType::ENTITY_ROTATE.encode(&mut buf)?;
-                frame.encode(buf)
-            }
-            Self::EntityVelocity(frame) => {
-                FrameType::ENTITY_VELOCITY.encode(&mut buf)?;
                 frame.encode(buf)
             }
             Self::EntityHealth(frame) => {
@@ -943,10 +927,6 @@ impl Decode for Frame {
             FrameType::ENTITY_ROTATE => {
                 let frame = EntityRotate::decode(buf)?;
                 Ok(Self::EntityRotate(frame))
-            }
-            FrameType::ENTITY_VELOCITY => {
-                let frame = EntityVelocity::decode(buf)?;
-                Ok(Self::EntityVelocity(frame))
             }
             FrameType::ENTITY_HEALTH => {
                 let frame = EntityHealth::decode(buf)?;
@@ -1142,9 +1122,6 @@ impl FrameType {
     /// The `FrameType` for the [`EntityRotate`] frame.
     pub const ENTITY_ROTATE: Self = Self(3);
 
-    /// The `FrameType` for the [`EntityVelocity`] frame.
-    pub const ENTITY_VELOCITY: Self = Self(4);
-
     pub const SPAWN_HOST: Self = Self(5);
 
     pub const PLAYER_JOIN: Self = Self(6);
@@ -1171,7 +1148,6 @@ impl TryFrom<u16> for FrameType {
             Self::ENTITY_DESTROY => Ok(Self::ENTITY_DESTROY),
             Self::ENTITY_TRANSLATE => Ok(Self::ENTITY_TRANSLATE),
             Self::ENTITY_ROTATE => Ok(Self::ENTITY_ROTATE),
-            Self::ENTITY_VELOCITY => Ok(Self::ENTITY_VELOCITY),
             Self::ENTITY_HEALTH => Ok(Self::ENTITY_HEALTH),
             Self::ENTITY_ACTION => Ok(Self::ENTITY_ACTION),
             Self::SPAWN_HOST => Ok(Self::SPAWN_HOST),

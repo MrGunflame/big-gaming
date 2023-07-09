@@ -9,7 +9,7 @@ use game_core::modules::Modules;
 use game_data::record::{Record, RecordBody};
 use game_input::hotkeys::{Hotkey, HotkeyCode, HotkeyId, HotkeyReader, Hotkeys, TriggerKind};
 use game_input::mouse::MouseButton;
-use game_net::snapshot::Command;
+use game_net::snapshot::{Command, EntityAction};
 
 use crate::net::ServerConnection;
 
@@ -89,10 +89,12 @@ fn dispatch_player_action_hotkeys(
         };
 
         for action in actions {
-            conn.send(Command::EntityAction {
-                id: host,
+            let entity_id = conn.server_entities.get(host).unwrap();
+
+            conn.send(Command::EntityAction(EntityAction {
+                id: entity_id,
                 action: *action,
-            });
+            }));
 
             queue.push(EntityEvent {
                 entity: host,

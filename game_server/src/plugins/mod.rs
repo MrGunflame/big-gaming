@@ -17,7 +17,9 @@ use game_common::world::world::{AsView, WorldState};
 use game_common::world::CellId;
 use game_core::modules::Modules;
 use game_net::conn::ConnectionId;
-use game_net::snapshot::{Command, CommandQueue, ConnectionMessage, Response, Status};
+use game_net::snapshot::{
+    Command, CommandQueue, ConnectionMessage, EntityCreate, InventoryItemAdd, Response, Status,
+};
 use game_script::events::Events;
 use game_script::scripts::Scripts;
 use game_script::ScriptServer;
@@ -137,35 +139,41 @@ fn flush_command_queue(
             conn.push_proc_msg(id);
         }
 
+        let state = conn.state().read();
+
         match msg.command {
-            Command::EntityCreate {
-                id,
-                translation,
-                rotation,
-                data,
-            } => {}
-            Command::EntityDestroy { id } => {
-                // commands.entity(id).despawn();
+            Command::EntityCreate(event) => {}
+            Command::EntityDestroy(event) => {}
+            Command::EntityTranslate(event) => {
+                let Some(entity_id) = state.entities.get(event.id) else {
+                    continue;
+                };
+
+                let mut entity = view.get_mut(entity_id).unwrap();
+                entity.transform.translation = event.translation;
             }
-            Command::EntityTranslate { id, translation } => {
-                let mut entity = view.get_mut(id).unwrap();
-                entity.transform.translation = translation;
+            Command::EntityRotate(event) => {
+                let Some(entity_id) = state.entities.get(event.id) else {
+                    continue;
+                };
+
+                let mut entity = view.get_mut(entity_id).unwrap();
+                entity.transform.rotation = event.rotation;
             }
-            Command::EntityRotate { id, rotation } => {
-                let mut entity = view.get_mut(id).unwrap();
-                entity.transform.rotation = rotation;
-            }
-            Command::EntityVelocity { id, linvel, angvel } => {}
-            Command::EntityHealth { id: _, health: _ } => {
+            Command::EntityHealth(event) => {
                 tracing::warn!("received EntityHealth from client, ignored");
             }
-            Command::EntityAction { id, action } => {
+            Command::EntityAction(event) => {
+                let Some(entity_id) = state.entities.get(event.id) else {
+                    continue;
+                };
+
                 events.push(EntityEvent {
-                    entity: id,
+                    entity: entity_id,
                     event: Event::Action(ActionEvent {
-                        entity: id,
-                        invoker: id,
-                        action,
+                        entity: entity_id,
+                        invoker: entity_id,
+                        action: event.action,
                     }),
                 });
 
@@ -181,6 +189,8 @@ fn flush_command_queue(
                     }),
                     components: Components::new(),
                 });
+
+                conn.state().write().entities.insert(id);
 
                 view.insert_streaming_source(
                     id,
@@ -213,26 +223,17 @@ fn flush_command_queue(
                 // Remove the player from the connections ref.
                 connections.remove(msg.conn);
             }
-            Command::SpawnHost { id } => (),
-            Command::InventoryItemAdd {
-                entity: _,
-                id: _,
-                item: _,
-            } => {
+            Command::SpawnHost(event) => (),
+            Command::InventoryItemAdd(event) => {
                 // Server-only frame
             }
-            Command::InventoryItemRemove { entity: _, id: _ } => {
+            Command::InventoryItemRemove(event) => {
                 // Server-only frame
             }
-            Command::InventoryUpdate {
-                entity: _,
-                id: _,
-                equipped: _,
-                hidden: _,
-            } => {
+            Command::InventoryUpdate(event) => {
                 // Server-only frame
             }
-            Command::ReceivedCommands { ids: _ } => (),
+            Command::ReceivedCommands(ids) => (),
         }
 
         drop(view);
@@ -351,16 +352,18 @@ fn update_client(conn: &Connection, world: &WorldState) {
             for entity in cell.iter() {
                 state.known_entities.insert(entity.clone());
 
+                let entity_id = state.entities.insert(entity.id);
+
                 conn.handle().send_cmd(ConnectionMessage {
                     id: None,
                     conn: ConnectionId(0),
                     control_frame: curr.control_frame(),
-                    command: Command::EntityCreate {
-                        id: entity.id,
+                    command: Command::EntityCreate(EntityCreate {
+                        id: entity_id,
                         translation: entity.transform.translation,
                         rotation: entity.transform.rotation,
                         data: entity.body.clone(),
-                    },
+                    }),
                 });
 
                 // Sync the entity inventory, if it has one.
@@ -370,11 +373,11 @@ fn update_client(conn: &Connection, world: &WorldState) {
                             id: None,
                             conn: ConnectionId(0),
                             control_frame: curr.control_frame(),
-                            command: Command::InventoryItemAdd {
-                                entity: entity.id,
-                                id: item.id,
+                            command: Command::InventoryItemAdd(InventoryItemAdd {
+                                entity: entity_id,
+                                slot: item.id,
                                 item: item.item.id,
-                            },
+                            }),
                         });
                     }
                 }
@@ -415,15 +418,14 @@ fn update_client(conn: &Connection, world: &WorldState) {
             id: None,
             conn: conn.id(),
             control_frame: ControlFrame(0),
-            command: Command::ReceivedCommands {
-                ids: ids
-                    .into_iter()
+            command: Command::ReceivedCommands(
+                ids.into_iter()
                     .map(|id| Response {
                         id,
                         status: Status::Received,
                     })
                     .collect(),
-            },
+            ),
         });
     }
 }
