@@ -262,7 +262,7 @@ impl UiPipeline {
                 module: &shader,
                 entry_point: "fs_main",
                 targets: &[Some(ColorTargetState {
-                    format: TextureFormat::Bgra8UnormSrgb,
+                    format: TextureFormat::Bgra8Unorm,
                     blend: Some(BlendState::ALPHA_BLENDING),
                     write_mask: ColorWrites::ALL,
                 })],

@@ -30,6 +30,7 @@ use crate::depth_stencil::{create_depth_texture, DEPTH_TEXTURE_FORMAT};
 use crate::graph::{Node, RenderContext};
 use crate::mesh::Vertex;
 use crate::pbr::RenderMaterialAssets;
+use crate::post_process::PostProcessPipeline;
 use crate::RenderDevice;
 
 #[derive(Resource)]
@@ -407,11 +408,15 @@ impl MainPass {
 
         drop(render_pass);
 
+        let intermediate_view = window
+            .intermediate_buffer
+            .texture
+            .create_view(&TextureViewDescriptor::default());
+
         // Final pass
         {
             let device = world.resource::<RenderDevice>();
             let data = world.resource::<LightingPipeline>();
-            let mesh_pipeline = world.resource::<MeshPipeline>();
 
             let bind_group = device.0.create_bind_group(&BindGroupDescriptor {
                 label: Some("final_pass_bind_group"),
@@ -443,7 +448,7 @@ impl MainPass {
             let mut render_pass = ctx.encoder.begin_render_pass(&RenderPassDescriptor {
                 label: Some("render_pass"),
                 color_attachments: &[Some(RenderPassColorAttachment {
-                    view: &ctx.view,
+                    view: &intermediate_view,
                     resolve_target: None,
                     ops: Operations {
                         load: LoadOp::Clear(Color::BLACK),
@@ -479,6 +484,9 @@ impl MainPass {
                 render_pass.draw_indexed(0..LightingPipeline::NUM_VERTICES, 0, 0..1);
             }
         }
+
+        let post_pl = world.resource::<PostProcessPipeline>();
+        post_pl.render(ctx.encoder, &intermediate_view, ctx.view, &device.0);
     }
 }
 
@@ -663,7 +671,7 @@ impl LightingPipeline {
                 module: &shader,
                 entry_point: "fs_main",
                 targets: &[Some(ColorTargetState {
-                    format: TextureFormat::Bgra8UnormSrgb,
+                    format: TextureFormat::Rgba8Unorm,
                     blend: Some(BlendState {
                         color: BlendComponent {
                             src_factor: BlendFactor::One,
@@ -725,7 +733,7 @@ impl LightingPipeline {
                 module: &point_light_shader,
                 entry_point: "fs_main",
                 targets: &[Some(ColorTargetState {
-                    format: TextureFormat::Bgra8UnormSrgb,
+                    format: TextureFormat::Rgba8Unorm,
                     blend: Some(BlendState {
                         color: BlendComponent {
                             src_factor: BlendFactor::One,
@@ -822,6 +830,7 @@ pub struct WindowData {
     depth_texture_view: TextureView,
     depth_sampler: Sampler,
     g_buffer: GBuffer,
+    intermediate_buffer: IntermediateBuffer,
 }
 
 pub fn create_render_windows(
@@ -844,6 +853,7 @@ pub fn create_render_windows(
                 depth_texture_view,
                 depth_sampler,
                 g_buffer: GBuffer::new(&device.0, size.width, size.height),
+                intermediate_buffer: IntermediateBuffer::new(&device.0, size.width, size.height),
             },
         );
     }
@@ -883,6 +893,38 @@ pub fn resize_render_windows(
         window.depth_sampler = depth_sampler;
 
         window.g_buffer = GBuffer::new(&device.0, event.width, event.height);
+        window.intermediate_buffer = IntermediateBuffer::new(&device.0, event.width, event.height);
+    }
+}
+
+/// Intermediate texture buffer, for post processing.
+#[derive(Debug)]
+struct IntermediateBuffer {
+    texture: Texture,
+}
+
+impl IntermediateBuffer {
+    const FORMAT: TextureFormat = TextureFormat::Rgba8Unorm;
+
+    fn new(device: &Device, width: u32, height: u32) -> Self {
+        let size = Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        };
+
+        let texture = device.create_texture(&TextureDescriptor {
+            label: Some("intermediate_buffer"),
+            size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: TextureDimension::D2,
+            format: Self::FORMAT,
+            usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        });
+
+        Self { texture }
     }
 }
 

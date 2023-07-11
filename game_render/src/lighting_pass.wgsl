@@ -123,11 +123,6 @@ fn directional_light(in: VertexOutput, light: DirectionalLight) -> vec3<f32> {
     let ambient = light.color * light.ambient * albedo;
 
     var color = ambient + lo;
-    
-    // HDR
-    color = color / (color + vec3(1.0));
-    // Gamma correct
-    //color = pow(color, vec3(1.0 / 2.2));
 
     return color;
 }

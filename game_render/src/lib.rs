@@ -11,6 +11,7 @@ pub mod shape;
 pub mod texture;
 
 mod depth_stencil;
+mod post_process;
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -30,6 +31,7 @@ use graph::{RenderContext, RenderGraph};
 use mesh::Mesh;
 use pbr::{PbrMaterial, RenderMaterialAssets};
 use pipeline::{LightingPipeline, MainPass};
+use post_process::PostProcessPipeline;
 use texture::ImagePlugin;
 use wgpu::{
     Adapter, Backends, Color, CommandEncoderDescriptor, Device, DeviceDescriptor, Features,
@@ -136,6 +138,8 @@ impl Plugin for RenderPlugin {
         app.add_system(pipeline::destroy_render_windows);
         app.add_system(pipeline::resize_render_windows);
 
+        app.init_resource::<PostProcessPipeline>();
+
         app.configure_set(
             RenderSet::Render
                 .after(RenderSet::Update)
@@ -207,7 +211,7 @@ pub fn create_surfaces(
             .formats
             .iter()
             .copied()
-            .filter(|f| f.is_srgb())
+            .filter(|f| !f.is_srgb())
             .next()
             .unwrap_or(caps.formats[0]);
 
@@ -328,7 +332,7 @@ pub fn render_surfaces(
 
                 let view = output.texture.create_view(&TextureViewDescriptor {
                     label: Some("surface_view"),
-                    format: Some(TextureFormat::Bgra8UnormSrgb),
+                    format: Some(surface.config.format),
                     ..Default::default()
                 });
 
