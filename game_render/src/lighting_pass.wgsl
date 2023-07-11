@@ -9,12 +9,13 @@ var g_normal: texture_2d<f32>;
 @group(0) @binding(3)
 var g_albedo: texture_2d<f32>;
 @group(0) @binding(4)
-var<uniform> camera: CameraProjection;
-@group(0) @binding(5)
 var g_metallic_roughness: texture_2d<f32>;
 
 @group(1) @binding(0)
 var<uniform> light: Light;
+
+@group(2) @binding(0)
+var<uniform> camera: CameraProjection;
 
 struct Light {
     color: vec3<f32>,

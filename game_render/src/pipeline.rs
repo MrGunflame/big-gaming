@@ -1,24 +1,22 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use bevy_ecs::prelude::{Component, Entity, EventReader, Res};
-use bevy_ecs::query::{Added, Changed, With};
-use bevy_ecs::system::{Commands, NonSend, Query, ResMut, Resource};
-use bevy_ecs::world::FromWorld;
+use bevy_ecs::prelude::{Entity, EventReader, Res};
+use bevy_ecs::system::{Query, ResMut, Resource};
+use bevy_ecs::world::{FromWorld, World};
 use bytemuck::{Pod, Zeroable};
 use game_common::components::transform::Transform;
 use game_window::events::{WindowCreated, WindowDestroyed, WindowResized};
 use game_window::WindowState;
-use glam::{Mat3, Mat4, UVec2, Vec3, Vec4};
+use glam::{Mat3, Mat4, UVec2, Vec4};
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
 use wgpu::{
     AddressMode, BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout,
     BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindingResource, BindingType, BlendComponent,
     BlendFactor, BlendOperation, BlendState, Buffer, BufferAddress, BufferBindingType,
-    BufferDescriptor, BufferUsages, Color, ColorTargetState, ColorWrites, CommandEncoder,
-    CompareFunction, DepthBiasState, DepthStencilState, Device, Extent3d, Face, FilterMode,
-    FragmentState, FrontFace, ImageCopyBuffer, ImageCopyTexture, IndexFormat, LoadOp,
-    MultisampleState, Operations, PipelineLayoutDescriptor, PolygonMode, PrimitiveState,
+    BufferUsages, Color, ColorTargetState, ColorWrites, CompareFunction, DepthBiasState,
+    DepthStencilState, Device, Extent3d, Face, FilterMode, FragmentState, FrontFace, IndexFormat,
+    LoadOp, MultisampleState, Operations, PipelineLayoutDescriptor, PolygonMode, PrimitiveState,
     PrimitiveTopology, RenderPassColorAttachment, RenderPassDepthStencilAttachment,
     RenderPassDescriptor, RenderPipeline, RenderPipelineDescriptor, Sampler, SamplerBindingType,
     SamplerDescriptor, ShaderModule, ShaderModuleDescriptor, ShaderSource, ShaderStages,
@@ -27,18 +25,18 @@ use wgpu::{
     VertexBufferLayout, VertexFormat, VertexState, VertexStepMode,
 };
 
-use crate::camera::{Projection, OPENGL_TO_WGPU};
+use crate::camera::{CameraBuffer, Cameras};
 use crate::depth_stencil::{create_depth_texture, DEPTH_TEXTURE_FORMAT};
-use crate::graph::Node;
-use crate::mesh::{Mesh, Vertex};
+use crate::graph::{Node, RenderContext};
+use crate::mesh::Vertex;
 use crate::pbr::RenderMaterialAssets;
 use crate::RenderDevice;
 
 #[derive(Resource)]
 pub struct MeshPipeline {
-    pub bind_group_layout: BindGroupLayout,
     pub shader: ShaderModule,
-    pub camera_buffer: Buffer,
+    pub model_bind_group_layout: BindGroupLayout,
+    pub camera_bind_group_layout: BindGroupLayout,
 }
 
 impl FromWorld for MeshPipeline {
@@ -49,10 +47,29 @@ impl FromWorld for MeshPipeline {
 
 impl MeshPipeline {
     pub fn new(device: &Device) -> Self {
-        let bind_group_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
-            label: Some("camera_bind_group_layout"),
-            entries: &[
-                BindGroupLayoutEntry {
+        let model_bind_group_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
+            label: Some("model_bind_group_layout"),
+            entries: &[BindGroupLayoutEntry {
+                binding: 0,
+                visibility: ShaderStages::VERTEX,
+                ty: BindingType::Buffer {
+                    ty: BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            }],
+        });
+
+        let shader = device.create_shader_module(ShaderModuleDescriptor {
+            label: Some("mesh_shader"),
+            source: ShaderSource::Wgsl(include_str!("mesh.wgsl").into()),
+        });
+
+        let camera_bind_group_layout =
+            device.create_bind_group_layout(&BindGroupLayoutDescriptor {
+                label: Some("camera_bind_group_layout"),
+                entries: &[BindGroupLayoutEntry {
                     binding: 0,
                     visibility: ShaderStages::VERTEX | ShaderStages::FRAGMENT,
                     ty: BindingType::Buffer {
@@ -61,35 +78,13 @@ impl MeshPipeline {
                         min_binding_size: None,
                     },
                     count: None,
-                },
-                BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: ShaderStages::VERTEX,
-                    ty: BindingType::Buffer {
-                        ty: BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                },
-            ],
-        });
-
-        let shader = device.create_shader_module(ShaderModuleDescriptor {
-            label: Some("mesh_shader"),
-            source: ShaderSource::Wgsl(include_str!("mesh.wgsl").into()),
-        });
-
-        let camera_buffer = device.create_buffer_init(&BufferInitDescriptor {
-            label: Some("camera_buffer"),
-            contents: bytemuck::cast_slice(&[CameraUniform::default()]),
-            usage: wgpu::BufferUsages::UNIFORM | BufferUsages::COPY_DST,
-        });
+                }],
+            });
 
         Self {
-            bind_group_layout,
             shader,
-            camera_buffer,
+            model_bind_group_layout,
+            camera_bind_group_layout,
         }
     }
 }
@@ -202,7 +197,11 @@ impl MaterialPipeline {
 
         let pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
             label: Some("render_pipeline_layout"),
-            bind_group_layouts: &[&mesh_pipeline.bind_group_layout, &bind_group_layout],
+            bind_group_layouts: &[
+                &mesh_pipeline.camera_bind_group_layout,
+                &mesh_pipeline.model_bind_group_layout,
+                &bind_group_layout,
+            ],
             push_constant_ranges: &[],
         });
 
@@ -268,47 +267,6 @@ impl MaterialPipeline {
     }
 }
 
-#[derive(Copy, Clone, Debug, Zeroable, Pod)]
-#[repr(C)]
-pub struct CameraUniform {
-    // We only need `[f32; 3]`, but one word for alignment.
-    view_position: [f32; 4],
-    view_proj: [[f32; 4]; 4],
-}
-
-impl CameraUniform {
-    pub fn new(transform: Transform, projection: Projection) -> Self {
-        let view = Mat4::look_to_rh(
-            transform.translation,
-            transform.rotation * -Vec3::Z,
-            transform.rotation * Vec3::Y,
-        );
-
-        let proj = Mat4::perspective_rh(
-            projection.fov,
-            projection.aspect_ratio,
-            projection.near,
-            projection.far,
-        );
-
-        Self {
-            view_position: [
-                transform.translation.x,
-                transform.translation.y,
-                transform.translation.z,
-                0.0,
-            ],
-            view_proj: (OPENGL_TO_WGPU * proj * view).to_cols_array_2d(),
-        }
-    }
-}
-
-impl Default for CameraUniform {
-    fn default() -> Self {
-        Self::new(Transform::default(), Projection::default())
-    }
-}
-
 #[derive(Debug)]
 struct RenderNode {
     vertices: Arc<Buffer>,
@@ -322,91 +280,18 @@ pub struct MainPass {
     nodes: Vec<RenderNode>,
 }
 
-impl Node for MainPass {
-    fn update(&mut self, world: &mut bevy_ecs::world::World) {
-        // world.resource_scope::<RenderDevice, _>(|world, device| {
-        //     world.resource_scope::<MeshPipeline, _>(|world, pipeline| {
-        //         world.resource_scope::<MaterialPipeline, _>(|world, mat_pl| {
-        //             let mut nodes = world.resource_mut::<RenderMaterialAssets>();
-
-        //             for node in &mut nodes.entities {}
-
-        //             let mut query =
-        //                 world.query::<(&ComputedMesh, &ComputedMaterial, &TransformationMatrix)>();
-
-        //             self.nodes.clear();
-
-        //             for (mesh, material, mat) in query.iter(&world) {
-        //                 let Some(vertices) = &mesh.vertices else {
-        //                         continue;
-        //                     };
-        //                 let Some(indices) = &mesh.indicies else {
-        //                         continue;
-        //                     };
-        //                 let num_vertices = mesh.num_vertices;
-
-        //                 let bind_group = device.0.create_bind_group(&wgpu::BindGroupDescriptor {
-        //                     label: Some("mesh_bind_group"),
-        //                     layout: &pipeline.bind_group_layout,
-        //                     entries: &[
-        //                         BindGroupEntry {
-        //                             binding: 0,
-        //                             resource: pipeline.camera_buffer.as_entire_binding(),
-        //                         },
-        //                         BindGroupEntry {
-        //                             binding: 1,
-        //                             resource: mat.buffer.as_entire_binding(),
-        //                         },
-        //                     ],
-        //                 });
-
-        //                 let Some(base_color) = material.base_color.as_ref() else {
-        //                         continue;
-        //                     };
-
-        //                 let Some(texture_view) = material
-        //                         .base_color_texture
-        //                         .as_ref()
-        //                         .map(|t| t.create_view(&TextureViewDescriptor::default())) else {
-        //                             continue;
-        //                         };
-
-        //                 let bind_group_mat =
-        //                     device.0.create_bind_group(&wgpu::BindGroupDescriptor {
-        //                         label: Some("material_bind_group"),
-        //                         layout: &mat_pl.bind_group_layout,
-        //                         entries: &[
-        //                             BindGroupEntry {
-        //                                 binding: 0,
-        //                                 resource: base_color.as_entire_binding(),
-        //                             },
-        //                             BindGroupEntry {
-        //                                 binding: 1,
-        //                                 resource: BindingResource::TextureView(&texture_view),
-        //                             },
-        //                             BindGroupEntry {
-        //                                 binding: 2,
-        //                                 resource: BindingResource::Sampler(&mat_pl.sampler),
-        //                             },
-        //                         ],
-        //                     });
-
-        //                 self.nodes.push(RenderNode {
-        //                     vertices: vertices.clone(),
-        //                     indices: indices.clone(),
-        //                     num_vertices,
-        //                     bind_groups: vec![bind_group, bind_group_mat],
-        //                 });
-        //             }
-        //         });
-        //     });
-        // });
-    }
-
-    fn render(&self, world: &bevy_ecs::world::World, ctx: &mut crate::graph::RenderContext<'_>) {
+impl MainPass {
+    fn render_camera_target(
+        &self,
+        camera: &CameraBuffer,
+        world: &World,
+        ctx: &mut RenderContext<'_>,
+    ) {
+        let mesh_pl = world.resource::<MeshPipeline>();
         let pipeline = world.resource::<MaterialPipeline>();
         let windows = world.resource::<RenderWindows>();
         let nodes = world.resource::<RenderMaterialAssets>();
+        let device = world.resource::<RenderDevice>();
 
         let Some(window) = windows.windows.get(&ctx.window) else {
             return;
@@ -426,6 +311,15 @@ impl Node for MainPass {
 
             return;
         }
+
+        let camera_bind_group = device.0.create_bind_group(&BindGroupDescriptor {
+            label: Some("camera_bind_group"),
+            layout: &mesh_pl.camera_bind_group_layout,
+            entries: &[BindGroupEntry {
+                binding: 0,
+                resource: camera.buffer.as_entire_binding(),
+            }],
+        });
 
         // Geometry pass
 
@@ -501,8 +395,9 @@ impl Node for MainPass {
                 continue;
             }
 
-            render_pass.set_bind_group(0, &node.transform_bind_group, &[]);
-            render_pass.set_bind_group(1, &node.material_bind_group.as_ref().unwrap(), &[]);
+            render_pass.set_bind_group(0, &camera_bind_group, &[]);
+            render_pass.set_bind_group(1, &node.transform_bind_group, &[]);
+            render_pass.set_bind_group(2, &node.material_bind_group.as_ref().unwrap(), &[]);
 
             render_pass.set_vertex_buffer(0, node.vertices.slice(..));
             render_pass.set_index_buffer(node.indices.slice(..), IndexFormat::Uint32);
@@ -540,10 +435,6 @@ impl Node for MainPass {
                     },
                     BindGroupEntry {
                         binding: 4,
-                        resource: mesh_pipeline.camera_buffer.as_entire_binding(),
-                    },
-                    BindGroupEntry {
-                        binding: 5,
                         resource: BindingResource::TextureView(&metallic_roughness),
                     },
                 ],
@@ -567,6 +458,7 @@ impl Node for MainPass {
             for node in nodes.directional_lights.iter() {
                 render_pass.set_bind_group(0, &bind_group, &[]);
                 render_pass.set_bind_group(1, &node.bind_group, &[]);
+                render_pass.set_bind_group(2, &camera_bind_group, &[]);
 
                 render_pass.set_vertex_buffer(0, data.vertices.slice(..));
                 render_pass.set_index_buffer(data.indices.slice(..), IndexFormat::Uint16);
@@ -579,11 +471,26 @@ impl Node for MainPass {
             for node in nodes.point_lights.iter() {
                 render_pass.set_bind_group(0, &bind_group, &[]);
                 render_pass.set_bind_group(1, &node.bind_group, &[]);
+                render_pass.set_bind_group(2, &camera_bind_group, &[]);
 
                 render_pass.set_vertex_buffer(0, data.vertices.slice(..));
                 render_pass.set_index_buffer(data.indices.slice(..), IndexFormat::Uint16);
 
                 render_pass.draw_indexed(0..LightingPipeline::NUM_VERTICES, 0, 0..1);
+            }
+        }
+    }
+}
+
+impl Node for MainPass {
+    fn update(&mut self, world: &mut World) {}
+
+    fn render(&self, world: &bevy_ecs::world::World, ctx: &mut RenderContext<'_>) {
+        let cameras = world.resource::<Cameras>();
+
+        if let Some(entity) = cameras.window_targets.get(&ctx.window) {
+            if let Some(camera) = cameras.cameras.get(&entity) {
+                self.render_camera_target(camera, world, ctx);
             }
         }
     }
@@ -603,7 +510,7 @@ impl LightingPipeline {
     const INDICES: &[u16] = &[0, 1, 2, 2, 3, 0];
     const NUM_VERTICES: u32 = Self::INDICES.len() as u32;
 
-    fn new(device: &Device) -> Self {
+    fn new(device: &Device, mesh_pl: &MeshPipeline) -> Self {
         const VERTICES: &[Vertex] = &[
             Vertex {
                 position: [-1.0, 1.0],
@@ -705,16 +612,6 @@ impl LightingPipeline {
                 BindGroupLayoutEntry {
                     binding: 4,
                     visibility: ShaderStages::FRAGMENT,
-                    ty: BindingType::Buffer {
-                        ty: BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                },
-                BindGroupLayoutEntry {
-                    binding: 5,
-                    visibility: ShaderStages::FRAGMENT,
                     ty: BindingType::Texture {
                         sample_type: TextureSampleType::Float { filterable: true },
                         view_dimension: TextureViewDimension::D2,
@@ -741,7 +638,11 @@ impl LightingPipeline {
 
         let pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
             label: Some("lighting_pass_pipeline_layout"),
-            bind_group_layouts: &[&bind_group_layout, &light_bind_group_layout],
+            bind_group_layouts: &[
+                &bind_group_layout,
+                &light_bind_group_layout,
+                &mesh_pl.camera_bind_group_layout,
+            ],
             push_constant_ranges: &[],
         });
 
@@ -870,7 +771,10 @@ impl LightPipelines {}
 
 impl FromWorld for LightingPipeline {
     fn from_world(world: &mut bevy_ecs::world::World) -> Self {
-        world.resource_scope::<RenderDevice, _>(|world, device| Self::new(&device.0))
+        let device = world.resource::<RenderDevice>();
+        let mesh_pl = world.resource::<MeshPipeline>();
+
+        Self::new(&device.0, &mesh_pl)
     }
 }
 

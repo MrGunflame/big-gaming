@@ -115,7 +115,11 @@ impl Plugin for RenderPlugin {
         app.insert_resource(camera::Cameras::default());
         app.add_system(camera::create_cameras.in_set(RenderSet::Update));
         app.add_system(camera::update_camera_aspect_ratio.in_set(RenderSet::Update));
-        app.add_system(camera::update_camera_projection_matrix.in_set(RenderSet::Update));
+        app.add_system(
+            camera::update_camera_buffer
+                .in_set(RenderSet::Update)
+                .after(camera::update_camera_aspect_ratio),
+        );
 
         app.add_system(pbr::prepare_materials.in_set(RenderSet::Update));
         app.add_system(pbr::prepare_directional_lights.in_set(RenderSet::Update));

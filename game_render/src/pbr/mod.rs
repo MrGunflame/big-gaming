@@ -299,17 +299,11 @@ pub fn prepare_materials(
 
         let transform_bind_group = device.0.create_bind_group(&BindGroupDescriptor {
             label: Some("mesh_bind_group"),
-            layout: &mesh_pipeline.bind_group_layout,
-            entries: &[
-                BindGroupEntry {
-                    binding: 0,
-                    resource: mesh_pipeline.camera_buffer.as_entire_binding(),
-                },
-                BindGroupEntry {
-                    binding: 1,
-                    resource: transform_buffer.as_entire_binding(),
-                },
-            ],
+            layout: &mesh_pipeline.model_bind_group_layout,
+            entries: &[BindGroupEntry {
+                binding: 0,
+                resource: transform_buffer.as_entire_binding(),
+            }],
         });
 
         let vertices = device.0.create_buffer_init(&BufferInitDescriptor {

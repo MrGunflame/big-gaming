@@ -17,7 +17,7 @@ struct MeshMatrix {
 
 @group(0) @binding(0)
 var<uniform> camera: CameraProjection;
-@group(0) @binding(1)
+@group(1) @binding(0)
 var<uniform> mesh: MeshMatrix;
 
 struct VertexInput {

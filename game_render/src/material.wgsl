@@ -1,22 +1,22 @@
 
-@group(1) @binding(0)
+@group(2) @binding(0)
 var<uniform> base_color: vec4<f32>;
-@group(1) @binding(1)
+@group(2) @binding(1)
 var color_texture: texture_2d<f32>;
-@group(1) @ binding(2)
+@group(2) @ binding(2)
 var color_texture_sampler: sampler;
 
-@group(1) @binding(3)
+@group(2) @binding(3)
 var normal_texture: texture_2d<f32>;
-@group(1) @binding(4)
+@group(2) @binding(4)
 var normal_sampler: sampler;
-@group(1) @binding(5)
+@group(2) @binding(5)
 var<uniform> roughness: f32;
-@group(1) @binding(6)
+@group(2) @binding(6)
 var<uniform> metallic: f32;
-@group(1) @binding(7)
+@group(2) @binding(7)
 var metallic_roughness_texture: texture_2d<f32>;
-@group(1) @binding(8)
+@group(2) @binding(8)
 var metallic_roughness_sampler: sampler;
 
 @group(0) @binding(0)
