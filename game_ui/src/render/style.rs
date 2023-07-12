@@ -92,6 +92,15 @@ pub struct Bounds {
     pub max: SizeVec2,
 }
 
+impl Bounds {
+    pub const fn exact(size: SizeVec2) -> Self {
+        Self {
+            min: size,
+            max: size,
+        }
+    }
+}
+
 impl Default for Bounds {
     fn default() -> Self {
         Self {

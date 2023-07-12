@@ -301,11 +301,17 @@ impl LayoutTree {
         let height = layout.height - layout.style.padding.top - layout.style.padding.bottom;
 
         if let Some(children) = self.children.get(&key).cloned() {
+            // Relative positioned children
+            let relative_children: u32 = children.iter().fold(0, |acc, key| {
+                let style = &self.elems[&key].style;
+                acc + if style.position.is_relative() { 1 } else { 0 }
+            });
+
             match elem.style.justify {
                 Justify::Start => {
                     let mut next_position = start;
                     let size_per_elem =
-                        size_per_element(end - start, children.len() as u32, elem.style.direction);
+                        size_per_element(end - start, relative_children, elem.style.direction);
 
                     for child in children {
                         let child_style = &self.elems[&child].style;
@@ -346,7 +352,7 @@ impl LayoutTree {
                         };
 
                     let size_per_elem =
-                        size_per_element(end - start, children.len() as u32, elem.style.direction);
+                        size_per_element(end - start, relative_children, elem.style.direction);
 
                     for child in children.iter().rev().copied() {
                         let child_style = &self.elems[&child].style;
@@ -445,6 +451,11 @@ impl LayoutTree {
                             let mut next_pos = start.y + ((total_size - allocated_space.y) / 2.0);
 
                             for child in children {
+                                let style = &self.elems[child].style;
+                                if style.position.is_absolute() {
+                                    continue;
+                                }
+
                                 let layout = self.layouts.get_mut(child).unwrap();
                                 layout.position.y = next_pos;
 
@@ -456,6 +467,11 @@ impl LayoutTree {
                             let mut next_pos = start.x + ((total_size - allocated_space.x) / 2.0);
 
                             for child in children {
+                                let style = &self.elems[child].style;
+                                if style.position.is_absolute() {
+                                    continue;
+                                }
+
                                 let layout = self.layouts.get_mut(child).unwrap();
                                 layout.position.x = next_pos;
 
@@ -471,7 +487,7 @@ impl LayoutTree {
                 Justify::SpaceBetween => {
                     let mut next_position = start;
                     let size_per_elem =
-                        size_per_element(end - start, children.len() as u32, elem.style.direction);
+                        size_per_element(end - start, relative_children, elem.style.direction);
 
                     for child in children {
                         let child_style = &self.elems[&child].style;
@@ -517,11 +533,16 @@ impl LayoutTree {
 
                             // Distance/emtpy space between elements.
                             let distance = (total_size - allocated_space.y)
-                                / children.len().saturating_sub(1) as f32;
+                                / relative_children.saturating_sub(1) as f32;
 
                             let mut next_pos = start.y;
 
                             for child in children {
+                                let style = &self.elems[child].style;
+                                if style.position.is_absolute() {
+                                    continue;
+                                }
+
                                 let layout = self.layouts.get_mut(child).unwrap();
                                 layout.position.y = next_pos;
 
@@ -533,11 +554,16 @@ impl LayoutTree {
                             let total_size = (start.x + height) - start.x;
 
                             let distance = (total_size - allocated_space.x)
-                                / children.len().saturating_sub(1) as f32;
+                                / relative_children.saturating_sub(1) as f32;
 
                             let mut next_pos = start.x;
 
                             for child in children {
+                                let style = &self.elems[child].style;
+                                if style.position.is_absolute() {
+                                    continue;
+                                }
+
                                 let layout = self.layouts.get_mut(child).unwrap();
                                 layout.position.x = next_pos;
 
@@ -554,7 +580,7 @@ impl LayoutTree {
                 Justify::SpaceAround => {
                     let mut next_position = start;
                     let size_per_elem =
-                        size_per_element(end - start, children.len() as u32, elem.style.direction);
+                        size_per_element(end - start, relative_children, elem.style.direction);
 
                     for child in children {
                         let child_style = &self.elems[&child].style;
@@ -603,11 +629,16 @@ impl LayoutTree {
                             // more that `isize::MAX` children to be allocated, which
                             // is not allowed.
                             let distance =
-                                (total_size - allocated_space.y) / (children.len() + 1) as f32;
+                                (total_size - allocated_space.y) / (relative_children + 1) as f32;
 
                             let mut next_pos = start.y + distance;
 
-                            for child in children {
+                            for child in children.iter() {
+                                let style = &self.elems[child].style;
+                                if style.position.is_absolute() {
+                                    continue;
+                                }
+
                                 let layout = self.layouts.get_mut(child).unwrap();
                                 layout.position.y = next_pos;
 
@@ -619,11 +650,16 @@ impl LayoutTree {
                             let total_size = (start.x + width) - start.x;
 
                             let distance =
-                                (total_size - allocated_space.x) / (children.len() + 1) as f32;
+                                (total_size - allocated_space.x) / (relative_children + 1) as f32;
 
                             let mut next_pos = start.x + distance;
 
                             for child in children {
+                                let style = &self.elems[child].style;
+                                if style.position.is_absolute() {
+                                    continue;
+                                }
+
                                 let layout = self.layouts.get_mut(child).unwrap();
                                 layout.position.x = next_pos;
 
@@ -1407,6 +1443,57 @@ mod tests {
         tree.compute_layout();
 
         let mut offset = Vec2::new(10.0, 10.0);
+        for key in keys {
+            let layout = &tree.layouts[&key];
+
+            assert_eq!(layout.position, offset);
+
+            offset.y += 10.0;
+        }
+    }
+
+    #[test]
+    fn compute_layout_ignore_absolute_children() {
+        let mut tree = LayoutTree::new();
+        tree.resize(Vec2::splat(1000.0));
+
+        let root = tree.push(
+            None,
+            Element {
+                body: ElementBody::Container(),
+                style: Style::default(),
+            },
+        );
+
+        let elem = Element {
+            body: ElementBody::Container(),
+            style: Style {
+                bounds: Bounds::exact(SizeVec2::splat(Size::Pixels(10.0))),
+                ..Default::default()
+            },
+        };
+
+        let mut keys: Vec<_> = (0..3)
+            .map(|_| tree.push(Some(root), elem.clone()))
+            .collect();
+
+        tree.push(
+            Some(root),
+            Element {
+                body: ElementBody::Container(),
+                style: Style {
+                    bounds: Bounds::exact(SizeVec2::splat(Size::Pixels(10.0))),
+                    position: Position::Absolute(Vec2::splat(0.0)),
+                    ..Default::default()
+                },
+            },
+        );
+
+        keys.extend((0..3).map(|_| tree.push(Some(root), elem.clone())));
+
+        tree.compute_layout();
+
+        let mut offset = Vec2::splat(0.0);
         for key in keys {
             let layout = &tree.layouts[&key];
 
