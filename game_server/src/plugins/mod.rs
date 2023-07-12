@@ -478,7 +478,6 @@ where
                 events.push(EntityChange::Translate {
                     id: entity.id,
                     translation: entity.transform.translation,
-                    cell: None,
                 });
             }
 
@@ -521,11 +520,7 @@ fn update_client_entities(state: &mut ConnectionState, events: Vec<EntityChange>
 
                 Command::EntityDestroy(EntityDestroy { id: entity_id })
             }
-            EntityChange::Translate {
-                id,
-                translation,
-                cell: _,
-            } => {
+            EntityChange::Translate { id, translation } => {
                 let entity_id = state.entities.get(id).unwrap();
                 let entity = state.known_entities.get_mut(id).unwrap();
 
@@ -627,7 +622,6 @@ mod tests {
             EntityChange::Translate {
                 id: _,
                 translation: _,
-                cell: _
             }
         ));
     }
@@ -707,7 +701,6 @@ mod tests {
             EntityChange::Translate {
                 id: _,
                 translation: _,
-                cell: _
             }
         ));
     }

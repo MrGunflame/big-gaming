@@ -130,11 +130,7 @@ impl Pipeline {
                 EntityChange::Create { entity } => {
                     self.add_entity(entity);
                 }
-                EntityChange::Translate {
-                    id,
-                    translation,
-                    cell: _,
-                } => {
+                EntityChange::Translate { id, translation } => {
                     if let Some(handle) = self.body_handles.get(*id) {
                         let body = self.bodies.get_mut(handle).unwrap();
                         body.set_translation(vector(*translation), true);

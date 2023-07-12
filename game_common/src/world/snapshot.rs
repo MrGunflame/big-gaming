@@ -5,7 +5,6 @@ use std::ops::{Add, AddAssign, Sub, SubAssign};
 use crate::components::inventory::InventoryId;
 use crate::components::items::ItemId;
 use crate::entity::EntityId;
-use crate::world::cell::CellId;
 
 use super::entity::Entity;
 use super::source::StreamingSource;
@@ -55,7 +54,6 @@ pub enum EntityChange {
     Translate {
         id: EntityId,
         translation: Vec3,
-        cell: Option<TransferCell>,
     },
     Rotate {
         id: EntityId,
@@ -92,11 +90,7 @@ impl EntityChange {
         match self {
             Self::Create { entity } => entity.id,
             Self::Destroy { id } => *id,
-            Self::Translate {
-                id,
-                translation: _,
-                cell: _,
-            } => *id,
+            Self::Translate { id, translation: _ } => *id,
             Self::Rotate { id, rotation: _ } => *id,
             Self::Health { id, health: _ } => *id,
             Self::CreateHost { id } => *id,
@@ -126,28 +120,4 @@ pub struct InventoryItemRemove {
 #[derive(Copy, Clone, Debug)]
 pub struct InventoryDestroy {
     pub entity: EntityId,
-}
-
-#[derive(Copy, Clone, Debug)]
-pub struct TransferCell {
-    pub from: CellId,
-    pub to: CellId,
-}
-
-impl TransferCell {
-    #[inline]
-    pub fn new<T, U>(from: T, to: U) -> Option<Self>
-    where
-        T: Into<CellId>,
-        U: Into<CellId>,
-    {
-        let from = from.into();
-        let to = to.into();
-
-        if from == to {
-            None
-        } else {
-            Some(Self { from, to })
-        }
-    }
 }

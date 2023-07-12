@@ -153,11 +153,7 @@ fn handle_event(
                 match event {
                     EntityChange::Create { entity: _ } => {}
                     EntityChange::Destroy { id: _ } => {}
-                    EntityChange::Translate {
-                        id: _,
-                        translation,
-                        cell: _,
-                    } => {
+                    EntityChange::Translate { id: _, translation } => {
                         entity.entity.transform.translation = translation;
                     }
                     EntityChange::Rotate { id: _, rotation } => {
@@ -207,11 +203,7 @@ fn handle_event(
                 commands.entity(entity).despawn();
             }
         }
-        EntityChange::Translate {
-            id,
-            translation,
-            cell,
-        } => {
+        EntityChange::Translate { id, translation } => {
             let entity = conn.entities.get(id).unwrap();
 
             if let Ok((_, transform, _, _, _, mut interpolate, _)) = entities.get_mut(entity) {

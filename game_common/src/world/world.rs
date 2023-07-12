@@ -14,7 +14,7 @@ use tracing::{event, span, Level, Span};
 use crate::components::inventory::Inventory;
 use crate::components::items::Item;
 use crate::entity::EntityId;
-use crate::world::snapshot::{EntityChange, TransferCell};
+use crate::world::snapshot::EntityChange;
 
 pub use metrics::WorldMetrics;
 
@@ -579,11 +579,7 @@ impl<'a> Drop for EntityMut<'a> {
                 let mut should_insert = true;
                 for elem in cell.iter_mut() {
                     match elem {
-                        EntityChange::Translate {
-                            id,
-                            translation,
-                            cell,
-                        } if *id == entity_id => {
+                        EntityChange::Translate { id, translation } if *id == entity_id => {
                             *translation = self.entity.transform.translation;
                             should_insert = false;
                             break;
@@ -596,7 +592,6 @@ impl<'a> Drop for EntityMut<'a> {
                     cell.push(EntityChange::Translate {
                         id: entity_id,
                         translation: self.entity.transform.translation,
-                        cell: TransferCell::new(prev, curr),
                     });
                 }
             } else {
@@ -608,7 +603,6 @@ impl<'a> Drop for EntityMut<'a> {
                 .push(EntityChange::Translate {
                     id: self.entity.id,
                     translation: self.entity.transform.translation,
-                    cell: TransferCell::new(prev, curr),
                 });
 
             self.cells
@@ -617,7 +611,6 @@ impl<'a> Drop for EntityMut<'a> {
                 .push(EntityChange::Translate {
                     id: self.entity.id,
                     translation: self.entity.transform.translation,
-                    cell: TransferCell::new(prev, curr),
                 });
 
             if prev != curr {
@@ -770,11 +763,7 @@ impl Snapshot {
 
                 self.entities.despawn(id);
             }
-            EntityChange::Translate {
-                id,
-                translation,
-                cell,
-            } => {
+            EntityChange::Translate { id, translation } => {
                 if let Some(entity) = self.entities.get_mut(id) {
                     entity.transform.translation = translation;
                 } else {
