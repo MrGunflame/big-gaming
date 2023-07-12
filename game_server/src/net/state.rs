@@ -64,10 +64,7 @@ impl Cells {
     pub fn set(&mut self, origin: CellId, distance: u32) {
         self.origin = origin;
 
-        dbg!(origin);
-
         self.cells = square(origin, distance);
-        dbg!(&self.cells);
     }
 
     pub fn cells(&self) -> &[CellId] {

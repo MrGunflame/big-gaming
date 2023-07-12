@@ -419,6 +419,89 @@ fn update_client(conn: &Connection, world: &WorldState) {
         }
     }
 
+    for cmd in update_client_entities(state, events) {
+        conn.handle().send_cmd(ConnectionMessage {
+            id: None,
+            conn: ConnectionId(0),
+            control_frame: curr.control_frame(),
+            command: cmd,
+        });
+    }
+
+    // Acknowledge client commands.
+    let ids = conn.take_proc_msg();
+    if !ids.is_empty() {
+        conn.handle().send_cmd(ConnectionMessage {
+            id: None,
+            conn: conn.id(),
+            control_frame: ControlFrame(0),
+            command: Command::ReceivedCommands(
+                ids.into_iter()
+                    .map(|id| Response {
+                        id,
+                        status: Status::Received,
+                    })
+                    .collect(),
+            ),
+        });
+    }
+}
+
+/// Update a player that hasn't moved cells.
+fn update_player_cells<V>(view: V, state: &ConnectionState) -> Vec<EntityChange>
+where
+    V: AsView,
+{
+    let mut events = Vec::new();
+
+    let mut stale_entities: HashSet<_> = state.known_entities.entities.keys().copied().collect();
+
+    dbg!(&stale_entities);
+
+    for id in state.cells.iter() {
+        let cell = view.cell(id);
+
+        for entity in cell.iter() {
+            if !state.known_entities.contains(entity.id) {
+                events.push(EntityChange::Create {
+                    entity: entity.clone(),
+                });
+
+                continue;
+            }
+
+            stale_entities.remove(&entity.id);
+
+            let known = state.known_entities.get(entity.id).unwrap();
+
+            if known.transform.translation != entity.transform.translation {
+                events.push(EntityChange::Translate {
+                    id: entity.id,
+                    translation: entity.transform.translation,
+                    cell: None,
+                });
+            }
+
+            if known.transform.rotation != entity.transform.rotation {
+                events.push(EntityChange::Rotate {
+                    id: entity.id,
+                    rotation: entity.transform.rotation,
+                });
+            }
+        }
+    }
+
+    // Despawn all entities that were not existent in any of the player's cells.
+    for id in stale_entities {
+        events.push(EntityChange::Destroy { id });
+    }
+
+    events
+}
+
+fn update_client_entities(state: &mut ConnectionState, events: Vec<EntityChange>) -> Vec<Command> {
+    let mut cmds = Vec::new();
+
     for event in events {
         let cmd = match event {
             EntityChange::Create { entity } => {
@@ -467,81 +550,10 @@ fn update_client(conn: &Connection, world: &WorldState) {
             _ => todo!(),
         };
 
-        conn.handle().send_cmd(ConnectionMessage {
-            id: None,
-            conn: ConnectionId(0),
-            control_frame: curr.control_frame(),
-            command: cmd,
-        });
+        cmds.push(cmd);
     }
 
-    // Acknowledge client commands.
-    let ids = conn.take_proc_msg();
-    if !ids.is_empty() {
-        conn.handle().send_cmd(ConnectionMessage {
-            id: None,
-            conn: conn.id(),
-            control_frame: ControlFrame(0),
-            command: Command::ReceivedCommands(
-                ids.into_iter()
-                    .map(|id| Response {
-                        id,
-                        status: Status::Received,
-                    })
-                    .collect(),
-            ),
-        });
-    }
-}
-
-/// Update a player that hasn't moved cells.
-fn update_player_cells<V>(view: V, state: &ConnectionState) -> Vec<EntityChange>
-where
-    V: AsView,
-{
-    let mut events = Vec::new();
-
-    let mut stale_entities: HashSet<_> = state.known_entities.entities.keys().copied().collect();
-
-    for id in state.cells.iter() {
-        let cell = view.cell(id);
-
-        for entity in cell.iter() {
-            if !state.known_entities.contains(entity.id) {
-                events.push(EntityChange::Create {
-                    entity: entity.clone(),
-                });
-
-                continue;
-            }
-
-            stale_entities.remove(&entity.id);
-
-            let known = state.known_entities.get(entity.id).unwrap();
-
-            if known.transform.translation != entity.transform.translation {
-                events.push(EntityChange::Translate {
-                    id: entity.id,
-                    translation: entity.transform.translation,
-                    cell: None,
-                });
-            }
-
-            if known.transform.rotation != entity.transform.rotation {
-                events.push(EntityChange::Rotate {
-                    id: entity.id,
-                    rotation: entity.transform.rotation,
-                });
-            }
-        }
-    }
-
-    // Despawn all entities that were not existent in any of the player's cells.
-    for id in stale_entities {
-        events.push(EntityChange::Destroy { id });
-    }
-
-    events
+    cmds
 }
 
 #[cfg(test)]
@@ -558,6 +570,7 @@ mod tests {
     use glam::{IVec3, Vec3};
 
     use crate::net::state::ConnectionState;
+    use crate::plugins::update_client_entities;
 
     use super::update_player_cells;
 
@@ -582,7 +595,8 @@ mod tests {
         view.spawn(create_test_entity());
 
         let mut state = ConnectionState::new();
-        let events = update_player_cells(&view, &mut state);
+        let events = update_player_cells(&view, &state);
+        update_client_entities(&mut state, events.clone());
 
         assert_eq!(events.len(), 1);
         assert!(matches!(events[0], EntityChange::Create { entity: _ }));
@@ -598,7 +612,8 @@ mod tests {
         let entity_id = view.spawn(create_test_entity());
 
         let mut state = ConnectionState::new();
-        update_player_cells(&view, &mut state);
+        let events = update_player_cells(&view, &state);
+        update_client_entities(&mut state, events);
 
         let mut entity = view.get_mut(entity_id).unwrap();
         entity.transform.translation = Vec3::splat(1.0);
@@ -627,7 +642,8 @@ mod tests {
         let entity_id = view.spawn(create_test_entity());
 
         let mut state = ConnectionState::new();
-        update_player_cells(&view, &mut state);
+        let events = update_player_cells(&view, &state);
+        update_client_entities(&mut state, events);
 
         view.despawn(entity_id);
 
@@ -647,7 +663,8 @@ mod tests {
         let entity_id = view.spawn(create_test_entity());
 
         let mut state = ConnectionState::new();
-        update_player_cells(&view, &mut state);
+        let events = update_player_cells(&view, &state);
+        update_client_entities(&mut state, events);
 
         let mut entity = view.get_mut(entity_id).unwrap();
         entity.transform.translation = Vec3::splat(1024.0);
@@ -672,7 +689,8 @@ mod tests {
 
         let mut state = ConnectionState::new();
         state.cells.set(CellId::from_i32(IVec3::new(0, 0, 0)), 0);
-        update_player_cells(&view, &mut state);
+        let events = update_player_cells(&view, &mut state);
+        update_client_entities(&mut state, events);
 
         let new_cell = CellId::from_i32(IVec3::splat(1));
         state.cells.set(new_cell, distance);
