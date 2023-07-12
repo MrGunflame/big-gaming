@@ -257,9 +257,6 @@ pub fn square(center: CellId, distance: u32) -> Vec<CellId> {
     cells
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct EntityId(u32);
-
 #[cfg(test)]
 mod tests {
     use std::collections::HashSet;
