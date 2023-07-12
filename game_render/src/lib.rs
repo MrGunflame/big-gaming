@@ -347,12 +347,7 @@ pub fn render_surfaces(
                             view: &view,
                             resolve_target: None,
                             ops: Operations {
-                                load: LoadOp::Clear(Color {
-                                    r: 0.1,
-                                    g: 0.2,
-                                    b: 0.3,
-                                    a: 1.0,
-                                }),
+                                load: LoadOp::Clear(Color::BLACK),
                                 store: true,
                             },
                         })],
