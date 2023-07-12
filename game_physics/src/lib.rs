@@ -2,7 +2,7 @@ use std::time::{Duration, Instant};
 
 use bevy_ecs::system::Resource;
 use convert::{point, quat, rotation, vec3, vector};
-use game_common::events::{self, EntityEvent, Event, EventQueue};
+use game_common::events::{self, Event, EventQueue};
 use game_common::world::entity::{Entity, EntityBody};
 use game_common::world::snapshot::EntityChange;
 use game_common::world::world::WorldState;
@@ -268,13 +268,10 @@ impl Pipeline {
             let lhs = self.collider_handles.get2(event.handles[0]).unwrap();
             let rhs = self.collider_handles.get2(event.handles[1]).unwrap();
 
-            queue.push(EntityEvent {
+            queue.push(Event::Collision(events::CollisionEvent {
                 entity: lhs,
-                event: Event::Collision(events::CollisionEvent {
-                    entity: lhs,
-                    other: rhs,
-                }),
-            });
+                other: rhs,
+            }));
         }
 
         events.clear();

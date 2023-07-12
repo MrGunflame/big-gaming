@@ -1,6 +1,6 @@
 use bevy_app::Plugin;
 use bevy_ecs::system::{Res, ResMut};
-use game_common::events::EventQueue;
+use game_common::events::{Event, EventQueue};
 use game_common::world::world::WorldState;
 
 use crate::queue::CommandQueue;
@@ -53,8 +53,17 @@ pub fn flush_event_queue(
     tracing::debug!("executing {} events", queue.len());
 
     while let Some(event) = queue.pop() {
+        let entity = match event {
+            Event::Action(event) => Some(event.entity),
+            Event::Collision(event) => Some(event.entity),
+            Event::Equip(event) => Some(event.entity),
+            Event::Unequip(event) => Some(event.entity),
+            Event::CellLoad(_) => None,
+            Event::CellUnload(_) => None,
+        };
+
         // FIXME: Optimally we wouldn't event push the event if it is not handled.
-        let Some(scripts) = scripts.get(event.entity, event.event.kind()) else {
+        let Some(scripts) = scripts.get(entity, event.kind()) else {
             continue;
         };
 
@@ -65,7 +74,7 @@ pub fn flush_event_queue(
 
             let mut instance = server.get(&handle, view, &mut buffer).unwrap();
 
-            if let Err(err) = instance.run(&event.event) {
+            if let Err(err) = instance.run(&event) {
                 tracing::error!("failed to execute event on script: {}", err);
             }
         }

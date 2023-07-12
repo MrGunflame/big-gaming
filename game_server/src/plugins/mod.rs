@@ -8,7 +8,7 @@ use game_common::components::components::Components;
 use game_common::components::race::RaceId;
 use game_common::components::transform::Transform;
 use game_common::entity::EntityId;
-use game_common::events::{ActionEvent, EntityEvent, Event, EventKind, EventQueue};
+use game_common::events::{ActionEvent, Event, EventKind, EventQueue};
 use game_common::world::control_frame::ControlFrame;
 use game_common::world::entity::{Actor, Entity, EntityBody};
 use game_common::world::snapshot::EntityChange;
@@ -67,7 +67,7 @@ pub fn tick(
         &state.config,
     );
 
-    crate::world::level::update_level_cells(&mut world, &mut level, &modules);
+    crate::world::level::update_level_cells(&mut world, &mut level, &modules, &mut event_queue);
 
     game_script::plugin::flush_event_queue(&mut event_queue, &mut world, &server, &scripts);
 
@@ -169,14 +169,11 @@ fn flush_command_queue(
                     continue;
                 };
 
-                events.push(EntityEvent {
+                events.push(Event::Action(ActionEvent {
                     entity: entity_id,
-                    event: Event::Action(ActionEvent {
-                        entity: entity_id,
-                        invoker: entity_id,
-                        action: event.action,
-                    }),
-                });
+                    invoker: entity_id,
+                    action: event.action,
+                }));
 
                 // TODO
             }
@@ -252,7 +249,7 @@ fn update_scripts(world: &WorldState, scripts: &mut Scripts, modules: &Modules) 
 
                     for handle in handles {
                         for event in handle.events.iter() {
-                            scripts.push(entity.id, event, handle.handle.clone());
+                            scripts.push(Some(entity.id), event, handle.handle.clone());
                         }
                     }
                 }
@@ -266,7 +263,7 @@ fn update_scripts(world: &WorldState, scripts: &mut Scripts, modules: &Modules) 
                         for handle in handles {
                             for event in handle.events.iter() {
                                 // FIXME: This should be using InventoryId.
-                                scripts.push(entity.id, event, handle.handle.clone());
+                                scripts.push(Some(entity.id), event, handle.handle.clone());
                             }
                         }
 
@@ -277,7 +274,7 @@ fn update_scripts(world: &WorldState, scripts: &mut Scripts, modules: &Modules) 
 
                             for handle in handles {
                                 for event in handle.events.iter() {
-                                    scripts.push(entity.id, event, handle.handle.clone());
+                                    scripts.push(Some(entity.id), event, handle.handle.clone());
                                 }
                             }
                         }
@@ -290,7 +287,11 @@ fn update_scripts(world: &WorldState, scripts: &mut Scripts, modules: &Modules) 
                             for handle in handles {
                                 // All actions must only expose a action event.
                                 debug_assert_eq!(handle.events, Events::ACTION);
-                                scripts.push(entity.id, EventKind::Action, handle.handle.clone());
+                                scripts.push(
+                                    Some(entity.id),
+                                    EventKind::Action,
+                                    handle.handle.clone(),
+                                );
                             }
                         }
                     }

@@ -7,10 +7,11 @@ use bevy_ecs::system::Resource;
 use crate::components::actions::ActionId;
 use crate::components::inventory::InventoryId;
 use crate::entity::EntityId;
+use crate::world::CellId;
 
 #[derive(Clone, Debug, Default, Resource)]
 pub struct EventQueue {
-    events: VecDeque<EntityEvent>,
+    events: VecDeque<Event>,
 }
 
 impl EventQueue {
@@ -24,11 +25,11 @@ impl EventQueue {
         self.events.len()
     }
 
-    pub fn push(&mut self, event: EntityEvent) {
+    pub fn push(&mut self, event: Event) {
         self.events.push_back(event);
     }
 
-    pub fn pop(&mut self) -> Option<EntityEvent> {
+    pub fn pop(&mut self) -> Option<Event> {
         self.events.pop_front()
     }
 }
@@ -39,6 +40,8 @@ pub enum Event {
     Collision(CollisionEvent),
     Equip(EquipEvent),
     Unequip(UnequipEvent),
+    CellLoad(CellLoadEvent),
+    CellUnload(CellUnloadEvent),
 }
 
 impl Event {
@@ -48,6 +51,8 @@ impl Event {
             Self::Collision(_) => EventKind::Collision,
             Self::Equip(_) => EventKind::Equip,
             Self::Unequip(_) => EventKind::Unequip,
+            Self::CellLoad(_) => EventKind::CellLoad,
+            Self::CellUnload(_) => EventKind::CellUnload,
         }
     }
 }
@@ -58,14 +63,8 @@ pub enum EventKind {
     Collision,
     Equip,
     Unequip,
-}
-
-#[derive(Clone, Debug)]
-pub struct EntityEvent {
-    // FIXME: Why do Events already have an entity field?
-    // This should be merged.
-    pub entity: EntityId,
-    pub event: Event,
+    CellLoad,
+    CellUnload,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -91,4 +90,14 @@ pub struct EquipEvent {
 pub struct UnequipEvent {
     pub entity: EntityId,
     pub item: InventoryId,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct CellLoadEvent {
+    pub cell: CellId,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct CellUnloadEvent {
+    pub cell: CellId,
 }

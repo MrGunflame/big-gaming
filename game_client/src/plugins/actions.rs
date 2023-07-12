@@ -2,7 +2,7 @@ use ahash::HashMap;
 use bevy_app::{App, Plugin};
 use bevy_ecs::system::{Res, ResMut, Resource};
 use game_common::components::actions::ActionId;
-use game_common::events::{ActionEvent, EntityEvent, Event, EventQueue};
+use game_common::events::{ActionEvent, Event, EventQueue};
 use game_common::module::ModuleId;
 use game_common::record::{RecordId, RecordReference};
 use game_core::modules::Modules;
@@ -96,14 +96,11 @@ fn dispatch_player_action_hotkeys(
                 action: *action,
             }));
 
-            queue.push(EntityEvent {
+            queue.push(Event::Action(ActionEvent {
                 entity: host,
-                event: Event::Action(ActionEvent {
-                    entity: host,
-                    invoker: host,
-                    action: *action,
-                }),
-            });
+                invoker: host,
+                action: *action,
+            }));
         }
     }
 }

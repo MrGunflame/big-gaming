@@ -2,7 +2,6 @@ use std::marker::PhantomData;
 use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign};
 
 use game_common::events::EventKind;
-use game_common::world::CellId;
 use wasmtime::TypedFunc;
 
 /// Events exposed by a script.
@@ -17,6 +16,9 @@ impl Events {
 
     pub const ACTION: Self = Self(1);
     pub const COLLISION: Self = Self(1 << 1);
+
+    pub const CELL_LOAD: Self = Self(1 << 2);
+    pub const CELL_UNLOAD: Self = Self(1 << 3);
 
     pub fn iter(&self) -> Iter<'_> {
         Iter {

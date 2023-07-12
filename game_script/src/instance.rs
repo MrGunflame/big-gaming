@@ -45,6 +45,8 @@ impl<'world> ScriptInstance<'world> {
             Event::Collision(event) => self.on_collision(event.entity, event.other),
             Event::Equip(event) => self.on_equip(event.item, event.entity),
             Event::Unequip(event) => self.on_unequip(event.item, event.entity),
+            Event::CellLoad(event) => self.on_cell_load(event.cell),
+            Event::CellUnload(event) => self.on_cell_unload(event.cell),
         }
     }
 
