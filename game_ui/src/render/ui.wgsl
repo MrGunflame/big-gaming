@@ -28,5 +28,10 @@ var sprite_sampler: sampler;
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     var color = textureSample(sprite_texture, sprite_sampler, in.uv);
     color = in.color * color;
-    return color;
+    return vec4(gamma_correct(color.rgb), color.a);
+}
+
+fn gamma_correct(color: vec3<f32>) -> vec3<f32> {
+    let gamma = 2.2;
+    return pow(color, vec3(1.0 / gamma));
 }
