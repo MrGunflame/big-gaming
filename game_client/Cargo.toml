@@ -43,9 +43,3 @@ debug-assertions = false
 opt-level = 3
 lto = "fat"
 codegen-units = 1
-
-[profile.dev.package.bevy]
-opt-level = 3
-
-[profile.dev.package.bevy_rapier3d]
-opt-level = 3
