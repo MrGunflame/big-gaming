@@ -43,7 +43,7 @@ impl PbrResources {
         let default_normal_texture = images.insert(Image::new(
             UVec2::splat(1),
             TextureFormat::Rgba8Unorm,
-            vec![0, 0, 255, 255],
+            vec![(0.5 * 255.0) as u8, (0.5 * 255.0) as u8, 255, 255],
         ));
 
         let default_metallic_roughness_texture = images.insert(Image::new(
