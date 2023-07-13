@@ -17,11 +17,11 @@ use wgpu::{
 };
 
 use crate::color::Color;
+use crate::light::pipeline::DirectionalLightUniform;
 use crate::light::{DirectionalLight, PointLight};
 use crate::mesh::Mesh;
 use crate::pipeline::{
-    LightUniform, LightingPipeline, MaterialPipeline, MeshPipeline, PointLightUniform,
-    TransformUniform,
+    LightingPipeline, MaterialPipeline, MeshPipeline, PointLightUniform, TransformUniform,
 };
 use crate::texture::{Image, ImageHandle, Images};
 use crate::{RenderDevice, RenderQueue};
@@ -402,7 +402,7 @@ pub fn prepare_directional_lights(
     render_assets.directional_lights.clear();
 
     for (light, transform) in &lights {
-        let uniform = LightUniform {
+        let uniform = DirectionalLightUniform {
             color: light.color,
             position: transform.0.translation.to_array(),
             _pad0: 0,

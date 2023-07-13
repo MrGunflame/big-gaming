@@ -24,7 +24,8 @@ use bevy_ecs::schedule::{IntoSystemConfig, IntoSystemSetConfig, SystemSet};
 use bevy_ecs::system::{Query, Res, ResMut, Resource};
 use bevy_ecs::world::World;
 use game_asset::AssetAppExt;
-use game_core::transform::TransformSet;
+use game_core::hierarchy::HierarchyPlugin;
+use game_core::transform::{TransformPlugin, TransformSet};
 use game_window::events::{WindowCreated, WindowResized};
 use game_window::{Window, WindowPlugin, WindowState};
 use graph::{RenderContext, RenderGraph};
@@ -52,6 +53,9 @@ pub struct RenderPlugin;
 
 impl Plugin for RenderPlugin {
     fn build(&self, app: &mut App) {
+        app.add_plugin(HierarchyPlugin);
+        app.add_plugin(TransformPlugin);
+
         app.add_plugin(WindowPlugin);
 
         app.add_plugin(ImagePlugin);

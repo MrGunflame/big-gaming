@@ -2,13 +2,13 @@ const PI: f32 = 3.14159265358979323846264338327950288;
 
 @group(0) @binding(0)
 var g_position: texture_2d<f32>;
-@group(0) @binding(1)
+@group(0) @binding(4)
 var g_sampler: sampler;
 @group(0) @binding(2)
 var g_normal: texture_2d<f32>;
-@group(0) @binding(3)
+@group(0) @binding(1)
 var g_albedo: texture_2d<f32>;
-@group(0) @binding(4)
+@group(0) @binding(3)
 var g_metallic_roughness: texture_2d<f32>;
 
 @group(1) @binding(0)

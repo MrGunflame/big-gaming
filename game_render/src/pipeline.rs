@@ -428,7 +428,7 @@ impl MainPass {
                     },
                     BindGroupEntry {
                         binding: 1,
-                        resource: BindingResource::Sampler(&data.sampler),
+                        resource: BindingResource::TextureView(&albdeo_view),
                     },
                     BindGroupEntry {
                         binding: 2,
@@ -436,11 +436,11 @@ impl MainPass {
                     },
                     BindGroupEntry {
                         binding: 3,
-                        resource: BindingResource::TextureView(&albdeo_view),
+                        resource: BindingResource::TextureView(&metallic_roughness),
                     },
                     BindGroupEntry {
                         binding: 4,
-                        resource: BindingResource::TextureView(&metallic_roughness),
+                        resource: BindingResource::Sampler(&data.sampler),
                     },
                 ],
             });
@@ -594,7 +594,11 @@ impl LightingPipeline {
                 BindGroupLayoutEntry {
                     binding: 1,
                     visibility: ShaderStages::FRAGMENT,
-                    ty: BindingType::Sampler(SamplerBindingType::Filtering),
+                    ty: BindingType::Texture {
+                        sample_type: TextureSampleType::Float { filterable: true },
+                        view_dimension: TextureViewDimension::D2,
+                        multisampled: false,
+                    },
                     count: None,
                 },
                 BindGroupLayoutEntry {
@@ -620,11 +624,7 @@ impl LightingPipeline {
                 BindGroupLayoutEntry {
                     binding: 4,
                     visibility: ShaderStages::FRAGMENT,
-                    ty: BindingType::Texture {
-                        sample_type: TextureSampleType::Float { filterable: true },
-                        view_dimension: TextureViewDimension::D2,
-                        multisampled: false,
-                    },
+                    ty: BindingType::Sampler(SamplerBindingType::Filtering),
                     count: None,
                 },
             ],
@@ -655,12 +655,12 @@ impl LightingPipeline {
         });
 
         let shader = device.create_shader_module(ShaderModuleDescriptor {
-            label: Some("lighting_pass_shader"),
-            source: ShaderSource::Wgsl(include_str!("lighting_pass.wgsl").into()),
+            label: Some("directional_light_shader"),
+            source: ShaderSource::Wgsl(include_str!("../shaders/directional_light.wgsl").into()),
         });
 
         let directional = device.create_render_pipeline(&RenderPipelineDescriptor {
-            label: Some("lighting_pass_pipeline"),
+            label: Some("directional_light_pipeline"),
             layout: Some(&pipeline_layout),
             vertex: VertexState {
                 module: &shader,
@@ -1025,15 +1025,6 @@ impl GBuffer {
             }),
         ]
     }
-}
-
-#[derive(Copy, Clone, Debug, Zeroable, Pod)]
-#[repr(C)]
-pub(crate) struct LightUniform {
-    pub color: [f32; 3],
-    pub _pad0: u32,
-    pub position: [f32; 3],
-    pub _pad1: u32,
 }
 
 #[derive(Copy, Clone, Debug, Zeroable, Pod)]

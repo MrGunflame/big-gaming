@@ -1,3 +1,5 @@
+pub mod pipeline;
+
 use bevy_ecs::prelude::{Bundle, Component};
 use game_common::bundles::TransformBundle;
 
