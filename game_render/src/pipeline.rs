@@ -703,7 +703,7 @@ impl LightingPipeline {
 
         let point_light_shader = device.create_shader_module(ShaderModuleDescriptor {
             label: Some("point_light_shader"),
-            source: ShaderSource::Wgsl(include_str!("point_light.wgsl").into()),
+            source: ShaderSource::Wgsl(include_str!("../shaders/point_light.wgsl").into()),
         });
 
         let point = device.create_render_pipeline(&RenderPipelineDescriptor {
@@ -937,8 +937,8 @@ struct GBuffer {
 }
 
 impl GBuffer {
-    const FORMAT_POSITION: TextureFormat = TextureFormat::Rgba16Float;
-    const FORMAT_NORMAL: TextureFormat = TextureFormat::Rgba16Float;
+    const FORMAT_POSITION: TextureFormat = TextureFormat::Rgba32Float;
+    const FORMAT_NORMAL: TextureFormat = TextureFormat::Rgba32Float;
     const FORMAT_ALBEDO: TextureFormat = TextureFormat::Rgba16Float;
     const FORMAT_METALLIC_ROUGHNESS: TextureFormat = TextureFormat::Rgba8UnormSrgb;
 
@@ -1025,13 +1025,4 @@ impl GBuffer {
             }),
         ]
     }
-}
-
-#[derive(Copy, Clone, Debug, Zeroable, Pod)]
-#[repr(C)]
-pub(crate) struct PointLightUniform {
-    pub color: [f32; 3],
-    pub _pad0: u32,
-    pub position: [f32; 3],
-    pub _pad1: u32,
 }

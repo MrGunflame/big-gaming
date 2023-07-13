@@ -17,12 +17,10 @@ use wgpu::{
 };
 
 use crate::color::Color;
-use crate::light::pipeline::DirectionalLightUniform;
+use crate::light::pipeline::{DirectionalLightUniform, PointLightUniform};
 use crate::light::{DirectionalLight, PointLight};
 use crate::mesh::Mesh;
-use crate::pipeline::{
-    LightingPipeline, MaterialPipeline, MeshPipeline, PointLightUniform, TransformUniform,
-};
+use crate::pipeline::{LightingPipeline, MaterialPipeline, MeshPipeline, TransformUniform};
 use crate::texture::{Image, ImageHandle, Images};
 use crate::{RenderDevice, RenderQueue};
 
