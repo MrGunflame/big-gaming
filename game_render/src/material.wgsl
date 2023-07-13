@@ -30,14 +30,10 @@ struct CameraProjection {
 struct VertexOutput {
     @builtin(position) position: vec4<f32>,
     @location(0) world_position: vec3<f32>,
-    @location(1) world_normal: vec3<f32>,
-    @location(2) uv: vec2<f32>,
-    @location(3) tangent_light_pos: vec3<f32>,
-    @location(4) tangent_view_pos: vec3<f32>,
-    @location(5) tangent_pos: vec3<f32>,
-    @location(6) tbn_0: vec3<f32>,
-    @location(7) tbn_1: vec3<f32>,
-    @location(8) tbn_2: vec3<f32>,
+    @location(1) uv: vec2<f32>,
+    @location(2) tbn_0: vec3<f32>,
+    @location(3) tbn_1: vec3<f32>,
+    @location(4) tbn_2: vec3<f32>,
 };
 
 // GBuffer output
