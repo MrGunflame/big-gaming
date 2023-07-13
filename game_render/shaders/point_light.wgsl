@@ -71,4 +71,6 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     let strength = light.color * (ambient + diffuse + specular) * attenuation;
     return vec4(strength * albedo, 1.0);
+
+    //return vec4(normal, 1.0);
 }

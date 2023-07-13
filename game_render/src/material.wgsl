@@ -56,6 +56,8 @@ fn fs_main(in: VertexOutput) -> GBuffer {
     //normal = normal * 2.0 - 1.0;
     normal = normalize(tbn * normal);
 
+    normal = normalize(tbn * vec3(0.0, 0.0, 1.0));
+
     var gbuffer: GBuffer;
     gbuffer.position = vec4(in.world_position, 1.0);
     gbuffer.normal = vec4(normal, 1.0);

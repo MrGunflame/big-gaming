@@ -24,7 +24,7 @@ use game_render::color::Color;
 use game_render::mesh::Indices;
 use game_render::mesh::Mesh;
 use game_render::pbr::AlphaMode;
-use glam::{Quat, Vec3};
+use glam::{Quat, Vec3, Vec4};
 use gltf::accessor::DataType;
 use gltf::accessor::Dimensions;
 use gltf::buffer::Source;
@@ -261,7 +261,9 @@ impl GltfData {
                     Semantic::Tangents => {
                         let mut tangents = vec![];
                         self.load_tangents(&accessor, &mut tangents)?;
-                        let t = tangents;
+                        mesh.set_tangents(tangents);
+
+                        tangents_set = true;
                     }
                     Semantic::TexCoords(index) => {
                         if index != 0 {
@@ -392,11 +394,7 @@ impl GltfData {
         Ok(())
     }
 
-    fn load_tangents(
-        &self,
-        accessor: &Accessor,
-        tangents: &mut Vec<[f32; 4]>,
-    ) -> Result<(), Error> {
+    fn load_tangents(&self, accessor: &Accessor, tangents: &mut Vec<Vec4>) -> Result<(), Error> {
         let data_type = accessor.data_type();
         if data_type != DataType::F32 {
             return Err(Error::InvalidDataType(data_type));
@@ -408,7 +406,7 @@ impl GltfData {
         }
 
         let reader: ItemReader<'_, Tangents> = ItemReader::new(accessor, self);
-        tangents.extend(reader);
+        tangents.extend(reader.map(|arr| Vec4::from_array(arr)));
 
         Ok(())
     }

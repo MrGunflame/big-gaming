@@ -24,8 +24,8 @@ struct VertexInput {
     @location(0) position: vec3<f32>,
     @location(1) normal: vec3<f32>,
     @location(2) uv: vec2<f32>,
-    @location(3) tangent: vec3<f32>,
-    @location(4) bitangent: vec3<f32>,
+    @location(3) tangent: vec4<f32>,
+    //@location(4) bitangent: vec3<f32>,
 }
 
 struct VertexOutput {
@@ -50,8 +50,9 @@ fn vs_main(model: VertexInput) -> VertexOutput {
     
     // Normal
     let normal = normalize(normal_matrix * model.normal);
-    let tangent = normalize(normal_matrix * model.tangent);
-    let bitangent = normalize(normal_matrix * model.bitangent);
+    let tangent = normalize(normal_matrix * model.tangent.xyz);
+    //let bitangent = normalize(normal_matrix * model.bitangent);
+    let bitangent = model.tangent.w * cross(normal, tangent);
     let tangent_matrix = mat3x3(
         tangent,
         bitangent,

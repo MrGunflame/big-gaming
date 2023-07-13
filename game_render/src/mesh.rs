@@ -1,7 +1,7 @@
 use bevy_ecs::prelude::Component;
 use bytemuck::{Pod, Zeroable};
 use game_asset::Asset;
-use glam::{Vec2, Vec3};
+use glam::{Vec2, Vec3, Vec4};
 use wgpu::{
     BufferAddress, PrimitiveTopology, VertexAttribute, VertexBufferLayout, VertexFormat,
     VertexStepMode,
@@ -16,9 +16,8 @@ pub struct Mesh {
     positions: Vec<[f32; 3]>,
     normals: Vec<[f32; 3]>,
     uvs: Vec<[f32; 2]>,
-    tangents: Vec<[f32; 3]>,
-    bitangents: Vec<[f32; 3]>,
-    triangles_included: Vec<u32>,
+    tangents: Vec<Vec4>,
+    tangents_set: bool,
 }
 
 impl Mesh {
@@ -30,8 +29,7 @@ impl Mesh {
             normals: vec![],
             uvs: vec![],
             tangents: vec![],
-            bitangents: vec![],
-            triangles_included: vec![],
+            tangents_set: false,
         }
     }
 
@@ -49,6 +47,11 @@ impl Mesh {
 
     pub fn set_normals(&mut self, normals: Vec<[f32; 3]>) {
         self.normals = normals;
+    }
+
+    pub fn set_tangents(&mut self, tangents: Vec<Vec4>) {
+        self.tangents = tangents;
+        self.tangents_set = true;
     }
 
     pub fn set_uvs(&mut self, uvs: Vec<[f32; 2]>) {
@@ -78,14 +81,12 @@ impl Mesh {
             let normal = self.normals.get(index).copied().unwrap_or_default();
             let uv = self.uvs.get(index).copied().unwrap_or_default();
             let tangent = self.tangents.get(index).copied().unwrap_or_default();
-            let bitangent = self.bitangents.get(index).copied().unwrap_or_default();
 
             vertices.push(Vertex {
                 position,
                 normal,
                 uv,
-                tangent,
-                bitangent,
+                tangent: tangent.to_array(),
             });
 
             index += 1;
@@ -95,15 +96,14 @@ impl Mesh {
     }
 
     pub fn compute_tangents(&mut self) {
+        let mut triangles_included = vec![];
+
         self.tangents.clear();
-        self.bitangents.clear();
-        self.triangles_included.clear();
 
         let len = self.indices.as_ref().unwrap().len() as usize;
 
-        self.tangents.resize(len, [0.0; 3]);
-        self.bitangents.resize(len, [0.0; 3]);
-        self.triangles_included.resize(len, 0);
+        self.tangents.resize(len, Vec4::new(0.0, 0.0, 0.0, 1.0));
+        triangles_included.resize(len, 0);
 
         for c in self.indices.clone().unwrap().into_u32().chunks(3) {
             let pos0 = Vec3::from_array(self.positions[c[0] as usize]);
@@ -122,34 +122,37 @@ impl Mesh {
 
             let f = 1.0 / (delta_uv1.x * delta_uv2.y - delta_uv1.y * delta_uv2.x);
             let tangent = (delta_pos1 * delta_uv2.y - delta_pos2 * delta_uv1.y) * f;
-            let bitangent = (delta_pos2 * delta_uv1.x - delta_pos1 * delta_uv2.x) * -f;
 
-            self.tangents[c[0] as usize] =
-                (Vec3::from_array(self.tangents[c[0] as usize]) + tangent).to_array();
-            self.tangents[c[1] as usize] =
-                (Vec3::from_array(self.tangents[c[1] as usize]) + tangent).to_array();
-            self.tangents[c[2] as usize] =
-                (Vec3::from_array(self.tangents[c[2] as usize]) + tangent).to_array();
+            // Note that the orientation is already set to 1.0 on every tangent, we don't
+            // want to change that.
+            let tangent_summand = Vec4::new(tangent.x, tangent.y, tangent.z, 0.0);
 
-            self.bitangents[c[0] as usize] =
-                (Vec3::from_array(self.bitangents[c[0] as usize]) + bitangent).to_array();
-            self.bitangents[c[1] as usize] =
-                (Vec3::from_array(self.bitangents[c[1] as usize]) + bitangent).to_array();
-            self.bitangents[c[2] as usize] =
-                (Vec3::from_array(self.bitangents[c[2] as usize]) + bitangent).to_array();
+            self.tangents[c[0] as usize] += tangent_summand;
+            self.tangents[c[1] as usize] += tangent_summand;
+            self.tangents[c[2] as usize] += tangent_summand;
 
-            self.triangles_included[c[0] as usize] += 1;
-            self.triangles_included[c[1] as usize] += 1;
-            self.triangles_included[c[2] as usize] += 1;
+            triangles_included[c[0] as usize] += 1;
+            triangles_included[c[1] as usize] += 1;
+            triangles_included[c[2] as usize] += 1;
         }
 
         // Average Tangents/Bitangents
-        for (i, &n) in self.triangles_included.iter().enumerate() {
+        for (i, &n) in triangles_included.iter().enumerate() {
             let denom = 1.0 / n as f32;
 
-            self.tangents[i] = (Vec3::from_array(self.tangents[i]) * denom).to_array();
-            self.bitangents[i] = (Vec3::from_array(self.bitangents[i]) * denom).to_array();
+            // Don't change the W component.
+            let x = self.tangents[i].x * denom;
+            let y = self.tangents[i].y * denom;
+            let z = self.tangents[i].z * denom;
+
+            self.tangents[i] = Vec4::new(x, y, z, self.tangents[i].w);
         }
+
+        self.tangents_set = true;
+    }
+
+    pub fn tangents_set(&self) -> bool {
+        self.tangents_set
     }
 }
 
@@ -195,8 +198,7 @@ pub struct Vertex {
     position: [f32; 3],
     normal: [f32; 3],
     uv: [f32; 2],
-    tangent: [f32; 3],
-    bitangent: [f32; 3],
+    tangent: [f32; 4],
 }
 
 impl Vertex {
@@ -227,16 +229,7 @@ impl Vertex {
                         + std::mem::size_of::<[f32; 2]>())
                         as BufferAddress,
                     shader_location: 3,
-                    format: VertexFormat::Float32x3,
-                },
-                VertexAttribute {
-                    offset: (std::mem::size_of::<[f32; 3]>()
-                        + std::mem::size_of::<[f32; 3]>()
-                        + std::mem::size_of::<[f32; 2]>()
-                        + std::mem::size_of::<[f32; 3]>())
-                        as BufferAddress,
-                    shader_location: 4,
-                    format: VertexFormat::Float32x3,
+                    format: VertexFormat::Float32x4,
                 },
             ],
         }
@@ -247,6 +240,8 @@ impl Asset for Mesh {}
 
 #[cfg(test)]
 mod tests {
+    use glam::Vec4;
+
     use super::{Indices, Mesh};
 
     #[test]
@@ -261,11 +256,11 @@ mod tests {
 
         assert_eq!(
             mesh.tangents,
-            vec![[1.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 0.0, 0.0]]
-        );
-        assert_eq!(
-            mesh.bitangents,
-            vec![[0.0, -1.0, 0.0], [0.0, -1.0, 0.0], [0.0, -1.0, 0.0]]
+            vec![
+                Vec4::from_array([1.0, 0.0, 0.0, 1.0]),
+                Vec4::from_array([1.0, 0.0, 0.0, 1.0]),
+                Vec4::from_array([1.0, 0.0, 0.0, 1.0]),
+            ]
         );
     }
 }
