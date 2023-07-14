@@ -49,19 +49,17 @@ fn vs_main(model: VertexInput) -> VertexOutput {
     out.world_position = world_position.xyz;
     
     // Normal
-    let normal = normalize(normal_matrix * model.normal);
-    let tangent = normalize(normal_matrix * model.tangent.xyz);
-    //let bitangent = normalize(normal_matrix * model.bitangent);
-    let bitangent = model.tangent.w * cross(normal, tangent);
-    let tangent_matrix = mat3x3(
-        tangent,
-        bitangent,
-        normal,
-    );
+    var normal = normalize(normal_matrix * model.normal);
+    var tangent = normalize(normal_matrix * model.tangent.xyz);
+    //normal = normal * model.tangent.w;
+    //tangent = tangent * model.tangent.w;
+    let bitangent = cross(normal, tangent) * model.tangent.w;
 
-    out.tbn_0 = tangent_matrix.x;
-    out.tbn_1 = tangent_matrix.y;
-    out.tbn_2 = tangent_matrix.z;
+    let tbn = mat3x3(tangent, bitangent, normal);
+
+    out.tbn_0 = tbn[0];
+    out.tbn_1 = tbn[1];
+    out.tbn_2 = tbn[2];
 
     out.uv = model.uv;
 

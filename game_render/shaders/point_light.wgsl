@@ -62,8 +62,6 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let light_dir = normalize(light.position - position);
 
     let view_dir = normalize(camera.position - position);
-    let half_dir = normalize(view_dir + light_dir);
-
     let reflect_dir = reflect(-light_dir, normal);
 
     let diffuse = max(dot(normal, light_dir), 0.0);

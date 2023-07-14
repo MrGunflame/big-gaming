@@ -53,10 +53,12 @@ fn fs_main(in: VertexOutput) -> GBuffer {
     let local_metallic = textureSample(metallic_roughness_texture, metallic_roughness_sampler, in.uv).b;
     let local_roughness = textureSample(metallic_roughness_texture, metallic_roughness_sampler, in.uv).g;
 
-    //normal = normal * 2.0 - 1.0;
+    normal = vec3(0.5, 0.5, 1.0);
+
+    normal = normal * 2.0 - 1.0;
     normal = normalize(tbn * normal);
 
-    normal = normalize(tbn * vec3(0.0, 0.0, 1.0));
+    //normal = normalize(tbn * vec3(0.0, 0.0, 1.0));
 
     var gbuffer: GBuffer;
     gbuffer.position = vec4(in.world_position, 1.0);
