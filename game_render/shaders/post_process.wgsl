@@ -30,10 +30,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     color = tonemap(color);
     color = gamma_correct(color);
 
-    //return vec4(color, 1.0);
-    //return vec4(1.0, 1.0, 1.0, 1.0);
-    return textureSample(g_texture, g_sampler, in.uv);
-    //return vec4(in.uv.x, in.uv.y, 0.0, 1.0);
+    return vec4(color, 1.0);
 }
 
 fn tonemap(color: vec3<f32>) -> vec3<f32> {
