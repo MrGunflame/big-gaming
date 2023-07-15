@@ -18,8 +18,7 @@ fn main() {
     let config = match Config::from_file(&config_path) {
         Ok(config) => config,
         Err(err) => {
-            tracing::error!("failed to load config file from {:?}: {}", config_path, err);
-            return;
+            fatal!("failed to load config file from {:?}: {}", config_path, err);
         }
     };
 
@@ -35,4 +34,13 @@ fn main() {
         .build()
         .unwrap();
     rt.block_on(game_server::run(app, config));
+}
+
+#[macro_export]
+macro_rules! fatal {
+    ($($arg:tt)*) => {{
+        tracing::error!($($arg)*);
+        tracing::error!("encountered fatal error, exiting");
+        std::process::exit(1);
+    }};
 }
