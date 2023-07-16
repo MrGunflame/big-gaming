@@ -1,19 +1,12 @@
-//! World editiing
-//!
-pub mod axes;
+use bevy_app::Plugin;
 
-pub const COLOR_X: Color = Color::rgb(1.0, 0.0, 0.0);
-pub const COLOR_Y: Color = Color::rgb(0.0, 1.0, 0.0);
-pub const COLOR_Z: Color = Color::rgb(0.0, 0.0, 1.0);
+pub mod grid;
 
-use bevy::prelude::{Color, Component};
+pub struct WorldPlugin;
 
-/// An entity that is currently selected.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Component)]
-pub struct Selected;
-
-#[derive(Copy, Clone, Debug, Default, Component)]
-pub struct EntityOptions {
-    pub selected: bool,
-    pub hidden: bool,
+impl Plugin for WorldPlugin {
+    fn build(&self, app: &mut bevy_app::App) {
+        app.add_startup_system(grid::spawn_grid);
+        app.add_system(grid::synchronize_grid);
+    }
 }

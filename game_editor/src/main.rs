@@ -1,3 +1,9 @@
+mod backend;
+mod state;
+mod widgets;
+mod windows;
+mod world;
+
 use backend::{Backend, Handle, Response};
 
 use bevy_app::App;
@@ -18,13 +24,9 @@ use windows::SpawnWindowQueue;
 
 use widgets::tool_bar::*;
 use windows::modules::CreateModules;
+use world::WorldPlugin;
 
 use crate::windows::SpawnWindow;
-
-mod backend;
-mod state;
-mod widgets;
-mod windows;
 
 fn main() {
     pretty_env_logger::init();
@@ -50,6 +52,7 @@ fn main() {
         .add_startup_system(setup)
         .add_plugin(windows::WindowsPlugin)
         .add_system(load_from_backend)
+        .add_plugin(WorldPlugin)
         .run();
 }
 
@@ -129,7 +132,7 @@ fn setup(
     };
 
     let style = Style {
-        background: Background::RED,
+        background: Background::AQUA,
         bounds: Bounds {
             min: SizeVec2::splat(Size::Pixels(64.0)),
             max: SizeVec2::splat(Size::Pixels(64.0)),
