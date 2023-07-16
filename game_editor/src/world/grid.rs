@@ -49,7 +49,9 @@ pub fn spawn_grid(
                 material: material.clone(),
                 transform: TransformBundle::default(),
             })
-            .insert(CellBorder { face });
+            .insert(CellBorder {
+                face: face.inverse(),
+            });
     }
 }
 
@@ -61,42 +63,8 @@ pub fn synchronize_grid(
         return;
     };
 
-    for (mut transform, wall) in &mut entities {
-        let mut offset = Vec3::ZERO;
-        match wall.face {
-            Face::Front => {
-                offset.z = CELL_SIZE.z - (camera.translation.z % CELL_SIZE.z);
-                offset.x = CELL_SIZE.x / 2.0 - (camera.translation.x % CELL_SIZE.x);
-                offset.y = CELL_SIZE.y / 2.0 - (camera.translation.y % CELL_SIZE.y);
-            }
-            Face::Back => {
-                offset.z = -(camera.translation.z % CELL_SIZE.z);
-                offset.x = CELL_SIZE.x / 2.0 - (camera.translation.x % CELL_SIZE.x);
-                offset.y = CELL_SIZE.y / 2.0 - (camera.translation.y % CELL_SIZE.y);
-            }
-            Face::Right => {
-                offset.x = -(camera.translation.x % CELL_SIZE.x);
-                offset.y = CELL_SIZE.y / 2.0 - (camera.translation.y % CELL_SIZE.y);
-                offset.z = CELL_SIZE.z / 2.0 - (camera.translation.z % CELL_SIZE.z);
-            }
-            Face::Left => {
-                offset.x = CELL_SIZE.x - (camera.translation.x % CELL_SIZE.x);
-                offset.y = CELL_SIZE.y / 2.0 - (camera.translation.y % CELL_SIZE.y);
-                offset.z = CELL_SIZE.z / 2.0 - (camera.translation.z % CELL_SIZE.z);
-            }
-            Face::Top => {
-                offset.y = -(camera.translation.y % CELL_SIZE.y);
-                offset.x = CELL_SIZE.x / 2.0 - (camera.translation.x % CELL_SIZE.x);
-                offset.z = CELL_SIZE.z / 2.0 - (camera.translation.z % CELL_SIZE.z);
-            }
-            Face::Bottom => {
-                offset.y = CELL_SIZE.y - (camera.translation.y % CELL_SIZE.y);
-                offset.x = CELL_SIZE.x / 2.0 - (camera.translation.x % CELL_SIZE.x);
-                offset.z = CELL_SIZE.z / 2.0 - (camera.translation.z % CELL_SIZE.z);
-            }
-        };
-
-        transform.translation = camera.translation + offset;
+    for (mut transform, border) in &mut entities {
+        transform.translation = calculate_translation(camera.translation, border.face);
     }
 }
 
@@ -125,5 +93,115 @@ fn create_wall_material(images: &mut Images) -> PbrMaterial {
         base_color: Color::WHITE,
         base_color_texture: Some(base_color_texture),
         ..Default::default()
+    }
+}
+
+fn calculate_translation(origin: Vec3, face: Face) -> Vec3 {
+    let mut offset = Vec3::ZERO;
+    match face {
+        Face::Front => {
+            offset.z = CELL_SIZE.z - (origin.z % CELL_SIZE.z);
+            offset.x = CELL_SIZE.x / 2.0 - (origin.x % CELL_SIZE.x);
+            offset.y = CELL_SIZE.y / 2.0 - (origin.y % CELL_SIZE.y);
+        }
+        Face::Back => {
+            offset.z = -(origin.z % CELL_SIZE.z);
+            offset.x = CELL_SIZE.x / 2.0 - (origin.x % CELL_SIZE.x);
+            offset.y = CELL_SIZE.y / 2.0 - (origin.y % CELL_SIZE.y);
+        }
+        Face::Right => {
+            offset.x = CELL_SIZE.x - (origin.x % CELL_SIZE.x);
+            offset.y = CELL_SIZE.y / 2.0 - (origin.y % CELL_SIZE.y);
+            offset.z = CELL_SIZE.z / 2.0 - (origin.z % CELL_SIZE.z);
+        }
+        Face::Left => {
+            offset.x = -(origin.x % CELL_SIZE.x);
+            offset.y = CELL_SIZE.y / 2.0 - (origin.y % CELL_SIZE.y);
+            offset.z = CELL_SIZE.z / 2.0 - (origin.z % CELL_SIZE.z);
+        }
+        Face::Top => {
+            offset.y = CELL_SIZE.y - (origin.y % CELL_SIZE.y);
+            offset.x = CELL_SIZE.x / 2.0 - (origin.x % CELL_SIZE.x);
+            offset.z = CELL_SIZE.z / 2.0 - (origin.z % CELL_SIZE.z);
+        }
+        Face::Bottom => {
+            offset.y = -(origin.y % CELL_SIZE.y);
+            offset.x = CELL_SIZE.x / 2.0 - (origin.x % CELL_SIZE.x);
+            offset.z = CELL_SIZE.z / 2.0 - (origin.z % CELL_SIZE.z);
+        }
+    };
+
+    origin + offset
+}
+
+#[cfg(test)]
+mod tests {
+    use game_common::world::CELL_SIZE;
+    use game_render::shape::Face;
+    use glam::Vec3;
+
+    use crate::world::grid::calculate_translation;
+
+    #[test]
+    fn calculate_translation_front() {
+        let origin = Vec3::new(1.0, 2.0, 3.0);
+        let face = Face::Front;
+
+        let offset = calculate_translation(origin, face);
+        assert_eq!(
+            offset,
+            Vec3::new(CELL_SIZE.x / 2.0, CELL_SIZE.y / 2.0, CELL_SIZE.z)
+        );
+    }
+
+    #[test]
+    fn calculate_translation_back() {
+        let origin = Vec3::new(1.0, 2.0, 3.0);
+        let face = Face::Back;
+
+        let offset = calculate_translation(origin, face);
+        assert_eq!(offset, Vec3::new(CELL_SIZE.x / 2.0, CELL_SIZE.y / 2.0, 0.0));
+    }
+
+    #[test]
+    fn calculate_translation_left() {
+        let origin = Vec3::new(1.0, 2.0, 3.0);
+        let face = Face::Left;
+
+        let offset = calculate_translation(origin, face);
+        assert_eq!(offset, Vec3::new(0.0, CELL_SIZE.y / 2.0, CELL_SIZE.z / 2.0));
+    }
+
+    #[test]
+    fn calculate_translation_right() {
+        let origin = Vec3::new(1.0, 2.0, 3.0);
+        let face = Face::Right;
+
+        let offset = calculate_translation(origin, face);
+        assert_eq!(
+            offset,
+            Vec3::new(CELL_SIZE.x, CELL_SIZE.y / 2.0, CELL_SIZE.z / 2.0)
+        );
+    }
+
+    #[test]
+    fn calculate_translation_top() {
+        let origin = Vec3::new(1.0, 2.0, 3.0);
+        let face = Face::Top;
+
+        let offset = calculate_translation(origin, face);
+        assert_eq!(
+            offset,
+            Vec3::new(CELL_SIZE.x / 2.0, CELL_SIZE.y, CELL_SIZE.z / 2.0)
+        );
+    }
+
+    #[test]
+    fn calculate_translation_bottom() {
+        let origin = Vec3::new(1.0, 2.0, 3.0);
+        let face = Face::Bottom;
+
+        let offset = calculate_translation(origin, face);
+        assert_eq!(offset, Vec3::new(CELL_SIZE.x / 2.0, 0.0, CELL_SIZE.z / 2.0));
     }
 }
