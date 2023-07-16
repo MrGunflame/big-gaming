@@ -401,9 +401,9 @@ impl MainPass {
             render_pass.set_bind_group(2, &node.material_bind_group.as_ref().unwrap(), &[]);
 
             render_pass.set_vertex_buffer(0, node.vertices.slice(..));
-            render_pass.set_index_buffer(node.indices.slice(..), IndexFormat::Uint32);
+            render_pass.set_index_buffer(node.indices.buffer.slice(..), node.indices.format);
 
-            render_pass.draw_indexed(0..node.num_vertices, 0, 0..1);
+            render_pass.draw_indexed(0..node.indices.len, 0, 0..1);
         }
 
         drop(render_pass);

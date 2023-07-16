@@ -49,6 +49,14 @@ impl Mesh {
         self.normals = normals;
     }
 
+    pub fn normals(&self) -> &[[f32; 3]] {
+        &self.normals
+    }
+
+    pub fn tangents(&self) -> &[Vec4] {
+        &self.tangents
+    }
+
     pub fn set_tangents(&mut self, tangents: Vec<Vec4>) {
         self.tangents = tangents;
         self.tangents_set = true;
@@ -100,7 +108,7 @@ impl Mesh {
 
         self.tangents.clear();
 
-        let len = self.indices.as_ref().unwrap().len() as usize;
+        let len = self.positions.len();
 
         self.tangents.resize(len, Vec4::new(0.0, 0.0, 0.0, 1.0));
         triangles_included.resize(len, 0);
@@ -138,6 +146,8 @@ impl Mesh {
 
         // Average Tangents/Bitangents
         for (i, &n) in triangles_included.iter().enumerate() {
+            debug_assert_ne!(n, 0);
+
             let denom = 1.0 / n as f32;
 
             // Don't change the W component.
