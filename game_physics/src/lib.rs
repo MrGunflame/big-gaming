@@ -1,6 +1,12 @@
+mod control;
+mod convert;
+mod handle;
+mod pipeline;
+
 use std::time::{Duration, Instant};
 
 use bevy_ecs::system::Resource;
+use control::CharacterController;
 use convert::{point, quat, rotation, vec3, vector};
 use game_common::events::{self, Event, EventQueue};
 use game_common::world::entity::{Entity, EntityBody};
@@ -16,10 +22,6 @@ use rapier3d::prelude::{
     IslandManager, LockedAxes, MultibodyJointSet, NarrowPhase, PhysicsPipeline, RigidBodyBuilder,
     RigidBodyHandle, RigidBodySet, RigidBodyType, Vector,
 };
-
-mod convert;
-mod handle;
-mod pipeline;
 
 #[derive(Resource)]
 pub struct Pipeline {
@@ -50,10 +52,16 @@ pub struct Pipeline {
 
 impl Pipeline {
     pub fn new() -> Self {
+        let integration_parameters = IntegrationParameters {
+            dt: 1.0 / 60.0,
+            min_ccd_dt: 1.0 / 60.0 / 100.0,
+            ..Default::default()
+        };
+
         Self {
             pipeline: PhysicsPipeline::new(),
             gravity: Vector::new(0.0, -9.81, 0.0),
-            integration_parameters: IntegrationParameters::default(),
+            integration_parameters,
             islands: IslandManager::new(),
             broad_phase: BroadPhase::new(),
             narrow_phase: NarrowPhase::new(),
@@ -211,7 +219,7 @@ impl Pipeline {
                 (body_handle, col_handle)
             }
             EntityBody::Actor(actor) => {
-                let body = RigidBodyBuilder::new(RigidBodyType::KinematicPositionBased)
+                let body = RigidBodyBuilder::new(RigidBodyType::KinematicVelocityBased)
                     .position(Isometry {
                         translation: vector(entity.transform.translation).into(),
                         rotation: rotation(extract_actor_rotation(entity.transform.rotation)),
