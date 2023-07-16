@@ -11,11 +11,11 @@ use game_render::mesh::Mesh;
 use game_render::pbr::{PbrBundle, PbrMaterial};
 use game_render::shape::{Face, Quad};
 use game_render::texture::{Image, Images, TextureFormat};
-use glam::{UVec2, Vec2};
-use image::{DynamicImage, ImageBuffer, Rgba};
+use glam::{UVec2, Vec2, Vec3};
+use image::{ImageBuffer, Rgba};
 
 #[derive(Copy, Clone, Debug, Component)]
-pub struct CellGrid {
+pub struct CellBorder {
     face: Face,
 }
 
@@ -43,39 +43,66 @@ pub fn spawn_grid(
     ] {
         let mesh = meshes.insert(Quad { size, face }.into());
 
-        commands.spawn(PbrBundle {
-            mesh,
-            material: material.clone(),
-            transform: TransformBundle::default(),
-        });
+        commands
+            .spawn(PbrBundle {
+                mesh,
+                material: material.clone(),
+                transform: TransformBundle::default(),
+            })
+            .insert(CellBorder { face });
     }
 }
 
 pub fn synchronize_grid(
     cameras: Query<&Transform, With<Camera>>,
-    mut entities: Query<(&mut Transform, &CellGrid), Without<Camera>>,
+    mut entities: Query<(&mut Transform, &CellBorder), Without<Camera>>,
 ) {
     let Ok(camera) = cameras.get_single() else {
         return;
     };
 
     for (mut transform, wall) in &mut entities {
-        let translation = match wall.face {
-            Face::Front => CELL_SIZE.z - (camera.translation.z % CELL_SIZE.z),
-            Face::Back => -(camera.translation.z % CELL_SIZE.z),
-            Face::Right => CELL_SIZE.x - (camera.translation.x % CELL_SIZE.x),
-            Face::Left => -(camera.translation.x % CELL_SIZE.x),
-            Face::Top => CELL_SIZE.y - (camera.translation.y % CELL_SIZE.y),
-            Face::Bottom => -(camera.translation.y % CELL_SIZE.y),
+        let mut offset = Vec3::ZERO;
+        match wall.face {
+            Face::Front => {
+                offset.z = CELL_SIZE.z - (camera.translation.z % CELL_SIZE.z);
+                offset.x = CELL_SIZE.x / 2.0 - (camera.translation.x % CELL_SIZE.x);
+                offset.y = CELL_SIZE.y / 2.0 - (camera.translation.y % CELL_SIZE.y);
+            }
+            Face::Back => {
+                offset.z = -(camera.translation.z % CELL_SIZE.z);
+                offset.x = CELL_SIZE.x / 2.0 - (camera.translation.x % CELL_SIZE.x);
+                offset.y = CELL_SIZE.y / 2.0 - (camera.translation.y % CELL_SIZE.y);
+            }
+            Face::Right => {
+                offset.x = -(camera.translation.x % CELL_SIZE.x);
+                offset.y = CELL_SIZE.y / 2.0 - (camera.translation.y % CELL_SIZE.y);
+                offset.z = CELL_SIZE.z / 2.0 - (camera.translation.z % CELL_SIZE.z);
+            }
+            Face::Left => {
+                offset.x = CELL_SIZE.x - (camera.translation.x % CELL_SIZE.x);
+                offset.y = CELL_SIZE.y / 2.0 - (camera.translation.y % CELL_SIZE.y);
+                offset.z = CELL_SIZE.z / 2.0 - (camera.translation.z % CELL_SIZE.z);
+            }
+            Face::Top => {
+                offset.y = -(camera.translation.y % CELL_SIZE.y);
+                offset.x = CELL_SIZE.x / 2.0 - (camera.translation.x % CELL_SIZE.x);
+                offset.z = CELL_SIZE.z / 2.0 - (camera.translation.z % CELL_SIZE.z);
+            }
+            Face::Bottom => {
+                offset.y = CELL_SIZE.y - (camera.translation.y % CELL_SIZE.y);
+                offset.x = CELL_SIZE.x / 2.0 - (camera.translation.x % CELL_SIZE.x);
+                offset.z = CELL_SIZE.z / 2.0 - (camera.translation.z % CELL_SIZE.z);
+            }
         };
 
-        transform.translation = camera.translation + translation;
+        transform.translation = camera.translation + offset;
     }
 }
 
 fn create_wall_material(images: &mut Images) -> PbrMaterial {
     let pixel = Rgba([255, 0, 0, 255]);
-    let mut buf = ImageBuffer::from_pixel(32, 32, Rgba([0, 0, 0, 0]));
+    let mut buf = ImageBuffer::from_pixel(32, 32, Rgba([0, 0, 255, 255]));
     for x in 0..buf.width() {
         buf.put_pixel(x, 0, pixel);
         buf.put_pixel(x, buf.height() - 1, pixel);
