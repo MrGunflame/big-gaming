@@ -222,7 +222,7 @@ impl From<Quad> for Mesh {
                 positions = vec![
                     [min_x, max_y, 0.0],
                     [max_x, max_y, 0.0],
-                    [max_x, max_y, 0.0],
+                    [max_x, min_y, 0.0],
                     [min_x, min_y, 0.0],
                 ];
                 normals = vec![
