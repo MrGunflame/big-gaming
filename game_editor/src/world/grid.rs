@@ -131,6 +131,10 @@ fn calculate_translation(origin: Vec3, face: Face) -> Vec3 {
         }
     };
 
+    offset.x -= origin.x.is_sign_negative() as u8 as f32 * CELL_SIZE.x;
+    offset.y -= origin.y.is_sign_negative() as u8 as f32 * CELL_SIZE.y;
+    offset.z -= origin.z.is_sign_negative() as u8 as f32 * CELL_SIZE.z;
+
     origin + offset
 }
 
@@ -155,12 +159,36 @@ mod tests {
     }
 
     #[test]
+    fn calculate_translation_front_negative() {
+        let origin = Vec3::new(-1.0, -2.0, -3.0);
+        let face = Face::Front;
+
+        let offset = calculate_translation(origin, face);
+        assert_eq!(
+            offset,
+            Vec3::new(-CELL_SIZE.x / 2.0, -CELL_SIZE.y / 2.0, 0.0)
+        );
+    }
+
+    #[test]
     fn calculate_translation_back() {
         let origin = Vec3::new(1.0, 2.0, 3.0);
         let face = Face::Back;
 
         let offset = calculate_translation(origin, face);
         assert_eq!(offset, Vec3::new(CELL_SIZE.x / 2.0, CELL_SIZE.y / 2.0, 0.0));
+    }
+
+    #[test]
+    fn calculate_translation_back_negative() {
+        let origin = Vec3::new(-1.0, -2.0, -3.0);
+        let face = Face::Back;
+
+        let offset = calculate_translation(origin, face);
+        assert_eq!(
+            offset,
+            Vec3::new(-CELL_SIZE.x / 2.0, -CELL_SIZE.y / 2.0, -CELL_SIZE.z)
+        );
     }
 
     #[test]
@@ -173,6 +201,18 @@ mod tests {
     }
 
     #[test]
+    fn calculate_translation_left_negative() {
+        let origin = Vec3::new(-1.0, -2.0, -3.0);
+        let face = Face::Left;
+
+        let offset = calculate_translation(origin, face);
+        assert_eq!(
+            offset,
+            Vec3::new(-CELL_SIZE.x, -CELL_SIZE.y / 2.0, -CELL_SIZE.z / 2.0)
+        );
+    }
+
+    #[test]
     fn calculate_translation_right() {
         let origin = Vec3::new(1.0, 2.0, 3.0);
         let face = Face::Right;
@@ -181,6 +221,18 @@ mod tests {
         assert_eq!(
             offset,
             Vec3::new(CELL_SIZE.x, CELL_SIZE.y / 2.0, CELL_SIZE.z / 2.0)
+        );
+    }
+
+    #[test]
+    fn calculate_translation_right_negative() {
+        let origin = Vec3::new(-1.0, -2.0, -3.0);
+        let face = Face::Right;
+
+        let offset = calculate_translation(origin, face);
+        assert_eq!(
+            offset,
+            Vec3::new(0.0, -CELL_SIZE.y / 2.0, -CELL_SIZE.z / 2.0)
         );
     }
 
@@ -197,11 +249,35 @@ mod tests {
     }
 
     #[test]
+    fn calculate_translation_top_negative() {
+        let origin = Vec3::new(-1.0, -2.0, -3.0);
+        let face = Face::Top;
+
+        let offset = calculate_translation(origin, face);
+        assert_eq!(
+            offset,
+            Vec3::new(-CELL_SIZE.x / 2.0, 0.0, -CELL_SIZE.z / 2.0)
+        );
+    }
+
+    #[test]
     fn calculate_translation_bottom() {
         let origin = Vec3::new(1.0, 2.0, 3.0);
         let face = Face::Bottom;
 
         let offset = calculate_translation(origin, face);
         assert_eq!(offset, Vec3::new(CELL_SIZE.x / 2.0, 0.0, CELL_SIZE.z / 2.0));
+    }
+
+    #[test]
+    fn calculate_translation_bottom_negative() {
+        let origin = Vec3::new(-1.0, -2.0, -3.0);
+        let face = Face::Bottom;
+
+        let offset = calculate_translation(origin, face);
+        assert_eq!(
+            offset,
+            Vec3::new(-CELL_SIZE.x / 2.0, -CELL_SIZE.y, -CELL_SIZE.z / 2.0)
+        );
     }
 }
