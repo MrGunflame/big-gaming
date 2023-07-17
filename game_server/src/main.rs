@@ -1,8 +1,13 @@
+use std::fs::File;
+use std::io::Read;
+
 use bevy_app::App;
 use clap::Parser;
 
 use game_core::modules;
 use game_server::config::Config;
+use game_server::ServerState;
+use game_worldgen::gen::StaticGenerator;
 use tokio::runtime::{Builder, UnhandledPanic};
 
 #[derive(Debug, Parser)]
@@ -24,6 +29,11 @@ fn main() {
 
     let mut app = App::new();
 
+    let server_state = ServerState {
+        generator: load_world(),
+    };
+    app.insert_resource(server_state);
+
     game_server::prepare(&mut app);
 
     modules::load_modules(&mut app);
@@ -43,4 +53,15 @@ macro_rules! fatal {
         tracing::error!("encountered fatal error, exiting");
         std::process::exit(1);
     }};
+}
+
+fn load_world() -> StaticGenerator {
+    let mut file = File::open("./world.json").unwrap();
+
+    let mut buf = Vec::new();
+    file.read_to_end(&mut buf).unwrap();
+
+    let cells = game_worldgen::data::json::from_slice(&buf).unwrap();
+
+    StaticGenerator { data: cells }
 }

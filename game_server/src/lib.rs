@@ -11,8 +11,10 @@ pub mod world;
 use std::time::Duration;
 
 use bevy_app::App;
+use bevy_ecs::system::Resource;
 use game_core::counter::UpdateCounter;
 use game_core::CorePlugins;
+use game_worldgen::gen::StaticGenerator;
 use plugins::ServerPlugins;
 use tokio::time::{interval, MissedTickBehavior};
 use tracing::{span, Level};
@@ -76,4 +78,9 @@ pub async fn run(mut app: App, config: Config) {
 
         tracing::debug!("Stepping Control frame to {:?} (UPS = {})", cf, ups.ups());
     }
+}
+
+#[derive(Resource)]
+pub struct ServerState {
+    pub generator: StaticGenerator,
 }

@@ -7,7 +7,6 @@ use game_common::entity::EntityId;
 use game_common::events::{CellLoadEvent, CellUnloadEvent, Event, EventQueue};
 use game_common::world::cell::{square, Cell};
 use game_common::world::entity::{Entity, EntityBody, Item, Object};
-use game_common::world::gen::flat::FlatGenerator;
 use game_common::world::gen::{CellBuilder, EntityBuilder, Generator};
 use game_common::world::terrain::TerrainMesh;
 use game_common::world::world::WorldState;
@@ -83,12 +82,12 @@ pub struct Level {
     generator: Generator,
 }
 
-impl Default for Level {
-    fn default() -> Self {
+impl Level {
+    pub fn new(generator: Generator) -> Self {
         Self {
             loaded: HashSet::default(),
             cells: HashMap::default(),
-            generator: Generator::from(FlatGenerator),
+            generator,
         }
     }
 }

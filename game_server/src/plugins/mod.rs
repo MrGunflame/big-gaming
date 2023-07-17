@@ -456,8 +456,6 @@ where
 
     let mut stale_entities: HashSet<_> = state.known_entities.entities.keys().copied().collect();
 
-    dbg!(&stale_entities);
-
     for id in state.cells.iter() {
         let cell = view.cell(id);
 

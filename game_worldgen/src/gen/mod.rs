@@ -3,7 +3,7 @@ use game_common::world::gen::{CellBuilder, EntityBuilder, Generate};
 use crate::data::Cells;
 
 pub struct StaticGenerator {
-    data: Cells,
+    pub data: Cells,
 }
 
 impl Generate for StaticGenerator {

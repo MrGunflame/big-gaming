@@ -33,6 +33,7 @@ toml = "0.7.3"
 serde = { version = "1.0.160", features = ["derive"] }
 glam = "0.24.0"
 game_data = { version = "0.1.0", path = "../game_data" }
+game_worldgen = { version = "0.1.0", path = "../game_worldgen" }
 
 [profile.dev]
 opt-level = 0
