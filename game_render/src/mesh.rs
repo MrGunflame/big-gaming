@@ -7,6 +7,8 @@ use wgpu::{
     VertexStepMode,
 };
 
+use crate::aabb::Aabb;
+
 // FIXME: Meshes will be duplicated quite a bit, so
 // we don't want to have it attached to every entity.
 #[derive(Clone, Debug, Component)]
@@ -163,6 +165,23 @@ impl Mesh {
 
     pub fn tangents_set(&self) -> bool {
         self.tangents_set
+    }
+
+    pub fn compute_aabb(&self) -> Option<Aabb> {
+        // We need at least one vertex to determine an AABB.
+        if self.positions.is_empty() {
+            return None;
+        }
+
+        let mut min = Vec3::splat(f32::MIN);
+        let mut max = Vec3::splat(f32::MAX);
+
+        for pos in &self.positions {
+            min = Vec3::min(min, Vec3::from_slice(pos));
+            max = Vec3::max(max, Vec3::from_slice(pos));
+        }
+
+        Some(Aabb::from_min_max(min, max))
     }
 }
 

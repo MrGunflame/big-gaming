@@ -1,3 +1,4 @@
+pub mod aabb;
 pub mod buffer;
 pub mod camera;
 pub mod color;
@@ -159,6 +160,8 @@ impl Plugin for RenderPlugin {
                 .after(TransformSet)
                 .in_base_set(CoreSet::PostUpdate),
         );
+
+        app.add_system(aabb::update_aabb);
     }
 }
 

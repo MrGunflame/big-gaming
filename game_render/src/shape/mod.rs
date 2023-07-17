@@ -179,6 +179,19 @@ pub enum Face {
     Bottom,
 }
 
+impl Face {
+    pub const fn inverse(self) -> Self {
+        match self {
+            Self::Front => Self::Back,
+            Self::Back => Self::Front,
+            Self::Left => Self::Right,
+            Self::Right => Self::Left,
+            Self::Top => Self::Bottom,
+            Self::Bottom => Self::Top,
+        }
+    }
+}
+
 /// A quad placed on a face.
 #[derive(Copy, Clone, Debug)]
 pub struct Quad {

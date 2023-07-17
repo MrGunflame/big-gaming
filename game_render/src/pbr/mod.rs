@@ -12,14 +12,16 @@ use glam::UVec2;
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
 use wgpu::{
     BindGroup, BindGroupDescriptor, BindGroupEntry, BindingResource, Buffer, BufferUsages, Device,
-    Extent3d, ImageCopyTexture, ImageDataLayout, Origin3d, Queue, TextureAspect, TextureDescriptor,
-    TextureDimension, TextureFormat, TextureUsages, TextureView, TextureViewDescriptor,
+    Extent3d, ImageCopyTexture, ImageDataLayout, IndexFormat, Origin3d, Queue, TextureAspect,
+    TextureDescriptor, TextureDimension, TextureFormat, TextureUsages, TextureView,
+    TextureViewDescriptor,
 };
 
+use crate::buffer::IndexBuffer;
 use crate::color::Color;
 use crate::light::pipeline::{DirectionalLightUniform, PointLightUniform};
 use crate::light::{DirectionalLight, PointLight};
-use crate::mesh::Mesh;
+use crate::mesh::{Indices, Mesh};
 use crate::pipeline::{LightingPipeline, MaterialPipeline, MeshPipeline, TransformUniform};
 use crate::texture::{Image, ImageHandle, Images};
 use crate::{RenderDevice, RenderQueue};
@@ -120,8 +122,7 @@ pub struct RenderMaterialAssets {
 
 pub struct RenderNode {
     pub vertices: Buffer,
-    pub indices: Buffer,
-    pub num_vertices: u32,
+    pub indices: IndexBuffer,
     pub transform: Transform,
     pub transform_buffer: Buffer,
     pub transform_bind_group: BindGroup,
@@ -310,20 +311,39 @@ pub fn prepare_materials(
             usage: BufferUsages::VERTEX,
         });
 
-        let indices = mesh.indicies().unwrap().into_u32();
-        let num_vertices = indices.len() as u32;
+        let indices = match mesh.indicies().unwrap() {
+            Indices::U16(buf) => {
+                let buffer = device.0.create_buffer_init(&BufferInitDescriptor {
+                    label: Some("mesh_index_buffer"),
+                    contents: bytemuck::cast_slice(&buf),
+                    usage: BufferUsages::INDEX,
+                });
 
-        let indices = device.0.create_buffer_init(&BufferInitDescriptor {
-            label: Some("mesh_index_buffer"),
-            contents: bytemuck::cast_slice(&indices),
-            usage: BufferUsages::INDEX,
-        });
+                IndexBuffer {
+                    buffer,
+                    format: IndexFormat::Uint16,
+                    len: buf.len() as u32,
+                }
+            }
+            Indices::U32(buf) => {
+                let buffer = device.0.create_buffer_init(&BufferInitDescriptor {
+                    label: Some("mesh_index_buffer"),
+                    contents: bytemuck::cast_slice(&buf),
+                    usage: BufferUsages::INDEX,
+                });
+
+                IndexBuffer {
+                    buffer,
+                    format: IndexFormat::Uint32,
+                    len: buf.len() as u32,
+                }
+            }
+        };
 
         match render_assets.entities.get_mut(&entity) {
             Some(node) => {
                 node.vertices = vertices;
                 node.indices = indices;
-                node.num_vertices = num_vertices;
                 node.transform = transform.0;
                 node.transform_buffer = transform_buffer;
                 node.transform_bind_group = transform_bind_group;
@@ -334,7 +354,6 @@ pub fn prepare_materials(
                     RenderNode {
                         vertices,
                         indices,
-                        num_vertices,
                         transform: transform.0,
                         transform_buffer,
                         transform_bind_group,
