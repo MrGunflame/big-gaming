@@ -1,8 +1,10 @@
 //! An immutable view of a scene.
 
+use std::f32::consts::PI;
+
 use bevy_ecs::prelude::{Component, EventReader, Res};
 use bevy_ecs::query::{Changed, With};
-use bevy_ecs::system::{Commands, Query};
+use bevy_ecs::system::{Commands, Query, ResMut};
 use bitflags::bitflags;
 use game_asset::Assets;
 use game_common::bundles::TransformBundle;
@@ -17,11 +19,12 @@ use game_render::mesh::Mesh;
 use game_render::pbr::{PbrBundle, PbrMaterial};
 use game_render::shape;
 use game_render::texture::{Image, Images, TextureFormat};
-use game_scene::Scenes;
+use game_scene::{SceneBundle, Scenes};
+use game_ui::render::remap::remap;
 use game_window::cursor::Cursor;
 use game_window::events::{CursorLeft, VirtualKeyCode};
-use game_window::Window;
-use glam::{Quat, UVec2, Vec3};
+use game_window::{Window, WindowState};
+use glam::{Quat, UVec2, Vec2, Vec3};
 
 pub fn spawn_view_window(
     commands: &mut Commands,
@@ -99,32 +102,32 @@ pub fn spawn_view_window(
         },
     });
 
-    // commands.spawn(DirectionalLightBundle {
-    //     light: DirectionalLight {
-    //         color: [1.0, 1.0, 1.0],
-    //         illuminance: 1.0,
-    //     },
-    //     transform: TransformBundle {
-    //         transform: Transform {
-    //             translation: Vec3::new(1.0, 0.0, 5.0),
-    //             ..Default::default()
-    //         },
-    //         ..Default::default()
-    //     },
-    // });
-
-    commands.spawn(PointLightBundle {
-        light: PointLight {
-            color: Color::WHITE,
+    commands.spawn(DirectionalLightBundle {
+        light: DirectionalLight {
+            color: [1.0, 1.0, 1.0],
+            illuminance: 1.0,
         },
         transform: TransformBundle {
             transform: Transform {
-                translation: Vec3::new(1.0, 2.0, 5.0),
+                translation: Vec3::new(1.0, 0.0, 1.0),
                 ..Default::default()
             },
             ..Default::default()
         },
     });
+
+    // commands.spawn(PointLightBundle {
+    //     light: PointLight {
+    //         color: Color::WHITE,
+    //     },
+    //     transform: TransformBundle {
+    //         transform: Transform {
+    //             translation: Vec3::new(0.0, 3.0, 3.0),
+    //             ..Default::default()
+    //         },
+    //         ..Default::default()
+    //     },
+    // });
 
     // commands.spawn(DirectionalLightBundle {
     //     light: DirectionalLight {
@@ -155,10 +158,11 @@ pub fn spawn_view_window(
     // });
 
     // commands.spawn(SceneBundle {
-    //     scene: scenes.load("/tmp/glTF-Sample-Models/2.0/Sponza/glTF/Sponza.gltf"),
+    //     scene: scenes
+    //         .load("/home/robert/projects/gltf/glTF-Sample-Models/2.0/Sponza/glTF/Sponza.gltf"),
     //     transform: TransformBundle {
     //         transform: Transform {
-    //             translation: Vec3::new(0.0, 1.0, 5.0),
+    //             translation: Vec3::new(0.0, 0.0, 0.0),
     //             ..Default::default()
     //         },
     //         ..Default::default()
@@ -287,7 +291,11 @@ pub fn spawn_view_window(
                 ..Default::default()
             }),
             transform: TransformBundle {
-                transform: Transform::default(),
+                transform: Transform {
+                    translation: Default::default(),
+                    rotation: Quat::from_axis_angle(Vec3::Y, PI / 4.0),
+                    ..Default::default()
+                },
                 ..Default::default()
             },
         })
@@ -339,6 +347,24 @@ pub fn spawn_view_window(
                 ..Default::default()
             },
         });
+    }
+}
+
+pub fn handle_selection(
+    cursor: Res<Cursor>,
+    mut windows: Query<&WindowState>,
+    mut events: EventReader<MouseButtonInput>,
+) {
+    for event in events.iter() {
+        let window = windows.get(cursor.window().unwrap()).unwrap();
+        let size = window.inner_size();
+
+        if event.state.is_pressed() && event.button.is_left() {
+            let position = remap(
+                cursor.position(),
+                Vec2::new(size.width as f32, size.height as f32),
+            );
+        }
     }
 }
 
