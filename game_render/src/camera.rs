@@ -6,8 +6,9 @@ use bevy_ecs::query::Added;
 use bevy_ecs::system::{Query, Res, ResMut, Resource};
 use bytemuck::{Pod, Zeroable};
 use game_common::components::transform::Transform;
+use game_common::math::Ray;
 use game_window::events::WindowResized;
-use glam::{Mat4, Vec3};
+use glam::{Mat4, Vec2, Vec3};
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
 use wgpu::{Buffer, BufferUsages, Device};
 
@@ -25,6 +26,34 @@ pub struct Camera {
     pub target: RenderTarget,
 }
 
+impl Camera {
+    pub fn viewport_to_world(
+        &self,
+        camera_transform: Transform,
+        viewport_size: Vec2,
+        mut viewport_position: Vec2,
+    ) -> Ray {
+        viewport_position.y = viewport_size.y - viewport_position.y;
+        let ndc = viewport_position * 2.0 / viewport_size - Vec2::ONE;
+
+        let proj_matrix = Mat4::perspective_infinite_reverse_rh(
+            self.projection.fov,
+            self.projection.aspect_ratio,
+            self.projection.near,
+        );
+
+        let ndc_to_world = camera_transform.compute_matrix() * proj_matrix.inverse();
+        let world_near_plane = ndc_to_world.project_point3(ndc.extend(1.0));
+        // EPS instead of 0, otherwise we get NaNs.
+        let world_far_plane = ndc_to_world.project_point3(ndc.extend(f32::EPSILON));
+
+        Ray {
+            origin: world_near_plane,
+            direction: (world_far_plane - world_near_plane).normalize(),
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum RenderTarget {
     /// Render to a window surface.
@@ -39,6 +68,12 @@ pub struct Projection {
     pub fov: f32,
     pub near: f32,
     pub far: f32,
+}
+
+impl Projection {
+    pub fn projection_matrix(&self) -> Mat4 {
+        Mat4::perspective_rh(self.fov, self.aspect_ratio, self.near, self.far)
+    }
 }
 
 impl Default for Projection {
@@ -158,12 +193,7 @@ impl CameraUniform {
             transform.rotation * Vec3::Y,
         );
 
-        let proj = Mat4::perspective_rh(
-            projection.fov,
-            projection.aspect_ratio,
-            projection.near,
-            projection.far,
-        );
+        let proj = projection.projection_matrix();
 
         Self {
             view_position: [

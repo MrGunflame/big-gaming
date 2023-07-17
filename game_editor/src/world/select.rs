@@ -2,18 +2,19 @@ use bevy_ecs::prelude::EventReader;
 use bevy_ecs::query::With;
 use bevy_ecs::system::{Query, Res};
 use game_common::components::transform::Transform;
+use game_common::math::Ray;
 use game_input::mouse::MouseButtonInput;
 use game_render::aabb::Aabb;
 use game_render::camera::Camera;
 use game_window::cursor::Cursor;
 use game_window::WindowState;
-use glam::Vec3;
+use glam::{Vec2, Vec3};
 
 pub fn handle_selection_input(
     mut events: EventReader<MouseButtonInput>,
     cursor: Res<Cursor>,
     windows: Query<&WindowState>,
-    cameras: Query<&Transform, With<Camera>>,
+    cameras: Query<(&Transform, &Camera)>,
     meshes: Query<&Aabb>,
 ) {
     for event in events.iter() {
@@ -27,46 +28,21 @@ pub fn handle_selection_input(
         let size = window.inner_size();
         let cursor_pos = cursor.position();
 
-        let x = (2.0 * cursor_pos.x) / size.width as f32 - 1.0;
-        let y = 1.0 - (2.0 * cursor_pos.y) / size.height as f32;
-        let z = 1.0;
-        let ndc_orig = Vec3::new(x, y, z);
-
-        let Ok(camera) = cameras.get_single() else {
+        let Ok((transform, camera)) = cameras.get_single() else {
             return;
         };
 
-        let orig = camera.translation + camera.rotation * ndc_orig;
-        let dir = camera.rotation * -Vec3::Z;
+        let ray = camera.viewport_to_world(
+            *transform,
+            Vec2::new(size.width as f32, size.height as f32),
+            cursor_pos,
+        );
+        dbg!(ray);
 
         for aabb in &meshes {
-            if hit_test(
-                Ray {
-                    origin: orig,
-                    direction: dir,
-                },
-                *aabb,
-            ) {
+            if hit_test(ray, *aabb) {
                 dbg!("yes");
             }
-        }
-    }
-}
-
-#[derive(Copy, Clone, Debug, PartialEq)]
-struct Ray {
-    origin: Vec3,
-    direction: Vec3,
-}
-
-impl Ray {
-    fn plane_intersection(&self, plane_origin: Vec3, plane_normal: Vec3) -> Option<Vec3> {
-        let denom = plane_normal.dot(self.direction);
-        if denom.abs() > f32::EPSILON {
-            let distance = (plane_origin - self.origin).dot(plane_normal) / denom;
-            Some(self.origin + self.direction * distance)
-        } else {
-            None
         }
     }
 }
