@@ -173,8 +173,8 @@ impl Mesh {
             return None;
         }
 
-        let mut min = Vec3::splat(f32::MIN);
-        let mut max = Vec3::splat(f32::MAX);
+        let mut min = Vec3::splat(f32::MAX);
+        let mut max = Vec3::splat(f32::MIN);
 
         for pos in &self.positions {
             min = Vec3::min(min, Vec3::from_slice(pos));
