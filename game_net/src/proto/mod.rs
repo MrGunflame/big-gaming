@@ -467,10 +467,10 @@ impl Flags {
 
     pub fn packet_position(self) -> PacketPosition {
         match self.0 & 0b1100_0000_0000_0000 {
-            0b00 => PacketPosition::Single,
-            0b10 => PacketPosition::First,
-            0b01 => PacketPosition::Last,
-            0b11 => PacketPosition::Middle,
+            0b0000_0000_0000_0000 => PacketPosition::Single,
+            0b1000_0000_0000_0000 => PacketPosition::First,
+            0b0100_0000_0000_0000 => PacketPosition::Last,
+            0b1100_0000_0000_0000 => PacketPosition::Middle,
             _ => unreachable!(),
         }
     }
@@ -1116,7 +1116,7 @@ impl Decode for Packet {
 
         let body = match header.packet_type {
             PacketType::DATA => {
-                let mut body = Vec::new();
+                let mut body = vec![0; buf.remaining()];
                 buf.copy_to_slice(&mut body);
 
                 PacketBody::Data(body)

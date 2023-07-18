@@ -365,7 +365,7 @@ where
         self.reassembly_buffer
             .insert(header.sequence, header.flags.packet_position(), body);
 
-        for frame in self.reassembly_buffer.pop() {
+        while let Some(frame) = self.reassembly_buffer.pop() {
             #[cfg(debug_assertions)]
             self.debug_validator.push(header, &frame);
 
@@ -823,7 +823,10 @@ where
                     control_frame,
                     flags,
                 },
-                body: PacketBody::Data(buf[bytes_written + 1..].to_vec()),
+                body: PacketBody::Data(
+                    buf[bytes_written + 1..bytes_written + 1 + self.max_data_size as usize + 1]
+                        .to_vec(),
+                ),
             };
 
             self.inflight_packets.insert(packet.clone());
