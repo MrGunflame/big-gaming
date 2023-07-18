@@ -179,7 +179,7 @@ impl Pipeline {
             EntityBody::Terrain(terrain) => {
                 let body = RigidBodyBuilder::new(RigidBodyType::Fixed)
                     .position(Isometry {
-                        translation: vector(terrain.cell.min()).into(),
+                        translation: vector(terrain.mesh.cell.min()).into(),
                         rotation: rotation(Quat::IDENTITY),
                     })
                     .ccd_enabled(true)
@@ -188,7 +188,7 @@ impl Pipeline {
                 let body_handle = self.bodies.insert(body);
                 self.body_handles.insert(entity.id, body_handle);
 
-                let (vertices, indices) = terrain.verts_indices();
+                let (vertices, indices) = terrain.mesh.verts_indices();
                 let vertices = vertices.into_iter().map(|vert| point(vert)).collect();
 
                 let collider = ColliderBuilder::trimesh(vertices, indices)

@@ -8,7 +8,7 @@ use crate::components::components::{Component, Components};
 use crate::components::transform::Transform;
 use crate::record::RecordReference;
 
-use super::terrain::Heightmap;
+use super::entity::Terrain;
 use super::CellId;
 pub mod flat;
 
@@ -72,7 +72,7 @@ pub struct EntityBuilder {
     pub id: RecordReference,
     pub transform: Transform,
     pub components: Components,
-    pub terrain: Option<Heightmap>,
+    pub terrain: Option<Terrain>,
 }
 
 impl EntityBuilder {
@@ -105,7 +105,7 @@ impl EntityBuilder {
         self
     }
 
-    pub fn terrain(mut self, map: Heightmap) -> Self {
+    pub fn terrain(mut self, map: Terrain) -> Self {
         self.terrain = Some(map);
         self
     }

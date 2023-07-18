@@ -61,6 +61,14 @@ impl Heightmap {
         Self { size, nodes }
     }
 
+    pub fn from_u8(size: UVec2, nodes: Vec<u8>) -> Self {
+        assert!(nodes.len() as u32 / size.x == size.y);
+
+        let nodes = nodes.into_iter().map(|px| px as f32 / 255.0).collect();
+
+        Self { size, nodes }
+    }
+
     pub fn size(&self) -> UVec2 {
         self.size
     }
@@ -99,6 +107,30 @@ impl Heightmap {
         let index = y * self.size.x + x;
 
         self.nodes[index as usize]
+    }
+
+    pub fn as_u8(&self) -> HeightmapU8<'_> {
+        HeightmapU8 {
+            inner: self,
+            index: 0,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct HeightmapU8<'a> {
+    inner: &'a Heightmap,
+    index: usize,
+}
+
+impl<'a> Iterator for HeightmapU8<'a> {
+    type Item = u8;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let texel = self.inner.nodes.get(self.index)?;
+        self.index += 1;
+
+        Some((texel * 255.0) as u8)
     }
 }
 

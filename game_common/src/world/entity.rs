@@ -25,7 +25,7 @@ pub struct Entity {
 impl Entity {
     pub fn cell(&self) -> CellId {
         match &self.body {
-            EntityBody::Terrain(terrain) => terrain.cell,
+            EntityBody::Terrain(terrain) => terrain.mesh.cell,
             _ => self.transform.translation.into(),
         }
     }
@@ -33,7 +33,7 @@ impl Entity {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum EntityBody {
-    Terrain(TerrainMesh),
+    Terrain(Terrain),
     Object(Object),
     Actor(Actor),
     Item(Item),
@@ -59,7 +59,9 @@ pub enum EntityKind {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct Terrain {}
+pub struct Terrain {
+    pub mesh: TerrainMesh,
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Object {
@@ -83,8 +85,8 @@ pub struct Item {
     pub id: ItemId,
 }
 
-impl From<TerrainMesh> for EntityBody {
-    fn from(value: TerrainMesh) -> Self {
+impl From<Terrain> for EntityBody {
+    fn from(value: Terrain) -> Self {
         Self::Terrain(value)
     }
 }
@@ -240,11 +242,11 @@ impl From<ObjectBuilder> for Entity {
     }
 }
 
-impl From<TerrainMesh> for Entity {
-    fn from(value: TerrainMesh) -> Self {
+impl From<Terrain> for Entity {
+    fn from(value: Terrain) -> Self {
         Entity {
             id: EntityId::dangling(),
-            transform: Transform::from_translation(value.cell.min()),
+            transform: Transform::from_translation(value.mesh.cell.min()),
             body: EntityBody::Terrain(value),
             components: Components::new(),
         }

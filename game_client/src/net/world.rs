@@ -311,7 +311,7 @@ fn handle_event(
 
 fn spawn_entity(commands: &mut Commands, entity: DelayedEntity) -> bevy_ecs::entity::Entity {
     match entity.entity.body {
-        EntityBody::Terrain(terrain) => commands.spawn(LoadTerrain { mesh: terrain }).id(),
+        EntityBody::Terrain(terrain) => commands.spawn(LoadTerrain { terrain }).id(),
         EntityBody::Object(object) => commands
             .spawn(LoadObject {
                 transform: entity.entity.transform,

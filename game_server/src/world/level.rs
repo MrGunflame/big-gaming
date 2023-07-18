@@ -8,7 +8,6 @@ use game_common::events::{CellLoadEvent, CellUnloadEvent, Event, EventQueue};
 use game_common::world::cell::{square, Cell};
 use game_common::world::entity::{Entity, EntityBody, Item, Object};
 use game_common::world::gen::{CellBuilder, EntityBuilder, Generator};
-use game_common::world::terrain::TerrainMesh;
 use game_common::world::world::WorldState;
 use game_common::world::CellId;
 use game_core::modules::Modules;
@@ -99,10 +98,7 @@ fn build_entity(modules: &Modules, cell: CellId, builder: EntityBuilder) -> Opti
         return Some(Entity {
             id: EntityId::dangling(),
             transform: builder.transform,
-            body: EntityBody::Terrain(TerrainMesh {
-                cell,
-                offsets: terrain,
-            }),
+            body: EntityBody::Terrain(terrain),
             components: Components::new(),
         });
     }

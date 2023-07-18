@@ -2,8 +2,9 @@ use glam::UVec2;
 use noise::{NoiseFn, Simplex};
 
 use crate::record::RecordReference;
+use crate::world::entity::Terrain;
 use crate::world::gen::Generate;
-use crate::world::terrain::Heightmap;
+use crate::world::terrain::{Heightmap, TerrainMesh};
 use crate::world::CELL_SIZE_UINT;
 
 use super::{CellBuilder, EntityBuilder};
@@ -30,7 +31,9 @@ impl Generate for FlatGenerator {
         // ));
 
         let mesh = Heightmap::from_vec(UVec2::new(2, 2), vec![0.0, 0.0, 0.0, 0.0]);
-        cell.spawn(EntityBuilder::new(RecordReference::STUB).terrain(mesh));
+        cell.spawn(EntityBuilder::new(RecordReference::STUB).terrain(Terrain {
+            mesh: TerrainMesh::new(cell.id(), mesh),
+        }));
 
         // cell.spawn(Item {
         //     id: ItemId(0.into()),

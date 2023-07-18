@@ -39,6 +39,7 @@ mod inventory;
 mod properties;
 mod quat;
 mod record;
+mod terrain;
 
 use game_common::components::actions::ActionId;
 use game_common::components::combat::Health;
@@ -49,8 +50,7 @@ use game_common::components::race::RaceId;
 use game_common::id::WeakId;
 use game_common::record::RecordReference;
 use game_common::world::control_frame::ControlFrame;
-use game_common::world::entity::{Actor, EntityBody, Object};
-use game_common::world::terrain::{Heightmap, TerrainMesh};
+use game_common::world::entity::{Actor, EntityBody, Object, Terrain};
 use game_common::world::CellId;
 pub use game_macros::{net__decode as Decode, net__encode as Encode};
 
@@ -453,13 +453,7 @@ impl Encode for EntityBody {
         match self {
             Self::Terrain(terrain) => {
                 0u8.encode(&mut buf)?;
-
-                terrain.cell.encode(&mut buf)?;
-
-                terrain.height().size().encode(&mut buf)?;
-                for node in terrain.height().nodes() {
-                    node.encode(&mut buf)?;
-                }
+                terrain.encode(&mut buf)?;
             }
             Self::Object(object) => {
                 1u8.encode(&mut buf)?;
@@ -491,24 +485,8 @@ impl Decode for EntityBody {
 
         match typ {
             0u8 => {
-                let cell = CellId::decode(&mut buf)?;
-
-                let size = UVec2::decode(&mut buf)?;
-                let len = (size.x as usize)
-                    .checked_mul(size.y as usize)
-                    .expect("terrain heightmap size overflow while decoding");
-
-                let mut nodes = Vec::with_capacity(len);
-
-                for _ in 0..len {
-                    let node = f32::decode(&mut buf)?;
-                    nodes.push(node);
-                }
-
-                Ok(Self::Terrain(TerrainMesh::new(
-                    cell,
-                    Heightmap::from_vec(size, nodes),
-                )))
+                let terrain = Terrain::decode(&mut buf)?;
+                Ok(Self::Terrain(terrain))
             }
             1u8 => {
                 let id = ObjectId::decode(&mut buf)?;
@@ -763,59 +741,6 @@ impl BitOr for ItemUpdateFlags {
 impl BitOrAssign for ItemUpdateFlags {
     fn bitor_assign(&mut self, rhs: Self) {
         *self = *self | rhs;
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct Terrain {
-    pub cell: CellId,
-    pub height: Heightmap,
-}
-
-impl Encode for Terrain {
-    type Error = Infallible;
-
-    fn encode<B>(&self, mut buf: B) -> Result<(), Self::Error>
-    where
-        B: BufMut,
-    {
-        self.cell.encode(&mut buf)?;
-
-        self.height.size().encode(&mut buf)?;
-
-        for p in self.height.nodes() {
-            p.encode(&mut buf)?;
-        }
-
-        Ok(())
-    }
-}
-
-impl Decode for Terrain {
-    type Error = EofError;
-
-    fn decode<B>(mut buf: B) -> Result<Self, Self::Error>
-    where
-        B: Buf,
-    {
-        let cell = CellId::decode(&mut buf)?;
-
-        let size = UVec2::decode(&mut buf)?;
-        let len = (size.x as usize)
-            .checked_mul(size.y as usize)
-            .expect("received terrain mesh size overflowed");
-
-        let mut nodes = Vec::with_capacity(len);
-
-        for _ in 0..len {
-            let node = f32::decode(&mut buf)?;
-            nodes.push(node);
-        }
-
-        Ok(Self {
-            cell,
-            height: Heightmap::from_vec(size, nodes),
-        })
     }
 }
 
