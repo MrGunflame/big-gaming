@@ -41,6 +41,7 @@ mod quat;
 mod record;
 mod terrain;
 
+use bitflags::bitflags;
 use game_common::components::actions::ActionId;
 use game_common::components::combat::Health;
 use game_common::components::inventory::InventoryId;
@@ -350,7 +351,7 @@ impl From<u16> for InvalidPacketType {
 /// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 /// |0| Sequence                                                    |
 /// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-/// | Timestamp                                                     |
+/// | Control Frame                   | Flags                       |
 /// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 /// ```
 ///
@@ -362,7 +363,7 @@ impl From<u16> for InvalidPacketType {
 /// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 /// |1| Control Type                | Reserved                      |
 /// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-/// | Timestamp                                                     |
+/// | Reserved                      | Flags                         |
 /// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 /// ```
 #[derive(Copy, Clone, Debug)]
@@ -370,6 +371,7 @@ pub struct Header {
     pub packet_type: PacketType,
     pub sequence: Sequence,
     pub control_frame: ControlFrame,
+    pub flags: Flags,
 }
 
 impl Encode for Header {
@@ -410,6 +412,7 @@ impl Decode for Header {
     {
         let word0 = u32::decode(&mut buf)?;
         let control_frame = ControlFrame::decode(&mut buf)?;
+        let flags = Flags::decode(&mut buf)?;
 
         let packet_type;
         let sequence;
@@ -430,7 +433,43 @@ impl Decode for Header {
             packet_type,
             sequence,
             control_frame,
+            flags,
         })
+    }
+}
+
+bitflags! {
+    #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
+    pub struct Flags: u16 {
+        const RETRANSMISSION = 1 << 0;
+    }
+}
+
+impl Flags {
+    pub const fn new() -> Self {
+        Self::empty()
+    }
+}
+
+impl Encode for Flags {
+    type Error = <u16 as Encode>::Error;
+
+    fn encode<B>(&self, buf: B) -> Result<(), Self::Error>
+    where
+        B: BufMut,
+    {
+        self.bits().encode(buf)
+    }
+}
+
+impl Decode for Flags {
+    type Error = <u16 as Decode>::Error;
+
+    fn decode<B>(buf: B) -> Result<Self, Self::Error>
+    where
+        B: Buf,
+    {
+        u16::decode(buf).map(Self::from_bits_retain)
     }
 }
 
@@ -1287,6 +1326,8 @@ impl Decode for SequenceRange {
 mod tests {
     use game_common::world::control_frame::ControlFrame;
 
+    use crate::proto::Flags;
+
     use super::sequence::Sequence;
     use super::{Decode, Encode, Header, PacketType, SequenceRange};
 
@@ -1298,6 +1339,7 @@ mod tests {
             packet_type: PacketType::DATA,
             sequence: Sequence::from_bits(sequence),
             control_frame: ControlFrame(0),
+            flags: Flags::new(),
         };
 
         let mut buf = Vec::new();

@@ -20,7 +20,7 @@ use crate::proto::ack::{Ack, AckAck, Nak};
 use crate::proto::handshake::{Handshake, HandshakeFlags, HandshakeType};
 use crate::proto::sequence::Sequence;
 use crate::proto::shutdown::{Shutdown, ShutdownReason};
-use crate::proto::{Encode, Frame, Header, Packet, PacketBody, PacketType, SequenceRange};
+use crate::proto::{Encode, Flags, Frame, Header, Packet, PacketBody, PacketType, SequenceRange};
 use crate::request::Request;
 use crate::snapshot::{
     Command, CommandId, CommandQueue, Connected, ConnectionMessage, Response, Status,
@@ -290,6 +290,7 @@ where
                     packet_type: PacketType::DATA,
                     sequence: req.sequence,
                     control_frame: req.control_frame,
+                    flags: Flags::new(),
                 },
                 body: PacketBody::Frames(vec![req.frame.clone()]),
             };
@@ -369,6 +370,7 @@ where
                     packet_type: PacketType::NAK,
                     sequence: Sequence::new(0),
                     control_frame: ControlFrame(0),
+                    flags: Flags::new(),
                 },
                 body: PacketBody::Nak(Nak {
                     sequences: SequenceRange {
@@ -442,6 +444,7 @@ where
                         packet_type: PacketType::HANDSHAKE,
                         sequence: Sequence::default(),
                         control_frame: self.start_control_frame,
+                        flags: Flags::new(),
                     },
                     body: PacketBody::Handshake(Handshake {
                         version: 0,
@@ -504,6 +507,7 @@ where
                         packet_type: PacketType::HANDSHAKE,
                         sequence: Sequence::default(),
                         control_frame: self.start_control_frame,
+                        flags: Flags::new(),
                     },
                     body: PacketBody::Handshake(Handshake {
                         version: 0,
@@ -544,6 +548,7 @@ where
                         packet_type: PacketType::HANDSHAKE,
                         sequence: Sequence::default(),
                         control_frame: self.start_control_frame,
+                        flags: Flags::new(),
                     },
                     body: PacketBody::Handshake(Handshake {
                         version: 0,
@@ -607,6 +612,7 @@ where
                 packet_type: PacketType::ACKACK,
                 sequence: Sequence::new(0),
                 control_frame: ControlFrame(0),
+                flags: Flags::new(),
             },
             body: PacketBody::AckAck(AckAck {
                 ack_sequence: body.ack_sequence,
@@ -645,6 +651,7 @@ where
                 packet_type: PacketType::HANDSHAKE,
                 sequence: Sequence::default(),
                 control_frame: self.start_control_frame,
+                flags: Flags::new(),
             },
             body: PacketBody::Handshake(Handshake {
                 version: 0,
@@ -681,6 +688,7 @@ where
                     packet_type: PacketType::ACK,
                     sequence: Sequence::new(0),
                     control_frame: ControlFrame(0),
+                    flags: Flags::new(),
                 },
                 body: PacketBody::Ack(Ack {
                     sequence: self.ack_list.ack_seq,
@@ -707,6 +715,7 @@ where
                 packet_type: PacketType::HANDSHAKE,
                 sequence: Sequence::new(0),
                 control_frame: ControlFrame(0),
+                flags: Flags::new(),
             },
             body: PacketBody::Handshake(Handshake {
                 version: 0,
@@ -756,6 +765,7 @@ where
                 packet_type: PacketType::SHUTDOWN,
                 sequence: Sequence::new(0),
                 control_frame: ControlFrame(0),
+                flags: Flags::new(),
             },
             body: PacketBody::Shutdown(Shutdown {
                 reason: ShutdownReason::CLOSE,
@@ -1119,7 +1129,7 @@ mod tests {
     use game_common::world::control_frame::ControlFrame;
 
     use crate::proto::sequence::Sequence;
-    use crate::proto::{Header, Packet, PacketBody, PacketType};
+    use crate::proto::{Flags, Header, Packet, PacketBody, PacketType};
 
     use super::{InflightPackets, LossList};
 
@@ -1149,6 +1159,7 @@ mod tests {
                 packet_type: PacketType::DATA,
                 sequence: seq,
                 control_frame: ControlFrame::new(),
+                flags: Flags::new(),
             },
             body: PacketBody::Frames(vec![]),
         }
