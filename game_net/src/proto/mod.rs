@@ -399,6 +399,7 @@ impl Encode for Header {
 
         word0.encode(&mut buf)?;
         self.control_frame.encode(&mut buf)?;
+        self.flags.encode(&mut buf)?;
         Ok(())
     }
 }
