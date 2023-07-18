@@ -2,7 +2,7 @@ use std::ops::{Add, AddAssign, Sub, SubAssign};
 
 // FIXME: Ord impl should wrap
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ControlFrame(pub u32);
+pub struct ControlFrame(pub u16);
 
 impl ControlFrame {
     #[inline]
@@ -44,30 +44,30 @@ impl SubAssign for ControlFrame {
     }
 }
 
-impl Add<u32> for ControlFrame {
+impl Add<u16> for ControlFrame {
     type Output = Self;
 
-    fn add(self, rhs: u32) -> Self::Output {
+    fn add(self, rhs: u16) -> Self::Output {
         Self(self.0.wrapping_add(rhs))
     }
 }
 
-impl AddAssign<u32> for ControlFrame {
-    fn add_assign(&mut self, rhs: u32) {
+impl AddAssign<u16> for ControlFrame {
+    fn add_assign(&mut self, rhs: u16) {
         *self = *self + rhs;
     }
 }
 
-impl Sub<u32> for ControlFrame {
+impl Sub<u16> for ControlFrame {
     type Output = Self;
 
-    fn sub(self, rhs: u32) -> Self::Output {
+    fn sub(self, rhs: u16) -> Self::Output {
         Self(self.0.wrapping_sub(rhs))
     }
 }
 
-impl SubAssign<u32> for ControlFrame {
-    fn sub_assign(&mut self, rhs: u32) {
+impl SubAssign<u16> for ControlFrame {
+    fn sub_assign(&mut self, rhs: u16) {
         *self = *self - rhs;
     }
 }

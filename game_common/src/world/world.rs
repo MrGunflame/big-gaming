@@ -1166,7 +1166,7 @@ mod tests {
         }
     }
 
-    fn create_test_world(num_snapshots: u32) -> (WorldState, Vec<ControlFrame>) {
+    fn create_test_world(num_snapshots: u16) -> (WorldState, Vec<ControlFrame>) {
         let mut world = WorldState::new();
 
         let cfs = (0..num_snapshots)

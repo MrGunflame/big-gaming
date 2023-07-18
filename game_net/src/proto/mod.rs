@@ -1209,7 +1209,7 @@ impl Decode for InventoryId {
 }
 
 impl Encode for ControlFrame {
-    type Error = <u32 as Encode>::Error;
+    type Error = <u16 as Encode>::Error;
 
     fn encode<B>(&self, buf: B) -> Result<(), Self::Error>
     where
@@ -1220,13 +1220,13 @@ impl Encode for ControlFrame {
 }
 
 impl Decode for ControlFrame {
-    type Error = <u32 as Decode>::Error;
+    type Error = <u16 as Decode>::Error;
 
     fn decode<B>(buf: B) -> Result<Self, Self::Error>
     where
         B: Buf,
     {
-        u32::decode(buf).map(Self)
+        u16::decode(buf).map(Self)
     }
 }
 

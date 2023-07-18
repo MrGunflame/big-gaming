@@ -29,5 +29,5 @@ impl Config {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Network {
-    pub interpolation_frames: u32,
+    pub interpolation_frames: u16,
 }
