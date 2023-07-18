@@ -48,6 +48,13 @@ impl Sequence {
 
         Self(bits)
     }
+
+    #[inline]
+    pub fn fetch_next(&mut self) -> Self {
+        let mut seq = *self;
+        *self += 1;
+        seq
+    }
 }
 
 impl Default for Sequence {

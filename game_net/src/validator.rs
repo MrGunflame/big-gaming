@@ -6,7 +6,7 @@ use game_common::net::ServerEntity;
 use game_common::world::control_frame::ControlFrame;
 use indexmap::IndexMap;
 
-use crate::proto::{Frame, Packet, PacketBody};
+use crate::proto::{Frame, Header};
 
 #[derive(Clone, Debug, Default)]
 pub struct DebugValidator {
@@ -21,35 +21,28 @@ impl DebugValidator {
         }
     }
 
-    pub fn push(&mut self, packet: &Packet) {
-        let header = packet.header;
+    pub fn push(&mut self, header: Header, frame: &Frame) {
+        let entry = self.cfs.entry(header.control_frame).or_default();
+        let entry = entry.entities.entry(frame.id()).or_default();
 
-        let data = match &packet.body {
-            PacketBody::Frames(data) => data,
-            _ => return,
-        };
-
-        for frame in data {
-            let entry = self.cfs.entry(header.control_frame).or_default();
-            let entry = entry.entities.entry(frame.id()).or_default();
-
-            match frame {
-                Frame::EntityTranslate(frame) => match &mut entry.translation {
-                    Some(count) => {
-                        *count += 1;
-                        tracing::warn!("received {} `EntityTranslation` frames for entity {:?} in control frame {:?}", count, frame.entity, header.control_frame);
-                    }
-                    None => entry.translation = Some(1),
-                },
-                Frame::EntityRotate(frame) => match &mut entry.rotation {
+        match frame {
+            Frame::EntityTranslate(frame) => match &mut entry.translation {
+                Some(count) => {
+                    *count += 1;
+                    tracing::warn!("received {} `EntityTranslation` frames for entity {:?} in control frame {:?}", count, frame.entity, header.control_frame);
+                }
+                None => entry.translation = Some(1),
+            },
+            Frame::EntityRotate(frame) => {
+                match &mut entry.rotation {
                     Some(count) => {
                         *count += 1;
                         tracing::warn!("received {} `EntityRotation` frames for entity {:?} control frame {:?}", count, frame.entity, header.control_frame);
                     }
                     None => entry.rotation = Some(1),
-                },
-                _ => (),
+                }
             }
+            _ => (),
         }
 
         if self.cfs.len() >= 8192 {

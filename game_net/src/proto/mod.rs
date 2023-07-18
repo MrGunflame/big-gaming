@@ -518,6 +518,28 @@ pub enum PacketPosition {
     Last,
 }
 
+impl PacketPosition {
+    #[inline]
+    pub const fn is_single(self) -> bool {
+        matches!(self, Self::Single)
+    }
+
+    #[inline]
+    pub const fn is_first(self) -> bool {
+        matches!(self, Self::First)
+    }
+
+    #[inline]
+    pub const fn is_middle(self) -> bool {
+        matches!(self, Self::Middle)
+    }
+
+    #[inline]
+    pub const fn is_last(self) -> bool {
+        matches!(self, Self::Last)
+    }
+}
+
 /// Creates a new entity on the client.
 #[derive(Clone, Debug, Encode, Decode)]
 pub struct EntityCreate {
@@ -979,7 +1001,7 @@ pub enum PacketBody {
     Ack(Ack),
     AckAck(AckAck),
     Nak(Nak),
-    Frames(Vec<Frame>),
+    Data(Vec<u8>),
 }
 
 impl PacketBody {
@@ -991,7 +1013,7 @@ impl PacketBody {
             Self::Ack(_) => PacketType::ACK,
             Self::AckAck(_) => PacketType::ACKACK,
             Self::Nak(_) => PacketType::NAK,
-            Self::Frames(_) => PacketType::DATA,
+            Self::Data(_) => PacketType::DATA,
         }
     }
 }
@@ -1071,13 +1093,11 @@ impl Encode for Packet {
 
                 body.encode(&mut buf)?;
             }
-            PacketBody::Frames(body) => {
+            PacketBody::Data(body) => {
                 header.packet_type = PacketType::DATA;
                 header.encode(&mut buf)?;
 
-                for frame in body {
-                    frame.encode(&mut buf)?;
-                }
+                buf.put_slice(&body);
             }
         }
 
@@ -1096,12 +1116,10 @@ impl Decode for Packet {
 
         let body = match header.packet_type {
             PacketType::DATA => {
-                let mut frames = Vec::new();
-                while buf.remaining() > 0 {
-                    frames.push(Frame::decode(&mut buf)?);
-                }
+                let mut body = Vec::new();
+                buf.copy_to_slice(&mut body);
 
-                PacketBody::Frames(frames)
+                PacketBody::Data(body)
             }
             PacketType::HANDSHAKE => PacketBody::Handshake(Handshake::decode(buf)?),
             PacketType::SHUTDOWN => PacketBody::Shutdown(Shutdown::decode(buf)?),

@@ -10,6 +10,7 @@ use std::time::{Duration, Instant};
 
 use futures::FutureExt;
 use game_common::world::control_frame::ControlFrame;
+use game_common::world::gen::flat::FlatGenerator;
 use thiserror::Error;
 use tokio::sync::mpsc;
 use tokio::time::MissedTickBehavior;
@@ -20,7 +21,10 @@ use crate::proto::ack::{Ack, AckAck, Nak};
 use crate::proto::handshake::{Handshake, HandshakeFlags, HandshakeType};
 use crate::proto::sequence::Sequence;
 use crate::proto::shutdown::{Shutdown, ShutdownReason};
-use crate::proto::{Encode, Flags, Frame, Header, Packet, PacketBody, PacketType, SequenceRange};
+use crate::proto::{
+    Decode, Encode, Flags, Frame, Header, Packet, PacketBody, PacketPosition, PacketType,
+    SequenceRange,
+};
 use crate::request::Request;
 use crate::snapshot::{
     Command, CommandId, CommandQueue, Connected, ConnectionMessage, Response, Status,
@@ -109,6 +113,10 @@ where
 
     #[cfg(debug_assertions)]
     debug_validator: crate::validator::DebugValidator,
+
+    max_data_size: u16,
+
+    reassembly_buffer: ReassemblyBuffer,
 }
 
 impl<M> Connection<M>
@@ -158,6 +166,9 @@ where
             _mode: PhantomData,
 
             const_delay: const_delay.0 as u16,
+
+            max_data_size: 512,
+            reassembly_buffer: ReassemblyBuffer::default(),
 
             #[cfg(debug_assertions)]
             debug_validator: crate::validator::DebugValidator::new(),
@@ -257,46 +268,7 @@ where
         // Merge FrameQueue into FrameBuffer, compact then send.
 
         while let Some((frame, id, cf)) = self.frame_queue.pop() {
-            let sequence = self.next_local_sequence;
-            self.next_local_sequence += 1;
-
-            self.buffer.push(Request {
-                id,
-                sequence,
-                control_frame: cf,
-                frame,
-            });
-        }
-
-        // for req in self.buffer.compact() {
-        //     self.queue.push(ConnectionMessage {
-        //         id: None,
-        //         conn: self.id,
-        //         snapshot: Instant::now(),
-        //         command: Command::ReceivedCommands {
-        //             ids: vec![Response {
-        //                 id: req.id,
-        //                 status: Status::Overwritten,
-        //             }],
-        //         },
-        //     });
-        // }
-
-        for req in &self.buffer {
-            self.commands.cmds.insert(req.sequence, vec![req.id]);
-
-            let packet = Packet {
-                header: Header {
-                    packet_type: PacketType::DATA,
-                    sequence: req.sequence,
-                    control_frame: req.control_frame,
-                    flags: Flags::new(),
-                },
-                body: PacketBody::Frames(vec![req.frame.clone()]),
-            };
-
-            self.inflight_packets.insert(packet.clone());
-            self.write_queue.push(packet);
+            self.push_data_frame(&frame, cf);
         }
 
         self.buffer.clear();
@@ -343,20 +315,17 @@ where
     ///
     /// Returns `Poll::Ready` on state change.
     fn handle_packet(&mut self, packet: Packet) -> Poll<()> {
-        #[cfg(debug_assertions)]
-        self.debug_validator.push(&packet);
-
         match packet.body {
             PacketBody::Handshake(body) => self.handle_handshake(packet.header, body),
             PacketBody::Shutdown(body) => self.handle_shutdown(packet.header, body),
             PacketBody::Ack(body) => self.handle_ack(packet.header, body),
             PacketBody::AckAck(body) => self.handle_ackack(packet.header, body),
             PacketBody::Nak(body) => self.handle_nak(packet.header, body),
-            PacketBody::Frames(body) => self.handle_data(packet.header, body),
+            PacketBody::Data(body) => self.handle_data(packet.header, body),
         }
     }
 
-    fn handle_data(&mut self, header: Header, frames: Vec<Frame>) -> Poll<()> {
+    fn handle_data(&mut self, header: Header, body: Vec<u8>) -> Poll<()> {
         // Drop out-of-order or duplicates.
         if header.sequence < self.next_peer_sequence && !self.loss_list.remove(header.sequence) {
             tracing::warn!("dropping duplicate packet {:?}", header.sequence);
@@ -393,7 +362,13 @@ where
         // Caught up to most recent packet.
         debug_assert_eq!(self.next_peer_sequence, header.sequence + 1);
 
-        for frame in frames {
+        self.reassembly_buffer
+            .insert(header.sequence, header.flags.packet_position(), body);
+
+        for frame in self.reassembly_buffer.pop() {
+            #[cfg(debug_assertions)]
+            self.debug_validator.push(header, &frame);
+
             let Some(cmd) = unpack_command(frame) else {
                 tracing::debug!("failed to translate cmd");
                 continue;
@@ -792,6 +767,87 @@ where
 
         Poll::Ready(())
     }
+
+    fn push_data_frame(&mut self, frame: &Frame, control_frame: ControlFrame) {
+        let mut buf = Vec::new();
+        frame.encode(&mut buf).unwrap();
+
+        // If possible write the data in a single segment.
+        if buf.len() <= self.max_data_size as usize {
+            let mut flags = Flags::new();
+            flags.set_packet_position(PacketPosition::Single);
+
+            let packet = Packet {
+                header: Header {
+                    packet_type: PacketType::DATA,
+                    sequence: self.next_local_sequence.fetch_next(),
+                    control_frame,
+                    flags,
+                },
+                body: PacketBody::Data(buf),
+            };
+
+            self.inflight_packets.insert(packet.clone());
+            self.write_queue.push(packet);
+
+            return;
+        }
+
+        {
+            let mut flags = Flags::new();
+            flags.set_packet_position(PacketPosition::First);
+
+            let packet = Packet {
+                header: Header {
+                    packet_type: PacketType::DATA,
+                    sequence: self.next_local_sequence.fetch_next(),
+                    control_frame,
+                    flags,
+                },
+                body: PacketBody::Data(buf[..self.max_data_size as usize + 1].to_vec()),
+            };
+
+            self.inflight_packets.insert(packet.clone());
+            self.write_queue.push(packet);
+        }
+
+        let mut bytes_written = self.max_data_size as usize;
+        while bytes_written < buf.len() - (self.max_data_size as usize) + 1 {
+            let mut flags = Flags::new();
+            flags.set_packet_position(PacketPosition::Middle);
+
+            let packet = Packet {
+                header: Header {
+                    packet_type: PacketType::DATA,
+                    sequence: self.next_local_sequence.fetch_next(),
+                    control_frame,
+                    flags,
+                },
+                body: PacketBody::Data(buf[bytes_written + 1..].to_vec()),
+            };
+
+            self.inflight_packets.insert(packet.clone());
+            self.write_queue.push(packet);
+
+            bytes_written += self.max_data_size as usize;
+        }
+
+        let mut flags = Flags::new();
+        flags.set_packet_position(PacketPosition::Last);
+
+        let packet = Packet {
+            header: Header {
+                packet_type: PacketType::DATA,
+                sequence: self.next_local_sequence.fetch_next(),
+                control_frame,
+                flags,
+            },
+            body: PacketBody::Data(buf[bytes_written + 1..].to_vec()),
+        };
+
+        self.inflight_packets.insert(packet.clone());
+        self.write_queue.push(packet);
+    }
 }
 
 impl<M> Future for Connection<M>
@@ -1124,6 +1180,93 @@ fn create_initial_sequence() -> Sequence {
     Sequence::new(bits)
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct ReassemblyBuffer {
+    /// Starting sequence => Bytes
+    first_segments: HashMap<Sequence, Vec<u8>>,
+    /// Middle and Last frames.
+    other_segments: HashMap<Sequence, (Vec<u8>, PacketPosition)>,
+    ready_frames: Vec<Frame>,
+}
+
+impl ReassemblyBuffer {
+    pub fn insert(&mut self, seq: Sequence, packet_position: PacketPosition, buf: Vec<u8>) {
+        match packet_position {
+            PacketPosition::Single => {
+                let frame = match Frame::decode(&buf[..]) {
+                    Ok(frame) => frame,
+                    Err(err) => {
+                        tracing::debug!("failed to decode frame: {}", err);
+                        return;
+                    }
+                };
+
+                self.ready_frames.push(frame);
+                return;
+            }
+            PacketPosition::First => {
+                self.first_segments.insert(seq, buf);
+            }
+            PacketPosition::Middle | PacketPosition::Last => {
+                self.other_segments.insert(seq, (buf, packet_position));
+
+                let start_seq = self.find_starting_segment(seq);
+                self.reassemble(start_seq);
+            }
+        }
+    }
+
+    fn find_starting_segment(&self, mut seq: Sequence) -> Sequence {
+        while !self.first_segments.contains_key(&seq) {
+            seq -= 1;
+        }
+
+        seq
+    }
+
+    fn reassemble(&mut self, mut start_seq: Sequence) {
+        let mut buf = self.first_segments.get(&start_seq).unwrap().clone();
+
+        let mut seq = start_seq + 1;
+        let mut is_done = false;
+        let mut end = start_seq;
+        while !is_done {
+            if let Some((next_buf, pos)) = self.other_segments.get(&seq) {
+                buf.extend(next_buf);
+
+                if pos.is_last() {
+                    is_done = true;
+                    end = start_seq;
+                }
+            } else {
+                return;
+            }
+
+            seq += 1;
+        }
+
+        self.first_segments.remove(&start_seq);
+        while start_seq != end {
+            self.other_segments.remove(&seq);
+            start_seq += 1;
+        }
+
+        let frame = match Frame::decode(&buf[..]) {
+            Ok(frame) => frame,
+            Err(err) => {
+                tracing::debug!("failed to decode frame: {}", err);
+                return;
+            }
+        };
+
+        self.ready_frames.push(frame);
+    }
+
+    pub fn pop(&mut self) -> Option<Frame> {
+        self.ready_frames.pop()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use game_common::world::control_frame::ControlFrame;
@@ -1161,7 +1304,7 @@ mod tests {
                 control_frame: ControlFrame::new(),
                 flags: Flags::new(),
             },
-            body: PacketBody::Frames(vec![]),
+            body: PacketBody::Data(vec![]),
         }
     }
 
