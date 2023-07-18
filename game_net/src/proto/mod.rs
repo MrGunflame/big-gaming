@@ -41,7 +41,6 @@ mod quat;
 mod record;
 mod terrain;
 
-use bitflags::bitflags;
 use game_common::components::actions::ActionId;
 use game_common::components::combat::Health;
 use game_common::components::inventory::InventoryId;
@@ -439,16 +438,52 @@ impl Decode for Header {
     }
 }
 
-bitflags! {
-    #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
-    pub struct Flags: u16 {
-        const RETRANSMISSION = 1 << 0;
-    }
-}
+/// Flags
+///
+/// ```text
+/// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+/// |P P|R|                         |
+/// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+/// ```
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct Flags(u16);
 
 impl Flags {
     pub const fn new() -> Self {
-        Self::empty()
+        Self(0)
+    }
+
+    pub fn retransmission(self) -> bool {
+        (self.0 & 0b0010_0000_0000_0000) != 0
+    }
+
+    pub fn set_retransmission(&mut self, v: bool) {
+        if v {
+            self.0 |= 0b0010_0000_0000_0000;
+        } else {
+            self.0 &= !0b0010_0000_0000_0000
+        }
+    }
+
+    pub fn packet_position(self) -> PacketPosition {
+        match self.0 & 0b1100_0000_0000_0000 {
+            0b00 => PacketPosition::Single,
+            0b10 => PacketPosition::First,
+            0b01 => PacketPosition::Last,
+            0b11 => PacketPosition::Middle,
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn set_packet_position(&mut self, pos: PacketPosition) {
+        self.0 &= !0b1100_0000_0000_0000;
+
+        self.0 |= match pos {
+            PacketPosition::Single => 0b0000_0000_0000_0000,
+            PacketPosition::First => 0b1000_0000_0000_0000,
+            PacketPosition::Last => 0b0100_0000_0000_0000,
+            PacketPosition::Middle => 0b1100_0000_0000_0000,
+        };
     }
 }
 
@@ -459,7 +494,7 @@ impl Encode for Flags {
     where
         B: BufMut,
     {
-        self.bits().encode(buf)
+        self.0.encode(buf)
     }
 }
 
@@ -470,8 +505,17 @@ impl Decode for Flags {
     where
         B: Buf,
     {
-        u16::decode(buf).map(Self::from_bits_retain)
+        u16::decode(buf).map(Self)
     }
+}
+
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
+pub enum PacketPosition {
+    #[default]
+    Single,
+    First,
+    Middle,
+    Last,
 }
 
 /// Creates a new entity on the client.
