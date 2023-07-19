@@ -1016,6 +1016,14 @@ impl PacketBody {
             Self::Data(_) => PacketType::DATA,
         }
     }
+
+    #[inline]
+    pub fn as_data(&self) -> Option<&[u8]> {
+        match self {
+            Self::Data(buf) => Some(&buf),
+            _ => None,
+        }
+    }
 }
 
 impl From<Handshake> for PacketBody {

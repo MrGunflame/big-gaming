@@ -769,87 +769,16 @@ where
     }
 
     fn push_data_frame(&mut self, frame: &Frame, control_frame: ControlFrame) {
-        let mut buf = Vec::new();
-        frame.encode(&mut buf).unwrap();
-
-        // If possible write the data in a single segment.
-        if buf.len() <= self.max_data_size as usize {
-            let mut flags = Flags::new();
-            flags.set_packet_position(PacketPosition::Single);
-
-            let packet = Packet {
-                header: Header {
-                    packet_type: PacketType::DATA,
-                    sequence: self.next_local_sequence.fetch_next(),
-                    control_frame,
-                    flags,
-                },
-                body: PacketBody::Data(buf),
-            };
-
-            self.inflight_packets.insert(packet.clone());
-            self.write_queue.push(packet);
-
-            return;
-        }
-
-        {
-            let mut flags = Flags::new();
-            flags.set_packet_position(PacketPosition::First);
-
-            let packet = Packet {
-                header: Header {
-                    packet_type: PacketType::DATA,
-                    sequence: self.next_local_sequence.fetch_next(),
-                    control_frame,
-                    flags,
-                },
-                body: PacketBody::Data(buf[..self.max_data_size as usize + 1].to_vec()),
-            };
-
-            self.inflight_packets.insert(packet.clone());
-            self.write_queue.push(packet);
-        }
-
-        let mut bytes_written = self.max_data_size as usize;
-        while bytes_written < buf.len() - (self.max_data_size as usize) + 1 {
-            let mut flags = Flags::new();
-            flags.set_packet_position(PacketPosition::Middle);
-
-            let packet = Packet {
-                header: Header {
-                    packet_type: PacketType::DATA,
-                    sequence: self.next_local_sequence.fetch_next(),
-                    control_frame,
-                    flags,
-                },
-                body: PacketBody::Data(
-                    buf[bytes_written + 1..bytes_written + 1 + self.max_data_size as usize + 1]
-                        .to_vec(),
-                ),
-            };
-
-            self.inflight_packets.insert(packet.clone());
-            self.write_queue.push(packet);
-
-            bytes_written += self.max_data_size as usize;
-        }
-
-        let mut flags = Flags::new();
-        flags.set_packet_position(PacketPosition::Last);
-
-        let packet = Packet {
-            header: Header {
-                packet_type: PacketType::DATA,
-                sequence: self.next_local_sequence.fetch_next(),
-                control_frame,
-                flags,
+        fragment_frame(
+            frame,
+            &mut self.next_local_sequence,
+            control_frame,
+            self.max_data_size,
+            |packet| {
+                self.inflight_packets.insert(packet.clone());
+                self.write_queue.push(packet);
             },
-            body: PacketBody::Data(buf[bytes_written + 1..].to_vec()),
-        };
-
-        self.inflight_packets.insert(packet.clone());
-        self.write_queue.push(packet);
+        );
     }
 }
 
@@ -1270,14 +1199,104 @@ impl ReassemblyBuffer {
     }
 }
 
+fn fragment_frame(
+    frame: &Frame,
+    next_local_sequence: &mut Sequence,
+    control_frame: ControlFrame,
+    mss: u16,
+    mut write_packet: impl FnMut(Packet),
+) {
+    let mut buf = Vec::new();
+    frame.encode(&mut buf).unwrap();
+
+    // If possible write the data in a single segment.
+    if buf.len() <= mss as usize {
+        let mut flags = Flags::new();
+        flags.set_packet_position(PacketPosition::Single);
+
+        let packet = Packet {
+            header: Header {
+                packet_type: PacketType::DATA,
+                sequence: next_local_sequence.fetch_next(),
+                control_frame,
+                flags,
+            },
+            body: PacketBody::Data(buf),
+        };
+
+        write_packet(packet);
+        return;
+    }
+
+    {
+        let mut flags = Flags::new();
+        flags.set_packet_position(PacketPosition::First);
+
+        let packet = Packet {
+            header: Header {
+                packet_type: PacketType::DATA,
+                sequence: next_local_sequence.fetch_next(),
+                control_frame,
+                flags,
+            },
+            body: PacketBody::Data(buf[..mss as usize].to_vec()),
+        };
+
+        write_packet(packet);
+    }
+
+    let mut bytes_written = mss as usize;
+    while bytes_written < buf.len() - (mss as usize) {
+        let mut flags = Flags::new();
+        flags.set_packet_position(PacketPosition::Middle);
+
+        let packet = Packet {
+            header: Header {
+                packet_type: PacketType::DATA,
+                sequence: next_local_sequence.fetch_next(),
+                control_frame,
+                flags,
+            },
+            body: PacketBody::Data(
+                buf[bytes_written + 1..bytes_written + 1 + mss as usize].to_vec(),
+            ),
+        };
+
+        write_packet(packet);
+        bytes_written += mss as usize;
+    }
+
+    let mut flags = Flags::new();
+    flags.set_packet_position(PacketPosition::Last);
+
+    let packet = Packet {
+        header: Header {
+            packet_type: PacketType::DATA,
+            sequence: next_local_sequence.fetch_next(),
+            control_frame,
+            flags,
+        },
+        body: PacketBody::Data(buf[bytes_written + 1..].to_vec()),
+    };
+
+    write_packet(packet);
+}
+
 #[cfg(test)]
 mod tests {
+    use game_common::net::ServerEntity;
     use game_common::world::control_frame::ControlFrame;
+    use game_common::world::entity::{EntityBody, Terrain};
+    use game_common::world::terrain::{Heightmap, TerrainMesh};
+    use game_common::world::CellId;
+    use glam::{Quat, UVec2, Vec3};
 
     use crate::proto::sequence::Sequence;
-    use crate::proto::{Flags, Header, Packet, PacketBody, PacketType};
+    use crate::proto::{
+        EntityCreate, Flags, Frame, Header, Packet, PacketBody, PacketPosition, PacketType,
+    };
 
-    use super::{InflightPackets, LossList};
+    use super::{fragment_frame, InflightPackets, LossList};
 
     #[test]
     fn loss_list_remove() {
@@ -1339,6 +1358,66 @@ mod tests {
 
         for seq in size as u32..size as u32 * 2 {
             assert!(packets.get(Sequence::new(seq)).is_some());
+        }
+    }
+
+    fn create_terrain_frame(size: UVec2) -> Frame {
+        let heightmap = Heightmap::from_u8(size, vec![0; size.x as usize * size.y as usize]);
+
+        Frame::EntityCreate(EntityCreate {
+            entity: ServerEntity(0),
+            translation: Vec3::ZERO,
+            rotation: Quat::IDENTITY,
+            data: EntityBody::Terrain(Terrain {
+                mesh: TerrainMesh::new(CellId::ZERO, heightmap),
+            }),
+        })
+    }
+
+    #[test]
+    fn fragment_frame_single() {
+        let frame = create_terrain_frame(UVec2::new(1, 512));
+        let mss = 1024;
+        let mut sequence = Sequence::new(0);
+
+        let mut packets = vec![];
+        fragment_frame(&frame, &mut sequence, ControlFrame(0), mss, |packet| {
+            packets.push(packet);
+        });
+
+        assert_eq!(packets.len(), 1);
+        let pkt = &packets[0];
+        assert_eq!(pkt.header.flags.packet_position(), PacketPosition::Single);
+        assert_eq!(pkt.header.sequence, Sequence::new(0));
+        assert!(pkt.body.as_data().unwrap().len() <= mss as usize);
+    }
+
+    #[test]
+    fn fragment_frame_big() {
+        let frame = create_terrain_frame(UVec2::new(1, 65536));
+        let mss = 1024;
+        let mut sequence = Sequence::new(0);
+
+        let mut packets = vec![];
+        fragment_frame(&frame, &mut sequence, ControlFrame(0), mss, |packet| {
+            packets.push(packet);
+        });
+
+        let mut seq = Sequence::new(0);
+        for (index, pkt) in packets.iter().enumerate() {
+            dbg!(index);
+            if index == 0 {
+                assert_eq!(pkt.header.flags.packet_position(), PacketPosition::First);
+            } else if index == packets.len() - 1 {
+                assert_eq!(pkt.header.flags.packet_position(), PacketPosition::Last);
+            } else {
+                assert_eq!(pkt.header.flags.packet_position(), PacketPosition::Middle);
+            }
+
+            assert_eq!(pkt.header.sequence, seq);
+            assert!(pkt.body.as_data().unwrap().len() <= mss as usize);
+
+            seq.fetch_next();
         }
     }
 }
