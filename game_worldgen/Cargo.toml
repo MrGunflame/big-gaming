@@ -9,9 +9,11 @@ default = ["json"]
 json = ["dep:serde", "dep:serde_json"]
 
 [dependencies]
+base64 = "0.21.2"
 bytes = "1.4.0"
 game_common = { version = "0.1.0", path = "../game_common" }
 glam = "0.24.1"
+image = "0.24.6"
 
 serde = { version = "1.0.167", features = ["derive"], optional = true }
 serde_json = { version = "1.0.100", optional = true }

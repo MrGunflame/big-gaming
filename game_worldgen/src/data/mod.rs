@@ -11,6 +11,7 @@ use game_common::components::transform::Transform;
 use game_common::module::ModuleId;
 use game_common::record::{RecordId, RecordReference};
 use game_common::world::entity::EntityKind;
+use game_common::world::terrain::TerrainMesh;
 use game_common::world::CellId;
 use glam::{Quat, Vec3};
 
@@ -93,6 +94,7 @@ pub struct Entity {
     pub kind: EntityKind,
     pub transform: Transform,
     pub components: Components,
+    pub terrain: Option<TerrainMesh>,
 }
 
 impl Encode for Entity {
@@ -170,6 +172,7 @@ impl Decode for Entity {
             kind,
             transform,
             components,
+            terrain: None,
         })
     }
 }

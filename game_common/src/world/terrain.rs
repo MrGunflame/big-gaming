@@ -64,7 +64,10 @@ impl Heightmap {
     pub fn from_u8(size: UVec2, nodes: Vec<u8>) -> Self {
         assert!(nodes.len() as u32 / size.x == size.y);
 
-        let nodes = nodes.into_iter().map(|px| px as f32 / 255.0).collect();
+        let nodes = nodes
+            .into_iter()
+            .map(|px| px as f32 / (255.0 / CELL_SIZE.y))
+            .collect();
 
         Self { size, nodes }
     }

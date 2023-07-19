@@ -110,3 +110,9 @@ impl EntityBuilder {
         self
     }
 }
+
+impl Default for EntityBuilder {
+    fn default() -> Self {
+        Self::new(RecordReference::STUB)
+    }
+}

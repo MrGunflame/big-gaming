@@ -1,3 +1,4 @@
+use game_common::world::entity::Terrain;
 use game_common::world::gen::{CellBuilder, EntityBuilder, Generate};
 
 use crate::data::Cells;
@@ -13,6 +14,15 @@ impl Generate for StaticGenerator {
         };
 
         for entity in entities {
+            if let Some(terrain) = &entity.terrain {
+                let builder = EntityBuilder::default().terrain(Terrain {
+                    mesh: terrain.clone(),
+                });
+
+                cell.spawn(builder);
+                continue;
+            }
+
             let mut builder = EntityBuilder::new(entity.id);
             for (id, component) in entity.components.iter() {
                 builder = builder.component(id, component.clone());

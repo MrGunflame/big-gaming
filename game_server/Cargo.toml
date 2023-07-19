@@ -6,7 +6,7 @@ authors = ["MrGunflame <git@robbsrv.de>"]
 license = "GPL-3.0-or-later"
 
 [features]
-default = []
+default = ["physics"]
 # Enable game physics.
 # Note that disabling physics is only useful for testing. The game might not function
 # correctly without physics.

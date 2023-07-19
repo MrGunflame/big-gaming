@@ -1,8 +1,13 @@
 use std::collections::HashMap;
 
+use base64::alphabet::STANDARD;
+use base64::engine::GeneralPurposeConfig;
+use base64::Engine;
 use game_common::components::components::{Component, Components};
 use game_common::components::transform::Transform;
+use game_common::record::RecordReference;
 use game_common::world::entity::EntityKind;
+use game_common::world::terrain::{Heightmap, TerrainMesh};
 use game_common::world::CellId;
 use glam::{IVec3, Quat, Vec3};
 use serde::{Deserialize, Serialize};
@@ -18,14 +23,27 @@ pub fn from_slice(slice: &[u8]) -> Result<super::Cells, Box<dyn std::error::Erro
 
         let mut entities = Vec::new();
         for entity in cell.entities {
-            let id = entity.id.0.parse()?;
-
             let kind = match entity.kind {
                 JsonEntityKind::Terrain => EntityKind::Terrain,
                 JsonEntityKind::Actor => EntityKind::Actor,
                 JsonEntityKind::Item => EntityKind::Item,
                 JsonEntityKind::Object => EntityKind::Object,
             };
+
+            if let Some(terrain) = entity.terrain {
+                let mesh = load_heightmap(id, &terrain.mesh);
+
+                entities.push(Entity {
+                    id: RecordReference::STUB,
+                    kind,
+                    transform: Transform::default(),
+                    components: Components::default(),
+                    terrain: Some(mesh),
+                });
+                continue;
+            }
+
+            let id = entity.id.0.parse()?;
 
             let transform = Transform {
                 translation: Vec3::from_array(entity.transform.translation.0),
@@ -45,6 +63,7 @@ pub fn from_slice(slice: &[u8]) -> Result<super::Cells, Box<dyn std::error::Erro
                 kind,
                 transform,
                 components,
+                terrain: None,
             });
         }
 
@@ -52,6 +71,19 @@ pub fn from_slice(slice: &[u8]) -> Result<super::Cells, Box<dyn std::error::Erro
     }
 
     Ok(Cells { cells })
+}
+
+fn load_heightmap(id: CellId, input: &str) -> TerrainMesh {
+    let engine = base64::engine::GeneralPurpose::new(&STANDARD, GeneralPurposeConfig::default());
+
+    let buf = engine.decode(input).unwrap();
+
+    let img = image::load_from_memory(&buf).unwrap().to_luma8();
+
+    TerrainMesh {
+        cell: id,
+        offsets: Heightmap::from_image(img),
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -116,6 +148,8 @@ pub struct JsonEntity {
     #[serde(default)]
     pub components: JsonComponents,
     pub kind: JsonEntityKind,
+    #[serde(default)]
+    pub terrain: Option<JsonTerrain>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -131,4 +165,9 @@ pub enum JsonEntityKind {
     Object,
     Actor,
     Item,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct JsonTerrain {
+    pub mesh: String,
 }

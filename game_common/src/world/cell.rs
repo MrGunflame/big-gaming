@@ -24,6 +24,8 @@ pub const CELL_SIZE_UINT: UVec3 = UVec3::new(64, 64, 64);
 pub struct CellId(u128);
 
 impl CellId {
+    pub const ZERO: Self = Self::from_i32(IVec3::splat(0));
+
     const MASK_X: u128 = 0x0000_0000_FFFF_FFFF__0000_0000_0000_0000;
     const MASK_Y: u128 = 0x0000_0000_0000_0000__FFFF_FFFF_0000_0000;
     const MASK_Z: u128 = 0x0000_0000_0000_0000__0000_0000_FFFF_FFFF;
@@ -81,7 +83,7 @@ impl CellId {
     }
 
     #[inline]
-    pub fn from_i32(vec: IVec3) -> Self {
+    pub const fn from_i32(vec: IVec3) -> Self {
         Self::from_parts(vec.x as u32, vec.y as u32, vec.z as u32)
     }
 
