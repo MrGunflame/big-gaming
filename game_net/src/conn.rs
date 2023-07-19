@@ -1245,8 +1245,8 @@ fn fragment_frame(
         write_packet(packet);
     }
 
-    let mut bytes_written = mss as usize;
-    while bytes_written < buf.len() - (mss as usize) {
+    let mut next_byte = mss as usize;
+    while next_byte < buf.len() - (mss as usize) {
         let mut flags = Flags::new();
         flags.set_packet_position(PacketPosition::Middle);
 
@@ -1257,13 +1257,11 @@ fn fragment_frame(
                 control_frame,
                 flags,
             },
-            body: PacketBody::Data(
-                buf[bytes_written + 1..bytes_written + 1 + mss as usize].to_vec(),
-            ),
+            body: PacketBody::Data(buf[next_byte..next_byte + mss as usize].to_vec()),
         };
 
         write_packet(packet);
-        bytes_written += mss as usize;
+        next_byte += mss as usize;
     }
 
     let mut flags = Flags::new();
@@ -1276,7 +1274,7 @@ fn fragment_frame(
             control_frame,
             flags,
         },
-        body: PacketBody::Data(buf[bytes_written + 1..].to_vec()),
+        body: PacketBody::Data(buf[next_byte..].to_vec()),
     };
 
     write_packet(packet);
@@ -1293,7 +1291,7 @@ mod tests {
 
     use crate::proto::sequence::Sequence;
     use crate::proto::{
-        EntityCreate, Flags, Frame, Header, Packet, PacketBody, PacketPosition, PacketType,
+        Encode, EntityCreate, Flags, Frame, Header, Packet, PacketBody, PacketPosition, PacketType,
     };
 
     use super::{fragment_frame, InflightPackets, LossList};
@@ -1398,14 +1396,18 @@ mod tests {
         let mss = 1024;
         let mut sequence = Sequence::new(0);
 
+        let mut buf = Vec::new();
+        frame.encode(&mut buf).unwrap();
+        let total_size = buf.len();
+
         let mut packets = vec![];
         fragment_frame(&frame, &mut sequence, ControlFrame(0), mss, |packet| {
             packets.push(packet);
         });
 
+        let mut sum = 0;
         let mut seq = Sequence::new(0);
         for (index, pkt) in packets.iter().enumerate() {
-            dbg!(index);
             if index == 0 {
                 assert_eq!(pkt.header.flags.packet_position(), PacketPosition::First);
             } else if index == packets.len() - 1 {
@@ -1418,6 +1420,9 @@ mod tests {
             assert!(pkt.body.as_data().unwrap().len() <= mss as usize);
 
             seq.fetch_next();
+            sum += pkt.body.as_data().unwrap().len();
         }
+
+        assert_eq!(sum, total_size);
     }
 }
