@@ -107,13 +107,16 @@ mod tests {
             let collider = ColliderBuilder::cuboid(1.0, 1.0, 1.0).build();
             let collider_handle = colliders.insert_with_parent(collider, body_handle, &mut bodies);
 
+            let mut query_pipeline = QueryPipeline::new();
+            query_pipeline.update(&bodies, &colliders);
+
             Self {
                 dt: 1.0 / 60.0,
                 bodies,
                 collider_handle,
                 body_handle,
                 colliders,
-                query_pipeline: QueryPipeline::new(),
+                query_pipeline,
             }
         }
 
@@ -122,6 +125,25 @@ mod tests {
             let mut linvel = *body.linvel();
             linvel.y = y;
             body.set_linvel(linvel, false);
+
+            self.query_pipeline.update(&self.bodies, &self.colliders);
+        }
+
+        fn insert_fixed(&mut self, collider: ColliderBuilder, translation: Translation<f32>) {
+            let body_handle = self.bodies.insert(
+                RigidBodyBuilder::new(RigidBodyType::Fixed)
+                    .position(Isometry {
+                        translation,
+                        rotation: Unit::new_normalize(Quaternion::identity()),
+                    })
+                    .build(),
+            );
+
+            let collider = collider.build();
+            self.colliders
+                .insert_with_parent(collider, body_handle, &mut self.bodies);
+
+            self.query_pipeline.update(&self.bodies, &self.colliders);
         }
     }
 
@@ -145,22 +167,35 @@ mod tests {
     }
 
     #[test]
+    fn apply_gravity_multi_step() {
+        let mut pipeline = TestPipeline::new();
+        let controller = CharacterController {};
+
+        for _ in 0..60 {
+            controller.apply_gravity(
+                pipeline.dt,
+                &mut pipeline.bodies,
+                &pipeline.colliders,
+                pipeline.body_handle,
+                pipeline.collider_handle,
+                &pipeline.query_pipeline,
+            );
+        }
+
+        let body = pipeline.bodies.get(pipeline.body_handle).unwrap();
+        assert_approx_eq!(body.position().translation.y, -4.9049993);
+        assert_approx_eq!(body.linvel().y, -9.809996);
+    }
+
+    #[test]
     fn apply_gravity_hit() {
         let mut pipeline = TestPipeline::new();
         let controller = CharacterController {};
 
-        let body_handle = pipeline.bodies.insert(
-            RigidBodyBuilder::new(RigidBodyType::Fixed)
-                .position(Isometry {
-                    translation: Translation::new(0.0, -1.0, 0.0),
-                    rotation: Unit::new_normalize(Quaternion::identity()),
-                })
-                .build(),
+        pipeline.insert_fixed(
+            ColliderBuilder::cuboid(100.0, 0.1, 100.0),
+            Translation::new(0.0, -3.0, 0.0),
         );
-        let collider = ColliderBuilder::cuboid(1.0, 1.0, 1.0).build();
-        pipeline
-            .colliders
-            .insert_with_parent(collider, body_handle, &mut pipeline.bodies);
 
         pipeline.set_linvel(-1000.0);
 

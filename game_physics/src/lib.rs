@@ -3,6 +3,7 @@ mod convert;
 mod handle;
 mod pipeline;
 
+use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
 use bevy_ecs::system::Resource;
@@ -19,8 +20,8 @@ use parking_lot::Mutex;
 use rapier3d::prelude::{
     ActiveEvents, BroadPhase, CCDSolver, ColliderBuilder, ColliderHandle, ColliderSet,
     CollisionEvent, ContactPair, EventHandler, ImpulseJointSet, IntegrationParameters,
-    IslandManager, LockedAxes, MultibodyJointSet, NarrowPhase, PhysicsPipeline, RigidBodyBuilder,
-    RigidBodyHandle, RigidBodySet, RigidBodyType, Vector,
+    IslandManager, LockedAxes, MultibodyJointSet, NarrowPhase, PhysicsPipeline, QueryPipeline,
+    RigidBodyBuilder, RigidBodyHandle, RigidBodySet, RigidBodyType, Vector,
 };
 
 #[derive(Resource)]
@@ -36,6 +37,7 @@ pub struct Pipeline {
     impulse_joints: ImpulseJointSet,
     multibody_joints: MultibodyJointSet,
     ccd_solver: CCDSolver,
+    query_pipeline: QueryPipeline,
 
     /// When the pipeline is called for the first time, all data needs to be loaded from the world.
     /// The pipeline can go over to a event-driven mechanism after that.
@@ -48,6 +50,8 @@ pub struct Pipeline {
     last_timestep: Instant,
 
     event_handler: CollisionHandler,
+
+    controllers: HashMap<RigidBodyHandle, CharacterController>,
 }
 
 impl Pipeline {
@@ -75,6 +79,8 @@ impl Pipeline {
             last_timestep: Instant::now(),
             event_handler: CollisionHandler::new(),
             collider_handles: HandleMap::new(),
+            controllers: HashMap::new(),
+            query_pipeline: QueryPipeline::new(),
         }
     }
 
@@ -104,6 +110,8 @@ impl Pipeline {
                 &(),
                 &self.event_handler,
             );
+
+            self.drive_controllers();
 
             self.last_timestep += Duration::from_secs_f64(1.0 / 60.0);
             steps += 1;
@@ -236,6 +244,8 @@ impl Pipeline {
                     self.colliders
                         .insert_with_parent(collider, body_handle, &mut self.bodies);
 
+                self.controllers.insert(body_handle, CharacterController {});
+
                 (body_handle, col_handle)
             }
             EntityBody::Item(item) => {
@@ -279,6 +289,26 @@ impl Pipeline {
         }
 
         events.clear();
+    }
+
+    fn drive_controllers(&mut self) {
+        self.query_pipeline.update(&self.bodies, &self.colliders);
+
+        for (handle, controller) in &self.controllers {
+            let collider = self.bodies.get(*handle).unwrap().colliders()[0];
+
+            controller.apply_gravity(
+                self.integration_parameters.dt,
+                &mut self.bodies,
+                &self.colliders,
+                *handle,
+                collider,
+                &self.query_pipeline,
+            );
+
+            // Gravity may move an entity, so we need to rebuild the pipeline.
+            self.query_pipeline.update(&self.bodies, &self.colliders);
+        }
     }
 }
 
