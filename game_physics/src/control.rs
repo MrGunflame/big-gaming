@@ -40,18 +40,22 @@ impl CharacterController {
 
         let filter = QueryFilter::new().exclude_rigid_body(body_handle);
 
-        let distance = match query_pipeline.cast_shape(
+        let (distance, hit) = match query_pipeline.cast_shape(
             bodies,
             colliders,
             body.position(),
             &gravity,
             collider.shape(),
-            max_toi,
-            false,
+            // Note that `cast_shape` uses `gravity * max_toi` as the final max toi,
+            // but `gravity` is already negative and `max_toi` must not be negative
+            // for the shape cast to return useful results.
+            // This also means that the returned `toi` and hit must be negated.
+            max_toi.abs(),
+            true,
             filter,
         ) {
-            Some((_, toi)) => toi.toi,
-            None => max_toi,
+            Some((_, toi)) => (-toi.toi, true),
+            None => (max_toi, false),
         };
 
         let body = bodies.get_mut(body_handle).unwrap();
@@ -61,7 +65,7 @@ impl CharacterController {
 
         let mut linvel = *body.linvel();
         // Reset velocity back to 0 when an object is hit.
-        if distance < max_toi {
+        if hit {
             linvel.y = 0.0;
         } else {
             linvel.y += g * dt;
@@ -209,7 +213,8 @@ mod tests {
         );
 
         let body = pipeline.bodies.get(pipeline.body_handle).unwrap();
-        assert_approx_eq!(body.position().translation.y, 0.0);
+        // Character half extends = 1.0 + ground collider = 0.1 => 1.1 distance to plane.
+        assert_approx_eq!(body.position().translation.y, -1.9);
         assert_approx_eq!(body.linvel().y, 0.0);
     }
 }
