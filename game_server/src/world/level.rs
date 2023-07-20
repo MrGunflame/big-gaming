@@ -1,25 +1,20 @@
 use ahash::{HashMap, HashSet};
-use bevy_ecs::system::Resource;
 use game_common::components::components::{Component, Components};
 use game_common::components::items::ItemId;
 use game_common::components::object::ObjectId;
 use game_common::entity::EntityId;
-use game_common::events::{CellLoadEvent, CellUnloadEvent, Event, EventQueue};
+use game_common::events::{CellLoadEvent, CellUnloadEvent, Event};
 use game_common::world::cell::{square, Cell};
 use game_common::world::entity::{Entity, EntityBody, Item, Object};
 use game_common::world::gen::{CellBuilder, EntityBuilder, Generator};
-use game_common::world::world::WorldState;
 use game_common::world::CellId;
 use game_core::modules::Modules;
 use game_data::record::RecordBody;
 
-pub fn update_level_cells(
-    world: &mut WorldState,
-    level: &mut Level,
-    modules: &Modules,
-    events: &mut EventQueue,
-) {
-    let Some(mut view) = world.back_mut() else {
+use crate::ServerState;
+
+pub fn update_level_cells(state: &mut ServerState) {
+    let Some(mut view) = state.world.back_mut() else {
         return;
     };
 
@@ -36,45 +31,48 @@ pub fn update_level_cells(
     for cell in &cells {
         // If the cell is already loaded, don't update
         // anything.
-        if level.loaded.contains(cell) {
-            level.loaded.remove(cell);
+        if state.level.loaded.contains(cell) {
+            state.level.loaded.remove(cell);
             continue;
         }
 
-        if !level.cells.contains_key(cell) {
+        if !state.level.cells.contains_key(cell) {
             let mut builder = CellBuilder::new(*cell);
-            level.generator.generate(&mut builder);
+            state.level.generator.generate(&mut builder);
 
             let mut cell = Cell::new(*cell);
 
             for entity in builder.into_entities() {
-                if let Some(entity) = build_entity(modules, cell.id(), entity) {
+                if let Some(entity) = build_entity(&state.modules, cell.id(), entity) {
                     cell.spawn(entity);
                 }
             }
 
-            level.cells.insert(cell.id(), cell);
+            state.level.cells.insert(cell.id(), cell);
         }
 
         tracing::info!("loading cell {:?}", cell);
 
-        let cell = level.cells.get_mut(cell).unwrap();
+        let cell = state.level.cells.get_mut(cell).unwrap();
         cell.load(&mut view);
-        events.push(Event::CellLoad(CellLoadEvent { cell: cell.id() }));
+        state
+            .event_queue
+            .push(Event::CellLoad(CellLoadEvent { cell: cell.id() }));
     }
 
-    for cell in &level.loaded {
+    for cell in &state.level.loaded {
         tracing::info!("unloading cell {:?}", cell);
 
-        let cell = level.cells.get_mut(cell).unwrap();
+        let cell = state.level.cells.get_mut(cell).unwrap();
         cell.unload(&mut view);
-        events.push(Event::CellUnload(CellUnloadEvent { cell: cell.id() }));
+        state
+            .event_queue
+            .push(Event::CellUnload(CellUnloadEvent { cell: cell.id() }));
     }
 
-    level.loaded = cells;
+    state.level.loaded = cells;
 }
 
-#[derive(Resource)]
 pub struct Level {
     loaded: HashSet<CellId>,
     cells: HashMap<CellId, Cell>,

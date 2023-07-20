@@ -1,11 +1,10 @@
 use std::collections::VecDeque;
 use std::sync::Arc;
 
-use bevy_ecs::system::Resource;
 use game_net::proto::Frame;
 use parking_lot::Mutex;
 
-#[derive(Clone, Debug, Default, Resource)]
+#[derive(Clone, Debug, Default)]
 pub struct CommandQueue {
     queue: Arc<Mutex<VecDeque<Frame>>>,
 }

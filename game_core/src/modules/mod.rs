@@ -68,7 +68,12 @@ pub struct ModuleData {
     pub records: Records,
 }
 
-pub fn load_modules(app: &mut App) {
+pub struct LoadResult {
+    pub modules: Modules,
+    pub server: ScriptServer,
+}
+
+pub fn load_modules() -> LoadResult {
     let mut modules = Modules::new();
     let mut server = ScriptServer::new();
 
@@ -125,8 +130,7 @@ pub fn load_modules(app: &mut App) {
 
     tracing::info!("loaded {} modules", modules.len());
 
-    app.insert_resource(modules);
-    app.insert_resource(server);
+    LoadResult { modules, server }
 }
 
 fn load_module(data: DataBuffer, modules: &mut Modules, server: &mut ScriptServer) {

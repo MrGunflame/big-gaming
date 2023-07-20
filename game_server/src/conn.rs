@@ -3,7 +3,6 @@ use std::iter::FusedIterator;
 use std::sync::Arc;
 
 use ahash::HashMap;
-use bevy_ecs::system::Resource;
 use game_common::world::snapshot::EntityChange;
 use game_net::conn::{ConnectionHandle, ConnectionId};
 use game_net::snapshot::CommandId;
@@ -13,7 +12,7 @@ use crate::net::state::ConnectionState;
 
 /// List of connections
 // FIXME: Maybe merge with ConnectionPool.
-#[derive(Clone, Debug, Default, Resource)]
+#[derive(Clone, Debug, Default)]
 pub struct Connections {
     connections: Arc<RwLock<HashMap<ConnectionId, Connection>>>,
 }

@@ -71,7 +71,9 @@ fn main() {
 
     app.add_startup_system(spawn_light);
 
-    game_core::modules::load_modules(&mut app);
+    let res = game_core::modules::load_modules();
+    app.insert_resource(res.modules);
+    app.insert_resource(res.server);
 
     if let Some(addr) = args.connect {
         tracing::info!("Connecting to {}", addr);

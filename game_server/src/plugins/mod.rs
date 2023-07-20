@@ -1,14 +1,12 @@
 mod inventory;
 
 use ahash::HashSet;
-use bevy_app::{App, Plugin};
-use bevy_ecs::system::{Res, ResMut};
 use game_common::components::combat::Health;
 use game_common::components::components::Components;
 use game_common::components::race::RaceId;
 use game_common::components::transform::Transform;
 use game_common::entity::EntityId;
-use game_common::events::{ActionEvent, Event, EventKind, EventQueue};
+use game_common::events::{ActionEvent, Event, EventKind};
 use game_common::world::control_frame::ControlFrame;
 use game_common::world::entity::{Actor, Entity, EntityBody};
 use game_common::world::snapshot::EntityChange;
@@ -18,99 +16,66 @@ use game_common::world::CellId;
 use game_core::modules::Modules;
 use game_net::conn::ConnectionId;
 use game_net::snapshot::{
-    Command, CommandQueue, ConnectionMessage, EntityCreate, EntityDestroy, EntityRotate,
-    EntityTranslate, InventoryItemAdd, Response, SpawnHost, Status,
+    Command, ConnectionMessage, EntityCreate, EntityDestroy, EntityRotate, EntityTranslate,
+    InventoryItemAdd, Response, SpawnHost, Status,
 };
 use game_script::events::Events;
 use game_script::scripts::Scripts;
-use game_script::ScriptServer;
 use glam::Vec3;
 
-use crate::config::Config;
 use crate::conn::{Connection, Connections};
-use crate::entity::ServerEntityGenerator;
 use crate::net::state::{Cells, ConnectionState};
-use crate::state::State;
-use crate::world::level::Level;
-
-pub struct ServerPlugins;
-
-impl Plugin for ServerPlugins {
-    fn build(&self, app: &mut App) {
-        app.insert_resource(ServerEntityGenerator::new());
-        app.insert_resource(WorldState::new());
-
-        app.add_system(tick);
-    }
-}
+use crate::ServerState;
 
 // All systems need to run sequentially.
-pub fn tick(
-    conns: Res<Connections>,
-    mut world: ResMut<WorldState>,
-    queue: Res<CommandQueue>,
-    mut level: ResMut<Level>,
-    mut pipeline: ResMut<game_physics::Pipeline>,
-    mut event_queue: ResMut<EventQueue>,
-    server: Res<ScriptServer>,
-    mut scripts: ResMut<Scripts>,
-    modules: Res<Modules>,
-    mut state: ResMut<State>,
-) {
-    update_client_heads(&conns, &mut world, &mut state);
-    flush_command_queue(
-        &conns,
-        &queue,
-        &mut world,
-        &mut event_queue,
-        &modules,
-        &state.config,
+pub fn tick(state: &mut ServerState) {
+    update_client_heads(state);
+    flush_command_queue(state);
+
+    crate::world::level::update_level_cells(state);
+
+    game_script::plugin::flush_event_queue(
+        &mut state.event_queue,
+        &mut state.world,
+        &state.server,
+        &state.scripts,
     );
 
-    crate::world::level::update_level_cells(&mut world, &mut level, &modules, &mut event_queue);
-
-    game_script::plugin::flush_event_queue(&mut event_queue, &mut world, &server, &scripts);
-
     #[cfg(feature = "physics")]
-    pipeline.step(&mut world, &mut event_queue);
+    state
+        .pipeline
+        .step(&mut state.world, &mut state.event_queue);
 
-    update_scripts(&world, &mut scripts, &modules);
+    update_scripts(&state.world, &mut state.scripts, &state.modules);
 
     // Push snapshots last always
-    update_snapshots(&conns, &world);
+    update_snapshots(&state.state.conns, &state.world);
 }
 
-fn update_client_heads(conns: &Connections, world: &mut WorldState, state: &mut State) {
-    let control_frame = *state.control_frame.lock();
+fn update_client_heads(state: &mut ServerState) {
+    let control_frame = state.state.control_frame.lock();
 
-    world.insert(*state.control_frame.lock());
+    state.world.insert(*control_frame);
 
-    for conn in conns.iter() {
+    for conn in state.state.conns.iter() {
         let mut state = conn.state().write();
 
         // The const client interpolation delay.
-        let client_cf = control_frame - state.peer_delay;
+        let client_cf = *control_frame - state.peer_delay;
 
         state.client_cf = client_cf;
     }
 
-    if world.len() > 120 {
-        world.pop();
+    if state.world.len() > 120 {
+        state.world.pop();
     }
 }
 
-fn flush_command_queue(
-    connections: &Connections,
-    queue: &CommandQueue,
-    world: &mut WorldState,
-    events: &mut EventQueue,
-    modules: &Modules,
-    config: &Config,
-) {
-    while let Some(msg) = queue.pop() {
+fn flush_command_queue(srv_state: &mut ServerState) {
+    while let Some(msg) = srv_state.state.queue.pop() {
         tracing::trace!("got command {:?}", msg.command);
 
-        let conn = connections.get(msg.conn).unwrap();
+        let conn = srv_state.state.conns.get(msg.conn).unwrap();
         let client_cf = conn.state().read().client_cf;
 
         // Fetch the world state at the client's computed render time.
@@ -118,7 +83,7 @@ fn flush_command_queue(
         // In that case we must chose the oldest snapshot.
         let mut view;
         {
-            let opt = world.get_mut(client_cf);
+            let opt = srv_state.world.get_mut(client_cf);
             if let Some(v) = opt {
                 view = v;
             } else {
@@ -126,7 +91,7 @@ fn flush_command_queue(
                 // impl, even thought at this point it never actually needs to drop anything
                 // because it is `None`.
                 drop(opt);
-                match world.front_mut() {
+                match srv_state.world.front_mut() {
                     Some(v) => view = v,
                     None => {
                         tracing::warn!("no snapshots");
@@ -169,7 +134,7 @@ fn flush_command_queue(
                     continue;
                 };
 
-                events.push(Event::Action(ActionEvent {
+                srv_state.event_queue.push(Event::Action(ActionEvent {
                     entity: entity_id,
                     invoker: entity_id,
                     action: event.action,
@@ -193,7 +158,7 @@ fn flush_command_queue(
                 view.insert_streaming_source(
                     id,
                     StreamingSource {
-                        distance: config.player_streaming_source_distance,
+                        distance: srv_state.state.config.player_streaming_source_distance,
                     },
                 );
 
@@ -215,7 +180,7 @@ fn flush_command_queue(
                 }
 
                 // Remove the player from the connections ref.
-                connections.remove(msg.conn);
+                srv_state.state.conns.remove(msg.conn);
             }
             Command::SpawnHost(event) => (),
             Command::InventoryItemAdd(event) => {

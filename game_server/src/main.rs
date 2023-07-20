@@ -1,9 +1,9 @@
 use std::fs::File;
 use std::io::Read;
 
-use bevy_app::App;
 use clap::Parser;
 
+use game_common::world::gen::Generator;
 use game_core::modules;
 use game_server::config::Config;
 use game_server::ServerState;
@@ -27,23 +27,19 @@ fn main() {
         }
     };
 
-    let mut app = App::new();
+    let res = modules::load_modules();
 
-    let server_state = ServerState {
-        generator: load_world(),
-    };
-    app.insert_resource(server_state);
+    let generator = load_world();
 
-    game_server::prepare(&mut app);
-
-    modules::load_modules(&mut app);
+    let server_state =
+        ServerState::new(Generator::from(generator), res.modules, config, res.server);
 
     let rt = Builder::new_multi_thread()
         .enable_all()
         .unhandled_panic(UnhandledPanic::ShutdownRuntime)
         .build()
         .unwrap();
-    rt.block_on(game_server::run(app, config));
+    rt.block_on(game_server::run(server_state));
 }
 
 #[macro_export]

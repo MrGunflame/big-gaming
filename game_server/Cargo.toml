@@ -14,9 +14,6 @@ physics = []
 
 [dependencies]
 ahash = "0.8.3"
-bevy_ecs = "0.10.0"
-bevy_app = "0.10.0"
-bevy_hierarchy = "0.10.1"
 bytes = "1.4.0"
 clap = { version = "4.1.6", features = ["derive"] }
 futures = "0.3.26"

@@ -4,7 +4,6 @@ use std::ops::Deref;
 use std::sync::Arc;
 
 use ahash::AHashMap;
-use bevy_ecs::system::Resource;
 use game_common::world::control_frame::ControlFrame;
 use game_net::conn::ConnectionHandle;
 use game_net::snapshot::CommandQueue;
@@ -15,7 +14,7 @@ use crate::conn::Connections;
 
 pub type ConnectionKey = SocketAddr;
 
-#[derive(Clone, Debug, Resource)]
+#[derive(Clone, Debug)]
 pub struct State(Arc<StateInner>);
 
 impl State {
