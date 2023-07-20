@@ -19,6 +19,7 @@ pub mod events;
 pub mod inventory;
 pub mod log;
 pub mod math;
+pub mod physics;
 pub mod process;
 pub mod record;
 pub mod world;
