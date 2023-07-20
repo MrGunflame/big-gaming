@@ -14,6 +14,7 @@ mod raw;
 // #[cfg(feature = "panic_handler")]
 // mod panic;
 
+pub mod component;
 pub mod entity;
 pub mod events;
 pub mod inventory;
