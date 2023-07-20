@@ -21,8 +21,16 @@ impl<'world> ScriptInstance<'world> {
         events: Events,
         world: WorldViewMut<'world>,
         queue: &'world mut CommandQueue,
+        physics_pipeline: &'world game_physics::Pipeline,
     ) -> Self {
-        let mut store = Store::new(engine, State { queue, world });
+        let mut store = Store::new(
+            engine,
+            State {
+                queue,
+                world,
+                physics_pipeline,
+            },
+        );
 
         let mut linker = Linker::<State>::new(&engine);
 
@@ -86,4 +94,5 @@ impl<'world> ScriptInstance<'world> {
 pub struct State<'world> {
     pub queue: &'world mut CommandQueue,
     pub world: WorldViewMut<'world>,
+    pub physics_pipeline: &'world game_physics::Pipeline,
 }

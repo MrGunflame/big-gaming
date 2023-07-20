@@ -39,6 +39,7 @@ pub fn tick(state: &mut ServerState) {
         &mut state.world,
         &state.server,
         &state.scripts,
+        &state.pipeline,
     );
 
     #[cfg(feature = "physics")]

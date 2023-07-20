@@ -6,7 +6,6 @@ edition = "2021"
 [dependencies]
 bevy_app = "0.10.1"
 bevy_ecs = "0.10.1"
-bevy_transform = "0.10.1"
 bytemuck = "1.13.1"
 game_common = { version = "0.1.0", path = "../game_common" }
 game_data = { version = "0.1.0", path = "../game_data" }
@@ -15,3 +14,4 @@ glam = "0.24.0"
 thiserror = "1.0.40"
 tracing = "0.1.37"
 wasmtime = "7.0.0"
+game_physics = { version = "0.1.0", path = "../game_physics" }

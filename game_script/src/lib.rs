@@ -42,6 +42,7 @@ impl ScriptServer {
         handle: &Handle,
         world: WorldViewMut<'world>,
         queue: &'world mut CommandQueue,
+        physics_pipeline: &'world game_physics::Pipeline,
     ) -> Option<ScriptInstance<'world>> {
         let script = self.scripts.get(handle.id as usize)?;
 
@@ -52,6 +53,7 @@ impl ScriptServer {
                 s.events,
                 world,
                 queue,
+                physics_pipeline,
             )),
         }
     }

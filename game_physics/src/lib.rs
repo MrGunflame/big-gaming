@@ -9,6 +9,7 @@ use std::time::{Duration, Instant};
 use bevy_ecs::system::Resource;
 use control::CharacterController;
 use convert::{point, quat, rotation, vec3, vector};
+use game_common::entity::EntityId;
 use game_common::events::{self, Event, EventQueue};
 use game_common::world::entity::{Entity, EntityBody};
 use game_common::world::snapshot::EntityChange;
@@ -20,8 +21,8 @@ use parking_lot::Mutex;
 use rapier3d::prelude::{
     ActiveEvents, BroadPhase, CCDSolver, ColliderBuilder, ColliderHandle, ColliderSet,
     CollisionEvent, ContactPair, EventHandler, ImpulseJointSet, IntegrationParameters,
-    IslandManager, LockedAxes, MultibodyJointSet, NarrowPhase, PhysicsPipeline, QueryPipeline,
-    RigidBodyBuilder, RigidBodyHandle, RigidBodySet, RigidBodyType, Vector,
+    IslandManager, LockedAxes, MultibodyJointSet, NarrowPhase, PhysicsPipeline, QueryFilter,
+    QueryPipeline, Ray, RigidBodyBuilder, RigidBodyHandle, RigidBodySet, RigidBodyType, Vector,
 };
 
 #[derive(Resource)]
@@ -208,7 +209,7 @@ impl Pipeline {
                 (body_handle, col_handle)
             }
             EntityBody::Object(object) => {
-                let body = RigidBodyBuilder::new(RigidBodyType::Dynamic)
+                let body = RigidBodyBuilder::new(RigidBodyType::Fixed)
                     .position(Isometry {
                         translation: vector(entity.transform.translation).into(),
                         rotation: rotation(entity.transform.rotation),
@@ -308,6 +309,30 @@ impl Pipeline {
 
             // Gravity may move an entity, so we need to rebuild the pipeline.
             self.query_pipeline.update(&self.bodies, &self.colliders);
+        }
+    }
+
+    pub fn cast_ray(&self, ray: game_common::math::Ray, max_toi: f32) -> Option<(EntityId, f32)> {
+        let ray = Ray {
+            origin: point(ray.origin),
+            dir: vector(ray.direction),
+        };
+
+        let filter = QueryFilter::new();
+
+        match self.query_pipeline.cast_ray(
+            &self.bodies,
+            &self.colliders,
+            &ray,
+            max_toi,
+            true,
+            filter,
+        ) {
+            Some((handle, toi)) => {
+                let entity = self.collider_handles.get2(handle).unwrap();
+                Some((entity, toi))
+            }
+            None => None,
         }
     }
 }
