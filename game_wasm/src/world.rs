@@ -9,7 +9,7 @@ use crate::raw::{Ptr, PtrMut, Usize};
 pub use crate::record::RecordReference;
 use crate::Error;
 
-use crate::raw::world::{self as raw, EntityBody, EntityKind};
+use crate::raw::world::{self as raw, EntityBody, EntityKind as RawEntityKind};
 
 #[derive(Clone)]
 pub struct Entity(raw::Entity);
@@ -69,6 +69,16 @@ impl Entity {
 
     pub fn scale(&self) -> Vec3 {
         Vec3::from_array(self.0.scale)
+    }
+
+    pub fn kind(&self) -> EntityKind {
+        match self.0.kind {
+            RawEntityKind::TERRAIN => EntityKind::Terrain,
+            RawEntityKind::OBJECT => EntityKind::Object,
+            RawEntityKind::ACTOR => EntityKind::Actor,
+            RawEntityKind::ITEM => EntityKind::Item,
+            _ => unreachable!(),
+        }
     }
 }
 
@@ -160,7 +170,7 @@ pub struct EntityBuilder {
     translation: Vec3,
     rotation: Quat,
     scale: Vec3,
-    kind: EntityKind,
+    kind: RawEntityKind,
     body: EntityBody,
 }
 
@@ -217,15 +227,15 @@ pub struct Item {
 
 pub unsafe trait IntoEntityBody: private::Sealed {
     #[doc(hidden)]
-    fn kind(&self) -> EntityKind;
+    fn kind(&self) -> RawEntityKind;
 
     #[doc(hidden)]
     fn body(&self) -> EntityBody;
 }
 
 unsafe impl IntoEntityBody for Object {
-    fn kind(&self) -> EntityKind {
-        EntityKind::OBJECT
+    fn kind(&self) -> RawEntityKind {
+        RawEntityKind::OBJECT
     }
 
     fn body(&self) -> EntityBody {
@@ -236,8 +246,8 @@ unsafe impl IntoEntityBody for Object {
 impl private::Sealed for Object {}
 
 unsafe impl IntoEntityBody for Item {
-    fn kind(&self) -> EntityKind {
-        EntityKind::ITEM
+    fn kind(&self) -> RawEntityKind {
+        RawEntityKind::ITEM
     }
 
     fn body(&self) -> EntityBody {
@@ -249,4 +259,34 @@ impl private::Sealed for Item {}
 
 mod private {
     pub trait Sealed {}
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum EntityKind {
+    Terrain,
+    Object,
+    Actor,
+    Item,
+}
+
+impl EntityKind {
+    #[inline]
+    pub const fn is_terrain(self) -> bool {
+        matches!(self, Self::Terrain)
+    }
+
+    #[inline]
+    pub const fn is_object(self) -> bool {
+        matches!(self, Self::Object)
+    }
+
+    #[inline]
+    pub const fn is_actor(self) -> bool {
+        matches!(self, Self::Actor)
+    }
+
+    #[inline]
+    pub const fn is_item(self) -> bool {
+        matches!(self, Self::Item)
+    }
 }

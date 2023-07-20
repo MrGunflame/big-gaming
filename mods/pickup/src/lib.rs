@@ -21,5 +21,10 @@ fn on_action(entity: u64, invoker: u64) {
         None => return,
     };
 
-    Entity::get(target).unwrap().despawn().unwrap();
+    let entity = Entity::get(target).unwrap();
+    if !entity.kind().is_item() {
+        return;
+    }
+
+    entity.despawn().unwrap();
 }
