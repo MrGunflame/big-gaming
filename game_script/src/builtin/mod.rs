@@ -2,6 +2,7 @@
 
 mod inventory;
 mod log;
+mod physics;
 mod process;
 mod world;
 
@@ -24,6 +25,7 @@ macro_rules! register_fns {
 pub fn register_host_fns(store: &mut Linker<State>) {
     use inventory::*;
     use log::*;
+    use physics::*;
     use process::*;
     use world::*;
 
@@ -47,6 +49,7 @@ pub fn register_host_fns(store: &mut Linker<State>) {
         inventory_component_remove,
         inventory_equip,
         inventory_unequip,
+        physics_cast_ray,
     }
 }
 

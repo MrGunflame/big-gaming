@@ -1,6 +1,7 @@
 pub mod components;
 pub mod health;
 pub mod inventory;
+pub mod physics;
 pub mod process;
 pub mod world;
 
