@@ -2,7 +2,6 @@ use bevy_app::Plugin;
 use game_common::events::{Event, EventQueue};
 use game_common::world::world::WorldState;
 
-use crate::queue::CommandQueue;
 use crate::scripts::Scripts;
 use crate::ScriptServer;
 
@@ -23,8 +22,6 @@ pub fn flush_event_queue(
     scripts: &Scripts,
     physics_pipeline: &game_physics::Pipeline,
 ) {
-    let mut buffer = CommandQueue::new();
-
     tracing::debug!("executing {} events", queue.len());
 
     while let Some(event) = queue.pop() {
@@ -47,9 +44,7 @@ pub fn flush_event_queue(
                 return;
             };
 
-            let mut instance = server
-                .get(&handle, view, &mut buffer, physics_pipeline)
-                .unwrap();
+            let mut instance = server.get(&handle, view, physics_pipeline).unwrap();
 
             if let Err(err) = instance.run(&event) {
                 tracing::error!("failed to execute event on script: {}", err);

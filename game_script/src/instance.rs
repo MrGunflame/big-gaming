@@ -6,7 +6,6 @@ use game_common::world::CellId;
 use wasmtime::{Engine, Instance, Linker, Module, Store};
 
 use crate::events::{Events, OnAction, OnCellLoad, OnCellUnload, OnCollision, OnEquip, OnUnequip};
-use crate::queue::CommandQueue;
 
 pub struct ScriptInstance<'world> {
     store: Store<State<'world>>,
@@ -20,13 +19,11 @@ impl<'world> ScriptInstance<'world> {
         module: &Module,
         events: Events,
         world: WorldViewMut<'world>,
-        queue: &'world mut CommandQueue,
         physics_pipeline: &'world game_physics::Pipeline,
     ) -> Self {
         let mut store = Store::new(
             engine,
             State {
-                queue,
                 world,
                 physics_pipeline,
             },
@@ -92,7 +89,6 @@ impl<'world> ScriptInstance<'world> {
 }
 
 pub struct State<'world> {
-    pub queue: &'world mut CommandQueue,
     pub world: WorldViewMut<'world>,
     pub physics_pipeline: &'world game_physics::Pipeline,
 }
