@@ -48,8 +48,6 @@ pub fn load_actor(
     for (entity, actor) in &entities {
         tracing::trace!("spawning actor at {:?}", actor.transform.translation);
 
-        dbg!(actor);
-
         let mut cmds = commands.entity(entity);
         cmds.remove::<LoadActor>();
 
@@ -77,6 +75,19 @@ pub fn load_actor(
 
         if actor.host {
             cmds.insert(HostPlayer);
+        }
+
+        {
+            let module = modules.get(actor.race.0.module).unwrap();
+            let record = module.records.get(actor.race.0.record).unwrap();
+
+            let race = record.body.as_race().unwrap();
+            for action in &race.actions {
+                let module = modules.get(action.module).unwrap();
+                let record = module.records.get(action.record).unwrap().clone();
+
+                active_actions.register(&mut hotkeys, action.module, record);
+            }
         }
 
         // Load actions

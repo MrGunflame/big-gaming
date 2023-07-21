@@ -89,6 +89,8 @@ fn dispatch_player_action_hotkeys(
         };
 
         for action in actions {
+            tracing::trace!("calling action {:?}", action);
+
             let entity_id = conn.server_entities.get(host).unwrap();
 
             conn.send(Command::EntityAction(EntityAction {
@@ -113,7 +115,7 @@ fn register_actions(
     for module in modules.iter() {
         for record in module.records.iter() {
             let RecordBody::Action(action) = &record.body else {
-              continue;
+                continue;
             };
 
             let id = hotkeys.register(Hotkey {
