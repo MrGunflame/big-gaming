@@ -1,44 +1,53 @@
-use std::ffi::OsStr;
 use std::fs::File;
 use std::io::Read;
+use std::path::Path;
+
+use wasmtime::{Engine, ExternType, Module};
 
 use crate::events::Events;
-use crate::host::wasm::WasmScript;
-use crate::ScriptServer;
 
-pub enum Script {
-    Wasm(WasmScript),
+const MAGIC_WASM: [u8; 4] = [0x00, 0x61, 0x73, 0x6d];
+
+pub(crate) struct Script {
+    pub module: Module,
+    pub events: Events,
 }
 
 impl Script {
-    pub fn load<P: AsRef<OsStr>>(
-        server: &ScriptServer,
-        path: P,
-        // FIXME: Replace with strongly-typed error type.
-    ) -> Result<Self, Box<dyn std::error::Error>> {
-        let mut file = File::open(path.as_ref())?;
+    pub fn load(path: &Path, engine: &Engine) -> Result<Self, Box<dyn std::error::Error>> {
+        let mut file = File::open(path)?;
 
-        // Read header
-        let mut buf = [0; 4];
-        file.read_exact(&mut buf)?;
+        let mut buf = Vec::new();
+        file.read_to_end(&mut buf)?;
 
-        match buf {
-            MAGIC_WASM => Ok(Self::Wasm(WasmScript::new(path, &server.engine)?)),
-            _ => panic!("unknown file type"),
+        let module = Module::new(engine, buf)?;
+
+        let mut events = Events::NONE;
+
+        for (name, event) in [("on_action", Events::ACTION)] {
+            let Some(export) = module.get_export("on_action") else {
+                continue;
+            };
+
+            match export {
+                ExternType::Func(_func) => {
+                    events |= event;
+                }
+                _ => {
+                    tracing::warn!(
+                        "Found event extern {} in module, but it is a {}",
+                        name,
+                        match export {
+                            ExternType::Func(_) => unreachable!(),
+                            ExternType::Global(_) => "Global",
+                            ExternType::Table(_) => "Table",
+                            ExternType::Memory(_) => "Memory",
+                        }
+                    );
+                }
+            }
         }
-    }
 
-    pub fn run(&self) {
-        match self {
-            Self::Wasm(sc) => sc.run(),
-        }
-    }
-
-    pub fn events(&self) -> Events {
-        match self {
-            Self::Wasm(sc) => sc.events,
-        }
+        Ok(Self { module, events })
     }
 }
-
-const MAGIC_WASM: [u8; 4] = [0x00, 0x61, 0x73, 0x6d];

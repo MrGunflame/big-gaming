@@ -15,3 +15,4 @@ thiserror = "1.0.40"
 tracing = "0.1.37"
 wasmtime = "7.0.0"
 game_physics = { version = "0.1.0", path = "../game_physics" }
+slotmap = "1.0.6"
