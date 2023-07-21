@@ -6,7 +6,7 @@ use crate::instance::State;
 use super::{CallerExt, InvalidInvariant};
 
 pub fn log(
-    mut caller: Caller<'_, State<'_>>,
+    mut caller: Caller<'_, State<'_, '_>>,
     level: u32,
     ptr: u32,
     len: u32,

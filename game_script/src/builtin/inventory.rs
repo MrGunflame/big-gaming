@@ -10,7 +10,7 @@ use crate::instance::State;
 use super::CallerExt;
 
 pub fn inventory_get(
-    mut caller: Caller<'_, State<'_>>,
+    mut caller: Caller<'_, State<'_, '_>>,
     entity_id: u64,
     id: u64,
     out: u32,
@@ -31,7 +31,7 @@ pub fn inventory_get(
 }
 
 pub fn inventory_insert(
-    caller: Caller<'_, State<'_>>,
+    caller: Caller<'_, State<'_, '_>>,
     entity_id: u64,
     id: u64,
     ptr: u32,
@@ -39,7 +39,11 @@ pub fn inventory_insert(
     todo!()
 }
 
-pub fn inventory_remove(mut caller: Caller<'_, State<'_>>, entity_id: u64, id: u64) -> Result<u32> {
+pub fn inventory_remove(
+    mut caller: Caller<'_, State<'_, '_>>,
+    entity_id: u64,
+    id: u64,
+) -> Result<u32> {
     let entity_id = EntityId::from_raw(entity_id);
     let id = InventoryId::from_raw(id);
 
@@ -53,7 +57,7 @@ pub fn inventory_remove(mut caller: Caller<'_, State<'_>>, entity_id: u64, id: u
 }
 
 pub fn inventory_component_len(
-    mut caller: Caller<'_, State<'_>>,
+    mut caller: Caller<'_, State<'_, '_>>,
     entity_id: u64,
     id: u64,
     component_id: u32,
@@ -64,7 +68,7 @@ pub fn inventory_component_len(
     let component_id: RecordReference = caller.read(component_id)?;
 
     let Some(inventory) = caller.data().world.inventories().get(entity_id) else {
-       return Ok(1);
+        return Ok(1);
     };
 
     let Some(item) = inventory.get(id) else {
@@ -81,7 +85,7 @@ pub fn inventory_component_len(
 }
 
 pub fn inventory_component_get(
-    mut caller: Caller<'_, State<'_>>,
+    mut caller: Caller<'_, State<'_, '_>>,
     entity_id: u64,
     id: u64,
     component_id: u32,
@@ -117,7 +121,7 @@ pub fn inventory_component_get(
 }
 
 pub fn inventory_component_insert(
-    mut caller: Caller<'_, State<'_>>,
+    mut caller: Caller<'_, State<'_, '_>>,
     entity_id: u64,
     id: u64,
     component_id: u32,
@@ -144,7 +148,7 @@ pub fn inventory_component_insert(
 }
 
 pub fn inventory_component_remove(
-    mut caller: Caller<'_, State<'_>>,
+    mut caller: Caller<'_, State<'_, '_>>,
     entity_id: u64,
     id: u64,
     component_id: u32,
@@ -166,7 +170,11 @@ pub fn inventory_component_remove(
     Ok(0)
 }
 
-pub fn inventory_equip(mut caller: Caller<'_, State<'_>>, entity_id: u64, id: u64) -> Result<u32> {
+pub fn inventory_equip(
+    mut caller: Caller<'_, State<'_, '_>>,
+    entity_id: u64,
+    id: u64,
+) -> Result<u32> {
     let entity_id = EntityId::from_raw(entity_id);
     let id = InventoryId::from_raw(id);
 
@@ -185,7 +193,7 @@ pub fn inventory_equip(mut caller: Caller<'_, State<'_>>, entity_id: u64, id: u6
 }
 
 pub fn inventory_unequip(
-    mut caller: Caller<'_, State<'_>>,
+    mut caller: Caller<'_, State<'_, '_>>,
     entity_id: u64,
     id: u64,
 ) -> Result<u32> {

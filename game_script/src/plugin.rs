@@ -24,6 +24,10 @@ pub fn flush_event_queue(
 ) {
     tracing::debug!("executing {} events", queue.len());
 
+    let Some(mut view) = world.back_mut() else {
+        return;
+    };
+
     while let Some(event) = queue.pop() {
         let entity = match event {
             Event::Action(event) => Some(event.entity),
@@ -40,11 +44,7 @@ pub fn flush_event_queue(
         };
 
         for handle in scripts {
-            let Some(view) = world.front_mut() else {
-                return;
-            };
-
-            let mut instance = server.get(&handle, view, physics_pipeline).unwrap();
+            let mut instance = server.get(&handle, &mut view, physics_pipeline).unwrap();
 
             if let Err(err) = instance.run(&event) {
                 tracing::error!("failed to execute event on script: {}", err);

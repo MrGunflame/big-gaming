@@ -52,12 +52,12 @@ impl ScriptServer {
         self.targets.entry(target).or_default().push(handle.id);
     }
 
-    pub fn get<'world>(
+    pub fn get<'world, 'view>(
         &self,
         handle: &Handle,
-        world: WorldViewMut<'world>,
+        world: &'view mut WorldViewMut<'world>,
         physics_pipeline: &'world game_physics::Pipeline,
-    ) -> Option<ScriptInstance<'world>> {
+    ) -> Option<ScriptInstance<'world, 'view>> {
         let script = self.scripts.get(handle.id)?;
 
         Some(ScriptInstance::new(

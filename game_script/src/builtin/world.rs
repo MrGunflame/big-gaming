@@ -9,7 +9,11 @@ use crate::instance::State;
 
 use super::CallerExt;
 
-pub fn world_entity_spawn(mut caller: Caller<'_, State<'_>>, ptr: u32, out: u32) -> Result<u32> {
+pub fn world_entity_spawn(
+    mut caller: Caller<'_, State<'_, '_>>,
+    ptr: u32,
+    out: u32,
+) -> Result<u32> {
     tracing::trace!("world_entity_spawn(ptr = {}, out = {})", ptr, out);
 
     let entity: Entity = caller.read(ptr)?;
@@ -25,11 +29,11 @@ pub fn world_entity_spawn(mut caller: Caller<'_, State<'_>>, ptr: u32, out: u32)
     Ok(0)
 }
 
-pub fn world_entity_get(mut caller: Caller<'_, State<'_>>, id: u64, out: u32) -> Result<u32> {
+pub fn world_entity_get(mut caller: Caller<'_, State<'_, '_>>, id: u64, out: u32) -> Result<u32> {
     tracing::trace!("world_entity_get(id = {}, out = {})", id, out);
 
     let Some(entity) = caller.data_mut().world.get(EntityId::from_raw(id)) else {
-       return Ok(1);
+        return Ok(1);
     };
 
     let entity = entity.to_abi();
@@ -38,7 +42,7 @@ pub fn world_entity_get(mut caller: Caller<'_, State<'_>>, id: u64, out: u32) ->
     Ok(0)
 }
 
-pub fn world_entity_despawn(mut caller: Caller<'_, State<'_>>, id: u64) -> Result<u32> {
+pub fn world_entity_despawn(mut caller: Caller<'_, State<'_, '_>>, id: u64) -> Result<u32> {
     tracing::trace!("world_entity_despawn(id = {})", id);
 
     let id = EntityId::from_raw(id);
@@ -48,7 +52,7 @@ pub fn world_entity_despawn(mut caller: Caller<'_, State<'_>>, id: u64) -> Resul
 }
 
 pub fn world_entity_component_len(
-    mut caller: Caller<'_, State<'_>>,
+    mut caller: Caller<'_, State<'_, '_>>,
     entity_id: u64,
     component_id: u32,
     out: u32,
@@ -78,7 +82,7 @@ pub fn world_entity_component_len(
 }
 
 pub fn world_entity_component_get(
-    mut caller: Caller<'_, State<'_>>,
+    mut caller: Caller<'_, State<'_, '_>>,
     entity_id: u64,
     component_id: u32,
     out: u32,
@@ -116,7 +120,7 @@ pub fn world_entity_component_get(
 }
 
 pub fn world_entity_component_insert(
-    mut caller: Caller<'_, State<'_>>,
+    mut caller: Caller<'_, State<'_, '_>>,
     entity_id: u64,
     component_id: u32,
     ptr: u32,
@@ -143,7 +147,7 @@ pub fn world_entity_component_insert(
 }
 
 pub fn world_entity_component_remove(
-    mut caller: Caller<'_, State<'_>>,
+    mut caller: Caller<'_, State<'_, '_>>,
     entity_id: u64,
     component_id: u32,
 ) -> Result<u32> {

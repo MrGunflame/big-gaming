@@ -8,7 +8,7 @@ use crate::builtin::CallerExt;
 use crate::instance::State;
 
 pub fn physics_cast_ray(
-    mut caller: Caller<'_, State<'_>>,
+    mut caller: Caller<'_, State<'_, '_>>,
     origin_x: f32,
     origin_y: f32,
     origin_z: f32,

@@ -7,18 +7,18 @@ use wasmtime::{Engine, Instance, Linker, Module, Store};
 
 use crate::events::{Events, OnAction, OnCellLoad, OnCellUnload, OnCollision, OnEquip, OnUnequip};
 
-pub struct ScriptInstance<'world> {
-    store: Store<State<'world>>,
+pub struct ScriptInstance<'world, 'view> {
+    store: Store<State<'world, 'view>>,
     inner: Instance,
     events: Events,
 }
 
-impl<'world> ScriptInstance<'world> {
+impl<'world, 'view> ScriptInstance<'world, 'view> {
     pub fn new(
         engine: &Engine,
         module: &Module,
         events: Events,
-        world: WorldViewMut<'world>,
+        world: &'view mut WorldViewMut<'world>,
         physics_pipeline: &'world game_physics::Pipeline,
     ) -> Self {
         let mut store = Store::new(
@@ -88,7 +88,7 @@ impl<'world> ScriptInstance<'world> {
     }
 }
 
-pub struct State<'world> {
-    pub world: WorldViewMut<'world>,
+pub struct State<'world, 'view> {
+    pub world: &'view mut WorldViewMut<'world>,
     pub physics_pipeline: &'world game_physics::Pipeline,
 }
