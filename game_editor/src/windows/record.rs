@@ -174,12 +174,14 @@ fn render_record(
             RecordBody::Object(object) => {
                 RecordBodyFields::Object(render_object(&root, Some(object.clone())))
             }
+            RecordBody::Race(race) => todo!(),
         },
         None => match kind {
             RecordKind::Item => RecordBodyFields::Item(render_item(&root, None)),
             RecordKind::Action => RecordBodyFields::Action,
             RecordKind::Component => RecordBodyFields::Component,
             RecordKind::Object => RecordBodyFields::Object(render_object(&root, None)),
+            RecordKind::Race => todo!(),
         },
     };
 
@@ -426,6 +428,15 @@ fn render_object(cx: &Scope, object: Option<ObjectRecord>) -> ObjectFields {
         };
     }
 
+    let style = Style {
+        bounds: Bounds {
+            min: SizeVec2::splat(Size::Pixels(20.0)),
+            ..Default::default()
+        },
+        background: Background::GRAY,
+        ..Default::default()
+    };
+
     let val_col = view! {
         root,
         <Container style={Style::default()}>
@@ -438,7 +449,7 @@ fn render_object(cx: &Scope, object: Option<ObjectRecord>) -> ObjectFields {
 
     view! {
         val_col,
-        <Input value={model.get_untracked().to_string()} style={Style::default()} on_change={on_change.into()}>
+        <Input value={model.get_untracked().to_string()} style={style.clone()} on_change={on_change.into()}>
         </Input>
     };
 

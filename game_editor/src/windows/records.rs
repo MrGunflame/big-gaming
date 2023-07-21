@@ -161,6 +161,7 @@ pub fn Records(cx: &Scope, queue: SpawnWindowQueue, records: state::record::Reco
                 RecordBody::Object(object) => {
                     row.push(object.components.len().to_string());
                 }
+                RecordBody::Race(race) => todo!(),
             }
 
             entries.push(row);
@@ -209,6 +210,7 @@ fn category_str(kind: RecordKind) -> &'static str {
         RecordKind::Action => "Actions",
         RecordKind::Component => "Components",
         RecordKind::Object => "Objects",
+        RecordKind::Race => "Race",
     }
 }
 

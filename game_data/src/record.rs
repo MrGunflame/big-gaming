@@ -7,6 +7,7 @@ use crate::components::actions::ActionRecord;
 use crate::components::components::ComponentRecord;
 use crate::components::item::ItemRecord;
 use crate::components::objects::ObjectRecord;
+use crate::components::race::RaceRecord;
 use crate::uri::Uri;
 use crate::{Decode, Encode};
 
@@ -74,6 +75,7 @@ pub enum RecordBody {
     Action(ActionRecord),
     Component(ComponentRecord),
     Object(ObjectRecord),
+    Race(RaceRecord),
 }
 
 impl RecordBody {
@@ -83,6 +85,7 @@ impl RecordBody {
             Self::Action(_) => RecordKind::Action,
             Self::Component(_) => RecordKind::Component,
             Self::Object(_) => RecordKind::Object,
+            Self::Race(_) => RecordKind::Race,
         }
     }
 
@@ -146,6 +149,13 @@ impl RecordBody {
         }
     }
 
+    pub fn as_race(&self) -> Option<&RaceRecord> {
+        match self {
+            Self::Race(race) => Some(race),
+            _ => None,
+        }
+    }
+
     pub fn into_item(self) -> Option<ItemRecord> {
         match self {
             Self::Item(item) => Some(item),
@@ -174,6 +184,13 @@ impl RecordBody {
         }
     }
 
+    pub fn into_race(self) -> Option<RaceRecord> {
+        match self {
+            Self::Race(race) => Some(race),
+            _ => None,
+        }
+    }
+
     #[inline(never)]
     #[cold]
     fn panic_invalid_record(&self, expected: &'static str) -> ! {
@@ -182,6 +199,7 @@ impl RecordBody {
             RecordKind::Action => "Action",
             RecordKind::Component => "Component",
             RecordKind::Object => "Object",
+            RecordKind::Race => "Race",
         };
 
         panic!(
@@ -197,6 +215,7 @@ pub enum RecordKind {
     Action,
     Component,
     Object,
+    Race,
 }
 
 impl RecordKind {
@@ -214,6 +233,11 @@ impl RecordKind {
 
     pub const fn is_object(&self) -> bool {
         matches!(self, Self::Object)
+    }
+
+    #[inline]
+    pub const fn is_race(self) -> bool {
+        matches!(self, Self::Race)
     }
 }
 
@@ -235,6 +259,7 @@ impl Encode for RecordKind {
             Self::Action => 2,
             Self::Component => 3,
             Self::Object => 4,
+            Self::Race => 5,
         };
 
         byte.encode(buf);
@@ -255,6 +280,7 @@ impl Decode for RecordKind {
             2 => Ok(Self::Action),
             3 => Ok(Self::Component),
             4 => Ok(Self::Object),
+            5 => Ok(Self::Race),
             _ => Err(RecordKindError::InvalidKind(byte)),
         }
     }
@@ -303,6 +329,9 @@ impl Encode for Record {
             RecordBody::Object(object) => {
                 object.encode(&mut buf);
             }
+            RecordBody::Race(race) => {
+                race.encode(&mut buf);
+            }
         };
     }
 }
@@ -336,6 +365,10 @@ impl Decode for Record {
                 let object = ObjectRecord::decode(&mut buf)?;
                 RecordBody::Object(object)
             }
+            RecordKind::Race => {
+                let race = RaceRecord::decode(&mut buf)?;
+                RecordBody::Race(race)
+            }
         };
 
         Ok(Self {
@@ -365,4 +398,6 @@ pub enum RecordError {
     Component(#[from] <ComponentRecord as Decode>::Error),
     #[error("failed to decode object record: {0}")]
     Object(#[from] <ObjectRecord as Decode>::Error),
+    #[error("failed to decode race record: {0}")]
+    Race(#[from] <RaceRecord as Decode>::Error),
 }

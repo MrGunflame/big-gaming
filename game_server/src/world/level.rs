@@ -102,12 +102,20 @@ fn build_entity(modules: &Modules, cell: CellId, builder: EntityBuilder) -> Opti
     }
 
     let Some(module) = modules.get(builder.id.module) else {
-        tracing::error!("load error: unknown module {} in {}", builder.id.module, builder.id);
+        tracing::error!(
+            "load error: unknown module {} in {}",
+            builder.id.module,
+            builder.id
+        );
         return None;
     };
 
     let Some(record) = module.records.get(builder.id.record) else {
-        tracing::error!("load error: unknown record {} in {}", builder.id.record, builder.id);
+        tracing::error!(
+            "load error: unknown record {} in {}",
+            builder.id.record,
+            builder.id
+        );
         return None;
     };
 
@@ -159,6 +167,15 @@ fn build_entity(modules: &Modules, cell: CellId, builder: EntityBuilder) -> Opti
             EntityBody::Object(Object {
                 id: ObjectId(builder.id),
             })
+        }
+        RecordBody::Race(_) => {
+            tracing::error!(
+                "load error: attempted to load a race record {} ({:?})",
+                record.name,
+                record.id
+            );
+
+            return None;
         }
     };
 

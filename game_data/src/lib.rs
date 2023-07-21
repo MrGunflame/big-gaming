@@ -1,5 +1,13 @@
 //! Types and (de)serializiers for data files.
 
+pub mod components;
+pub mod header;
+pub mod loader;
+pub mod patch;
+pub mod record;
+pub mod uri;
+pub mod varint;
+
 use std::error::Error as StdError;
 use std::hash::{Hash, Hasher};
 use std::mem::MaybeUninit;
@@ -11,14 +19,6 @@ use header::{Header, HeaderError};
 use record::{Record, RecordError};
 use thiserror::Error;
 use varint::VarU64;
-
-pub mod components;
-pub mod header;
-pub mod loader;
-pub mod patch;
-pub mod record;
-pub mod uri;
-pub mod varint;
 
 pub trait Encode {
     fn encode<B>(&self, buf: B)

@@ -170,6 +170,7 @@ fn load_module(data: DataBuffer, modules: &mut Modules, server: &mut ScriptServe
             RecordBody::Object(_) => {}
             RecordBody::Action(action) => {}
             RecordBody::Component(component) => {}
+            RecordBody::Race(race) => {}
         }
     }
 
@@ -263,6 +264,7 @@ fn validate_module(modules: &Modules, module: &DataBuffer) -> Result<(), Validat
                 }
             }
             RecordBody::Object(object) => {}
+            RecordBody::Race(race) => {}
         }
     }
 
