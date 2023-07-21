@@ -633,7 +633,7 @@ impl Decode for RaceId {
     where
         B: Buf,
     {
-        WeakId::decode(buf).map(Self)
+        RecordReference::decode(buf).map(Self)
     }
 }
 

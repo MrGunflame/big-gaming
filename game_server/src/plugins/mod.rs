@@ -1,14 +1,8 @@
 mod inventory;
 
 use ahash::HashSet;
-use game_common::components::combat::Health;
-use game_common::components::components::Components;
-use game_common::components::race::RaceId;
-use game_common::components::transform::Transform;
-use game_common::entity::EntityId;
 use game_common::events::{ActionEvent, Event, EventKind};
 use game_common::world::control_frame::ControlFrame;
-use game_common::world::entity::{Actor, Entity, EntityBody};
 use game_common::world::snapshot::EntityChange;
 use game_common::world::source::StreamingSource;
 use game_common::world::world::{AsView, WorldState};
@@ -21,10 +15,10 @@ use game_net::snapshot::{
 };
 use game_script::events::Events;
 use game_script::scripts::Scripts;
-use glam::Vec3;
 
 use crate::conn::{Connection, Connections};
 use crate::net::state::{Cells, ConnectionState};
+use crate::world::player::spawn_player;
 use crate::ServerState;
 
 // All systems need to run sequentially.
@@ -144,20 +138,12 @@ fn flush_command_queue(srv_state: &mut ServerState) {
                 // TODO
             }
             Command::Connected(event) => {
-                let id = view.spawn(Entity {
-                    id: EntityId::dangling(),
-                    transform: Transform::from_translation(Vec3::new(10.0, 32.0, 10.0)),
-                    body: EntityBody::Actor(Actor {
-                        race: RaceId(1.into()),
-                        health: Health::new(50),
-                    }),
-                    components: Components::new(),
-                });
+                let res = spawn_player(&mut view);
 
-                state.entities.insert(id);
+                state.entities.insert(res.id);
 
                 view.insert_streaming_source(
-                    id,
+                    res.id,
                     StreamingSource {
                         distance: srv_state.state.config.player_streaming_source_distance,
                     },
@@ -167,9 +153,9 @@ fn flush_command_queue(srv_state: &mut ServerState) {
                 // without delay.
                 debug_assert_eq!(state.peer_delay, ControlFrame(0));
 
-                state.host.entity = Some(id);
+                state.host.entity = Some(res.id);
                 state.peer_delay = event.peer_delay;
-                state.cells = Cells::new(CellId::new(0.0, 0.0, 0.0));
+                state.cells = Cells::new(CellId::from(res.transform.translation));
 
                 tracing::info!("spawning host {:?} in cell", msg.id);
             }
