@@ -51,9 +51,9 @@ fn fs_main(in: VertexOutput) -> GBuffer {
     // Move albedo out of SRGB space, this is corrected again
     // in the post processing stage.
     var color: vec4<f32> = base_color * textureSample(color_texture, color_texture_sampler, in.uv);
-    color.x = pow(color.x, 2.2);
-    color.y = pow(color.y, 2.2);
-    color.z = pow(color.z, 2.2);
+    //color.x = pow(color.x, 2.2);
+    //color.y = pow(color.y, 2.2);
+    //color.z = pow(color.z, 2.2);
     
     var normal = textureSample(normal_texture, normal_sampler, in.uv).xyz;
     let local_metallic = textureSample(metallic_roughness_texture, metallic_roughness_sampler, in.uv).b;
