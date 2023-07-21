@@ -27,6 +27,7 @@ members = [
     # TODO: Figure out how to move these to a separate
     # workspace.
     "mods/pickup",
+    "tools/json2dat",
 ]
 
 resolver = "2"
