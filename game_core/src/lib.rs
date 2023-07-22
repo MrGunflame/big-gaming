@@ -33,7 +33,5 @@ impl Plugin for CorePlugins {
         app.add_plugin(WorldTimePlugin::default());
         app.add_plugin(SpawnPlugin);
         app.add_plugin(ModulePlugin);
-        app.add_plugin(HierarchyPlugin);
-        app.add_plugin(TransformPlugin);
     }
 }
