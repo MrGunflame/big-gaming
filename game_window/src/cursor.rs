@@ -5,10 +5,9 @@ use bevy_ecs::prelude::{Entity, EventReader};
 use bevy_ecs::system::{Query, Res, ResMut, Resource};
 use glam::Vec2;
 use parking_lot::Mutex;
-use winit::window::CursorGrabMode;
 
 use crate::events::{CursorLeft, CursorMoved};
-use crate::WindowState;
+use crate::{Backend, WindowState};
 
 pub type CursorIcon = winit::window::CursorIcon;
 
@@ -126,7 +125,11 @@ pub fn update_cursor_position(
     }
 }
 
-pub fn flush_cursor_events(cursor: Res<Cursor>, windows: Query<&WindowState>) {
+pub fn flush_cursor_events(
+    cursor: Res<Cursor>,
+    mut compat: ResMut<WindowCompat>,
+    windows: Query<&WindowState>,
+) {
     while let Some((entity, event)) = cursor.queue.lock().pop_front() {
         let window = windows.get(entity).unwrap();
 
@@ -137,6 +140,9 @@ pub fn flush_cursor_events(cursor: Res<Cursor>, windows: Query<&WindowState>) {
                 if let Err(err) = window.set_cursor_grab(mode) {
                     tracing::error!("failed to set cursor grab mode: {}", err);
                 }
+
+                compat.backend = window.backend();
+                compat.cursor_grab_mode = mode;
             }
             CursorEvent::CursorVisible(visible) => {
                 tracing::debug!("setting cursor visibility to {:?}", visible);
@@ -159,4 +165,43 @@ enum CursorEvent {
     CursorGrab(CursorGrabMode),
     CursorVisible(bool),
     Position(Vec2),
+}
+
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
+pub enum CursorGrabMode {
+    #[default]
+    None,
+    Locked,
+}
+
+/// Cross-Platform compatability support
+#[derive(Debug, Default, Resource)]
+pub struct WindowCompat {
+    backend: Backend,
+    cursor_grab_mode: CursorGrabMode,
+}
+
+pub fn emulate_cursor_grab_mode_locked(
+    cursor: Res<Cursor>,
+    compat: Res<WindowCompat>,
+    mut events: EventReader<CursorMoved>,
+    windows: Query<&WindowState>,
+) {
+    for _ in events.iter() {
+        match compat.cursor_grab_mode {
+            CursorGrabMode::None => (),
+            CursorGrabMode::Locked => match compat.backend {
+                Backend::Wayland | Backend::Unknown => (),
+                Backend::X11 | Backend::Windows => {
+                    if let Some(entity) = cursor.window() {
+                        let window = windows.get(entity).unwrap();
+
+                        if let Err(err) = window.set_cursor_position(cursor.position()) {
+                            tracing::error!("failed to update cursor position: {}", err);
+                        }
+                    }
+                }
+            },
+        }
+    }
 }

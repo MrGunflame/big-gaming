@@ -7,7 +7,7 @@ use winit::event_loop::EventLoopWindowTarget;
 use winit::window::WindowBuilder;
 
 use crate::events::{WindowCloseRequested, WindowCreated};
-use crate::{Window, WindowState, Windows};
+use crate::{Backend, Window, WindowState, Windows};
 
 pub(crate) fn create_windows(
     mut commands: Commands,
@@ -15,6 +15,7 @@ pub(crate) fn create_windows(
     mut windows: ResMut<Windows>,
     mut created_windows: Query<(Entity, &mut Window), Added<Window>>,
     mut writer: EventWriter<WindowCreated>,
+    backend: Backend,
 ) {
     for (entity, window) in &mut created_windows {
         let window = WindowBuilder::new()
@@ -25,6 +26,7 @@ pub(crate) fn create_windows(
         windows.windows.insert(window.id(), entity);
         commands.entity(entity).insert(WindowState {
             inner: Arc::new(window),
+            backend,
         });
 
         writer.send(WindowCreated { window: entity });

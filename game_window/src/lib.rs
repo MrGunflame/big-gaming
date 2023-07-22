@@ -11,9 +11,10 @@ use std::time::Instant;
 use bevy_app::{App, Plugin};
 use bevy_ecs::prelude::{Component, Entity, EventWriter};
 use bevy_ecs::query::Added;
+use bevy_ecs::schedule::IntoSystemConfig;
 use bevy_ecs::system::{Commands, Query, ResMut, Resource, SystemState};
 use bevy_ecs::world::FromWorld;
-use cursor::{Cursor, CursorIcon};
+use cursor::{Cursor, CursorGrabMode, CursorIcon, WindowCompat};
 use events::{
     CursorEntered, CursorLeft, CursorMoved, ReceivedCharacter, WindowCloseRequested, WindowCreated,
     WindowDestroyed, WindowResized,
@@ -32,8 +33,6 @@ use winit::event::{DeviceEvent, ElementState, Event, MouseScrollDelta, WindowEve
 use winit::event_loop::EventLoop;
 use winit::window::WindowId;
 
-pub use winit::window::CursorGrabMode;
-
 #[derive(Clone, Debug)]
 pub struct WindowPlugin;
 
@@ -46,10 +45,15 @@ impl Plugin for WindowPlugin {
         app.add_plugin(InputPlugin);
 
         app.insert_resource(Cursor::new());
+        // Must run before cursor position is update.d
+        app.add_system(
+            cursor::emulate_cursor_grab_mode_locked.before(cursor::update_cursor_position),
+        );
         app.add_system(cursor::update_cursor_position);
         app.add_system(cursor::flush_cursor_events);
 
         app.insert_resource(Windows::default());
+        app.insert_resource(WindowCompat::default());
 
         app.add_event::<WindowCreated>();
         app.add_event::<WindowResized>();
@@ -80,6 +84,7 @@ pub struct WindowState {
     // to be valid until the surface was dropped in the rendering
     // crate.
     inner: Arc<winit::window::Window>,
+    backend: Backend,
 }
 
 impl WindowState {
@@ -100,6 +105,16 @@ impl WindowState {
     }
 
     pub fn set_cursor_grab(&self, mode: CursorGrabMode) -> Result<(), ExternalError> {
+        let mode = match mode {
+            CursorGrabMode::None => winit::window::CursorGrabMode::None,
+            CursorGrabMode::Locked => match self.backend {
+                Backend::Wayland | Backend::Unknown => winit::window::CursorGrabMode::Locked,
+                // X11 and Windows don't support `Locked`, we must set it to
+                // `Confined` and constantly reset the cursor to the origin.
+                Backend::X11 | Backend::Windows => winit::window::CursorGrabMode::Confined,
+            },
+        };
+
         self.inner.set_cursor_grab(mode)
     }
 
@@ -109,6 +124,10 @@ impl WindowState {
 
     pub fn set_cursor_icon(&self, icon: CursorIcon) {
         self.inner.set_cursor_icon(icon)
+    }
+
+    pub(crate) fn backend(&self) -> Backend {
+        self.backend
     }
 }
 
@@ -131,11 +150,14 @@ struct State {
     last_update: Instant,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-enum Backend {
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
+pub(crate) enum Backend {
+    #[default]
     Unknown,
     X11,
     Wayland,
+    #[cfg_attr(not(feature_family = "windows"), allow(dead_code))]
+    Windows,
 }
 
 impl From<&EventLoop<()>> for Backend {
@@ -157,6 +179,11 @@ impl From<&EventLoop<()>> for Backend {
                     return Self::Wayland;
                 }
             }
+        }
+
+        #[cfg(target_family = "windows")]
+        {
+            return Self::Windows;
         }
 
         Self::Unknown
@@ -447,7 +474,14 @@ pub fn main_loop(mut app: App) {
 
         let (commands, windows, created_windows, writer) =
             created_windows_state.get_mut(&mut app.world);
-        create_windows(commands, event_loop, windows, created_windows, writer);
+        create_windows(
+            commands,
+            event_loop,
+            windows,
+            created_windows,
+            writer,
+            backend,
+        );
         created_windows_state.apply(&mut app.world);
     });
 }
