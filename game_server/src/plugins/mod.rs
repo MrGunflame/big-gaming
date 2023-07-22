@@ -36,10 +36,12 @@ pub fn tick(state: &mut ServerState) {
         &state.pipeline,
     );
 
+    let now = *state.state.control_frame.lock();
+
     #[cfg(feature = "physics")]
     state
         .pipeline
-        .step(&mut state.world, &mut state.event_queue);
+        .step(&mut state.world, &mut state.event_queue, now);
 
     update_scripts(&state.world, &mut state.scripts, &state.modules);
 

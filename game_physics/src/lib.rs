@@ -11,6 +11,7 @@ use control::CharacterController;
 use convert::{point, quat, rotation, vec3, vector};
 use game_common::entity::EntityId;
 use game_common::events::{self, Event, EventQueue};
+use game_common::world::control_frame::ControlFrame;
 use game_common::world::entity::{Entity, EntityBody};
 use game_common::world::snapshot::EntityChange;
 use game_common::world::world::WorldState;
@@ -48,11 +49,11 @@ pub struct Pipeline {
     // We need the collider for collision events.
     collider_handles: HandleMap<ColliderHandle>,
 
-    last_timestep: Instant,
-
     event_handler: CollisionHandler,
 
     controllers: HashMap<RigidBodyHandle, CharacterController>,
+
+    last_cf: ControlFrame,
 }
 
 impl Pipeline {
@@ -77,15 +78,15 @@ impl Pipeline {
             ccd_solver: CCDSolver::new(),
             is_initialized: false,
             body_handles: HandleMap::new(),
-            last_timestep: Instant::now(),
             event_handler: CollisionHandler::new(),
             collider_handles: HandleMap::new(),
             controllers: HashMap::new(),
             query_pipeline: QueryPipeline::new(),
+            last_cf: ControlFrame(0),
         }
     }
 
-    pub fn step(&mut self, world: &mut WorldState, events: &mut EventQueue) {
+    pub fn step(&mut self, world: &mut WorldState, events: &mut EventQueue, now: ControlFrame) {
         if !self.is_initialized {
             self.prepare_init(world);
         } else {
@@ -94,8 +95,7 @@ impl Pipeline {
 
         let mut steps = 0;
 
-        let now = Instant::now();
-        while self.last_timestep < now {
+        while self.last_cf != now {
             self.pipeline.step(
                 &self.gravity,
                 &self.integration_parameters,
@@ -114,7 +114,7 @@ impl Pipeline {
 
             self.drive_controllers();
 
-            self.last_timestep += Duration::from_secs_f64(1.0 / 60.0);
+            self.last_cf += 1;
             steps += 1;
         }
 
