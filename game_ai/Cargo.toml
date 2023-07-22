@@ -11,6 +11,4 @@ game_core = { version = "0.1.0", path = "../game_core" }
 
 bevy_ecs = "0.10.0"
 bevy_app = "0.10.0"
-
-tracing = "0.1.37"
 glam = "0.24.0"

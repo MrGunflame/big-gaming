@@ -13,7 +13,6 @@ default = ["debug_render"]
 debug_render = []
 
 [dependencies]
-game_common = { version = "0.1.0", path = "../game_common" }
 game_input = { version = "0.1.0", path = "../game_input" }
 game_render = { version = "0.1.0", path = "../game_render" }
 game_window = { version = "0.1.0", path = "../game_window" }
@@ -37,6 +36,7 @@ hex = "0.4.3"
 thiserror = "1.0.40"
 
 [dev-dependencies]
+game_common = { version = "0.1.0", path = "../game_common" }
 criterion = "0.4"
 
 [[bench]]

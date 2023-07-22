@@ -6,10 +6,8 @@ authors = ["MrGunflame <git@robbsrv.de>"]
 license = "GPL-3.0-or-later"
 
 [dependencies]
-game_ai = { version = "0.1.0", path = "../game_ai" }
 game_common = { version = "0.1.0", path = "../game_common" }
 game_core = { version = "0.1.0", path = "../game_core" }
-game_ui = { version = "0.1.0", path = "../game_ui" }
 game_input = { version = "0.1.0", path = "../game_input" }
 game_net = { version = "0.1.0", path = "../game_net" }
 game_data = { version = "0.1.0", path = "../game_data" }
@@ -24,12 +22,8 @@ bevy_app = "0.10.0"
 ahash = "0.8.2"
 serde = { version = "1.0.149", features = ["derive"] }
 tracing = "0.1.37"
-chrono = "0.4.23"
-nalgebra = "0.31.4"
-noise = "0.8.2"
 tokio = { version = "1.25.0", features = ["full"] }
 clap = { version = "4.1.6", features = ["derive"] }
-parking_lot = "0.12.1"
 glam = "0.24.0"
 toml = "0.7.6"
 

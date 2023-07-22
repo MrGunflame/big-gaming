@@ -1,3 +1,6 @@
+#![deny(unsafe_op_in_unsafe_fn)]
+#![deny(unused_crate_dependencies)]
+
 use bevy_app::{App, Plugin};
 
 pub mod bundles;

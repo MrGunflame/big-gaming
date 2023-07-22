@@ -1,5 +1,8 @@
 //! The core game systems.
 
+#![deny(unsafe_op_in_unsafe_fn)]
+#![deny(unused_crate_dependencies)]
+
 use combat::CombatPlugin;
 use game_asset::AssetPlugin;
 use hierarchy::HierarchyPlugin;

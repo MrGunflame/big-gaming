@@ -1,5 +1,8 @@
 //! Types and (de)serializiers for data files.
 
+#![deny(unsafe_op_in_unsafe_fn)]
+#![deny(unused_crate_dependencies)]
+
 pub mod components;
 pub mod header;
 pub mod loader;

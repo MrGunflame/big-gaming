@@ -1,5 +1,13 @@
 //! UI related systems
-#[deny(unsafe_op_in_unsafe_fn)]
+
+#![deny(unsafe_op_in_unsafe_fn)]
+#![deny(unused_crate_dependencies)]
+
+// We need criterion for benches, but it is incorrectly detected
+// by `unused_crate_dependencies`.
+#[cfg(test)]
+use criterion as _;
+
 pub mod events;
 pub mod render;
 pub mod widgets;

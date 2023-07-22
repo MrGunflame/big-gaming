@@ -7,8 +7,6 @@ license = "GPL-3.0-or-later"
 
 [dependencies]
 game_common = { version = "0.1.0", path = "../game_common" }
-game_audio = { version = "0.1.0", path = "../game_audio" }
-game_net = { version = "0.1.0", path = "../game_net" }
 game_data = { version = "0.1.0", path = "../game_data" }
 game_script = { version = "0.1.0", path = "../game_script" }
 game_asset = { version = "0.1.0", path = "../game_asset" }
@@ -20,4 +18,6 @@ chrono = "0.4.24"
 parking_lot = "0.12.1"
 tokio = { version = "1.27.0", features = ["full"] }
 thiserror = "1.0.40"
+
+[dev-dependencies]
 glam = "0.24.0"

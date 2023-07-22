@@ -2,7 +2,9 @@
 //!
 //!
 //!
+
 #![deny(unsafe_op_in_unsafe_fn)]
+#![deny(unused_crate_dependencies)]
 
 // Allow usage of proc macros on the crate.
 
