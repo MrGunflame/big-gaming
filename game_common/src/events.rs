@@ -87,10 +87,24 @@ pub struct CollisionEvent {
     pub other: EntityId,
 }
 
+impl From<CollisionEvent> for Event {
+    #[inline]
+    fn from(event: CollisionEvent) -> Self {
+        Self::Collision(event)
+    }
+}
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct EquipEvent {
     pub entity: EntityId,
     pub item: InventoryId,
+}
+
+impl From<EquipEvent> for Event {
+    #[inline]
+    fn from(event: EquipEvent) -> Self {
+        Self::Equip(event)
+    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -99,12 +113,33 @@ pub struct UnequipEvent {
     pub item: InventoryId,
 }
 
+impl From<UnequipEvent> for Event {
+    #[inline]
+    fn from(event: UnequipEvent) -> Self {
+        Self::Unequip(event)
+    }
+}
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct CellLoadEvent {
     pub cell: CellId,
 }
 
+impl From<CellLoadEvent> for Event {
+    #[inline]
+    fn from(event: CellLoadEvent) -> Self {
+        Self::CellLoad(event)
+    }
+}
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct CellUnloadEvent {
     pub cell: CellId,
+}
+
+impl From<CellUnloadEvent> for Event {
+    #[inline]
+    fn from(event: CellUnloadEvent) -> Self {
+        Self::CellUnload(event)
+    }
 }
