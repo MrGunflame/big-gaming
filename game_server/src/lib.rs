@@ -21,7 +21,7 @@ use game_common::world::gen::Generator;
 use game_common::world::world::WorldState;
 use game_core::counter::UpdateCounter;
 use game_core::modules::Modules;
-use game_script::scripts::Scripts;
+use game_script::scripts::RecordTargets;
 use game_script::ScriptServer;
 use tokio::time::{interval, MissedTickBehavior};
 use tracing::{span, Level};
@@ -77,9 +77,9 @@ pub struct ServerState {
     pub pipeline: game_physics::Pipeline,
     pub event_queue: EventQueue,
     pub server: ScriptServer,
-    pub scripts: Scripts,
     pub modules: Modules,
     pub state: State,
+    pub record_targets: RecordTargets,
 }
 
 impl ServerState {
@@ -88,6 +88,7 @@ impl ServerState {
         modules: Modules,
         config: Config,
         server: ScriptServer,
+        record_targets: RecordTargets,
     ) -> Self {
         Self {
             world: WorldState::new(),
@@ -95,9 +96,9 @@ impl ServerState {
             pipeline: game_physics::Pipeline::new(),
             event_queue: EventQueue::new(),
             server,
-            scripts: Scripts::new(),
             modules,
             state: State::new(config),
+            record_targets,
         }
     }
 }

@@ -19,7 +19,7 @@ impl<'world, 'view> ScriptInstance<'world, 'view> {
         module: &Module,
         events: Events,
         world: &'view mut WorldViewMut<'world>,
-        physics_pipeline: &'world game_physics::Pipeline,
+        physics_pipeline: &'view game_physics::Pipeline,
     ) -> Self {
         let mut store = Store::new(
             engine,
@@ -90,5 +90,5 @@ impl<'world, 'view> ScriptInstance<'world, 'view> {
 
 pub struct State<'world, 'view> {
     pub world: &'view mut WorldViewMut<'world>,
-    pub physics_pipeline: &'world game_physics::Pipeline,
+    pub physics_pipeline: &'view game_physics::Pipeline,
 }

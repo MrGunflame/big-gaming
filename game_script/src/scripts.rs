@@ -3,36 +3,22 @@
 use std::collections::HashMap;
 
 use bevy_ecs::system::Resource;
-use game_common::entity::EntityId;
-use game_common::events::EventKind;
+use game_common::record::RecordReference;
 
 use crate::Handle;
 
-/// Store for what events have which assigned scripts.
-#[derive(Clone, Debug, Resource)]
-pub struct Scripts {
-    scripts: HashMap<(Option<EntityId>, EventKind), Vec<Handle>>,
+#[derive(Clone, Debug, Default, Resource)]
+pub struct RecordTargets {
+    pub(crate) scripts: HashMap<RecordReference, Vec<Handle>>,
+    pub(crate) actions: HashMap<RecordReference, Vec<RecordReference>>,
 }
 
-impl Scripts {
-    pub fn new() -> Self {
-        Self {
-            scripts: HashMap::new(),
-        }
+impl RecordTargets {
+    pub fn push_script(&mut self, record: RecordReference, handle: Handle) {
+        self.scripts.entry(record).or_default().push(handle);
     }
 
-    pub fn push(&mut self, entity: Option<EntityId>, event: EventKind, handle: Handle) {
-        self.scripts
-            .entry((entity, event))
-            .or_default()
-            .push(handle);
-    }
-
-    pub fn get(&self, entity: Option<EntityId>, event: EventKind) -> Option<&[Handle]> {
-        self.scripts.get(&(entity, event)).map(|s| s.as_slice())
-    }
-
-    pub fn remove(&mut self, entity: Option<EntityId>, event: EventKind) {
-        self.scripts.remove(&(entity, event));
+    pub fn push_action(&mut self, record: RecordReference, action: RecordReference) {
+        self.actions.entry(record).or_default().push(action);
     }
 }

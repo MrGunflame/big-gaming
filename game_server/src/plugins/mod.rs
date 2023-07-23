@@ -1,20 +1,18 @@
 mod inventory;
 
 use ahash::HashSet;
-use game_common::events::{ActionEvent, Event, EventKind};
+use game_common::events::{ActionEvent, Event};
 use game_common::world::control_frame::ControlFrame;
 use game_common::world::snapshot::EntityChange;
 use game_common::world::source::StreamingSource;
 use game_common::world::world::{AsView, WorldState};
 use game_common::world::CellId;
-use game_core::modules::Modules;
 use game_net::conn::ConnectionId;
 use game_net::snapshot::{
     Command, ConnectionMessage, EntityCreate, EntityDestroy, EntityRotate, EntityTranslate,
     InventoryItemAdd, Response, SpawnHost, Status,
 };
-use game_script::events::Events;
-use game_script::scripts::Scripts;
+use game_script::Context;
 
 use crate::conn::{Connection, Connections};
 use crate::net::state::{Cells, ConnectionState};
@@ -28,13 +26,13 @@ pub fn tick(state: &mut ServerState) {
 
     crate::world::level::update_level_cells(state);
 
-    game_script::plugin::flush_event_queue(
-        &mut state.event_queue,
-        &mut state.world,
-        &state.server,
-        &state.scripts,
-        &state.pipeline,
-    );
+    game_script::plugin::flush_event_queue(Context {
+        view: &mut state.world.back_mut().unwrap(),
+        physics_pipeline: &state.pipeline,
+        events: &mut state.event_queue,
+        server: &state.server,
+        record_targets: &state.record_targets,
+    });
 
     let now = *state.state.control_frame.lock();
 
@@ -42,8 +40,6 @@ pub fn tick(state: &mut ServerState) {
     state
         .pipeline
         .step(&mut state.world, &mut state.event_queue, now);
-
-    update_scripts(&state.world, &mut state.scripts, &state.modules);
 
     // Push snapshots last always
     update_snapshots(&state.state.conns, &state.world);
@@ -185,74 +181,6 @@ fn flush_command_queue(srv_state: &mut ServerState) {
         }
 
         drop(view);
-    }
-}
-
-fn update_scripts(world: &WorldState, scripts: &mut Scripts, modules: &Modules) {
-    let Some(view) = world.back() else {
-        return;
-    };
-
-    for event in view.deltas() {
-        match event {
-            EntityChange::Create { entity } => {
-                // Register events for all components directly on the entity.
-                for (id, _) in entity.components.iter() {
-                    let module = modules.get(id.module).unwrap();
-                    let handles = module.records.get_scripts(id.record).unwrap();
-
-                    for handle in handles {
-                        for event in handle.events.iter() {
-                            scripts.push(Some(entity.id), event, handle.handle.clone());
-                        }
-                    }
-                }
-
-                // Register for events on inventory items.
-                if let Some(inventory) = view.inventories().get(entity.id) {
-                    for item in inventory.iter() {
-                        let module = modules.get(item.item.id.0.module).unwrap();
-                        let handles = module.records.get_scripts(item.item.id.0.record).unwrap();
-
-                        for handle in handles {
-                            for event in handle.events.iter() {
-                                // FIXME: This should be using InventoryId.
-                                scripts.push(Some(entity.id), event, handle.handle.clone());
-                            }
-                        }
-
-                        // Register for events on item components.
-                        for (id, _) in item.item.components.iter() {
-                            let module = modules.get(id.module).unwrap();
-                            let handles = module.records.get_scripts(id.record).unwrap();
-
-                            for handle in handles {
-                                for event in handle.events.iter() {
-                                    scripts.push(Some(entity.id), event, handle.handle.clone());
-                                }
-                            }
-                        }
-
-                        // Register for events on item actions.
-                        for id in item.item.actions.iter() {
-                            let module = modules.get(id.0.module).unwrap();
-                            let handles = module.records.get_scripts(id.0.record).unwrap();
-
-                            for handle in handles {
-                                // All actions must only expose a action event.
-                                debug_assert_eq!(handle.events, Events::ACTION);
-                                scripts.push(
-                                    Some(entity.id),
-                                    EventKind::Action,
-                                    handle.handle.clone(),
-                                );
-                            }
-                        }
-                    }
-                }
-            }
-            _ => (),
-        }
     }
 }
 

@@ -31,8 +31,13 @@ fn main() {
 
     let generator = load_world();
 
-    let server_state =
-        ServerState::new(Generator::from(generator), res.modules, config, res.server);
+    let server_state = ServerState::new(
+        Generator::from(generator),
+        res.modules,
+        config,
+        res.server,
+        res.record_targets,
+    );
 
     let rt = Builder::new_multi_thread()
         .enable_all()

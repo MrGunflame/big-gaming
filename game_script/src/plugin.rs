@@ -1,54 +1,83 @@
 use bevy_app::Plugin;
-use game_common::events::{Event, EventQueue};
-use game_common::world::world::WorldState;
+use game_common::events::{ActionEvent, Event, EventQueue};
+use game_common::record::RecordReference;
+use game_common::world::entity::EntityBody;
 
-use crate::scripts::Scripts;
-use crate::ScriptServer;
+use crate::{Context, Handle};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ScriptPlugin;
 
 impl Plugin for ScriptPlugin {
     fn build(&self, app: &mut bevy_app::App) {
-        app.insert_resource(Scripts::new());
         app.insert_resource(EventQueue::new());
     }
 }
 
-pub fn flush_event_queue(
-    queue: &mut EventQueue,
-    world: &mut WorldState,
-    server: &ScriptServer,
-    scripts: &Scripts,
-    physics_pipeline: &game_physics::Pipeline,
-) {
-    tracing::debug!("executing {} events", queue.len());
+pub fn flush_event_queue(mut ctx: Context<'_, '_>) {
+    tracing::debug!("executing {} events", ctx.events.len());
 
-    let Some(mut view) = world.back_mut() else {
+    while let Some(event) = ctx.events.pop() {
+        match event {
+            Event::Action(event) => run_action(&mut ctx, event),
+            _ => continue,
+        }
+    }
+}
+
+fn run_action(ctx: &mut Context<'_, '_>, event: ActionEvent) {
+    let Some(entity) = ctx.view.get(event.invoker) else {
+        tracing::warn!(
+            "entity {:?} referenced by `ActionEvent` {:?} does not exist",
+            event.invoker,
+            event
+        );
+
         return;
     };
 
-    while let Some(event) = queue.pop() {
-        let entity = match event {
-            Event::Action(event) => Some(event.entity),
-            Event::Collision(event) => Some(event.entity),
-            Event::Equip(event) => Some(event.entity),
-            Event::Unequip(event) => Some(event.entity),
-            Event::CellLoad(_) => None,
-            Event::CellUnload(_) => None,
-        };
+    let actor = match &entity.body {
+        EntityBody::Actor(actor) => actor,
+        _ => {
+            tracing::warn!(
+                "`ActionEvent` must be an actor, but was {:?}",
+                entity.body.kind()
+            );
 
-        // FIXME: Optimally we wouldn't event push the event if it is not handled.
-        let Some(scripts) = scripts.get(entity, event.kind()) else {
-            continue;
-        };
+            return;
+        }
+    };
 
-        for handle in scripts {
-            let mut instance = server.get(&handle, &mut view, physics_pipeline).unwrap();
+    let mut active_actions: Vec<RecordReference> = vec![];
 
-            if let Err(err) = instance.run(&event) {
-                tracing::error!("failed to execute event on script: {}", err);
+    if let Some(actions) = ctx.record_targets.actions.get(&actor.race.0) {
+        active_actions.extend(actions);
+    }
+
+    for (id, _) in entity.components.iter() {
+        if let Some(actions) = ctx.record_targets.actions.get(&id) {
+            active_actions.extend(actions);
+        }
+    }
+
+    // TODO: We're only handling race/actor components here,
+    // but we also must handle item actions.
+
+    for action in active_actions {
+        if action == event.action.0 {
+            if let Some(scripts) = ctx.record_targets.scripts.get(&action) {
+                for handle in scripts {
+                    run_script(ctx, handle, &event.into());
+                }
             }
+        }
+    }
+}
+
+fn run_script(ctx: &mut Context<'_, '_>, handle: &Handle, event: &Event) {
+    if let Some(mut instance) = ctx.server.get(handle, ctx.view, ctx.physics_pipeline) {
+        if let Err(err) = instance.run(&event) {
+            tracing::error!("failed to run script: {}", err);
         }
     }
 }

@@ -74,6 +74,13 @@ pub struct ActionEvent {
     pub action: ActionId,
 }
 
+impl From<ActionEvent> for Event {
+    #[inline]
+    fn from(event: ActionEvent) -> Self {
+        Self::Action(event)
+    }
+}
+
 #[derive(Copy, Clone, Debug)]
 pub struct CollisionEvent {
     pub entity: EntityId,

@@ -7,7 +7,7 @@ use game_data::loader::FileLoader;
 use game_data::record::{Record, RecordBody, RecordKind};
 use game_data::DataBuffer;
 use game_script::plugin::ScriptPlugin;
-use game_script::script::Script;
+use game_script::scripts::RecordTargets;
 use game_script::ScriptServer;
 use thiserror::Error;
 use tokio::runtime::Runtime;
@@ -25,7 +25,7 @@ impl Plugin for ModulePlugin {
     }
 }
 
-use self::records::{Records, ScriptRecord};
+use self::records::Records;
 
 pub mod records;
 
@@ -71,11 +71,13 @@ pub struct ModuleData {
 pub struct LoadResult {
     pub modules: Modules,
     pub server: ScriptServer,
+    pub record_targets: RecordTargets,
 }
 
 pub fn load_modules() -> LoadResult {
     let mut modules = Modules::new();
     let mut server = ScriptServer::new();
+    let mut record_targets = RecordTargets::default();
 
     let rt = Runtime::new().unwrap();
 
@@ -108,7 +110,7 @@ pub fn load_modules() -> LoadResult {
             match loader.load(data) {
                 Ok(mods) => {
                     for data in mods {
-                        load_module(data, &mut modules, &mut server);
+                        load_module(data, &mut modules, &mut server, &mut record_targets);
                     }
                 }
                 Err(Error::Duplicate(id)) => {
@@ -130,19 +132,27 @@ pub fn load_modules() -> LoadResult {
 
     tracing::info!("loaded {} modules", modules.len());
 
-    LoadResult { modules, server }
+    LoadResult {
+        modules,
+        server,
+        record_targets,
+    }
 }
 
-fn load_module(data: DataBuffer, modules: &mut Modules, server: &mut ScriptServer) {
+fn load_module(
+    data: DataBuffer,
+    modules: &mut Modules,
+    server: &mut ScriptServer,
+    record_targets: &mut RecordTargets,
+) {
     let mut records = Records::new();
     for record in &data.records {
         // In case a linked asset is not present we still want to load
         // the record to not break linked records.
         records.insert(record.clone());
 
-        let mut scripts = Vec::new();
         for script in &record.scripts {
-            let script = match Script::load(&server, script.as_ref()) {
+            let handle = match server.load(script.as_ref()) {
                 Ok(script) => script,
                 Err(err) => {
                     tracing::error!(
@@ -156,21 +166,31 @@ fn load_module(data: DataBuffer, modules: &mut Modules, server: &mut ScriptServe
                 }
             };
 
-            let events = script.events();
-
-            let handle = server.insert(script);
-
-            scripts.push(ScriptRecord { handle, events });
+            record_targets.push_script(
+                RecordReference {
+                    module: data.header.module.id,
+                    record: record.id,
+                },
+                handle,
+            );
         }
-
-        records.insert_scripts(record.id, scripts);
 
         match &record.body {
             RecordBody::Item(_) => {}
             RecordBody::Object(_) => {}
             RecordBody::Action(action) => {}
             RecordBody::Component(component) => {}
-            RecordBody::Race(race) => {}
+            RecordBody::Race(race) => {
+                for action in &race.actions {
+                    record_targets.push_action(
+                        RecordReference {
+                            module: data.header.module.id,
+                            record: record.id,
+                        },
+                        *action,
+                    );
+                }
+            }
         }
     }
 

@@ -7,10 +7,12 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use bevy_ecs::system::Resource;
+use game_common::events::EventQueue;
 use game_common::record::RecordReference;
 use game_common::world::world::WorldViewMut;
 use instance::ScriptInstance;
 use script::Script;
+use scripts::RecordTargets;
 use slotmap::{DefaultKey, SlotMap};
 use wasmtime::{Config, Engine};
 
@@ -27,7 +29,6 @@ mod builtin;
 #[derive(Resource)]
 pub struct ScriptServer {
     scripts: SlotMap<DefaultKey, Script>,
-    targets: HashMap<ScriptTarget, Vec<DefaultKey>>,
     engine: Engine,
 }
 
@@ -38,7 +39,6 @@ impl ScriptServer {
         Self {
             scripts: SlotMap::new(),
             engine: Engine::new(&config).unwrap(),
-            targets: HashMap::new(),
         }
     }
 
@@ -51,15 +51,11 @@ impl ScriptServer {
         Ok(Handle { id })
     }
 
-    pub fn insert(&mut self, handle: Handle, target: ScriptTarget) {
-        self.targets.entry(target).or_default().push(handle.id);
-    }
-
     pub fn get<'world, 'view>(
         &self,
         handle: &Handle,
         world: &'view mut WorldViewMut<'world>,
-        physics_pipeline: &'world game_physics::Pipeline,
+        physics_pipeline: &'view game_physics::Pipeline,
     ) -> Option<ScriptInstance<'world, 'view>> {
         let script = self.scripts.get(handle.id)?;
 
@@ -81,11 +77,7 @@ pub struct Handle {
 pub struct Context<'a, 'b> {
     pub view: &'a mut WorldViewMut<'b>,
     pub physics_pipeline: &'a game_physics::Pipeline,
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub enum ScriptTarget {
-    Global,
-    Action(RecordReference),
-    Component(RecordReference),
+    pub record_targets: &'a RecordTargets,
+    pub events: &'a mut EventQueue,
+    pub server: &'a ScriptServer,
 }
