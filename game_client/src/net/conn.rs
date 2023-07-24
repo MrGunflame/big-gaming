@@ -33,6 +33,8 @@ pub struct ServerConnection {
     interplation_frames: ControlFrame,
 
     pub server_entities: Entities,
+
+    buffer: CommandBuffer,
 }
 
 impl ServerConnection {
@@ -53,6 +55,7 @@ impl ServerConnection {
             },
             interplation_frames: ControlFrame(config.network.interpolation_frames),
             server_entities: Entities::new(),
+            buffer: CommandBuffer::default(),
         }
     }
 
@@ -61,35 +64,12 @@ impl ServerConnection {
     }
 
     pub fn send(&mut self, cmd: Command) {
-        if let Some(handle) = &self.handle {
-            let cmd_id = handle.send_cmd(ConnectionMessage {
-                id: None,
-                conn: ConnectionId(0),
-                control_frame: self.game_tick.current_control_frame,
-                command: cmd.clone(),
-            });
-
-            match cmd {
-                Command::EntityTranslate(event) => {
-                    let entity_id = self.server_entities.get(event.id).unwrap();
-
-                    self.overrides.push(
-                        entity_id,
-                        cmd_id,
-                        Prediction::Translation(event.translation),
-                    );
-                }
-                Command::EntityRotate(event) => {
-                    let entity_id = self.server_entities.get(event.id).unwrap();
-
-                    self.overrides
-                        .push(entity_id, cmd_id, Prediction::Rotation(event.rotation));
-                }
-                _ => (),
-            }
-        } else {
+        if !self.is_connected() {
             tracing::warn!("attempted to send a command, but the peer is not connected");
+            return;
         }
+
+        self.buffer.push(cmd.clone());
     }
 
     pub fn connect<T>(&mut self, addr: T)
@@ -164,6 +144,41 @@ impl ServerConnection {
     fn reset_queue(&mut self) {
         self.queue = CommandQueue::new();
     }
+
+    fn flush_buffer(&mut self) {
+        let Some(handle) = &self.handle else {
+            tracing::error!("not connected");
+            return;
+        };
+
+        for cmd in std::mem::take(&mut self.buffer.buffer) {
+            let cmd_id = handle.send_cmd(ConnectionMessage {
+                id: None,
+                conn: ConnectionId(0),
+                control_frame: self.game_tick.current_control_frame,
+                command: cmd.clone(),
+            });
+
+            match cmd {
+                Command::EntityTranslate(event) => {
+                    let entity_id = self.server_entities.get(event.id).unwrap();
+
+                    self.overrides.push(
+                        entity_id,
+                        cmd_id,
+                        Prediction::Translation(event.translation),
+                    );
+                }
+                Command::EntityRotate(event) => {
+                    let entity_id = self.server_entities.get(event.id).unwrap();
+
+                    self.overrides
+                        .push(entity_id, cmd_id, Prediction::Rotation(event.rotation));
+                }
+                _ => (),
+            }
+        }
+    }
 }
 
 impl FromWorld for ServerConnection {
@@ -206,6 +221,10 @@ pub fn tick_game(
     mut world: ResMut<WorldState>,
 ) {
     while conn.game_tick.interval.is_ready(time.last_update()) {
+        if conn.is_connected() {
+            conn.flush_buffer();
+        }
+
         conn.game_tick.current_control_frame += 1;
         conn.game_tick.counter.update();
 
@@ -268,5 +287,49 @@ impl Interval {
         } else {
             false
         }
+    }
+}
+
+#[derive(Clone, Debug, Default)]
+struct CommandBuffer {
+    buffer: Vec<Command>,
+}
+
+impl CommandBuffer {
+    fn push(&mut self, cmd: Command) {
+        if matches!(cmd, Command::Connected(_) | Command::Disconnected) {
+            panic!("Connected | Disconnected may not be pushed to CommandBuffer");
+        }
+
+        // Clear all previous commands.
+        match cmd {
+            Command::EntityTranslate(cmd) => {
+                for (index, c) in self.buffer.iter().enumerate() {
+                    if let Command::EntityTranslate(c) = c {
+                        if cmd.id != c.id {
+                            continue;
+                        }
+
+                        self.buffer.remove(index);
+                        break;
+                    }
+                }
+            }
+            Command::EntityRotate(cmd) => {
+                for (index, c) in self.buffer.iter().enumerate() {
+                    if let Command::EntityRotate(c) = c {
+                        if cmd.id != c.id {
+                            continue;
+                        }
+
+                        self.buffer.remove(index);
+                        break;
+                    }
+                }
+            }
+            _ => (),
+        }
+
+        self.buffer.push(cmd);
     }
 }
