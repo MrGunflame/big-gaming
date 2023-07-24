@@ -13,7 +13,7 @@ extern "C" {
         direction_z: f32,
         max_toi: f32,
         out: PtrMut<CastRayResult>,
-    );
+    ) -> u32;
 }
 
 #[derive(Copy, Clone, Debug, Zeroable, Pod)]

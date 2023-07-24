@@ -9,7 +9,7 @@ pub fn cast_ray(ray: Ray, max_toi: f32) -> Option<RayHit> {
     let mut out = MaybeUninit::<CastRayResult>::uninit();
     let ptr = PtrMut::from_raw(out.as_mut_ptr() as Usize);
 
-    unsafe {
+    let res = unsafe {
         physics_cast_ray(
             ray.origin.x,
             ray.origin.y,
@@ -19,12 +19,11 @@ pub fn cast_ray(ray: Ray, max_toi: f32) -> Option<RayHit> {
             ray.direction.z,
             max_toi,
             ptr,
-        );
-    }
+        )
+    };
 
-    let res = unsafe { out.assume_init() };
-
-    if res.entity_id != 0 {
+    if res == 0 {
+        let res = unsafe { out.assume_init() };
         Some(RayHit {
             entity: EntityId::from_raw(res.entity_id),
             toi: res.toi,

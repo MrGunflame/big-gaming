@@ -1,4 +1,3 @@
-use game_common::entity::EntityId;
 use game_common::math::Ray;
 use game_wasm::raw::physics::CastRayResult;
 use glam::Vec3;
@@ -17,7 +16,7 @@ pub fn physics_cast_ray(
     direction_z: f32,
     max_toi: f32,
     out: u32,
-) -> wasmtime::Result<()> {
+) -> wasmtime::Result<u32> {
     tracing::trace!("physics_cast_ray(origin_x = {}, origin_y = {}, origin_z = {}, direction_x = {}, direction_y = {}, direction_z = {}, max_toi = {})", origin_x, origin_y, origin_z, direction_x, direction_y, direction_z, max_toi);
 
     let ray = Ray {
@@ -27,7 +26,7 @@ pub fn physics_cast_ray(
 
     let (entity_id, toi) = match caller.data().physics_pipeline.cast_ray(ray, max_toi) {
         Some((entity_id, toi)) => (entity_id, toi),
-        None => (EntityId::dangling(), max_toi),
+        None => return Ok(1),
     };
 
     caller.write(
@@ -37,5 +36,7 @@ pub fn physics_cast_ray(
             toi,
             _pad0: 0,
         },
-    )
+    )?;
+
+    Ok(0)
 }
