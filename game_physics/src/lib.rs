@@ -253,7 +253,23 @@ impl Pipeline {
                 (body_handle, col_handle)
             }
             EntityBody::Item(item) => {
-                todo!()
+                let body = RigidBodyBuilder::new(RigidBodyType::Dynamic)
+                    .position(Isometry {
+                        translation: vector(entity.transform.translation).into(),
+                        rotation: rotation(entity.transform.rotation),
+                    })
+                    .ccd_enabled(true)
+                    .build();
+
+                let body_handle = self.bodies.insert(body);
+                let collider = ColliderBuilder::cuboid(1.0, 1.0, 1.0)
+                    .active_events(ActiveEvents::COLLISION_EVENTS);
+
+                let col_handle =
+                    self.colliders
+                        .insert_with_parent(collider, body_handle, &mut self.bodies);
+
+                (body_handle, col_handle)
             }
         };
 

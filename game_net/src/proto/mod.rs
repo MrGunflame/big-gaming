@@ -50,7 +50,7 @@ use game_common::components::race::RaceId;
 use game_common::id::WeakId;
 use game_common::record::RecordReference;
 use game_common::world::control_frame::ControlFrame;
-use game_common::world::entity::{Actor, EntityBody, Object, Terrain};
+use game_common::world::entity::{Actor, EntityBody, Item, Object, Terrain};
 use game_common::world::CellId;
 pub use game_macros::{net__decode as Decode, net__encode as Encode};
 
@@ -572,7 +572,7 @@ impl Encode for EntityBody {
             }
             Self::Item(item) => {
                 3u8.encode(&mut buf)?;
-                todo!()
+                item.id.encode(&mut buf)?;
             }
         }
 
@@ -606,7 +606,8 @@ impl Decode for EntityBody {
                 Ok(Self::Actor(Actor { race, health }))
             }
             3u8 => {
-                todo!()
+                let id = ItemId::decode(&mut buf)?;
+                Ok(Self::Item(Item { id }))
             }
             _ => Err(InvalidEntityKind(typ).into()),
         }
