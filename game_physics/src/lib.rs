@@ -5,9 +5,9 @@ mod control;
 mod convert;
 mod handle;
 mod pipeline;
+pub mod query;
 
 use std::collections::HashMap;
-use std::time::{Duration, Instant};
 
 use bevy_ecs::system::Resource;
 use control::CharacterController;
@@ -23,7 +23,7 @@ use handle::HandleMap;
 use nalgebra::Isometry;
 use parking_lot::Mutex;
 use rapier3d::prelude::{
-    ActiveEvents, BroadPhase, CCDSolver, ColliderBuilder, ColliderHandle, ColliderSet,
+    ActiveEvents, BroadPhase, CCDSolver, Collider, ColliderBuilder, ColliderHandle, ColliderSet,
     CollisionEvent, ContactPair, EventHandler, ImpulseJointSet, IntegrationParameters,
     IslandManager, LockedAxes, MultibodyJointSet, NarrowPhase, PhysicsPipeline, QueryFilter,
     QueryPipeline, Ray, RigidBodyBuilder, RigidBodyHandle, RigidBodySet, RigidBodyType, Vector,
@@ -253,7 +253,7 @@ impl Pipeline {
                 (body_handle, col_handle)
             }
             EntityBody::Item(item) => {
-                let body = RigidBodyBuilder::new(RigidBodyType::Dynamic)
+                let body = RigidBodyBuilder::new(RigidBodyType::Fixed)
                     .position(Isometry {
                         translation: vector(entity.transform.translation).into(),
                         rotation: rotation(entity.transform.rotation),
@@ -331,13 +331,26 @@ impl Pipeline {
         }
     }
 
-    pub fn cast_ray(&self, ray: game_common::math::Ray, max_toi: f32) -> Option<(EntityId, f32)> {
+    pub fn cast_ray(
+        &self,
+        ray: game_common::math::Ray,
+        max_toi: f32,
+        filter: query::QueryFilter,
+    ) -> Option<(EntityId, f32)> {
         let ray = Ray {
             origin: point(ray.origin),
             dir: vector(ray.direction),
         };
 
-        let filter = QueryFilter::new();
+        let pred = |handle, collider: &Collider| {
+            let entity = self.collider_handles.get2(handle).unwrap();
+            if filter.exclude_entities.contains(&entity) {
+                false
+            } else {
+                true
+            }
+        };
+        let filter = QueryFilter::new().predicate(&pred);
 
         match self.query_pipeline.cast_ray(
             &self.bodies,
@@ -349,6 +362,7 @@ impl Pipeline {
         ) {
             Some((handle, toi)) => {
                 let entity = self.collider_handles.get2(handle).unwrap();
+                dbg!(entity, toi);
                 Some((entity, toi))
             }
             None => None,

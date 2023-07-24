@@ -1,6 +1,6 @@
 use bytemuck::{Pod, Zeroable};
 
-use super::PtrMut;
+use super::{Ptr, PtrMut, Usize};
 
 #[link(wasm_import_module = "host")]
 extern "C" {
@@ -12,6 +12,7 @@ extern "C" {
         direction_y: f32,
         direction_z: f32,
         max_toi: f32,
+        filter_ptr: Ptr<QueryFilter>,
         out: PtrMut<CastRayResult>,
     ) -> u32;
 }
@@ -22,4 +23,12 @@ pub struct CastRayResult {
     pub entity_id: u64,
     pub toi: f32,
     pub _pad0: u32,
+}
+
+#[derive(Copy, Clone, Debug, Zeroable, Pod)]
+#[repr(C)]
+pub struct QueryFilter {
+    // FIXME: Maybe change to `Ptr<EntityId>`.
+    pub exclude_entities_ptr: Usize,
+    pub exclude_entities_len: Usize,
 }
