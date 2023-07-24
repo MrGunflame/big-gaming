@@ -1,7 +1,7 @@
 use game_wasm::entity::EntityId;
 use game_wasm::events::on_action;
 use game_wasm::math::{Ray, Vec3};
-use game_wasm::physics::cast_ray;
+use game_wasm::physics::{cast_ray, QueryFilter};
 use game_wasm::world::Entity;
 
 #[on_action]
@@ -16,7 +16,11 @@ fn on_action(entity: u64, invoker: u64) {
         direction,
     };
 
-    let target = match cast_ray(ray, 3.0) {
+    let filter = QueryFilter {
+        exclude_entities: &[EntityId::from_raw(invoker)],
+    };
+
+    let target = match cast_ray(ray, 5.0, filter) {
         Some(hit) => hit.entity,
         None => return,
     };
