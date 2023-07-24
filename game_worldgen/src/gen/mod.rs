@@ -23,7 +23,7 @@ impl Generate for StaticGenerator {
                 continue;
             }
 
-            let mut builder = EntityBuilder::new(entity.id);
+            let mut builder = EntityBuilder::new(entity.id).transform(entity.transform);
             for (id, component) in entity.components.iter() {
                 builder = builder.component(id, component.clone());
             }
