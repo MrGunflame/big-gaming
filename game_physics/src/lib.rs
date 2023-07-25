@@ -126,21 +126,46 @@ impl Pipeline {
     where
         V: AsView,
     {
-        self.islands = IslandManager::new();
-        self.broad_phase = BroadPhase::new();
-        self.narrow_phase = NarrowPhase::new();
-        self.colliders = ColliderSet::new();
-        self.collider_handles = HandleMap::new();
-        self.bodies = RigidBodySet::new();
-        self.body_handles = HandleMap::new();
-        self.query_pipeline = QueryPipeline::new();
-        self.impulse_joints = ImpulseJointSet::new();
-        self.multibody_joints = MultibodyJointSet::new();
-        self.controllers = HashMap::new();
-        self.ccd_solver = CCDSolver::new();
+        let mut handles = self.body_handles.clone();
 
         for entity in view.iter() {
-            self.add_entity(entity);
+            let Some(handle) = handles.remove(entity.id) else {
+                self.add_entity(entity);
+                continue;
+            };
+
+            let body = self.bodies.get_mut(handle).unwrap();
+
+            let translation = vector(entity.transform.translation);
+            if *body.translation() != translation {
+                body.set_translation(translation, true);
+            }
+
+            let rotation = rotation(entity.transform.rotation);
+            if *body.rotation() != rotation {
+                body.set_rotation(rotation, true);
+            }
+        }
+
+        for handle in handles.iter() {
+            let body = self
+                .bodies
+                .remove(
+                    handle,
+                    &mut self.islands,
+                    &mut self.colliders,
+                    &mut self.impulse_joints,
+                    &mut self.multibody_joints,
+                    true,
+                )
+                .unwrap();
+
+            self.controllers.remove(&handle);
+            self.body_handles.remove2(handle);
+
+            for collider in body.colliders() {
+                self.collider_handles.remove2(*collider);
+            }
         }
     }
 
