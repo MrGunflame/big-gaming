@@ -213,7 +213,7 @@ impl WorldState {
         while index < self.snapshots.len() {
             let snapshot = &self.snapshots[index];
 
-            if cf <= snapshot.control_frame {
+            if cf == snapshot.control_frame {
                 return Some(index);
             }
 
@@ -1201,5 +1201,42 @@ mod tests {
         let view = world.back().unwrap();
         let entity = view.get(entity_id).unwrap();
         assert_eq!(entity.transform.rotation, Quat::from_rotation_x(1.0));
+    }
+
+    #[test]
+    fn world_delta_overwrite_previous() {
+        let mut world = WorldState::new();
+        world.insert(ControlFrame(0));
+        world.insert(ControlFrame(1));
+
+        let mut view = world.get_mut(ControlFrame(0)).unwrap();
+        let entity_id = view.spawn(create_test_entity());
+
+        for index in 0..16 {
+            view.get_mut(entity_id)
+                .unwrap()
+                .set_translation(Vec3::splat(index as f32));
+        }
+
+        drop(view);
+
+        let view = world.get(ControlFrame(0)).unwrap();
+        assert_eq!(view.deltas().count(), 2);
+
+        let mut creation_events = 0;
+        let mut translation_events = 0;
+        for event in view.deltas() {
+            match event {
+                EntityChange::Create { entity: _ } => creation_events += 1,
+                EntityChange::Translate {
+                    id: _,
+                    translation: _,
+                } => translation_events += 1,
+                _ => panic!("invalid event: {:?}", event),
+            }
+        }
+
+        assert_eq!(creation_events, 1);
+        assert_eq!(translation_events, 1);
     }
 }
