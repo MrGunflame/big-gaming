@@ -64,12 +64,6 @@ pub fn apply_world_delta(
         return;
     }
 
-    // Apply client-side prediction
-    for index in 0..world.len() {
-        let view = world.at_mut(index).unwrap();
-        conn.overrides.apply(view);
-    }
-
     // We probed that at least 2 snapshots exist.
     let curr = world.at(0).unwrap();
     let next = world.at(1).unwrap();
@@ -208,19 +202,21 @@ fn handle_event(
 
             if let Ok((_, transform, _, _, _, mut interpolate, _)) = entities.get_mut(entity) {
                 // Translation is predicted, do not interpolate.
-                if let Some(translation) = conn
-                    .overrides
-                    .get_entity(id)
-                    .map(|p| p.translation())
-                    .flatten()
-                {
-                    // Predictected values should already be applied.
-                    // if cfg!(debug_assertions) {
-                    //     assert_eq!(transform.translation, translation);
-                    // }
+                // if let Some(translation) = conn
+                //     .overrides
+                //     .get_entity(id)
+                //     .map(|p| p.translation())
+                //     .flatten()
+                // {
+                //     // Predictected values should already be applied.
+                //     // if cfg!(debug_assertions) {
+                //     //     assert_eq!(transform.translation, translation);
+                //     // }
 
-                    return;
-                }
+                //     return;
+                // }
+
+                let translation = conn.predictions.get_translation(id).unwrap_or(translation);
 
                 interpolate.set(transform.translation, translation, period.start, period.end);
             }
@@ -232,28 +228,30 @@ fn handle_event(
                 entities.get_mut(entity)
             {
                 // Rotation is predicted, do not interpolate.
-                if let Some(rotation) = conn
-                    .overrides
-                    .get_entity(id)
-                    .map(|p| p.rotation())
-                    .flatten()
-                {
-                    // Predictected values should already be applied.
-                    // if cfg!(debug_assertions) {
-                    //     if let Some(props) = props {
-                    //         assert_eq!(props.rotation, rotation);
-                    //     } else {
-                    //         assert_eq!(transform.rotation, rotation);
-                    //     }
-                    // }
+                // if let Some(rotation) = conn
+                //     .predictions
+                //     .get_entity(id)
+                //     .map(|p| p.rotation())
+                //     .flatten()
+                // {
+                //     // Predictected values should already be applied.
+                //     // if cfg!(debug_assertions) {
+                //     //     if let Some(props) = props {
+                //     //         assert_eq!(props.rotation, rotation);
+                //     //     } else {
+                //     //         assert_eq!(transform.rotation, rotation);
+                //     //     }
+                //     // }
 
-                    return;
-                }
+                //     return;
+                // }
+
+                let rot = conn.predictions.get_rotation(id).unwrap_or(rotation);
 
                 if let Some(props) = props {
-                    interpolate.set(props.rotation, rotation, period.start, period.end);
+                    interpolate.set(props.rotation, rot, period.start, period.end);
                 } else {
-                    interpolate.set(transform.rotation, rotation, period.start, period.end);
+                    interpolate.set(transform.rotation, rot, period.start, period.end);
                 }
 
                 // transform.rotation = rotation;

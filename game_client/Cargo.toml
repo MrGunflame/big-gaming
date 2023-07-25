@@ -26,6 +26,7 @@ tokio = { version = "1.25.0", features = ["full"] }
 clap = { version = "4.1.6", features = ["derive"] }
 glam = "0.24.0"
 toml = "0.7.6"
+indexmap = "2.0.0"
 
 [features]
 default = []

@@ -183,8 +183,8 @@ fn flush_command_queue(mut conn: ResMut<ServerConnection>, mut world: ResMut<Wor
                 let view = world.front().unwrap();
 
                 for cmd in ids {
-                    conn.overrides.validate_pre_removal(cmd.id, view);
-                    conn.overrides.remove(cmd.id);
+                    conn.predictions.validate_pre_removal(cmd.id, view);
+                    conn.predictions.remove(cmd.id);
                 }
 
                 continue;

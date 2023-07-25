@@ -15,13 +15,13 @@ use crate::config::Config;
 use crate::state::{GameState, GameStateWriter};
 
 use super::entities::Entities;
-use super::prediction::{LocalOverrides, Prediction};
+use super::prediction::ClientPredictions;
 
 #[derive(Debug, Resource)]
 pub struct ServerConnection {
     pub handle: Option<ConnectionHandle>,
     pub entities: EntityMap,
-    pub overrides: LocalOverrides,
+    pub predictions: ClientPredictions,
     pub host: EntityId,
     pub interpolation_period: InterpolationPeriod,
     pub writer: GameStateWriter,
@@ -43,7 +43,7 @@ impl ServerConnection {
             handle: None,
             entities: EntityMap::default(),
             interpolation_period: InterpolationPeriod::new(),
-            overrides: LocalOverrides::new(),
+            predictions: ClientPredictions::new(),
             host: EntityId::dangling(),
             writer,
             queue: CommandQueue::new(),
@@ -159,23 +159,10 @@ impl ServerConnection {
                 command: cmd.clone(),
             });
 
-            match cmd {
-                Command::EntityTranslate(event) => {
-                    let entity_id = self.server_entities.get(event.id).unwrap();
+            if let Some(id) = cmd.id() {
+                let entity_id = self.server_entities.get(id).unwrap();
 
-                    self.overrides.push(
-                        entity_id,
-                        cmd_id,
-                        Prediction::Translation(event.translation),
-                    );
-                }
-                Command::EntityRotate(event) => {
-                    let entity_id = self.server_entities.get(event.id).unwrap();
-
-                    self.overrides
-                        .push(entity_id, cmd_id, Prediction::Rotation(event.rotation));
-                }
-                _ => (),
+                self.predictions.push(entity_id, cmd_id, cmd);
             }
         }
     }
