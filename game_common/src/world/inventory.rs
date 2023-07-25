@@ -95,7 +95,7 @@ impl<'r, 'view> InventoriesMut<'r, 'view> {
         // FIXME: Optimally these two queries should be swapped,
         // failing early if an entity does not have an inventory.
         let cell_id = self.view.get(id)?.cell();
-        let events = self.view.new_deltas.entry(cell_id).or_default();
+        let events = &mut self.view.new_deltas;
 
         let inventory = self.view.world.snapshots[self.view.index]
             .inventories

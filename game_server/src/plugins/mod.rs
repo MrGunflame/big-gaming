@@ -114,7 +114,7 @@ fn flush_command_queue(srv_state: &mut ServerState) {
                 };
 
                 let mut entity = view.get_mut(entity_id).unwrap();
-                entity.transform.translation = event.translation;
+                entity.set_translation(event.translation);
             }
             Command::EntityRotate(event) => {
                 let Some(entity_id) = state.entities.get(event.id) else {
@@ -122,7 +122,7 @@ fn flush_command_queue(srv_state: &mut ServerState) {
                 };
 
                 let mut entity = view.get_mut(entity_id).unwrap();
-                entity.transform.rotation = event.rotation;
+                entity.set_rotation(event.rotation);
             }
             Command::EntityHealth(event) => {
                 tracing::warn!("received EntityHealth from client, ignored");
@@ -406,8 +406,6 @@ fn update_client_entities(state: &mut ConnectionState, events: Vec<EntityChange>
                 Command::EntityDestroy(EntityDestroy { id: entity_id })
             }
             EntityChange::Translate { id, translation } => {
-                dbg!(translation);
-
                 let entity_id = state.entities.get(id).unwrap();
                 let entity = state.known_entities.get_mut(id).unwrap();
 
@@ -498,7 +496,7 @@ mod tests {
         update_client_entities(&mut state, events);
 
         let mut entity = view.get_mut(entity_id).unwrap();
-        entity.transform.translation = Vec3::splat(1.0);
+        entity.set_translation(Vec3::splat(1.0));
         drop(entity);
 
         let events = update_player_cells(&view, &mut state);
@@ -548,7 +546,7 @@ mod tests {
         update_client_entities(&mut state, events);
 
         let mut entity = view.get_mut(entity_id).unwrap();
-        entity.transform.translation = Vec3::splat(1024.0);
+        entity.set_translation(Vec3::splat(1024.0));
         drop(entity);
 
         let events = update_player_cells(&view, &mut state);
@@ -577,7 +575,7 @@ mod tests {
         state.cells.set(new_cell, distance);
 
         let mut entity = view.get_mut(entity_id).unwrap();
-        entity.transform.translation = new_cell.min();
+        entity.set_translation(new_cell.min());
         drop(entity);
 
         let events = update_player_cells(&view, &mut state);

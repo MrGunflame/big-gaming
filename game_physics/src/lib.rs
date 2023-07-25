@@ -265,8 +265,8 @@ impl Pipeline {
         for (handle, body) in self.bodies.iter() {
             let id = self.body_handles.get2(handle).unwrap();
             if let Some(mut entity) = view.get_mut(id) {
-                entity.transform.translation = vec3(*body.translation());
-                entity.transform.rotation = quat(*body.rotation());
+                entity.set_translation(vec3(*body.translation()));
+                entity.set_rotation(quat(*body.rotation()));
             }
         }
     }

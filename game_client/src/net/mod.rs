@@ -249,7 +249,11 @@ fn flush_command_queue(mut conn: ResMut<ServerConnection>, mut world: ResMut<Wor
             },
             Command::EntityTranslate(event) => match conn.server_entities.get(event.id) {
                 Some(id) => match view.get_mut(id) {
-                    Some(mut entity) => entity.transform.translation = event.translation,
+                    Some(mut entity) => {
+                        dbg!(msg.control_frame);
+                        dbg!(event);
+                        entity.set_translation(event.translation);
+                    }
                     None => {
                         tracing::warn!("received translation for unknown entity {:?}", id);
                     }
@@ -258,7 +262,7 @@ fn flush_command_queue(mut conn: ResMut<ServerConnection>, mut world: ResMut<Wor
             },
             Command::EntityRotate(event) => match conn.server_entities.get(event.id) {
                 Some(id) => match view.get_mut(id) {
-                    Some(mut entity) => entity.transform.rotation = event.rotation,
+                    Some(mut entity) => entity.set_rotation(event.rotation),
                     None => {
                         tracing::warn!("received rotation for unknown entity {:?}", id);
                     }
@@ -268,6 +272,8 @@ fn flush_command_queue(mut conn: ResMut<ServerConnection>, mut world: ResMut<Wor
             Command::EntityHealth(event) => match conn.server_entities.get(event.id) {
                 Some(id) => {
                     let mut entity = view.get_mut(id).unwrap();
+
+                    todo!();
 
                     if let EntityBody::Actor(actor) = &mut entity.body {
                         actor.health = event.health;

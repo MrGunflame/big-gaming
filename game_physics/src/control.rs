@@ -58,6 +58,8 @@ impl CharacterController {
             None => (max_toi, false),
         };
 
+        dbg!(distance);
+
         let body = bodies.get_mut(body_handle).unwrap();
         let mut position = *body.position();
         position.translation.y += distance;

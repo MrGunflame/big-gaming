@@ -2,15 +2,17 @@ pub mod metrics;
 
 use std::collections::{HashMap, VecDeque};
 use std::fmt::{self, Debug, Formatter};
-use std::ops::{Deref, DerefMut};
+use std::ops::Deref;
 
 use bevy_ecs::system::Resource;
 
 use game_common::world::CellId;
 
+use glam::{Quat, Vec3};
 #[cfg(feature = "tracing")]
 use tracing::{event, span, Level, Span};
 
+use crate::components::components::Components;
 use crate::components::inventory::Inventory;
 use crate::components::items::Item;
 use crate::entity::EntityId;
@@ -83,7 +85,7 @@ impl WorldState {
         Some(WorldViewMut {
             world: self,
             index,
-            new_deltas: HashMap::new(),
+            new_deltas: vec![],
         })
     }
 
@@ -111,14 +113,14 @@ impl WorldState {
             Some(snapshot) => {
                 let mut snap = snapshot.clone();
                 snap.control_frame = cf;
-                snap.cells.clear();
+                snap.deltas.clear();
                 snap
             }
             None => Snapshot {
                 control_frame: cf,
                 entities: Entities::default(),
                 hosts: Hosts::new(),
-                cells: HashMap::new(),
+                deltas: vec![],
                 streaming_sources: StreamingSources::new(),
                 inventories: Inventories::new(),
             },
@@ -166,7 +168,7 @@ impl WorldState {
         Some(WorldViewMut {
             index: self.len() - 1,
             world: self,
-            new_deltas: HashMap::new(),
+            new_deltas: vec![],
         })
     }
 
@@ -185,7 +187,7 @@ impl WorldState {
         Some(WorldViewMut {
             index: 0,
             world: self,
-            new_deltas: HashMap::new(),
+            new_deltas: vec![],
         })
     }
 
@@ -201,7 +203,7 @@ impl WorldState {
         Some(WorldViewMut {
             world: self,
             index,
-            new_deltas: HashMap::new(),
+            new_deltas: vec![],
         })
     }
 
@@ -228,7 +230,7 @@ impl WorldState {
     fn drop_snapshot(&self, snapshot: Snapshot) {
         self.metrics.snapshots.dec();
 
-        let deltas = snapshot.cells.values().map(|e| e.len() as u64).sum();
+        let deltas = snapshot.deltas.len() as u64;
         self.metrics.deltas.sub(deltas);
     }
 }
@@ -269,12 +271,11 @@ impl<'a> WorldViewRef<'a> {
         CellViewRef {
             id,
             entities: &self.snapshot.entities,
-            cells: &self.snapshot.cells,
         }
     }
 
     pub fn deltas(&self) -> impl Iterator<Item = &EntityChange> {
-        self.snapshot.cells.values().flatten()
+        self.snapshot.deltas.iter()
     }
 
     pub fn control_frame(&self) -> ControlFrame {
@@ -289,7 +290,7 @@ pub struct WorldViewMut<'a> {
     ///
     /// Note that we can't use the snapshot-global delta list as that would be applied to every
     /// snapshot, even if it was already applied.
-    pub(crate) new_deltas: HashMap<CellId, Vec<EntityChange>>,
+    pub(crate) new_deltas: Vec<EntityChange>,
 }
 
 impl<'a> WorldViewMut<'a> {
@@ -305,10 +306,6 @@ impl<'a> WorldViewMut<'a> {
         self.world.snapshots.get_mut(self.index).unwrap()
     }
 
-    pub fn deltas(&mut self) -> &mut HashMap<CellId, Vec<EntityChange>> {
-        &mut self.snapshot().cells
-    }
-
     pub fn get(&self, id: EntityId) -> Option<&Entity> {
         self.snapshot_ref().entities.get(id)
     }
@@ -318,8 +315,7 @@ impl<'a> WorldViewMut<'a> {
 
         match sn.entities.get_mut(id) {
             Some(entity) => Some(EntityMut {
-                cells: &mut self.new_deltas,
-                prev: entity.clone(),
+                deltas: &mut self.new_deltas,
                 entity,
             }),
             None => None,
@@ -347,10 +343,7 @@ impl<'a> WorldViewMut<'a> {
         entity.id = id;
         self.snapshot().entities.spawn(entity.clone());
 
-        self.new_deltas
-            .entry(entity.cell())
-            .or_default()
-            .push(EntityChange::Create { entity });
+        self.new_deltas.push(EntityChange::Create { entity });
 
         id
     }
@@ -379,10 +372,7 @@ impl<'a> WorldViewMut<'a> {
             CellId::from(translation).to_f32()
         );
 
-        self.new_deltas
-            .entry(CellId::from(translation))
-            .or_default()
-            .push(EntityChange::Destroy { id });
+        self.new_deltas.push(EntityChange::Destroy { id });
 
         // Despawn host with the entity if exists.
         self.despawn_host(id);
@@ -397,20 +387,14 @@ impl<'a> WorldViewMut<'a> {
         self.snapshot().hosts.insert(id);
 
         let entity = self.get(id).unwrap();
-        self.new_deltas
-            .entry(CellId::from(entity.transform.translation))
-            .or_default()
-            .push(EntityChange::CreateHost { id });
+        self.new_deltas.push(EntityChange::CreateHost { id });
     }
 
     pub fn despawn_host(&mut self, id: EntityId) {
         self.snapshot().hosts.remove(id);
 
         if let Some(entity) = self.get(id) {
-            self.new_deltas
-                .entry(CellId::from(entity.transform.translation))
-                .or_default()
-                .push(EntityChange::DestroyHost { id });
+            self.new_deltas.push(EntityChange::DestroyHost { id });
         }
     }
 
@@ -422,20 +406,15 @@ impl<'a> WorldViewMut<'a> {
 
         let entity = self.get(id).unwrap();
         self.new_deltas
-            .entry(entity.transform.translation.into())
-            .or_default()
             .push(EntityChange::CreateStreamingSource { id, source });
     }
 
     pub fn remove_streaming_source(&mut self, id: EntityId) -> Option<StreamingSource> {
         let entity = self.get(id)?;
-        let cell = entity.transform.translation.into();
 
         let source = self.snapshot().streaming_sources.remove(id)?;
 
         self.new_deltas
-            .entry(cell)
-            .or_default()
             .push(EntityChange::RemoveStreamingSource { id });
 
         Some(source)
@@ -473,12 +452,9 @@ impl<'a> Drop for WorldViewMut<'a> {
         // Deltas from the current snapshot are only in `new_deltas`.
         // Copy all `new_deltas` into cells.
         let view = self.world.snapshots.get_mut(self.index).unwrap();
+        view.deltas.extend(self.new_deltas.clone());
 
-        for (k, v) in &self.new_deltas {
-            self.world.metrics.deltas.add(v.len() as u64);
-
-            view.cells.entry(*k).or_default().extend(v.clone());
-        }
+        self.world.metrics.deltas.add(self.new_deltas.len() as u64);
 
         let mut index = self.index + 1;
 
@@ -495,20 +471,16 @@ impl<'a> Drop for WorldViewMut<'a> {
             let view = self.world.snapshots.get_mut(index).unwrap();
 
             // Copy deltas
-            for (_, v) in self.new_deltas.iter() {
-                self.world.metrics.deltas.add(v.len() as u64);
+            for event in self.new_deltas.iter() {
+                #[cfg(feature = "tracing")]
+                event!(
+                    Level::TRACE,
+                    "[{}] apply {}",
+                    self.index,
+                    event_to_str(change)
+                );
 
-                for change in v {
-                    #[cfg(feature = "tracing")]
-                    event!(
-                        Level::TRACE,
-                        "[{}] apply {}",
-                        self.index,
-                        event_to_str(change)
-                    );
-
-                    view.apply(change.clone());
-                }
+                view.apply(event.clone());
             }
 
             #[cfg(feature = "tracing")]
@@ -544,9 +516,61 @@ fn event_to_str(event: &EntityChange) -> &'static str {
 }
 
 pub struct EntityMut<'a> {
-    cells: &'a mut HashMap<CellId, Vec<EntityChange>>,
-    prev: Entity,
+    deltas: &'a mut Vec<EntityChange>,
     entity: &'a mut Entity,
+}
+
+impl<'a> EntityMut<'a> {
+    pub fn set_translation(&mut self, translation: Vec3) {
+        if self.transform.translation == translation {
+            return;
+        }
+
+        self.entity.transform.translation = translation;
+
+        for event in self.deltas.iter_mut() {
+            match event {
+                EntityChange::Translate { id, translation } if *id == self.entity.id => {
+                    *translation = self.entity.transform.translation;
+                    return;
+                }
+                _ => (),
+            }
+        }
+
+        self.deltas.push(EntityChange::Translate {
+            id: self.entity.id,
+            translation: self.transform.translation,
+        });
+    }
+
+    pub fn set_rotation(&mut self, rotation: Quat) {
+        if self.transform.rotation == rotation {
+            return;
+        }
+
+        self.entity.transform.rotation = rotation;
+
+        for event in self.deltas.iter_mut() {
+            match event {
+                EntityChange::Rotate { id, rotation } if *id == self.entity.id => {
+                    *rotation = self.entity.transform.rotation;
+                    return;
+                }
+                _ => (),
+            }
+        }
+
+        self.deltas.push(EntityChange::Rotate {
+            id: self.entity.id,
+            rotation: self.transform.rotation,
+        });
+    }
+
+    pub fn components(&mut self) -> &mut Components {
+        // TODO: Track component changes
+        &mut self.entity.components
+    }
 }
 
 impl<'a> Deref for EntityMut<'a> {
@@ -554,100 +578,6 @@ impl<'a> Deref for EntityMut<'a> {
 
     fn deref(&self) -> &Self::Target {
         &self.entity
-    }
-}
-
-impl<'a> DerefMut for EntityMut<'a> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.entity
-    }
-}
-
-impl<'a> Drop for EntityMut<'a> {
-    fn drop(&mut self) {
-        if self.prev.transform.translation != self.entity.transform.translation {
-            let entity_id = self.id;
-
-            // Update the cell when moved.
-            let prev = CellId::from(self.prev.transform.translation);
-            let curr = CellId::from(self.entity.transform.translation);
-
-            // TODO: Weird things will happen if a prev != curr is being overwritten.
-            if prev == curr {
-                let cell = self.cells.entry(prev).or_default();
-
-                let mut should_insert = true;
-                for elem in cell.iter_mut() {
-                    match elem {
-                        EntityChange::Translate { id, translation } if *id == entity_id => {
-                            *translation = self.entity.transform.translation;
-                            should_insert = false;
-                            break;
-                        }
-                        _ => (),
-                    }
-                }
-
-                if should_insert {
-                    cell.push(EntityChange::Translate {
-                        id: entity_id,
-                        translation: self.entity.transform.translation,
-                    });
-                }
-            } else {
-            }
-
-            self.cells
-                .entry(prev)
-                .or_default()
-                .push(EntityChange::Translate {
-                    id: self.entity.id,
-                    translation: self.entity.transform.translation,
-                });
-
-            self.cells
-                .entry(curr)
-                .or_default()
-                .push(EntityChange::Translate {
-                    id: self.entity.id,
-                    translation: self.entity.transform.translation,
-                });
-
-            if prev != curr {
-                // TODO
-            }
-        }
-
-        if self.prev.transform.rotation != self.entity.transform.rotation {
-            let entity_id = self.id;
-
-            let cell = self
-                .cells
-                .entry(CellId::from(self.entity.transform.translation))
-                .or_default();
-
-            // Updated existsing event if it exists.
-            let mut should_insert = true;
-            for elem in cell.iter_mut() {
-                match elem {
-                    EntityChange::Rotate { id, rotation } if *id == entity_id => {
-                        *rotation = self.entity.transform.rotation;
-                        should_insert = false;
-                        break;
-                    }
-                    _ => (),
-                }
-            }
-
-            if should_insert {
-                cell.push(EntityChange::Rotate {
-                    id: entity_id,
-                    rotation: self.entity.transform.rotation,
-                });
-            }
-        }
-
-        // TODO: Other deltas
     }
 }
 
@@ -685,8 +615,7 @@ pub(crate) struct Snapshot {
     entities: Entities,
     hosts: Hosts,
     streaming_sources: StreamingSources,
-    // Deltas for every cell
-    pub cells: HashMap<CellId, Vec<EntityChange>>,
+    pub deltas: Vec<EntityChange>,
     pub(crate) inventories: Inventories,
 }
 
@@ -829,7 +758,6 @@ impl Snapshot {
 pub struct CellViewRef<'a> {
     id: CellId,
     entities: &'a Entities,
-    cells: &'a HashMap<CellId, Vec<EntityChange>>,
 }
 
 impl<'a> CellViewRef<'a> {
@@ -860,13 +788,6 @@ impl<'a> CellViewRef<'a> {
             .iter()
             .filter(|(_, e)| e.cell() == self.id)
             .map(|(_, e)| e)
-    }
-
-    pub fn deltas(&self) -> &[EntityChange] {
-        self.cells
-            .get(&self.id)
-            .map(|v| v.as_slice())
-            .unwrap_or(&[])
     }
 }
 
@@ -934,7 +855,6 @@ impl<'a> AsView for WorldViewRef<'a> {
         CellViewRef {
             id,
             entities: &self.snapshot.entities,
-            cells: &self.snapshot.cells,
         }
     }
 
@@ -958,7 +878,6 @@ impl<'a> AsView for &'a WorldViewMut<'a> {
         CellViewRef {
             id,
             entities: &self.snapshot_ref().entities,
-            cells: &self.snapshot_ref().cells,
         }
     }
 
@@ -1098,7 +1017,7 @@ mod tests {
         // Translate entity from cell (0, 0, 0) to cell (1, 0, 0)
         let mut view = world.get_mut(cf1).unwrap();
         let mut entity = view.get_mut(id).unwrap();
-        entity.transform.translation = Vec3::new(64.0, 0.0, 0.0);
+        entity.set_translation(Vec3::new(64.0, 0.0, 0.0));
         drop(entity);
         drop(view);
 
@@ -1275,7 +1194,7 @@ mod tests {
 
         let mut view = world.get_mut(ControlFrame(0)).unwrap();
         let mut entity = view.get_mut(entity_id).unwrap();
-        entity.transform.rotation = Quat::from_rotation_x(1.0);
+        entity.set_rotation(Quat::from_rotation_x(1.0));
         drop(entity);
         drop(view);
 

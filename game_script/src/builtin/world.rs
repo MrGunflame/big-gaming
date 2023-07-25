@@ -142,7 +142,9 @@ pub fn world_entity_component_insert(
         return Ok(1);
     };
 
-    entity.components.insert(component_id, Component { bytes });
+    entity
+        .components()
+        .insert(component_id, Component { bytes });
     Ok(0)
 }
 
@@ -164,6 +166,6 @@ pub fn world_entity_component_remove(
         return Ok(1);
     };
 
-    entity.components.remove(component_id);
+    entity.components().remove(component_id);
     Ok(0)
 }

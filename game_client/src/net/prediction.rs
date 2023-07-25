@@ -77,10 +77,10 @@ impl ClientPredictions {
             for cmd in pred.commands.values() {
                 match cmd {
                     Command::EntityTranslate(cmd) => {
-                        entity.transform.translation = cmd.translation;
+                        entity.set_translation(cmd.translation);
                     }
                     Command::EntityRotate(cmd) => {
-                        entity.transform.rotation = cmd.rotation;
+                        entity.set_rotation(cmd.rotation);
                     }
                     _ => todo!(),
                 }
