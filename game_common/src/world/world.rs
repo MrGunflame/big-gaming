@@ -756,7 +756,8 @@ impl Snapshot {
                 self.entities.insert(entity);
             }
             EntityChange::Destroy { id } => {
-                let Some(translation) = self.entities.get(id).map(|s| s.transform.translation) else {
+                let Some(translation) = self.entities.get(id).map(|s| s.transform.translation)
+                else {
                     tracing::warn!("no such entiy to despawn: {:?}", id);
                     return;
                 };
@@ -983,7 +984,7 @@ impl<'a> Iterator for EntitiesIter<'a> {
 
 #[cfg(test)]
 mod tests {
-    use glam::Vec3;
+    use glam::{Quat, Vec3};
 
     use crate::components::components::Components;
     use crate::components::object::ObjectId;
@@ -1259,5 +1260,27 @@ mod tests {
                 assert_ne!(id, id2);
             }
         }
+    }
+
+    #[test]
+    fn world_apply_rotation() {
+        let mut world = WorldState::new();
+        world.insert(ControlFrame(0));
+        world.insert(ControlFrame(1));
+        world.insert(ControlFrame(2));
+
+        let mut view = world.get_mut(ControlFrame(0)).unwrap();
+        let entity_id = view.spawn(create_test_entity());
+        drop(view);
+
+        let mut view = world.get_mut(ControlFrame(0)).unwrap();
+        let mut entity = view.get_mut(entity_id).unwrap();
+        entity.transform.rotation = Quat::from_rotation_x(1.0);
+        drop(entity);
+        drop(view);
+
+        let view = world.back().unwrap();
+        let entity = view.get(entity_id).unwrap();
+        assert_eq!(entity.transform.rotation, Quat::from_rotation_x(1.0));
     }
 }

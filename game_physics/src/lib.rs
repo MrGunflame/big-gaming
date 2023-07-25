@@ -16,8 +16,7 @@ use game_common::entity::EntityId;
 use game_common::events::{self, Event, EventQueue};
 use game_common::world::control_frame::ControlFrame;
 use game_common::world::entity::{Entity, EntityBody};
-use game_common::world::snapshot::EntityChange;
-use game_common::world::world::WorldState;
+use game_common::world::world::{AsView, WorldState, WorldViewMut};
 use glam::{Quat, Vec3};
 use handle::HandleMap;
 use nalgebra::Isometry;
@@ -43,11 +42,6 @@ pub struct Pipeline {
     multibody_joints: MultibodyJointSet,
     ccd_solver: CCDSolver,
     query_pipeline: QueryPipeline,
-
-    /// When the pipeline is called for the first time, all data needs to be loaded from the world.
-    /// The pipeline can go over to a event-driven mechanism after that.
-    is_initialized: bool,
-
     body_handles: HandleMap<RigidBodyHandle>,
     // We need the collider for collision events.
     collider_handles: HandleMap<ColliderHandle>,
@@ -55,8 +49,6 @@ pub struct Pipeline {
     event_handler: CollisionHandler,
 
     controllers: HashMap<RigidBodyHandle, CharacterController>,
-
-    last_cf: ControlFrame,
 }
 
 impl Pipeline {
@@ -79,26 +71,27 @@ impl Pipeline {
             impulse_joints: ImpulseJointSet::new(),
             multibody_joints: MultibodyJointSet::new(),
             ccd_solver: CCDSolver::new(),
-            is_initialized: false,
             body_handles: HandleMap::new(),
             event_handler: CollisionHandler::new(),
             collider_handles: HandleMap::new(),
             controllers: HashMap::new(),
             query_pipeline: QueryPipeline::new(),
-            last_cf: ControlFrame(0),
         }
     }
 
-    pub fn step(&mut self, world: &mut WorldState, events: &mut EventQueue, now: ControlFrame) {
-        if !self.is_initialized {
-            self.prepare_init(world);
-        } else {
-            self.prepare_poll(world);
-        }
-
+    pub fn step(
+        &mut self,
+        world: &mut WorldState,
+        mut start: ControlFrame,
+        end: ControlFrame,
+        events: &mut EventQueue,
+    ) {
         let mut steps = 0;
 
-        while self.last_cf != now {
+        while start <= end {
+            let mut view = world.get_mut(start).unwrap();
+            self.read_snapshot(&view);
+
             self.pipeline.step(
                 &self.gravity,
                 &self.integration_parameters,
@@ -117,71 +110,37 @@ impl Pipeline {
 
             self.drive_controllers();
 
-            self.last_cf += 1;
+            self.emit_events(events);
+
+            self.write_snapshot(&mut view);
+
             steps += 1;
+
+            start += 1;
         }
 
         tracing::trace!("stepping physics for {} steps", steps);
-
-        self.emit_events(events);
-
-        self.write_back(world);
     }
 
-    fn prepare_init(&mut self, world: &mut WorldState) {
-        let Some(view) = world.back() else {
-            return;
-        };
+    fn read_snapshot<V>(&mut self, view: V)
+    where
+        V: AsView,
+    {
+        self.islands = IslandManager::new();
+        self.broad_phase = BroadPhase::new();
+        self.narrow_phase = NarrowPhase::new();
+        self.colliders = ColliderSet::new();
+        self.collider_handles = HandleMap::new();
+        self.bodies = RigidBodySet::new();
+        self.body_handles = HandleMap::new();
+        self.query_pipeline = QueryPipeline::new();
+        self.impulse_joints = ImpulseJointSet::new();
+        self.multibody_joints = MultibodyJointSet::new();
+        self.controllers = HashMap::new();
+        self.ccd_solver = CCDSolver::new();
 
         for entity in view.iter() {
             self.add_entity(entity);
-        }
-
-        self.is_initialized = true;
-    }
-
-    fn prepare_poll(&mut self, world: &mut WorldState) {
-        let Some(view) = world.back() else {
-            return;
-        };
-
-        for event in view.deltas() {
-            match event {
-                EntityChange::Create { entity } => {
-                    self.add_entity(entity);
-                }
-                EntityChange::Translate { id, translation } => {
-                    if let Some(handle) = self.body_handles.get(*id) {
-                        let body = self.bodies.get_mut(handle).unwrap();
-                        body.set_translation(vector(*translation), true);
-                    } else {
-                        tracing::warn!("invalid entity {:?}", id)
-                    }
-                }
-                EntityChange::Rotate { id, rotation: rot } => {
-                    if let Some(handle) = self.body_handles.get(*id) {
-                        let body = self.bodies.get_mut(handle).unwrap();
-                        body.set_rotation(rotation(*rot), true);
-                    } else {
-                        tracing::warn!("invalid entity {:?}", id);
-                    }
-                }
-                EntityChange::Destroy { id } => {
-                    if let Some(handle) = self.body_handles.remove(*id) {
-                        self.bodies.remove(
-                            handle,
-                            &mut self.islands,
-                            &mut self.colliders,
-                            &mut self.impulse_joints,
-                            &mut self.multibody_joints,
-                            true,
-                        );
-                    } else {
-                        tracing::warn!("invalid entity {:?}", id);
-                    }
-                }
-                _ => (),
-            }
         }
     }
 
@@ -253,7 +212,7 @@ impl Pipeline {
                 (body_handle, col_handle)
             }
             EntityBody::Item(item) => {
-                let body = RigidBodyBuilder::new(RigidBodyType::Fixed)
+                let body = RigidBodyBuilder::new(RigidBodyType::Dynamic)
                     .position(Isometry {
                         translation: vector(entity.transform.translation).into(),
                         rotation: rotation(entity.transform.rotation),
@@ -277,16 +236,8 @@ impl Pipeline {
         self.collider_handles.insert(entity.id, collider);
     }
 
-    fn write_back(&mut self, world: &mut WorldState) {
-        let Some(mut view) = world.back_mut() else {
-            return;
-        };
-
+    fn write_snapshot(&mut self, view: &mut WorldViewMut<'_>) {
         for (handle, body) in self.bodies.iter() {
-            if body.is_sleeping() {
-                continue;
-            }
-
             let id = self.body_handles.get2(handle).unwrap();
             if let Some(mut entity) = view.get_mut(id) {
                 entity.transform.translation = vec3(*body.translation());

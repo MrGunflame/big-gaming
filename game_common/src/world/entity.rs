@@ -58,6 +58,28 @@ pub enum EntityKind {
     Item,
 }
 
+impl EntityKind {
+    #[inline]
+    pub const fn is_terrain(self) -> bool {
+        matches!(self, Self::Terrain)
+    }
+
+    #[inline]
+    pub const fn is_object(self) -> bool {
+        matches!(self, Self::Object)
+    }
+
+    #[inline]
+    pub const fn is_actor(self) -> bool {
+        matches!(self, Self::Actor)
+    }
+
+    #[inline]
+    pub const fn is_item(self) -> bool {
+        matches!(self, Self::Item)
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Terrain {
     pub mesh: TerrainMesh,

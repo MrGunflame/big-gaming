@@ -34,15 +34,20 @@ pub fn tick(state: &mut ServerState) {
         record_targets: &state.record_targets,
     });
 
-    let now = *state.state.control_frame.lock();
-
     #[cfg(feature = "physics")]
-    state
-        .pipeline
-        .step(&mut state.world, &mut state.event_queue, now);
+    step_physics(state);
 
     // Push snapshots last always
     update_snapshots(&state.state.conns, &state.world);
+}
+
+fn step_physics(state: &mut ServerState) {
+    let start = state.world.front().unwrap().control_frame();
+    let end = state.world.back().unwrap().control_frame();
+
+    state
+        .pipeline
+        .step(&mut state.world, start, end, &mut state.event_queue);
 }
 
 fn update_client_heads(state: &mut ServerState) {
@@ -401,6 +406,8 @@ fn update_client_entities(state: &mut ConnectionState, events: Vec<EntityChange>
                 Command::EntityDestroy(EntityDestroy { id: entity_id })
             }
             EntityChange::Translate { id, translation } => {
+                dbg!(translation);
+
                 let entity_id = state.entities.get(id).unwrap();
                 let entity = state.known_entities.get_mut(id).unwrap();
 

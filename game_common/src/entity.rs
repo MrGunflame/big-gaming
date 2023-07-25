@@ -26,7 +26,7 @@ impl EntityId {
 
     #[inline]
     pub const fn dangling() -> Self {
-        Self::from_raw(0)
+        Self::from_raw(u64::MAX)
     }
 }
 

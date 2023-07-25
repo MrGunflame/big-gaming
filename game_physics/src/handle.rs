@@ -3,6 +3,7 @@ use std::hash::Hash;
 
 use game_common::entity::EntityId;
 
+#[derive(Clone, Debug)]
 pub struct HandleMap<T>
 where
     T: Copy + Eq + Hash,
@@ -39,5 +40,15 @@ where
         let handle = self.handles.remove(&id)?;
         self.rev.remove(&handle);
         Some(handle)
+    }
+
+    pub fn remove2(&mut self, handle: T) -> Option<EntityId> {
+        let id = self.rev.remove(&handle)?;
+        self.handles.remove(&id);
+        Some(id)
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = T> + '_ {
+        self.handles.values().copied()
     }
 }
