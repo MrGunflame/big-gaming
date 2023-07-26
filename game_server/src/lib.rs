@@ -14,16 +14,15 @@ pub mod snapshot;
 pub mod state;
 pub mod world;
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use game_common::events::EventQueue;
 use game_common::world::gen::Generator;
 use game_common::world::world::WorldState;
-use game_core::counter::UpdateCounter;
+use game_core::counter::{Interval, UpdateCounter};
 use game_core::modules::Modules;
 use game_script::scripts::RecordTargets;
 use game_script::ScriptServer;
-use tokio::time::{interval, MissedTickBehavior};
 use tracing::{span, Level};
 
 use crate::config::Config;
@@ -54,13 +53,15 @@ pub async fn run(mut state: ServerState) {
         });
     }
 
-    let mut interval = interval(timestep.into());
-    interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
+    let mut interval = Interval::new(timestep);
 
     let mut ups = UpdateCounter::new();
     loop {
+        while !interval.is_ready(Instant::now()) {
+            continue;
+        }
+
         tick(&mut state);
-        interval.tick().await;
 
         let mut cf = state.state.control_frame.lock();
         *cf += 1;

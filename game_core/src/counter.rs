@@ -39,3 +39,30 @@ impl UpdateCounter {
         self.ups
     }
 }
+
+#[derive(Clone, Debug)]
+pub struct Interval {
+    last_update: Instant,
+    /// The uniform timestep duration of a control frame.
+    timestep: Duration,
+}
+
+impl Interval {
+    pub fn new(timestep: Duration) -> Self {
+        Self {
+            last_update: Instant::now(),
+            timestep,
+        }
+    }
+
+    pub fn is_ready(&mut self, now: Instant) -> bool {
+        let elapsed = now - self.last_update;
+
+        if elapsed >= self.timestep {
+            self.last_update += self.timestep;
+            true
+        } else {
+            false
+        }
+    }
+}

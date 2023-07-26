@@ -1,12 +1,12 @@
 use std::net::ToSocketAddrs;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use bevy_ecs::system::{ResMut, Resource};
 use bevy_ecs::world::{FromWorld, World};
 use game_common::entity::{EntityId, EntityMap};
 use game_common::world::control_frame::ControlFrame;
 use game_common::world::world::WorldState;
-use game_core::counter::UpdateCounter;
+use game_core::counter::{Interval, UpdateCounter};
 use game_core::time::Time;
 use game_net::conn::{ConnectionHandle, ConnectionId};
 use game_net::snapshot::{Command, CommandQueue, ConnectionMessage};
@@ -48,7 +48,7 @@ impl ServerConnection {
             writer,
             queue: CommandQueue::new(),
             game_tick: GameTick {
-                interval: Interval::new(config.timestep),
+                interval: Interval::new(Duration::from_secs(1) / config.timestep),
                 current_control_frame: ControlFrame(0),
                 initial_idle_passed: false,
                 counter: UpdateCounter::new(),
@@ -248,33 +248,6 @@ pub struct CurrentControlFrame {
     pub head: ControlFrame,
     /// The snapshot of the world that should be rendered, `None` if not ready.
     pub render: Option<ControlFrame>,
-}
-
-#[derive(Debug)]
-struct Interval {
-    last_update: Instant,
-    /// The uniform timestep duration of a control frame.
-    timestep: Duration,
-}
-
-impl Interval {
-    fn new(timestep: u32) -> Self {
-        Self {
-            last_update: Instant::now(),
-            timestep: Duration::from_secs(1) / timestep,
-        }
-    }
-
-    fn is_ready(&mut self, now: Instant) -> bool {
-        let elapsed = now - self.last_update;
-
-        if elapsed >= self.timestep {
-            self.last_update += self.timestep;
-            true
-        } else {
-            false
-        }
-    }
 }
 
 #[derive(Clone, Debug, Default)]
