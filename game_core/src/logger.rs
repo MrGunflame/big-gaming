@@ -63,7 +63,7 @@ impl Logger {
             return;
         }
 
-        let now = Local::now().format("%Y-%m-%d %H:%M:%S");
+        let now = Local::now().format("%Y-%m-%d %H:%M:%S:%f");
 
         let (level, color) = match meta.level {
             Level::ERROR => ("ERROR", Color::RED),
