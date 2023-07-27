@@ -91,10 +91,7 @@ pub fn apply_world_delta(
     // in place within the same batch before they are spawned into the world.
     let mut buffer = Buffer::new();
 
-    dbg!("rzn");
     for event in delta {
-        dbg!(&event);
-
         handle_event(
             &mut commands,
             &mut entities,
@@ -202,8 +199,6 @@ fn handle_event(
         }
         EntityChange::Translate { id, translation } => {
             let entity = conn.entities.get(id).unwrap();
-
-            dbg!(id, translation);
 
             if let Ok((_, transform, _, _, _, mut interpolate, _)) = entities.get_mut(entity) {
                 // Translation is predicted, do not interpolate.

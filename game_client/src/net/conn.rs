@@ -12,6 +12,7 @@ use game_net::conn::{ConnectionHandle, ConnectionId};
 use game_net::snapshot::{Command, CommandQueue, ConnectionMessage};
 
 use crate::config::Config;
+use crate::net::socket::spawn_conn;
 use crate::state::{GameState, GameStateWriter};
 
 use super::entities::Entities;
@@ -90,7 +91,7 @@ impl ServerConnection {
                 None => panic!("empty dns result"),
             };
 
-            super::spawn_conn(queue, addr, cf, const_delay)
+            spawn_conn(queue, addr, cf, const_delay)
         }
 
         match inner(
