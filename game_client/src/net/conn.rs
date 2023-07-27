@@ -24,7 +24,6 @@ pub struct ServerConnection {
     pub entities: EntityMap,
     pub predictions: ClientPredictions,
     pub host: EntityId,
-    pub interpolation_period: InterpolationPeriod,
     pub writer: GameStateWriter,
     pub queue: CommandQueue,
 
@@ -36,6 +35,8 @@ pub struct ServerConnection {
     pub server_entities: Entities,
 
     buffer: CommandBuffer,
+
+    pub last_render_frame: ControlFrame,
 }
 
 impl ServerConnection {
@@ -43,7 +44,6 @@ impl ServerConnection {
         Self {
             handle: None,
             entities: EntityMap::default(),
-            interpolation_period: InterpolationPeriod::new(),
             predictions: ClientPredictions::new(),
             host: EntityId::dangling(),
             writer,
@@ -57,6 +57,7 @@ impl ServerConnection {
             interplation_frames: ControlFrame(config.network.interpolation_frames),
             server_entities: Entities::new(),
             buffer: CommandBuffer::default(),
+            last_render_frame: ControlFrame(0),
         }
     }
 
@@ -174,21 +175,6 @@ impl FromWorld for ServerConnection {
         let writer = world.resource::<GameStateWriter>().clone();
         let config = world.resource::<Config>();
         Self::new(writer, &config)
-    }
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct InterpolationPeriod {
-    pub start: ControlFrame,
-    pub end: ControlFrame,
-}
-
-impl InterpolationPeriod {
-    fn new() -> Self {
-        Self {
-            start: ControlFrame(0),
-            end: ControlFrame(0),
-        }
     }
 }
 

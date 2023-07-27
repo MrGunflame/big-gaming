@@ -8,6 +8,7 @@ use game_common::components::items::Item;
 use game_common::components::player::HostPlayer;
 use game_common::components::transform::Transform;
 use game_common::entity::EntityId;
+use game_common::world::control_frame::ControlFrame;
 use game_common::world::entity::{Entity, EntityBody};
 use game_common::world::snapshot::{EntityChange, InventoryItemAdd};
 use game_common::world::source::StreamingSource;
@@ -22,7 +23,6 @@ use crate::entities::object::LoadObject;
 use crate::entities::terrain::LoadTerrain;
 use crate::net::interpolate::{InterpolateRotation, InterpolateTranslation};
 
-use super::conn::InterpolationPeriod;
 use super::ServerConnection;
 
 pub fn apply_world_delta(
@@ -46,7 +46,6 @@ pub fn apply_world_delta(
     let conn = &mut *conn;
 
     let cf = conn.control_frame();
-    let period = &mut conn.interpolation_period;
 
     // Don't start rendering if the initial interpoation window is not
     // yet filled.
@@ -54,37 +53,15 @@ pub fn apply_world_delta(
         return;
     };
 
-    // Don't start a new period until the previous ended.
-    if period.end > render_cf {
+    if conn.last_render_frame == render_cf {
         return;
     }
 
-    // Need at least 2 snapshots.
-    if world.len() < 2 {
-        return;
-    }
+    debug_assert!(world.len() >= 2);
 
-    // We probed that at least 2 snapshots exist.
     let curr = world.at(0).unwrap();
-    let next = world.at(1).unwrap();
-
-    debug_assert_ne!(curr.control_frame(), next.control_frame());
-
-    // The end of the previous snapshot should be the current snapshot.
-    if cfg!(debug_assertions) {
-        // Ignore the start, where start == end.
-        if period.start != period.end {
-            assert_eq!(period.end, curr.control_frame());
-        }
-    }
-
-    period.start = curr.control_frame();
-    period.end = next.control_frame();
 
     let delta = curr.deltas();
-    //let delta = WorldViewRef::delta(Some(curr), next);
-
-    // Apply world delta.
 
     // Since events are received in batches, and commands are not applied until
     // the system is done, we buffer all created entities so we can modify them
@@ -97,10 +74,10 @@ pub fn apply_world_delta(
             &mut entities,
             event.clone(),
             &mut buffer,
-            conn,
+            &conn,
             &mut backlog,
             &modules,
-            conn.interpolation_period,
+            render_cf,
         );
     }
 
@@ -111,6 +88,7 @@ pub fn apply_world_delta(
     }
 
     world.pop();
+    conn.last_render_frame = render_cf;
 }
 
 fn handle_event(
@@ -129,7 +107,7 @@ fn handle_event(
     conn: &ServerConnection,
     backlog: &mut Backlog,
     modules: &Modules,
-    period: InterpolationPeriod,
+    render_cf: ControlFrame,
 ) {
     tracing::trace!(
         concat!("handle ", stringify!(WorldState), " event: {:?}"),
@@ -218,7 +196,7 @@ fn handle_event(
 
                 let translation = conn.predictions.get_translation(id).unwrap_or(translation);
 
-                interpolate.set(transform.translation, translation, period.start, period.end);
+                interpolate.set(transform.translation, translation, render_cf, render_cf + 1);
             }
         }
         EntityChange::Rotate { id, rotation } => {
@@ -249,9 +227,9 @@ fn handle_event(
                 let rot = conn.predictions.get_rotation(id).unwrap_or(rotation);
 
                 if let Some(props) = props {
-                    interpolate.set(props.rotation, rot, period.start, period.end);
+                    interpolate.set(props.rotation, rot, render_cf, render_cf + 1);
                 } else {
-                    interpolate.set(transform.rotation, rot, period.start, period.end);
+                    interpolate.set(transform.rotation, rot, render_cf, render_cf + 1);
                 }
 
                 // transform.rotation = rotation;
