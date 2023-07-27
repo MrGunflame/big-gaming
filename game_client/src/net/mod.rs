@@ -2,10 +2,8 @@ mod conn;
 mod entities;
 pub mod interpolate;
 mod prediction;
+mod socket;
 mod world;
-
-use std::net::SocketAddr;
-use std::sync::{mpsc, Arc};
 
 use bevy_app::{App, Plugin};
 use bevy_ecs::schedule::{IntoSystemConfig, IntoSystemSetConfig, SystemSet};
@@ -20,12 +18,8 @@ use game_common::world::control_frame::ControlFrame;
 use game_common::world::entity::{Entity, EntityBody};
 use game_common::world::world::WorldState;
 use game_net::backlog::Backlog;
-use game_net::conn::{Connect, Connection, ConnectionHandle};
-use game_net::proto::{Decode, Packet};
-use game_net::snapshot::{Command, CommandQueue, ConnectionMessage, Response, Status};
-use game_net::Socket;
+use game_net::snapshot::{Command, Response, Status};
 use glam::Vec3;
-use tokio::runtime::{Builder, UnhandledPanic};
 
 use crate::state::GameState;
 
@@ -80,74 +74,6 @@ impl Plugin for NetPlugin {
         app.configure_set(NetSet::FlushBuffers.after(NetSet::Read));
         app.configure_set(NetSet::Read.after(NetSet::Tick));
     }
-}
-
-pub fn spawn_conn(
-    queue: CommandQueue,
-    addr: SocketAddr,
-    control_frame: ControlFrame,
-    const_delay: ControlFrame,
-) -> Result<ConnectionHandle, Box<dyn std::error::Error + Send + Sync + 'static>> {
-    let (tx, rx) = mpsc::channel();
-
-    std::thread::spawn(move || {
-        let rt = Builder::new_current_thread()
-            .enable_all()
-            .unhandled_panic(UnhandledPanic::ShutdownRuntime)
-            .build()
-            .unwrap();
-
-        rt.block_on(async move {
-            let sock = match Socket::connect(addr) {
-                Ok(s) => Arc::new(s),
-                Err(err) => {
-                    tx.send(Err(err.into())).unwrap();
-                    return;
-                }
-            };
-            let (mut conn, handle) = Connection::<Connect>::new(
-                addr,
-                queue.clone(),
-                sock.clone(),
-                control_frame,
-                const_delay,
-            );
-
-            tokio::task::spawn(async move {
-                if let Err(err) = (&mut conn).await {
-                    tracing::error!("server error: {}", err);
-                    queue.push(ConnectionMessage {
-                        id: None,
-                        conn: conn.id,
-                        command: Command::Disconnected,
-                        control_frame: ControlFrame(0),
-                    });
-                }
-            });
-
-            tracing::info!("connected");
-
-            tx.send(Ok(handle.clone())).unwrap();
-
-            loop {
-                let mut buf = vec![0; 1500];
-                let (len, addr) = sock.recv_from(&mut buf).await.unwrap();
-                buf.truncate(len);
-
-                let packet = match Packet::decode(&buf[..]) {
-                    Ok(packet) => packet,
-                    Err(err) => {
-                        tracing::warn!("failed to decode packet: {}", err);
-                        continue;
-                    }
-                };
-
-                handle.send(packet).await;
-            }
-        });
-    });
-
-    rx.recv().unwrap()
 }
 
 fn flush_command_queue(mut conn: ResMut<ServerConnection>, mut world: ResMut<WorldState>) {
@@ -250,8 +176,6 @@ fn flush_command_queue(mut conn: ResMut<ServerConnection>, mut world: ResMut<Wor
             Command::EntityTranslate(event) => match conn.server_entities.get(event.id) {
                 Some(id) => match view.get_mut(id) {
                     Some(mut entity) => {
-                        dbg!(msg.control_frame);
-                        dbg!(event);
                         entity.set_translation(event.translation);
                     }
                     None => {

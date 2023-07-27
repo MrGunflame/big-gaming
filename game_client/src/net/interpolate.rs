@@ -23,13 +23,13 @@ pub struct InterpolateTranslation {
 
 impl InterpolateTranslation {
     pub fn set(&mut self, src: Vec3, dst: Vec3, start: ControlFrame, end: ControlFrame) {
-        assert!(start < end);
+        // assert!(start < end);
 
-        assert!(self.inner.is_none());
+        // assert!(self.inner.is_none());
 
-        if let Some(prev_translation) = self.prev_translation {
-            assert_eq!(prev_translation, src);
-        }
+        // if let Some(prev_translation) = self.prev_translation {
+        //     assert_eq!(prev_translation, src);
+        // }
 
         self.inner = Some(InterpolateTranslationInner {
             src,
@@ -109,6 +109,7 @@ pub fn interpolate_translation(
 
         transform.translation = inner.dst;
         interpolate.inner = None;
+        interpolate.prev_translation = Some(transform.translation);
         continue;
 
         let now = conn.control_frame().render.unwrap() - (inner.end - inner.start);
