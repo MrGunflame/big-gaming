@@ -10,7 +10,6 @@ use std::time::{Duration, Instant};
 
 use futures::FutureExt;
 use game_common::world::control_frame::ControlFrame;
-use game_common::world::gen::flat::FlatGenerator;
 use thiserror::Error;
 use tokio::sync::mpsc;
 use tokio::time::MissedTickBehavior;
@@ -25,7 +24,6 @@ use crate::proto::{
     Decode, Encode, Flags, Frame, Header, Packet, PacketBody, PacketPosition, PacketType,
     SequenceRange,
 };
-use crate::request::Request;
 use crate::snapshot::{
     Command, CommandId, CommandQueue, Connected, ConnectionMessage, Response, Status,
 };
@@ -117,6 +115,8 @@ where
     max_data_size: u16,
 
     reassembly_buffer: ReassemblyBuffer,
+    ack_time_list: AckTimeList,
+    rtt: Rtt,
 }
 
 impl<M> Connection<M>
@@ -172,6 +172,9 @@ where
 
             #[cfg(debug_assertions)]
             debug_validator: crate::validator::DebugValidator::new(),
+
+            ack_time_list: AckTimeList::new(),
+            rtt: Rtt::new(),
         };
 
         if M::IS_CONNECT {
@@ -190,8 +193,6 @@ where
     }
 
     fn poll_read(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), ErrorKind>> {
-        tracing::trace!("Connection.poll_read");
-
         // Flush the send buffer before reading any packets.
         if !self.write_queue.is_empty() {
             self.init_write(self.state);
@@ -293,10 +294,7 @@ where
     }
 
     fn poll_write(&mut self, cx: &mut Context<'_>) -> Poll<()> {
-        tracing::trace!("Connection.poll_write");
-
-        #[cfg(debug_assertions)]
-        assert!(self.write.is_some());
+        debug_assert!(self.write.is_some());
 
         let Some(req) = &mut self.write else {
             unreachable!();
@@ -598,6 +596,10 @@ where
     }
 
     fn handle_ackack(&mut self, header: Header, body: AckAck) -> Poll<()> {
+        if let Some(ts) = self.ack_time_list.remove(body.ack_sequence) {
+            self.rtt.update(ts.elapsed().as_micros() as u32);
+        }
+
         Poll::Pending
     }
 
@@ -670,6 +672,8 @@ where
                     ack_sequence,
                 }),
             };
+
+            self.ack_time_list.insert(ack_sequence);
 
             self.send_packet(packet, ConnectionState::Connected);
             Poll::Ready(Ok(()))
@@ -789,8 +793,6 @@ where
     type Output = Result<(), Error>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        tracing::trace!("Connection.poll");
-
         loop {
             if self.write.is_some() {
                 match self.poll_write(cx) {
@@ -1278,6 +1280,53 @@ fn fragment_frame(
     };
 
     write_packet(packet);
+}
+
+#[derive(Clone, Debug)]
+struct AckTimeList {
+    inner: Box<[Option<Instant>]>,
+}
+
+impl AckTimeList {
+    fn new() -> Self {
+        let vec = vec![None; 8192];
+
+        Self {
+            inner: vec.into_boxed_slice(),
+        }
+    }
+
+    fn insert(&mut self, seq: Sequence) {
+        let index = seq.to_bits() as usize % self.inner.len();
+        self.inner[index] = Some(Instant::now());
+    }
+
+    fn remove(&mut self, seq: Sequence) -> Option<Instant> {
+        let index = seq.to_bits() as usize % self.inner.len();
+        self.inner[index]
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+struct Rtt {
+    /// Rtt in micros
+    rtt: u32,
+}
+
+impl Rtt {
+    fn new() -> Self {
+        Self { rtt: 100_000 }
+    }
+
+    fn update(&mut self, rtt: u32) {
+        self.rtt = ((self.rtt as f32 * 0.9) + (rtt as f32 * 0.1)) as u32;
+    }
+}
+
+impl Default for Rtt {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[cfg(test)]
