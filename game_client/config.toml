@@ -1,4 +1,4 @@
 timestep = 60
 
 [network]
-interpolation_frames = 6
+interpolation_frames = 12
