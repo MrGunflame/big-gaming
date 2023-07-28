@@ -36,11 +36,7 @@ impl Camera {
         viewport_position.y = viewport_size.y - viewport_position.y;
         let ndc = viewport_position * 2.0 / viewport_size - Vec2::ONE;
 
-        let proj_matrix = Mat4::perspective_infinite_reverse_rh(
-            self.projection.fov,
-            self.projection.aspect_ratio,
-            self.projection.near,
-        );
+        let proj_matrix = self.projection.projection_matrix();
 
         let ndc_to_world = camera_transform.compute_matrix() * proj_matrix.inverse();
         let world_near_plane = ndc_to_world.project_point3(ndc.extend(1.0));
