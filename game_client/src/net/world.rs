@@ -12,7 +12,7 @@ use game_common::world::control_frame::ControlFrame;
 use game_common::world::entity::{Entity, EntityBody};
 use game_common::world::snapshot::{EntityChange, InventoryItemAdd};
 use game_common::world::source::StreamingSource;
-use game_common::world::world::WorldState;
+use game_common::world::world::{WorldState, WorldViewRef};
 use game_core::modules::Modules;
 use game_net::backlog::Backlog;
 
@@ -59,9 +59,10 @@ pub fn apply_world_delta(
 
     debug_assert!(world.len() >= 2);
 
-    let curr = world.at(0).unwrap();
+    let prev = world.at(0).unwrap();
+    let next = world.at(1).unwrap();
 
-    let delta = curr.deltas();
+    let delta = create_snapshot_diff(prev, next);
 
     // Since events are received in batches, and commands are not applied until
     // the system is done, we buffer all created entities so we can modify them
@@ -459,4 +460,51 @@ fn add_inventory_item(inventory: &mut Inventory, modules: &Modules, event: Inven
     if let Err(err) = inventory.insert(item) {
         tracing::error!("failed to insert item into inventory: {}", err);
     }
+}
+
+fn create_snapshot_diff(prev: WorldViewRef, next: WorldViewRef) -> Vec<EntityChange> {
+    let mut deltas = vec![];
+
+    let mut visited_entities = vec![];
+
+    for entity in prev.iter() {
+        visited_entities.push(entity.id);
+
+        let Some(next_entity) = next.get(entity.id) else {
+            deltas.push(EntityChange::Destroy { id: entity.id });
+            continue;
+        };
+
+        if entity.transform.translation != next_entity.transform.translation {
+            deltas.push(EntityChange::Translate {
+                id: entity.id,
+                translation: next_entity.transform.translation,
+            });
+        }
+
+        if entity.transform.rotation != next_entity.transform.rotation {
+            deltas.push(EntityChange::Rotate {
+                id: entity.id,
+                rotation: next_entity.transform.rotation,
+            });
+        }
+
+        match (entity.is_host, next_entity.is_host) {
+            (true, true) | (false, false) => (),
+            (false, true) => deltas.push(EntityChange::CreateHost { id: entity.id }),
+            (true, false) => deltas.push(EntityChange::DestroyHost { id: entity.id }),
+        }
+    }
+
+    for entity in next.iter().filter(|e| !visited_entities.contains(&e.id)) {
+        deltas.push(EntityChange::Create {
+            entity: entity.clone(),
+        });
+
+        if entity.is_host {
+            deltas.push(EntityChange::CreateHost { id: entity.id });
+        }
+    }
+
+    deltas
 }

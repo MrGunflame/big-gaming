@@ -98,7 +98,10 @@ impl ServerConnection {
         match inner(
             self.queue.clone(),
             addr,
-            self.game_tick.current_control_frame,
+            // Note that we always start on the "next" frame.
+            // The first frame must be empty to bootstrap the
+            // first interpolation tick.
+            self.game_tick.current_control_frame + 1,
             self.interplation_frames,
         ) {
             Ok(handle) => {

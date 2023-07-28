@@ -161,6 +161,7 @@ fn flush_command_queue(mut conn: ResMut<ServerConnection>, mut world: ResMut<Wor
                     },
                     body: event.data,
                     components: Components::new(),
+                    is_host: false,
                 });
 
                 conn.server_entities.insert(id, event.id);
