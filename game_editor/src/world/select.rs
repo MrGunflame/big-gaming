@@ -1,21 +1,40 @@
-use bevy_ecs::prelude::EventReader;
-use bevy_ecs::query::With;
-use bevy_ecs::system::{Query, Res};
+use bevy_ecs::prelude::{Entity, EventReader};
+use bevy_ecs::query::Without;
+use bevy_ecs::system::{Query, Res, ResMut, Resource};
 use game_common::components::transform::Transform;
 use game_common::math::Ray;
-use game_input::mouse::MouseButtonInput;
+use game_input::keyboard::KeyboardInput;
+use game_input::mouse::{MouseButtonInput, MouseMotion};
 use game_render::aabb::Aabb;
 use game_render::camera::Camera;
 use game_window::cursor::Cursor;
+use game_window::events::VirtualKeyCode;
 use game_window::WindowState;
-use glam::{Vec2, Vec3};
+use glam::{Quat, Vec2, Vec3};
+
+#[derive(Clone, Debug, Default, Resource)]
+pub struct Selection {
+    pub entities: Vec<Entity>,
+    pub edit_mode: EditMode,
+    pub start: Vec2,
+}
+
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+pub enum EditMode {
+    #[default]
+    None,
+    Translate,
+    Rotate,
+    Scale,
+}
 
 pub fn handle_selection_input(
     mut events: EventReader<MouseButtonInput>,
     cursor: Res<Cursor>,
     windows: Query<&WindowState>,
     cameras: Query<(&Transform, &Camera)>,
-    meshes: Query<&Aabb>,
+    meshes: Query<(Entity, &Aabb)>,
+    mut selection: ResMut<Selection>,
 ) {
     for event in events.iter() {
         if !event.button.is_left() || !event.state.is_pressed() {
@@ -37,11 +56,90 @@ pub fn handle_selection_input(
             Vec2::new(size.width as f32, size.height as f32),
             cursor_pos,
         );
-        dbg!(ray);
 
-        for aabb in &meshes {
+        for (entity, aabb) in &meshes {
             if hit_test(ray, *aabb) {
-                dbg!("yes");
+                selection.entities = vec![entity];
+            }
+        }
+    }
+}
+
+pub fn update_edit_mode(
+    mut events: EventReader<KeyboardInput>,
+    mut selection: ResMut<Selection>,
+    cursor: Res<Cursor>,
+) {
+    for event in events.iter() {
+        match event.key_code {
+            Some(VirtualKeyCode::G) => {
+                selection.edit_mode = EditMode::Translate;
+                selection.start = cursor.position();
+            }
+            Some(VirtualKeyCode::R) => {
+                selection.edit_mode = EditMode::Rotate;
+                selection.start = cursor.position();
+            }
+            Some(VirtualKeyCode::S) => {
+                selection.edit_mode = EditMode::Scale;
+                selection.start = cursor.position();
+            }
+            _ => (),
+        }
+    }
+}
+
+pub fn update_selection_transform(
+    mut events: EventReader<MouseMotion>,
+    mut selection: ResMut<Selection>,
+    mut entities: Query<(&mut Transform), Without<Camera>>,
+    mut cameras: Query<(&Transform, &Camera)>,
+    windows: Query<&WindowState>,
+    cursor: Res<Cursor>,
+) {
+    let Ok((camera_transform, camera)) = cameras.get_single() else {
+        return;
+    };
+
+    let Some(window) = cursor.window() else {
+        return;
+    };
+    let window = windows.get(window).unwrap();
+    let viewport_size = window.inner_size();
+    let cursor_pos = cursor.position();
+
+    for event in events.iter() {
+        let start = camera.viewport_to_world(
+            *camera_transform,
+            Vec2::new(viewport_size.width as f32, viewport_size.height as f32),
+            selection.start,
+        );
+        let end = camera.viewport_to_world(
+            *camera_transform,
+            Vec2::new(viewport_size.width as f32, viewport_size.height as f32),
+            cursor_pos,
+        );
+
+        match selection.edit_mode {
+            EditMode::None => (),
+            EditMode::Translate => {
+                for entity in &selection.entities {
+                    let mut transform = entities.get_mut(*entity).unwrap();
+                    //transform.translation += 1.0;
+                    transform.translation += end.origin - start.origin;
+                }
+            }
+            EditMode::Rotate => {
+                for entity in &selection.entities {
+                    let mut transform = entities.get_mut(*entity).unwrap();
+                    transform.rotation = Quat::IDENTITY;
+                }
+            }
+            EditMode::Scale => {
+                for entity in &selection.entities {
+                    let mut transform = entities.get_mut(*entity).unwrap();
+                    transform.scale += 0.1;
+                }
             }
         }
     }
