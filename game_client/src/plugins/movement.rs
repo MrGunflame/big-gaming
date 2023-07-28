@@ -4,15 +4,13 @@ use bevy_app::{App, Plugin};
 use bevy_ecs::prelude::EventReader;
 use bevy_ecs::query::{With, Without};
 use bevy_ecs::schedule::{IntoSystemConfig, IntoSystemSetConfig, SystemSet};
-use bevy_ecs::system::{Query, Res, ResMut};
+use bevy_ecs::system::{Query, Res, ResMut, Resource};
 use game_common::components::actor::{ActorProperties, MovementSpeed};
 use game_common::components::camera::CameraMode;
 use game_common::components::player::HostPlayer;
 use game_common::components::transform::Transform;
 use game_core::time::Time;
-use game_input::hotkeys::{
-    Event, Hotkey, HotkeyCode, HotkeyFilter, HotkeyId, HotkeyReader, Hotkeys, Key, TriggerKind,
-};
+use game_input::hotkeys::{Hotkey, HotkeyCode, HotkeyId, HotkeyReader, Hotkeys, Key, TriggerKind};
 use game_input::keyboard::{KeyCode, KeyboardInput};
 use game_input::mouse::MouseMotion;
 use game_input::InputSet;
@@ -26,111 +24,58 @@ use crate::utils::extract_actor_rotation;
 
 use super::camera::PrimaryCamera;
 
-static mut MOVE_FORWARD: Hotkey = Hotkey {
-    id: HotkeyId(0),
-    name: Cow::Borrowed("move_forward"),
-    default: Key {
-        trigger: TriggerKind::PRESSED,
-        code: HotkeyCode::KeyCode {
-            key_code: KeyCode::W,
-        },
-    },
-};
-
-static mut MOVE_LEFT: Hotkey = Hotkey {
-    id: HotkeyId(0),
-    name: Cow::Borrowed("move_left"),
-    default: Key {
-        trigger: TriggerKind::PRESSED,
-        code: HotkeyCode::KeyCode {
-            key_code: KeyCode::A,
-        },
-    },
-};
-
-static mut MOVE_RIGHT: Hotkey = Hotkey {
-    id: HotkeyId(0),
-    name: Cow::Borrowed("move_right"),
-    default: Key {
-        trigger: TriggerKind::PRESSED,
-        code: HotkeyCode::KeyCode {
-            key_code: KeyCode::D,
-        },
-    },
-};
-
-static mut MOVE_BACK: Hotkey = Hotkey {
-    id: HotkeyId(0),
-    name: Cow::Borrowed("move_back"),
-    default: Key {
-        trigger: TriggerKind::PRESSED,
-        code: HotkeyCode::KeyCode {
-            key_code: KeyCode::S,
-        },
-    },
-};
-
-static mut SPRINT: Hotkey = Hotkey {
-    id: HotkeyId(0),
-    name: Cow::Borrowed("sprint"),
-    default: Key {
-        trigger: TriggerKind::JUST_PRESSED.and(TriggerKind::JUST_RELEASED),
-        code: HotkeyCode::KeyCode {
-            key_code: KeyCode::LShift,
-        },
-    },
-};
-
-static mut JUMP: Hotkey = Hotkey {
-    id: HotkeyId(0),
-    name: Cow::Borrowed("jump"),
-    default: Key {
-        trigger: TriggerKind::JUST_PRESSED,
-        code: HotkeyCode::KeyCode {
-            key_code: KeyCode::Space,
-        },
-    },
-};
-
-pub struct MovementEvent;
-
-impl MovementEvent {
-    fn forward(event: &Event) -> bool {
-        event.id == unsafe { MOVE_FORWARD.id }
-    }
-
-    fn back(event: &Event) -> bool {
-        event.id == unsafe { MOVE_BACK.id }
-    }
-
-    fn left(event: &Event) -> bool {
-        event.id == unsafe { MOVE_LEFT.id }
-    }
-
-    fn right(event: &Event) -> bool {
-        event.id == unsafe { MOVE_RIGHT.id }
-    }
+#[derive(Resource)]
+pub struct MovementHotkeys {
+    forward: Hotkey,
+    back: Hotkey,
+    left: Hotkey,
+    right: Hotkey,
 }
 
-impl HotkeyFilter for MovementEvent {
-    fn filter(id: HotkeyId) -> bool {
-        unsafe {
-            for other in [MOVE_FORWARD.id, MOVE_BACK.id, MOVE_LEFT.id, MOVE_RIGHT.id] {
-                if id == other {
-                    return true;
-                }
-            }
+impl Default for MovementHotkeys {
+    fn default() -> Self {
+        Self {
+            forward: Hotkey {
+                id: HotkeyId(0),
+                name: Cow::Borrowed("move_forward"),
+                default: Key {
+                    trigger: TriggerKind::PRESSED,
+                    code: HotkeyCode::KeyCode {
+                        key_code: KeyCode::W,
+                    },
+                },
+            },
+            back: Hotkey {
+                id: HotkeyId(0),
+                name: Cow::Borrowed("move_back"),
+                default: Key {
+                    trigger: TriggerKind::PRESSED,
+                    code: HotkeyCode::KeyCode {
+                        key_code: KeyCode::S,
+                    },
+                },
+            },
+            left: Hotkey {
+                id: HotkeyId(0),
+                name: Cow::Borrowed("move_left"),
+                default: Key {
+                    trigger: TriggerKind::PRESSED,
+                    code: HotkeyCode::KeyCode {
+                        key_code: KeyCode::A,
+                    },
+                },
+            },
+            right: Hotkey {
+                id: HotkeyId(0),
+                name: Cow::Borrowed("move_right"),
+                default: Key {
+                    trigger: TriggerKind::PRESSED,
+                    code: HotkeyCode::KeyCode {
+                        key_code: KeyCode::D,
+                    },
+                },
+            },
         }
-
-        false
-    }
-}
-
-struct Sprint;
-
-impl HotkeyFilter for Sprint {
-    fn filter(id: HotkeyId) -> bool {
-        id == unsafe { SPRINT.id }
     }
 }
 
@@ -144,6 +89,7 @@ pub struct MovementPlugin;
 
 impl Plugin for MovementPlugin {
     fn build(&self, app: &mut App) {
+        app.insert_resource(MovementHotkeys::default());
         app.add_startup_system(register_events);
 
         app.add_system(translation_events.in_set(MovementSet::Read));
@@ -158,45 +104,11 @@ impl Plugin for MovementPlugin {
     }
 }
 
-struct JumpEvent;
-
-impl HotkeyFilter for JumpEvent {
-    fn filter(id: HotkeyId) -> bool {
-        id == unsafe { JUMP.id }
-    }
-}
-
-fn register_events(mut hotkeys: ResMut<Hotkeys>) {
-    let mut move_forward = unsafe { &mut MOVE_FORWARD };
-    let id = hotkeys.register(move_forward.clone());
-    move_forward.id = id;
-
-    drop(move_forward);
-
-    let mut move_back = unsafe { &mut MOVE_BACK };
-    let id = hotkeys.register(move_back.clone());
-    move_back.id = id;
-    drop(move_back);
-
-    let mut move_left = unsafe { &mut MOVE_LEFT };
-    let id = hotkeys.register(move_left.clone());
-    move_left.id = id;
-    drop(move_left);
-
-    let mut move_right = unsafe { &mut MOVE_RIGHT };
-    let id = hotkeys.register(move_right.clone());
-    move_right.id = id;
-    drop(move_right);
-
-    let mut sprint = unsafe { &mut SPRINT };
-    let id = hotkeys.register(sprint.clone());
-    sprint.id = id;
-    drop(sprint);
-
-    let mut jump = unsafe { &mut JUMP };
-    let id = hotkeys.register(jump.clone());
-    jump.id = id;
-    drop(jump);
+fn register_events(mut hotkeys: ResMut<Hotkeys>, mut movement_hotkeys: ResMut<MovementHotkeys>) {
+    movement_hotkeys.forward.id = hotkeys.register(movement_hotkeys.forward.clone());
+    movement_hotkeys.back.id = hotkeys.register(movement_hotkeys.back.clone());
+    movement_hotkeys.left.id = hotkeys.register(movement_hotkeys.left.clone());
+    movement_hotkeys.right.id = hotkeys.register(movement_hotkeys.right.clone());
 }
 
 pub fn translation_events(
@@ -204,7 +116,8 @@ pub fn translation_events(
     time: Res<Time>,
     mut players: Query<(&mut Transform, &MovementSpeed), With<HostPlayer>>,
     mut cameras: Query<(&mut Transform, &CameraMode), (Without<HostPlayer>, With<PrimaryCamera>)>,
-    mut events: HotkeyReader<MovementEvent>,
+    mut events: HotkeyReader<Hotkey>,
+    movement_hotkeys: Res<MovementHotkeys>,
 ) {
     let (mut camera, mode) = cameras.single_mut();
 
@@ -215,19 +128,19 @@ pub fn translation_events(
     let mut angle = Angle::default();
 
     for event in events.iter() {
-        if MovementEvent::forward(event) {
+        if event.id == movement_hotkeys.forward.id {
             angle.front();
         }
 
-        if MovementEvent::back(event) {
+        if event.id == movement_hotkeys.back.id {
             angle.back();
         }
 
-        if MovementEvent::left(event) {
+        if event.id == movement_hotkeys.left.id {
             angle.left();
         }
 
-        if MovementEvent::right(event) {
+        if event.id == movement_hotkeys.right.id {
             angle.right();
         }
     }
