@@ -10,6 +10,10 @@ pub struct Ray {
 }
 
 impl Ray {
+    pub fn point(self, distance: f32) -> Vec3 {
+        self.origin + self.direction * distance
+    }
+
     pub fn plane_intersection(&self, plane_origin: Vec3, plane_normal: Vec3) -> Option<Vec3> {
         let denom = plane_normal.dot(self.direction);
         if denom.abs() > f32::EPSILON {
