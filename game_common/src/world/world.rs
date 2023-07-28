@@ -119,7 +119,6 @@ impl WorldState {
             None => Snapshot {
                 control_frame: cf,
                 entities: Entities::default(),
-                hosts: Hosts::new(),
                 deltas: vec![],
                 streaming_sources: StreamingSources::new(),
                 inventories: Inventories::new(),
@@ -384,16 +383,17 @@ impl<'a> WorldViewMut<'a> {
         #[cfg(debug_assertions)]
         assert!(self.snapshot().entities.get(id).is_some());
 
-        self.snapshot().hosts.insert(id);
+        let Some(entity) = self.snapshot().entities.get_mut(id) else {
+            panic!("cannot create host for unknown entity: {:?}", id);
+        };
 
-        let entity = self.get(id).unwrap();
+        entity.is_host = true;
         self.new_deltas.push(EntityChange::CreateHost { id });
     }
 
     pub fn despawn_host(&mut self, id: EntityId) {
-        self.snapshot().hosts.remove(id);
-
-        if let Some(entity) = self.get(id) {
+        if let Some(entity) = self.snapshot().entities.get_mut(id) {
+            entity.is_host = false;
             self.new_deltas.push(EntityChange::DestroyHost { id });
         }
     }
@@ -600,7 +600,7 @@ impl Entities {
     }
 
     /// The id must be set before insertion.
-    fn spawn(&mut self, mut entity: Entity) {
+    fn spawn(&mut self, entity: Entity) {
         self.entities.insert(entity.id, entity);
     }
 
@@ -613,36 +613,9 @@ impl Entities {
 pub(crate) struct Snapshot {
     control_frame: ControlFrame,
     entities: Entities,
-    hosts: Hosts,
     streaming_sources: StreamingSources,
     pub deltas: Vec<EntityChange>,
     pub(crate) inventories: Inventories,
-}
-
-#[derive(Clone, Debug, Default)]
-struct Hosts {
-    // TODO: Add HostId (or similar)
-    entities: HashMap<EntityId, ()>,
-}
-
-impl Hosts {
-    fn new() -> Self {
-        Self {
-            entities: HashMap::new(),
-        }
-    }
-
-    fn get(&self, id: EntityId) -> Option<&()> {
-        self.entities.get(&id)
-    }
-
-    fn insert(&mut self, id: EntityId) {
-        self.entities.insert(id, ());
-    }
-
-    fn remove(&mut self, id: EntityId) {
-        self.entities.remove(&id);
-    }
 }
 
 /// Entities that keep chunks loaded.
@@ -715,10 +688,14 @@ impl Snapshot {
                 }
             }
             EntityChange::CreateHost { id } => {
-                self.hosts.insert(id);
+                if let Some(entity) = self.entities.get_mut(id) {
+                    entity.is_host = true;
+                }
             }
             EntityChange::DestroyHost { id } => {
-                self.hosts.remove(id);
+                if let Some(entity) = self.entities.get_mut(id) {
+                    entity.is_host = false;
+                }
             }
             EntityChange::InventoryItemAdd(event) => {
                 let inventory = self.inventories.get_mut_or_insert(event.entity);
@@ -977,6 +954,7 @@ mod tests {
                 id: ObjectId(RecordReference::STUB),
             }),
             components: Components::new(),
+            is_host: false,
         });
 
         assert!(view.get(id).is_some());
@@ -1010,6 +988,7 @@ mod tests {
                 id: ObjectId(RecordReference::STUB),
             }),
             components: Components::new(),
+            is_host: false,
         });
 
         drop(view);
@@ -1083,6 +1062,7 @@ mod tests {
                 id: ObjectId(RecordReference::STUB),
             }),
             components: Components::new(),
+            is_host: false,
         }
     }
 

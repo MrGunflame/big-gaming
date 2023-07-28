@@ -5,7 +5,7 @@ use game_common::events::{ActionEvent, Event};
 use game_common::world::control_frame::ControlFrame;
 use game_common::world::snapshot::EntityChange;
 use game_common::world::source::StreamingSource;
-use game_common::world::world::{AsView, WorldState};
+use game_common::world::world::{AsView, WorldState, WorldViewRef};
 use game_common::world::CellId;
 use game_net::conn::ConnectionId;
 use game_net::snapshot::{
@@ -34,8 +34,9 @@ pub fn tick(state: &mut ServerState) {
         record_targets: &state.record_targets,
     });
 
-    #[cfg(feature = "physics")]
-    step_physics(state);
+    if cfg!(feature = "physics") {
+        step_physics(state);
+    }
 
     // Push snapshots last always
     update_snapshots(&state.state.conns, &state.world);
@@ -195,30 +196,28 @@ fn update_snapshots(
     // mut entities: Query<(&mut Entity, &Transform)>,
     world: &WorldState,
 ) {
+    let Some(view) = world.back() else {
+        return;
+    };
+
+    tracing::info!("Sending snapshots for {:?}", view.control_frame());
+
     for conn in connections.iter() {
-        update_client(&conn, world);
+        update_client(&conn, view);
     }
 }
 
-fn update_client(conn: &Connection, world: &WorldState) {
+fn update_client(conn: &Connection, view: WorldViewRef<'_>) {
     let state = &mut *conn.state().write();
 
     let Some(host_id) = state.host.entity else {
         return;
     };
 
-    // let Some(prev) = world.at(state.head.saturating_sub(1)) else {
-    //     return;
-    // };
-
-    let Some(curr) = world.back() else {
-        return;
-    };
-
-    let host = curr.get(host_id).unwrap();
+    let host = view.get(host_id).unwrap();
     let cell_id = CellId::from(host.transform.translation);
 
-    let streaming_source = curr.streaming_sources().get(host_id).unwrap();
+    let streaming_source = view.streaming_sources().get(host_id).unwrap();
 
     // Send full state
     // The delta from the current frame is "included" in the full update.
@@ -235,7 +234,7 @@ fn update_client(conn: &Connection, world: &WorldState) {
         );
 
         for id in state.cells.cells() {
-            let cell = curr.cell(*id);
+            let cell = view.cell(*id);
 
             for entity in cell.iter() {
                 state.known_entities.insert(entity.clone());
@@ -245,7 +244,7 @@ fn update_client(conn: &Connection, world: &WorldState) {
                 conn.handle().send_cmd(ConnectionMessage {
                     id: None,
                     conn: ConnectionId(0),
-                    control_frame: curr.control_frame(),
+                    control_frame: view.control_frame(),
                     command: Command::EntityCreate(EntityCreate {
                         id: entity_id,
                         translation: entity.transform.translation,
@@ -255,12 +254,12 @@ fn update_client(conn: &Connection, world: &WorldState) {
                 });
 
                 // Sync the entity inventory, if it has one.
-                if let Some(inventory) = curr.inventories().get(entity.id) {
+                if let Some(inventory) = view.inventories().get(entity.id) {
                     for item in inventory.iter() {
                         conn.handle().send_cmd(ConnectionMessage {
                             id: None,
                             conn: ConnectionId(0),
-                            control_frame: curr.control_frame(),
+                            control_frame: view.control_frame(),
                             command: Command::InventoryItemAdd(InventoryItemAdd {
                                 entity: entity_id,
                                 slot: item.id,
@@ -277,7 +276,7 @@ fn update_client(conn: &Connection, world: &WorldState) {
         conn.handle().send_cmd(ConnectionMessage {
             id: None,
             conn: ConnectionId(0),
-            control_frame: curr.control_frame(),
+            control_frame: view.control_frame(),
             command: Command::SpawnHost(SpawnHost { id }),
         });
 
@@ -292,7 +291,7 @@ fn update_client(conn: &Connection, world: &WorldState) {
         state.cells.set(cell_id, streaming_source.distance);
     }
 
-    let events = update_player_cells(curr, state);
+    let events = update_player_cells(view, state);
 
     // The host should never be destroyed.
     if cfg!(debug_assertions) {
@@ -310,7 +309,7 @@ fn update_client(conn: &Connection, world: &WorldState) {
         conn.handle().send_cmd(ConnectionMessage {
             id: None,
             conn: ConnectionId(0),
-            control_frame: curr.control_frame(),
+            control_frame: view.control_frame(),
             command: cmd,
         });
     }
@@ -462,6 +461,7 @@ mod tests {
                 id: ObjectId(RecordReference::STUB),
             }),
             components: Default::default(),
+            is_host: false,
         }
     }
 

@@ -20,6 +20,7 @@ pub struct Entity {
     pub transform: Transform,
     pub body: EntityBody,
     pub components: Components,
+    pub is_host: bool,
 }
 
 impl Entity {
@@ -253,6 +254,7 @@ impl ObjectBuilder {
             transform: self.transform,
             body: EntityBody::Object(self.object),
             components: Components::new(),
+            is_host: false,
         }
     }
 }
@@ -271,6 +273,7 @@ impl From<Terrain> for Entity {
             transform: Transform::from_translation(value.mesh.cell.min()),
             body: EntityBody::Terrain(value),
             components: Components::new(),
+            is_host: false,
         }
     }
 }

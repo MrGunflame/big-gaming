@@ -98,6 +98,7 @@ fn build_entity(modules: &Modules, cell: CellId, builder: EntityBuilder) -> Opti
             transform: builder.transform,
             body: EntityBody::Terrain(terrain),
             components: Components::new(),
+            is_host: false,
         });
     }
 
@@ -184,5 +185,6 @@ fn build_entity(modules: &Modules, cell: CellId, builder: EntityBuilder) -> Opti
         transform: builder.transform,
         components,
         body,
+        is_host: false,
     })
 }

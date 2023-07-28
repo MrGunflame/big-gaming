@@ -20,6 +20,7 @@ pub fn spawn_player(view: &mut WorldViewMut<'_>) -> SpawnPlayer {
             health: Health::new(50),
         }),
         components: Components::new(),
+        is_host: false,
     });
 
     SpawnPlayer { id, transform }

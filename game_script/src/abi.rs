@@ -119,6 +119,7 @@ impl FromAbi for GuestEntity {
             },
             body,
             components: Components::new(),
+            is_host: false,
         })
     }
 }
