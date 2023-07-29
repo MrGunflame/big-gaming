@@ -1,11 +1,12 @@
 use bevy_ecs::system::Resource;
 use bevy_ecs::world::FromWorld;
 use wgpu::{
-    BindGroupLayout, BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindingType, BlendState,
-    BufferBindingType, ColorTargetState, ColorWrites, Device, Face, FragmentState, FrontFace,
-    MultisampleState, PipelineLayoutDescriptor, PolygonMode, PrimitiveState, PrimitiveTopology,
-    RenderPipeline, RenderPipelineDescriptor, ShaderModuleDescriptor, ShaderSource, ShaderStages,
-    TextureFormat, VertexState,
+    AddressMode, BindGroupLayout, BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindingType,
+    BlendState, BufferBindingType, ColorTargetState, ColorWrites, Device, Face, FilterMode,
+    FragmentState, FrontFace, MultisampleState, PipelineLayoutDescriptor, PolygonMode,
+    PrimitiveState, PrimitiveTopology, RenderPipeline, RenderPipelineDescriptor, Sampler,
+    SamplerBindingType, SamplerDescriptor, ShaderModuleDescriptor, ShaderSource, ShaderStages,
+    TextureFormat, TextureSampleType, TextureViewDimension, VertexState,
 };
 
 use crate::RenderDevice;
@@ -16,6 +17,8 @@ pub struct ForwardPipeline {
     pub vs_bind_group_layout: BindGroupLayout,
     pub fs_bind_group_layout: BindGroupLayout,
     pub mesh_bind_group_layout: BindGroupLayout,
+    pub material_bind_group_layout: BindGroupLayout,
+    pub sampler: Sampler,
 }
 
 impl FromWorld for ForwardPipeline {
@@ -104,6 +107,63 @@ impl ForwardPipeline {
             ],
         });
 
+        let material_bind_group_layout =
+            device.create_bind_group_layout(&BindGroupLayoutDescriptor {
+                label: Some("material_bind_group_layout"),
+                entries: &[
+                    // MATERIAL CONSTANTS
+                    BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: ShaderStages::FRAGMENT,
+                        ty: BindingType::Buffer {
+                            ty: BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    // ALBEDO
+                    BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: ShaderStages::FRAGMENT,
+                        ty: BindingType::Texture {
+                            sample_type: TextureSampleType::Float { filterable: true },
+                            view_dimension: TextureViewDimension::D2,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                    // NORMAL
+                    BindGroupLayoutEntry {
+                        binding: 2,
+                        visibility: ShaderStages::FRAGMENT,
+                        ty: BindingType::Texture {
+                            sample_type: TextureSampleType::Float { filterable: true },
+                            view_dimension: TextureViewDimension::D2,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                    // METALLIC-ROUGHNESS
+                    BindGroupLayoutEntry {
+                        binding: 3,
+                        visibility: ShaderStages::FRAGMENT,
+                        ty: BindingType::Texture {
+                            sample_type: TextureSampleType::Float { filterable: true },
+                            view_dimension: TextureViewDimension::D2,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                    BindGroupLayoutEntry {
+                        binding: 4,
+                        visibility: ShaderStages::FRAGMENT,
+                        ty: BindingType::Sampler(SamplerBindingType::Filtering),
+                        count: None,
+                    },
+                ],
+            });
+
         let vs_shader = device.create_shader_module(ShaderModuleDescriptor {
             label: Some("forward_vs"),
             source: ShaderSource::Wgsl(include_str!("../shaders/forward_vs.wgsl").into()),
@@ -121,7 +181,11 @@ impl ForwardPipeline {
 
         let pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
             label: Some("foward_pipeline_layout"),
-            bind_group_layouts: &[&vs_bind_group_layout, &mesh_bind_group_layout],
+            bind_group_layouts: &[
+                &vs_bind_group_layout,
+                &mesh_bind_group_layout,
+                &material_bind_group_layout,
+            ],
             push_constant_ranges: &[],
         });
 
@@ -160,11 +224,24 @@ impl ForwardPipeline {
             multiview: None,
         });
 
+        let sampler = device.create_sampler(&SamplerDescriptor {
+            label: Some("default_sampler"),
+            address_mode_u: AddressMode::Repeat,
+            address_mode_v: AddressMode::Repeat,
+            address_mode_w: AddressMode::Repeat,
+            mag_filter: FilterMode::Linear,
+            min_filter: FilterMode::Linear,
+            mipmap_filter: FilterMode::Linear,
+            ..Default::default()
+        });
+
         Self {
             pipeline,
             vs_bind_group_layout,
             fs_bind_group_layout,
             mesh_bind_group_layout,
+            material_bind_group_layout,
+            sampler,
         }
     }
 }

@@ -124,6 +124,9 @@ impl Plugin for RenderPlugin {
             app.insert_resource(RenderNodes::default());
             app.add_system(pbr::mesh::update_mesh_bind_group);
             app.add_system(pbr::mesh::update_mesh_transform);
+
+            app.init_resource::<pbr::material::DefaultTextures>();
+            app.add_system(pbr::material::update_material_bind_groups);
         }
 
         // Camera

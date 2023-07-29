@@ -29,6 +29,7 @@ struct VertexInput {
 
 struct VertexOutput {
     @builtin(position) clip_position: vec4<f32>,
+    @location(0) uv: vec2<f32>,
 }
 
 @vertex
@@ -36,8 +37,10 @@ fn vs_main(in: VertexInput) -> VertexOutput {
     var out: VertexOutput;
 
     let position = fetch_position(in.vertex_index);
+    let uv = fetch_uv(in.vertex_index);
 
     out.clip_position = camera.view_proj * model.transform * vec4<f32>(position, 1.0);
+    out.uv = uv;
 
     return out;
 }

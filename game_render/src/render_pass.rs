@@ -25,6 +25,7 @@ pub struct RenderNode {
     pub indices: Option<IndexBuffer>,
     pub transform: Option<Buffer>,
     pub mesh_bind_group: Option<BindGroup>,
+    pub material_bind_group: Option<BindGroup>,
 }
 
 impl RenderNode {
@@ -33,6 +34,7 @@ impl RenderNode {
             && self.indices.is_some()
             && self.transform.is_some()
             && self.mesh_bind_group.is_some()
+            && self.material_bind_group.is_some()
     }
 }
 
@@ -109,6 +111,7 @@ impl RenderPass {
 
             render_pass.set_bind_group(0, &vs_bind_group, &[]);
             render_pass.set_bind_group(1, node.mesh_bind_group.as_ref().unwrap(), &[]);
+            render_pass.set_bind_group(2, node.material_bind_group.as_ref().unwrap(), &[]);
 
             render_pass.set_index_buffer(
                 node.indices.as_ref().unwrap().buffer.slice(..),
