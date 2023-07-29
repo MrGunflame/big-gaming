@@ -29,7 +29,10 @@ pub struct RenderNode {
 
 impl RenderNode {
     fn is_ready(&self) -> bool {
-        self.vertices.is_some() && self.indices.is_some() && self.transform.is_some()
+        self.vertices.is_some()
+            && self.indices.is_some()
+            && self.transform.is_some()
+            && self.mesh_bind_group.is_some()
     }
 }
 
@@ -105,8 +108,7 @@ impl RenderPass {
             let vs_bind_group = &bind_groups[index];
 
             render_pass.set_bind_group(0, &vs_bind_group, &[]);
-
-            render_pass.set_vertex_buffer(0, node.vertices.as_ref().unwrap().slice(..));
+            render_pass.set_bind_group(1, node.mesh_bind_group.as_ref().unwrap(), &[]);
 
             render_pass.set_index_buffer(
                 node.indices.as_ref().unwrap().buffer.slice(..),

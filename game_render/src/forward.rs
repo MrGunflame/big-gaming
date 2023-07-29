@@ -8,7 +8,6 @@ use wgpu::{
     TextureFormat, VertexState,
 };
 
-use crate::mesh::Vertex;
 use crate::RenderDevice;
 
 #[derive(Debug, Resource)]
@@ -57,16 +56,52 @@ impl ForwardPipeline {
 
         let mesh_bind_group_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
             label: Some("mesh_bind_group_layout"),
-            entries: &[BindGroupLayoutEntry {
-                binding: 0,
-                visibility: ShaderStages::VERTEX,
-                ty: BindingType::Buffer {
-                    ty: BufferBindingType::Storage { read_only: true },
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
+            entries: &[
+                // POSITIONS
+                BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: ShaderStages::VERTEX,
+                    ty: BindingType::Buffer {
+                        ty: BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
                 },
-                count: None,
-            }],
+                // NORMALS
+                BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: ShaderStages::VERTEX,
+                    ty: BindingType::Buffer {
+                        ty: BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                // TANGENTS
+                BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: ShaderStages::VERTEX,
+                    ty: BindingType::Buffer {
+                        ty: BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                // UVS
+                BindGroupLayoutEntry {
+                    binding: 3,
+                    visibility: ShaderStages::VERTEX,
+                    ty: BindingType::Buffer {
+                        ty: BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+            ],
         });
 
         let vs_shader = device.create_shader_module(ShaderModuleDescriptor {
@@ -86,7 +121,7 @@ impl ForwardPipeline {
 
         let pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
             label: Some("foward_pipeline_layout"),
-            bind_group_layouts: &[&vs_bind_group_layout],
+            bind_group_layouts: &[&vs_bind_group_layout, &mesh_bind_group_layout],
             push_constant_ranges: &[],
         });
 
@@ -96,7 +131,7 @@ impl ForwardPipeline {
             vertex: VertexState {
                 module: &vs_shader,
                 entry_point: "vs_main",
-                buffers: &[Vertex::layout()],
+                buffers: &[],
             },
             fragment: Some(FragmentState {
                 module: &fs_shader,

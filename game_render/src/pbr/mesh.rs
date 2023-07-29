@@ -4,7 +4,7 @@ use bevy_ecs::system::{Query, Res, ResMut};
 use game_asset::{Assets, Handle};
 use game_common::components::transform::GlobalTransform;
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
-use wgpu::{BufferUsages, IndexFormat};
+use wgpu::{BindGroupDescriptor, BindGroupEntry, BufferUsages, IndexFormat};
 
 use crate::buffer::IndexBuffer;
 use crate::forward::ForwardPipeline;
@@ -62,9 +62,57 @@ pub fn update_mesh_bind_group(
             None => todo!(),
         };
 
+        let positions = device.create_buffer_init(&BufferInitDescriptor {
+            label: Some("mesh_vertex_positions"),
+            contents: bytemuck::cast_slice(mesh.positions()),
+            usage: BufferUsages::STORAGE,
+        });
+
+        let normals = device.create_buffer_init(&BufferInitDescriptor {
+            label: Some("mesh_vertex_normals"),
+            contents: bytemuck::cast_slice(mesh.normals()),
+            usage: BufferUsages::STORAGE,
+        });
+
+        let tangents = device.create_buffer_init(&BufferInitDescriptor {
+            label: Some("mesh_vertex_tangents"),
+            contents: bytemuck::cast_slice(mesh.tangents()),
+            usage: BufferUsages::STORAGE,
+        });
+
+        let uvs = device.create_buffer_init(&BufferInitDescriptor {
+            label: Some("mesh_vertex_uvs"),
+            contents: bytemuck::cast_slice(mesh.uvs()),
+            usage: BufferUsages::STORAGE,
+        });
+
+        let mesh_bind_group = device.create_bind_group(&BindGroupDescriptor {
+            label: Some("mesh_bind_group"),
+            layout: &pipeline.mesh_bind_group_layout,
+            entries: &[
+                BindGroupEntry {
+                    binding: 0,
+                    resource: positions.as_entire_binding(),
+                },
+                BindGroupEntry {
+                    binding: 1,
+                    resource: normals.as_entire_binding(),
+                },
+                BindGroupEntry {
+                    binding: 2,
+                    resource: tangents.as_entire_binding(),
+                },
+                BindGroupEntry {
+                    binding: 3,
+                    resource: uvs.as_entire_binding(),
+                },
+            ],
+        });
+
         let node = render_nodes.entities.entry(entity).or_default();
         node.vertices = Some(vertices);
         node.indices = Some(indices);
+        node.mesh_bind_group = Some(mesh_bind_group);
     }
 }
 

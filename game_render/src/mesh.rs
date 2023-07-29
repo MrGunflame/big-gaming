@@ -68,6 +68,10 @@ impl Mesh {
         self.uvs = uvs;
     }
 
+    pub fn uvs(&self) -> &[[f32; 2]] {
+        &self.uvs
+    }
+
     pub fn indicies(&self) -> Option<Indices> {
         self.indices.clone()
     }
