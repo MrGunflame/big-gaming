@@ -12,6 +12,7 @@ pub mod material;
 pub mod mesh;
 pub mod pbr;
 pub mod pipeline;
+pub mod render_pass;
 pub mod shape;
 pub mod surface;
 pub mod texture;
@@ -33,6 +34,7 @@ use mesh::Mesh;
 use pbr::{PbrMaterial, RenderMaterialAssets};
 use pipeline::{LightingPipeline, MainPass};
 use post_process::PostProcessPipeline;
+use render_pass::{RenderNodes, RenderPass};
 use surface::RenderSurfaces;
 use texture::ImagePlugin;
 use wgpu::{
@@ -88,7 +90,6 @@ impl Plugin for RenderPlugin {
 
         app.add_asset::<Mesh>();
         app.add_asset::<PbrMaterial>();
-        app.insert_resource(RenderMaterialAssets::default());
 
         app.insert_resource(RenderInstance(instance));
         app.insert_resource(RenderAdapter(adapter));
@@ -96,7 +97,7 @@ impl Plugin for RenderPlugin {
         app.insert_resource(RenderQueue(queue));
 
         let mut render_graph = RenderGraph::default();
-        render_graph.push(MainPass::default());
+        render_graph.push(RenderPass);
         app.insert_resource(render_graph);
 
         // Surface configuration
@@ -113,35 +114,50 @@ impl Plugin for RenderPlugin {
             app.add_system(surface::render_to_surfaces.in_set(RenderSet::Render));
         }
 
-        app.init_resource::<pipeline::MeshPipeline>();
-        app.init_resource::<pipeline::MaterialPipeline>();
-        app.init_resource::<LightingPipeline>();
+        // Pipelines
+        {
+            app.init_resource::<forward::ForwardPipeline>();
+        }
 
-        app.insert_resource(camera::Cameras::default());
-        app.add_system(camera::create_cameras.in_set(RenderSet::Update));
-        app.add_system(camera::update_camera_aspect_ratio.in_set(RenderSet::Update));
-        app.add_system(
-            camera::update_camera_buffer
-                .in_set(RenderSet::Update)
-                .after(camera::update_camera_aspect_ratio),
-        );
+        // PBR
+        {
+            app.insert_resource(RenderNodes::default());
+            app.add_system(pbr::mesh::update_mesh_bind_group);
+            app.add_system(pbr::mesh::update_mesh_transform);
+        }
 
-        app.add_system(pbr::prepare_materials.in_set(RenderSet::Update));
-        app.add_system(pbr::prepare_directional_lights.in_set(RenderSet::Update));
-        app.add_system(
-            pbr::update_material_bind_groups
-                .after(pbr::prepare_materials)
-                .in_set(RenderSet::Update),
-        );
-        app.add_system(pbr::prepare_point_lights.in_set(RenderSet::Update));
-        app.add_system(pbr::remove_render_nodes.in_set(RenderSet::Update));
+        // Camera
+        {
+            app.insert_resource(camera::Cameras::default());
+            app.add_system(camera::create_cameras.in_set(RenderSet::Update));
+            app.add_system(camera::update_camera_aspect_ratio.in_set(RenderSet::Update));
+            app.add_system(
+                camera::update_camera_buffer
+                    .in_set(RenderSet::Update)
+                    .after(camera::update_camera_aspect_ratio),
+            );
+        }
 
-        app.insert_resource(pipeline::RenderWindows::default());
-        app.add_system(pipeline::create_render_windows);
-        app.add_system(pipeline::destroy_render_windows);
-        app.add_system(pipeline::resize_render_windows);
+        // app.init_resource::<pipeline::MeshPipeline>();
+        // app.init_resource::<pipeline::MaterialPipeline>();
+        // app.init_resource::<LightingPipeline>();
 
-        app.init_resource::<PostProcessPipeline>();
+        // app.add_system(pbr::prepare_materials.in_set(RenderSet::Update));
+        // app.add_system(pbr::prepare_directional_lights.in_set(RenderSet::Update));
+        // app.add_system(
+        //     pbr::update_material_bind_groups
+        //         .after(pbr::prepare_materials)
+        //         .in_set(RenderSet::Update),
+        // );
+        // app.add_system(pbr::prepare_point_lights.in_set(RenderSet::Update));
+        // app.add_system(pbr::remove_render_nodes.in_set(RenderSet::Update));
+
+        // app.insert_resource(pipeline::RenderWindows::default());
+        // app.add_system(pipeline::create_render_windows);
+        // app.add_system(pipeline::destroy_render_windows);
+        // app.add_system(pipeline::resize_render_windows);
+
+        // app.init_resource::<PostProcessPipeline>();
 
         app.configure_set(
             RenderSet::Render

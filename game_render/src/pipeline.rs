@@ -486,7 +486,7 @@ impl MainPass {
         }
 
         let post_pl = world.resource::<PostProcessPipeline>();
-        post_pl.render(ctx.encoder, &intermediate_view, ctx.view, &device.0);
+        //post_pl.render(ctx.encoder, &intermediate_view, ctx.view, &device.0);
     }
 }
 

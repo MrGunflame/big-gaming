@@ -201,7 +201,7 @@ pub fn render_to_surfaces(world: &mut World) {
                 label: Some("render_encoder"),
             });
 
-            let ctx = RenderContext {
+            let mut ctx = RenderContext {
                 window: entity,
                 encoder: &mut encoder,
                 target: &target,

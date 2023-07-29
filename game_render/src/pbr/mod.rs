@@ -1,3 +1,6 @@
+pub mod material;
+pub mod mesh;
+
 use std::collections::HashMap;
 
 use bevy_ecs::prelude::{Bundle, Entity, Res};

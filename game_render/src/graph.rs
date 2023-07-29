@@ -1,7 +1,7 @@
 use bevy_ecs::prelude::Entity;
 use bevy_ecs::system::Resource;
 use bevy_ecs::world::World;
-use wgpu::{CommandEncoder, Device, TextureView};
+use wgpu::{CommandEncoder, TextureView};
 
 #[derive(Default, Resource)]
 pub struct RenderGraph {
@@ -23,8 +23,7 @@ pub trait Node: Send + Sync + 'static {
 pub struct RenderContext<'a> {
     pub window: Entity,
     pub encoder: &'a mut CommandEncoder,
-    pub view: &'a TextureView,
-    pub device: &'a Device,
+    pub target: &'a TextureView,
     pub width: u32,
     pub height: u32,
 }

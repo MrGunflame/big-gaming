@@ -417,7 +417,7 @@ impl Node for UiPass {
         let mut render_pass = ctx.encoder.begin_render_pass(&RenderPassDescriptor {
             label: Some("ui_pass"),
             color_attachments: &[Some(RenderPassColorAttachment {
-                view: &ctx.view,
+                view: &ctx.target,
                 resolve_target: None,
                 ops: Operations {
                     load: LoadOp::Load,
