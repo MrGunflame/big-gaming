@@ -5,11 +5,12 @@ use bevy_ecs::system::Resource;
 use bevy_ecs::world::World;
 use wgpu::{
     BindGroup, BindGroupDescriptor, BindGroupEntry, Buffer, Color, LoadOp, Operations,
-    RenderPassColorAttachment, RenderPassDescriptor,
+    RenderPassColorAttachment, RenderPassDepthStencilAttachment, RenderPassDescriptor,
 };
 
 use crate::buffer::IndexBuffer;
 use crate::camera::{CameraBuffer, Cameras};
+use crate::depth_stencil::DepthTextures;
 use crate::forward::ForwardPipeline;
 use crate::graph::{Node, RenderContext};
 use crate::RenderDevice;
@@ -64,6 +65,9 @@ impl RenderPass {
         let device = world.resource::<RenderDevice>();
         let pipeline = world.resource::<ForwardPipeline>();
         let nodes = world.resource::<RenderNodes>();
+        let depth_textures = world.resource::<DepthTextures>();
+
+        let depth_texture = depth_textures.windows.get(&ctx.window).unwrap();
 
         let bind_groups = nodes
             .entities
@@ -97,7 +101,14 @@ impl RenderPass {
                     store: true,
                 },
             })],
-            depth_stencil_attachment: None,
+            depth_stencil_attachment: Some(RenderPassDepthStencilAttachment {
+                view: &depth_texture.view,
+                depth_ops: Some(Operations {
+                    load: LoadOp::Clear(1.0),
+                    store: true,
+                }),
+                stencil_ops: None,
+            }),
         });
 
         render_pass.set_pipeline(&pipeline.pipeline);

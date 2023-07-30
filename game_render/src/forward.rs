@@ -2,13 +2,15 @@ use bevy_ecs::system::Resource;
 use bevy_ecs::world::FromWorld;
 use wgpu::{
     AddressMode, BindGroupLayout, BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindingType,
-    BlendState, BufferBindingType, ColorTargetState, ColorWrites, Device, Face, FilterMode,
-    FragmentState, FrontFace, MultisampleState, PipelineLayoutDescriptor, PolygonMode,
-    PrimitiveState, PrimitiveTopology, RenderPipeline, RenderPipelineDescriptor, Sampler,
-    SamplerBindingType, SamplerDescriptor, ShaderModuleDescriptor, ShaderSource, ShaderStages,
-    TextureFormat, TextureSampleType, TextureViewDimension, VertexState,
+    BlendState, BufferBindingType, ColorTargetState, ColorWrites, CompareFunction, DepthBiasState,
+    DepthStencilState, Device, Face, FilterMode, FragmentState, FrontFace, MultisampleState,
+    PipelineLayoutDescriptor, PolygonMode, PrimitiveState, PrimitiveTopology, RenderPipeline,
+    RenderPipelineDescriptor, Sampler, SamplerBindingType, SamplerDescriptor,
+    ShaderModuleDescriptor, ShaderSource, ShaderStages, StencilState, TextureFormat,
+    TextureSampleType, TextureViewDimension, VertexState,
 };
 
+use crate::depth_stencil::DEPTH_TEXTURE_FORMAT;
 use crate::RenderDevice;
 
 #[derive(Debug, Resource)]
@@ -215,7 +217,13 @@ impl ForwardPipeline {
                 unclipped_depth: false,
                 conservative: false,
             },
-            depth_stencil: None,
+            depth_stencil: Some(DepthStencilState {
+                format: DEPTH_TEXTURE_FORMAT,
+                depth_write_enabled: true,
+                depth_compare: CompareFunction::Less,
+                stencil: StencilState::default(),
+                bias: DepthBiasState::default(),
+            }),
             multisample: MultisampleState {
                 count: 1,
                 mask: !0,
