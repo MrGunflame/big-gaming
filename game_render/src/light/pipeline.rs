@@ -49,7 +49,7 @@ pub fn update_directional_lights(
 
         let uniform = DirectionalLightUniform {
             direction: direction.to_array(),
-            color: light.color,
+            color: light.color.as_rgb(),
             _pad0: 0,
             _pad1: 0,
         };

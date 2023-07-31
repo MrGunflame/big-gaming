@@ -422,7 +422,7 @@ pub fn prepare_directional_lights(
 
     for (light, transform) in &lights {
         let uniform = DirectionalLightUniform {
-            color: light.color,
+            color: light.color.as_rgb(),
             direction: transform.0.translation.to_array(),
             _pad0: 0,
             _pad1: 0,
@@ -459,7 +459,7 @@ pub fn prepare_point_lights(
 
     for (light, transform) in &lights {
         let uniform = PointLightUniform {
-            color: light.color.rgb(),
+            color: light.color.as_rgb(),
             position: transform.0.translation.to_array(),
             _pad0: 0,
             _pad1: 0,

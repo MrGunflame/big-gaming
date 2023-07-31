@@ -12,7 +12,7 @@ impl Color {
     pub const GREEN: Self = Self([0.0, 1.0, 0.0, 1.0]);
     pub const BLUE: Self = Self([0.0, 0.0, 1.0, 1.0]);
 
-    pub(crate) fn rgb(self) -> [f32; 3] {
+    pub(crate) fn as_rgb(self) -> [f32; 3] {
         [self.0[0], self.0[1], self.0[2]]
     }
 }
