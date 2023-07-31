@@ -129,7 +129,7 @@ impl Plugin for RenderPlugin {
 
         // PBR
         {
-            app.insert_resource(RenderNodes::default());
+            app.init_resource::<RenderNodes>();
             app.add_system(pbr::mesh::update_mesh_bind_group);
             app.add_system(pbr::mesh::update_mesh_transform);
 

@@ -2,10 +2,11 @@ use std::collections::HashMap;
 
 use bevy_ecs::prelude::Entity;
 use bevy_ecs::system::Resource;
-use bevy_ecs::world::World;
+use bevy_ecs::world::{FromWorld, World};
+use wgpu::util::{BufferInitDescriptor, DeviceExt};
 use wgpu::{
-    BindGroup, BindGroupDescriptor, BindGroupEntry, Buffer, Color, LoadOp, Operations,
-    RenderPassColorAttachment, RenderPassDepthStencilAttachment, RenderPassDescriptor,
+    BindGroup, BindGroupDescriptor, BindGroupEntry, Buffer, BufferUsages, Color, LoadOp,
+    Operations, RenderPassColorAttachment, RenderPassDepthStencilAttachment, RenderPassDescriptor,
 };
 
 use crate::buffer::IndexBuffer;
@@ -13,12 +14,31 @@ use crate::camera::{CameraBuffer, Cameras};
 use crate::depth_stencil::DepthTextures;
 use crate::forward::ForwardPipeline;
 use crate::graph::{Node, RenderContext};
+use crate::light::pipeline::DirectionalLightBuffer;
 use crate::RenderDevice;
 
-#[derive(Resource, Default)]
+#[derive(Resource)]
 pub struct RenderNodes {
     pub entities: HashMap<Entity, RenderNode>,
-    pub directional_lights: Option<Buffer>,
+    pub directional_lights: Buffer,
+}
+
+impl FromWorld for RenderNodes {
+    fn from_world(world: &mut World) -> Self {
+        let device = world.resource::<RenderDevice>();
+
+        let buffer = DirectionalLightBuffer::new();
+        let directional_lights = device.create_buffer_init(&BufferInitDescriptor {
+            label: None,
+            contents: buffer.as_bytes(),
+            usage: BufferUsages::STORAGE,
+        });
+
+        Self {
+            entities: HashMap::default(),
+            directional_lights,
+        }
+    }
 }
 
 #[derive(Debug, Default)]
@@ -97,11 +117,7 @@ impl RenderPass {
             layout: &pipeline.lights_bind_group_layout,
             entries: &[BindGroupEntry {
                 binding: 0,
-                resource: nodes
-                    .directional_lights
-                    .as_ref()
-                    .unwrap()
-                    .as_entire_binding(),
+                resource: nodes.directional_lights.as_entire_binding(),
             }],
         });
 

@@ -24,7 +24,7 @@ var metallic_roughness_texture: texture_2d<f32>;
 var linear_sampler: sampler;
 
 @group(3) @binding(0)
-var<storage> directional_lights: array<DirectionalLight>;
+var<storage> directional_lights: DirectionalLights;
 
 struct FragInput {
     @builtin(position) clip_position: vec4<f32>,
@@ -38,8 +38,8 @@ fn fs_main(in: FragInput) -> @location(0) vec4<f32> {
     let color = constants.base_color * textureSample(base_color_texture, linear_sampler, in.uv);
 
     var light_strength: vec3<f32> = vec3(0.0);
-    for (var i: u32 = 0u; i < arrayLength(&directional_lights); i++) {
-        light_strength += compute_directional_light(in, directional_lights[i]);
+    for (var i: u32 = 0u; i < directional_lights.count; i++) {
+        light_strength += compute_directional_light(in, directional_lights.lights[i]);
     }
 
     return color;
@@ -58,6 +58,11 @@ fn compute_directional_light(in: FragInput, light: DirectionalLight) -> vec3<f32
     let specular = pow(max(dot(in.world_normal, half_dir), 0.0), 32.0);
 
     return ambient + diffuse + specular;
+}
+
+struct DirectionalLights {
+    count: u32,
+    lights: array<DirectionalLight>,
 }
 
 struct DirectionalLight {

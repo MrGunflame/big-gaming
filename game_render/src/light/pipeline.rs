@@ -73,5 +73,71 @@ pub fn update_directional_lights(
         usage: BufferUsages::STORAGE,
     });
 
-    render_nodes.directional_lights = Some(buffer);
+    render_nodes.directional_lights = buffer;
+}
+
+#[derive(Clone, Debug)]
+pub struct DirectionalLightBuffer {
+    /// We need to respect the structure of the GPU buffer:
+    /// ```text
+    /// struct Buffer {
+    ///     // `count` is aligned to `T`.
+    ///     count: u32,
+    ///     // At least 1 field needs to be present.
+    ///     elems: array<T>,
+    /// }
+    /// ```
+    buf: Vec<u8>,
+}
+
+impl DirectionalLightBuffer {
+    pub fn new() -> Self {
+        let count = Self::create_zero_count();
+        let uniform = &[DirectionalLightUniform::zeroed()];
+        let stub: &[u8] = bytemuck::cast_slice(uniform);
+
+        let mut buf = Vec::with_capacity(count.len() + stub.len());
+        buf.extend(count);
+        buf.extend(stub);
+
+        Self { buf }
+    }
+
+    pub fn len(&self) -> u32 {
+        let bytes = &self.buf[0..4];
+        u32::from_ne_bytes(bytes.try_into().unwrap())
+    }
+
+    pub fn push(&mut self, light: DirectionalLightUniform) {
+        self.buf.extend(bytemuck::cast_slice(&[light]));
+
+        let index = self.len() as usize;
+        self.buf.resize(
+            Self::create_zero_count().len()
+                + (index + 1) * std::mem::size_of::<DirectionalLightUniform>(),
+            0,
+        );
+
+        let slice = &mut self.buf[index..std::mem::size_of::<DirectionalLightUniform>()];
+        slice.copy_from_slice(bytemuck::cast_slice(&[light]));
+    }
+
+    pub fn clear(&mut self) {
+        self.buf
+            .truncate(4 + std::mem::size_of::<DirectionalLight>());
+    }
+
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.buf
+    }
+
+    const fn create_zero_count() -> &'static [u8] {
+        &[0; std::mem::size_of::<DirectionalLightUniform>()]
+    }
+}
+
+impl Default for DirectionalLightBuffer {
+    fn default() -> Self {
+        Self::new()
+    }
 }
