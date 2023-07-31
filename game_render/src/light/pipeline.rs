@@ -4,6 +4,7 @@ use bevy_ecs::prelude::Entity;
 use bevy_ecs::system::{Query, Res, ResMut, Resource};
 use bytemuck::{Pod, Zeroable};
 use game_common::components::transform::GlobalTransform;
+use glam::Vec3;
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
 use wgpu::BufferUsages;
 
@@ -15,7 +16,7 @@ use super::DirectionalLight;
 #[derive(Copy, Clone, Debug, PartialEq, Zeroable, Pod)]
 #[repr(C)]
 pub struct DirectionalLightUniform {
-    pub position: [f32; 3],
+    pub direction: [f32; 3],
     pub _pad0: u32,
     pub color: [f32; 3],
     pub _pad1: u32,
@@ -44,8 +45,10 @@ pub fn update_directional_lights(
     let mut changed = false;
 
     for (entity, light, transform) in &entities {
+        let direction = transform.0.rotation * -Vec3::Z;
+
         let uniform = DirectionalLightUniform {
-            position: transform.0.translation.to_array(),
+            direction: direction.to_array(),
             color: light.color,
             _pad0: 0,
             _pad1: 0,
@@ -65,11 +68,11 @@ pub fn update_directional_lights(
         return;
     }
 
-    let lights: Vec<_> = cache.entities.values().copied().collect();
+    let lights: DirectionalLightBuffer = cache.entities.values().copied().collect();
 
     let buffer = device.create_buffer_init(&BufferInitDescriptor {
         label: Some("directional_light_buffer"),
-        contents: bytemuck::cast_slice(&lights),
+        contents: bytemuck::cast_slice(lights.as_bytes()),
         usage: BufferUsages::STORAGE,
     });
 
@@ -118,26 +121,58 @@ impl DirectionalLightBuffer {
             0,
         );
 
-        let slice = &mut self.buf[index..std::mem::size_of::<DirectionalLightUniform>()];
+        let start = index + Self::create_zero_count().len();
+
+        let slice = &mut self.buf[start..start + std::mem::size_of::<DirectionalLightUniform>()];
         slice.copy_from_slice(bytemuck::cast_slice(&[light]));
+
+        self.set_len(self.len() + 1);
     }
 
     pub fn clear(&mut self) {
         self.buf
-            .truncate(4 + std::mem::size_of::<DirectionalLight>());
+            .truncate(std::mem::size_of::<DirectionalLight>() * 2);
     }
 
     pub fn as_bytes(&self) -> &[u8] {
         &self.buf
     }
 
+    fn set_len(&mut self, len: u32) {
+        let bytes = &mut self.buf[0..4];
+        bytes.copy_from_slice(&len.to_ne_bytes());
+    }
+
     const fn create_zero_count() -> &'static [u8] {
-        &[0; std::mem::size_of::<DirectionalLightUniform>()]
+        // DirectionLightUniform is aligned to vec3 (16).
+        &[0; 16]
     }
 }
 
 impl Default for DirectionalLightBuffer {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl Extend<DirectionalLightUniform> for DirectionalLightBuffer {
+    fn extend<T>(&mut self, iter: T)
+    where
+        T: IntoIterator<Item = DirectionalLightUniform>,
+    {
+        for elem in iter.into_iter() {
+            self.push(elem);
+        }
+    }
+}
+
+impl FromIterator<DirectionalLightUniform> for DirectionalLightBuffer {
+    fn from_iter<T>(iter: T) -> Self
+    where
+        T: IntoIterator<Item = DirectionalLightUniform>,
+    {
+        let mut buffer = Self::new();
+        buffer.extend(iter);
+        buffer
     }
 }

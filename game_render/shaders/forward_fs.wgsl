@@ -35,18 +35,21 @@ struct FragInput {
 
 @fragment
 fn fs_main(in: FragInput) -> @location(0) vec4<f32> {
-    let color = constants.base_color * textureSample(base_color_texture, linear_sampler, in.uv);
+    var color = constants.base_color * textureSample(base_color_texture, linear_sampler, in.uv);
 
     var light_strength: vec3<f32> = vec3(0.0);
     for (var i: u32 = 0u; i < directional_lights.count; i++) {
         light_strength += compute_directional_light(in, directional_lights.lights[i]);
     }
 
+    color.r *= light_strength.r;
+    color.g *= light_strength.g;
+    color.b *= light_strength.b;
     return color;
 }
 
 fn compute_directional_light(in: FragInput, light: DirectionalLight) -> vec3<f32> {
-    let light_dir = normalize(light.position);
+    let light_dir = normalize(-light.direction);
 
     let ambient = light.color * 0.05;
 
@@ -66,6 +69,6 @@ struct DirectionalLights {
 }
 
 struct DirectionalLight {
-    position: vec3<f32>,
+    direction: vec3<f32>,
     color: vec3<f32>,
 }

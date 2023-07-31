@@ -44,7 +44,6 @@ impl PbrResources {
             vec![255, 255, 255, 255],
         ));
 
-        // B channel facing towards local Z.
         let default_normal_texture = images.insert(Image::new(
             UVec2::splat(1),
             TextureFormat::Rgba8Unorm,
@@ -424,7 +423,7 @@ pub fn prepare_directional_lights(
     for (light, transform) in &lights {
         let uniform = DirectionalLightUniform {
             color: light.color,
-            position: transform.0.translation.to_array(),
+            direction: transform.0.translation.to_array(),
             _pad0: 0,
             _pad1: 0,
         };

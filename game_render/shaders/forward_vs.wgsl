@@ -5,6 +5,7 @@ struct Camera {
 
 struct Model {
     transform: mat4x4<f32>,
+    normal: mat3x3<f32>,
 }
 
 @group(0) @binding(0)
@@ -39,10 +40,14 @@ fn vs_main(in: VertexInput) -> VertexOutput {
     var out: VertexOutput;
 
     let position = fetch_position(in.vertex_index);
+    let normal = fetch_normal(in.vertex_index);
     let uv = fetch_uv(in.vertex_index);
 
     out.clip_position = camera.view_proj * model.transform * vec4<f32>(position, 1.0);
     out.uv = uv;
+
+    out.world_position =(model.transform * vec4<f32>(position, 1.0)).xyz;
+    out.world_normal = model.normal * normal;
 
     return out;
 }
