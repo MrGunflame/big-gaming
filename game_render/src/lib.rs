@@ -122,6 +122,9 @@ impl Plugin for RenderPlugin {
             app.add_system(depth_stencil::create_depth_textures);
             app.add_system(depth_stencil::resize_depth_textures);
             app.add_system(depth_stencil::destroy_depth_textures);
+
+            app.insert_resource(light::pipeline::DirectionalLightCache::default());
+            app.add_system(light::pipeline::update_directional_lights);
         }
 
         // PBR

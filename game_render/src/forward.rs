@@ -1,13 +1,14 @@
 use bevy_ecs::system::Resource;
 use bevy_ecs::world::FromWorld;
+use wgpu::util::{BufferInitDescriptor, DeviceExt};
 use wgpu::{
     AddressMode, BindGroupLayout, BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindingType,
-    BlendState, BufferBindingType, ColorTargetState, ColorWrites, CompareFunction, DepthBiasState,
-    DepthStencilState, Device, Face, FilterMode, FragmentState, FrontFace, MultisampleState,
-    PipelineLayoutDescriptor, PolygonMode, PrimitiveState, PrimitiveTopology, RenderPipeline,
-    RenderPipelineDescriptor, Sampler, SamplerBindingType, SamplerDescriptor,
-    ShaderModuleDescriptor, ShaderSource, ShaderStages, StencilState, TextureFormat,
-    TextureSampleType, TextureViewDimension, VertexState,
+    BlendState, Buffer, BufferBindingType, BufferUsages, ColorTargetState, ColorWrites,
+    CompareFunction, DepthBiasState, DepthStencilState, Device, Face, FilterMode, FragmentState,
+    FrontFace, MultisampleState, PipelineLayoutDescriptor, PolygonMode, PrimitiveState,
+    PrimitiveTopology, RenderPipeline, RenderPipelineDescriptor, Sampler, SamplerBindingType,
+    SamplerDescriptor, ShaderModuleDescriptor, ShaderSource, ShaderStages, StencilState,
+    TextureFormat, TextureSampleType, TextureViewDimension, VertexState,
 };
 
 use crate::depth_stencil::DEPTH_TEXTURE_FORMAT;
@@ -20,6 +21,7 @@ pub struct ForwardPipeline {
     pub fs_bind_group_layout: BindGroupLayout,
     pub mesh_bind_group_layout: BindGroupLayout,
     pub material_bind_group_layout: BindGroupLayout,
+    pub lights_bind_group_layout: BindGroupLayout,
     pub sampler: Sampler,
 }
 
@@ -37,7 +39,7 @@ impl ForwardPipeline {
                 // CAMERA
                 BindGroupLayoutEntry {
                     binding: 0,
-                    visibility: ShaderStages::VERTEX,
+                    visibility: ShaderStages::VERTEX | ShaderStages::FRAGMENT,
                     ty: BindingType::Buffer {
                         ty: BufferBindingType::Uniform,
                         has_dynamic_offset: false,
@@ -181,12 +183,28 @@ impl ForwardPipeline {
             entries: &[],
         });
 
+        let lights_bind_group_layout =
+            device.create_bind_group_layout(&BindGroupLayoutDescriptor {
+                label: Some("lights_bind_group_layout"),
+                entries: &[BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: ShaderStages::FRAGMENT,
+                    ty: BindingType::Buffer {
+                        ty: BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }],
+            });
+
         let pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
             label: Some("foward_pipeline_layout"),
             bind_group_layouts: &[
                 &vs_bind_group_layout,
                 &mesh_bind_group_layout,
                 &material_bind_group_layout,
+                &lights_bind_group_layout,
             ],
             push_constant_ranges: &[],
         });
@@ -249,6 +267,7 @@ impl ForwardPipeline {
             fs_bind_group_layout,
             mesh_bind_group_layout,
             material_bind_group_layout,
+            lights_bind_group_layout,
             sampler,
         }
     }

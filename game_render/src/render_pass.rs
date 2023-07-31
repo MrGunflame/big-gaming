@@ -18,6 +18,7 @@ use crate::RenderDevice;
 #[derive(Resource, Default)]
 pub struct RenderNodes {
     pub entities: HashMap<Entity, RenderNode>,
+    pub directional_lights: Option<Buffer>,
 }
 
 #[derive(Debug, Default)]
@@ -91,6 +92,19 @@ impl RenderPass {
             })
             .collect::<Vec<_>>();
 
+        let light_bind_group = device.create_bind_group(&BindGroupDescriptor {
+            label: Some("light_bind_group"),
+            layout: &pipeline.lights_bind_group_layout,
+            entries: &[BindGroupEntry {
+                binding: 0,
+                resource: nodes
+                    .directional_lights
+                    .as_ref()
+                    .unwrap()
+                    .as_entire_binding(),
+            }],
+        });
+
         let mut render_pass = ctx.encoder.begin_render_pass(&RenderPassDescriptor {
             label: Some("render_pass"),
             color_attachments: &[Some(RenderPassColorAttachment {
@@ -123,6 +137,7 @@ impl RenderPass {
             render_pass.set_bind_group(0, &vs_bind_group, &[]);
             render_pass.set_bind_group(1, node.mesh_bind_group.as_ref().unwrap(), &[]);
             render_pass.set_bind_group(2, node.material_bind_group.as_ref().unwrap(), &[]);
+            render_pass.set_bind_group(3, &light_bind_group, &[]);
 
             render_pass.set_index_buffer(
                 node.indices.as_ref().unwrap().buffer.slice(..),
