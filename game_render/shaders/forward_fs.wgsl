@@ -118,7 +118,7 @@ fn compute_spot_light(in: FragInput, light: SpotLight) -> vec3<f32> {
     diffuse *= intensity;
     specular *= intensity;
 
-    return (ambient + diffuse + specular) * attenuation + ambient;
+    return (ambient + diffuse + specular) * attenuation;
 }
 
 struct DirectionalLights {
