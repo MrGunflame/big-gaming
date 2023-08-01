@@ -9,12 +9,12 @@ use wgpu::{
     Operations, RenderPassColorAttachment, RenderPassDepthStencilAttachment, RenderPassDescriptor,
 };
 
-use crate::buffer::IndexBuffer;
+use crate::buffer::{DynamicBuffer, IndexBuffer};
 use crate::camera::{CameraBuffer, Cameras};
 use crate::depth_stencil::DepthTextures;
 use crate::forward::ForwardPipeline;
 use crate::graph::{Node, RenderContext};
-use crate::light::pipeline::DirectionalLightBuffer;
+use crate::light::pipeline::DirectionalLightUniform;
 use crate::RenderDevice;
 
 #[derive(Resource)]
@@ -27,7 +27,7 @@ impl FromWorld for RenderNodes {
     fn from_world(world: &mut World) -> Self {
         let device = world.resource::<RenderDevice>();
 
-        let buffer = DirectionalLightBuffer::new();
+        let buffer = DynamicBuffer::<DirectionalLightUniform>::new();
         let directional_lights = device.create_buffer_init(&BufferInitDescriptor {
             label: None,
             contents: buffer.as_bytes(),
