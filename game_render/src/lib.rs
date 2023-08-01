@@ -119,9 +119,9 @@ impl Plugin for RenderPlugin {
             app.init_resource::<forward::ForwardPipeline>();
 
             app.insert_resource(depth_stencil::DepthTextures::default());
-            app.add_system(depth_stencil::create_depth_textures);
-            app.add_system(depth_stencil::resize_depth_textures);
-            app.add_system(depth_stencil::destroy_depth_textures);
+            app.add_system(depth_stencil::create_depth_textures.in_set(RenderSet::Update));
+            app.add_system(depth_stencil::resize_depth_textures.in_set(RenderSet::Update));
+            app.add_system(depth_stencil::destroy_depth_textures.in_set(RenderSet::Update));
 
             app.insert_resource(light::pipeline::DirectionalLightCache::default());
             app.insert_resource(light::pipeline::PointLightCache::default());

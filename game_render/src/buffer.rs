@@ -1,5 +1,8 @@
 use std::marker::PhantomData;
 
+#[cfg(target_endian = "big")]
+compile_error!("`DynamicBuffer` doesn't support big endian targets");
+
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat3, Vec3};
 use wgpu::{Buffer, IndexFormat};
@@ -157,5 +160,59 @@ where
         let mut buffer = Self::new();
         buffer.extend(iter);
         buffer
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use bytemuck::{Pod, Zeroable};
+
+    use super::{DynamicBuffer, GpuBuffer};
+
+    #[derive(Copy, Clone, Debug, PartialEq, Eq, Zeroable, Pod)]
+    #[repr(C)]
+    struct TestStruct {
+        a: [u8; 3],
+        b: u8,
+        c: [u8; 3],
+        d: u8,
+        e: u8,
+        f: u8,
+        g: [u8; 2],
+        h: [u8; 4],
+    }
+
+    impl GpuBuffer for TestStruct {
+        const SIZE: usize = std::mem::size_of::<Self>();
+        const ALIGN: usize = 16;
+    }
+
+    #[test]
+    fn dynamic_buffer_push_once() {
+        let mut buffer = DynamicBuffer::new();
+        buffer.push(TestStruct {
+            a: [1, 2, 3],
+            b: 4,
+            c: [5, 6, 7],
+            d: 8,
+            e: 9,
+            f: 10,
+            g: [11, 12],
+            h: [13, 14, 15, 16],
+        });
+
+        assert_eq!(
+            buffer.as_bytes(),
+            [
+                1, 0, 0, 0, // count
+                0, 0, 0, 0, // align
+                0, 0, 0, 0, // align
+                0, 0, 0, 0, // align
+                1, 2, 3, 4, // a + b
+                5, 6, 7, 8, // c + d
+                9, 10, 11, 12, // e + f + g
+                13, 14, 15, 16, // h
+            ]
+        );
     }
 }

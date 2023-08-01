@@ -50,10 +50,9 @@ pub struct SpotLightUniform {
     pub direction: [f32; 3],
     pub _pad1: u32,
     pub color: [f32; 3],
-    pub _pad2: u32,
     pub inner_cutoff: f32,
     pub outer_cutoff: f32,
-    pub _pad3: [u32; 2],
+    pub _pad2: [u32; 3],
 }
 
 impl GpuBuffer for SpotLightUniform {
@@ -179,8 +178,7 @@ pub fn update_spot_lights(
             color: light.color.as_rgb(),
             _pad0: 0,
             _pad1: 0,
-            _pad2: 0,
-            _pad3: [0; 2],
+            _pad2: [0; 3],
         };
 
         if let Some(light) = cache.entities.get(&entity) {

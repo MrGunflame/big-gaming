@@ -108,10 +108,8 @@ fn compute_spot_light(in: FragInput, light: SpotLight) -> vec3<f32> {
 
     // Falloff
     // TODO: cosine can be precomputed on CPU side.
-    //let cos_outer = cos(light.outer_cutoff);
-    //let cos_inner = cos(light.inner_cutoff);
-    let cos_inner = cos(radians(45.0));
-    let cos_outer = cos(radians(50.0));
+    let cos_outer = cos(light.outer_cutoff);
+    let cos_inner = cos(light.inner_cutoff);
 
     let theta = dot(light_dir, -light.direction);
 
@@ -120,7 +118,7 @@ fn compute_spot_light(in: FragInput, light: SpotLight) -> vec3<f32> {
     diffuse *= intensity;
     specular *= intensity;
 
-    return (ambient + diffuse ) * attenuation + ambient;
+    return (ambient + diffuse + specular) * attenuation + ambient;
 }
 
 struct DirectionalLights {

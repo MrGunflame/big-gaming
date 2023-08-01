@@ -46,7 +46,7 @@ fn vs_main(in: VertexInput) -> VertexOutput {
     out.clip_position = camera.view_proj * model.transform * vec4<f32>(position, 1.0);
     out.uv = uv;
 
-    out.world_position =(model.transform * vec4<f32>(position, 1.0)).xyz;
+    out.world_position = (model.transform * vec4<f32>(position, 1.0)).xyz;
     out.world_normal = model.normal * normal;
 
     return out;
