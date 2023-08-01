@@ -14,13 +14,14 @@ use crate::camera::{CameraBuffer, Cameras};
 use crate::depth_stencil::DepthTextures;
 use crate::forward::ForwardPipeline;
 use crate::graph::{Node, RenderContext};
-use crate::light::pipeline::DirectionalLightUniform;
+use crate::light::pipeline::{DirectionalLightUniform, PointLightUniform};
 use crate::RenderDevice;
 
 #[derive(Resource)]
 pub struct RenderNodes {
     pub entities: HashMap<Entity, RenderNode>,
     pub directional_lights: Buffer,
+    pub point_lights: Buffer,
 }
 
 impl FromWorld for RenderNodes {
@@ -34,9 +35,17 @@ impl FromWorld for RenderNodes {
             usage: BufferUsages::STORAGE,
         });
 
+        let buffer = DynamicBuffer::<PointLightUniform>::new();
+        let point_lights = device.create_buffer_init(&BufferInitDescriptor {
+            label: None,
+            contents: buffer.as_bytes(),
+            usage: BufferUsages::STORAGE,
+        });
+
         Self {
             entities: HashMap::default(),
             directional_lights,
+            point_lights,
         }
     }
 }
@@ -115,10 +124,16 @@ impl RenderPass {
         let light_bind_group = device.create_bind_group(&BindGroupDescriptor {
             label: Some("light_bind_group"),
             layout: &pipeline.lights_bind_group_layout,
-            entries: &[BindGroupEntry {
-                binding: 0,
-                resource: nodes.directional_lights.as_entire_binding(),
-            }],
+            entries: &[
+                BindGroupEntry {
+                    binding: 0,
+                    resource: nodes.directional_lights.as_entire_binding(),
+                },
+                BindGroupEntry {
+                    binding: 1,
+                    resource: nodes.point_lights.as_entire_binding(),
+                },
+            ],
         });
 
         let mut render_pass = ctx.encoder.begin_render_pass(&RenderPassDescriptor {

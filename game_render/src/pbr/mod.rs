@@ -415,7 +415,6 @@ pub fn prepare_directional_lights(
     mut render_assets: ResMut<RenderMaterialAssets>,
     lights: Query<(&DirectionalLight, &GlobalTransform)>,
     device: Res<RenderDevice>,
-    queue: Res<RenderQueue>,
     pipeline: Res<LightingPipeline>,
 ) {
     render_assets.directional_lights.clear();

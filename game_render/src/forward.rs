@@ -1,14 +1,13 @@
 use bevy_ecs::system::Resource;
 use bevy_ecs::world::FromWorld;
-use wgpu::util::{BufferInitDescriptor, DeviceExt};
 use wgpu::{
     AddressMode, BindGroupLayout, BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindingType,
-    BlendState, Buffer, BufferBindingType, BufferUsages, ColorTargetState, ColorWrites,
-    CompareFunction, DepthBiasState, DepthStencilState, Device, Face, FilterMode, FragmentState,
-    FrontFace, MultisampleState, PipelineLayoutDescriptor, PolygonMode, PrimitiveState,
-    PrimitiveTopology, RenderPipeline, RenderPipelineDescriptor, Sampler, SamplerBindingType,
-    SamplerDescriptor, ShaderModuleDescriptor, ShaderSource, ShaderStages, StencilState,
-    TextureFormat, TextureSampleType, TextureViewDimension, VertexState,
+    BlendState, BufferBindingType, ColorTargetState, ColorWrites, CompareFunction, DepthBiasState,
+    DepthStencilState, Device, Face, FilterMode, FragmentState, FrontFace, MultisampleState,
+    PipelineLayoutDescriptor, PolygonMode, PrimitiveState, PrimitiveTopology, RenderPipeline,
+    RenderPipelineDescriptor, Sampler, SamplerBindingType, SamplerDescriptor,
+    ShaderModuleDescriptor, ShaderSource, ShaderStages, StencilState, TextureFormat,
+    TextureSampleType, TextureViewDimension, VertexState,
 };
 
 use crate::depth_stencil::DEPTH_TEXTURE_FORMAT;
@@ -186,16 +185,30 @@ impl ForwardPipeline {
         let lights_bind_group_layout =
             device.create_bind_group_layout(&BindGroupLayoutDescriptor {
                 label: Some("lights_bind_group_layout"),
-                entries: &[BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: ShaderStages::FRAGMENT,
-                    ty: BindingType::Buffer {
-                        ty: BufferBindingType::Storage { read_only: true },
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
+                entries: &[
+                    // DIRECTIONAL LIGHTS
+                    BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: ShaderStages::FRAGMENT,
+                        ty: BindingType::Buffer {
+                            ty: BufferBindingType::Storage { read_only: true },
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
                     },
-                    count: None,
-                }],
+                    // POINT LIGHTS
+                    BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: ShaderStages::FRAGMENT,
+                        ty: BindingType::Buffer {
+                            ty: BufferBindingType::Storage { read_only: true },
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                ],
             });
 
         let pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
