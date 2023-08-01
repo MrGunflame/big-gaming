@@ -29,3 +29,18 @@ pub struct PointLightBundle {
     #[bundle]
     pub transform: TransformBundle,
 }
+
+#[derive(Copy, Clone, Debug, Component)]
+pub struct SpotLight {
+    pub color: Color,
+    /// Inner cutoff angle
+    pub inner_cutoff: f32,
+    pub outer_cutoff: f32,
+}
+
+#[derive(Clone, Debug, Bundle)]
+pub struct SpotLightBundle {
+    pub light: SpotLight,
+    #[bundle]
+    pub transform: TransformBundle,
+}

@@ -125,8 +125,10 @@ impl Plugin for RenderPlugin {
 
             app.insert_resource(light::pipeline::DirectionalLightCache::default());
             app.insert_resource(light::pipeline::PointLightCache::default());
+            app.insert_resource(light::pipeline::SpotLightCache::default());
             app.add_system(light::pipeline::update_directional_lights);
             app.add_system(light::pipeline::update_point_lights);
+            app.add_system(light::pipeline::update_spot_lights);
         }
 
         // PBR

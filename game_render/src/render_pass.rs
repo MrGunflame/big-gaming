@@ -14,7 +14,7 @@ use crate::camera::{CameraBuffer, Cameras};
 use crate::depth_stencil::DepthTextures;
 use crate::forward::ForwardPipeline;
 use crate::graph::{Node, RenderContext};
-use crate::light::pipeline::{DirectionalLightUniform, PointLightUniform};
+use crate::light::pipeline::{DirectionalLightUniform, PointLightUniform, SpotLightUniform};
 use crate::RenderDevice;
 
 #[derive(Resource)]
@@ -22,6 +22,7 @@ pub struct RenderNodes {
     pub entities: HashMap<Entity, RenderNode>,
     pub directional_lights: Buffer,
     pub point_lights: Buffer,
+    pub spot_lights: Buffer,
 }
 
 impl FromWorld for RenderNodes {
@@ -42,10 +43,18 @@ impl FromWorld for RenderNodes {
             usage: BufferUsages::STORAGE,
         });
 
+        let buffer = DynamicBuffer::<SpotLightUniform>::new();
+        let spot_lights = device.create_buffer_init(&BufferInitDescriptor {
+            label: None,
+            contents: buffer.as_bytes(),
+            usage: BufferUsages::STORAGE,
+        });
+
         Self {
             entities: HashMap::default(),
             directional_lights,
             point_lights,
+            spot_lights,
         }
     }
 }
@@ -132,6 +141,10 @@ impl RenderPass {
                 BindGroupEntry {
                     binding: 1,
                     resource: nodes.point_lights.as_entire_binding(),
+                },
+                BindGroupEntry {
+                    binding: 2,
+                    resource: nodes.spot_lights.as_entire_binding(),
                 },
             ],
         });

@@ -12,7 +12,7 @@ use crate::buffer::{DynamicBuffer, GpuBuffer};
 use crate::render_pass::RenderNodes;
 use crate::RenderDevice;
 
-use super::{DirectionalLight, PointLight};
+use super::{DirectionalLight, PointLight, SpotLight};
 
 #[derive(Copy, Clone, Debug, PartialEq, Zeroable, Pod)]
 #[repr(C)]
@@ -38,6 +38,25 @@ pub(crate) struct PointLightUniform {
 }
 
 impl GpuBuffer for PointLightUniform {
+    const SIZE: usize = std::mem::size_of::<Self>();
+    const ALIGN: usize = 16;
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Zeroable, Pod)]
+#[repr(C)]
+pub struct SpotLightUniform {
+    pub position: [f32; 3],
+    pub _pad0: u32,
+    pub direction: [f32; 3],
+    pub _pad1: u32,
+    pub color: [f32; 3],
+    pub _pad2: u32,
+    pub inner_cutoff: f32,
+    pub outer_cutoff: f32,
+    pub _pad3: [u32; 2],
+}
+
+impl GpuBuffer for SpotLightUniform {
     const SIZE: usize = std::mem::size_of::<Self>();
     const ALIGN: usize = 16;
 }
@@ -134,4 +153,57 @@ pub fn update_point_lights(
     });
 
     render_nodes.point_lights = buffer;
+}
+
+#[derive(Clone, Debug, Default, Resource)]
+pub struct SpotLightCache {
+    entities: HashMap<Entity, SpotLightUniform>,
+}
+
+pub fn update_spot_lights(
+    device: Res<RenderDevice>,
+    mut cache: ResMut<SpotLightCache>,
+    entities: Query<(Entity, &SpotLight, &GlobalTransform)>,
+    mut render_nodes: ResMut<RenderNodes>,
+) {
+    let mut changed = false;
+
+    for (entity, light, transform) in &entities {
+        let direction = transform.0.rotation * -Vec3::Z;
+
+        let uniform = SpotLightUniform {
+            position: transform.0.translation.to_array(),
+            direction: direction.to_array(),
+            inner_cutoff: light.inner_cutoff,
+            outer_cutoff: light.outer_cutoff,
+            color: light.color.as_rgb(),
+            _pad0: 0,
+            _pad1: 0,
+            _pad2: 0,
+            _pad3: [0; 2],
+        };
+
+        if let Some(light) = cache.entities.get(&entity) {
+            if *light == uniform {
+                continue;
+            }
+        }
+
+        cache.entities.insert(entity, uniform);
+        changed = true;
+    }
+
+    if !changed {
+        return;
+    }
+
+    let lights: DynamicBuffer<SpotLightUniform> = cache.entities.values().copied().collect();
+
+    let buffer = device.create_buffer_init(&BufferInitDescriptor {
+        label: Some("spot_light_buffer"),
+        contents: lights.as_bytes(),
+        usage: BufferUsages::STORAGE,
+    });
+
+    render_nodes.spot_lights = buffer;
 }

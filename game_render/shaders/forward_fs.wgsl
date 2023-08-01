@@ -27,6 +27,8 @@ var linear_sampler: sampler;
 var<storage> directional_lights: DirectionalLights;
 @group(3) @binding(1)
 var<storage> point_lights: PointLights;
+@group(3) @binding(2)
+var<storage> spot_lights: SpotLights;
 
 struct FragInput {
     @builtin(position) clip_position: vec4<f32>,
@@ -45,7 +47,11 @@ fn fs_main(in: FragInput) -> @location(0) vec4<f32> {
     }
 
     for (var i: u32 = 0u; i < point_lights.count; i++) {
-        light_strength += compute_point_lights(in, point_lights.lights[i]);
+        light_strength += compute_point_light(in, point_lights.lights[i]);
+    }
+
+    for (var i: u32 = 0u; i < spot_lights.count; i++) {
+        light_strength += compute_spot_light(in, spot_lights.lights[i]);
     }
 
     color.r *= light_strength.r;
@@ -69,7 +75,7 @@ fn compute_directional_light(in: FragInput, light: DirectionalLight) -> vec3<f32
     return ambient + diffuse + specular;
 }
 
-fn compute_point_lights(in: FragInput, light: PointLight) -> vec3<f32> {
+fn compute_point_light(in: FragInput, light: PointLight) -> vec3<f32> {
     let distance = length(light.position - in.world_position);
     let attenuation = 1.0 / (0.1 * distance);
 
@@ -81,10 +87,33 @@ fn compute_point_lights(in: FragInput, light: PointLight) -> vec3<f32> {
 
     let view_dir = normalize(camera.position - in.world_position);
     let half_dir = normalize(view_dir + light_dir);
-
     let specular = pow(max(dot(in.world_normal, half_dir), 0.0), 32.0);
 
-    return ambient + diffuse + specular;
+    return (ambient + diffuse + specular) * attenuation;
+}
+
+fn compute_spot_light(in: FragInput, light: SpotLight) -> vec3<f32> {
+    let distance = length(light.position - in.world_position);
+    let attenuation = 1.0 / (0.1 * distance);
+
+    let light_dir = normalize(light.position - in.world_position);
+
+    let ambient = light.color * 0.05;
+
+    var diffuse = max(dot(in.world_normal, light_dir), 0.0);
+
+    let view_dir = normalize(camera.position - in.world_position);
+    let half_dir = normalize(view_dir + light_dir);
+    var specular = pow(max(dot(in.world_normal, half_dir), 0.0), 32.0);
+
+    // Falloff
+    let theta = dot(light_dir, normalize(light.direction));
+    let epsilon = light.inner_cutoff - light.outer_cutoff;
+    let intensity = clamp((theta - light.outer_cutoff) / epsilon, 0.0, 1.0);
+    diffuse *= intensity;
+    specular *= intensity;
+
+    return (ambient + diffuse + specular) * attenuation;
 }
 
 struct DirectionalLights {
@@ -105,4 +134,17 @@ struct PointLights {
 struct PointLight {
     position: vec3<f32>,
     color: vec3<f32>,
+}
+
+struct SpotLights {
+    count: u32,
+    lights: array<SpotLight>,
+}
+
+struct SpotLight {
+    position: vec3<f32>,
+    direction: vec3<f32>,
+    color: vec3<f32>,
+    inner_cutoff: f32,
+    outer_cutoff: f32,
 }
