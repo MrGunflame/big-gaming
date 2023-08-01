@@ -63,7 +63,7 @@ fn fs_main(in: FragInput) -> @location(0) vec4<f32> {
 fn compute_directional_light(in: FragInput, light: DirectionalLight) -> vec3<f32> {
     let light_dir = normalize(-light.direction);
 
-    let ambient = light.color * 0.05;
+    let ambient = 0.05;
 
     let diffuse = max(dot(in.world_normal, light_dir), 0.0);
 
@@ -72,7 +72,7 @@ fn compute_directional_light(in: FragInput, light: DirectionalLight) -> vec3<f32
 
     let specular = pow(max(dot(in.world_normal, half_dir), 0.0), 32.0);
 
-    return ambient + diffuse + specular;
+    return (ambient + diffuse + specular) * light.color;
 }
 
 fn compute_point_light(in: FragInput, light: PointLight) -> vec3<f32> {
@@ -81,7 +81,7 @@ fn compute_point_light(in: FragInput, light: PointLight) -> vec3<f32> {
 
     let light_dir = normalize(light.position - in.world_position);
 
-    let ambient = light.color * 0.05;
+    let ambient = 0.05;
 
     let diffuse = max(dot(in.world_normal, light_dir), 0.0);
 
@@ -89,7 +89,7 @@ fn compute_point_light(in: FragInput, light: PointLight) -> vec3<f32> {
     let half_dir = normalize(view_dir + light_dir);
     let specular = pow(max(dot(in.world_normal, half_dir), 0.0), 32.0);
 
-    return (ambient + diffuse + specular) * attenuation;
+    return ((ambient + diffuse + specular) * attenuation) * light.color;
 }
 
 fn compute_spot_light(in: FragInput, light: SpotLight) -> vec3<f32> {
@@ -98,7 +98,7 @@ fn compute_spot_light(in: FragInput, light: SpotLight) -> vec3<f32> {
 
     let light_dir = normalize(light.position - in.world_position);
 
-    let ambient = light.color * 0.05;
+    let ambient = 0.05;
 
     var diffuse = max(dot(in.world_normal, light_dir), 0.0);
 
@@ -118,7 +118,7 @@ fn compute_spot_light(in: FragInput, light: SpotLight) -> vec3<f32> {
     diffuse *= intensity;
     specular *= intensity;
 
-    return (ambient + diffuse + specular) * attenuation;
+    return ((ambient + diffuse + specular) * attenuation) * light.color;
 }
 
 struct DirectionalLights {
