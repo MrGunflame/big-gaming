@@ -51,7 +51,7 @@ fn fs_main(in: FragInput) -> @location(0) vec4<f32> {
     }
 
     for (var i: u32 = 0u; i < spot_lights.count; i++) {
-        light_strength += compute_spot_light(in, spot_lights.lights[i]);
+        light_strength = compute_spot_light(in, spot_lights.lights[i]);
     }
 
     color.r *= light_strength.r;
@@ -107,13 +107,20 @@ fn compute_spot_light(in: FragInput, light: SpotLight) -> vec3<f32> {
     var specular = pow(max(dot(in.world_normal, half_dir), 0.0), 32.0);
 
     // Falloff
-    let theta = dot(light_dir, normalize(light.direction));
-    let epsilon = light.inner_cutoff - light.outer_cutoff;
-    let intensity = clamp((theta - light.outer_cutoff) / epsilon, 0.0, 1.0);
+    // TODO: cosine can be precomputed on CPU side.
+    //let cos_outer = cos(light.outer_cutoff);
+    //let cos_inner = cos(light.inner_cutoff);
+    let cos_inner = cos(radians(45.0));
+    let cos_outer = cos(radians(50.0));
+
+    let theta = dot(light_dir, -light.direction);
+
+    let epsilon = cos_inner - cos_outer;
+    let intensity = clamp((theta - cos_outer) / epsilon, 0.0, 1.0);
     diffuse *= intensity;
     specular *= intensity;
 
-    return (ambient + diffuse + specular) * attenuation;
+    return (ambient + diffuse ) * attenuation + ambient;
 }
 
 struct DirectionalLights {
