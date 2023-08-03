@@ -34,7 +34,9 @@ pub(crate) struct PointLightUniform {
     pub position: [f32; 3],
     pub _pad0: u32,
     pub color: [f32; 3],
-    pub _pad1: u32,
+    pub intensity: f32,
+    pub radius: f32,
+    pub _pad1: [u32; 3],
 }
 
 impl GpuBuffer for PointLightUniform {
@@ -125,8 +127,10 @@ pub fn update_point_lights(
         let uniform = PointLightUniform {
             position: transform.0.translation.to_array(),
             color: light.color.as_rgb(),
+            intensity: light.intensity,
+            radius: light.radius,
             _pad0: 0,
-            _pad1: 0,
+            _pad1: [0; 3],
         };
 
         if let Some(light) = cache.entities.get(&entity) {

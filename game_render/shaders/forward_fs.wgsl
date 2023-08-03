@@ -59,6 +59,8 @@ fn fs_main(in: FragInput) -> @location(0) vec4<f32> {
     color.g *= light_strength.g;
     color.b *= light_strength.b;
     return color;
+
+    //return vec4(light_strength, 1.0);
 }
 
 fn compute_directional_light(in: FragInput, light: DirectionalLight) -> vec3<f32> {
@@ -82,11 +84,13 @@ fn compute_point_light(in: FragInput, light: PointLight) -> vec3<f32> {
     let normal = get_normal(in);
 
     let distance = length(light.position - in.world_position);
-    let attenuation = 1.0 / (0.1 * distance);
+    let pos_to_light = light.position - in.world_position;
+
+    let attenuation = get_distance_attenuation(dot(pos_to_light, pos_to_light), (1.0 / light.radius) * (1.0 / light.radius));
 
     let light_dir = normalize(light.position - in.world_position);
 
-    let ambient = 0.05;
+    let ambient = 0.00;
 
     let diffuse = max(dot(normal, light_dir), 0.0);
 
@@ -94,7 +98,7 @@ fn compute_point_light(in: FragInput, light: PointLight) -> vec3<f32> {
     let half_dir = normalize(view_dir + light_dir);
     let specular = pow(max(dot(normal, half_dir), 0.0), 32.0);
 
-    return ((ambient + diffuse + specular) * attenuation) * light.color;
+    return ((ambient + diffuse + specular) * light.intensity * attenuation) * light.color;
 }
 
 fn compute_spot_light(in: FragInput, light: SpotLight) -> vec3<f32> {
@@ -146,6 +150,8 @@ struct PointLights {
 struct PointLight {
     position: vec3<f32>,
     color: vec3<f32>,
+    intensity: f32,
+    radius: f32,
 }
 
 struct SpotLights {
@@ -172,4 +178,11 @@ fn get_normal(in: FragInput) -> vec3<f32> {
     normal = normalize(tbn * normal);
 
     return normal;
+}
+
+fn get_distance_attenuation(distance_square: f32, inv_range_squared: f32) -> f32 {
+    let factor = distance_square * inv_range_squared;
+    let smooth_factor = saturate(1.0 - factor * factor);
+    let attenuation = smooth_factor * smooth_factor;
+    return attenuation / max(distance_square, 0.0001);
 }

@@ -460,8 +460,10 @@ pub fn prepare_point_lights(
         let uniform = PointLightUniform {
             color: light.color.as_rgb(),
             position: transform.0.translation.to_array(),
+            intensity: 0.,
             _pad0: 0,
-            _pad1: 0,
+            radius: 0.,
+            _pad1: [0; 3],
         };
 
         let buffer = device.0.create_buffer_init(&BufferInitDescriptor {

@@ -21,6 +21,8 @@ pub struct DirectionalLightBundle {
 #[derive(Copy, Clone, Debug, Component)]
 pub struct PointLight {
     pub color: Color,
+    pub intensity: f32,
+    pub radius: f32,
 }
 
 #[derive(Clone, Debug, Bundle)]
