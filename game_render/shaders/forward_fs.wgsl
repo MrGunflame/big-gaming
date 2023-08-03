@@ -35,6 +35,7 @@ struct FragInput {
     @location(0) world_position: vec3<f32>,
     @location(1) world_normal: vec3<f32>,
     @location(2) uv: vec2<f32>,
+    @location(3) world_tangent: vec4<f32>,
 }
 
 @fragment
@@ -61,21 +62,25 @@ fn fs_main(in: FragInput) -> @location(0) vec4<f32> {
 }
 
 fn compute_directional_light(in: FragInput, light: DirectionalLight) -> vec3<f32> {
+    let normal = get_normal(in);
+
     let light_dir = normalize(-light.direction);
 
     let ambient = 0.05;
 
-    let diffuse = max(dot(in.world_normal, light_dir), 0.0);
+    let diffuse = max(dot(normal, light_dir), 0.0);
 
     let view_dir = normalize(camera.position - in.world_position);
     let half_dir = normalize(view_dir + light_dir);
 
-    let specular = pow(max(dot(in.world_normal, half_dir), 0.0), 32.0);
+    let specular = pow(max(dot(normal, half_dir), 0.0), 32.0);
 
     return (ambient + diffuse + specular) * light.color;
 }
 
 fn compute_point_light(in: FragInput, light: PointLight) -> vec3<f32> {
+    let normal = get_normal(in);
+
     let distance = length(light.position - in.world_position);
     let attenuation = 1.0 / (0.1 * distance);
 
@@ -83,16 +88,18 @@ fn compute_point_light(in: FragInput, light: PointLight) -> vec3<f32> {
 
     let ambient = 0.05;
 
-    let diffuse = max(dot(in.world_normal, light_dir), 0.0);
+    let diffuse = max(dot(normal, light_dir), 0.0);
 
     let view_dir = normalize(camera.position - in.world_position);
     let half_dir = normalize(view_dir + light_dir);
-    let specular = pow(max(dot(in.world_normal, half_dir), 0.0), 32.0);
+    let specular = pow(max(dot(normal, half_dir), 0.0), 32.0);
 
     return ((ambient + diffuse + specular) * attenuation) * light.color;
 }
 
 fn compute_spot_light(in: FragInput, light: SpotLight) -> vec3<f32> {
+    let normal = get_normal(in);
+
     let distance = length(light.position - in.world_position);
     let attenuation = 1.0 / (0.1 * distance);
 
@@ -100,11 +107,11 @@ fn compute_spot_light(in: FragInput, light: SpotLight) -> vec3<f32> {
 
     let ambient = 0.05;
 
-    var diffuse = max(dot(in.world_normal, light_dir), 0.0);
+    var diffuse = max(dot(normal, light_dir), 0.0);
 
     let view_dir = normalize(camera.position - in.world_position);
     let half_dir = normalize(view_dir + light_dir);
-    var specular = pow(max(dot(in.world_normal, half_dir), 0.0), 32.0);
+    var specular = pow(max(dot(normal, half_dir), 0.0), 32.0);
 
     // Falloff
     // TODO: cosine can be precomputed on CPU side.
@@ -152,4 +159,17 @@ struct SpotLight {
     color: vec3<f32>,
     inner_cutoff: f32,
     outer_cutoff: f32,
+}
+
+fn get_normal(in: FragInput) -> vec3<f32> {
+    let normal_norm = normalize(in.world_normal);
+    let tangent_norm = normalize(in.world_tangent.xyz);
+    let bitangent = cross(normal_norm, tangent_norm) * in.world_tangent.w;
+    let tbn = mat3x3(tangent_norm, bitangent, normal_norm);
+
+    var normal = textureSample(normal_texture, linear_sampler, in.uv).rgb;
+    normal = normalize(normal * 2.0 - 1.0);
+    normal = normalize(tbn * normal);
+
+    return normal;
 }

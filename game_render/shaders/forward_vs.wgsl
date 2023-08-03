@@ -33,6 +33,7 @@ struct VertexOutput {
     @location(0) world_position: vec3<f32>,
     @location(1) world_normal: vec3<f32>,
     @location(2) uv: vec2<f32>,
+    @location(3) world_tangent: vec4<f32>,
 }
 
 @vertex
@@ -42,12 +43,14 @@ fn vs_main(in: VertexInput) -> VertexOutput {
     let position = fetch_position(in.vertex_index);
     let normal = fetch_normal(in.vertex_index);
     let uv = fetch_uv(in.vertex_index);
+    let tangent = fetch_tangent(in.vertex_index);
 
     out.clip_position = camera.view_proj * model.transform * vec4<f32>(position, 1.0);
     out.uv = uv;
 
     out.world_position = (model.transform * vec4<f32>(position, 1.0)).xyz;
     out.world_normal = model.normal * normal;
+    out.world_tangent = vec4((model.normal * tangent.xyz), tangent.w);
 
     return out;
 }
