@@ -84,6 +84,7 @@ pub fn update_material_bind_groups(
     mut render_nodes: ResMut<RenderNodes>,
     default_textures: Res<DefaultTextures>,
     images: Res<Images>,
+    mut mipmap_generator: ResMut<MipMapGenerator>,
 ) {
     for (entity, handle) in &nodes {
         let Some(material) = materials.get(handle.id()) else {
@@ -109,6 +110,7 @@ pub fn update_material_bind_groups(
             &images,
             &device,
             &queue,
+            &mut mipmap_generator,
         );
 
         let normal_texture = create_material_texture(
@@ -119,6 +121,7 @@ pub fn update_material_bind_groups(
             &images,
             &device,
             &queue,
+            &mut mipmap_generator,
         );
 
         let metallic_roughness_texture = create_material_texture(
@@ -129,6 +132,7 @@ pub fn update_material_bind_groups(
             &images,
             &device,
             &queue,
+            &mut mipmap_generator,
         );
 
         let material_bind_group = device.create_bind_group(&BindGroupDescriptor {
@@ -168,8 +172,8 @@ fn create_material_texture(
     images: &Images,
     device: &Device,
     queue: &Queue,
+    mipmap_generator: &mut MipMapGenerator,
 ) -> TextureView {
-    let mut gen = MipMapGenerator::new(device);
     let mut encoder = device.create_command_encoder(&CommandEncoderDescriptor { label: None });
 
     let data = images.get(handle).unwrap();
@@ -178,17 +182,6 @@ fn create_material_texture(
         width: data.width(),
         height: data.height(),
         depth_or_array_layers: 1,
-    };
-
-    let texture_descriptor = TextureDescriptor {
-        label: None,
-        size,
-        mip_level_count: 1,
-        sample_count: 1,
-        dimension: TextureDimension::D2,
-        format: data.format(),
-        usage: TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST,
-        view_formats: &[],
     };
 
     let texture = device.create_texture(&TextureDescriptor {
@@ -221,7 +214,7 @@ fn create_material_texture(
         size,
     );
 
-    gen.generate_mipmaps(device, &mut encoder, &texture, &texture_descriptor);
+    mipmap_generator.generate_mipmaps(device, &mut encoder, &texture);
 
     queue.submit(std::iter::once(encoder.finish()));
 

@@ -159,6 +159,11 @@ impl Plugin for RenderPlugin {
             );
         }
 
+        // Mipmap
+        {
+            app.init_resource::<mipmap::MipMapGenerator>();
+        }
+
         // app.init_resource::<pipeline::MeshPipeline>();
         // app.init_resource::<pipeline::MaterialPipeline>();
         // app.init_resource::<LightingPipeline>();
