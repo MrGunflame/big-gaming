@@ -1,7 +1,7 @@
 use bevy_ecs::prelude::Entity;
 use bevy_ecs::system::Resource;
 use bevy_ecs::world::World;
-use wgpu::{CommandEncoder, TextureView};
+use wgpu::{CommandEncoder, TextureFormat, TextureView};
 
 #[derive(Default, Resource)]
 pub struct RenderGraph {
@@ -26,4 +26,5 @@ pub struct RenderContext<'a> {
     pub target: &'a TextureView,
     pub width: u32,
     pub height: u32,
+    pub format: TextureFormat,
 }

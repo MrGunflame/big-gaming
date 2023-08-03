@@ -207,6 +207,7 @@ pub fn render_to_surfaces(world: &mut World) {
                 target: &target,
                 width: output.texture.width(),
                 height: output.texture.height(),
+                format: surface.config.format,
             };
 
             for node in &render_graph.nodes {

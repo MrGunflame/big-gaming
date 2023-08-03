@@ -245,7 +245,7 @@ impl ForwardPipeline {
                 module: &fs_shader,
                 entry_point: "fs_main",
                 targets: &[Some(ColorTargetState {
-                    format: TextureFormat::Bgra8Unorm,
+                    format: TextureFormat::Rgba16Float,
                     blend: Some(BlendState::ALPHA_BLENDING),
                     write_mask: ColorWrites::ALL,
                 })],

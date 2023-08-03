@@ -5,8 +5,9 @@ use bevy_ecs::system::Resource;
 use bevy_ecs::world::{FromWorld, World};
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
 use wgpu::{
-    BindGroup, BindGroupDescriptor, BindGroupEntry, Buffer, BufferUsages, Color, LoadOp,
+    BindGroup, BindGroupDescriptor, BindGroupEntry, Buffer, BufferUsages, Color, Extent3d, LoadOp,
     Operations, RenderPassColorAttachment, RenderPassDepthStencilAttachment, RenderPassDescriptor,
+    TextureDescriptor, TextureDimension, TextureFormat, TextureUsages, TextureViewDescriptor,
 };
 
 use crate::buffer::{DynamicBuffer, IndexBuffer};
@@ -15,6 +16,7 @@ use crate::depth_stencil::DepthTextures;
 use crate::forward::ForwardPipeline;
 use crate::graph::{Node, RenderContext};
 use crate::light::pipeline::{DirectionalLightUniform, PointLightUniform, SpotLightUniform};
+use crate::post_process::PostProcessPipeline;
 use crate::RenderDevice;
 
 #[derive(Resource)]
@@ -149,10 +151,27 @@ impl RenderPass {
             ],
         });
 
+        let size = Extent3d {
+            width: ctx.width,
+            height: ctx.height,
+            depth_or_array_layers: 1,
+        };
+        let render_target = device.create_texture(&TextureDescriptor {
+            label: None,
+            size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: TextureDimension::D2,
+            format: TextureFormat::Rgba16Float,
+            usage: TextureUsages::TEXTURE_BINDING | TextureUsages::RENDER_ATTACHMENT,
+            view_formats: &[],
+        });
+        let target_view = render_target.create_view(&TextureViewDescriptor::default());
+
         let mut render_pass = ctx.encoder.begin_render_pass(&RenderPassDescriptor {
             label: Some("render_pass"),
             color_attachments: &[Some(RenderPassColorAttachment {
-                view: &ctx.target,
+                view: &target_view,
                 resolve_target: None,
                 ops: Operations {
                     load: LoadOp::Clear(Color::BLACK),
@@ -189,5 +208,16 @@ impl RenderPass {
             );
             render_pass.draw_indexed(0..node.indices.as_ref().unwrap().len, 0, 0..1);
         }
+
+        drop(render_pass);
+
+        let pl = world.resource::<PostProcessPipeline>();
+        pl.render(
+            &mut ctx.encoder,
+            &target_view,
+            &ctx.target,
+            device,
+            ctx.format,
+        );
     }
 }

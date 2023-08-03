@@ -132,6 +132,11 @@ impl Plugin for RenderPlugin {
             app.add_system(light::pipeline::update_spot_lights);
         }
 
+        // Post Process Pipeline
+        {
+            app.init_resource::<PostProcessPipeline>();
+        }
+
         // PBR
         {
             app.init_resource::<RenderNodes>();

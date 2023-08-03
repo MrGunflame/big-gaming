@@ -1,11 +1,5 @@
-@group(0) @binding(0)
-var g_texture: texture_2d<f32>;
-@group(0) @binding(1)
-var g_sampler: sampler;
-
 struct VertexInput {
-    @location(0) position: vec2<f32>,
-    @location(1) uv: vec2<f32>,
+    @builtin(vertex_index) vertex_index: u32,
 }
 
 struct VertexOutput {
@@ -17,15 +11,25 @@ struct VertexOutput {
 fn vs_main(in: VertexInput) -> VertexOutput {
     var out: VertexOutput;
 
-    out.clip_position = vec4(in.position.x, in.position.y, 0.0, 1.0);
-    out.uv = in.uv;
+    let x = i32(in.vertex_index) / 2;
+    let y = i32(in.vertex_index) & 1;
+
+    let uv = vec2<f32>(f32(x) * 2.0, f32(y) * 2.0);
+
+    out.clip_position = vec4<f32>(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0, 0.0, 1.0);
+    out.uv = uv;
 
     return out;
 }
 
+@group(0) @binding(0)
+var t_texture: texture_2d<f32>;
+@group(0) @binding(1)
+var t_sampler: sampler;
+
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    var color = textureSample(g_texture, g_sampler, in.uv).rgb;
+    var color = textureSample(t_texture, t_sampler, in.uv).rgb;
 
     color = tonemap(color);
     color = gamma_correct(color);
