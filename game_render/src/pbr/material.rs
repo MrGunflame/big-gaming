@@ -169,7 +169,7 @@ fn create_material_texture(
     device: &Device,
     queue: &Queue,
 ) -> TextureView {
-    let gen = MipMapGenerator::new(device);
+    let mut gen = MipMapGenerator::new(device);
     let mut encoder = device.create_command_encoder(&CommandEncoderDescriptor { label: None });
 
     let data = images.get(handle).unwrap();

@@ -1,12 +1,14 @@
+use std::collections::HashMap;
+
 use wgpu::{
     AddressMode, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
     BindGroupLayoutEntry, BindingResource, BindingType, Color, ColorTargetState, ColorWrites,
     CommandEncoder, Device, FilterMode, FragmentState, FrontFace, LoadOp, MultisampleState,
-    Operations, PipelineLayoutDescriptor, PolygonMode, PrimitiveState, PrimitiveTopology,
-    RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline, RenderPipelineDescriptor,
-    Sampler, SamplerBindingType, SamplerDescriptor, ShaderModuleDescriptor, ShaderSource,
-    ShaderStages, Texture, TextureDescriptor, TextureFormat, TextureSampleType,
-    TextureViewDescriptor, TextureViewDimension, VertexState,
+    Operations, PipelineLayout, PipelineLayoutDescriptor, PolygonMode, PrimitiveState,
+    PrimitiveTopology, RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline,
+    RenderPipelineDescriptor, Sampler, SamplerBindingType, SamplerDescriptor, ShaderModule,
+    ShaderModuleDescriptor, ShaderSource, ShaderStages, Texture, TextureDescriptor, TextureFormat,
+    TextureSampleType, TextureViewDescriptor, TextureViewDimension, VertexState,
 };
 
 #[derive(Debug)]
@@ -14,7 +16,9 @@ pub struct MipMapGenerator {
     // FIXME: Maybe split texture bind group from sampler.
     bind_group_layout: BindGroupLayout,
     sampler: Sampler,
-    pipeline: RenderPipeline,
+    pipeline_layout: PipelineLayout,
+    pipelines: HashMap<TextureFormat, RenderPipeline>,
+    shader: ShaderModule,
 }
 
 impl MipMapGenerator {
@@ -101,17 +105,27 @@ impl MipMapGenerator {
         Self {
             bind_group_layout,
             sampler,
-            pipeline,
+            pipeline_layout,
+            shader,
+            pipelines: HashMap::new(),
         }
     }
 
     pub fn generate_mipmaps(
-        &self,
+        &mut self,
         device: &Device,
         encoder: &mut CommandEncoder,
         texture: &Texture,
         desc: &TextureDescriptor,
     ) {
+        let pipeline = match self.pipelines.get(&texture.format()) {
+            Some(pl) => pl,
+            None => {
+                self.build_pipeline(device, texture.format());
+                self.pipelines.get(&texture.format()).unwrap()
+            }
+        };
+
         let mut mips = Vec::new();
         for mip_level in 0..desc.size.max_mips(desc.dimension) {
             let mip = texture.create_view(&TextureViewDescriptor {
@@ -156,9 +170,44 @@ impl MipMapGenerator {
                 depth_stencil_attachment: None,
             });
 
-            render_pass.set_pipeline(&self.pipeline);
+            render_pass.set_pipeline(&pipeline);
             render_pass.set_bind_group(0, &bind_group, &[]);
             render_pass.draw(0..3, 0..1);
         }
+    }
+
+    fn build_pipeline(&mut self, device: &Device, format: TextureFormat) {
+        let pipeline = device.create_render_pipeline(&RenderPipelineDescriptor {
+            label: None,
+            layout: Some(&self.pipeline_layout),
+            vertex: VertexState {
+                module: &self.shader,
+                entry_point: "vs_main",
+                buffers: &[],
+            },
+            fragment: Some(FragmentState {
+                module: &self.shader,
+                entry_point: "fs_main",
+                targets: &[Some(ColorTargetState {
+                    format,
+                    blend: None,
+                    write_mask: ColorWrites::ALL,
+                })],
+            }),
+            primitive: PrimitiveState {
+                topology: PrimitiveTopology::TriangleList,
+                strip_index_format: None,
+                front_face: FrontFace::Ccw,
+                cull_mode: None,
+                polygon_mode: PolygonMode::Fill,
+                unclipped_depth: false,
+                conservative: false,
+            },
+            depth_stencil: None,
+            multisample: MultisampleState::default(),
+            multiview: None,
+        });
+
+        self.pipelines.insert(format, pipeline);
     }
 }
