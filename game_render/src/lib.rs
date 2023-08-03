@@ -10,6 +10,7 @@ pub mod graph;
 pub mod light;
 pub mod material;
 pub mod mesh;
+pub mod mipmap;
 pub mod pbr;
 pub mod pipeline;
 pub mod render_pass;

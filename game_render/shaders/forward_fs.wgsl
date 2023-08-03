@@ -51,7 +51,7 @@ fn fs_main(in: FragInput) -> @location(0) vec4<f32> {
     }
 
     for (var i: u32 = 0u; i < spot_lights.count; i++) {
-        light_strength = compute_spot_light(in, spot_lights.lights[i]);
+        light_strength += compute_spot_light(in, spot_lights.lights[i]);
     }
 
     color.r *= light_strength.r;
