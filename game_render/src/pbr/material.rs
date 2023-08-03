@@ -8,12 +8,14 @@ use game_asset::{Assets, Handle};
 use glam::UVec2;
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
 use wgpu::{
-    BindGroupDescriptor, BindGroupEntry, BindingResource, BufferUsages, Device, Extent3d,
-    ImageCopyTexture, ImageDataLayout, Origin3d, Queue, TextureAspect, TextureDescriptor,
-    TextureDimension, TextureFormat, TextureUsages, TextureView, TextureViewDescriptor,
+    BindGroupDescriptor, BindGroupEntry, BindingResource, BufferUsages, CommandEncoderDescriptor,
+    Device, Extent3d, ImageCopyTexture, ImageDataLayout, Origin3d, Queue, TextureAspect,
+    TextureDescriptor, TextureDimension, TextureFormat, TextureUsages, TextureView,
+    TextureViewDescriptor,
 };
 
 use crate::forward::ForwardPipeline;
+use crate::mipmap::MipMapGenerator;
 use crate::render_pass::RenderNodes;
 use crate::texture::{Image, ImageHandle, Images};
 use crate::{RenderDevice, RenderQueue};
@@ -167,6 +169,9 @@ fn create_material_texture(
     device: &Device,
     queue: &Queue,
 ) -> TextureView {
+    let gen = MipMapGenerator::new(device);
+    let mut encoder = device.create_command_encoder(&CommandEncoderDescriptor { label: None });
+
     let data = images.get(handle).unwrap();
 
     let size = Extent3d {
@@ -175,7 +180,7 @@ fn create_material_texture(
         depth_or_array_layers: 1,
     };
 
-    let texture = device.create_texture(&TextureDescriptor {
+    let texture_descriptor = TextureDescriptor {
         label: None,
         size,
         mip_level_count: 1,
@@ -183,6 +188,19 @@ fn create_material_texture(
         dimension: TextureDimension::D2,
         format: data.format(),
         usage: TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST,
+        view_formats: &[],
+    };
+
+    let texture = device.create_texture(&TextureDescriptor {
+        label: None,
+        size,
+        mip_level_count: size.max_mips(TextureDimension::D2),
+        sample_count: 1,
+        dimension: TextureDimension::D2,
+        format: data.format(),
+        usage: TextureUsages::TEXTURE_BINDING
+            | TextureUsages::COPY_DST
+            | TextureUsages::RENDER_ATTACHMENT,
         view_formats: &[],
     });
 
@@ -202,6 +220,10 @@ fn create_material_texture(
         },
         size,
     );
+
+    gen.generate_mipmaps(device, &mut encoder, &texture, &texture_descriptor);
+
+    queue.submit(std::iter::once(encoder.finish()));
 
     texture.create_view(&TextureViewDescriptor::default())
 }
