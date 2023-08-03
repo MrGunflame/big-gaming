@@ -135,7 +135,7 @@ impl Plugin for ImagePlugin {
 pub struct Images {
     next_id: u64,
     images: HashMap<u64, Entry>,
-    load_queue: VecDeque<(u64, LoadImage)>,
+    load_queue: VecDeque<(u64, LoadImage, TextureFormat)>,
     events: Arc<Mutex<VecDeque<Event>>>,
 }
 
@@ -178,8 +178,15 @@ impl Images {
     where
         S: Into<LoadImage>,
     {
+        self.load_with_format(source, TextureFormat::Rgba8UnormSrgb)
+    }
+
+    pub fn load_with_format<S>(&mut self, source: S, format: TextureFormat) -> ImageHandle
+    where
+        S: Into<LoadImage>,
+    {
         let id = self.next_id();
-        self.load_queue.push_back((id, source.into()));
+        self.load_queue.push_back((id, source.into(), format));
         ImageHandle {
             id,
             events: self.events.clone(),
@@ -217,7 +224,7 @@ impl Drop for ImageHandle {
 }
 
 fn load_images(mut images: ResMut<Images>) {
-    while let Some((handle, source)) = images.load_queue.pop_front() {
+    while let Some((handle, source, format)) = images.load_queue.pop_front() {
         let buf = match source {
             LoadImage::Buffer(buf) => buf,
             LoadImage::File(path) => {
@@ -235,7 +242,7 @@ fn load_images(mut images: ResMut<Images>) {
             handle,
             Entry {
                 data: Image {
-                    format: TextureFormat::Rgba8UnormSrgb,
+                    format,
                     width: img.width(),
                     height: img.height(),
                     bytes: img.into_raw(),
