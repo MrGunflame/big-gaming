@@ -7,13 +7,7 @@ use bytemuck::{Pod, Zeroable};
 use glam::{Mat3, Vec3};
 use wgpu::{Buffer, IndexFormat};
 
-pub struct BufferVec<T: Pod> {
-    vec: Vec<T>,
-    buffer: Option<Buffer>,
-}
-
 #[derive(Debug)]
-
 pub struct IndexBuffer {
     pub buffer: Buffer,
     pub format: IndexFormat,

@@ -8,11 +8,9 @@ pub mod color;
 pub mod forward;
 pub mod graph;
 pub mod light;
-pub mod material;
 pub mod mesh;
 pub mod mipmap;
 pub mod pbr;
-pub mod pipeline;
 pub mod render_pass;
 pub mod shape;
 pub mod surface;
@@ -32,8 +30,7 @@ use game_core::transform::{TransformPlugin, TransformSet};
 use game_window::WindowPlugin;
 use graph::RenderGraph;
 use mesh::Mesh;
-use pbr::{PbrMaterial, RenderMaterialAssets};
-use pipeline::{LightingPipeline, MainPass};
+use pbr::PbrMaterial;
 use post_process::PostProcessPipeline;
 use render_pass::{RenderNodes, RenderPass};
 use surface::RenderSurfaces;
@@ -61,8 +58,6 @@ impl Plugin for RenderPlugin {
         app.add_plugin(WindowPlugin);
 
         app.add_plugin(ImagePlugin);
-
-        app.init_resource::<pbr::PbrResources>();
 
         let instance = Instance::new(InstanceDescriptor {
             backends: Backends::VULKAN,

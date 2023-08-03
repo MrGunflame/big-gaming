@@ -20,9 +20,6 @@ use crate::RenderDevice;
 
 const SHADER: &str = include_str!("../shaders/post_process.wgsl");
 
-// No SRGB, we do our own gamma correction.
-const FINAL_FORMAT: TextureFormat = TextureFormat::Bgra8Unorm;
-
 #[derive(Debug, Resource)]
 pub struct PostProcessPipeline {
     sampler: Sampler,

@@ -26,14 +26,6 @@ pub fn update_mesh_bind_group(
             continue;
         };
 
-        let vertices = mesh.vertices();
-
-        let vertices = device.create_buffer_init(&BufferInitDescriptor {
-            label: Some("mesh_vertex_buffer"),
-            contents: bytemuck::cast_slice(&vertices),
-            usage: BufferUsages::VERTEX,
-        });
-
         let indices = match mesh.indicies() {
             Some(Indices::U32(indices)) => {
                 let buffer = device.create_buffer_init(&BufferInitDescriptor {
@@ -112,7 +104,6 @@ pub fn update_mesh_bind_group(
         });
 
         let node = render_nodes.entities.entry(entity).or_default();
-        node.vertices = Some(vertices);
         node.indices = Some(indices);
         node.mesh_bind_group = Some(mesh_bind_group);
     }

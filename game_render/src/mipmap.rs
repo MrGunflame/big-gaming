@@ -9,8 +9,8 @@ use wgpu::{
     Operations, PipelineLayout, PipelineLayoutDescriptor, PolygonMode, PrimitiveState,
     PrimitiveTopology, RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline,
     RenderPipelineDescriptor, Sampler, SamplerBindingType, SamplerDescriptor, ShaderModule,
-    ShaderModuleDescriptor, ShaderSource, ShaderStages, Texture, TextureDescriptor, TextureFormat,
-    TextureSampleType, TextureViewDescriptor, TextureViewDimension, VertexState,
+    ShaderModuleDescriptor, ShaderSource, ShaderStages, Texture, TextureFormat, TextureSampleType,
+    TextureViewDescriptor, TextureViewDimension, VertexState,
 };
 
 use crate::RenderDevice;
@@ -58,37 +58,6 @@ impl MipMapGenerator {
         let shader = device.create_shader_module(ShaderModuleDescriptor {
             label: Some("mipmap_shader"),
             source: ShaderSource::Wgsl(include_str!("../shaders/mipmap.wgsl").into()),
-        });
-
-        let pipeline = device.create_render_pipeline(&RenderPipelineDescriptor {
-            label: Some("mipmap_pipeline"),
-            layout: Some(&pipeline_layout),
-            vertex: VertexState {
-                module: &shader,
-                entry_point: "vs_main",
-                buffers: &[],
-            },
-            fragment: Some(FragmentState {
-                module: &shader,
-                entry_point: "fs_main",
-                targets: &[Some(ColorTargetState {
-                    format: TextureFormat::Rgba8UnormSrgb,
-                    blend: None,
-                    write_mask: ColorWrites::ALL,
-                })],
-            }),
-            primitive: PrimitiveState {
-                topology: PrimitiveTopology::TriangleList,
-                strip_index_format: None,
-                front_face: FrontFace::Ccw,
-                cull_mode: None,
-                polygon_mode: PolygonMode::Fill,
-                unclipped_depth: false,
-                conservative: false,
-            },
-            depth_stencil: None,
-            multisample: MultisampleState::default(),
-            multiview: None,
         });
 
         let sampler = device.create_sampler(&SamplerDescriptor {
@@ -141,7 +110,7 @@ impl MipMapGenerator {
             mips.push(mip);
         }
 
-        for (index, views) in mips.windows(2).enumerate() {
+        for views in mips.windows(2) {
             let src_view = &views[0];
             let dst_view = &views[1];
 

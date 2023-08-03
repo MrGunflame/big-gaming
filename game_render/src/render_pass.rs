@@ -63,7 +63,6 @@ impl FromWorld for RenderNodes {
 
 #[derive(Debug, Default)]
 pub struct RenderNode {
-    pub vertices: Option<Buffer>,
     pub indices: Option<IndexBuffer>,
     pub transform: Option<Buffer>,
     pub mesh_bind_group: Option<BindGroup>,
@@ -72,8 +71,7 @@ pub struct RenderNode {
 
 impl RenderNode {
     fn is_ready(&self) -> bool {
-        self.vertices.is_some()
-            && self.indices.is_some()
+        self.indices.is_some()
             && self.transform.is_some()
             && self.mesh_bind_group.is_some()
             && self.material_bind_group.is_some()
