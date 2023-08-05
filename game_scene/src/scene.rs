@@ -46,7 +46,7 @@ pub(crate) fn spawn_scene(
             (
                 shape::Box {
                     min_x: 0.0,
-                    max_x: 1.0,
+                    max_x: 2.0,
                     min_y: -0.1,
                     max_y: 0.1,
                     min_z: -0.1,
@@ -59,7 +59,7 @@ pub(crate) fn spawn_scene(
                     min_x: -0.1,
                     max_x: 0.1,
                     min_y: 0.0,
-                    max_y: 1.0,
+                    max_y: 2.0,
                     min_z: -0.1,
                     max_z: 0.1,
                 },
@@ -72,7 +72,7 @@ pub(crate) fn spawn_scene(
                     min_y: -0.1,
                     max_y: 0.1,
                     min_z: 0.0,
-                    max_z: 1.0,
+                    max_z: 2.0,
                 },
                 Color::BLUE,
             ),

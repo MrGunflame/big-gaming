@@ -1,12 +1,14 @@
 #![deny(unsafe_op_in_unsafe_fn)]
 #![deny(unused_crate_dependencies)]
 
+mod model;
 mod scene;
 
 #[cfg(feature = "gltf")]
 mod gltf;
 
 use game_gltf::uri::Uri;
+use game_model::{Decode, Model};
 pub use scene::SceneBundle;
 
 use std::collections::{HashMap, VecDeque};
@@ -136,11 +138,6 @@ struct Entry {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-enum SceneKind {
-    Gltf,
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 enum Event {
     Drop(u64),
     Clone(u64),
@@ -178,28 +175,41 @@ fn load_scenes(
         let mut buf = Vec::new();
         file.read_to_end(&mut buf).unwrap();
 
-        let mut gltf = GltfData::new(&buf).unwrap();
-        while let Some(path) = gltf.queue.pop() {
-            let mut uri = uri.clone();
-            uri.push(&path);
-            let mut file = std::fs::File::open(uri.as_path()).unwrap();
+        let scene = match detect_format(&buf) {
+            Some(SceneFormat::Model) => {
+                let data = Model::decode(&buf[..]).unwrap();
 
-            let mut buf = Vec::new();
-            file.read_to_end(&mut buf).unwrap();
+                model::model_to_scene(data, &mut meshes, &mut materials, &mut images)
+            }
+            Some(SceneFormat::Gltf) => {
+                let mut gltf = GltfData::new(&buf).unwrap();
+                while let Some(path) = gltf.queue.pop() {
+                    let mut uri = uri.clone();
+                    uri.push(&path);
+                    let mut file = std::fs::File::open(uri.as_path()).unwrap();
 
-            gltf.insert(path, buf);
-        }
+                    let mut buf = Vec::new();
+                    file.read_to_end(&mut buf).unwrap();
 
-        let data = gltf_to_scene(
-            gltf.create_unchecked(),
-            &mut meshes,
-            &mut materials,
-            &mut images,
-        );
+                    gltf.insert(path, buf);
+                }
+
+                gltf_to_scene(
+                    gltf.create_unchecked(),
+                    &mut meshes,
+                    &mut materials,
+                    &mut images,
+                )
+            }
+            None => {
+                tracing::error!("cannot detect scene format");
+                continue;
+            }
+        };
 
         // If `None` all handles are already dropped.
         if let Some(entry) = scenes.scenes.get_mut(&handle) {
-            entry.data = Some(data);
+            entry.data = Some(scene);
         }
     }
 }
@@ -224,4 +234,24 @@ fn update_scene_handles(mut scenes: ResMut<Scenes>) {
             }
         }
     }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+enum SceneFormat {
+    Model,
+    Gltf,
+}
+
+/// Attempt to detect the file format.
+fn detect_format(buf: &[u8]) -> Option<SceneFormat> {
+    if buf.starts_with(&game_model::MAGIC) {
+        return Some(SceneFormat::Model);
+    }
+
+    // Starts with 'glTF' for binary format, or a JSON object.
+    if buf.starts_with(&[b'g', b'l', b'T', b'F']) || buf.starts_with(&[b'{']) {
+        return Some(SceneFormat::Gltf);
+    }
+
+    None
 }
