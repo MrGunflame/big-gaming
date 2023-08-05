@@ -35,6 +35,8 @@ pub struct PointLightBundle {
 #[derive(Copy, Clone, Debug, Component)]
 pub struct SpotLight {
     pub color: Color,
+    pub intensity: f32,
+    pub radius: f32,
     /// Inner cutoff angle
     pub inner_cutoff: f32,
     pub outer_cutoff: f32,
