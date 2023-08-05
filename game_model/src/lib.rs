@@ -3,12 +3,14 @@
 #![deny(unsafe_op_in_unsafe_fn)]
 #![deny(unused_crate_dependencies)]
 
+pub mod compression;
 pub mod material;
+pub mod mesh;
 pub mod textures;
 pub mod vertex;
 
 use bytes::{Buf, BufMut};
-use glam::{Vec2, Vec3, Vec4};
+use glam::{Quat, Vec2, Vec3, Vec4};
 
 pub const MAGIC: [u8; 4] = [0, 0, 0, 0];
 
@@ -195,5 +197,25 @@ impl Decode for Vec4 {
         let w = f32::decode(&mut buf)?;
 
         Ok(Self::new(x, y, z, w))
+    }
+}
+
+impl Encode for Quat {
+    fn encode<B>(&self, buf: B)
+    where
+        B: BufMut,
+    {
+        Vec4::from(*self).encode(buf);
+    }
+}
+
+impl Decode for Quat {
+    type Error = ();
+
+    fn decode<B>(buf: B) -> Result<Self, Self::Error>
+    where
+        B: Buf,
+    {
+        Vec4::decode(buf).map(Self::from_vec4)
     }
 }
