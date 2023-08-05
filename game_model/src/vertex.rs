@@ -1,4 +1,4 @@
-use glam::{Vec2, Vec3};
+use glam::{Vec2, Vec3, Vec4};
 
 use crate::{Decode, Encode};
 
@@ -6,6 +6,7 @@ use crate::{Decode, Encode};
 pub struct Vertices {
     pub positions: Vec<Vec3>,
     pub normals: Vec<Vec3>,
+    pub tangents: Vec<Vec4>,
     pub uvs: Vec<Vec2>,
 }
 
@@ -45,6 +46,7 @@ impl Decode for Vertices {
         let mut positions = Vec::new();
         let mut normals = Vec::new();
         let mut uvs = Vec::new();
+        let mut tangents = Vec::new();
 
         for _ in 0..len {
             let position = Vec3::decode(&mut buf)?;
@@ -61,10 +63,16 @@ impl Decode for Vertices {
             uvs.push(uv);
         }
 
+        for _ in 0..len {
+            let tangent = Vec4::decode(&mut buf)?;
+            tangents.push(tangent);
+        }
+
         Ok(Self {
             positions,
             normals,
             uvs,
+            tangents,
         })
     }
 }

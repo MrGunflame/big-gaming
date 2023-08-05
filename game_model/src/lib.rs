@@ -8,7 +8,7 @@ pub mod textures;
 pub mod vertex;
 
 use bytes::{Buf, BufMut};
-use glam::{Vec2, Vec3};
+use glam::{Vec2, Vec3, Vec4};
 
 pub const MAGIC: [u8; 4] = [0, 0, 0, 0];
 
@@ -167,5 +167,33 @@ impl Decode for Vec2 {
         let y = f32::decode(&mut buf)?;
 
         Ok(Self { x, y })
+    }
+}
+
+impl Encode for Vec4 {
+    fn encode<B>(&self, mut buf: B)
+    where
+        B: BufMut,
+    {
+        self.x.encode(&mut buf);
+        self.y.encode(&mut buf);
+        self.z.encode(&mut buf);
+        self.w.encode(&mut buf);
+    }
+}
+
+impl Decode for Vec4 {
+    type Error = ();
+
+    fn decode<B>(mut buf: B) -> Result<Self, Self::Error>
+    where
+        B: Buf,
+    {
+        let x = f32::decode(&mut buf)?;
+        let y = f32::decode(&mut buf)?;
+        let z = f32::decode(&mut buf)?;
+        let w = f32::decode(&mut buf)?;
+
+        Ok(Self::new(x, y, z, w))
     }
 }
