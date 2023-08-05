@@ -29,19 +29,5 @@ var t_sampler: sampler;
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    var color = textureSample(t_texture, t_sampler, in.uv).rgb;
-
-    color = tonemap(color);
-    color = gamma_correct(color);
-
-    return vec4(color, 1.0);
-}
-
-fn tonemap(color: vec3<f32>) -> vec3<f32> {
-    return color / (color + vec3(1.0));
-}
-
-fn gamma_correct(color: vec3<f32>) -> vec3<f32> {
-    let gamma = 2.2;
-    return pow(color, vec3(1.0 / gamma));
+    return textureSample(t_texture, t_sampler, in.uv);
 }

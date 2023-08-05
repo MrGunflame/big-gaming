@@ -4,7 +4,7 @@ use std::f32::consts::PI;
 
 use bevy_ecs::prelude::{Component, EventReader, Res};
 use bevy_ecs::query::{Changed, With};
-use bevy_ecs::system::{Commands, Query, ResMut};
+use bevy_ecs::system::{Commands, Query};
 use bitflags::bitflags;
 use game_asset::Assets;
 use game_common::bundles::TransformBundle;
@@ -20,11 +20,10 @@ use game_render::pbr::{PbrBundle, PbrMaterial};
 use game_render::shape;
 use game_render::texture::{Image, Images, TextureFormat};
 use game_scene::{SceneBundle, Scenes};
-use game_ui::render::remap::remap;
 use game_window::cursor::Cursor;
 use game_window::events::{CursorLeft, VirtualKeyCode};
-use game_window::{Window, WindowState};
-use glam::{Quat, UVec2, Vec2, Vec3};
+use game_window::Window;
+use glam::{Quat, UVec2, Vec3};
 
 pub fn spawn_view_window(
     commands: &mut Commands,
@@ -104,7 +103,7 @@ pub fn spawn_view_window(
 
     commands.spawn(DirectionalLightBundle {
         light: DirectionalLight {
-            color: [1.0, 1.0, 1.0],
+            color: Color::WHITE,
             illuminance: 1.0,
         },
         transform: TransformBundle {
@@ -122,7 +121,7 @@ pub fn spawn_view_window(
     //     },
     //     transform: TransformBundle {
     //         transform: Transform {
-    //             translation: Vec3::new(0.0, 3.0, 3.0),
+    //             translation: Vec3::new(0.0, 2.0, 0.0),
     //             ..Default::default()
     //         },
     //         ..Default::default()
@@ -273,33 +272,33 @@ pub fn spawn_view_window(
     //     },
     // });
 
-    commands
-        .spawn(PbrBundle {
-            mesh: meshes.insert(
-                shape::Box {
-                    min_x: -0.1,
-                    max_x: 0.1,
-                    min_y: -0.1,
-                    max_y: 0.1,
-                    min_z: -0.1,
-                    max_z: 0.1,
-                }
-                .into(),
-            ),
-            material: materials.insert(PbrMaterial {
-                base_color: Color([1.0, 1.0, 1.0, 1.0]),
-                ..Default::default()
-            }),
-            transform: TransformBundle {
-                transform: Transform {
-                    translation: Default::default(),
-                    rotation: Quat::from_axis_angle(Vec3::Y, PI / 4.0),
-                    ..Default::default()
-                },
-                ..Default::default()
-            },
-        })
-        .insert(OriginMarker);
+    // commands
+    //     .spawn(PbrBundle {
+    //         mesh: meshes.insert(
+    //             shape::Box {
+    //                 min_x: -0.1,
+    //                 max_x: 0.1,
+    //                 min_y: -0.1,
+    //                 max_y: 0.1,
+    //                 min_z: -0.1,
+    //                 max_z: 0.1,
+    //             }
+    //             .into(),
+    //         ),
+    //         material: materials.insert(PbrMaterial {
+    //             base_color: Color([1.0, 1.0, 1.0, 1.0]),
+    //             ..Default::default()
+    //         }),
+    //         transform: TransformBundle {
+    //             transform: Transform {
+    //                 translation: Default::default(),
+    //                 rotation: Quat::from_axis_angle(Vec3::Y, PI / 4.0),
+    //                 ..Default::default()
+    //             },
+    //             ..Default::default()
+    //         },
+    //     })
+    //     .insert(OriginMarker);
 
     for (mesh, color) in [
         (
@@ -347,24 +346,6 @@ pub fn spawn_view_window(
                 ..Default::default()
             },
         });
-    }
-}
-
-pub fn handle_selection(
-    cursor: Res<Cursor>,
-    mut windows: Query<&WindowState>,
-    mut events: EventReader<MouseButtonInput>,
-) {
-    for event in events.iter() {
-        let window = windows.get(cursor.window().unwrap()).unwrap();
-        let size = window.inner_size();
-
-        if event.state.is_pressed() && event.button.is_left() {
-            let position = remap(
-                cursor.position(),
-                Vec2::new(size.width as f32, size.height as f32),
-            );
-        }
     }
 }
 

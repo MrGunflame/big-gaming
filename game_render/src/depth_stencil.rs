@@ -1,9 +1,17 @@
+use std::collections::HashMap;
+
+use bevy_ecs::prelude::{Entity, EventReader};
+use bevy_ecs::system::{Query, Res, ResMut, Resource};
+use game_window::events::{WindowCreated, WindowDestroyed, WindowResized};
+use game_window::WindowState;
 use glam::UVec2;
 use wgpu::{
     AddressMode, CompareFunction, Device, Extent3d, FilterMode, Sampler, SamplerDescriptor,
     Texture, TextureDescriptor, TextureDimension, TextureFormat, TextureUsages, TextureView,
     TextureViewDescriptor,
 };
+
+use crate::RenderDevice;
 
 pub(crate) const DEPTH_TEXTURE_FORMAT: TextureFormat = TextureFormat::Depth32Float;
 
@@ -46,4 +54,66 @@ pub(crate) fn create_depth_texture(
     });
 
     (texture, view, sampler)
+}
+
+#[derive(Debug, Default, Resource)]
+pub struct DepthTextures {
+    pub windows: HashMap<Entity, DepthData>,
+}
+
+#[derive(Debug)]
+pub struct DepthData {
+    pub texture: Texture,
+    pub view: TextureView,
+    pub sampler: Sampler,
+}
+
+pub fn create_depth_textures(
+    mut textures: ResMut<DepthTextures>,
+    device: Res<RenderDevice>,
+    mut events: EventReader<WindowCreated>,
+    windows: Query<&WindowState>,
+) {
+    for event in events.iter() {
+        let window = windows.get(event.window).unwrap();
+        let size = window.inner_size();
+
+        let (texture, view, sampler) =
+            create_depth_texture(&device, UVec2::new(size.width, size.height));
+
+        textures.windows.insert(
+            event.window,
+            DepthData {
+                texture,
+                view,
+                sampler,
+            },
+        );
+    }
+}
+
+pub fn resize_depth_textures(
+    mut textures: ResMut<DepthTextures>,
+    device: Res<RenderDevice>,
+    mut events: EventReader<WindowResized>,
+) {
+    for event in events.iter() {
+        let window = textures.windows.get_mut(&event.window).unwrap();
+
+        let (texture, view, sampler) =
+            create_depth_texture(&device, UVec2::new(event.width, event.height));
+
+        window.texture = texture;
+        window.view = view;
+        window.sampler = sampler;
+    }
+}
+
+pub fn destroy_depth_textures(
+    mut textures: ResMut<DepthTextures>,
+    mut events: EventReader<WindowDestroyed>,
+) {
+    for event in events.iter() {
+        textures.windows.remove(&event.window);
+    }
 }
