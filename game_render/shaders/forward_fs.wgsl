@@ -59,8 +59,6 @@ fn fs_main(in: FragInput) -> @location(0) vec4<f32> {
     color.g *= light_strength.g;
     color.b *= light_strength.b;
     return color;
-
-    //return vec4(light_strength, 1.0);
 }
 
 fn compute_directional_light(in: FragInput, light: DirectionalLight) -> vec3<f32> {
@@ -77,7 +75,7 @@ fn compute_directional_light(in: FragInput, light: DirectionalLight) -> vec3<f32
 
     let specular = pow(max(dot(normal, half_dir), 0.0), 32.0);
 
-    return (ambient + diffuse + specular) * light.color;
+    return (ambient + diffuse + specular) * light.intensity * light.color;
 }
 
 fn compute_point_light(in: FragInput, light: PointLight) -> vec3<f32> {
@@ -140,6 +138,7 @@ struct DirectionalLights {
 struct DirectionalLight {
     direction: vec3<f32>,
     color: vec3<f32>,
+    intensity: f32,
 }
 
 struct PointLights {

@@ -20,7 +20,7 @@ pub struct DirectionalLightUniform {
     pub direction: [f32; 3],
     pub _pad0: u32,
     pub color: [f32; 3],
-    pub _pad1: u32,
+    pub intensity: f32,
 }
 
 impl GpuBuffer for DirectionalLightUniform {
@@ -82,7 +82,7 @@ pub fn update_directional_lights(
             direction: direction.to_array(),
             color: light.color.as_rgb(),
             _pad0: 0,
-            _pad1: 0,
+            intensity: illuminance_to_candelas(light.illuminance),
         };
 
         if let Some(light) = cache.entities.get(&entity) {
@@ -208,4 +208,16 @@ pub fn update_spot_lights(
     });
 
     render_nodes.spot_lights = buffer;
+}
+
+fn illuminance_to_candelas(lux: f32) -> f32 {
+    // FIXME: Un-harcode exposure in the future.
+    // https://google.github.io/filament/Filament.html#imagingpipeline/physicallybasedcamera/exposuresettings
+    let aperture = 4.0;
+    let shutter_speed = 1.0 / 250.0;
+    let sensitivity = 100.0;
+
+    let ev100 = f32::log2(aperture * aperture / shutter_speed) - f32::log2(sensitivity / 100.0);
+    let exposure = 1.0 / (f32::powf(2.0, ev100) * 1.2);
+    lux * exposure
 }
