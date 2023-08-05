@@ -12,6 +12,7 @@ pub mod vertex;
 use bytes::{Buf, BufMut};
 use compression::CompressionScheme;
 use glam::{Quat, Vec2, Vec3, Vec4};
+use mesh::Mesh;
 
 pub const MAGIC: [u8; 4] = [0, 0, 0, 0];
 
@@ -34,7 +35,6 @@ pub struct Header {
     // MAGIC
     pub version: u32,
     pub compression: CompressionScheme,
-    pub meshes: u16,
 }
 
 impl Encode for Header {
@@ -45,7 +45,6 @@ impl Encode for Header {
         MAGIC.encode(&mut buf);
         self.version.encode(&mut buf);
         self.compression.encode(&mut buf);
-        self.meshes.encode(&mut buf);
     }
 }
 
@@ -61,12 +60,10 @@ impl Decode for Header {
 
         let version = u32::decode(&mut buf)?;
         let compression = CompressionScheme::decode(&mut buf)?;
-        let meshes = u16::decode(&mut buf)?;
 
         Ok(Self {
             version,
             compression,
-            meshes,
         })
     }
 }
@@ -228,5 +225,46 @@ impl Decode for Quat {
         B: Buf,
     {
         Vec4::decode(buf).map(Self::from_vec4)
+    }
+}
+
+/// The entire model file.
+#[derive(Clone, Debug)]
+pub struct Model {
+    pub header: Header,
+    pub meshes: Vec<Mesh>,
+}
+
+impl Encode for Model {
+    fn encode<B>(&self, mut buf: B)
+    where
+        B: BufMut,
+    {
+        self.header.encode(&mut buf);
+        (self.meshes.len() as u16).encode(&mut buf);
+
+        for m in &self.meshes {
+            m.encode(&mut buf);
+        }
+    }
+}
+
+impl Decode for Model {
+    type Error = ();
+
+    fn decode<B>(mut buf: B) -> Result<Self, Self::Error>
+    where
+        B: Buf,
+    {
+        let header = Header::decode(&mut buf)?;
+
+        let num_meshes = u16::decode(&mut buf)?;
+        let mut meshes = Vec::new();
+
+        for _ in 0..num_meshes {
+            meshes.push(Mesh::decode(&mut buf)?);
+        }
+
+        Ok(Self { header, meshes })
     }
 }
