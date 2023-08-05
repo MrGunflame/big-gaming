@@ -2,6 +2,50 @@ use bytes::{Buf, BufMut};
 
 use crate::{Decode, Encode};
 
+#[derive(Clone, Debug)]
+pub enum Material {
+    MetallicRoughness(MetallicRoughnessMaterial),
+}
+
+impl Material {
+    pub const fn model(&self) -> MaterialModel {
+        match self {
+            Self::MetallicRoughness(_) => MaterialModel::MetallicRoughness,
+        }
+    }
+}
+
+impl Encode for Material {
+    fn encode<B>(&self, mut buf: B)
+    where
+        B: BufMut,
+    {
+        self.model().encode(&mut buf);
+
+        match self {
+            Self::MetallicRoughness(material) => material.encode(buf),
+        }
+    }
+}
+
+impl Decode for Material {
+    type Error = ();
+
+    fn decode<B>(mut buf: B) -> Result<Self, Self::Error>
+    where
+        B: Buf,
+    {
+        let model = MaterialModel::decode(&mut buf)?;
+
+        Ok(match model {
+            MaterialModel::MetallicRoughness => {
+                let material = MetallicRoughnessMaterial::decode(&mut buf)?;
+                Self::MetallicRoughness(material)
+            }
+        })
+    }
+}
+
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub enum MaterialModel {
     /// The default metallic roughness model.

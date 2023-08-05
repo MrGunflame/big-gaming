@@ -10,6 +10,7 @@ pub mod textures;
 pub mod vertex;
 
 use bytes::{Buf, BufMut};
+use compression::CompressionScheme;
 use glam::{Quat, Vec2, Vec3, Vec4};
 
 pub const MAGIC: [u8; 4] = [0, 0, 0, 0];
@@ -32,6 +33,8 @@ pub trait Decode: Sized {
 pub struct Header {
     // MAGIC
     pub version: u32,
+    pub compression: CompressionScheme,
+    pub meshes: u16,
 }
 
 impl Encode for Header {
@@ -41,6 +44,8 @@ impl Encode for Header {
     {
         MAGIC.encode(&mut buf);
         self.version.encode(&mut buf);
+        self.compression.encode(&mut buf);
+        self.meshes.encode(&mut buf);
     }
 }
 
@@ -55,8 +60,14 @@ impl Decode for Header {
         assert_eq!(magic, MAGIC);
 
         let version = u32::decode(&mut buf)?;
+        let compression = CompressionScheme::decode(&mut buf)?;
+        let meshes = u16::decode(&mut buf)?;
 
-        Ok(Self { version })
+        Ok(Self {
+            version,
+            compression,
+            meshes,
+        })
     }
 }
 
