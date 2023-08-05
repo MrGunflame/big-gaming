@@ -1,11 +1,7 @@
 use bevy_ecs::prelude::Component;
-use bytemuck::{Pod, Zeroable};
 use game_asset::Asset;
 use glam::{Vec2, Vec3, Vec4};
-use wgpu::{
-    BufferAddress, PrimitiveTopology, VertexAttribute, VertexBufferLayout, VertexFormat,
-    VertexStepMode,
-};
+use wgpu::PrimitiveTopology;
 
 use crate::aabb::Aabb;
 
@@ -68,41 +64,12 @@ impl Mesh {
         self.uvs = uvs;
     }
 
-    pub fn indicies(&self) -> Option<Indices> {
-        self.indices.clone()
+    pub fn uvs(&self) -> &[[f32; 2]] {
+        &self.uvs
     }
 
-    pub fn vertices(&self) -> Vec<Vertex> {
-        // assert_eq!(self.positions.len(), self.normals.len());
-        // assert_eq!(self.positions.len(), self.uvs.len());
-        // assert_eq!(self.positions.len(), self.tangents.len());
-        // assert_eq!(self.bitangents.len(), self.bitangents.len());
-
-        let end = usize::max(
-            usize::max(self.positions.len(), self.normals.len()),
-            self.uvs.len(),
-        );
-        let mut index = 0;
-
-        let mut vertices = Vec::with_capacity(end);
-
-        while index < end {
-            let position = self.positions.get(index).copied().unwrap_or_default();
-            let normal = self.normals.get(index).copied().unwrap_or_default();
-            let uv = self.uvs.get(index).copied().unwrap_or_default();
-            let tangent = self.tangents.get(index).copied().unwrap_or_default();
-
-            vertices.push(Vertex {
-                position,
-                normal,
-                uv,
-                tangent: tangent.to_array(),
-            });
-
-            index += 1;
-        }
-
-        vertices
+    pub fn indicies(&self) -> Option<Indices> {
+        self.indices.clone()
     }
 
     pub fn compute_tangents(&mut self) {
@@ -217,50 +184,6 @@ impl Indices {
         match self {
             Self::U16(val) => val.into_iter().map(u32::from).collect(),
             Self::U32(val) => val,
-        }
-    }
-}
-
-#[derive(Copy, Clone, Debug, Zeroable, Pod)]
-#[repr(C)]
-pub struct Vertex {
-    position: [f32; 3],
-    normal: [f32; 3],
-    uv: [f32; 2],
-    tangent: [f32; 4],
-}
-
-impl Vertex {
-    pub(crate) fn layout<'a>() -> VertexBufferLayout<'a> {
-        VertexBufferLayout {
-            array_stride: std::mem::size_of::<Self>() as BufferAddress,
-            step_mode: VertexStepMode::Vertex,
-            attributes: &[
-                VertexAttribute {
-                    offset: 0,
-                    shader_location: 0,
-                    format: VertexFormat::Float32x3,
-                },
-                VertexAttribute {
-                    offset: std::mem::size_of::<[f32; 3]>() as BufferAddress,
-                    shader_location: 1,
-                    format: VertexFormat::Float32x3,
-                },
-                VertexAttribute {
-                    offset: (std::mem::size_of::<[f32; 3]>() + std::mem::size_of::<[f32; 3]>())
-                        as BufferAddress,
-                    shader_location: 2,
-                    format: VertexFormat::Float32x2,
-                },
-                VertexAttribute {
-                    offset: (std::mem::size_of::<[f32; 3]>()
-                        + std::mem::size_of::<[f32; 3]>()
-                        + std::mem::size_of::<[f32; 2]>())
-                        as BufferAddress,
-                    shader_location: 3,
-                    format: VertexFormat::Float32x4,
-                },
-            ],
         }
     }
 }

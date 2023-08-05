@@ -1,10 +1,7 @@
-//! Post processing pipeline
-
 use std::collections::HashMap;
 
 use bevy_ecs::system::Resource;
-use bevy_ecs::world::{FromWorld, World};
-use parking_lot::Mutex;
+use bevy_ecs::world::FromWorld;
 use wgpu::{
     AddressMode, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
     BindGroupLayoutEntry, BindingResource, BindingType, Color, ColorTargetState, ColorWrites,
@@ -12,27 +9,26 @@ use wgpu::{
     Operations, PipelineLayout, PipelineLayoutDescriptor, PolygonMode, PrimitiveState,
     PrimitiveTopology, RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline,
     RenderPipelineDescriptor, Sampler, SamplerBindingType, SamplerDescriptor, ShaderModule,
-    ShaderModuleDescriptor, ShaderSource, ShaderStages, TextureFormat, TextureSampleType,
-    TextureView, TextureViewDimension, VertexState,
+    ShaderModuleDescriptor, ShaderSource, ShaderStages, Texture, TextureFormat, TextureSampleType,
+    TextureViewDescriptor, TextureViewDimension, VertexState,
 };
 
 use crate::RenderDevice;
 
-const SHADER: &str = include_str!("../shaders/post_process.wgsl");
-
 #[derive(Debug, Resource)]
-pub struct PostProcessPipeline {
-    sampler: Sampler,
+pub struct MipMapGenerator {
+    // FIXME: Maybe split texture bind group from sampler.
     bind_group_layout: BindGroupLayout,
+    sampler: Sampler,
     pipeline_layout: PipelineLayout,
-    pipelines: Mutex<HashMap<TextureFormat, RenderPipeline>>,
+    pipelines: HashMap<TextureFormat, RenderPipeline>,
     shader: ShaderModule,
 }
 
-impl PostProcessPipeline {
-    fn new(device: &Device) -> Self {
+impl MipMapGenerator {
+    pub fn new(device: &Device) -> Self {
         let bind_group_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
-            label: Some("post_process_bind_group_layout"),
+            label: Some("mipmap_bind_group_layout"),
             entries: &[
                 BindGroupLayoutEntry {
                     binding: 0,
@@ -54,24 +50,29 @@ impl PostProcessPipeline {
         });
 
         let pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
-            label: Some("post_process_pipeline_layout"),
+            label: Some("mipmap_pipeline_layout"),
             bind_group_layouts: &[&bind_group_layout],
             push_constant_ranges: &[],
         });
 
         let shader = device.create_shader_module(ShaderModuleDescriptor {
-            label: Some("post_process_shader"),
-            source: ShaderSource::Wgsl(SHADER.into()),
+            label: Some("mipmap_shader"),
+            source: ShaderSource::Wgsl(include_str!("../shaders/mipmap.wgsl").into()),
         });
 
         let sampler = device.create_sampler(&SamplerDescriptor {
+            label: Some("mipmap_sampler"),
             address_mode_u: AddressMode::ClampToEdge,
             address_mode_v: AddressMode::ClampToEdge,
             address_mode_w: AddressMode::ClampToEdge,
             mag_filter: FilterMode::Linear,
             min_filter: FilterMode::Linear,
-            mipmap_filter: FilterMode::Nearest,
-            ..Default::default()
+            mipmap_filter: FilterMode::Linear,
+            lod_min_clamp: 0.0,
+            lod_max_clamp: 100.0,
+            compare: None,
+            anisotropy_clamp: 1,
+            border_color: None,
         });
 
         Self {
@@ -79,66 +80,75 @@ impl PostProcessPipeline {
             sampler,
             pipeline_layout,
             shader,
-            pipelines: Mutex::new(HashMap::new()),
+            pipelines: HashMap::new(),
         }
     }
 
-    pub fn render(
-        &self,
-        encoder: &mut CommandEncoder,
-        source: &TextureView,
-        target: &TextureView,
+    pub fn generate_mipmaps(
+        &mut self,
         device: &Device,
-        format: TextureFormat,
+        encoder: &mut CommandEncoder,
+        texture: &Texture,
     ) {
-        let mut pls = self.pipelines.lock();
-        let pipeline = match pls.get(&format) {
+        let pipeline = match self.pipelines.get(&texture.format()) {
             Some(pl) => pl,
             None => {
-                self.build_pipeline(&mut pls, device, format);
-                pls.get(&format).unwrap()
+                self.build_pipeline(device, texture.format());
+                self.pipelines.get(&texture.format()).unwrap()
             }
         };
 
-        let bind_group = device.create_bind_group(&BindGroupDescriptor {
-            label: Some("post_process_render_pass"),
-            layout: &self.bind_group_layout,
-            entries: &[
-                BindGroupEntry {
-                    binding: 0,
-                    resource: BindingResource::TextureView(source),
-                },
-                BindGroupEntry {
-                    binding: 1,
-                    resource: BindingResource::Sampler(&self.sampler),
-                },
-            ],
-        });
+        let mut mips = Vec::new();
+        for mip_level in 0..texture.size().max_mips(texture.dimension()) {
+            let mip = texture.create_view(&TextureViewDescriptor {
+                label: None,
+                base_mip_level: mip_level,
+                mip_level_count: Some(1),
+                ..Default::default()
+            });
 
-        let mut render_pass = encoder.begin_render_pass(&RenderPassDescriptor {
-            label: Some("post_process_render_pass"),
-            color_attachments: &[Some(RenderPassColorAttachment {
-                view: target,
-                resolve_target: None,
-                ops: Operations {
-                    load: LoadOp::Clear(Color::BLACK),
-                    store: true,
-                },
-            })],
-            depth_stencil_attachment: None,
-        });
+            mips.push(mip);
+        }
 
-        render_pass.set_pipeline(&pipeline);
-        render_pass.set_bind_group(0, &bind_group, &[]);
-        render_pass.draw(0..3, 0..1);
+        for views in mips.windows(2) {
+            let src_view = &views[0];
+            let dst_view = &views[1];
+
+            let bind_group = device.create_bind_group(&BindGroupDescriptor {
+                label: Some("mipmap_bind_group"),
+                layout: &self.bind_group_layout,
+                entries: &[
+                    BindGroupEntry {
+                        binding: 0,
+                        resource: BindingResource::TextureView(src_view),
+                    },
+                    BindGroupEntry {
+                        binding: 1,
+                        resource: BindingResource::Sampler(&self.sampler),
+                    },
+                ],
+            });
+
+            let mut render_pass = encoder.begin_render_pass(&RenderPassDescriptor {
+                label: None,
+                color_attachments: &[Some(RenderPassColorAttachment {
+                    view: dst_view,
+                    resolve_target: None,
+                    ops: Operations {
+                        load: LoadOp::Clear(Color::BLACK),
+                        store: true,
+                    },
+                })],
+                depth_stencil_attachment: None,
+            });
+
+            render_pass.set_pipeline(&pipeline);
+            render_pass.set_bind_group(0, &bind_group, &[]);
+            render_pass.draw(0..3, 0..1);
+        }
     }
 
-    fn build_pipeline(
-        &self,
-        pipelines: &mut HashMap<TextureFormat, RenderPipeline>,
-        device: &Device,
-        format: TextureFormat,
-    ) {
+    fn build_pipeline(&mut self, device: &Device, format: TextureFormat) {
         let pipeline = device.create_render_pipeline(&RenderPipelineDescriptor {
             label: None,
             layout: Some(&self.pipeline_layout),
@@ -170,13 +180,13 @@ impl PostProcessPipeline {
             multiview: None,
         });
 
-        pipelines.insert(format, pipeline);
+        self.pipelines.insert(format, pipeline);
     }
 }
 
-impl FromWorld for PostProcessPipeline {
-    fn from_world(world: &mut World) -> Self {
-        let device = world.resource::<RenderDevice>();
-        Self::new(&device.0)
+impl FromWorld for MipMapGenerator {
+    fn from_world(world: &mut bevy_ecs::world::World) -> Self {
+        let device: &RenderDevice = world.resource();
+        Self::new(device)
     }
 }

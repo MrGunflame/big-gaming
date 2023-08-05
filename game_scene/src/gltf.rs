@@ -2,7 +2,7 @@ use game_asset::Assets;
 use game_gltf::{GltfData, GltfLoader, GltfMaterial};
 use game_render::mesh::Mesh;
 use game_render::pbr::PbrMaterial;
-use game_render::texture::Images;
+use game_render::texture::{Images, TextureFormat};
 
 use crate::{Node, Scene};
 
@@ -44,8 +44,12 @@ pub(crate) fn gltf_to_scene(
 }
 
 fn create_material(material: GltfMaterial, images: &mut Images) -> PbrMaterial {
-    let base_color_texture = material.base_color_texture.map(|buf| images.load(buf));
-    let normal_texture = material.normal_texture.map(|buf| images.load(buf));
+    let base_color_texture = material
+        .base_color_texture
+        .map(|buf| images.load_with_format(buf, TextureFormat::Rgba8UnormSrgb));
+    let normal_texture = material
+        .normal_texture
+        .map(|buf| images.load_with_format(buf, TextureFormat::Rgba8Unorm));
     let metallic_roughness_texture = material
         .metallic_roughness_texture
         .map(|buf| images.load(buf));
