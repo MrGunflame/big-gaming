@@ -16,6 +16,7 @@ use config::Config;
 use entities::LoadEntityPlugin;
 use game_core::logger::{self};
 use game_core::CorePlugins;
+use game_render::color::Color;
 use game_render::light::{DirectionalLight, DirectionalLightBundle};
 use game_render::RenderPlugin;
 use game_scene::ScenePlugin;
@@ -88,7 +89,7 @@ fn main() {
 fn spawn_light(mut commands: Commands) {
     commands.spawn(DirectionalLightBundle {
         light: DirectionalLight {
-            color: [1.0, 1.0, 1.0],
+            color: Color::WHITE,
             illuminance: 1.0,
         },
         transform: Default::default(),
