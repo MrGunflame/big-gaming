@@ -8,6 +8,7 @@ pub struct Vertices {
     pub normals: Vec<Vec3>,
     pub tangents: Vec<Vec4>,
     pub uvs: Vec<Vec2>,
+    pub indices: Vec<u32>,
 }
 
 impl Encode for Vertices {
@@ -30,6 +31,11 @@ impl Encode for Vertices {
 
         for uv in &self.uvs {
             uv.encode(&mut buf);
+        }
+
+        (self.indices.len() as u32).encode(&mut buf);
+        for index in &self.indices {
+            index.encode(&mut buf);
         }
     }
 }
@@ -68,11 +74,19 @@ impl Decode for Vertices {
             tangents.push(tangent);
         }
 
+        let num_indices = u32::decode(&mut buf)?;
+        let mut indices = Vec::new();
+        for _ in 0..num_indices {
+            let index = u32::decode(&mut buf)?;
+            indices.push(index);
+        }
+
         Ok(Self {
             positions,
             normals,
             uvs,
             tangents,
+            indices,
         })
     }
 }
