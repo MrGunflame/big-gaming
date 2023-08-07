@@ -166,6 +166,10 @@ impl Indices {
         }
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     pub fn as_u32(&self) -> &[u32] {
         match self {
             Self::U32(val) => val,

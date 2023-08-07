@@ -26,6 +26,14 @@ pub fn update_mesh_bind_group(
             continue;
         };
 
+        // FIXME: Since meshes are user controlled, we might not catch invalid
+        // meshes with a panic and simply ignore them.
+        assert!(!mesh.positions().is_empty());
+        assert!(!mesh.normals().is_empty());
+        assert!(!mesh.tangents().is_empty());
+        assert!(!mesh.uvs().is_empty());
+        assert!(!mesh.indicies().as_ref().unwrap().is_empty());
+
         let indices = match mesh.indicies() {
             Some(Indices::U32(indices)) => {
                 let buffer = device.create_buffer_init(&BufferInitDescriptor {
