@@ -171,6 +171,7 @@ fn build_mesh(terrain: &TerrainMesh) -> Mesh {
     mesh.set_indices(Indices::U32(indices));
     mesh.set_uvs(uvs);
     mesh.set_normals(normals);
+    mesh.compute_tangents();
 
     mesh
 }
