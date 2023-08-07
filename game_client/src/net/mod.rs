@@ -255,6 +255,10 @@ fn flush_command_queue(mut conn: ResMut<ServerConnection>, mut world: ResMut<Wor
             Command::InventoryUpdate(event) => {
                 todo!();
             }
+            Command::PlayerMove(_) => {
+                // Client-only frame.
+                tracing::warn!("received client-only `PlayerMove` frame from server");
+            }
             Command::Connected(_) => (),
             Command::Disconnected => (),
             Command::ReceivedCommands(_) => unreachable!(),

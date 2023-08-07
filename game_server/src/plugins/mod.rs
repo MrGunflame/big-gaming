@@ -110,12 +110,7 @@ fn flush_command_queue(srv_state: &mut ServerState) {
             Command::EntityCreate(event) => {}
             Command::EntityDestroy(event) => {}
             Command::EntityTranslate(event) => {
-                let Some(entity_id) = state.entities.get(event.id) else {
-                    continue;
-                };
-
-                let mut entity = view.get_mut(entity_id).unwrap();
-                entity.set_translation(event.translation);
+                // Server-only frame
             }
             Command::EntityRotate(event) => {
                 let Some(entity_id) = state.entities.get(event.id) else {
@@ -184,6 +179,13 @@ fn flush_command_queue(srv_state: &mut ServerState) {
                 // Server-only frame
             }
             Command::ReceivedCommands(ids) => (),
+            Command::PlayerMove(event) => {
+                let Some(entity_id) = state.entities.get(event.entity) else {
+                    continue;
+                };
+
+                crate::world::player::move_player(event, entity_id, &mut view);
+            }
         }
 
         drop(view);

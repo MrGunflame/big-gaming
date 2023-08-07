@@ -86,8 +86,6 @@ fn accept_loop(
                 }
             };
 
-            tracing::info!("read {:?}", packet.header.control_frame);
-
             handle.send(packet).await;
         }
     }

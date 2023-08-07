@@ -14,7 +14,8 @@ use game_input::hotkeys::{Hotkey, HotkeyCode, HotkeyId, HotkeyReader, Hotkeys, K
 use game_input::keyboard::{KeyCode, KeyboardInput};
 use game_input::mouse::MouseMotion;
 use game_input::InputSet;
-use game_net::snapshot::{Command, EntityRotate, EntityTranslate};
+use game_net::proto::MoveBits;
+use game_net::snapshot::{Command, EntityRotate, EntityTranslate, PlayerMove};
 use game_window::cursor::Cursor;
 use game_window::events::VirtualKeyCode;
 use glam::{Quat, Vec3};
@@ -127,21 +128,30 @@ pub fn translation_events(
 
     let mut angle = Angle::default();
 
+    let mut forward = false;
+    let mut back = false;
+    let mut left = false;
+    let mut right = false;
+
     for event in events.iter() {
         if event.id == movement_hotkeys.forward.id {
             angle.front();
+            forward = true;
         }
 
         if event.id == movement_hotkeys.back.id {
             angle.back();
+            back = true;
         }
 
         if event.id == movement_hotkeys.left.id {
             angle.left();
+            left = true;
         }
 
         if event.id == movement_hotkeys.right.id {
             angle.right();
+            right = true;
         }
     }
 
@@ -158,17 +168,16 @@ pub fn translation_events(
             }
             // Otherwise control the player actor.
             _ => {
-                let direction =
-                    transform.rotation * Quat::from_axis_angle(Vec3::Y, angle) * -Vec3::Z;
-
-                let distance = direction * speed.0 * delta;
-                transform.translation += distance;
-
                 let entity_id = conn.server_entities.get(conn.host).unwrap();
 
-                conn.send(Command::EntityTranslate(EntityTranslate {
-                    id: entity_id,
-                    translation: transform.translation,
+                conn.send(Command::PlayerMove(PlayerMove {
+                    entity: entity_id,
+                    bits: MoveBits {
+                        forward,
+                        back,
+                        left,
+                        right,
+                    },
                 }));
             }
         }
