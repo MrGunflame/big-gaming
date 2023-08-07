@@ -79,6 +79,7 @@ pub fn apply_world_delta(
             &mut backlog,
             &modules,
             render_cf,
+            next,
         );
     }
 
@@ -109,6 +110,7 @@ fn handle_event(
     backlog: &mut Backlog,
     modules: &Modules,
     render_cf: ControlFrame,
+    view: WorldViewRef<'_>,
 ) {
     tracing::trace!(
         concat!("handle ", stringify!(WorldState), " event: {:?}"),
@@ -195,7 +197,10 @@ fn handle_event(
                 //     return;
                 // }
 
-                let translation = conn.predictions.get_translation(id).unwrap_or(translation);
+                let translation = conn
+                    .predictions
+                    .get_translation(view, id)
+                    .unwrap_or(translation);
 
                 interpolate.set(transform.translation, translation, render_cf, render_cf + 1);
             }

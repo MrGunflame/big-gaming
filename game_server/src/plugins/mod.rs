@@ -35,7 +35,7 @@ pub fn tick(state: &mut ServerState) {
     });
 
     if cfg!(feature = "physics") {
-        step_physics(state);
+        //step_physics(state);
     }
 
     // Push snapshots last always
@@ -202,7 +202,7 @@ fn update_snapshots(
         return;
     };
 
-    tracing::info!("Sending snapshots for {:?}", view.control_frame());
+    // tracing::info!("Sending snapshots for {:?}", view.control_frame());
 
     for conn in connections.iter() {
         update_client(&conn, view);

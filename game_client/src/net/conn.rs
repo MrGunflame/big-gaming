@@ -167,7 +167,8 @@ impl ServerConnection {
             if let Some(id) = cmd.id() {
                 let entity_id = self.server_entities.get(id).unwrap();
 
-                self.predictions.push(entity_id, cmd_id, cmd);
+                self.predictions
+                    .push(entity_id, cmd_id, self.game_tick.current_control_frame, cmd);
             }
         }
     }

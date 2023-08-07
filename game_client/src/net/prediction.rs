@@ -1,10 +1,14 @@
 use std::collections::HashMap;
 
 use game_common::entity::EntityId;
+use game_common::world::control_frame::ControlFrame;
+use game_common::world::snapshot::SnapshotId;
 use game_common::world::world::{AsView, WorldViewMut};
 use game_net::snapshot::{Command, CommandId};
 use glam::{Quat, Vec3};
 use indexmap::IndexMap;
+
+use crate::utils::extract_actor_rotation;
 
 #[derive(Clone, Debug, Default)]
 pub struct ClientPredictions {
@@ -18,9 +22,9 @@ impl ClientPredictions {
         }
     }
 
-    pub fn push(&mut self, id: EntityId, cmd_id: CommandId, cmd: Command) {
+    pub fn push(&mut self, id: EntityId, cmd_id: CommandId, snap: ControlFrame, cmd: Command) {
         let entry = self.entities.entry(id).or_default();
-        entry.commands.insert(cmd_id, cmd);
+        entry.commands.insert(cmd_id, (snap, cmd));
     }
 
     pub fn validate_pre_removal<V>(&self, id: CommandId, view: V)
@@ -28,7 +32,7 @@ impl ClientPredictions {
         V: AsView,
     {
         for (entity_id, entity) in self.entities.iter() {
-            for (cmd_id, cmd) in &entity.commands {
+            for (cmd_id, (_, cmd)) in &entity.commands {
                 if *cmd_id != id {
                     continue;
                 }
@@ -74,7 +78,7 @@ impl ClientPredictions {
         for (id, pred) in &self.entities {
             let mut entity = view.get_mut(*id).unwrap();
 
-            for cmd in pred.commands.values() {
+            for (_, cmd) in pred.commands.values() {
                 match cmd {
                     Command::EntityTranslate(cmd) => {
                         entity.set_translation(cmd.translation);
@@ -88,14 +92,30 @@ impl ClientPredictions {
         }
     }
 
-    pub fn get_translation(&self, id: EntityId) -> Option<Vec3> {
-        let entity = self.entities.get(&id)?;
+    pub fn get_translation<V>(&self, view: V, id: EntityId) -> Option<Vec3>
+    where
+        V: AsView,
+    {
+        let predicted_entity = self.entities.get(&id)?;
 
         let mut translation = None;
-        for cmd in entity.commands.values() {
+        for (snap, (frame, cmd)) in predicted_entity.commands.iter() {
+            let entity = view.get(id)?;
+
             match cmd {
-                Command::EntityTranslate(cmd) => {
-                    translation = Some(cmd.translation);
+                Command::PlayerMove(cmd) => {
+                    // Based on the server impl.
+                    let speed = 1.0;
+                    let dir = (cmd.bits.forward as u8 as f32) * -Vec3::Z
+                        + (cmd.bits.back as u8 as f32) * Vec3::Z
+                        + (cmd.bits.left as u8 as f32) * -Vec3::X
+                        + (cmd.bits.right as u8 as f32) * Vec3::X;
+                    let delta = extract_actor_rotation(entity.transform.rotation) * dir * speed;
+
+                    match &mut translation {
+                        Some(translation) => *translation += delta,
+                        None => translation = Some(entity.transform.translation + delta),
+                    }
                 }
                 _ => (),
             }
@@ -108,7 +128,7 @@ impl ClientPredictions {
         let entity = self.entities.get(&id)?;
 
         let mut rotation = None;
-        for cmd in entity.commands.values() {
+        for (_, cmd) in entity.commands.values() {
             match cmd {
                 Command::EntityRotate(cmd) => {
                     rotation = Some(cmd.rotation);
@@ -123,5 +143,6 @@ impl ClientPredictions {
 
 #[derive(Clone, Debug, Default)]
 struct EntityPrediction {
-    commands: IndexMap<CommandId, Command>,
+    /// Commands and when they were executed.
+    commands: IndexMap<CommandId, (ControlFrame, Command)>,
 }

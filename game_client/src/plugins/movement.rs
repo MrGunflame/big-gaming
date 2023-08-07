@@ -169,16 +169,25 @@ pub fn translation_events(
             // Otherwise control the player actor.
             _ => {
                 let entity_id = conn.server_entities.get(conn.host).unwrap();
+                let bits = MoveBits {
+                    forward,
+                    back,
+                    left,
+                    right,
+                };
 
                 conn.send(Command::PlayerMove(PlayerMove {
                     entity: entity_id,
-                    bits: MoveBits {
-                        forward,
-                        back,
-                        left,
-                        right,
-                    },
+                    bits,
                 }));
+
+                let speed = 1.0;
+                let dir = (bits.forward as u8 as f32) * -Vec3::Z
+                    + (bits.back as u8 as f32) * Vec3::Z
+                    + (bits.left as u8 as f32) * -Vec3::X
+                    + (bits.right as u8 as f32) * Vec3::X;
+                let delta = transform.rotation * dir * speed;
+                transform.translation += delta;
             }
         }
     }
