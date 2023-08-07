@@ -2,7 +2,7 @@
 
 use crate::proto::{
     EntityAction, EntityCreate, EntityDestroy, EntityHealth, EntityRotate, EntityTranslate, Frame,
-    InventoryItemAdd, InventoryItemRemove, InventoryItemUpdate, SpawnHost,
+    InventoryItemAdd, InventoryItemRemove, InventoryItemUpdate, PlayerMove, SpawnHost,
 };
 use crate::snapshot::Command;
 
@@ -11,7 +11,8 @@ use crate::snapshot::{
     EntityDestroy as EntityDestroyCommand, EntityHealth as EntityHealthCommand,
     EntityRotate as EntityRotateCommand, EntityTranslate as EntityTranslateCommand,
     InventoryItemAdd as InventoryItemAddCommand, InventoryItemRemove as InventoryItemRemoveCommand,
-    InventoryUpdate as InventoryUpdateCommand, SpawnHost as SpawnHostCommand,
+    InventoryUpdate as InventoryUpdateCommand, PlayerMove as PlayerMoveCommand,
+    SpawnHost as SpawnHostCommand,
 };
 
 pub(crate) fn unpack_command(frame: Frame) -> Option<Command> {
@@ -63,6 +64,10 @@ pub(crate) fn unpack_command(frame: Frame) -> Option<Command> {
                 hidden: frame.hidden,
             }))
         }
+        Frame::PlayerMove(frame) => Some(Command::PlayerMove(PlayerMoveCommand {
+            entity: frame.entity,
+            bits: frame.bits,
+        })),
     }
 }
 
@@ -112,5 +117,9 @@ pub(crate) fn pack_command(cmd: &Command) -> Option<Frame> {
         Command::Connected(_) => None,
         Command::Disconnected => None,
         Command::ReceivedCommands(_) => None,
+        Command::PlayerMove(cmd) => Some(Frame::PlayerMove(PlayerMove {
+            entity: cmd.entity,
+            bits: cmd.bits,
+        })),
     }
 }

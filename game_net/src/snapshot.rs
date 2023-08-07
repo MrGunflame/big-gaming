@@ -13,6 +13,7 @@ use std::collections::VecDeque;
 use std::sync::Arc;
 
 use crate::conn::ConnectionId;
+use crate::proto::MoveBits;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Response {
@@ -53,6 +54,7 @@ pub enum Command {
     InventoryItemAdd(InventoryItemAdd),
     InventoryItemRemove(InventoryItemRemove),
     InventoryUpdate(InventoryUpdate),
+    PlayerMove(PlayerMove),
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -124,6 +126,12 @@ pub struct InventoryUpdate {
     pub hidden: Option<bool>,
 }
 
+#[derive(Copy, Clone, Debug)]
+pub struct PlayerMove {
+    pub entity: ServerEntity,
+    pub bits: MoveBits,
+}
+
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
 #[repr(transparent)]
 pub struct CommandId(pub u32);
@@ -144,6 +152,7 @@ impl Command {
             Self::InventoryItemRemove(cmd) => Some(cmd.entity),
             Self::InventoryUpdate(cmd) => Some(cmd.entity),
             Self::ReceivedCommands(_) => None,
+            Self::PlayerMove(cmd) => Some(cmd.entity),
         }
     }
 }

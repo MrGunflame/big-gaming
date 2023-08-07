@@ -851,6 +851,59 @@ impl BitOrAssign for ItemUpdateFlags {
     }
 }
 
+#[derive(Copy, Clone, Debug, Encode, Decode)]
+pub struct PlayerMove {
+    pub entity: ServerEntity,
+    pub bits: MoveBits,
+}
+
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+pub struct MoveBits {
+    pub forward: bool,
+    pub back: bool,
+    pub left: bool,
+    pub right: bool,
+}
+
+impl Encode for MoveBits {
+    type Error = <u8 as Encode>::Error;
+
+    fn encode<B>(&self, buf: B) -> Result<(), Self::Error>
+    where
+        B: BufMut,
+    {
+        let bits: u8 = (self.forward as u8)
+            + ((self.back as u8) << 1)
+            + ((self.left as u8) << 2)
+            + ((self.right as u8) << 3);
+
+        bits.encode(buf)
+    }
+}
+
+impl Decode for MoveBits {
+    type Error = <u8 as Decode>::Error;
+
+    fn decode<B>(buf: B) -> Result<Self, Self::Error>
+    where
+        B: Buf,
+    {
+        let bits = u8::decode(buf)?;
+
+        let forward = bits & 1 != 0;
+        let back = bits & (1 << 1) != 0;
+        let left = bits & (1 << 2) != 0;
+        let right = bits & (1 << 3) != 0;
+
+        Ok(Self {
+            forward,
+            back,
+            left,
+            right,
+        })
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum Frame {
     EntityCreate(EntityCreate),
@@ -863,6 +916,11 @@ pub enum Frame {
     InventoryItemAdd(InventoryItemAdd),
     InventoryItemRemove(InventoryItemRemove),
     InventoryItemUpdate(InventoryItemUpdate),
+    // FIXME: These should probably be merged into `EntityAction`s and handled by
+    // scripts, but for efficiency movement events are not encoded as regular
+    // repeated actions, but as a start then and end frame. Actions don't support
+    // such behavoir as of now.
+    PlayerMove(PlayerMove),
 }
 
 impl Frame {
@@ -878,6 +936,7 @@ impl Frame {
             Self::InventoryItemAdd(frame) => frame.entity,
             Self::InventoryItemRemove(frame) => frame.entity,
             Self::InventoryItemUpdate(frame) => frame.entity,
+            Self::PlayerMove(frame) => frame.entity,
         }
     }
 }
@@ -928,6 +987,10 @@ impl Encode for Frame {
             }
             Self::InventoryItemUpdate(frame) => {
                 FrameType::INVENTORY_ITEM_UPDATE.encode(&mut buf)?;
+                frame.encode(buf)
+            }
+            Self::PlayerMove(frame) => {
+                FrameType::PLAYER_MOVE.encode(&mut buf)?;
                 frame.encode(buf)
             }
         }
@@ -983,6 +1046,10 @@ impl Decode for Frame {
             FrameType::INVENTORY_ITEM_UPDATE => {
                 let frame = InventoryItemUpdate::decode(buf)?;
                 Ok(Self::InventoryItemUpdate(frame))
+            }
+            FrameType::PLAYER_MOVE => {
+                let frame = PlayerMove::decode(buf)?;
+                Ok(Self::PlayerMove(frame))
             }
             _ => unreachable!(),
         }
@@ -1173,6 +1240,8 @@ impl FrameType {
     pub const INVENTORY_ITEM_ADD: Self = Self(0x30);
     pub const INVENTORY_ITEM_REMOVE: Self = Self(0x31);
     pub const INVENTORY_ITEM_UPDATE: Self = Self(0x32);
+
+    pub const PLAYER_MOVE: Self = Self(0x41);
 }
 
 impl TryFrom<u16> for FrameType {
@@ -1192,6 +1261,7 @@ impl TryFrom<u16> for FrameType {
             Self::INVENTORY_ITEM_ADD => Ok(Self::INVENTORY_ITEM_ADD),
             Self::INVENTORY_ITEM_REMOVE => Ok(Self::INVENTORY_ITEM_REMOVE),
             Self::INVENTORY_ITEM_UPDATE => Ok(Self::INVENTORY_ITEM_UPDATE),
+            Self::PLAYER_MOVE => Ok(Self::PLAYER_MOVE),
             _ => Err(InvalidFrameType(value)),
         }
     }
