@@ -269,7 +269,7 @@ where
         // Merge FrameQueue into FrameBuffer, compact then send.
 
         while let Some((frame, id, cf)) = self.frame_queue.pop() {
-            self.push_data_frame(&frame, cf);
+            self.push_data_frame(&frame, id, cf);
         }
 
         self.buffer.clear();
@@ -772,17 +772,27 @@ where
         Poll::Ready(())
     }
 
-    fn push_data_frame(&mut self, frame: &Frame, control_frame: ControlFrame) {
+    fn push_data_frame(&mut self, frame: &Frame, id: CommandId, control_frame: ControlFrame) {
+        // Track the last sequence. `fragment_frame` always calls the closure
+        // at least once; for solo commands we only need to track the single
+        // sequence, but for fragmented commands we track the last sequence
+        // of the stream.
+        let mut last_seq = Sequence::default();
+
         fragment_frame(
             frame,
             &mut self.next_local_sequence,
             control_frame,
             self.max_data_size,
             |packet| {
+                last_seq = packet.header.sequence;
+
                 self.inflight_packets.insert(packet.clone());
                 self.write_queue.push(packet);
             },
         );
+
+        self.commands.insert(last_seq, id);
     }
 }
 
@@ -966,6 +976,10 @@ struct Commands {
 }
 
 impl Commands {
+    fn insert(&mut self, seq: Sequence, cmd: CommandId) {
+        self.cmds.entry(seq).or_default().push(cmd);
+    }
+
     /// Remove all commands where sequence  <= `seq`.
     fn remove(&mut self, seq: Sequence) -> Vec<CommandId> {
         let mut out = Vec::new();
