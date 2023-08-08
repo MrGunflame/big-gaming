@@ -21,7 +21,7 @@ impl Plugin for LevelPlugin {
         app.insert_resource(EntityQueue::new())
             // .add_system(update_streaming_sources)
             // .add_system(process_queue)
-            .add_system(flush_entity_queue)
+            // .add_system(flush_entity_queue)
             .add_system(load_objects);
     }
 }
@@ -89,16 +89,16 @@ impl LevelPlugin {}
 //     }
 // }
 
-fn flush_entity_queue(mut world: ResMut<WorldState>, mut queue: ResMut<EntityQueue>) {
-    let Some(mut view) = world.back_mut() else {
-        return;
-    };
+// fn flush_entity_queue(mut world: ResMut<WorldState>, mut queue: ResMut<EntityQueue>) {
+//     let Some(mut view) = world.back_mut() else {
+//         return;
+//     };
 
-    while let Some(entity) = queue.pop() {
-        tracing::info!("building entity {:?}", entity);
-        entity.build(&mut view);
-    }
-}
+//     while let Some(entity) = queue.pop() {
+//         tracing::info!("building entity {:?}", entity);
+//         entity.build(&mut view);
+//     }
+// }
 
 fn load_objects(
     mut commands: Commands,

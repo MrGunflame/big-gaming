@@ -8,6 +8,7 @@ use game_common::world::control_frame::ControlFrame;
 use game_common::world::world::WorldState;
 use game_core::counter::{Interval, UpdateCounter};
 use game_core::time::Time;
+use game_net::backlog::Backlog;
 use game_net::conn::{ConnectionHandle, ConnectionId};
 use game_net::snapshot::{Command, CommandQueue, ConnectionMessage};
 use game_tracing::world::WorldTrace;
@@ -21,6 +22,8 @@ use super::prediction::ClientPredictions;
 
 #[derive(Debug, Resource)]
 pub struct ServerConnection<I> {
+    pub world: WorldState,
+
     pub handle: Option<ConnectionHandle>,
     pub entities: EntityMap,
     pub predictions: ClientPredictions,
@@ -40,10 +43,14 @@ pub struct ServerConnection<I> {
     pub last_render_frame: ControlFrame,
 
     pub trace: WorldTrace,
+    pub backlog: Backlog,
 }
 
 impl ServerConnection<Interval> {
     pub fn new(writer: GameStateWriter, config: &Config) -> Self {
+        let mut world = WorldState::new();
+        world.insert(ControlFrame(0));
+
         Self {
             handle: None,
             entities: EntityMap::default(),
@@ -62,6 +69,8 @@ impl ServerConnection<Interval> {
             buffer: CommandBuffer::default(),
             last_render_frame: ControlFrame(0),
             trace: WorldTrace::new(),
+            world,
+            backlog: Backlog::new(),
         }
     }
 
@@ -197,11 +206,9 @@ struct GameTick<I> {
     counter: UpdateCounter,
 }
 
-pub fn tick_game(
-    time: ResMut<Time>,
-    mut conn: ResMut<ServerConnection<Interval>>,
-    mut world: ResMut<WorldState>,
-) {
+pub fn tick_game(time: ResMut<Time>, mut conn: ResMut<ServerConnection<Interval>>) {
+    let conn = &mut *conn;
+
     while conn.game_tick.interval.is_ready(time.last_update()) {
         if conn.is_connected() {
             conn.flush_buffer();
@@ -210,8 +217,11 @@ pub fn tick_game(
         conn.game_tick.current_control_frame += 1;
         conn.game_tick.counter.update();
 
-        debug_assert!(world.get(conn.game_tick.current_control_frame).is_none());
-        world.insert(conn.game_tick.current_control_frame);
+        debug_assert!(conn
+            .world
+            .get(conn.game_tick.current_control_frame)
+            .is_none());
+        conn.world.insert(conn.game_tick.current_control_frame);
 
         // Snapshots render..head should now exist.
         if cfg!(debug_assertions) {
@@ -223,7 +233,7 @@ pub fn tick_game(
             let end = control_frame.head;
 
             while start != end + 1 {
-                assert!(world.get(start).is_some());
+                assert!(conn.world.get(start).is_some());
 
                 start += 1;
             }

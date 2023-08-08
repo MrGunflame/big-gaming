@@ -18,7 +18,6 @@ use game_common::world::control_frame::ControlFrame;
 use game_common::world::entity::{Entity, EntityBody};
 use game_common::world::world::WorldState;
 use game_core::counter::Interval;
-use game_net::backlog::Backlog;
 use game_net::snapshot::{Command, Response, Status};
 use glam::Vec3;
 
@@ -56,13 +55,7 @@ pub struct NetPlugin {}
 
 impl Plugin for NetPlugin {
     fn build(&self, app: &mut App) {
-        let mut world = WorldState::new();
-        // Initial empty world state.
-        world.insert(ControlFrame(0));
-
-        app.insert_resource(world);
         app.init_resource::<ServerConnection<Interval>>();
-        app.insert_resource(Backlog::new());
 
         app.add_system(conn::tick_game.in_set(NetSet::Tick));
         app.add_system(flush_command_queue.in_set(NetSet::Read));
@@ -77,10 +70,9 @@ impl Plugin for NetPlugin {
     }
 }
 
-fn flush_command_queue(
-    mut conn: ResMut<ServerConnection<Interval>>,
-    mut world: ResMut<WorldState>,
-) {
+fn flush_command_queue(mut conn: ResMut<ServerConnection<Interval>>) {
+    let conn = &mut *conn;
+
     if !conn.is_connected() {
         return;
     }
@@ -111,7 +103,7 @@ fn flush_command_queue(
                 continue;
             }
             Command::ReceivedCommands(ids) => {
-                let view = world.front().unwrap();
+                let view = conn.world.front().unwrap();
 
                 for cmd in ids {
                     conn.predictions.validate_pre_removal(cmd.id, view);
@@ -138,14 +130,14 @@ fn flush_command_queue(
         //     }
         // }
 
-        let Some(mut view) = world.get_mut(msg.control_frame) else {
+        let Some(mut view) = conn.world.get_mut(msg.control_frame) else {
             // If the control frame does not exist on the client ast least one of these issues are to blame:
             // 1. The server is sending garbage data, refereing to a control frame that has either already
             //    passed or is still too far in the future.
             // 2. The client's clock is desynced and creating new snapshots too slow/fast.
             // 3. The server's clock is desynced and creating new snapshots too slow/fast.
-            let front = world.front().unwrap();
-            let back = world.back().unwrap();
+            let front = conn.world.front().unwrap();
+            let back = conn.world.back().unwrap();
             tracing::warn!(
                 "received snapshot for unknwon control frame: {:?} (snapshots  {:?}..={:?} exist)",
                 msg.control_frame,

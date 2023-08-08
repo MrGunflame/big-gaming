@@ -15,8 +15,6 @@ use game_common::world::source::StreamingSource;
 use game_common::world::world::{WorldState, WorldViewRef};
 use game_core::counter::Interval;
 use game_core::modules::Modules;
-use game_net::backlog::Backlog;
-use game_tracing::world::WorldTrace;
 
 use crate::entities::actor::LoadActor;
 use crate::entities::inventory::{AddInventoryItem, DestroyInventory, RemoveInventoryItem};
@@ -28,7 +26,6 @@ use crate::net::interpolate::{InterpolateRotation, InterpolateTranslation};
 use super::ServerConnection;
 
 pub fn apply_world_delta(
-    mut world: ResMut<WorldState>,
     mut conn: ResMut<ServerConnection<Interval>>,
     mut commands: Commands,
     mut entities: Query<(
@@ -42,9 +39,10 @@ pub fn apply_world_delta(
         &mut InterpolateTranslation,
         &mut InterpolateRotation,
     )>,
-    mut backlog: ResMut<Backlog>,
     modules: Res<Modules>,
 ) {
+    let conn = &mut *conn;
+
     let cf = conn.control_frame();
 
     // Don't start rendering if the initial interpoation window is not
@@ -57,10 +55,10 @@ pub fn apply_world_delta(
         return;
     }
 
-    debug_assert!(world.len() >= 2);
+    debug_assert!(conn.world.len() >= 2);
 
-    let prev = world.at(0).unwrap();
-    let next = world.at(1).unwrap();
+    let prev = conn.world.at(0).unwrap();
+    let next = conn.world.at(1).unwrap();
 
     let delta = create_snapshot_diff(prev, next);
 
@@ -75,11 +73,9 @@ pub fn apply_world_delta(
             &mut entities,
             event.clone(),
             &mut buffer,
-            &mut conn,
-            &mut backlog,
+            conn,
             &modules,
             render_cf,
-            prev,
         );
     }
 
@@ -91,7 +87,7 @@ pub fn apply_world_delta(
         conn.entities.insert(id, entity);
     }
 
-    world.pop();
+    conn.world.pop();
     conn.last_render_frame = render_cf;
 }
 
@@ -109,11 +105,12 @@ fn handle_event(
     event: EntityChange,
     buffer: &mut Buffer,
     conn: &mut ServerConnection<Interval>,
-    backlog: &mut Backlog,
     modules: &Modules,
     render_cf: ControlFrame,
-    view: WorldViewRef<'_>,
 ) {
+    // Frame that is being interpolated from.
+    let view = conn.world.at(0).unwrap();
+
     tracing::trace!(
         concat!("handle ", stringify!(WorldState), " event: {:?}"),
         event
@@ -157,7 +154,7 @@ fn handle_event(
                     EntityChange::RemoveStreamingSource { id } => {}
                 }
             } else {
-                backlog.push(entity_id, event);
+                conn.backlog.push(entity_id, event);
             }
 
             return;

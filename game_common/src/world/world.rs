@@ -4,8 +4,6 @@ use std::collections::{HashMap, VecDeque};
 use std::fmt::{self, Debug, Formatter};
 use std::ops::Deref;
 
-use bevy_ecs::system::Resource;
-
 use game_common::world::CellId;
 
 use glam::{Quat, Vec3};
@@ -26,7 +24,7 @@ use super::inventory::InventoriesMut;
 use super::source::StreamingSource;
 
 /// The world state at constant time intervals.
-#[derive(Clone, Debug, Resource)]
+#[derive(Clone, Debug)]
 pub struct WorldState {
     // TODO: This can be a fixed size ring buffer.
     pub(crate) snapshots: VecDeque<Snapshot>,
