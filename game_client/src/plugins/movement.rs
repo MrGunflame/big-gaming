@@ -188,6 +188,8 @@ pub fn translation_events(
                     + (bits.right as u8 as f32) * Vec3::X;
                 let delta = transform.rotation * dir * speed;
                 transform.translation += delta;
+
+                dbg!(transform.translation);
             }
         }
     }

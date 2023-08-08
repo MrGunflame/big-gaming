@@ -89,6 +89,7 @@ fn flush_command_queue(mut conn: ResMut<ServerConnection>, mut world: ResMut<Wor
     let mut ids = Vec::new();
 
     while let Some(msg) = conn.queue.pop() {
+        dbg!(&msg);
         if let Some(id) = msg.id {
             ids.push(Response {
                 id,

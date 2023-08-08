@@ -10,6 +10,7 @@ use game_core::counter::{Interval, UpdateCounter};
 use game_core::time::Time;
 use game_net::conn::{ConnectionHandle, ConnectionId};
 use game_net::snapshot::{Command, CommandQueue, ConnectionMessage};
+use game_tracing::world::WorldTrace;
 
 use crate::config::Config;
 use crate::net::socket::spawn_conn;
@@ -37,6 +38,8 @@ pub struct ServerConnection {
     buffer: CommandBuffer,
 
     pub last_render_frame: ControlFrame,
+
+    pub trace: WorldTrace,
 }
 
 impl ServerConnection {
@@ -58,6 +61,7 @@ impl ServerConnection {
             server_entities: Entities::new(),
             buffer: CommandBuffer::default(),
             last_render_frame: ControlFrame(0),
+            trace: WorldTrace::new(),
         }
     }
 

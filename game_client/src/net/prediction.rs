@@ -69,6 +69,7 @@ impl ClientPredictions {
     }
 
     pub fn remove(&mut self, id: CommandId) {
+        dbg!("rm");
         for entity in self.entities.values_mut() {
             entity.commands.remove(&id);
         }
@@ -98,10 +99,11 @@ impl ClientPredictions {
     {
         let predicted_entity = self.entities.get(&id)?;
 
+        let entity = view.get(id)?;
+        dbg!(entity.transform.translation);
+
         let mut translation = None;
         for (snap, (frame, cmd)) in predicted_entity.commands.iter() {
-            let entity = view.get(id)?;
-
             match cmd {
                 Command::PlayerMove(cmd) => {
                     // Based on the server impl.
@@ -111,6 +113,8 @@ impl ClientPredictions {
                         + (cmd.bits.left as u8 as f32) * -Vec3::X
                         + (cmd.bits.right as u8 as f32) * Vec3::X;
                     let delta = extract_actor_rotation(entity.transform.rotation) * dir * speed;
+
+                    dbg!(delta);
 
                     match &mut translation {
                         Some(translation) => *translation += delta,

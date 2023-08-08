@@ -15,6 +15,7 @@ use game_common::world::source::StreamingSource;
 use game_common::world::world::{WorldState, WorldViewRef};
 use game_core::modules::Modules;
 use game_net::backlog::Backlog;
+use game_tracing::world::WorldTrace;
 
 use crate::entities::actor::LoadActor;
 use crate::entities::inventory::{AddInventoryItem, DestroyInventory, RemoveInventoryItem};
@@ -43,8 +44,6 @@ pub fn apply_world_delta(
     mut backlog: ResMut<Backlog>,
     modules: Res<Modules>,
 ) {
-    let conn = &mut *conn;
-
     let cf = conn.control_frame();
 
     // Don't start rendering if the initial interpoation window is not
@@ -75,15 +74,17 @@ pub fn apply_world_delta(
             &mut entities,
             event.clone(),
             &mut buffer,
-            &conn,
+            &mut conn,
             &mut backlog,
             &modules,
             render_cf,
-            next,
+            prev,
         );
     }
 
     for entity in buffer.entities {
+        conn.trace.spawn(render_cf, entity.entity.clone());
+
         let id = entity.entity.id;
         let entity = spawn_entity(&mut commands, entity);
         conn.entities.insert(id, entity);
@@ -106,7 +107,7 @@ fn handle_event(
     )>,
     event: EntityChange,
     buffer: &mut Buffer,
-    conn: &ServerConnection,
+    conn: &mut ServerConnection,
     backlog: &mut Backlog,
     modules: &Modules,
     render_cf: ControlFrame,
@@ -177,9 +178,13 @@ fn handle_event(
             if !buffer.remove(id) {
                 commands.entity(entity).despawn();
             }
+
+            conn.trace.despawn(render_cf, id);
         }
         EntityChange::Translate { id, translation } => {
             let entity = conn.entities.get(id).unwrap();
+
+            conn.trace.set_translation(render_cf, id, translation);
 
             if let Ok((_, transform, _, _, _, mut interpolate, _)) = entities.get_mut(entity) {
                 // Translation is predicted, do not interpolate.
@@ -197,16 +202,21 @@ fn handle_event(
                 //     return;
                 // }
 
+                dbg!(translation);
+
                 let translation = conn
                     .predictions
                     .get_translation(view, id)
                     .unwrap_or(translation);
+                dbg!(transform.translation, translation);
 
                 interpolate.set(transform.translation, translation, render_cf, render_cf + 1);
             }
         }
         EntityChange::Rotate { id, rotation } => {
             let entity = conn.entities.get(id).unwrap();
+
+            conn.trace.set_rotation(render_cf, id, rotation);
 
             if let Ok((_, mut transform, _, _, props, _, mut interpolate)) =
                 entities.get_mut(entity)
