@@ -86,6 +86,10 @@ impl ManualInterval {
     pub fn new() -> Self {
         Self { is_ready: false }
     }
+
+    pub fn set_ready(&mut self) {
+        self.is_ready = true;
+    }
 }
 
 impl IntervalImpl for ManualInterval {

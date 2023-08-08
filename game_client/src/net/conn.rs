@@ -1,12 +1,12 @@
 use std::net::ToSocketAddrs;
 use std::time::Duration;
 
-use bevy_ecs::system::{ResMut, Resource};
+use bevy_ecs::system::Resource;
 use bevy_ecs::world::{FromWorld, World};
 use game_common::entity::{EntityId, EntityMap};
 use game_common::world::control_frame::ControlFrame;
 use game_common::world::world::WorldState;
-use game_core::counter::{Interval, UpdateCounter};
+use game_core::counter::{Interval, IntervalImpl, UpdateCounter};
 use game_core::time::Time;
 use game_net::backlog::Backlog;
 use game_net::conn::{ConnectionHandle, ConnectionId};
@@ -31,7 +31,7 @@ pub struct ServerConnection<I> {
     pub writer: GameStateWriter,
     pub queue: CommandQueue,
 
-    game_tick: GameTick<I>,
+    pub game_tick: GameTick<I>,
 
     /// How many frames to backlog and interpolate over.
     interplation_frames: ControlFrame,
@@ -40,14 +40,15 @@ pub struct ServerConnection<I> {
 
     buffer: CommandBuffer,
 
-    pub last_render_frame: ControlFrame,
+    /// The previously rendered frame, `None` if not rendered yet.
+    pub last_render_frame: Option<ControlFrame>,
 
     pub trace: WorldTrace,
     pub backlog: Backlog,
 }
 
-impl ServerConnection<Interval> {
-    pub fn new(writer: GameStateWriter, config: &Config) -> Self {
+impl<I> ServerConnection<I> {
+    pub fn new_with_interval(writer: GameStateWriter, config: &Config, interval: I) -> Self {
         let mut world = WorldState::new();
         world.insert(ControlFrame(0));
 
@@ -59,7 +60,7 @@ impl ServerConnection<Interval> {
             writer,
             queue: CommandQueue::new(),
             game_tick: GameTick {
-                interval: Interval::new(Duration::from_secs(1) / config.timestep),
+                interval,
                 current_control_frame: ControlFrame(0),
                 initial_idle_passed: false,
                 counter: UpdateCounter::new(),
@@ -67,7 +68,7 @@ impl ServerConnection<Interval> {
             interplation_frames: ControlFrame(config.network.interpolation_frames),
             server_entities: Entities::new(),
             buffer: CommandBuffer::default(),
-            last_render_frame: ControlFrame(0),
+            last_render_frame: None,
             trace: WorldTrace::new(),
             world,
             backlog: Backlog::new(),
@@ -187,6 +188,13 @@ impl ServerConnection<Interval> {
     }
 }
 
+impl ServerConnection<Interval> {
+    pub fn new(writer: GameStateWriter, config: &Config) -> Self {
+        let interval = Interval::new(Duration::from_secs(1) / config.timestep);
+        Self::new_with_interval(writer, config, interval)
+    }
+}
+
 impl FromWorld for ServerConnection<Interval> {
     fn from_world(world: &mut World) -> Self {
         let writer = world.resource::<GameStateWriter>().clone();
@@ -196,8 +204,8 @@ impl FromWorld for ServerConnection<Interval> {
 }
 
 #[derive(Debug)]
-struct GameTick<I> {
-    interval: I,
+pub struct GameTick<I> {
+    pub interval: I,
     current_control_frame: ControlFrame,
     /// Whether the initial idle phase passed. In this phase the renderer is waiting for the
     /// initial interpolation window to build up.
@@ -206,7 +214,10 @@ struct GameTick<I> {
     counter: UpdateCounter,
 }
 
-pub fn tick_game(time: ResMut<Time>, mut conn: ResMut<ServerConnection<Interval>>) {
+pub fn tick_game<I>(time: &Time, conn: &mut ServerConnection<I>)
+where
+    I: IntervalImpl,
+{
     let conn = &mut *conn;
 
     while conn.game_tick.interval.is_ready(time.last_update()) {

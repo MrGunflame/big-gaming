@@ -41,6 +41,12 @@ pub enum GameState {
 pub struct GameStateWriter(mpsc::Sender<GameState>);
 
 impl GameStateWriter {
+    /// Creates a new `GameStateWriter` that discards all events.
+    pub fn noop() -> Self {
+        let (tx, _) = mpsc::channel(1);
+        Self(tx)
+    }
+
     pub fn update(&self, state: GameState) {
         let _ = self.0.try_send(state);
     }

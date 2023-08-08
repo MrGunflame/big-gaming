@@ -1,20 +1,15 @@
-use bevy_ecs::system::{Commands, Query, Res, ResMut};
+use bevy_ecs::system::{Commands, Resource};
 use game_common::components::actions::{ActionId, Actions};
-use game_common::components::actor::ActorProperties;
-use game_common::components::combat::Health;
 use game_common::components::components::{self, Components};
 use game_common::components::inventory::Inventory;
 use game_common::components::items::Item;
-use game_common::components::player::HostPlayer;
-use game_common::components::transform::Transform;
 use game_common::entity::EntityId;
 use game_common::world::control_frame::ControlFrame;
 use game_common::world::entity::{Entity, EntityBody};
 use game_common::world::snapshot::{EntityChange, InventoryItemAdd};
-use game_common::world::source::StreamingSource;
-use game_common::world::world::{WorldState, WorldViewRef};
-use game_core::counter::Interval;
+use game_common::world::world::WorldViewRef;
 use game_core::modules::Modules;
+use glam::{Quat, Vec3};
 
 use crate::entities::actor::LoadActor;
 use crate::entities::inventory::{AddInventoryItem, DestroyInventory, RemoveInventoryItem};
@@ -25,25 +20,10 @@ use crate::net::interpolate::{InterpolateRotation, InterpolateTranslation};
 
 use super::ServerConnection;
 
-pub fn apply_world_delta(
-    mut conn: ResMut<ServerConnection<Interval>>,
-    mut commands: Commands,
-    mut entities: Query<(
-        bevy_ecs::entity::Entity,
-        &mut Transform,
-        Option<&mut Health>,
-        // FIXME: We prolly don't want this on entity directly and just
-        // access the WorldState.
-        Option<&mut Inventory>,
-        Option<&mut ActorProperties>,
-        &mut InterpolateTranslation,
-        &mut InterpolateRotation,
-    )>,
-    modules: Res<Modules>,
-) {
-    let conn = &mut *conn;
-
+pub fn apply_world_delta<I>(conn: &mut ServerConnection<I>, cmd_buffer: &mut CommandBuffer) {
     let cf = conn.control_frame();
+
+    dbg!(cf.render, conn.last_render_frame);
 
     // Don't start rendering if the initial interpoation window is not
     // yet filled.
@@ -51,16 +31,25 @@ pub fn apply_world_delta(
         return;
     };
 
-    if conn.last_render_frame == render_cf {
+    debug_assert!(conn.world.len() >= 2);
+
+    // Called while we're still on the same frame, we won't do anything.
+    // FIXME: This check might better be moved to a different place, like
+    // being only called once the tick is stepped forward for example.
+    if conn.last_render_frame == Some(render_cf) {
         return;
     }
 
-    debug_assert!(conn.world.len() >= 2);
-
-    let prev = conn.world.at(0).unwrap();
-    let next = conn.world.at(1).unwrap();
-
-    let delta = create_snapshot_diff(prev, next);
+    // The first time a frame is being produced, i.e. `last_render_frame` is
+    // `None` we must produce a "diff" consisting of the entire world state.
+    let delta = if conn.last_render_frame.is_none() {
+        let view = conn.world.at(0).unwrap();
+        create_initial_diff(view)
+    } else {
+        let prev = conn.world.at(0).unwrap();
+        let next = conn.world.at(1).unwrap();
+        create_snapshot_diff(prev, next)
+    };
 
     // Since events are received in batches, and commands are not applied until
     // the system is done, we buffer all created entities so we can modify them
@@ -68,44 +57,24 @@ pub fn apply_world_delta(
     let mut buffer = Buffer::new();
 
     for event in delta {
-        handle_event(
-            &mut commands,
-            &mut entities,
-            event.clone(),
-            &mut buffer,
-            conn,
-            &modules,
-            render_cf,
-        );
+        handle_event(event.clone(), &mut buffer, conn, cmd_buffer, render_cf);
     }
 
     for entity in buffer.entities {
         conn.trace.spawn(render_cf, entity.entity.clone());
 
-        let id = entity.entity.id;
-        let entity = spawn_entity(&mut commands, entity);
-        conn.entities.insert(id, entity);
+        cmd_buffer.push(Command::Spawn(entity));
     }
 
     conn.world.pop();
-    conn.last_render_frame = render_cf;
+    conn.last_render_frame = Some(render_cf);
 }
 
-fn handle_event(
-    commands: &mut Commands,
-    entities: &mut Query<(
-        bevy_ecs::entity::Entity,
-        &mut Transform,
-        Option<&mut Health>,
-        Option<&mut Inventory>,
-        Option<&mut ActorProperties>,
-        &mut InterpolateTranslation,
-        &mut InterpolateRotation,
-    )>,
+fn handle_event<I>(
     event: EntityChange,
     buffer: &mut Buffer,
-    conn: &mut ServerConnection<Interval>,
-    modules: &Modules,
+    conn: &mut ServerConnection<I>,
+    cmd_buffer: &mut CommandBuffer,
     render_cf: ControlFrame,
 ) {
     // Frame that is being interpolated from.
@@ -142,7 +111,7 @@ fn handle_event(
                     EntityChange::CreateHost { id: _ } => entity.host = true,
                     EntityChange::DestroyHost { id: _ } => entity.host = false,
                     EntityChange::InventoryItemAdd(event) => {
-                        add_inventory_item(&mut entity.inventory, modules, event);
+                        //add_inventory_item(&mut entity.inventory, modules, event);
                     }
                     EntityChange::InventoryItemRemove(event) => {
                         entity.inventory.remove(event.id);
@@ -174,7 +143,7 @@ fn handle_event(
             };
 
             if !buffer.remove(id) {
-                commands.entity(entity).despawn();
+                cmd_buffer.push(Command::Despawn(entity));
             }
 
             conn.trace.despawn(render_cf, id);
@@ -184,115 +153,52 @@ fn handle_event(
 
             conn.trace.set_translation(render_cf, id, translation);
 
-            if let Ok((_, transform, _, _, _, mut interpolate, _)) = entities.get_mut(entity) {
-                // Translation is predicted, do not interpolate.
-                // if let Some(translation) = conn
-                //     .overrides
-                //     .get_entity(id)
-                //     .map(|p| p.translation())
-                //     .flatten()
-                // {
-                //     // Predictected values should already be applied.
-                //     // if cfg!(debug_assertions) {
-                //     //     assert_eq!(transform.translation, translation);
-                //     // }
-
-                //     return;
-                // }
-
-                dbg!(translation);
-
-                let translation = conn
-                    .predictions
-                    .get_translation(view, id)
-                    .unwrap_or(translation);
-                dbg!(transform.translation, translation);
-
-                interpolate.set(transform.translation, translation, render_cf, render_cf + 1);
-            }
+            cmd_buffer.push(Command::Translate {
+                start: render_cf,
+                end: render_cf + 1,
+                dst: translation,
+            });
         }
         EntityChange::Rotate { id, rotation } => {
             let entity = conn.entities.get(id).unwrap();
 
             conn.trace.set_rotation(render_cf, id, rotation);
 
-            if let Ok((_, mut transform, _, _, props, _, mut interpolate)) =
-                entities.get_mut(entity)
-            {
-                // Rotation is predicted, do not interpolate.
-                // if let Some(rotation) = conn
-                //     .predictions
-                //     .get_entity(id)
-                //     .map(|p| p.rotation())
-                //     .flatten()
-                // {
-                //     // Predictected values should already be applied.
-                //     // if cfg!(debug_assertions) {
-                //     //     if let Some(props) = props {
-                //     //         assert_eq!(props.rotation, rotation);
-                //     //     } else {
-                //     //         assert_eq!(transform.rotation, rotation);
-                //     //     }
-                //     // }
-
-                //     return;
-                // }
-
-                let rot = conn.predictions.get_rotation(id).unwrap_or(rotation);
-
-                if let Some(props) = props {
-                    interpolate.set(props.rotation, rot, render_cf, render_cf + 1);
-                } else {
-                    interpolate.set(transform.rotation, rot, render_cf, render_cf + 1);
-                }
-
-                // transform.rotation = rotation;
-            }
+            cmd_buffer.push(Command::Rotate {
+                start: render_cf,
+                end: render_cf + 1,
+                dst: rotation,
+            });
         }
         EntityChange::CreateHost { id } => {
             let entity = conn.entities.get(id).unwrap();
 
-            commands
-                .entity(entity)
-                .insert(HostPlayer)
-                .insert(StreamingSource::new());
+            cmd_buffer.push(Command::SpawnHost(entity));
         }
         EntityChange::DestroyHost { id } => {
             let entity = conn.entities.get(id).unwrap();
 
-            commands
-                .entity(entity)
-                .remove::<HostPlayer>()
-                .remove::<StreamingSource>();
+            cmd_buffer.push(Command::Despawn(entity));
         }
         EntityChange::Health { id, health } => {
             let entity = conn.entities.get(id).unwrap();
 
-            if let Ok((_, _, Some(mut h), _, _, _, _)) = entities.get_mut(entity) {
-                *h = health;
-            }
+            // TODO
         }
         EntityChange::InventoryItemAdd(event) => {
             let entity = conn.entities.get(event.entity).unwrap();
 
-            commands.spawn(AddInventoryItem {
-                entity,
-                slot: event.id,
-                id: event.item,
-            });
+            // TODO
         }
         EntityChange::InventoryItemRemove(event) => {
             let entity = conn.entities.get(event.entity).unwrap();
 
-            commands.spawn(RemoveInventoryItem {
-                entity,
-                slot: event.id,
-            });
+            // TODO
         }
         EntityChange::InventoryDestroy(event) => {
             let entity = conn.entities.get(event.entity).unwrap();
 
-            commands.spawn(DestroyInventory { entity });
+            // TODO
         }
         EntityChange::CreateStreamingSource { id, source } => {}
         EntityChange::RemoveStreamingSource { id } => {}
@@ -392,7 +298,7 @@ fn spawn_entity(commands: &mut Commands, entity: DelayedEntity) -> bevy_ecs::ent
 }
 
 #[derive(Clone, Debug)]
-struct DelayedEntity {
+pub struct DelayedEntity {
     entity: Entity,
     host: bool,
     inventory: Inventory,
@@ -475,6 +381,18 @@ fn add_inventory_item(inventory: &mut Inventory, modules: &Modules, event: Inven
     }
 }
 
+fn create_initial_diff(view: WorldViewRef) -> Vec<EntityChange> {
+    let mut deltas = vec![];
+
+    for entity in view.iter() {
+        deltas.push(EntityChange::Create {
+            entity: entity.clone(),
+        });
+    }
+
+    deltas
+}
+
 fn create_snapshot_diff(prev: WorldViewRef, next: WorldViewRef) -> Vec<EntityChange> {
     let mut deltas = vec![];
 
@@ -520,4 +438,49 @@ fn create_snapshot_diff(prev: WorldViewRef, next: WorldViewRef) -> Vec<EntityCha
     }
 
     deltas
+}
+
+#[derive(Clone, Debug, Default, Resource)]
+pub struct CommandBuffer {
+    buffer: Vec<Command>,
+}
+
+impl CommandBuffer {
+    pub fn new() -> Self {
+        Self { buffer: Vec::new() }
+    }
+
+    pub fn push(&mut self, cmd: Command) {
+        self.buffer.push(cmd);
+    }
+
+    pub fn pop(&mut self) -> Option<Command> {
+        self.buffer.pop()
+    }
+
+    pub fn len(&self) -> usize {
+        self.buffer.len()
+    }
+
+    pub fn clear(&mut self) {
+        self.buffer.clear();
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum Command {
+    Spawn(DelayedEntity),
+    Despawn(bevy_ecs::entity::Entity),
+    Translate {
+        start: ControlFrame,
+        end: ControlFrame,
+        dst: Vec3,
+    },
+    Rotate {
+        start: ControlFrame,
+        end: ControlFrame,
+        dst: Quat,
+    },
+    SpawnHost(bevy_ecs::entity::Entity),
+    DestroyHost(bevy_ecs::entity::Entity),
 }
