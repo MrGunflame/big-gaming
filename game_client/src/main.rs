@@ -14,6 +14,7 @@ use bevy_ecs::system::Commands;
 use clap::Parser;
 use config::Config;
 use entities::LoadEntityPlugin;
+use game_core::counter::Interval;
 use game_core::logger::{self};
 use game_core::CorePlugins;
 use game_render::color::Color;
@@ -80,7 +81,9 @@ fn main() {
     if let Some(addr) = args.connect {
         tracing::info!("Connecting to {}", addr);
 
-        app.world.resource_mut::<ServerConnection>().connect(addr);
+        app.world
+            .resource_mut::<ServerConnection<Interval>>()
+            .connect(addr);
     }
 
     app.run();

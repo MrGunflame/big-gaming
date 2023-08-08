@@ -17,6 +17,7 @@ use game_common::units::Mass;
 use game_common::world::control_frame::ControlFrame;
 use game_common::world::entity::{Entity, EntityBody};
 use game_common::world::world::WorldState;
+use game_core::counter::Interval;
 use game_net::backlog::Backlog;
 use game_net::snapshot::{Command, Response, Status};
 use glam::Vec3;
@@ -60,7 +61,7 @@ impl Plugin for NetPlugin {
         world.insert(ControlFrame(0));
 
         app.insert_resource(world);
-        app.init_resource::<ServerConnection>();
+        app.init_resource::<ServerConnection<Interval>>();
         app.insert_resource(Backlog::new());
 
         app.add_system(conn::tick_game.in_set(NetSet::Tick));
@@ -76,7 +77,10 @@ impl Plugin for NetPlugin {
     }
 }
 
-fn flush_command_queue(mut conn: ResMut<ServerConnection>, mut world: ResMut<WorldState>) {
+fn flush_command_queue(
+    mut conn: ResMut<ServerConnection<Interval>>,
+    mut world: ResMut<WorldState>,
+) {
     if !conn.is_connected() {
         return;
     }

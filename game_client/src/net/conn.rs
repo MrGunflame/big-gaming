@@ -20,7 +20,7 @@ use super::entities::Entities;
 use super::prediction::ClientPredictions;
 
 #[derive(Debug, Resource)]
-pub struct ServerConnection {
+pub struct ServerConnection<I> {
     pub handle: Option<ConnectionHandle>,
     pub entities: EntityMap,
     pub predictions: ClientPredictions,
@@ -28,7 +28,7 @@ pub struct ServerConnection {
     pub writer: GameStateWriter,
     pub queue: CommandQueue,
 
-    game_tick: GameTick,
+    game_tick: GameTick<I>,
 
     /// How many frames to backlog and interpolate over.
     interplation_frames: ControlFrame,
@@ -42,7 +42,7 @@ pub struct ServerConnection {
     pub trace: WorldTrace,
 }
 
-impl ServerConnection {
+impl ServerConnection<Interval> {
     pub fn new(writer: GameStateWriter, config: &Config) -> Self {
         Self {
             handle: None,
@@ -178,7 +178,7 @@ impl ServerConnection {
     }
 }
 
-impl FromWorld for ServerConnection {
+impl FromWorld for ServerConnection<Interval> {
     fn from_world(world: &mut World) -> Self {
         let writer = world.resource::<GameStateWriter>().clone();
         let config = world.resource::<Config>();
@@ -187,8 +187,8 @@ impl FromWorld for ServerConnection {
 }
 
 #[derive(Debug)]
-struct GameTick {
-    interval: Interval,
+struct GameTick<I> {
+    interval: I,
     current_control_frame: ControlFrame,
     /// Whether the initial idle phase passed. In this phase the renderer is waiting for the
     /// initial interpolation window to build up.
@@ -199,7 +199,7 @@ struct GameTick {
 
 pub fn tick_game(
     time: ResMut<Time>,
-    mut conn: ResMut<ServerConnection>,
+    mut conn: ResMut<ServerConnection<Interval>>,
     mut world: ResMut<WorldState>,
 ) {
     while conn.game_tick.interval.is_ready(time.last_update()) {

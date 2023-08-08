@@ -66,3 +66,32 @@ impl Interval {
         }
     }
 }
+
+impl IntervalImpl for Interval {
+    fn is_ready(&mut self, now: Instant) -> bool {
+        Self::is_ready(self, now)
+    }
+}
+
+pub trait IntervalImpl {
+    fn is_ready(&mut self, now: Instant) -> bool;
+}
+
+pub struct ManualInterval {
+    /// Should the next call yield ready?
+    is_ready: bool,
+}
+
+impl ManualInterval {
+    pub fn new() -> Self {
+        Self { is_ready: false }
+    }
+}
+
+impl IntervalImpl for ManualInterval {
+    fn is_ready(&mut self, _now: Instant) -> bool {
+        let is_ready = self.is_ready;
+        self.is_ready ^= true;
+        is_ready
+    }
+}

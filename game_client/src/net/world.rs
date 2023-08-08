@@ -13,6 +13,7 @@ use game_common::world::entity::{Entity, EntityBody};
 use game_common::world::snapshot::{EntityChange, InventoryItemAdd};
 use game_common::world::source::StreamingSource;
 use game_common::world::world::{WorldState, WorldViewRef};
+use game_core::counter::Interval;
 use game_core::modules::Modules;
 use game_net::backlog::Backlog;
 use game_tracing::world::WorldTrace;
@@ -28,7 +29,7 @@ use super::ServerConnection;
 
 pub fn apply_world_delta(
     mut world: ResMut<WorldState>,
-    mut conn: ResMut<ServerConnection>,
+    mut conn: ResMut<ServerConnection<Interval>>,
     mut commands: Commands,
     mut entities: Query<(
         bevy_ecs::entity::Entity,
@@ -107,7 +108,7 @@ fn handle_event(
     )>,
     event: EntityChange,
     buffer: &mut Buffer,
-    conn: &mut ServerConnection,
+    conn: &mut ServerConnection<Interval>,
     backlog: &mut Backlog,
     modules: &Modules,
     render_cf: ControlFrame,

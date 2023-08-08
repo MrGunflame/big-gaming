@@ -9,6 +9,7 @@ use game_common::components::actor::{ActorProperties, MovementSpeed};
 use game_common::components::camera::CameraMode;
 use game_common::components::player::HostPlayer;
 use game_common::components::transform::Transform;
+use game_core::counter::Interval;
 use game_core::time::Time;
 use game_input::hotkeys::{Hotkey, HotkeyCode, HotkeyId, HotkeyReader, Hotkeys, Key, TriggerKind};
 use game_input::keyboard::{KeyCode, KeyboardInput};
@@ -113,7 +114,7 @@ fn register_events(mut hotkeys: ResMut<Hotkeys>, mut movement_hotkeys: ResMut<Mo
 }
 
 pub fn translation_events(
-    mut conn: ResMut<ServerConnection>,
+    mut conn: ResMut<ServerConnection<Interval>>,
     time: Res<Time>,
     mut players: Query<(&mut Transform, &MovementSpeed), With<HostPlayer>>,
     mut cameras: Query<(&mut Transform, &CameraMode), (Without<HostPlayer>, With<PrimaryCamera>)>,
@@ -196,7 +197,7 @@ pub fn translation_events(
 }
 
 pub fn rotation_events(
-    mut conn: ResMut<ServerConnection>,
+    mut conn: ResMut<ServerConnection<Interval>>,
     mut events: EventReader<MouseMotion>,
     mut players: Query<(&mut ActorProperties, &mut Transform), With<HostPlayer>>,
     mut cameras: Query<(&mut Transform, &CameraMode), (Without<HostPlayer>, With<PrimaryCamera>)>,

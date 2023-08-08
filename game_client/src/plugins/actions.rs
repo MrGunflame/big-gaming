@@ -5,6 +5,7 @@ use game_common::components::actions::ActionId;
 use game_common::events::{ActionEvent, Event, EventQueue};
 use game_common::module::ModuleId;
 use game_common::record::{RecordId, RecordReference};
+use game_core::counter::Interval;
 use game_core::modules::Modules;
 use game_data::record::{Record, RecordBody};
 use game_input::hotkeys::{Hotkey, HotkeyCode, HotkeyId, HotkeyReader, Hotkeys, TriggerKind};
@@ -79,7 +80,7 @@ fn dispatch_player_action_hotkeys(
     actions: Res<ActiveActions>,
     mut events: HotkeyReader<Hotkey>,
     mut queue: ResMut<EventQueue>,
-    mut conn: ResMut<ServerConnection>,
+    mut conn: ResMut<ServerConnection<Interval>>,
 ) {
     let host = conn.host;
 

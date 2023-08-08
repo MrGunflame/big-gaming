@@ -3,6 +3,7 @@ use bevy_ecs::system::{Query, ResMut};
 use game_common::components::actor::ActorProperties;
 use game_common::components::transform::Transform;
 use game_common::world::control_frame::ControlFrame;
+use game_core::counter::Interval;
 use glam::{Quat, Vec3};
 
 use crate::utils::extract_actor_rotation;
@@ -99,7 +100,7 @@ impl InterpolateRotationInner {
 }
 
 pub fn interpolate_translation(
-    mut conn: ResMut<ServerConnection>,
+    mut conn: ResMut<ServerConnection<Interval>>,
     mut entities: Query<(&mut Transform, &mut InterpolateTranslation)>,
 ) {
     for (mut transform, mut interpolate) in &mut entities {
@@ -124,7 +125,7 @@ pub fn interpolate_translation(
 }
 
 pub fn interpolate_rotation(
-    mut conn: ResMut<ServerConnection>,
+    mut conn: ResMut<ServerConnection<Interval>>,
     mut entities: Query<(
         &mut Transform,
         Option<&mut ActorProperties>,
