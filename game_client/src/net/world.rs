@@ -44,13 +44,13 @@ pub fn apply_world_delta<I>(conn: &mut ServerConnection<I>, cmd_buffer: &mut Com
 
     // The first time a frame is being produced, i.e. `last_render_frame` is
     // `None` we must produce a "diff" consisting of the entire world state.
-    let delta = if conn.last_render_frame.is_none() {
+    let (delta, should_pop) = if conn.last_render_frame.is_none() {
         let view = conn.world.at(0).unwrap();
-        create_initial_diff(view)
+        (create_initial_diff(view), false)
     } else {
         let prev = conn.world.at(0).unwrap();
         let next = conn.world.at(1).unwrap();
-        create_snapshot_diff(prev, next)
+        (create_snapshot_diff(prev, next), true)
     };
 
     // Since events are received in batches, and commands are not applied until
@@ -79,7 +79,10 @@ pub fn apply_world_delta<I>(conn: &mut ServerConnection<I>, cmd_buffer: &mut Com
         cmd_buffer.push(Command::Spawn(entity));
     }
 
-    conn.world.pop();
+    if should_pop {
+        conn.world.pop();
+    }
+
     conn.last_render_frame = Some(render_cf);
 }
 
