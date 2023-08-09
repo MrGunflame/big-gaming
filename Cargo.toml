@@ -24,6 +24,7 @@ members = [
     "game_ui_macros_test",
     "game_worldgen",
     "game_model",
+    "game_tracing",
     # TODO: Figure out how to move these to a separate
     # workspace.
     "mods/pickup",
