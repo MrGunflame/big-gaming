@@ -1,7 +1,8 @@
+use std::cmp::Ordering;
 use std::ops::{Add, AddAssign, Sub, SubAssign};
 
 // FIXME: Ord impl should wrap
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub struct ControlFrame(pub u16);
 
 impl ControlFrame {
@@ -69,5 +70,31 @@ impl Sub<u16> for ControlFrame {
 impl SubAssign<u16> for ControlFrame {
     fn sub_assign(&mut self, rhs: u16) {
         *self = *self - rhs;
+    }
+}
+
+impl Ord for ControlFrame {
+    fn cmp(&self, other: &Self) -> Ordering {
+        let lhs = self.0;
+        let rhs = other.0;
+
+        if lhs == rhs {
+            return Ordering::Equal;
+        }
+
+        // Based on the serial impl from `game_net/src(serial.rs`. (RFC 1982)
+        if (lhs < rhs && rhs.wrapping_sub(lhs) < 1 << (16 - 1))
+            || (lhs > rhs && lhs.wrapping_sub(rhs) > 1 << (16 - 1))
+        {
+            Ordering::Less
+        } else {
+            Ordering::Greater
+        }
+    }
+}
+
+impl PartialOrd for ControlFrame {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
     }
 }
