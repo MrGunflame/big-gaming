@@ -51,6 +51,7 @@ pub struct NetPlugin {}
 impl Plugin for NetPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<ServerConnection<Interval>>();
+        app.insert_resource(CommandBuffer::new());
 
         app.add_system(tick.in_set(NetSet::Tick));
         app.add_system(world::write_back.in_set(NetSet::WriteBack));
@@ -82,7 +83,6 @@ fn flush_command_queue<I>(conn: &mut ServerConnection<I>) {
     let mut ids = Vec::new();
 
     while let Some(msg) = conn.queue.pop() {
-        dbg!(&msg);
         if let Some(id) = msg.id {
             ids.push(Response {
                 id,

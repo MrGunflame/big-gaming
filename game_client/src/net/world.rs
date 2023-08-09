@@ -150,13 +150,8 @@ fn handle_event<I>(
             buffer.push(entity);
         }
         EntityChange::Destroy { id } => {
-            let Some(entity) = conn.entities.get(id) else {
-                tracing::warn!("attempted to destroy a non-existent entity: {:?}", id);
-                return;
-            };
-
             if !buffer.remove(id) {
-                cmd_buffer.push(Command::Despawn(entity));
+                cmd_buffer.push(Command::Despawn(id));
             }
 
             conn.trace.despawn(render_cf, id);
@@ -167,8 +162,6 @@ fn handle_event<I>(
             }
 
             conn.trace.set_translation(render_cf, id, translation);
-
-            let id = conn.entities.get(id).unwrap();
 
             cmd_buffer.push(Command::Translate {
                 entity: id,
@@ -184,8 +177,6 @@ fn handle_event<I>(
 
             conn.trace.set_rotation(render_cf, id, rotation);
 
-            let id = conn.entities.get(id).unwrap();
-
             cmd_buffer.push(Command::Rotate {
                 entity: id,
                 start: render_cf,
@@ -194,14 +185,10 @@ fn handle_event<I>(
             });
         }
         EntityChange::CreateHost { id } => {
-            let entity = conn.entities.get(id).unwrap();
-
-            cmd_buffer.push(Command::SpawnHost(entity));
+            cmd_buffer.push(Command::SpawnHost(id));
         }
         EntityChange::DestroyHost { id } => {
-            let entity = conn.entities.get(id).unwrap();
-
-            cmd_buffer.push(Command::Despawn(entity));
+            cmd_buffer.push(Command::Despawn(id));
         }
         EntityChange::Health { id, health } => {
             let entity = conn.entities.get(id).unwrap();
@@ -383,10 +370,8 @@ fn apply_local_prediction<I>(
 
     for entity in view.iter() {
         if let Some(translation) = conn.predictions.get_translation(view, entity.id) {
-            let id = conn.entities.get(entity.id).unwrap();
-
             buffer.push(Command::Translate {
-                entity: id,
+                entity: entity.id,
                 start: render_cf,
                 end: render_cf + 1,
                 dst: translation,
@@ -514,21 +499,21 @@ impl CommandBuffer {
 #[derive(Clone, Debug)]
 pub enum Command {
     Spawn(DelayedEntity),
-    Despawn(bevy_ecs::entity::Entity),
+    Despawn(EntityId),
     Translate {
-        entity: bevy_ecs::entity::Entity,
+        entity: EntityId,
         start: ControlFrame,
         end: ControlFrame,
         dst: Vec3,
     },
     Rotate {
-        entity: bevy_ecs::entity::Entity,
+        entity: EntityId,
         start: ControlFrame,
         end: ControlFrame,
         dst: Quat,
     },
-    SpawnHost(bevy_ecs::entity::Entity),
-    DestroyHost(bevy_ecs::entity::Entity),
+    SpawnHost(EntityId),
+    DestroyHost(EntityId),
 }
 
 pub fn write_back(
@@ -551,6 +536,8 @@ pub fn write_back(
                 conn.entities.insert(id, entity);
             }
             Command::Despawn(entity) => {
+                let entity = conn.entities.get(entity).unwrap();
+
                 commands.entity(entity).despawn();
             }
             Command::Translate {
@@ -559,6 +546,8 @@ pub fn write_back(
                 end,
                 dst,
             } => {
+                let entity = conn.entities.get(entity).unwrap();
+
                 let (_, transform, _, mut interpolate, _) = entities.get_mut(entity).unwrap();
                 interpolate.set(transform.translation, dst, start, end);
             }
@@ -568,15 +557,63 @@ pub fn write_back(
                 end,
                 dst,
             } => {
+                let entity = conn.entities.get(entity).unwrap();
+
                 let (_, transform, _, _, mut interpolate) = entities.get_mut(entity).unwrap();
                 interpolate.set(transform.rotation, dst, start, end);
             }
             Command::SpawnHost(entity) => {
+                let entity = conn.entities.get(entity).unwrap();
+
                 commands.entity(entity).insert(HostPlayer);
             }
             Command::DestroyHost(entity) => {
+                let entity = conn.entities.get(entity).unwrap();
+
                 commands.entity(entity).remove::<HostPlayer>();
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use game_common::components::object::ObjectId;
+    use game_common::components::transform::Transform;
+    use game_common::entity::EntityId;
+    use game_common::record::RecordReference;
+    use game_common::world::control_frame::ControlFrame;
+    use game_common::world::entity::{Entity, EntityBody, Object};
+    use game_common::world::world::WorldState;
+
+    use super::create_snapshot_diff;
+
+    fn create_test_entity() -> Entity {
+        Entity {
+            id: EntityId::dangling(),
+            transform: Transform::default(),
+            body: EntityBody::Object(Object {
+                id: ObjectId(RecordReference::STUB),
+            }),
+            components: Default::default(),
+            is_host: false,
+        }
+    }
+
+    #[test]
+    fn create_diff_create() {
+        let mut world = WorldState::new();
+        world.insert(ControlFrame(0));
+        world.insert(ControlFrame(1));
+
+        let mut view = world.get_mut(ControlFrame(1)).unwrap();
+        view.spawn(create_test_entity());
+        drop(view);
+
+        let prev = world.get(ControlFrame(0)).unwrap();
+        let next = world.get(ControlFrame(1)).unwrap();
+        let diff = create_snapshot_diff(prev, next);
+
+        assert_eq!(diff.len(), 1);
     }
 }
