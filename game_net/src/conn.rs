@@ -117,6 +117,8 @@ where
     reassembly_buffer: ReassemblyBuffer,
     ack_time_list: AckTimeList,
     rtt: Rtt,
+    /// Last Processed control frame
+    last_cf: ControlFrame,
 }
 
 impl<M> Connection<M>
@@ -175,6 +177,7 @@ where
 
             ack_time_list: AckTimeList::new(),
             rtt: Rtt::new(),
+            last_cf: ControlFrame(0),
         };
 
         if M::IS_CONNECT {
@@ -242,6 +245,8 @@ where
                         }
                         self.ack_list.ack_seq = seq;
                     }
+
+                    self.last_cf = msg.control_frame;
 
                     continue;
                 }
@@ -562,12 +567,15 @@ where
     fn handle_ack(&mut self, header: Header, body: Ack) -> Poll<()> {
         let sequence = body.sequence;
 
+        let control_frame =
+            header.control_frame - (self.peer_start_control_frame - self.start_control_frame);
+
         let ids = self.commands.remove(sequence);
         if !ids.is_empty() {
             self.queue.push(ConnectionMessage {
                 id: None,
                 conn: self.id,
-                control_frame: ControlFrame(0),
+                control_frame,
                 command: Command::ReceivedCommands(
                     ids.into_iter()
                         .map(|id| Response {
@@ -664,7 +672,7 @@ where
                 header: Header {
                     packet_type: PacketType::ACK,
                     sequence: Sequence::new(0),
-                    control_frame: ControlFrame(0),
+                    control_frame: self.last_cf,
                     flags: Flags::new(),
                 },
                 body: PacketBody::Ack(Ack {
@@ -905,7 +913,7 @@ impl ConnectionHandle {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         cmd.id = Some(CommandId(id));
 
-        self.chan_out.try_send(cmd);
+        self.chan_out.try_send(cmd).unwrap();
         CommandId(id)
     }
 }

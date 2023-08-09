@@ -70,7 +70,7 @@ impl ClientPredictions {
 
     pub fn remove(&mut self, id: CommandId) {
         for entity in self.entities.values_mut() {
-            entity.commands.remove(&id);
+            entity.commands.shift_remove(&id);
         }
     }
 

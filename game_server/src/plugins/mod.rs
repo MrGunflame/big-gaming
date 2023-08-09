@@ -318,21 +318,19 @@ fn update_client(conn: &Connection, view: WorldViewRef<'_>) {
 
     // Acknowledge client commands.
     let ids = conn.take_proc_msg();
-    if !ids.is_empty() {
-        conn.handle().send_cmd(ConnectionMessage {
-            id: None,
-            conn: conn.id(),
-            control_frame: ControlFrame(0),
-            command: Command::ReceivedCommands(
-                ids.into_iter()
-                    .map(|id| Response {
-                        id,
-                        status: Status::Received,
-                    })
-                    .collect(),
-            ),
-        });
-    }
+    conn.handle().send_cmd(ConnectionMessage {
+        id: None,
+        conn: conn.id(),
+        control_frame: view.control_frame(),
+        command: Command::ReceivedCommands(
+            ids.into_iter()
+                .map(|id| Response {
+                    id,
+                    status: Status::Received,
+                })
+                .collect(),
+        ),
+    });
 }
 
 /// Update a player that hasn't moved cells.
