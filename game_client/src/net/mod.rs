@@ -5,6 +5,8 @@ mod prediction;
 mod socket;
 mod world;
 
+use std::time::Instant;
+
 use bevy_app::{App, Plugin};
 use bevy_ecs::schedule::{IntoSystemConfig, IntoSystemSetConfig, SystemSet};
 use bevy_ecs::system::{Res, ResMut};
@@ -100,6 +102,8 @@ fn flush_command_queue<I>(conn: &mut ServerConnection<I>) {
                 continue;
             }
             Command::ReceivedCommands(ids) => {
+                conn.metrics.commands_acks += ids.len() as u64;
+
                 // Note that we can't remove the prediction until we've reached
                 // the CF that the server acknowledged that it recevied our
                 // commands.

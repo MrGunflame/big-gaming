@@ -48,6 +48,7 @@ pub struct ServerConnection<I> {
     pub backlog: Backlog,
 
     pub commands_in_frame: HashMap<ControlFrame, Vec<CommandId>>,
+    pub metrics: Metrics,
 }
 
 impl<I> ServerConnection<I> {
@@ -76,6 +77,7 @@ impl<I> ServerConnection<I> {
             world,
             backlog: Backlog::new(),
             commands_in_frame: HashMap::default(),
+            metrics: Metrics::default(),
         }
     }
 
@@ -87,6 +89,10 @@ impl<I> ServerConnection<I> {
         if !self.is_connected() {
             tracing::warn!("attempted to send a command, but the peer is not connected");
             return;
+        }
+
+        if !matches!(cmd, Command::ReceivedCommands(_)) {
+            self.metrics.commands_sent += 1;
         }
 
         self.buffer.push(cmd.clone());
@@ -311,4 +317,12 @@ impl CommandBuffer {
 
         self.buffer.push(cmd);
     }
+}
+
+#[derive(Copy, Clone, Debug, Default)]
+pub struct Metrics {
+    /// Commands sent to the server.
+    pub commands_sent: u64,
+    /// Commands acknowledged by the server.
+    pub commands_acks: u64,
 }

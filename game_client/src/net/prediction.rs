@@ -99,10 +99,9 @@ impl ClientPredictions {
         let predicted_entity = self.entities.get(&id)?;
 
         let entity = view.get(id)?;
-        dbg!(entity.transform.translation);
 
         let mut translation = None;
-        for (snap, cmd) in predicted_entity.commands.iter() {
+        for (_, cmd) in predicted_entity.commands.iter() {
             match cmd {
                 Command::PlayerMove(cmd) => {
                     // Based on the server impl.
