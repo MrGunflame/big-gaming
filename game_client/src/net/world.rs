@@ -1,13 +1,17 @@
-use bevy_ecs::system::{Commands, Resource};
+use bevy_ecs::system::{Commands, Query, ResMut, Resource};
 use game_common::components::actions::{ActionId, Actions};
+use game_common::components::actor::ActorProperties;
 use game_common::components::components::{self, Components};
 use game_common::components::inventory::Inventory;
 use game_common::components::items::Item;
+use game_common::components::player::HostPlayer;
+use game_common::components::transform::Transform;
 use game_common::entity::EntityId;
 use game_common::world::control_frame::ControlFrame;
 use game_common::world::entity::{Entity, EntityBody};
 use game_common::world::snapshot::{EntityChange, InventoryItemAdd};
 use game_common::world::world::WorldViewRef;
+use game_core::counter::Interval;
 use game_core::modules::Modules;
 use glam::{Quat, Vec3};
 
@@ -162,11 +166,12 @@ fn handle_event<I>(
                 return;
             }
 
-            let entity = conn.entities.get(id).unwrap();
-
             conn.trace.set_translation(render_cf, id, translation);
 
+            let id = conn.entities.get(id).unwrap();
+
             cmd_buffer.push(Command::Translate {
+                entity: id,
                 start: render_cf,
                 end: render_cf + 1,
                 dst: translation,
@@ -177,11 +182,12 @@ fn handle_event<I>(
                 return;
             }
 
-            let entity = conn.entities.get(id).unwrap();
-
             conn.trace.set_rotation(render_cf, id, rotation);
 
+            let id = conn.entities.get(id).unwrap();
+
             cmd_buffer.push(Command::Rotate {
+                entity: id,
                 start: render_cf,
                 end: render_cf + 1,
                 dst: rotation,
@@ -377,7 +383,10 @@ fn apply_local_prediction<I>(
 
     for entity in view.iter() {
         if let Some(translation) = conn.predictions.get_translation(view, entity.id) {
+            let id = conn.entities.get(entity.id).unwrap();
+
             buffer.push(Command::Translate {
+                entity: id,
                 start: render_cf,
                 end: render_cf + 1,
                 dst: translation,
@@ -507,15 +516,67 @@ pub enum Command {
     Spawn(DelayedEntity),
     Despawn(bevy_ecs::entity::Entity),
     Translate {
+        entity: bevy_ecs::entity::Entity,
         start: ControlFrame,
         end: ControlFrame,
         dst: Vec3,
     },
     Rotate {
+        entity: bevy_ecs::entity::Entity,
         start: ControlFrame,
         end: ControlFrame,
         dst: Quat,
     },
     SpawnHost(bevy_ecs::entity::Entity),
     DestroyHost(bevy_ecs::entity::Entity),
+}
+
+pub fn write_back(
+    mut commands: Commands,
+    mut buffer: ResMut<CommandBuffer>,
+    mut entities: Query<(
+        bevy_ecs::entity::Entity,
+        &Transform,
+        Option<&mut ActorProperties>,
+        &mut InterpolateTranslation,
+        &mut InterpolateRotation,
+    )>,
+    conn: ResMut<ServerConnection<Interval>>,
+) {
+    while let Some(cmd) = buffer.pop() {
+        match cmd {
+            Command::Spawn(entity) => {
+                let id = entity.entity.id;
+                let entity = spawn_entity(&mut commands, entity);
+                conn.entities.insert(id, entity);
+            }
+            Command::Despawn(entity) => {
+                commands.entity(entity).despawn();
+            }
+            Command::Translate {
+                entity,
+                start,
+                end,
+                dst,
+            } => {
+                let (_, transform, _, mut interpolate, _) = entities.get_mut(entity).unwrap();
+                interpolate.set(transform.translation, dst, start, end);
+            }
+            Command::Rotate {
+                entity,
+                start,
+                end,
+                dst,
+            } => {
+                let (_, transform, _, _, mut interpolate) = entities.get_mut(entity).unwrap();
+                interpolate.set(transform.rotation, dst, start, end);
+            }
+            Command::SpawnHost(entity) => {
+                commands.entity(entity).insert(HostPlayer);
+            }
+            Command::DestroyHost(entity) => {
+                commands.entity(entity).remove::<HostPlayer>();
+            }
+        }
+    }
 }

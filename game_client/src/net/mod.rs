@@ -29,6 +29,7 @@ use self::world::CommandBuffer;
 pub enum NetSet {
     /// Step control tick
     Tick,
+    WriteBack,
     /// Lerp transform
     Interpolate,
 }
@@ -52,11 +53,13 @@ impl Plugin for NetPlugin {
         app.init_resource::<ServerConnection<Interval>>();
 
         app.add_system(tick.in_set(NetSet::Tick));
+        app.add_system(world::write_back.in_set(NetSet::WriteBack));
 
         app.add_system(interpolate::interpolate_translation.in_set(NetSet::Interpolate));
         app.add_system(interpolate::interpolate_rotation.in_set(NetSet::Interpolate));
 
-        app.configure_set(NetSet::Interpolate.after(NetSet::Tick));
+        app.configure_set(NetSet::WriteBack.after(NetSet::Tick));
+        app.configure_set(NetSet::Interpolate.after(NetSet::WriteBack));
     }
 }
 
@@ -412,6 +415,7 @@ mod tests {
 
         match buffer.pop().unwrap() {
             super::world::Command::Translate {
+                entity: _,
                 start: _,
                 end: _,
                 dst,
@@ -470,6 +474,7 @@ mod tests {
 
         match buffer.pop().unwrap() {
             super::world::Command::Translate {
+                entity: _,
                 start: _,
                 end: _,
                 dst,
@@ -504,6 +509,7 @@ mod tests {
             assert_eq!(buffer.len(), 1);
             match buffer.pop().unwrap() {
                 super::world::Command::Translate {
+                    entity: _,
                     start: _,
                     end: _,
                     dst,
@@ -574,6 +580,7 @@ mod tests {
 
         match buffer.pop().unwrap() {
             super::world::Command::Translate {
+                entity: _,
                 start: _,
                 end: _,
                 dst,
@@ -637,6 +644,7 @@ mod tests {
             assert_eq!(buffer.len(), 1);
             match buffer.pop().unwrap() {
                 super::world::Command::Translate {
+                    entity: _,
                     start: _,
                     end: _,
                     dst,
@@ -665,6 +673,7 @@ mod tests {
 
         match buffer.pop().unwrap() {
             super::world::Command::Translate {
+                entity: _,
                 start: _,
                 end: _,
                 dst,
