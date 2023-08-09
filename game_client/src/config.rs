@@ -30,4 +30,17 @@ impl Config {
 #[serde(deny_unknown_fields)]
 pub struct Network {
     pub interpolation_frames: u16,
+    /// Should client-side prediction be enabled?
+    ///
+    /// Defaults to `true`.
+    pub prediction: bool,
+}
+
+impl Default for Network {
+    fn default() -> Self {
+        Self {
+            interpolation_frames: 6,
+            prediction: true,
+        }
+    }
 }

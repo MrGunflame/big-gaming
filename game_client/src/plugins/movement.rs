@@ -181,16 +181,6 @@ pub fn translation_events(
                     entity: entity_id,
                     bits,
                 }));
-
-                let speed = 1.0;
-                let dir = (bits.forward as u8 as f32) * -Vec3::Z
-                    + (bits.back as u8 as f32) * Vec3::Z
-                    + (bits.left as u8 as f32) * -Vec3::X
-                    + (bits.right as u8 as f32) * Vec3::X;
-                let delta = transform.rotation * dir * speed;
-                transform.translation += delta;
-
-                dbg!(transform.translation);
             }
         }
     }

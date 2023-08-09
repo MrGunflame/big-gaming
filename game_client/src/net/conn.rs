@@ -49,6 +49,7 @@ pub struct ServerConnection<I> {
 
     pub commands_in_frame: HashMap<ControlFrame, Vec<CommandId>>,
     pub metrics: Metrics,
+    pub config: Config,
 }
 
 impl<I> ServerConnection<I> {
@@ -78,6 +79,7 @@ impl<I> ServerConnection<I> {
             backlog: Backlog::new(),
             commands_in_frame: HashMap::default(),
             metrics: Metrics::default(),
+            config: config.clone(),
         }
     }
 
@@ -188,10 +190,12 @@ impl<I> ServerConnection<I> {
                 command: cmd.clone(),
             });
 
-            if let Some(id) = cmd.id() {
-                let entity_id = self.server_entities.get(id).unwrap();
+            if self.config.network.prediction {
+                if let Some(id) = cmd.id() {
+                    let entity_id = self.server_entities.get(id).unwrap();
 
-                self.predictions.push(entity_id, cmd_id, cmd);
+                    self.predictions.push(entity_id, cmd_id, cmd);
+                }
             }
         }
     }

@@ -8,6 +8,7 @@ mod world;
 use std::time::Instant;
 
 use bevy_app::{App, Plugin};
+use bevy_ecs::prelude::dbg;
 use bevy_ecs::schedule::{IntoSystemConfig, IntoSystemSetConfig, SystemSet};
 use bevy_ecs::system::{Res, ResMut};
 use game_common::components::actions::Actions;
@@ -85,6 +86,7 @@ fn flush_command_queue<I>(conn: &mut ServerConnection<I>) {
     let mut ids = Vec::new();
 
     while let Some(msg) = conn.queue.pop() {
+        dbg!(&msg);
         if let Some(id) = msg.id {
             ids.push(Response {
                 id,
@@ -315,6 +317,7 @@ mod tests {
             timestep: 60,
             network: Network {
                 interpolation_frames: delay,
+                prediction: true,
             },
         };
         ServerConnection::new_with_interval(GameStateWriter::noop(), &config, ManualInterval::new())

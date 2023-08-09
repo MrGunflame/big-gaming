@@ -108,6 +108,8 @@ pub fn interpolate_translation(
             continue;
         };
 
+        dbg!(inner.dst);
+
         transform.translation = inner.dst;
         interpolate.inner = None;
         interpolate.prev_translation = Some(transform.translation);
