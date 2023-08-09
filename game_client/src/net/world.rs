@@ -23,8 +23,6 @@ use super::ServerConnection;
 pub fn apply_world_delta<I>(conn: &mut ServerConnection<I>, cmd_buffer: &mut CommandBuffer) {
     let cf = conn.control_frame();
 
-    dbg!(cf.render, conn.last_render_frame);
-
     // Don't start rendering if the initial interpoation window is not
     // yet filled.
     let Some(render_cf) = cf.render else {
@@ -59,6 +57,17 @@ pub fn apply_world_delta<I>(conn: &mut ServerConnection<I>, cmd_buffer: &mut Com
     for event in delta {
         handle_event(event.clone(), &mut buffer, conn, cmd_buffer, render_cf);
     }
+
+    if let Some(cmds) = conn.commands_in_frame.remove(&render_cf) {
+        let view = conn.world.at(0).unwrap();
+
+        for cmd in cmds {
+            conn.predictions.validate_pre_removal(cmd, view);
+            conn.predictions.remove(cmd);
+        }
+    }
+
+    apply_local_prediction(conn, render_cf, cmd_buffer);
 
     for entity in buffer.entities {
         conn.trace.spawn(render_cf, entity.entity.clone());
@@ -149,6 +158,10 @@ fn handle_event<I>(
             conn.trace.despawn(render_cf, id);
         }
         EntityChange::Translate { id, translation } => {
+            if conn.predictions.get_translation(view, id).is_some() {
+                return;
+            }
+
             let entity = conn.entities.get(id).unwrap();
 
             conn.trace.set_translation(render_cf, id, translation);
@@ -160,6 +173,10 @@ fn handle_event<I>(
             });
         }
         EntityChange::Rotate { id, rotation } => {
+            if conn.predictions.get_rotation(id).is_some() {
+                return;
+            }
+
             let entity = conn.entities.get(id).unwrap();
 
             conn.trace.set_rotation(render_cf, id, rotation);
@@ -348,6 +365,24 @@ impl Buffer {
         });
 
         removed
+    }
+}
+
+fn apply_local_prediction<I>(
+    conn: &ServerConnection<I>,
+    render_cf: ControlFrame,
+    buffer: &mut CommandBuffer,
+) {
+    let view = conn.world.get(render_cf).unwrap();
+
+    for entity in view.iter() {
+        if let Some(translation) = conn.predictions.get_translation(view, entity.id) {
+            buffer.push(Command::Translate {
+                start: render_cf,
+                end: render_cf + 1,
+                dst: translation,
+            });
+        }
     }
 }
 

@@ -1,6 +1,7 @@
 use std::net::ToSocketAddrs;
 use std::time::Duration;
 
+use ahash::HashMap;
 use bevy_ecs::system::Resource;
 use bevy_ecs::world::{FromWorld, World};
 use game_common::entity::{EntityId, EntityMap};
@@ -10,7 +11,7 @@ use game_core::counter::{Interval, IntervalImpl, UpdateCounter};
 use game_core::time::Time;
 use game_net::backlog::Backlog;
 use game_net::conn::{ConnectionHandle, ConnectionId};
-use game_net::snapshot::{Command, CommandQueue, ConnectionMessage};
+use game_net::snapshot::{Command, CommandId, CommandQueue, ConnectionMessage};
 use game_tracing::world::WorldTrace;
 
 use crate::config::Config;
@@ -45,6 +46,8 @@ pub struct ServerConnection<I> {
 
     pub trace: WorldTrace,
     pub backlog: Backlog,
+
+    pub commands_in_frame: HashMap<ControlFrame, Vec<CommandId>>,
 }
 
 impl<I> ServerConnection<I> {
@@ -72,6 +75,7 @@ impl<I> ServerConnection<I> {
             trace: WorldTrace::new(),
             world,
             backlog: Backlog::new(),
+            commands_in_frame: HashMap::default(),
         }
     }
 
@@ -181,8 +185,7 @@ impl<I> ServerConnection<I> {
             if let Some(id) = cmd.id() {
                 let entity_id = self.server_entities.get(id).unwrap();
 
-                self.predictions
-                    .push(entity_id, cmd_id, self.game_tick.current_control_frame, cmd);
+                self.predictions.push(entity_id, cmd_id, cmd);
             }
         }
     }

@@ -97,12 +97,13 @@ fn flush_command_queue<I>(conn: &mut ServerConnection<I>) {
                 continue;
             }
             Command::ReceivedCommands(ids) => {
-                let view = conn.world.front().unwrap();
-
-                for cmd in ids {
-                    conn.predictions.validate_pre_removal(cmd.id, view);
-                    conn.predictions.remove(cmd.id);
-                }
+                // Note that we can't remove the prediction until we've reached
+                // the CF that the server acknowledged that it recevied our
+                // commands.
+                conn.commands_in_frame
+                    .entry(msg.control_frame)
+                    .or_default()
+                    .extend(ids.into_iter().map(|res| res.id));
 
                 continue;
             }
@@ -266,6 +267,7 @@ fn flush_command_queue<I>(conn: &mut ServerConnection<I>) {
 
 #[cfg(test)]
 mod tests {
+    use game_common::assert_approx_eq;
     use game_common::components::items::ItemId;
     use game_common::entity::EntityId;
     use game_common::net::ServerEntity;
@@ -275,7 +277,11 @@ mod tests {
     use game_core::counter::ManualInterval;
     use game_core::time::Time;
     use game_net::conn::ConnectionId;
-    use game_net::snapshot::{Command, ConnectionMessage, EntityCreate};
+    use game_net::proto::MoveBits;
+    use game_net::snapshot::{
+        Command, CommandId, ConnectionMessage, EntityCreate, EntityTranslate, PlayerMove, Response,
+        Status,
+    };
     use glam::{Quat, Vec3};
 
     use crate::config::{Config, Network};
@@ -356,5 +362,316 @@ mod tests {
         let mut buffer = CommandBuffer::new();
         apply_world_delta(&mut conn, &mut buffer);
         assert_eq!(buffer.len(), 1);
+    }
+
+    #[test]
+    fn predict_translation() {
+        let delay = 6;
+
+        let time = Time::new();
+
+        let mut conn = create_test_conn(delay);
+
+        conn.queue.push(ConnectionMessage {
+            id: None,
+            conn: ConnectionId(0),
+            control_frame: ControlFrame(0),
+            command: Command::EntityCreate(create_test_entity()),
+        });
+
+        // Create initial world state.
+        for _ in 0..delay + 1 {
+            flush_command_queue(&mut conn);
+
+            let mut buffer = CommandBuffer::new();
+            apply_world_delta(&mut conn, &mut buffer);
+
+            conn.game_tick.interval.set_ready();
+            tick_game(&time, &mut conn);
+        }
+
+        let cmd_id = CommandId(1);
+        let cmd = Command::PlayerMove(PlayerMove {
+            entity: ServerEntity(0),
+            bits: MoveBits {
+                forward: true,
+                back: false,
+                left: false,
+                right: false,
+            },
+        });
+
+        let entity = conn.world.at(0).unwrap().iter().next().unwrap().clone();
+        assert_eq!(entity.transform.translation, Vec3::splat(0.0));
+
+        conn.predictions.push(entity.id, cmd_id, cmd);
+
+        let mut buffer = CommandBuffer::new();
+        apply_world_delta(&mut conn, &mut buffer);
+        assert_eq!(buffer.len(), 1);
+
+        match buffer.pop().unwrap() {
+            super::world::Command::Translate {
+                start: _,
+                end: _,
+                dst,
+            } => {
+                // Should be `Vec3(0.0, 0.0, -1.0)`, but FP memes are
+                // happening, close enough.
+                assert_eq!(dst, Vec3::new(-1.7484555e-7, 0.0, -1.0));
+            }
+            _ => panic!("invalid command, expected `Translate`"),
+        }
+    }
+
+    #[test]
+    fn predict_translation_reconciliation() {
+        let delay = 6;
+
+        let time = Time::new();
+        let mut conn = create_test_conn(delay);
+
+        conn.queue.push(ConnectionMessage {
+            id: None,
+            conn: ConnectionId(0),
+            control_frame: ControlFrame(0),
+            command: Command::EntityCreate(create_test_entity()),
+        });
+
+        for _ in 0..delay + 1 {
+            flush_command_queue(&mut conn);
+
+            let mut buffer = CommandBuffer::new();
+            apply_world_delta(&mut conn, &mut buffer);
+
+            conn.game_tick.interval.set_ready();
+            tick_game(&time, &mut conn);
+        }
+
+        let cmd_id = CommandId(1);
+        let cmd = Command::PlayerMove(PlayerMove {
+            entity: ServerEntity(0),
+            bits: MoveBits {
+                forward: true,
+                back: false,
+                left: false,
+                right: false,
+            },
+        });
+
+        let entity = conn.world.at(0).unwrap().iter().next().unwrap().clone();
+        assert_eq!(entity.transform.translation, Vec3::splat(0.0));
+
+        conn.predictions.push(entity.id, cmd_id, cmd);
+
+        let mut buffer = CommandBuffer::new();
+        apply_world_delta(&mut conn, &mut buffer);
+        assert_eq!(buffer.len(), 1);
+
+        match buffer.pop().unwrap() {
+            super::world::Command::Translate {
+                start: _,
+                end: _,
+                dst,
+            } => {
+                assert_eq!(dst, Vec3::new(-1.7484555e-7, 0.0, -1.0));
+            }
+            _ => panic!("invalid command, expected `Translate`"),
+        }
+
+        conn.game_tick.interval.set_ready();
+        tick_game(&time, &mut conn);
+
+        let head = conn.control_frame().head;
+        conn.queue.push(ConnectionMessage {
+            id: None,
+            conn: ConnectionId(0),
+            control_frame: head,
+            command: Command::ReceivedCommands(vec![Response {
+                id: cmd_id,
+                status: Status::Received,
+            }]),
+        });
+
+        flush_command_queue(&mut conn);
+        dbg!(&conn.commands_in_frame);
+        while conn.last_render_frame.unwrap() < head - 1 {
+            let mut buffer = CommandBuffer::new();
+            apply_world_delta(&mut conn, &mut buffer);
+
+            assert_eq!(conn.predictions.len(entity.id).unwrap(), 1);
+
+            assert_eq!(buffer.len(), 1);
+            match buffer.pop().unwrap() {
+                super::world::Command::Translate {
+                    start: _,
+                    end: _,
+                    dst,
+                } => {
+                    assert_eq!(dst, Vec3::new(-1.7484555e-7, 0.0, -1.0));
+                }
+                _ => panic!("invalid command, expected `Translate`"),
+            }
+
+            conn.game_tick.interval.set_ready();
+            tick_game(&time, &mut conn);
+        }
+
+        let mut buffer = CommandBuffer::new();
+        apply_world_delta(&mut conn, &mut buffer);
+        assert_eq!(buffer.len(), 0);
+
+        assert_eq!(conn.predictions.len(entity.id).unwrap(), 0);
+
+        let mut buffer = CommandBuffer::new();
+        apply_world_delta(&mut conn, &mut buffer);
+        assert_eq!(buffer.len(), 0);
+    }
+
+    #[test]
+    fn predict_translation_reconciliation_overwritten() {
+        let delay = 6;
+
+        let time = Time::new();
+        let mut conn = create_test_conn(delay);
+
+        conn.queue.push(ConnectionMessage {
+            id: None,
+            conn: ConnectionId(0),
+            control_frame: ControlFrame(0),
+            command: Command::EntityCreate(create_test_entity()),
+        });
+
+        for _ in 0..delay + 1 {
+            flush_command_queue(&mut conn);
+
+            let mut buffer = CommandBuffer::new();
+            apply_world_delta(&mut conn, &mut buffer);
+
+            conn.game_tick.interval.set_ready();
+            tick_game(&time, &mut conn);
+        }
+
+        let cmd_id = CommandId(1);
+        let cmd = Command::PlayerMove(PlayerMove {
+            entity: ServerEntity(0),
+            bits: MoveBits {
+                forward: true,
+                back: false,
+                left: false,
+                right: false,
+            },
+        });
+
+        let entity = conn.world.at(0).unwrap().iter().next().unwrap().clone();
+        assert_eq!(entity.transform.translation, Vec3::splat(0.0));
+
+        conn.predictions.push(entity.id, cmd_id, cmd);
+
+        let mut buffer = CommandBuffer::new();
+        apply_world_delta(&mut conn, &mut buffer);
+        assert_eq!(buffer.len(), 1);
+
+        match buffer.pop().unwrap() {
+            super::world::Command::Translate {
+                start: _,
+                end: _,
+                dst,
+            } => {
+                assert_eq!(dst, Vec3::new(-1.7484555e-7, 0.0, -1.0));
+            }
+            _ => panic!("invalid command, expected `Translate`"),
+        }
+
+        conn.game_tick.interval.set_ready();
+        tick_game(&time, &mut conn);
+
+        // Achknowledged, but overwriten at same time.
+        let cmd_id2 = CommandId(2);
+        let cmd = Command::PlayerMove(PlayerMove {
+            entity: ServerEntity(0),
+            bits: MoveBits {
+                forward: true,
+                back: false,
+                left: false,
+                right: false,
+            },
+        });
+        conn.predictions.push(entity.id, cmd_id2, cmd);
+
+        let head = conn.control_frame().head;
+        conn.queue.push(ConnectionMessage {
+            id: None,
+            conn: ConnectionId(0),
+            control_frame: head,
+            command: Command::EntityTranslate(EntityTranslate {
+                id: ServerEntity(0),
+                translation: Vec3::new(-1.7484555e-7, 0.0, -1.0),
+            }),
+        });
+        conn.queue.push(ConnectionMessage {
+            id: None,
+            conn: ConnectionId(0),
+            control_frame: head,
+            command: Command::ReceivedCommands(vec![Response {
+                id: cmd_id,
+                status: Status::Received,
+            }]),
+        });
+
+        flush_command_queue(&mut conn);
+        assert_eq!(conn.predictions.len(entity.id).unwrap(), 2);
+
+        // Wait for render to catch up to head, then the first
+        // prediction should be reconciled.
+        while conn.last_render_frame.unwrap() < head - 1 {
+            let mut buffer = CommandBuffer::new();
+            apply_world_delta(&mut conn, &mut buffer);
+
+            assert_eq!(conn.predictions.len(entity.id).unwrap(), 2);
+
+            // FIXME: There isn't anything happening here, but `apply_world_delta`
+            // just repeats the predicted translation, which doesn't actually change.
+            // In the future this should not return any command if the value doesn't
+            // change.
+            assert_eq!(buffer.len(), 1);
+            match buffer.pop().unwrap() {
+                super::world::Command::Translate {
+                    start: _,
+                    end: _,
+                    dst,
+                } => {
+                    assert_eq!(dst, Vec3::new(-3.496911e-7, 0.0, -2.0));
+                }
+                _ => panic!("invalid command, expected `Translate`"),
+            }
+
+            conn.game_tick.interval.set_ready();
+            tick_game(&time, &mut conn);
+        }
+
+        let mut buffer = CommandBuffer::new();
+        apply_world_delta(&mut conn, &mut buffer);
+        assert_eq!(buffer.len(), 1);
+
+        assert_eq!(conn.predictions.len(entity.id).unwrap(), 1);
+
+        conn.game_tick.interval.set_ready();
+        tick_game(&time, &mut conn);
+
+        let mut buffer = CommandBuffer::new();
+        apply_world_delta(&mut conn, &mut buffer);
+        assert_eq!(buffer.len(), 1);
+
+        match buffer.pop().unwrap() {
+            super::world::Command::Translate {
+                start: _,
+                end: _,
+                dst,
+            } => {
+                assert_eq!(dst, Vec3::new(-3.496911e-7, 0.0, -2.0));
+            }
+            _ => panic!("invalid command, expected `Translate`"),
+        }
     }
 }
