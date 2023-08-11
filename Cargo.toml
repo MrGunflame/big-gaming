@@ -29,6 +29,7 @@ members = [
     # workspace.
     "mods/pickup",
     "tools/json2dat",
+    "tools/gltf2model",
 ]
 
 resolver = "2"

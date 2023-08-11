@@ -1,0 +1,12 @@
+[package]
+name = "gltf2model"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+game_common = { version = "0.1.0", path = "../../game_common" }
+game_model = { version = "0.1.0", path = "../../game_model" }
+game_gltf = { version = "0.1.0", path = "../../game_gltf" }
+
+clap = { version = "4.3.21", features = ["derive"] }
+image = "0.24.7"
