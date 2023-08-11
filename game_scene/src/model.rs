@@ -57,37 +57,42 @@ fn create_material(textures: &[Texture], material: Material, images: &mut Images
 
     let base_color = Color(material.base_color.map(|channel| channel as f32 / 255.0));
 
-    let albedo_texture = &textures[material.albedo_texture as usize];
-    let normal_texture = &textures[material.normal_texture as usize];
-    let metallic_roughness_texture = &textures[material.metallic_roughness_texture as usize];
+    let albedo_texture = material.albedo_texture.map(|index| {
+        let texture = &textures[index as usize];
 
-    let albedo_texture = images.insert(Image::new(
-        UVec2::new(albedo_texture.width, albedo_texture.height),
-        convert_texture_format(albedo_texture.format),
-        albedo_texture.bytes.clone(),
-    ));
+        images.insert(Image::new(
+            UVec2::new(texture.width, texture.height),
+            convert_texture_format(texture.format),
+            texture.bytes.clone(),
+        ))
+    });
 
-    let normal_texture = images.insert(Image::new(
-        UVec2::new(normal_texture.width, normal_texture.height),
-        convert_texture_format(normal_texture.format),
-        normal_texture.bytes.clone(),
-    ));
+    let normal_texture = material.normal_texture.map(|index| {
+        let texture = &textures[index as usize];
 
-    let metallic_roughness_texture = images.insert(Image::new(
-        UVec2::new(
-            metallic_roughness_texture.width,
-            metallic_roughness_texture.height,
-        ),
-        convert_texture_format(metallic_roughness_texture.format),
-        metallic_roughness_texture.bytes.clone(),
-    ));
+        images.insert(Image::new(
+            UVec2::new(texture.width, texture.height),
+            convert_texture_format(texture.format),
+            texture.bytes.clone(),
+        ))
+    });
+
+    let metallic_roughness_texture = material.metallic_roughness_texture.map(|index| {
+        let texture = &textures[index as usize];
+
+        images.insert(Image::new(
+            UVec2::new(texture.width, texture.height),
+            convert_texture_format(texture.format),
+            texture.bytes.clone(),
+        ))
+    });
 
     PbrMaterial {
         alpha_mode: AlphaMode::Opaque,
         base_color,
-        base_color_texture: Some(albedo_texture),
-        normal_texture: Some(normal_texture),
-        metallic_roughness_texture: Some(metallic_roughness_texture),
+        base_color_texture: albedo_texture,
+        normal_texture: normal_texture,
+        metallic_roughness_texture: metallic_roughness_texture,
         roughness: material.roughness as f32 / 255.0,
         metallic: material.metallic as f32 / 255.0,
     }

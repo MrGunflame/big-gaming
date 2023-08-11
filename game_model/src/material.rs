@@ -88,9 +88,11 @@ pub struct MetallicRoughnessMaterial {
     pub base_color: [u8; 4],
     pub roughness: u8,
     pub metallic: u8,
-    pub albedo_texture: u16,
-    pub normal_texture: u16,
-    pub metallic_roughness_texture: u16,
+    // Use `0xFFFF` as the `None` variant so we can still have
+    // 0-indexed textures.
+    pub albedo_texture: Option<u16>,
+    pub normal_texture: Option<u16>,
+    pub metallic_roughness_texture: Option<u16>,
 }
 
 impl Encode for MetallicRoughnessMaterial {
@@ -101,6 +103,14 @@ impl Encode for MetallicRoughnessMaterial {
         self.base_color.encode(&mut buf);
         self.roughness.encode(&mut buf);
         self.metallic.encode(&mut buf);
+
+        let albedo_texture = self.albedo_texture.unwrap_or(u16::MAX);
+        let normal_texture = self.normal_texture.unwrap_or(u16::MAX);
+        let metallic_roughness_texture = self.metallic_roughness_texture.unwrap_or(u16::MAX);
+
+        albedo_texture.encode(&mut buf);
+        normal_texture.encode(&mut buf);
+        metallic_roughness_texture.encode(&mut buf);
     }
 }
 
@@ -122,9 +132,21 @@ impl Decode for MetallicRoughnessMaterial {
             base_color,
             roughness,
             metallic,
-            albedo_texture,
-            normal_texture,
-            metallic_roughness_texture,
+            albedo_texture: if albedo_texture == u16::MAX {
+                None
+            } else {
+                Some(albedo_texture)
+            },
+            normal_texture: if normal_texture == u16::MAX {
+                None
+            } else {
+                Some(normal_texture)
+            },
+            metallic_roughness_texture: if metallic_roughness_texture == u16::MAX {
+                None
+            } else {
+                Some(metallic_roughness_texture)
+            },
         })
     }
 }

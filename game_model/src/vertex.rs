@@ -2,7 +2,7 @@ use glam::{Vec2, Vec3, Vec4};
 
 use crate::{Decode, Encode};
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct Vertices {
     pub positions: Vec<Vec3>,
     pub normals: Vec<Vec3>,
