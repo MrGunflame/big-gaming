@@ -18,6 +18,7 @@ impl Encode for Vertices {
     {
         assert_eq!(self.positions.len(), self.normals.len());
         assert_eq!(self.positions.len(), self.uvs.len());
+        assert_eq!(self.positions.len(), self.tangents.len());
 
         (self.positions.len() as u32).encode(&mut buf);
 
@@ -27,6 +28,10 @@ impl Encode for Vertices {
 
         for normal in &self.normals {
             normal.encode(&mut buf);
+        }
+
+        for tangent in &self.tangents {
+            tangent.encode(&mut buf);
         }
 
         for uv in &self.uvs {
@@ -65,13 +70,13 @@ impl Decode for Vertices {
         }
 
         for _ in 0..len {
-            let uv = Vec2::decode(&mut buf)?;
-            uvs.push(uv);
+            let tangent = Vec4::decode(&mut buf)?;
+            tangents.push(tangent);
         }
 
         for _ in 0..len {
-            let tangent = Vec4::decode(&mut buf)?;
-            tangents.push(tangent);
+            let uv = Vec2::decode(&mut buf)?;
+            uvs.push(uv);
         }
 
         let num_indices = u32::decode(&mut buf)?;
