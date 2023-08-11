@@ -119,7 +119,7 @@ fn convert_gltf_to_model(gltf: GltfData) -> Model {
                         normal_texture,
                         metallic_roughness_texture,
                     }),
-                    textures: vec![],
+                    textures,
                 });
             }
         }
