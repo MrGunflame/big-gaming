@@ -36,6 +36,13 @@ pub(crate) fn model_to_scene(
         );
         mesh.set_tangents(node.vertices.tangents);
         mesh.set_indices(Indices::U32(node.vertices.indices));
+        mesh.set_uvs(
+            node.vertices
+                .uvs
+                .into_iter()
+                .map(|vec| vec.to_array())
+                .collect(),
+        );
 
         let mesh = meshes.insert(mesh);
         let material = materials.insert(create_material(&node.textures, node.material, images));
