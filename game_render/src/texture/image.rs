@@ -5,9 +5,7 @@ use std::sync::Arc;
 
 use bevy_app::{App, Plugin};
 use bevy_ecs::system::{ResMut, Resource};
-use game_asset::{Asset, LoadAsset};
 use glam::UVec2;
-use image::load_from_memory;
 use parking_lot::Mutex;
 
 pub use wgpu::TextureFormat;
@@ -99,24 +97,6 @@ impl Image {
 impl AsRef<[u8]> for Image {
     fn as_ref(&self) -> &[u8] {
         self.as_bytes()
-    }
-}
-
-impl Asset for Image {}
-
-impl LoadAsset for Image {
-    type Error = Box<dyn std::error::Error>;
-
-    fn load(bytes: &[u8]) -> Result<Self, Self::Error> {
-        let img = load_from_memory(bytes)?;
-        let data = img.to_rgb8();
-
-        Ok(Self {
-            width: data.width(),
-            height: data.height(),
-            bytes: data.into_raw(),
-            format: TextureFormat::Rgba8Unorm,
-        })
     }
 }
 
