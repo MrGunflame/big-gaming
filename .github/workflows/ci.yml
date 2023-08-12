@@ -16,6 +16,7 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     - run: rustup update stable --no-self-update && rustup default stable
+    - run: rustup component add rustfmt
     - run: cargo fmt --all --check
 
   stable:
@@ -35,6 +36,7 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     - run: rustup update $nightly --no-self-update && rustup default $nightly
+    - run: rustup component add miri
     - run: cargo miri test --workspace
 
   docs:
