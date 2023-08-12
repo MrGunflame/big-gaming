@@ -398,7 +398,7 @@ impl HotkeyState {
             }
         }
 
-        let Some(state)  = self.states.get_mut(&key) else {
+        let Some(state) = self.states.get_mut(&key) else {
             return;
         };
 

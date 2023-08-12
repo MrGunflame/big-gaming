@@ -1,12 +1,12 @@
-use std::collections::HashSet;
 use std::borrow::Borrow;
+use std::collections::HashSet;
 
 use bevy_ecs::component::Component;
 
 use crate::id::WeakId;
 
 #[cfg(feature = "serde")]
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 /// A unique identifier for a faction.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -16,14 +16,14 @@ use serde::{Serialize, Deserialize};
 pub struct FactionId(pub WeakId<u32>);
 
 /// The diplomatic standings between two factions.
-/// 
+///
 /// The default `FactionStanding` is `Neutral`.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub enum FactionStanding {
     /// The factions are enemied with each other and will attack on sight.
     Enemied,
     /// The factions will not attack each other, until either one threatens the other.
-    /// 
+    ///
     /// This is the default `FactionStanding`.
     #[default]
     Neutral,
@@ -45,7 +45,7 @@ impl ActorFactions {
 
     pub fn contains<T>(&self, faction: T) -> bool
     where
-        T: Borrow<FactionId>
+        T: Borrow<FactionId>,
     {
         self.factions.contains(faction.borrow())
     }
@@ -56,7 +56,7 @@ impl ActorFactions {
 
     pub fn remove<T>(&mut self, id: T) -> bool
     where
-        T: Borrow<FactionId>
+        T: Borrow<FactionId>,
     {
         self.factions.remove(id.borrow())
     }
