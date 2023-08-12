@@ -8,6 +8,7 @@ on:
 
 env:
   RUST_BACKTRACE: full
+  MIRIFLAGS: -Zmiri-disable-isolation
   nightly: nightly-2023-08-12
 
 jobs:
