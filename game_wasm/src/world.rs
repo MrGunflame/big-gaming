@@ -5,17 +5,28 @@ use glam::{Quat, Vec3};
 
 use crate::component::Component;
 use crate::entity::EntityId;
-use crate::raw::{Ptr, PtrMut, Usize};
+use crate::raw::{Ptr, PtrMut, Usize, ERROR_NO_ENTITY};
 pub use crate::record::RecordReference;
 use crate::Error;
 
 use crate::raw::world::{self as raw, EntityBody, EntityKind as RawEntityKind};
 
+/// The requested entity does not exist.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct NoEntity {
+    _priv: (),
+}
+
 #[derive(Clone)]
 pub struct Entity(raw::Entity);
 
 impl Entity {
-    pub fn get(id: EntityId) -> Result<Self, Error> {
+    /// Returns the `Entity` with the given `id`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NoEntity`] if the requested `id` does not currently exist.
+    pub fn get(id: EntityId) -> Result<Self, NoEntity> {
         let mut entity = MaybeUninit::<raw::Entity>::uninit();
         let ptr = entity.as_mut_ptr() as Usize;
 
@@ -24,10 +35,13 @@ impl Entity {
         if res == 0 {
             Ok(Self(unsafe { entity.assume_init_read() }))
         } else {
-            Err(Error)
+            debug_assert_eq!(res, ERROR_NO_ENTITY);
+
+            Err(NoEntity { _priv: () })
         }
     }
 
+    /// Spawns the entity.
     pub fn spawn(&mut self) -> Result<(), Error> {
         let mut id = self.0.id;
         let out_ptr = &mut id as *mut u64 as Usize;
@@ -45,13 +59,20 @@ impl Entity {
         }
     }
 
-    pub fn despawn(&self) -> Result<(), Error> {
+    /// Despawns the `Entity`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NoEntity`] if the requested `id` does not currently exist.
+    pub fn despawn(&self) -> Result<(), NoEntity> {
         let res = unsafe { raw::world_entity_despawn(self.0.id) };
 
         if res == 0 {
             Ok(())
         } else {
-            Err(Error)
+            debug_assert_eq!(res, ERROR_NO_ENTITY);
+
+            Err(NoEntity { _priv: () })
         }
     }
 

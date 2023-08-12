@@ -30,8 +30,8 @@ impl Components {
         self.components.get_mut(&r)
     }
 
-    pub fn remove(&mut self, r: RecordReference) {
-        self.components.remove(&r);
+    pub fn remove(&mut self, r: RecordReference) -> Option<Component> {
+        self.components.remove(&r)
     }
 
     pub fn iter(&self) -> Iter<'_> {

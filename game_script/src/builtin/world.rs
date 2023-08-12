@@ -9,6 +9,9 @@ use crate::instance::State;
 
 use super::CallerExt;
 
+const ERROR_NO_ENTITY: u32 = 1;
+const ERROR_NO_COMPONENT: u32 = 2;
+
 pub fn world_entity_spawn(
     mut caller: Caller<'_, State<'_, '_>>,
     ptr: u32,
@@ -33,7 +36,7 @@ pub fn world_entity_get(mut caller: Caller<'_, State<'_, '_>>, id: u64, out: u32
     tracing::trace!("world_entity_get(id = {}, out = {})", id, out);
 
     let Some(entity) = caller.data_mut().world.get(EntityId::from_raw(id)) else {
-        return Ok(1);
+        return Ok(ERROR_NO_ENTITY);
     };
 
     let entity = entity.to_abi();
@@ -47,8 +50,11 @@ pub fn world_entity_despawn(mut caller: Caller<'_, State<'_, '_>>, id: u64) -> R
 
     let id = EntityId::from_raw(id);
 
-    caller.data_mut().world.despawn(id);
-    Ok(0)
+    if caller.data_mut().world.despawn(id).is_none() {
+        Ok(ERROR_NO_ENTITY)
+    } else {
+        Ok(0)
+    }
 }
 
 pub fn world_entity_component_len(
@@ -68,11 +74,11 @@ pub fn world_entity_component_len(
     let component_id: RecordReference = caller.read(component_id)?;
 
     let Some(entity) = caller.data().world.get(entity_id) else {
-        return Ok(1);
+        return Ok(ERROR_NO_ENTITY);
     };
 
     let Some(component) = entity.components.get(component_id) else {
-        return Ok(1);
+        return Ok(ERROR_NO_COMPONENT);
     };
 
     let len = component.len() as u32;
@@ -100,11 +106,11 @@ pub fn world_entity_component_get(
     let component_id: RecordReference = caller.read(component_id)?;
 
     let Some(entity) = caller.data().world.get(entity_id) else {
-        return Ok(1);
+        return Ok(ERROR_NO_ENTITY);
     };
 
     let Some(component) = entity.components.get(component_id) else {
-        return Ok(1);
+        return Ok(ERROR_NO_COMPONENT);
     };
 
     let mut bytes = component.as_bytes();
@@ -139,7 +145,7 @@ pub fn world_entity_component_insert(
     let bytes = caller.read_memory(ptr, len)?.to_owned();
 
     let Some(mut entity) = caller.data_mut().world.get_mut(entity_id) else {
-        return Ok(1);
+        return Ok(ERROR_NO_ENTITY);
     };
 
     entity
@@ -163,9 +169,12 @@ pub fn world_entity_component_remove(
     let component_id: RecordReference = caller.read(component_id)?;
 
     let Some(mut entity) = caller.data_mut().world.get_mut(entity_id) else {
-        return Ok(1);
+        return Ok(ERROR_NO_ENTITY);
     };
 
-    entity.components().remove(component_id);
-    Ok(0)
+    if entity.components().remove(component_id).is_none() {
+        Ok(ERROR_NO_COMPONENT)
+    } else {
+        Ok(0)
+    }
 }

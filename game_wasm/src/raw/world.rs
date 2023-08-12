@@ -5,10 +5,25 @@ use crate::record::RecordReference;
 
 #[link(wasm_import_module = "host")]
 extern "C" {
+    /// Returns the entity with the given `id`.
+    ///
+    /// # Errors
+    ///
+    /// - [`ERROR_NO_ENTITY`]: The entity does not exist.
+    ///
+    /// [`ERROR_NO_ENTITY`]: super::ERROR_NO_ENTITY
     pub fn world_entity_get(id: u64, out: PtrMut<Entity>) -> u32;
 
+    /// Spawns a new entity.
     pub fn world_entity_spawn(entity: Ptr<Entity>, out: PtrMut<u64>) -> u32;
 
+    /// Despawns the entity with the given `id`.
+    ///
+    /// # Errors
+    ///
+    /// - [`ERROR_NO_ENTITY`]: The entity does not exist.
+    ///
+    /// [`ERROR_NO_ENTITY`]: super::ERROR_NO_ENTITY
     pub fn world_entity_despawn(id: u64) -> u32;
 
     pub fn world_entity_component_len(

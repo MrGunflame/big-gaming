@@ -73,6 +73,12 @@ impl<T> PtrMut<T> {
     }
 }
 
+/// The entity does not exist.
+pub const ERROR_NO_ENTITY: u32 = 1;
+
+/// The component does not exist on the entity.
+pub const ERROR_NO_COMPONENT: u32 = 2;
+
 #[link(wasm_import_module = "host")]
 extern "C" {
     pub fn log(level: u32, ptr: Usize, len: Usize);
