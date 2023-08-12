@@ -6,6 +6,7 @@ pub mod widget;
 mod container;
 mod debug;
 pub mod image;
+mod pipeline;
 pub mod remap;
 mod systems;
 mod text;
@@ -42,6 +43,7 @@ use self::layout::LayoutTree;
 
 pub use self::image::Image;
 pub use self::layout::{Element, ElementBody};
+use self::pipeline::UiPipeline;
 use self::style::Style;
 pub use self::text::Text;
 
@@ -203,106 +205,6 @@ trait BuildPrimitiveElement {
     fn bounds(&self, style: &ComputedStyle) -> ComputedBounds;
 }
 
-#[derive(Debug, Resource)]
-struct UiPipeline {
-    bind_group_layout: BindGroupLayout,
-    pipeline: RenderPipeline,
-    sampler: Sampler,
-}
-
-impl FromWorld for UiPipeline {
-    fn from_world(world: &mut World) -> Self {
-        world.resource_scope::<RenderDevice, Self>(|_, device| Self::new(&device.0))
-    }
-}
-
-impl UiPipeline {
-    pub fn new(device: &Device) -> Self {
-        let bind_group_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
-            label: Some("ui_layout"),
-            entries: &[
-                BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: ShaderStages::FRAGMENT,
-                    ty: BindingType::Texture {
-                        sample_type: TextureSampleType::Float { filterable: true },
-                        view_dimension: TextureViewDimension::D2,
-                        multisampled: false,
-                    },
-                    count: None,
-                },
-                BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: ShaderStages::FRAGMENT,
-                    ty: BindingType::Sampler(SamplerBindingType::Filtering),
-                    count: None,
-                },
-            ],
-        });
-
-        let pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
-            label: Some("ui_pipeline_layout"),
-            bind_group_layouts: &[&bind_group_layout],
-            push_constant_ranges: &[],
-        });
-
-        let shader = device.create_shader_module(ShaderModuleDescriptor {
-            label: Some("ui_shader"),
-            source: ShaderSource::Wgsl(include_str!("ui.wgsl").into()),
-        });
-
-        let pipeline = device.create_render_pipeline(&RenderPipelineDescriptor {
-            label: Some("ui_pipeline"),
-            layout: Some(&pipeline_layout),
-            vertex: VertexState {
-                module: &shader,
-                entry_point: "vs_main",
-                buffers: &[Vertex::layout()],
-            },
-            fragment: Some(FragmentState {
-                module: &shader,
-                entry_point: "fs_main",
-                targets: &[Some(ColorTargetState {
-                    format: TextureFormat::Bgra8Unorm,
-                    blend: Some(BlendState::ALPHA_BLENDING),
-                    write_mask: ColorWrites::ALL,
-                })],
-            }),
-            primitive: PrimitiveState {
-                topology: PrimitiveTopology::TriangleList,
-                strip_index_format: None,
-                front_face: FrontFace::Ccw,
-                cull_mode: Some(Face::Back),
-                polygon_mode: PolygonMode::Fill,
-                unclipped_depth: false,
-                conservative: false,
-            },
-            depth_stencil: None,
-            multisample: MultisampleState {
-                count: 1,
-                mask: !0,
-                alpha_to_coverage_enabled: false,
-            },
-            multiview: None,
-        });
-
-        let sampler = device.create_sampler(&SamplerDescriptor {
-            address_mode_u: AddressMode::ClampToEdge,
-            address_mode_v: AddressMode::ClampToEdge,
-            address_mode_w: AddressMode::ClampToEdge,
-            mag_filter: FilterMode::Linear,
-            min_filter: FilterMode::Nearest,
-            ..Default::default()
-        });
-
-        Self {
-            bind_group_layout,
-            pipeline,
-            sampler,
-        }
-    }
-}
-
 /// A vertex in the UI.
 #[derive(Copy, Clone, Debug, Zeroable, Pod)]
 #[repr(C)]
@@ -409,7 +311,12 @@ impl Node for UiPass {
     }
 
     fn render(&self, world: &World, ctx: &mut RenderContext<'_>) {
-        let pipeline = world.resource::<UiPipeline>();
+        let device = world.resource::<RenderDevice>();
+        let l = world
+            .resource::<UiPipeline>()
+            .get(&device, ctx.format)
+            .lock();
+        let pipeline = l.get(&ctx.format).unwrap();
 
         let Some(elements) = self.elements.get(&ctx.window) else {
             return;
@@ -428,7 +335,7 @@ impl Node for UiPass {
             depth_stencil_attachment: None,
         });
 
-        render_pass.set_pipeline(&pipeline.pipeline);
+        render_pass.set_pipeline(&pipeline);
 
         for elem in elements {
             render_pass.set_bind_group(0, &elem.bind_group, &[]);

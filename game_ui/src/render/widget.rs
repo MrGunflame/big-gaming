@@ -1,4 +1,7 @@
+use game_input::keyboard::KeyboardInput;
+use game_input::mouse::{MouseButtonInput, MouseWheel};
 use game_render::texture::Image;
+use game_window::events::{CursorEntered, CursorLeft, CursorMoved, ReceivedCharacter};
 use glam::Vec2;
 
 use super::style::Bounds;
@@ -20,7 +23,24 @@ impl Painter {
 
 pub trait Widget {
     /// Returns the minimun and maximum bounds that the widget wants to scale to.
-    fn size(&self) -> Bounds;
+    fn size(&self) -> DrawBounds;
 
     fn render(&self, ctx: Context<'_>);
+}
+
+#[derive(Copy, Clone, Debug, Default, PartialEq)]
+pub struct DrawBounds {
+    pub width: f32,
+    pub height: f32,
+}
+
+#[derive(Clone, Debug)]
+pub enum Event {
+    CursorMoved(CursorMoved),
+    CursorLeft(CursorLeft),
+    CursorEntered(CursorEntered),
+    MouseButtonInput(MouseButtonInput),
+    MouseWheel(MouseWheel),
+    KeyboardInput(KeyboardInput),
+    ReceivedCharacter(ReceivedCharacter),
 }
