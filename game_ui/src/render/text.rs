@@ -6,6 +6,8 @@ use super::computed_style::{ComputedBounds, ComputedStyle};
 use super::image::Image;
 use super::BuildPrimitiveElement;
 
+const DEFAULT_FONT: &[u8] = include_bytes!("../../../assets/fonts/OpenSans/OpenSans-Regular.ttf");
+
 #[derive(Clone, Debug)]
 pub struct Text {
     pub text: String,
@@ -47,8 +49,7 @@ impl BuildPrimitiveElement for Text {
 }
 
 fn render_to_texture(text: &str, size: f32, max: Vec2) -> ImageBuffer<Rgba<u8>, Vec<u8>> {
-    let font =
-        FontRef::try_from_slice(include_bytes!("/usr/share/fonts/droid/DroidSans.ttf")).unwrap();
+    let font = FontRef::try_from_slice(DEFAULT_FONT).unwrap();
 
     let scaled_font = font.as_scaled(PxScale::from(size));
 
@@ -151,10 +152,10 @@ mod tests {
     use ab_glyph::{point, Font, FontRef, PxScale};
     use glam::Vec2;
 
-    use super::{layout_glyphs, render_to_texture};
+    use super::{layout_glyphs, render_to_texture, DEFAULT_FONT};
 
     fn test_font() -> FontRef<'static> {
-        FontRef::try_from_slice(include_bytes!("/usr/share/fonts/droid/DroidSans.ttf")).unwrap()
+        FontRef::try_from_slice(DEFAULT_FONT).unwrap()
     }
 
     #[test]
