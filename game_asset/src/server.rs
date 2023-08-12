@@ -3,14 +3,12 @@ use std::path::Path;
 
 use bevy_ecs::system::Resource;
 use futures::{select, FutureExt};
-use slotmap::SlotMap;
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
 use tokio::runtime::Runtime;
 use tokio::sync::mpsc;
 
 #[derive(Debug, Resource)]
-
 pub struct AssetServer {
     rt: Runtime,
 }
@@ -63,7 +61,7 @@ impl AssetServer {
 }
 
 #[derive(Debug)]
-enum Event {
+pub enum Event {
     Data(Vec<u8>),
     Error(io::Error),
 }
@@ -73,4 +71,8 @@ pub struct LoadHandle {
     rx: mpsc::Receiver<Event>,
 }
 
-impl LoadHandle {}
+impl LoadHandle {
+    pub fn try_recv(&mut self) -> Option<Event> {
+        self.rx.try_recv().ok()
+    }
+}
