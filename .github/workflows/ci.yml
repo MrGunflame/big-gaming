@@ -7,7 +7,7 @@ on:
     branches: [ "master" ]
 
 env:
-  RUSTFLAGS: -Dwarnings
+  RUSTFLAGS: -Awarnings
   RUST_BACKTRACE: full
   nightly: nightly-2023-08-12
 
