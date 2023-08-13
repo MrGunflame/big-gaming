@@ -18,34 +18,33 @@ pub(crate) fn model_to_scene(
 ) -> Scene {
     let mut nodes = Vec::new();
 
-    for node in data.meshes {
-        let mut mesh = Mesh::new();
-        mesh.set_positions(
-            node.vertices
-                .positions
-                .into_iter()
-                .map(|vec| vec.to_array())
-                .collect(),
-        );
-        mesh.set_normals(
-            node.vertices
-                .normals
-                .into_iter()
-                .map(|vec| vec.to_array())
-                .collect(),
-        );
-        mesh.set_tangents(node.vertices.tangents);
-        mesh.set_indices(Indices::U32(node.vertices.indices));
-        mesh.set_uvs(
-            node.vertices
-                .uvs
-                .into_iter()
-                .map(|vec| vec.to_array())
-                .collect(),
-        );
+    let mut data_meshes = Vec::new();
+    for mesh in data.meshes {
+        let positions = data.buffers[mesh.positions as usize].as_positions();
+        let normals = data.buffers[mesh.normals as usize].as_normals();
+        let tangents = data.buffers[mesh.tangents as usize].as_tangents();
+        let uvs = data.buffers[mesh.uvs as usize].as_uvs();
+        let indices = data.buffers[mesh.indices as usize].as_indices();
 
-        let mesh = meshes.insert(mesh);
-        let material = materials.insert(create_material(&node.textures, node.material, images));
+        let mut mesh = Mesh::new();
+        mesh.set_positions(positions.into_iter().map(|pos| pos.to_array()).collect());
+        mesh.set_normals(normals.into_iter().map(|norm| norm.to_array()).collect());
+        mesh.set_tangents(tangents.to_vec());
+        mesh.set_uvs(uvs.into_iter().map(|uv| uv.to_array()).collect());
+        mesh.set_indices(Indices::U32(indices.to_vec()));
+
+        data_meshes.push(meshes.insert(mesh));
+    }
+
+    let mut data_materials = Vec::new();
+    for mat in data.materials {
+        let material = create_material(&data.textures, mat, images);
+        data_materials.push(materials.insert(material));
+    }
+
+    for node in data.nodes {
+        let mesh = data_meshes[node.mesh as usize].clone();
+        let material = data_materials[node.material as usize].clone();
 
         nodes.push(Node {
             mesh,

@@ -3,16 +3,21 @@
 #![deny(unsafe_op_in_unsafe_fn)]
 #![deny(unused_crate_dependencies)]
 
+pub mod buffer;
 pub mod compression;
 pub mod material;
 pub mod mesh;
+pub mod parser;
 pub mod textures;
-pub mod vertex;
 
+use buffer::Buffer;
 use bytes::{Buf, BufMut};
 use compression::CompressionScheme;
+use game_common::components::transform::Transform;
 use glam::{Quat, Vec2, Vec3, Vec4};
+use material::Material;
 use mesh::Mesh;
+use textures::Texture;
 
 pub const MAGIC: [u8; 4] = [0, 0, 0, 0];
 
@@ -232,7 +237,11 @@ impl Decode for Quat {
 #[derive(Clone, Debug)]
 pub struct Model {
     pub header: Header,
+    pub nodes: Vec<Node>,
     pub meshes: Vec<Mesh>,
+    pub materials: Vec<Material>,
+    pub buffers: Vec<Buffer>,
+    pub textures: Vec<Texture>,
 }
 
 impl Encode for Model {
@@ -241,10 +250,30 @@ impl Encode for Model {
         B: BufMut,
     {
         self.header.encode(&mut buf);
-        (self.meshes.len() as u16).encode(&mut buf);
 
-        for m in &self.meshes {
-            m.encode(&mut buf);
+        (self.nodes.len() as u16).encode(&mut buf);
+        for node in &self.nodes {
+            node.encode(&mut buf);
+        }
+
+        (self.meshes.len() as u16).encode(&mut buf);
+        for mesh in &self.meshes {
+            mesh.encode(&mut buf);
+        }
+
+        (self.materials.len() as u16).encode(&mut buf);
+        for material in &self.materials {
+            material.encode(&mut buf);
+        }
+
+        (self.buffers.len() as u16).encode(&mut buf);
+        for buffer in &self.buffers {
+            buffer.encode(&mut buf);
+        }
+
+        (self.textures.len() as u16).encode(&mut buf);
+        for texture in &self.textures {
+            texture.encode(&mut buf);
         }
     }
 }
@@ -258,13 +287,85 @@ impl Decode for Model {
     {
         let header = Header::decode(&mut buf)?;
 
-        let num_meshes = u16::decode(&mut buf)?;
-        let mut meshes = Vec::new();
-
-        for _ in 0..num_meshes {
-            meshes.push(Mesh::decode(&mut buf)?);
+        let num_nodes = u16::decode(&mut buf)?;
+        let mut nodes = Vec::new();
+        for _ in 0..num_nodes {
+            let node = Node::decode(&mut buf)?;
+            nodes.push(node);
         }
 
-        Ok(Self { header, meshes })
+        let num_meshes = u16::decode(&mut buf)?;
+        let mut meshes = Vec::new();
+        for _ in 0..num_meshes {
+            let mesh = Mesh::decode(&mut buf)?;
+            meshes.push(mesh);
+        }
+
+        let num_materials = u16::decode(&mut buf)?;
+        let mut materials = Vec::new();
+        for _ in 0..num_materials {
+            let material = Material::decode(&mut buf)?;
+            materials.push(material);
+        }
+
+        let num_buffers = u16::decode(&mut buf)?;
+        let mut buffers = Vec::new();
+        for _ in 0..num_buffers {
+            let buffer = Buffer::decode(&mut buf)?;
+            buffers.push(buffer);
+        }
+
+        let num_textures = u16::decode(&mut buf)?;
+        let mut textures = Vec::new();
+        for _ in 0..num_textures {
+            let texture = Texture::decode(&mut buf)?;
+            textures.push(texture);
+        }
+
+        Ok(Self {
+            header,
+            nodes,
+            meshes,
+            materials,
+            buffers,
+            textures,
+        })
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Node {
+    pub transform: Transform,
+    pub mesh: u16,
+    pub material: u16,
+}
+
+impl Encode for Node {
+    fn encode<B>(&self, mut buf: B)
+    where
+        B: BufMut,
+    {
+        self.transform.encode(&mut buf);
+        self.mesh.encode(&mut buf);
+        self.material.encode(&mut buf);
+    }
+}
+
+impl Decode for Node {
+    type Error = ();
+
+    fn decode<B>(mut buf: B) -> Result<Self, Self::Error>
+    where
+        B: Buf,
+    {
+        let transform = Transform::decode(&mut buf)?;
+        let mesh = u16::decode(&mut buf)?;
+        let material = u16::decode(&mut buf)?;
+
+        Ok(Self {
+            transform,
+            mesh,
+            material,
+        })
     }
 }

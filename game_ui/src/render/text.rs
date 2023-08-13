@@ -179,7 +179,7 @@ mod tests {
     #[test]
     fn render_to_texture_overflow() {
         let text: String = (0..1000).map(|_| "a").collect();
-        let size = 100.0;
+        let size = 10.0;
         let max = Vec2::splat(0.0);
 
         render_to_texture(&text, size, max);
