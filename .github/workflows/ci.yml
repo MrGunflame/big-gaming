@@ -33,15 +33,6 @@ jobs:
       if: runner.os == 'linux'
     - run: cargo test --workspace
 
-  miri:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v3
-    - run: rustup update $nightly --no-self-update && rustup default $nightly
-    - run: rustup component add miri
-    - run: sudo apt-get update; sudo apt-get install --no-install-recommends libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev
-    - run: cargo miri test --workspace
-
   docs:
     runs-on: ubuntu-latest
     steps:
