@@ -6,6 +6,7 @@
 pub mod compression;
 pub mod material;
 pub mod mesh;
+pub mod parser;
 pub mod textures;
 pub mod vertex;
 
