@@ -12,3 +12,4 @@ game_gltf = { version = "0.1.0", path = "../../game_gltf" }
 
 clap = { version = "4.3.21", features = ["derive"] }
 image = "0.24.7"
+bytemuck = "1.13.1"
