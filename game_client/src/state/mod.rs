@@ -3,7 +3,7 @@ use tokio::sync::mpsc;
 
 use bevy_ecs::system::{ResMut, Resource};
 
-mod main_menu;
+pub mod main_menu;
 mod startup;
 
 #[derive(Resource)]

@@ -63,22 +63,22 @@ fn setup_camera(mut commands: Commands, target: Res<PrimaryWindow>) {
                 target: RenderTarget::Window(target.0),
             },
         })
-        .insert(CameraMode::ThirdPerson { distance: 10.0 })
+        .insert(CameraMode::Detached)
         .insert(PrimaryCamera);
 
-    commands.spawn(DirectionalLightBundle {
-        light: DirectionalLight {
-            color: Color::WHITE,
-            illuminance: 100_000.0,
-        },
-        transform: TransformBundle {
-            transform: Transform {
-                translation: Vec3::splat(-1.0),
-                ..Default::default()
-            },
-            ..Default::default()
-        },
-    });
+    // commands.spawn(DirectionalLightBundle {
+    //     light: DirectionalLight {
+    //         color: Color::WHITE,
+    //         illuminance: 100_000.0,
+    //     },
+    //     transform: TransformBundle {
+    //         transform: Transform {
+    //             translation: Vec3::splat(-1.0),
+    //             ..Default::default()
+    //         },
+    //         ..Default::default()
+    //     },
+    // });
 }
 
 pub fn synchronize_player_camera(

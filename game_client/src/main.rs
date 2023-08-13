@@ -81,5 +81,8 @@ fn main() {
             .connect(addr);
     }
 
+    app.add_startup_system(state::main_menu::setup_main_scene);
+    app.add_system(state::main_menu::move_camera);
+
     app.run();
 }
