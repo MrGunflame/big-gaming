@@ -9,6 +9,7 @@ use wgpu::util::{BufferInitDescriptor, DeviceExt};
 use wgpu::BufferUsages;
 
 use crate::buffer::{DynamicBuffer, GpuBuffer};
+use crate::metrics::RenderMetrics;
 use crate::render_pass::RenderNodes;
 use crate::RenderDevice;
 
@@ -74,6 +75,7 @@ pub fn update_directional_lights(
     mut cache: ResMut<DirectionalLightCache>,
     entities: Query<(Entity, &DirectionalLight, &GlobalTransform)>,
     mut render_nodes: ResMut<RenderNodes>,
+    mut metrics: ResMut<RenderMetrics>,
 ) {
     let mut changed = false;
 
@@ -101,6 +103,8 @@ pub fn update_directional_lights(
         return;
     }
 
+    metrics.directional_lights = cache.entities.len() as u64;
+
     let lights: DynamicBuffer<DirectionalLightUniform> = cache.entities.values().copied().collect();
 
     let buffer = device.create_buffer_init(&BufferInitDescriptor {
@@ -122,6 +126,7 @@ pub fn update_point_lights(
     mut cache: ResMut<PointLightCache>,
     entities: Query<(Entity, &PointLight, &GlobalTransform)>,
     mut render_nodes: ResMut<RenderNodes>,
+    mut metrics: ResMut<RenderMetrics>,
 ) {
     let mut changed = false;
 
@@ -149,6 +154,8 @@ pub fn update_point_lights(
         return;
     }
 
+    metrics.point_lights = cache.entities.len() as u64;
+
     let lights: DynamicBuffer<PointLightUniform> = cache.entities.values().copied().collect();
 
     let buffer = device.create_buffer_init(&BufferInitDescriptor {
@@ -170,6 +177,7 @@ pub fn update_spot_lights(
     mut cache: ResMut<SpotLightCache>,
     entities: Query<(Entity, &SpotLight, &GlobalTransform)>,
     mut render_nodes: ResMut<RenderNodes>,
+    mut metrics: ResMut<RenderMetrics>,
 ) {
     let mut changed = false;
 
@@ -202,6 +210,8 @@ pub fn update_spot_lights(
     if !changed {
         return;
     }
+
+    metrics.spot_lights = cache.entities.len() as u64;
 
     let lights: DynamicBuffer<SpotLightUniform> = cache.entities.values().copied().collect();
 

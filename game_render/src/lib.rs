@@ -9,6 +9,7 @@ pub mod forward;
 pub mod graph;
 pub mod light;
 pub mod mesh;
+pub mod metrics;
 pub mod mipmap;
 pub mod pbr;
 pub mod render_pass;
@@ -30,6 +31,7 @@ use game_core::transform::{TransformPlugin, TransformSet};
 use game_window::WindowPlugin;
 use graph::RenderGraph;
 use mesh::Mesh;
+use metrics::RenderMetrics;
 use pbr::PbrMaterial;
 use post_process::PostProcessPipeline;
 use render_pass::{RenderNodes, RenderPass};
@@ -159,27 +161,6 @@ impl Plugin for RenderPlugin {
             app.init_resource::<mipmap::MipMapGenerator>();
         }
 
-        // app.init_resource::<pipeline::MeshPipeline>();
-        // app.init_resource::<pipeline::MaterialPipeline>();
-        // app.init_resource::<LightingPipeline>();
-
-        // app.add_system(pbr::prepare_materials.in_set(RenderSet::Update));
-        // app.add_system(pbr::prepare_directional_lights.in_set(RenderSet::Update));
-        // app.add_system(
-        //     pbr::update_material_bind_groups
-        //         .after(pbr::prepare_materials)
-        //         .in_set(RenderSet::Update),
-        // );
-        // app.add_system(pbr::prepare_point_lights.in_set(RenderSet::Update));
-        // app.add_system(pbr::remove_render_nodes.in_set(RenderSet::Update));
-
-        // app.insert_resource(pipeline::RenderWindows::default());
-        // app.add_system(pipeline::create_render_windows);
-        // app.add_system(pipeline::destroy_render_windows);
-        // app.add_system(pipeline::resize_render_windows);
-
-        // app.init_resource::<PostProcessPipeline>();
-
         app.configure_set(
             RenderSet::Render
                 .after(RenderSet::Update)
@@ -197,6 +178,8 @@ impl Plugin for RenderPlugin {
         );
 
         app.add_system(aabb::update_aabb);
+
+        app.insert_resource(RenderMetrics::default());
     }
 }
 

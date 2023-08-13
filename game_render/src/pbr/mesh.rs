@@ -11,6 +11,7 @@ use wgpu::{BindGroupDescriptor, BindGroupEntry, BufferUsages, IndexFormat};
 use crate::buffer::IndexBuffer;
 use crate::forward::ForwardPipeline;
 use crate::mesh::{Indices, Mesh};
+use crate::metrics::RenderMetrics;
 use crate::render_pass::RenderNodes;
 use crate::RenderDevice;
 
@@ -20,11 +21,19 @@ pub fn update_mesh_bind_group(
     meshes: Res<Assets<Mesh>>,
     pipeline: Res<ForwardPipeline>,
     mut render_nodes: ResMut<RenderNodes>,
+    mut metrics: ResMut<RenderMetrics>,
 ) {
     for (entity, handle) in &nodes {
         let Some(mesh) = meshes.get(handle.id()) else {
             continue;
         };
+
+        metrics.entities += 1;
+        metrics.triangles += mesh
+            .indicies()
+            .map(|indices| indices.len())
+            .unwrap_or(mesh.positions().len() as u32) as u64
+            / 3;
 
         // FIXME: Since meshes are user controlled, we might not catch invalid
         // meshes with a panic and simply ignore them.
