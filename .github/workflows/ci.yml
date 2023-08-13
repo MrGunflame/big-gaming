@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+
+env:
+  RUST_BACKTRACE: full
+  MIRIFLAGS: -Zmiri-disable-isolation -Zmiri-backtrace=full
+  nightly: nightly-2023-08-12
+
+jobs:
+  fmt:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - run: rustup update stable --no-self-update && rustup default stable
+    - run: rustup component add rustfmt
+    - run: cargo fmt --all --check
+
+  stable:
+    strategy:
+      matrix:
+        os:
+        - ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+    - uses: actions/checkout@v3
+    - run: rustup update stable --no-self-update && rustup default stable
+    - run: sudo apt-get update; sudo apt-get install --no-install-recommends libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev
+      if: runner.os == 'linux'
+    - run: cargo test --workspace
+
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - run: rustup update stable --no-self-update && rustup default stable
+    - run: sudo apt-get update; sudo apt-get install --no-install-recommends libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev
+    - run: cargo doc --no-deps --all-features
