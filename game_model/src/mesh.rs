@@ -2,17 +2,15 @@ use bytes::{Buf, BufMut};
 use game_common::components::transform::Transform;
 use glam::{Quat, Vec3};
 
-use crate::material::Material;
-use crate::textures::Texture;
-use crate::vertex::Vertices;
 use crate::{Decode, Encode};
 
 #[derive(Clone, Debug)]
 pub struct Mesh {
-    pub transform: Transform,
-    pub vertices: Vertices,
-    pub material: Material,
-    pub textures: Vec<Texture>,
+    pub positions: u16,
+    pub normals: u16,
+    pub tangents: u16,
+    pub uvs: u16,
+    pub indices: u16,
 }
 
 impl Encode for Transform {
@@ -50,14 +48,11 @@ impl Encode for Mesh {
     where
         B: BufMut,
     {
-        self.transform.encode(&mut buf);
-        self.vertices.encode(&mut buf);
-        self.material.encode(&mut buf);
-
-        (self.textures.len() as u16).encode(&mut buf);
-        for tex in &self.textures {
-            tex.encode(&mut buf);
-        }
+        self.positions.encode(&mut buf);
+        self.normals.encode(&mut buf);
+        self.tangents.encode(&mut buf);
+        self.uvs.encode(&mut buf);
+        self.indices.encode(&mut buf);
     }
 }
 
@@ -68,22 +63,18 @@ impl Decode for Mesh {
     where
         B: Buf,
     {
-        let transform = Transform::decode(&mut buf)?;
-        let vertices = Vertices::decode(&mut buf)?;
-        let material = Material::decode(&mut buf)?;
-
-        let num_textures = u16::decode(&mut buf)?;
-        let mut textures = Vec::new();
-        for _ in 0..num_textures {
-            let tex = Texture::decode(&mut buf)?;
-            textures.push(tex);
-        }
+        let positions = u16::decode(&mut buf)?;
+        let normals = u16::decode(&mut buf)?;
+        let tangents = u16::decode(&mut buf)?;
+        let uvs = u16::decode(&mut buf)?;
+        let indices = u16::decode(&mut buf)?;
 
         Ok(Self {
-            transform,
-            vertices,
-            material,
-            textures,
+            positions,
+            normals,
+            tangents,
+            uvs,
+            indices,
         })
     }
 }
