@@ -10,15 +10,12 @@ mod utils;
 mod window;
 
 use bevy_app::App;
-use bevy_ecs::system::Commands;
 use clap::Parser;
 use config::Config;
 use entities::LoadEntityPlugin;
 use game_core::counter::Interval;
 use game_core::logger::{self};
 use game_core::CorePlugins;
-use game_render::color::Color;
-use game_render::light::{DirectionalLight, DirectionalLightBundle};
 use game_render::RenderPlugin;
 use game_scene::ScenePlugin;
 use net::NetPlugin;
@@ -72,8 +69,6 @@ fn main() {
     app.add_plugin(ScenePlugin);
     app.add_plugin(MovementPlugin);
 
-    app.add_startup_system(spawn_light);
-
     let res = game_core::modules::load_modules();
     app.insert_resource(res.modules);
     app.insert_resource(res.server);
@@ -87,14 +82,4 @@ fn main() {
     }
 
     app.run();
-}
-
-fn spawn_light(mut commands: Commands) {
-    commands.spawn(DirectionalLightBundle {
-        light: DirectionalLight {
-            color: Color::WHITE,
-            illuminance: 1.0,
-        },
-        transform: Default::default(),
-    });
 }

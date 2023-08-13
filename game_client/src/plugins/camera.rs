@@ -69,7 +69,7 @@ fn setup_camera(mut commands: Commands, target: Res<PrimaryWindow>) {
     commands.spawn(DirectionalLightBundle {
         light: DirectionalLight {
             color: Color::WHITE,
-            illuminance: 1.0,
+            illuminance: 100_000.0,
         },
         transform: TransformBundle {
             transform: Transform {
