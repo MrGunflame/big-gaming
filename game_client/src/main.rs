@@ -21,6 +21,7 @@ use game_scene::ScenePlugin;
 use net::NetPlugin;
 use plugins::actions::ActionsPlugin;
 use plugins::{CameraPlugin, MovementPlugin};
+use state::main_menu::MainMenuEntities;
 use state::InternalGameState;
 use window::PrimaryWindow;
 
@@ -83,6 +84,7 @@ fn main() {
 
     app.add_startup_system(state::main_menu::setup_main_scene);
     app.add_system(state::main_menu::move_camera);
+    app.insert_resource(MainMenuEntities::default());
 
     app.run();
 }

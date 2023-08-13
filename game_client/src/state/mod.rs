@@ -1,7 +1,9 @@
 use bevy_ecs::world::{FromWorld, World};
 use tokio::sync::mpsc;
 
-use bevy_ecs::system::{ResMut, Resource};
+use bevy_ecs::system::{Commands, Res, ResMut, Resource};
+
+use self::main_menu::MainMenuEntities;
 
 pub mod main_menu;
 mod startup;
@@ -20,12 +22,12 @@ impl FromWorld for InternalGameState {
 
         Self {
             reader: rx,
-            state: GameState::Startup,
+            state: GameState::MainMenu,
         }
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum GameState {
     /// Initial game startup phase.
     Startup,
@@ -52,9 +54,22 @@ impl GameStateWriter {
     }
 }
 
-pub fn update_game_state(mut state: ResMut<InternalGameState>) {
+pub fn update_game_state(
+    mut commands: Commands,
+    mut state: ResMut<InternalGameState>,
+    mut ents: ResMut<MainMenuEntities>,
+) {
     while let Ok(event) = state.reader.try_recv() {
         tracing::debug!("update GameState from `{:?}` to `{:?}`", state.state, event);
+
+        match state.state {
+            GameState::MainMenu => {
+                for entity in ents.0.drain(..) {
+                    commands.entity(entity).despawn();
+                }
+            }
+            _ => (),
+        }
 
         state.state = event;
     }
