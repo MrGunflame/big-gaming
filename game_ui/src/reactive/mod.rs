@@ -2,9 +2,6 @@ use std::cell::RefCell;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 
-use bevy_ecs::prelude::Component;
-use bevy_ecs::system::Resource;
-use bevy_ecs::world::World;
 use parking_lot::Mutex;
 use slotmap::{new_key_type, SlotMap};
 
@@ -98,7 +95,7 @@ impl Scope {
     }
 }
 
-#[derive(Clone, Debug, Default, Resource)]
+#[derive(Clone, Debug, Default)]
 pub struct Runtime {
     inner: Arc<Mutex<RuntimeInner>>,
 }
@@ -124,7 +121,7 @@ struct RuntimeInner {
 
 // Note that `Document` has no `Default` impl to prevent accidental
 // creation on a new `Runtime` (which has a `Default` impl).
-#[derive(Clone, Debug, Component)]
+#[derive(Clone, Debug)]
 pub struct Document {
     runtime: Runtime,
     inner: Arc<Mutex<DocumentInner>>,
@@ -186,7 +183,7 @@ impl Document {
         &self.runtime
     }
 
-    pub fn run_effects(&self, world: &World) {
+    pub fn run_effects(&self) {
         let mut doc = self.inner.lock();
 
         let mut rt = self.runtime.inner.lock();
@@ -221,7 +218,7 @@ impl Document {
                     data.first_run = true;
                 });
 
-                (effect.f)(world);
+                (effect.f)();
 
                 let mut stack = ACTIVE_EFFECT.with(|cell| {
                     let mut data = cell.borrow_mut();
@@ -250,7 +247,7 @@ impl Document {
                 }
 
                 let effect = effect.clone();
-                (effect.f)(world);
+                (effect.f)();
 
                 rt = self.runtime.inner.lock();
             }
@@ -377,8 +374,6 @@ pub enum Event {
 
 #[cfg(test)]
 mod tests {
-    use bevy_ecs::world::World;
-
     use crate::events::{ElementEventHandlers, Events};
     use crate::reactive::Runtime;
     use crate::render::layout::LayoutTree;
@@ -405,16 +400,15 @@ mod tests {
 
         let mut tree = LayoutTree::new();
         let mut events = Events::new();
-        let world = World::new();
 
         let id = cx.push(create_node()).id().unwrap();
 
-        doc.run_effects(&world);
+        doc.run_effects();
         doc.flush_node_queue(&mut tree, &mut events);
 
         cx.remove(id);
 
-        doc.run_effects(&world);
+        doc.run_effects();
         doc.flush_node_queue(&mut tree, &mut events);
 
         assert!(doc.is_empty());
@@ -430,7 +424,6 @@ mod tests {
 
         let mut tree = LayoutTree::new();
         let mut events = Events::new();
-        let world = World::new();
 
         let id = {
             let cx = cx.push(create_node());
@@ -439,12 +432,12 @@ mod tests {
             cx.id().unwrap()
         };
 
-        doc.run_effects(&world);
+        doc.run_effects();
         doc.flush_node_queue(&mut tree, &mut events);
 
         cx.remove(id);
 
-        doc.run_effects(&world);
+        doc.run_effects();
         doc.flush_node_queue(&mut tree, &mut events);
 
         assert!(doc.is_empty());

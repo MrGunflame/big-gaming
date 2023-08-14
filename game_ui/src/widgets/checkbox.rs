@@ -42,7 +42,7 @@ impl Component for Checkbox {
 
         let id = Mutex::new(None);
         let cx = root.clone();
-        create_effect(&root, move |_| {
+        create_effect(&root, move || {
             let state = state.get();
 
             let mut id = id.lock();

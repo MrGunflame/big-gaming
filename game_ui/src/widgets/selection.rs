@@ -74,7 +74,7 @@ impl Component for Selection {
 
         {
             let value = value.clone();
-            create_effect(&root, move |_| {
+            create_effect(&root, move || {
                 let value = value.get();
 
                 match value {
@@ -120,7 +120,7 @@ impl Component for Selection {
 
         let ids: Mutex<Vec<NodeId>> = Mutex::new(vec![]);
         let cx = root.clone();
-        create_effect(&root, move |_| {
+        create_effect(&root, move || {
             let state = state.get();
 
             let mut ids = ids.lock();
@@ -161,7 +161,7 @@ impl Component for Selection {
             }
         });
 
-        create_effect(&root, move |_| {
+        create_effect(&root, move || {
             let value = value.get();
 
             if let Value::Option(index) = value {

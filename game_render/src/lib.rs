@@ -40,9 +40,9 @@ use wgpu::{
 pub struct RenderState {
     instance: Instance,
     adapter: Adapter,
-    device: Device,
-    queue: Queue,
-    graph: RenderGraph,
+    pub device: Device,
+    pub queue: Queue,
+    pub graph: RenderGraph,
     pub surfaces: RenderSurfaces,
     pub entities: Entities,
     pub images: Images,

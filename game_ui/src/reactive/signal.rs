@@ -253,7 +253,6 @@ mod tests {
 
     use std::sync::Arc;
 
-    use bevy_ecs::world::World;
     use parking_lot::Mutex;
 
     use crate::events::Events;
@@ -294,7 +293,7 @@ mod tests {
             let reader = reader.clone();
             let value = value.clone();
 
-            create_effect(&cx, move |_| {
+            create_effect(&cx, move || {
                 let _ = reader.get();
 
                 *value.lock() += 1;
@@ -303,10 +302,9 @@ mod tests {
 
         let mut tree = LayoutTree::new();
         let mut events = Events::new();
-        let world = World::new();
 
         for doc in &docs {
-            doc.run_effects(&world);
+            doc.run_effects();
             doc.flush_node_queue(&mut tree, &mut events);
         }
 
@@ -315,7 +313,7 @@ mod tests {
         writer.wake();
 
         for doc in &docs {
-            doc.run_effects(&world);
+            doc.run_effects();
             doc.flush_node_queue(&mut tree, &mut events);
         }
 
@@ -330,13 +328,11 @@ mod tests {
         let src = Document::new(rt.clone());
         let dst = Document::new(rt);
 
-        let world = World::new();
-
         let (reader, writer) = create_signal(&src.root_scope(), 0);
 
         {
             let value = value.clone();
-            create_effect(&dst.root_scope(), move |_| {
+            create_effect(&dst.root_scope(), move || {
                 let _ = reader.get();
 
                 *value.lock() += 1;
@@ -344,18 +340,18 @@ mod tests {
         }
 
         tracing::trace!("src");
-        src.run_effects(&world);
+        src.run_effects();
         tracing::trace!("dst");
-        dst.run_effects(&world);
+        dst.run_effects();
 
         assert_eq!(*value.lock(), 1);
 
         writer.wake();
 
         tracing::trace!("src");
-        src.run_effects(&world);
+        src.run_effects();
         tracing::trace!("dst");
-        dst.run_effects(&world);
+        dst.run_effects();
 
         assert_eq!(*value.lock(), 2);
     }

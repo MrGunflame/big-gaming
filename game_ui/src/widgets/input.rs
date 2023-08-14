@@ -120,7 +120,7 @@ impl Component for Input {
 
         {
             let value = value.clone();
-            create_effect(cx, move |_| {
+            create_effect(cx, move || {
                 let buffer = value.get();
 
                 (props.on_change.0)(buffer.string);

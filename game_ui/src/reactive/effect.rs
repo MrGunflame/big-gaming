@@ -2,7 +2,6 @@ use std::fmt::{self, Debug, Formatter};
 use std::panic::Location;
 use std::sync::Arc;
 
-use bevy_ecs::world::World;
 use slotmap::{new_key_type, DefaultKey};
 
 use super::{NodeId, Scope};
@@ -10,7 +9,7 @@ use super::{NodeId, Scope};
 #[track_caller]
 pub fn create_effect<F>(cx: &Scope, f: F)
 where
-    F: Fn(&World) + Send + Sync + 'static,
+    F: Fn() + Send + Sync + 'static,
 {
     let effect = Effect {
         node: cx.id(),
@@ -36,7 +35,7 @@ where
 #[derive(Clone)]
 pub(super) struct Effect {
     pub(super) node: Option<NodeId>,
-    pub(super) f: Arc<dyn Fn(&World) + Send + Sync + 'static>,
+    pub(super) f: Arc<dyn Fn() + Send + Sync + 'static>,
     pub(super) signals: Vec<DefaultKey>,
     pub(super) first_run: bool,
     #[cfg(debug_assertions)]
@@ -67,7 +66,6 @@ impl Debug for Effect {
 mod tests {
     use std::sync::Arc;
 
-    use bevy_ecs::world::World;
     use parking_lot::Mutex;
 
     use crate::events::Events;
@@ -87,12 +85,12 @@ mod tests {
 
         {
             let value = value.clone();
-            create_effect(&cx, move |_| {
+            create_effect(&cx, move || {
                 *value.lock() += 1;
             });
         }
 
-        doc.run_effects(&World::new());
+        doc.run_effects();
 
         assert_eq!(*value.lock(), 1);
     }
@@ -109,13 +107,13 @@ mod tests {
 
         {
             let value = value.clone();
-            create_effect(&cx, move |_| {
+            create_effect(&cx, move || {
                 let val = reader.get();
                 *value.lock() = val;
             });
         }
 
-        doc.run_effects(&World::new());
+        doc.run_effects();
 
         for _ in 0..10 {
             let val = writer.update(|val| {
@@ -123,7 +121,7 @@ mod tests {
                 *val
             });
 
-            doc.run_effects(&World::new());
+            doc.run_effects();
 
             assert_eq!(*value.lock(), val);
         }
@@ -141,18 +139,18 @@ mod tests {
 
         {
             let value = value.clone();
-            create_effect(&cx, move |_| {
+            create_effect(&cx, move || {
                 let val = reader.get_untracked();
                 *value.lock() = val;
             });
         }
 
-        doc.run_effects(&World::new());
+        doc.run_effects();
 
         for _ in 0..10 {
             writer.update(|val| *val += 1);
 
-            doc.run_effects(&World::new());
+            doc.run_effects();
 
             assert_eq!(*value.lock(), 0);
         }
@@ -166,18 +164,17 @@ mod tests {
 
         let mut tree = LayoutTree::new();
         let mut events = Events::new();
-        let world = World::new();
 
         let cx = cx.push(create_node());
 
         let (reader, _) = create_signal(&cx, ());
 
-        create_effect(&cx, move |_| {
+        create_effect(&cx, move || {
             let _ = reader.get();
             let _ = reader.get();
         });
 
-        doc.run_effects(&world);
+        doc.run_effects();
         doc.flush_node_queue(&mut tree, &mut events);
 
         {
@@ -197,13 +194,12 @@ mod tests {
 
         let mut tree = LayoutTree::new();
         let mut events = Events::new();
-        let world = World::new();
 
         let cx = cx.push(create_node());
 
-        create_effect(&cx, move |_| {});
+        create_effect(&cx, move || {});
 
-        doc.run_effects(&world);
+        doc.run_effects();
         doc.flush_node_queue(&mut tree, &mut events);
 
         {
@@ -213,7 +209,7 @@ mod tests {
 
         cx.remove(cx.id().unwrap());
 
-        doc.run_effects(&world);
+        doc.run_effects();
         doc.flush_node_queue(&mut tree, &mut events);
 
         {
@@ -230,17 +226,16 @@ mod tests {
 
         let mut tree = LayoutTree::new();
         let mut events = Events::new();
-        let world = World::new();
 
         let cx = cx.push(create_node());
 
         let (reader, _) = create_signal(&cx, ());
 
-        create_effect(&cx, move |_| {
+        create_effect(&cx, move || {
             let _ = reader.get();
         });
 
-        doc.run_effects(&world);
+        doc.run_effects();
         doc.flush_node_queue(&mut tree, &mut events);
 
         {
@@ -253,7 +248,7 @@ mod tests {
 
         cx.remove(cx.id().unwrap());
 
-        doc.run_effects(&world);
+        doc.run_effects();
         doc.flush_node_queue(&mut tree, &mut events);
 
         {
@@ -270,7 +265,6 @@ mod tests {
 
         let mut tree = LayoutTree::new();
         let mut events = Events::new();
-        let world = World::new();
 
         let cx = cx.push(create_node());
 
@@ -279,12 +273,12 @@ mod tests {
         for _ in 0..2 {
             let reader = reader.clone();
 
-            create_effect(&cx, move |_| {
+            create_effect(&cx, move || {
                 let _ = reader.get();
             });
         }
 
-        doc.run_effects(&world);
+        doc.run_effects();
         doc.flush_node_queue(&mut tree, &mut events);
 
         {
@@ -297,7 +291,7 @@ mod tests {
 
         cx.remove(cx.id().unwrap());
 
-        doc.run_effects(&world);
+        doc.run_effects();
         doc.flush_node_queue(&mut tree, &mut events);
 
         {
