@@ -9,7 +9,8 @@ mod gltf;
 
 use game_gltf::uri::Uri;
 use game_model::{Decode, Model};
-pub use scene::SceneBundle;
+use game_render::RenderState;
+use scene::spawn_scene;
 
 use std::collections::{HashMap, VecDeque};
 use std::fs::File;
@@ -17,9 +18,6 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use bevy_app::{App, Plugin};
-use bevy_ecs::prelude::Component;
-use bevy_ecs::system::{ResMut, Resource};
 use game_asset::{Assets, Handle};
 use game_common::components::transform::Transform;
 use game_gltf::GltfData;
@@ -32,16 +30,7 @@ use parking_lot::Mutex;
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ScenePlugin;
 
-impl Plugin for ScenePlugin {
-    fn build(&self, app: &mut App) {
-        app.insert_resource(Scenes::default());
-        app.add_system(load_scenes);
-        app.add_system(update_scene_handles);
-        app.add_system(scene::spawn_scene);
-    }
-}
-
-#[derive(Debug, Default, Resource)]
+#[derive(Debug, Default)]
 pub struct Scenes {
     next_id: u64,
     scenes: HashMap<u64, Entry>,
@@ -108,7 +97,7 @@ impl Scenes {
     }
 }
 
-#[derive(Debug, Component)]
+#[derive(Debug)]
 pub struct SceneHandle {
     id: u64,
     events: Arc<Mutex<VecDeque<Event>>>,
@@ -155,11 +144,34 @@ pub struct Node {
     pub transform: Transform,
 }
 
+pub fn tick(
+    scenes: &mut Scenes,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<PbrMaterial>,
+    images: &mut Images,
+    render_state: &mut RenderState,
+) {
+    load_scenes(scenes, meshes, materials, images);
+    update_scene_handles(scenes);
+
+    let mut spawned = vec![];
+    for (id, scene) in scenes.scenes.iter() {
+        if let Some(scene) = &scene.data {
+            spawn_scene(scene, render_state, meshes, materials);
+            spawned.push(*id);
+        }
+    }
+
+    for id in spawned {
+        scenes.scenes.remove(&id);
+    }
+}
+
 fn load_scenes(
-    mut scenes: ResMut<Scenes>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<PbrMaterial>>,
-    mut images: ResMut<Images>,
+    scenes: &mut Scenes,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<PbrMaterial>,
+    images: &mut Images,
 ) {
     while let Some((handle, path)) = scenes.load_queue.pop_front() {
         let uri = Uri::from(path);
@@ -179,7 +191,7 @@ fn load_scenes(
             Some(SceneFormat::Model) => {
                 let data = Model::decode(&buf[..]).unwrap();
 
-                model::model_to_scene(data, &mut meshes, &mut materials, &mut images)
+                model::model_to_scene(data, meshes, materials, images)
             }
             Some(SceneFormat::Gltf) => {
                 let mut gltf = GltfData::new(&buf).unwrap();
@@ -194,12 +206,7 @@ fn load_scenes(
                     gltf.insert(path, buf);
                 }
 
-                gltf_to_scene(
-                    gltf.create_unchecked(),
-                    &mut meshes,
-                    &mut materials,
-                    &mut images,
-                )
+                gltf_to_scene(gltf.create_unchecked(), meshes, materials, images)
             }
             None => {
                 tracing::error!("cannot detect scene format");
@@ -214,9 +221,7 @@ fn load_scenes(
     }
 }
 
-fn update_scene_handles(mut scenes: ResMut<Scenes>) {
-    let scenes = &mut *scenes;
-
+fn update_scene_handles(scenes: &mut Scenes) {
     let mut events = scenes.events.lock();
     while let Some(event) = events.pop_front() {
         match event {
