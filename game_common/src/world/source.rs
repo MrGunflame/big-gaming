@@ -2,13 +2,10 @@
 //!
 use std::collections::HashMap;
 
-use bevy_ecs::component::Component;
-use bevy_ecs::system::Resource;
-
 use super::CellId;
 
 /// An entity that (un)loads cells as it moves.
-#[derive(Copy, Clone, Debug, Component)]
+#[derive(Copy, Clone, Debug)]
 pub struct StreamingSource {
     /// The size of the area being loaded around this source.
     ///
@@ -30,7 +27,7 @@ impl Default for StreamingSource {
     }
 }
 
-#[derive(Clone, Debug, Default, Resource)]
+#[derive(Clone, Debug, Default)]
 pub struct StreamingSources {
     sources: HashMap<CellId, u32>,
     loaded: Vec<CellId>,

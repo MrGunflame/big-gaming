@@ -8,7 +8,6 @@ use std::num::NonZeroU8;
 use std::ops::{Deref, DerefMut};
 
 use ahash::{HashSet, RandomState};
-use bevy_ecs::component::Component;
 use bytemuck::{Pod, Zeroable};
 use indexmap::IndexMap;
 use thiserror::Error;
@@ -38,7 +37,7 @@ impl InventoryId {
 ///
 /// Note that the hard limit for a `Inventory` is `usize::MAX` items or total combined mass of
 /// `Mass::MAX`, whichever is reached first.
-#[derive(Clone, Debug, Default, Component)]
+#[derive(Clone, Debug, Default)]
 pub struct Inventory {
     items: IndexMap<InventoryId, Item, RandomState>,
     /// The count of all items in this `Inventory`.

@@ -1,9 +1,8 @@
 use std::ops::{Deref, DerefMut, Mul, MulAssign};
 
-use bevy_ecs::component::Component;
 use glam::{Mat3, Mat4, Quat, Vec3};
 
-#[derive(Copy, Clone, Debug, PartialEq, Component)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub struct Transform {
     pub translation: Vec3,
     pub rotation: Quat,
@@ -81,7 +80,7 @@ impl Default for Transform {
 ///
 /// This can be used to calculate delta movement. It should only be added to components than can
 /// move.
-#[derive(Copy, Clone, Debug, Default, Component)]
+#[derive(Copy, Clone, Debug, Default)]
 pub struct PreviousTransform(pub Transform);
 
 impl Deref for PreviousTransform {
@@ -114,7 +113,7 @@ impl MulAssign for Transform {
     }
 }
 
-#[derive(Copy, Clone, Debug, Default, PartialEq, Component)]
+#[derive(Copy, Clone, Debug, Default, PartialEq)]
 pub struct GlobalTransform(pub Transform);
 
 #[track_caller]

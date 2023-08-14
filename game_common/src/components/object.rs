@@ -1,7 +1,5 @@
 use std::time::{Duration, Instant};
 
-use bevy_ecs::component::Component;
-use bevy_ecs::entity::Entity;
 use bytemuck::{Pod, Zeroable};
 
 use crate::record::RecordReference;
@@ -11,18 +9,13 @@ use crate::record::RecordReference;
 #[repr(transparent)]
 pub struct ObjectId(pub RecordReference);
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Component)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Object {
     pub id: ObjectId,
 }
 
-#[derive(Clone, Default, Debug, Component)]
-pub struct ObjectChildren {
-    pub children: Vec<Entity>,
-}
-
 /// An [`Object`] with a limited lifetime. It will be despawned once expired.
-#[derive(Copy, Clone, Debug, Component)]
+#[derive(Copy, Clone, Debug)]
 pub struct Lifetime {
     /// The lifetime of the object.
     pub lifetime: Duration,
@@ -48,7 +41,7 @@ impl Lifetime {
 }
 
 /// An [`Object`] that currently being loaded.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Component)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct LoadObject {
     pub id: ObjectId,
 }
