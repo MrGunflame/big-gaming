@@ -1,4 +1,3 @@
-use bevy_app::Plugin;
 use game_common::events::{
     ActionEvent, CellLoadEvent, CellUnloadEvent, CollisionEvent, EquipEvent, Event, EventQueue,
     UnequipEvent,
@@ -7,15 +6,6 @@ use game_common::record::RecordReference;
 use game_common::world::entity::EntityBody;
 
 use crate::{Context, Handle};
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct ScriptPlugin;
-
-impl Plugin for ScriptPlugin {
-    fn build(&self, app: &mut bevy_app::App) {
-        app.insert_resource(EventQueue::new());
-    }
-}
 
 pub fn flush_event_queue(mut ctx: Context<'_, '_>) {
     tracing::debug!("executing {} events", ctx.events.len());
