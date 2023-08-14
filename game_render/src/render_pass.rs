@@ -1,36 +1,36 @@
 use std::collections::HashMap;
 
-use bevy_ecs::prelude::Entity;
-use bevy_ecs::system::Resource;
-use bevy_ecs::world::{FromWorld, World};
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
 use wgpu::{
-    BindGroup, BindGroupDescriptor, BindGroupEntry, Buffer, BufferUsages, Color, Extent3d, LoadOp,
-    Operations, RenderPassColorAttachment, RenderPassDepthStencilAttachment, RenderPassDescriptor,
-    TextureDescriptor, TextureDimension, TextureFormat, TextureUsages, TextureViewDescriptor,
+    BindGroup, BindGroupDescriptor, BindGroupEntry, Buffer, BufferUsages, Color, Device, Extent3d,
+    LoadOp, Operations, RenderPassColorAttachment, RenderPassDepthStencilAttachment,
+    RenderPassDescriptor, TextureDescriptor, TextureDimension, TextureFormat, TextureUsages,
+    TextureViewDescriptor,
 };
 
 use crate::buffer::{DynamicBuffer, IndexBuffer};
-use crate::camera::{CameraBuffer, Cameras};
-use crate::depth_stencil::DepthTextures;
-use crate::forward::ForwardPipeline;
+use crate::camera::{CameraBuffer, RenderTarget};
+use crate::entities::Entity;
 use crate::graph::{Node, RenderContext};
 use crate::light::pipeline::{DirectionalLightUniform, PointLightUniform, SpotLightUniform};
-use crate::post_process::PostProcessPipeline;
-use crate::RenderDevice;
 
-#[derive(Resource)]
-pub struct RenderNodes {
-    pub entities: HashMap<Entity, RenderNode>,
+pub struct GpuObject {
+    pub indices: IndexBuffer,
+    pub mesh_bind_group: BindGroup,
+    pub material_bind_group: BindGroup,
+    pub transform: Buffer,
+}
+
+pub struct GpuState {
+    pub cameras: HashMap<Entity, CameraBuffer>,
+    pub objects: HashMap<Entity, GpuObject>,
     pub directional_lights: Buffer,
     pub point_lights: Buffer,
     pub spot_lights: Buffer,
 }
 
-impl FromWorld for RenderNodes {
-    fn from_world(world: &mut World) -> Self {
-        let device = world.resource::<RenderDevice>();
-
+impl GpuState {
+    pub fn new(device: &Device) -> Self {
         let buffer = DynamicBuffer::<DirectionalLightUniform>::new();
         let directional_lights = device.create_buffer_init(&BufferInitDescriptor {
             label: None,
@@ -53,65 +53,36 @@ impl FromWorld for RenderNodes {
         });
 
         Self {
-            entities: HashMap::default(),
             directional_lights,
             point_lights,
             spot_lights,
+            objects: HashMap::new(),
+            cameras: HashMap::new(),
         }
-    }
-}
-
-#[derive(Debug, Default)]
-pub struct RenderNode {
-    pub indices: Option<IndexBuffer>,
-    pub transform: Option<Buffer>,
-    pub mesh_bind_group: Option<BindGroup>,
-    pub material_bind_group: Option<BindGroup>,
-}
-
-impl RenderNode {
-    fn is_ready(&self) -> bool {
-        self.indices.is_some()
-            && self.transform.is_some()
-            && self.mesh_bind_group.is_some()
-            && self.material_bind_group.is_some()
     }
 }
 
 pub struct RenderPass;
 
 impl Node for RenderPass {
-    fn update(&mut self, world: &mut World) {}
-
-    fn render(&self, world: &World, ctx: &mut RenderContext<'_>) {
-        let cameras = world.resource::<Cameras>();
-
-        if let Some(entity) = cameras.window_targets.get(&ctx.window) {
-            if let Some(camera) = cameras.cameras.get(&entity) {
-                self.render_camera_target(camera, world, ctx);
+    fn render(&self, ctx: &mut RenderContext<'_>) {
+        for cam in ctx.state.cameras.values() {
+            if cam.target == RenderTarget::Window(ctx.window) {
+                self.render_camera_target(&cam, ctx);
             }
         }
     }
 }
 
 impl RenderPass {
-    fn render_camera_target(
-        &self,
-        camera: &CameraBuffer,
-        world: &World,
-        ctx: &mut RenderContext<'_>,
-    ) {
-        let device = world.resource::<RenderDevice>();
-        let pipeline = world.resource::<ForwardPipeline>();
-        let nodes = world.resource::<RenderNodes>();
-        let depth_textures = world.resource::<DepthTextures>();
+    fn render_camera_target(&self, camera: &CameraBuffer, ctx: &mut RenderContext<'_>) {
+        let device = ctx.device;
+        let pipeline = ctx.pipeline;
 
-        let depth_texture = depth_textures.windows.get(&ctx.window).unwrap();
-
-        let bind_groups = nodes
-            .entities
+        let bind_groups = ctx
+            .state
+            .objects
             .values()
-            .filter(|node| node.is_ready())
             .map(|node| {
                 device.create_bind_group(&BindGroupDescriptor {
                     label: Some("vs_bind_group"),
@@ -123,7 +94,7 @@ impl RenderPass {
                         },
                         BindGroupEntry {
                             binding: 1,
-                            resource: node.transform.as_ref().unwrap().as_entire_binding(),
+                            resource: node.transform.as_entire_binding(),
                         },
                     ],
                 })
@@ -136,15 +107,15 @@ impl RenderPass {
             entries: &[
                 BindGroupEntry {
                     binding: 0,
-                    resource: nodes.directional_lights.as_entire_binding(),
+                    resource: ctx.state.directional_lights.as_entire_binding(),
                 },
                 BindGroupEntry {
                     binding: 1,
-                    resource: nodes.point_lights.as_entire_binding(),
+                    resource: ctx.state.point_lights.as_entire_binding(),
                 },
                 BindGroupEntry {
                     binding: 2,
-                    resource: nodes.spot_lights.as_entire_binding(),
+                    resource: ctx.state.spot_lights.as_entire_binding(),
                 },
             ],
         });
@@ -177,7 +148,7 @@ impl RenderPass {
                 },
             })],
             depth_stencil_attachment: Some(RenderPassDepthStencilAttachment {
-                view: &depth_texture.view,
+                view: &ctx.surface.depth.view,
                 depth_ops: Some(Operations {
                     load: LoadOp::Clear(1.0),
                     store: true,
@@ -188,29 +159,21 @@ impl RenderPass {
 
         render_pass.set_pipeline(&pipeline.pipeline);
 
-        for (index, node) in nodes.entities.values().enumerate() {
-            if !node.is_ready() {
-                continue;
-            }
-
+        for (index, node) in ctx.state.objects.values().enumerate() {
             let vs_bind_group = &bind_groups[index];
 
             render_pass.set_bind_group(0, &vs_bind_group, &[]);
-            render_pass.set_bind_group(1, node.mesh_bind_group.as_ref().unwrap(), &[]);
-            render_pass.set_bind_group(2, node.material_bind_group.as_ref().unwrap(), &[]);
+            render_pass.set_bind_group(1, &node.mesh_bind_group, &[]);
+            render_pass.set_bind_group(2, &node.material_bind_group, &[]);
             render_pass.set_bind_group(3, &light_bind_group, &[]);
 
-            render_pass.set_index_buffer(
-                node.indices.as_ref().unwrap().buffer.slice(..),
-                node.indices.as_ref().unwrap().format,
-            );
-            render_pass.draw_indexed(0..node.indices.as_ref().unwrap().len, 0, 0..1);
+            render_pass.set_index_buffer(node.indices.buffer.slice(..), node.indices.format);
+            render_pass.draw_indexed(0..node.indices.len, 0, 0..1);
         }
 
         drop(render_pass);
 
-        let pl = world.resource::<PostProcessPipeline>();
-        pl.render(
+        ctx.post_process.render(
             &mut ctx.encoder,
             &target_view,
             &ctx.target,

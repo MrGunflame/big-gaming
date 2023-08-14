@@ -2,8 +2,6 @@
 
 use std::collections::HashMap;
 
-use bevy_ecs::system::Resource;
-use bevy_ecs::world::{FromWorld, World};
 use parking_lot::Mutex;
 use wgpu::{
     AddressMode, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
@@ -16,11 +14,9 @@ use wgpu::{
     TextureView, TextureViewDimension, VertexState,
 };
 
-use crate::RenderDevice;
-
 const SHADER: &str = include_str!("../shaders/post_process.wgsl");
 
-#[derive(Debug, Resource)]
+#[derive(Debug)]
 pub struct PostProcessPipeline {
     sampler: Sampler,
     bind_group_layout: BindGroupLayout,
@@ -30,7 +26,7 @@ pub struct PostProcessPipeline {
 }
 
 impl PostProcessPipeline {
-    fn new(device: &Device) -> Self {
+    pub fn new(device: &Device) -> Self {
         let bind_group_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
             label: Some("post_process_bind_group_layout"),
             entries: &[
@@ -171,12 +167,5 @@ impl PostProcessPipeline {
         });
 
         pipelines.insert(format, pipeline);
-    }
-}
-
-impl FromWorld for PostProcessPipeline {
-    fn from_world(world: &mut World) -> Self {
-        let device = world.resource::<RenderDevice>();
-        Self::new(&device.0)
     }
 }

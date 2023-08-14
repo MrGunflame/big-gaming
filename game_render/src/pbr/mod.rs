@@ -1,21 +1,10 @@
-use bevy_ecs::prelude::Bundle;
-use game_asset::{Asset, Handle};
-use game_common::bundles::TransformBundle;
+use game_asset::Asset;
 
 use crate::color::Color;
-use crate::mesh::Mesh;
 use crate::texture::ImageHandle;
 
 pub mod material;
 pub mod mesh;
-
-#[derive(Clone, Debug, Bundle)]
-pub struct PbrBundle {
-    pub mesh: Handle<Mesh>,
-    pub material: Handle<PbrMaterial>,
-    #[bundle]
-    pub transform: TransformBundle,
-}
 
 #[derive(Clone, Debug)]
 pub struct PbrMaterial {

@@ -9,10 +9,7 @@ license = "GPL-3.0-or-later"
 game_window = { version = "0.1.0", path = "../game_window" }
 game_common = { version = "0.1.0", path = "../game_common" }
 game_asset = { version = "0.1.0", path = "../game_asset" }
-game_core = { version = "0.1.0", path = "../game_core" }
 
-bevy_app = "0.10.1"
-bevy_ecs = "0.10.1"
 bytemuck = { version = "1.13.1", features = ["derive"] }
 futures-lite = "1.13.0"
 glam = { version = "0.24.0", features = ["bytemuck"] }

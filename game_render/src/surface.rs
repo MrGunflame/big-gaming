@@ -1,145 +1,128 @@
 use std::collections::HashMap;
 
-use bevy_ecs::prelude::{Entity, EventReader};
-use bevy_ecs::removal_detection::RemovedComponents;
-use bevy_ecs::system::{Query, Res, ResMut, Resource};
-use bevy_ecs::world::World;
-use game_window::events::{WindowCreated, WindowResized};
-use game_window::{Window, WindowState};
+use game_window::windows::{WindowId, WindowState};
+use glam::UVec2;
 use wgpu::{
-    CommandEncoderDescriptor, CompositeAlphaMode, PresentMode, Surface, SurfaceConfiguration,
-    TextureFormat, TextureUsages, TextureViewDescriptor,
+    Adapter, CompositeAlphaMode, Device, Instance, PresentMode, Surface, SurfaceConfiguration,
+    TextureFormat, TextureUsages,
 };
 
-use crate::graph::{RenderContext, RenderGraph};
-use crate::{RenderAdapter, RenderDevice, RenderInstance, RenderQueue};
+use crate::depth_stencil::DepthData;
 
-#[derive(Debug, Default, Resource)]
+#[derive(Debug, Default)]
 pub struct RenderSurfaces {
-    windows: HashMap<Entity, SurfaceData>,
+    windows: HashMap<WindowId, SurfaceData>,
 }
 
 impl RenderSurfaces {
-    fn insert(&mut self, window: Entity, data: SurfaceData) {
-        self.windows.insert(window, data);
+    pub fn new() -> Self {
+        Self {
+            windows: HashMap::new(),
+        }
     }
 
-    fn get_mut(&mut self, window: Entity) -> &mut SurfaceData {
-        self.windows.get_mut(&window).unwrap()
+    pub fn create(
+        &mut self,
+        instance: &Instance,
+        adapter: &Adapter,
+        device: &Device,
+        window: WindowState,
+        id: WindowId,
+    ) {
+        let surfce = create_surface(window, &instance, &adapter, &device).unwrap();
+        self.windows.insert(id, surfce);
     }
 
-    fn remove(&mut self, window: Entity) {
-        self.windows.remove(&window);
+    pub fn resize(&mut self, id: WindowId, device: &Device, size: UVec2) {
+        let Some(surface) = self.windows.get_mut(&id) else {
+            return;
+        };
+
+        resize_surface(surface, device, size);
     }
 
-    fn iter_mut(&mut self) -> impl Iterator<Item = (Entity, &mut SurfaceData)> {
-        self.windows.iter_mut().map(|(e, d)| (*e, d))
+    pub fn destroy(&mut self, id: WindowId) {
+        self.windows.remove(&id);
+    }
+
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = (&WindowId, &mut SurfaceData)> {
+        self.windows.iter_mut()
     }
 }
 
 #[derive(Debug)]
-struct SurfaceData {
-    surface: Surface,
-    config: SurfaceConfiguration,
+pub struct SurfaceData {
+    pub surface: Surface,
+    pub config: SurfaceConfiguration,
+    pub depth: DepthData,
     /// A handle to the window underlying the `surface`.
     ///
     /// NOTE: The surface MUST be dropped before the handle to the window is dropped.
     _window: WindowState,
 }
 
-/// Create a render surface for newly created windows.
-pub fn create_surfaces(
-    instance: Res<RenderInstance>,
-    adapter: Res<RenderAdapter>,
-    device: Res<RenderDevice>,
-    mut surfaces: ResMut<RenderSurfaces>,
-    windows: Query<(Entity, &WindowState)>,
-    mut events: EventReader<WindowCreated>,
-) {
-    for event in events.iter() {
-        // Woops, seems like the window has already destroyed
-        // again.
-        let Ok((_, window)) = windows.get(event.window) else {
-            continue;
-        };
+fn create_surface(
+    window: WindowState,
+    instance: &Instance,
+    adapter: &Adapter,
+    device: &Device,
+) -> Result<SurfaceData, ()> {
+    let size = window.inner_size();
 
-        let size = window.inner_size();
-
-        let window = window.clone();
-        let surface = match unsafe { instance.0.create_surface(&window) } {
-            Ok(surface) => surface,
-            Err(err) => {
-                tracing::error!("failed to create render surface for window: {}", err);
-                continue;
-            }
-        };
-
-        let caps = surface.get_capabilities(&adapter);
-
-        let Some(format) = get_surface_format(&caps.formats) else {
-            tracing::error!("failed to select format for render suface");
-            continue;
-        };
-
-        let Some(present_mode) = get_surface_present_mode(&caps.present_modes) else {
-            tracing::error!("failed to select present mode for render surface");
-            continue;
-        };
-
-        let Some(alpha_mode) = get_surface_alpha_mode(&caps.alpha_modes) else {
-            tracing::error!("failed to select alpha mode for render surface");
-            continue;
-        };
-
-        let config = SurfaceConfiguration {
-            usage: TextureUsages::RENDER_ATTACHMENT,
-            format,
-            width: size.width,
-            height: size.height,
-            present_mode,
-            alpha_mode,
-            view_formats: vec![],
-        };
-
-        surface.configure(&device, &config);
-
-        surfaces.insert(
-            event.window,
-            SurfaceData {
-                surface,
-                config,
-                _window: window,
-            },
-        );
-    }
-}
-
-pub fn resize_surfaces(
-    device: Res<RenderDevice>,
-    mut surfaces: ResMut<RenderSurfaces>,
-    mut events: EventReader<WindowResized>,
-) {
-    for event in events.iter() {
-        if event.width == 0 || event.height == 0 {
-            continue;
+    let surface = match unsafe { instance.create_surface(&window) } {
+        Ok(surface) => surface,
+        Err(err) => {
+            tracing::error!("failed to create surface: {}", err);
+            return Err(());
         }
+    };
 
-        let surface = surfaces.get_mut(event.window);
+    let caps = surface.get_capabilities(adapter);
 
-        surface.config.width = event.width;
-        surface.config.height = event.height;
+    let Some(format) = get_surface_format(&caps.formats) else {
+        tracing::error!("failed to select format for render suface");
+        return Err(());
+    };
 
-        surface.surface.configure(&device, &surface.config);
-    }
+    let Some(present_mode) = get_surface_present_mode(&caps.present_modes) else {
+        tracing::error!("failed to select present mode for render surface");
+        return Err(());
+    };
+
+    let Some(alpha_mode) = get_surface_alpha_mode(&caps.alpha_modes) else {
+        tracing::error!("failed to select alpha mode for render surface");
+        return Err(());
+    };
+
+    let config = SurfaceConfiguration {
+        usage: TextureUsages::RENDER_ATTACHMENT,
+        format,
+        width: size.width,
+        height: size.height,
+        present_mode,
+        alpha_mode,
+        view_formats: vec![],
+    };
+
+    surface.configure(&device, &config);
+
+    Ok(SurfaceData {
+        surface,
+        config,
+        _window: window,
+        depth: DepthData::new(device, UVec2::new(size.width, size.height)),
+    })
 }
 
-pub fn destroy_surfaces(
-    mut surfaces: ResMut<RenderSurfaces>,
-    mut destroyed_windows: RemovedComponents<Window>,
-) {
-    for entity in destroyed_windows.iter() {
-        surfaces.remove(entity);
+fn resize_surface(surface: &mut SurfaceData, device: &Device, size: UVec2) {
+    if size.x == 0 || size.y == 0 {
+        return;
     }
+
+    surface.config.width = size.x;
+    surface.config.height = size.y;
+
+    surface.surface.configure(device, &surface.config);
 }
 
 fn get_surface_format(formats: &[TextureFormat]) -> Option<TextureFormat> {
@@ -167,55 +150,4 @@ fn get_surface_present_mode(modes: &[PresentMode]) -> Option<PresentMode> {
 
 fn get_surface_alpha_mode(modes: &[CompositeAlphaMode]) -> Option<CompositeAlphaMode> {
     modes.get(0).copied()
-}
-
-pub fn render_to_surfaces(world: &mut World) {
-    world.resource_scope::<RenderGraph, ()>(|world, mut render_graph| {
-        for node in &mut render_graph.nodes {
-            node.update(world);
-        }
-    });
-
-    world.resource_scope::<RenderSurfaces, ()>(|world, mut surfaces| {
-        let device: &RenderDevice = world.resource();
-        let queue: &RenderQueue = world.resource();
-        let render_graph: &RenderGraph = world.resource();
-
-        for (entity, surface) in surfaces.iter_mut() {
-            let output = match surface.surface.get_current_texture() {
-                Ok(output) => output,
-                Err(err) => {
-                    tracing::warn!("surface error: {}", err);
-
-                    continue;
-                }
-            };
-
-            let target = output.texture.create_view(&TextureViewDescriptor {
-                label: Some("surface_view"),
-                format: Some(surface.config.format),
-                ..Default::default()
-            });
-
-            let mut encoder = device.create_command_encoder(&CommandEncoderDescriptor {
-                label: Some("render_encoder"),
-            });
-
-            let mut ctx = RenderContext {
-                window: entity,
-                encoder: &mut encoder,
-                target: &target,
-                width: output.texture.width(),
-                height: output.texture.height(),
-                format: surface.config.format,
-            };
-
-            for node in &render_graph.nodes {
-                node.render(world, &mut ctx);
-            }
-
-            queue.submit(std::iter::once(encoder.finish()));
-            output.present();
-        }
-    });
 }

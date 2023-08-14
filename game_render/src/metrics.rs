@@ -1,6 +1,4 @@
-use bevy_ecs::system::Resource;
-
-#[derive(Copy, Clone, Debug, Default, Resource)]
+#[derive(Copy, Clone, Debug, Default)]
 pub struct RenderMetrics {
     pub entities: u64,
     pub triangles: u64,

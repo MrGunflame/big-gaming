@@ -1,3 +1,3 @@
-mod image;
+pub mod image;
 
-pub use self::image::{Image, ImageFormat, ImageHandle, ImagePlugin, Images, TextureFormat};
+pub use self::image::{Image, ImageFormat, ImageHandle, Images, TextureFormat};
