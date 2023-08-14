@@ -3,147 +3,85 @@
 
 pub mod cursor;
 pub mod events;
-pub mod window;
+pub mod windows;
 
-mod systems;
-
-use std::collections::HashMap;
-use std::sync::Arc;
+use std::collections::{HashMap, VecDeque};
+use std::sync::{mpsc, Arc};
 use std::time::Instant;
 
-use bevy_app::{App, Plugin};
-use bevy_ecs::prelude::{Component, Entity, EventWriter};
-use bevy_ecs::query::Added;
-use bevy_ecs::schedule::IntoSystemConfig;
-use bevy_ecs::system::{Commands, Query, ResMut, Resource, SystemState};
-use bevy_ecs::world::FromWorld;
-use cursor::{Cursor, CursorGrabMode, CursorIcon, WindowCompat};
+use cursor::{Cursor, CursorGrabMode, WindowCompat};
 use events::{
-    CursorEntered, CursorLeft, CursorMoved, ReceivedCharacter, WindowCloseRequested, WindowCreated,
+    CursorEntered, CursorLeft, CursorMoved, ReceivedCharacter, WindowCloseRequested,
     WindowDestroyed, WindowResized,
 };
 use game_input::keyboard::{KeyboardInput, ScanCode};
 use game_input::mouse::{MouseButton, MouseButtonInput, MouseMotion, MouseScrollUnit, MouseWheel};
-use game_input::{ButtonState, InputPlugin};
+use game_input::ButtonState;
 use glam::Vec2;
-use raw_window_handle::{
-    HasRawDisplayHandle, HasRawWindowHandle, RawDisplayHandle, RawWindowHandle,
-};
-use systems::create_windows;
-use winit::dpi::{LogicalPosition, PhysicalSize, Position};
-use winit::error::ExternalError;
+use windows::{UpdateEvent, WindowState};
 use winit::event::{DeviceEvent, ElementState, Event, MouseScrollDelta, WindowEvent};
 use winit::event_loop::EventLoop;
-use winit::window::WindowId;
+use winit::window::{WindowBuilder, WindowId};
 
-#[derive(Clone, Debug)]
-pub struct WindowPlugin;
+#[derive(Debug)]
+pub struct WindowManager {
+    state: Option<WindowManagerState>,
+    event_rx: mpsc::Receiver<events::WindowEvent>,
+    windows: windows::Windows,
+    cursor: Arc<Cursor>,
+}
 
-impl Plugin for WindowPlugin {
-    fn build(&self, app: &mut App) {
+impl WindowManager {
+    pub fn new() -> Self {
         let event_loop = EventLoop::new();
+        let (event_tx, event_rx) = mpsc::channel();
+        let (update_tx, update_rx) = mpsc::channel();
+        let windows = windows::Windows::new(update_tx.clone());
+        let cursor = Arc::new(Cursor::new(update_tx));
 
-        // Input plugin so we can send generic device (keyboard/mouse)
-        // events.
-        app.add_plugin(InputPlugin);
+        Self {
+            state: Some(WindowManagerState {
+                event_loop,
+                event_tx,
+                update_rx,
+                windows: windows.clone(),
+                cursor: cursor.clone(),
+            }),
+            event_rx,
+            windows,
+            cursor,
+        }
+    }
 
-        app.insert_resource(Cursor::new());
-        // Must run before cursor position is update.d
-        app.add_system(
-            cursor::emulate_cursor_grab_mode_locked.before(cursor::update_cursor_position),
-        );
-        app.add_system(cursor::update_cursor_position);
-        app.add_system(cursor::flush_cursor_events);
+    pub fn windows(&self) -> &windows::Windows {
+        &self.windows
+    }
 
-        app.insert_resource(Windows::default());
-        app.insert_resource(WindowCompat::default());
+    pub fn cursor(&self) -> &Cursor {
+        &self.cursor
+    }
 
-        app.add_event::<WindowCreated>();
-        app.add_event::<WindowResized>();
-        app.add_event::<WindowDestroyed>();
-        app.add_event::<CursorMoved>();
-        app.add_event::<CursorEntered>();
-        app.add_event::<CursorLeft>();
-        app.add_event::<WindowCloseRequested>();
-        app.add_event::<ReceivedCharacter>();
+    pub fn read_event(&mut self) -> Option<events::WindowEvent> {
+        self.event_rx.try_recv().ok()
+    }
 
-        app.add_system(systems::close_requested_windows);
+    pub fn run(&mut self) {
+        let state = self
+            .state
+            .take()
+            .expect("cannot call WindowManager::run twice");
 
-        app.insert_non_send_resource(event_loop);
-        app.set_runner(main_loop);
+        main_loop(state);
     }
 }
 
-#[derive(Clone, Debug, Component)]
-pub struct Window {
-    pub title: String,
-}
-
-#[derive(Clone, Debug, Component)]
-pub struct WindowState {
-    // Note: It is important that the window handle itself sits
-    // behind an Arc and is not immediately dropped once the window
-    // component is despawned. Rendering surfaces require the handle
-    // to be valid until the surface was dropped in the rendering
-    // crate.
-    inner: Arc<winit::window::Window>,
-    backend: Backend,
-}
-
-impl WindowState {
-    pub fn inner_size(&self) -> PhysicalSize<u32> {
-        self.inner.inner_size()
-    }
-
-    pub fn set_cursor_position(&self, position: Vec2) -> Result<(), ExternalError> {
-        self.inner
-            .set_cursor_position(Position::Logical(LogicalPosition {
-                x: position.x as f64,
-                y: position.y as f64,
-            }))
-    }
-
-    pub fn set_cursor_visibility(&self, visible: bool) {
-        self.inner.set_cursor_visible(visible);
-    }
-
-    pub fn set_cursor_grab(&self, mode: CursorGrabMode) -> Result<(), ExternalError> {
-        let mode = match mode {
-            CursorGrabMode::None => winit::window::CursorGrabMode::None,
-            CursorGrabMode::Locked => match self.backend {
-                Backend::Wayland | Backend::Unknown => winit::window::CursorGrabMode::Locked,
-                // X11 and Windows don't support `Locked`, we must set it to
-                // `Confined` and constantly reset the cursor to the origin.
-                Backend::X11 | Backend::Windows => winit::window::CursorGrabMode::Confined,
-            },
-        };
-
-        self.inner.set_cursor_grab(mode)
-    }
-
-    pub fn set_title(&self, title: &str) {
-        self.inner.set_title(title);
-    }
-
-    pub fn set_cursor_icon(&self, icon: CursorIcon) {
-        self.inner.set_cursor_icon(icon)
-    }
-
-    pub(crate) fn backend(&self) -> Backend {
-        self.backend
-    }
-}
-
-unsafe impl HasRawDisplayHandle for WindowState {
-    fn raw_display_handle(&self) -> RawDisplayHandle {
-        self.inner.raw_display_handle()
-    }
-}
-
-unsafe impl HasRawWindowHandle for WindowState {
-    fn raw_window_handle(&self) -> RawWindowHandle {
-        self.inner.raw_window_handle()
-    }
+#[derive(Debug)]
+struct WindowManagerState {
+    event_loop: EventLoop<()>,
+    event_tx: mpsc::Sender<events::WindowEvent>,
+    update_rx: mpsc::Receiver<windows::UpdateEvent>,
+    windows: windows::Windows,
+    cursor: Arc<Cursor>,
 }
 
 struct State {
@@ -161,6 +99,15 @@ pub(crate) enum Backend {
     Wayland,
     #[cfg_attr(not(feature_family = "windows"), allow(dead_code))]
     Windows,
+}
+
+impl Backend {
+    pub const fn supports_locked_cursor(self) -> bool {
+        match self {
+            Self::Unknown | Self::Wayland => true,
+            Self::X11 | Self::Windows => false,
+        }
+    }
 }
 
 impl From<&EventLoop<()>> for Backend {
@@ -193,86 +140,64 @@ impl From<&EventLoop<()>> for Backend {
     }
 }
 
-pub fn main_loop(mut app: App) {
-    let event_loop: EventLoop<()> = app.world.remove_non_send_resource().unwrap();
+fn main_loop(mut state: WindowManagerState) {
+    let event_loop = state.event_loop;
+    let event_tx = state.event_tx;
+    let update_rx = state.update_rx;
+    let windows = state.windows;
+    let cursor = state.cursor;
+
     let backend = Backend::from(&event_loop);
+
+    let mut map = WindowMap::default();
 
     let mut state = State {
         active: true,
         last_update: Instant::now(),
     };
 
-    let mut created_windows_state: SystemState<(
-        Commands,
-        ResMut<Windows>,
-        Query<(Entity, &mut Window), Added<Window>>,
-        EventWriter<WindowCreated>,
-    )> = SystemState::from_world(&mut app.world);
+    let mut compat = WindowCompat::new(backend);
+    let mut is_locked = false;
 
     event_loop.run(move |event, event_loop, control_flow| {
         match event {
             Event::NewEvents(start) => {}
             Event::WindowEvent { window_id, event } => match event {
                 WindowEvent::Resized(size) => {
-                    let window = app
-                        .world
-                        .resource::<Windows>()
-                        .windows
-                        .get(&window_id)
-                        .copied()
-                        .unwrap();
+                    let window = *map.windows.get(&window_id).unwrap();
 
-                    app.world.send_event(WindowResized {
+                    let _ = event_tx.send(events::WindowEvent::WindowResized(WindowResized {
                         window,
                         width: size.width,
                         height: size.height,
-                    });
+                    }));
                 }
                 WindowEvent::Moved(_) => {}
                 WindowEvent::CloseRequested => {
-                    let window = app
-                        .world
-                        .resource::<Windows>()
-                        .windows
-                        .get(&window_id)
-                        .copied()
-                        .unwrap();
+                    let window = *map.windows.get(&window_id).unwrap();
 
-                    app.world.send_event(WindowCloseRequested { window });
+                    let _ = event_tx.send(events::WindowEvent::WindowCloseRequested(
+                        WindowCloseRequested { window },
+                    ));
                 }
                 WindowEvent::Destroyed => {
-                    let window = app
-                        .world
-                        .resource::<Windows>()
-                        .windows
-                        .get(&window_id)
-                        .copied()
-                        .unwrap();
+                    let window = map.windows.remove(&window_id).unwrap();
 
-                    app.world.send_event(WindowDestroyed { window });
-                    app.world
-                        .resource_mut::<Windows>()
-                        .windows
-                        .remove(&window_id);
-
-                    if app.world.resource::<Windows>().windows.is_empty() {
-                        tracing::debug!("last window destroyed, exiting");
-                        std::process::exit(0);
-                    }
+                    let _ = event_tx.send(events::WindowEvent::WindowDestroyed(WindowDestroyed {
+                        window,
+                    }));
                 }
                 WindowEvent::DroppedFile(_) => {}
                 WindowEvent::HoveredFile(_) => {}
                 WindowEvent::HoveredFileCancelled => {}
                 WindowEvent::ReceivedCharacter(char) => {
-                    let window = app
-                        .world
-                        .resource::<Windows>()
-                        .windows
-                        .get(&window_id)
-                        .copied()
-                        .unwrap();
+                    let window = *map.windows.get(&window_id).unwrap();
 
-                    app.world.send_event(ReceivedCharacter { window, char });
+                    let _ =
+                        event_tx.send(events::WindowEvent::ReceivedCharacter(ReceivedCharacter {
+                            window,
+                            char,
+                        }));
                 }
                 WindowEvent::Focused(_) => {}
                 WindowEvent::KeyboardInput {
@@ -280,14 +205,16 @@ pub fn main_loop(mut app: App) {
                     input,
                     is_synthetic,
                 } => {
-                    app.world.send_event(KeyboardInput {
+                    let window = *map.windows.get(&window_id).unwrap();
+
+                    let _ = event_tx.send(events::WindowEvent::KeyboardInput(KeyboardInput {
                         scan_code: ScanCode(input.scancode),
                         key_code: input.virtual_keycode,
                         state: match input.state {
                             ElementState::Pressed => ButtonState::Pressed,
                             ElementState::Released => ButtonState::Released,
                         },
-                    });
+                    }));
                 }
                 WindowEvent::ModifiersChanged(_) => {}
                 WindowEvent::Ime(_) => {}
@@ -296,40 +223,36 @@ pub fn main_loop(mut app: App) {
                     position,
                     modifiers: _,
                 } => {
-                    let window = app
-                        .world
-                        .resource::<Windows>()
-                        .windows
-                        .get(&window_id)
-                        .copied()
-                        .unwrap();
+                    let window = *map.windows.get(&window_id).unwrap();
 
-                    app.world.send_event(CursorMoved {
+                    let _ = event_tx.send(events::WindowEvent::CursorMoved(CursorMoved {
                         window,
                         position: Vec2::new(position.x as f32, position.y as f32),
-                    });
+                    }));
+
+                    compat.move_cursor();
+
+                    if !is_locked {
+                        let mut cursor_state = cursor.state.write();
+                        cursor_state.position = Vec2::new(position.x as f32, position.y as f32);
+                        cursor_state.window = Some(window);
+                    }
                 }
                 WindowEvent::CursorEntered { device_id: _ } => {
-                    let window = app
-                        .world
-                        .resource::<Windows>()
-                        .windows
-                        .get(&window_id)
-                        .copied()
-                        .unwrap();
+                    let window = *map.windows.get(&window_id).unwrap();
 
-                    app.world.send_event(CursorEntered { window });
+                    let _ =
+                        event_tx.send(events::WindowEvent::CursorEntered(CursorEntered { window }));
                 }
                 WindowEvent::CursorLeft { device_id: _ } => {
-                    let window = app
-                        .world
-                        .resource::<Windows>()
-                        .windows
-                        .get(&window_id)
-                        .copied()
-                        .unwrap();
+                    let window = *map.windows.get(&window_id).unwrap();
 
-                    app.world.send_event(CursorLeft { window });
+                    let _ = event_tx.send(events::WindowEvent::CursorLeft(CursorLeft { window }));
+
+                    if !is_locked {
+                        let mut cursor_state = cursor.state.write();
+                        cursor_state.window = None;
+                    }
                 }
                 WindowEvent::MouseWheel {
                     device_id,
@@ -358,7 +281,7 @@ pub fn main_loop(mut app: App) {
                                 },
                             };
 
-                            app.world.send_event(event);
+                            let _ = event_tx.send(events::WindowEvent::MouseWheel(event));
                         }
                         _ => (),
                     }
@@ -369,7 +292,7 @@ pub fn main_loop(mut app: App) {
                     button,
                     modifiers,
                 } => {
-                    app.world.send_event(MouseButtonInput {
+                    let event = MouseButtonInput {
                         button: match button {
                             winit::event::MouseButton::Left => MouseButton::Left,
                             winit::event::MouseButton::Right => MouseButton::Right,
@@ -380,7 +303,9 @@ pub fn main_loop(mut app: App) {
                             ElementState::Pressed => ButtonState::Pressed,
                             ElementState::Released => ButtonState::Released,
                         },
-                    });
+                    };
+
+                    event_tx.send(events::WindowEvent::MouseButtonInput(event));
                 }
                 WindowEvent::TouchpadMagnify {
                     device_id,
@@ -415,12 +340,14 @@ pub fn main_loop(mut app: App) {
                 DeviceEvent::Added => {}
                 DeviceEvent::Removed => {}
                 DeviceEvent::MouseMotion { delta: (x, y) } => {
-                    app.world.send_event(MouseMotion {
+                    let event = MouseMotion {
                         delta: Vec2 {
                             x: x as f32,
                             y: y as f32,
                         },
-                    });
+                    };
+
+                    let _ = event_tx.send(events::WindowEvent::MouseMotion(event));
                 }
                 DeviceEvent::MouseWheel { delta } => match backend {
                     // See comment at `WindowEvent::MouseWheel` for
@@ -440,7 +367,7 @@ pub fn main_loop(mut app: App) {
                             },
                         };
 
-                        app.world.send_event(event);
+                        let _ = event_tx.send(events::WindowEvent::MouseWheel(event));
                     }
                 },
                 DeviceEvent::Motion { axis, value } => {}
@@ -452,44 +379,119 @@ pub fn main_loop(mut app: App) {
             Event::Suspended => {}
             Event::Resumed => {}
             Event::MainEventsCleared => {
-                let should_update = true;
+                // let should_update = true;
 
-                if should_update {
-                    state.last_update = Instant::now();
-                    app.update();
-                }
+                // if should_update {
+                //     state.last_update = Instant::now();
+                //     app.update();
+                // }
 
-                let mut query = app.world.query::<&WindowState>();
-                for entity in app.world.resource::<Windows>().windows.values() {
-                    // If the window entity doesn't exist anymore, it was despawned
-                    // in this loop and will get removed in the next update.
-                    let Ok(window) = query.get(&app.world, *entity) else {
-                        continue;
-                    };
+                // let mut query = app.world.query::<&WindowState>();
+                // for entity in app.world.resource::<Windows>().windows.values() {
+                //     // If the window entity doesn't exist anymore, it was despawned
+                //     // in this loop and will get removed in the next update.
+                //     let Ok(window) = query.get(&app.world, *entity) else {
+                //         continue;
+                //     };
 
-                    window.inner.request_redraw();
-                }
+                //     window.inner.request_redraw();
+                // }
             }
             Event::RedrawEventsCleared => {}
             Event::RedrawRequested(window_id) => {}
             Event::LoopDestroyed => (),
         }
 
-        let (commands, windows, created_windows, writer) =
-            created_windows_state.get_mut(&mut app.world);
-        create_windows(
-            commands,
-            event_loop,
-            windows,
-            created_windows,
-            writer,
-            backend,
-        );
-        created_windows_state.apply(&mut app.world);
+        let mut queue = VecDeque::new();
+
+        // Run compat events before custom generated events so
+        // that custom events can still overwrite compat
+        // behavior.
+        compat.emulate_cursor_grab_mode_locked(&cursor, &mut queue);
+
+        while let Ok(event) = update_rx.try_recv() {
+            queue.push_back(event);
+        }
+
+        while let Ok(event) = update_rx.try_recv() {
+            match event {
+                UpdateEvent::Create(id) => {
+                    let window = WindowBuilder::new()
+                        .with_title("title")
+                        .build(&event_loop)
+                        .expect("failed to create window");
+
+                    let mut windows = windows.windows.write();
+                    windows.get_mut(id.0).as_mut().unwrap().state = Some(WindowState {
+                        inner: Arc::new(window),
+                        backend,
+                    });
+                }
+                UpdateEvent::CursorGrab(id, mode) => {
+                    let windows = windows.windows.read();
+                    let Some(window) = windows.get(id.0) else {
+                        continue;
+                    };
+
+                    if let Err(err) = window
+                        .state
+                        .as_ref()
+                        .expect("window not initialized")
+                        .set_cursor_grab(mode)
+                    {
+                        tracing::error!("failed to set cursor grab mode: {}", err);
+                    }
+
+                    let mut cursor_state = cursor.state.write();
+                    match mode {
+                        CursorGrabMode::None => {
+                            cursor_state.is_locked = false;
+                            is_locked = false;
+                        }
+                        CursorGrabMode::Locked => {
+                            cursor_state.is_locked = true;
+                            is_locked = true;
+                        }
+                    }
+                }
+                UpdateEvent::CursorVisible(id, visible) => {
+                    let windows = windows.windows.read();
+                    let Some(window) = windows.get(id.0) else {
+                        continue;
+                    };
+
+                    window
+                        .state
+                        .as_ref()
+                        .expect("window not initialized")
+                        .inner
+                        .set_cursor_visible(visible);
+                }
+                UpdateEvent::CursorPosition(id, position) => {
+                    let windows = windows.windows.read();
+                    let Some(window) = windows.get(id.0) else {
+                        continue;
+                    };
+
+                    if let Err(err) = window
+                        .state
+                        .as_ref()
+                        .expect("window not initialized")
+                        .set_cursor_position(position)
+                    {
+                        tracing::error!("failed to set cursor position: {}", err);
+                    }
+
+                    let mut cursor_state = cursor.state.write();
+                    cursor_state.window = Some(id);
+                    cursor_state.position = position;
+                }
+            }
+        }
     });
 }
 
-#[derive(Debug, Default, Resource)]
-struct Windows {
-    windows: HashMap<WindowId, Entity>,
+#[derive(Clone, Debug, Default)]
+struct WindowMap {
+    windows: HashMap<WindowId, windows::WindowId>,
 }
