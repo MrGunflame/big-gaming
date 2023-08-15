@@ -6,7 +6,7 @@ use raw_window_handle::{
     HasRawDisplayHandle, HasRawWindowHandle, RawDisplayHandle, RawWindowHandle,
 };
 use slotmap::{DefaultKey, SlotMap};
-use winit::dpi::{LogicalPosition, PhysicalSize, Position};
+use winit::dpi::{LogicalPosition, Position};
 use winit::error::ExternalError;
 
 use crate::cursor::{CursorGrabMode, CursorIcon};

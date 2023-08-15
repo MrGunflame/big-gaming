@@ -413,13 +413,15 @@ fn main_loop(mut state: WindowManagerState) {
             queue.push_back(event);
         }
 
-        while let Ok(event) = update_rx.try_recv() {
+        while let Some(event) = queue.pop_front() {
             match event {
                 UpdateEvent::Create(id) => {
                     let window = WindowBuilder::new()
                         .with_title("title")
                         .build(&event_loop)
                         .expect("failed to create window");
+
+                    map.windows.insert(window.id(), id);
 
                     let mut windows = windows.windows.write();
                     windows.get_mut(id.0).as_mut().unwrap().state = Some(WindowState {
