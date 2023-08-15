@@ -24,9 +24,13 @@ mod post_process;
 use camera::RenderTarget;
 use entities::Entities;
 use forward::ForwardPipeline;
+use game_asset::Assets;
 use game_window::windows::{WindowId, WindowState};
 use glam::UVec2;
 use graph::{RenderContext, RenderGraph};
+use mesh::Mesh;
+use mipmap::MipMapGenerator;
+use pbr::PbrMaterial;
 use post_process::PostProcessPipeline;
 use render_pass::RenderPass;
 use surface::RenderSurfaces;
@@ -48,6 +52,9 @@ pub struct RenderState {
     pub images: Images,
     forward: ForwardPipeline,
     post_process: PostProcessPipeline,
+    mipmap_generator: MipMapGenerator,
+    meshes: Assets<Mesh>,
+    materials: Assets<PbrMaterial>,
 }
 
 impl RenderState {
@@ -84,6 +91,7 @@ impl RenderState {
             entities: Entities::new(&device),
             forward: ForwardPipeline::new(&device, &mut images),
             post_process: PostProcessPipeline::new(&device),
+            mipmap_generator: MipMapGenerator::new(&device),
             instance,
             adapter,
             device,
@@ -91,6 +99,8 @@ impl RenderState {
             graph,
             surfaces: RenderSurfaces::new(),
             images,
+            materials: Assets::new(),
+            meshes: Assets::new(),
         }
     }
 
@@ -115,6 +125,16 @@ impl RenderState {
     }
 
     pub fn render(&mut self) {
+        self.entities.rebuild(
+            &mut self.meshes,
+            &mut self.materials,
+            &mut self.images,
+            &self.device,
+            &self.queue,
+            &self.forward,
+            &mut self.mipmap_generator,
+        );
+
         // FIXME: Should update on render pass.
         crate::texture::image::load_images(&mut self.images);
         crate::texture::image::update_image_handles(&mut self.images);

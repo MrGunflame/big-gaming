@@ -101,6 +101,10 @@ impl Entities {
         pipeline: &ForwardPipeline,
         mipmap_generator: &mut MipMapGenerator,
     ) {
+        if !self.need_rebuild {
+            return;
+        }
+
         self.state.directional_lights = crate::light::pipeline::update_directional_lights(
             device,
             self.directional_lights.values().copied(),

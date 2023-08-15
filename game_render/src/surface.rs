@@ -97,8 +97,8 @@ fn create_surface(
     let config = SurfaceConfiguration {
         usage: TextureUsages::RENDER_ATTACHMENT,
         format,
-        width: size.width,
-        height: size.height,
+        width: size.x,
+        height: size.y,
         present_mode,
         alpha_mode,
         view_formats: vec![],
@@ -110,7 +110,7 @@ fn create_surface(
         surface,
         config,
         _window: window,
-        depth: DepthData::new(device, UVec2::new(size.width, size.height)),
+        depth: DepthData::new(device, size),
     })
 }
 
