@@ -32,7 +32,7 @@ pub struct UiState {
     render: RenderUiState,
     windows: HashMap<WindowId, Document>,
     events: HashMap<WindowId, Events>,
-    runtime: Runtime,
+    pub runtime: Runtime,
     command_rx: mpsc::Receiver<WindowCommand>,
     command_tx: mpsc::Sender<WindowCommand>,
 }
@@ -55,6 +55,10 @@ impl UiState {
         self.render.insert(id, size);
         self.windows.insert(id, Document::new(self.runtime.clone()));
         self.events.insert(id, Events::new());
+    }
+
+    pub fn get_mut(&mut self, id: WindowId) -> Option<&mut Document> {
+        self.windows.get_mut(&id)
     }
 
     pub fn resize(&mut self, id: WindowId, size: UVec2) {

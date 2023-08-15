@@ -1,10 +1,8 @@
 use std::path::PathBuf;
-use std::sync::Arc;
 
-use bevy_ecs::system::Resource;
 use game_input::mouse::MouseButtonInput;
 use game_ui::events::Context;
-use game_ui::reactive::{create_effect, create_signal, Scope, WriteSignal};
+use game_ui::reactive::{create_effect, create_signal, Scope};
 use game_ui::render::style::{Growth, Style};
 use game_ui::widgets::Text;
 use game_ui::{component, view};
@@ -12,23 +10,15 @@ use game_ui::{component, view};
 use game_ui::widgets::*;
 use parking_lot::Mutex;
 
-use crate::backend::{Handle, Task, WriteModule};
-use crate::state;
-use crate::state::module::EditorModule;
+use crate::backend::{Task, WriteModule};
+use crate::state::EditorState;
 
 use crate::widgets::entries::*;
 
-use super::{SpawnWindow, SpawnWindowQueue};
+use super::SpawnWindow;
 
 #[component]
-pub fn Modules(
-    cx: &Scope,
-    modules: state::module::Modules,
-    records: state::record::Records,
-    handle: Handle,
-    queue: SpawnWindowQueue,
-    create_modules: CreateModules,
-) -> Scope {
+pub fn Modules(cx: &Scope, state: EditorState) -> Scope {
     let root = view! {
         cx,
         <Container style={Style::default()}>
@@ -41,19 +31,19 @@ pub fn Modules(
         </Container>
     };
 
-    let reader = modules.signal(|| {
+    let reader = state.modules.signal(|| {
         let (_, writer) = create_signal(cx, ());
         writer
     });
 
     let id = Mutex::new(None);
     {
-        let modules = modules.clone();
-        create_effect(cx, move |world| {
+        let state = state.clone();
+        create_effect(cx, move || {
             let _ = reader.get();
 
             let mut entries = Vec::new();
-            for module in modules.iter() {
+            for module in state.modules.iter() {
                 entries.push(vec![
                     module.module.id.to_string(),
                     module.module.name.clone(),
@@ -88,7 +78,7 @@ pub fn Modules(
 
     let open = view! {
         root,
-        <Button style={Style::default()} on_click={on_open(queue.clone()).into()}>
+        <Button style={Style::default()} on_click={on_open(state.clone()).into()}>
             <Text text={"Open".into()}>
             </Text>
         </Button>
@@ -96,7 +86,7 @@ pub fn Modules(
 
     view! {
         root,
-        <Button style={Style::default()} on_click={on_create(queue).into()}>
+        <Button style={Style::default()} on_click={on_create(state.clone()).into()}>
             <Text text={"Create".into()}>
             </Text>
         </Button>
@@ -104,7 +94,7 @@ pub fn Modules(
 
     view! {
         root,
-        <Button style={Style::default()} on_click={on_save(modules, records, handle).into()}>
+        <Button style={Style::default()} on_click={on_save(state).into()}>
             <Text text={"Save".into()}>
             </Text>
         </Button>
@@ -113,47 +103,28 @@ pub fn Modules(
     root
 }
 
-fn on_open(
-    queue: SpawnWindowQueue,
-) -> Box<dyn Fn(Context<MouseButtonInput>) + Send + Sync + 'static> {
+fn on_open(state: EditorState) -> Box<dyn Fn(Context<MouseButtonInput>) + Send + Sync + 'static> {
     Box::new(move |_| {
-        let mut queue = queue.0.write();
-        queue.push_back(SpawnWindow::OpenModule);
+        let _ = state.spawn_windows.send(SpawnWindow::OpenModule);
     })
 }
 
-fn on_create(
-    queue: SpawnWindowQueue,
-) -> Box<dyn Fn(Context<MouseButtonInput>) + Send + Sync + 'static> {
+fn on_create(state: EditorState) -> Box<dyn Fn(Context<MouseButtonInput>) + Send + Sync + 'static> {
     Box::new(move |_| {
-        let mut queue = queue.0.write();
-        queue.push_back(SpawnWindow::CreateModule);
+        let _ = state.spawn_windows.send(SpawnWindow::CreateModule);
     })
 }
 
-#[derive(Clone, Debug, Default, Resource)]
-pub struct CreateModules(pub Arc<Mutex<Option<WriteSignal<Vec<EditorModule>>>>>);
-
-fn on_save(
-    modules: state::module::Modules,
-    records: state::record::Records,
-    handle: Handle,
-) -> Box<dyn Fn(Context<MouseButtonInput>) + Send + Sync + 'static> {
+fn on_save(state: EditorState) -> Box<dyn Fn(Context<MouseButtonInput>) + Send + Sync + 'static> {
     Box::new(move |_| {
-        for mut module in modules.iter() {
+        for mut module in state.modules.iter() {
             if module.path.is_none() {
                 module.path = Some(PathBuf::from(module.module.id.to_string()));
             }
 
-            // let records = records
-            //     .iter()
-            //     .filter(|(id, record)| *id == module.module.id)
-            //     .map(|(_, record)| record)
-            //     .collect::<Vec<_>>();
-
-            handle.send(Task::WriteModule(WriteModule {
+            state.handle.send(Task::WriteModule(WriteModule {
                 module: module,
-                records: records.clone(),
+                records: state.records.clone(),
             }));
         }
     })

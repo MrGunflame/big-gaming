@@ -17,14 +17,11 @@ game_input = { version = "0.1.0", path = "../game_input" }
 game_asset = { version = "0.1.0", path = "../game_asset" }
 game_scene = { version = "0.1.0", path = "../game_scene" }
 
-bevy_ecs = "0.10.0"
-bevy_app = "0.10.0"
 parking_lot = "0.12.1"
 tokio = { version = "1.27.0", features = ["full"] }
 tracing = "0.1.37"
 image = "0.24.6"
 glam = "0.24"
-bitflags = "2.2.1"
 pretty_env_logger = "0.5.0"
 chrono = "0.4.26"
 

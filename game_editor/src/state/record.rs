@@ -2,14 +2,13 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 
-use bevy_ecs::system::Resource;
 use game_common::module::ModuleId;
 use game_common::record::RecordId;
 use game_data::record::Record;
 use game_ui::reactive::{ReadSignal, WriteSignal};
 use parking_lot::{Mutex, RwLock};
 
-#[derive(Clone, Debug, Resource)]
+#[derive(Clone, Debug, Default)]
 pub struct Records {
     records: Arc<RwLock<HashMap<(ModuleId, RecordId), Record>>>,
     next_id: Arc<AtomicU32>,

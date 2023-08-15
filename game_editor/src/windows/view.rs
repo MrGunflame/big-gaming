@@ -101,32 +101,34 @@ pub fn spawn_view_window(
         },
     });
 
-    commands.spawn(DirectionalLightBundle {
-        light: DirectionalLight {
-            color: Color::WHITE,
-            illuminance: 1.0,
-        },
-        transform: TransformBundle {
-            transform: Transform {
-                translation: Vec3::new(1.0, 0.0, 1.0),
-                ..Default::default()
-            },
-            ..Default::default()
-        },
-    });
-
-    // commands.spawn(PointLightBundle {
-    //     light: PointLight {
+    // commands.spawn(DirectionalLightBundle {
+    //     light: DirectionalLight {
     //         color: Color::WHITE,
+    //         illuminance: 1.0,
     //     },
     //     transform: TransformBundle {
     //         transform: Transform {
-    //             translation: Vec3::new(0.0, 2.0, 0.0),
+    //             translation: Vec3::new(1.0, 0.0, 1.0),
     //             ..Default::default()
     //         },
     //         ..Default::default()
     //     },
     // });
+
+    commands.spawn(PointLightBundle {
+        light: PointLight {
+            color: Color::WHITE,
+            intensity: 60.0,
+            radius: 100.0,
+        },
+        transform: TransformBundle {
+            transform: Transform {
+                translation: Vec3::new(0.0, 2.0, 0.0),
+                ..Default::default()
+            },
+            ..Default::default()
+        },
+    });
 
     // commands.spawn(DirectionalLightBundle {
     //     light: DirectionalLight {
@@ -156,17 +158,16 @@ pub fn spawn_view_window(
     //     },
     // });
 
-    // commands.spawn(SceneBundle {
-    //     scene: scenes
-    //         .load("/home/robert/projects/gltf/glTF-Sample-Models/2.0/Sponza/glTF/Sponza.gltf"),
-    //     transform: TransformBundle {
-    //         transform: Transform {
-    //             translation: Vec3::new(0.0, 0.0, 0.0),
-    //             ..Default::default()
-    //         },
-    //         ..Default::default()
-    //     },
-    // });
+    commands.spawn(SceneBundle {
+        scene: scenes.load("/home/robert/projects/game/client/tools/gltf2model/sponza.model"),
+        transform: TransformBundle {
+            transform: Transform {
+                translation: Vec3::new(0.0, 0.0, 0.0),
+                ..Default::default()
+            },
+            ..Default::default()
+        },
+    });
 
     let metallic = image::io::Reader::open(
         "/home/robert/Downloads/rustediron1-alt2-bl/rustediron2_metallic.png",

@@ -2,7 +2,6 @@ use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use bevy_ecs::system::Resource;
 use parking_lot::Mutex;
 use tokio::fs::{File, OpenOptions};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -121,7 +120,7 @@ pub struct WriteModule {
 
 pub type TaskResult<T> = Result<T, game_data::Error>;
 
-#[derive(Clone, Debug, Resource)]
+#[derive(Clone, Debug)]
 pub struct Handle {
     inner: Arc<Mutex<HandleInner>>,
 }

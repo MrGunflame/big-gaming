@@ -1,6 +1,6 @@
 use std::sync::{mpsc, Arc};
 
-use glam::Vec2;
+use glam::{UVec2, Vec2};
 use parking_lot::RwLock;
 use raw_window_handle::{
     HasRawDisplayHandle, HasRawWindowHandle, RawDisplayHandle, RawWindowHandle,
@@ -36,6 +36,7 @@ impl Windows {
         let mut windows = self.windows.write();
         let key = windows.insert(window.into());
 
+        let _ = self.tx.send(UpdateEvent::Create(WindowId(key)));
         WindowId(key)
     }
 
@@ -57,6 +58,12 @@ impl WindowBuilder {
     }
 }
 
+impl From<WindowBuilder> for Window {
+    fn from(value: WindowBuilder) -> Self {
+        Self { state: None }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Window {
     pub(crate) state: Option<WindowState>,
@@ -74,8 +81,12 @@ pub struct WindowState {
 }
 
 impl WindowState {
-    pub fn inner_size(&self) -> PhysicalSize<u32> {
-        self.inner.inner_size()
+    pub fn inner_size(&self) -> UVec2 {
+        let size = self.inner.inner_size();
+        UVec2 {
+            x: size.width,
+            y: size.height,
+        }
     }
 
     pub fn set_cursor_position(&self, position: Vec2) -> Result<(), ExternalError> {
