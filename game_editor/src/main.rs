@@ -17,6 +17,7 @@ use game_render::RenderState;
 use game_ui::reactive::Document;
 use game_ui::render::style::{Background, BorderRadius, Bounds, Size, SizeVec2, Style};
 use game_ui::UiState;
+use game_window::cursor::Cursor;
 use game_window::events::WindowEvent;
 use game_window::windows::{WindowBuilder, WindowId, Windows};
 use game_window::WindowManager;
@@ -90,6 +91,7 @@ fn main() {
         state: state.state,
         rx,
         windows: state.window_manager.windows().clone(),
+        cursor: state.window_manager.cursor().clone(),
     };
 
     state.window_manager.run(app);
@@ -134,6 +136,7 @@ pub struct App {
     windows: Windows,
     rx: mpsc::Receiver<SpawnWindow>,
     state: EditorState,
+    cursor: Arc<Cursor>,
 }
 
 impl game_window::App for App {
@@ -147,6 +150,8 @@ impl game_window::App for App {
             }
             _ => (),
         }
+
+        self.ui_state.send_event(&self.cursor, event);
     }
 
     fn update(&mut self) {

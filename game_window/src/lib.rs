@@ -52,7 +52,7 @@ impl WindowManager {
         &self.windows
     }
 
-    pub fn cursor(&self) -> &Cursor {
+    pub fn cursor(&self) -> &Arc<Cursor> {
         &self.cursor
     }
 
