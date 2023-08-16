@@ -14,9 +14,11 @@ use backend::{Backend, Handle, Response};
 use game_common::components::transform::Transform;
 use game_render::camera::{Camera, Projection, RenderTarget};
 use game_render::RenderState;
+use game_ui::reactive::Document;
 use game_ui::render::style::{Background, BorderRadius, Bounds, Size, SizeVec2, Style};
 use game_ui::UiState;
-use game_window::windows::WindowBuilder;
+use game_window::events::WindowEvent;
+use game_window::windows::{WindowBuilder, WindowId, Windows};
 use game_window::WindowManager;
 use glam::UVec2;
 use parking_lot::Mutex;
@@ -81,49 +83,16 @@ fn main() {
         .send(SpawnWindow::MainWindow)
         .unwrap();
 
-    let windows = state.window_manager.windows().clone();
-    let mut deferred_windows = vec![];
-    state.window_manager.run(move || {
-        while let Ok(event) = rx.try_recv() {
-            let doc =
-                windows::spawn_window(state.state.clone(), state.ui_state.runtime.clone(), event);
+    let app = App {
+        renderer: state.render_state,
+        ui_state: state.ui_state,
+        deferred_windows: vec![],
+        state: state.state,
+        rx,
+        windows: state.window_manager.windows().clone(),
+    };
 
-            let id = windows.spawn(WindowBuilder::new());
-
-            deferred_windows.push((id, doc));
-        }
-
-        let mut index = 0;
-        while index < deferred_windows.len() {
-            let id = deferred_windows[index].0;
-            let doc = &deferred_windows[index].1;
-
-            if let Some(window) = windows.state(id) {
-                let size = window.inner_size();
-
-                state.render_state.create(id, window);
-
-                let cam = Camera {
-                    transform: Transform::default(),
-                    projection: Projection::default(),
-                    target: RenderTarget::Window(id),
-                };
-
-                state.render_state.entities.push_camera(cam);
-                state.ui_state.create(id, size);
-                *state.ui_state.get_mut(id).unwrap() = doc.clone();
-
-                deferred_windows.remove(index);
-            } else {
-                index += 1;
-            }
-        }
-
-        state.render_state.render();
-        state
-            .ui_state
-            .run(&state.render_state.device, &state.render_state.queue);
-    });
+    state.window_manager.run(app);
 }
 
 fn load_from_backend(state: EditorState) {
@@ -155,5 +124,69 @@ fn load_from_backend(state: EditorState) {
                 }
             },
         }
+    }
+}
+
+pub struct App {
+    renderer: RenderState,
+    ui_state: UiState,
+    deferred_windows: Vec<(WindowId, Document)>,
+    windows: Windows,
+    rx: mpsc::Receiver<SpawnWindow>,
+    state: EditorState,
+}
+
+impl game_window::App for App {
+    fn handle_event(&mut self, event: game_window::events::WindowEvent) {
+        match event {
+            WindowEvent::WindowResized(event) => {
+                self.renderer
+                    .resize(event.window, UVec2::new(event.width, event.height));
+                self.ui_state
+                    .resize(event.window, UVec2::new(event.width, event.height));
+            }
+            _ => (),
+        }
+    }
+
+    fn update(&mut self) {
+        while let Ok(event) = self.rx.try_recv() {
+            let doc =
+                windows::spawn_window(self.state.clone(), self.ui_state.runtime.clone(), event);
+
+            let id = self.windows.spawn(WindowBuilder::new());
+
+            self.deferred_windows.push((id, doc));
+        }
+
+        let mut index = 0;
+        while index < self.deferred_windows.len() {
+            let id = self.deferred_windows[index].0;
+            let doc = &self.deferred_windows[index].1;
+
+            if let Some(window) = self.windows.state(id) {
+                let size = window.inner_size();
+
+                self.renderer.create(id, window);
+
+                let cam = Camera {
+                    transform: Transform::default(),
+                    projection: Projection::default(),
+                    target: RenderTarget::Window(id),
+                };
+
+                self.renderer.entities.push_camera(cam);
+                self.ui_state.create(id, size);
+                *self.ui_state.get_mut(id).unwrap() = doc.clone();
+
+                self.deferred_windows.remove(index);
+            } else {
+                index += 1;
+            }
+        }
+
+        self.renderer.render();
+        self.ui_state
+            .run(&self.renderer.device, &self.renderer.queue);
     }
 }

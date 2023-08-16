@@ -7,7 +7,6 @@ pub mod windows;
 
 use std::collections::{HashMap, VecDeque};
 use std::sync::{mpsc, Arc};
-use std::time::Instant;
 
 use cursor::{Cursor, CursorGrabMode, WindowCompat};
 use events::{
@@ -26,7 +25,6 @@ use winit::window::{WindowBuilder, WindowId};
 #[derive(Debug)]
 pub struct WindowManager {
     state: Option<WindowManagerState>,
-    event_rx: mpsc::Receiver<events::WindowEvent>,
     windows: windows::Windows,
     cursor: Arc<Cursor>,
 }
@@ -34,7 +32,6 @@ pub struct WindowManager {
 impl WindowManager {
     pub fn new() -> Self {
         let event_loop = EventLoop::new();
-        let (event_tx, event_rx) = mpsc::channel();
         let (update_tx, update_rx) = mpsc::channel();
         let windows = windows::Windows::new(update_tx.clone());
         let cursor = Arc::new(Cursor::new(update_tx));
@@ -42,12 +39,10 @@ impl WindowManager {
         Self {
             state: Some(WindowManagerState {
                 event_loop,
-                event_tx,
                 update_rx,
                 windows: windows.clone(),
                 cursor: cursor.clone(),
             }),
-            event_rx,
             windows,
             cursor,
         }
@@ -61,37 +56,25 @@ impl WindowManager {
         &self.cursor
     }
 
-    pub fn read_event(&mut self) -> Option<events::WindowEvent> {
-        self.event_rx.try_recv().ok()
-    }
-
-    pub fn run<F>(&mut self, cb: F)
+    pub fn run<T>(&mut self, app: T)
     where
-        F: FnMut() + 'static,
+        T: App,
     {
         let state = self
             .state
             .take()
             .expect("cannot call WindowManager::run twice");
 
-        main_loop(state, cb);
+        main_loop(state, app);
     }
 }
 
 #[derive(Debug)]
 struct WindowManagerState {
     event_loop: EventLoop<()>,
-    event_tx: mpsc::Sender<events::WindowEvent>,
     update_rx: mpsc::Receiver<windows::UpdateEvent>,
     windows: windows::Windows,
     cursor: Arc<Cursor>,
-}
-
-struct State {
-    /// Is the application currently active?
-    active: bool,
-    /// The timestamp of the last call to `app.update()`.
-    last_update: Instant,
 }
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
@@ -143,12 +126,11 @@ impl From<&EventLoop<()>> for Backend {
     }
 }
 
-fn main_loop<F>(mut state: WindowManagerState, mut cb: F)
+fn main_loop<T>(state: WindowManagerState, mut app: T)
 where
-    F: FnMut() + 'static,
+    T: App,
 {
     let event_loop = state.event_loop;
-    let event_tx = state.event_tx;
     let update_rx = state.update_rx;
     let windows = state.windows;
     let cursor = state.cursor;
@@ -156,11 +138,6 @@ where
     let backend = Backend::from(&event_loop);
 
     let mut map = WindowMap::default();
-
-    let mut state = State {
-        active: true,
-        last_update: Instant::now(),
-    };
 
     let mut compat = WindowCompat::new(backend);
     let mut is_locked = false;
@@ -172,26 +149,26 @@ where
                 WindowEvent::Resized(size) => {
                     let window = *map.windows.get(&window_id).unwrap();
 
-                    let _ = event_tx.send(events::WindowEvent::WindowResized(WindowResized {
+                    let event = events::WindowEvent::WindowResized(WindowResized {
                         window,
                         width: size.width,
                         height: size.height,
-                    }));
+                    });
+                    app.handle_event(event);
                 }
                 WindowEvent::Moved(_) => {}
                 WindowEvent::CloseRequested => {
                     let window = *map.windows.get(&window_id).unwrap();
 
-                    let _ = event_tx.send(events::WindowEvent::WindowCloseRequested(
-                        WindowCloseRequested { window },
-                    ));
+                    let event =
+                        events::WindowEvent::WindowCloseRequested(WindowCloseRequested { window });
+                    app.handle_event(event);
                 }
                 WindowEvent::Destroyed => {
                     let window = map.windows.remove(&window_id).unwrap();
 
-                    let _ = event_tx.send(events::WindowEvent::WindowDestroyed(WindowDestroyed {
-                        window,
-                    }));
+                    let event = events::WindowEvent::WindowDestroyed(WindowDestroyed { window });
+                    app.handle_event(event);
                 }
                 WindowEvent::DroppedFile(_) => {}
                 WindowEvent::HoveredFile(_) => {}
@@ -199,11 +176,8 @@ where
                 WindowEvent::ReceivedCharacter(char) => {
                     let window = *map.windows.get(&window_id).unwrap();
 
-                    let _ =
-                        event_tx.send(events::WindowEvent::ReceivedCharacter(ReceivedCharacter {
-                            window,
-                            char,
-                        }));
+                    let event =
+                        events::WindowEvent::ReceivedCharacter(ReceivedCharacter { window, char });
                 }
                 WindowEvent::Focused(_) => {}
                 WindowEvent::KeyboardInput {
@@ -213,14 +187,15 @@ where
                 } => {
                     let window = *map.windows.get(&window_id).unwrap();
 
-                    let _ = event_tx.send(events::WindowEvent::KeyboardInput(KeyboardInput {
+                    let event = events::WindowEvent::KeyboardInput(KeyboardInput {
                         scan_code: ScanCode(input.scancode),
                         key_code: input.virtual_keycode,
                         state: match input.state {
                             ElementState::Pressed => ButtonState::Pressed,
                             ElementState::Released => ButtonState::Released,
                         },
-                    }));
+                    });
+                    app.handle_event(event);
                 }
                 WindowEvent::ModifiersChanged(_) => {}
                 WindowEvent::Ime(_) => {}
@@ -231,10 +206,11 @@ where
                 } => {
                     let window = *map.windows.get(&window_id).unwrap();
 
-                    let _ = event_tx.send(events::WindowEvent::CursorMoved(CursorMoved {
+                    let event = events::WindowEvent::CursorMoved(CursorMoved {
                         window,
                         position: Vec2::new(position.x as f32, position.y as f32),
-                    }));
+                    });
+                    app.handle_event(event);
 
                     compat.move_cursor();
 
@@ -247,13 +223,14 @@ where
                 WindowEvent::CursorEntered { device_id: _ } => {
                     let window = *map.windows.get(&window_id).unwrap();
 
-                    let _ =
-                        event_tx.send(events::WindowEvent::CursorEntered(CursorEntered { window }));
+                    let event = events::WindowEvent::CursorEntered(CursorEntered { window });
+                    app.handle_event(event);
                 }
                 WindowEvent::CursorLeft { device_id: _ } => {
                     let window = *map.windows.get(&window_id).unwrap();
 
-                    let _ = event_tx.send(events::WindowEvent::CursorLeft(CursorLeft { window }));
+                    let event = events::WindowEvent::CursorLeft(CursorLeft { window });
+                    app.handle_event(event);
 
                     if !is_locked {
                         let mut cursor_state = cursor.state.write();
@@ -287,7 +264,8 @@ where
                                 },
                             };
 
-                            let _ = event_tx.send(events::WindowEvent::MouseWheel(event));
+                            let event = events::WindowEvent::MouseWheel(event);
+                            app.handle_event(event);
                         }
                         _ => (),
                     }
@@ -311,7 +289,7 @@ where
                         },
                     };
 
-                    event_tx.send(events::WindowEvent::MouseButtonInput(event));
+                    app.handle_event(events::WindowEvent::MouseButtonInput(event));
                 }
                 WindowEvent::TouchpadMagnify {
                     device_id,
@@ -353,7 +331,7 @@ where
                         },
                     };
 
-                    let _ = event_tx.send(events::WindowEvent::MouseMotion(event));
+                    app.handle_event(events::WindowEvent::MouseMotion(event));
                 }
                 DeviceEvent::MouseWheel { delta } => match backend {
                     // See comment at `WindowEvent::MouseWheel` for
@@ -373,7 +351,7 @@ where
                             },
                         };
 
-                        let _ = event_tx.send(events::WindowEvent::MouseWheel(event));
+                        app.handle_event(events::WindowEvent::MouseWheel(event));
                     }
                 },
                 DeviceEvent::Motion { axis, value } => {}
@@ -385,7 +363,7 @@ where
             Event::Suspended => {}
             Event::Resumed => {}
             Event::MainEventsCleared => {
-                cb();
+                app.update();
 
                 // let should_update = true;
 
@@ -504,4 +482,10 @@ where
 #[derive(Clone, Debug, Default)]
 struct WindowMap {
     windows: HashMap<WindowId, windows::WindowId>,
+}
+
+pub trait App: 'static {
+    fn handle_event(&mut self, event: events::WindowEvent);
+
+    fn update(&mut self);
 }
