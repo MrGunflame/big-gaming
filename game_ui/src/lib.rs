@@ -20,7 +20,7 @@ use events::{Events, WindowCommand};
 use game_render::RenderState;
 use game_window::cursor::Cursor;
 use game_window::events::WindowEvent;
-use game_window::windows::WindowId;
+use game_window::windows::{WindowId, Windows};
 use game_window::WindowManager;
 use glam::UVec2;
 use reactive::{Document, Runtime};
@@ -102,7 +102,7 @@ impl UiState {
         }
     }
 
-    pub fn run(&mut self, device: &Device, queue: &Queue) {
+    pub fn run(&mut self, device: &Device, queue: &Queue, windows: &Windows) {
         for (id, doc) in self.windows.iter_mut() {
             let tree = self.render.get_mut(*id).unwrap();
             let events = self.events.get_mut(id).unwrap();
@@ -116,8 +116,8 @@ impl UiState {
 
         while let Ok(cmd) = self.command_rx.try_recv() {
             match cmd {
-                WindowCommand::Close(_) => {
-                    todo!()
+                WindowCommand::Close(id) => {
+                    windows.despawn(id);
                 }
                 WindowCommand::SetCursorIcon(id, icon) => {
                     todo!()

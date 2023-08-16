@@ -148,6 +148,15 @@ impl game_window::App for App {
                 self.ui_state
                     .resize(event.window, UVec2::new(event.width, event.height));
             }
+            WindowEvent::WindowCloseRequested(event) => {
+                // TODO: Ask for confirmation if the window contains
+                // unsaved data.
+                self.windows.despawn(event.window);
+            }
+            WindowEvent::WindowDestroyed(event) => {
+                self.renderer.destroy(event.window);
+                self.ui_state.destroy(event.window);
+            }
             _ => (),
         }
 
@@ -192,6 +201,6 @@ impl game_window::App for App {
 
         self.renderer.render();
         self.ui_state
-            .run(&self.renderer.device, &self.renderer.queue);
+            .run(&self.renderer.device, &self.renderer.queue, &self.windows);
     }
 }

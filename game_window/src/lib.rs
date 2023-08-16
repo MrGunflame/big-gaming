@@ -415,6 +415,11 @@ where
                         backend,
                     });
                 }
+                UpdateEvent::Destroy(id) => {
+                    app.handle_event(events::WindowEvent::WindowDestroyed(WindowDestroyed {
+                        window: id,
+                    }));
+                }
                 UpdateEvent::CursorGrab(id, mode) => {
                     let windows = windows.windows.read();
                     let Some(window) = windows.get(id.0) else {

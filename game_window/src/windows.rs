@@ -40,6 +40,13 @@ impl Windows {
         WindowId(key)
     }
 
+    pub fn despawn(&self, id: WindowId) {
+        let mut windows = self.windows.write();
+        windows.remove(id.0);
+
+        let _ = self.tx.send(UpdateEvent::Destroy(id));
+    }
+
     pub fn state(&self, id: WindowId) -> Option<WindowState> {
         let windows = self.windows.read();
         windows
@@ -142,6 +149,7 @@ unsafe impl HasRawWindowHandle for WindowState {
 
 pub(crate) enum UpdateEvent {
     Create(WindowId),
+    Destroy(WindowId),
     CursorGrab(WindowId, CursorGrabMode),
     CursorVisible(WindowId, bool),
     CursorPosition(WindowId, Vec2),
