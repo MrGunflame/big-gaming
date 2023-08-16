@@ -121,8 +121,9 @@ fn resize_surface(surface: &mut SurfaceData, device: &Device, size: UVec2) {
 
     surface.config.width = size.x;
     surface.config.height = size.y;
-
     surface.surface.configure(device, &surface.config);
+
+    surface.depth = DepthData::new(device, size);
 }
 
 fn get_surface_format(formats: &[TextureFormat]) -> Option<TextureFormat> {
