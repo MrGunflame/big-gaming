@@ -65,13 +65,16 @@ impl WindowManager {
         self.event_rx.try_recv().ok()
     }
 
-    pub fn run(&mut self) {
+    pub fn run<F>(&mut self, cb: F)
+    where
+        F: FnMut() + 'static,
+    {
         let state = self
             .state
             .take()
             .expect("cannot call WindowManager::run twice");
 
-        main_loop(state);
+        main_loop(state, cb);
     }
 }
 
@@ -140,7 +143,10 @@ impl From<&EventLoop<()>> for Backend {
     }
 }
 
-fn main_loop(mut state: WindowManagerState) {
+fn main_loop<F>(mut state: WindowManagerState, mut cb: F)
+where
+    F: FnMut() + 'static,
+{
     let event_loop = state.event_loop;
     let event_tx = state.event_tx;
     let update_rx = state.update_rx;
@@ -379,6 +385,8 @@ fn main_loop(mut state: WindowManagerState) {
             Event::Suspended => {}
             Event::Resumed => {}
             Event::MainEventsCleared => {
+                cb();
+
                 // let should_update = true;
 
                 // if should_update {

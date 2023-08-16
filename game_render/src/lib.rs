@@ -53,8 +53,8 @@ pub struct RenderState {
     forward: ForwardPipeline,
     post_process: PostProcessPipeline,
     mipmap_generator: MipMapGenerator,
-    meshes: Assets<Mesh>,
-    materials: Assets<PbrMaterial>,
+    pub meshes: Assets<Mesh>,
+    pub materials: Assets<PbrMaterial>,
 }
 
 impl RenderState {
