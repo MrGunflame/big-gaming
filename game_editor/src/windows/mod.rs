@@ -1,5 +1,6 @@
 mod create_module;
 mod error;
+pub mod main_window;
 pub mod modules;
 mod open_module;
 mod record;
@@ -23,6 +24,7 @@ use crate::state::EditorState;
 
 use self::create_module::*;
 use self::error::*;
+use self::main_window::*;
 use self::modules::*;
 use self::open_module::*;
 use self::record::*;
@@ -33,6 +35,13 @@ pub fn spawn_window(state: EditorState, rt: Runtime, event: SpawnWindow) -> Docu
 
     let cx = document.root_scope();
     match event {
+        SpawnWindow::MainWindow => {
+            view! {
+                cx,
+                <MainWindow state={state.clone()}>
+                </MainWindow>
+            };
+        }
         SpawnWindow::Modules => {
             view! {
                 cx,
@@ -90,6 +99,7 @@ pub fn spawn_window(state: EditorState, rt: Runtime, event: SpawnWindow) -> Docu
 
 #[derive(Clone, Debug)]
 pub enum SpawnWindow {
+    MainWindow,
     Modules,
     CreateModule,
     OpenModule,

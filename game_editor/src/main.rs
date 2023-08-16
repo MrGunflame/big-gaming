@@ -7,16 +7,19 @@ mod widgets;
 mod windows;
 mod world;
 
-use std::sync::mpsc;
+use std::sync::{mpsc, Arc};
 
 use backend::{Backend, Handle, Response};
 
+use game_common::components::transform::Transform;
+use game_render::camera::{Camera, Projection, RenderTarget};
 use game_render::RenderState;
 use game_ui::render::style::{Background, BorderRadius, Bounds, Size, SizeVec2, Style};
 use game_ui::UiState;
 use game_window::windows::WindowBuilder;
 use game_window::WindowManager;
 use glam::UVec2;
+use parking_lot::Mutex;
 use state::module::Modules;
 use state::record::Records;
 use state::EditorState;
@@ -53,7 +56,7 @@ impl State {
                 state,
                 window_manager: WindowManager::new(),
                 ui_state: UiState::new(&mut render_state),
-                render_state,
+                render_state: render_state,
             },
             rx,
         )
@@ -72,108 +75,52 @@ fn main() {
 
     let (mut state, rx) = State::new(handle);
 
-    create_main_window(&mut state);
+    state
+        .state
+        .spawn_windows
+        .send(SpawnWindow::MainWindow)
+        .unwrap();
 
-    {
-        let windows = state.window_manager.windows().clone();
-        std::thread::spawn(move || {
-            let mut deferred_windows = vec![];
+    let windows = state.window_manager.windows().clone();
+    let mut deferred_windows = vec![];
+    state.window_manager.run(move || {
+        while let Ok(event) = rx.try_recv() {
+            let doc =
+                windows::spawn_window(state.state.clone(), state.ui_state.runtime.clone(), event);
 
-            while let Ok(event) = rx.try_recv() {
-                let doc = windows::spawn_window(
-                    state.state.clone(),
-                    state.ui_state.runtime.clone(),
-                    event,
-                );
+            let id = windows.spawn(WindowBuilder::new());
 
-                let id = windows.spawn(WindowBuilder::new());
+            deferred_windows.push((id, doc));
+        }
 
-                deferred_windows.push((id, doc));
+        let mut index = 0;
+        while index < deferred_windows.len() {
+            let id = deferred_windows[index].0;
+            let doc = &deferred_windows[index].1;
+
+            if let Some(window) = windows.state(id) {
+                let size = window.inner_size();
+
+                state.render_state.create(id, window);
+
+                let cam = Camera {
+                    transform: Transform::default(),
+                    projection: Projection::default(),
+                    target: RenderTarget::Window(id),
+                };
+
+                state.render_state.entities.push_camera(cam);
+                state.ui_state.create(id, size);
+                *state.ui_state.get_mut(id).unwrap() = doc.clone();
+
+                deferred_windows.remove(index);
+            } else {
+                index += 1;
             }
+        }
 
-            let mut index = 0;
-            while index < deferred_windows.len() {
-                let id = deferred_windows[index].0;
-                let doc = &deferred_windows[index].1;
-
-                if let Some(window) = windows.state(id) {
-                    let size = window.inner_size();
-
-                    state.render_state.create(id, window);
-                    state.ui_state.create(id, size);
-                    *state.ui_state.get_mut(id).unwrap() = doc.clone();
-
-                    deferred_windows.remove(index);
-                } else {
-                    index += 1;
-                }
-            }
-        });
-    }
-
-    state.window_manager.run();
-}
-
-fn create_main_window(state: &mut State) {
-    let id = state.window_manager.windows().spawn(WindowBuilder::new());
-
-    state.ui_state.create(id, UVec2::ZERO);
-    let document = state.ui_state.get_mut(id).unwrap();
-
-    let buttons = vec![
-        ActionButton {
-            label: "Modules".to_owned(),
-            on_click: {
-                let state = state.state.clone();
-
-                Box::new(move |_| {
-                    let _ = state.spawn_windows.send(SpawnWindow::Modules);
-                })
-            },
-        },
-        ActionButton {
-            label: "Records".to_owned(),
-            on_click: {
-                let state = state.state.clone();
-
-                Box::new(move |_| {
-                    let _ = state.spawn_windows.send(SpawnWindow::Records);
-                })
-            },
-        },
-        ActionButton {
-            label: "View".to_owned(),
-            on_click: {
-                let state = state.state.clone();
-
-                Box::new(move |_| {
-                    let _ = state.spawn_windows.send(SpawnWindow::View);
-                })
-            },
-        },
-    ];
-
-    let cx = document.root_scope();
-    game_ui::view! {
-        cx,
-        <ToolBar buttons={buttons}>
-        </ToolBar>
-    };
-
-    let style = Style {
-        background: Background::AQUA,
-        bounds: Bounds {
-            min: SizeVec2::splat(Size::Pixels(64.0)),
-            max: SizeVec2::splat(Size::Pixels(64.0)),
-        },
-        border_radius: BorderRadius::splat(Size::Pixels(16.0)),
-        ..Default::default()
-    };
-
-    game_ui::view! {cx,
-        <Container style={style}>
-        </Container>
-    };
+        state.render_state.render();
+    });
 }
 
 fn load_from_backend(state: EditorState) {
