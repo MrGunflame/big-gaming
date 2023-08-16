@@ -113,7 +113,7 @@ impl RenderUiState {
                     &layout.style,
                     Rect {
                         min: layout.position,
-                        max: layout.position + size,
+                        max: layout.position + Vec2::new(layout.width as f32, layout.height as f32),
                     },
                     &self.pipeline,
                     device,
