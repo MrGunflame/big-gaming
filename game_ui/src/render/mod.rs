@@ -65,6 +65,9 @@ impl RenderUiState {
     pub fn insert(&mut self, id: WindowId, size: UVec2) {
         self.windows.insert(id, LayoutTree::new());
         self.resize(id, size);
+
+        let mut elems = self.elements.write();
+        elems.insert(id, vec![]);
     }
 
     pub fn get_mut(&mut self, id: WindowId) -> Option<&mut LayoutTree> {
@@ -73,6 +76,9 @@ impl RenderUiState {
 
     pub fn remove(&mut self, id: WindowId) {
         self.windows.remove(&id);
+
+        let mut elems = self.elements.write();
+        elems.remove(&id);
     }
 
     pub fn resize(&mut self, id: WindowId, size: UVec2) {
@@ -411,7 +417,7 @@ pub struct UiPass {
 
 impl Node for UiPass {
     fn render(&self, ctx: &mut RenderContext<'_>) {
-        let mut elems = self.elements.read();
+        let elems = self.elements.read();
         let Some(elements) = elems.get(&ctx.window) else {
             return;
         };

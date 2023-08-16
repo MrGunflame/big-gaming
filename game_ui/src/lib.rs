@@ -27,6 +27,7 @@ use reactive::{Document, Runtime};
 use render::RenderUiState;
 
 pub use game_ui_macros::{component, view};
+use wgpu::{Device, Queue};
 
 pub struct UiState {
     render: RenderUiState,
@@ -101,7 +102,7 @@ impl UiState {
         }
     }
 
-    pub fn run(&mut self, wm: &WindowManager) {
+    pub fn run(&mut self, device: &Device, queue: &Queue) {
         for (id, doc) in self.windows.iter_mut() {
             let tree = self.render.get_mut(*id).unwrap();
             let events = self.events.get_mut(id).unwrap();
@@ -110,6 +111,8 @@ impl UiState {
             doc.run_effects();
             doc.flush_node_queue(tree, events);
         }
+
+        self.render.update(device, queue);
 
         while let Ok(cmd) = self.command_rx.try_recv() {
             match cmd {

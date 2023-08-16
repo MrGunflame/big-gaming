@@ -120,6 +120,9 @@ fn main() {
         }
 
         state.render_state.render();
+        state
+            .ui_state
+            .run(&state.render_state.device, &state.render_state.queue);
     });
 }
 
