@@ -1,31 +1,110 @@
-use glam::Vec3;
+use std::cell::UnsafeCell;
+use std::marker::PhantomData;
+use std::mem::MaybeUninit;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 
-#[derive(Copy, Clone, Debug)]
-pub struct SoundFrame {
-    pub origin: Option<Vec3>,
-    pub loudness: f32,
+#[derive(Copy, Clone, Debug, Default, PartialEq)]
+pub(crate) struct Frame {
+    pub left: f32,
+    pub right: f32,
 }
 
-impl SoundFrame {
-    #[inline]
-    pub fn origin(mut self, origin: Vec3) -> Self {
-        self.origin = Some(origin);
-        self
-    }
-
-    #[inline]
-    pub fn loadness(mut self, loudness: f32) -> Self {
-        self.loudness = loudness;
-        self
-    }
+impl Frame {
+    pub const EQUILIBRIUM: Self = Self {
+        left: 0.0,
+        right: 0.0,
+    };
 }
 
-impl Default for SoundFrame {
-    #[inline]
-    fn default() -> Self {
-        Self {
-            origin: None,
-            loudness: 1.0,
+#[derive(Debug)]
+pub(crate) struct Sender {
+    // Note that we do not provide a `Clone` impl, so we
+    // can safely assume that `Queue::push` may only be
+    // called from one thread.
+    inner: Arc<Queue>,
+}
+
+impl Sender {
+    pub fn push(&self, value: Frame) {
+        unsafe {
+            self.inner.push(value);
         }
+    }
+}
+
+unsafe impl Send for Sender {}
+
+#[derive(Debug)]
+pub(crate) struct Receiver {
+    inner: Arc<Queue>,
+}
+
+impl Receiver {
+    pub fn pop(&self) -> Option<Frame> {
+        unsafe { self.inner.pop() }
+    }
+}
+
+unsafe impl Send for Receiver {}
+
+#[derive(Debug)]
+pub(crate) struct Queue {
+    inner: Box<[UnsafeCell<MaybeUninit<Frame>>]>,
+    /// The position of the next write, or in other words, the first **NON**-initialized element.
+    head: AtomicUsize,
+    /// The position of the next read.
+    tail: AtomicUsize,
+    // Ensure that we are `!Sync`.
+    _marker: PhantomData<*const ()>,
+}
+
+impl Queue {
+    pub fn new(size: usize) -> Self {
+        let mut inner = Vec::with_capacity(size);
+        for _ in 0..size {
+            inner.push(UnsafeCell::new(MaybeUninit::uninit()));
+        }
+
+        Self {
+            inner: inner.into_boxed_slice(),
+            head: AtomicUsize::new(0),
+            tail: AtomicUsize::new(0),
+            _marker: PhantomData,
+        }
+    }
+
+    pub fn split(self) -> (Sender, Receiver) {
+        let inner = Arc::new(self);
+        (
+            Sender {
+                inner: inner.clone(),
+            },
+            Receiver { inner },
+        )
+    }
+
+    pub unsafe fn push(&self, value: Frame) {
+        let index = self.head.fetch_add(1, Ordering::Relaxed) % self.inner.len();
+
+        let slot = unsafe { &mut *self.inner[index].get() };
+        slot.write(value);
+    }
+
+    pub unsafe fn pop(&self) -> Option<Frame> {
+        let head = self.head.load(Ordering::Acquire);
+        let tail = self.tail.load(Ordering::Relaxed);
+
+        // Caught up to write head; there is no data ready.
+        if head == tail {
+            return None;
+        }
+
+        self.tail.fetch_add(1, Ordering::Relaxed);
+        let index = tail % self.inner.len();
+
+        let slot = unsafe { &mut *self.inner[index].get() };
+        let val = unsafe { slot.assume_init_read() };
+        Some(val)
     }
 }
