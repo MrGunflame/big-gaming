@@ -3,6 +3,7 @@
 mod backend;
 mod manager;
 mod sound;
+mod sound_data;
 
 use bevy_app::{App, Plugin};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
