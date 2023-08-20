@@ -1,8 +1,9 @@
 use std::cell::UnsafeCell;
+use std::collections::VecDeque;
 use std::marker::PhantomData;
 use std::mem::MaybeUninit;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 #[derive(Copy, Clone, Debug, Default, PartialEq)]
 pub(crate) struct Frame {
@@ -22,14 +23,17 @@ pub(crate) struct Sender {
     // Note that we do not provide a `Clone` impl, so we
     // can safely assume that `Queue::push` may only be
     // called from one thread.
-    inner: Arc<Queue>,
+    //inner: Arc<Queue>,
+    inner: Arc<Mutex<VecDeque<Frame>>>,
 }
 
 impl Sender {
     pub fn push(&self, value: Frame) {
-        unsafe {
-            self.inner.push(value);
-        }
+        //unsafe {
+        //    self.inner.push(value);
+        //}
+        let mut inner = self.inner.lock().unwrap();
+        inner.push_back(value);
     }
 }
 
@@ -37,12 +41,15 @@ unsafe impl Send for Sender {}
 
 #[derive(Debug)]
 pub(crate) struct Receiver {
-    inner: Arc<Queue>,
+    //inner: Arc<Queue>,
+    inner: Arc<Mutex<VecDeque<Frame>>>,
 }
 
 impl Receiver {
     pub fn pop(&self) -> Option<Frame> {
-        unsafe { self.inner.pop() }
+        //unsafe { self.inner.pop() }
+        let mut inner = self.inner.lock().unwrap();
+        inner.pop_front()
     }
 }
 
@@ -75,7 +82,7 @@ impl Queue {
     }
 
     pub fn split(self) -> (Sender, Receiver) {
-        let inner = Arc::new(self);
+        let inner: Arc<Mutex<VecDeque<Frame>>> = Arc::default();
         (
             Sender {
                 inner: inner.clone(),

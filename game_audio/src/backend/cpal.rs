@@ -52,7 +52,14 @@ impl CpalBackend {
 
 fn write_data(output: &mut [f32], channels: usize, rx: &mut Receiver) {
     for f in output.chunks_exact_mut(channels) {
-        let frame = rx.pop().unwrap_or(Frame::EQUILIBRIUM);
+        let frame = match rx.pop() {
+            Some(frame) => frame,
+            None => {
+                tracing::error!("no data");
+                Frame::EQUILIBRIUM
+            }
+        };
+
         match channels {
             1 => {
                 f[0] = (frame.left) + (frame.right) / 2.0;
