@@ -10,7 +10,8 @@ use symphonia::core::{
 use crate::sound::Frame;
 
 pub struct SoundData {
-    frames: Vec<Frame>,
+    pub(crate) frames: Vec<Frame>,
+    pub(crate) sample_rate: u32,
 }
 
 impl SoundData {
@@ -61,7 +62,10 @@ impl SoundData {
             }
         }
 
-        Self { frames }
+        Self {
+            frames,
+            sample_rate,
+        }
     }
 }
 

@@ -1,14 +1,15 @@
 #![deny(unsafe_op_in_unsafe_fn)]
 
+pub mod sound_data;
+
 mod backend;
+mod clock;
 mod manager;
 mod sound;
-mod sound_data;
+
+pub use manager::AudioManager;
 
 use bevy_app::{App, Plugin};
-use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use cpal::{default_host, Host};
-use manager::AudioManager;
 
 pub struct AudioPlugin;
 
