@@ -5,6 +5,8 @@ use std::mem::MaybeUninit;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
+use crate::sound_data::SoundData;
+
 #[derive(Copy, Clone, Debug, Default, PartialEq)]
 pub(crate) struct Frame {
     pub left: f32,
@@ -114,4 +116,13 @@ impl Queue {
         let val = unsafe { slot.assume_init_read() };
         Some(val)
     }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct SoundId(pub(crate) slotmap::DefaultKey);
+
+#[derive(Debug)]
+pub(crate) struct PlayingSound {
+    pub data: SoundData,
+    pub cursor: usize,
 }

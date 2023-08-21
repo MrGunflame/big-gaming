@@ -9,6 +9,7 @@ use symphonia::core::{
 
 use crate::sound::Frame;
 
+#[derive(Clone, Debug)]
 pub struct SoundData {
     pub(crate) frames: Vec<Frame>,
     pub(crate) sample_rate: u32,

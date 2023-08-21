@@ -1,17 +1,19 @@
-use core::num;
 use std::time::Instant;
 
 use bevy_ecs::system::{In, Resource};
 use game_common::utils::exclusive::Exclusive;
+use slotmap::SlotMap;
 
 use crate::backend::DefaultBackend;
-use crate::sound::{Queue, Sender};
+use crate::sound::{Frame, PlayingSound, Queue, Sender, SoundId};
 use crate::sound_data::SoundData;
 
 #[derive(Debug, Resource)]
 pub struct AudioManager {
     backend: DefaultBackend,
     tx: Exclusive<Sender>,
+    sounds: SlotMap<slotmap::DefaultKey, PlayingSound>,
+    sample_rate: u32,
 }
 
 impl AudioManager {
@@ -24,31 +26,44 @@ impl AudioManager {
         Self {
             backend,
             tx: Exclusive::new(tx),
+            sounds: SlotMap::new(),
+            sample_rate: 48_000,
         }
     }
 
-    pub fn play(&mut self, data: SoundData) {
-        let mut index = 0;
-        // 1.05 to keep a small buffer.
-        let num_samples = (data.sample_rate as f64 * (1.0 / 60.0)) * 1.05;
+    pub fn play(&mut self, data: SoundData) -> SoundId {
+        let key = self.sounds.insert(PlayingSound { data, cursor: 0 });
+        SoundId(key)
+    }
 
-        let mut now = Instant::now();
-        loop {
-            for _ in 0..num_samples as u32 {
-                let Some(frame) = data.frames.get(index) else {
-                    return;
+    pub fn update(&mut self) {
+        // 1.05 to keep a small buffer.
+        let num_samples = (self.sample_rate as f64 * (1.0 / 60.0)) * 1.05;
+
+        let mut buf = vec![Frame::EQUILIBRIUM; num_samples as usize];
+
+        let mut drop_sounds = vec![];
+
+        for (id, sound) in self.sounds.iter_mut() {
+            for index in 0..num_samples as usize {
+                let Some(frame) = sound.data.frames.get(sound.cursor) else {
+                    drop_sounds.push(id);
+                    break;
                 };
 
-                self.tx.get_mut().push(*frame);
-                now = Instant::now();
-                index += 1;
-            }
+                buf[index].left += frame.left;
+                buf[index].right += frame.right;
 
-            //while now.elapsed().as_secs_f64() < 1.0 / data.sample_rate as f64 {}
-            //std::thread::sleep_ms(16);
-            while now.elapsed().as_millis() <= 16 {}
+                sound.cursor += 1;
+            }
+        }
+
+        for elem in buf {
+            self.tx.get_mut().push(elem);
+        }
+
+        for id in drop_sounds {
+            self.sounds.remove(id);
         }
     }
-
-    pub fn update(&mut self) {}
 }

@@ -1,5 +1,5 @@
+use cpal::default_host;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use cpal::{default_host, Stream};
 
 use crate::sound::{Frame, Receiver};
 
@@ -24,8 +24,6 @@ impl CpalBackend {
 
             let channels = config.channels as usize;
 
-            dbg!(&config.sample_rate);
-
             let stream = device
                 .build_output_stream(
                     &config,
@@ -41,8 +39,10 @@ impl CpalBackend {
 
             stream.play().unwrap();
 
+            // We have created the thread and need to keep the stream
+            // alive on this thread.
             loop {
-                std::thread::yield_now();
+                std::thread::park();
             }
         });
 
@@ -55,7 +55,7 @@ fn write_data(output: &mut [f32], channels: usize, rx: &mut Receiver) {
         let frame = match rx.pop() {
             Some(frame) => frame,
             None => {
-                tracing::error!("no data");
+                //tracing::error!("no data");
                 Frame::EQUILIBRIUM
             }
         };
