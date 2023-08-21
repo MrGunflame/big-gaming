@@ -50,6 +50,7 @@ impl AudioManager {
         let key = self.tracks.insert(ActiveTrack {
             target: track.target,
             buffer: vec![Frame::EQUILIBRIUM; num_samples as usize],
+            volume: track.volume,
         });
 
         self.track_graph =
@@ -113,7 +114,7 @@ impl AudioManager {
                 };
 
                 for index in 0..src_track.buffer.len() {
-                    target_buffer[index] += src_track.buffer[index];
+                    target_buffer[index] += src_track.buffer[index] * src_track.volume;
                 }
             }
         }

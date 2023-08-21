@@ -15,7 +15,7 @@ fn main() {
 
     let track = manager.add_track(Track {
         target: TrackId::Main,
-        volume: Volume::default(),
+        volume: Volume(0.2),
     });
 
     manager.play(data.clone(), Settings { track });

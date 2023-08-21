@@ -68,4 +68,5 @@ impl TrackGraph {
 pub(crate) struct ActiveTrack {
     pub target: TrackId,
     pub buffer: Vec<Frame>,
+    pub volume: Volume,
 }
