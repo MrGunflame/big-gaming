@@ -6,6 +6,7 @@ pub mod sound_data;
 mod backend;
 mod clock;
 mod manager;
+mod resampler;
 mod sound;
 mod track;
 

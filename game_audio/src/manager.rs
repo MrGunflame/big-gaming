@@ -1,17 +1,20 @@
-use bevy_ecs::system::{In, Resource};
+use bevy_ecs::system::Resource;
 use game_common::utils::exclusive::Exclusive;
 use slotmap::SlotMap;
 
 use crate::backend::DefaultBackend;
 use crate::sound::{Frame, PlayingSound, Queue, Sender, SoundId};
 use crate::sound_data::SoundData;
+use crate::track::{Track, TrackGraph, TrackId};
 
 #[derive(Debug, Resource)]
 pub struct AudioManager {
     backend: DefaultBackend,
     tx: Exclusive<Sender>,
     sounds: SlotMap<slotmap::DefaultKey, PlayingSound>,
+    tracks: SlotMap<slotmap::DefaultKey, Track>,
     sample_rate: u32,
+    track_graph: TrackGraph,
 }
 
 impl AudioManager {
@@ -26,12 +29,23 @@ impl AudioManager {
             tx: Exclusive::new(tx),
             sounds: SlotMap::new(),
             sample_rate: 48_000,
+            tracks: SlotMap::new(),
+            track_graph: TrackGraph::new(std::iter::empty()),
         }
     }
 
     pub fn play(&mut self, data: SoundData) -> SoundId {
         let key = self.sounds.insert(PlayingSound { data, cursor: 0 });
         SoundId(key)
+    }
+
+    pub fn add_track(&mut self, track: Track) -> TrackId {
+        let key = self.tracks.insert(track);
+
+        self.track_graph =
+            TrackGraph::new(self.tracks.iter().map(|(id, t)| (TrackId::Track(id), t)));
+
+        TrackId::Track(key)
     }
 
     pub fn update(&mut self) {
