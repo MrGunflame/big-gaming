@@ -12,7 +12,7 @@ fn main() {
     let data = SoundData::from_file("./../../x.ogg");
     manager.play(data.clone());
 
-    manager.update();
+    //manager.update();
     manager.play(data);
 
     let mut now = Instant::now();

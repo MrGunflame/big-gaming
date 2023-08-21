@@ -1,11 +1,13 @@
 #![deny(unsafe_op_in_unsafe_fn)]
 
+pub mod effects;
 pub mod sound_data;
 
 mod backend;
 mod clock;
 mod manager;
 mod sound;
+mod track;
 
 pub use manager::AudioManager;
 

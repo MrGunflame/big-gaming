@@ -1,5 +1,3 @@
-use std::time::Instant;
-
 use bevy_ecs::system::{In, Resource};
 use game_common::utils::exclusive::Exclusive;
 use slotmap::SlotMap;
@@ -51,14 +49,18 @@ impl AudioManager {
                     break;
                 };
 
-                buf[index].left += frame.left;
-                buf[index].right += frame.right;
+                buf[index].left += frame.left * sound.data.volume.0;
+                buf[index].right += frame.right * sound.data.volume.0;
 
                 sound.cursor += 1;
             }
         }
 
         for elem in buf {
+            if elem.left.abs() > 1.0 || elem.right.abs() > 1.0 {
+                tracing::warn!("clipping");
+            }
+
             self.tx.get_mut().push(elem);
         }
 
