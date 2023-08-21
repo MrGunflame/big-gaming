@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use bevy_ecs::system::Resource;
 use game_common::utils::exclusive::Exclusive;
 use slotmap::SlotMap;
@@ -14,7 +16,9 @@ pub struct AudioManager {
     sounds: SlotMap<slotmap::DefaultKey, PlayingSound>,
     tracks: SlotMap<slotmap::DefaultKey, ActiveTrack>,
     sample_rate: u32,
+    buffer_size: u32,
     track_graph: TrackGraph,
+    last_update: Instant,
 }
 
 impl AudioManager {
@@ -29,8 +33,10 @@ impl AudioManager {
             tx: Exclusive::new(tx),
             sounds: SlotMap::new(),
             sample_rate: 48_000,
+            buffer_size: 2,
             tracks: SlotMap::new(),
             track_graph: TrackGraph::new(std::iter::empty()),
+            last_update: Instant::now(),
         }
     }
 
@@ -45,7 +51,7 @@ impl AudioManager {
     }
 
     pub fn add_track(&mut self, track: Track) -> TrackId {
-        let num_samples = (self.sample_rate as f64 * (1.0 / 60.0)) * 1.05;
+        let num_samples = self.sample_rate / 60 * self.buffer_size;
 
         let key = self.tracks.insert(ActiveTrack {
             target: track.target,
@@ -60,8 +66,7 @@ impl AudioManager {
     }
 
     pub fn update(&mut self) {
-        // 1.05 to keep a small buffer.
-        let num_samples = (self.sample_rate as f64 * (1.0 / 60.0)) * 1.05;
+        let num_samples = self.sample_rate / 60 * self.buffer_size;
 
         let mut drop_sounds = vec![];
 
