@@ -92,9 +92,7 @@ impl AudioManager {
                             break;
                         };
 
-                        buf[index].left += frame.left * sound.data.volume.0;
-                        buf[index].right += frame.right * sound.data.volume.0;
-
+                        buf[index] += *frame * sound.data.volume;
                         sound.cursor += 1;
                     }
                 }

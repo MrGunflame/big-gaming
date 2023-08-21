@@ -2,13 +2,13 @@
 
 pub mod effects;
 pub mod sound_data;
+pub mod track;
 
 mod backend;
 mod clock;
 mod manager;
 mod resampler;
 mod sound;
-mod track;
 
 pub use manager::AudioManager;
 

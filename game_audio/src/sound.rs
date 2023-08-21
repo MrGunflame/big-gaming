@@ -2,10 +2,11 @@ use std::cell::UnsafeCell;
 use std::collections::VecDeque;
 use std::marker::PhantomData;
 use std::mem::MaybeUninit;
-use std::ops::{Add, AddAssign};
+use std::ops::{Add, AddAssign, Mul, MulAssign};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
+use crate::effects::Volume;
 use crate::sound_data::SoundData;
 use crate::track::TrackId;
 
@@ -36,6 +37,23 @@ impl Add for Frame {
 impl AddAssign for Frame {
     fn add_assign(&mut self, rhs: Self) {
         *self = *self + rhs;
+    }
+}
+
+impl Mul<Volume> for Frame {
+    type Output = Self;
+
+    fn mul(self, rhs: Volume) -> Self::Output {
+        Self {
+            left: self.left * rhs.0,
+            right: self.right * rhs.0,
+        }
+    }
+}
+
+impl MulAssign<Volume> for Frame {
+    fn mul_assign(&mut self, rhs: Volume) {
+        *self = *self * rhs;
     }
 }
 
