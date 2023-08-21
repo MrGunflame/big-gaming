@@ -9,6 +9,7 @@ use symphonia::core::{
 
 use crate::effects::Volume;
 use crate::sound::Frame;
+use crate::track::TrackId;
 
 #[derive(Clone, Debug)]
 pub struct SoundData {
@@ -113,4 +114,9 @@ where
             .collect(),
         _ => panic!("unsupported channel config"),
     }
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct Settings {
+    pub track: TrackId,
 }

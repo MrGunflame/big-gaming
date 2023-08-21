@@ -2,10 +2,12 @@ use std::cell::UnsafeCell;
 use std::collections::VecDeque;
 use std::marker::PhantomData;
 use std::mem::MaybeUninit;
+use std::ops::{Add, AddAssign};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use crate::sound_data::SoundData;
+use crate::track::TrackId;
 
 #[derive(Copy, Clone, Debug, Default, PartialEq)]
 pub(crate) struct Frame {
@@ -18,6 +20,23 @@ impl Frame {
         left: 0.0,
         right: 0.0,
     };
+}
+
+impl Add for Frame {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        Self {
+            left: self.left + rhs.left,
+            right: self.right + rhs.right,
+        }
+    }
+}
+
+impl AddAssign for Frame {
+    fn add_assign(&mut self, rhs: Self) {
+        *self = *self + rhs;
+    }
 }
 
 #[derive(Debug)]
@@ -125,4 +144,5 @@ pub struct SoundId(pub(crate) slotmap::DefaultKey);
 pub(crate) struct PlayingSound {
     pub data: SoundData,
     pub cursor: usize,
+    pub track: TrackId,
 }

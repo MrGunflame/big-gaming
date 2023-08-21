@@ -1,7 +1,10 @@
 use std::collections::HashMap;
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+use crate::sound::Frame;
+
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub enum TrackId {
+    #[default]
     Main,
     Track(slotmap::DefaultKey),
 }
@@ -17,8 +20,8 @@ pub(crate) struct TrackGraph {
 }
 
 impl TrackGraph {
-    pub fn new<'a>(tracks: impl Iterator<Item = (TrackId, &'a Track)>) -> Self {
-        let tracks: Vec<(TrackId, &Track)> = tracks.collect();
+    pub fn new<'a>(tracks: impl Iterator<Item = (TrackId, &'a ActiveTrack)>) -> Self {
+        let tracks: Vec<(TrackId, &ActiveTrack)> = tracks.collect();
 
         let mut track_deps: HashMap<TrackId, Vec<TrackId>> = HashMap::new();
         for (id, track) in tracks {
@@ -52,4 +55,10 @@ impl TrackGraph {
 
         Self { tracks: track_ids }
     }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct ActiveTrack {
+    pub target: TrackId,
+    pub buffer: Vec<Frame>,
 }

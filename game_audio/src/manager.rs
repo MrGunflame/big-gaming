@@ -4,15 +4,15 @@ use slotmap::SlotMap;
 
 use crate::backend::DefaultBackend;
 use crate::sound::{Frame, PlayingSound, Queue, Sender, SoundId};
-use crate::sound_data::SoundData;
-use crate::track::{Track, TrackGraph, TrackId};
+use crate::sound_data::{Settings, SoundData};
+use crate::track::{ActiveTrack, Track, TrackGraph, TrackId};
 
 #[derive(Debug, Resource)]
 pub struct AudioManager {
     backend: DefaultBackend,
     tx: Exclusive<Sender>,
     sounds: SlotMap<slotmap::DefaultKey, PlayingSound>,
-    tracks: SlotMap<slotmap::DefaultKey, Track>,
+    tracks: SlotMap<slotmap::DefaultKey, ActiveTrack>,
     sample_rate: u32,
     track_graph: TrackGraph,
 }
@@ -34,13 +34,23 @@ impl AudioManager {
         }
     }
 
-    pub fn play(&mut self, data: SoundData) -> SoundId {
-        let key = self.sounds.insert(PlayingSound { data, cursor: 0 });
+    pub fn play(&mut self, data: SoundData, settings: Settings) -> SoundId {
+        let key = self.sounds.insert(PlayingSound {
+            data,
+            cursor: 0,
+            track: settings.track,
+        });
+
         SoundId(key)
     }
 
     pub fn add_track(&mut self, track: Track) -> TrackId {
-        let key = self.tracks.insert(track);
+        let num_samples = (self.sample_rate as f64 * (1.0 / 60.0)) * 1.05;
+
+        let key = self.tracks.insert(ActiveTrack {
+            target: track.target,
+            buffer: vec![Frame::EQUILIBRIUM; num_samples as usize],
+        });
 
         self.track_graph =
             TrackGraph::new(self.tracks.iter().map(|(id, t)| (TrackId::Track(id), t)));
@@ -52,25 +62,65 @@ impl AudioManager {
         // 1.05 to keep a small buffer.
         let num_samples = (self.sample_rate as f64 * (1.0 / 60.0)) * 1.05;
 
-        let mut buf = vec![Frame::EQUILIBRIUM; num_samples as usize];
-
         let mut drop_sounds = vec![];
 
-        for (id, sound) in self.sounds.iter_mut() {
-            for index in 0..num_samples as usize {
-                let Some(frame) = sound.data.frames.get(sound.cursor) else {
-                    drop_sounds.push(id);
-                    break;
+        let mut main_buffer = vec![Frame::EQUILIBRIUM; num_samples as usize];
+
+        // Reset all buffers from previous update.
+        for track in self.tracks.values_mut() {
+            track.buffer.fill(Frame::EQUILIBRIUM);
+        }
+
+        for &track_id in &self.track_graph.tracks {
+            {
+                let buf = match track_id {
+                    TrackId::Main => &mut main_buffer,
+                    TrackId::Track(key) => {
+                        let track = self.tracks.get_mut(key).unwrap();
+                        &mut track.buffer
+                    }
                 };
 
-                buf[index].left += frame.left * sound.data.volume.0;
-                buf[index].right += frame.right * sound.data.volume.0;
+                for (id, sound) in self.sounds.iter_mut() {
+                    if track_id != sound.track {
+                        continue;
+                    }
 
-                sound.cursor += 1;
+                    for index in 0..num_samples as usize {
+                        let Some(frame) = sound.data.frames.get(sound.cursor) else {
+                            drop_sounds.push(id);
+                            break;
+                        };
+
+                        buf[index].left += frame.left * sound.data.volume.0;
+                        buf[index].right += frame.right * sound.data.volume.0;
+
+                        sound.cursor += 1;
+                    }
+                }
+            }
+
+            // Done processing all sounds for this track.
+            // Reroute the buffer into the target track.
+            if let TrackId::Track(src_key) = track_id {
+                // FIXME: Don't clone.
+                let src_track = self.tracks.get(src_key).unwrap().clone();
+
+                let target_buffer = match src_track.target {
+                    TrackId::Main => &mut main_buffer,
+                    TrackId::Track(dst_key) => {
+                        let dst_track = self.tracks.get_mut(dst_key).unwrap();
+                        &mut dst_track.buffer
+                    }
+                };
+
+                for index in 0..src_track.buffer.len() {
+                    target_buffer[index] += src_track.buffer[index];
+                }
             }
         }
 
-        for elem in buf {
+        for elem in main_buffer {
             if elem.left.abs() > 1.0 || elem.right.abs() > 1.0 {
                 tracing::warn!("clipping");
             }
