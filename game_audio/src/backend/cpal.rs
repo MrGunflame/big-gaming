@@ -1,5 +1,5 @@
-use cpal::default_host;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use cpal::{default_host, BufferSize, SampleRate, StreamConfig, SupportedBufferSize};
 
 use crate::sound::{Frame, Receiver};
 

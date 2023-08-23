@@ -50,6 +50,10 @@ impl AudioManager {
         SoundId(key)
     }
 
+    pub fn stop(&mut self, id: SoundId) {
+        self.sounds.remove(id.0);
+    }
+
     pub fn add_track(&mut self, track: Track) -> TrackId {
         let num_samples = self.sample_rate / 60 * self.buffer_size;
 

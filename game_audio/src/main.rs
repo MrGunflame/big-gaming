@@ -11,7 +11,7 @@ fn main() {
 
     let mut manager = AudioManager::new();
 
-    let data = SoundData::from_file("./../../x.ogg");
+    let mut data = SoundData::from_file("./../../x.ogg");
 
     let track = manager.add_track(Track {
         target: TrackId::Main,
@@ -20,6 +20,8 @@ fn main() {
 
     manager.play(data.clone(), Settings { track });
 
+    let mut it = 0;
+
     let mut now = Instant::now();
     loop {
         manager.update();
@@ -27,5 +29,12 @@ fn main() {
             std::thread::sleep_ms(1);
         }
         now = Instant::now();
+        it += 1;
+
+        if it == 1000 {
+            dbg!("spawn");
+            data.volume = Volume(5.0);
+            manager.play(data.clone(), Settings { track });
+        }
     }
 }

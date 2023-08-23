@@ -15,7 +15,7 @@ use crate::track::TrackId;
 pub struct SoundData {
     pub(crate) frames: Vec<Frame>,
     pub(crate) sample_rate: u32,
-    pub(crate) volume: Volume,
+    pub volume: Volume,
 }
 
 impl SoundData {
