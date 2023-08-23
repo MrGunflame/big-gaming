@@ -1,18 +1,19 @@
+use std::sync::Arc;
 use std::time::Instant;
 
 use bevy_ecs::system::Resource;
-use game_common::utils::exclusive::Exclusive;
+use parking_lot::Mutex;
 use slotmap::SlotMap;
 
 use crate::backend::DefaultBackend;
-use crate::sound::{Frame, PlayingSound, Queue, Sender, SoundId};
+use crate::sound::{Buffer, Frame, PlayingSound, SoundId};
 use crate::sound_data::{Settings, SoundData};
 use crate::track::{ActiveTrack, Track, TrackGraph, TrackId};
 
 #[derive(Debug, Resource)]
 pub struct AudioManager {
     backend: DefaultBackend,
-    tx: Exclusive<Sender>,
+    main_buffer: Arc<Mutex<Buffer>>,
     sounds: SlotMap<slotmap::DefaultKey, PlayingSound>,
     tracks: SlotMap<slotmap::DefaultKey, ActiveTrack>,
     sample_rate: u32,
@@ -23,20 +24,22 @@ pub struct AudioManager {
 
 impl AudioManager {
     pub fn new() -> Self {
-        let queue = Queue::new(100_000_000);
-        let (tx, rx) = queue.split();
+        let sample_rate = 48_000;
+        let buffer_size = 3;
 
-        let backend = DefaultBackend::new(rx);
+        let mut buf = Arc::new(Mutex::new(Buffer::new(sample_rate / 60 * buffer_size)));
+
+        let backend = DefaultBackend::new(buf.clone());
 
         Self {
             backend,
-            tx: Exclusive::new(tx),
             sounds: SlotMap::new(),
-            sample_rate: 48_000,
-            buffer_size: 2,
+            sample_rate: sample_rate as u32,
+            buffer_size: buffer_size as u32,
             tracks: SlotMap::new(),
             track_graph: TrackGraph::new(std::iter::empty()),
             last_update: Instant::now(),
+            main_buffer: buf,
         }
     }
 
@@ -70,11 +73,19 @@ impl AudioManager {
     }
 
     pub fn update(&mut self) {
-        let num_samples = self.sample_rate / 60 * self.buffer_size;
-
         let mut drop_sounds = vec![];
 
-        let mut main_buffer = vec![Frame::EQUILIBRIUM; num_samples as usize];
+        let spare_cap = {
+            let buf = self.main_buffer.lock();
+            buf.spare_capacity()
+        };
+
+        // The output buffer is still full.
+        if spare_cap == 0 {
+            return;
+        }
+
+        let mut main_buffer = vec![Frame::EQUILIBRIUM; spare_cap];
 
         // Reset all buffers from previous update.
         for track in self.tracks.values_mut() {
@@ -96,7 +107,7 @@ impl AudioManager {
                         continue;
                     }
 
-                    for index in 0..num_samples as usize {
+                    for index in 0..spare_cap {
                         let Some(frame) = sound.data.frames.get(sound.cursor) else {
                             drop_sounds.push(id);
                             break;
@@ -122,19 +133,21 @@ impl AudioManager {
                     }
                 };
 
-                for index in 0..src_track.buffer.len() {
+                for index in 0..spare_cap {
                     target_buffer[index] += src_track.buffer[index] * src_track.volume;
                 }
             }
         }
 
+        let mut buf = self.main_buffer.lock();
         for elem in main_buffer {
             if elem.left.abs() > 1.0 || elem.right.abs() > 1.0 {
                 tracing::warn!("clipping");
             }
 
-            self.tx.get_mut().push(elem);
+            buf.push(elem);
         }
+        drop(buf);
 
         for id in drop_sounds {
             self.sounds.remove(id);

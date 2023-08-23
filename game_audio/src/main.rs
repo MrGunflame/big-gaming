@@ -25,9 +25,9 @@ fn main() {
     let mut now = Instant::now();
     loop {
         manager.update();
-        while now.elapsed().as_millis() <= 16 {
-            std::thread::sleep_ms(1);
-        }
+        // while now.elapsed().as_millis() <= 16 {
+        //     std::thread::sleep_ms(1);
+        //}
         now = Instant::now();
         it += 1;
 

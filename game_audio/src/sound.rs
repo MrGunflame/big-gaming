@@ -57,104 +57,6 @@ impl MulAssign<Volume> for Frame {
     }
 }
 
-#[derive(Debug)]
-pub(crate) struct Sender {
-    // Note that we do not provide a `Clone` impl, so we
-    // can safely assume that `Queue::push` may only be
-    // called from one thread.
-    //inner: Arc<Queue>,
-    inner: Arc<Mutex<VecDeque<Frame>>>,
-}
-
-impl Sender {
-    pub fn push(&self, value: Frame) {
-        //unsafe {
-        //    self.inner.push(value);
-        //}
-        let mut inner = self.inner.lock().unwrap();
-        inner.push_back(value);
-    }
-}
-
-unsafe impl Send for Sender {}
-
-#[derive(Debug)]
-pub(crate) struct Receiver {
-    //inner: Arc<Queue>,
-    inner: Arc<Mutex<VecDeque<Frame>>>,
-}
-
-impl Receiver {
-    pub fn pop(&self) -> Option<Frame> {
-        //unsafe { self.inner.pop() }
-        let mut inner = self.inner.lock().unwrap();
-        inner.pop_front()
-    }
-}
-
-unsafe impl Send for Receiver {}
-
-#[derive(Debug)]
-pub(crate) struct Queue {
-    inner: Box<[UnsafeCell<MaybeUninit<Frame>>]>,
-    /// The position of the next write, or in other words, the first **NON**-initialized element.
-    head: AtomicUsize,
-    /// The position of the next read.
-    tail: AtomicUsize,
-    // Ensure that we are `!Sync`.
-    _marker: PhantomData<*const ()>,
-}
-
-impl Queue {
-    pub fn new(size: usize) -> Self {
-        let mut inner = Vec::with_capacity(size);
-        for _ in 0..size {
-            inner.push(UnsafeCell::new(MaybeUninit::uninit()));
-        }
-
-        Self {
-            inner: inner.into_boxed_slice(),
-            head: AtomicUsize::new(0),
-            tail: AtomicUsize::new(0),
-            _marker: PhantomData,
-        }
-    }
-
-    pub fn split(self) -> (Sender, Receiver) {
-        let inner: Arc<Mutex<VecDeque<Frame>>> = Arc::default();
-        (
-            Sender {
-                inner: inner.clone(),
-            },
-            Receiver { inner },
-        )
-    }
-
-    pub unsafe fn push(&self, value: Frame) {
-        let index = self.head.fetch_add(1, Ordering::Relaxed) % self.inner.len();
-
-        let slot = unsafe { &mut *self.inner[index].get() };
-        slot.write(value);
-    }
-
-    pub unsafe fn pop(&self) -> Option<Frame> {
-        let head = self.head.load(Ordering::Acquire);
-        let tail = self.tail.load(Ordering::Relaxed);
-
-        // Caught up to write head; there is no data ready.
-        if head == tail {
-            return None;
-        }
-
-        self.tail.fetch_add(1, Ordering::Relaxed);
-        let index = tail % self.inner.len();
-
-        let slot = unsafe { &mut *self.inner[index].get() };
-        let val = unsafe { slot.assume_init_read() };
-        Some(val)
-    }
-}
-
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct SoundId(pub(crate) slotmap::DefaultKey);
 
@@ -163,4 +65,46 @@ pub(crate) struct PlayingSound {
     pub data: SoundData,
     pub cursor: usize,
     pub track: TrackId,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct Buffer {
+    inner: Vec<Frame>,
+    /// Write head, i.e. next write position
+    head: usize,
+    /// Read tail, i.e. next read position
+    tail: usize,
+}
+
+impl Buffer {
+    pub fn new(size: usize) -> Self {
+        Self {
+            inner: vec![Frame::EQUILIBRIUM; size],
+            head: 0,
+            tail: 0,
+        }
+    }
+
+    pub fn pop(&mut self) -> Option<Frame> {
+        if self.head == self.tail {
+            return None;
+        }
+
+        let index = self.tail % self.inner.len();
+        self.tail += 1;
+        Some(self.inner[index])
+    }
+
+    /// Returns the spare capacity to write.
+    pub fn spare_capacity(&self) -> usize {
+        self.inner.len() - (self.head - self.tail)
+    }
+
+    pub fn push(&mut self, frame: Frame) {
+        assert!(self.spare_capacity() > 0);
+
+        let index = self.head % self.inner.len();
+        self.head += 1;
+        self.inner[index] = frame;
+    }
 }

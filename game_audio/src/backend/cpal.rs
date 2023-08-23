@@ -1,13 +1,16 @@
+use parking_lot::Mutex;
+use std::sync::Arc;
+
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{default_host, BufferSize, SampleRate, StreamConfig, SupportedBufferSize};
 
-use crate::sound::{Frame, Receiver};
+use crate::sound::{Buffer, Frame};
 
 #[derive(Debug)]
 pub(crate) struct CpalBackend {}
 
 impl CpalBackend {
-    pub fn new(mut rx: Receiver) -> Self {
+    pub fn new(mut buf: Arc<Mutex<Buffer>>) -> Self {
         std::thread::spawn(move || {
             let host = default_host();
             let device = host
@@ -28,7 +31,8 @@ impl CpalBackend {
                 .build_output_stream(
                     &config,
                     move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
-                        write_data(data, channels, &mut rx);
+                        let mut buf = buf.lock();
+                        write_data(data, channels, &mut buf);
                     },
                     |err| {
                         panic!("{}", err);
@@ -50,7 +54,7 @@ impl CpalBackend {
     }
 }
 
-fn write_data(output: &mut [f32], channels: usize, rx: &mut Receiver) {
+fn write_data(output: &mut [f32], channels: usize, rx: &mut Buffer) {
     for f in output.chunks_exact_mut(channels) {
         let frame = match rx.pop() {
             Some(frame) => frame,
