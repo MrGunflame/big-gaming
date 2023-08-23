@@ -1,16 +1,22 @@
 use parking_lot::Mutex;
-use std::sync::Arc;
+use std::sync::{mpsc, Arc};
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{default_host, BufferSize, SampleRate, StreamConfig, SupportedBufferSize};
 
 use crate::sound::{Buffer, Frame};
 
+use super::Backend;
+
 #[derive(Debug)]
-pub(crate) struct CpalBackend {}
+pub struct CpalBackend {
+    tx: mpsc::Sender<Arc<Mutex<Buffer>>>,
+}
 
 impl CpalBackend {
-    pub fn new(mut buf: Arc<Mutex<Buffer>>) -> Self {
+    pub fn new() -> Self {
+        let (tx, rx) = mpsc::channel::<Arc<Mutex<Buffer>>>();
+
         std::thread::spawn(move || {
             let host = default_host();
             let device = host
@@ -27,30 +33,39 @@ impl CpalBackend {
 
             let channels = config.channels as usize;
 
-            let stream = device
-                .build_output_stream(
-                    &config,
-                    move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
-                        let mut buf = buf.lock();
-                        write_data(data, channels, &mut buf);
-                    },
-                    |err| {
-                        panic!("{}", err);
-                    },
-                    None,
-                )
-                .unwrap();
+            let mut streams = vec![];
 
-            stream.play().unwrap();
+            while let Ok(buf) = rx.recv() {
+                let stream = device
+                    .build_output_stream(
+                        &config,
+                        move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
+                            let mut buf = buf.lock();
+                            write_data(data, channels, &mut buf);
+                        },
+                        |err| {
+                            panic!("{}", err);
+                        },
+                        None,
+                    )
+                    .unwrap();
 
-            // We have created the thread and need to keep the stream
-            // alive on this thread.
-            loop {
-                std::thread::park();
+                stream.play().unwrap();
+
+                // Keep the stream alive until the backend itself is dropped.
+                streams.push(stream);
             }
+
+            drop(streams);
         });
 
-        Self {}
+        Self { tx }
+    }
+}
+
+impl Backend for CpalBackend {
+    fn create_output_stream(&mut self, buf: Arc<Mutex<Buffer>>) {
+        self.tx.send(buf);
     }
 }
 

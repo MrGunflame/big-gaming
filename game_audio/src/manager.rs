@@ -5,14 +5,17 @@ use bevy_ecs::system::Resource;
 use parking_lot::Mutex;
 use slotmap::SlotMap;
 
-use crate::backend::DefaultBackend;
+use crate::backend::{Backend, DefaultBackend};
 use crate::sound::{Buffer, Frame, PlayingSound, SoundId};
 use crate::sound_data::{Settings, SoundData};
 use crate::track::{ActiveTrack, Track, TrackGraph, TrackId};
 
 #[derive(Debug, Resource)]
-pub struct AudioManager {
-    backend: DefaultBackend,
+pub struct AudioManager<B>
+where
+    B: Backend,
+{
+    backend: B,
     main_buffer: Arc<Mutex<Buffer>>,
     sounds: SlotMap<slotmap::DefaultKey, PlayingSound>,
     tracks: SlotMap<slotmap::DefaultKey, ActiveTrack>,
@@ -22,14 +25,16 @@ pub struct AudioManager {
     last_update: Instant,
 }
 
-impl AudioManager {
-    pub fn new() -> Self {
+impl<B> AudioManager<B>
+where
+    B: Backend,
+{
+    pub fn new(mut backend: B) -> Self {
         let sample_rate = 48_000;
         let buffer_size = 3;
 
         let mut buf = Arc::new(Mutex::new(Buffer::new(sample_rate / 60 * buffer_size)));
-
-        let backend = DefaultBackend::new(buf.clone());
+        backend.create_output_stream(buf.clone());
 
         Self {
             backend,

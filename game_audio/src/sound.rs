@@ -11,7 +11,7 @@ use crate::sound_data::SoundData;
 use crate::track::TrackId;
 
 #[derive(Copy, Clone, Debug, Default, PartialEq)]
-pub(crate) struct Frame {
+pub struct Frame {
     pub left: f32,
     pub right: f32,
 }
@@ -68,7 +68,7 @@ pub(crate) struct PlayingSound {
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct Buffer {
+pub struct Buffer {
     inner: Vec<Frame>,
     /// Write head, i.e. next write position
     head: usize,

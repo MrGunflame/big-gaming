@@ -13,8 +13,8 @@ use crate::track::TrackId;
 
 #[derive(Clone, Debug)]
 pub struct SoundData {
-    pub(crate) frames: Vec<Frame>,
-    pub(crate) sample_rate: u32,
+    pub frames: Vec<Frame>,
+    pub sample_rate: u32,
     pub volume: Volume,
 }
 
