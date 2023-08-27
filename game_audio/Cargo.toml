@@ -23,3 +23,7 @@ parking_lot = "0.12.1"
 [[test]]
 name = "latency"
 path = "tests/latency/latency.rs"
+
+[[test]]
+name = "basic"
+path = "tests/basic.rs"
