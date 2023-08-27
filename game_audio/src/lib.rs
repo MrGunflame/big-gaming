@@ -2,6 +2,7 @@
 
 pub mod backend;
 pub mod effects;
+pub mod queue;
 pub mod sound;
 pub mod sound_data;
 pub mod spatial;

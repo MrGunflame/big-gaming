@@ -1,13 +1,13 @@
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{mpsc, Arc};
+use std::sync::Arc;
 use std::time::Instant;
 
 use game_audio::backend::Backend;
 use game_audio::effects::Volume;
+use game_audio::queue::Receiver;
 use game_audio::sound::Frame;
 use game_audio::sound_data::{Settings, SoundData};
 use game_audio::AudioManager;
-use parking_lot::Mutex;
 
 #[test]
 fn test_latency() {
@@ -54,12 +54,11 @@ pub struct LatencyTestBackend {
 }
 
 impl Backend for LatencyTestBackend {
-    fn create_output_stream(&mut self, buf: Arc<Mutex<game_audio::sound::Buffer>>) {
+    fn create_output_stream(&mut self, mut rx: Receiver) {
         let cell = self.cell.clone();
 
         std::thread::spawn(move || loop {
-            let mut buf = buf.lock();
-            if let Some(frame) = buf.pop() {
+            if let Some(frame) = rx.recv() {
                 if frame.left == 1.0 && frame.right == 1.0 {
                     cell.store(true, Ordering::Release);
                 }

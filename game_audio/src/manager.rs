@@ -6,7 +6,8 @@ use parking_lot::Mutex;
 use slotmap::SlotMap;
 
 use crate::backend::{Backend, DefaultBackend};
-use crate::sound::{Buffer, Destination, Frame, PlayingSound, SoundId};
+use crate::queue::Sender;
+use crate::sound::{Destination, Frame, PlayingSound, SoundId};
 use crate::sound_data::{Settings, SoundData};
 use crate::spatial::{Emitter, EmitterId, Listener, ListenerId};
 use crate::track::{ActiveTrack, Track, TrackGraph, TrackId};
@@ -17,7 +18,7 @@ where
     B: Backend,
 {
     backend: B,
-    main_buffer: Arc<Mutex<Buffer>>,
+    tx: Sender,
     sounds: SlotMap<slotmap::DefaultKey, PlayingSound>,
     tracks: SlotMap<slotmap::DefaultKey, ActiveTrack>,
     sample_rate: u32,
@@ -37,18 +38,18 @@ where
         let sample_rate = 48_000;
         let buffer_size = 3;
 
-        let mut buf = Arc::new(Mutex::new(Buffer::new(sample_rate / 60 * buffer_size)));
-        backend.create_output_stream(buf.clone());
+        let (tx, rx) = crate::queue::channel(sample_rate / 60 * buffer_size);
+        backend.create_output_stream(rx);
 
         Self {
             backend,
+            tx,
             sounds: SlotMap::new(),
             sample_rate: sample_rate as u32,
             buffer_size: buffer_size as u32,
             tracks: SlotMap::new(),
             track_graph: TrackGraph::new(std::iter::empty()),
             last_update: Instant::now(),
-            main_buffer: buf,
             listeners: SlotMap::new(),
             emitters: SlotMap::new(),
         }
@@ -86,10 +87,7 @@ where
     pub fn update(&mut self) {
         let mut drop_sounds = vec![];
 
-        let spare_cap = {
-            let buf = self.main_buffer.lock();
-            buf.spare_capacity()
-        };
+        let spare_cap = self.tx.spare_capacity();
 
         // The output buffer is still full.
         if spare_cap == 0 {
@@ -154,15 +152,7 @@ where
             }
         }
 
-        let mut buf = self.main_buffer.lock();
-        for elem in main_buffer {
-            if elem.left.abs() > 1.0 || elem.right.abs() > 1.0 {
-                tracing::warn!("clipping");
-            }
-
-            buf.push(elem);
-        }
-        drop(buf);
+        self.tx.send(&main_buffer);
 
         for id in drop_sounds {
             self.sounds.remove(id);

@@ -1,21 +1,21 @@
-use parking_lot::Mutex;
-use std::sync::{mpsc, Arc};
+use std::sync::mpsc;
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{default_host, BufferSize, SampleRate, StreamConfig, SupportedBufferSize};
 
-use crate::sound::{Buffer, Frame};
+use crate::queue::Receiver;
+use crate::sound::Frame;
 
 use super::Backend;
 
 #[derive(Debug)]
 pub struct CpalBackend {
-    tx: mpsc::Sender<Arc<Mutex<Buffer>>>,
+    tx: mpsc::Sender<Receiver>,
 }
 
 impl CpalBackend {
     pub fn new() -> Self {
-        let (tx, rx) = mpsc::channel::<Arc<Mutex<Buffer>>>();
+        let (tx, rx) = mpsc::channel::<Receiver>();
 
         std::thread::spawn(move || {
             let host = default_host();
@@ -35,12 +35,11 @@ impl CpalBackend {
 
             let mut streams = vec![];
 
-            while let Ok(buf) = rx.recv() {
+            while let Ok(mut buf) = rx.recv() {
                 let stream = device
                     .build_output_stream(
                         &config,
                         move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
-                            let mut buf = buf.lock();
                             write_data(data, channels, &mut buf);
                         },
                         |err| {
@@ -64,14 +63,14 @@ impl CpalBackend {
 }
 
 impl Backend for CpalBackend {
-    fn create_output_stream(&mut self, buf: Arc<Mutex<Buffer>>) {
-        self.tx.send(buf);
+    fn create_output_stream(&mut self, rx: Receiver) {
+        self.tx.send(rx);
     }
 }
 
-fn write_data(output: &mut [f32], channels: usize, rx: &mut Buffer) {
+fn write_data(output: &mut [f32], channels: usize, rx: &mut Receiver) {
     for f in output.chunks_exact_mut(channels) {
-        let frame = match rx.pop() {
+        let frame = match rx.recv() {
             Some(frame) => frame,
             None => {
                 //tracing::error!("no data");
