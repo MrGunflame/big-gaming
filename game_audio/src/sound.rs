@@ -8,6 +8,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::effects::Volume;
 use crate::sound_data::SoundData;
+use crate::spatial::EmitterId;
 use crate::track::TrackId;
 
 #[derive(Copy, Clone, Debug, Default, PartialEq)]
@@ -64,7 +65,7 @@ pub struct SoundId(pub(crate) slotmap::DefaultKey);
 pub(crate) struct PlayingSound {
     pub data: SoundData,
     pub cursor: usize,
-    pub track: TrackId,
+    pub destination: Destination,
 }
 
 #[derive(Clone, Debug)]
@@ -106,5 +107,29 @@ impl Buffer {
         let index = self.head % self.inner.len();
         self.head += 1;
         self.inner[index] = frame;
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum Destination {
+    Track(TrackId),
+    Emitter(EmitterId),
+}
+
+impl Default for Destination {
+    fn default() -> Self {
+        Self::Track(TrackId::default())
+    }
+}
+
+impl From<TrackId> for Destination {
+    fn from(id: TrackId) -> Self {
+        Self::Track(id)
+    }
+}
+
+impl From<EmitterId> for Destination {
+    fn from(id: EmitterId) -> Self {
+        Self::Emitter(id)
     }
 }

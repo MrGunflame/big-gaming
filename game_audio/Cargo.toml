@@ -13,12 +13,10 @@ bevy_ecs = "0.10"
 bevy_app = "0.10.0"
 game_common = { version = "0.1.0", path = "../game_common" }
 
-tracing = { version = "0.1.37", features = ["log-always"] }
+tracing = "0.1.37"
 glam = "0.23.0"
 cpal = "0.15.2"
 symphonia = "0.5.3"
-rb = "0.4.1"
-pretty_env_logger = "0.5.0"
 slotmap = "1.0.6"
 parking_lot = "0.12.1"
 

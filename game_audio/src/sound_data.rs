@@ -8,7 +8,7 @@ use symphonia::core::{
 };
 
 use crate::effects::Volume;
-use crate::sound::Frame;
+use crate::sound::{Destination, Frame};
 use crate::track::TrackId;
 
 #[derive(Clone, Debug)]
@@ -118,5 +118,5 @@ where
 
 #[derive(Clone, Debug, Default)]
 pub struct Settings {
-    pub track: TrackId,
+    pub destination: Destination,
 }

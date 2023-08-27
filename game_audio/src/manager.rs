@@ -6,8 +6,9 @@ use parking_lot::Mutex;
 use slotmap::SlotMap;
 
 use crate::backend::{Backend, DefaultBackend};
-use crate::sound::{Buffer, Frame, PlayingSound, SoundId};
+use crate::sound::{Buffer, Destination, Frame, PlayingSound, SoundId};
 use crate::sound_data::{Settings, SoundData};
+use crate::spatial::{Emitter, EmitterId, Listener, ListenerId};
 use crate::track::{ActiveTrack, Track, TrackGraph, TrackId};
 
 #[derive(Debug, Resource)]
@@ -23,6 +24,9 @@ where
     buffer_size: u32,
     track_graph: TrackGraph,
     last_update: Instant,
+
+    listeners: SlotMap<slotmap::DefaultKey, Listener>,
+    emitters: SlotMap<slotmap::DefaultKey, Emitter>,
 }
 
 impl<B> AudioManager<B>
@@ -45,6 +49,8 @@ where
             track_graph: TrackGraph::new(std::iter::empty()),
             last_update: Instant::now(),
             main_buffer: buf,
+            listeners: SlotMap::new(),
+            emitters: SlotMap::new(),
         }
     }
 
@@ -52,7 +58,7 @@ where
         let key = self.sounds.insert(PlayingSound {
             data,
             cursor: 0,
-            track: settings.track,
+            destination: settings.destination,
         });
 
         SoundId(key)
@@ -108,7 +114,11 @@ where
                 };
 
                 for (id, sound) in self.sounds.iter_mut() {
-                    if track_id != sound.track {
+                    let Destination::Track(dest_id) = sound.destination else {
+                        continue;
+                    };
+
+                    if track_id != dest_id {
                         continue;
                     }
 
@@ -157,5 +167,23 @@ where
         for id in drop_sounds {
             self.sounds.remove(id);
         }
+    }
+
+    pub fn add_listener(&mut self, listener: Listener) -> ListenerId {
+        let key = self.listeners.insert(listener);
+        ListenerId(key)
+    }
+
+    pub fn remove_listener(&mut self, id: ListenerId) {
+        self.listeners.remove(id.0);
+    }
+
+    pub fn add_emitter(&mut self, emitter: Emitter) -> EmitterId {
+        let key = self.emitters.insert(emitter);
+        EmitterId(key)
+    }
+
+    pub fn remove_emitter(&mut self, id: EmitterId) {
+        self.emitters.remove(id.0);
     }
 }
