@@ -16,6 +16,17 @@ impl Frame {
         left: 0.0,
         right: 0.0,
     };
+
+    pub fn from_mono(value: f32) -> Self {
+        Self {
+            left: value,
+            right: value,
+        }
+    }
+
+    pub fn to_mono(self) -> Self {
+        Self::from_mono((self.left + self.right) / 2.0)
+    }
 }
 
 impl Add for Frame {

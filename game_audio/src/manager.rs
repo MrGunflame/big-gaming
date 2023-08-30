@@ -101,6 +101,41 @@ where
             track.buffer.fill(Frame::EQUILIBRIUM);
         }
 
+        // Spatial sound
+        for listener in self.listeners.values() {
+            let buf = match listener.track {
+                TrackId::Main => &mut main_buffer,
+                TrackId::Track(key) => {
+                    let track = self.tracks.get_mut(key).unwrap();
+                    &mut track.buffer
+                }
+            };
+
+            for (emitter_id, emitter) in self.emitters.iter() {
+                for (id, sound) in self.sounds.iter_mut() {
+                    let Destination::Emitter(dest_id) = sound.destination else {
+                        continue;
+                    };
+
+                    if emitter_id != dest_id.0 {
+                        continue;
+                    }
+
+                    for index in 0..spare_cap {
+                        let Some(mut frame) = sound.data.frames.get(sound.cursor).copied() else {
+                            drop_sounds.push(id);
+                            break;
+                        };
+
+                        frame = crate::spatial::process(listener, emitter, frame);
+
+                        buf[index] += frame * sound.data.volume;
+                        sound.cursor += 1;
+                    }
+                }
+            }
+        }
+
         for &track_id in &self.track_graph.tracks {
             {
                 let buf = match track_id {
@@ -164,6 +199,14 @@ where
         ListenerId(key)
     }
 
+    pub fn get_listener(&self, id: ListenerId) -> Option<&Listener> {
+        self.listeners.get(id.0)
+    }
+
+    pub fn get_listener_mut(&mut self, id: ListenerId) -> Option<&mut Listener> {
+        self.listeners.get_mut(id.0)
+    }
+
     pub fn remove_listener(&mut self, id: ListenerId) {
         self.listeners.remove(id.0);
     }
@@ -171,6 +214,14 @@ where
     pub fn add_emitter(&mut self, emitter: Emitter) -> EmitterId {
         let key = self.emitters.insert(emitter);
         EmitterId(key)
+    }
+
+    pub fn get_emitter(&self, id: EmitterId) -> Option<&Emitter> {
+        self.emitters.get(id.0)
+    }
+
+    pub fn get_emitter_mut(&mut self, id: EmitterId) -> Option<&mut Emitter> {
+        self.emitters.get_mut(id.0)
     }
 
     pub fn remove_emitter(&mut self, id: EmitterId) {
