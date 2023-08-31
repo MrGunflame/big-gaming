@@ -54,7 +54,7 @@ fn main() {
         let emitter = manager.get_emitter_mut(emitter_id).unwrap();
         emitter.translation = listener.translation + rotation * Vec3::new(0.0, 0.0, distance);
 
-        dbg!(emitter.translation);
+        //dbg!(emitter.translation);
 
         // if now.elapsed().as_millis() > 100_000 && !spawned {
         //  dbg!("spawn");

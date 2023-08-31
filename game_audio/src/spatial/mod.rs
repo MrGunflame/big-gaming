@@ -5,7 +5,7 @@ use crate::sound::Frame;
 use crate::track::TrackId;
 
 const EAR_DISTANCE: f32 = 0.1;
-const MIN_VOLUME: f32 = 0.5;
+const MIN_VOLUME: f32 = 0.3;
 
 #[derive(Copy, Clone, Debug)]
 pub struct Listener {
@@ -41,6 +41,10 @@ pub(crate) fn process(listener: &Listener, emitter: &Emitter, frame: Frame) -> F
     let left_dir = listener.rotation * -Vec3::X;
     let right_dir = listener.rotation * Vec3::X;
     debug_assert_ne!(left_pos, right_pos);
+
+    let distance = f32::max(1.0, (emitter.translation - listener.translation).length());
+    output.left = output.left / distance;
+    output.right = output.right / distance;
 
     let emitter_left_dir = (emitter.translation - left_pos).normalize_or_zero();
     let emitter_right_dir = (emitter.translation - right_pos).normalize_or_zero();
