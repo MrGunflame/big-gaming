@@ -1,11 +1,13 @@
+use self::main_menu::MainMenuState;
+
 pub mod main_menu;
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Debug, Default)]
 pub enum GameState {
     /// Initial game startup phase.
     #[default]
     Startup,
-    MainMenu,
+    MainMenu(MainMenuState),
     /// Connecting to server
     Connecting,
     /// Connection failed

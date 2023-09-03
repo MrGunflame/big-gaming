@@ -24,7 +24,7 @@ pub struct Entities {
     pub point_lights: HashMap<Entity, PointLight>,
     pub spot_lights: HashMap<Entity, SpotLight>,
     pub state: GpuState,
-    need_rebuild: bool,
+    pub need_rebuild: bool,
 }
 
 impl Entities {

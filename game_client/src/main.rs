@@ -18,6 +18,7 @@ use game_window::events::WindowEvent;
 use game_window::windows::{WindowBuilder, WindowId, Windows};
 use game_window::WindowManager;
 use glam::UVec2;
+use state::main_menu::MainMenuState;
 use state::GameState;
 
 use crate::net::ServerConnection;
@@ -73,16 +74,17 @@ pub struct App {
 
 impl game_window::App for App {
     fn update(&mut self) {
-        match self.state {
+        match &mut self.state {
             GameState::Startup => {
-                self.state = GameState::MainMenu;
-                crate::state::main_menu::setup_main_scene(
+                self.state = GameState::MainMenu(MainMenuState::new(
                     &mut self.scenes,
                     &mut self.renderer,
                     self.window_id,
-                );
+                ));
             }
-            GameState::MainMenu => {}
+            GameState::MainMenu(state) => {
+                state.update(&mut self.renderer);
+            }
             _ => todo!(),
         }
 

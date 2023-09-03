@@ -1,52 +1,57 @@
 use game_common::components::transform::Transform;
 use game_render::camera::{Camera, Projection, RenderTarget};
 use game_render::color::Color;
+use game_render::entities::Entity;
 use game_render::light::PointLight;
 use game_render::RenderState;
-use game_scene::Scenes;
+use game_scene::{SceneHandle, Scenes};
 use game_window::windows::WindowId;
 use glam::Vec3;
 
-pub fn setup_main_scene(scenes: &mut Scenes, renderer: &mut RenderState, window_id: WindowId) {
-    renderer.entities.push_camera(Camera {
-        transform: Transform {
-            translation: Vec3::new(10.0, 0.0, 1.0),
-            ..Default::default()
-        },
-        projection: Projection::default(),
-        target: RenderTarget::Window(window_id),
-    });
-
-    let handle = scenes.load("sponza.model");
-    std::mem::forget(handle);
-
-    renderer.entities.push_point_light(PointLight {
-        transform: Transform {
-            translation: Vec3::new(0.0, 1.0, 0.0),
-            ..Default::default()
-        },
-        color: Color::WHITE,
-        intensity: 70.0,
-        radius: 100.0,
-    });
+#[derive(Debug)]
+pub struct MainMenuState {
+    camera: Entity,
+    handle: SceneHandle,
 }
 
-// pub fn move_camera(
-//     state: Res<InternalGameState>,
-//     mut cameras: Query<&mut Transform, With<Camera>>,
-// ) {
-//     if state.state != GameState::MainMenu {
-//         return;
-//     }
+impl MainMenuState {
+    pub fn new(scenes: &mut Scenes, renderer: &mut RenderState, window_id: WindowId) -> Self {
+        let camera = renderer.entities.push_camera(Camera {
+            transform: Transform {
+                translation: Vec3::new(10.0, 0.0, 1.0),
+                ..Default::default()
+            },
+            projection: Projection::default(),
+            target: RenderTarget::Window(window_id),
+        });
 
-//     for mut camera in &mut cameras {
-//         camera.translation.x = 10.0;
-//         camera.translation.z = 1.0;
-//         camera.translation.y += 0.001;
-//         *camera = camera.looking_at(Vec3::ZERO, Vec3::Y);
+        let handle = scenes.load("sponza.model");
 
-//         if camera.translation.y > 2.1 {
-//             camera.translation.y = 0.0;
-//         }
-//     }
-// }
+        renderer.entities.push_point_light(PointLight {
+            transform: Transform {
+                translation: Vec3::new(0.0, 1.0, 0.0),
+                ..Default::default()
+            },
+            color: Color::WHITE,
+            intensity: 70.0,
+            radius: 1000.0,
+        });
+
+        Self { camera, handle }
+    }
+
+    pub fn update(&mut self, renderer: &mut RenderState) {
+        let camera = renderer.entities.cameras.get_mut(&self.camera).unwrap();
+
+        camera.transform.translation.x = 10.0;
+        camera.transform.translation.z = 1.0;
+        camera.transform.translation.y += 0.01;
+        camera.transform = camera.transform.looking_at(Vec3::ZERO, Vec3::Y);
+
+        if camera.transform.translation.y > 2.1 {
+            camera.transform.translation.y = 0.0;
+        }
+
+        renderer.entities.need_rebuild = true;
+    }
+}
