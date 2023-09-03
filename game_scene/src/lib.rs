@@ -144,20 +144,19 @@ pub struct Node {
     pub transform: Transform,
 }
 
-pub fn tick(
-    scenes: &mut Scenes,
-    meshes: &mut Assets<Mesh>,
-    materials: &mut Assets<PbrMaterial>,
-    images: &mut Images,
-    render_state: &mut RenderState,
-) {
-    load_scenes(scenes, meshes, materials, images);
+pub fn tick(scenes: &mut Scenes, renderer: &mut RenderState) {
+    load_scenes(
+        scenes,
+        &mut renderer.meshes,
+        &mut renderer.materials,
+        &mut renderer.images,
+    );
     update_scene_handles(scenes);
 
     let mut spawned = vec![];
     for (id, scene) in scenes.scenes.iter() {
         if let Some(scene) = &scene.data {
-            spawn_scene(scene, render_state, meshes, materials);
+            spawn_scene(scene, renderer);
             spawned.push(*id);
         }
     }

@@ -1,20 +1,13 @@
-use game_asset::Assets;
 use game_render::color::Color;
 use game_render::entities::Object;
-use game_render::mesh::Mesh;
 use game_render::pbr::PbrMaterial;
 use game_render::{shape, RenderState};
 
 use crate::Scene;
 
-pub(crate) fn spawn_scene(
-    scene: &Scene,
-    render_state: &mut RenderState,
-    meshes: &mut Assets<Mesh>,
-    materials: &mut Assets<PbrMaterial>,
-) {
+pub(crate) fn spawn_scene(scene: &Scene, renderer: &mut RenderState) {
     for node in &scene.nodes {
-        render_state.entities.push_object(Object {
+        renderer.entities.push_object(Object {
             transform: Default::default(),
             mesh: node.mesh.clone(),
             material: node.material.clone(),
@@ -57,10 +50,10 @@ pub(crate) fn spawn_scene(
             Color::BLUE,
         ),
     ] {
-        render_state.entities.push_object(Object {
+        renderer.entities.push_object(Object {
             transform: Default::default(),
-            mesh: meshes.insert(mesh.into()),
-            material: materials.insert(PbrMaterial {
+            mesh: renderer.meshes.insert(mesh.into()),
+            material: renderer.materials.insert(PbrMaterial {
                 base_color: color,
                 ..Default::default()
             }),

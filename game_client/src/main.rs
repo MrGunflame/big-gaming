@@ -86,6 +86,7 @@ impl game_window::App for App {
             _ => todo!(),
         }
 
+        game_scene::tick(&mut self.scenes, &mut self.renderer);
         self.renderer.render();
     }
 

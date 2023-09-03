@@ -17,8 +17,8 @@ pub fn setup_main_scene(scenes: &mut Scenes, renderer: &mut RenderState, window_
         target: RenderTarget::Window(window_id),
     });
 
-    // let handle = scenes.load("sponza.model");
-    // std::mem::forget(handle);
+    let handle = scenes.load("sponza.model");
+    std::mem::forget(handle);
 
     renderer.entities.push_point_light(PointLight {
         transform: Transform {
