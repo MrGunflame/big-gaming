@@ -1,7 +1,7 @@
 use std::sync::mpsc;
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use cpal::{default_host, BufferSize, SampleRate, StreamConfig, SupportedBufferSize};
+use cpal::{default_host, SampleRate};
 
 use crate::queue::Receiver;
 use crate::sound::Frame;
@@ -23,13 +23,16 @@ impl CpalBackend {
                 .default_output_device()
                 .expect("no default output device");
 
-            let config = device
+            let mut config = device
                 .supported_output_configs()
                 .unwrap()
                 .next()
                 .unwrap()
                 .with_max_sample_rate()
                 .config();
+
+            config.sample_rate = SampleRate(48_000);
+            config.channels = 2;
 
             let channels = config.channels as usize;
 
