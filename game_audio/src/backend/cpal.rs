@@ -1,12 +1,28 @@
 use std::sync::mpsc;
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use cpal::{default_host, SampleRate};
+use cpal::{
+    default_host, BufferSize, Device, DevicesError, Host, SampleRate, StreamConfig,
+    SupportedStreamConfigsError,
+};
+use thiserror::Error;
 
 use crate::channel::Receiver;
 use crate::sound::Frame;
 
 use super::Backend;
+
+#[derive(Debug, Error)]
+pub enum Error {
+    #[error("cannot enumerate devices: {0}")]
+    Devices(#[from] DevicesError),
+    #[error("cannot select device")]
+    NoDevice,
+    #[error("cannot enumerate stream configs: {0}")]
+    Config(#[from] SupportedStreamConfigsError),
+    #[error("cannot select stream config")]
+    NoConfig,
+}
 
 #[derive(Debug)]
 pub struct CpalBackend {
@@ -14,25 +30,25 @@ pub struct CpalBackend {
 }
 
 impl CpalBackend {
-    pub fn new() -> Self {
+    pub fn new() -> Result<Self, Error> {
+        let (resp_tx, resp_rx) = mpsc::channel::<Result<(), Error>>();
+
         let (tx, rx) = mpsc::channel::<Receiver>();
 
         std::thread::spawn(move || {
-            let host = default_host();
-            let device = host
-                .default_output_device()
-                .expect("no default output device");
+            let sample_rate = SampleRate(48_000);
+            let channels = 2;
 
-            let mut config = device
-                .supported_output_configs()
-                .unwrap()
-                .next()
-                .unwrap()
-                .with_max_sample_rate()
-                .config();
-
-            config.sample_rate = SampleRate(48_000);
-            config.channels = 2;
+            let (device, config) = match new_inner(sample_rate, channels) {
+                Ok(x) => {
+                    let _ = resp_tx.send(Ok(()));
+                    x
+                }
+                Err(err) => {
+                    let _ = resp_tx.send(Err(err));
+                    return;
+                }
+            };
 
             let channels = config.channels as usize;
 
@@ -61,13 +77,51 @@ impl CpalBackend {
             drop(streams);
         });
 
-        Self { tx }
+        let res = resp_rx.recv().expect("resp_tx dropped without response");
+
+        match res {
+            Ok(()) => Ok(Self { tx }),
+            Err(err) => Err(err),
+        }
     }
 }
 
 impl Backend for CpalBackend {
     fn create_output_stream(&mut self, rx: Receiver) {
-        self.tx.send(rx);
+        let _ = self.tx.send(rx);
+    }
+}
+
+fn new_inner(sample_rate: SampleRate, channels: u16) -> Result<(Device, StreamConfig), Error> {
+    let host = default_host();
+    let device = select_output_device(&host)?;
+
+    for config in device.supported_output_configs()? {
+        if config.min_sample_rate() < sample_rate
+            && config.max_sample_rate() > sample_rate
+            && config.channels() == channels
+        {
+            return Ok((
+                device,
+                StreamConfig {
+                    channels,
+                    sample_rate,
+                    buffer_size: BufferSize::Default,
+                },
+            ));
+        }
+    }
+
+    Err(Error::NoConfig)
+}
+
+fn select_output_device(host: &Host) -> Result<Device, Error> {
+    match host.default_output_device() {
+        Some(device) => Ok(device),
+        None => {
+            let mut devices = host.output_devices()?;
+            devices.next().ok_or(Error::NoDevice)
+        }
     }
 }
 

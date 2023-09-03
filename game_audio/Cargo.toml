@@ -19,6 +19,7 @@ cpal = "0.15.2"
 symphonia = "0.5.3"
 slotmap = "1.0.6"
 parking_lot = "0.12.1"
+thiserror = "1.0.48"
 
 [[test]]
 name = "latency"

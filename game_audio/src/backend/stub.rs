@@ -6,5 +6,5 @@ use super::Backend;
 pub struct StubBackend;
 
 impl Backend for StubBackend {
-    fn create_output_stream(&mut self, rx: Receiver) {}
+    fn create_output_stream(&mut self, _rx: Receiver) {}
 }
