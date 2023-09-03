@@ -1,16 +1,10 @@
 mod conn;
 mod entities;
-pub mod interpolate;
+//pub mod interpolate;
 mod prediction;
 mod socket;
 mod world;
 
-use std::time::Instant;
-
-use bevy_app::{App, Plugin};
-use bevy_ecs::prelude::dbg;
-use bevy_ecs::schedule::{IntoSystemConfig, IntoSystemSetConfig, SystemSet};
-use bevy_ecs::system::{Res, ResMut};
 use game_common::components::actions::Actions;
 use game_common::components::components::Components;
 use game_common::components::items::Item;
@@ -23,54 +17,13 @@ use game_core::time::Time;
 use game_net::snapshot::{Command, Response, Status};
 use glam::Vec3;
 
-use crate::state::GameState;
-
 pub use self::conn::ServerConnection;
 use self::world::CommandBuffer;
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, SystemSet)]
-pub enum NetSet {
-    /// Step control tick
-    Tick,
-    WriteBack,
-    /// Lerp transform
-    Interpolate,
-}
-
-impl NetSet {
-    pub fn first() -> Self {
-        Self::Tick
-    }
-
-    pub fn last() -> Self {
-        Self::Interpolate
-    }
-}
-
-/// Client-side network plugin
-#[derive(Clone, Debug, Default)]
-pub struct NetPlugin {}
-
-impl Plugin for NetPlugin {
-    fn build(&self, app: &mut App) {
-        app.init_resource::<ServerConnection<Interval>>();
-        app.insert_resource(CommandBuffer::new());
-
-        app.add_system(tick.in_set(NetSet::Tick));
-        app.add_system(world::write_back.in_set(NetSet::WriteBack));
-
-        app.add_system(interpolate::interpolate_translation.in_set(NetSet::Interpolate));
-        app.add_system(interpolate::interpolate_rotation.in_set(NetSet::Interpolate));
-
-        app.configure_set(NetSet::WriteBack.after(NetSet::Tick));
-        app.configure_set(NetSet::Interpolate.after(NetSet::WriteBack));
-    }
-}
-
 pub fn tick(
-    mut conn: ResMut<ServerConnection<Interval>>,
-    mut buffer: ResMut<CommandBuffer>,
-    time: Res<Time>,
+    mut conn: &mut ServerConnection<Interval>,
+    mut buffer: &mut CommandBuffer,
+    time: &Time,
 ) {
     conn::tick_game(&time, &mut conn);
     flush_command_queue(&mut conn);
@@ -96,7 +49,6 @@ fn flush_command_queue<I>(conn: &mut ServerConnection<I>) {
 
         match msg.command {
             Command::Connected(_) => {
-                conn.writer.update(GameState::World);
                 continue;
             }
             Command::Disconnected => {
@@ -276,13 +228,11 @@ fn flush_command_queue<I>(conn: &mut ServerConnection<I>) {
 
 #[cfg(test)]
 mod tests {
-    use game_common::assert_approx_eq;
     use game_common::components::items::ItemId;
-    use game_common::entity::EntityId;
     use game_common::net::ServerEntity;
     use game_common::record::RecordReference;
     use game_common::world::control_frame::ControlFrame;
-    use game_common::world::entity::{Entity, EntityBody, Item};
+    use game_common::world::entity::{EntityBody, Item};
     use game_core::counter::ManualInterval;
     use game_core::time::Time;
     use game_net::conn::ConnectionId;
@@ -295,8 +245,6 @@ mod tests {
 
     use crate::config::{Config, Network};
     use crate::net::conn::tick_game;
-    use crate::net::tick;
-    use crate::state::GameStateWriter;
 
     use super::world::{apply_world_delta, CommandBuffer};
     use super::{flush_command_queue, ServerConnection};
@@ -320,7 +268,7 @@ mod tests {
                 prediction: true,
             },
         };
-        ServerConnection::new_with_interval(GameStateWriter::noop(), &config, ManualInterval::new())
+        ServerConnection::new_with_interval(&config, ManualInterval::new())
     }
 
     #[test]

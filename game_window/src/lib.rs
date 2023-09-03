@@ -10,7 +10,7 @@ use std::sync::{mpsc, Arc};
 
 use cursor::{Cursor, CursorGrabMode, WindowCompat};
 use events::{
-    CursorEntered, CursorLeft, CursorMoved, ReceivedCharacter, WindowCloseRequested,
+    CursorEntered, CursorLeft, CursorMoved, ReceivedCharacter, WindowCloseRequested, WindowCreated,
     WindowDestroyed, WindowResized,
 };
 use game_input::keyboard::{KeyboardInput, ScanCode};
@@ -414,6 +414,11 @@ where
                         inner: Arc::new(window),
                         backend,
                     });
+                    drop(windows);
+
+                    app.handle_event(events::WindowEvent::WindowCreated(WindowCreated {
+                        window: id,
+                    }));
                 }
                 UpdateEvent::Destroy(id) => {
                     app.handle_event(events::WindowEvent::WindowDestroyed(WindowDestroyed {

@@ -1,4 +1,3 @@
-use bevy_ecs::system::{Commands, Query, ResMut, Resource};
 use game_common::components::actions::{ActionId, Actions};
 use game_common::components::actor::ActorProperties;
 use game_common::components::components::{self, Components};
@@ -15,12 +14,12 @@ use game_core::counter::Interval;
 use game_core::modules::Modules;
 use glam::{Quat, Vec3};
 
-use crate::entities::actor::LoadActor;
-use crate::entities::inventory::{AddInventoryItem, DestroyInventory, RemoveInventoryItem};
-use crate::entities::item::LoadItem;
-use crate::entities::object::LoadObject;
-use crate::entities::terrain::LoadTerrain;
-use crate::net::interpolate::{InterpolateRotation, InterpolateTranslation};
+// use crate::entities::actor::LoadActor;
+// use crate::entities::inventory::{AddInventoryItem, DestroyInventory, RemoveInventoryItem};
+// use crate::entities::item::LoadItem;
+// use crate::entities::object::LoadObject;
+// use crate::entities::terrain::LoadTerrain;
+// use crate::net::interpolate::{InterpolateRotation, InterpolateTranslation};
 
 use super::ServerConnection;
 
@@ -107,43 +106,43 @@ fn handle_event<I>(
         EntityChange::Create { entity: _ } | EntityChange::Destroy { id: _ }
     ) {
         let entity_id = event.entity();
-        if conn.entities.get(entity_id).is_none() {
-            if let Some(entity) = buffer.get_mut(entity_id) {
-                match event {
-                    EntityChange::Create { entity: _ } => {}
-                    EntityChange::Destroy { id: _ } => {}
-                    EntityChange::Translate { id: _, translation } => {
-                        entity.entity.transform.translation = translation;
-                    }
-                    EntityChange::Rotate { id: _, rotation } => {
-                        entity.entity.transform.rotation = rotation;
-                    }
-                    EntityChange::Health { id, health } => match &mut entity.entity.body {
-                        EntityBody::Actor(actor) => actor.health = health,
-                        _ => {
-                            tracing::warn!("tried to apply health to a non-actor entity: {:?}", id);
-                        }
-                    },
-                    EntityChange::CreateHost { id: _ } => entity.host = true,
-                    EntityChange::DestroyHost { id: _ } => entity.host = false,
-                    EntityChange::InventoryItemAdd(event) => {
-                        //add_inventory_item(&mut entity.inventory, modules, event);
-                    }
-                    EntityChange::InventoryItemRemove(event) => {
-                        entity.inventory.remove(event.id);
-                    }
-                    EntityChange::InventoryDestroy(event) => {
-                        entity.inventory.clear();
-                    }
-                    EntityChange::CreateStreamingSource { id, source } => {}
-                    EntityChange::RemoveStreamingSource { id } => {}
+        // if conn.entities.get(entity_id).is_none() {
+        if let Some(entity) = buffer.get_mut(entity_id) {
+            match event {
+                EntityChange::Create { entity: _ } => {}
+                EntityChange::Destroy { id: _ } => {}
+                EntityChange::Translate { id: _, translation } => {
+                    entity.entity.transform.translation = translation;
                 }
-            } else {
-                conn.backlog.push(entity_id, event);
+                EntityChange::Rotate { id: _, rotation } => {
+                    entity.entity.transform.rotation = rotation;
+                }
+                EntityChange::Health { id, health } => match &mut entity.entity.body {
+                    EntityBody::Actor(actor) => actor.health = health,
+                    _ => {
+                        tracing::warn!("tried to apply health to a non-actor entity: {:?}", id);
+                    }
+                },
+                EntityChange::CreateHost { id: _ } => entity.host = true,
+                EntityChange::DestroyHost { id: _ } => entity.host = false,
+                EntityChange::InventoryItemAdd(event) => {
+                    //add_inventory_item(&mut entity.inventory, modules, event);
+                }
+                EntityChange::InventoryItemRemove(event) => {
+                    entity.inventory.remove(event.id);
+                }
+                EntityChange::InventoryDestroy(event) => {
+                    entity.inventory.clear();
+                }
+                EntityChange::CreateStreamingSource { id, source } => {}
+                EntityChange::RemoveStreamingSource { id } => {}
             }
-
-            return;
+        } else {
+            conn.backlog.push(entity_id, event);
         }
+
+        return;
+        // }
     }
 
     match event {
@@ -194,22 +193,22 @@ fn handle_event<I>(
             cmd_buffer.push(Command::Despawn(id));
         }
         EntityChange::Health { id, health } => {
-            let entity = conn.entities.get(id).unwrap();
+            // let entity = conn.entities.get(id).unwrap();
 
             // TODO
         }
         EntityChange::InventoryItemAdd(event) => {
-            let entity = conn.entities.get(event.entity).unwrap();
+            // let entity = conn.entities.get(event.entity).unwrap();
 
             // TODO
         }
         EntityChange::InventoryItemRemove(event) => {
-            let entity = conn.entities.get(event.entity).unwrap();
+            // let entity = conn.entities.get(event.entity).unwrap();
 
             // TODO
         }
         EntityChange::InventoryDestroy(event) => {
-            let entity = conn.entities.get(event.entity).unwrap();
+            // let entity = conn.entities.get(event.entity).unwrap();
 
             // TODO
         }
@@ -218,31 +217,32 @@ fn handle_event<I>(
     }
 }
 
-fn spawn_entity(commands: &mut Commands, entity: DelayedEntity) -> bevy_ecs::entity::Entity {
-    match entity.entity.body {
-        EntityBody::Terrain(terrain) => commands.spawn(LoadTerrain { terrain }).id(),
-        EntityBody::Object(object) => commands
-            .spawn(LoadObject {
-                transform: entity.entity.transform,
-                id: object.id,
-            })
-            .id(),
-        EntityBody::Actor(actor) => commands
-            .spawn(LoadActor {
-                transform: entity.entity.transform,
-                race: actor.race,
-                health: actor.health,
-                host: entity.host,
-                inventory: entity.inventory,
-            })
-            .id(),
-        EntityBody::Item(item) => commands
-            .spawn(LoadItem {
-                transform: entity.entity.transform,
-                id: item.id,
-            })
-            .id(),
-    }
+fn spawn_entity(entity: DelayedEntity) -> () {
+    // match entity.entity.body {
+    //     EntityBody::Terrain(terrain) => commands.spawn(LoadTerrain { terrain }).id(),
+    //     EntityBody::Object(object) => commands
+    //         .spawn(LoadObject {
+    //             transform: entity.entity.transform,
+    //             id: object.id,
+    //         })
+    //         .id(),
+    //     EntityBody::Actor(actor) => commands
+    //         .spawn(LoadActor {
+    //             transform: entity.entity.transform,
+    //             race: actor.race,
+    //             health: actor.health,
+    //             host: entity.host,
+    //             inventory: entity.inventory,
+    //         })
+    //         .id(),
+    //     EntityBody::Item(item) => commands
+    //         .spawn(LoadItem {
+    //             transform: entity.entity.transform,
+    //             id: item.id,
+    //         })
+    //         .id(),
+    // }
+    todo!()
 
     // match &entity.entity.body {
     //     EntityBody::Terrain(terrain) => {
@@ -472,7 +472,7 @@ fn create_snapshot_diff(prev: WorldViewRef, next: WorldViewRef) -> Vec<EntityCha
     deltas
 }
 
-#[derive(Clone, Debug, Default, Resource)]
+#[derive(Clone, Debug, Default)]
 pub struct CommandBuffer {
     buffer: Vec<Command>,
 }
@@ -519,65 +519,65 @@ pub enum Command {
     DestroyHost(EntityId),
 }
 
-pub fn write_back(
-    mut commands: Commands,
-    mut buffer: ResMut<CommandBuffer>,
-    mut entities: Query<(
-        bevy_ecs::entity::Entity,
-        &Transform,
-        Option<&mut ActorProperties>,
-        &mut InterpolateTranslation,
-        &mut InterpolateRotation,
-    )>,
-    conn: ResMut<ServerConnection<Interval>>,
-) {
-    while let Some(cmd) = buffer.pop() {
-        match cmd {
-            Command::Spawn(entity) => {
-                let id = entity.entity.id;
-                let entity = spawn_entity(&mut commands, entity);
-                conn.entities.insert(id, entity);
-            }
-            Command::Despawn(entity) => {
-                let entity = conn.entities.get(entity).unwrap();
+// pub fn write_back(
+//     mut commands: Commands,
+//     mut buffer: ResMut<CommandBuffer>,
+//     mut entities: Query<(
+//         bevy_ecs::entity::Entity,
+//         &Transform,
+//         Option<&mut ActorProperties>,
+//         &mut InterpolateTranslation,
+//         &mut InterpolateRotation,
+//     )>,
+//     conn: ResMut<ServerConnection<Interval>>,
+// ) {
+//     while let Some(cmd) = buffer.pop() {
+//         match cmd {
+//             Command::Spawn(entity) => {
+//                 let id = entity.entity.id;
+//                 let entity = spawn_entity(&mut commands, entity);
+//                 conn.entities.insert(id, entity);
+//             }
+//             Command::Despawn(entity) => {
+//                 let entity = conn.entities.get(entity).unwrap();
 
-                commands.entity(entity).despawn();
-            }
-            Command::Translate {
-                entity,
-                start,
-                end,
-                dst,
-            } => {
-                let entity = conn.entities.get(entity).unwrap();
+//                 commands.entity(entity).despawn();
+//             }
+//             Command::Translate {
+//                 entity,
+//                 start,
+//                 end,
+//                 dst,
+//             } => {
+//                 let entity = conn.entities.get(entity).unwrap();
 
-                let (_, transform, _, mut interpolate, _) = entities.get_mut(entity).unwrap();
-                interpolate.set(transform.translation, dst, start, end);
-            }
-            Command::Rotate {
-                entity,
-                start,
-                end,
-                dst,
-            } => {
-                let entity = conn.entities.get(entity).unwrap();
+//                 let (_, transform, _, mut interpolate, _) = entities.get_mut(entity).unwrap();
+//                 interpolate.set(transform.translation, dst, start, end);
+//             }
+//             Command::Rotate {
+//                 entity,
+//                 start,
+//                 end,
+//                 dst,
+//             } => {
+//                 let entity = conn.entities.get(entity).unwrap();
 
-                let (_, transform, _, _, mut interpolate) = entities.get_mut(entity).unwrap();
-                interpolate.set(transform.rotation, dst, start, end);
-            }
-            Command::SpawnHost(entity) => {
-                let entity = conn.entities.get(entity).unwrap();
+//                 let (_, transform, _, _, mut interpolate) = entities.get_mut(entity).unwrap();
+//                 interpolate.set(transform.rotation, dst, start, end);
+//             }
+//             Command::SpawnHost(entity) => {
+//                 let entity = conn.entities.get(entity).unwrap();
 
-                commands.entity(entity).insert(HostPlayer);
-            }
-            Command::DestroyHost(entity) => {
-                let entity = conn.entities.get(entity).unwrap();
+//                 commands.entity(entity).insert(HostPlayer);
+//             }
+//             Command::DestroyHost(entity) => {
+//                 let entity = conn.entities.get(entity).unwrap();
 
-                commands.entity(entity).remove::<HostPlayer>();
-            }
-        }
-    }
-}
+//                 commands.entity(entity).remove::<HostPlayer>();
+//             }
+//         }
+//     }
+// }
 
 #[cfg(test)]
 mod tests {
