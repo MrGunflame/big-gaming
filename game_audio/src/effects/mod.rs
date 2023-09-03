@@ -1,5 +1,5 @@
-mod volume;
 mod panning;
+mod volume;
 
-pub use volume::Volume;
 pub use panning::Panning;
+pub use volume::Volume;
