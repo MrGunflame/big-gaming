@@ -71,12 +71,13 @@ fn main() {
 
     let (backend, handle) = Backend::new();
 
+    let (mut state, rx) = State::new(handle);
+
+    let mut editor_state = state.state.clone();
     std::thread::spawn(move || {
         let rt = Runtime::new().unwrap();
-        rt.block_on(backend.run());
+        rt.block_on(backend.run(&mut editor_state));
     });
-
-    let (mut state, rx) = State::new(handle);
 
     state
         .state
@@ -97,35 +98,33 @@ fn main() {
     state.window_manager.run(app);
 }
 
-fn load_from_backend(state: EditorState) {
-    while let Some(resp) = state.handle.recv() {
-        match resp {
-            Response::LoadModule(res) => match res {
-                Ok((module, recs)) => {
-                    for (_, rec) in recs.iter() {
-                        state.records.insert(module.module.id, rec.clone());
-                    }
-
-                    state.modules.insert(module.clone());
+fn load_from_backend(state: &mut EditorState, resp: Response) {
+    match resp {
+        Response::LoadModule(res) => match res {
+            Ok((module, recs)) => {
+                for (_, rec) in recs.iter() {
+                    state.records.insert(module.module.id, rec.clone());
                 }
-                Err(err) => {
-                    tracing::error!("failed to load module: {}", err);
 
-                    let msg = format!("failed to load module: {}", err);
+                state.modules.insert(module.clone());
+            }
+            Err(err) => {
+                tracing::error!("failed to load module: {}", err);
 
-                    let _ = state.spawn_windows.send(SpawnWindow::Error(msg));
-                }
-            },
-            Response::WriteModule(res) => match res {
-                Ok(()) => {}
-                Err(err) => {
-                    let _ = state.spawn_windows.send(SpawnWindow::Error(format!(
-                        "failed to save modules: {}",
-                        err
-                    )));
-                }
-            },
-        }
+                let msg = format!("failed to load module: {}", err);
+
+                let _ = state.spawn_windows.send(SpawnWindow::Error(msg));
+            }
+        },
+        Response::WriteModule(res) => match res {
+            Ok(()) => {}
+            Err(err) => {
+                let _ = state.spawn_windows.send(SpawnWindow::Error(format!(
+                    "failed to save modules: {}",
+                    err
+                )));
+            }
+        },
     }
 }
 
