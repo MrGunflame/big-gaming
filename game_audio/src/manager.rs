@@ -1,11 +1,7 @@
-use std::sync::Arc;
-use std::time::Instant;
-
 use bevy_ecs::system::Resource;
-use parking_lot::Mutex;
 use slotmap::SlotMap;
 
-use crate::backend::{Backend, DefaultBackend};
+use crate::backend::Backend;
 use crate::channel::Sender;
 use crate::sound::{Destination, Frame, PlayingSound, SoundId};
 use crate::sound_data::{Settings, SoundData};
@@ -24,8 +20,6 @@ where
     sample_rate: u32,
     buffer_size: u32,
     track_graph: TrackGraph,
-    last_update: Instant,
-
     listeners: SlotMap<slotmap::DefaultKey, Listener>,
     emitters: SlotMap<slotmap::DefaultKey, Emitter>,
 }
@@ -49,7 +43,6 @@ where
             buffer_size: buffer_size as u32,
             tracks: SlotMap::new(),
             track_graph: TrackGraph::new(std::iter::empty()),
-            last_update: Instant::now(),
             listeners: SlotMap::new(),
             emitters: SlotMap::new(),
         }

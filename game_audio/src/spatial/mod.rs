@@ -1,5 +1,5 @@
 use glam::{Quat, Vec3};
-use slotmap::{DefaultKey, SlotMap};
+use slotmap::DefaultKey;
 
 use crate::sound::Frame;
 use crate::track::TrackId;

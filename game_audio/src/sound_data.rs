@@ -9,7 +9,6 @@ use symphonia::core::{
 
 use crate::effects::Volume;
 use crate::sound::{Destination, Frame};
-use crate::track::TrackId;
 
 #[derive(Clone, Debug)]
 pub struct SoundData {
