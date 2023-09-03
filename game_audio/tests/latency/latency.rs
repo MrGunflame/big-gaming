@@ -3,8 +3,8 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use game_audio::backend::Backend;
+use game_audio::channel::Receiver;
 use game_audio::effects::Volume;
-use game_audio::queue::Receiver;
 use game_audio::sound::Frame;
 use game_audio::sound_data::{Settings, SoundData};
 use game_audio::AudioManager;

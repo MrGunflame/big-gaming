@@ -6,7 +6,7 @@ use parking_lot::Mutex;
 use slotmap::SlotMap;
 
 use crate::backend::{Backend, DefaultBackend};
-use crate::queue::Sender;
+use crate::channel::Sender;
 use crate::sound::{Destination, Frame, PlayingSound, SoundId};
 use crate::sound_data::{Settings, SoundData};
 use crate::spatial::{Emitter, EmitterId, Listener, ListenerId};
@@ -38,7 +38,7 @@ where
         let sample_rate = 48_000;
         let buffer_size = 3;
 
-        let (tx, rx) = crate::queue::channel(sample_rate / 60 * buffer_size);
+        let (tx, rx) = crate::channel::channel(sample_rate / 60 * buffer_size);
         backend.create_output_stream(rx);
 
         Self {

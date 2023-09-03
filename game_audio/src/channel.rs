@@ -1,3 +1,4 @@
+use std::marker::PhantomData;
 use std::sync::Arc;
 
 use parking_lot::Mutex;
@@ -5,7 +6,7 @@ use parking_lot::Mutex;
 use crate::sound::Frame;
 
 pub fn channel(size: usize) -> (Sender, Receiver) {
-    let mut buf = Arc::new(Mutex::new(Buffer::new(size)));
+    let buf = Arc::new(Mutex::new(Buffer::new(size)));
 
     (Sender { inner: buf.clone() }, Receiver { inner: buf })
 }

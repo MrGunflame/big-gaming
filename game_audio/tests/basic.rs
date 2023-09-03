@@ -60,7 +60,7 @@ pub struct TestBackend {
 }
 
 impl Backend for TestBackend {
-    fn create_output_stream(&mut self, mut rx: game_audio::queue::Receiver) {
+    fn create_output_stream(&mut self, mut rx: game_audio::channel::Receiver) {
         let output = self.output.clone();
         let mut index = 0;
         let exit = self.exit.clone();

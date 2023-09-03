@@ -4,7 +4,7 @@ mod stub;
 pub use cpal::CpalBackend;
 pub use stub::StubBackend;
 
-use crate::queue::Receiver;
+use crate::channel::Receiver;
 
 pub type DefaultBackend = cpal::CpalBackend;
 

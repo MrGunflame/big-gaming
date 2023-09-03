@@ -3,7 +3,7 @@ use std::sync::mpsc;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{default_host, SampleRate};
 
-use crate::queue::Receiver;
+use crate::channel::Receiver;
 use crate::sound::Frame;
 
 use super::Backend;

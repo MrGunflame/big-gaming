@@ -1,4 +1,4 @@
-use crate::queue::Receiver;
+use crate::channel::Receiver;
 
 use super::Backend;
 

@@ -13,11 +13,11 @@ use glam::{Quat, Vec3};
 fn main() {
     let mut manager = AudioManager::new(DefaultBackend::new());
 
-    let mut data = SoundData::from_file("./../../x.ogg");
+    let mut data = SoundData::from_file("./x.ogg");
 
     let track = manager.add_track(Track {
         target: TrackId::Main,
-        volume: Volume(1.0),
+        volume: Volume(2.0),
     });
 
     let listener = Listener {
