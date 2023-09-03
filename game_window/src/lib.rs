@@ -402,8 +402,10 @@ where
         while let Some(event) = queue.pop_front() {
             match event {
                 UpdateEvent::Create(id) => {
+                    let window = windows.get(id).unwrap();
+
                     let window = WindowBuilder::new()
-                        .with_title("title")
+                        .with_title(window.title)
                         .build(&event_loop)
                         .expect("failed to create window");
 

@@ -47,7 +47,7 @@ fn main() {
     let res = game_core::modules::load_modules();
 
     let mut wm = WindowManager::new();
-    let window_id = wm.windows().spawn(WindowBuilder {});
+    let window_id = wm.windows().spawn(WindowBuilder::new());
 
     let mut app = App {
         window_id,

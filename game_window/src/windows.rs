@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::sync::{mpsc, Arc};
 
 use glam::{UVec2, Vec2};
@@ -11,6 +12,8 @@ use winit::error::ExternalError;
 
 use crate::cursor::{CursorGrabMode, CursorIcon};
 use crate::Backend;
+
+const DEFAULT_TITLE: &str = "DEFAULT_TITLE";
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct WindowId(pub(crate) DefaultKey);
@@ -33,8 +36,10 @@ impl Windows {
     where
         T: Into<Window>,
     {
+        let window = window.into();
+
         let mut windows = self.windows.write();
-        let key = windows.insert(window.into());
+        let key = windows.insert(window);
 
         let _ = self.tx.send(UpdateEvent::Create(WindowId(key)));
         WindowId(key)
@@ -54,25 +59,55 @@ impl Windows {
             .map(|window| window.state.clone())
             .flatten()
     }
+
+    pub fn get(&self, id: WindowId) -> Option<Window> {
+        self.windows.read().get(id.0).cloned()
+    }
 }
 
 #[derive(Clone, Debug)]
-pub struct WindowBuilder {}
+pub struct WindowBuilder {
+    title: Cow<'static, str>,
+}
 
 impl WindowBuilder {
+    #[inline]
     pub fn new() -> Self {
-        Self {}
+        Self {
+            title: Cow::Borrowed(DEFAULT_TITLE),
+        }
+    }
+
+    /// Sets the title of the window.
+    #[inline]
+    pub fn title<T>(mut self, title: T) -> Self
+    where
+        T: Into<Cow<'static, str>>,
+    {
+        self.title = title.into();
+        self
+    }
+}
+
+impl Default for WindowBuilder {
+    #[inline]
+    fn default() -> Self {
+        Self::new()
     }
 }
 
 impl From<WindowBuilder> for Window {
-    fn from(value: WindowBuilder) -> Self {
-        Self { state: None }
+    fn from(builder: WindowBuilder) -> Self {
+        Self {
+            title: builder.title,
+            state: None,
+        }
     }
 }
 
 #[derive(Clone, Debug)]
 pub struct Window {
+    pub(crate) title: Cow<'static, str>,
     pub(crate) state: Option<WindowState>,
 }
 
