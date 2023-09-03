@@ -11,16 +11,4 @@ pub mod track;
 mod manager;
 mod resampler;
 
-use backend::DefaultBackend;
 pub use manager::AudioManager;
-
-use bevy_app::{App, Plugin};
-
-pub struct AudioPlugin;
-
-impl Plugin for AudioPlugin {
-    fn build(&self, app: &mut App) {
-        let backend = DefaultBackend::new();
-        app.insert_resource(AudioManager::new(backend));
-    }
-}

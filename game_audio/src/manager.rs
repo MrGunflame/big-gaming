@@ -1,4 +1,3 @@
-use bevy_ecs::system::Resource;
 use slotmap::SlotMap;
 
 use crate::backend::Backend;
@@ -8,7 +7,7 @@ use crate::sound_data::{Settings, SoundData};
 use crate::spatial::{Emitter, EmitterId, Listener, ListenerId};
 use crate::track::{ActiveTrack, Track, TrackGraph, TrackId};
 
-#[derive(Debug, Resource)]
+#[derive(Debug)]
 pub struct AudioManager<B>
 where
     B: Backend,
