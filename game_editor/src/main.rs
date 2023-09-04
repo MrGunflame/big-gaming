@@ -151,14 +151,6 @@ impl game_window::App for App {
                 self.renderer.create(event.window, window);
                 self.ui_state.create(event.window, size);
 
-                let cam = Camera {
-                    transform: Transform::default(),
-                    projection: Projection::default(),
-                    target: RenderTarget::Window(event.window),
-                };
-
-                self.renderer.entities.cameras().insert(cam);
-
                 if let Some(spawn) = self.loading_windows.remove(&event.window) {
                     let window = crate::windows::spawn_window(
                         &mut self.renderer,
@@ -182,6 +174,9 @@ impl game_window::App for App {
                     .resize(event.window, UVec2::new(event.width, event.height));
             }
             WindowEvent::WindowDestroyed(event) => {
+                self.renderer.destroy(event.window);
+                self.ui_state.destroy(event.window);
+
                 self.active_windows.remove(&event.window);
             }
             WindowEvent::WindowCloseRequested(event) => {
@@ -189,9 +184,34 @@ impl game_window::App for App {
                 // unsaved data.
                 self.windows.despawn(event.window);
             }
-            WindowEvent::WindowDestroyed(event) => {
-                self.renderer.destroy(event.window);
-                self.ui_state.destroy(event.window);
+            WindowEvent::MouseMotion(event) => {
+                if let Some(window_id) = self.cursor.window() {
+                    if let Some(window) = self.active_windows.get_mut(&window_id) {
+                        window.handle_event(&mut self.renderer, WindowEvent::MouseMotion(event));
+                    }
+                }
+            }
+            WindowEvent::KeyboardInput(event) => {
+                if let Some(window_id) = self.cursor.window() {
+                    if let Some(window) = self.active_windows.get_mut(&window_id) {
+                        window.handle_event(&mut self.renderer, WindowEvent::KeyboardInput(event));
+                    }
+                }
+            }
+            WindowEvent::MouseWheel(event) => {
+                if let Some(window_id) = self.cursor.window() {
+                    if let Some(window) = self.active_windows.get_mut(&window_id) {
+                        window.handle_event(&mut self.renderer, WindowEvent::MouseWheel(event));
+                    }
+                }
+            }
+            WindowEvent::MouseButtonInput(event) => {
+                if let Some(window_id) = self.cursor.window() {
+                    if let Some(window) = self.active_windows.get_mut(&window_id) {
+                        window
+                            .handle_event(&mut self.renderer, WindowEvent::MouseButtonInput(event));
+                    }
+                }
             }
             _ => (),
         }

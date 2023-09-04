@@ -23,7 +23,10 @@ impl WorldWindowState {
         let camera = renderer.entities.cameras().insert(Camera {
             projection: Default::default(),
             target: RenderTarget::Window(window_id),
-            transform: Transform::default(),
+            transform: Transform {
+                translation: Vec3::new(0.0, 1.0, 0.0),
+                ..Default::default()
+            },
         });
 
         renderer.entities.objects().insert(Object {

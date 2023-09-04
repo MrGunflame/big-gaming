@@ -19,6 +19,7 @@ use game_ui::events::Events;
 use game_ui::reactive::{Document, Runtime};
 use game_ui::render::layout::LayoutTree;
 use game_ui::view;
+use game_window::events::WindowEvent;
 use game_window::windows::WindowId;
 
 use crate::backend::Handle;
@@ -43,6 +44,13 @@ impl Window {
         match self {
             Self::View(_) => None,
             Self::Other(doc) => Some(doc.clone()),
+        }
+    }
+
+    pub fn handle_event(&mut self, renderer: &mut RenderState, event: WindowEvent) {
+        match self {
+            Self::View(window) => window.handle_event(renderer, event),
+            _ => (),
         }
     }
 }
