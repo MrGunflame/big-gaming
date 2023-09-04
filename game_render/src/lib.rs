@@ -41,7 +41,7 @@ use wgpu::{
     TextureViewDescriptor,
 };
 
-pub struct RenderState {
+pub struct Renderer {
     instance: Instance,
     adapter: Adapter,
     pub device: Device,
@@ -57,7 +57,7 @@ pub struct RenderState {
     pub materials: Assets<PbrMaterial>,
 }
 
-impl RenderState {
+impl Renderer {
     pub fn new() -> Self {
         let instance = Instance::new(InstanceDescriptor {
             backends: Backends::VULKAN,

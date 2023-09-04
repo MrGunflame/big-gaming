@@ -9,7 +9,7 @@ mod gltf;
 
 use game_gltf::uri::Uri;
 use game_model::{Decode, Model};
-use game_render::RenderState;
+use game_render::Renderer;
 use scene::spawn_scene;
 
 use std::collections::{HashMap, VecDeque};
@@ -144,7 +144,7 @@ pub struct Node {
     pub transform: Transform,
 }
 
-pub fn tick(scenes: &mut Scenes, renderer: &mut RenderState) {
+pub fn tick(scenes: &mut Scenes, renderer: &mut Renderer) {
     load_scenes(
         scenes,
         &mut renderer.meshes,

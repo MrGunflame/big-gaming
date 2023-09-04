@@ -12,7 +12,7 @@ use clap::Parser;
 use config::Config;
 use game_core::counter::Interval;
 use game_core::logger::{self};
-use game_render::RenderState;
+use game_render::Renderer;
 use game_scene::Scenes;
 use game_window::events::WindowEvent;
 use game_window::windows::{WindowBuilder, WindowId, Windows};
@@ -53,7 +53,7 @@ fn main() {
     let mut app = App {
         window_id,
         conn: ServerConnection::new(&config),
-        renderer: RenderState::new(),
+        renderer: Renderer::new(),
         windows: wm.windows().clone(),
         state: GameState::Startup,
         scenes: Scenes::new(),
@@ -67,7 +67,7 @@ pub struct App {
     /// Primary window
     window_id: WindowId,
     conn: ServerConnection<Interval>,
-    renderer: RenderState,
+    renderer: Renderer,
     windows: Windows,
     scenes: Scenes,
 }

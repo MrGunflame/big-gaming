@@ -14,7 +14,7 @@ use backend::{Backend, Handle, Response};
 
 use game_common::components::transform::Transform;
 use game_render::camera::{Camera, Projection, RenderTarget};
-use game_render::RenderState;
+use game_render::Renderer;
 use game_ui::reactive::Document;
 use game_ui::render::style::{Background, BorderRadius, Bounds, Size, SizeVec2, Style};
 use game_ui::UiState;
@@ -37,14 +37,14 @@ use crate::windows::SpawnWindow;
 
 struct State {
     window_manager: WindowManager,
-    render_state: RenderState,
+    render_state: Renderer,
     ui_state: UiState,
     state: EditorState,
 }
 
 impl State {
     fn new(handle: Handle) -> (Self, mpsc::Receiver<SpawnWindow>) {
-        let mut render_state = RenderState::new();
+        let mut render_state = Renderer::new();
 
         let (tx, rx) = mpsc::channel();
 
@@ -131,7 +131,7 @@ fn load_from_backend(state: &mut EditorState, resp: Response) {
 }
 
 pub struct App {
-    renderer: RenderState,
+    renderer: Renderer,
     ui_state: UiState,
     windows: Windows,
     rx: mpsc::Receiver<SpawnWindow>,

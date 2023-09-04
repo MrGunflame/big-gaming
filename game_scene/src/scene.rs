@@ -1,11 +1,11 @@
 use game_render::color::Color;
 use game_render::entities::Object;
 use game_render::pbr::PbrMaterial;
-use game_render::{shape, RenderState};
+use game_render::{shape, Renderer};
 
 use crate::Scene;
 
-pub(crate) fn spawn_scene(scene: &Scene, renderer: &mut RenderState) {
+pub(crate) fn spawn_scene(scene: &Scene, renderer: &mut Renderer) {
     for node in &scene.nodes {
         renderer.entities.objects().insert(Object {
             transform: Default::default(),

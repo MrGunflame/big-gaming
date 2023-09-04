@@ -17,11 +17,10 @@ pub mod render;
 pub mod widgets;
 
 use events::{Events, WindowCommand};
-use game_render::RenderState;
+use game_render::Renderer;
 use game_window::cursor::Cursor;
 use game_window::events::WindowEvent;
 use game_window::windows::{WindowId, Windows};
-use game_window::WindowManager;
 use glam::UVec2;
 use reactive::{Document, Runtime};
 use render::RenderUiState;
@@ -39,7 +38,7 @@ pub struct UiState {
 }
 
 impl UiState {
-    pub fn new(render_state: &mut RenderState) -> Self {
+    pub fn new(render_state: &mut Renderer) -> Self {
         let (command_tx, command_rx) = mpsc::channel();
 
         Self {

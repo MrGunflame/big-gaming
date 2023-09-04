@@ -13,7 +13,7 @@ use game_data::record::{Record, RecordKind};
 use game_render::mesh::Mesh;
 use game_render::pbr::PbrMaterial;
 use game_render::texture::Images;
-use game_render::RenderState;
+use game_render::Renderer;
 use game_scene::Scenes;
 use game_ui::events::Events;
 use game_ui::reactive::{Document, Runtime};
@@ -47,7 +47,7 @@ impl Window {
         }
     }
 
-    pub fn handle_event(&mut self, renderer: &mut RenderState, event: WindowEvent) {
+    pub fn handle_event(&mut self, renderer: &mut Renderer, event: WindowEvent) {
         match self {
             Self::View(window) => window.handle_event(renderer, event),
             _ => (),
@@ -56,7 +56,7 @@ impl Window {
 }
 
 pub fn spawn_window(
-    renderer: &mut RenderState,
+    renderer: &mut Renderer,
     state: EditorState,
     rt: Runtime,
     event: SpawnWindow,

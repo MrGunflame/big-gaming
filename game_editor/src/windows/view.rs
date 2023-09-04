@@ -9,7 +9,7 @@ use game_render::color::Color;
 use game_render::entities::{CameraId, Object};
 use game_render::light::PointLight;
 use game_render::pbr::PbrMaterial;
-use game_render::{shape, RenderState};
+use game_render::{shape, Renderer};
 use game_window::events::{VirtualKeyCode, WindowEvent};
 use game_window::windows::WindowId;
 use glam::{Quat, Vec3};
@@ -20,7 +20,7 @@ pub struct WorldWindowState {
 }
 
 impl WorldWindowState {
-    pub fn new(renderer: &mut RenderState, window_id: WindowId) -> Self {
+    pub fn new(renderer: &mut Renderer, window_id: WindowId) -> Self {
         let camera = renderer.entities.cameras().insert(Camera {
             projection: Default::default(),
             target: RenderTarget::Window(window_id),
@@ -55,7 +55,7 @@ impl WorldWindowState {
         }
     }
 
-    pub fn handle_event(&mut self, renderer: &mut RenderState, event: WindowEvent) {
+    pub fn handle_event(&mut self, renderer: &mut Renderer, event: WindowEvent) {
         let camera = renderer.entities.cameras().get_mut(self.camera).unwrap();
 
         match event {
