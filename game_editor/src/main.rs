@@ -7,6 +7,7 @@ mod widgets;
 mod windows;
 mod world;
 
+use std::collections::HashMap;
 use std::sync::{mpsc, Arc};
 
 use backend::{Backend, Handle, Response};
@@ -19,7 +20,7 @@ use game_ui::render::style::{Background, BorderRadius, Bounds, Size, SizeVec2, S
 use game_ui::UiState;
 use game_window::cursor::Cursor;
 use game_window::events::WindowEvent;
-use game_window::windows::{WindowBuilder, WindowId, Windows};
+use game_window::windows::{Window, WindowBuilder, WindowId, Windows};
 use game_window::WindowManager;
 use glam::UVec2;
 use parking_lot::Mutex;
@@ -88,11 +89,12 @@ fn main() {
     let app = App {
         renderer: state.render_state,
         ui_state: state.ui_state,
-        deferred_windows: vec![],
         state: state.state,
         rx,
         windows: state.window_manager.windows().clone(),
         cursor: state.window_manager.cursor().clone(),
+        loading_windows: HashMap::new(),
+        active_windows: HashMap::new(),
     };
 
     state.window_manager.run(app);
@@ -131,21 +133,56 @@ fn load_from_backend(state: &mut EditorState, resp: Response) {
 pub struct App {
     renderer: RenderState,
     ui_state: UiState,
-    deferred_windows: Vec<(WindowId, Document)>,
     windows: Windows,
     rx: mpsc::Receiver<SpawnWindow>,
     state: EditorState,
     cursor: Arc<Cursor>,
+    loading_windows: HashMap<WindowId, SpawnWindow>,
+    active_windows: HashMap<WindowId, crate::windows::Window>,
 }
 
 impl game_window::App for App {
     fn handle_event(&mut self, event: game_window::events::WindowEvent) {
         match event {
+            WindowEvent::WindowCreated(event) => {
+                let window = self.windows.state(event.window).unwrap();
+                let size = window.inner_size();
+
+                self.renderer.create(event.window, window);
+                self.ui_state.create(event.window, size);
+
+                let cam = Camera {
+                    transform: Transform::default(),
+                    projection: Projection::default(),
+                    target: RenderTarget::Window(event.window),
+                };
+
+                self.renderer.entities.cameras().insert(cam);
+
+                if let Some(spawn) = self.loading_windows.remove(&event.window) {
+                    let window = crate::windows::spawn_window(
+                        &mut self.renderer,
+                        self.state.clone(),
+                        self.ui_state.runtime.clone(),
+                        spawn,
+                        event.window,
+                    );
+
+                    if let Some(doc) = window.doc() {
+                        *self.ui_state.get_mut(event.window).unwrap() = doc;
+                    }
+
+                    self.active_windows.insert(event.window, window);
+                }
+            }
             WindowEvent::WindowResized(event) => {
                 self.renderer
                     .resize(event.window, UVec2::new(event.width, event.height));
                 self.ui_state
                     .resize(event.window, UVec2::new(event.width, event.height));
+            }
+            WindowEvent::WindowDestroyed(event) => {
+                self.active_windows.remove(&event.window);
             }
             WindowEvent::WindowCloseRequested(event) => {
                 // TODO: Ask for confirmation if the window contains
@@ -164,38 +201,9 @@ impl game_window::App for App {
 
     fn update(&mut self) {
         while let Ok(event) = self.rx.try_recv() {
-            let doc =
-                windows::spawn_window(self.state.clone(), self.ui_state.runtime.clone(), event);
-
             let id = self.windows.spawn(WindowBuilder::new());
 
-            self.deferred_windows.push((id, doc));
-        }
-
-        let mut index = 0;
-        while index < self.deferred_windows.len() {
-            let id = self.deferred_windows[index].0;
-            let doc = &self.deferred_windows[index].1;
-
-            if let Some(window) = self.windows.state(id) {
-                let size = window.inner_size();
-
-                self.renderer.create(id, window);
-
-                let cam = Camera {
-                    transform: Transform::default(),
-                    projection: Projection::default(),
-                    target: RenderTarget::Window(id),
-                };
-
-                self.renderer.entities.cameras().insert(cam);
-                self.ui_state.create(id, size);
-                *self.ui_state.get_mut(id).unwrap() = doc.clone();
-
-                self.deferred_windows.remove(index);
-            } else {
-                index += 1;
-            }
+            self.loading_windows.insert(id, event);
         }
 
         self.renderer.render();

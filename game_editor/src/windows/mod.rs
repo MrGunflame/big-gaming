@@ -5,7 +5,7 @@ pub mod modules;
 mod open_module;
 mod record;
 mod records;
-//mod view;
+mod view;
 
 use game_asset::Assets;
 use game_common::module::ModuleId;
@@ -13,11 +13,13 @@ use game_data::record::{Record, RecordKind};
 use game_render::mesh::Mesh;
 use game_render::pbr::PbrMaterial;
 use game_render::texture::Images;
+use game_render::RenderState;
 use game_scene::Scenes;
 use game_ui::events::Events;
 use game_ui::reactive::{Document, Runtime};
 use game_ui::render::layout::LayoutTree;
 use game_ui::view;
+use game_window::windows::WindowId;
 
 use crate::backend::Handle;
 use crate::state::EditorState;
@@ -29,8 +31,29 @@ use self::modules::*;
 use self::open_module::*;
 use self::record::*;
 use self::records::*;
+use self::view::WorldWindowState;
 
-pub fn spawn_window(state: EditorState, rt: Runtime, event: SpawnWindow) -> Document {
+pub enum Window {
+    View(WorldWindowState),
+    Other(Document),
+}
+
+impl Window {
+    pub fn doc(&self) -> Option<Document> {
+        match self {
+            Self::View(_) => None,
+            Self::Other(doc) => Some(doc.clone()),
+        }
+    }
+}
+
+pub fn spawn_window(
+    renderer: &mut RenderState,
+    state: EditorState,
+    rt: Runtime,
+    event: SpawnWindow,
+    window_id: WindowId,
+) -> Window {
     let document = Document::new(rt);
 
     let cx = document.root_scope();
@@ -91,10 +114,13 @@ pub fn spawn_window(state: EditorState, rt: Runtime, event: SpawnWindow) -> Docu
                 </EditRecord>
             };
         }
-        _ => todo!(),
+        SpawnWindow::View => {
+            let window = view::WorldWindowState::new(renderer, window_id);
+            return Window::View(window);
+        }
     }
 
-    document
+    Window::Other(document)
 }
 
 #[derive(Clone, Debug)]
