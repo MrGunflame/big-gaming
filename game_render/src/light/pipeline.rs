@@ -9,7 +9,7 @@ use super::{DirectionalLight, PointLight, SpotLight};
 
 #[derive(Copy, Clone, Debug, PartialEq, Zeroable, Pod)]
 #[repr(C)]
-pub struct DirectionalLightUniform {
+pub(crate) struct DirectionalLightUniform {
     pub direction: [f32; 3],
     pub _pad0: u32,
     pub color: [f32; 3],
@@ -39,7 +39,7 @@ impl GpuBuffer for PointLightUniform {
 
 #[derive(Copy, Clone, Debug, PartialEq, Zeroable, Pod)]
 #[repr(C)]
-pub struct SpotLightUniform {
+pub(crate) struct SpotLightUniform {
     pub position: [f32; 3],
     pub _pad0: u32,
     pub direction: [f32; 3],
