@@ -7,6 +7,7 @@ use game_input::ButtonState;
 use game_render::camera::{Camera, RenderTarget};
 use game_render::color::Color;
 use game_render::entities::{CameraId, Object};
+use game_render::light::PointLight;
 use game_render::pbr::PbrMaterial;
 use game_render::{shape, RenderState};
 use game_window::events::{VirtualKeyCode, WindowEvent};
@@ -36,6 +37,16 @@ impl WorldWindowState {
                 ..Default::default()
             }),
             mesh: renderer.meshes.insert(shape::Plane { size: 100.0 }.into()),
+        });
+
+        renderer.entities.point_lights().insert(PointLight {
+            transform: Transform {
+                translation: Vec3::new(0.0, 1.0, 0.0),
+                ..Default::default()
+            },
+            intensity: 70.0,
+            radius: 100.0,
+            color: Color::WHITE,
         });
 
         Self {
