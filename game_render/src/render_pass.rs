@@ -10,7 +10,7 @@ use wgpu::{
 
 use crate::buffer::{DynamicBuffer, IndexBuffer};
 use crate::camera::{CameraBuffer, RenderTarget};
-use crate::entities::Entity;
+use crate::entities::{CameraId, ObjectId};
 use crate::graph::{Node, RenderContext};
 use crate::light::pipeline::{DirectionalLightUniform, PointLightUniform, SpotLightUniform};
 
@@ -22,8 +22,8 @@ pub struct GpuObject {
 }
 
 pub struct GpuState {
-    pub cameras: HashMap<Entity, CameraBuffer>,
-    pub objects: HashMap<Entity, GpuObject>,
+    pub cameras: HashMap<CameraId, CameraBuffer>,
+    pub objects: HashMap<ObjectId, GpuObject>,
     pub directional_lights: Buffer,
     pub point_lights: Buffer,
     pub spot_lights: Buffer,

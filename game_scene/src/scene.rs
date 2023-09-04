@@ -7,7 +7,7 @@ use crate::Scene;
 
 pub(crate) fn spawn_scene(scene: &Scene, renderer: &mut RenderState) {
     for node in &scene.nodes {
-        renderer.entities.push_object(Object {
+        renderer.entities.objects().insert(Object {
             transform: Default::default(),
             mesh: node.mesh.clone(),
             material: node.material.clone(),
@@ -50,7 +50,7 @@ pub(crate) fn spawn_scene(scene: &Scene, renderer: &mut RenderState) {
             Color::BLUE,
         ),
     ] {
-        renderer.entities.push_object(Object {
+        renderer.entities.objects().insert(Object {
             transform: Default::default(),
             mesh: renderer.meshes.insert(mesh.into()),
             material: renderer.materials.insert(PbrMaterial {

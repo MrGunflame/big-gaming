@@ -1,7 +1,7 @@
 use game_common::components::transform::Transform;
 use game_render::camera::{Camera, Projection, RenderTarget};
 use game_render::color::Color;
-use game_render::entities::Entity;
+use game_render::entities::CameraId;
 use game_render::light::PointLight;
 use game_render::RenderState;
 use game_scene::{SceneHandle, Scenes};
@@ -10,13 +10,13 @@ use glam::Vec3;
 
 #[derive(Debug)]
 pub struct MainMenuState {
-    camera: Entity,
+    camera: CameraId,
     handle: SceneHandle,
 }
 
 impl MainMenuState {
     pub fn new(scenes: &mut Scenes, renderer: &mut RenderState, window_id: WindowId) -> Self {
-        let camera = renderer.entities.push_camera(Camera {
+        let camera = renderer.entities.cameras().insert(Camera {
             transform: Transform {
                 translation: Vec3::new(10.0, 0.0, 1.0),
                 ..Default::default()
@@ -27,7 +27,7 @@ impl MainMenuState {
 
         let handle = scenes.load("sponza.model");
 
-        renderer.entities.push_point_light(PointLight {
+        renderer.entities.point_lights().insert(PointLight {
             transform: Transform {
                 translation: Vec3::new(0.0, 1.0, 0.0),
                 ..Default::default()
@@ -41,17 +41,15 @@ impl MainMenuState {
     }
 
     pub fn update(&mut self, renderer: &mut RenderState) {
-        let camera = renderer.entities.cameras.get_mut(&self.camera).unwrap();
+        let camera = renderer.entities.cameras().get_mut(self.camera).unwrap();
 
         camera.transform.translation.x = 10.0;
         camera.transform.translation.z = 1.0;
         camera.transform.translation.y += 0.01;
-        camera.transform = camera.transform.looking_at(Vec3::ZERO, Vec3::Y);
+        // camera.transform = camera.transform.looking_at(Vec3::ZERO, Vec3::Y);
 
         if camera.transform.translation.y > 2.1 {
-            camera.transform.translation.y = 0.0;
+            // camera.transform.translation.y = 0.0;
         }
-
-        renderer.entities.need_rebuild = true;
     }
 }

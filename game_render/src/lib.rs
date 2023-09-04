@@ -22,7 +22,7 @@ mod depth_stencil;
 mod post_process;
 
 use camera::RenderTarget;
-use entities::Entities;
+use entities::SceneEntities;
 use forward::ForwardPipeline;
 use game_asset::Assets;
 use game_window::windows::{WindowId, WindowState};
@@ -48,7 +48,7 @@ pub struct RenderState {
     pub queue: Queue,
     pub graph: RenderGraph,
     pub surfaces: RenderSurfaces,
-    pub entities: Entities,
+    pub entities: SceneEntities,
     pub images: Images,
     forward: ForwardPipeline,
     post_process: PostProcessPipeline,
@@ -88,7 +88,7 @@ impl RenderState {
         let mut images = Images::new();
 
         Self {
-            entities: Entities::new(&device),
+            entities: SceneEntities::new(&device),
             forward: ForwardPipeline::new(&device, &mut images),
             post_process: PostProcessPipeline::new(&device),
             mipmap_generator: MipMapGenerator::new(&device),
@@ -113,7 +113,7 @@ impl RenderState {
     pub fn resize(&mut self, id: WindowId, size: UVec2) {
         self.surfaces.resize(id, &self.device, size);
 
-        for cam in self.entities.cameras.values_mut() {
+        for cam in self.entities.cameras().values_mut() {
             if cam.target == RenderTarget::Window(id) {
                 cam.update_aspect_ratio(size);
             }

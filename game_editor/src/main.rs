@@ -188,7 +188,7 @@ impl game_window::App for App {
                     target: RenderTarget::Window(id),
                 };
 
-                self.renderer.entities.push_camera(cam);
+                self.renderer.entities.cameras().insert(cam);
                 self.ui_state.create(id, size);
                 *self.ui_state.get_mut(id).unwrap() = doc.clone();
 
