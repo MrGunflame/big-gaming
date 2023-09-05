@@ -1,4 +1,3 @@
-use bevy_ecs::system::Resource;
 use game_common::components::actions::ActionId;
 use game_common::components::combat::Health;
 use game_common::components::inventory::InventoryId;
@@ -157,7 +156,7 @@ impl Command {
     }
 }
 
-#[derive(Clone, Debug, Default, Resource)]
+#[derive(Clone, Debug, Default)]
 pub struct CommandQueue {
     queue: Arc<Mutex<VecDeque<ConnectionMessage>>>,
 }
