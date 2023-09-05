@@ -9,7 +9,6 @@ pub mod query;
 
 use std::collections::HashMap;
 
-use bevy_ecs::system::Resource;
 use control::CharacterController;
 use convert::{point, quat, rotation, vec3, vector};
 use game_common::entity::EntityId;
@@ -28,7 +27,6 @@ use rapier3d::prelude::{
     QueryPipeline, Ray, RigidBodyBuilder, RigidBodyHandle, RigidBodySet, RigidBodyType, Vector,
 };
 
-#[derive(Resource)]
 pub struct Pipeline {
     pipeline: PhysicsPipeline,
     gravity: Vector<f32>,
