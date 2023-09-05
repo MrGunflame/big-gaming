@@ -1,9 +1,12 @@
-use bevy_ecs::prelude::Entity;
-use bevy_ecs::system::Resource;
-use bevy_ecs::world::World;
-use wgpu::{CommandEncoder, TextureFormat, TextureView};
+use game_window::windows::WindowId;
+use wgpu::{CommandEncoder, Device, TextureFormat, TextureView};
 
-#[derive(Default, Resource)]
+use crate::forward::ForwardPipeline;
+use crate::post_process::PostProcessPipeline;
+use crate::render_pass::GpuState;
+use crate::surface::SurfaceData;
+
+#[derive(Default)]
 pub struct RenderGraph {
     pub(crate) nodes: Vec<Box<dyn Node>>,
 }
@@ -15,16 +18,19 @@ impl RenderGraph {
 }
 
 pub trait Node: Send + Sync + 'static {
-    fn update(&mut self, world: &mut World);
-
-    fn render(&self, world: &World, ctx: &mut RenderContext<'_>);
+    fn render(&self, ctx: &mut RenderContext<'_>);
 }
 
 pub struct RenderContext<'a> {
-    pub window: Entity,
+    pub state: &'a GpuState,
+    pub window: WindowId,
     pub encoder: &'a mut CommandEncoder,
     pub target: &'a TextureView,
     pub width: u32,
     pub height: u32,
     pub format: TextureFormat,
+    pub device: &'a Device,
+    pub pipeline: &'a ForwardPipeline,
+    pub surface: &'a SurfaceData,
+    pub post_process: &'a PostProcessPipeline,
 }

@@ -100,7 +100,7 @@ impl InterpolateRotationInner {
 }
 
 pub fn interpolate_translation(
-    mut conn: ResMut<ServerConnection<Interval>>,
+    //mut conn: &mut ServerConnection<Interval>,
     mut entities: Query<(&mut Transform, &mut InterpolateTranslation)>,
 ) {
     for (mut transform, mut interpolate) in &mut entities {

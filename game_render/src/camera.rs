@@ -1,27 +1,16 @@
-use std::collections::HashMap;
 use std::f32::consts::PI;
 
-use bevy_ecs::prelude::{Bundle, Component, Entity, EventReader};
-use bevy_ecs::query::Added;
-use bevy_ecs::system::{Query, Res, ResMut, Resource};
 use bytemuck::{Pod, Zeroable};
 use game_common::components::transform::Transform;
 use game_common::math::Ray;
-use game_window::events::WindowResized;
-use glam::{Mat4, Vec2, Vec3};
+use game_window::windows::WindowId;
+use glam::{Mat4, UVec2, Vec2, Vec3};
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
 use wgpu::{Buffer, BufferUsages, Device};
 
-use crate::RenderDevice;
-
-#[derive(Clone, Debug, Bundle)]
-pub struct CameraBundle {
-    pub camera: Camera,
-    pub transform: Transform,
-}
-
-#[derive(Clone, Debug, Component)]
+#[derive(Clone, Debug)]
 pub struct Camera {
+    pub transform: Transform,
     pub projection: Projection,
     pub target: RenderTarget,
 }
@@ -48,12 +37,16 @@ impl Camera {
             direction: (world_far_plane - world_near_plane).normalize(),
         }
     }
+
+    pub(crate) fn update_aspect_ratio(&mut self, size: UVec2) {
+        self.projection.aspect_ratio = size.x as f32 / size.y as f32;
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum RenderTarget {
     /// Render to a window surface.
-    Window(Entity),
+    Window(WindowId),
     // TODO: Add a render-to-texture target.
 }
 
@@ -90,75 +83,21 @@ pub const OPENGL_TO_WGPU: Mat4 = Mat4::from_cols_array_2d(&[
     [0.0, 0.0, 0.5, 1.0],
 ]);
 
-pub fn update_camera_aspect_ratio(
-    cams: Res<Cameras>,
-    mut cameras: Query<&mut Camera>,
-    mut events: EventReader<WindowResized>,
-) {
-    for event in events.iter() {
-        let Some(entity) = cams.window_targets.get(&event.window).copied() else {
-            continue;
-        };
-
-        let mut camera = cameras.get_mut(entity).unwrap();
-        camera.projection.aspect_ratio = event.width as f32 / event.height as f32;
-    }
-}
-
-pub fn update_camera_buffer(
-    mut cams: ResMut<Cameras>,
-    cameras: Query<(Entity, &Camera, &Transform)>,
-    device: Res<RenderDevice>,
-) {
-    for (entity, camera, transform) in &cameras {
-        let Some(buffer) = cams.cameras.get_mut(&entity) else {
-            continue;
-        };
-
-        // Only update the uniform buffer if the transform or projection
-        // actually changed.
-        if buffer.transform != *transform || buffer.projection != camera.projection {
-            *buffer = CameraBuffer::new(*transform, camera.projection, &device.0);
-        }
-    }
-}
-
-pub fn create_cameras(
-    mut cams: ResMut<Cameras>,
-    cameras: Query<(Entity, &Camera, &Transform), Added<Camera>>,
-    device: Res<RenderDevice>,
-) {
-    for (entity, camera, transform) in &cameras {
-        cams.cameras.insert(
-            entity,
-            CameraBuffer::new(*transform, camera.projection, &device.0),
-        );
-
-        match camera.target {
-            RenderTarget::Window(window) => {
-                cams.window_targets.insert(window, entity);
-            }
-        }
-    }
-}
-
-#[derive(Debug, Default, Resource)]
-pub struct Cameras {
-    // Window => Camera
-    pub window_targets: HashMap<Entity, Entity>,
-    // Camera => Buffer
-    pub cameras: HashMap<Entity, CameraBuffer>,
-}
-
 #[derive(Debug)]
 pub struct CameraBuffer {
     pub transform: Transform,
     pub projection: Projection,
     pub buffer: Buffer,
+    pub target: RenderTarget,
 }
 
 impl CameraBuffer {
-    fn new(transform: Transform, projection: Projection, device: &Device) -> Self {
+    pub fn new(
+        transform: Transform,
+        projection: Projection,
+        device: &Device,
+        target: RenderTarget,
+    ) -> Self {
         let buffer = device.create_buffer_init(&BufferInitDescriptor {
             label: Some("camera_transform_buffer"),
             contents: bytemuck::cast_slice(&[CameraUniform::new(transform, projection)]),
@@ -169,6 +108,7 @@ impl CameraBuffer {
             transform,
             projection,
             buffer,
+            target,
         }
     }
 }

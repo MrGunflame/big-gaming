@@ -2,12 +2,11 @@
 
 use std::collections::HashMap;
 
-use bevy_ecs::system::Resource;
 use game_common::record::RecordReference;
 
 use crate::Handle;
 
-#[derive(Clone, Debug, Default, Resource)]
+#[derive(Clone, Debug, Default)]
 pub struct RecordTargets {
     pub(crate) scripts: HashMap<RecordReference, Vec<Handle>>,
     pub(crate) actions: HashMap<RecordReference, Vec<RecordReference>>,

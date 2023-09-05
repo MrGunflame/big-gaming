@@ -1,13 +1,11 @@
 use std::time::Instant;
 
-use bevy_app::App;
-use bevy_ecs::system::adapter::dbg;
 use game_audio::backend::DefaultBackend;
 use game_audio::effects::Volume;
 use game_audio::sound_data::{Settings, SoundData};
 use game_audio::spatial::{Emitter, Listener};
 use game_audio::track::{Track, TrackId};
-use game_audio::{AudioManager, AudioPlugin};
+use game_audio::AudioManager;
 use glam::{Quat, Vec3};
 
 fn main() {

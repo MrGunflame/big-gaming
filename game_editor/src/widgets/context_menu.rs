@@ -46,7 +46,7 @@ pub fn ContextMenu(cx: &Scope, spawn_menu: Box<dyn Fn(Scope) + Send + Sync + 'st
     });
 
     let cx2 = cx.clone();
-    create_effect(cx, move |_| {
+    create_effect(cx, move || {
         let set_state = set_state.clone();
 
         state.with_mut(|state| match &state.menu_cx {

@@ -1,7 +1,5 @@
-use bevy_ecs::component::Component;
-
 /// The number of projectiles remaining in a gun.
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash, Component)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub struct Magazine(pub u16);
 
 impl Magazine {

@@ -2,10 +2,9 @@ use std::fs::File;
 use std::io::Read;
 use std::path::Path;
 
-use bevy_ecs::system::Resource;
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, Serialize, Deserialize, Resource)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
     pub timestep: u32,

@@ -33,7 +33,7 @@ impl Component for Text {
 
         let cx2 = cx.clone();
         let id = cx.id().unwrap();
-        create_effect(&cx, move |_| {
+        create_effect(&cx, move || {
             let string = (text.0)();
 
             cx2.update(

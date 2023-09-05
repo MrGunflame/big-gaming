@@ -1,6 +1,4 @@
-use bevy_ecs::prelude::Component;
-
-#[derive(Copy, Clone, Debug, Default, PartialEq, Component)]
+#[derive(Copy, Clone, Debug, Default, PartialEq)]
 pub enum CameraMode {
     #[default]
     FirstPerson,

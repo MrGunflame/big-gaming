@@ -2,7 +2,6 @@ use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use bevy_ecs::system::Resource;
 use parking_lot::Mutex;
 use tokio::fs::{File, OpenOptions};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -14,9 +13,10 @@ use game_data::{DataBuffer, Decode, Encode};
 use crate::state::capabilities::Capabilities;
 use crate::state::module::EditorModule;
 use crate::state::record::Records;
+use crate::state::EditorState;
 
 pub struct Backend {
-    rx: mpsc::Receiver<(Task, oneshot::Sender<Response>)>,
+    rx: mpsc::Receiver<Task>,
 }
 
 impl Backend {
@@ -34,14 +34,14 @@ impl Backend {
         )
     }
 
-    pub async fn run(mut self) {
-        while let Some((task, tx)) = self.rx.recv().await {
+    pub async fn run(mut self, state: &mut EditorState) {
+        while let Some(task) = self.rx.recv().await {
             let resp = match task {
                 Task::ReadModule(path) => Response::LoadModule(load_module(path).await),
                 Task::WriteModule(module) => Response::WriteModule(save_data(module).await),
             };
 
-            let _ = tx.send(resp);
+            crate::load_from_backend(state, resp);
         }
     }
 }
@@ -121,14 +121,14 @@ pub struct WriteModule {
 
 pub type TaskResult<T> = Result<T, game_data::Error>;
 
-#[derive(Clone, Debug, Resource)]
+#[derive(Clone, Debug)]
 pub struct Handle {
     inner: Arc<Mutex<HandleInner>>,
 }
 
 #[derive(Debug)]
 struct HandleInner {
-    tx: mpsc::Sender<(Task, oneshot::Sender<Response>)>,
+    tx: mpsc::Sender<Task>,
     recvs: VecDeque<oneshot::Receiver<Response>>,
 }
 
@@ -137,7 +137,7 @@ impl Handle {
         let mut inner = self.inner.lock();
 
         let (tx, rx) = oneshot::channel();
-        inner.tx.try_send((task, tx)).unwrap();
+        inner.tx.try_send(task).unwrap();
         inner.recvs.push_back(rx);
     }
 

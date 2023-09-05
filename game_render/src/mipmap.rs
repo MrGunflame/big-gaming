@@ -1,7 +1,5 @@
 use std::collections::HashMap;
 
-use bevy_ecs::system::Resource;
-use bevy_ecs::world::FromWorld;
 use wgpu::{
     AddressMode, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
     BindGroupLayoutEntry, BindingResource, BindingType, Color, ColorTargetState, ColorWrites,
@@ -13,9 +11,7 @@ use wgpu::{
     TextureViewDescriptor, TextureViewDimension, VertexState,
 };
 
-use crate::RenderDevice;
-
-#[derive(Debug, Resource)]
+#[derive(Debug)]
 pub struct MipMapGenerator {
     // FIXME: Maybe split texture bind group from sampler.
     bind_group_layout: BindGroupLayout,
@@ -181,12 +177,5 @@ impl MipMapGenerator {
         });
 
         self.pipelines.insert(format, pipeline);
-    }
-}
-
-impl FromWorld for MipMapGenerator {
-    fn from_world(world: &mut bevy_ecs::world::World) -> Self {
-        let device: &RenderDevice = world.resource();
-        Self::new(device)
     }
 }

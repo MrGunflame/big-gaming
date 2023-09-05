@@ -5,6 +5,7 @@ pub mod aabb;
 pub mod buffer;
 pub mod camera;
 pub mod color;
+pub mod entities;
 pub mod forward;
 pub mod graph;
 pub mod light;
@@ -20,47 +21,44 @@ pub mod texture;
 mod depth_stencil;
 mod post_process;
 
-use std::ops::Deref;
-
-use bevy_app::{App, CoreSet, Plugin};
-use bevy_ecs::schedule::{IntoSystemConfig, IntoSystemSetConfig, SystemSet};
-use bevy_ecs::system::Resource;
-use game_asset::AssetAppExt;
-use game_core::hierarchy::HierarchyPlugin;
-use game_core::transform::{TransformPlugin, TransformSet};
-use game_window::WindowPlugin;
-use graph::RenderGraph;
+use camera::RenderTarget;
+use entities::SceneEntities;
+use forward::ForwardPipeline;
+use game_asset::Assets;
+use game_window::windows::{WindowId, WindowState};
+use glam::UVec2;
+use graph::{RenderContext, RenderGraph};
 use mesh::Mesh;
-use metrics::RenderMetrics;
+use mipmap::MipMapGenerator;
 use pbr::PbrMaterial;
 use post_process::PostProcessPipeline;
-use render_pass::{RenderNodes, RenderPass};
+use render_pass::RenderPass;
 use surface::RenderSurfaces;
-use texture::ImagePlugin;
+use texture::Images;
 use wgpu::{
-    Adapter, Backends, Device, DeviceDescriptor, Features, Instance, InstanceDescriptor, Limits,
-    PowerPreference, Queue, RequestAdapterOptions,
+    Adapter, Backends, CommandEncoderDescriptor, Device, DeviceDescriptor, Features, Instance,
+    InstanceDescriptor, Limits, PowerPreference, Queue, RequestAdapterOptions,
+    TextureViewDescriptor,
 };
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, SystemSet)]
-pub enum RenderSet {
-    UpdateSurfaces,
-    Update,
-    Render,
+pub struct Renderer {
+    instance: Instance,
+    adapter: Adapter,
+    pub device: Device,
+    pub queue: Queue,
+    pub graph: RenderGraph,
+    pub surfaces: RenderSurfaces,
+    pub entities: SceneEntities,
+    pub images: Images,
+    forward: ForwardPipeline,
+    post_process: PostProcessPipeline,
+    mipmap_generator: MipMapGenerator,
+    pub meshes: Assets<Mesh>,
+    pub materials: Assets<PbrMaterial>,
 }
 
-#[derive(Copy, Clone, Debug, Default)]
-pub struct RenderPlugin;
-
-impl Plugin for RenderPlugin {
-    fn build(&self, app: &mut App) {
-        app.add_plugin(HierarchyPlugin);
-        app.add_plugin(TransformPlugin);
-
-        app.add_plugin(WindowPlugin);
-
-        app.add_plugin(ImagePlugin);
-
+impl Renderer {
+    pub fn new() -> Self {
         let instance = Instance::new(InstanceDescriptor {
             backends: Backends::VULKAN,
             dx12_shader_compiler: Default::default(),
@@ -68,17 +66,15 @@ impl Plugin for RenderPlugin {
 
         let adapter =
             futures_lite::future::block_on(instance.request_adapter(&RequestAdapterOptions {
-                power_preference: PowerPreference::default(),
+                power_preference: PowerPreference::HighPerformance,
                 compatible_surface: None,
                 force_fallback_adapter: false,
             }))
             .unwrap();
 
-        let features = Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES;
-
         let (device, queue) = futures_lite::future::block_on(adapter.request_device(
             &DeviceDescriptor {
-                features,
+                features: Features::default(),
                 limits: Limits::default(),
                 label: None,
             },
@@ -86,143 +82,104 @@ impl Plugin for RenderPlugin {
         ))
         .unwrap();
 
-        app.add_asset::<Mesh>();
-        app.add_asset::<PbrMaterial>();
+        let mut graph = RenderGraph::default();
+        graph.push(RenderPass);
 
-        app.insert_resource(RenderInstance(instance));
-        app.insert_resource(RenderAdapter(adapter));
-        app.insert_resource(RenderDevice(device));
-        app.insert_resource(RenderQueue(queue));
+        let mut images = Images::new();
 
-        let mut render_graph = RenderGraph::default();
-        render_graph.push(RenderPass);
-        app.insert_resource(render_graph);
-
-        // Surface configuration
-        {
-            app.insert_resource(RenderSurfaces::default());
-            app.add_system(surface::create_surfaces.in_set(RenderSet::UpdateSurfaces));
-            app.add_system(surface::destroy_surfaces.in_set(RenderSet::UpdateSurfaces));
-            app.add_system(
-                surface::resize_surfaces
-                    .in_set(RenderSet::UpdateSurfaces)
-                    .after(surface::create_surfaces),
-            );
-
-            app.add_system(surface::render_to_surfaces.in_set(RenderSet::Render));
+        Self {
+            entities: SceneEntities::new(&device),
+            forward: ForwardPipeline::new(&device, &mut images),
+            post_process: PostProcessPipeline::new(&device),
+            mipmap_generator: MipMapGenerator::new(&device),
+            instance,
+            adapter,
+            device,
+            queue,
+            graph,
+            surfaces: RenderSurfaces::new(),
+            images,
+            materials: Assets::new(),
+            meshes: Assets::new(),
         }
+    }
 
-        // Pipelines
-        {
-            app.init_resource::<forward::ForwardPipeline>();
+    /// Create a new renderer for the window.
+    pub fn create(&mut self, id: WindowId, window: WindowState) {
+        self.surfaces
+            .create(&self.instance, &self.adapter, &self.device, window, id);
+    }
 
-            app.insert_resource(depth_stencil::DepthTextures::default());
-            app.add_system(depth_stencil::create_depth_textures.in_set(RenderSet::Update));
-            app.add_system(depth_stencil::resize_depth_textures.in_set(RenderSet::Update));
-            app.add_system(depth_stencil::destroy_depth_textures.in_set(RenderSet::Update));
+    pub fn resize(&mut self, id: WindowId, size: UVec2) {
+        self.surfaces.resize(id, &self.device, size);
 
-            app.insert_resource(light::pipeline::DirectionalLightCache::default());
-            app.insert_resource(light::pipeline::PointLightCache::default());
-            app.insert_resource(light::pipeline::SpotLightCache::default());
-            app.add_system(light::pipeline::update_directional_lights);
-            app.add_system(light::pipeline::update_point_lights);
-            app.add_system(light::pipeline::update_spot_lights);
+        for cam in self.entities.cameras().values_mut() {
+            if cam.target == RenderTarget::Window(id) {
+                cam.update_aspect_ratio(size);
+            }
         }
+    }
 
-        // Post Process Pipeline
-        {
-            app.init_resource::<PostProcessPipeline>();
-        }
+    pub fn destroy(&mut self, id: WindowId) {
+        self.surfaces.destroy(id);
+    }
 
-        // PBR
-        {
-            app.init_resource::<RenderNodes>();
-            app.add_system(pbr::mesh::update_mesh_bind_group);
-            app.add_system(pbr::mesh::update_mesh_transform);
-
-            app.init_resource::<pbr::material::DefaultTextures>();
-            app.add_system(pbr::material::update_material_bind_groups);
-        }
-
-        // Camera
-        {
-            app.insert_resource(camera::Cameras::default());
-            app.add_system(camera::create_cameras.in_set(RenderSet::Update));
-            app.add_system(camera::update_camera_aspect_ratio.in_set(RenderSet::Update));
-            app.add_system(
-                camera::update_camera_buffer
-                    .in_set(RenderSet::Update)
-                    .after(camera::update_camera_aspect_ratio),
-            );
-        }
-
-        // Mipmap
-        {
-            app.init_resource::<mipmap::MipMapGenerator>();
-        }
-
-        app.configure_set(
-            RenderSet::Render
-                .after(RenderSet::Update)
-                .in_base_set(CoreSet::PostUpdate),
-        );
-        app.configure_set(
-            RenderSet::Update
-                .after(RenderSet::UpdateSurfaces)
-                .in_base_set(CoreSet::PostUpdate),
-        );
-        app.configure_set(
-            RenderSet::UpdateSurfaces
-                .after(TransformSet)
-                .in_base_set(CoreSet::PostUpdate),
+    pub fn render(&mut self) {
+        self.entities.rebuild(
+            &mut self.meshes,
+            &mut self.materials,
+            &mut self.images,
+            &self.device,
+            &self.queue,
+            &self.forward,
+            &mut self.mipmap_generator,
         );
 
-        app.add_system(aabb::update_aabb);
+        // FIXME: Should update on render pass.
+        crate::texture::image::load_images(&mut self.images);
+        crate::texture::image::update_image_handles(&mut self.images);
 
-        app.insert_resource(RenderMetrics::default());
-    }
-}
+        for (window, surface) in self.surfaces.iter_mut() {
+            let output = match surface.surface.get_current_texture() {
+                Ok(output) => output,
+                Err(err) => {
+                    tracing::error!("failed to get surface: {}", err);
+                    continue;
+                }
+            };
 
-#[derive(Debug, Resource)]
-pub struct RenderInstance(pub Instance);
+            let target = output.texture.create_view(&TextureViewDescriptor {
+                label: Some("surface_view"),
+                format: Some(surface.config.format),
+                ..Default::default()
+            });
 
-impl Deref for RenderInstance {
-    type Target = Instance;
+            let mut encoder = self
+                .device
+                .create_command_encoder(&CommandEncoderDescriptor {
+                    label: Some("render_encoder"),
+                });
 
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
+            let mut ctx = RenderContext {
+                state: &self.entities.state,
+                window: *window,
+                encoder: &mut encoder,
+                width: output.texture.width(),
+                height: output.texture.height(),
+                format: surface.config.format,
+                target: &target,
+                surface: &surface,
+                pipeline: &self.forward,
+                post_process: &self.post_process,
+                device: &self.device,
+            };
 
-#[derive(Debug, Resource)]
-pub struct RenderAdapter(pub Adapter);
+            for node in &self.graph.nodes {
+                node.render(&mut ctx);
+            }
 
-impl Deref for RenderAdapter {
-    type Target = Adapter;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-#[derive(Debug, Resource)]
-pub struct RenderDevice(pub Device);
-
-impl Deref for RenderDevice {
-    type Target = Device;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-#[derive(Debug, Resource)]
-pub struct RenderQueue(pub Queue);
-
-impl Deref for RenderQueue {
-    type Target = Queue;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
+            self.queue.submit(std::iter::once(encoder.finish()));
+            output.present();
+        }
     }
 }

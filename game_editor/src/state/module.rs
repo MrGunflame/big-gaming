@@ -4,14 +4,13 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use bevy_ecs::system::Resource;
 use game_common::module::{Module, ModuleId};
 use game_ui::reactive::{ReadSignal, WriteSignal};
 use parking_lot::{Mutex, RwLock};
 
 use super::capabilities::Capabilities;
 
-#[derive(Clone, Debug, Resource)]
+#[derive(Clone, Debug, Default)]
 pub struct Modules {
     modules: Arc<RwLock<HashMap<ModuleId, EditorModule>>>,
     signal: Arc<Mutex<Option<WriteSignal<()>>>>,

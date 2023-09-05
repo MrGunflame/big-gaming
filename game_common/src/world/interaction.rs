@@ -2,10 +2,9 @@ use std::borrow::Borrow;
 use std::fmt::{self, Debug, Formatter};
 
 use ahash::AHashMap;
-use bevy_ecs::component::Component;
 
 /// An object that can be interacted with.
-#[derive(Debug, Component)]
+#[derive(Debug)]
 pub struct Interactable {
     /// An optional displayed name of the object.
     pub name: Option<String>,

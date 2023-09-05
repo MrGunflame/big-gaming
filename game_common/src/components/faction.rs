@@ -1,8 +1,6 @@
 use std::borrow::Borrow;
 use std::collections::HashSet;
 
-use bevy_ecs::component::Component;
-
 use crate::id::WeakId;
 
 #[cfg(feature = "serde")]
@@ -32,7 +30,7 @@ pub enum FactionStanding {
 }
 
 /// A list of factions a actor is part of.
-#[derive(Clone, Debug, Default, Component)]
+#[derive(Clone, Debug, Default)]
 pub struct ActorFactions {
     factions: HashSet<FactionId>,
 }

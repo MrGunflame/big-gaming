@@ -1,23 +1,15 @@
-use std::collections::HashMap;
-
-use bevy_ecs::prelude::Entity;
-use bevy_ecs::system::{Query, Res, ResMut, Resource};
 use bytemuck::{Pod, Zeroable};
-use game_common::components::transform::GlobalTransform;
 use glam::Vec3;
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
-use wgpu::BufferUsages;
+use wgpu::{Buffer, BufferUsages, Device};
 
 use crate::buffer::{DynamicBuffer, GpuBuffer};
-use crate::metrics::RenderMetrics;
-use crate::render_pass::RenderNodes;
-use crate::RenderDevice;
 
 use super::{DirectionalLight, PointLight, SpotLight};
 
 #[derive(Copy, Clone, Debug, PartialEq, Zeroable, Pod)]
 #[repr(C)]
-pub struct DirectionalLightUniform {
+pub(crate) struct DirectionalLightUniform {
     pub direction: [f32; 3],
     pub _pad0: u32,
     pub color: [f32; 3],
@@ -47,7 +39,7 @@ impl GpuBuffer for PointLightUniform {
 
 #[derive(Copy, Clone, Debug, PartialEq, Zeroable, Pod)]
 #[repr(C)]
-pub struct SpotLightUniform {
+pub(crate) struct SpotLightUniform {
     pub position: [f32; 3],
     pub _pad0: u32,
     pub direction: [f32; 3],
@@ -65,163 +57,82 @@ impl GpuBuffer for SpotLightUniform {
     const ALIGN: usize = 16;
 }
 
-#[derive(Clone, Debug, Default, Resource)]
-pub struct DirectionalLightCache {
-    entities: HashMap<Entity, DirectionalLightUniform>,
-}
-
 pub fn update_directional_lights(
-    device: Res<RenderDevice>,
-    mut cache: ResMut<DirectionalLightCache>,
-    entities: Query<(Entity, &DirectionalLight, &GlobalTransform)>,
-    mut render_nodes: ResMut<RenderNodes>,
-    mut metrics: ResMut<RenderMetrics>,
-) {
-    let mut changed = false;
+    device: &Device,
+    entities: impl Iterator<Item = DirectionalLight>,
+) -> Buffer {
+    let mut lights = DynamicBuffer::new();
 
-    for (entity, light, transform) in &entities {
-        let direction = transform.0.rotation * -Vec3::Z;
+    for entity in entities {
+        let direction = entity.transform.rotation * -Vec3::Z;
 
         let uniform = DirectionalLightUniform {
             direction: direction.to_array(),
-            color: light.color.as_rgb(),
+            color: entity.color.as_rgb(),
+            intensity: illuminance_to_candelas(entity.illuminance),
             _pad0: 0,
-            intensity: illuminance_to_candelas(light.illuminance),
         };
 
-        if let Some(light) = cache.entities.get(&entity) {
-            if *light == uniform {
-                continue;
-            }
-        }
-
-        cache.entities.insert(entity, uniform);
-        changed = true;
+        lights.push(uniform);
     }
 
-    if !changed {
-        return;
-    }
-
-    metrics.directional_lights = cache.entities.len() as u64;
-
-    let lights: DynamicBuffer<DirectionalLightUniform> = cache.entities.values().copied().collect();
-
-    let buffer = device.create_buffer_init(&BufferInitDescriptor {
+    device.create_buffer_init(&BufferInitDescriptor {
         label: Some("directional_light_buffer"),
         contents: lights.as_bytes(),
         usage: BufferUsages::STORAGE,
-    });
-
-    render_nodes.directional_lights = buffer;
+    })
 }
 
-#[derive(Clone, Debug, Default, Resource)]
-pub struct PointLightCache {
-    entities: HashMap<Entity, PointLightUniform>,
-}
+pub fn update_point_lights(device: &Device, entities: impl Iterator<Item = PointLight>) -> Buffer {
+    let mut lights = DynamicBuffer::new();
 
-pub fn update_point_lights(
-    device: Res<RenderDevice>,
-    mut cache: ResMut<PointLightCache>,
-    entities: Query<(Entity, &PointLight, &GlobalTransform)>,
-    mut render_nodes: ResMut<RenderNodes>,
-    mut metrics: ResMut<RenderMetrics>,
-) {
-    let mut changed = false;
-
-    for (entity, light, transform) in &entities {
+    for entity in entities {
         let uniform = PointLightUniform {
-            position: transform.0.translation.to_array(),
-            color: light.color.as_rgb(),
-            intensity: light.intensity,
-            radius: light.radius,
+            position: entity.transform.translation.to_array(),
+            color: entity.color.as_rgb(),
+            intensity: entity.intensity,
+            radius: entity.radius,
             _pad0: 0,
             _pad1: [0; 3],
         };
 
-        if let Some(light) = cache.entities.get(&entity) {
-            if *light == uniform {
-                continue;
-            }
-        }
-
-        cache.entities.insert(entity, uniform);
-        changed = true;
+        lights.push(uniform);
     }
 
-    if !changed {
-        return;
-    }
-
-    metrics.point_lights = cache.entities.len() as u64;
-
-    let lights: DynamicBuffer<PointLightUniform> = cache.entities.values().copied().collect();
-
-    let buffer = device.create_buffer_init(&BufferInitDescriptor {
+    device.create_buffer_init(&BufferInitDescriptor {
         label: Some("point_light_buffer"),
         contents: lights.as_bytes(),
         usage: BufferUsages::STORAGE,
-    });
-
-    render_nodes.point_lights = buffer;
+    })
 }
 
-#[derive(Clone, Debug, Default, Resource)]
-pub struct SpotLightCache {
-    entities: HashMap<Entity, SpotLightUniform>,
-}
+pub fn update_spot_lights(device: &Device, entities: impl Iterator<Item = SpotLight>) -> Buffer {
+    let mut lights = DynamicBuffer::new();
 
-pub fn update_spot_lights(
-    device: Res<RenderDevice>,
-    mut cache: ResMut<SpotLightCache>,
-    entities: Query<(Entity, &SpotLight, &GlobalTransform)>,
-    mut render_nodes: ResMut<RenderNodes>,
-    mut metrics: ResMut<RenderMetrics>,
-) {
-    let mut changed = false;
-
-    for (entity, light, transform) in &entities {
-        let direction = transform.0.rotation * -Vec3::Z;
+    for entity in entities {
+        let direction = entity.transform.rotation * -Vec3::Z;
 
         let uniform = SpotLightUniform {
-            position: transform.0.translation.to_array(),
             direction: direction.to_array(),
-            inner_cutoff: light.inner_cutoff,
-            outer_cutoff: light.outer_cutoff,
-            color: light.color.as_rgb(),
-            intensity: light.intensity,
-            radius: light.radius,
+            position: entity.transform.translation.to_array(),
+            color: entity.color.as_rgb(),
+            intensity: entity.intensity,
+            radius: entity.radius,
+            inner_cutoff: entity.inner_cutoff,
+            outer_cutoff: entity.outer_cutoff,
             _pad0: 0,
             _pad1: 0,
             _pad2: [0; 1],
         };
 
-        if let Some(light) = cache.entities.get(&entity) {
-            if *light == uniform {
-                continue;
-            }
-        }
-
-        cache.entities.insert(entity, uniform);
-        changed = true;
+        lights.push(uniform);
     }
 
-    if !changed {
-        return;
-    }
-
-    metrics.spot_lights = cache.entities.len() as u64;
-
-    let lights: DynamicBuffer<SpotLightUniform> = cache.entities.values().copied().collect();
-
-    let buffer = device.create_buffer_init(&BufferInitDescriptor {
+    device.create_buffer_init(&BufferInitDescriptor {
         label: Some("spot_light_buffer"),
         contents: lights.as_bytes(),
         usage: BufferUsages::STORAGE,
-    });
-
-    render_nodes.spot_lights = buffer;
+    })
 }
 
 fn illuminance_to_candelas(lux: f32) -> f32 {

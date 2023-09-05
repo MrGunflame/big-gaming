@@ -5,7 +5,6 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-use bevy_ecs::prelude::Entity;
 use chrono::{DateTime, Local};
 use game_input::mouse::MouseButtonInput;
 use game_ui::events::Context;
@@ -14,6 +13,7 @@ use game_ui::render::layout::Key;
 use game_ui::render::style::{Background, Direction, Growth, Justify, Padding, Size, Style};
 use game_ui::widgets::*;
 use game_ui::{component, view};
+use game_window::windows::WindowId;
 use image::Rgba;
 use parking_lot::Mutex;
 
@@ -75,7 +75,7 @@ pub fn Explorer(cx: &Scope, on_open: Box<dyn Fn(Vec<Entry>) + Send + Sync + 'sta
 
     let id = Mutex::new(None);
     let cx = upper.clone();
-    create_effect(&cx.clone(), move |_| {
+    create_effect(&cx.clone(), move || {
         let path = path.get();
 
         let entries = match scan(&path) {
@@ -237,7 +237,7 @@ pub fn Explorer(cx: &Scope, on_open: Box<dyn Fn(Vec<Entry>) + Send + Sync + 'sta
             let row = rows.remove(0);
 
             let cx2 = cx.clone();
-            create_effect(&cx, move |_| {
+            create_effect(&cx, move || {
                 let selected = read.get();
 
                 let style = if selected {
@@ -417,12 +417,12 @@ fn format_time(time: Option<SystemTime>) -> String {
 #[derive(Clone, Debug)]
 pub enum Event {
     Select {
-        window: Entity,
+        window: WindowId,
         key: Key,
         selected: bool,
     },
     Cancel {
-        window: Entity,
+        window: WindowId,
     },
     Open {
         entries: Vec<Entry>,

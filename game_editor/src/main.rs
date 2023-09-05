@@ -7,199 +7,227 @@ mod widgets;
 mod windows;
 mod world;
 
+use std::collections::HashMap;
+use std::sync::{mpsc, Arc};
+
 use backend::{Backend, Handle, Response};
 
-use bevy_app::App;
-use bevy_ecs::prelude::Res;
-use bevy_ecs::system::{Commands, ResMut};
-use game_scene::ScenePlugin;
-use game_ui::events::Events;
+use game_common::components::transform::Transform;
+use game_render::camera::{Camera, Projection, RenderTarget};
+use game_render::Renderer;
 use game_ui::reactive::Document;
-use game_ui::render::layout::LayoutTree;
-use game_ui::render::style::{Background, BorderRadius, Bounds, Size, SizeVec2};
-use game_ui::UiPlugin;
-use game_window::Window;
+use game_ui::render::style::{Background, BorderRadius, Bounds, Size, SizeVec2, Style};
+use game_ui::UiState;
+use game_window::cursor::Cursor;
+use game_window::events::WindowEvent;
+use game_window::windows::{Window, WindowBuilder, WindowId, Windows};
+use game_window::WindowManager;
+use glam::UVec2;
+use parking_lot::Mutex;
 use state::module::Modules;
 use state::record::Records;
+use state::EditorState;
 use tokio::runtime::Runtime;
 use widgets::tool_bar::ToolBar;
-use windows::SpawnWindowQueue;
 
+use game_ui::widgets::*;
 use widgets::tool_bar::*;
-use windows::modules::CreateModules;
-use world::WorldPlugin;
 
 use crate::windows::SpawnWindow;
+
+struct State {
+    window_manager: WindowManager,
+    render_state: Renderer,
+    ui_state: UiState,
+    state: EditorState,
+}
+
+impl State {
+    fn new(handle: Handle) -> (Self, mpsc::Receiver<SpawnWindow>) {
+        let mut render_state = Renderer::new();
+
+        let (tx, rx) = mpsc::channel();
+
+        let state = EditorState {
+            modules: Modules::default(),
+            records: Records::default(),
+            spawn_windows: tx,
+            handle,
+        };
+
+        (
+            Self {
+                state,
+                window_manager: WindowManager::new(),
+                ui_state: UiState::new(&mut render_state),
+                render_state: render_state,
+            },
+            rx,
+        )
+    }
+}
 
 fn main() {
     pretty_env_logger::init();
 
-    // let archive = GameArchive::new();
-
-    // let loader = ModuleLoader::new(&archive);
-    // loader.load("../mods/core").unwrap();
-
     let (backend, handle) = Backend::new();
 
+    let (mut state, rx) = State::new(handle);
+
+    let mut editor_state = state.state.clone();
     std::thread::spawn(move || {
         let rt = Runtime::new().unwrap();
-        rt.block_on(backend.run());
+        rt.block_on(backend.run(&mut editor_state));
     });
 
-    App::new()
-        .insert_resource(Modules::new())
-        .insert_resource(Records::new())
-        .insert_resource(handle)
-        .add_plugin(ScenePlugin)
-        .add_plugin(UiPlugin)
-        .add_startup_system(setup)
-        .add_plugin(windows::WindowsPlugin)
-        .add_system(load_from_backend)
-        .add_plugin(WorldPlugin)
-        .run();
+    state
+        .state
+        .spawn_windows
+        .send(SpawnWindow::MainWindow)
+        .unwrap();
+
+    let app = App {
+        renderer: state.render_state,
+        ui_state: state.ui_state,
+        state: state.state,
+        rx,
+        windows: state.window_manager.windows().clone(),
+        cursor: state.window_manager.cursor().clone(),
+        loading_windows: HashMap::new(),
+        active_windows: HashMap::new(),
+    };
+
+    state.window_manager.run(app);
 }
 
-fn setup(
-    mut commands: Commands,
-    queue: Res<SpawnWindowQueue>,
-    rt: Res<game_ui::reactive::Runtime>,
-) {
-    let mut tree = LayoutTree::new();
-    let mut events = Events::default();
+fn load_from_backend(state: &mut EditorState, resp: Response) {
+    match resp {
+        Response::LoadModule(res) => match res {
+            Ok((module, recs)) => {
+                for (_, rec) in recs.iter() {
+                    state.records.insert(module.module.id, rec.clone());
+                }
 
-    // let mut ctx = Context {
-    //     parent: None,
-    //     tree: &mut tree,
-    //     events: &mut events,
-    // };
+                state.modules.insert(module.clone());
+            }
+            Err(err) => {
+                tracing::error!("failed to load module: {}", err);
 
-    // ToolBar {
-    //     queue: wqueue.clone(),
-    // }
-    // .create(&mut ctx);
+                let msg = format!("failed to load module: {}", err);
 
-    let id = commands
-        .spawn(Window {
-            title: "main window".to_owned(),
-        })
-        .id();
-
-    // Explorer {
-    //     window: id,
-    //     queue: queue.clone(),
-    //     path: PathBuf::from("./"),
-    // }
-    // .create(&mut ctx);
-
-    let document = Document::new(rt.clone());
-
-    let buttons = vec![
-        ActionButton {
-            label: "Modules".to_owned(),
-            on_click: {
-                let queue = queue.clone();
-                Box::new(move |_| {
-                    let mut queue = queue.0.write();
-                    queue.push_back(SpawnWindow::Modules);
-                })
-            },
+                let _ = state.spawn_windows.send(SpawnWindow::Error(msg));
+            }
         },
-        ActionButton {
-            label: "Records".to_owned(),
-            on_click: {
-                let queue = queue.clone();
-
-                Box::new(move |_| {
-                    let mut queue = queue.0.write();
-                    queue.push_back(SpawnWindow::Records);
-                })
-            },
+        Response::WriteModule(res) => match res {
+            Ok(()) => {}
+            Err(err) => {
+                let _ = state.spawn_windows.send(SpawnWindow::Error(format!(
+                    "failed to save modules: {}",
+                    err
+                )));
+            }
         },
-        ActionButton {
-            label: "View".to_owned(),
-            on_click: {
-                let queue = queue.clone();
-                Box::new(move |_| {
-                    let mut queue = queue.0.write();
-                    queue.push_back(SpawnWindow::View);
-                })
-            },
-        },
-    ];
-
-    let cx = document.root_scope();
-    game_ui::view! {
-        cx,
-        <ToolBar buttons={buttons}>
-        </ToolBar>
-    };
-
-    let style = Style {
-        background: Background::AQUA,
-        bounds: Bounds {
-            min: SizeVec2::splat(Size::Pixels(64.0)),
-            max: SizeVec2::splat(Size::Pixels(64.0)),
-        },
-        border_radius: BorderRadius::splat(Size::Pixels(16.0)),
-        ..Default::default()
-    };
-
-    game_ui::view! {cx,
-        <Container style={style}>
-        </Container>
-    };
-
-    use game_ui::render::style::Style;
-    use game_ui::widgets::*;
-
-    commands
-        .entity(id)
-        .insert(tree)
-        .insert(events)
-        .insert(document);
+    }
 }
 
-fn load_from_backend(
-    handle: Res<Handle>,
-    mut modules: ResMut<Modules>,
-    mut records: ResMut<Records>,
-    mut queue: Res<SpawnWindowQueue>,
-    create_modules: Res<CreateModules>,
-) {
-    while let Some(resp) = handle.recv() {
-        match resp {
-            Response::LoadModule(res) => match res {
-                Ok((module, recs)) => {
-                    for (_, rec) in recs.iter() {
-                        records.insert(module.module.id, rec.clone());
+pub struct App {
+    renderer: Renderer,
+    ui_state: UiState,
+    windows: Windows,
+    rx: mpsc::Receiver<SpawnWindow>,
+    state: EditorState,
+    cursor: Arc<Cursor>,
+    loading_windows: HashMap<WindowId, SpawnWindow>,
+    active_windows: HashMap<WindowId, crate::windows::Window>,
+}
+
+impl game_window::App for App {
+    fn handle_event(&mut self, event: game_window::events::WindowEvent) {
+        match event {
+            WindowEvent::WindowCreated(event) => {
+                let window = self.windows.state(event.window).unwrap();
+                let size = window.inner_size();
+
+                self.renderer.create(event.window, window);
+                self.ui_state.create(event.window, size);
+
+                if let Some(spawn) = self.loading_windows.remove(&event.window) {
+                    let window = crate::windows::spawn_window(
+                        &mut self.renderer,
+                        self.state.clone(),
+                        self.ui_state.runtime.clone(),
+                        spawn,
+                        event.window,
+                    );
+
+                    if let Some(doc) = window.doc() {
+                        *self.ui_state.get_mut(event.window).unwrap() = doc;
                     }
 
-                    modules.insert(module.clone());
+                    self.active_windows.insert(event.window, window);
+                }
+            }
+            WindowEvent::WindowResized(event) => {
+                self.renderer
+                    .resize(event.window, UVec2::new(event.width, event.height));
+                self.ui_state
+                    .resize(event.window, UVec2::new(event.width, event.height));
+            }
+            WindowEvent::WindowDestroyed(event) => {
+                self.renderer.destroy(event.window);
+                self.ui_state.destroy(event.window);
 
-                    let inner = create_modules.0.lock();
-                    if let Some(sig) = &*inner {
-                        sig.update(|v| v.push(module))
+                self.active_windows.remove(&event.window);
+            }
+            WindowEvent::WindowCloseRequested(event) => {
+                // TODO: Ask for confirmation if the window contains
+                // unsaved data.
+                self.windows.despawn(event.window);
+            }
+            WindowEvent::MouseMotion(event) => {
+                if let Some(window_id) = self.cursor.window() {
+                    if let Some(window) = self.active_windows.get_mut(&window_id) {
+                        window.handle_event(&mut self.renderer, WindowEvent::MouseMotion(event));
                     }
                 }
-                Err(err) => {
-                    tracing::error!("failed to load module: {}", err);
-
-                    let msg = format!("failed to load module: {}", err);
-
-                    let mut queue = queue.0.write();
-                    queue.push_back(SpawnWindow::Error(msg));
+            }
+            WindowEvent::KeyboardInput(event) => {
+                if let Some(window_id) = self.cursor.window() {
+                    if let Some(window) = self.active_windows.get_mut(&window_id) {
+                        window.handle_event(&mut self.renderer, WindowEvent::KeyboardInput(event));
+                    }
                 }
-            },
-            Response::WriteModule(res) => match res {
-                Ok(()) => {}
-                Err(err) => {
-                    let mut queue = queue.0.write();
-                    queue.push_back(SpawnWindow::Error(format!(
-                        "failed to save modules: {}",
-                        err
-                    )));
+            }
+            WindowEvent::MouseWheel(event) => {
+                if let Some(window_id) = self.cursor.window() {
+                    if let Some(window) = self.active_windows.get_mut(&window_id) {
+                        window.handle_event(&mut self.renderer, WindowEvent::MouseWheel(event));
+                    }
                 }
-            },
+            }
+            WindowEvent::MouseButtonInput(event) => {
+                if let Some(window_id) = self.cursor.window() {
+                    if let Some(window) = self.active_windows.get_mut(&window_id) {
+                        window
+                            .handle_event(&mut self.renderer, WindowEvent::MouseButtonInput(event));
+                    }
+                }
+            }
+            _ => (),
         }
+
+        self.ui_state.send_event(&self.cursor, event);
+    }
+
+    fn update(&mut self) {
+        while let Ok(event) = self.rx.try_recv() {
+            let id = self.windows.spawn(WindowBuilder::new());
+
+            self.loading_windows.insert(id, event);
+        }
+
+        self.renderer.render();
+        self.ui_state
+            .run(&self.renderer.device, &self.renderer.queue, &self.windows);
     }
 }

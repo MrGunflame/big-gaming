@@ -6,7 +6,6 @@ authors = ["MrGunflame <git@robbsrv.de>"]
 license = "GPL-3.0-or-later"
 
 [dependencies]
-bevy_ecs = "0.10.0"
 game_common = { version = "0.1.0", path = "../game_common" }
 
 nalgebra = { version = "0.32.1" }

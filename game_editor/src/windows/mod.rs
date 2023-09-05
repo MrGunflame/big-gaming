@@ -1,186 +1,139 @@
 mod create_module;
 mod error;
+pub mod main_window;
 pub mod modules;
 mod open_module;
 mod record;
 mod records;
 mod view;
 
-use std::collections::VecDeque;
-use std::sync::Arc;
-
-use bevy_app::Plugin;
-use bevy_ecs::prelude::{EventReader, EventWriter, Res};
-use bevy_ecs::system::{Commands, ResMut, Resource};
 use game_asset::Assets;
 use game_common::module::ModuleId;
 use game_data::record::{Record, RecordKind};
 use game_render::mesh::Mesh;
 use game_render::pbr::PbrMaterial;
 use game_render::texture::Images;
+use game_render::Renderer;
 use game_scene::Scenes;
 use game_ui::events::Events;
 use game_ui::reactive::{Document, Runtime};
 use game_ui::render::layout::LayoutTree;
 use game_ui::view;
-use game_window::Window;
-use parking_lot::RwLock;
+use game_window::events::WindowEvent;
+use game_window::windows::WindowId;
 
 use crate::backend::Handle;
+use crate::state::EditorState;
 
 use self::create_module::*;
 use self::error::*;
+use self::main_window::*;
 use self::modules::*;
 use self::open_module::*;
 use self::record::*;
 use self::records::*;
+use self::view::WorldWindowState;
 
-pub struct WindowsPlugin;
+pub enum Window {
+    View(WorldWindowState),
+    Other(Document),
+}
 
-impl Plugin for WindowsPlugin {
-    fn build(&self, app: &mut bevy_app::App) {
-        app.add_event::<SpawnWindow>();
-        app.add_system(spawn_windows);
-        app.add_system(spawn_window_queue);
+impl Window {
+    pub fn doc(&self) -> Option<Document> {
+        match self {
+            Self::View(_) => None,
+            Self::Other(doc) => Some(doc.clone()),
+        }
+    }
 
-        app.insert_resource(SpawnWindowQueue::default());
-
-        app.insert_resource(CreateModules::default());
-
-        app.add_system(view::reset_state_on_cursor_leave);
-        app.add_system(view::zoom_scene);
-        app.add_system(view::update_view_camera);
-        app.add_system(view::update_camera_mode);
-        app.add_system(view::update_origin);
+    pub fn handle_event(&mut self, renderer: &mut Renderer, event: WindowEvent) {
+        match self {
+            Self::View(window) => window.handle_event(renderer, event),
+            _ => (),
+        }
     }
 }
 
-fn spawn_windows(
-    mut commands: Commands,
-    mut events: EventReader<SpawnWindow>,
-    queue: ResMut<SpawnWindowQueue>,
-    handle: Res<Handle>,
-    records: Res<crate::state::record::Records>,
-    create_modules: Res<CreateModules>,
-    rt: Res<Runtime>,
-    modules: Res<crate::state::module::Modules>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<PbrMaterial>>,
-    mut images: ResMut<Images>,
-    mut scenes: ResMut<Scenes>,
-) {
-    for event in events.iter() {
-        let window = Window {
-            title: "test".to_owned(),
-        };
+pub fn spawn_window(
+    renderer: &mut Renderer,
+    state: EditorState,
+    rt: Runtime,
+    event: SpawnWindow,
+    window_id: WindowId,
+) -> Window {
+    let document = Document::new(rt);
 
-        let tree = LayoutTree::new();
-        let events = Events::default();
-        let document = Document::new(rt.clone());
-
-        // let mut ctx = Context {
-        //     parent: None,
-        //     tree: &mut tree,
-        //     events: &mut events,
-        // };
-
-        // match event {
-        //     SpawnWindow::Modules => {
-        //         let mut window = commands.spawn(Window {
-        //             title: "test".to_owned(),
-        //         });
-
-        //         modules::spawn_modules_window(&mut ctx);
-
-        //         window.insert((tree, events));
-        //     }
-        //     SpawnWindow::CreateModule => todo!(),
-        //     SpawnWindow::OpenModule => todo!(),
-        //     SpawnWindow::View => {
-        //         view::spawn_view_window(&mut commands);
-        //     }
-        // }
-
-        if let SpawnWindow::View = event {
-            view::spawn_view_window(
-                &mut commands,
-                &mut meshes,
-                &mut materials,
-                &mut images,
-                &mut scenes,
-            );
-            continue;
+    let cx = document.root_scope();
+    match event {
+        SpawnWindow::MainWindow => {
+            view! {
+                cx,
+                <MainWindow state={state.clone()}>
+                </MainWindow>
+            };
         }
-
-        let mut cmds = commands.spawn(window);
-        let id = cmds.id();
-
-        let cx = document.root_scope();
-        match event {
-            SpawnWindow::Modules => {
-                view! {
-                    cx,
-                    <Modules
-                        queue={queue.clone()}
-                        modules={modules.clone()}
-                        records={records.clone()}
-                        handle={handle.clone()}
-                        create_modules={create_modules.clone()}
-                    >
-                    </Modules>
-                };
-            }
-            SpawnWindow::OpenModule => {
-                view! {
-                    cx,
-                    <OpenModule window={id} handle={handle.clone()}>
-                    </OpenModule>
-                };
-            }
-            SpawnWindow::CreateModule => {
-                view! {
-                    cx,
-                    <CreateModule modules={modules.clone()}>
-                    </CreateModule>
-                };
-            }
-            SpawnWindow::Error(msg) => {
-                view! {
-                    cx,
-                    <Error message={msg}>
-                    </Error>
-                };
-            }
-            SpawnWindow::Records => {
-                view! {
-                    cx,
-                    <Records queue={queue.clone()} records={records.clone()}>
-                    </Records>
-                };
-            }
-            SpawnWindow::CreateRecord(kind) => {
-                view! {
-                    cx,
-                    <CreateRecord kind={*kind} records={records.clone()} modules={modules.clone()}>
-                    </CreateRecord>
-                };
-            }
-            SpawnWindow::EditRecord(module_id, record) => {
-                view! {
-                    cx,
-                    <EditRecord record={record.clone()} modules={modules.clone()} records={records.clone()} module_id={*module_id}>
-                    </EditRecord>
-                };
-            }
-            _ => todo!(),
+        SpawnWindow::Modules => {
+            view! {
+                cx,
+                <Modules state={state.clone()}>
+                </Modules>
+            };
         }
-
-        cmds.insert((tree, events, document));
+        SpawnWindow::OpenModule => {
+            view! {
+                cx,
+                <OpenModule handle={state.handle.clone()}>
+                </OpenModule>
+            };
+        }
+        SpawnWindow::CreateModule => {
+            view! {
+                cx,
+                <CreateModule modules={state.modules.clone()}>
+                </CreateModule>
+            };
+        }
+        SpawnWindow::Error(msg) => {
+            view! {
+                cx,
+                <Error message={&msg}>
+                </Error>
+            };
+        }
+        SpawnWindow::Records => {
+            view! {
+                cx,
+                <Records state={state.clone()}>
+                </Records>
+            };
+        }
+        SpawnWindow::CreateRecord(kind) => {
+            view! {
+                cx,
+                <CreateRecord kind={kind} records={state.records.clone()} modules={state.modules.clone()}>
+                </CreateRecord>
+            };
+        }
+        SpawnWindow::EditRecord(module_id, record) => {
+            view! {
+                cx,
+                <EditRecord record={record.clone()} modules={state.modules.clone()} records={state.records.clone()} module_id={module_id}>
+                </EditRecord>
+            };
+        }
+        SpawnWindow::View => {
+            let window = view::WorldWindowState::new(renderer, window_id);
+            return Window::View(window);
+        }
     }
+
+    Window::Other(document)
 }
 
 #[derive(Clone, Debug)]
 pub enum SpawnWindow {
+    MainWindow,
     Modules,
     CreateModule,
     OpenModule,
@@ -189,14 +142,4 @@ pub enum SpawnWindow {
     Error(String),
     CreateRecord(RecordKind),
     EditRecord(ModuleId, Record),
-}
-
-#[derive(Resource, Default, Clone)]
-pub struct SpawnWindowQueue(pub Arc<RwLock<VecDeque<SpawnWindow>>>);
-
-fn spawn_window_queue(queue: ResMut<SpawnWindowQueue>, mut writer: EventWriter<SpawnWindow>) {
-    let mut queue = queue.0.write();
-    while let Some(event) = queue.pop_front() {
-        writer.send(event);
-    }
 }

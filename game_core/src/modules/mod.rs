@@ -1,35 +1,20 @@
 use std::collections::{HashMap, HashSet};
 
-use bevy_ecs::system::Resource;
 use game_common::module::ModuleId;
 use game_common::record::{RecordId, RecordReference};
 use game_data::loader::FileLoader;
 use game_data::record::{Record, RecordBody, RecordKind};
 use game_data::DataBuffer;
-use game_script::plugin::ScriptPlugin;
 use game_script::scripts::RecordTargets;
 use game_script::ScriptServer;
 use thiserror::Error;
 use tokio::runtime::Runtime;
 
-use bevy_app::{App, Plugin};
-
-pub struct ModulePlugin;
-
-impl Plugin for ModulePlugin {
-    fn build(&self, app: &mut App) {
-        app.insert_resource(Modules::new());
-        app.insert_resource(ScriptServer::new());
-
-        app.add_plugin(ScriptPlugin);
-    }
-}
-
 use self::records::Records;
 
 pub mod records;
 
-#[derive(Clone, Debug, Resource)]
+#[derive(Clone, Debug)]
 pub struct Modules {
     modules: HashMap<ModuleId, ModuleData>,
 }

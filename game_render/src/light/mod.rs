@@ -1,50 +1,31 @@
 pub mod pipeline;
 
-use bevy_ecs::prelude::{Bundle, Component};
-use game_common::bundles::TransformBundle;
+use game_common::components::transform::Transform;
 
 use crate::color::Color;
 
-#[derive(Copy, Clone, Debug, Component)]
+#[derive(Copy, Clone, Debug)]
 pub struct DirectionalLight {
+    pub transform: Transform,
     pub color: Color,
     pub illuminance: f32,
 }
 
-#[derive(Clone, Debug, Bundle)]
-pub struct DirectionalLightBundle {
-    pub light: DirectionalLight,
-    #[bundle]
-    pub transform: TransformBundle,
-}
-
-#[derive(Copy, Clone, Debug, Component)]
+#[derive(Copy, Clone, Debug)]
 pub struct PointLight {
+    pub transform: Transform,
     pub color: Color,
     pub intensity: f32,
     pub radius: f32,
 }
 
-#[derive(Clone, Debug, Bundle)]
-pub struct PointLightBundle {
-    pub light: PointLight,
-    #[bundle]
-    pub transform: TransformBundle,
-}
-
-#[derive(Copy, Clone, Debug, Component)]
+#[derive(Copy, Clone, Debug)]
 pub struct SpotLight {
+    pub transform: Transform,
     pub color: Color,
     pub intensity: f32,
     pub radius: f32,
     /// Inner cutoff angle
     pub inner_cutoff: f32,
     pub outer_cutoff: f32,
-}
-
-#[derive(Clone, Debug, Bundle)]
-pub struct SpotLightBundle {
-    pub light: SpotLight,
-    #[bundle]
-    pub transform: TransformBundle,
 }

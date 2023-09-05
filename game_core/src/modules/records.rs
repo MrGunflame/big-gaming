@@ -1,10 +1,9 @@
 use std::collections::HashMap;
 
-use bevy_ecs::system::Resource;
 use game_common::record::RecordId;
 use game_data::record::Record;
 
-#[derive(Clone, Debug, Resource)]
+#[derive(Clone, Debug)]
 pub struct Records {
     records: HashMap<RecordId, Record>,
 }

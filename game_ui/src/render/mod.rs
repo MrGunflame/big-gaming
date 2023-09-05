@@ -6,21 +6,17 @@ mod container;
 mod debug;
 pub mod image;
 pub mod remap;
-mod systems;
 mod text;
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use ::image::{ImageBuffer, Rgba};
-use bevy_app::{App, Plugin};
-use bevy_ecs::prelude::Entity;
-use bevy_ecs::system::Resource;
-use bevy_ecs::world::{FromWorld, World};
 use bytemuck::{Pod, Zeroable};
 use game_render::graph::{Node, RenderContext, RenderGraph};
-use game_render::{RenderDevice, RenderPlugin, RenderQueue};
-use game_window::WindowState;
-use glam::Vec2;
+use game_window::windows::WindowId;
+use glam::{UVec2, Vec2};
+use parking_lot::RwLock;
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
 use wgpu::{
     AddressMode, BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout,
@@ -41,22 +37,97 @@ use self::layout::LayoutTree;
 
 pub use self::image::Image;
 pub use self::layout::{Element, ElementBody};
-use self::style::Style;
 pub use self::text::Text;
 
-pub struct RenderUiPlugin;
+pub struct RenderUiState {
+    pipeline: Arc<UiPipeline>,
+    windows: HashMap<WindowId, LayoutTree>,
+    elements: Arc<RwLock<HashMap<WindowId, Vec<PrimitiveElement>>>>,
+}
 
-impl Plugin for RenderUiPlugin {
-    fn build(&self, app: &mut App) {
-        app.add_plugin(RenderPlugin);
+impl RenderUiState {
+    pub fn new(device: &Device, graph: &mut RenderGraph) -> Self {
+        let pipeline = Arc::new(UiPipeline::new(device));
+        let elements = Arc::new(RwLock::new(HashMap::new()));
 
-        app.init_resource::<UiPipeline>();
+        graph.push(UiPass {
+            pipeline: pipeline.clone(),
+            elements: elements.clone(),
+        });
 
-        let mut render_graph = app.world.resource_mut::<RenderGraph>();
-        render_graph.push(UiPass::default());
+        Self {
+            pipeline,
+            windows: HashMap::new(),
+            elements,
+        }
+    }
 
-        app.add_system(systems::layout_tree_size_window_creation);
-        app.add_system(systems::layout_tree_window_resized);
+    pub fn insert(&mut self, id: WindowId, size: UVec2) {
+        self.windows.insert(id, LayoutTree::new());
+        self.resize(id, size);
+
+        let mut elems = self.elements.write();
+        elems.insert(id, vec![]);
+    }
+
+    pub fn get_mut(&mut self, id: WindowId) -> Option<&mut LayoutTree> {
+        self.windows.get_mut(&id)
+    }
+
+    pub fn remove(&mut self, id: WindowId) {
+        self.windows.remove(&id);
+
+        let mut elems = self.elements.write();
+        elems.remove(&id);
+    }
+
+    pub fn resize(&mut self, id: WindowId, size: UVec2) {
+        if let Some(tree) = self.windows.get_mut(&id) {
+            tree.resize(Vec2::new(size.x as f32, size.y as f32));
+        }
+    }
+
+    pub fn update(&mut self, device: &Device, queue: &Queue) {
+        for (id, tree) in self.windows.iter_mut() {
+            if !tree.is_changed() {
+                continue;
+            }
+
+            let size = tree.size();
+
+            tree.compute_layout();
+
+            let mut elems = vec![];
+            for (elem, layout) in tree.elements().zip(tree.layouts()) {
+                // Don't render elements with a zero size.
+                if layout.width <= 0.0 || layout.height <= 0.0 {
+                    continue;
+                }
+
+                // Don't render elements that start outside of the viewport.
+                if layout.position.x > size.x as f32 || layout.position.y > size.y as f32 {
+                    continue;
+                }
+
+                if let Some(elem) = elem.build(
+                    &layout.style,
+                    Rect {
+                        min: layout.position,
+                        max: layout.position + Vec2::new(layout.width as f32, layout.height as f32),
+                    },
+                    &self.pipeline,
+                    device,
+                    queue,
+                    size,
+                ) {
+                    elems.push(elem);
+                }
+            }
+
+            tree.unchanged();
+
+            *self.elements.write().get_mut(&id).unwrap() = elems;
+        }
     }
 }
 
@@ -202,17 +273,11 @@ trait BuildPrimitiveElement {
     fn bounds(&self, style: &ComputedStyle) -> ComputedBounds;
 }
 
-#[derive(Debug, Resource)]
+#[derive(Debug)]
 struct UiPipeline {
     bind_group_layout: BindGroupLayout,
     pipeline: RenderPipeline,
     sampler: Sampler,
-}
-
-impl FromWorld for UiPipeline {
-    fn from_world(world: &mut World) -> Self {
-        world.resource_scope::<RenderDevice, Self>(|_, device| Self::new(&device.0))
-    }
 }
 
 impl UiPipeline {
@@ -344,73 +409,16 @@ pub struct Rect {
     pub max: Vec2,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct UiPass {
-    elements: HashMap<Entity, Vec<PrimitiveElement>>,
+    pipeline: Arc<UiPipeline>,
+    elements: Arc<RwLock<HashMap<WindowId, Vec<PrimitiveElement>>>>,
 }
 
 impl Node for UiPass {
-    fn update(&mut self, world: &mut World) {
-        // Uh-oh
-        world.resource_scope::<UiPipeline, ()>(|world, pipeline| {
-            world.resource_scope::<RenderDevice, ()>(|world, device| {
-                world.resource_scope::<RenderQueue, ()>(|world, queue| {
-                    let mut query = world.query::<(Entity, &WindowState, &mut LayoutTree)>();
-
-                    for (entity, window, mut frame) in query.iter_mut(world) {
-                        if !frame.is_changed() {
-                            continue;
-                        }
-
-                        let size = window.inner_size();
-
-                        frame.compute_layout();
-
-                        let mut elems = vec![];
-                        for (elem, layout) in frame.elements().zip(frame.layouts()) {
-                            // Don't render elements with a zero size.
-                            if layout.width <= 0.0 || layout.height <= 0.0 {
-                                continue;
-                            }
-
-                            // Don't render elements that start outside of the viewport.
-                            if layout.position.x > size.width as f32
-                                || layout.position.y > size.height as f32
-                            {
-                                continue;
-                            }
-
-                            if let Some(elem) = elem.build(
-                                &layout.style,
-                                Rect {
-                                    min: layout.position,
-                                    max: Vec2::new(
-                                        layout.position.x + layout.width,
-                                        layout.position.y + layout.height,
-                                    ),
-                                },
-                                &pipeline,
-                                &device.0,
-                                &queue.0,
-                                Vec2::new(size.width as f32, size.height as f32),
-                            ) {
-                                elems.push(elem);
-                            }
-                        }
-
-                        frame.unchanged();
-
-                        self.elements.insert(entity, elems);
-                    }
-                });
-            });
-        });
-    }
-
-    fn render(&self, world: &World, ctx: &mut RenderContext<'_>) {
-        let pipeline = world.resource::<UiPipeline>();
-
-        let Some(elements) = self.elements.get(&ctx.window) else {
+    fn render(&self, ctx: &mut RenderContext<'_>) {
+        let elems = self.elements.read();
+        let Some(elements) = elems.get(&ctx.window) else {
             return;
         };
 
@@ -427,7 +435,7 @@ impl Node for UiPass {
             depth_stencil_attachment: None,
         });
 
-        render_pass.set_pipeline(&pipeline.pipeline);
+        render_pass.set_pipeline(&self.pipeline.pipeline);
 
         for elem in elements {
             render_pass.set_bind_group(0, &elem.bind_group, &[]);

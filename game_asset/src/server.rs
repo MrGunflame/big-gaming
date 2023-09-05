@@ -1,14 +1,13 @@
 use std::io;
 use std::path::Path;
 
-use bevy_ecs::system::Resource;
 use futures::{select, FutureExt};
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
 use tokio::runtime::Runtime;
 use tokio::sync::mpsc;
 
-#[derive(Debug, Resource)]
+#[derive(Debug)]
 pub struct AssetServer {
     rt: Runtime,
 }

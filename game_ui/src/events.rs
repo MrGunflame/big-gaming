@@ -1,29 +1,21 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 use std::fmt::{self, Debug, Formatter};
 use std::ptr::NonNull;
-use std::sync::Arc;
+use std::sync::{mpsc, Arc};
 
-use bevy_ecs::prelude::{Component, Entity, EventReader};
-use bevy_ecs::query::{Added, Changed, Or};
-use bevy_ecs::system::{Query, Res, Resource};
 use game_input::keyboard::KeyboardInput;
 use game_input::mouse::{MouseButtonInput, MouseWheel};
 use game_window::cursor::{Cursor, CursorIcon};
 use game_window::events::{CursorMoved, ReceivedCharacter};
+use game_window::windows::WindowId;
 use glam::Vec2;
-use parking_lot::Mutex;
 
 use crate::render::layout::{Key, LayoutTree};
 use crate::render::Rect;
 
-#[derive(Clone, Debug, Default, Resource)]
-pub struct WindowEventQueue {
-    pub(crate) inner: Arc<Mutex<VecDeque<WindowEvent>>>,
-}
-
 #[derive(Clone, Debug)]
 pub struct Context<T> {
-    pub cursor: Cursor,
+    pub cursor: Arc<Cursor>,
     pub event: T,
     pub window: WindowContext,
     _priv: (),
@@ -31,35 +23,36 @@ pub struct Context<T> {
 
 #[derive(Clone, Debug)]
 pub struct WindowContext {
-    window: Entity,
-    queue: Arc<Mutex<VecDeque<WindowEvent>>>,
+    window: WindowId,
+    tx: mpsc::Sender<WindowCommand>,
 }
 
 impl WindowContext {
     pub fn close(&self) {
-        let mut queue = self.queue.lock();
-        queue.push_back(WindowEvent::Close(self.window));
+        let _ = self.tx.send(WindowCommand::Close(self.window));
     }
 
     pub fn set_title<T>(&self, title: T)
     where
         T: ToString,
     {
-        let mut queue = self.queue.lock();
-        queue.push_back(WindowEvent::SetTitle(self.window, title.to_string()));
+        let _ = self
+            .tx
+            .send(WindowCommand::SetTitle(self.window, title.to_string()));
     }
 
     pub fn set_cursor_icon(&self, icon: CursorIcon) {
-        let mut queue = self.queue.lock();
-        queue.push_back(WindowEvent::SetCursorIcon(self.window, icon));
+        let _ = self
+            .tx
+            .send(WindowCommand::SetCursorIcon(self.window, icon));
     }
 }
 
 #[derive(Clone, Debug)]
-pub(crate) enum WindowEvent {
-    Close(Entity),
-    SetTitle(Entity, String),
-    SetCursorIcon(Entity, CursorIcon),
+pub(crate) enum WindowCommand {
+    Close(WindowId),
+    SetTitle(WindowId, String),
+    SetCursorIcon(WindowId, CursorIcon),
 }
 
 #[derive(Debug, Default)]
@@ -97,7 +90,7 @@ impl Debug for EventHandlers {
     }
 }
 
-#[derive(Component, Default)]
+#[derive(Default)]
 pub struct Events {
     events: HashMap<Key, ElementEventHandlers>,
     positions: Vec<(Key, Rect)>,
@@ -132,251 +125,218 @@ impl Events {
     }
 }
 
-pub fn update_events_from_layout_tree(
-    mut windows: Query<
-        (&mut LayoutTree, &mut Events),
-        Or<(Changed<LayoutTree>, Added<LayoutTree>)>,
-    >,
-) {
-    for (tree, mut events) in &mut windows {
-        events.positions.clear();
+pub fn update_events_from_layout_tree(tree: &mut LayoutTree, events: &mut Events) {
+    events.positions.clear();
 
-        for (key, layout) in tree.keys().zip(tree.layouts()) {
-            let position = Rect {
-                min: layout.position,
-                max: Vec2::new(
-                    layout.position.x + layout.width,
-                    layout.position.y + layout.height,
-                ),
-            };
+    for (key, layout) in tree.keys().zip(tree.layouts()) {
+        let position = Rect {
+            min: layout.position,
+            max: Vec2::new(
+                layout.position.x + layout.width,
+                layout.position.y + layout.height,
+            ),
+        };
 
-            events.positions.push((key, position));
-        }
+        events.positions.push((key, position));
     }
 }
 
-pub fn dispatch_cursor_moved_events(
-    queue: Res<WindowEventQueue>,
-    cursor: Res<Cursor>,
-    windows: Query<&Events>,
-    mut events: EventReader<CursorMoved>,
+pub(crate) fn dispatch_cursor_moved_events(
+    tx: &mpsc::Sender<WindowCommand>,
+    cursor: &Arc<Cursor>,
+    windows: &HashMap<WindowId, Events>,
+    event: CursorMoved,
 ) {
-    for event in events.iter() {
-        let Ok(window) = windows.get(event.window) else {
+    let Some(window) = windows.get(&event.window) else {
+        return;
+    };
+
+    for (key, rect) in &window.positions {
+        let Some(handlers) = window.events.get(&key) else {
             continue;
         };
 
-        for (key, rect) in &window.positions {
-            let Some(handlers) = window.events.get(&key) else {
-                continue;
-            };
+        let ctx = Context {
+            cursor: cursor.clone(),
+            event,
+            window: WindowContext {
+                window: event.window,
+                tx: tx.clone(),
+            },
+            _priv: (),
+        };
 
-            let ctx = Context {
-                cursor: cursor.clone(),
-                event: *event,
-                window: WindowContext {
-                    window: event.window,
-                    queue: queue.inner.clone(),
-                },
-                _priv: (),
-            };
+        if let Some(f) = &handlers.global.cursor_moved {
+            f(ctx.clone());
+        }
 
-            if let Some(f) = &handlers.global.cursor_moved {
-                f(ctx.clone());
-            }
-
-            if hit_test(*rect, event.position) {
-                if let Some(f) = &handlers.local.cursor_moved {
-                    f(ctx);
-                }
+        if hit_test(*rect, event.position) {
+            if let Some(f) = &handlers.local.cursor_moved {
+                f(ctx);
             }
         }
     }
 }
 
-pub fn dispatch_mouse_button_input_events(
-    queue: Res<WindowEventQueue>,
-    cursor: Res<Cursor>,
-    windows: Query<&Events>,
-    mut events: EventReader<MouseButtonInput>,
+pub(crate) fn dispatch_mouse_button_input_events(
+    tx: &mpsc::Sender<WindowCommand>,
+    cursor: &Arc<Cursor>,
+    windows: &HashMap<WindowId, Events>,
+    event: MouseButtonInput,
 ) {
-    if events.is_empty() {
-        return;
-    }
-
     let Some(window) = cursor.window() else {
         return;
     };
 
-    let Ok(window) = windows.get(window) else {
+    let Some(window) = windows.get(&window) else {
         return;
     };
 
-    for event in events.iter() {
-        for (key, rect) in &window.positions {
-            let Some(handlers) = window.events.get(&key) else {
-                continue;
-            };
+    for (key, rect) in &window.positions {
+        let Some(handlers) = window.events.get(&key) else {
+            continue;
+        };
 
-            let ctx = Context {
-                cursor: cursor.clone(),
-                event: *event,
-                window: WindowContext {
-                    window: cursor.window().unwrap(),
-                    queue: queue.inner.clone(),
-                },
-                _priv: (),
-            };
+        let ctx = Context {
+            cursor: cursor.clone(),
+            event,
+            window: WindowContext {
+                window: cursor.window().unwrap(),
+                tx: tx.clone(),
+            },
+            _priv: (),
+        };
 
-            if let Some(f) = &handlers.global.mouse_button_input {
-                f(ctx.clone());
-            }
+        if let Some(f) = &handlers.global.mouse_button_input {
+            f(ctx.clone());
+        }
 
-            if hit_test(*rect, cursor.position()) {
-                if let Some(f) = &handlers.local.mouse_button_input {
-                    f(ctx);
-                }
+        if hit_test(*rect, cursor.position()) {
+            if let Some(f) = &handlers.local.mouse_button_input {
+                f(ctx);
             }
         }
     }
 }
 
-pub fn dispatch_mouse_wheel_events(
-    queue: Res<WindowEventQueue>,
-    cursor: Res<Cursor>,
-    windows: Query<&Events>,
-    mut events: EventReader<MouseWheel>,
+pub(crate) fn dispatch_mouse_wheel_events(
+    tx: &mpsc::Sender<WindowCommand>,
+    cursor: &Arc<Cursor>,
+    windows: &HashMap<WindowId, Events>,
+    event: MouseWheel,
 ) {
-    if events.is_empty() {
-        return;
-    }
-
     let Some(window) = cursor.window() else {
         return;
     };
 
-    let Ok(window) = windows.get(window) else {
+    let Some(window) = windows.get(&window) else {
         return;
     };
 
-    for event in events.iter() {
-        for (key, rect) in &window.positions {
-            let Some(handlers) = window.events.get(&key) else {
-                continue;
-            };
+    for (key, rect) in &window.positions {
+        let Some(handlers) = window.events.get(&key) else {
+            continue;
+        };
 
-            let ctx = Context {
-                cursor: cursor.clone(),
-                event: *event,
-                window: WindowContext {
-                    window: cursor.window().unwrap(),
-                    queue: queue.inner.clone(),
-                },
-                _priv: (),
-            };
+        let ctx = Context {
+            cursor: cursor.clone(),
+            event,
+            window: WindowContext {
+                window: cursor.window().unwrap(),
+                tx: tx.clone(),
+            },
+            _priv: (),
+        };
 
-            if let Some(f) = &handlers.global.mouse_wheel {
-                f(ctx.clone());
-            }
+        if let Some(f) = &handlers.global.mouse_wheel {
+            f(ctx.clone());
+        }
 
-            if hit_test(*rect, cursor.position()) {
-                if let Some(f) = &handlers.local.mouse_wheel {
-                    f(ctx);
-                }
+        if hit_test(*rect, cursor.position()) {
+            if let Some(f) = &handlers.local.mouse_wheel {
+                f(ctx);
             }
         }
     }
 }
 
-pub fn dispatch_received_character_events(
-    queue: Res<WindowEventQueue>,
-    cursor: Res<Cursor>,
-    windows: Query<&Events>,
-    mut events: EventReader<ReceivedCharacter>,
+pub(crate) fn dispatch_received_character_events(
+    tx: &mpsc::Sender<WindowCommand>,
+    cursor: &Arc<Cursor>,
+    windows: &HashMap<WindowId, Events>,
+    event: ReceivedCharacter,
 ) {
-    if events.is_empty() {
-        return;
-    }
-
     let Some(window) = cursor.window() else {
         return;
     };
 
-    let Ok(window) = windows.get(window) else {
+    let Some(window) = windows.get(&window) else {
         return;
     };
 
-    for event in events.iter() {
-        for (key, rect) in &window.positions {
-            let Some(handlers) = window.events.get(&key) else {
-                continue;
-            };
+    for (key, rect) in &window.positions {
+        let Some(handlers) = window.events.get(&key) else {
+            continue;
+        };
 
-            let ctx = Context {
-                cursor: cursor.clone(),
-                event: *event,
-                window: WindowContext {
-                    window: cursor.window().unwrap(),
-                    queue: queue.inner.clone(),
-                },
-                _priv: (),
-            };
+        let ctx = Context {
+            cursor: cursor.clone(),
+            event,
+            window: WindowContext {
+                window: cursor.window().unwrap(),
+                tx: tx.clone(),
+            },
+            _priv: (),
+        };
 
-            if let Some(f) = &handlers.global.received_character {
-                f(ctx.clone());
-            }
+        if let Some(f) = &handlers.global.received_character {
+            f(ctx.clone());
+        }
 
-            if hit_test(*rect, cursor.position()) {
-                if let Some(f) = &handlers.local.received_character {
-                    f(ctx);
-                }
+        if hit_test(*rect, cursor.position()) {
+            if let Some(f) = &handlers.local.received_character {
+                f(ctx);
             }
         }
     }
 }
 
-pub fn dispatch_keyboard_input_events(
-    queue: Res<WindowEventQueue>,
-    cursor: Res<Cursor>,
-    windows: Query<&Events>,
-    mut events: EventReader<KeyboardInput>,
+pub(crate) fn dispatch_keyboard_input_events(
+    tx: &mpsc::Sender<WindowCommand>,
+    cursor: &Arc<Cursor>,
+    windows: &HashMap<WindowId, Events>,
+    event: KeyboardInput,
 ) {
-    if events.is_empty() {
-        return;
-    }
-
     let Some(window) = cursor.window() else {
         return;
     };
 
-    let Ok(window) = windows.get(window) else {
+    let Some(window) = windows.get(&window) else {
         return;
     };
 
-    for event in events.iter() {
-        for (key, rect) in &window.positions {
-            let Some(handlers) = window.events.get(&key) else {
-                continue;
-            };
+    for (key, rect) in &window.positions {
+        let Some(handlers) = window.events.get(&key) else {
+            continue;
+        };
 
-            let ctx = Context {
-                cursor: cursor.clone(),
-                event: *event,
-                window: WindowContext {
-                    window: cursor.window().unwrap(),
-                    queue: queue.inner.clone(),
-                },
-                _priv: (),
-            };
+        let ctx = Context {
+            cursor: cursor.clone(),
+            event,
+            window: WindowContext {
+                window: cursor.window().unwrap(),
+                tx: tx.clone(),
+            },
+            _priv: (),
+        };
 
-            if let Some(f) = &handlers.global.keyboard_input {
-                f(ctx.clone());
-            }
+        if let Some(f) = &handlers.global.keyboard_input {
+            f(ctx.clone());
+        }
 
-            if hit_test(*rect, cursor.position()) {
-                if let Some(f) = &handlers.local.keyboard_input {
-                    f(ctx);
-                }
+        if hit_test(*rect, cursor.position()) {
+            if let Some(f) = &handlers.local.keyboard_input {
+                f(ctx);
             }
         }
     }

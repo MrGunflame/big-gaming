@@ -2,14 +2,12 @@
 
 use std::collections::VecDeque;
 
-use bevy_ecs::system::Resource;
-
 use crate::components::actions::ActionId;
 use crate::components::inventory::InventoryId;
 use crate::entity::EntityId;
 use crate::world::CellId;
 
-#[derive(Clone, Debug, Default, Resource)]
+#[derive(Clone, Debug, Default)]
 pub struct EventQueue {
     events: VecDeque<Event>,
 }

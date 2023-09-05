@@ -3,8 +3,6 @@ use std::io::Read;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use bevy_app::{App, Plugin};
-use bevy_ecs::system::{ResMut, Resource};
 use glam::UVec2;
 use parking_lot::Mutex;
 
@@ -100,18 +98,7 @@ impl AsRef<[u8]> for Image {
     }
 }
 
-pub struct ImagePlugin;
-
-impl Plugin for ImagePlugin {
-    fn build(&self, app: &mut App) {
-        app.insert_resource(Images::new());
-
-        app.add_system(load_images);
-        app.add_system(update_image_handles);
-    }
-}
-
-#[derive(Debug, Default, Resource)]
+#[derive(Debug, Default)]
 pub struct Images {
     next_id: u64,
     images: HashMap<u64, Entry>,
@@ -203,7 +190,7 @@ impl Drop for ImageHandle {
     }
 }
 
-fn load_images(mut images: ResMut<Images>) {
+pub(crate) fn load_images(images: &mut Images) {
     while let Some((handle, source, format)) = images.load_queue.pop_front() {
         let buf = match source {
             LoadImage::Buffer(buf) => buf,
@@ -233,9 +220,7 @@ fn load_images(mut images: ResMut<Images>) {
     }
 }
 
-fn update_image_handles(mut images: ResMut<Images>) {
-    let images = &mut *images;
-
+pub(crate) fn update_image_handles(images: &mut Images) {
     let mut events = images.events.lock();
     while let Some(event) = events.pop_front() {
         match event {

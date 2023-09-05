@@ -12,9 +12,9 @@ use parking_lot::Mutex;
 
 use crate::widgets::entries::*;
 
-use crate::state;
+use crate::state::{self, EditorState};
 
-use super::{SpawnWindow, SpawnWindowQueue};
+use super::SpawnWindow;
 
 const DEFAULT_CATEGORY: RecordKind = RecordKind::Item;
 
@@ -33,7 +33,7 @@ const BACKGROUND_COLOR: [Background; 2] = [
 ];
 
 #[component]
-pub fn Records(cx: &Scope, queue: SpawnWindowQueue, records: state::record::Records) -> Scope {
+pub fn Records(cx: &Scope, state: EditorState) -> Scope {
     let (cat, set_cat) = create_signal(cx, DEFAULT_CATEGORY);
 
     let root = view! {
@@ -79,7 +79,7 @@ pub fn Records(cx: &Scope, queue: SpawnWindowQueue, records: state::record::Reco
     {
         let cat = cat.clone();
         let cx2 = cx.clone();
-        create_effect(cx, move |_| {
+        create_effect(cx, move || {
             let cat = cat.get();
 
             for (index, (category, id)) in cats.iter().enumerate() {
@@ -100,19 +100,18 @@ pub fn Records(cx: &Scope, queue: SpawnWindowQueue, records: state::record::Reco
         });
     }
 
-    let reader = records.signal(|| {
+    let reader = state.records.signal(|| {
         let (_, writer) = create_signal(cx, ());
         writer
     });
 
     let cat_sig = cat;
     let rows = Mutex::new(vec![]);
-    create_effect(cx, move |world| {
+    let state = state.clone();
+    create_effect(cx, move || {
         let _ = reader.get();
 
         let cat = cat_sig.get();
-
-        let records = world.resource::<state::record::Records>();
 
         let mut rows = rows.lock();
 
@@ -139,7 +138,7 @@ pub fn Records(cx: &Scope, queue: SpawnWindowQueue, records: state::record::Reco
 
         let mut entry_records = Vec::new();
 
-        for (module_id, record) in records.iter() {
+        for (module_id, record) in state.records.iter() {
             if record.body.kind() != cat {
                 continue;
             }
@@ -172,9 +171,9 @@ pub fn Records(cx: &Scope, queue: SpawnWindowQueue, records: state::record::Reco
         let entries = EntriesData {
             keys,
             entries,
-            add_entry: Some(add_record(queue.clone(), cat_sig.clone())),
-            edit_entry: Some(edit_record(queue.clone(), entry_records.clone())),
-            remove_entry: Some(remove_record(entry_records, records.clone())),
+            add_entry: Some(add_record(state.clone(), cat_sig.clone())),
+            edit_entry: Some(edit_record(state.clone(), entry_records.clone())),
+            remove_entry: Some(remove_record(entry_records, state.records.clone())),
         };
 
         let id = view! {
@@ -215,26 +214,26 @@ fn category_str(kind: RecordKind) -> &'static str {
 }
 
 fn add_record(
-    queue: SpawnWindowQueue,
+    state: EditorState,
     kind: ReadSignal<RecordKind>,
 ) -> Box<dyn Fn(Context<MouseButtonInput>) + Send + Sync + 'static> {
     Box::new(move |_| {
         let kind = kind.get_untracked();
 
-        let mut queue = queue.0.write();
-        queue.push_back(SpawnWindow::CreateRecord(kind));
+        state.spawn_windows.send(SpawnWindow::CreateRecord(kind));
     })
 }
 
 fn edit_record(
-    queue: SpawnWindowQueue,
+    state: EditorState,
     entries: Vec<(ModuleId, Record)>,
 ) -> Box<dyn Fn(usize) + Send + Sync + 'static> {
     Box::new(move |index| {
         let (module_id, record) = entries[index].clone();
 
-        let mut queue = queue.0.write();
-        queue.push_back(SpawnWindow::EditRecord(module_id, record));
+        state
+            .spawn_windows
+            .send(SpawnWindow::EditRecord(module_id, record));
     })
 }
 

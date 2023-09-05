@@ -8,17 +8,11 @@ license = "GPL-3.0-or-later"
 [dependencies]
 game_common = { version = "0.1.0", path = "../game_common" }
 game_core = { version = "0.1.0", path = "../game_core" }
-game_input = { version = "0.1.0", path = "../game_input" }
 game_net = { version = "0.1.0", path = "../game_net" }
-game_data = { version = "0.1.0", path = "../game_data" }
 game_render = { version = "0.1.0", path = "../game_render" }
 game_window = { version = "0.1.0", path = "../game_window" }
-game_asset = { version = "0.1.0", path = "../game_asset" }
 game_scene = { version = "0.1.0", path = "../game_scene" }
 game_tracing = { version = "0.1.0", path = "../game_tracing" }
-
-bevy_ecs = "0.10.0"
-bevy_app = "0.10.0"
 
 ahash = "0.8.2"
 serde = { version = "1.0.149", features = ["derive"] }

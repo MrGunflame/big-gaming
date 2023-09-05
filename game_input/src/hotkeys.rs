@@ -55,14 +55,8 @@ use std::borrow::{Borrow, Cow};
 use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
 use std::iter::FusedIterator;
-use std::marker::PhantomData;
 use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign};
 use std::sync::atomic::{AtomicU32, Ordering};
-
-use bevy_app::{App, Plugin};
-use bevy_ecs::prelude::{EventReader, EventWriter};
-use bevy_ecs::schedule::{IntoSystemConfig, IntoSystemSetConfig, SystemSet};
-use bevy_ecs::system::{Res, ResMut, Resource, SystemParam};
 
 use crate::keyboard::{KeyCode, KeyboardInput, ScanCode};
 use crate::mouse::{MouseButton, MouseButtonInput};
@@ -70,38 +64,8 @@ use crate::ButtonState;
 
 static EVENT_ID: AtomicU32 = AtomicU32::new(1);
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, SystemSet)]
-pub enum HotkeySet {
-    Reset,
-    Update,
-    Dispatch,
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct HotkeyPlugin;
-
-impl Plugin for HotkeyPlugin {
-    fn build(&self, app: &mut App) {
-        app.insert_resource(Hotkeys::new());
-        app.add_event::<Event>();
-
-        // Reset
-        app.add_system(reset_hotkeys.in_set(HotkeySet::Reset));
-
-        // Update
-        app.add_system(keyboard_input.in_set(HotkeySet::Update));
-        app.add_system(mouse_input.in_set(HotkeySet::Update));
-
-        // Dispatch
-        app.add_system(send_hotkey_events.in_set(HotkeySet::Dispatch));
-
-        app.configure_set(HotkeySet::Reset.before(HotkeySet::Update));
-        app.configure_set(HotkeySet::Update.before(HotkeySet::Dispatch));
-    }
-}
-
 /// The global registry managing hotkeys.
-#[derive(Debug, Resource)]
+#[derive(Debug)]
 pub struct Hotkeys {
     inputs: InputMap,
     hotkeys: HotkeyMap,
@@ -144,6 +108,44 @@ impl Hotkeys {
         T: Borrow<HotkeyId>,
     {
         self.hotkeys.remove(id)
+    }
+
+    /// Clear all hotkeys from the previous frame.
+    pub fn reset(&mut self) {
+        self.hotkeys.clear();
+    }
+
+    pub fn send_mouse_input(&mut self, input: MouseButtonInput) {
+        match input.state {
+            ButtonState::Pressed => self.hotkeys.press(HotkeyCode::MouseButton {
+                button: input.button,
+            }),
+            ButtonState::Released => self.hotkeys.release(HotkeyCode::MouseButton {
+                button: input.button,
+            }),
+        }
+    }
+
+    pub fn send_keyboard_input(&mut self, input: KeyboardInput) {
+        let Some(key_code) = input.key_code else {
+            return;
+        };
+
+        match input.state {
+            ButtonState::Pressed => self.hotkeys.press(HotkeyCode::KeyCode { key_code }),
+            ButtonState::Released => self.hotkeys.release(HotkeyCode::KeyCode { key_code }),
+        }
+    }
+
+    pub fn send_events(&self, dst: &mut Vec<Event>) {
+        for (hotkey, state) in &self.hotkeys.hotkeys {
+            if let Some(trigger) = state.get() {
+                dst.push(Event {
+                    id: hotkey.id,
+                    trigger,
+                });
+            }
+        }
     }
 }
 
@@ -410,27 +412,6 @@ impl HotkeyState {
     }
 }
 
-#[derive(SystemParam)]
-pub struct HotkeyReader<'w, 's, H>
-where
-    H: HotkeyFilter,
-{
-    reader: EventReader<'w, 's, Event>,
-    #[system_param(ignore)]
-    _marker: PhantomData<&'static H>,
-}
-
-impl<'w, 's, H> HotkeyReader<'w, 's, H>
-where
-    H: HotkeyFilter,
-{
-    pub fn iter(&mut self) -> impl Iterator<Item = &Event> {
-        self.reader.iter().filter(|event| H::filter(event.id))
-    }
-}
-
-// pub struct Iter {}
-
 pub trait HotkeyFilter: Send + Sync + 'static {
     /// Returns `true` if the [`HotkeyId`] should be yielded.
     fn filter(id: HotkeyId) -> bool;
@@ -684,47 +665,6 @@ pub enum HotkeyKind {
     KeyCode { key_code: KeyCode },
     ScanCode { scan_code: ScanCode },
     MouseButton { button: MouseButton },
-}
-
-fn reset_hotkeys(mut hotkeys: ResMut<Hotkeys>) {
-    hotkeys.hotkeys.clear();
-}
-
-fn keyboard_input(mut hotkeys: ResMut<Hotkeys>, mut events: EventReader<KeyboardInput>) {
-    for event in events.iter() {
-        let Some(key_code) = event.key_code else {
-            continue;
-        };
-
-        match event.state {
-            ButtonState::Pressed => hotkeys.hotkeys.press(HotkeyCode::KeyCode { key_code }),
-            ButtonState::Released => hotkeys.hotkeys.release(HotkeyCode::KeyCode { key_code }),
-        }
-    }
-}
-
-fn mouse_input(mut hotkeys: ResMut<Hotkeys>, mut events: EventReader<MouseButtonInput>) {
-    for event in events.iter() {
-        match event.state {
-            ButtonState::Pressed => hotkeys.hotkeys.press(HotkeyCode::MouseButton {
-                button: event.button,
-            }),
-            ButtonState::Released => hotkeys.hotkeys.release(HotkeyCode::MouseButton {
-                button: event.button,
-            }),
-        }
-    }
-}
-
-fn send_hotkey_events(hotkeys: Res<Hotkeys>, mut writer: EventWriter<Event>) {
-    for (hotkey, state) in &hotkeys.hotkeys.hotkeys {
-        if let Some(trigger) = state.get() {
-            writer.send(Event {
-                id: hotkey.id,
-                trigger,
-            });
-        }
-    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]

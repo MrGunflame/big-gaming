@@ -2,9 +2,7 @@ use std::net::ToSocketAddrs;
 use std::time::Duration;
 
 use ahash::HashMap;
-use bevy_ecs::system::Resource;
-use bevy_ecs::world::{FromWorld, World};
-use game_common::entity::{EntityId, EntityMap};
+use game_common::entity::EntityId;
 use game_common::world::control_frame::ControlFrame;
 use game_common::world::world::WorldState;
 use game_core::counter::{Interval, IntervalImpl, UpdateCounter};
@@ -16,20 +14,18 @@ use game_tracing::world::WorldTrace;
 
 use crate::config::Config;
 use crate::net::socket::spawn_conn;
-use crate::state::{GameState, GameStateWriter};
 
 use super::entities::Entities;
 use super::prediction::ClientPredictions;
 
-#[derive(Debug, Resource)]
+#[derive(Debug)]
 pub struct ServerConnection<I> {
     pub world: WorldState,
 
     pub handle: Option<ConnectionHandle>,
-    pub entities: EntityMap,
+    //pub entities: EntityMap,
     pub predictions: ClientPredictions,
     pub host: EntityId,
-    pub writer: GameStateWriter,
     pub queue: CommandQueue,
 
     pub game_tick: GameTick<I>,
@@ -53,16 +49,15 @@ pub struct ServerConnection<I> {
 }
 
 impl<I> ServerConnection<I> {
-    pub fn new_with_interval(writer: GameStateWriter, config: &Config, interval: I) -> Self {
+    pub fn new_with_interval(config: &Config, interval: I) -> Self {
         let mut world = WorldState::new();
         world.insert(ControlFrame(0));
 
         Self {
             handle: None,
-            entities: EntityMap::default(),
+            //entities: EntityMap::default(),
             predictions: ClientPredictions::new(),
             host: EntityId::dangling(),
-            writer,
             queue: CommandQueue::new(),
             game_tick: GameTick {
                 interval,
@@ -132,12 +127,9 @@ impl<I> ServerConnection<I> {
         ) {
             Ok(handle) => {
                 self.handle = Some(handle);
-                self.writer.update(GameState::Connecting);
             }
             Err(err) => {
                 tracing::error!("failed to connect: {}", err);
-
-                self.writer.update(GameState::ConnectionFailure);
             }
         }
     }
@@ -147,8 +139,6 @@ impl<I> ServerConnection<I> {
         // handle was dropped.
         self.handle = None;
         self.reset_queue();
-
-        self.writer.update(GameState::MainMenu);
     }
 
     /// Returns the current control frame.
@@ -202,17 +192,9 @@ impl<I> ServerConnection<I> {
 }
 
 impl ServerConnection<Interval> {
-    pub fn new(writer: GameStateWriter, config: &Config) -> Self {
+    pub fn new(config: &Config) -> Self {
         let interval = Interval::new(Duration::from_secs(1) / config.timestep);
-        Self::new_with_interval(writer, config, interval)
-    }
-}
-
-impl FromWorld for ServerConnection<Interval> {
-    fn from_world(world: &mut World) -> Self {
-        let writer = world.resource::<GameStateWriter>().clone();
-        let config = world.resource::<Config>();
-        Self::new(writer, &config)
+        Self::new_with_interval(config, interval)
     }
 }
 

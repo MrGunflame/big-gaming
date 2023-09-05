@@ -1,6 +1,5 @@
 use std::collections::{BTreeMap, HashMap};
 
-use bevy_ecs::prelude::Component;
 use glam::Vec2;
 
 use super::computed_style::{ComputedBounds, ComputedStyle};
@@ -54,7 +53,7 @@ pub enum ElementBody {
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Key(u64);
 
-#[derive(Clone, Debug, Component)]
+#[derive(Clone, Debug)]
 pub struct LayoutTree {
     next_id: u64,
     // Note that the order is important; we want to render elements

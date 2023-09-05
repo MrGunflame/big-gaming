@@ -3,12 +3,9 @@
 #![deny(unsafe_op_in_unsafe_fn)]
 #![deny(unused_crate_dependencies)]
 
-use std::collections::HashMap;
 use std::path::Path;
 
-use bevy_ecs::system::Resource;
 use game_common::events::EventQueue;
-use game_common::record::RecordReference;
 use game_common::world::world::WorldViewMut;
 use instance::ScriptInstance;
 use script::Script;
@@ -26,7 +23,6 @@ pub mod scripts;
 
 mod builtin;
 
-#[derive(Resource)]
 pub struct ScriptServer {
     scripts: SlotMap<DefaultKey, Script>,
     engine: Engine,

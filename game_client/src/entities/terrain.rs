@@ -1,13 +1,12 @@
 use bevy_ecs::prelude::{Component, Entity};
 use bevy_ecs::system::{Commands, Query, ResMut};
 use game_asset::Assets;
-use game_common::bundles::TransformBundle;
 use game_common::components::transform::Transform;
 use game_common::world::entity::Terrain;
 use game_common::world::terrain::{Projection, TerrainMesh};
 use game_common::world::CELL_SIZE_UINT;
 use game_render::mesh::{Indices, Mesh};
-use game_render::pbr::{PbrBundle, PbrMaterial};
+use game_render::pbr::PbrMaterial;
 use glam::{UVec2, Vec3};
 
 #[derive(Clone, Debug, Component)]

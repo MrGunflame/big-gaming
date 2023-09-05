@@ -10,7 +10,6 @@
 
 extern crate self as game_common;
 
-pub mod bundles;
 pub mod components;
 pub mod ecs;
 pub mod entity;

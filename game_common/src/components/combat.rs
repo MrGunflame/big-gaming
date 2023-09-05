@@ -4,7 +4,6 @@ use std::fmt::{self, Display, Formatter};
 use std::iter::FusedIterator;
 use std::ops::{Add, AddAssign, Sub, SubAssign};
 
-use bevy_ecs::component::Component;
 use glam::Vec3;
 
 use crate::id::WeakId;
@@ -16,7 +15,7 @@ use serde::{Deserialize, Serialize};
 ///
 /// `Health` implements the [`Add`] and [`Sub`] operators which saturate at `max_health` and `0`
 /// respectively.
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash, Component)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Health {
     /// The current health value.
@@ -100,7 +99,7 @@ impl Display for Health {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Component)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DamageList {
     inner: Vec<Damage>,
 }
@@ -155,7 +154,7 @@ impl<'a> ExactSizeIterator for DamageIter<'a> {
 impl<'a> FusedIterator for DamageIter<'a> {}
 
 /// A raw damage value.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Component)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feaure = "serde", derive(Serialize, Deserialize))]
 pub struct Damage {
     pub class: DamageClass,
@@ -182,7 +181,7 @@ impl Damage {
 /// [`push`] when damage should be taken instead of manually modifying the [`Health`] value.
 ///
 /// [`push`]: Self::push
-#[derive(Clone, Debug, Default, Component)]
+#[derive(Clone, Debug, Default)]
 pub struct IncomingDamage {
     incoming: VecDeque<Damage>,
 }
@@ -217,7 +216,7 @@ impl Extend<Damage> for IncomingDamage {
     }
 }
 
-#[derive(Clone, Debug, Default, Component)]
+#[derive(Clone, Debug, Default)]
 pub struct Resistances {
     classes: HashMap<DamageClass, Resistance>,
 }
@@ -418,12 +417,12 @@ impl SubAssign for Resistance {
 }
 
 /// An attack event.
-#[derive(Copy, Clone, Debug, Default, PartialEq, Component)]
+#[derive(Copy, Clone, Debug, Default, PartialEq)]
 pub struct Attack {
     /// The target (point) that the attack is targeted at.
     pub target: Vec3,
 }
 
 /// A reload event.
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Component)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Reload;

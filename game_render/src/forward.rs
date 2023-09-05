@@ -1,5 +1,3 @@
-use bevy_ecs::system::Resource;
-use bevy_ecs::world::FromWorld;
 use wgpu::{
     AddressMode, BindGroupLayout, BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindingType,
     BlendState, BufferBindingType, ColorTargetState, ColorWrites, CompareFunction, DepthBiasState,
@@ -11,9 +9,10 @@ use wgpu::{
 };
 
 use crate::depth_stencil::DEPTH_TEXTURE_FORMAT;
-use crate::RenderDevice;
+use crate::pbr::material::DefaultTextures;
+use crate::texture::Images;
 
-#[derive(Debug, Resource)]
+#[derive(Debug)]
 pub struct ForwardPipeline {
     pub pipeline: RenderPipeline,
     pub vs_bind_group_layout: BindGroupLayout,
@@ -22,16 +21,11 @@ pub struct ForwardPipeline {
     pub material_bind_group_layout: BindGroupLayout,
     pub lights_bind_group_layout: BindGroupLayout,
     pub sampler: Sampler,
-}
-
-impl FromWorld for ForwardPipeline {
-    fn from_world(world: &mut bevy_ecs::world::World) -> Self {
-        world.resource_scope::<RenderDevice, _>(|_, device| Self::new(&device))
-    }
+    pub default_textures: DefaultTextures,
 }
 
 impl ForwardPipeline {
-    pub fn new(device: &Device) -> Self {
+    pub fn new(device: &Device, images: &mut Images) -> Self {
         let vs_bind_group_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
             label: Some("vs_bind_group_layout"),
             entries: &[
@@ -295,6 +289,7 @@ impl ForwardPipeline {
             material_bind_group_layout,
             lights_bind_group_layout,
             sampler,
+            default_textures: DefaultTextures::new(images),
         }
     }
 }

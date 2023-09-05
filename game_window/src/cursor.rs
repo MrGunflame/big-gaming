@@ -1,170 +1,89 @@
 use std::collections::VecDeque;
-use std::sync::Arc;
+use std::sync::mpsc;
 
-use bevy_ecs::prelude::{Entity, EventReader};
-use bevy_ecs::system::{Query, Res, ResMut, Resource};
 use glam::Vec2;
-use parking_lot::Mutex;
+use parking_lot::RwLock;
 
-use crate::events::{CursorLeft, CursorMoved};
-use crate::{Backend, WindowState};
+use crate::windows::{UpdateEvent, WindowId};
+use crate::Backend;
 
 pub type CursorIcon = winit::window::CursorIcon;
 
-#[derive(Clone, Debug, Default, Resource)]
+#[derive(Debug)]
 pub struct Cursor {
-    is_locked: bool,
-    /// The window that the cursor is located on.
-    window: Option<Entity>,
-    position: Vec2,
-    queue: Arc<Mutex<VecDeque<(Entity, CursorEvent)>>>,
+    pub(crate) state: RwLock<CursorState>,
+    tx: mpsc::Sender<UpdateEvent>,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub(crate) struct CursorState {
+    pub is_locked: bool,
+    pub window: Option<WindowId>,
+    pub position: Vec2,
 }
 
 impl Cursor {
-    #[inline]
-    pub fn new() -> Self {
+    pub(crate) fn new(tx: mpsc::Sender<UpdateEvent>) -> Self {
         Self {
-            is_locked: false,
-            window: None,
-            position: Vec2::splat(0.0),
-            queue: Arc::default(),
+            state: RwLock::new(CursorState {
+                is_locked: false,
+                window: None,
+                position: Vec2::splat(0.0),
+            }),
+            tx,
         }
     }
 
     #[inline]
-    pub fn window(&self) -> Option<Entity> {
-        self.window
+    pub fn window(&self) -> Option<WindowId> {
+        let state = self.state.read();
+        state.window
     }
 
     #[inline]
     pub fn position(&self) -> Vec2 {
-        self.position
+        let state = self.state.read();
+        state.position
     }
 
     pub fn is_locked(&self) -> bool {
-        self.is_locked
+        let state = self.state.read();
+        state.is_locked
     }
 
     #[inline]
     pub fn lock(&mut self) {
-        if !self.is_locked && self.window.is_some() {
-            self.lock_unchecked();
+        let state = self.state.read();
+
+        if state.is_locked {
+            return;
         }
+
+        let Some(window) = state.window else {
+            return;
+        };
+
+        let _ = self
+            .tx
+            .send(UpdateEvent::CursorGrab(window, CursorGrabMode::Locked));
     }
 
     #[inline]
     pub fn unlock(&mut self) {
-        if self.is_locked && self.window.is_some() {
-            self.unlock_unchecked();
+        let state = self.state.read();
+
+        if !state.is_locked {
+            return;
         }
+
+        let Some(window) = state.window else {
+            return;
+        };
+
+        let _ = self
+            .tx
+            .send(UpdateEvent::CursorGrab(window, CursorGrabMode::None));
     }
-
-    #[inline]
-    pub fn reset(&mut self) {
-        if self.is_locked {
-            let entity = self.window.unwrap();
-
-            self.queue
-                .lock()
-                .push_back((entity, CursorEvent::Position(self.position)));
-        }
-    }
-
-    /// Locks the `Cursor` to its current position without checking if it is already locked.
-    ///
-    /// Consider using [`lock`] if the cursor may already be locked.
-    ///
-    /// [`lock`]: Self::lock
-    #[inline]
-    pub fn lock_unchecked(&mut self) {
-        let entity = self.window.unwrap();
-
-        self.queue
-            .lock()
-            .push_back((entity, CursorEvent::CursorGrab(CursorGrabMode::Locked)));
-        self.queue
-            .lock()
-            .push_back((entity, CursorEvent::CursorVisible(false)));
-
-        self.is_locked = true;
-    }
-
-    #[inline]
-    pub fn unlock_unchecked(&mut self) {
-        let entity = self.window.unwrap();
-
-        self.queue
-            .lock()
-            .push_back((entity, CursorEvent::CursorGrab(CursorGrabMode::None)));
-        self.queue
-            .lock()
-            .push_back((entity, CursorEvent::CursorVisible(true)));
-
-        self.is_locked = false;
-    }
-}
-
-pub fn update_cursor_position(
-    mut cursor: ResMut<Cursor>,
-    mut moved: EventReader<CursorMoved>,
-    mut left: EventReader<CursorLeft>,
-) {
-    if cursor.is_locked {
-        moved.clear();
-        left.clear();
-        return;
-    }
-
-    for event in moved.iter() {
-        cursor.window = Some(event.window);
-        cursor.position = event.position;
-    }
-
-    for _ in left.iter() {
-        cursor.window = None;
-    }
-}
-
-pub fn flush_cursor_events(
-    cursor: Res<Cursor>,
-    mut compat: ResMut<WindowCompat>,
-    windows: Query<&WindowState>,
-) {
-    while let Some((entity, event)) = cursor.queue.lock().pop_front() {
-        let window = windows.get(entity).unwrap();
-
-        match event {
-            CursorEvent::CursorGrab(mode) => {
-                tracing::debug!("setting cursor grab mode to {:?}", mode);
-
-                if let Err(err) = window.set_cursor_grab(mode) {
-                    tracing::error!("failed to set cursor grab mode: {}", err);
-                }
-
-                compat.backend = window.backend();
-                compat.cursor_grab_mode = mode;
-            }
-            CursorEvent::CursorVisible(visible) => {
-                tracing::debug!("setting cursor visibility to {:?}", visible);
-
-                window.set_cursor_visibility(visible);
-            }
-            CursorEvent::Position(position) => {
-                tracing::debug!("setting cursor position to {:?}", position);
-
-                if let Err(err) = window.set_cursor_position(position) {
-                    tracing::error!("failed to set cursor position: {}", err);
-                }
-            }
-        }
-    }
-}
-
-#[derive(Debug)]
-enum CursorEvent {
-    CursorGrab(CursorGrabMode),
-    CursorVisible(bool),
-    Position(Vec2),
 }
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
@@ -175,33 +94,43 @@ pub enum CursorGrabMode {
 }
 
 /// Cross-Platform compatability support
-#[derive(Debug, Default, Resource)]
-pub struct WindowCompat {
+#[derive(Debug)]
+pub(crate) struct WindowCompat {
     backend: Backend,
     cursor_grab_mode: CursorGrabMode,
+    /// Cursor position should be reset.
+    reset_cursor_position: bool,
 }
 
-pub fn emulate_cursor_grab_mode_locked(
-    cursor: Res<Cursor>,
-    compat: Res<WindowCompat>,
-    mut events: EventReader<CursorMoved>,
-    windows: Query<&WindowState>,
-) {
-    for _ in events.iter() {
-        match compat.cursor_grab_mode {
-            CursorGrabMode::None => (),
-            CursorGrabMode::Locked => match compat.backend {
-                Backend::Wayland | Backend::Unknown => (),
-                Backend::X11 | Backend::Windows => {
-                    if let Some(entity) = cursor.window() {
-                        let window = windows.get(entity).unwrap();
+impl WindowCompat {
+    pub fn new(backend: Backend) -> Self {
+        Self {
+            backend,
+            cursor_grab_mode: CursorGrabMode::None,
+            reset_cursor_position: false,
+        }
+    }
 
-                        if let Err(err) = window.set_cursor_position(cursor.position()) {
-                            tracing::error!("failed to update cursor position: {}", err);
-                        }
-                    }
-                }
-            },
+    pub fn move_cursor(&mut self) {
+        if self.backend.supports_locked_cursor() || self.cursor_grab_mode != CursorGrabMode::Locked
+        {
+            return;
+        }
+
+        self.reset_cursor_position = true;
+    }
+
+    pub fn emulate_cursor_grab_mode_locked(
+        &self,
+        cursor: &Cursor,
+        events: &mut VecDeque<UpdateEvent>,
+    ) {
+        if !self.reset_cursor_position {
+            return;
+        }
+
+        if let Some(id) = cursor.window() {
+            events.push_back(UpdateEvent::CursorPosition(id, cursor.position()));
         }
     }
 }

@@ -1,4 +1,3 @@
-use bevy_ecs::prelude::Component;
 use game_asset::Asset;
 use glam::{Vec2, Vec3, Vec4};
 use wgpu::PrimitiveTopology;
@@ -7,7 +6,7 @@ use crate::aabb::Aabb;
 
 // FIXME: Meshes will be duplicated quite a bit, so
 // we don't want to have it attached to every entity.
-#[derive(Clone, Debug, Component)]
+#[derive(Clone, Debug)]
 pub struct Mesh {
     topology: PrimitiveTopology,
     indices: Option<Indices>,

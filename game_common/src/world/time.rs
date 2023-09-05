@@ -1,9 +1,6 @@
 use std::ops::{Add, AddAssign, Sub, SubAssign};
 use std::time::Duration;
 
-use bevy_ecs::component::Component;
-use bevy_ecs::system::Resource;
-
 const NANOS_PER_SEC: u32 = 1_000_000_000;
 
 /// The date and time of the world.
@@ -28,9 +25,7 @@ const NANOS_PER_SEC: u32 = 1_000_000_000;
 /// There are not leap years or leap seconds, every year is repeated as is.
 ///
 /// The time should be constantly advanced using the `Add<Duration>` impl.
-#[derive(
-    Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Component, Resource,
-)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 // FIXME: Rename to WorldTime to distinguish with frame time Time.
 pub struct DateTime {
     nsecs: u128,
@@ -265,7 +260,7 @@ impl Month {
 /// How fast time elapses relative to real time.
 ///
 /// The default scale is 5x, i.e. 5 ingame seconds take 1 real second.
-#[derive(Copy, Clone, Debug, PartialEq, PartialOrd, Component, Resource)]
+#[derive(Copy, Clone, Debug, PartialEq, PartialOrd)]
 #[repr(transparent)]
 pub struct TimeScale(pub f32);
 

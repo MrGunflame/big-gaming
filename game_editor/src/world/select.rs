@@ -1,6 +1,3 @@
-use bevy_ecs::prelude::{Entity, EventReader};
-use bevy_ecs::query::Without;
-use bevy_ecs::system::{Query, Res, ResMut, Resource};
 use game_common::components::transform::Transform;
 use game_common::math::Ray;
 use game_input::keyboard::KeyboardInput;
@@ -9,10 +6,9 @@ use game_render::aabb::Aabb;
 use game_render::camera::Camera;
 use game_window::cursor::Cursor;
 use game_window::events::VirtualKeyCode;
-use game_window::WindowState;
 use glam::{Quat, Vec2, Vec3};
 
-#[derive(Clone, Debug, Default, Resource)]
+#[derive(Clone, Debug, Default)]
 pub struct Selection {
     pub entities: Vec<Entity>,
     pub edit_mode: EditMode,

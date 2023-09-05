@@ -5,15 +5,13 @@ use std::num::{NonZeroU32, NonZeroU8};
 use std::ops::{Deref, DerefMut, Mul};
 use std::time::Duration;
 
-use bevy_ecs::component::Component;
-use bevy_ecs::entity::Entity;
 use glam::{Quat, Vec3};
 
 /// An entity that may act on its own within the world, i.e. players and NPCs.
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Component)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Actor;
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Component)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[deprecated(note = "Use ActorFlags instead")]
 pub struct ActorState(NonZeroU32);
 
@@ -51,7 +49,7 @@ impl ActorFlag {
     pub const CAN_ATTACK: Self = Self(unsafe { NonZeroU32::new_unchecked(18) });
 }
 
-#[derive(Clone, Debug, Component)]
+#[derive(Clone, Debug)]
 pub struct ActorFlags {
     flags: HashSet<ActorFlag>,
 }
@@ -89,7 +87,7 @@ impl Default for ActorFlags {
 }
 
 /// The movement speed of an actor, in meter/second.
-#[derive(Copy, Clone, Debug, PartialEq, PartialOrd, Component)]
+#[derive(Copy, Clone, Debug, PartialEq, PartialOrd)]
 #[repr(transparent)]
 pub struct MovementSpeed(pub f32);
 
@@ -123,23 +121,6 @@ impl Default for MovementSpeed {
     }
 }
 
-/// A model of an [`Actor`], including multi-entity meshes and animations.
-///
-/// **Note that not every [`Actor`] has this component.**
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Component)]
-pub struct ActorModel {
-    /// The entities that make up the actor model.
-    pub entities: Box<[Entity]>,
-}
-
-/// A [`Limb`] of an [`Actor`].
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Component)]
-pub struct ActorLimb {
-    /// The actor who owns the limb.
-    pub actor: Entity,
-    pub limb: Limb,
-}
-
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Limb(pub NonZeroU8);
 
@@ -155,7 +136,7 @@ impl Limb {
     }
 }
 
-#[derive(Copy, Clone, Debug, Default, Component)]
+#[derive(Copy, Clone, Debug, Default)]
 pub struct ActorFigure {
     /// The offset to the eyes.
     ///
@@ -174,7 +155,7 @@ pub struct SpawnPoint {
 }
 
 /// A list of [`SpawnPoint`]s.
-#[derive(Clone, Debug, Component)]
+#[derive(Clone, Debug)]
 pub struct SpawnPoints {
     // FIXME: This might better be a BTree.
     points: Vec<SpawnPoint>,
@@ -212,14 +193,14 @@ impl From<SpawnPoint> for SpawnPoints {
 }
 
 /// An actor wants to spawn. This component is also used for respawns.
-#[derive(Copy, Clone, Debug, Default, Component)]
+#[derive(Copy, Clone, Debug, Default)]
 pub struct Spawn;
 
 /// A death event.
-#[derive(Copy, Clone, Debug, Default, Component)]
+#[derive(Copy, Clone, Debug, Default)]
 pub struct Death;
 
-#[derive(Clone, Debug, Default, Component)]
+#[derive(Clone, Debug, Default)]
 pub struct ActorProperties {
     /// The rotation that the actor is facing in.
     ///

@@ -1,6 +1,5 @@
 use std::time::{Duration, Instant};
 
-use bevy_ecs::component::Component;
 use bytemuck::{Pod, Zeroable};
 
 use crate::record::RecordReference;
@@ -14,7 +13,7 @@ use super::components::Components;
 ///
 /// A `ItemStack` can be used as a collection of [`Item`]s when all items are equal (e.g. in
 /// inventories), or as a [`Component`] representing items in the world.
-#[derive(Clone, Debug, Component)]
+#[derive(Clone, Debug)]
 pub struct ItemStack {
     pub item: Item,
     pub quantity: u32,
@@ -30,7 +29,7 @@ impl ItemStack {
 ///
 /// A `Item` can be used in a collection (e.g. in inventories), or as a [`Component`] representing
 /// an item in the world.
-#[derive(Clone, Debug, Component)]
+#[derive(Clone, Debug)]
 pub struct Item {
     pub id: ItemId,
     // TODO: Should these really be hardcoded here?
@@ -143,7 +142,7 @@ impl Default for Cooldown {
     }
 }
 
-#[derive(Copy, Clone, Debug, Component)]
+#[derive(Copy, Clone, Debug)]
 pub struct LoadItem {
     pub id: ItemId,
 }

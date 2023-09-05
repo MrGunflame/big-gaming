@@ -2,7 +2,6 @@ use std::future::Future;
 use std::net::SocketAddr;
 use std::sync::{mpsc, Arc};
 
-use bevy_ecs::system::Res;
 use game_common::world::control_frame::ControlFrame;
 use game_net::conn::{Connect, Connection, ConnectionHandle};
 use game_net::proto::{Decode, Packet};

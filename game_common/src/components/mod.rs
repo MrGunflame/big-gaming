@@ -9,7 +9,6 @@ pub mod combat;
 pub mod components;
 pub mod entity;
 pub mod faction;
-pub mod interaction;
 pub mod inventory;
 pub mod items;
 pub mod object;

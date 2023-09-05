@@ -22,6 +22,7 @@ use parking_lot::Mutex;
 
 use crate::state::module::Modules;
 use crate::state::record::Records;
+use crate::state::EditorState;
 
 #[component]
 pub fn EditRecord(
@@ -324,7 +325,7 @@ fn render_item(cx: &Scope, item: Option<ItemRecord>) -> ItemFields {
 
     let item = view! {
         cx,
-        <Container style={Style::default()}>
+        <Container style={Style { direction: Direction::Column, ..Default::default() }}>
         </Container>
     };
 
@@ -410,7 +411,7 @@ fn render_object(cx: &Scope, object: Option<ObjectRecord>) -> ObjectFields {
 
     let root = view! {
         cx,
-        <Container style={Style::default()}>
+        <Container style={Style { direction: Direction::Column, ..Default::default() }}>
         </Container>
     };
 
@@ -475,7 +476,7 @@ fn render_script_section(cx: &Scope) -> ReadSignal<Vec<String>> {
         let scripts = scripts.clone();
         let id = Mutex::new(None);
         let cx2 = cx.clone();
-        create_effect(cx, move |_| {
+        create_effect(cx, move || {
             let id = &mut *id.lock();
             if let Some(id) = id {
                 cx2.remove(*id);

@@ -1,5 +1,3 @@
-use bevy_ecs::prelude::Component;
-use bevy_ecs::system::Resource;
 use glam::{Quat, Vec3};
 
 use crate::components::combat::Health;
@@ -14,7 +12,7 @@ use super::terrain::TerrainMesh;
 use super::world::WorldViewMut;
 use super::CellId;
 
-#[derive(Clone, Debug, Component, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Entity {
     pub id: EntityId,
     pub transform: Transform,
@@ -145,7 +143,7 @@ impl BuildEntity for Entity {
 /// A queue of [`Entities`] that are ready to be spawned.
 ///
 /// [`Entities`]: Entity
-#[derive(Clone, Debug, Resource)]
+#[derive(Clone, Debug)]
 pub struct EntityQueue {
     // Note that we build the entities in the reverse order they were
     // queued. This is more efficient and has no other effects since the
