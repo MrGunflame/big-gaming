@@ -262,8 +262,10 @@ fn create_record(
                 records.update(module_id, record);
             }
             None => {
+                let id = records.take_id(module_id);
+
                 let record = Record {
-                    id: RecordId(0),
+                    id,
                     name,
                     scripts,
                     body,

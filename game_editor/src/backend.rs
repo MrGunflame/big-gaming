@@ -56,7 +56,7 @@ async fn load_module(path: PathBuf) -> TaskResult<(EditorModule, Records)> {
 
     let data = DataBuffer::decode(&buf[..])?;
 
-    let mut records = Records::new();
+    let records = Records::new();
     for record in data.records {
         records.insert(data.header.module.id, record);
     }
