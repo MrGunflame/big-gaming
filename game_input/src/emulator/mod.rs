@@ -5,5 +5,5 @@
 mod keyboard;
 mod mouse;
 
-pub use keyboard::{KeyboardEmulator, KeyboardEmulatorPlugin};
-pub use mouse::{MouseEmulator, MouseEmulatorPlugin};
+pub use keyboard::KeyboardEmulator;
+pub use mouse::MouseEmulator;
