@@ -5,27 +5,40 @@ use crate::reactive::{Node, Scope};
 use crate::render::style::Style;
 use crate::render::{self, Element, ElementBody};
 
-use super::Component;
+use super::Widget;
 
-pub struct Image;
-
-pub struct ImageProps {
-    pub image: ImageBuffer<Rgba<u8>, Vec<u8>>,
-    pub style: Style,
+pub struct Image {
+    image: ImageBuffer<Rgba<u8>, Vec<u8>>,
+    style: Style,
 }
 
-impl Component for Image {
-    type Properties = ImageProps;
+impl Image {
+    pub fn new() -> Self {
+        Self {
+            image: ImageBuffer::new(0, 0),
+            style: Style::default(),
+        }
+    }
 
-    fn render(cx: &Scope, props: Self::Properties) -> Scope {
-        let cx = cx.push(Node {
+    pub fn image(mut self, image: ImageBuffer<Rgba<u8>, Vec<u8>>) -> Self {
+        self.image = image;
+        self
+    }
+
+    pub fn style(mut self, style: Style) -> Self {
+        self.style = style;
+        self
+    }
+}
+
+impl Widget for Image {
+    fn build(self, cx: &Scope) -> Scope {
+        cx.push(Node {
             element: Element {
-                body: ElementBody::Image(render::Image { image: props.image }),
-                style: props.style,
+                body: ElementBody::Image(render::Image { image: self.image }),
+                style: self.style,
             },
             events: ElementEventHandlers::default(),
-        });
-
-        cx
+        })
     }
 }

@@ -15,62 +15,67 @@ use game_ui::reactive::{create_effect, create_signal, ReadSignal, Scope};
 use game_ui::render::style::{
     Background, Bounds, Direction, Justify, Padding, Size, SizeVec2, Style,
 };
-use game_ui::{component, view};
-
-use game_ui::widgets::*;
+use game_ui::widgets::{Button, Container, Input, ParseInput, Selection, Text, Widget};
 use parking_lot::Mutex;
 
 use crate::state::module::Modules;
 use crate::state::record::Records;
-use crate::state::EditorState;
 
-#[component]
-pub fn EditRecord(
-    cx: &Scope,
-    module_id: ModuleId,
-    record: Record,
-    records: Records,
-    modules: Modules,
-) -> Scope {
-    let root = view! {
-        cx,
-        <Container style={Style { padding: Padding::splat(Size::Pixels(5.0)), justify: Justify::SpaceBetween, ..Default::default() }}>
-        </Container>
-    };
-
-    let record_id = record.id;
-    let fields = render_record(&root, &modules, record.kind(), Some((module_id, record)));
-
-    view! {
-        root,
-        <Button style={Style::default()} on_click={create_record(records, fields, Some(record_id)).into()}>
-            <Text text={"OK".into()}>
-            </Text>
-        </Button>
-    };
-
-    root
+pub struct EditRecord {
+    pub record: Record,
+    pub records: Records,
+    pub modules: Modules,
+    pub module_id: ModuleId,
 }
 
-#[component]
-pub fn CreateRecord(cx: &Scope, kind: RecordKind, records: Records, modules: Modules) -> Scope {
-    let root = view! {
-        cx,
-        <Container style={Style{ padding: Padding::splat(Size::Pixels(5.0)), justify: Justify::SpaceBetween, ..Default::default() }}>
-        </Container>
-    };
+impl Widget for EditRecord {
+    fn build(self, cx: &Scope) -> Scope {
+        let root = cx.append(Container::new().style(Style {
+            padding: Padding::splat(Size::Pixels(5.0)),
+            justify: Justify::SpaceBetween,
+            ..Default::default()
+        }));
 
-    let fields = render_record(&root, &modules, kind, None);
+        let record_id = self.record.id;
+        let fields = render_record(
+            &root,
+            &self.modules,
+            self.record.kind(),
+            Some((self.module_id, self.record)),
+        );
 
-    view! {
-        root,
-        <Button style={Style::default()} on_click={create_record(records, fields, None).into()}>
-            <Text text={"OK".into()}>
-            </Text>
-        </Button>
-    };
+        let button = root.append(Button::new().on_click(create_record(
+            self.records,
+            fields,
+            Some(record_id),
+        )));
+        button.append(Text::new().text("Ok"));
 
-    root
+        root
+    }
+}
+
+pub struct CreateRecord {
+    pub kind: RecordKind,
+    pub records: Records,
+    pub modules: Modules,
+}
+
+impl Widget for CreateRecord {
+    fn build(self, cx: &Scope) -> Scope {
+        let root = cx.append(Container::new().style(Style {
+            padding: Padding::splat(Size::Pixels(5.0)),
+            justify: Justify::SpaceBetween,
+            ..Default::default()
+        }));
+
+        let fields = render_record(&root, &self.modules, self.kind, None);
+
+        let button = root.append(Button::new().on_click(create_record(self.records, fields, None)));
+        button.append(Text::new().text("Ok"));
+
+        root
+    }
 }
 
 fn render_record(
@@ -97,31 +102,17 @@ fn render_record(
         create_signal(root, value)
     };
 
-    let metadata = view! {
-        root,
-        <Container style={Style { direction: Direction::Column, ..Default::default() }}>
-        </Container>
-    };
+    let metadata = root.append(Container::new().style(Style {
+        direction: Direction::Column,
+        ..Default::default()
+    }));
 
-    let name_col = view! {
-        metadata,
-        <Container style={Style::default()}>
-        </Container>
-    };
+    let name_col = metadata.append(Container::new());
+    let val_col = metadata.append(Container::new());
 
     for text in ["Module", "ID", "Name"] {
-        view! {
-            name_col,
-            <Text text={text.into()}>
-            </Text>
-        };
+        name_col.append(Text::new().text(text));
     }
-
-    let val_col = view! {
-        metadata,
-        <Container style={Style::default()}>
-        </Container>
-    };
 
     let opts: Vec<ModuleId> = modules.iter().map(|m| m.module.id).collect();
     let opts_string = modules
@@ -135,17 +126,8 @@ fn render_record(
         set_module_id.update(|val| *val = id);
     };
 
-    view! {
-        val_col,
-        <Selection value={None} options={opts_string} on_change={on_change.into()}>
-        </Selection>
-    };
-
-    view! {
-        val_col,
-        <Text text={"TODO".into()}>
-        </Text>
-    };
+    val_col.append(Selection::new().options(opts_string).on_change(on_change));
+    val_col.append(Text::new().text("TODO"));
 
     let style = Style {
         bounds: Bounds {
@@ -159,11 +141,12 @@ fn render_record(
         ..Default::default()
     };
 
-    view! {
-        val_col,
-        <Input value={name.get_untracked()} on_change={set_name.into()} style={style}>
-        </Input>
-    };
+    val_col.append(
+        Input::new()
+            .value(name.get_untracked())
+            .style(style)
+            .on_change(move |s| set_name.set(s)),
+    );
 
     let body = match &record {
         Some((_, record)) => match &record.body {
@@ -325,37 +308,13 @@ fn render_item(cx: &Scope, item: Option<ItemRecord>) -> ItemFields {
         create_signal(cx, value)
     };
 
-    let item = view! {
-        cx,
-        <Container style={Style { direction: Direction::Column, ..Default::default() }}>
-        </Container>
-    };
+    let item = cx.append(Container::new().style(Style {
+        direction: Direction::Column,
+        ..Default::default()
+    }));
 
-    let name_col = view! {
-        item,
-        <Container style={Style::default()}>
-        </Container>
-    };
-
-    for text in ["Value", "Mass", "Scene"] {
-        view! {
-            name_col,
-            <Text text={text.into()}>
-            </Text>
-        };
-    }
-
-    let val_col = view! {
-        item,
-        <Container style={Style::default()}>
-        </Container>
-    };
-
-    let value_change = move |s: String| {
-        if let Ok(val) = s.parse() {
-            set_value.update(|v| *v = val);
-        }
-    };
+    let name_col = item.append(Container::new());
+    let val_col = item.append(Container::new());
 
     let style = Style {
         bounds: Bounds {
@@ -366,33 +325,29 @@ fn render_item(cx: &Scope, item: Option<ItemRecord>) -> ItemFields {
         ..Default::default()
     };
 
-    view! {
-        val_col,
-        <Input value={value.get_untracked().to_string()} style={style.clone()} on_change={value_change.into()}>
-        </Input>
-    };
+    // Value
+    name_col.append(Text::new().text("Value"));
+    val_col.append(
+        ParseInput::new(value.get_untracked())
+            .style(style.clone())
+            .on_change(move |val| set_value.set(val)),
+    );
 
-    let mass_change = move |s: String| {
-        if let Ok(val) = s.parse() {
-            set_mass.update(|v| *v = Mass::from_grams(val));
-        }
-    };
+    // Mass
+    name_col.append(Text::new().text("Mass"));
+    val_col.append(
+        ParseInput::new(mass.get_untracked().to_grams())
+            .style(style.clone())
+            .on_change(move |val| set_mass.set(Mass::from_grams(val))),
+    );
 
-    view! {
-        val_col,
-        <Input value={mass.get_untracked().to_grams().to_string()} style={style.clone()} on_change={mass_change.into()}>
-        </Input>
-    };
-
-    let scene_change = move |s| {
-        set_scene.update(|v| *v = s);
-    };
-
-    view! {
-        val_col,
-        <Input value={scene.get_untracked()} style={style} on_change={scene_change.into()}>
-        </Input>
-    };
+    // Model
+    name_col.append(Text::new().text("Model"));
+    val_col.append(
+        ParseInput::new(scene.get_untracked())
+            .style(style)
+            .on_change(move |val| set_scene.set(val)),
+    );
 
     ItemFields { mass, value, scene }
 }
@@ -411,25 +366,13 @@ fn render_object(cx: &Scope, object: Option<ObjectRecord>) -> ObjectFields {
         create_signal(cx, value)
     };
 
-    let root = view! {
-        cx,
-        <Container style={Style { direction: Direction::Column, ..Default::default() }}>
-        </Container>
-    };
+    let root = cx.append(Container::new().style(Style {
+        direction: Direction::Column,
+        ..Default::default()
+    }));
 
-    let name_col = view! {
-        root,
-        <Container style={Style::default()}>
-        </Container>
-    };
-
-    for text in ["Model"] {
-        view! {
-            name_col,
-            <Text text={text.into()}>
-            </Text>
-        };
-    }
+    let name_col = root.append(Container::new());
+    let val_col = root.append(Container::new());
 
     let style = Style {
         bounds: Bounds {
@@ -440,21 +383,14 @@ fn render_object(cx: &Scope, object: Option<ObjectRecord>) -> ObjectFields {
         ..Default::default()
     };
 
-    let val_col = view! {
-        root,
-        <Container style={Style::default()}>
-        </Container>
-    };
-
-    let on_change = move |s: String| {
-        set_model.set(s);
-    };
-
-    view! {
-        val_col,
-        <Input value={model.get_untracked().to_string()} style={style.clone()} on_change={on_change.into()}>
-        </Input>
-    };
+    // Model
+    name_col.append(Text::new().text("Model"));
+    val_col.append(
+        Input::new()
+            .value(model.get_untracked())
+            .style(style)
+            .on_change(move |val| set_model.set(val)),
+    );
 
     ObjectFields { model }
 }
@@ -462,17 +398,9 @@ fn render_object(cx: &Scope, object: Option<ObjectRecord>) -> ObjectFields {
 fn render_script_section(cx: &Scope) -> ReadSignal<Vec<String>> {
     let (scripts, set_scripts) = create_signal(cx, Vec::<String>::new());
 
-    let root = view! {
-        cx,
-        <Container style={Style::default()}>
-        </Container>
-    };
+    let root = cx.append(Container::new());
 
-    let script_list = view! {
-        root,
-        <Container style={Style::default()}>
-        </Container>
-    };
+    let script_list = cx.append(Container::new());
 
     {
         let scripts = scripts.clone();
@@ -484,30 +412,18 @@ fn render_script_section(cx: &Scope) -> ReadSignal<Vec<String>> {
                 cx2.remove(*id);
             }
 
-            let root = view! {
-                script_list,
-                <Container style={Style::default()}>
-                </Container>
-            };
+            let root = cx2.append(Container::new());
             *id = root.id();
 
             let scripts = scripts.get();
 
             for script in scripts {
-                view! {
-                    root,
-                    <Text text={script.into()}>
-                    </Text>
-                };
+                root.append(Text::new().text(script));
             }
         });
     }
 
     let (new_script, set_new_script) = create_signal(cx, String::new());
-
-    let on_change = move |s| {
-        set_new_script.set(s);
-    };
 
     let on_click = move |_| {
         set_scripts.update(|v| {
@@ -527,19 +443,14 @@ fn render_script_section(cx: &Scope) -> ReadSignal<Vec<String>> {
         ..Default::default()
     };
 
-    view! {
-        root,
-        <Input style={style} value={"".to_owned()} on_change={on_change.into()}>
-        </Input>
-    };
+    root.append(
+        Input::new()
+            .style(style)
+            .on_change(move |s| set_new_script.set(s)),
+    );
 
-    view! {
-        root,
-        <Button style={Style::default()} on_click={on_click.into()}>
-            <Text text={"New Script".into()}>
-            </Text>
-        </Button>
-    };
+    let button = root.append(Button::new().on_click(on_click));
+    button.append(Text::new().text("New Script"));
 
     scripts
 }

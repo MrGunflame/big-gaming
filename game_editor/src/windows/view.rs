@@ -1,6 +1,7 @@
 //! An immutable view of a scene.
 
 use bitflags::bitflags;
+use game_asset::*;
 use game_common::components::transform::Transform;
 use game_input::mouse::{MouseButton, MouseMotion, MouseWheel};
 use game_input::ButtonState;
@@ -10,6 +11,7 @@ use game_render::entities::{CameraId, Object};
 use game_render::light::PointLight;
 use game_render::pbr::PbrMaterial;
 use game_render::{shape, Renderer};
+use game_scene::*;
 use game_window::events::{VirtualKeyCode, WindowEvent};
 use game_window::windows::WindowId;
 use glam::{Quat, Vec3};

@@ -2,30 +2,26 @@ use image::{ImageBuffer, Rgba};
 use parking_lot::Mutex;
 
 use crate::events::{ElementEventHandlers, EventHandlers};
-use crate::reactive::{create_effect, create_signal, Node, Scope, WriteSignal};
+use crate::reactive::{create_effect, create_signal, Node, Scope};
 use crate::render::style::Style;
 use crate::render::{Element, ElementBody, Image};
 
-use super::Component;
+use super::{Callback, Widget};
 
-pub struct CheckboxProps {
-    pub value: bool,
-    pub style: Style,
-    pub on_change: CheckboxChangeHandler,
+pub struct Checkbox {
+    is_checked: bool,
+    style: Style,
+    on_change: Callback<bool>,
 }
 
-pub struct Checkbox;
-
-impl Component for Checkbox {
-    type Properties = CheckboxProps;
-
-    fn render(cx: &Scope, props: Self::Properties) -> Scope {
-        let (state, set_state) = create_signal(cx, props.value);
+impl Widget for Checkbox {
+    fn build(self, cx: &Scope) -> Scope {
+        let (state, set_state) = create_signal(cx, self.is_checked);
 
         let root = cx.push(Node {
             element: Element {
                 body: ElementBody::Container(),
-                style: props.style,
+                style: self.style,
             },
             events: ElementEventHandlers {
                 local: EventHandlers {
@@ -67,32 +63,13 @@ impl Component for Checkbox {
 
             // Skip update for the initial value.
             if id.is_some() {
-                (props.on_change.0)(state);
+                (self.on_change)(state);
             }
 
             *id = Some(checkbox.id().unwrap());
         });
 
         root
-    }
-}
-
-pub struct CheckboxChangeHandler(Box<dyn Fn(bool) + Send + Sync + 'static>);
-
-impl<F> From<F> for CheckboxChangeHandler
-where
-    F: Fn(bool) + Send + Sync + 'static,
-{
-    fn from(value: F) -> Self {
-        Self(Box::new(value))
-    }
-}
-
-impl From<WriteSignal<bool>> for CheckboxChangeHandler {
-    fn from(writer: WriteSignal<bool>) -> Self {
-        Self(Box::new(move |val| {
-            writer.update(|v| *v = val);
-        }))
     }
 }
 

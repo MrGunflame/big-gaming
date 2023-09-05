@@ -25,7 +25,6 @@ use glam::UVec2;
 use reactive::{Document, Runtime};
 use render::RenderUiState;
 
-pub use game_ui_macros::{component, view};
 use wgpu::{Device, Queue};
 
 pub struct UiState {

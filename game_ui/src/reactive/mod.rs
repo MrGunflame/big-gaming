@@ -8,6 +8,7 @@ use slotmap::{new_key_type, SlotMap};
 use crate::events::Events;
 use crate::render::layout::{Key, LayoutTree};
 use crate::render::style::Style;
+use crate::widgets::Widget;
 
 use self::effect::{Effect, EffectId};
 use self::signal::{Signal, SignalId};
@@ -55,6 +56,13 @@ impl Scope {
     //         parent,
     //     }
     // }
+
+    pub fn append<T>(&self, widget: T) -> Scope
+    where
+        T: Widget,
+    {
+        widget.build(self)
+    }
 
     pub fn id(&self) -> Option<NodeId> {
         self.id
