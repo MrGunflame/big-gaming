@@ -2,20 +2,15 @@ use std::collections::VecDeque;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
-use bevy_app::App;
-use bevy_ecs::prelude::Component;
-use bevy_ecs::system::{ResMut, Resource};
 use parking_lot::Mutex;
 use slotmap::{DefaultKey, SlotMap};
-
-use crate::AssetAppExt;
 
 pub trait Asset: Send + Sync + 'static {}
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct HandleId(DefaultKey);
 
-#[derive(Debug, Component)]
+#[derive(Debug)]
 pub struct Handle<T>
 where
     T: Asset,
@@ -60,7 +55,7 @@ where
     }
 }
 
-#[derive(Clone, Debug, Default, Resource)]
+#[derive(Clone, Debug, Default)]
 pub struct Assets<T>
 where
     T: Asset,
@@ -104,6 +99,27 @@ where
     pub fn get_mut(&mut self, id: HandleId) -> Option<&mut T> {
         self.assets.get_mut(id.0).map(|e| &mut e.asset)
     }
+
+    pub fn flush_events(&mut self) {
+        let mut events = self.events.lock();
+
+        while let Some(event) = events.pop_front() {
+            match event {
+                Event::Clone(id) => {
+                    let asset = self.assets.get_mut(id.0).unwrap();
+                    asset.ref_count += 1;
+                }
+                Event::Drop(id) => {
+                    let asset = self.assets.get_mut(id.0).unwrap();
+                    asset.ref_count -= 1;
+
+                    if asset.ref_count == 0 {
+                        self.assets.remove(id.0);
+                    }
+                }
+            }
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -116,34 +132,4 @@ struct Entry<T: Asset> {
 enum Event {
     Clone(HandleId),
     Drop(HandleId),
-}
-
-fn flush_asset_events<T: Asset>(mut assets: ResMut<Assets<T>>) {
-    let assets = &mut *assets;
-
-    let mut events = assets.events.lock();
-
-    while let Some(event) = events.pop_front() {
-        match event {
-            Event::Clone(id) => {
-                let asset = assets.assets.get_mut(id.0).unwrap();
-                asset.ref_count += 1;
-            }
-            Event::Drop(id) => {
-                let asset = assets.assets.get_mut(id.0).unwrap();
-                asset.ref_count -= 1;
-
-                if asset.ref_count == 0 {
-                    assets.assets.remove(id.0);
-                }
-            }
-        }
-    }
-}
-
-impl AssetAppExt for App {
-    fn add_asset<T: Asset>(&mut self) {
-        self.insert_resource(Assets::<T>::new());
-        self.add_system(flush_asset_events::<T>);
-    }
 }
