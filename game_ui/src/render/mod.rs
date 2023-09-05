@@ -39,6 +39,8 @@ pub use self::image::Image;
 pub use self::layout::{Element, ElementBody};
 pub use self::text::Text;
 
+const UI_SHADER: &str = include_str!("../../shaders/ui.wgsl");
+
 pub struct RenderUiState {
     pipeline: Arc<UiPipeline>,
     windows: HashMap<WindowId, LayoutTree>,
@@ -312,7 +314,7 @@ impl UiPipeline {
 
         let shader = device.create_shader_module(ShaderModuleDescriptor {
             label: Some("ui_shader"),
-            source: ShaderSource::Wgsl(include_str!("ui.wgsl").into()),
+            source: ShaderSource::Wgsl(UI_SHADER.into()),
         });
 
         let pipeline = device.create_render_pipeline(&RenderPipelineDescriptor {
