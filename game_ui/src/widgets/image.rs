@@ -2,8 +2,8 @@ use image::{ImageBuffer, Rgba};
 
 use crate::events::ElementEventHandlers;
 use crate::reactive::{Node, Scope};
-use crate::render::style::Style;
 use crate::render::{self, Element, ElementBody};
+use crate::style::Style;
 
 use super::Widget;
 

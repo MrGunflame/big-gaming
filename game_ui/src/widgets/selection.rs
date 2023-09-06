@@ -3,8 +3,8 @@ use winit::event::VirtualKeyCode;
 
 use crate::events::{ElementEventHandlers, EventHandlers};
 use crate::reactive::{create_effect, create_signal, Node, NodeId, Scope, WriteSignal};
-use crate::render::style::{Background, Bounds, Size, SizeVec2, Style};
 use crate::render::{Element, ElementBody, Text};
+use crate::style::{Background, Bounds, Size, SizeVec2, Style};
 
 use super::{Callback, Input, Widget};
 

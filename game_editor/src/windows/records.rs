@@ -3,7 +3,7 @@ use game_data::record::{Record, RecordBody, RecordKind};
 use game_input::mouse::MouseButtonInput;
 use game_ui::events::Context;
 use game_ui::reactive::{create_effect, create_signal, ReadSignal, Scope, WriteSignal};
-use game_ui::render::style::{Background, Direction, Growth, Style};
+use game_ui::style::{Background, Direction, Growth, Style};
 use game_ui::widgets::{Button, Container, Text, Widget};
 use image::Rgba;
 use parking_lot::Mutex;

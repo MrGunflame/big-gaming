@@ -1,5 +1,5 @@
 use game_ui::reactive::Scope;
-use game_ui::render::style::{Background, BorderRadius, Bounds, Size, SizeVec2, Style};
+use game_ui::style::{Background, BorderRadius, Bounds, Size, SizeVec2, Style};
 use game_ui::widgets::{Callback, Container, Widget};
 
 use crate::state::EditorState;

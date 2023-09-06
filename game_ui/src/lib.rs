@@ -14,6 +14,7 @@ use criterion as _;
 pub mod events;
 pub mod reactive;
 pub mod render;
+pub mod style;
 pub mod widgets;
 
 use events::{Events, WindowCommand};

@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use game_input::mouse::MouseButtonInput;
 use game_ui::events::Context;
 use game_ui::reactive::{create_effect, create_signal, Scope};
-use game_ui::render::style::{Growth, Style};
+use game_ui::style::{Growth, Style};
 use game_ui::widgets::{Button, Callback, Container, Text, Widget};
 use parking_lot::Mutex;
 

@@ -2,8 +2,8 @@ use game_input::mouse::MouseButtonInput;
 
 use crate::events::{Context, ElementEventHandlers, EventHandlers};
 use crate::reactive::{Node, Scope};
-use crate::render::style::Style;
 use crate::render::{Element, ElementBody};
+use crate::style::Style;
 
 use super::{Callback, Widget};
 

@@ -2,7 +2,7 @@ use game_common::module::{Dependency, Module, ModuleId, Version};
 use game_input::mouse::MouseButtonInput;
 use game_ui::events::Context;
 use game_ui::reactive::{create_signal, ReadSignal, Scope};
-use game_ui::render::style::{
+use game_ui::style::{
     Background, BorderRadius, Bounds, Direction, Growth, Justify, Padding, Size, SizeVec2, Style,
 };
 use game_ui::widgets::{Button, Callback, Container, Input, Text, Widget};

@@ -12,9 +12,7 @@ use game_data::uri::Uri;
 use game_input::mouse::MouseButtonInput;
 use game_ui::events::Context;
 use game_ui::reactive::{create_effect, create_signal, ReadSignal, Scope};
-use game_ui::render::style::{
-    Background, Bounds, Direction, Justify, Padding, Size, SizeVec2, Style,
-};
+use game_ui::style::{Background, Bounds, Direction, Justify, Padding, Size, SizeVec2, Style};
 use game_ui::widgets::{Button, Container, Input, ParseInput, Selection, Text, Widget};
 use parking_lot::Mutex;
 

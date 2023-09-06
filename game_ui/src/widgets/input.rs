@@ -5,8 +5,8 @@ use winit::event::VirtualKeyCode;
 
 use crate::events::{ElementEventHandlers, EventHandlers};
 use crate::reactive::{create_effect, create_signal, Node, Scope};
-use crate::render::style::Style;
 use crate::render::{Element, ElementBody};
+use crate::style::Style;
 
 use super::text::Text;
 use super::{Callback, Widget};

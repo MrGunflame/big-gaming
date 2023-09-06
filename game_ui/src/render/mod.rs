@@ -1,6 +1,5 @@
 pub mod computed_style;
 pub mod layout;
-pub mod style;
 
 mod container;
 mod debug;

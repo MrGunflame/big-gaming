@@ -3,8 +3,8 @@
 use game_ui::events::{ElementEventHandlers, EventHandlers};
 use game_ui::reactive::{create_effect, create_signal, Node, Scope};
 
-use game_ui::render::style::{Position, Style};
 use game_ui::render::{Element, ElementBody};
+use game_ui::style::{Position, Style};
 use game_ui::widgets::{Callback, Widget};
 use game_window::events::VirtualKeyCode;
 use glam::Vec2;

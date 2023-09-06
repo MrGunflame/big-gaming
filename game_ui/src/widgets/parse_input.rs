@@ -2,7 +2,7 @@ use std::fmt::Display;
 use std::str::FromStr;
 
 use crate::reactive::Scope;
-use crate::render::style::Style;
+use crate::style::Style;
 
 use super::{Callback, Input, Widget};
 

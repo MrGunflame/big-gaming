@@ -3,8 +3,8 @@ use parking_lot::Mutex;
 
 use crate::events::{ElementEventHandlers, EventHandlers};
 use crate::reactive::{create_effect, create_signal, Node, Scope};
-use crate::render::style::Style;
 use crate::render::{Element, ElementBody, Image};
+use crate::style::Style;
 
 use super::{Callback, Widget};
 

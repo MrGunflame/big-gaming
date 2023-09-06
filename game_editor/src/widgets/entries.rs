@@ -1,7 +1,7 @@
 use game_input::mouse::MouseButtonInput;
 use game_ui::events::Context;
 use game_ui::reactive::Scope;
-use game_ui::render::style::{Background, Direction, Padding, Size, Style};
+use game_ui::style::{Background, Direction, Padding, Size, Style};
 use game_ui::widgets::{Button, Callback, Container, Text, Widget};
 
 use crate::widgets::context_menu::*;

@@ -5,9 +5,9 @@ use glam::Vec2;
 use super::computed_style::{ComputedBounds, ComputedStyle};
 use super::container::Container;
 use super::image::Image;
-use super::style::{Direction, Justify, Position, Style};
 use super::text::Text;
 use super::BuildPrimitiveElement;
+use crate::style::{Direction, Justify, Position, Style};
 
 #[derive(Clone, Debug)]
 pub struct Element {
@@ -866,10 +866,10 @@ mod tests {
 
     use crate::render::computed_style::ComputedStyle;
     use crate::render::layout::ComputedBounds;
-    use crate::render::style::{
+    use crate::render::{BuildPrimitiveElement, Text};
+    use crate::style::{
         Bounds, Direction, Growth, Justify, Padding, Position, Size, SizeVec2, Style,
     };
-    use crate::render::{BuildPrimitiveElement, Text};
 
     use super::{size_per_element, Element, ElementBody, Key, LayoutTree};
 

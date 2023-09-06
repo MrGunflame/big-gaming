@@ -7,7 +7,7 @@ use slotmap::{new_key_type, SlotMap};
 
 use crate::events::Events;
 use crate::render::layout::{Key, LayoutTree};
-use crate::render::style::Style;
+use crate::style::Style;
 use crate::widgets::Widget;
 
 use self::effect::{Effect, EffectId};
@@ -385,8 +385,8 @@ mod tests {
     use crate::events::{ElementEventHandlers, Events};
     use crate::reactive::Runtime;
     use crate::render::layout::LayoutTree;
-    use crate::render::style::Style;
     use crate::render::{Element, ElementBody};
+    use crate::style::Style;
 
     use super::{Document, Node};
 

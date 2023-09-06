@@ -9,8 +9,8 @@ use self::overlay::overlay_unchecked;
 use super::computed_style::{ComputedBorderRadius, ComputedBounds, ComputedStyle};
 use super::debug::{debug_border, debug_padding, is_debug_render_enabled};
 use super::remap::remap;
-use super::style::Background;
 use super::{BuildPrimitiveElement, PrimitiveElement, Rect};
+use crate::style::Background;
 
 #[derive(Clone, Debug)]
 pub struct Image {
@@ -256,7 +256,7 @@ mod tests {
     use image::{GenericImageView, ImageBuffer, Pixel, Rgba};
 
     use crate::render::computed_style::{ComputedBorderRadius, ComputedStyle};
-    use crate::render::style::{Background, Padding, Size, Style};
+    use crate::style::{Background, Padding, Size, Style};
 
     use super::{apply_background, apply_border_radius};
 

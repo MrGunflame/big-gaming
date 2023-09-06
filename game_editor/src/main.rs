@@ -16,7 +16,7 @@ use game_common::components::transform::Transform;
 use game_render::camera::{Camera, Projection, RenderTarget};
 use game_render::Renderer;
 use game_ui::reactive::Document;
-use game_ui::render::style::{Background, BorderRadius, Bounds, Size, SizeVec2, Style};
+use game_ui::style::{Background, BorderRadius, Bounds, Size, SizeVec2, Style};
 use game_ui::UiState;
 use game_window::cursor::Cursor;
 use game_window::events::WindowEvent;

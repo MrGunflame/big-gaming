@@ -1,5 +1,5 @@
 use game_ui::reactive::Scope;
-use game_ui::render::style::{Bounds, Direction, Padding, Size, SizeVec2, Style};
+use game_ui::style::{Bounds, Direction, Padding, Size, SizeVec2, Style};
 use game_ui::widgets::{Container, Image, Text, Widget};
 
 pub struct Error {

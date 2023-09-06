@@ -10,7 +10,7 @@ use game_input::mouse::MouseButtonInput;
 use game_ui::events::Context;
 use game_ui::reactive::{create_effect, create_signal, NodeId, ReadSignal, Scope, WriteSignal};
 use game_ui::render::layout::Key;
-use game_ui::render::style::{Background, Direction, Growth, Justify, Padding, Size, Style};
+use game_ui::style::{Background, Direction, Growth, Justify, Padding, Size, Style};
 use game_ui::widgets::{Button, Callback, Container, Text, Widget};
 use game_window::windows::WindowId;
 use image::Rgba;

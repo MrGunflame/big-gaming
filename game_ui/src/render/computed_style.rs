@@ -1,6 +1,6 @@
 use glam::Vec2;
 
-use super::style::{Bounds, Style};
+use crate::style::{Bounds, Style};
 
 #[derive(Clone, Debug)]
 pub struct ComputedStyle {
