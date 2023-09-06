@@ -353,10 +353,12 @@ impl Document {
                 Event::UpdateNode(id, node) => {
                     tracing::trace!("replace node {:?}", id);
 
-                    let key = doc.node_mappings.get(&id).unwrap();
-
-                    tree.replace(*key, node.element);
-                    *events.get_mut(*key).unwrap() = node.events;
+                    if let Some(key) = doc.node_mappings.get(&id) {
+                        tree.replace(*key, node.element);
+                        *events.get_mut(*key).unwrap() = node.events;
+                    } else {
+                        tracing::trace!("node {:?} does not exist", id);
+                    }
                 }
                 Event::UpdateStyle(id, style) => {
                     tracing::trace!("update style {:?}", id);
@@ -364,7 +366,7 @@ impl Document {
                     if let Some(key) = doc.node_mappings.get(&id) {
                         tree.get_mut(*key).unwrap().style = style;
                     } else {
-                        tracing::warn!("requested node {:?} does not exist", id);
+                        tracing::warn!("node {:?} does not exist", id);
                     }
                 }
             }
@@ -470,5 +472,21 @@ mod tests {
 
         cx.remove(parent.id().unwrap());
         cx.remove(children.id().unwrap());
+    }
+
+    #[test]
+    fn document_insert_remove() {
+        let rt = Runtime::new();
+        let doc = Document::new(rt);
+        let cx = doc.root_scope();
+
+        let mut tree = LayoutTree::new();
+        let mut events = Events::new();
+
+        let node = cx.push(create_node());
+        node.remove(node.id().unwrap());
+
+        doc.run_effects();
+        doc.flush_node_queue(&mut tree, &mut events);
     }
 }
