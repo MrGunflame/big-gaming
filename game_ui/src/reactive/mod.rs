@@ -452,4 +452,23 @@ mod tests {
         assert!(tree.is_empty());
         assert!(events.is_empty());
     }
+
+    #[test]
+    fn document_remove_parent_children() {
+        let rt = Runtime::new();
+        let doc = Document::new(rt);
+        let cx = doc.root_scope();
+
+        let mut tree = LayoutTree::new();
+        let mut events = Events::new();
+
+        let parent = cx.push(create_node());
+        let children = parent.push(create_node());
+
+        doc.run_effects();
+        doc.flush_node_queue(&mut tree, &mut events);
+
+        cx.remove(parent.id().unwrap());
+        cx.remove(children.id().unwrap());
+    }
 }
