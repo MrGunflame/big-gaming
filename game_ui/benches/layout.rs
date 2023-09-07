@@ -6,7 +6,7 @@ use game_ui::style::Style;
 
 fn create_element() -> Element {
     Element {
-        body: ElementBody::Container(),
+        body: ElementBody::Container,
         style: Style::default(),
     }
 }

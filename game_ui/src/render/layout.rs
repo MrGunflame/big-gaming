@@ -42,9 +42,7 @@ impl BuildPrimitiveElement for Element {
         size: UVec2,
     ) -> Option<super::PrimitiveElement> {
         match &self.body {
-            ElementBody::Container() => {
-                Container.build(style, layout, pipeline, device, queue, size)
-            }
+            ElementBody::Container => Container.build(style, layout, pipeline, device, queue, size),
             ElementBody::Image(elem) => elem.build(style, layout, pipeline, device, queue, size),
             ElementBody::Text(elem) => elem.build(style, layout, pipeline, device, queue, size),
         }
@@ -52,7 +50,7 @@ impl BuildPrimitiveElement for Element {
 
     fn bounds(&self, style: &ComputedStyle) -> ComputedBounds {
         match &self.body {
-            ElementBody::Container() => ComputedBounds::default(),
+            ElementBody::Container => ComputedBounds::default(),
             ElementBody::Image(elem) => elem.bounds(style),
             ElementBody::Text(elem) => elem.bounds(style),
         }
@@ -61,7 +59,7 @@ impl BuildPrimitiveElement for Element {
 
 #[derive(Clone, Debug)]
 pub enum ElementBody {
-    Container(),
+    Container,
     Image(Image),
     Text(Text),
 }
@@ -208,12 +206,13 @@ impl LayoutTree {
         }
     }
 
+    /// Computes the bounds for the element.
     fn compute_bounds(&self, key: Key) -> ComputedBounds {
         let elem = &self.elems[&key];
         let layout = &self.layouts[&key];
 
         let mut bounds = match &elem.body {
-            ElementBody::Container() => {
+            ElementBody::Container => {
                 // Infer the bounds from the children elements.
                 if let Some(children) = self.children.get(&key) {
                     let mut bounds = ComputedBounds::ZERO;
@@ -955,7 +954,7 @@ mod tests {
         tree.resize(UVec2::splat(1000));
 
         let elem = Element {
-            body: ElementBody::Container(),
+            body: ElementBody::Container,
             style: Style {
                 growth: Growth::splat(1.0),
                 ..Default::default()
@@ -980,7 +979,7 @@ mod tests {
         tree.resize(UVec2::splat(1000));
 
         let elem = Element {
-            body: ElementBody::Container(),
+            body: ElementBody::Container,
             style: Style {
                 growth: Growth::NONE,
                 ..Default::default()
@@ -1010,7 +1009,7 @@ mod tests {
         };
 
         let root = Element {
-            body: ElementBody::Container(),
+            body: ElementBody::Container,
             style: style.clone(),
         };
         let key = tree.push(None, root);
@@ -1045,7 +1044,7 @@ mod tests {
         };
 
         let root = Element {
-            body: ElementBody::Container(),
+            body: ElementBody::Container,
             style: style.clone(),
         };
         let key = tree.push(None, root);
@@ -1075,7 +1074,7 @@ mod tests {
         tree.resize(UVec2::splat(1000));
 
         let root = Element {
-            body: ElementBody::Container(),
+            body: ElementBody::Container,
             style: Style {
                 growth: Growth::NONE,
                 ..Default::default()
@@ -1109,7 +1108,7 @@ mod tests {
         let key = tree.push(
             None,
             Element {
-                body: ElementBody::Container(),
+                body: ElementBody::Container,
                 style: Style {
                     bounds,
                     ..Default::default()
@@ -1136,7 +1135,7 @@ mod tests {
         let key = tree.push(
             None,
             Element {
-                body: ElementBody::Container(),
+                body: ElementBody::Container,
                 style: Style {
                     bounds,
                     ..Default::default()
@@ -1164,7 +1163,7 @@ mod tests {
         let root = tree.push(
             None,
             Element {
-                body: ElementBody::Container(),
+                body: ElementBody::Container,
                 style: Style::default(),
             },
         );
@@ -1172,7 +1171,7 @@ mod tests {
         let key = tree.push(
             Some(root),
             Element {
-                body: ElementBody::Container(),
+                body: ElementBody::Container,
                 style: Style {
                     bounds,
                     ..Default::default()
@@ -1199,7 +1198,7 @@ mod tests {
         let root = tree.push(
             None,
             Element {
-                body: ElementBody::Container(),
+                body: ElementBody::Container,
                 style: Style {
                     // Claim entire viewport so we can actually test
                     // child positions.
@@ -1215,7 +1214,7 @@ mod tests {
         );
 
         let elem = Element {
-            body: ElementBody::Container(),
+            body: ElementBody::Container,
             style: Style {
                 bounds: Bounds {
                     min: SizeVec2::splat(Size::Pixels(size)),
@@ -1410,7 +1409,7 @@ mod tests {
         let key = tree.push(
             None,
             Element {
-                body: ElementBody::Container(),
+                body: ElementBody::Container,
                 style: Style {
                     bounds: Bounds {
                         min: SizeVec2::splat(Size::Pixels(10)),
@@ -1437,7 +1436,7 @@ mod tests {
         let root = tree.push(
             None,
             Element {
-                body: ElementBody::Container(),
+                body: ElementBody::Container,
                 style: Style {
                     padding: Padding::splat(Size::Pixels(10)),
                     ..Default::default()
@@ -1446,7 +1445,7 @@ mod tests {
         );
 
         let elem = Element {
-            body: ElementBody::Container(),
+            body: ElementBody::Container,
             style: Style {
                 bounds: Bounds {
                     min: SizeVec2::splat(Size::Pixels(10)),
@@ -1480,13 +1479,13 @@ mod tests {
         let root = tree.push(
             None,
             Element {
-                body: ElementBody::Container(),
+                body: ElementBody::Container,
                 style: Style::default(),
             },
         );
 
         let elem = Element {
-            body: ElementBody::Container(),
+            body: ElementBody::Container,
             style: Style {
                 bounds: Bounds::exact(SizeVec2::splat(Size::Pixels(10))),
                 ..Default::default()
@@ -1500,7 +1499,7 @@ mod tests {
         tree.push(
             Some(root),
             Element {
-                body: ElementBody::Container(),
+                body: ElementBody::Container,
                 style: Style {
                     bounds: Bounds::exact(SizeVec2::splat(Size::Pixels(10))),
                     position: Position::Absolute(UVec2::splat(0)),

@@ -26,7 +26,7 @@ impl Widget for ContextMenu {
 
         let wrapper = cx.push(Node {
             element: Element {
-                body: ElementBody::Container(),
+                body: ElementBody::Container,
                 style: Style::default(),
             },
             events: ElementEventHandlers {
@@ -64,7 +64,7 @@ impl Widget for ContextMenu {
                     if state.is_active {
                         let menu = cx2.push(Node {
                             element: Element {
-                                body: ElementBody::Container(),
+                                body: ElementBody::Container,
                                 style: Style {
                                     position: Position::Absolute(state.position),
                                     ..Default::default()

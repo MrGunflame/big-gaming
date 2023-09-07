@@ -24,7 +24,7 @@ impl Widget for Container {
     fn build(self, cx: &Scope) -> Scope {
         cx.push(Node {
             element: Element {
-                body: ElementBody::Container(),
+                body: ElementBody::Container,
                 style: self.style,
             },
             events: Default::default(),

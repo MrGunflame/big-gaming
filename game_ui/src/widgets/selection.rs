@@ -58,7 +58,7 @@ impl Widget for Selection {
 
         let root = cx.push(Node {
             element: Element {
-                body: ElementBody::Container(),
+                body: ElementBody::Container,
                 style: Style::default(),
             },
             events: ElementEventHandlers {

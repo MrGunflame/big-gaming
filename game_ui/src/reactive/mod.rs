@@ -395,7 +395,7 @@ mod tests {
     pub(super) fn create_node() -> Node {
         Node {
             element: Element {
-                body: ElementBody::Container(),
+                body: ElementBody::Container,
                 style: Style::default(),
             },
             events: ElementEventHandlers::default(),

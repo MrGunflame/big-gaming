@@ -55,7 +55,7 @@ impl Widget for Input {
 
         let root = cx.push(Node {
             element: Element {
-                body: ElementBody::Container(),
+                body: ElementBody::Container,
                 style: self.style,
             },
             events: ElementEventHandlers {
