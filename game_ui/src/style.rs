@@ -78,6 +78,8 @@ impl Size {
     /// The `Size` representing infinity, the maximum size.
     pub const INFINITY: Self = Self::Pixels(u32::MAX);
 
+    /// Returns the `Size` as pixels.
+    #[inline]
     pub(crate) fn to_pixels(self, viewport: UVec2) -> u32 {
         match self {
             Self::Pixels(val) => val,

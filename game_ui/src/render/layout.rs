@@ -208,8 +208,9 @@ impl LayoutTree {
 
     /// Computes the bounds for the element.
     fn compute_bounds(&self, key: Key) -> ComputedBounds {
-        let elem = &self.elems[&key];
-        let layout = &self.layouts[&key];
+        // The caller should guarantee that the key exists.
+        let elem = self.elems.get(&key).unwrap();
+        let layout = self.layouts.get(&key).unwrap();
 
         let mut bounds = match &elem.body {
             ElementBody::Container => {
@@ -218,7 +219,7 @@ impl LayoutTree {
                     let mut bounds = ComputedBounds::ZERO;
                     for key in children {
                         // Elements with absolute position are excluded.
-                        let child = &self.elems[key];
+                        let child = self.elems.get(&key).unwrap();
                         if child.style.position.is_absolute() {
                             continue;
                         }
@@ -275,6 +276,7 @@ impl LayoutTree {
             ElementBody::Text(el) => el.bounds(&layout.style),
         };
 
+        // Clamp the actual bounds between the wanted bounds.
         let min_x = elem.style.bounds.min.x.to_pixels(self.size);
         let max_x = elem.style.bounds.max.x.to_pixels(self.size);
         let min_y = elem.style.bounds.min.y.to_pixels(self.size);
@@ -286,9 +288,10 @@ impl LayoutTree {
         bounds.max.x = u32::clamp(bounds.max.x, bounds.min.x, max_x);
         bounds.max.y = u32::clamp(bounds.max.y, bounds.min.y, max_y);
 
-        debug_assert!(bounds.min.x <= bounds.max.x, "min.x <= max.x {:?}", bounds);
-        debug_assert!(bounds.min.y <= bounds.max.y, "min.y <= min.y {:?}", bounds);
+        debug_assert!(bounds.min.x <= bounds.max.x);
+        debug_assert!(bounds.min.y <= bounds.max.y);
 
+        // Apply the wanted padding on top of the min/max bounds.
         let padding = layout.style.padding;
         let padding = UVec2::new(padding.left + padding.right, padding.top + padding.bottom);
         bounds.min = bounds.min.saturating_add(padding);
@@ -298,8 +301,8 @@ impl LayoutTree {
     }
 
     fn layout_element(&mut self, key: Key) {
-        let elem = self.elems[&key].clone();
-        let layout = &self.layouts[&key];
+        let elem = self.elems.get(&key).unwrap().clone();
+        let layout = self.layouts.get(&key).unwrap();
 
         let mut start = layout.position;
         let mut end = UVec2::new(
@@ -317,7 +320,7 @@ impl LayoutTree {
         if let Some(children) = self.children.get(&key).cloned() {
             // Relative positioned children
             let relative_children: u32 = children.iter().fold(0, |acc, key| {
-                let style = &self.elems[&key].style;
+                let style = &self.elems.get(key).unwrap().style;
                 acc + if style.position.is_relative() { 1 } else { 0 }
             });
 
@@ -328,7 +331,7 @@ impl LayoutTree {
                         size_per_element(end - start, relative_children, elem.style.direction);
 
                     for child in children {
-                        let child_style = &self.elems[&child].style;
+                        let child_style = &self.elems.get(&child).unwrap().style;
 
                         let bounds = self.compute_bounds(child);
                         let layout = self.layouts.get_mut(&child).unwrap();
@@ -369,7 +372,7 @@ impl LayoutTree {
                         size_per_element(end - start, relative_children, elem.style.direction);
 
                     for child in children.iter().rev().copied() {
-                        let child_style = &self.elems[&child].style;
+                        let child_style = &self.elems.get(&child).unwrap().style;
 
                         let bounds = self.compute_bounds(child);
                         let layout = self.layouts.get_mut(&child).unwrap();
@@ -421,7 +424,7 @@ impl LayoutTree {
                         size_per_element(end - start, children.len() as u32, elem.style.direction);
 
                     for child in children {
-                        let child_style = &self.elems[&child].style;
+                        let child_style = &self.elems.get(&child).unwrap().style;
 
                         let bounds = self.compute_bounds(child);
                         let layout = self.layouts.get_mut(&child).unwrap();
@@ -451,7 +454,7 @@ impl LayoutTree {
                         self.layout_element(child);
                     }
 
-                    let elem = self.elems[&key].clone();
+                    let elem = self.elems.get(&key).unwrap().clone();
                     let children = self.children.get(&key).unwrap();
 
                     // The first element is spaced at `layout.position` and the
@@ -534,7 +537,7 @@ impl LayoutTree {
                         self.layout_element(child);
                     }
 
-                    let elem = self.elems[&key].clone();
+                    let elem = self.elems.get(&key).unwrap().clone();
                     let children = self.children.get(&key).unwrap();
 
                     // The first element is spaced at `layout.position` and the
@@ -627,7 +630,7 @@ impl LayoutTree {
                         self.layout_element(child);
                     }
 
-                    let elem = self.elems[&key].clone();
+                    let elem = self.elems.get(&key).unwrap().clone();
                     let children = self.children.get(&key).unwrap();
 
                     // The first element is spaced at `layout.position` and the
