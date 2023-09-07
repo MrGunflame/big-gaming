@@ -117,6 +117,37 @@ impl LayoutTree {
         self.changed = true;
     }
 
+    /// Inserts a new [`Element`] at the given `index`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `index < parent_len`.
+    pub fn insert(&mut self, parent: Option<Key>, elem: Element, index: usize) -> Key {
+        let layout = Layout {
+            position: UVec2::ZERO,
+            height: 0,
+            width: 0,
+            style: ComputedStyle::new(elem.style.clone(), self.size),
+        };
+
+        let key = Key(self.next_id);
+        self.next_id += 1;
+        self.elems.insert(key, elem);
+        self.layouts.insert(key, layout);
+
+        self.children.insert(key, vec![]);
+
+        if let Some(parent) = parent {
+            let children = self.children.get_mut(&parent).unwrap();
+            children.insert(index, parent);
+        } else {
+            self.root.insert(index, key);
+        }
+
+        self.changed = true;
+        key
+    }
+
     pub fn push(&mut self, parent: Option<Key>, elem: Element) -> Key {
         let layout = Layout {
             position: UVec2::ZERO,
