@@ -84,7 +84,7 @@ impl RenderUiState {
 
     pub fn resize(&mut self, id: WindowId, size: UVec2) {
         if let Some(tree) = self.windows.get_mut(&id) {
-            tree.resize(Vec2::new(size.x as f32, size.y as f32));
+            tree.resize(size);
         }
     }
 
@@ -101,12 +101,12 @@ impl RenderUiState {
             let mut elems = vec![];
             for (elem, layout) in tree.elements().zip(tree.layouts()) {
                 // Don't render elements with a zero size.
-                if layout.width <= 0.0 || layout.height <= 0.0 {
+                if layout.width <= 0 || layout.height <= 0 {
                     continue;
                 }
 
                 // Don't render elements that start outside of the viewport.
-                if layout.position.x > size.x as f32 || layout.position.y > size.y as f32 {
+                if layout.position.x > size.x || layout.position.y > size.y {
                     continue;
                 }
 
@@ -114,7 +114,7 @@ impl RenderUiState {
                     &layout.style,
                     Rect {
                         min: layout.position,
-                        max: layout.position + Vec2::new(layout.width as f32, layout.height as f32),
+                        max: layout.position + UVec2::new(layout.width, layout.height),
                     },
                     &self.pipeline,
                     device,
@@ -147,7 +147,8 @@ impl PrimitiveElement {
         pipeline: &UiPipeline,
         device: &Device,
         queue: &Queue,
-        rect: Rect,
+        min: Vec2,
+        max: Vec2,
         image: &ImageBuffer<Rgba<u8>, Vec<u8>>,
         color: [f32; 4],
     ) -> Self {
@@ -163,22 +164,22 @@ impl PrimitiveElement {
 
         let vertices = [
             Vertex {
-                position: [rect.min.x, rect.min.y, 0.0],
+                position: [min.x, min.y, 0.0],
                 uv: [0.0, 0.0],
                 color,
             },
             Vertex {
-                position: [rect.min.x, rect.max.y, 0.0],
+                position: [min.x, max.y, 0.0],
                 uv: [0.0, 1.0],
                 color,
             },
             Vertex {
-                position: [rect.max.x, rect.max.y, 0.0],
+                position: [max.x, max.y, 0.0],
                 uv: [1.0, 1.0],
                 color,
             },
             Vertex {
-                position: [rect.max.x, rect.min.y, 0.0],
+                position: [max.x, min.y, 0.0],
                 uv: [1.0, 0.0],
                 color,
             },
@@ -268,7 +269,7 @@ trait BuildPrimitiveElement {
         pipeline: &UiPipeline,
         device: &Device,
         queue: &Queue,
-        size: Vec2,
+        size: UVec2,
     ) -> Option<PrimitiveElement>;
 
     fn bounds(&self, style: &ComputedStyle) -> ComputedBounds;
@@ -406,8 +407,8 @@ impl Vertex {
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct Rect {
-    pub min: Vec2,
-    pub max: Vec2,
+    pub min: UVec2,
+    pub max: UVec2,
 }
 
 #[derive(Debug)]

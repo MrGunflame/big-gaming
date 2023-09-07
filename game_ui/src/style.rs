@@ -1,4 +1,4 @@
-use glam::Vec2;
+use glam::UVec2;
 use image::{ImageBuffer, Rgba};
 use thiserror::Error;
 
@@ -37,17 +37,25 @@ impl Direction {
 
 #[derive(Copy, Clone, Debug, Default, PartialEq)]
 pub enum Position {
+    /// The position is intered from the parent.
     #[default]
     Relative,
-    Absolute(Vec2),
+    /// Use the provided absolute screen coordinates.
+    Absolute(UVec2),
 }
 
 impl Position {
+    /// Returns `true` if this `Position` is [`Relative`].
+    ///
+    /// [`Relative`]: Self::Relative
     #[inline]
     pub const fn is_relative(self) -> bool {
         matches!(self, Self::Relative)
     }
 
+    /// Returns `true` if this `Position` is [`Absolute`].
+    ///
+    /// [`Absolute`]: Self::Absolute
     #[inline]
     pub const fn is_absolute(self) -> bool {
         matches!(self, Self::Absolute(_))
@@ -56,7 +64,7 @@ impl Position {
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum Size {
-    Pixels(f32),
+    Pixels(u32),
     /// Viewport width percentage
     ViewportWidth(f32),
     /// Viewport height percentage
@@ -64,11 +72,17 @@ pub enum Size {
 }
 
 impl Size {
-    pub(crate) fn to_pixels(self, viewport: Vec2) -> f32 {
+    /// The `Size` representing zero, the smallest possible size.
+    pub const ZERO: Self = Self::Pixels(0);
+
+    /// The `Size` representing infinity, the maximum size.
+    pub const INFINITY: Self = Self::Pixels(u32::MAX);
+
+    pub(crate) fn to_pixels(self, viewport: UVec2) -> u32 {
         match self {
             Self::Pixels(val) => val,
-            Self::ViewportWidth(factor) => viewport.x * factor,
-            Self::ViewportHeight(factor) => viewport.y * factor,
+            Self::ViewportWidth(factor) => viewport.x * factor.ceil() as u32,
+            Self::ViewportHeight(factor) => viewport.y * factor.ceil() as u32,
         }
     }
 }
@@ -104,8 +118,8 @@ impl Bounds {
 impl Default for Bounds {
     fn default() -> Self {
         Self {
-            min: SizeVec2::splat(Size::Pixels(0.0)),
-            max: SizeVec2::splat(Size::Pixels(f32::INFINITY)),
+            min: SizeVec2::splat(Size::Pixels(0)),
+            max: SizeVec2::splat(Size::INFINITY),
         }
     }
 }
@@ -240,10 +254,10 @@ pub struct Padding {
 
 impl Padding {
     pub const NONE: Self = Self {
-        top: Size::Pixels(0.0),
-        bottom: Size::Pixels(0.0),
-        left: Size::Pixels(0.0),
-        right: Size::Pixels(0.0),
+        top: Size::ZERO,
+        bottom: Size::ZERO,
+        left: Size::ZERO,
+        right: Size::ZERO,
     };
 
     pub const fn splat(size: Size) -> Self {
@@ -284,10 +298,10 @@ impl BorderRadius {
 impl Default for BorderRadius {
     fn default() -> Self {
         Self {
-            top_left: Size::Pixels(0.0),
-            bottom_left: Size::Pixels(0.0),
-            top_right: Size::Pixels(0.0),
-            bottom_right: Size::Pixels(0.0),
+            top_left: Size::ZERO,
+            bottom_left: Size::ZERO,
+            top_right: Size::ZERO,
+            bottom_right: Size::ZERO,
         }
     }
 }

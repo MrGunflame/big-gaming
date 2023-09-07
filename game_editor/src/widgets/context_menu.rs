@@ -7,7 +7,7 @@ use game_ui::render::{Element, ElementBody};
 use game_ui::style::{Position, Style};
 use game_ui::widgets::{Callback, Widget};
 use game_window::events::VirtualKeyCode;
-use glam::Vec2;
+use glam::UVec2;
 
 pub struct ContextMenu {
     pub spawn_menu: Callback<Scope>,
@@ -20,7 +20,7 @@ impl Widget for ContextMenu {
             State {
                 is_active: false,
                 menu_cx: None,
-                position: Vec2::splat(0.0),
+                position: UVec2::ZERO,
             },
         );
 
@@ -38,7 +38,7 @@ impl Widget for ContextMenu {
                             if ctx.event.state.is_pressed() && ctx.event.button.is_right() {
                                 set_state.update(|state| {
                                     state.is_active = true;
-                                    state.position = ctx.cursor.position();
+                                    state.position = ctx.cursor.position().as_uvec2();
                                 });
                             }
                         }
@@ -112,7 +112,7 @@ impl Widget for ContextMenu {
 #[derive(Clone, Debug)]
 struct State {
     is_active: bool,
-    position: Vec2,
+    position: UVec2,
     // Menu scope if displayed.
     menu_cx: Option<Scope>,
 }

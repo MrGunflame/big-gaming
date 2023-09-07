@@ -28,7 +28,7 @@ impl Widget for CreateModule {
             justify: Justify::SpaceBetween,
             growth: Growth::splat(1.0),
             background: BACKGROUND_COLOR,
-            padding: Padding::splat(Size::Pixels(5.0)),
+            padding: Padding::splat(Size::Pixels(5)),
             ..Default::default()
         };
 
@@ -50,12 +50,12 @@ impl Widget for CreateModule {
 
         let style = Style {
             bounds: Bounds {
-                min: SizeVec2::splat(Size::Pixels(50.0)),
+                min: SizeVec2::splat(Size::Pixels(50)),
                 ..Default::default()
             },
             background: Background::GRAY,
-            padding: Padding::splat(Size::Pixels(2.0)),
-            border_radius: BorderRadius::splat(Size::Pixels(2.0)),
+            padding: Padding::splat(Size::Pixels(2)),
+            border_radius: BorderRadius::splat(Size::Pixels(2)),
             ..Default::default()
         };
 

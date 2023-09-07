@@ -8,7 +8,7 @@ use game_input::mouse::{MouseButtonInput, MouseWheel};
 use game_window::cursor::{Cursor, CursorIcon};
 use game_window::events::{CursorMoved, ReceivedCharacter};
 use game_window::windows::WindowId;
-use glam::Vec2;
+use glam::{UVec2, Vec2};
 
 use crate::render::layout::{Key, LayoutTree};
 use crate::render::Rect;
@@ -131,7 +131,7 @@ pub fn update_events_from_layout_tree(tree: &mut LayoutTree, events: &mut Events
     for (key, layout) in tree.keys().zip(tree.layouts()) {
         let position = Rect {
             min: layout.position,
-            max: Vec2::new(
+            max: UVec2::new(
                 layout.position.x + layout.width,
                 layout.position.y + layout.height,
             ),
@@ -343,14 +343,18 @@ pub(crate) fn dispatch_keyboard_input_events(
 }
 
 pub fn hit_test(elem: Rect, cursor: Vec2) -> bool {
-    cursor.x >= elem.min.x
-        && cursor.x <= elem.max.x
-        && cursor.y >= elem.min.y
-        && cursor.y <= elem.max.y
+    // FIXME: Should this maybe be int cmp?
+    // Floats are only relevant if cursor really uses its
+    // full float range.
+    cursor.x >= elem.min.x as f32
+        && cursor.x <= elem.max.x as f32
+        && cursor.y >= elem.min.y as f32
+        && cursor.y <= elem.max.y as f32
 }
 
 #[cfg(test)]
 mod tests {
+    use glam::UVec2;
     use glam::Vec2;
 
     use super::hit_test;
@@ -360,8 +364,8 @@ mod tests {
     #[test]
     fn hit_test_edge() {
         let elem = Rect {
-            min: Vec2 { x: 0.0, y: 0.0 },
-            max: Vec2 { x: 1.0, y: 1.0 },
+            min: UVec2 { x: 0, y: 0 },
+            max: UVec2 { x: 1, y: 1 },
         };
         let cursor = Vec2 { x: 0.0, y: 0.0 };
 
@@ -371,8 +375,8 @@ mod tests {
     #[test]
     fn hit_test_inside() {
         let elem = Rect {
-            min: Vec2 { x: 0.0, y: 0.0 },
-            max: Vec2 { x: 1.0, y: 1.0 },
+            min: UVec2 { x: 0, y: 0 },
+            max: UVec2 { x: 1, y: 1 },
         };
         let cursor = Vec2 { x: 0.5, y: 0.8 };
 
@@ -382,8 +386,8 @@ mod tests {
     #[test]
     fn hit_test_outside() {
         let elem = Rect {
-            min: Vec2 { x: 0.0, y: 0.0 },
-            max: Vec2 { x: 1.0, y: 1.0 },
+            min: UVec2 { x: 0, y: 0 },
+            max: UVec2 { x: 1, y: 1 },
         };
         let cursor = Vec2 { x: 1.1, y: 0.5 };
 

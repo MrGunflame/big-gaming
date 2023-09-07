@@ -10,7 +10,7 @@ impl Widget for Error {
     fn build(self, cx: &Scope) -> Scope {
         let style = Style {
             direction: Direction::Column,
-            padding: Padding::splat(Size::Pixels(10.0)),
+            padding: Padding::splat(Size::Pixels(10)),
             ..Default::default()
         };
 
@@ -23,8 +23,8 @@ impl Widget for Error {
 
         let style = Style {
             bounds: Bounds {
-                min: SizeVec2::splat(Size::Pixels(512.0)),
-                max: SizeVec2::splat(Size::Pixels(512.0)),
+                min: SizeVec2::splat(Size::Pixels(512)),
+                max: SizeVec2::splat(Size::Pixels(512)),
             },
             ..Default::default()
         };

@@ -29,7 +29,7 @@ pub struct EditRecord {
 impl Widget for EditRecord {
     fn build(self, cx: &Scope) -> Scope {
         let root = cx.append(Container::new().style(Style {
-            padding: Padding::splat(Size::Pixels(5.0)),
+            padding: Padding::splat(Size::Pixels(5)),
             justify: Justify::SpaceBetween,
             ..Default::default()
         }));
@@ -62,7 +62,7 @@ pub struct CreateRecord {
 impl Widget for CreateRecord {
     fn build(self, cx: &Scope) -> Scope {
         let root = cx.append(Container::new().style(Style {
-            padding: Padding::splat(Size::Pixels(5.0)),
+            padding: Padding::splat(Size::Pixels(5)),
             justify: Justify::SpaceBetween,
             ..Default::default()
         }));
@@ -130,8 +130,8 @@ fn render_record(
     let style = Style {
         bounds: Bounds {
             min: SizeVec2 {
-                x: Size::Pixels(100.0),
-                y: Size::Pixels(20.0),
+                x: Size::Pixels(100),
+                y: Size::Pixels(20),
             },
             ..Default::default()
         },
@@ -316,7 +316,7 @@ fn render_item(cx: &Scope, item: Option<ItemRecord>) -> ItemFields {
 
     let style = Style {
         bounds: Bounds {
-            min: SizeVec2::splat(Size::Pixels(20.0)),
+            min: SizeVec2::splat(Size::Pixels(20)),
             ..Default::default()
         },
         background: Background::GRAY,
@@ -374,7 +374,7 @@ fn render_object(cx: &Scope, object: Option<ObjectRecord>) -> ObjectFields {
 
     let style = Style {
         bounds: Bounds {
-            min: SizeVec2::splat(Size::Pixels(20.0)),
+            min: SizeVec2::splat(Size::Pixels(20)),
             ..Default::default()
         },
         background: Background::GRAY,
@@ -432,8 +432,8 @@ fn render_script_section(cx: &Scope) -> ReadSignal<Vec<String>> {
     let style = Style {
         bounds: Bounds {
             min: SizeVec2 {
-                x: Size::Pixels(100.0),
-                y: Size::Pixels(20.0),
+                x: Size::Pixels(100),
+                y: Size::Pixels(20),
             },
             ..Default::default()
         },

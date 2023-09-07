@@ -50,10 +50,10 @@ impl Widget for MainWindow {
         let style = Style {
             background: Background::AQUA,
             bounds: Bounds {
-                min: SizeVec2::splat(Size::Pixels(64.0)),
-                max: SizeVec2::splat(Size::Pixels(64.0)),
+                min: SizeVec2::splat(Size::Pixels(64)),
+                max: SizeVec2::splat(Size::Pixels(64)),
             },
-            border_radius: BorderRadius::splat(Size::Pixels(16.0)),
+            border_radius: BorderRadius::splat(Size::Pixels(16)),
             ..Default::default()
         };
 

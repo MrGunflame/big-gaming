@@ -1,6 +1,6 @@
 mod overlay;
 
-use glam::Vec2;
+use glam::UVec2;
 use image::imageops::FilterType;
 use image::{ImageBuffer, Rgba};
 
@@ -25,10 +25,10 @@ impl BuildPrimitiveElement for Image {
         pipeline: &super::UiPipeline,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-        size: Vec2,
+        size: UVec2,
     ) -> Option<PrimitiveElement> {
-        let min = remap(position.min, size);
-        let max = remap(position.max, size);
+        let min = remap(position.min.as_vec2(), size.as_vec2());
+        let max = remap(position.max.as_vec2(), size.as_vec2());
 
         let mut img = self.image.clone();
         apply_background(&mut img, style);
@@ -44,7 +44,8 @@ impl BuildPrimitiveElement for Image {
             pipeline,
             device,
             queue,
-            Rect { min, max },
+            min,
+            max,
             &img,
             style.style.color.to_f32(),
         ))
@@ -54,10 +55,7 @@ impl BuildPrimitiveElement for Image {
         let width = style.padding.left + style.padding.right;
         let height = style.padding.top + style.padding.bottom;
 
-        let size = Vec2::new(
-            self.image.width() as f32 + width,
-            self.image.height() as f32 + height,
-        );
+        let size = UVec2::new(self.image.width() + width, self.image.height() + height);
 
         ComputedBounds {
             min: size,
@@ -67,22 +65,15 @@ impl BuildPrimitiveElement for Image {
 }
 
 pub fn apply_background(img: &mut ImageBuffer<Rgba<u8>, Vec<u8>>, style: &ComputedStyle) {
-    // Assert that we don't break `overlay_unchecked` invariants.
-    // `image + padding` MUST BE `>= image`.
-    assert!(style.padding.left.is_sign_positive());
-    assert!(style.padding.right.is_sign_positive());
-    assert!(style.padding.top.is_sign_positive());
-    assert!(style.padding.bottom.is_sign_positive());
-
-    let width = img.width() as u32 + (style.padding.left + style.padding.right) as u32;
-    let height = img.height() as u32 + (style.padding.top + style.padding.bottom) as u32;
+    let width = img.width() + style.padding.left + style.padding.right;
+    let height = img.height() + style.padding.top + style.padding.bottom;
 
     match &style.style.background {
         Background::None => {
-            if style.padding.top == 0.0
-                && style.padding.bottom == 0.0
-                && style.padding.left == 0.0
-                && style.padding.right == 0.0
+            if style.padding.top == 0
+                && style.padding.bottom == 0
+                && style.padding.left == 0
+                && style.padding.right == 0
             {
                 return;
             }
@@ -171,17 +162,17 @@ fn apply_border_radius(
     };
 
     // Top left
-    let start = Vec2::new(0.0, 0.0);
-    let end = Vec2::new(
-        start.x + border_radius.top_left.ceil(),
-        start.y + border_radius.top_left.ceil(),
+    let start = UVec2::new(0, 0);
+    let end = UVec2::new(
+        start.x + border_radius.top_left,
+        start.y + border_radius.top_left,
     );
 
     for x in start.x as u32..end.x as u32 {
         for y in start.y as u32..end.y as u32 {
-            let distance = (end - Vec2::new(x as f32, y as f32)).length();
+            let distance = (end.as_vec2() - UVec2::new(x, y).as_vec2()).length();
 
-            if distance > border_radius.top_left {
+            if distance as u32 > border_radius.top_left {
                 if let Some(p) = img.get_pixel_mut_checked(x, y) {
                     *p = pixel;
                 }
@@ -190,17 +181,17 @@ fn apply_border_radius(
     }
 
     // Bottom left
-    let start = Vec2::new(0.0, img.height() as f32);
-    let end = Vec2::new(
-        start.x + border_radius.bottom_left.ceil(),
-        start.y - border_radius.bottom_left.floor() - 1.0,
+    let start = UVec2::new(0, img.height());
+    let end = UVec2::new(
+        start.x + border_radius.bottom_left,
+        start.y.saturating_sub(border_radius.bottom_left + 1),
     );
 
     for x in start.x as u32..end.x as u32 {
         for y in end.y as u32..start.y as u32 {
-            let distance = (end - Vec2::new(x as f32, y as f32)).length();
+            let distance = (end.as_vec2() - UVec2::new(x, y).as_vec2()).length();
 
-            if distance > border_radius.bottom_left {
+            if distance as u32 > border_radius.bottom_left {
                 if let Some(p) = img.get_pixel_mut_checked(x, y) {
                     *p = pixel;
                 }
@@ -209,17 +200,17 @@ fn apply_border_radius(
     }
 
     // Top right
-    let start = Vec2::new(img.width() as f32, 0.0);
-    let end = Vec2::new(
-        start.x - border_radius.top_right.floor() - 1.0,
-        start.y + border_radius.top_right.ceil(),
+    let start = UVec2::new(img.width(), 0);
+    let end = UVec2::new(
+        start.x.saturating_sub(border_radius.top_right + 1),
+        start.y + border_radius.top_right,
     );
 
     for x in end.x as u32..start.x as u32 {
         for y in start.y as u32..end.y as u32 {
-            let distance = (end - Vec2::new(x as f32, y as f32 as f32)).length();
+            let distance = (end.as_vec2() - UVec2::new(x, y).as_vec2()).length();
 
-            if distance > border_radius.top_right {
+            if distance as u32 > border_radius.top_right {
                 if let Some(p) = img.get_pixel_mut_checked(x, y) {
                     *p = pixel;
                 }
@@ -228,17 +219,17 @@ fn apply_border_radius(
     }
 
     // Bottom right
-    let start = Vec2::new(img.width() as f32, img.height() as f32);
-    let end = Vec2::new(
-        start.x - border_radius.bottom_right.floor() - 1.0,
-        start.y - border_radius.bottom_right.floor() - 1.0,
+    let start = UVec2::new(img.width(), img.height());
+    let end = UVec2::new(
+        start.x.saturating_sub(border_radius.bottom_right + 1),
+        start.y.saturating_sub(border_radius.bottom_right + 1),
     );
 
     for x in end.x as u32..start.x as u32 {
         for y in end.y as u32..start.y as u32 {
-            let distance = (end - Vec2::new(x as f32, y as f32)).length();
+            let distance = (end.as_vec2() - UVec2::new(x, y).as_vec2()).length();
 
-            if distance > border_radius.bottom_right {
+            if distance as u32 > border_radius.bottom_right {
                 if let Some(p) = img.get_pixel_mut_checked(x, y) {
                     *p = pixel;
                 }
@@ -252,7 +243,7 @@ mod tests {
     use std::borrow::Borrow;
     use std::fmt::Debug;
 
-    use glam::Vec2;
+    use glam::UVec2;
     use image::{GenericImageView, ImageBuffer, Pixel, Rgba};
 
     use crate::render::computed_style::{ComputedBorderRadius, ComputedStyle};
@@ -293,7 +284,7 @@ mod tests {
 
     #[test]
     fn background_none_no_padding() {
-        let viewport = Vec2::splat(1000.0);
+        let viewport = UVec2::splat(1000);
 
         let image = ImageBuffer::new(100, 100);
 
@@ -318,14 +309,14 @@ mod tests {
 
     #[test]
     fn background_none_padding() {
-        let viewport = Vec2::splat(1000.0);
+        let viewport = UVec2::splat(1000);
 
         let image = ImageBuffer::new(100, 100);
 
         let style = ComputedStyle::new(
             Style {
                 background: Background::None,
-                padding: Padding::splat(Size::Pixels(2.0)),
+                padding: Padding::splat(Size::Pixels(2)),
                 ..Default::default()
             },
             viewport,
@@ -343,7 +334,7 @@ mod tests {
 
     #[test]
     fn background_color_no_padding() {
-        let viewport = Vec2::splat(1000.0);
+        let viewport = UVec2::splat(1000);
         let color = Rgba([123, 124, 125, 126]);
 
         let image = ImageBuffer::new(100, 100);
@@ -366,7 +357,7 @@ mod tests {
 
     #[test]
     fn background_color_padding() {
-        let viewport = Vec2::splat(1000.0);
+        let viewport = UVec2::splat(1000);
         let color = Rgba([123, 124, 125, 126]);
 
         let image = ImageBuffer::from_pixel(100, 100, Rgba([0, 0, 0, 255]));
@@ -374,7 +365,7 @@ mod tests {
         let style = ComputedStyle::new(
             Style {
                 background: Background::Color(color),
-                padding: Padding::splat(Size::Pixels(2.0)),
+                padding: Padding::splat(Size::Pixels(2)),
                 ..Default::default()
             },
             viewport,
@@ -392,7 +383,7 @@ mod tests {
 
     #[test]
     fn background_image_no_padding() {
-        let viewport = Vec2::splat(1000.0);
+        let viewport = UVec2::splat(1000);
         let bg = ImageBuffer::from_pixel(100, 100, Rgba([123, 124, 125, 126]));
 
         let image = ImageBuffer::new(100, 100);
@@ -416,7 +407,7 @@ mod tests {
 
     #[test]
     fn background_image_padding() {
-        let viewport = Vec2::splat(1000.0);
+        let viewport = UVec2::splat(1000);
         let bg = ImageBuffer::from_pixel(100, 100, Rgba([123, 124, 125, 126]));
 
         let image = ImageBuffer::from_pixel(100, 100, Rgba([0, 0, 0, 255]));
@@ -424,7 +415,7 @@ mod tests {
         let style = ComputedStyle::new(
             Style {
                 background: Background::Image(bg),
-                padding: Padding::splat(Size::Pixels(2.0)),
+                padding: Padding::splat(Size::Pixels(2)),
                 ..Default::default()
             },
             viewport,
@@ -444,10 +435,10 @@ mod tests {
     fn border_radius() {
         let mut image = ImageBuffer::new(100, 100);
         let border_radius = ComputedBorderRadius {
-            top_left: 10.0,
-            bottom_left: 10.0,
-            top_right: 10.0,
-            bottom_right: 10.0,
+            top_left: 10,
+            bottom_left: 10,
+            top_right: 10,
+            bottom_right: 10,
         };
 
         apply_border_radius(&mut image, border_radius);
@@ -457,10 +448,10 @@ mod tests {
     fn border_radius_image_empty() {
         let mut image = ImageBuffer::new(0, 0);
         let border_radius = ComputedBorderRadius {
-            top_left: 10.0,
-            bottom_left: 10.0,
-            top_right: 10.0,
-            bottom_right: 10.0,
+            top_left: 10,
+            bottom_left: 10,
+            top_right: 10,
+            bottom_right: 10,
         };
 
         apply_border_radius(&mut image, border_radius);
@@ -470,10 +461,10 @@ mod tests {
     fn border_radius_image_too_small() {
         let mut image = ImageBuffer::new(10, 10);
         let border_radius = ComputedBorderRadius {
-            top_left: 20.0,
-            bottom_left: 20.0,
-            top_right: 20.0,
-            bottom_right: 20.0,
+            top_left: 20,
+            bottom_left: 20,
+            top_right: 20,
+            bottom_right: 20,
         };
 
         apply_border_radius(&mut image, border_radius);

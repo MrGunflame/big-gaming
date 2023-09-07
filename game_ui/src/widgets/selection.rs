@@ -107,12 +107,12 @@ impl Widget for Selection {
                         let style = Style {
                             bounds: Bounds {
                                 min: SizeVec2 {
-                                    x: Size::Pixels(50.0),
-                                    y: Size::Pixels(20.0),
+                                    x: Size::Pixels(50),
+                                    y: Size::Pixels(20),
                                 },
                                 max: SizeVec2 {
-                                    x: Size::Pixels(f32::INFINITY),
-                                    y: Size::Pixels(f32::INFINITY),
+                                    x: Size::INFINITY,
+                                    y: Size::INFINITY,
                                 },
                             },
                             background: Background::GRAY,
@@ -125,12 +125,12 @@ impl Widget for Selection {
                         let style = Style {
                             bounds: Bounds {
                                 min: SizeVec2 {
-                                    x: Size::Pixels(50.0),
-                                    y: Size::Pixels(20.0),
+                                    x: Size::Pixels(50),
+                                    y: Size::Pixels(20),
                                 },
                                 max: SizeVec2 {
-                                    x: Size::Pixels(f32::INFINITY),
-                                    y: Size::Pixels(f32::INFINITY),
+                                    x: Size::INFINITY,
+                                    y: Size::INFINITY,
                                 },
                             },
                             background: Background::RED,

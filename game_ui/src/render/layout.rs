@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, HashMap};
 
-use glam::Vec2;
+use glam::UVec2;
 
 use super::computed_style::{ComputedBounds, ComputedStyle};
 use super::container::Container;
@@ -8,6 +8,22 @@ use super::image::Image;
 use super::text::Text;
 use super::BuildPrimitiveElement;
 use crate::style::{Direction, Justify, Position, Style};
+
+// Provide custom saturaing methods
+// See https://github.com/bitshifter/glam-rs/issues/428
+trait VectorExt {
+    fn saturating_add(self, rhs: Self) -> Self;
+}
+
+impl VectorExt for UVec2 {
+    #[must_use]
+    fn saturating_add(self, rhs: Self) -> Self {
+        Self {
+            x: self.x.saturating_add(rhs.x),
+            y: self.y.saturating_add(rhs.y),
+        }
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct Element {
@@ -23,7 +39,7 @@ impl BuildPrimitiveElement for Element {
         pipeline: &super::UiPipeline,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-        size: Vec2,
+        size: UVec2,
     ) -> Option<super::PrimitiveElement> {
         match &self.body {
             ElementBody::Container() => {
@@ -61,7 +77,7 @@ pub struct LayoutTree {
     // was rendered.
     elems: BTreeMap<Key, Element>,
     layouts: HashMap<Key, Layout>,
-    size: Vec2,
+    size: UVec2,
     changed: bool,
 
     // parent => vec![child]
@@ -78,7 +94,7 @@ impl LayoutTree {
             next_id: 0,
             elems: BTreeMap::new(),
             layouts: HashMap::new(),
-            size: Vec2::splat(0.0),
+            size: UVec2::splat(0),
             changed: false,
             children: HashMap::new(),
             parents: HashMap::new(),
@@ -94,20 +110,20 @@ impl LayoutTree {
         self.len() == 0
     }
 
-    pub fn size(&self) -> Vec2 {
+    pub fn size(&self) -> UVec2 {
         self.size
     }
 
-    pub fn resize(&mut self, size: Vec2) {
+    pub fn resize(&mut self, size: UVec2) {
         self.size = size;
         self.changed = true;
     }
 
     pub fn push(&mut self, parent: Option<Key>, elem: Element) -> Key {
         let layout = Layout {
-            position: Vec2::splat(0.0),
-            height: 0.0,
-            width: 0.0,
+            position: UVec2::ZERO,
+            height: 0,
+            width: 0,
             style: ComputedStyle::new(elem.style.clone(), self.size),
         };
 
@@ -173,7 +189,7 @@ impl LayoutTree {
         // Root behaves like an element with default styles,
         // i.e. row flow direction and start align/justify.
 
-        let mut next_position = Vec2::splat(0.0);
+        let mut next_position = UVec2::ZERO;
         let size_per_elem = size_per_element(self.size, self.root.len() as u32, Direction::Row);
         // FIXME: No need to clone, layout_element doesn't touch self.root.
         for key in &self.root.clone() {
@@ -183,8 +199,8 @@ impl LayoutTree {
 
             // Every elements gets `size_per_elem` or `max`, whichever is lower.
             layout.position = next_position;
-            layout.width = f32::clamp(size_per_elem.x, bounds.min.x, bounds.max.x);
-            layout.height = f32::clamp(size_per_elem.y, bounds.min.y, bounds.max.y);
+            layout.width = u32::clamp(size_per_elem.x, bounds.min.x, bounds.max.x);
+            layout.height = u32::clamp(size_per_elem.y, bounds.min.y, bounds.max.y);
 
             next_position.y += layout.height;
 
@@ -215,28 +231,28 @@ impl LayoutTree {
 
                         match elem.style.direction {
                             Direction::Row => {
-                                bounds.min.y += min.y;
-                                bounds.min.x = f32::max(bounds.min.x, min.x);
+                                bounds.min.y = bounds.min.y.saturating_add(min.y);
+                                bounds.min.x = u32::max(bounds.min.x, min.x);
 
-                                bounds.max.y += max.y;
-                                bounds.max.x = f32::max(bounds.max.x, max.x);
+                                bounds.max.y = bounds.max.y.saturating_add(max.y);
+                                bounds.max.x = u32::max(bounds.max.x, max.x);
                             }
                             Direction::Column => {
-                                bounds.min.y = f32::min(bounds.min.y, min.y);
-                                bounds.min.x += min.x;
+                                bounds.min.y = u32::min(bounds.min.y, min.y);
+                                bounds.min.x = bounds.min.x.saturating_add(min.x);
 
-                                bounds.max.y = f32::max(bounds.max.y, max.y);
-                                bounds.max.x += max.x;
+                                bounds.max.y = u32::max(bounds.max.y, max.y);
+                                bounds.max.x = bounds.max.x.saturating_add(max.x);
                             }
                         }
                     }
 
                     if elem.style.growth.x.is_some() {
-                        bounds.max.x = f32::INFINITY;
+                        bounds.max.x = u32::MAX;
                     }
 
                     if elem.style.growth.y.is_some() {
-                        bounds.max.y = f32::INFINITY;
+                        bounds.max.y = u32::MAX;
                     }
 
                     bounds
@@ -246,11 +262,11 @@ impl LayoutTree {
                     let mut bounds = ComputedBounds::ZERO;
 
                     if elem.style.growth.x.is_some() {
-                        bounds.max.x = f32::INFINITY;
+                        bounds.max.x = u32::MAX;
                     }
 
                     if elem.style.growth.y.is_some() {
-                        bounds.max.y = f32::INFINITY;
+                        bounds.max.y = u32::MAX;
                     }
 
                     bounds
@@ -265,19 +281,19 @@ impl LayoutTree {
         let min_y = elem.style.bounds.min.y.to_pixels(self.size);
         let max_y = elem.style.bounds.max.y.to_pixels(self.size);
 
-        bounds.min.x = f32::max(bounds.min.x, min_x);
-        bounds.min.y = f32::max(bounds.min.y, min_y);
+        bounds.min.x = u32::max(bounds.min.x, min_x);
+        bounds.min.y = u32::max(bounds.min.y, min_y);
 
-        bounds.max.x = f32::clamp(bounds.max.x, bounds.min.x, max_x);
-        bounds.max.y = f32::clamp(bounds.max.y, bounds.min.y, max_y);
+        bounds.max.x = u32::clamp(bounds.max.x, bounds.min.x, max_x);
+        bounds.max.y = u32::clamp(bounds.max.y, bounds.min.y, max_y);
 
         debug_assert!(bounds.min.x <= bounds.max.x, "min.x <= max.x {:?}", bounds);
         debug_assert!(bounds.min.y <= bounds.max.y, "min.y <= min.y {:?}", bounds);
 
         let padding = layout.style.padding;
-        let padding = Vec2::new(padding.left + padding.right, padding.top + padding.bottom);
-        bounds.min += padding;
-        bounds.max += padding;
+        let padding = UVec2::new(padding.left + padding.right, padding.top + padding.bottom);
+        bounds.min = bounds.min.saturating_add(padding);
+        bounds.max = bounds.max.saturating_add(padding);
 
         bounds
     }
@@ -287,14 +303,14 @@ impl LayoutTree {
         let layout = &self.layouts[&key];
 
         let mut start = layout.position;
-        let mut end = Vec2::new(
+        let mut end = UVec2::new(
             layout.position.x + layout.width,
             layout.position.y + layout.height,
         );
 
         // Ignore the area reserved for padding.
-        start += Vec2::new(layout.style.padding.top, layout.style.padding.left);
-        end -= Vec2::new(layout.style.padding.bottom, layout.style.padding.right);
+        start += UVec2::new(layout.style.padding.top, layout.style.padding.left);
+        end -= UVec2::new(layout.style.padding.bottom, layout.style.padding.right);
 
         let width = layout.width - layout.style.padding.left - layout.style.padding.right;
         let height = layout.height - layout.style.padding.top - layout.style.padding.bottom;
@@ -322,9 +338,9 @@ impl LayoutTree {
                             Position::Relative => {
                                 layout.position = next_position;
                                 layout.width =
-                                    f32::clamp(size_per_elem.x, bounds.min.x, bounds.max.x);
+                                    u32::clamp(size_per_elem.x, bounds.min.x, bounds.max.x);
                                 layout.height =
-                                    f32::clamp(size_per_elem.y, bounds.min.y, bounds.max.y);
+                                    u32::clamp(size_per_elem.y, bounds.min.y, bounds.max.y);
 
                                 match elem.style.direction {
                                     Direction::Row => next_position.y += layout.height,
@@ -335,8 +351,8 @@ impl LayoutTree {
                                 // Give the absolute element as much space as it wants
                                 // as long as it doesn't overflow the viewport.
                                 layout.position = pos;
-                                layout.width = f32::min(self.size.x - pos.x, bounds.max.x);
-                                layout.height = f32::min(self.size.y - pos.y, bounds.max.y);
+                                layout.width = u32::min(self.size.x - pos.x, bounds.max.x);
+                                layout.height = u32::min(self.size.y - pos.y, bounds.max.y);
                             }
                         }
 
@@ -346,8 +362,8 @@ impl LayoutTree {
                 Justify::End => {
                     let mut next_position = start
                         + match elem.style.direction {
-                            Direction::Row => Vec2::new(0.0, height),
-                            Direction::Column => Vec2::new(width, 0.0),
+                            Direction::Row => UVec2::new(0, height),
+                            Direction::Column => UVec2::new(width, 0),
                         };
 
                     let size_per_elem =
@@ -363,9 +379,9 @@ impl LayoutTree {
                             Position::Relative => {
                                 layout.position = next_position;
                                 layout.width =
-                                    f32::clamp(size_per_elem.x, bounds.min.x, bounds.max.x);
+                                    u32::clamp(size_per_elem.x, bounds.min.x, bounds.max.x);
                                 layout.height =
-                                    f32::clamp(size_per_elem.y, bounds.min.y, bounds.max.y);
+                                    u32::clamp(size_per_elem.y, bounds.min.y, bounds.max.y);
 
                                 match elem.style.direction {
                                     Direction::Row => next_position.y -= layout.height,
@@ -376,8 +392,8 @@ impl LayoutTree {
                                 // Give the absolute element as much space as it wants
                                 // as long as it doesn't overflow the viewport.
                                 layout.position = pos;
-                                layout.width = f32::min(self.size.x - pos.x, bounds.max.x);
-                                layout.height = f32::min(self.size.y - pos.y, bounds.max.y);
+                                layout.width = u32::min(self.size.x - pos.x, bounds.max.x);
+                                layout.height = u32::min(self.size.y - pos.y, bounds.max.y);
                             }
                         }
 
@@ -415,9 +431,9 @@ impl LayoutTree {
                             Position::Relative => {
                                 layout.position = next_position;
                                 layout.width =
-                                    f32::clamp(size_per_elem.x, bounds.min.x, bounds.max.x);
+                                    u32::clamp(size_per_elem.x, bounds.min.x, bounds.max.x);
                                 layout.height =
-                                    f32::clamp(size_per_elem.y, bounds.min.y, bounds.max.y);
+                                    u32::clamp(size_per_elem.y, bounds.min.y, bounds.max.y);
 
                                 match elem.style.direction {
                                     Direction::Row => next_position.y += layout.height,
@@ -428,8 +444,8 @@ impl LayoutTree {
                                 // Give the absolute element as much space as it wants
                                 // as long as it doesn't overflow the viewport.
                                 layout.position = pos;
-                                layout.width = f32::min(self.size.x - pos.x, bounds.max.x);
-                                layout.height = f32::min(self.size.y - pos.y, bounds.max.y);
+                                layout.width = u32::min(self.size.x - pos.x, bounds.max.x);
+                                layout.height = u32::min(self.size.y - pos.y, bounds.max.y);
                             }
                         }
 
@@ -447,7 +463,7 @@ impl LayoutTree {
                         Direction::Row => {
                             let total_size = (start.y + height) - start.y;
 
-                            let mut next_pos = start.y + ((total_size - allocated_space.y) / 2.0);
+                            let mut next_pos = start.y + ((total_size - allocated_space.y) / 2);
 
                             for child in children {
                                 let style = &self.elems[child].style;
@@ -463,7 +479,7 @@ impl LayoutTree {
                         }
                         Direction::Column => {
                             let total_size = (start.x + width) - start.x;
-                            let mut next_pos = start.x + ((total_size - allocated_space.x) / 2.0);
+                            let mut next_pos = start.x + ((total_size - allocated_space.x) / 2);
 
                             for child in children {
                                 let style = &self.elems[child].style;
@@ -498,9 +514,9 @@ impl LayoutTree {
                             Position::Relative => {
                                 layout.position = next_position;
                                 layout.width =
-                                    f32::clamp(size_per_elem.x, bounds.min.x, bounds.max.x);
+                                    u32::clamp(size_per_elem.x, bounds.min.x, bounds.max.x);
                                 layout.height =
-                                    f32::clamp(size_per_elem.y, bounds.min.y, bounds.max.y);
+                                    u32::clamp(size_per_elem.y, bounds.min.y, bounds.max.y);
 
                                 match elem.style.direction {
                                     Direction::Row => next_position.y += layout.height,
@@ -511,8 +527,8 @@ impl LayoutTree {
                                 // Give the absolute element as much space as it wants
                                 // as long as it doesn't overflow the viewport.
                                 layout.position = pos;
-                                layout.width = f32::min(self.size.x - pos.x, bounds.max.x);
-                                layout.height = f32::min(self.size.y - pos.y, bounds.max.y);
+                                layout.width = u32::min(self.size.x - pos.x, bounds.max.x);
+                                layout.height = u32::min(self.size.y - pos.y, bounds.max.y);
                             }
                         }
 
@@ -532,7 +548,7 @@ impl LayoutTree {
 
                             // Distance/emtpy space between elements.
                             let distance = (total_size - allocated_space.y)
-                                / relative_children.saturating_sub(1) as f32;
+                                / relative_children.saturating_sub(1);
 
                             let mut next_pos = start.y;
 
@@ -553,7 +569,7 @@ impl LayoutTree {
                             let total_size = (start.x + height) - start.x;
 
                             let distance = (total_size - allocated_space.x)
-                                / relative_children.saturating_sub(1) as f32;
+                                / relative_children.saturating_sub(1);
 
                             let mut next_pos = start.x;
 
@@ -591,9 +607,9 @@ impl LayoutTree {
                             Position::Relative => {
                                 layout.position = next_position;
                                 layout.width =
-                                    f32::clamp(size_per_elem.x, bounds.min.x, bounds.max.x);
+                                    u32::clamp(size_per_elem.x, bounds.min.x, bounds.max.x);
                                 layout.height =
-                                    f32::clamp(size_per_elem.y, bounds.min.y, bounds.max.y);
+                                    u32::clamp(size_per_elem.y, bounds.min.y, bounds.max.y);
 
                                 match elem.style.direction {
                                     Direction::Row => next_position.y += layout.height,
@@ -604,8 +620,8 @@ impl LayoutTree {
                                 // Give the absolute element as much space as it wants
                                 // as long as it doesn't overflow the viewport.
                                 layout.position = pos;
-                                layout.width = f32::min(self.size.x - pos.x, bounds.max.x);
-                                layout.height = f32::min(self.size.y - pos.y, bounds.max.y);
+                                layout.width = u32::min(self.size.x - pos.x, bounds.max.x);
+                                layout.height = u32::min(self.size.y - pos.y, bounds.max.y);
                             }
                         }
 
@@ -628,7 +644,7 @@ impl LayoutTree {
                             // more that `isize::MAX` children to be allocated, which
                             // is not allowed.
                             let distance =
-                                (total_size - allocated_space.y) / (relative_children + 1) as f32;
+                                (total_size - allocated_space.y) / (relative_children + 1);
 
                             let mut next_pos = start.y + distance;
 
@@ -649,7 +665,7 @@ impl LayoutTree {
                             let total_size = (start.x + width) - start.x;
 
                             let distance =
-                                (total_size - allocated_space.x) / (relative_children + 1) as f32;
+                                (total_size - allocated_space.x) / (relative_children + 1);
 
                             let mut next_pos = start.x + distance;
 
@@ -750,7 +766,7 @@ impl LayoutTree {
 
             for child in childs {
                 let elem = self.layouts.get_mut(child).unwrap();
-                elem.position = Vec2::new(width, height);
+                elem.position = UVec2::new(width, height);
                 width += elem.width;
                 height += elem.height;
             }
@@ -837,24 +853,29 @@ impl<'a> ExactSizeIterator for Layouts<'a> {
 pub struct Layout {
     pub style: ComputedStyle,
 
-    pub position: Vec2,
-    pub width: f32,
-    pub height: f32,
+    pub position: UVec2,
+    pub width: u32,
+    pub height: u32,
 }
 
-fn size_per_element(space: Vec2, num_elems: u32, direction: Direction) -> Vec2 {
+fn size_per_element(space: UVec2, num_elems: u32, direction: Direction) -> UVec2 {
+    // Avoid zero div. Whatever, shouldn't really matter.
+    if num_elems == 0 {
+        return space;
+    }
+
     match direction {
         Direction::Row => {
             let width = space.x;
-            let height = space.y / num_elems as f32;
+            let height = space.y / num_elems;
 
-            Vec2::new(width, height)
+            UVec2::new(width, height)
         }
         Direction::Column => {
-            let width = space.x / num_elems as f32;
+            let width = space.x / num_elems;
             let height = space.y;
 
-            Vec2::new(width, height)
+            UVec2::new(width, height)
         }
     }
 }
@@ -862,7 +883,7 @@ fn size_per_element(space: Vec2, num_elems: u32, direction: Direction) -> Vec2 {
 #[cfg(test)]
 mod tests {
 
-    use glam::Vec2;
+    use glam::UVec2;
 
     use crate::render::computed_style::ComputedStyle;
     use crate::render::layout::ComputedBounds;
@@ -875,32 +896,32 @@ mod tests {
 
     #[test]
     fn size_per_element_row() {
-        let space = Vec2::splat(1000.0);
+        let space = UVec2::splat(1000);
         let num_elems = 5;
         let direction = Direction::Row;
 
         let output = size_per_element(space, num_elems, direction);
 
-        assert_eq!(output.x, 1000.0);
-        assert_eq!(output.y, 200.0);
+        assert_eq!(output.x, 1000);
+        assert_eq!(output.y, 200);
     }
 
     #[test]
     fn size_per_element_column() {
-        let space = Vec2::splat(1000.0);
+        let space = UVec2::splat(1000);
         let num_elems = 5;
         let direction = Direction::Column;
 
         let output = size_per_element(space, num_elems, direction);
 
-        assert_eq!(output.x, 200.0);
-        assert_eq!(output.y, 1000.0);
+        assert_eq!(output.x, 200);
+        assert_eq!(output.y, 1000);
     }
 
     #[test]
     fn compute_layout_no_children() {
         let mut tree = LayoutTree::new();
-        tree.resize(Vec2::splat(1000.0));
+        tree.resize(UVec2::splat(1000));
 
         let style = Style::default();
 
@@ -917,13 +938,13 @@ mod tests {
         let layout0 = &tree.layouts[&key0];
         let layout1 = &tree.layouts[&key1];
 
-        let style = ComputedStyle::new(style, Vec2::splat(1000.0));
+        let style = ComputedStyle::new(style, UVec2::splat(1000));
 
-        assert_eq!(layout0.position, Vec2::splat(0.0));
+        assert_eq!(layout0.position, UVec2::splat(0));
         assert_eq!(layout0.width, elem.bounds(&style).min.x);
         assert_eq!(layout0.height, elem.bounds(&style).min.y);
 
-        assert_eq!(layout1.position, Vec2::new(0.0, layout0.height));
+        assert_eq!(layout1.position, UVec2::new(0, layout0.height));
         assert_eq!(layout1.width, elem.bounds(&style).min.x);
         assert_eq!(layout1.height, elem.bounds(&style).min.y);
     }
@@ -931,7 +952,7 @@ mod tests {
     #[test]
     fn compute_bounds_container_growth() {
         let mut tree = LayoutTree::new();
-        tree.resize(Vec2::splat(1000.0));
+        tree.resize(UVec2::splat(1000));
 
         let elem = Element {
             body: ElementBody::Container(),
@@ -947,8 +968,8 @@ mod tests {
         assert_eq!(
             bounds,
             ComputedBounds {
-                min: Vec2::splat(0.0),
-                max: Vec2::splat(f32::INFINITY),
+                min: UVec2::splat(0),
+                max: UVec2::splat(u32::MAX),
             }
         );
     }
@@ -956,7 +977,7 @@ mod tests {
     #[test]
     fn compute_bounds_container_no_growth() {
         let mut tree = LayoutTree::new();
-        tree.resize(Vec2::splat(1000.0));
+        tree.resize(UVec2::splat(1000));
 
         let elem = Element {
             body: ElementBody::Container(),
@@ -972,8 +993,8 @@ mod tests {
         assert_eq!(
             bounds,
             ComputedBounds {
-                min: Vec2::splat(0.0),
-                max: Vec2::splat(0.0),
+                min: UVec2::splat(0),
+                max: UVec2::splat(0),
             }
         );
     }
@@ -981,7 +1002,7 @@ mod tests {
     #[test]
     fn compute_bounds_container_growth_children() {
         let mut tree = LayoutTree::new();
-        tree.resize(Vec2::splat(1000.0));
+        tree.resize(UVec2::splat(1000));
 
         let style = Style {
             growth: Growth::splat(1.0),
@@ -1002,13 +1023,13 @@ mod tests {
 
         let bounds = tree.compute_bounds(key);
 
-        let style = ComputedStyle::new(style, Vec2::splat(1000.0));
+        let style = ComputedStyle::new(style, UVec2::splat(1000));
 
         assert_eq!(
             bounds,
             ComputedBounds {
                 min: elem.bounds(&style).min,
-                max: Vec2::splat(f32::INFINITY),
+                max: UVec2::splat(u32::MAX),
             }
         );
     }
@@ -1016,7 +1037,7 @@ mod tests {
     #[test]
     fn compute_bounds_container_no_growth_children() {
         let mut tree = LayoutTree::new();
-        tree.resize(Vec2::splat(1000.0));
+        tree.resize(UVec2::splat(1000));
 
         let style = Style {
             growth: Growth::NONE,
@@ -1037,7 +1058,7 @@ mod tests {
 
         let bounds = tree.compute_bounds(key);
 
-        let style = ComputedStyle::new(style, Vec2::splat(1000.0));
+        let style = ComputedStyle::new(style, UVec2::splat(1000));
 
         assert_eq!(
             bounds,
@@ -1051,7 +1072,7 @@ mod tests {
     #[test]
     fn compute_bounds_ignores_absolute_position() {
         let mut tree = LayoutTree::new();
-        tree.resize(Vec2::splat(1000.0));
+        tree.resize(UVec2::splat(1000));
 
         let root = Element {
             body: ElementBody::Container(),
@@ -1065,7 +1086,7 @@ mod tests {
         let elem = Element {
             body: ElementBody::Text(Text::new("test", 100.0)),
             style: Style {
-                position: Position::Absolute(Vec2::splat(0.0)),
+                position: Position::Absolute(UVec2::splat(0)),
                 ..Default::default()
             },
         };
@@ -1078,11 +1099,11 @@ mod tests {
     #[test]
     fn compute_bounds_exact_size() {
         let mut tree = LayoutTree::new();
-        tree.resize(Vec2::splat(1000.0));
+        tree.resize(UVec2::splat(1000));
 
         let bounds = Bounds {
-            min: SizeVec2::splat(Size::Pixels(10.0)),
-            max: SizeVec2::splat(Size::Pixels(10.0)),
+            min: SizeVec2::splat(Size::Pixels(10)),
+            max: SizeVec2::splat(Size::Pixels(10)),
         };
 
         let key = tree.push(
@@ -1098,18 +1119,18 @@ mod tests {
 
         let bounds = tree.compute_bounds(key);
 
-        assert_eq!(bounds.min, Vec2::splat(10.0));
-        assert_eq!(bounds.max, Vec2::splat(10.0));
+        assert_eq!(bounds.min, UVec2::splat(10));
+        assert_eq!(bounds.max, UVec2::splat(10));
     }
 
     #[test]
     fn compute_layout_exact_size_root() {
         let mut tree = LayoutTree::new();
-        tree.resize(Vec2::splat(1000.0));
+        tree.resize(UVec2::splat(1000));
 
         let bounds = Bounds {
-            min: SizeVec2::splat(Size::Pixels(10.0)),
-            max: SizeVec2::splat(Size::Pixels(10.0)),
+            min: SizeVec2::splat(Size::Pixels(10)),
+            max: SizeVec2::splat(Size::Pixels(10)),
         };
 
         let key = tree.push(
@@ -1126,18 +1147,18 @@ mod tests {
         tree.compute_layout();
 
         let layout = &tree.layouts[&key];
-        assert_eq!(layout.height, 10.0);
-        assert_eq!(layout.width, 10.0);
+        assert_eq!(layout.height, 10);
+        assert_eq!(layout.width, 10);
     }
 
     #[test]
     fn compute_layout_exact_size_children() {
         let mut tree = LayoutTree::new();
-        tree.resize(Vec2::splat(1000.0));
+        tree.resize(UVec2::splat(1000));
 
         let bounds = Bounds {
-            min: SizeVec2::splat(Size::Pixels(10.0)),
-            max: SizeVec2::splat(Size::Pixels(10.0)),
+            min: SizeVec2::splat(Size::Pixels(10)),
+            max: SizeVec2::splat(Size::Pixels(10)),
         };
 
         let root = tree.push(
@@ -1162,18 +1183,18 @@ mod tests {
         tree.compute_layout();
 
         let layout = &tree.layouts[&key];
-        assert_eq!(layout.height, 10.0);
-        assert_eq!(layout.width, 10.0);
+        assert_eq!(layout.height, 10);
+        assert_eq!(layout.width, 10);
     }
 
     fn create_justify_test(
         direction: Direction,
         justify: Justify,
         num_elems: u32,
-        size: f32,
+        size: u32,
     ) -> (LayoutTree, Vec<Key>) {
         let mut tree = LayoutTree::new();
-        tree.resize(Vec2::splat(1000.0));
+        tree.resize(UVec2::splat(1000));
 
         let root = tree.push(
             None,
@@ -1183,8 +1204,8 @@ mod tests {
                     // Claim entire viewport so we can actually test
                     // child positions.
                     bounds: Bounds {
-                        min: SizeVec2::splat(Size::Pixels(1000.0)),
-                        max: SizeVec2::splat(Size::Pixels(1000.0)),
+                        min: SizeVec2::splat(Size::Pixels(1000)),
+                        max: SizeVec2::splat(Size::Pixels(1000)),
                     },
                     direction,
                     justify,
@@ -1215,15 +1236,15 @@ mod tests {
 
     #[test]
     fn compute_layout_row_justify_start() {
-        let size = 10.0;
+        let size = 10;
 
         let (tree, keys) = create_justify_test(Direction::Row, Justify::Start, 3, size);
 
-        let mut offset = 0.0;
+        let mut offset = 0;
         for key in keys {
             let layout = &tree.layouts[&key];
 
-            assert_eq!(layout.position, Vec2::new(0.0, offset));
+            assert_eq!(layout.position, UVec2::new(0, offset));
 
             offset += size;
         }
@@ -1231,15 +1252,15 @@ mod tests {
 
     #[test]
     fn compute_layout_column_justify_start() {
-        let size = 10.0;
+        let size = 10;
 
         let (tree, keys) = create_justify_test(Direction::Column, Justify::Start, 3, size);
 
-        let mut offset = 0.0;
+        let mut offset = 0;
         for key in keys {
             let layout = &tree.layouts[&key];
 
-            assert_eq!(layout.position, Vec2::new(offset, 0.0));
+            assert_eq!(layout.position, UVec2::new(offset, 0));
 
             offset += size;
         }
@@ -1247,15 +1268,15 @@ mod tests {
 
     #[test]
     fn compute_layout_row_justify_end() {
-        let size = 10.0;
+        let size = 10;
 
         let (tree, keys) = create_justify_test(Direction::Row, Justify::End, 3, size);
 
-        let mut offset = 1000.0 - (size * 3.0);
+        let mut offset = 1000 - (size * 3);
         for key in keys {
             let layout = &tree.layouts[&key];
 
-            assert_eq!(layout.position, Vec2::new(0.0, offset));
+            assert_eq!(layout.position, UVec2::new(0, offset));
 
             offset += size;
         }
@@ -1263,15 +1284,15 @@ mod tests {
 
     #[test]
     fn compute_layout_column_justify_end() {
-        let size = 10.0;
+        let size = 10;
 
         let (tree, keys) = create_justify_test(Direction::Column, Justify::End, 3, size);
 
-        let mut offset = 1000.0 - (size * 3.0);
+        let mut offset = 1000 - (size * 3);
         for key in keys {
             let layout = &tree.layouts[&key];
 
-            assert_eq!(layout.position, Vec2::new(offset, 0.0));
+            assert_eq!(layout.position, UVec2::new(offset, 0));
 
             offset += size;
         }
@@ -1279,15 +1300,15 @@ mod tests {
 
     #[test]
     fn compute_layout_row_justify_center() {
-        let size = 10.0;
+        let size = 10;
 
         let (tree, keys) = create_justify_test(Direction::Row, Justify::Center, 3, size);
 
-        let mut offset = (1000.0 - (10.0 * 3.0)) / 2.0;
+        let mut offset = (1000 - (10 * 3)) / 2;
         for key in keys {
             let layout = &tree.layouts[&key];
 
-            assert_eq!(layout.position, Vec2::new(0.0, offset));
+            assert_eq!(layout.position, UVec2::new(0, offset));
 
             offset += size;
         }
@@ -1295,15 +1316,15 @@ mod tests {
 
     #[test]
     fn compute_layout_column_justify_center() {
-        let size = 10.0;
+        let size = 10;
 
         let (tree, keys) = create_justify_test(Direction::Column, Justify::Center, 3, size);
 
-        let mut offset = (1000.0 - (10.0 * 3.0)) / 2.0;
+        let mut offset = (1000 - (10 * 3)) / 2;
         for key in keys {
             let layout = &tree.layouts[&key];
 
-            assert_eq!(layout.position, Vec2::new(offset, 0.0));
+            assert_eq!(layout.position, UVec2::new(offset, 0));
 
             offset += size;
         }
@@ -1311,17 +1332,17 @@ mod tests {
 
     #[test]
     fn compute_layout_row_justify_space_between() {
-        let size = 10.0;
+        let size = 10;
 
         let (tree, keys) = create_justify_test(Direction::Row, Justify::SpaceBetween, 3, size);
 
-        let distance = (1000.0 - (size * 3.0)) / 2.0;
+        let distance = (1000 - (size * 3)) / 2;
 
-        let mut offset = 0.0;
+        let mut offset = 0;
         for key in keys {
             let layout = &tree.layouts[&key];
 
-            assert_eq!(layout.position, Vec2::new(0.0, offset));
+            assert_eq!(layout.position, UVec2::new(0, offset));
 
             offset += size + distance;
         }
@@ -1329,17 +1350,17 @@ mod tests {
 
     #[test]
     fn compute_layout_column_justify_space_between() {
-        let size = 10.0;
+        let size = 10;
 
         let (tree, keys) = create_justify_test(Direction::Column, Justify::SpaceBetween, 3, size);
 
-        let distance = (1000.0 - (size * 3.0)) / 2.0;
+        let distance = (1000 - (size * 3)) / 2;
 
-        let mut offset = 0.0;
+        let mut offset = 0;
         for key in keys {
             let layout = &tree.layouts[&key];
 
-            assert_eq!(layout.position, Vec2::new(offset, 0.0));
+            assert_eq!(layout.position, UVec2::new(offset, 0));
 
             offset += size + distance;
         }
@@ -1347,17 +1368,17 @@ mod tests {
 
     #[test]
     fn compute_layout_row_justify_space_around() {
-        let size = 10.0;
+        let size = 10;
 
         let (tree, keys) = create_justify_test(Direction::Row, Justify::SpaceAround, 3, size);
 
-        let distance = (1000.0 - (size * 3.0)) / 4.0;
+        let distance = (1000 - (size * 3)) / 4;
 
         let mut offset = distance;
         for key in keys {
             let layout = &tree.layouts[&key];
 
-            assert_eq!(layout.position, Vec2::new(0.0, offset));
+            assert_eq!(layout.position, UVec2::new(0, offset));
 
             offset += size + distance;
         }
@@ -1365,17 +1386,17 @@ mod tests {
 
     #[test]
     fn compute_layout_column_justify_space_around() {
-        let size = 10.0;
+        let size = 10;
 
         let (tree, keys) = create_justify_test(Direction::Column, Justify::SpaceAround, 3, size);
 
-        let distance = (1000.0 - (size * 3.0)) / 4.0;
+        let distance = (1000 - (size * 3)) / 4;
 
         let mut offset = distance;
         for key in keys {
             let layout = &tree.layouts[&key];
 
-            assert_eq!(layout.position, Vec2::new(offset, 0.0));
+            assert_eq!(layout.position, UVec2::new(offset, 0));
 
             offset += size + distance;
         }
@@ -1384,7 +1405,7 @@ mod tests {
     #[test]
     fn compute_layout_padding_no_children() {
         let mut tree = LayoutTree::new();
-        tree.resize(Vec2::splat(1000.0));
+        tree.resize(UVec2::splat(1000));
 
         let key = tree.push(
             None,
@@ -1392,10 +1413,10 @@ mod tests {
                 body: ElementBody::Container(),
                 style: Style {
                     bounds: Bounds {
-                        min: SizeVec2::splat(Size::Pixels(10.0)),
-                        max: SizeVec2::splat(Size::Pixels(10.0)),
+                        min: SizeVec2::splat(Size::Pixels(10)),
+                        max: SizeVec2::splat(Size::Pixels(10)),
                     },
-                    padding: Padding::splat(Size::Pixels(10.0)),
+                    padding: Padding::splat(Size::Pixels(10)),
                     ..Default::default()
                 },
             },
@@ -1405,20 +1426,20 @@ mod tests {
 
         let layout = &tree.layouts[&key];
 
-        assert_eq!(layout.position, Vec2::splat(0.0));
+        assert_eq!(layout.position, UVec2::splat(0));
     }
 
     #[test]
     fn computed_layout_padding_with_children() {
         let mut tree = LayoutTree::new();
-        tree.resize(Vec2::splat(1000.0));
+        tree.resize(UVec2::splat(1000));
 
         let root = tree.push(
             None,
             Element {
                 body: ElementBody::Container(),
                 style: Style {
-                    padding: Padding::splat(Size::Pixels(10.0)),
+                    padding: Padding::splat(Size::Pixels(10)),
                     ..Default::default()
                 },
             },
@@ -1428,8 +1449,8 @@ mod tests {
             body: ElementBody::Container(),
             style: Style {
                 bounds: Bounds {
-                    min: SizeVec2::splat(Size::Pixels(10.0)),
-                    max: SizeVec2::splat(Size::Pixels(10.0)),
+                    min: SizeVec2::splat(Size::Pixels(10)),
+                    max: SizeVec2::splat(Size::Pixels(10)),
                 },
                 ..Default::default()
             },
@@ -1441,20 +1462,20 @@ mod tests {
 
         tree.compute_layout();
 
-        let mut offset = Vec2::new(10.0, 10.0);
+        let mut offset = UVec2::new(10, 10);
         for key in keys {
             let layout = &tree.layouts[&key];
 
             assert_eq!(layout.position, offset);
 
-            offset.y += 10.0;
+            offset.y += 10;
         }
     }
 
     #[test]
     fn compute_layout_ignore_absolute_children() {
         let mut tree = LayoutTree::new();
-        tree.resize(Vec2::splat(1000.0));
+        tree.resize(UVec2::splat(1000));
 
         let root = tree.push(
             None,
@@ -1467,7 +1488,7 @@ mod tests {
         let elem = Element {
             body: ElementBody::Container(),
             style: Style {
-                bounds: Bounds::exact(SizeVec2::splat(Size::Pixels(10.0))),
+                bounds: Bounds::exact(SizeVec2::splat(Size::Pixels(10))),
                 ..Default::default()
             },
         };
@@ -1481,8 +1502,8 @@ mod tests {
             Element {
                 body: ElementBody::Container(),
                 style: Style {
-                    bounds: Bounds::exact(SizeVec2::splat(Size::Pixels(10.0))),
-                    position: Position::Absolute(Vec2::splat(0.0)),
+                    bounds: Bounds::exact(SizeVec2::splat(Size::Pixels(10))),
+                    position: Position::Absolute(UVec2::splat(0)),
                     ..Default::default()
                 },
             },
@@ -1492,13 +1513,13 @@ mod tests {
 
         tree.compute_layout();
 
-        let mut offset = Vec2::splat(0.0);
+        let mut offset = UVec2::splat(0);
         for key in keys {
             let layout = &tree.layouts[&key];
 
             assert_eq!(layout.position, offset);
 
-            offset.y += 10.0;
+            offset.y += 10;
         }
     }
 }

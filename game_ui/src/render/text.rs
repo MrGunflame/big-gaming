@@ -1,5 +1,5 @@
 use ab_glyph::{point, Font, FontRef, Glyph, Point, PxScale, ScaleFont};
-use glam::Vec2;
+use glam::UVec2;
 use image::{ImageBuffer, Rgba, RgbaImage};
 
 use super::computed_style::{ComputedBounds, ComputedStyle};
@@ -35,7 +35,7 @@ impl BuildPrimitiveElement for Text {
         pipeline: &super::UiPipeline,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-        size: glam::Vec2,
+        size: UVec2,
     ) -> Option<super::PrimitiveElement> {
         let image = render_to_texture(&self.text, self.size, layout.max - layout.min);
 
@@ -43,12 +43,12 @@ impl BuildPrimitiveElement for Text {
     }
 
     fn bounds(&self, style: &ComputedStyle) -> ComputedBounds {
-        let image = render_to_texture(&self.text, self.size, Vec2::splat(0.0));
+        let image = render_to_texture(&self.text, self.size, UVec2::splat(0));
         Image { image }.bounds(style)
     }
 }
 
-fn render_to_texture(text: &str, size: f32, max: Vec2) -> ImageBuffer<Rgba<u8>, Vec<u8>> {
+fn render_to_texture(text: &str, size: f32, max: UVec2) -> ImageBuffer<Rgba<u8>, Vec<u8>> {
     let font = FontRef::try_from_slice(DEFAULT_FONT).unwrap();
 
     let scaled_font = font.as_scaled(PxScale::from(size));
@@ -150,7 +150,7 @@ fn layout_glyphs<SF: ScaleFont<F>, F: Font>(
 #[cfg(test)]
 mod tests {
     use ab_glyph::{point, Font, FontRef, PxScale};
-    use glam::Vec2;
+    use glam::UVec2;
 
     use super::{layout_glyphs, render_to_texture, DEFAULT_FONT};
 
@@ -162,7 +162,7 @@ mod tests {
     fn render_to_texture_singleline() {
         let text = "abcdefghijklmnopqrstuvwxyz";
         let size = 100.0;
-        let max = Vec2::splat(0.0);
+        let max = UVec2::splat(0);
 
         render_to_texture(text, size, max);
     }
@@ -171,7 +171,7 @@ mod tests {
     fn render_to_texture_newline() {
         let text = "abcdefghijklmnopqrstuvwxyz\nabcdefghijklmnopqrstuvwxyz";
         let size = 100.0;
-        let max = Vec2::splat(0.0);
+        let max = UVec2::splat(0);
 
         render_to_texture(text, size, max);
     }
@@ -180,7 +180,7 @@ mod tests {
     fn render_to_texture_overflow() {
         let text: String = (0..1000).map(|_| "a").collect();
         let size = 10.0;
-        let max = Vec2::splat(0.0);
+        let max = UVec2::splat(0);
 
         render_to_texture(&text, size, max);
     }

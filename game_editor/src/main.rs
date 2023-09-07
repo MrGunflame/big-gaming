@@ -12,26 +12,17 @@ use std::sync::{mpsc, Arc};
 
 use backend::{Backend, Handle, Response};
 
-use game_common::components::transform::Transform;
-use game_render::camera::{Camera, Projection, RenderTarget};
 use game_render::Renderer;
-use game_ui::reactive::Document;
-use game_ui::style::{Background, BorderRadius, Bounds, Size, SizeVec2, Style};
 use game_ui::UiState;
 use game_window::cursor::Cursor;
 use game_window::events::WindowEvent;
-use game_window::windows::{Window, WindowBuilder, WindowId, Windows};
+use game_window::windows::{WindowBuilder, WindowId, Windows};
 use game_window::WindowManager;
 use glam::UVec2;
-use parking_lot::Mutex;
 use state::module::Modules;
 use state::record::Records;
 use state::EditorState;
 use tokio::runtime::Runtime;
-use widgets::tool_bar::ToolBar;
-
-use game_ui::widgets::*;
-use widgets::tool_bar::*;
 
 use crate::windows::SpawnWindow;
 

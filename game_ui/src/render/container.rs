@@ -1,4 +1,4 @@
-use glam::Vec2;
+use glam::UVec2;
 use image::ImageBuffer;
 
 use super::computed_style::{ComputedBounds, ComputedStyle};
@@ -14,7 +14,7 @@ impl BuildPrimitiveElement for Container {
         pipeline: &super::UiPipeline,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-        size: glam::Vec2,
+        size: UVec2,
     ) -> Option<super::PrimitiveElement> {
         let width = layout.max.x - layout.min.x;
         let height = layout.max.y - layout.min.y;
@@ -34,7 +34,7 @@ impl BuildPrimitiveElement for Container {
         let height = style.padding.top + style.padding.bottom;
 
         ComputedBounds {
-            min: Vec2::new(width, height),
+            min: UVec2::new(width, height),
             ..Default::default()
         }
     }

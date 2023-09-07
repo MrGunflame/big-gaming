@@ -129,7 +129,7 @@ impl Widget for Explorer {
                 let style = Style {
                     background,
                     growth: Growth::x(1.0),
-                    padding: Padding::splat(Size::Pixels(2.0)),
+                    padding: Padding::splat(Size::Pixels(2)),
                     ..Default::default()
                 };
 
@@ -150,7 +150,7 @@ impl Widget for Explorer {
                 let style = Style {
                     background,
                     growth: Growth::x(1.0),
-                    padding: Padding::splat(Size::Pixels(2.0)),
+                    padding: Padding::splat(Size::Pixels(2)),
                     ..Default::default()
                 };
 
@@ -172,7 +172,7 @@ impl Widget for Explorer {
                 let style = Style {
                     background,
                     growth: Growth::x(1.0),
-                    padding: Padding::splat(Size::Pixels(2.0)),
+                    padding: Padding::splat(Size::Pixels(2)),
                     ..Default::default()
                 };
 
@@ -196,7 +196,7 @@ impl Widget for Explorer {
                         Style {
                             background: Background::from_hex(SELECTED_COLOR).unwrap(),
                             growth: Growth::x(1.0),
-                            padding: Padding::splat(Size::Pixels(2.0)),
+                            padding: Padding::splat(Size::Pixels(2)),
                             ..Default::default()
                         }
                     } else {
@@ -204,7 +204,7 @@ impl Widget for Explorer {
                         Style {
                             background,
                             growth: Growth::x(1.0),
-                            padding: Padding::splat(Size::Pixels(2.0)),
+                            padding: Padding::splat(Size::Pixels(2)),
                             ..Default::default()
                         }
                     };

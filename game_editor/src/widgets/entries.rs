@@ -92,7 +92,7 @@ fn spawn_root_menu(callbacks: &ContextCallbacks) -> Callback<Scope> {
     Callback::from(move |cx: Scope| {
         let style = Style {
             background: Background::BLACK,
-            padding: Padding::splat(Size::Pixels(2.0)),
+            padding: Padding::splat(Size::Pixels(2)),
             ..Default::default()
         };
 
@@ -113,7 +113,7 @@ fn spawn_ctx_menu(callbacks: &ContextCallbacks, index: usize) -> Callback<Scope>
     Callback::from(move |cx: Scope| {
         let style = Style {
             background: Background::BLACK,
-            padding: Padding::splat(Size::Pixels(2.0)),
+            padding: Padding::splat(Size::Pixels(2)),
             ..Default::default()
         };
 
