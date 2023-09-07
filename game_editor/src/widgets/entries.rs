@@ -45,7 +45,7 @@ impl Widget for Entries {
         let mut cols = Vec::with_capacity(self.data.keys.len());
 
         for key in &self.data.keys {
-            let col = cx.append(Container::new());
+            let col = root.append(Container::new());
             col.append(Text::new().text(key));
 
             cols.push(col);
