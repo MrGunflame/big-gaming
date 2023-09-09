@@ -89,7 +89,6 @@ impl Size {
     }
 }
 
-// TODO: Maybe replace with nalgebra vector.
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct SizeVec2 {
     pub x: Size,

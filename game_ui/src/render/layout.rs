@@ -350,16 +350,18 @@ impl LayoutTree {
 
         if let Some(children) = self.children.get(&key).cloned() {
             // Relative positioned children
-            let relative_children: u32 = children.iter().fold(0, |acc, key| {
-                let style = &self.elems.get(key).unwrap().style;
-                acc + if style.position.is_relative() { 1 } else { 0 }
-            });
+            let relative_children: u32 = children
+                .iter()
+                .map(|key| self.elems.get(key).unwrap().style.position)
+                .filter(|p| p.is_relative())
+                .count() as u32;
+
+            let size_per_elem =
+                size_per_element(end - start, relative_children, elem.style.direction);
 
             match elem.style.justify {
                 Justify::Start => {
                     let mut next_position = start;
-                    let size_per_elem =
-                        size_per_element(end - start, relative_children, elem.style.direction);
 
                     for child in children {
                         let child_style = &self.elems.get(&child).unwrap().style;
@@ -398,9 +400,6 @@ impl LayoutTree {
                             Direction::Row => UVec2::new(0, height),
                             Direction::Column => UVec2::new(width, 0),
                         };
-
-                    let size_per_elem =
-                        size_per_element(end - start, relative_children, elem.style.direction);
 
                     for child in children.iter().rev().copied() {
                         let child_style = &self.elems.get(&child).unwrap().style;
@@ -451,8 +450,6 @@ impl LayoutTree {
                 }
                 Justify::Center => {
                     let mut next_position = start;
-                    let size_per_elem =
-                        size_per_element(end - start, children.len() as u32, elem.style.direction);
 
                     for child in children {
                         let child_style = &self.elems.get(&child).unwrap().style;
@@ -534,8 +531,6 @@ impl LayoutTree {
                 }
                 Justify::SpaceBetween => {
                     let mut next_position = start;
-                    let size_per_elem =
-                        size_per_element(end - start, relative_children, elem.style.direction);
 
                     for child in children {
                         let child_style = &self.elems[&child].style;
@@ -627,8 +622,6 @@ impl LayoutTree {
                 }
                 Justify::SpaceAround => {
                     let mut next_position = start;
-                    let size_per_elem =
-                        size_per_element(end - start, relative_children, elem.style.direction);
 
                     for child in children {
                         let child_style = &self.elems[&child].style;
