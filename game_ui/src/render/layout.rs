@@ -1,3 +1,4 @@
+use core::num;
 use std::collections::{BTreeMap, HashMap};
 
 use glam::UVec2;
@@ -445,6 +446,43 @@ impl LayoutTree {
                         match elem.style.direction {
                             Direction::Row => next_position.y += layout.height,
                             Direction::Column => next_position.x += layout.width,
+                        }
+                    }
+                }
+                Justify::SpaceBetween => {
+                    let num_children = child_bounds.len() as u32;
+
+                    let mut offset = 0;
+                    for (_, bounds) in &child_bounds {
+                        match elem.style.direction {
+                            Direction::Row => offset += bounds.x,
+                            Direction::Column => offset += bounds.y,
+                        }
+                    }
+
+                    let pad_zone = match elem.style.direction {
+                        Direction::Row => (content.height() - offset) / (num_children - 1),
+                        Direction::Column => (content.width() - offset) / (num_children - 1),
+                    };
+
+                    let mut next_position = content.min;
+
+                    for (key, bounds) in child_bounds {
+                        let layout = self.layouts.get_mut(key).unwrap();
+
+                        layout.position = next_position;
+                        layout.width = bounds.x;
+                        layout.height = bounds.y;
+
+                        match elem.style.direction {
+                            Direction::Row => {
+                                next_position.y += layout.height;
+                                next_position.y += pad_zone;
+                            }
+                            Direction::Column => {
+                                next_position.x += layout.width;
+                                next_position.x += pad_zone;
+                            }
                         }
                     }
                 }
