@@ -65,6 +65,8 @@ impl Widget for Input {
                         let focus = focus.clone();
 
                         move |ctx| {
+                            dbg!(ctx.event);
+
                             if !focus.get_untracked() {
                                 return;
                             }
@@ -94,6 +96,8 @@ impl Widget for Input {
                         let focus = focus.clone();
 
                         move |ctx| {
+                            dbg!(ctx.event);
+
                             if !focus.get_untracked() {
                                 return;
                             }
@@ -129,14 +133,14 @@ impl Widget for Input {
                         // handlers catches this afterwards.
                         // FIXME: This is exploiting the fact that global handlers are
                         // called before local ones, which is currently unspecified.
-                        move |_event| {
+                        move |_ctx| {
                             set_focus.set(false);
                         }
                     })),
                     ..Default::default()
                 },
                 local: EventHandlers {
-                    mouse_button_input: Some(Box::new(move |_event| {
+                    mouse_button_input: Some(Box::new(move |_ctx| {
                         set_focus.set(true);
                     })),
                     ..Default::default()

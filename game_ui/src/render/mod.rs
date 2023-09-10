@@ -411,6 +411,23 @@ pub struct Rect {
     pub max: UVec2,
 }
 
+impl Rect {
+    #[inline]
+    pub fn size(self) -> UVec2 {
+        self.max - self.min
+    }
+
+    #[inline]
+    pub fn width(self) -> u32 {
+        self.max.x - self.min.x
+    }
+
+    #[inline]
+    pub fn height(self) -> u32 {
+        self.max.y - self.min.y
+    }
+}
+
 #[derive(Debug)]
 pub struct UiPass {
     pipeline: Arc<UiPipeline>,

@@ -6,7 +6,7 @@ use super::computed_style::{ComputedBounds, ComputedStyle};
 use super::container::Container;
 use super::image::Image;
 use super::text::Text;
-use super::BuildPrimitiveElement;
+use super::{BuildPrimitiveElement, Rect};
 use crate::style::{Direction, Justify, Position, Style};
 
 // Provide custom saturaing methods
@@ -335,18 +335,18 @@ impl LayoutTree {
         let elem = self.elems.get(&key).unwrap().clone();
         let layout = self.layouts.get(&key).unwrap();
 
-        let mut start = layout.position;
-        let mut end = UVec2::new(
-            layout.position.x + layout.width,
-            layout.position.y + layout.height,
-        );
-
-        // Ignore the area reserved for padding.
-        start += UVec2::new(layout.style.padding.top, layout.style.padding.left);
-        end -= UVec2::new(layout.style.padding.bottom, layout.style.padding.right);
-
-        let width = layout.width - layout.style.padding.left - layout.style.padding.right;
-        let height = layout.height - layout.style.padding.top - layout.style.padding.bottom;
+        // Start and end points of the content.
+        // FIXME: What happens if padding > size?
+        let content = Rect {
+            min: UVec2 {
+                x: layout.position.x + layout.style.padding.left,
+                y: layout.position.y + layout.style.padding.top,
+            },
+            max: UVec2 {
+                x: layout.position.x + layout.width - layout.style.padding.right,
+                y: layout.position.y + layout.height - layout.style.padding.bottom,
+            },
+        };
 
         if let Some(children) = self.children.get(&key).cloned() {
             // Relative positioned children
@@ -357,11 +357,11 @@ impl LayoutTree {
                 .count() as u32;
 
             let size_per_elem =
-                size_per_element(end - start, relative_children, elem.style.direction);
+                size_per_element(content.size(), relative_children, elem.style.direction);
 
             match elem.style.justify {
                 Justify::Start => {
-                    let mut next_position = start;
+                    let mut next_position = content.min;
 
                     for child in children {
                         let child_style = &self.elems.get(&child).unwrap().style;
@@ -395,10 +395,10 @@ impl LayoutTree {
                     }
                 }
                 Justify::End => {
-                    let mut next_position = start
+                    let mut next_position = content.min
                         + match elem.style.direction {
-                            Direction::Row => UVec2::new(0, height),
-                            Direction::Column => UVec2::new(width, 0),
+                            Direction::Row => UVec2::new(0, content.height()),
+                            Direction::Column => UVec2::new(content.width(), 0),
                         };
 
                     for child in children.iter().rev().copied() {
@@ -449,7 +449,7 @@ impl LayoutTree {
                     }
                 }
                 Justify::Center => {
-                    let mut next_position = start;
+                    let mut next_position = content.min;
 
                     for child in children {
                         let child_style = &self.elems.get(&child).unwrap().style;
@@ -487,13 +487,14 @@ impl LayoutTree {
 
                     // The first element is spaced at `layout.position` and the
                     // end of the last element at `next_position`.
-                    let allocated_space = next_position - start;
+                    let allocated_space = next_position - content.min;
 
                     match elem.style.direction {
                         Direction::Row => {
-                            let total_size = (start.y + height) - start.y;
+                            let total_size = content.height();
 
-                            let mut next_pos = start.y + ((total_size - allocated_space.y) / 2);
+                            let mut next_pos =
+                                content.min.y + ((total_size - allocated_space.y) / 2);
 
                             for child in children {
                                 let style = &self.elems[child].style;
@@ -508,8 +509,9 @@ impl LayoutTree {
                             }
                         }
                         Direction::Column => {
-                            let total_size = (start.x + width) - start.x;
-                            let mut next_pos = start.x + ((total_size - allocated_space.x) / 2);
+                            let total_size = content.width();
+                            let mut next_pos =
+                                content.min.x + ((total_size - allocated_space.x) / 2);
 
                             for child in children {
                                 let style = &self.elems[child].style;
@@ -530,7 +532,7 @@ impl LayoutTree {
                     }
                 }
                 Justify::SpaceBetween => {
-                    let mut next_position = start;
+                    let mut next_position = content.min;
 
                     for child in children {
                         let child_style = &self.elems[&child].style;
@@ -568,17 +570,17 @@ impl LayoutTree {
 
                     // The first element is spaced at `layout.position` and the
                     // end of the last element at `next_position`.
-                    let allocated_space = next_position - start;
+                    let allocated_space = next_position - content.min;
 
                     match elem.style.direction {
                         Direction::Row => {
-                            let total_size = (start.y + height) - start.y;
+                            let total_size = content.height();
 
                             // Distance/emtpy space between elements.
                             let distance = (total_size - allocated_space.y)
                                 / relative_children.saturating_sub(1);
 
-                            let mut next_pos = start.y;
+                            let mut next_pos = content.min.y;
 
                             for child in children {
                                 let style = &self.elems[child].style;
@@ -594,12 +596,12 @@ impl LayoutTree {
                             }
                         }
                         Direction::Column => {
-                            let total_size = (start.x + height) - start.x;
+                            let total_size = content.height();
 
                             let distance = (total_size - allocated_space.x)
                                 / relative_children.saturating_sub(1);
 
-                            let mut next_pos = start.x;
+                            let mut next_pos = content.min.x;
 
                             for child in children {
                                 let style = &self.elems[child].style;
@@ -621,7 +623,7 @@ impl LayoutTree {
                     }
                 }
                 Justify::SpaceAround => {
-                    let mut next_position = start;
+                    let mut next_position = content.min;
 
                     for child in children {
                         let child_style = &self.elems[&child].style;
@@ -659,11 +661,11 @@ impl LayoutTree {
 
                     // The first element is spaced at `layout.position` and the
                     // end of the last element at `next_position`.
-                    let allocated_space = next_position - start;
+                    let allocated_space = next_position - content.min;
 
                     match elem.style.direction {
                         Direction::Row => {
-                            let total_size = (start.y + height) - start.y;
+                            let total_size = content.height();
 
                             // Distance/emtpy space betweem elements and borders.
                             // Note that overflows not possible as that would require
@@ -672,7 +674,7 @@ impl LayoutTree {
                             let distance =
                                 (total_size - allocated_space.y) / (relative_children + 1);
 
-                            let mut next_pos = start.y + distance;
+                            let mut next_pos = content.min.y + distance;
 
                             for child in children.iter() {
                                 let style = &self.elems[child].style;
@@ -688,12 +690,12 @@ impl LayoutTree {
                             }
                         }
                         Direction::Column => {
-                            let total_size = (start.x + width) - start.x;
+                            let total_size = content.width();
 
                             let distance =
                                 (total_size - allocated_space.x) / (relative_children + 1);
 
-                            let mut next_pos = start.x + distance;
+                            let mut next_pos = content.min.x + distance;
 
                             for child in children {
                                 let style = &self.elems[child].style;
