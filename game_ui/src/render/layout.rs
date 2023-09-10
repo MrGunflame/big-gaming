@@ -359,364 +359,480 @@ impl LayoutTree {
             let size_per_elem =
                 size_per_element(content.size(), relative_children, elem.style.direction);
 
+            let mut child_bounds = vec![];
+
+            for child in &children {
+                let child_style = &self.elems.get(child).unwrap().style;
+
+                // Absolute elements are excluded in the parent layout computation.
+                if child_style.position.is_relative() {
+                    let bounds = self.compute_bounds(*child);
+
+                    let width = u32::clamp(size_per_elem.x, bounds.min.x, bounds.max.x);
+                    let height = u32::clamp(size_per_elem.y, bounds.min.y, bounds.max.y);
+
+                    child_bounds.push((child, UVec2::new(width, height)));
+                }
+            }
+
             match elem.style.justify {
                 Justify::Start => {
                     let mut next_position = content.min;
 
-                    for child in children {
-                        let child_style = &self.elems.get(&child).unwrap().style;
+                    for (key, bounds) in child_bounds {
+                        let layout = self.layouts.get_mut(key).unwrap();
 
-                        let bounds = self.compute_bounds(child);
-                        let layout = self.layouts.get_mut(&child).unwrap();
+                        layout.position = next_position;
+                        layout.width = bounds.x;
+                        layout.height = bounds.y;
 
-                        match child_style.position {
-                            Position::Relative => {
-                                layout.position = next_position;
-                                layout.width =
-                                    u32::clamp(size_per_elem.x, bounds.min.x, bounds.max.x);
-                                layout.height =
-                                    u32::clamp(size_per_elem.y, bounds.min.y, bounds.max.y);
-
-                                match elem.style.direction {
-                                    Direction::Row => next_position.y += layout.height,
-                                    Direction::Column => next_position.x += layout.width,
-                                }
-                            }
-                            Position::Absolute(pos) => {
-                                // Give the absolute element as much space as it wants
-                                // as long as it doesn't overflow the viewport.
-                                layout.position = pos;
-                                layout.width = u32::min(self.size.x - pos.x, bounds.max.x);
-                                layout.height = u32::min(self.size.y - pos.y, bounds.max.y);
-                            }
+                        match elem.style.direction {
+                            Direction::Row => next_position.y += layout.height,
+                            Direction::Column => next_position.x += layout.width,
                         }
-
-                        self.layout_element(child);
                     }
                 }
                 Justify::End => {
+                    let mut offset = 0;
+                    for (_, bounds) in &child_bounds {
+                        match elem.style.direction {
+                            Direction::Row => offset += bounds.x,
+                            Direction::Column => offset += bounds.y,
+                        }
+                    }
+
                     let mut next_position = content.min
                         + match elem.style.direction {
-                            Direction::Row => UVec2::new(0, content.height()),
-                            Direction::Column => UVec2::new(content.width(), 0),
+                            Direction::Row => UVec2::new(0, content.height() - offset),
+                            Direction::Column => UVec2::new(content.width() - offset, 0),
                         };
 
-                    for child in children.iter().rev().copied() {
-                        let child_style = &self.elems.get(&child).unwrap().style;
+                    for (key, bounds) in child_bounds {
+                        let layout = self.layouts.get_mut(key).unwrap();
 
-                        let bounds = self.compute_bounds(child);
-                        let layout = self.layouts.get_mut(&child).unwrap();
+                        layout.position = next_position;
+                        layout.width = bounds.x;
+                        layout.height = bounds.y;
 
-                        match child_style.position {
-                            Position::Relative => {
-                                layout.position = next_position;
-                                layout.width =
-                                    u32::clamp(size_per_elem.x, bounds.min.x, bounds.max.x);
-                                layout.height =
-                                    u32::clamp(size_per_elem.y, bounds.min.y, bounds.max.y);
-
-                                match elem.style.direction {
-                                    Direction::Row => next_position.y -= layout.height,
-                                    Direction::Column => next_position.x -= layout.width,
-                                }
-                            }
-                            Position::Absolute(pos) => {
-                                // Give the absolute element as much space as it wants
-                                // as long as it doesn't overflow the viewport.
-                                layout.position = pos;
-                                layout.width = u32::min(self.size.x - pos.x, bounds.max.x);
-                                layout.height = u32::min(self.size.y - pos.y, bounds.max.y);
-                            }
-                        }
-
-                        self.layout_element(child);
-
-                        // Note that we don't know the size of the element we're rendering
-                        // before we actually render it.
-                        // Because of that we start rendering the end of the allocated space
-                        // and then move it back the by size that it rendered.
-                        let layout = self.layouts.get_mut(&child).unwrap();
                         match elem.style.direction {
-                            Direction::Row => {
-                                layout.position.y -= layout.height;
-                            }
-                            Direction::Column => {
-                                layout.position.x -= layout.width;
-                            }
+                            Direction::Row => next_position.y += layout.height,
+                            Direction::Column => next_position.x += layout.width,
                         }
-
-                        self.layout_element(child);
                     }
                 }
                 Justify::Center => {
-                    let mut next_position = content.min;
-
-                    for child in children {
-                        let child_style = &self.elems.get(&child).unwrap().style;
-
-                        let bounds = self.compute_bounds(child);
-                        let layout = self.layouts.get_mut(&child).unwrap();
-
-                        match child_style.position {
-                            Position::Relative => {
-                                layout.position = next_position;
-                                layout.width =
-                                    u32::clamp(size_per_elem.x, bounds.min.x, bounds.max.x);
-                                layout.height =
-                                    u32::clamp(size_per_elem.y, bounds.min.y, bounds.max.y);
-
-                                match elem.style.direction {
-                                    Direction::Row => next_position.y += layout.height,
-                                    Direction::Column => next_position.x += layout.width,
-                                }
-                            }
-                            Position::Absolute(pos) => {
-                                // Give the absolute element as much space as it wants
-                                // as long as it doesn't overflow the viewport.
-                                layout.position = pos;
-                                layout.width = u32::min(self.size.x - pos.x, bounds.max.x);
-                                layout.height = u32::min(self.size.y - pos.y, bounds.max.y);
-                            }
-                        }
-
-                        self.layout_element(child);
-                    }
-
-                    let elem = self.elems.get(&key).unwrap().clone();
-                    let children = self.children.get(&key).unwrap();
-
-                    // The first element is spaced at `layout.position` and the
-                    // end of the last element at `next_position`.
-                    let allocated_space = next_position - content.min;
-
-                    match elem.style.direction {
-                        Direction::Row => {
-                            let total_size = content.height();
-
-                            let mut next_pos =
-                                content.min.y + ((total_size - allocated_space.y) / 2);
-
-                            for child in children {
-                                let style = &self.elems[child].style;
-                                if style.position.is_absolute() {
-                                    continue;
-                                }
-
-                                let layout = self.layouts.get_mut(child).unwrap();
-                                layout.position.y = next_pos;
-
-                                next_pos += layout.height;
-                            }
-                        }
-                        Direction::Column => {
-                            let total_size = content.width();
-                            let mut next_pos =
-                                content.min.x + ((total_size - allocated_space.x) / 2);
-
-                            for child in children {
-                                let style = &self.elems[child].style;
-                                if style.position.is_absolute() {
-                                    continue;
-                                }
-
-                                let layout = self.layouts.get_mut(child).unwrap();
-                                layout.position.x = next_pos;
-
-                                next_pos += layout.width;
-                            }
+                    let mut offset = 0;
+                    for (_, bounds) in &child_bounds {
+                        match elem.style.direction {
+                            Direction::Row => offset += bounds.x,
+                            Direction::Column => offset += bounds.y,
                         }
                     }
 
-                    for child in children.clone() {
-                        self.layout_element(child);
+                    let mut next_position = content.min
+                        + match elem.style.direction {
+                            Direction::Row => UVec2::new(0, (content.height() - offset) / 2),
+                            Direction::Column => UVec2::new((content.width() - offset) / 2, 0),
+                        };
+
+                    for (key, bounds) in child_bounds {
+                        let layout = self.layouts.get_mut(key).unwrap();
+
+                        layout.position = next_position;
+                        layout.width = bounds.x;
+                        layout.height = bounds.y;
+
+                        match elem.style.direction {
+                            Direction::Row => next_position.y += layout.height,
+                            Direction::Column => next_position.x += layout.width,
+                        }
                     }
                 }
-                Justify::SpaceBetween => {
-                    let mut next_position = content.min;
+                _ => todo!(),
+            }
 
-                    for child in children {
-                        let child_style = &self.elems[&child].style;
+            let mut abs_child_bounds = vec![];
+            for child in &children {
+                let child_style = &self.elems.get(child).unwrap().style;
 
-                        let bounds = self.compute_bounds(child);
-                        let layout = self.layouts.get_mut(&child).unwrap();
+                if let Position::Absolute(pos) = child_style.position {
+                    let bounds = self.compute_bounds(*child);
 
-                        match child_style.position {
-                            Position::Relative => {
-                                layout.position = next_position;
-                                layout.width =
-                                    u32::clamp(size_per_elem.x, bounds.min.x, bounds.max.x);
-                                layout.height =
-                                    u32::clamp(size_per_elem.y, bounds.min.y, bounds.max.y);
+                    let width = u32::clamp(self.size.x, bounds.min.x, bounds.max.x);
+                    let height = u32::clamp(self.size.y, bounds.min.y, bounds.max.y);
 
-                                match elem.style.direction {
-                                    Direction::Row => next_position.y += layout.height,
-                                    Direction::Column => next_position.x += layout.width,
-                                }
-                            }
-                            Position::Absolute(pos) => {
-                                // Give the absolute element as much space as it wants
-                                // as long as it doesn't overflow the viewport.
-                                layout.position = pos;
-                                layout.width = u32::min(self.size.x - pos.x, bounds.max.x);
-                                layout.height = u32::min(self.size.y - pos.y, bounds.max.y);
-                            }
-                        }
-
-                        self.layout_element(child);
-                    }
-
-                    let elem = self.elems.get(&key).unwrap().clone();
-                    let children = self.children.get(&key).unwrap();
-
-                    // The first element is spaced at `layout.position` and the
-                    // end of the last element at `next_position`.
-                    let allocated_space = next_position - content.min;
-
-                    match elem.style.direction {
-                        Direction::Row => {
-                            let total_size = content.height();
-
-                            // Distance/emtpy space between elements.
-                            let distance = (total_size - allocated_space.y)
-                                / relative_children.saturating_sub(1);
-
-                            let mut next_pos = content.min.y;
-
-                            for child in children {
-                                let style = &self.elems[child].style;
-                                if style.position.is_absolute() {
-                                    continue;
-                                }
-
-                                let layout = self.layouts.get_mut(child).unwrap();
-                                layout.position.y = next_pos;
-
-                                next_pos += layout.height;
-                                next_pos += distance;
-                            }
-                        }
-                        Direction::Column => {
-                            let total_size = content.height();
-
-                            let distance = (total_size - allocated_space.x)
-                                / relative_children.saturating_sub(1);
-
-                            let mut next_pos = content.min.x;
-
-                            for child in children {
-                                let style = &self.elems[child].style;
-                                if style.position.is_absolute() {
-                                    continue;
-                                }
-
-                                let layout = self.layouts.get_mut(child).unwrap();
-                                layout.position.x = next_pos;
-
-                                next_pos += layout.width;
-                                next_pos += distance;
-                            }
-                        }
-                    }
-
-                    for child in children.clone() {
-                        self.layout_element(child);
-                    }
-                }
-                Justify::SpaceAround => {
-                    let mut next_position = content.min;
-
-                    for child in children {
-                        let child_style = &self.elems[&child].style;
-
-                        let bounds = self.compute_bounds(child);
-                        let layout = self.layouts.get_mut(&child).unwrap();
-
-                        match child_style.position {
-                            Position::Relative => {
-                                layout.position = next_position;
-                                layout.width =
-                                    u32::clamp(size_per_elem.x, bounds.min.x, bounds.max.x);
-                                layout.height =
-                                    u32::clamp(size_per_elem.y, bounds.min.y, bounds.max.y);
-
-                                match elem.style.direction {
-                                    Direction::Row => next_position.y += layout.height,
-                                    Direction::Column => next_position.x += layout.width,
-                                }
-                            }
-                            Position::Absolute(pos) => {
-                                // Give the absolute element as much space as it wants
-                                // as long as it doesn't overflow the viewport.
-                                layout.position = pos;
-                                layout.width = u32::min(self.size.x - pos.x, bounds.max.x);
-                                layout.height = u32::min(self.size.y - pos.y, bounds.max.y);
-                            }
-                        }
-
-                        self.layout_element(child);
-                    }
-
-                    let elem = self.elems.get(&key).unwrap().clone();
-                    let children = self.children.get(&key).unwrap();
-
-                    // The first element is spaced at `layout.position` and the
-                    // end of the last element at `next_position`.
-                    let allocated_space = next_position - content.min;
-
-                    match elem.style.direction {
-                        Direction::Row => {
-                            let total_size = content.height();
-
-                            // Distance/emtpy space betweem elements and borders.
-                            // Note that overflows not possible as that would require
-                            // more that `isize::MAX` children to be allocated, which
-                            // is not allowed.
-                            let distance =
-                                (total_size - allocated_space.y) / (relative_children + 1);
-
-                            let mut next_pos = content.min.y + distance;
-
-                            for child in children.iter() {
-                                let style = &self.elems[child].style;
-                                if style.position.is_absolute() {
-                                    continue;
-                                }
-
-                                let layout = self.layouts.get_mut(child).unwrap();
-                                layout.position.y = next_pos;
-
-                                next_pos += layout.height;
-                                next_pos += distance;
-                            }
-                        }
-                        Direction::Column => {
-                            let total_size = content.width();
-
-                            let distance =
-                                (total_size - allocated_space.x) / (relative_children + 1);
-
-                            let mut next_pos = content.min.x + distance;
-
-                            for child in children {
-                                let style = &self.elems[child].style;
-                                if style.position.is_absolute() {
-                                    continue;
-                                }
-
-                                let layout = self.layouts.get_mut(child).unwrap();
-                                layout.position.x = next_pos;
-
-                                next_pos += layout.width;
-                                next_pos += distance;
-                            }
-                        }
-                    }
-
-                    for child in children.clone() {
-                        self.layout_element(child);
-                    }
+                    abs_child_bounds.push((child, pos, UVec2::new(width, height)));
                 }
             }
+
+            for (key, pos, bounds) in abs_child_bounds {
+                let layout = self.layouts.get_mut(key).unwrap();
+
+                layout.position = pos;
+                layout.width = bounds.x;
+                layout.height = bounds.y;
+            }
+
+            for child in children {
+                self.layout_element(child);
+            }
+
+            // match elem.style.justify {
+            //     Justify::Start => {
+            //         let mut next_position = content.min;
+
+            //         for child in children {
+            //             let child_style = &self.elems.get(&child).unwrap().style;
+
+            //             let bounds = self.compute_bounds(child);
+            //             let layout = self.layouts.get_mut(&child).unwrap();
+
+            //             match child_style.position {
+            //                 Position::Relative => {
+            //                     layout.position = next_position;
+            //                     layout.width =
+            //                         u32::clamp(size_per_elem.x, bounds.min.x, bounds.max.x);
+            //                     layout.height =
+            //                         u32::clamp(size_per_elem.y, bounds.min.y, bounds.max.y);
+
+            //                     match elem.style.direction {
+            //                         Direction::Row => next_position.y += layout.height,
+            //                         Direction::Column => next_position.x += layout.width,
+            //                     }
+            //                 }
+            //                 Position::Absolute(pos) => {
+            //                     layout.position = pos;
+            //                     layout.width = u32::min(self.size.x - pos.x, bounds.max.x);
+            //                     layout.height = u32::min(self.size.y - pos.y, bounds.max.y);
+            //                 }
+            //             }
+
+            //             self.layout_element(child);
+            //         }
+            //     }
+            //     Justify::End => {
+            //         let mut next_position = content.min
+            //             + match elem.style.direction {
+            //                 Direction::Row => UVec2::new(0, content.height()),
+            //                 Direction::Column => UVec2::new(content.width(), 0),
+            //             };
+
+            //         for child in children.iter().rev().copied() {
+            //             let child_style = &self.elems.get(&child).unwrap().style;
+
+            //             let bounds = self.compute_bounds(child);
+            //             let layout = self.layouts.get_mut(&child).unwrap();
+
+            //             match child_style.position {
+            //                 Position::Relative => {
+            //                     layout.position = next_position;
+            //                     layout.width =
+            //                         u32::clamp(size_per_elem.x, bounds.min.x, bounds.max.x);
+            //                     layout.height =
+            //                         u32::clamp(size_per_elem.y, bounds.min.y, bounds.max.y);
+
+            //                     match elem.style.direction {
+            //                         Direction::Row => next_position.y -= layout.height,
+            //                         Direction::Column => next_position.x -= layout.width,
+            //                     }
+            //                 }
+            //                 Position::Absolute(pos) => {
+            //                     // Give the absolute element as much space as it wants
+            //                     // as long as it doesn't overflow the viewport.
+            //                     layout.position = pos;
+            //                     layout.width = u32::min(self.size.x - pos.x, bounds.max.x);
+            //                     layout.height = u32::min(self.size.y - pos.y, bounds.max.y);
+            //                 }
+            //             }
+
+            //             self.layout_element(child);
+
+            //             // Note that we don't know the size of the element we're rendering
+            //             // before we actually render it.
+            //             // Because of that we start rendering the end of the allocated space
+            //             // and then move it back the by size that it rendered.
+            //             let layout = self.layouts.get_mut(&child).unwrap();
+            //             match elem.style.direction {
+            //                 Direction::Row => {
+            //                     layout.position.y -= layout.height;
+            //                 }
+            //                 Direction::Column => {
+            //                     layout.position.x -= layout.width;
+            //                 }
+            //             }
+
+            //             self.layout_element(child);
+            //         }
+            //     }
+            //     Justify::Center => {
+            //         let mut next_position = content.min;
+
+            //         for child in children {
+            //             let child_style = &self.elems.get(&child).unwrap().style;
+
+            //             let bounds = self.compute_bounds(child);
+            //             let layout = self.layouts.get_mut(&child).unwrap();
+
+            //             match child_style.position {
+            //                 Position::Relative => {
+            //                     layout.position = next_position;
+            //                     layout.width =
+            //                         u32::clamp(size_per_elem.x, bounds.min.x, bounds.max.x);
+            //                     layout.height =
+            //                         u32::clamp(size_per_elem.y, bounds.min.y, bounds.max.y);
+
+            //                     match elem.style.direction {
+            //                         Direction::Row => next_position.y += layout.height,
+            //                         Direction::Column => next_position.x += layout.width,
+            //                     }
+            //                 }
+            //                 Position::Absolute(pos) => {
+            //                     // Give the absolute element as much space as it wants
+            //                     // as long as it doesn't overflow the viewport.
+            //                     layout.position = pos;
+            //                     layout.width = u32::min(self.size.x - pos.x, bounds.max.x);
+            //                     layout.height = u32::min(self.size.y - pos.y, bounds.max.y);
+            //                 }
+            //             }
+
+            //             self.layout_element(child);
+            //         }
+
+            //         let elem = self.elems.get(&key).unwrap().clone();
+            //         let children = self.children.get(&key).unwrap();
+
+            //         // The first element is spaced at `layout.position` and the
+            //         // end of the last element at `next_position`.
+            //         let allocated_space = next_position - content.min;
+
+            //         match elem.style.direction {
+            //             Direction::Row => {
+            //                 let total_size = content.height();
+
+            //                 let mut next_pos =
+            //                     content.min.y + ((total_size - allocated_space.y) / 2);
+
+            //                 for child in children {
+            //                     let style = &self.elems[child].style;
+            //                     if style.position.is_absolute() {
+            //                         continue;
+            //                     }
+
+            //                     let layout = self.layouts.get_mut(child).unwrap();
+            //                     layout.position.y = next_pos;
+
+            //                     next_pos += layout.height;
+            //                 }
+            //             }
+            //             Direction::Column => {
+            //                 let total_size = content.width();
+            //                 let mut next_pos =
+            //                     content.min.x + ((total_size - allocated_space.x) / 2);
+
+            //                 for child in children {
+            //                     let style = &self.elems[child].style;
+            //                     if style.position.is_absolute() {
+            //                         continue;
+            //                     }
+
+            //                     let layout = self.layouts.get_mut(child).unwrap();
+            //                     layout.position.x = next_pos;
+
+            //                     next_pos += layout.width;
+            //                 }
+            //             }
+            //         }
+
+            //         for child in children.clone() {
+            //             self.layout_element(child);
+            //         }
+            //     }
+            //     Justify::SpaceBetween => {
+            //         let mut next_position = content.min;
+
+            //         for child in children {
+            //             let child_style = &self.elems[&child].style;
+
+            //             let bounds = self.compute_bounds(child);
+            //             let layout = self.layouts.get_mut(&child).unwrap();
+
+            //             match child_style.position {
+            //                 Position::Relative => {
+            //                     layout.position = next_position;
+            //                     layout.width =
+            //                         u32::clamp(size_per_elem.x, bounds.min.x, bounds.max.x);
+            //                     layout.height =
+            //                         u32::clamp(size_per_elem.y, bounds.min.y, bounds.max.y);
+
+            //                     match elem.style.direction {
+            //                         Direction::Row => next_position.y += layout.height,
+            //                         Direction::Column => next_position.x += layout.width,
+            //                     }
+            //                 }
+            //                 Position::Absolute(pos) => {
+            //                     // Give the absolute element as much space as it wants
+            //                     // as long as it doesn't overflow the viewport.
+            //                     layout.position = pos;
+            //                     layout.width = u32::min(self.size.x - pos.x, bounds.max.x);
+            //                     layout.height = u32::min(self.size.y - pos.y, bounds.max.y);
+            //                 }
+            //             }
+
+            //             self.layout_element(child);
+            //         }
+
+            //         let elem = self.elems.get(&key).unwrap().clone();
+            //         let children = self.children.get(&key).unwrap();
+
+            //         // The first element is spaced at `layout.position` and the
+            //         // end of the last element at `next_position`.
+            //         let allocated_space = next_position - content.min;
+
+            //         match elem.style.direction {
+            //             Direction::Row => {
+            //                 let total_size = content.height();
+
+            //                 // Distance/emtpy space between elements.
+            //                 let distance = (total_size - allocated_space.y)
+            //                     / relative_children.saturating_sub(1);
+
+            //                 let mut next_pos = content.min.y;
+
+            //                 for child in children {
+            //                     let style = &self.elems[child].style;
+            //                     if style.position.is_absolute() {
+            //                         continue;
+            //                     }
+
+            //                     let layout = self.layouts.get_mut(child).unwrap();
+            //                     layout.position.y = next_pos;
+
+            //                     next_pos += layout.height;
+            //                     next_pos += distance;
+            //                 }
+            //             }
+            //             Direction::Column => {
+            //                 let total_size = content.height();
+
+            //                 let distance = (total_size - allocated_space.x)
+            //                     / relative_children.saturating_sub(1);
+
+            //                 let mut next_pos = content.min.x;
+
+            //                 for child in children {
+            //                     let style = &self.elems[child].style;
+            //                     if style.position.is_absolute() {
+            //                         continue;
+            //                     }
+
+            //                     let layout = self.layouts.get_mut(child).unwrap();
+            //                     layout.position.x = next_pos;
+
+            //                     next_pos += layout.width;
+            //                     next_pos += distance;
+            //                 }
+            //             }
+            //         }
+
+            //         for child in children.clone() {
+            //             self.layout_element(child);
+            //         }
+            //     }
+            //     Justify::SpaceAround => {
+            //         let mut next_position = content.min;
+
+            //         for child in children {
+            //             let child_style = &self.elems[&child].style;
+
+            //             let bounds = self.compute_bounds(child);
+            //             let layout = self.layouts.get_mut(&child).unwrap();
+
+            //             match child_style.position {
+            //                 Position::Relative => {
+            //                     layout.position = next_position;
+            //                     layout.width =
+            //                         u32::clamp(size_per_elem.x, bounds.min.x, bounds.max.x);
+            //                     layout.height =
+            //                         u32::clamp(size_per_elem.y, bounds.min.y, bounds.max.y);
+
+            //                     match elem.style.direction {
+            //                         Direction::Row => next_position.y += layout.height,
+            //                         Direction::Column => next_position.x += layout.width,
+            //                     }
+            //                 }
+            //                 Position::Absolute(pos) => {
+            //                     // Give the absolute element as much space as it wants
+            //                     // as long as it doesn't overflow the viewport.
+            //                     layout.position = pos;
+            //                     layout.width = u32::min(self.size.x - pos.x, bounds.max.x);
+            //                     layout.height = u32::min(self.size.y - pos.y, bounds.max.y);
+            //                 }
+            //             }
+
+            //             self.layout_element(child);
+            //         }
+
+            //         let elem = self.elems.get(&key).unwrap().clone();
+            //         let children = self.children.get(&key).unwrap();
+
+            //         // The first element is spaced at `layout.position` and the
+            //         // end of the last element at `next_position`.
+            //         let allocated_space = next_position - content.min;
+
+            //         match elem.style.direction {
+            //             Direction::Row => {
+            //                 let total_size = content.height();
+
+            //                 // Distance/emtpy space betweem elements and borders.
+            //                 // Note that overflows not possible as that would require
+            //                 // more that `isize::MAX` children to be allocated, which
+            //                 // is not allowed.
+            //                 let distance =
+            //                     (total_size - allocated_space.y) / (relative_children + 1);
+
+            //                 let mut next_pos = content.min.y + distance;
+
+            //                 for child in children.iter() {
+            //                     let style = &self.elems[child].style;
+            //                     if style.position.is_absolute() {
+            //                         continue;
+            //                     }
+
+            //                     let layout = self.layouts.get_mut(child).unwrap();
+            //                     layout.position.y = next_pos;
+
+            //                     next_pos += layout.height;
+            //                     next_pos += distance;
+            //                 }
+            //             }
+            //             Direction::Column => {
+            //                 let total_size = content.width();
+
+            //                 let distance =
+            //                     (total_size - allocated_space.x) / (relative_children + 1);
+
+            //                 let mut next_pos = content.min.x + distance;
+
+            //                 for child in children {
+            //                     let style = &self.elems[child].style;
+            //                     if style.position.is_absolute() {
+            //                         continue;
+            //                     }
+
+            //                     let layout = self.layouts.get_mut(child).unwrap();
+            //                     layout.position.x = next_pos;
+
+            //                     next_pos += layout.width;
+            //                     next_pos += distance;
+            //                 }
+            //             }
+            //         }
+
+            //         for child in children.clone() {
+            //             self.layout_element(child);
+            //         }
+            //     }
+            // }
         }
     }
 
