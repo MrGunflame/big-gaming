@@ -431,8 +431,12 @@ impl LayoutTree {
 
                     let mut next_position = content.min
                         + match elem.style.direction {
-                            Direction::Row => UVec2::new(0, (content.height() - offset) / 2),
-                            Direction::Column => UVec2::new((content.width() - offset) / 2, 0),
+                            Direction::Row => {
+                                UVec2::new(0, content.height().saturating_sub(offset) / 2)
+                            }
+                            Direction::Column => {
+                                UVec2::new(content.width().saturating_sub(offset) / 2, 0)
+                            }
                         };
 
                     for (key, bounds) in child_bounds {
@@ -461,8 +465,12 @@ impl LayoutTree {
                         }
 
                         let pad_zone = match elem.style.direction {
-                            Direction::Row => (content.height() - offset) / (num_children - 1),
-                            Direction::Column => (content.width() - offset) / (num_children - 1),
+                            Direction::Row => {
+                                content.height().saturating_sub(offset) / (num_children - 1)
+                            }
+                            Direction::Column => {
+                                content.width().saturating_sub(offset) / (num_children - 1)
+                            }
                         };
 
                         let mut next_position = content.min;
@@ -500,8 +508,12 @@ impl LayoutTree {
                         }
 
                         let pad_zone = match elem.style.direction {
-                            Direction::Row => (content.height() - offset) / (num_children + 1),
-                            Direction::Column => (content.width() - offset) / (num_children + 1),
+                            Direction::Row => {
+                                content.height().saturating_sub(offset) / (num_children + 1)
+                            }
+                            Direction::Column => {
+                                content.width().saturating_sub(offset) / (num_children + 1)
+                            }
                         };
 
                         let mut next_position = content.min;
