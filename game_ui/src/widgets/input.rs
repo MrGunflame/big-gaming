@@ -65,8 +65,6 @@ impl Widget for Input {
                         let focus = focus.clone();
 
                         move |ctx| {
-                            dbg!(ctx.event);
-
                             if !focus.get_untracked() {
                                 return;
                             }
@@ -96,8 +94,6 @@ impl Widget for Input {
                         let focus = focus.clone();
 
                         move |ctx| {
-                            dbg!(ctx.event);
-
                             if !focus.get_untracked() {
                                 return;
                             }
@@ -161,15 +157,16 @@ impl Widget for Input {
             });
         }
 
-        let text = cx.append(Text::new().text("x"));
+        let text = root.append(Text::new().text(""));
         let id = Mutex::new(text.id().unwrap());
+        let r2 = root.clone();
         create_effect(cx, move || {
             let value = value.get();
 
             let mut id = id.lock();
 
             text.remove(*id);
-            let cx = text.append(Text::new().text(value.to_string()));
+            let cx = r2.append(Text::new().text(value.to_string()));
             *id = cx.id().unwrap();
         });
 
