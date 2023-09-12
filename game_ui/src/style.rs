@@ -108,6 +108,24 @@ pub struct Bounds {
 }
 
 impl Bounds {
+    /// Creates a new `Bounds` with the given `min` value and an unbounded `max` value.
+    #[inline]
+    pub const fn from_min(min: SizeVec2) -> Self {
+        Self {
+            min,
+            max: SizeVec2::splat(Size::INFINITY),
+        }
+    }
+
+    #[inline]
+    pub const fn from_max(max: SizeVec2) -> Self {
+        Self {
+            min: SizeVec2::splat(Size::Pixels(0)),
+            max,
+        }
+    }
+
+    #[inline]
     pub const fn exact(size: SizeVec2) -> Self {
         Self {
             min: size,
