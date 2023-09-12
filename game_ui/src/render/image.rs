@@ -17,6 +17,20 @@ pub struct Image {
     pub image: ImageBuffer<Rgba<u8>, Vec<u8>>,
 }
 
+impl Image {
+    pub(super) fn bounds(&self, style: &ComputedStyle) -> ComputedBounds {
+        let width = style.padding.left + style.padding.right;
+        let height = style.padding.top + style.padding.bottom;
+
+        let size = UVec2::new(self.image.width() + width, self.image.height() + height);
+
+        ComputedBounds {
+            min: size,
+            max: size,
+        }
+    }
+}
+
 impl BuildPrimitiveElement for Image {
     fn build(
         &self,
@@ -49,18 +63,6 @@ impl BuildPrimitiveElement for Image {
             &img,
             style.style.color.to_f32(),
         ))
-    }
-
-    fn bounds(&self, style: &ComputedStyle) -> ComputedBounds {
-        let width = style.padding.left + style.padding.right;
-        let height = style.padding.top + style.padding.bottom;
-
-        let size = UVec2::new(self.image.width() + width, self.image.height() + height);
-
-        ComputedBounds {
-            min: size,
-            max: size,
-        }
     }
 }
 

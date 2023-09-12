@@ -25,6 +25,11 @@ impl Text {
             size,
         }
     }
+
+    pub(super) fn bounds(&self, style: &ComputedStyle) -> ComputedBounds {
+        let image = render_to_texture(&self.text, self.size, UVec2::splat(0));
+        Image { image }.bounds(style)
+    }
 }
 
 impl BuildPrimitiveElement for Text {
@@ -40,11 +45,6 @@ impl BuildPrimitiveElement for Text {
         let image = render_to_texture(&self.text, self.size, layout.max - layout.min);
 
         Image { image }.build(style, layout, pipeline, device, queue, size)
-    }
-
-    fn bounds(&self, style: &ComputedStyle) -> ComputedBounds {
-        let image = render_to_texture(&self.text, self.size, UVec2::splat(0));
-        Image { image }.bounds(style)
     }
 }
 

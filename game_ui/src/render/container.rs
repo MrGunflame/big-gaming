@@ -1,7 +1,7 @@
 use glam::UVec2;
 use image::ImageBuffer;
 
-use super::computed_style::{ComputedBounds, ComputedStyle};
+use super::computed_style::ComputedStyle;
 use super::debug::is_debug_render_enabled;
 use super::{BuildPrimitiveElement, Image};
 
@@ -28,11 +28,5 @@ impl BuildPrimitiveElement for Container {
         } else {
             None
         }
-    }
-
-    fn bounds(&self, style: &ComputedStyle) -> ComputedBounds {
-        // FIXME: This is actually computed in LayoutTree, but this
-        // is not good.
-        unreachable!();
     }
 }

@@ -47,14 +47,6 @@ impl BuildPrimitiveElement for Element {
             ElementBody::Text(elem) => elem.build(style, layout, pipeline, device, queue, size),
         }
     }
-
-    fn bounds(&self, style: &ComputedStyle) -> ComputedBounds {
-        match &self.body {
-            ElementBody::Container => ComputedBounds::default(),
-            ElementBody::Image(elem) => elem.bounds(style),
-            ElementBody::Text(elem) => elem.bounds(style),
-        }
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -693,10 +685,10 @@ fn size_per_element(space: UVec2, num_elems: u32, direction: Direction) -> UVec2
 mod tests {
 
     use glam::UVec2;
+    use image::ImageBuffer;
 
-    use crate::render::computed_style::ComputedStyle;
     use crate::render::layout::ComputedBounds;
-    use crate::render::{BuildPrimitiveElement, Text};
+    use crate::render::{Image, Text};
     use crate::style::{
         Bounds, Direction, Growth, Justify, Padding, Position, Size, SizeVec2, Style,
     };
@@ -736,7 +728,9 @@ mod tests {
 
         let elem = Element {
             style: style.clone(),
-            body: ElementBody::Text(Text::new("test", 100.0)),
+            body: ElementBody::Image(Image {
+                image: ImageBuffer::new(128, 128),
+            }),
         };
 
         let key0 = tree.push(None, elem.clone());
@@ -747,15 +741,13 @@ mod tests {
         let layout0 = &tree.layouts[&key0];
         let layout1 = &tree.layouts[&key1];
 
-        let style = ComputedStyle::new(style, UVec2::splat(1000));
-
         assert_eq!(layout0.position, UVec2::splat(0));
-        assert_eq!(layout0.width, elem.bounds(&style).min.x);
-        assert_eq!(layout0.height, elem.bounds(&style).min.y);
+        assert_eq!(layout0.width, 128);
+        assert_eq!(layout0.height, 128);
 
         assert_eq!(layout1.position, UVec2::new(0, layout0.height));
-        assert_eq!(layout1.width, elem.bounds(&style).min.x);
-        assert_eq!(layout1.height, elem.bounds(&style).min.y);
+        assert_eq!(layout1.width, 128);
+        assert_eq!(layout1.height, 128);
     }
 
     #[test]
@@ -825,19 +817,19 @@ mod tests {
         let key = tree.push(None, root);
 
         let elem = Element {
-            body: ElementBody::Text(Text::new("test", 100.0)),
+            body: ElementBody::Image(Image {
+                image: ImageBuffer::new(128, 128),
+            }),
             style: Style::default(),
         };
         tree.push(Some(key), elem.clone());
 
         let bounds = tree.compute_bounds(key);
 
-        let style = ComputedStyle::new(style, UVec2::splat(1000));
-
         assert_eq!(
             bounds,
             ComputedBounds {
-                min: elem.bounds(&style).min,
+                min: UVec2::splat(128),
                 max: UVec2::splat(u32::MAX),
             }
         );
@@ -860,20 +852,20 @@ mod tests {
         let key = tree.push(None, root);
 
         let elem = Element {
-            body: ElementBody::Text(Text::new("test", 100.0)),
+            body: ElementBody::Image(Image {
+                image: ImageBuffer::new(128, 128),
+            }),
             style: Style::default(),
         };
         tree.push(Some(key), elem.clone());
 
         let bounds = tree.compute_bounds(key);
 
-        let style = ComputedStyle::new(style, UVec2::splat(1000));
-
         assert_eq!(
             bounds,
             ComputedBounds {
-                min: elem.bounds(&style).min,
-                max: elem.bounds(&style).max,
+                min: UVec2::splat(128),
+                max: UVec2::splat(128),
             }
         );
     }
