@@ -35,6 +35,10 @@ thiserror = "1.0.40"
 game_common = { version = "0.1.0", path = "../game_common" }
 criterion = "0.4"
 
+[[test]]
+name = "laout_table"
+path = "tests/layout/table.rs"
+
 [[bench]]
 name = "layout_flat"
 path = "benches/layout.rs"
