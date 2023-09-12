@@ -74,7 +74,7 @@ pub struct LayoutTree {
     // inserted after their parents to be render after the parent
     // was rendered.
     elems: BTreeMap<Key, Element>,
-    layouts: HashMap<Key, Layout>,
+    pub layouts: HashMap<Key, Layout>,
     size: UVec2,
     changed: bool,
 
