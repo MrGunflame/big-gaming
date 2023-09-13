@@ -36,8 +36,12 @@ game_common = { version = "0.1.0", path = "../game_common" }
 criterion = "0.4"
 
 [[test]]
-name = "laout_table"
+name = "layout_table"
 path = "tests/layout/table.rs"
+
+[[test]]
+name = "layout_table_interleaved"
+path = "tests/layout/table_interleaved.rs"
 
 [[bench]]
 name = "layout_flat"
