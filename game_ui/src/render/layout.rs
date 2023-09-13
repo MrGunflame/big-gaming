@@ -559,6 +559,14 @@ impl LayoutTree {
             }
 
             for child in children {
+                if cfg!(debug_assertions) {
+                    let layout = &self.layouts[&child];
+                    let bounds = layout.style.bounds;
+
+                    assert!(layout.width >= bounds.min.x && layout.width <= bounds.max.x);
+                    assert!(layout.height >= bounds.min.y && layout.height <= bounds.max.y);
+                }
+
                 self.layout_element(child);
             }
         }
