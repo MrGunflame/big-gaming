@@ -67,7 +67,7 @@ fn test_table() {
     tree.compute_layout();
 
     for (index, table) in tables.iter().enumerate() {
-        let layout = &tree.layouts[table];
+        let layout = tree.layout(*table).unwrap();
 
         let offset = (index * NUM_ENTRIES) as u32 * ENTRY_SIZE;
         assert_eq!(layout.position, UVec2::new(0, offset));
@@ -75,7 +75,7 @@ fn test_table() {
 
     for (table_index, cols) in columns.iter().enumerate() {
         for (col_index, column) in cols.iter().enumerate() {
-            let layout = &tree.layouts[column];
+            let layout = tree.layout(*column).unwrap();
 
             let offset_y = (table_index * NUM_ENTRIES) as u32 * ENTRY_SIZE;
             let offset_x = col_index as u32 * ENTRY_SIZE;
@@ -86,7 +86,7 @@ fn test_table() {
     for (table_index, table) in entries.iter().enumerate() {
         for (col_index, column) in table.iter().enumerate() {
             for (entry_index, entry) in column.iter().enumerate() {
-                let layout = &tree.layouts[entry];
+                let layout = tree.layout(*entry).unwrap();
 
                 let offset_y = ((table_index * NUM_ENTRIES) + entry_index) as u32 * ENTRY_SIZE;
                 let offset_x = col_index as u32 * ENTRY_SIZE;

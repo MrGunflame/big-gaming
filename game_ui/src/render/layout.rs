@@ -66,7 +66,7 @@ pub struct LayoutTree {
     // inserted after their parents to be render after the parent
     // was rendered.
     elems: BTreeMap<Key, Element>,
-    pub layouts: HashMap<Key, Layout>,
+    layouts: HashMap<Key, Layout>,
     size: UVec2,
     changed: bool,
 
@@ -607,6 +607,10 @@ impl LayoutTree {
             }
             None => None,
         }
+    }
+
+    pub fn layout(&self, key: Key) -> Option<&Layout> {
+        self.layouts.get(&key)
     }
 }
 
