@@ -209,6 +209,21 @@ impl Background {
     pub const TEAL: Self = Self::Color(Rgba([0x00, 0x80, 0x80, 0xFF]));
     pub const AQUA: Self = Self::Color(Rgba([0x00, 0xFF, 0xFF, 0xFF]));
 
+    #[inline]
+    pub const fn is_none(&self) -> bool {
+        matches!(self, Self::None)
+    }
+
+    #[inline]
+    pub const fn is_color(&self) -> bool {
+        matches!(self, Self::Color(_))
+    }
+
+    #[inline]
+    pub const fn is_image(&self) -> bool {
+        matches!(self, Self::Image(_))
+    }
+
     pub fn from_hex(s: &str) -> Result<Self, FromHexError> {
         Color::from_hex(s).map(|c| Self::Color(c.0))
     }

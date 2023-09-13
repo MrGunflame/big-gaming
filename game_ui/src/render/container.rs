@@ -20,7 +20,7 @@ impl BuildPrimitiveElement for Container {
         let width = layout.max.x - layout.min.x;
         let height = layout.max.y - layout.min.y;
 
-        if is_debug_render_enabled() {
+        if !style.style.background.is_none() || is_debug_render_enabled() {
             // `Image` will already render a debugging border around
             // the container.
             let image = ImageBuffer::new(width as u32, height as u32);
