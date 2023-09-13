@@ -1,5 +1,5 @@
 use criterion::{black_box, criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion};
-use game_ui::render::computed_style::ComputedStyle;
+use game_ui::layout::computed_style::ComputedStyle;
 use game_ui::render::image::apply_background;
 use game_ui::style::{Background, Padding, Size, Style};
 use glam::UVec2;

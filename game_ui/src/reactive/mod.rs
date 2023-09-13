@@ -6,7 +6,7 @@ use parking_lot::Mutex;
 use slotmap::{new_key_type, SlotMap};
 
 use crate::events::Events;
-use crate::render::layout::{Key, LayoutTree};
+use crate::layout::{Key, LayoutTree};
 use crate::style::Style;
 use crate::widgets::Widget;
 
@@ -385,8 +385,8 @@ pub enum Event {
 #[cfg(test)]
 mod tests {
     use crate::events::{ElementEventHandlers, Events};
+    use crate::layout::LayoutTree;
     use crate::reactive::Runtime;
-    use crate::render::layout::LayoutTree;
     use crate::render::{Element, ElementBody};
     use crate::style::Style;
 

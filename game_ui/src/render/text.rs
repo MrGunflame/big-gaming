@@ -2,9 +2,9 @@ use ab_glyph::{point, Font, FontRef, Glyph, Point, PxScale, ScaleFont};
 use glam::UVec2;
 use image::{ImageBuffer, Rgba, RgbaImage};
 
-use super::computed_style::{ComputedBounds, ComputedStyle};
 use super::image::Image;
 use super::BuildPrimitiveElement;
+use crate::layout::computed_style::{ComputedBounds, ComputedStyle};
 
 const DEFAULT_FONT: &[u8] = include_bytes!("../../../assets/fonts/OpenSans/OpenSans-Regular.ttf");
 
@@ -26,7 +26,7 @@ impl Text {
         }
     }
 
-    pub(super) fn bounds(&self, style: &ComputedStyle) -> ComputedBounds {
+    pub(crate) fn bounds(&self, style: &ComputedStyle) -> ComputedBounds {
         let image = render_to_texture(&self.text, self.size, UVec2::splat(0));
         Image { image }.bounds(style)
     }

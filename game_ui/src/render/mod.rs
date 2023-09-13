@@ -1,11 +1,8 @@
-pub mod computed_style;
-pub mod layout;
-
-mod container;
-mod debug;
+pub(crate) mod container;
+pub(crate) mod debug;
 pub mod image;
 pub mod remap;
-mod text;
+pub(crate) mod text;
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -31,12 +28,12 @@ use wgpu::{
     VertexStepMode,
 };
 
-use self::computed_style::ComputedStyle;
-use self::layout::LayoutTree;
+use crate::layout::computed_style::ComputedStyle;
+use crate::layout::LayoutTree;
 
 pub use self::image::Image;
-pub use self::layout::{Element, ElementBody};
 pub use self::text::Text;
+pub use crate::layout::{Element, ElementBody};
 
 const UI_SHADER: &str = include_str!("../../shaders/ui.wgsl");
 
@@ -133,7 +130,7 @@ impl RenderUiState {
 }
 
 #[derive(Debug)]
-struct PrimitiveElement {
+pub(crate) struct PrimitiveElement {
     /// Vertex buffer
     vertices: Buffer,
     /// Index buffer
@@ -143,7 +140,7 @@ struct PrimitiveElement {
 }
 
 impl PrimitiveElement {
-    fn new(
+    pub(crate) fn new(
         pipeline: &UiPipeline,
         device: &Device,
         queue: &Queue,
@@ -261,7 +258,7 @@ impl PrimitiveElement {
     }
 }
 
-trait BuildPrimitiveElement {
+pub(crate) trait BuildPrimitiveElement {
     fn build(
         &self,
         style: &ComputedStyle,
@@ -274,7 +271,7 @@ trait BuildPrimitiveElement {
 }
 
 #[derive(Debug)]
-struct UiPipeline {
+pub(crate) struct UiPipeline {
     bind_group_layout: BindGroupLayout,
     pipeline: RenderPipeline,
     sampler: Sampler,

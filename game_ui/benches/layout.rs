@@ -1,6 +1,6 @@
 use criterion::{black_box, criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion};
 
-use game_ui::render::layout::LayoutTree;
+use game_ui::layout::LayoutTree;
 use game_ui::render::{Element, ElementBody};
 use game_ui::style::Style;
 

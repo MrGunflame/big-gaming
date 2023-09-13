@@ -6,10 +6,10 @@ use image::{ImageBuffer, Rgba};
 
 use self::overlay::overlay_unchecked;
 
-use super::computed_style::{ComputedBorderRadius, ComputedBounds, ComputedStyle};
 use super::debug::{debug_border, debug_padding, is_debug_render_enabled};
 use super::remap::remap;
 use super::{BuildPrimitiveElement, PrimitiveElement, Rect};
+use crate::layout::computed_style::{ComputedBorderRadius, ComputedBounds, ComputedStyle};
 use crate::style::Background;
 
 #[derive(Clone, Debug)]
@@ -18,7 +18,7 @@ pub struct Image {
 }
 
 impl Image {
-    pub(super) fn bounds(&self, style: &ComputedStyle) -> ComputedBounds {
+    pub(crate) fn bounds(&self, style: &ComputedStyle) -> ComputedBounds {
         let width = style.padding.left + style.padding.right;
         let height = style.padding.top + style.padding.bottom;
 
@@ -248,7 +248,7 @@ mod tests {
     use glam::UVec2;
     use image::{GenericImageView, ImageBuffer, Pixel, Rgba};
 
-    use crate::render::computed_style::{ComputedBorderRadius, ComputedStyle};
+    use crate::layout::computed_style::{ComputedBorderRadius, ComputedStyle};
     use crate::style::{Background, Padding, Size, Style};
 
     use super::{apply_background, apply_border_radius};

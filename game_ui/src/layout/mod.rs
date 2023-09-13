@@ -1,12 +1,14 @@
+pub mod computed_style;
+
 use std::collections::{BTreeMap, HashMap};
 
 use glam::UVec2;
 
-use super::computed_style::{ComputedBounds, ComputedStyle};
-use super::container::Container;
-use super::image::Image;
-use super::text::Text;
-use super::{BuildPrimitiveElement, Rect};
+use self::computed_style::{ComputedBounds, ComputedStyle};
+use crate::render::container::Container;
+use crate::render::image::Image;
+use crate::render::text::Text;
+use crate::render::{BuildPrimitiveElement, PrimitiveElement, Rect, UiPipeline};
 use crate::style::{Direction, Justify, Position, Style};
 
 // Provide custom saturaing methods
@@ -35,12 +37,12 @@ impl BuildPrimitiveElement for Element {
     fn build(
         &self,
         style: &ComputedStyle,
-        layout: super::Rect,
-        pipeline: &super::UiPipeline,
+        layout: Rect,
+        pipeline: &UiPipeline,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         size: UVec2,
-    ) -> Option<super::PrimitiveElement> {
+    ) -> Option<PrimitiveElement> {
         match &self.body {
             ElementBody::Container => Container.build(style, layout, pipeline, device, queue, size),
             ElementBody::Image(elem) => elem.build(style, layout, pipeline, device, queue, size),
@@ -699,13 +701,12 @@ mod tests {
     use glam::UVec2;
     use image::ImageBuffer;
 
-    use crate::render::layout::ComputedBounds;
     use crate::render::{Image, Text};
     use crate::style::{
         Bounds, Direction, Growth, Justify, Padding, Position, Size, SizeVec2, Style,
     };
 
-    use super::{size_per_element, Element, ElementBody, Key, LayoutTree};
+    use super::{size_per_element, ComputedBounds, Element, ElementBody, Key, LayoutTree};
 
     #[test]
     fn size_per_element_row() {

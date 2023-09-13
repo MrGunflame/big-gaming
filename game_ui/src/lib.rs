@@ -12,6 +12,7 @@ use std::sync::{mpsc, Arc};
 use criterion as _;
 
 pub mod events;
+pub mod layout;
 pub mod reactive;
 pub mod render;
 pub mod style;

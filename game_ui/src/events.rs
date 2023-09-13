@@ -10,7 +10,7 @@ use game_window::events::{CursorMoved, ReceivedCharacter};
 use game_window::windows::WindowId;
 use glam::{UVec2, Vec2};
 
-use crate::render::layout::{Key, LayoutTree};
+use crate::layout::{Key, LayoutTree};
 use crate::render::Rect;
 
 #[derive(Clone, Debug)]

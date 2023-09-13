@@ -256,8 +256,8 @@ mod tests {
     use parking_lot::Mutex;
 
     use crate::events::Events;
+    use crate::layout::LayoutTree;
     use crate::reactive::{create_effect, Document, Runtime};
-    use crate::render::layout::LayoutTree;
 
     use super::create_signal;
 

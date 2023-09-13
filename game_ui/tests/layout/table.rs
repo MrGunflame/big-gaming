@@ -1,4 +1,4 @@
-use game_ui::render::layout::LayoutTree;
+use game_ui::layout::LayoutTree;
 use game_ui::render::{Element, ElementBody};
 use game_ui::style::{Bounds, Direction, Size, SizeVec2, Style};
 use glam::UVec2;

@@ -3,7 +3,7 @@ use std::sync::OnceLock;
 
 use image::{ImageBuffer, Pixel, Rgba};
 
-use super::computed_style::ComputedPadding;
+use crate::layout::computed_style::ComputedPadding;
 
 static DEBUG_RENDER_ENABLED: OnceLock<bool> = OnceLock::new();
 
