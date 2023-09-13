@@ -230,8 +230,6 @@ impl LayoutTree {
 
             self.layout_element(*key);
         }
-
-        println!("{}", self.dump_debug());
     }
 
     /// Computes the bounds for the element.
@@ -266,7 +264,7 @@ impl LayoutTree {
                                 bounds.max.x = u32::max(bounds.max.x, max.x);
                             }
                             Direction::Column => {
-                                bounds.min.y = u32::min(bounds.min.y, min.y);
+                                bounds.min.y = u32::max(bounds.min.y, min.y);
                                 bounds.min.x = bounds.min.x.saturating_add(min.x);
 
                                 bounds.max.y = u32::max(bounds.max.y, max.y);
@@ -306,10 +304,12 @@ impl LayoutTree {
 
         // Clamp the actual bounds between the wanted bounds.
         let min_x = elem.style.bounds.min.x.to_pixels(self.size);
-        let max_x = elem.style.bounds.max.x.to_pixels(self.size);
         let min_y = elem.style.bounds.min.y.to_pixels(self.size);
+        let max_x = elem.style.bounds.max.x.to_pixels(self.size);
         let max_y = elem.style.bounds.max.y.to_pixels(self.size);
 
+        // The min bounds are the specified min bounds of the element, or the
+        // min bounds of the children.
         bounds.min.x = u32::max(bounds.min.x, min_x);
         bounds.min.y = u32::max(bounds.min.y, min_y);
 
@@ -938,6 +938,49 @@ mod tests {
 
         assert_eq!(bounds.min, UVec2::splat(10));
         assert_eq!(bounds.max, UVec2::splat(10));
+    }
+
+    #[test]
+    fn compute_bounds_nested_column() {
+        let mut tree = LayoutTree::new();
+        tree.resize(UVec2::splat(1000));
+
+        let root = tree.push(
+            None,
+            Element {
+                body: ElementBody::Container,
+                style: Style::default(),
+            },
+        );
+
+        for _ in 0..10 {
+            let wrapper = tree.push(
+                Some(root),
+                Element {
+                    body: ElementBody::Container,
+                    style: Style {
+                        direction: Direction::Column,
+                        ..Default::default()
+                    },
+                },
+            );
+
+            tree.push(
+                Some(wrapper),
+                Element {
+                    body: ElementBody::Container,
+                    style: Style {
+                        bounds: Bounds::exact(SizeVec2::splat(Size::Pixels(15))),
+                        ..Default::default()
+                    },
+                },
+            );
+        }
+
+        let bounds = tree.compute_bounds(root);
+
+        assert_eq!(bounds.min, UVec2::new(15, 15 * 10));
+        assert_eq!(bounds.max, UVec2::new(15, 15 * 10));
     }
 
     #[test]
