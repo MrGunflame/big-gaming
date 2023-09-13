@@ -32,8 +32,8 @@ impl LayoutTree {
 
         write!(
             buf,
-            "(pos={}:{}, w={}, h={})",
-            layout.position.x, layout.position.y, layout.width, layout.height
+            "(key={:?} pos={}:{}, w={}, h={})",
+            key, layout.position.x, layout.position.y, layout.width, layout.height
         )
         .unwrap();
 
