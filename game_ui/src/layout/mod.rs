@@ -1,4 +1,5 @@
 pub mod computed_style;
+pub mod debug_dump;
 
 use std::collections::{BTreeMap, HashMap};
 
@@ -229,6 +230,8 @@ impl LayoutTree {
 
             self.layout_element(*key);
         }
+
+        println!("{}", self.dump_debug());
     }
 
     /// Computes the bounds for the element.
