@@ -4,11 +4,11 @@ use game_ui::reactive::Scope;
 use game_ui::style::{Direction, Style};
 use game_ui::widgets::{Button, Callback, Container, Text, Widget};
 
-pub struct ToolBar {
+pub struct Header {
     pub buttons: Vec<ActionButton>,
 }
 
-impl Widget for ToolBar {
+impl Widget for Header {
     fn build(self, ctx: &Scope) -> Scope {
         let root = ctx.append(Container::new().style(Style {
             direction: Direction::Column,

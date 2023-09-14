@@ -3,7 +3,7 @@ use game_ui::style::{Background, BorderRadius, Bounds, Size, SizeVec2, Style};
 use game_ui::widgets::{Callback, Container, Widget};
 
 use crate::state::EditorState;
-use crate::widgets::tool_bar::*;
+use crate::widgets::header::{ActionButton, Header};
 use crate::windows::SpawnWindow;
 
 pub struct MainWindow {
@@ -45,7 +45,7 @@ impl Widget for MainWindow {
             },
         ];
 
-        let root = cx.append(ToolBar { buttons });
+        cx.append(Header { buttons });
 
         let style = Style {
             background: Background::AQUA,
