@@ -1,65 +1,47 @@
 use std::fmt::{self, Debug, Formatter};
-use std::panic::Location;
 use std::sync::Arc;
 
-use slotmap::{new_key_type, DefaultKey};
+use slotmap::new_key_type;
 
-use super::{NodeId, Scope};
+use super::Scope;
 
-#[track_caller]
-pub fn create_effect<F>(cx: &Scope, f: F)
-where
-    F: Fn() + Send + Sync + 'static,
-{
-    let effect = Effect {
-        node: cx.id(),
-        f: Arc::new(f),
-        signals: vec![],
-        first_run: true,
-        #[cfg(debug_assertions)]
-        location: Location::caller(),
-    };
+impl Scope {
+    pub fn create_effect<F>(&self, f: F)
+    where
+        F: Fn() + Send + Sync + 'static,
+    {
+        let effect = Effect {
+            f: Arc::new(f),
+            first_run: true,
+        };
 
-    let mut doc = cx.document.inner.lock();
-    let mut rt = cx.document.runtime.inner.lock();
+        let mut doc = self.document.inner.lock();
+        let mut rt = self.document.runtime.inner.lock();
 
-    let key = rt.effects.insert(effect);
-    doc.effects.insert(key);
+        let id = rt.effects.insert(effect);
 
-    tracing::trace!("creating Effect({:?}) at {}", key, Location::caller());
+        doc.effects.insert(id);
+        doc.effects_by_node.entry(self.id).or_default().push(id);
 
-    // Immediately queue the effect for execution.
-    rt.effect_queue.insert(key);
+        // Queue for immediate execution.
+        rt.queue.insert(id);
+    }
 }
 
 #[derive(Clone)]
-pub(super) struct Effect {
-    pub(super) node: Option<NodeId>,
-    pub(super) f: Arc<dyn Fn() + Send + Sync + 'static>,
-    pub(super) signals: Vec<DefaultKey>,
-    pub(super) first_run: bool,
-    #[cfg(debug_assertions)]
-    pub location: &'static Location<'static>,
-}
-
-new_key_type! {
-    pub struct EffectId;
+pub struct Effect {
+    pub f: Arc<dyn Fn() + Send + Sync + 'static>,
+    pub first_run: bool,
 }
 
 impl Debug for Effect {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let mut v = f.debug_struct("Effect");
-
-        v.field("node", &self.node)
-            .field("f", &Arc::as_ptr(&self.f))
-            .field("signals", &self.signals)
-            .field("first_run", &self.first_run);
-
-        #[cfg(debug_assertions)]
-        v.field("location", &self.location);
-
-        v.finish()
+        f.debug_struct("Effect").finish_non_exhaustive()
     }
+}
+
+new_key_type! {
+    pub struct EffectId;
 }
 
 #[cfg(test)]
@@ -70,10 +52,9 @@ mod tests {
 
     use crate::events::Events;
     use crate::layout::LayoutTree;
-    use crate::reactive::{create_signal, Document, Runtime};
+    use crate::reactive::{Document, Runtime};
 
     use super::super::tests::create_node;
-    use super::create_effect;
 
     #[test]
     fn effect_call_on_creation() {
@@ -85,7 +66,7 @@ mod tests {
 
         {
             let value = value.clone();
-            create_effect(&cx, move || {
+            cx.create_effect(move || {
                 *value.lock() += 1;
             });
         }
@@ -103,11 +84,11 @@ mod tests {
 
         let value = Arc::new(Mutex::new(0));
 
-        let (reader, writer) = create_signal(&cx, 0);
+        let (reader, writer) = cx.create_signal(0);
 
         {
             let value = value.clone();
-            create_effect(&cx, move || {
+            cx.create_effect(move || {
                 let val = reader.get();
                 *value.lock() = val;
             });
@@ -135,11 +116,11 @@ mod tests {
 
         let value = Arc::new(Mutex::new(0));
 
-        let (reader, writer) = create_signal(&cx, 0);
+        let (reader, writer) = cx.create_signal(0);
 
         {
             let value = value.clone();
-            create_effect(&cx, move || {
+            cx.create_effect(move || {
                 let val = reader.get_untracked();
                 *value.lock() = val;
             });
@@ -167,9 +148,9 @@ mod tests {
 
         let cx = cx.push(create_node());
 
-        let (reader, _) = create_signal(&cx, ());
+        let (reader, _) = cx.create_signal(());
 
-        create_effect(&cx, move || {
+        cx.create_effect(move || {
             let _ = reader.get();
             let _ = reader.get();
         });
@@ -181,7 +162,7 @@ mod tests {
             let inner = doc.runtime.inner.lock();
             assert_eq!(inner.effects.len(), 1);
 
-            let entry = inner.signal_effects.values().nth(0).unwrap();
+            let entry = inner.subscribers.values().nth(0).unwrap();
             assert_eq!(entry.len(), 1);
         }
     }
@@ -197,7 +178,7 @@ mod tests {
 
         let cx = cx.push(create_node());
 
-        create_effect(&cx, move || {});
+        cx.create_effect(move || {});
 
         doc.run_effects();
         doc.flush_node_queue(&mut tree, &mut events);
@@ -229,9 +210,9 @@ mod tests {
 
         let cx = cx.push(create_node());
 
-        let (reader, _) = create_signal(&cx, ());
+        let (reader, _) = cx.create_signal(());
 
-        create_effect(&cx, move || {
+        cx.create_effect(move || {
             let _ = reader.get();
         });
 
@@ -240,9 +221,9 @@ mod tests {
 
         {
             let inner = doc.runtime.inner.lock();
-            assert_eq!(inner.signal_effects.len(), 1);
+            assert_eq!(inner.subscribers.len(), 1);
 
-            let entry = inner.signal_effects.values().nth(0).unwrap();
+            let entry = inner.subscribers.values().nth(0).unwrap();
             assert_eq!(entry.len(), 1);
         }
 
@@ -253,7 +234,7 @@ mod tests {
 
         {
             let inner = doc.runtime.inner.lock();
-            assert_eq!(inner.signal_effects.len(), 0);
+            assert_eq!(inner.subscribers.len(), 0);
         }
     }
 
@@ -268,12 +249,12 @@ mod tests {
 
         let cx = cx.push(create_node());
 
-        let (reader, _) = create_signal(&cx, ());
+        let (reader, _) = cx.create_signal(());
 
         for _ in 0..2 {
             let reader = reader.clone();
 
-            create_effect(&cx, move || {
+            cx.create_effect(move || {
                 let _ = reader.get();
             });
         }
@@ -283,9 +264,9 @@ mod tests {
 
         {
             let inner = doc.runtime.inner.lock();
-            assert_eq!(inner.signal_effects.len(), 1);
+            assert_eq!(inner.subscribers.len(), 1);
 
-            let entry = inner.signal_effects.values().nth(0).unwrap();
+            let entry = inner.subscribers.values().nth(0).unwrap();
             assert_eq!(entry.len(), 2);
         }
 
@@ -296,7 +277,7 @@ mod tests {
 
         {
             let inner = doc.runtime.inner.lock();
-            assert_eq!(inner.signal_effects.len(), 0);
+            assert_eq!(inner.subscribers.len(), 0);
         }
     }
 }

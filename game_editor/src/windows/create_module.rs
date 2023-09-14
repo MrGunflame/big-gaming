@@ -1,7 +1,7 @@
 use game_common::module::{Dependency, Module, ModuleId, Version};
 use game_input::mouse::MouseButtonInput;
 use game_ui::events::Context;
-use game_ui::reactive::{create_signal, ReadSignal, Scope};
+use game_ui::reactive::{ReadSignal, Scope};
 use game_ui::style::{
     Background, BorderRadius, Bounds, Direction, Growth, Justify, Padding, Size, SizeVec2, Style,
 };
@@ -19,10 +19,10 @@ pub struct CreateModule {
 
 impl Widget for CreateModule {
     fn build(self, cx: &Scope) -> Scope {
-        let (id, set_id) = create_signal(cx, ModuleId::random());
-        let (name, set_name) = create_signal(cx, String::new());
-        let (version, set_version) = create_signal(cx, Version);
-        let (dependencies, set_dependencies) = create_signal(cx, Vec::new());
+        let (id, set_id) = cx.create_signal(ModuleId::random());
+        let (name, set_name) = cx.create_signal(String::new());
+        let (version, set_version) = cx.create_signal(Version);
+        let (dependencies, set_dependencies) = cx.create_signal(Vec::new());
 
         let style = Style {
             justify: Justify::SpaceBetween,

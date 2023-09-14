@@ -2,7 +2,7 @@ use image::{ImageBuffer, Rgba};
 use parking_lot::Mutex;
 
 use crate::events::{ElementEventHandlers, EventHandlers};
-use crate::reactive::{create_effect, create_signal, Node, Scope};
+use crate::reactive::{Node, Scope};
 use crate::render::{Element, ElementBody, Image};
 use crate::style::Style;
 
@@ -16,7 +16,7 @@ pub struct Checkbox {
 
 impl Widget for Checkbox {
     fn build(self, cx: &Scope) -> Scope {
-        let (state, set_state) = create_signal(cx, self.is_checked);
+        let (state, set_state) = cx.create_signal(self.is_checked);
 
         let root = cx.push(Node {
             element: Element {
@@ -38,7 +38,7 @@ impl Widget for Checkbox {
 
         let id = Mutex::new(None);
         let cx = root.clone();
-        create_effect(&root, move || {
+        root.create_effect(move || {
             let state = state.get();
 
             let mut id = id.lock();

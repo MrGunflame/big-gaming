@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use game_input::mouse::MouseButtonInput;
 use game_ui::events::Context;
-use game_ui::reactive::{create_effect, create_signal, Scope};
+use game_ui::reactive::Scope;
 use game_ui::style::{Growth, Style};
 use game_ui::widgets::{Button, Callback, Container, Text, Widget};
 use parking_lot::Mutex;
@@ -28,14 +28,14 @@ impl Widget for Modules {
         }));
 
         let reader = self.state.modules.signal(|| {
-            let (_, writer) = create_signal(cx, ());
+            let (_, writer) = cx.create_signal(());
             writer
         });
 
         let id = Mutex::new(None);
         {
             let state = self.state.clone();
-            create_effect(cx, move || {
+            cx.create_effect(move || {
                 let _ = reader.get();
 
                 let mut entries = Vec::new();

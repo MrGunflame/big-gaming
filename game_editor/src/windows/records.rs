@@ -2,7 +2,7 @@ use game_common::module::ModuleId;
 use game_data::record::{Record, RecordBody, RecordKind};
 use game_input::mouse::MouseButtonInput;
 use game_ui::events::Context;
-use game_ui::reactive::{create_effect, create_signal, ReadSignal, Scope, WriteSignal};
+use game_ui::reactive::{ReadSignal, Scope, WriteSignal};
 use game_ui::style::{Background, Direction, Growth, Style};
 use game_ui::widgets::{Button, Container, Text, Widget};
 use image::Rgba;
@@ -36,7 +36,7 @@ pub struct Records {
 
 impl Widget for Records {
     fn build(self, cx: &Scope) -> Scope {
-        let (cat, set_cat) = create_signal(cx, DEFAULT_CATEGORY);
+        let (cat, set_cat) = cx.create_signal(DEFAULT_CATEGORY);
 
         let root = cx.append(Container::new().style(Style {
             direction: Direction::Column,
@@ -70,7 +70,7 @@ impl Widget for Records {
         {
             let cat = cat.clone();
             let cx2 = cx.clone();
-            create_effect(cx, move || {
+            cx.create_effect(move || {
                 let cat = cat.get();
 
                 for (index, (category, id)) in cats.iter().enumerate() {
@@ -92,14 +92,14 @@ impl Widget for Records {
         }
 
         let reader = self.state.records.signal(|| {
-            let (_, writer) = create_signal(cx, ());
+            let (_, writer) = cx.create_signal(());
             writer
         });
 
         let cat_sig = cat;
         let rows = Mutex::new(vec![]);
         let state = self.state.clone();
-        create_effect(cx, move || {
+        cx.create_effect(move || {
             let _ = reader.get();
 
             let cat = cat_sig.get();

@@ -1,7 +1,7 @@
 //! Context-menu (right-click)
 
 use game_ui::events::{ElementEventHandlers, EventHandlers};
-use game_ui::reactive::{create_effect, create_signal, Node, Scope};
+use game_ui::reactive::{Node, Scope};
 
 use game_ui::render::{Element, ElementBody};
 use game_ui::style::{Position, Style};
@@ -15,14 +15,11 @@ pub struct ContextMenu {
 
 impl Widget for ContextMenu {
     fn build(self, cx: &Scope) -> Scope {
-        let (state, set_state) = create_signal(
-            cx,
-            State {
-                is_active: false,
-                menu_cx: None,
-                position: UVec2::ZERO,
-            },
-        );
+        let (state, set_state) = cx.create_signal(State {
+            is_active: false,
+            menu_cx: None,
+            position: UVec2::ZERO,
+        });
 
         let wrapper = cx.push(Node {
             element: Element {
@@ -50,7 +47,7 @@ impl Widget for ContextMenu {
         });
 
         let cx2 = cx.clone();
-        create_effect(cx, move || {
+        cx.create_effect(move || {
             let set_state = set_state.clone();
 
             state.with_mut(|state| match &state.menu_cx {

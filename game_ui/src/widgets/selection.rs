@@ -2,7 +2,7 @@ use parking_lot::Mutex;
 use winit::event::VirtualKeyCode;
 
 use crate::events::{ElementEventHandlers, EventHandlers};
-use crate::reactive::{create_effect, create_signal, Node, NodeId, Scope, WriteSignal};
+use crate::reactive::{Node, NodeId, Scope, WriteSignal};
 use crate::render::{Element, ElementBody, Text};
 use crate::style::{Background, Bounds, Size, SizeVec2, Style};
 
@@ -53,8 +53,8 @@ impl Widget for Selection {
     fn build(self, cx: &Scope) -> Scope {
         let num_options = self.options.len();
 
-        let (state, set_state) = create_signal(cx, false);
-        let (value, set_value) = create_signal(cx, Value::default());
+        let (state, set_state) = cx.create_signal(false);
+        let (value, set_value) = cx.create_signal(Value::default());
 
         let root = cx.push(Node {
             element: Element {
@@ -99,7 +99,7 @@ impl Widget for Selection {
 
         {
             let value = value.clone();
-            create_effect(&root, move || {
+            root.create_effect(move || {
                 let value = value.get();
 
                 match value {
@@ -145,7 +145,7 @@ impl Widget for Selection {
 
         let ids: Mutex<Vec<NodeId>> = Mutex::new(vec![]);
         let cx = root.clone();
-        create_effect(&root, move || {
+        root.create_effect(move || {
             let state = state.get();
 
             let mut ids = ids.lock();
@@ -187,7 +187,7 @@ impl Widget for Selection {
         });
 
         if let Some(cb) = self.on_change {
-            create_effect(&root, move || {
+            root.create_effect(move || {
                 let value = value.get();
 
                 if let Value::Option(index) = value {

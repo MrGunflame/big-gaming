@@ -8,8 +8,8 @@ use std::time::SystemTime;
 use chrono::{DateTime, Local};
 use game_input::mouse::MouseButtonInput;
 use game_ui::events::Context;
-use game_ui::reactive::{create_effect, create_signal, NodeId, ReadSignal, Scope, WriteSignal};
-use game_ui::render::layout::Key;
+use game_ui::layout::Key;
+use game_ui::reactive::{NodeId, ReadSignal, Scope, WriteSignal};
 use game_ui::style::{Background, Direction, Growth, Justify, Padding, Size, Style};
 use game_ui::widgets::{Button, Callback, Container, Text, Widget};
 use game_window::windows::WindowId;
@@ -35,7 +35,7 @@ impl Widget for Explorer {
     fn build(self, cx: &Scope) -> Scope {
         let dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/"));
 
-        let (path, set_path) = create_signal(cx, dir);
+        let (path, set_path) = cx.create_signal(dir);
 
         let root = cx.append(Container::new().style(Style {
             direction: Direction::Column,
@@ -43,7 +43,7 @@ impl Widget for Explorer {
             ..Default::default()
         }));
 
-        let (selected_entries, set_selected_entries) = create_signal::<Vec<Entry>>(cx, vec![]);
+        let (selected_entries, set_selected_entries) = cx.create_signal::<Vec<Entry>>(vec![]);
 
         // let side = view! { root,
         //     <Container style={Style { growth: Growth(None), ..Default::default() }}>
@@ -69,7 +69,7 @@ impl Widget for Explorer {
 
         let id = Mutex::new(None);
         let cx = upper.clone();
-        create_effect(&cx.clone(), move || {
+        cx.clone().create_effect(move || {
             let path = path.get();
 
             let entries = match scan(&path) {
@@ -104,7 +104,7 @@ impl Widget for Explorer {
             name_col.append(Text::new().text("Name"));
 
             let signals: Vec<(ReadSignal<_>, WriteSignal<_>)> = (0..entries.len())
-                .map(|_| create_signal(&cx, false))
+                .map(|_| cx.create_signal(false))
                 .collect();
 
             let mut rows: Vec<Vec<NodeId>> = (0..entries.len()).map(|_| vec![]).collect();
@@ -189,7 +189,7 @@ impl Widget for Explorer {
                 let row = rows.remove(0);
 
                 let cx2 = cx.clone();
-                create_effect(&cx, move || {
+                cx.create_effect(move || {
                     let selected = read.get();
 
                     let style = if selected {
@@ -400,7 +400,7 @@ impl Widget for Topbar {
         let text_cx = path_box.append(Text::new());
 
         let id = Mutex::new(text_cx.id().unwrap());
-        create_effect(&root, move || {
+        root.create_effect(move || {
             let text = self.path.get().to_string_lossy().to_string();
 
             let mut id = id.lock();

@@ -11,15 +11,14 @@ use crate::style::Style;
 use crate::widgets::Widget;
 
 use self::effect::{Effect, EffectId};
-use self::signal::{Signal, SignalId};
+use self::signal::SignalId;
 
 mod effect;
 mod node;
 mod signal;
 
-pub use effect::create_effect;
 pub use node::Node;
-pub use signal::{create_signal, ReadSignal, WriteSignal};
+pub use signal::{ReadSignal, WriteSignal};
 
 thread_local! {
     static ACTIVE_EFFECT: RefCell<ActiveEffect> = RefCell::new(ActiveEffect {
@@ -46,17 +45,6 @@ pub struct Scope {
 }
 
 impl Scope {
-    // pub fn child(&self, child: NodeId) -> Self {
-    //     let mut doc = self.document.inner.lock();
-    //     let parent = doc.parents.get(&child).copied().unwrap();
-
-    //     Self {
-    //         document: self.document.clone(),
-    //         id: Some(child),
-    //         parent,
-    //     }
-    // }
-
     pub fn append<T>(&self, widget: T) -> Scope
     where
         T: Widget,
@@ -71,13 +59,8 @@ impl Scope {
     pub fn push(&self, node: Node) -> Scope {
         let mut doc = self.document.inner.lock();
 
-        let id = doc.nodes.insert(());
-        doc.queue.push_back(Event::PushNode(id, node));
-
-        doc.parents.insert(id, self.id);
-        if let Some(parent) = self.id {
-            doc.children.entry(parent).or_default().push(id);
-        }
+        let id = doc.nodes.push(self.id);
+        doc.events.push_back(Event::CreateNode(id, node));
 
         Scope {
             document: self.document.clone(),
@@ -87,19 +70,18 @@ impl Scope {
 
     pub fn remove(&self, id: NodeId) {
         let mut doc = self.document.inner.lock();
-
-        doc.queue.push_back(Event::RemoveNode(id));
+        doc.events.push_back(Event::RemoveNode(id));
     }
 
     /// Update in place
     pub fn update(&self, id: NodeId, node: Node) {
         let mut doc = self.document.inner.lock();
-        doc.queue.push_back(Event::UpdateNode(id, node));
+        doc.events.push_back(Event::UpdateNode(id, node));
     }
 
     pub fn set_style(&self, id: NodeId, style: Style) {
         let mut doc = self.document.inner.lock();
-        doc.queue.push_back(Event::UpdateStyle(id, style));
+        doc.events.push_back(Event::UpdateStyle(id, style));
     }
 }
 
@@ -116,15 +98,14 @@ impl Runtime {
 
 #[derive(Debug, Default)]
 struct RuntimeInner {
-    // EffectId
     effects: SlotMap<EffectId, Effect>,
-    // SignalId
-    signals: SlotMap<SignalId, Signal>,
-    // Backlogged queued effects.
-    effect_queue: HashSet<EffectId>,
+    next_signal_id: u64,
 
-    // SignalId => vec![EffectId]
-    signal_effects: HashMap<SignalId, Vec<EffectId>>,
+    /// Effects scheduled for execution.
+    queue: HashSet<EffectId>,
+    /// What effects are subscribed to signals.
+    subscribers: HashMap<SignalId, Vec<EffectId>>,
+    subscribers_by_effect: HashMap<EffectId, Vec<SignalId>>,
 }
 
 // Note that `Document` has no `Default` impl to prevent accidental
@@ -137,20 +118,11 @@ pub struct Document {
 
 #[derive(Debug, Default)]
 struct DocumentInner {
-    // Effects in this document
+    nodes: NodeHierarchy,
+    events: VecDeque<Event>,
+
     effects: HashSet<EffectId>,
-
-    pub nodes: SlotMap<NodeId, ()>,
-    // parent => vec![child]
-    pub children: HashMap<NodeId, Vec<NodeId>>,
-    // child => parent, none if parent is root
-    pub parents: HashMap<NodeId, Option<NodeId>>,
-    // SignalId => NodeId
-    signal_targets: HashMap<SignalId, Option<NodeId>>,
-
-    queue: VecDeque<Event>,
-
-    node_mappings: HashMap<NodeId, Key>,
+    effects_by_node: HashMap<Option<NodeId>, Vec<EffectId>>,
 }
 
 impl Document {
@@ -159,25 +131,6 @@ impl Document {
             runtime,
             inner: Arc::default(),
         }
-    }
-
-    pub fn len(&self) -> usize {
-        let inner = self.inner.lock();
-
-        let len = inner.nodes.len();
-
-        // Extra assertions for cleanup tests.
-        if cfg!(debug_assertions) && len == 0 {
-            assert_eq!(inner.children.len(), 0);
-            assert_eq!(inner.parents.len(), 0);
-            assert_eq!(inner.node_mappings.len(), 0);
-        }
-
-        len
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
     }
 
     pub fn root_scope(&self) -> Scope {
@@ -196,7 +149,7 @@ impl Document {
 
         let mut rt = self.runtime.inner.lock();
 
-        let queue = rt.effect_queue.clone();
+        let queue = rt.queue.clone();
 
         for effect_id in queue {
             if !doc.effects.contains(&effect_id) {
@@ -240,10 +193,12 @@ impl Document {
 
                 rt = self.runtime.inner.lock();
                 for signal in stack {
-                    rt.signal_effects.entry(signal).or_default().push(effect_id);
+                    rt.subscribers.entry(signal).or_default().push(effect_id);
+                    rt.subscribers_by_effect
+                        .entry(effect_id)
+                        .or_default()
+                        .push(signal);
                 }
-
-                *rt.effects.get_mut(effect_id).unwrap() = effect;
             } else {
                 // `first_run` is set to `false` at the end of a first effect
                 // call.
@@ -254,7 +209,6 @@ impl Document {
                     });
                 }
 
-                let effect = effect.clone();
                 (effect.f)();
 
                 rt = self.runtime.inner.lock();
@@ -262,7 +216,7 @@ impl Document {
 
             doc = self.inner.lock();
 
-            rt.effect_queue.remove(&effect_id);
+            rt.queue.remove(&effect_id);
         }
     }
 
@@ -270,92 +224,57 @@ impl Document {
         let mut doc = self.inner.lock();
         let mut rt = self.runtime.inner.lock();
 
-        'out: while let Some(event) = doc.queue.pop_front() {
+        while let Some(event) = doc.events.pop_front() {
             match event {
-                Event::PushNode(id, node) => {
+                Event::CreateNode(id, node) => {
                     tracing::trace!("spawn node {:?} {:?}", id, node);
 
                     let parent = doc
-                        .parents
-                        .get(&id)
-                        .map(|p| p.map(|p| doc.node_mappings.get(&p).copied()))
-                        .flatten()
+                        .nodes
+                        .parent(id)
+                        .map(|parent| doc.nodes.get(parent))
                         .flatten();
 
                     let key = tree.push(parent, node.element);
 
-                    doc.node_mappings.insert(id, key);
+                    doc.nodes.set(id, key);
                     events.insert(key, node.events);
                 }
                 Event::RemoveNode(id) => {
                     tracing::trace!("despawn node {:?}", id);
 
-                    let mut delete_queue = vec![id];
+                    // Reborrow fields so we can move it to closure partially.
+                    let doc = &mut *doc;
+                    let nodes = &mut doc.nodes;
+                    let effects_by_node = &mut doc.effects_by_node;
+                    let effects = &mut doc.effects;
 
-                    let mut index = 0;
-                    while index < delete_queue.len() {
-                        let key = delete_queue[index];
-
-                        doc.nodes.remove(key);
-                        doc.parents.remove(&key);
-
-                        if let Some(children) = doc.children.remove(&key) {
-                            delete_queue.extend(children);
+                    nodes.remove(id, |node_id, key| {
+                        if let Some(key) = key {
+                            tree.remove(key);
+                            events.remove(key);
                         }
 
-                        index += 1;
-                    }
+                        if let Some(effect_ids) = effects_by_node.remove(&Some(node_id)) {
+                            for id in effect_ids {
+                                effects.remove(&id);
+                                rt.effects.remove(id);
 
-                    let mut delete_effects = vec![];
-
-                    for node_id in delete_queue {
-                        // Note that it is possible for the same node be queued for deletion
-                        // twice if the parent and the children have both been requested
-                        // for deletion manually in the same tick.
-                        let Some(key) = doc.node_mappings.remove(&node_id) else {
-                            continue 'out;
-                        };
-
-                        tree.remove(key);
-                        events.remove(key);
-
-                        // Remove effects registered on the node.
-                        rt.effects.retain(|effect_id, effect| match effect.node {
-                            Some(node) => {
-                                if node == node_id {
-                                    doc.effects.remove(&effect_id);
-                                    delete_effects.push(effect_id);
-                                    false
-                                } else {
-                                    true
+                                if let Some(signals) = rt.subscribers_by_effect.remove(&id) {
+                                    for signal in signals {
+                                        rt.subscribers.remove(&signal);
+                                    }
                                 }
                             }
-                            None => true,
-                        });
-                    }
-
-                    let mut delete_signals = vec![];
-
-                    for id in delete_effects {
-                        for (signal_id, effects) in rt.signal_effects.iter_mut() {
-                            effects.retain(|effect_id| *effect_id != id);
-
-                            if effects.len() == 0 {
-                                delete_signals.push(*signal_id);
-                            }
                         }
-                    }
-
-                    for id in delete_signals {
-                        rt.signal_effects.remove(&id);
-                    }
+                    });
                 }
                 Event::UpdateNode(id, node) => {
                     tracing::trace!("replace node {:?}", id);
 
-                    if let Some(key) = doc.node_mappings.get(&id) {
-                        tree.replace(*key, node.element);
-                        *events.get_mut(*key).unwrap() = node.events;
+                    if let Some(key) = doc.nodes.get(id) {
+                        tree.replace(key, node.element);
+                        *events.get_mut(key).unwrap() = node.events;
                     } else {
                         tracing::trace!("node {:?} does not exist", id);
                     }
@@ -363,8 +282,8 @@ impl Document {
                 Event::UpdateStyle(id, style) => {
                     tracing::trace!("update style {:?}", id);
 
-                    if let Some(key) = doc.node_mappings.get(&id) {
-                        tree.get_mut(*key).unwrap().style = style;
+                    if let Some(key) = doc.nodes.get(id) {
+                        tree.get_mut(key).unwrap().style = style;
                     } else {
                         tracing::warn!("node {:?} does not exist", id);
                     }
@@ -376,10 +295,72 @@ impl Document {
 
 #[derive(Debug)]
 pub enum Event {
-    PushNode(NodeId, Node),
+    CreateNode(NodeId, Node),
     UpdateNode(NodeId, Node),
     RemoveNode(NodeId),
     UpdateStyle(NodeId, Style),
+}
+
+#[derive(Clone, Debug, Default)]
+struct NodeHierarchy {
+    nodes: SlotMap<NodeId, Option<Key>>,
+    children: HashMap<NodeId, Vec<NodeId>>,
+    parents: HashMap<NodeId, NodeId>,
+}
+
+impl NodeHierarchy {
+    pub fn len(&self) -> usize {
+        self.nodes.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    pub fn push(&mut self, parent: Option<NodeId>) -> NodeId {
+        let key = self.nodes.insert(None);
+
+        if let Some(parent) = parent {
+            debug_assert!(self.nodes.contains_key(parent));
+
+            self.parents.insert(key, parent);
+            self.children.entry(parent).or_default().push(key);
+        }
+
+        key
+    }
+
+    pub fn remove<F: FnMut(NodeId, Option<Key>)>(&mut self, key: NodeId, mut op: F) {
+        let mut queue: VecDeque<_> = [key].into();
+
+        while let Some(key) = queue.pop_front() {
+            let k = self.nodes.remove(key).flatten();
+
+            op(key, k);
+
+            if let Some(parent) = self.parents.remove(&key) {
+                if let Some(children) = self.children.get_mut(&parent) {
+                    children.retain(|id| *id != key);
+                }
+            }
+
+            if let Some(children) = self.children.remove(&key) {
+                queue.extend(children);
+            }
+        }
+    }
+
+    pub fn get(&self, key: NodeId) -> Option<Key> {
+        self.nodes.get(key).copied().flatten()
+    }
+
+    pub fn set(&mut self, id: NodeId, key: Key) {
+        *self.nodes.get_mut(id).unwrap() = Some(key);
+    }
+
+    pub fn parent(&self, key: NodeId) -> Option<NodeId> {
+        self.parents.get(&key).copied()
+    }
 }
 
 #[cfg(test)]
@@ -421,7 +402,7 @@ mod tests {
         doc.run_effects();
         doc.flush_node_queue(&mut tree, &mut events);
 
-        assert!(doc.is_empty());
+        assert!(doc.inner.lock().nodes.is_empty());
         assert!(tree.is_empty());
         assert!(events.is_empty());
     }
@@ -450,7 +431,7 @@ mod tests {
         doc.run_effects();
         doc.flush_node_queue(&mut tree, &mut events);
 
-        assert!(doc.is_empty());
+        assert!(doc.inner.lock().nodes.is_empty());
         assert!(tree.is_empty());
         assert!(events.is_empty());
     }

@@ -11,7 +11,7 @@ use game_data::record::{Record, RecordBody, RecordKind};
 use game_data::uri::Uri;
 use game_input::mouse::MouseButtonInput;
 use game_ui::events::Context;
-use game_ui::reactive::{create_effect, create_signal, ReadSignal, Scope};
+use game_ui::reactive::{ReadSignal, Scope};
 use game_ui::style::{Background, Bounds, Direction, Justify, Padding, Size, SizeVec2, Style};
 use game_ui::widgets::{Button, Container, Input, ParseInput, Selection, Text, Widget};
 use parking_lot::Mutex;
@@ -88,7 +88,7 @@ fn render_record(
             None => ModuleId::CORE,
         };
 
-        create_signal(root, value)
+        root.create_signal(value)
     };
 
     let (name, set_name) = {
@@ -97,7 +97,7 @@ fn render_record(
             None => String::new(),
         };
 
-        create_signal(root, value)
+        root.create_signal(value)
     };
 
     let metadata = root.append(Container::new().style(Style {
@@ -285,7 +285,7 @@ fn render_item(cx: &Scope, item: Option<ItemRecord>) -> ItemFields {
             None => 0,
         };
 
-        create_signal(cx, value)
+        cx.create_signal(value)
     };
 
     let (mass, set_mass) = {
@@ -294,7 +294,7 @@ fn render_item(cx: &Scope, item: Option<ItemRecord>) -> ItemFields {
             None => Mass::default(),
         };
 
-        create_signal(cx, value)
+        cx.create_signal(value)
     };
 
     let (scene, set_scene) = {
@@ -303,7 +303,7 @@ fn render_item(cx: &Scope, item: Option<ItemRecord>) -> ItemFields {
             None => String::new(),
         };
 
-        create_signal(cx, value)
+        cx.create_signal(value)
     };
 
     let item = cx.append(Container::new().style(Style {
@@ -361,7 +361,7 @@ fn render_object(cx: &Scope, object: Option<ObjectRecord>) -> ObjectFields {
             None => String::new(),
         };
 
-        create_signal(cx, value)
+        cx.create_signal(value)
     };
 
     let root = cx.append(Container::new().style(Style {
@@ -394,7 +394,7 @@ fn render_object(cx: &Scope, object: Option<ObjectRecord>) -> ObjectFields {
 }
 
 fn render_script_section(cx: &Scope) -> ReadSignal<Vec<String>> {
-    let (scripts, set_scripts) = create_signal(cx, Vec::<String>::new());
+    let (scripts, set_scripts) = cx.create_signal(Vec::<String>::new());
 
     let root = cx.append(Container::new());
 
@@ -404,7 +404,7 @@ fn render_script_section(cx: &Scope) -> ReadSignal<Vec<String>> {
         let scripts = scripts.clone();
         let id = Mutex::new(None);
         let cx2 = cx.clone();
-        create_effect(cx, move || {
+        cx.create_effect(move || {
             let id = &mut *id.lock();
             if let Some(id) = id {
                 cx2.remove(*id);
@@ -421,7 +421,7 @@ fn render_script_section(cx: &Scope) -> ReadSignal<Vec<String>> {
         });
     }
 
-    let (new_script, set_new_script) = create_signal(cx, String::new());
+    let (new_script, set_new_script) = cx.create_signal(String::new());
 
     let on_click = move |_| {
         set_scripts.update(|v| {

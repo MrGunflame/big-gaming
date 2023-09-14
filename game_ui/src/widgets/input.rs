@@ -4,7 +4,7 @@ use parking_lot::Mutex;
 use winit::event::VirtualKeyCode;
 
 use crate::events::{ElementEventHandlers, EventHandlers};
-use crate::reactive::{create_effect, create_signal, Node, Scope};
+use crate::reactive::{Node, Scope};
 use crate::render::{Element, ElementBody};
 use crate::style::Style;
 
@@ -50,8 +50,8 @@ impl Input {
 
 impl Widget for Input {
     fn build(self, cx: &Scope) -> Scope {
-        let (value, set_value) = create_signal(cx, Buffer::new(self.value));
-        let (focus, set_focus) = create_signal(cx, false);
+        let (value, set_value) = cx.create_signal(Buffer::new(self.value));
+        let (focus, set_focus) = cx.create_signal(false);
 
         let root = cx.push(Node {
             element: Element {
@@ -148,7 +148,7 @@ impl Widget for Input {
 
         {
             let value = value.clone();
-            create_effect(cx, move || {
+            cx.create_effect(move || {
                 let buffer = value.get();
 
                 if let Some(cb) = &self.on_change {
@@ -160,7 +160,7 @@ impl Widget for Input {
         let text = root.append(Text::new().text(""));
         let id = Mutex::new(text.id().unwrap());
         let r2 = root.clone();
-        create_effect(cx, move || {
+        cx.create_effect(move || {
             let value = value.get();
 
             let mut id = id.lock();
