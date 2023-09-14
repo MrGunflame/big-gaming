@@ -39,16 +39,12 @@ impl Widget for Entries {
         let root = cx.append(
             ContextMenu::new()
                 .style(Style {
+                    direction: Direction::Column,
                     growth: Growth::splat(1.0),
                     ..Default::default()
                 })
                 .spawn_menu(spawn_root_menu(&callbacks)),
         );
-
-        let root = root.append(Container::new().style(Style {
-            direction: Direction::Column,
-            ..Default::default()
-        }));
 
         let mut cols = Vec::with_capacity(self.data.keys.len());
 
