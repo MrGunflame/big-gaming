@@ -1,24 +1,28 @@
 //! An immutable view of a scene.
 
 use bitflags::bitflags;
-use game_asset::*;
 use game_common::components::transform::Transform;
 use game_input::mouse::{MouseButton, MouseMotion, MouseWheel};
 use game_input::ButtonState;
 use game_render::camera::{Camera, RenderTarget};
 use game_render::color::Color;
-use game_render::entities::{CameraId, Object};
+use game_render::entities::{CameraId, Object, ObjectId};
 use game_render::light::PointLight;
 use game_render::pbr::PbrMaterial;
 use game_render::{shape, Renderer};
-use game_scene::*;
 use game_window::events::{VirtualKeyCode, WindowEvent};
 use game_window::windows::WindowId;
-use glam::{Quat, Vec3};
+use glam::{Quat, Vec2, Vec3};
+
+use crate::world::selection;
 
 pub struct WorldWindowState {
+    entities: Vec<ObjectId>,
     camera: CameraId,
     camera_controller: CameraController,
+    selection: Vec<ObjectId>,
+    // TODO: Use `Cursor` instead of adding our own thing.
+    cursor: Vec2,
 }
 
 impl WorldWindowState {
@@ -32,7 +36,9 @@ impl WorldWindowState {
             },
         });
 
-        renderer.entities.objects().insert(Object {
+        let mut entities = Vec::new();
+
+        let id = renderer.entities.objects().insert(Object {
             transform: Transform::default(),
             material: renderer.materials.insert(PbrMaterial {
                 base_color: Color::WHITE,
@@ -40,6 +46,7 @@ impl WorldWindowState {
             }),
             mesh: renderer.meshes.insert(shape::Plane { size: 100.0 }.into()),
         });
+        entities.push(id);
 
         renderer.entities.point_lights().insert(PointLight {
             transform: Transform {
@@ -54,10 +61,13 @@ impl WorldWindowState {
         Self {
             camera,
             camera_controller: CameraController::default(),
+            entities,
+            selection: vec![],
+            cursor: Vec2::ZERO,
         }
     }
 
-    pub fn handle_event(&mut self, renderer: &mut Renderer, event: WindowEvent) {
+    pub fn handle_event(&mut self, renderer: &mut Renderer, event: WindowEvent, window: WindowId) {
         let camera = renderer.entities.cameras().get_mut(self.camera).unwrap();
 
         match event {
@@ -71,6 +81,9 @@ impl WorldWindowState {
                 // Reset the mode when the cursor leaves the window.
                 self.camera_controller.mode = Mode::NONE;
             }
+            WindowEvent::CursorMoved(event) => {
+                self.cursor = event.position;
+            }
             WindowEvent::KeyboardInput(event) => {
                 if event.key_code == Some(VirtualKeyCode::LShift) {
                     match event.state {
@@ -79,15 +92,41 @@ impl WorldWindowState {
                     }
                 }
             }
-            WindowEvent::MouseButtonInput(event) => {
-                if event.button == MouseButton::Middle {
-                    match event.state {
-                        ButtonState::Pressed => self.camera_controller.mode |= Mode::MIDDLE,
-                        ButtonState::Released => self.camera_controller.mode &= !Mode::MIDDLE,
-                    }
+            WindowEvent::MouseButtonInput(event) => match event.button {
+                MouseButton::Left => {
+                    self.update_selection(renderer, window);
+                }
+                MouseButton::Middle => match event.state {
+                    ButtonState::Pressed => self.camera_controller.mode |= Mode::MIDDLE,
+                    ButtonState::Released => self.camera_controller.mode &= !Mode::MIDDLE,
+                },
+                _ => (),
+            },
+            _ => todo!(),
+        }
+    }
+
+    fn update_selection(&mut self, renderer: &mut Renderer, id: WindowId) {
+        let camera = renderer
+            .entities
+            .cameras()
+            .get_mut(self.camera)
+            .unwrap()
+            .clone();
+        let surface = renderer.surfaces.get(id).unwrap();
+        let viewport_size = Vec2::new(surface.config.width as f32, surface.config.height as f32);
+
+        for id in &self.entities {
+            let object = renderer.entities.objects().get(*id).unwrap();
+            let mesh = renderer.meshes.get(object.mesh.id()).unwrap();
+
+            if let Some(aabb) = mesh.compute_aabb() {
+                let ray = camera.viewport_to_world(camera.transform, viewport_size, self.cursor);
+
+                if selection::hit_test(ray, aabb) {
+                    self.selection.push(*id);
                 }
             }
-            _ => todo!(),
         }
     }
 }

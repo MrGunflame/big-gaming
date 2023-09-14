@@ -178,29 +178,55 @@ impl game_window::App for App {
             WindowEvent::MouseMotion(event) => {
                 if let Some(window_id) = self.cursor.window() {
                     if let Some(window) = self.active_windows.get_mut(&window_id) {
-                        window.handle_event(&mut self.renderer, WindowEvent::MouseMotion(event));
+                        window.handle_event(
+                            &mut self.renderer,
+                            WindowEvent::MouseMotion(event),
+                            window_id,
+                        );
                     }
                 }
             }
             WindowEvent::KeyboardInput(event) => {
                 if let Some(window_id) = self.cursor.window() {
                     if let Some(window) = self.active_windows.get_mut(&window_id) {
-                        window.handle_event(&mut self.renderer, WindowEvent::KeyboardInput(event));
+                        window.handle_event(
+                            &mut self.renderer,
+                            WindowEvent::KeyboardInput(event),
+                            window_id,
+                        );
                     }
                 }
             }
             WindowEvent::MouseWheel(event) => {
                 if let Some(window_id) = self.cursor.window() {
                     if let Some(window) = self.active_windows.get_mut(&window_id) {
-                        window.handle_event(&mut self.renderer, WindowEvent::MouseWheel(event));
+                        window.handle_event(
+                            &mut self.renderer,
+                            WindowEvent::MouseWheel(event),
+                            window_id,
+                        );
                     }
                 }
             }
             WindowEvent::MouseButtonInput(event) => {
                 if let Some(window_id) = self.cursor.window() {
                     if let Some(window) = self.active_windows.get_mut(&window_id) {
-                        window
-                            .handle_event(&mut self.renderer, WindowEvent::MouseButtonInput(event));
+                        window.handle_event(
+                            &mut self.renderer,
+                            WindowEvent::MouseButtonInput(event),
+                            window_id,
+                        );
+                    }
+                }
+            }
+            WindowEvent::CursorMoved(event) => {
+                if let Some(window_id) = self.cursor.window() {
+                    if let Some(window) = self.active_windows.get_mut(&window_id) {
+                        window.handle_event(
+                            &mut self.renderer,
+                            WindowEvent::CursorMoved(event),
+                            window_id,
+                        );
                     }
                 }
             }
