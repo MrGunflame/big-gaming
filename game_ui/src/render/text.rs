@@ -60,7 +60,7 @@ fn render_to_texture(text: &str, size: f32, max: UVec2) -> ImageBuffer<Rgba<u8>,
     // We still need an additional pixel above that.
     let height = scaled_font.height().ceil() as u32 + 1;
 
-    let mut image = RgbaImage::new(max_width.ceil() as u32, num_lines * height);
+    let mut image = RgbaImage::new(max_width.ceil() as u32 + 1, num_lines * height);
 
     for glyph in glyphs {
         if let Some(outlined_glyph) = scaled_font.outline_glyph(glyph) {
