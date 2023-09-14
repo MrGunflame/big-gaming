@@ -1,5 +1,6 @@
 use std::ops::Deref;
 
+use game_window::cursor::CursorIcon;
 use parking_lot::Mutex;
 use winit::event::VirtualKeyCode;
 
@@ -136,6 +137,12 @@ impl Widget for Input {
                     ..Default::default()
                 },
                 local: EventHandlers {
+                    cursor_entered: Some(Box::new(move |ctx| {
+                        ctx.window.set_cursor_icon(CursorIcon::Text);
+                    })),
+                    cursor_left: Some(Box::new(move |ctx| {
+                        ctx.window.set_cursor_icon(CursorIcon::Default);
+                    })),
                     mouse_button_input: Some(Box::new(move |_ctx| {
                         set_focus.set(true);
                     })),

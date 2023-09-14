@@ -8,10 +8,11 @@ use crate::style::Style;
 
 use super::{Callback, Widget};
 
+#[derive(Debug)]
 pub struct Checkbox {
     is_checked: bool,
     style: Style,
-    on_change: Callback<bool>,
+    on_change: Option<Callback<bool>>,
 }
 
 impl Widget for Checkbox {
@@ -62,8 +63,10 @@ impl Widget for Checkbox {
             });
 
             // Skip update for the initial value.
-            if id.is_some() {
-                (self.on_change)(state);
+            if let Some(cb) = &self.on_change {
+                if id.is_some() {
+                    (cb)(state);
+                }
             }
 
             *id = Some(checkbox.id().unwrap());

@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::{self, Debug, Formatter};
 use std::ptr::NonNull;
 use std::sync::{mpsc, Arc};
@@ -19,6 +19,17 @@ pub struct Context<T> {
     pub event: T,
     pub window: WindowContext,
     _priv: (),
+}
+
+impl<T> Context<T> {
+    fn with_event<U>(self, event: U) -> Context<U> {
+        Context {
+            cursor: self.cursor,
+            event,
+            window: self.window,
+            _priv: (),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -94,6 +105,7 @@ impl Debug for EventHandlers {
 pub struct Events {
     events: HashMap<Key, ElementEventHandlers>,
     positions: Vec<(Key, Rect)>,
+    hovered_elements: HashSet<Key>,
 }
 
 impl Events {
@@ -101,6 +113,7 @@ impl Events {
         Self {
             events: HashMap::new(),
             positions: Vec::new(),
+            hovered_elements: HashSet::new(),
         }
     }
 
@@ -144,12 +157,15 @@ pub fn update_events_from_layout_tree(tree: &mut LayoutTree, events: &mut Events
 pub(crate) fn dispatch_cursor_moved_events(
     tx: &mpsc::Sender<WindowCommand>,
     cursor: &Arc<Cursor>,
-    windows: &HashMap<WindowId, Events>,
+    windows: &mut HashMap<WindowId, Events>,
     event: CursorMoved,
 ) {
-    let Some(window) = windows.get(&event.window) else {
+    let Some(window) = windows.get_mut(&event.window) else {
         return;
     };
+
+    let mut hovered = window.hovered_elements.clone();
+    window.hovered_elements.clear();
 
     for (key, rect) in &window.positions {
         let Some(handlers) = window.events.get(&key) else {
@@ -172,8 +188,35 @@ pub(crate) fn dispatch_cursor_moved_events(
 
         if hit_test(*rect, event.position) {
             if let Some(f) = &handlers.local.cursor_moved {
-                f(ctx);
+                f(ctx.clone());
             }
+
+            window.hovered_elements.insert(*key);
+            if !hovered.remove(key) {
+                if let Some(f) = &handlers.local.cursor_entered {
+                    f(ctx.clone().with_event(()));
+                }
+            }
+        }
+    }
+
+    for key in hovered {
+        let Some(handlers) = window.events.get(&key) else {
+            continue;
+        };
+
+        let ctx = Context {
+            cursor: cursor.clone(),
+            event: (),
+            window: WindowContext {
+                window: event.window,
+                tx: tx.clone(),
+            },
+            _priv: (),
+        };
+
+        if let Some(f) = &handlers.local.cursor_left {
+            f(ctx.clone());
         }
     }
 }

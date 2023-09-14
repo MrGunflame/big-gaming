@@ -74,9 +74,12 @@ impl UiState {
 
     pub fn send_event(&mut self, cursor: &Arc<Cursor>, event: WindowEvent) {
         match event {
-            WindowEvent::CursorMoved(event) => {
-                events::dispatch_cursor_moved_events(&self.command_tx, cursor, &self.events, event)
-            }
+            WindowEvent::CursorMoved(event) => events::dispatch_cursor_moved_events(
+                &self.command_tx,
+                cursor,
+                &mut self.events,
+                event,
+            ),
             WindowEvent::MouseButtonInput(event) => events::dispatch_mouse_button_input_events(
                 &self.command_tx,
                 cursor,
@@ -120,9 +123,15 @@ impl UiState {
                     windows.despawn(id);
                 }
                 WindowCommand::SetCursorIcon(id, icon) => {
-                    todo!()
+                    if let Some(state) = windows.state(id) {
+                        state.set_cursor_icon(icon);
+                    }
                 }
-                WindowCommand::SetTitle(id, title) => todo!(),
+                WindowCommand::SetTitle(id, title) => {
+                    if let Some(state) = windows.state(id) {
+                        state.set_title(&title);
+                    }
+                }
             }
         }
     }
