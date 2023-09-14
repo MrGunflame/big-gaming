@@ -29,7 +29,7 @@ impl Scope {
 }
 
 #[derive(Clone)]
-pub struct Effect {
+pub(super) struct Effect {
     pub f: Arc<dyn Fn() + Send + Sync + 'static>,
     pub first_run: bool,
 }
@@ -41,7 +41,7 @@ impl Debug for Effect {
 }
 
 new_key_type! {
-    pub struct EffectId;
+    pub(super) struct EffectId;
 }
 
 #[cfg(test)]

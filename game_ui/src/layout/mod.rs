@@ -192,6 +192,10 @@ impl LayoutTree {
     }
 
     pub fn replace(&mut self, key: Key, elem: Element) {
+        if !self.elems.contains_key(&key) {
+            return;
+        }
+
         self.changed = true;
 
         self.layouts.get_mut(&key).unwrap().style =

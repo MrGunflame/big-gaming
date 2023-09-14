@@ -35,7 +35,7 @@ impl Scope {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct SignalId(u64);
+pub(super) struct SignalId(u64);
 
 #[derive(Debug)]
 pub struct ReadSignal<T>

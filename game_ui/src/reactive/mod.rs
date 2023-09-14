@@ -1,3 +1,7 @@
+mod effect;
+mod node;
+mod signal;
+
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
@@ -12,10 +16,6 @@ use crate::widgets::Widget;
 
 use self::effect::{Effect, EffectId};
 use self::signal::SignalId;
-
-mod effect;
-mod node;
-mod signal;
 
 pub use node::Node;
 pub use signal::{ReadSignal, WriteSignal};
@@ -52,6 +52,10 @@ impl Scope {
         widget.build(self)
     }
 
+    /// Returns the [`NodeId`] of the node this `Scope` refers to.
+    ///
+    /// Returns `None` if this `Scope` refers to the root of the [`Document`].
+    #[inline]
     pub fn id(&self) -> Option<NodeId> {
         self.id
     }
@@ -73,7 +77,11 @@ impl Scope {
         doc.events.push_back(Event::RemoveNode(id));
     }
 
-    /// Update in place
+    /// Update a node in the tree.
+    ///
+    /// This has the same effect as removing the node and inserting a new one in its position,
+    /// except `update` retains all children. Does nothing if the node with the given `id` does
+    /// not exist.
     pub fn update(&self, id: NodeId, node: Node) {
         let mut doc = self.document.inner.lock();
         doc.events.push_back(Event::UpdateNode(id, node));
@@ -270,11 +278,14 @@ impl Document {
                     });
                 }
                 Event::UpdateNode(id, node) => {
-                    tracing::trace!("replace node {:?}", id);
+                    tracing::trace!("updating node {:?}", id);
 
                     if let Some(key) = doc.nodes.get(id) {
                         tree.replace(key, node.element);
-                        *events.get_mut(key).unwrap() = node.events;
+
+                        if let Some(e) = events.get_mut(key) {
+                            *e = node.events;
+                        }
                     } else {
                         tracing::trace!("node {:?} does not exist", id);
                     }
