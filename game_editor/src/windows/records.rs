@@ -4,7 +4,7 @@ use game_input::mouse::MouseButtonInput;
 use game_ui::events::Context;
 use game_ui::reactive::{ReadSignal, Scope, WriteSignal};
 use game_ui::style::{Background, Direction, Growth, Style};
-use game_ui::widgets::{Button, Container, Text, Widget};
+use game_ui::widgets::{Button, Callback, Container, Text, Widget};
 use image::Rgba;
 use parking_lot::Mutex;
 
@@ -206,19 +206,16 @@ fn category_str(kind: RecordKind) -> &'static str {
 fn add_record(
     state: EditorState,
     kind: ReadSignal<RecordKind>,
-) -> Box<dyn Fn(Context<MouseButtonInput>) + Send + Sync + 'static> {
-    Box::new(move |_| {
+) -> Callback<Context<MouseButtonInput>> {
+    Callback::from(move |_| {
         let kind = kind.get_untracked();
 
         state.spawn_windows.send(SpawnWindow::CreateRecord(kind));
     })
 }
 
-fn edit_record(
-    state: EditorState,
-    entries: Vec<(ModuleId, Record)>,
-) -> Box<dyn Fn(usize) + Send + Sync + 'static> {
-    Box::new(move |index| {
+fn edit_record(state: EditorState, entries: Vec<(ModuleId, Record)>) -> Callback<usize> {
+    Callback::from(move |index: usize| {
         let (module_id, record) = entries[index].clone();
 
         state
@@ -230,8 +227,8 @@ fn edit_record(
 fn remove_record(
     entries: Vec<(ModuleId, Record)>,
     records: state::record::Records,
-) -> Box<dyn Fn(usize) + Send + Sync + 'static> {
-    Box::new(move |index| {
+) -> Callback<usize> {
+    Callback::from(move |index: usize| {
         let (module_id, record) = entries[index].clone();
 
         records.remove(module_id, record.id);

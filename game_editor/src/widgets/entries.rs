@@ -1,26 +1,29 @@
 use game_input::mouse::MouseButtonInput;
 use game_ui::events::Context;
 use game_ui::reactive::Scope;
-use game_ui::style::{Background, Direction, Padding, Size, Style};
+use game_ui::style::{Background, Direction, Growth, Padding, Size, Style};
 use game_ui::widgets::{Button, Callback, Container, Text, Widget};
 
-use crate::widgets::context_menu::*;
+use super::context_menu::ContextMenu;
 
+#[derive(Debug)]
 pub struct EntriesData {
     pub keys: Vec<String>,
     pub entries: Vec<Vec<String>>,
-    pub add_entry: Option<Box<dyn Fn(Context<MouseButtonInput>) + Send + Sync + 'static>>,
+    pub add_entry: Option<Callback<Context<MouseButtonInput>>>,
     /// `fn(index: usize)`
-    pub edit_entry: Option<Box<dyn Fn(usize) + Send + Sync + 'static>>,
-    pub remove_entry: Option<Box<dyn Fn(usize) + Send + Sync + 'static>>,
+    pub edit_entry: Option<Callback<usize>>,
+    pub remove_entry: Option<Callback<usize>>,
 }
 
+#[derive(Debug)]
 struct ContextCallbacks {
     add_entry: Option<Callback<Context<MouseButtonInput>>>,
     edit_entry: Option<Callback<usize>>,
     remove_entry: Option<Callback<usize>>,
 }
 
+#[derive(Debug)]
 pub struct Entries {
     pub data: EntriesData,
 }
@@ -28,14 +31,19 @@ pub struct Entries {
 impl Widget for Entries {
     fn build(self, cx: &Scope) -> Scope {
         let callbacks = ContextCallbacks {
-            add_entry: self.data.add_entry.map(|f| f.into()),
-            edit_entry: self.data.edit_entry.map(|f| f.into()),
-            remove_entry: self.data.remove_entry.map(|f| f.into()),
+            add_entry: self.data.add_entry,
+            edit_entry: self.data.edit_entry,
+            remove_entry: self.data.remove_entry,
         };
 
-        let root = cx.append(ContextMenu {
-            spawn_menu: spawn_root_menu(&callbacks),
-        });
+        let root = cx.append(
+            ContextMenu::new()
+                .style(Style {
+                    growth: Growth::splat(1.0),
+                    ..Default::default()
+                })
+                .spawn_menu(spawn_root_menu(&callbacks)),
+        );
 
         let root = root.append(Container::new().style(Style {
             direction: Direction::Column,
@@ -65,9 +73,9 @@ impl Widget for Entries {
                 if let Some(column) = row.get(column_index) {
                     let cx = &cols[column_index];
 
-                    let ctx_menu = cx.append(ContextMenu {
-                        spawn_menu: spawn_ctx_menu(&callbacks, row_index),
-                    });
+                    let ctx_menu = cx.append(
+                        ContextMenu::new().spawn_menu(spawn_ctx_menu(&callbacks, row_index)),
+                    );
                     ctx_menu.append(Text::new().text(column));
 
                     written_cols += 1;
