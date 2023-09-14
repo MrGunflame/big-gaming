@@ -1,12 +1,8 @@
-pub mod computed_style;
-pub mod layout;
-pub mod style;
-
-mod container;
-mod debug;
+pub(crate) mod container;
+pub(crate) mod debug;
 pub mod image;
 pub mod remap;
-mod text;
+pub(crate) mod text;
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -32,20 +28,22 @@ use wgpu::{
     VertexStepMode,
 };
 
-use self::computed_style::{ComputedBounds, ComputedStyle};
-use self::layout::LayoutTree;
+use crate::layout::computed_style::ComputedStyle;
+use crate::layout::LayoutTree;
 
 pub use self::image::Image;
-pub use self::layout::{Element, ElementBody};
 pub use self::text::Text;
+pub use crate::layout::{Element, ElementBody};
 
-pub struct RenderUiState {
+const UI_SHADER: &str = include_str!("../../shaders/ui.wgsl");
+
+pub struct UiRenderer {
     pipeline: Arc<UiPipeline>,
     windows: HashMap<WindowId, LayoutTree>,
     elements: Arc<RwLock<HashMap<WindowId, Vec<PrimitiveElement>>>>,
 }
 
-impl RenderUiState {
+impl UiRenderer {
     pub fn new(device: &Device, graph: &mut RenderGraph) -> Self {
         let pipeline = Arc::new(UiPipeline::new(device));
         let elements = Arc::new(RwLock::new(HashMap::new()));
@@ -83,7 +81,7 @@ impl RenderUiState {
 
     pub fn resize(&mut self, id: WindowId, size: UVec2) {
         if let Some(tree) = self.windows.get_mut(&id) {
-            tree.resize(Vec2::new(size.x as f32, size.y as f32));
+            tree.resize(size);
         }
     }
 
@@ -100,12 +98,12 @@ impl RenderUiState {
             let mut elems = vec![];
             for (elem, layout) in tree.elements().zip(tree.layouts()) {
                 // Don't render elements with a zero size.
-                if layout.width <= 0.0 || layout.height <= 0.0 {
+                if layout.width <= 0 || layout.height <= 0 {
                     continue;
                 }
 
                 // Don't render elements that start outside of the viewport.
-                if layout.position.x > size.x as f32 || layout.position.y > size.y as f32 {
+                if layout.position.x > size.x || layout.position.y > size.y {
                     continue;
                 }
 
@@ -113,7 +111,7 @@ impl RenderUiState {
                     &layout.style,
                     Rect {
                         min: layout.position,
-                        max: layout.position + Vec2::new(layout.width as f32, layout.height as f32),
+                        max: layout.position + UVec2::new(layout.width, layout.height),
                     },
                     &self.pipeline,
                     device,
@@ -132,7 +130,7 @@ impl RenderUiState {
 }
 
 #[derive(Debug)]
-struct PrimitiveElement {
+pub(crate) struct PrimitiveElement {
     /// Vertex buffer
     vertices: Buffer,
     /// Index buffer
@@ -142,11 +140,12 @@ struct PrimitiveElement {
 }
 
 impl PrimitiveElement {
-    fn new(
+    pub(crate) fn new(
         pipeline: &UiPipeline,
         device: &Device,
         queue: &Queue,
-        rect: Rect,
+        min: Vec2,
+        max: Vec2,
         image: &ImageBuffer<Rgba<u8>, Vec<u8>>,
         color: [f32; 4],
     ) -> Self {
@@ -162,22 +161,22 @@ impl PrimitiveElement {
 
         let vertices = [
             Vertex {
-                position: [rect.min.x, rect.min.y, 0.0],
+                position: [min.x, min.y, 0.0],
                 uv: [0.0, 0.0],
                 color,
             },
             Vertex {
-                position: [rect.min.x, rect.max.y, 0.0],
+                position: [min.x, max.y, 0.0],
                 uv: [0.0, 1.0],
                 color,
             },
             Vertex {
-                position: [rect.max.x, rect.max.y, 0.0],
+                position: [max.x, max.y, 0.0],
                 uv: [1.0, 1.0],
                 color,
             },
             Vertex {
-                position: [rect.max.x, rect.min.y, 0.0],
+                position: [max.x, min.y, 0.0],
                 uv: [1.0, 0.0],
                 color,
             },
@@ -259,7 +258,7 @@ impl PrimitiveElement {
     }
 }
 
-trait BuildPrimitiveElement {
+pub(crate) trait BuildPrimitiveElement {
     fn build(
         &self,
         style: &ComputedStyle,
@@ -267,14 +266,12 @@ trait BuildPrimitiveElement {
         pipeline: &UiPipeline,
         device: &Device,
         queue: &Queue,
-        size: Vec2,
+        size: UVec2,
     ) -> Option<PrimitiveElement>;
-
-    fn bounds(&self, style: &ComputedStyle) -> ComputedBounds;
 }
 
 #[derive(Debug)]
-struct UiPipeline {
+pub(crate) struct UiPipeline {
     bind_group_layout: BindGroupLayout,
     pipeline: RenderPipeline,
     sampler: Sampler,
@@ -312,7 +309,7 @@ impl UiPipeline {
 
         let shader = device.create_shader_module(ShaderModuleDescriptor {
             label: Some("ui_shader"),
-            source: ShaderSource::Wgsl(include_str!("ui.wgsl").into()),
+            source: ShaderSource::Wgsl(UI_SHADER.into()),
         });
 
         let pipeline = device.create_render_pipeline(&RenderPipelineDescriptor {
@@ -405,8 +402,25 @@ impl Vertex {
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct Rect {
-    pub min: Vec2,
-    pub max: Vec2,
+    pub min: UVec2,
+    pub max: UVec2,
+}
+
+impl Rect {
+    #[inline]
+    pub fn size(self) -> UVec2 {
+        self.max - self.min
+    }
+
+    #[inline]
+    pub fn width(self) -> u32 {
+        self.max.x - self.min.x
+    }
+
+    #[inline]
+    pub fn height(self) -> u32 {
+        self.max.y - self.min.y
+    }
 }
 
 #[derive(Debug)]

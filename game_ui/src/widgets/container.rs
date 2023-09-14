@@ -1,24 +1,31 @@
 use crate::reactive::{Node, Scope};
-use crate::render::style::Style;
 use crate::render::{Element, ElementBody};
+use crate::style::Style;
 
-use super::Component;
+use super::Widget;
 
-#[derive(Default)]
-pub struct ContainerProps {
-    pub style: Style,
+#[derive(Clone, Debug, Default)]
+pub struct Container {
+    style: Style,
 }
 
-pub struct Container;
+impl Container {
+    pub fn new() -> Self {
+        Self::default()
+    }
 
-impl Component for Container {
-    type Properties = ContainerProps;
+    pub fn style(mut self, style: Style) -> Self {
+        self.style = style;
+        self
+    }
+}
 
-    fn render(cx: &Scope, props: Self::Properties) -> Scope {
+impl Widget for Container {
+    fn build(self, cx: &Scope) -> Scope {
         cx.push(Node {
             element: Element {
-                body: ElementBody::Container(),
-                style: props.style,
+                body: ElementBody::Container,
+                style: self.style,
             },
             events: Default::default(),
         })

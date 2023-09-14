@@ -1,34 +1,63 @@
 use std::ops::Deref;
 
+use game_window::cursor::CursorIcon;
+use parking_lot::Mutex;
 use winit::event::VirtualKeyCode;
 
 use crate::events::{ElementEventHandlers, EventHandlers};
-use crate::reactive::{create_effect, create_signal, Node, Scope, WriteSignal};
-use crate::render::style::Style;
+use crate::reactive::{Node, Scope};
 use crate::render::{Element, ElementBody};
+use crate::style::Style;
 
-use super::{Component, Text, TextProps};
+use super::text::Text;
+use super::{Callback, Widget};
 
-pub struct InputProps {
-    pub value: String,
-    pub style: Style,
-    pub on_change: InputChangeHandler,
+pub struct Input {
+    value: String,
+    style: Style,
+    on_change: Option<Callback<String>>,
 }
 
-pub struct Input;
+impl Input {
+    pub fn new() -> Self {
+        Self {
+            value: String::new(),
+            style: Style::default(),
+            on_change: None,
+        }
+    }
 
-impl Component for Input {
-    type Properties = InputProps;
+    pub fn value<T>(mut self, value: T) -> Self
+    where
+        T: ToString,
+    {
+        self.value = value.to_string();
+        self
+    }
 
-    fn render(cx: &Scope, props: Self::Properties) -> Scope {
-        let (value, set_value) = create_signal(cx, Buffer::new(props.value));
+    pub fn style(mut self, style: Style) -> Self {
+        self.style = style;
+        self
+    }
 
-        let (focus, set_focus) = create_signal(cx, false);
+    pub fn on_change<T>(mut self, on_change: T) -> Self
+    where
+        T: Into<Callback<String>>,
+    {
+        self.on_change = Some(on_change.into());
+        self
+    }
+}
+
+impl Widget for Input {
+    fn build(self, cx: &Scope) -> Scope {
+        let (value, set_value) = cx.create_signal(Buffer::new(self.value));
+        let (focus, set_focus) = cx.create_signal(false);
 
         let root = cx.push(Node {
             element: Element {
-                body: ElementBody::Container(),
-                style: props.style,
+                body: ElementBody::Container,
+                style: self.style,
             },
             events: ElementEventHandlers {
                 global: EventHandlers {
@@ -101,14 +130,20 @@ impl Component for Input {
                         // handlers catches this afterwards.
                         // FIXME: This is exploiting the fact that global handlers are
                         // called before local ones, which is currently unspecified.
-                        move |_event| {
+                        move |_ctx| {
                             set_focus.set(false);
                         }
                     })),
                     ..Default::default()
                 },
                 local: EventHandlers {
-                    mouse_button_input: Some(Box::new(move |_event| {
+                    cursor_entered: Some(Box::new(move |ctx| {
+                        ctx.window.set_cursor_icon(CursorIcon::Text);
+                    })),
+                    cursor_left: Some(Box::new(move |ctx| {
+                        ctx.window.set_cursor_icon(CursorIcon::Default);
+                    })),
+                    mouse_button_input: Some(Box::new(move |_ctx| {
                         set_focus.set(true);
                     })),
                     ..Default::default()
@@ -120,51 +155,29 @@ impl Component for Input {
 
         {
             let value = value.clone();
-            create_effect(cx, move || {
+            cx.create_effect(move || {
                 let buffer = value.get();
 
-                (props.on_change.0)(buffer.string);
+                if let Some(cb) = &self.on_change {
+                    (cb.0)(buffer.string);
+                }
             });
         }
 
-        Text::render(
-            &root,
-            TextProps {
-                text: (move || {
-                    let buffer = value.get();
+        let text = root.append(Text::new().text(""));
+        let id = Mutex::new(text.id().unwrap());
+        let r2 = root.clone();
+        cx.create_effect(move || {
+            let value = value.get();
 
-                    let mut string = buffer.to_string();
+            let mut id = id.lock();
 
-                    if focus.get() {
-                        string.insert(buffer.cursor, '|');
-                    }
-
-                    string
-                })
-                .into(),
-            },
-        );
+            text.remove(*id);
+            let cx = r2.append(Text::new().text(value.to_string()));
+            *id = cx.id().unwrap();
+        });
 
         root
-    }
-}
-
-pub struct InputChangeHandler(Box<dyn Fn(String) + Send + Sync + 'static>);
-
-impl<F> From<F> for InputChangeHandler
-where
-    F: Fn(String) + Send + Sync + 'static,
-{
-    fn from(value: F) -> Self {
-        Self(Box::new(value))
-    }
-}
-
-impl From<WriteSignal<String>> for InputChangeHandler {
-    fn from(writer: WriteSignal<String>) -> Self {
-        Self(Box::new(move |val| {
-            writer.update(|v| *v = val);
-        }))
     }
 }
 

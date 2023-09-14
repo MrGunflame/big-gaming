@@ -1,4 +1,4 @@
-use glam::Vec2;
+use glam::UVec2;
 use image::{ImageBuffer, Rgba};
 use thiserror::Error;
 
@@ -37,17 +37,25 @@ impl Direction {
 
 #[derive(Copy, Clone, Debug, Default, PartialEq)]
 pub enum Position {
+    /// The position is intered from the parent.
     #[default]
     Relative,
-    Absolute(Vec2),
+    /// Use the provided absolute screen coordinates.
+    Absolute(UVec2),
 }
 
 impl Position {
+    /// Returns `true` if this `Position` is [`Relative`].
+    ///
+    /// [`Relative`]: Self::Relative
     #[inline]
     pub const fn is_relative(self) -> bool {
         matches!(self, Self::Relative)
     }
 
+    /// Returns `true` if this `Position` is [`Absolute`].
+    ///
+    /// [`Absolute`]: Self::Absolute
     #[inline]
     pub const fn is_absolute(self) -> bool {
         matches!(self, Self::Absolute(_))
@@ -56,7 +64,7 @@ impl Position {
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum Size {
-    Pixels(f32),
+    Pixels(u32),
     /// Viewport width percentage
     ViewportWidth(f32),
     /// Viewport height percentage
@@ -64,16 +72,23 @@ pub enum Size {
 }
 
 impl Size {
-    pub(crate) fn to_pixels(self, viewport: Vec2) -> f32 {
+    /// The `Size` representing zero, the smallest possible size.
+    pub const ZERO: Self = Self::Pixels(0);
+
+    /// The `Size` representing infinity, the maximum size.
+    pub const INFINITY: Self = Self::Pixels(u32::MAX);
+
+    /// Returns the `Size` as pixels.
+    #[inline]
+    pub(crate) fn to_pixels(self, viewport: UVec2) -> u32 {
         match self {
             Self::Pixels(val) => val,
-            Self::ViewportWidth(factor) => viewport.x * factor,
-            Self::ViewportHeight(factor) => viewport.y * factor,
+            Self::ViewportWidth(factor) => viewport.x * factor.ceil() as u32,
+            Self::ViewportHeight(factor) => viewport.y * factor.ceil() as u32,
         }
     }
 }
 
-// TODO: Maybe replace with nalgebra vector.
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct SizeVec2 {
     pub x: Size,
@@ -93,6 +108,24 @@ pub struct Bounds {
 }
 
 impl Bounds {
+    /// Creates a new `Bounds` with the given `min` value and an unbounded `max` value.
+    #[inline]
+    pub const fn from_min(min: SizeVec2) -> Self {
+        Self {
+            min,
+            max: SizeVec2::splat(Size::INFINITY),
+        }
+    }
+
+    #[inline]
+    pub const fn from_max(max: SizeVec2) -> Self {
+        Self {
+            min: SizeVec2::splat(Size::Pixels(0)),
+            max,
+        }
+    }
+
+    #[inline]
     pub const fn exact(size: SizeVec2) -> Self {
         Self {
             min: size,
@@ -104,8 +137,8 @@ impl Bounds {
 impl Default for Bounds {
     fn default() -> Self {
         Self {
-            min: SizeVec2::splat(Size::Pixels(0.0)),
-            max: SizeVec2::splat(Size::Pixels(f32::INFINITY)),
+            min: SizeVec2::splat(Size::Pixels(0)),
+            max: SizeVec2::splat(Size::INFINITY),
         }
     }
 }
@@ -176,6 +209,21 @@ impl Background {
     pub const TEAL: Self = Self::Color(Rgba([0x00, 0x80, 0x80, 0xFF]));
     pub const AQUA: Self = Self::Color(Rgba([0x00, 0xFF, 0xFF, 0xFF]));
 
+    #[inline]
+    pub const fn is_none(&self) -> bool {
+        matches!(self, Self::None)
+    }
+
+    #[inline]
+    pub const fn is_color(&self) -> bool {
+        matches!(self, Self::Color(_))
+    }
+
+    #[inline]
+    pub const fn is_image(&self) -> bool {
+        matches!(self, Self::Image(_))
+    }
+
     pub fn from_hex(s: &str) -> Result<Self, FromHexError> {
         Color::from_hex(s).map(|c| Self::Color(c.0))
     }
@@ -240,10 +288,10 @@ pub struct Padding {
 
 impl Padding {
     pub const NONE: Self = Self {
-        top: Size::Pixels(0.0),
-        bottom: Size::Pixels(0.0),
-        left: Size::Pixels(0.0),
-        right: Size::Pixels(0.0),
+        top: Size::ZERO,
+        bottom: Size::ZERO,
+        left: Size::ZERO,
+        right: Size::ZERO,
     };
 
     pub const fn splat(size: Size) -> Self {
@@ -284,10 +332,10 @@ impl BorderRadius {
 impl Default for BorderRadius {
     fn default() -> Self {
         Self {
-            top_left: Size::Pixels(0.0),
-            bottom_left: Size::Pixels(0.0),
-            top_right: Size::Pixels(0.0),
-            bottom_right: Size::Pixels(0.0),
+            top_left: Size::ZERO,
+            bottom_left: Size::ZERO,
+            top_right: Size::ZERO,
+            bottom_right: Size::ZERO,
         }
     }
 }

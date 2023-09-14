@@ -1,8 +1,8 @@
 use criterion::{black_box, criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion};
-use game_ui::render::computed_style::ComputedStyle;
+use game_ui::layout::computed_style::ComputedStyle;
 use game_ui::render::image::apply_background;
-use game_ui::render::style::{Background, Padding, Size, Style};
-use glam::Vec2;
+use game_ui::style::{Background, Padding, Size, Style};
+use glam::UVec2;
 use image::{ImageBuffer, Rgba};
 
 fn create_image(size: u32) -> ImageBuffer<Rgba<u8>, Vec<u8>> {
@@ -25,7 +25,7 @@ fn run_bench(c: &mut Criterion) {
             "background none/padding",
             Style {
                 background: Background::None,
-                padding: Padding::splat(Size::Pixels(2.0)),
+                padding: Padding::splat(Size::Pixels(2)),
                 ..Default::default()
             },
         ),
@@ -41,7 +41,7 @@ fn run_bench(c: &mut Criterion) {
             "background color/padding",
             Style {
                 background: Background::Color(Rgba([123, 124, 125, 126])),
-                padding: Padding::splat(Size::Pixels(2.0)),
+                padding: Padding::splat(Size::Pixels(2)),
                 ..Default::default()
             },
         ),
@@ -65,7 +65,7 @@ fn run_bench(c: &mut Criterion) {
                     128,
                     Rgba([123, 124, 125, 126]),
                 )),
-                padding: Padding::splat(Size::Pixels(2.0)),
+                padding: Padding::splat(Size::Pixels(2)),
                 ..Default::default()
             },
         ),
@@ -75,7 +75,7 @@ fn run_bench(c: &mut Criterion) {
 }
 
 fn exec_bench(c: &mut Criterion, name: &str, style: Style) {
-    let viewport = Vec2::splat(1000.0);
+    let viewport = UVec2::splat(1000);
     let style = ComputedStyle::new(style, viewport);
 
     let mut group = c.benchmark_group(name);

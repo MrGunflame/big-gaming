@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::{self, Debug, Formatter};
 use std::ptr::NonNull;
 use std::sync::{mpsc, Arc};
@@ -8,9 +8,9 @@ use game_input::mouse::{MouseButtonInput, MouseWheel};
 use game_window::cursor::{Cursor, CursorIcon};
 use game_window::events::{CursorMoved, ReceivedCharacter};
 use game_window::windows::WindowId;
-use glam::Vec2;
+use glam::{UVec2, Vec2};
 
-use crate::render::layout::{Key, LayoutTree};
+use crate::layout::{Key, LayoutTree};
 use crate::render::Rect;
 
 #[derive(Clone, Debug)]
@@ -19,6 +19,17 @@ pub struct Context<T> {
     pub event: T,
     pub window: WindowContext,
     _priv: (),
+}
+
+impl<T> Context<T> {
+    fn with_event<U>(self, event: U) -> Context<U> {
+        Context {
+            cursor: self.cursor,
+            event,
+            window: self.window,
+            _priv: (),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -94,6 +105,7 @@ impl Debug for EventHandlers {
 pub struct Events {
     events: HashMap<Key, ElementEventHandlers>,
     positions: Vec<(Key, Rect)>,
+    hovered_elements: HashSet<Key>,
 }
 
 impl Events {
@@ -101,6 +113,7 @@ impl Events {
         Self {
             events: HashMap::new(),
             positions: Vec::new(),
+            hovered_elements: HashSet::new(),
         }
     }
 
@@ -131,7 +144,7 @@ pub fn update_events_from_layout_tree(tree: &mut LayoutTree, events: &mut Events
     for (key, layout) in tree.keys().zip(tree.layouts()) {
         let position = Rect {
             min: layout.position,
-            max: Vec2::new(
+            max: UVec2::new(
                 layout.position.x + layout.width,
                 layout.position.y + layout.height,
             ),
@@ -144,12 +157,15 @@ pub fn update_events_from_layout_tree(tree: &mut LayoutTree, events: &mut Events
 pub(crate) fn dispatch_cursor_moved_events(
     tx: &mpsc::Sender<WindowCommand>,
     cursor: &Arc<Cursor>,
-    windows: &HashMap<WindowId, Events>,
+    windows: &mut HashMap<WindowId, Events>,
     event: CursorMoved,
 ) {
-    let Some(window) = windows.get(&event.window) else {
+    let Some(window) = windows.get_mut(&event.window) else {
         return;
     };
+
+    let mut hovered = window.hovered_elements.clone();
+    window.hovered_elements.clear();
 
     for (key, rect) in &window.positions {
         let Some(handlers) = window.events.get(&key) else {
@@ -172,8 +188,35 @@ pub(crate) fn dispatch_cursor_moved_events(
 
         if hit_test(*rect, event.position) {
             if let Some(f) = &handlers.local.cursor_moved {
-                f(ctx);
+                f(ctx.clone());
             }
+
+            window.hovered_elements.insert(*key);
+            if !hovered.remove(key) {
+                if let Some(f) = &handlers.local.cursor_entered {
+                    f(ctx.clone().with_event(()));
+                }
+            }
+        }
+    }
+
+    for key in hovered {
+        let Some(handlers) = window.events.get(&key) else {
+            continue;
+        };
+
+        let ctx = Context {
+            cursor: cursor.clone(),
+            event: (),
+            window: WindowContext {
+                window: event.window,
+                tx: tx.clone(),
+            },
+            _priv: (),
+        };
+
+        if let Some(f) = &handlers.local.cursor_left {
+            f(ctx.clone());
         }
     }
 }
@@ -343,14 +386,18 @@ pub(crate) fn dispatch_keyboard_input_events(
 }
 
 pub fn hit_test(elem: Rect, cursor: Vec2) -> bool {
-    cursor.x >= elem.min.x
-        && cursor.x <= elem.max.x
-        && cursor.y >= elem.min.y
-        && cursor.y <= elem.max.y
+    // FIXME: Should this maybe be int cmp?
+    // Floats are only relevant if cursor really uses its
+    // full float range.
+    cursor.x >= elem.min.x as f32
+        && cursor.x <= elem.max.x as f32
+        && cursor.y >= elem.min.y as f32
+        && cursor.y <= elem.max.y as f32
 }
 
 #[cfg(test)]
 mod tests {
+    use glam::UVec2;
     use glam::Vec2;
 
     use super::hit_test;
@@ -360,8 +407,8 @@ mod tests {
     #[test]
     fn hit_test_edge() {
         let elem = Rect {
-            min: Vec2 { x: 0.0, y: 0.0 },
-            max: Vec2 { x: 1.0, y: 1.0 },
+            min: UVec2 { x: 0, y: 0 },
+            max: UVec2 { x: 1, y: 1 },
         };
         let cursor = Vec2 { x: 0.0, y: 0.0 };
 
@@ -371,8 +418,8 @@ mod tests {
     #[test]
     fn hit_test_inside() {
         let elem = Rect {
-            min: Vec2 { x: 0.0, y: 0.0 },
-            max: Vec2 { x: 1.0, y: 1.0 },
+            min: UVec2 { x: 0, y: 0 },
+            max: UVec2 { x: 1, y: 1 },
         };
         let cursor = Vec2 { x: 0.5, y: 0.8 };
 
@@ -382,8 +429,8 @@ mod tests {
     #[test]
     fn hit_test_outside() {
         let elem = Rect {
-            min: Vec2 { x: 0.0, y: 0.0 },
-            max: Vec2 { x: 1.0, y: 1.0 },
+            min: UVec2 { x: 0, y: 0 },
+            max: UVec2 { x: 1, y: 1 },
         };
         let cursor = Vec2 { x: 1.1, y: 0.5 };
 

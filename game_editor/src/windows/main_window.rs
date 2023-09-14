@@ -1,66 +1,64 @@
 use game_ui::reactive::Scope;
-use game_ui::render::style::{Background, BorderRadius, Bounds, Size, SizeVec2, Style};
-use game_ui::{component, widgets::*};
+use game_ui::style::{Background, BorderRadius, Bounds, Size, SizeVec2, Style};
+use game_ui::widgets::{Callback, Container, Widget};
 
 use crate::state::EditorState;
 use crate::widgets::tool_bar::*;
 use crate::windows::SpawnWindow;
 
-#[component]
-pub fn MainWindow(cx: &Scope, state: EditorState) -> Scope {
-    let buttons = vec![
-        ActionButton {
-            label: "Modules".to_owned(),
-            on_click: {
-                let state = state.clone();
+pub struct MainWindow {
+    pub state: EditorState,
+}
 
-                Box::new(move |_| {
-                    let _ = state.spawn_windows.send(SpawnWindow::Modules);
-                })
+impl Widget for MainWindow {
+    fn build(self, cx: &Scope) -> Scope {
+        let buttons = vec![
+            ActionButton {
+                label: "Modules".to_owned(),
+                on_click: {
+                    let state = self.state.clone();
+
+                    Callback::from(move |_| {
+                        let _ = state.spawn_windows.send(SpawnWindow::Modules);
+                    })
+                },
             },
-        },
-        ActionButton {
-            label: "Records".to_owned(),
-            on_click: {
-                let state = state.clone();
+            ActionButton {
+                label: "Records".to_owned(),
+                on_click: {
+                    let state = self.state.clone();
 
-                Box::new(move |_| {
-                    let _ = state.spawn_windows.send(SpawnWindow::Records);
-                })
+                    Callback::from(move |_| {
+                        let _ = state.spawn_windows.send(SpawnWindow::Records);
+                    })
+                },
             },
-        },
-        ActionButton {
-            label: "View".to_owned(),
-            on_click: {
-                let state = state.clone();
+            ActionButton {
+                label: "View".to_owned(),
+                on_click: {
+                    let state = self.state.clone();
 
-                Box::new(move |_| {
-                    let _ = state.spawn_windows.send(SpawnWindow::View);
-                })
+                    Callback::from(move |_| {
+                        let _ = state.spawn_windows.send(SpawnWindow::View);
+                    })
+                },
             },
-        },
-    ];
+        ];
 
-    game_ui::view! {
-        cx,
-        <ToolBar buttons={buttons}>
-        </ToolBar>
-    };
+        let root = cx.append(ToolBar { buttons });
 
-    let style = Style {
-        background: Background::AQUA,
-        bounds: Bounds {
-            min: SizeVec2::splat(Size::Pixels(64.0)),
-            max: SizeVec2::splat(Size::Pixels(64.0)),
-        },
-        border_radius: BorderRadius::splat(Size::Pixels(16.0)),
-        ..Default::default()
-    };
+        let style = Style {
+            background: Background::AQUA,
+            bounds: Bounds {
+                min: SizeVec2::splat(Size::Pixels(64)),
+                max: SizeVec2::splat(Size::Pixels(64)),
+            },
+            border_radius: BorderRadius::splat(Size::Pixels(16)),
+            ..Default::default()
+        };
 
-    game_ui::view! {cx,
-        <Container style={style}>
-        </Container>
-    };
+        cx.append(Container::new().style(style));
 
-    cx.clone()
+        cx.clone()
+    }
 }

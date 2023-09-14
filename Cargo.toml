@@ -20,8 +20,6 @@ members = [
     "game_asset",
     "game_gltf",
     "game_scene",
-    "game_ui_macros",
-    "game_ui_macros_test",
     "game_worldgen",
     "game_model",
     "game_tracing",

@@ -1,6 +1,6 @@
-use glam::Vec2;
+use glam::UVec2;
 
-use super::style::{Bounds, Style};
+use crate::style::{Bounds, Style};
 
 #[derive(Clone, Debug)]
 pub struct ComputedStyle {
@@ -12,7 +12,7 @@ pub struct ComputedStyle {
 }
 
 impl ComputedStyle {
-    pub fn new(style: Style, viewport: Vec2) -> Self {
+    pub fn new(style: Style, viewport: UVec2) -> Self {
         Self {
             bounds: ComputedBounds::default(),
             padding: ComputedPadding {
@@ -34,23 +34,23 @@ impl ComputedStyle {
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct ComputedBounds {
-    pub min: Vec2,
-    pub max: Vec2,
+    pub min: UVec2,
+    pub max: UVec2,
 }
 
 impl ComputedBounds {
     pub const ZERO: Self = Self {
-        min: Vec2::splat(0.0),
-        max: Vec2::splat(0.0),
+        min: UVec2::ZERO,
+        max: UVec2::ZERO,
     };
 
-    pub fn new(bounds: Bounds, viewport: Vec2) -> Self {
+    pub fn new(bounds: Bounds, viewport: UVec2) -> Self {
         Self {
-            min: Vec2 {
+            min: UVec2 {
                 x: bounds.min.x.to_pixels(viewport),
                 y: bounds.min.y.to_pixels(viewport),
             },
-            max: Vec2 {
+            max: UVec2 {
                 x: bounds.max.x.to_pixels(viewport),
                 y: bounds.max.y.to_pixels(viewport),
             },
@@ -61,24 +61,24 @@ impl ComputedBounds {
 impl Default for ComputedBounds {
     fn default() -> Self {
         Self {
-            min: Vec2::splat(0.0),
-            max: Vec2::splat(f32::INFINITY),
+            min: UVec2::ZERO,
+            max: UVec2::MAX,
         }
     }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Default)]
 pub struct ComputedPadding {
-    pub top: f32,
-    pub bottom: f32,
-    pub left: f32,
-    pub right: f32,
+    pub top: u32,
+    pub bottom: u32,
+    pub left: u32,
+    pub right: u32,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Default)]
 pub struct ComputedBorderRadius {
-    pub top_left: f32,
-    pub top_right: f32,
-    pub bottom_left: f32,
-    pub bottom_right: f32,
+    pub top_left: u32,
+    pub top_right: u32,
+    pub bottom_left: u32,
+    pub bottom_right: u32,
 }

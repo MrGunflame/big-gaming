@@ -1,12 +1,12 @@
 use criterion::{black_box, criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion};
 
-use game_ui::render::layout::LayoutTree;
-use game_ui::render::style::Style;
+use game_ui::layout::LayoutTree;
 use game_ui::render::{Element, ElementBody};
+use game_ui::style::Style;
 
 fn create_element() -> Element {
     Element {
-        body: ElementBody::Container(),
+        body: ElementBody::Container,
         style: Style::default(),
     }
 }

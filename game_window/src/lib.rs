@@ -178,6 +178,7 @@ where
 
                     let event =
                         events::WindowEvent::ReceivedCharacter(ReceivedCharacter { window, char });
+                    app.handle_event(event);
                 }
                 WindowEvent::Focused(_) => {}
                 WindowEvent::KeyboardInput {

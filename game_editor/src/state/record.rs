@@ -3,15 +3,15 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 
 use game_common::module::ModuleId;
-use game_common::record::RecordId;
+use game_common::record::{RecordId, RecordReference};
 use game_data::record::Record;
 use game_ui::reactive::{ReadSignal, WriteSignal};
 use parking_lot::{Mutex, RwLock};
 
 #[derive(Clone, Debug, Default)]
 pub struct Records {
-    records: Arc<RwLock<HashMap<(ModuleId, RecordId), Record>>>,
-    next_id: Arc<AtomicU32>,
+    next_id: Arc<RwLock<HashMap<ModuleId, u32>>>,
+    records: Arc<RwLock<HashMap<RecordReference, Record>>>,
     signal: Arc<Mutex<Option<WriteSignal<()>>>>,
 }
 
@@ -19,9 +19,8 @@ impl Records {
     pub fn new() -> Self {
         Self {
             records: Arc::default(),
-
-            next_id: Arc::new(AtomicU32::new(1)),
             signal: Arc::default(),
+            next_id: Arc::default(),
         }
     }
 
@@ -37,28 +36,48 @@ impl Records {
     pub fn get(&self, module: ModuleId, id: RecordId) -> Option<Record> {
         let records = self.records.read();
 
-        records.get(&(module, id)).cloned()
+        records
+            .get(&RecordReference { module, record: id })
+            .cloned()
     }
 
-    pub fn insert(&self, module: ModuleId, mut record: Record) -> RecordId {
-        let id = self.next_id.fetch_add(1, Ordering::Relaxed);
-        assert_ne!(id, 0, "record id overflow");
-
-        record.id = RecordId(id);
+    pub fn insert(&self, module: ModuleId, record: Record) {
+        let mut next_id = self.next_id.write();
+        let val = next_id.entry(module).or_default();
+        if record.id.0 >= *val {
+            assert_ne!(*val, u32::MAX);
+            *val += record.id.0 + 1;
+        }
 
         let mut records = self.records.write();
-        records.insert((module, record.id), record);
+        records.insert(
+            RecordReference {
+                module,
+                record: record.id,
+            },
+            record,
+        );
 
         if let Some(signal) = &*self.signal.lock() {
             signal.wake();
         }
+    }
 
-        RecordId(id)
+    pub fn take_id(&self, module: ModuleId) -> RecordId {
+        let mut next_id = self.next_id.write();
+        let val = next_id.entry(module).or_default();
+        assert_ne!(*val, u32::MAX);
+        let id = RecordId(*val);
+        *val += 1;
+        id
     }
 
     pub fn update(&self, module: ModuleId, record: Record) {
         let mut records = self.records.write();
-        if let Some(rec) = records.get_mut(&(module, record.id)) {
+        if let Some(rec) = records.get_mut(&RecordReference {
+            module,
+            record: record.id,
+        }) {
             *rec = record;
         }
 
@@ -88,7 +107,7 @@ impl Records {
 
     pub fn remove(&self, module: ModuleId, id: RecordId) {
         let mut records = self.records.write();
-        records.remove(&(module, id));
+        records.remove(&RecordReference { module, record: id });
 
         if let Some(signal) = &*self.signal.lock() {
             signal.wake();
@@ -97,7 +116,7 @@ impl Records {
 }
 
 pub struct Iter<'a> {
-    keys: std::vec::IntoIter<(ModuleId, RecordId)>,
+    keys: std::vec::IntoIter<RecordReference>,
     inner: &'a Records,
 }
 
@@ -105,9 +124,9 @@ impl<'a> Iterator for Iter<'a> {
     type Item = (ModuleId, Record);
 
     fn next(&mut self) -> Option<Self::Item> {
-        while let Some((module_id, record_id)) = self.keys.next() {
-            if let Some(record) = self.inner.get(module_id, record_id) {
-                return Some((module_id, record));
+        while let Some(ref_) = self.keys.next() {
+            if let Some(record) = self.inner.get(ref_.module, ref_.record) {
+                return Some((ref_.module, record));
             }
         }
 

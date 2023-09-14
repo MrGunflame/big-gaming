@@ -2,11 +2,11 @@ use parking_lot::Mutex;
 use winit::event::VirtualKeyCode;
 
 use crate::events::{ElementEventHandlers, EventHandlers};
-use crate::reactive::{create_effect, create_signal, Node, NodeId, Scope, WriteSignal};
-use crate::render::style::{Background, Bounds, Size, SizeVec2, Style};
+use crate::reactive::{Node, NodeId, Scope, WriteSignal};
 use crate::render::{Element, ElementBody, Text};
+use crate::style::{Background, Bounds, Size, SizeVec2, Style};
 
-use super::{Component, Input, InputProps};
+use super::{Callback, Input, Widget};
 
 pub struct SelectionProps {
     pub options: Vec<String>,
@@ -15,18 +15,50 @@ pub struct SelectionProps {
     pub on_change: SelectionChangeHandler,
 }
 
-pub struct Selection;
+pub struct Selection {
+    options: Vec<String>,
+    value: Option<usize>,
+    on_change: Option<Callback<usize>>,
+}
 
-impl Component for Selection {
-    type Properties = SelectionProps;
+impl Selection {
+    pub fn new() -> Self {
+        Self {
+            options: Vec::new(),
+            value: None,
+            on_change: None,
+        }
+    }
 
-    fn render(cx: &Scope, props: Self::Properties) -> Scope {
-        let (state, set_state) = create_signal(cx, false);
-        let (value, set_value) = create_signal(cx, Value::default());
+    pub fn options(mut self, options: Vec<String>) -> Self {
+        self.options = options;
+        self
+    }
+
+    pub fn value(mut self, value: Option<usize>) -> Self {
+        self.value = value;
+        self
+    }
+
+    pub fn on_change<F>(mut self, on_change: F) -> Self
+    where
+        F: Into<Callback<usize>>,
+    {
+        self.on_change = Some(on_change.into());
+        self
+    }
+}
+
+impl Widget for Selection {
+    fn build(self, cx: &Scope) -> Scope {
+        let num_options = self.options.len();
+
+        let (state, set_state) = cx.create_signal(false);
+        let (value, set_value) = cx.create_signal(Value::default());
 
         let root = cx.push(Node {
             element: Element {
-                body: ElementBody::Container(),
+                body: ElementBody::Container,
                 style: Style::default(),
             },
             events: ElementEventHandlers {
@@ -53,28 +85,21 @@ impl Component for Selection {
             },
         });
 
-        let input = Input::render(
-            &root,
-            InputProps {
-                value: match props.value {
-                    Some(index) => props.options[index].clone(),
+        let input = root.append(
+            Input::new()
+                .value(match self.value {
+                    Some(index) => self.options[index].clone(),
                     None => String::new(),
-                },
-                on_change: {
+                })
+                .on_change({
                     let set_value = set_value.clone();
-
-                    Box::new(move |val| {
-                        set_value.update(|v| *v = Value::Search(val));
-                    })
-                }
-                .into(),
-                style: Style::default(),
-            },
+                    move |val| set_value.set(Value::Search(val))
+                }),
         );
 
         {
             let value = value.clone();
-            create_effect(&root, move || {
+            root.create_effect(move || {
                 let value = value.get();
 
                 match value {
@@ -82,12 +107,12 @@ impl Component for Selection {
                         let style = Style {
                             bounds: Bounds {
                                 min: SizeVec2 {
-                                    x: Size::Pixels(50.0),
-                                    y: Size::Pixels(20.0),
+                                    x: Size::Pixels(50),
+                                    y: Size::Pixels(20),
                                 },
                                 max: SizeVec2 {
-                                    x: Size::Pixels(f32::INFINITY),
-                                    y: Size::Pixels(f32::INFINITY),
+                                    x: Size::INFINITY,
+                                    y: Size::INFINITY,
                                 },
                             },
                             background: Background::GRAY,
@@ -100,12 +125,12 @@ impl Component for Selection {
                         let style = Style {
                             bounds: Bounds {
                                 min: SizeVec2 {
-                                    x: Size::Pixels(50.0),
-                                    y: Size::Pixels(20.0),
+                                    x: Size::Pixels(50),
+                                    y: Size::Pixels(20),
                                 },
                                 max: SizeVec2 {
-                                    x: Size::Pixels(f32::INFINITY),
-                                    y: Size::Pixels(f32::INFINITY),
+                                    x: Size::INFINITY,
+                                    y: Size::INFINITY,
                                 },
                             },
                             background: Background::RED,
@@ -120,7 +145,7 @@ impl Component for Selection {
 
         let ids: Mutex<Vec<NodeId>> = Mutex::new(vec![]);
         let cx = root.clone();
-        create_effect(&root, move || {
+        root.create_effect(move || {
             let state = state.get();
 
             let mut ids = ids.lock();
@@ -130,7 +155,7 @@ impl Component for Selection {
             ids.clear();
 
             if state {
-                for (index, opt) in props.options.iter().enumerate() {
+                for (index, opt) in self.options.iter().enumerate() {
                     let node = cx.push(Node {
                         element: Element {
                             body: ElementBody::Text(Text {
@@ -161,13 +186,18 @@ impl Component for Selection {
             }
         });
 
-        create_effect(&root, move || {
-            let value = value.get();
+        if let Some(cb) = self.on_change {
+            root.create_effect(move || {
+                let value = value.get();
 
-            if let Value::Option(index) = value {
-                (props.on_change.0)(index);
-            }
-        });
+                if let Value::Option(index) = value {
+                    // The index must be valid for `self.options`.
+                    debug_assert!(index <= num_options);
+
+                    (cb)(index);
+                }
+            });
+        }
 
         root
     }

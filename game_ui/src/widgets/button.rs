@@ -1,34 +1,47 @@
-use std::sync::Arc;
-
 use game_input::mouse::MouseButtonInput;
 
 use crate::events::{Context, ElementEventHandlers, EventHandlers};
 use crate::reactive::{Node, Scope};
-use crate::render::style::Style;
 use crate::render::{Element, ElementBody};
+use crate::style::Style;
 
-use super::Component;
+use super::{Callback, Widget};
 
-#[derive(Default)]
-pub struct ButtonProps {
-    pub on_click: ButtonHandler,
-    pub style: Style,
+#[derive(Debug, Default)]
+pub struct Button {
+    style: Style,
+    on_click: Option<Callback<Context<MouseButtonInput>>>,
 }
 
-pub struct Button;
+impl Button {
+    pub fn new() -> Self {
+        Self::default()
+    }
 
-impl Component for Button {
-    type Properties = ButtonProps;
+    pub fn style(mut self, style: Style) -> Self {
+        self.style = style;
+        self
+    }
 
-    fn render(cx: &Scope, props: Self::Properties) -> Scope {
+    pub fn on_click<T>(mut self, on_click: T) -> Self
+    where
+        T: Into<Callback<Context<MouseButtonInput>>>,
+    {
+        self.on_click = Some(on_click.into());
+        self
+    }
+}
+
+impl Widget for Button {
+    fn build(self, cx: &Scope) -> Scope {
         cx.push(Node {
             element: Element {
-                body: ElementBody::Container(),
-                style: props.style,
+                body: ElementBody::Container,
+                style: self.style,
             },
             events: ElementEventHandlers {
                 local: EventHandlers {
-                    mouse_button_input: Some(input_handler(props.on_click.0)),
+                    mouse_button_input: self.on_click.map(|f| input_handler(f)),
                     ..Default::default()
                 },
                 ..Default::default()
@@ -38,34 +51,11 @@ impl Component for Button {
 }
 
 fn input_handler(
-    f: Arc<dyn Fn(Context<MouseButtonInput>) + Send + Sync + 'static>,
+    on_click: Callback<Context<MouseButtonInput>>,
 ) -> Box<dyn Fn(Context<MouseButtonInput>) + Send + Sync + 'static> {
     Box::new(move |ctx| {
         if ctx.event.button.is_left() && ctx.event.state.is_pressed() {
-            f(ctx);
+            on_click(ctx);
         }
     })
-}
-
-pub struct ButtonHandler(Arc<dyn Fn(Context<MouseButtonInput>) + Send + Sync + 'static>);
-
-impl Default for ButtonHandler {
-    fn default() -> Self {
-        Self(Arc::new(|_| {}))
-    }
-}
-
-impl<F> From<F> for ButtonHandler
-where
-    F: Fn(Context<MouseButtonInput>) + Send + Sync + 'static,
-{
-    fn from(value: F) -> Self {
-        Self(Arc::from(value))
-    }
-}
-
-impl From<Arc<dyn Fn(Context<MouseButtonInput>) + Send + Sync + 'static>> for ButtonHandler {
-    fn from(value: Arc<dyn Fn(Context<MouseButtonInput>) + Send + Sync + 'static>) -> Self {
-        Self(value)
-    }
 }

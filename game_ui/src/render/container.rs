@@ -1,8 +1,9 @@
-use glam::Vec2;
+use glam::UVec2;
 use image::ImageBuffer;
 
-use super::computed_style::{ComputedBounds, ComputedStyle};
+use super::debug::is_debug_render_enabled;
 use super::{BuildPrimitiveElement, Image};
+use crate::layout::computed_style::ComputedStyle;
 
 pub struct Container;
 
@@ -14,28 +15,20 @@ impl BuildPrimitiveElement for Container {
         pipeline: &super::UiPipeline,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-        size: glam::Vec2,
+        size: UVec2,
     ) -> Option<super::PrimitiveElement> {
-        let width = layout.max.x - layout.min.x;
-        let height = layout.max.y - layout.min.y;
+        // Truncate the container at the viewport size. This prevents rendering
+        // potentially massive textures that destroy performance.
+        let width = u32::min(layout.max.x - layout.min.x, size.x);
+        let height = u32::min(layout.max.y - layout.min.y, size.y);
 
-        // `Image` will already render a debugging border around
-        // the container.
-        let image = ImageBuffer::new(width as u32, height as u32);
-        Image { image }.build(style, layout, pipeline, device, queue, size)
-    }
-
-    fn bounds(&self, style: &ComputedStyle) -> ComputedBounds {
-        // FIXME: This is actually computed in LayoutTree, but this
-        // is not good.
-        unreachable!();
-
-        let width = style.padding.left + style.padding.right;
-        let height = style.padding.top + style.padding.bottom;
-
-        ComputedBounds {
-            min: Vec2::new(width, height),
-            ..Default::default()
+        if !style.style.background.is_none() || is_debug_render_enabled() {
+            // `Image` will already render a debugging border around
+            // the container.
+            let image = ImageBuffer::new(width as u32, height as u32);
+            Image { image }.build(style, layout, pipeline, device, queue, size)
+        } else {
+            None
         }
     }
 }

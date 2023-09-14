@@ -2,52 +2,40 @@ use std::panic::Location;
 use std::sync::Arc;
 
 use parking_lot::Mutex;
-use slotmap::new_key_type;
 
 use crate::reactive::ACTIVE_EFFECT;
 
 use super::Scope;
 
-#[track_caller]
-pub fn create_signal<T>(cx: &Scope, value: T) -> (ReadSignal<T>, WriteSignal<T>)
-where
-    T: Send + Sync + 'static,
-{
-    let signal = Signal {
-        #[cfg(debug_assertions)]
-        location: Location::caller(),
-    };
+impl Scope {
+    pub fn create_signal<T>(&self, value: T) -> (ReadSignal<T>, WriteSignal<T>)
+    where
+        T: Send + Sync + 'static,
+    {
+        let value = Arc::new(Mutex::new(value));
 
-    let mut doc = cx.document.inner.lock();
+        let mut rt = self.document.runtime.inner.lock();
 
-    let mut rt = cx.document.runtime.inner.lock();
+        let id = SignalId(rt.next_signal_id);
+        rt.next_signal_id += 1;
 
-    let id = rt.signals.insert(signal);
-    doc.signal_targets.insert(id, cx.id);
-    rt.signal_effects.insert(id, vec![]);
-
-    let value = Arc::new(Mutex::new(value));
-
-    tracing::trace!(
-        "creating Signal({:?}) with owner {:?} at {}",
-        id,
-        cx.id,
-        Location::caller(),
-    );
-
-    (
-        ReadSignal {
-            cx: cx.clone(),
-            id,
-            value: value.clone(),
-        },
-        WriteSignal {
-            cx: cx.clone(),
-            id,
-            value,
-        },
-    )
+        (
+            ReadSignal {
+                cx: self.clone(),
+                id,
+                value: value.clone(),
+            },
+            WriteSignal {
+                cx: self.clone(),
+                id,
+                value,
+            },
+        )
+    }
 }
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub(super) struct SignalId(u64);
 
 #[derive(Debug)]
 pub struct ReadSignal<T>
@@ -194,7 +182,7 @@ where
 
         let mut rt = self.cx.document.runtime.inner.lock();
 
-        let Some(effects) = rt.signal_effects.get(&self.id).cloned() else {
+        let Some(effects) = rt.subscribers.get(&self.id).cloned() else {
             return;
         };
 
@@ -204,7 +192,7 @@ where
             effects
         );
 
-        rt.effect_queue.extend(effects.iter().map(|e| *e));
+        rt.queue.extend(effects);
     }
 
     pub fn with<U, F>(&self, f: F) -> U
@@ -244,10 +232,6 @@ pub(super) struct Signal {
     pub location: &'static Location<'static>,
 }
 
-new_key_type! {
-    pub struct SignalId;
-}
-
 #[cfg(test)]
 mod tests {
 
@@ -256,10 +240,8 @@ mod tests {
     use parking_lot::Mutex;
 
     use crate::events::Events;
-    use crate::reactive::{create_effect, Document, Runtime};
-    use crate::render::layout::LayoutTree;
-
-    use super::create_signal;
+    use crate::layout::LayoutTree;
+    use crate::reactive::{Document, Runtime};
 
     #[test]
     fn signal_update() {
@@ -267,7 +249,7 @@ mod tests {
         let doc = Document::new(rt);
         let cx = doc.root_scope();
 
-        let (reader, writer) = create_signal(&cx, 0);
+        let (reader, writer) = cx.create_signal(0);
 
         assert_eq!(reader.get(), 0);
 
@@ -285,7 +267,7 @@ mod tests {
         let rt = Runtime::new();
         let docs: Vec<_> = (0..count).map(|_| Document::new(rt.clone())).collect();
 
-        let (reader, writer) = create_signal(&docs[0].root_scope(), 0);
+        let (reader, writer) = docs[0].root_scope().create_signal(0);
 
         for doc in &docs {
             let cx = doc.root_scope();
@@ -293,7 +275,7 @@ mod tests {
             let reader = reader.clone();
             let value = value.clone();
 
-            create_effect(&cx, move || {
+            cx.create_effect(move || {
                 let _ = reader.get();
 
                 *value.lock() += 1;
@@ -328,29 +310,25 @@ mod tests {
         let src = Document::new(rt.clone());
         let dst = Document::new(rt);
 
-        let (reader, writer) = create_signal(&src.root_scope(), 0);
+        let (reader, writer) = src.root_scope().create_signal(0);
 
         {
             let value = value.clone();
-            create_effect(&dst.root_scope(), move || {
+            dst.root_scope().create_effect(move || {
                 let _ = reader.get();
 
                 *value.lock() += 1;
             });
         }
 
-        tracing::trace!("src");
         src.run_effects();
-        tracing::trace!("dst");
         dst.run_effects();
 
         assert_eq!(*value.lock(), 1);
 
         writer.wake();
 
-        tracing::trace!("src");
         src.run_effects();
-        tracing::trace!("dst");
         dst.run_effects();
 
         assert_eq!(*value.lock(), 2);

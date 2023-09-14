@@ -7,31 +7,23 @@ mod record;
 mod records;
 mod view;
 
-use game_asset::Assets;
 use game_common::module::ModuleId;
 use game_data::record::{Record, RecordKind};
-use game_render::mesh::Mesh;
-use game_render::pbr::PbrMaterial;
-use game_render::texture::Images;
 use game_render::Renderer;
-use game_scene::Scenes;
-use game_ui::events::Events;
 use game_ui::reactive::{Document, Runtime};
-use game_ui::render::layout::LayoutTree;
-use game_ui::view;
 use game_window::events::WindowEvent;
 use game_window::windows::WindowId;
 
-use crate::backend::Handle;
 use crate::state::EditorState;
+use crate::windows::create_module::CreateModule;
+use crate::windows::error::Error;
+use crate::windows::record::EditRecord;
+use crate::windows::records::Records;
 
-use self::create_module::*;
-use self::error::*;
-use self::main_window::*;
-use self::modules::*;
-use self::open_module::*;
-use self::record::*;
-use self::records::*;
+use self::main_window::MainWindow;
+use self::modules::Modules;
+use self::open_module::OpenModule;
+use self::record::CreateRecord;
 use self::view::WorldWindowState;
 
 pub enum Window {
@@ -67,60 +59,41 @@ pub fn spawn_window(
     let cx = document.root_scope();
     match event {
         SpawnWindow::MainWindow => {
-            view! {
-                cx,
-                <MainWindow state={state.clone()}>
-                </MainWindow>
-            };
+            cx.append(MainWindow { state });
         }
         SpawnWindow::Modules => {
-            view! {
-                cx,
-                <Modules state={state.clone()}>
-                </Modules>
-            };
+            cx.append(Modules { state });
         }
         SpawnWindow::OpenModule => {
-            view! {
-                cx,
-                <OpenModule handle={state.handle.clone()}>
-                </OpenModule>
-            };
+            cx.append(OpenModule {
+                handle: state.handle,
+            });
         }
         SpawnWindow::CreateModule => {
-            view! {
-                cx,
-                <CreateModule modules={state.modules.clone()}>
-                </CreateModule>
-            };
+            cx.append(CreateModule {
+                modules: state.modules,
+            });
         }
         SpawnWindow::Error(msg) => {
-            view! {
-                cx,
-                <Error message={&msg}>
-                </Error>
-            };
+            cx.append(Error { message: msg });
         }
         SpawnWindow::Records => {
-            view! {
-                cx,
-                <Records state={state.clone()}>
-                </Records>
-            };
+            cx.append(Records { state });
         }
         SpawnWindow::CreateRecord(kind) => {
-            view! {
-                cx,
-                <CreateRecord kind={kind} records={state.records.clone()} modules={state.modules.clone()}>
-                </CreateRecord>
-            };
+            cx.append(CreateRecord {
+                kind,
+                records: state.records,
+                modules: state.modules,
+            });
         }
         SpawnWindow::EditRecord(module_id, record) => {
-            view! {
-                cx,
-                <EditRecord record={record.clone()} modules={state.modules.clone()} records={state.records.clone()} module_id={module_id}>
-                </EditRecord>
-            };
+            cx.append(EditRecord {
+                record,
+                module_id,
+                records: state.records,
+                modules: state.modules,
+            });
         }
         SpawnWindow::View => {
             let window = view::WorldWindowState::new(renderer, window_id);

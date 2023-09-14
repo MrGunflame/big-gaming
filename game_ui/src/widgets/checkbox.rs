@@ -2,30 +2,27 @@ use image::{ImageBuffer, Rgba};
 use parking_lot::Mutex;
 
 use crate::events::{ElementEventHandlers, EventHandlers};
-use crate::reactive::{create_effect, create_signal, Node, Scope, WriteSignal};
-use crate::render::style::Style;
+use crate::reactive::{Node, Scope};
 use crate::render::{Element, ElementBody, Image};
+use crate::style::Style;
 
-use super::Component;
+use super::{Callback, Widget};
 
-pub struct CheckboxProps {
-    pub value: bool,
-    pub style: Style,
-    pub on_change: CheckboxChangeHandler,
+#[derive(Debug)]
+pub struct Checkbox {
+    is_checked: bool,
+    style: Style,
+    on_change: Option<Callback<bool>>,
 }
 
-pub struct Checkbox;
-
-impl Component for Checkbox {
-    type Properties = CheckboxProps;
-
-    fn render(cx: &Scope, props: Self::Properties) -> Scope {
-        let (state, set_state) = create_signal(cx, props.value);
+impl Widget for Checkbox {
+    fn build(self, cx: &Scope) -> Scope {
+        let (state, set_state) = cx.create_signal(self.is_checked);
 
         let root = cx.push(Node {
             element: Element {
-                body: ElementBody::Container(),
-                style: props.style,
+                body: ElementBody::Container,
+                style: self.style,
             },
             events: ElementEventHandlers {
                 local: EventHandlers {
@@ -42,7 +39,7 @@ impl Component for Checkbox {
 
         let id = Mutex::new(None);
         let cx = root.clone();
-        create_effect(&root, move || {
+        root.create_effect(move || {
             let state = state.get();
 
             let mut id = id.lock();
@@ -66,33 +63,16 @@ impl Component for Checkbox {
             });
 
             // Skip update for the initial value.
-            if id.is_some() {
-                (props.on_change.0)(state);
+            if let Some(cb) = &self.on_change {
+                if id.is_some() {
+                    (cb)(state);
+                }
             }
 
             *id = Some(checkbox.id().unwrap());
         });
 
         root
-    }
-}
-
-pub struct CheckboxChangeHandler(Box<dyn Fn(bool) + Send + Sync + 'static>);
-
-impl<F> From<F> for CheckboxChangeHandler
-where
-    F: Fn(bool) + Send + Sync + 'static,
-{
-    fn from(value: F) -> Self {
-        Self(Box::new(value))
-    }
-}
-
-impl From<WriteSignal<bool>> for CheckboxChangeHandler {
-    fn from(writer: WriteSignal<bool>) -> Self {
-        Self(Box::new(move |val| {
-            writer.update(|v| *v = val);
-        }))
     }
 }
 

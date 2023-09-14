@@ -1,10 +1,10 @@
-use ab_glyph::{point, Font, FontRef, Glyph, Point, PxScale, ScaleFont};
-use glam::Vec2;
+use ab_glyph::{point, Font, FontRef, Glyph, PxScale, ScaleFont};
+use glam::UVec2;
 use image::{ImageBuffer, Rgba, RgbaImage};
 
-use super::computed_style::{ComputedBounds, ComputedStyle};
 use super::image::Image;
 use super::BuildPrimitiveElement;
+use crate::layout::computed_style::{ComputedBounds, ComputedStyle};
 
 const DEFAULT_FONT: &[u8] = include_bytes!("../../../assets/fonts/OpenSans/OpenSans-Regular.ttf");
 
@@ -25,6 +25,11 @@ impl Text {
             size,
         }
     }
+
+    pub(crate) fn bounds(&self, style: &ComputedStyle) -> ComputedBounds {
+        let image = render_to_texture(&self.text, self.size, UVec2::splat(0));
+        Image { image }.bounds(style)
+    }
 }
 
 impl BuildPrimitiveElement for Text {
@@ -35,33 +40,27 @@ impl BuildPrimitiveElement for Text {
         pipeline: &super::UiPipeline,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-        size: glam::Vec2,
+        size: UVec2,
     ) -> Option<super::PrimitiveElement> {
         let image = render_to_texture(&self.text, self.size, layout.max - layout.min);
 
         Image { image }.build(style, layout, pipeline, device, queue, size)
     }
-
-    fn bounds(&self, style: &ComputedStyle) -> ComputedBounds {
-        let image = render_to_texture(&self.text, self.size, Vec2::splat(0.0));
-        Image { image }.bounds(style)
-    }
 }
 
-fn render_to_texture(text: &str, size: f32, max: Vec2) -> ImageBuffer<Rgba<u8>, Vec<u8>> {
+fn render_to_texture(text: &str, size: f32, max: UVec2) -> ImageBuffer<Rgba<u8>, Vec<u8>> {
     let font = FontRef::try_from_slice(DEFAULT_FONT).unwrap();
 
     let scaled_font = font.as_scaled(PxScale::from(size));
 
     let mut glyphs = Vec::new();
-    let (num_lines, max_width) =
-        layout_glyphs(scaled_font, point(0.0, 0.0), text, 1000.0, &mut glyphs);
+    let (num_lines, max_width) = layout_glyphs(scaled_font, text, 1000.0, &mut glyphs);
 
     // Note that `height()` returns the biggest point that may be drawn to.
     // We still need an additional pixel above that.
     let height = scaled_font.height().ceil() as u32 + 1;
 
-    let mut image = RgbaImage::new(max_width.ceil() as u32, num_lines * height);
+    let mut image = RgbaImage::new(max_width.ceil() as u32 + 1, num_lines * height);
 
     for glyph in glyphs {
         if let Some(outlined_glyph) = scaled_font.outline_glyph(glyph) {
@@ -84,30 +83,24 @@ fn render_to_texture(text: &str, size: f32, max: Vec2) -> ImageBuffer<Rgba<u8>, 
 
 fn layout_glyphs<SF: ScaleFont<F>, F: Font>(
     font: SF,
-    position: Point,
     text: &str,
     max_width: f32,
     target: &mut Vec<Glyph>,
 ) -> (u32, f32) {
     let mut num_lines = 1;
-
-    // The width of the widest line.
-    let mut width = 0.0;
+    let mut max_line_width = 0.0;
 
     let v_advance = font.height() + font.line_gap();
-    let mut caret = position + point(0.0, font.ascent());
+    let mut caret = point(0.0, font.ascent());
 
     let mut last_glyph: Option<Glyph> = None;
-    let mut last_gylph_width = 0.0;
 
     for ch in text.chars() {
         if ch.is_control() {
             if ch == '\n' {
-                if caret.x + last_gylph_width > width {
-                    width = caret.x + last_gylph_width;
-                }
+                max_line_width = f32::max(max_line_width, caret.x);
 
-                caret = point(position.x, caret.y + v_advance);
+                caret = point(0.0, caret.y + v_advance);
                 num_lines += 1;
             }
 
@@ -120,19 +113,16 @@ fn layout_glyphs<SF: ScaleFont<F>, F: Font>(
         }
 
         glyph.position = caret;
-
-        last_gylph_width = font.h_advance(glyph.id);
         last_glyph = Some(glyph.clone());
-
         caret.x += font.h_advance(glyph.id);
 
-        if !ch.is_whitespace() && caret.x > position.x + max_width {
-            if caret.x + last_gylph_width > width {
-                width = caret.x + last_gylph_width;
-            }
+        if !ch.is_whitespace() && caret.x > max_width {
+            max_line_width = f32::max(max_line_width, caret.x);
 
-            caret = point(caret.x, position.y);
+            caret = point(0.0, caret.y + v_advance);
+
             glyph.position = caret;
+
             last_glyph = None;
             num_lines += 1;
         }
@@ -140,17 +130,15 @@ fn layout_glyphs<SF: ScaleFont<F>, F: Font>(
         target.push(glyph);
     }
 
-    if caret.x + last_gylph_width > width {
-        width = caret.x + last_gylph_width;
-    }
+    max_line_width = f32::max(max_line_width, caret.x);
 
-    (num_lines, width)
+    (num_lines, max_line_width)
 }
 
 #[cfg(test)]
 mod tests {
-    use ab_glyph::{point, Font, FontRef, PxScale};
-    use glam::Vec2;
+    use ab_glyph::{Font, FontRef, PxScale};
+    use glam::UVec2;
 
     use super::{layout_glyphs, render_to_texture, DEFAULT_FONT};
 
@@ -162,7 +150,7 @@ mod tests {
     fn render_to_texture_singleline() {
         let text = "abcdefghijklmnopqrstuvwxyz";
         let size = 100.0;
-        let max = Vec2::splat(0.0);
+        let max = UVec2::splat(0);
 
         render_to_texture(text, size, max);
     }
@@ -171,7 +159,7 @@ mod tests {
     fn render_to_texture_newline() {
         let text = "abcdefghijklmnopqrstuvwxyz\nabcdefghijklmnopqrstuvwxyz";
         let size = 100.0;
-        let max = Vec2::splat(0.0);
+        let max = UVec2::splat(0);
 
         render_to_texture(text, size, max);
     }
@@ -180,7 +168,7 @@ mod tests {
     fn render_to_texture_overflow() {
         let text: String = (0..1000).map(|_| "a").collect();
         let size = 10.0;
-        let max = Vec2::splat(0.0);
+        let max = UVec2::splat(0);
 
         render_to_texture(&text, size, max);
     }
@@ -189,11 +177,10 @@ mod tests {
     fn layout_glyphs_width_too_small() {
         let font = test_font();
         let font = font.as_scaled(PxScale::from(100.0));
-        let position = point(0.0, 0.0);
         let text = "Hello";
         let max_width = 1.0;
         let mut target = Vec::new();
 
-        layout_glyphs(font, position, text, max_width, &mut target);
+        layout_glyphs(font, text, max_width, &mut target);
     }
 }
