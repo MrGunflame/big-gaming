@@ -25,12 +25,12 @@ use game_window::events::WindowEvent;
 use game_window::windows::{WindowId, Windows};
 use glam::UVec2;
 use reactive::{Document, Runtime};
-use render::RenderUiState;
 
+use render::UiRenderer;
 use wgpu::{Device, Queue};
 
 pub struct UiState {
-    render: RenderUiState,
+    renderer: UiRenderer,
     windows: HashMap<WindowId, Document>,
     events: HashMap<WindowId, Events>,
     pub runtime: Runtime,
@@ -43,7 +43,7 @@ impl UiState {
         let (command_tx, command_rx) = mpsc::channel();
 
         Self {
-            render: RenderUiState::new(&render_state.device, &mut render_state.graph),
+            renderer: UiRenderer::new(&render_state.device, &mut render_state.graph),
             runtime: Runtime::new(),
             windows: HashMap::new(),
             events: HashMap::new(),
@@ -53,7 +53,7 @@ impl UiState {
     }
 
     pub fn create(&mut self, id: WindowId, size: UVec2) {
-        self.render.insert(id, size);
+        self.renderer.insert(id, size);
         self.windows.insert(id, Document::new(self.runtime.clone()));
         self.events.insert(id, Events::new());
     }
@@ -63,11 +63,11 @@ impl UiState {
     }
 
     pub fn resize(&mut self, id: WindowId, size: UVec2) {
-        self.render.resize(id, size);
+        self.renderer.resize(id, size);
     }
 
     pub fn destroy(&mut self, id: WindowId) {
-        self.render.remove(id);
+        self.renderer.remove(id);
         self.windows.remove(&id);
         self.events.remove(&id);
     }
@@ -104,7 +104,7 @@ impl UiState {
 
     pub fn run(&mut self, device: &Device, queue: &Queue, windows: &Windows) {
         for (id, doc) in self.windows.iter_mut() {
-            let tree = self.render.get_mut(*id).unwrap();
+            let tree = self.renderer.get_mut(*id).unwrap();
             let events = self.events.get_mut(id).unwrap();
             events::update_events_from_layout_tree(tree, events);
 
@@ -112,7 +112,7 @@ impl UiState {
             doc.flush_node_queue(tree, events);
         }
 
-        self.render.update(device, queue);
+        self.renderer.update(device, queue);
 
         while let Ok(cmd) = self.command_rx.try_recv() {
             match cmd {

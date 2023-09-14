@@ -37,13 +37,13 @@ pub use crate::layout::{Element, ElementBody};
 
 const UI_SHADER: &str = include_str!("../../shaders/ui.wgsl");
 
-pub struct RenderUiState {
+pub struct UiRenderer {
     pipeline: Arc<UiPipeline>,
     windows: HashMap<WindowId, LayoutTree>,
     elements: Arc<RwLock<HashMap<WindowId, Vec<PrimitiveElement>>>>,
 }
 
-impl RenderUiState {
+impl UiRenderer {
     pub fn new(device: &Device, graph: &mut RenderGraph) -> Self {
         let pipeline = Arc::new(UiPipeline::new(device));
         let elements = Arc::new(RwLock::new(HashMap::new()));
