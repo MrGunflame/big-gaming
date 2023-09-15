@@ -23,6 +23,8 @@ pub struct WorldWindowState {
     selection: Vec<ObjectId>,
     // TODO: Use `Cursor` instead of adding our own thing.
     cursor: Vec2,
+    edit_mode: EditMode,
+    edit_operations: Vec<EditOperation>,
 }
 
 impl WorldWindowState {
@@ -64,6 +66,8 @@ impl WorldWindowState {
             entities,
             selection: vec![],
             cursor: Vec2::ZERO,
+            edit_mode: EditMode::None,
+            edit_operations: vec![],
         }
     }
 
@@ -82,7 +86,37 @@ impl WorldWindowState {
                 self.camera_controller.mode = Mode::NONE;
             }
             WindowEvent::CursorMoved(event) => {
-                self.cursor = event.position;
+                let surface = renderer.surfaces.get(window).unwrap();
+                let viewport_size =
+                    Vec2::new(surface.config.width as f32, surface.config.height as f32);
+
+                let camera_translation = camera.transform.translation;
+                let ray = camera.viewport_to_world(camera.transform, viewport_size, event.position);
+
+                match self.edit_mode {
+                    EditMode::None => {
+                        self.cursor = event.position;
+                    }
+                    EditMode::Translate(axis) => {
+                        dbg!(self.selection.len());
+                        for id in &self.selection {
+                            let object = renderer.entities.objects().get_mut(*id).unwrap();
+
+                            let distance =
+                                (object.transform.translation - camera_translation).length();
+                            dbg!(distance);
+
+                            let point = ray.point(distance);
+                            match axis {
+                                Some(Axis::X) => object.transform.translation.x = point.x,
+                                Some(Axis::Y) => object.transform.translation.y = point.y,
+                                Some(Axis::Z) => object.transform.translation.z = point.z,
+                                None => object.transform.translation = point,
+                            }
+                        }
+                    }
+                    _ => todo!(),
+                }
             }
             WindowEvent::KeyboardInput(event) => {
                 if event.key_code == Some(VirtualKeyCode::LShift) {
@@ -91,10 +125,49 @@ impl WorldWindowState {
                         ButtonState::Released => self.camera_controller.mode &= !Mode::SHIFT,
                     }
                 }
+
+                if event.state.is_pressed() && !self.selection.is_empty() {
+                    match event.key_code {
+                        Some(VirtualKeyCode::Escape) => {
+                            self.edit_mode = EditMode::None;
+                        }
+                        Some(VirtualKeyCode::G) => {
+                            dbg!("G");
+                            self.edit_mode = EditMode::Translate(None);
+                        }
+                        Some(VirtualKeyCode::R) => {
+                            self.edit_mode = EditMode::Rotate(None);
+                        }
+                        Some(VirtualKeyCode::S) => {
+                            self.edit_mode = EditMode::Scale(None);
+                        }
+                        Some(VirtualKeyCode::X) => match &mut self.edit_mode {
+                            EditMode::Translate(axis) => *axis = Some(Axis::X),
+                            EditMode::Rotate(axis) => *axis = Some(Axis::X),
+                            EditMode::Scale(axis) => *axis = Some(Axis::X),
+                            EditMode::None => (),
+                        },
+                        Some(VirtualKeyCode::Y) => match &mut self.edit_mode {
+                            EditMode::Translate(axis) => *axis = Some(Axis::Y),
+                            EditMode::Rotate(axis) => *axis = Some(Axis::Y),
+                            EditMode::Scale(axis) => *axis = Some(Axis::Y),
+                            EditMode::None => (),
+                        },
+                        Some(VirtualKeyCode::Z) => match &mut self.edit_mode {
+                            EditMode::Translate(axis) => *axis = Some(Axis::Z),
+                            EditMode::Rotate(axis) => *axis = Some(Axis::Z),
+                            EditMode::Scale(axis) => *axis = Some(Axis::Z),
+                            EditMode::None => (),
+                        },
+                        _ => (),
+                    }
+                }
             }
             WindowEvent::MouseButtonInput(event) => match event.button {
                 MouseButton::Left => {
-                    self.update_selection(renderer, window);
+                    if matches!(self.edit_mode, EditMode::None) {
+                        self.update_selection(renderer, window);
+                    }
                 }
                 MouseButton::Middle => match event.state {
                     ButtonState::Pressed => self.camera_controller.mode |= Mode::MIDDLE,
@@ -116,6 +189,7 @@ impl WorldWindowState {
         let surface = renderer.surfaces.get(id).unwrap();
         let viewport_size = Vec2::new(surface.config.width as f32, surface.config.height as f32);
 
+        self.selection.clear();
         for id in &self.entities {
             let object = renderer.entities.objects().get(*id).unwrap();
             let mesh = renderer.meshes.get(object.mesh.id()).unwrap();
@@ -129,6 +203,47 @@ impl WorldWindowState {
             }
         }
     }
+
+    fn create_edit_ops(&mut self, renderer: &mut Renderer) {
+        self.edit_operations.clear();
+
+        for id in &self.selection {
+            let object = renderer.entities.objects().get(*id).unwrap();
+
+            self.edit_operations.push(EditOperation {
+                id: *id,
+                origin: object.transform,
+            });
+        }
+    }
+
+    fn confirm_edit_ops(&mut self, renderer: &mut Renderer) {
+        for entity in &self.edit_operations {
+            let object = renderer.entities.objects().get_mut(entity.id).unwrap();
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+struct EditOperation {
+    id: ObjectId,
+    origin: Transform,
+}
+
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
+enum EditMode {
+    #[default]
+    None,
+    Translate(Option<Axis>),
+    Rotate(Option<Axis>),
+    Scale(Option<Axis>),
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+enum Axis {
+    X,
+    Y,
+    Z,
 }
 
 // let id = commands

@@ -9,15 +9,6 @@ use game_window::cursor::Cursor;
 use game_window::events::VirtualKeyCode;
 use glam::{Quat, Vec2, Vec3};
 
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
-pub enum EditMode {
-    #[default]
-    None,
-    Translate,
-    Rotate,
-    Scale,
-}
-
 // pub fn handle_selection_input(
 //     mut events: EventReader<MouseButtonInput>,
 //     cursor: Res<Cursor>,
