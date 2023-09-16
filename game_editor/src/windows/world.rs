@@ -99,6 +99,39 @@ impl WorldWindowState {
                     }
                 }
 
+                match event.key_code {
+                    // Front view
+                    Some(VirtualKeyCode::Numpad1) => {
+                        let distance =
+                            (self.camera_controller.origin - camera.transform.translation).length();
+
+                        camera.transform.translation =
+                            self.camera_controller.origin + Vec3::new(0.0, 0.0, distance);
+                        camera.transform = camera.transform.looking_to(-Vec3::Z, Vec3::Y);
+                    }
+                    // Right view
+                    Some(VirtualKeyCode::Numpad3) => {
+                        let distance =
+                            (self.camera_controller.origin - camera.transform.translation).length();
+
+                        camera.transform.translation =
+                            self.camera_controller.origin + Vec3::new(distance, 0.0, 0.0);
+                        camera.transform = camera.transform.looking_to(-Vec3::X, Vec3::Y);
+                    }
+                    // Top view
+                    Some(VirtualKeyCode::Numpad7) => {
+                        let distance = (self.camera_controller.origin
+                            - camera.transform.translation)
+                            .length()
+                            .abs();
+
+                        camera.transform.translation =
+                            self.camera_controller.origin + Vec3::new(0.0, distance, 0.0);
+                        camera.transform = camera.transform.looking_to(-Vec3::Y, Vec3::Z);
+                    }
+                    _ => (),
+                }
+
                 if event.state.is_pressed() && !self.selection.is_empty() {
                     match event.key_code {
                         Some(VirtualKeyCode::Escape) => {
@@ -158,37 +191,6 @@ impl WorldWindowState {
                                 self.reset_edit_op(renderer);
                                 self.update_edit_op(renderer, window, camera);
                             }
-                        }
-                        // Front view
-                        Some(VirtualKeyCode::Numpad1) => {
-                            let distance = (self.camera_controller.origin
-                                - camera.transform.translation)
-                                .length();
-
-                            camera.transform.translation =
-                                self.camera_controller.origin + Vec3::new(0.0, 0.0, distance);
-                            camera.transform = camera.transform.looking_to(-Vec3::Z, Vec3::Y);
-                        }
-                        // Right view
-                        Some(VirtualKeyCode::Numpad3) => {
-                            let distance = (self.camera_controller.origin
-                                - camera.transform.translation)
-                                .length();
-
-                            camera.transform.translation =
-                                self.camera_controller.origin + Vec3::new(distance, 0.0, 0.0);
-                            camera.transform = camera.transform.looking_to(-Vec3::X, Vec3::Y);
-                        }
-                        // Top view
-                        Some(VirtualKeyCode::Numpad7) => {
-                            let distance = (self.camera_controller.origin
-                                - camera.transform.translation)
-                                .length()
-                                .abs();
-
-                            camera.transform.translation =
-                                self.camera_controller.origin + Vec3::new(0.0, distance, 0.0);
-                            camera.transform = camera.transform.looking_to(-Vec3::Y, Vec3::Z);
                         }
                         _ => (),
                     }
