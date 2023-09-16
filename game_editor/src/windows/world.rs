@@ -24,7 +24,7 @@ pub struct WorldWindowState {
     // TODO: Use `Cursor` instead of adding our own thing.
     cursor: Vec2,
     edit_mode: EditMode,
-    edit_operations: Vec<EditOperation>,
+    edit_op: Option<EditOperation>,
 }
 
 impl WorldWindowState {
@@ -67,7 +67,7 @@ impl WorldWindowState {
             selection: vec![],
             cursor: Vec2::ZERO,
             edit_mode: EditMode::None,
-            edit_operations: vec![],
+            edit_op: None,
         }
     }
 
@@ -106,7 +106,6 @@ impl WorldWindowState {
                             // translation.
                             let plane_origin = object.transform.translation;
                             let plane_normal = camera_rotation * Vec3::Z;
-
                             // FIXME: What if no intersection?
                             let point = ray.plane_intersection(plane_origin, plane_normal).unwrap();
 
@@ -133,16 +132,19 @@ impl WorldWindowState {
                     match event.key_code {
                         Some(VirtualKeyCode::Escape) => {
                             self.edit_mode = EditMode::None;
+                            self.cancel_edit_op(renderer);
                         }
                         Some(VirtualKeyCode::G) => {
-                            dbg!("G");
                             self.edit_mode = EditMode::Translate(None);
+                            self.create_edit_op(renderer);
                         }
                         Some(VirtualKeyCode::R) => {
                             self.edit_mode = EditMode::Rotate(None);
+                            self.create_edit_op(renderer);
                         }
                         Some(VirtualKeyCode::S) => {
                             self.edit_mode = EditMode::Scale(None);
+                            self.create_edit_op(renderer);
                         }
                         Some(VirtualKeyCode::X) => match &mut self.edit_mode {
                             EditMode::Translate(axis) => *axis = Some(Axis::X),
@@ -199,8 +201,15 @@ impl WorldWindowState {
             }
             WindowEvent::MouseButtonInput(event) => match event.button {
                 MouseButton::Left => {
-                    if matches!(self.edit_mode, EditMode::None) {
+                    if self.edit_mode == EditMode::None {
                         self.update_selection(renderer, window);
+                    } else {
+                        self.confirm_edit_op(renderer);
+                    }
+                }
+                MouseButton::Right => {
+                    if self.edit_mode != EditMode::None {
+                        self.cancel_edit_op(renderer);
                     }
                 }
                 MouseButton::Middle => match event.state {
@@ -238,28 +247,51 @@ impl WorldWindowState {
         }
     }
 
-    fn create_edit_ops(&mut self, renderer: &mut Renderer) {
-        self.edit_operations.clear();
+    fn create_edit_op(&mut self, renderer: &mut Renderer) {
+        let mut entities = Vec::new();
 
         for id in &self.selection {
             let object = renderer.entities.objects().get(*id).unwrap();
 
-            self.edit_operations.push(EditOperation {
+            entities.push(EditEntity {
                 id: *id,
                 origin: object.transform,
             });
         }
+
+        self.edit_op = Some(EditOperation {
+            cursor_origin: self.cursor,
+            entities,
+        });
     }
 
-    fn confirm_edit_ops(&mut self, renderer: &mut Renderer) {
-        for entity in &self.edit_operations {
+    fn cancel_edit_op(&mut self, renderer: &mut Renderer) {
+        self.edit_mode = EditMode::None;
+
+        let Some(op) = self.edit_op.take() else {
+            return;
+        };
+
+        for entity in op.entities {
             let object = renderer.entities.objects().get_mut(entity.id).unwrap();
+            object.transform = entity.origin;
         }
+    }
+
+    fn confirm_edit_op(&mut self, renderer: &mut Renderer) {
+        self.edit_op = None;
+        self.edit_mode = EditMode::None;
     }
 }
 
 #[derive(Clone, Debug)]
 struct EditOperation {
+    cursor_origin: Vec2,
+    entities: Vec<EditEntity>,
+}
+
+#[derive(Clone, Debug)]
+struct EditEntity {
     id: ObjectId,
     origin: Transform,
 }
