@@ -172,7 +172,7 @@ fn load_scenes(
     materials: &mut Assets<PbrMaterial>,
     images: &mut Images,
 ) {
-    while let Some((handle, path)) = scenes.load_queue.pop_front() {
+    'out: while let Some((handle, path)) = scenes.load_queue.pop_front() {
         let uri = Uri::from(path);
 
         let mut file = match File::open(uri.as_path()) {
@@ -188,19 +188,41 @@ fn load_scenes(
 
         let scene = match detect_format(&buf) {
             Some(SceneFormat::Model) => {
-                let data = Model::decode(&buf[..]).unwrap();
+                let data = match Model::decode(&buf[..]) {
+                    Ok(data) => data,
+                    Err(err) => {
+                        tracing::error!("failed to load model: {:?}", err);
+                        continue;
+                    }
+                };
 
                 model::model_to_scene(data, meshes, materials, images)
             }
             Some(SceneFormat::Gltf) => {
-                let mut gltf = GltfData::new(&buf).unwrap();
+                let mut gltf = match GltfData::new(&buf) {
+                    Ok(gltf) => gltf,
+                    Err(err) => {
+                        tracing::error!("failed to load GLTF file: {}", err);
+                        continue;
+                    }
+                };
+
                 while let Some(path) = gltf.queue.pop() {
                     let mut uri = uri.clone();
                     uri.push(&path);
-                    let mut file = std::fs::File::open(uri.as_path()).unwrap();
+                    let mut file = match std::fs::File::open(uri.as_path()) {
+                        Ok(file) => file,
+                        Err(err) => {
+                            tracing::error!("failed to load file for GLTF: {}", err);
+                            continue 'out;
+                        }
+                    };
 
                     let mut buf = Vec::new();
-                    file.read_to_end(&mut buf).unwrap();
+                    if let Err(err) = file.read_to_end(&mut buf) {
+                        tracing::error!("failed to load file for GLTF: {}", err);
+                        continue 'out;
+                    }
 
                     gltf.insert(path, buf);
                 }
