@@ -198,6 +198,10 @@ impl WorldWindowState {
             }
             WindowEvent::MouseButtonInput(event) => match event.button {
                 MouseButton::Left => {
+                    if !event.state.is_pressed() {
+                        return;
+                    }
+
                     if self.edit_mode == EditMode::None {
                         self.update_selection(renderer, window);
                     } else {
