@@ -86,39 +86,10 @@ impl WorldWindowState {
                 self.camera_controller.mode = Mode::NONE;
             }
             WindowEvent::CursorMoved(event) => {
-                let surface = renderer.surfaces.get(window).unwrap();
-                let viewport_size =
-                    Vec2::new(surface.config.width as f32, surface.config.height as f32);
+                self.cursor = event.position;
 
-                let camera_rotation = camera.transform.rotation;
-                let ray = camera.viewport_to_world(camera.transform, viewport_size, event.position);
-
-                match self.edit_mode {
-                    EditMode::None => {
-                        self.cursor = event.position;
-                    }
-                    EditMode::Translate(axis) => {
-                        for id in &self.selection {
-                            let object = renderer.entities.objects().get_mut(*id).unwrap();
-
-                            // Find the intersection of the camera ray with the plane placed
-                            // at the object, facing the camera. The projected point is the new
-                            // translation.
-                            let plane_origin = object.transform.translation;
-                            let plane_normal = camera_rotation * Vec3::Z;
-                            // FIXME: What if no intersection?
-                            let point = ray.plane_intersection(plane_origin, plane_normal).unwrap();
-
-                            match axis {
-                                Some(Axis::X) => object.transform.translation.x = point.x,
-                                Some(Axis::Y) => object.transform.translation.y = point.y,
-                                Some(Axis::Z) => object.transform.translation.z = point.z,
-                                None => object.transform.translation = point,
-                            }
-                        }
-                    }
-                    _ => todo!(),
-                }
+                let camera = camera.clone();
+                self.update_edit_op(renderer, window, camera);
             }
             WindowEvent::KeyboardInput(event) => {
                 if event.key_code == Some(VirtualKeyCode::LShift) {
@@ -131,8 +102,8 @@ impl WorldWindowState {
                 if event.state.is_pressed() && !self.selection.is_empty() {
                     match event.key_code {
                         Some(VirtualKeyCode::Escape) => {
+                            self.reset_edit_op(renderer);
                             self.edit_mode = EditMode::None;
-                            self.cancel_edit_op(renderer);
                         }
                         Some(VirtualKeyCode::G) => {
                             self.edit_mode = EditMode::Translate(None);
@@ -146,24 +117,48 @@ impl WorldWindowState {
                             self.edit_mode = EditMode::Scale(None);
                             self.create_edit_op(renderer);
                         }
-                        Some(VirtualKeyCode::X) => match &mut self.edit_mode {
-                            EditMode::Translate(axis) => *axis = Some(Axis::X),
-                            EditMode::Rotate(axis) => *axis = Some(Axis::X),
-                            EditMode::Scale(axis) => *axis = Some(Axis::X),
-                            EditMode::None => (),
-                        },
-                        Some(VirtualKeyCode::Y) => match &mut self.edit_mode {
-                            EditMode::Translate(axis) => *axis = Some(Axis::Y),
-                            EditMode::Rotate(axis) => *axis = Some(Axis::Y),
-                            EditMode::Scale(axis) => *axis = Some(Axis::Y),
-                            EditMode::None => (),
-                        },
-                        Some(VirtualKeyCode::Z) => match &mut self.edit_mode {
-                            EditMode::Translate(axis) => *axis = Some(Axis::Z),
-                            EditMode::Rotate(axis) => *axis = Some(Axis::Z),
-                            EditMode::Scale(axis) => *axis = Some(Axis::Z),
-                            EditMode::None => (),
-                        },
+                        Some(VirtualKeyCode::X) => {
+                            match &mut self.edit_mode {
+                                EditMode::Translate(axis) => *axis = Some(Axis::X),
+                                EditMode::Rotate(axis) => *axis = Some(Axis::X),
+                                EditMode::Scale(axis) => *axis = Some(Axis::X),
+                                EditMode::None => (),
+                            }
+
+                            if self.edit_mode != EditMode::None {
+                                let camera = camera.clone();
+                                self.reset_edit_op(renderer);
+                                self.update_edit_op(renderer, window, camera);
+                            }
+                        }
+                        Some(VirtualKeyCode::Y) => {
+                            match &mut self.edit_mode {
+                                EditMode::Translate(axis) => *axis = Some(Axis::Y),
+                                EditMode::Rotate(axis) => *axis = Some(Axis::Y),
+                                EditMode::Scale(axis) => *axis = Some(Axis::Y),
+                                EditMode::None => (),
+                            }
+
+                            if self.edit_mode != EditMode::None {
+                                let camera = camera.clone();
+                                self.reset_edit_op(renderer);
+                                self.update_edit_op(renderer, window, camera);
+                            }
+                        }
+                        Some(VirtualKeyCode::Z) => {
+                            match &mut self.edit_mode {
+                                EditMode::Translate(axis) => *axis = Some(Axis::Z),
+                                EditMode::Rotate(axis) => *axis = Some(Axis::Z),
+                                EditMode::Scale(axis) => *axis = Some(Axis::Z),
+                                EditMode::None => (),
+                            };
+
+                            if self.edit_mode != EditMode::None {
+                                let camera = camera.clone();
+                                self.reset_edit_op(renderer);
+                                self.update_edit_op(renderer, window, camera);
+                            }
+                        }
                         // Front view
                         Some(VirtualKeyCode::Numpad1) => {
                             let distance = (self.camera_controller.origin
@@ -209,7 +204,8 @@ impl WorldWindowState {
                 }
                 MouseButton::Right => {
                     if self.edit_mode != EditMode::None {
-                        self.cancel_edit_op(renderer);
+                        self.reset_edit_op(renderer);
+                        self.edit_mode = EditMode::None;
                     }
                 }
                 MouseButton::Middle => match event.state {
@@ -265,14 +261,45 @@ impl WorldWindowState {
         });
     }
 
-    fn cancel_edit_op(&mut self, renderer: &mut Renderer) {
-        self.edit_mode = EditMode::None;
+    fn update_edit_op(&mut self, renderer: &mut Renderer, window: WindowId, camera: Camera) {
+        let surface = renderer.surfaces.get(window).unwrap();
+        let viewport_size = Vec2::new(surface.config.width as f32, surface.config.height as f32);
 
-        let Some(op) = self.edit_op.take() else {
+        let camera_rotation = camera.transform.rotation;
+        let ray = camera.viewport_to_world(camera.transform, viewport_size, self.cursor);
+
+        match self.edit_mode {
+            EditMode::Translate(axis) => {
+                for id in &self.selection {
+                    let object = renderer.entities.objects().get_mut(*id).unwrap();
+
+                    // Find the intersection of the camera ray with the plane placed
+                    // at the object, facing the camera. The projected point is the new
+                    // translation.
+                    let plane_origin = object.transform.translation;
+                    let plane_normal = camera_rotation * Vec3::Z;
+                    // FIXME: What if no intersection?
+                    let point = ray.plane_intersection(plane_origin, plane_normal).unwrap();
+
+                    match axis {
+                        Some(Axis::X) => object.transform.translation.x = point.x,
+                        Some(Axis::Y) => object.transform.translation.y = point.y,
+                        Some(Axis::Z) => object.transform.translation.z = point.z,
+                        None => object.transform.translation = point,
+                    }
+                }
+            }
+            EditMode::None => (),
+            _ => todo!(),
+        }
+    }
+
+    fn reset_edit_op(&mut self, renderer: &mut Renderer) {
+        let Some(op) = &self.edit_op else {
             return;
         };
 
-        for entity in op.entities {
+        for entity in &op.entities {
             let object = renderer.entities.objects().get_mut(entity.id).unwrap();
             object.transform = entity.origin;
         }
