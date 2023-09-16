@@ -90,7 +90,7 @@ impl WorldWindowState {
                 let viewport_size =
                     Vec2::new(surface.config.width as f32, surface.config.height as f32);
 
-                let camera_translation = camera.transform.translation;
+                let camera_rotation = camera.transform.rotation;
                 let ray = camera.viewport_to_world(camera.transform, viewport_size, event.position);
 
                 match self.edit_mode {
@@ -98,17 +98,18 @@ impl WorldWindowState {
                         self.cursor = event.position;
                     }
                     EditMode::Translate(axis) => {
-                        dbg!(self.selection.len());
                         for id in &self.selection {
                             let object = renderer.entities.objects().get_mut(*id).unwrap();
 
-                            dbg!(object.transform.translation);
-                            dbg!(camera_translation);
-                            let distance =
-                                (object.transform.translation - camera_translation).length();
-                            dbg!(distance);
+                            // Find the intersection of the camera ray with the plane placed
+                            // at the object, facing the camera. The projected point is the new
+                            // translation.
+                            let plane_origin = object.transform.translation;
+                            let plane_normal = camera_rotation * Vec3::Z;
 
-                            let point = ray.point(distance);
+                            // FIXME: What if no intersection?
+                            let point = ray.plane_intersection(plane_origin, plane_normal).unwrap();
+
                             match axis {
                                 Some(Axis::X) => object.transform.translation.x = point.x,
                                 Some(Axis::Y) => object.transform.translation.y = point.y,
