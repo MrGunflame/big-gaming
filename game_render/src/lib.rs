@@ -125,6 +125,10 @@ impl Renderer {
     }
 
     pub fn render(&mut self) {
+        // FIXME: Should update on render pass.
+        crate::texture::image::load_images(&mut self.images);
+        crate::texture::image::update_image_handles(&mut self.images);
+
         self.entities.rebuild(
             &mut self.meshes,
             &mut self.materials,
@@ -134,10 +138,6 @@ impl Renderer {
             &self.forward,
             &mut self.mipmap_generator,
         );
-
-        // FIXME: Should update on render pass.
-        crate::texture::image::load_images(&mut self.images);
-        crate::texture::image::update_image_handles(&mut self.images);
 
         for (window, surface) in self.surfaces.iter_mut() {
             let output = match surface.surface.get_current_texture() {
