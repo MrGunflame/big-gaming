@@ -95,6 +95,28 @@ impl Scenes {
             events: self.events.clone(),
         }
     }
+
+    pub fn update(&mut self, renderer: &mut Renderer) {
+        load_scenes(
+            self,
+            &mut renderer.meshes,
+            &mut renderer.materials,
+            &mut renderer.images,
+        );
+        update_scene_handles(self);
+
+        let mut spawned = vec![];
+        for (id, scene) in self.scenes.iter() {
+            if let Some(scene) = &scene.data {
+                spawn_scene(scene, renderer);
+                spawned.push(*id);
+            }
+        }
+
+        for id in spawned {
+            self.scenes.remove(&id);
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -142,28 +164,6 @@ pub struct Node {
     pub mesh: Handle<Mesh>,
     pub material: Handle<PbrMaterial>,
     pub transform: Transform,
-}
-
-pub fn tick(scenes: &mut Scenes, renderer: &mut Renderer) {
-    load_scenes(
-        scenes,
-        &mut renderer.meshes,
-        &mut renderer.materials,
-        &mut renderer.images,
-    );
-    update_scene_handles(scenes);
-
-    let mut spawned = vec![];
-    for (id, scene) in scenes.scenes.iter() {
-        if let Some(scene) = &scene.data {
-            spawn_scene(scene, renderer);
-            spawned.push(*id);
-        }
-    }
-
-    for id in spawned {
-        scenes.scenes.remove(&id);
-    }
 }
 
 fn load_scenes(
