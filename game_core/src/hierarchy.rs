@@ -86,6 +86,7 @@ impl TransformHierarchy {
             for (child, parent) in parents.clone().iter() {
                 if let Some(transform) = transforms.get(parent) {
                     let local_transform = transforms.get(&child.0).unwrap();
+                    parents.remove(child);
 
                     transforms.insert(child.0, transform.mul_transform(*local_transform));
                 }
