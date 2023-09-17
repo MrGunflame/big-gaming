@@ -68,6 +68,27 @@ impl Widget for Area {
                 },
                 events: ElementEventHandlers {
                     local: EventHandlers {
+                        // cursor_left: Some({
+                        //     let set_state = set_state.clone();
+
+                        //     Box::new(move |_ctx| {
+                        //         set_state.update_untracked(|state| state.drag = DragState::None);
+                        //     })
+                        // }),
+                        mouse_button_input: Some({
+                            let set_state = set_state.clone();
+
+                            Box::new(move |ctx| {
+                                if ctx.event.button.is_left() && ctx.event.state.is_pressed() {
+                                    set_state.update_untracked(|state| {
+                                        state.drag = DragState::Start(ctx.cursor.position());
+                                    });
+                                }
+                            })
+                        }),
+                        ..Default::default()
+                    },
+                    global: EventHandlers {
                         cursor_moved: Some(Box::new(move |ctx| {
                             // Rebind in closure.
                             let mut size = size;
@@ -91,32 +112,13 @@ impl Widget for Area {
                                 }
                             }
                         })),
-                        cursor_left: Some({
-                            let set_state = set_state.clone();
-
-                            Box::new(move |_ctx| {
-                                set_state.update_untracked(|state| state.drag = DragState::None);
-                            })
-                        }),
                         mouse_button_input: Some(Box::new(move |ctx| {
-                            if ctx.event.button.is_left() {
-                                let is_dragging = ctx.event.state.is_pressed();
-                                set_state.update_untracked(|state| {
-                                    match (state.drag, is_dragging) {
-                                        (DragState::None, true) => {
-                                            state.drag = DragState::Start(ctx.cursor.position());
-                                        }
-                                        (DragState::Start(_), false) => {
-                                            state.drag = DragState::None;
-                                        }
-                                        _ => (),
-                                    }
-                                });
+                            if ctx.event.button.is_left() && ctx.event.state.is_released() {
+                                set_state.update_untracked(|state| state.drag = DragState::None);
                             }
                         })),
                         ..Default::default()
                     },
-                    ..Default::default()
                 },
             },
         );
