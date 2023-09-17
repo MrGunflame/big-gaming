@@ -12,8 +12,10 @@ use game_render::pbr::PbrMaterial;
 use game_render::{shape, Renderer};
 use game_scene::Scenes;
 use game_ui::reactive::{Scope, WriteSignal};
-use game_ui::style::{Background, Bounds, Growth, Size, SizeVec2, Style};
-use game_ui::widgets::{Button, Container, Text, Widget};
+use game_ui::style::{
+    Background, BorderRadius, Bounds, Direction, Growth, Justify, Size, SizeVec2, Style,
+};
+use game_ui::widgets::{Button, Container, ParseInput, Text, Widget};
 use game_window::events::{VirtualKeyCode, WindowEvent};
 use game_window::windows::WindowId;
 use glam::{Quat, UVec2, Vec2, Vec3};
@@ -361,15 +363,15 @@ pub struct State {
 }
 
 pub fn build_ui(cx: &Scope) -> State {
-    let cx = cx.append(Area::new());
+    // let cx = cx.append(Area::new());
 
     let style = Style {
         background: Background::GRAY,
         growth: Growth::splat(1.0),
-        // bounds: Bounds::exact(SizeVec2 {
-        //     // x: Size::Pixels(300),
-        //     // y: Size::Pixels(300), // y: Size::INFINITY,
-        // }),
+        bounds: Bounds::exact(SizeVec2 {
+            x: Size::Pixels(300),
+            y: Size::Pixels(2000), // y: Size::INFINITY,
+        }),
         ..Default::default()
     };
 
@@ -421,9 +423,67 @@ pub fn build_ui(cx: &Scope) -> State {
         });
     }
 
+    build_object_transform(&root);
+
     State {
         entities: set_entities,
         selection: set_selection,
+    }
+}
+
+fn build_object_transform(cx: &Scope) {
+    let root = cx.append(Container::new());
+
+    let (translation, set_translation) = root.create_signal(Vec3::ZERO);
+
+    {
+        let translation_row = cx.append(Container::new().style(Style {
+            growth: Growth::x(1.0),
+            direction: Direction::Column,
+            justify: Justify::SpaceBetween,
+            border_radius: BorderRadius::splat(Size::Pixels(5)),
+            ..Default::default()
+        }));
+
+        let style = Style {
+            ..Default::default()
+        };
+
+        let set_x = {
+            let set_translation = set_translation.clone();
+            move |val| {
+                set_translation.update(|translation| translation.x = val);
+            }
+        };
+
+        let set_y = {
+            let set_translation = set_translation.clone();
+            move |val| {
+                set_translation.update(|translation| translation.y = val);
+            }
+        };
+
+        let set_z = move |val| {
+            set_translation.update(|translation| translation.z = val);
+        };
+
+        let wrapper_style = Style {
+            growth: Growth::x(1.0),
+            direction: Direction::Column,
+            ..Default::default()
+        };
+
+        let x = translation_row.append(Container::new().style(wrapper_style.clone()));
+        x.append(Text::new().text("X"));
+        x.append(ParseInput::new(0.0).style(style.clone()).on_change(set_x));
+
+        let y = translation_row.append(Container::new().style(wrapper_style.clone()));
+        y.append(Text::new().text("Y"));
+        y.append(ParseInput::new(0.0).style(style.clone()).on_change(set_y));
+
+        let z = translation_row.append(Container::new().style(wrapper_style));
+        z.append(Text::new().text("Z"));
+        z.append(ParseInput::new(0.0).style(style).on_change(set_z));
     }
 }
 
