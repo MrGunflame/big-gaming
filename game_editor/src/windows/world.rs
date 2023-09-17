@@ -12,11 +12,11 @@ use game_render::pbr::PbrMaterial;
 use game_render::{shape, Renderer};
 use game_scene::Scenes;
 use game_ui::reactive::{Scope, WriteSignal};
-use game_ui::style::{Background, Style};
+use game_ui::style::{Background, Bounds, Size, SizeVec2, Style};
 use game_ui::widgets::{Button, Container, Text, Widget};
 use game_window::events::{VirtualKeyCode, WindowEvent};
 use game_window::windows::WindowId;
-use glam::{Quat, Vec2, Vec3};
+use glam::{Quat, UVec2, Vec2, Vec3};
 use parking_lot::Mutex;
 
 use crate::world::selection;
@@ -360,7 +360,16 @@ pub struct State {
 }
 
 pub fn build_ui(cx: &Scope) -> State {
-    let root = cx.append(Container::new());
+    let style = Style {
+        background: Background::GRAY,
+        bounds: Bounds::exact(SizeVec2 {
+            x: Size::Pixels(300),
+            y: Size::INFINITY,
+        }),
+        ..Default::default()
+    };
+
+    let root = cx.append(Container::new().style(style));
 
     let (entities, set_entities) = cx.create_signal(Vec::new());
     let (selection, set_selection) = cx.create_signal(Vec::new());
