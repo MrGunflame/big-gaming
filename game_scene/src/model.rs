@@ -1,4 +1,5 @@
 use game_asset::Assets;
+use game_common::components::transform::Transform;
 use game_model::material::Material;
 use game_model::textures::Texture;
 use game_model::Model;
@@ -53,7 +54,10 @@ pub(crate) fn model_to_scene(
         });
     }
 
-    Scene { nodes }
+    Scene {
+        transform: Transform::default(),
+        nodes,
+    }
 }
 
 fn create_material(textures: &[Texture], material: Material, images: &mut Images) -> PbrMaterial {

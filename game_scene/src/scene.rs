@@ -1,17 +1,32 @@
+use std::collections::HashMap;
+
+use game_common::components::transform::Transform;
+use game_core::hierarchy::{Entity, TransformHierarchy};
 use game_render::color::Color;
-use game_render::entities::Object;
+use game_render::entities::{Object, ObjectId};
 use game_render::pbr::PbrMaterial;
 use game_render::{shape, Renderer};
 
 use crate::Scene;
 
-pub(crate) fn spawn_scene(scene: &Scene, renderer: &mut Renderer) {
+pub(crate) fn spawn_scene(
+    scene: &Scene,
+    renderer: &mut Renderer,
+    hierarchy: &mut TransformHierarchy,
+    nodes: &mut HashMap<Entity, ObjectId>,
+) -> Entity {
+    let root = hierarchy.append(None, Transform::default());
+
     for node in &scene.nodes {
-        renderer.entities.objects().insert(Object {
-            transform: Default::default(),
+        let key = hierarchy.append(Some(root), node.transform);
+
+        let id = renderer.entities.objects().insert(Object {
+            transform: Transform::default(),
             mesh: node.mesh.clone(),
             material: node.material.clone(),
         });
+
+        nodes.insert(key, id);
     }
 
     // Local Coordinate axes for debugging
@@ -59,4 +74,6 @@ pub(crate) fn spawn_scene(scene: &Scene, renderer: &mut Renderer) {
             }),
         });
     }
+
+    root
 }

@@ -4,21 +4,20 @@ use game_render::color::Color;
 use game_render::entities::CameraId;
 use game_render::light::PointLight;
 use game_render::Renderer;
-use game_scene::{SceneHandle, Scenes};
+use game_scene::Scenes;
 use game_window::windows::WindowId;
 use glam::Vec3;
 
 #[derive(Debug)]
 pub struct MainMenuState {
     camera: CameraId,
-    handle: SceneHandle,
 }
 
 impl MainMenuState {
     pub fn new(scenes: &mut Scenes, renderer: &mut Renderer, window_id: WindowId) -> Self {
         let camera = renderer.entities.cameras().insert(Camera {
             transform: Transform {
-                translation: Vec3::new(10.0, 10.0, 1.0),
+                translation: Vec3::new(0.0, 10.0, 0.0),
                 ..Default::default()
             },
             projection: Projection::default(),
@@ -29,15 +28,15 @@ impl MainMenuState {
 
         renderer.entities.point_lights().insert(PointLight {
             transform: Transform {
-                translation: Vec3::new(0.0, 1.0, 0.0),
+                translation: Vec3::new(0.0, 100.0, 0.0),
                 ..Default::default()
             },
             color: Color::WHITE,
-            intensity: 70.0,
+            intensity: 700.0,
             radius: 1000.0,
         });
 
-        Self { camera, handle }
+        Self { camera }
     }
 
     pub fn update(&mut self, renderer: &mut Renderer) {

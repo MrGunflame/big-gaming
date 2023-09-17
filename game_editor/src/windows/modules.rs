@@ -49,7 +49,7 @@ impl Widget for Modules {
                 let data = EntriesData {
                     keys: vec!["ID".to_owned(), "Name".to_owned()],
                     entries,
-                    add_entry: None,
+                    add_entry: Some(on_create(state.clone())),
                     edit_entry: None,
                     remove_entry: None,
                 };

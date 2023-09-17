@@ -1,28 +1,35 @@
 //! An immutable view of a scene.
 
 use bitflags::bitflags;
-use game_asset::*;
 use game_common::components::transform::Transform;
 use game_input::mouse::{MouseButton, MouseMotion, MouseWheel};
 use game_input::ButtonState;
 use game_render::camera::{Camera, RenderTarget};
 use game_render::color::Color;
-use game_render::entities::{CameraId, Object};
+use game_render::entities::{CameraId, Object, ObjectId};
 use game_render::light::PointLight;
 use game_render::pbr::PbrMaterial;
 use game_render::{shape, Renderer};
-use game_scene::*;
+use game_scene::Scenes;
 use game_window::events::{VirtualKeyCode, WindowEvent};
 use game_window::windows::WindowId;
-use glam::{Quat, Vec3};
+use glam::{Quat, Vec2, Vec3};
+
+use crate::world::selection;
 
 pub struct WorldWindowState {
+    entities: Vec<ObjectId>,
     camera: CameraId,
     camera_controller: CameraController,
+    selection: Vec<ObjectId>,
+    // TODO: Use `Cursor` instead of adding our own thing.
+    cursor: Vec2,
+    edit_mode: EditMode,
+    edit_op: Option<EditOperation>,
 }
 
 impl WorldWindowState {
-    pub fn new(renderer: &mut Renderer, window_id: WindowId) -> Self {
+    pub fn new(renderer: &mut Renderer, window_id: WindowId, scenes: &mut Scenes) -> Self {
         let camera = renderer.entities.cameras().insert(Camera {
             projection: Default::default(),
             target: RenderTarget::Window(window_id),
@@ -32,7 +39,9 @@ impl WorldWindowState {
             },
         });
 
-        renderer.entities.objects().insert(Object {
+        let mut entities = Vec::new();
+
+        let id = renderer.entities.objects().insert(Object {
             transform: Transform::default(),
             material: renderer.materials.insert(PbrMaterial {
                 base_color: Color::WHITE,
@@ -40,6 +49,7 @@ impl WorldWindowState {
             }),
             mesh: renderer.meshes.insert(shape::Plane { size: 100.0 }.into()),
         });
+        entities.push(id);
 
         renderer.entities.point_lights().insert(PointLight {
             transform: Transform {
@@ -51,13 +61,20 @@ impl WorldWindowState {
             color: Color::WHITE,
         });
 
+        let h = scenes.load("../../sponza.glb");
+
         Self {
             camera,
             camera_controller: CameraController::default(),
+            entities,
+            selection: vec![],
+            cursor: Vec2::ZERO,
+            edit_mode: EditMode::None,
+            edit_op: None,
         }
     }
 
-    pub fn handle_event(&mut self, renderer: &mut Renderer, event: WindowEvent) {
+    pub fn handle_event(&mut self, renderer: &mut Renderer, event: WindowEvent, window: WindowId) {
         let camera = renderer.entities.cameras().get_mut(self.camera).unwrap();
 
         match event {
@@ -71,6 +88,12 @@ impl WorldWindowState {
                 // Reset the mode when the cursor leaves the window.
                 self.camera_controller.mode = Mode::NONE;
             }
+            WindowEvent::CursorMoved(event) => {
+                self.cursor = event.position;
+
+                let camera = camera.clone();
+                self.update_edit_op(renderer, window, camera);
+            }
             WindowEvent::KeyboardInput(event) => {
                 if event.key_code == Some(VirtualKeyCode::LShift) {
                     match event.state {
@@ -78,18 +101,251 @@ impl WorldWindowState {
                         ButtonState::Released => self.camera_controller.mode &= !Mode::SHIFT,
                     }
                 }
-            }
-            WindowEvent::MouseButtonInput(event) => {
-                if event.button == MouseButton::Middle {
-                    match event.state {
-                        ButtonState::Pressed => self.camera_controller.mode |= Mode::MIDDLE,
-                        ButtonState::Released => self.camera_controller.mode &= !Mode::MIDDLE,
+
+                match event.key_code {
+                    // Front view
+                    Some(VirtualKeyCode::Numpad1) => {
+                        let distance =
+                            (self.camera_controller.origin - camera.transform.translation).length();
+
+                        camera.transform.translation =
+                            self.camera_controller.origin + Vec3::new(0.0, 0.0, distance);
+                        camera.transform = camera.transform.looking_to(-Vec3::Z, Vec3::Y);
+                    }
+                    // Right view
+                    Some(VirtualKeyCode::Numpad3) => {
+                        let distance =
+                            (self.camera_controller.origin - camera.transform.translation).length();
+
+                        camera.transform.translation =
+                            self.camera_controller.origin + Vec3::new(distance, 0.0, 0.0);
+                        camera.transform = camera.transform.looking_to(-Vec3::X, Vec3::Y);
+                    }
+                    // Top view
+                    Some(VirtualKeyCode::Numpad7) => {
+                        let distance = (self.camera_controller.origin
+                            - camera.transform.translation)
+                            .length()
+                            .abs();
+
+                        camera.transform.translation =
+                            self.camera_controller.origin + Vec3::new(0.0, distance, 0.0);
+                        camera.transform = camera.transform.looking_to(-Vec3::Y, Vec3::Z);
+                    }
+                    _ => (),
+                }
+
+                if event.state.is_pressed() && !self.selection.is_empty() {
+                    match event.key_code {
+                        Some(VirtualKeyCode::Escape) => {
+                            self.reset_edit_op(renderer);
+                            self.edit_mode = EditMode::None;
+                        }
+                        Some(VirtualKeyCode::G) => {
+                            self.edit_mode = EditMode::Translate(None);
+                            self.create_edit_op(renderer);
+                        }
+                        Some(VirtualKeyCode::R) => {
+                            self.edit_mode = EditMode::Rotate(None);
+                            self.create_edit_op(renderer);
+                        }
+                        Some(VirtualKeyCode::S) => {
+                            self.edit_mode = EditMode::Scale(None);
+                            self.create_edit_op(renderer);
+                        }
+                        Some(VirtualKeyCode::X) => {
+                            match &mut self.edit_mode {
+                                EditMode::Translate(axis) => *axis = Some(Axis::X),
+                                EditMode::Rotate(axis) => *axis = Some(Axis::X),
+                                EditMode::Scale(axis) => *axis = Some(Axis::X),
+                                EditMode::None => (),
+                            }
+
+                            if self.edit_mode != EditMode::None {
+                                let camera = camera.clone();
+                                self.reset_edit_op(renderer);
+                                self.update_edit_op(renderer, window, camera);
+                            }
+                        }
+                        Some(VirtualKeyCode::Y) => {
+                            match &mut self.edit_mode {
+                                EditMode::Translate(axis) => *axis = Some(Axis::Y),
+                                EditMode::Rotate(axis) => *axis = Some(Axis::Y),
+                                EditMode::Scale(axis) => *axis = Some(Axis::Y),
+                                EditMode::None => (),
+                            }
+
+                            if self.edit_mode != EditMode::None {
+                                let camera = camera.clone();
+                                self.reset_edit_op(renderer);
+                                self.update_edit_op(renderer, window, camera);
+                            }
+                        }
+                        Some(VirtualKeyCode::Z) => {
+                            match &mut self.edit_mode {
+                                EditMode::Translate(axis) => *axis = Some(Axis::Z),
+                                EditMode::Rotate(axis) => *axis = Some(Axis::Z),
+                                EditMode::Scale(axis) => *axis = Some(Axis::Z),
+                                EditMode::None => (),
+                            };
+
+                            if self.edit_mode != EditMode::None {
+                                let camera = camera.clone();
+                                self.reset_edit_op(renderer);
+                                self.update_edit_op(renderer, window, camera);
+                            }
+                        }
+                        _ => (),
                     }
                 }
             }
+            WindowEvent::MouseButtonInput(event) => match event.button {
+                MouseButton::Left => {
+                    if !event.state.is_pressed() {
+                        return;
+                    }
+
+                    if self.edit_mode == EditMode::None {
+                        self.update_selection(renderer, window);
+                    } else {
+                        self.confirm_edit_op(renderer);
+                    }
+                }
+                MouseButton::Right => {
+                    if self.edit_mode != EditMode::None {
+                        self.reset_edit_op(renderer);
+                        self.edit_mode = EditMode::None;
+                    }
+                }
+                MouseButton::Middle => match event.state {
+                    ButtonState::Pressed => self.camera_controller.mode |= Mode::MIDDLE,
+                    ButtonState::Released => self.camera_controller.mode &= !Mode::MIDDLE,
+                },
+                _ => (),
+            },
             _ => todo!(),
         }
     }
+
+    fn update_selection(&mut self, renderer: &mut Renderer, id: WindowId) {
+        let camera = renderer
+            .entities
+            .cameras()
+            .get_mut(self.camera)
+            .unwrap()
+            .clone();
+        let surface = renderer.surfaces.get(id).unwrap();
+        let viewport_size = Vec2::new(surface.config.width as f32, surface.config.height as f32);
+
+        self.selection.clear();
+        for id in &self.entities {
+            let object = renderer.entities.objects().get(*id).unwrap();
+            let mesh = renderer.meshes.get(object.mesh.id()).unwrap();
+
+            if let Some(aabb) = mesh.compute_aabb() {
+                let ray = camera.viewport_to_world(camera.transform, viewport_size, self.cursor);
+
+                if selection::hit_test(ray, aabb) {
+                    self.selection.push(*id);
+                }
+            }
+        }
+    }
+
+    fn create_edit_op(&mut self, renderer: &mut Renderer) {
+        let mut entities = Vec::new();
+
+        for id in &self.selection {
+            let object = renderer.entities.objects().get(*id).unwrap();
+
+            entities.push(EditEntity {
+                id: *id,
+                origin: object.transform,
+            });
+        }
+
+        self.edit_op = Some(EditOperation {
+            cursor_origin: self.cursor,
+            entities,
+        });
+    }
+
+    fn update_edit_op(&mut self, renderer: &mut Renderer, window: WindowId, camera: Camera) {
+        let surface = renderer.surfaces.get(window).unwrap();
+        let viewport_size = Vec2::new(surface.config.width as f32, surface.config.height as f32);
+
+        let camera_rotation = camera.transform.rotation;
+        let ray = camera.viewport_to_world(camera.transform, viewport_size, self.cursor);
+
+        match self.edit_mode {
+            EditMode::Translate(axis) => {
+                for id in &self.selection {
+                    let object = renderer.entities.objects().get_mut(*id).unwrap();
+
+                    // Find the intersection of the camera ray with the plane placed
+                    // at the object, facing the camera. The projected point is the new
+                    // translation.
+                    let plane_origin = object.transform.translation;
+                    let plane_normal = camera_rotation * Vec3::Z;
+                    // FIXME: What if no intersection?
+                    let point = ray.plane_intersection(plane_origin, plane_normal).unwrap();
+
+                    match axis {
+                        Some(Axis::X) => object.transform.translation.x = point.x,
+                        Some(Axis::Y) => object.transform.translation.y = point.y,
+                        Some(Axis::Z) => object.transform.translation.z = point.z,
+                        None => object.transform.translation = point,
+                    }
+                }
+            }
+            EditMode::None => (),
+            _ => todo!(),
+        }
+    }
+
+    fn reset_edit_op(&mut self, renderer: &mut Renderer) {
+        let Some(op) = &self.edit_op else {
+            return;
+        };
+
+        for entity in &op.entities {
+            let object = renderer.entities.objects().get_mut(entity.id).unwrap();
+            object.transform = entity.origin;
+        }
+    }
+
+    fn confirm_edit_op(&mut self, renderer: &mut Renderer) {
+        self.edit_op = None;
+        self.edit_mode = EditMode::None;
+    }
+}
+
+#[derive(Clone, Debug)]
+struct EditOperation {
+    cursor_origin: Vec2,
+    entities: Vec<EditEntity>,
+}
+
+#[derive(Clone, Debug)]
+struct EditEntity {
+    id: ObjectId,
+    origin: Transform,
+}
+
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
+enum EditMode {
+    #[default]
+    None,
+    Translate(Option<Axis>),
+    Rotate(Option<Axis>),
+    Scale(Option<Axis>),
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+enum Axis {
+    X,
+    Y,
+    Z,
 }
 
 // let id = commands

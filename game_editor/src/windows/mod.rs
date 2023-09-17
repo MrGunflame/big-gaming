@@ -5,11 +5,12 @@ pub mod modules;
 mod open_module;
 mod record;
 mod records;
-mod view;
+mod world;
 
 use game_common::module::ModuleId;
 use game_data::record::{Record, RecordKind};
 use game_render::Renderer;
+use game_scene::Scenes;
 use game_ui::reactive::{Document, Runtime};
 use game_window::events::WindowEvent;
 use game_window::windows::WindowId;
@@ -24,7 +25,7 @@ use self::main_window::MainWindow;
 use self::modules::Modules;
 use self::open_module::OpenModule;
 use self::record::CreateRecord;
-use self::view::WorldWindowState;
+use self::world::WorldWindowState;
 
 pub enum Window {
     View(WorldWindowState),
@@ -39,9 +40,9 @@ impl Window {
         }
     }
 
-    pub fn handle_event(&mut self, renderer: &mut Renderer, event: WindowEvent) {
+    pub fn handle_event(&mut self, renderer: &mut Renderer, event: WindowEvent, id: WindowId) {
         match self {
-            Self::View(window) => window.handle_event(renderer, event),
+            Self::View(window) => window.handle_event(renderer, event, id),
             _ => (),
         }
     }
@@ -49,6 +50,7 @@ impl Window {
 
 pub fn spawn_window(
     renderer: &mut Renderer,
+    scenes: &mut Scenes,
     state: EditorState,
     rt: Runtime,
     event: SpawnWindow,
@@ -96,7 +98,7 @@ pub fn spawn_window(
             });
         }
         SpawnWindow::View => {
-            let window = view::WorldWindowState::new(renderer, window_id);
+            let window = world::WorldWindowState::new(renderer, window_id, scenes);
             return Window::View(window);
         }
     }

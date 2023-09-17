@@ -13,6 +13,7 @@ use std::sync::{mpsc, Arc};
 use backend::{Backend, Handle, Response};
 
 use game_render::Renderer;
+use game_scene::Scenes;
 use game_ui::UiState;
 use game_window::cursor::Cursor;
 use game_window::events::WindowEvent;
@@ -86,6 +87,7 @@ fn main() {
         cursor: state.window_manager.cursor().clone(),
         loading_windows: HashMap::new(),
         active_windows: HashMap::new(),
+        scenes: Scenes::new(),
     };
 
     state.window_manager.run(app);
@@ -130,6 +132,7 @@ pub struct App {
     cursor: Arc<Cursor>,
     loading_windows: HashMap<WindowId, SpawnWindow>,
     active_windows: HashMap<WindowId, crate::windows::Window>,
+    scenes: Scenes,
 }
 
 impl game_window::App for App {
@@ -145,6 +148,7 @@ impl game_window::App for App {
                 if let Some(spawn) = self.loading_windows.remove(&event.window) {
                     let window = crate::windows::spawn_window(
                         &mut self.renderer,
+                        &mut self.scenes,
                         self.state.clone(),
                         self.ui_state.runtime.clone(),
                         spawn,
@@ -178,29 +182,55 @@ impl game_window::App for App {
             WindowEvent::MouseMotion(event) => {
                 if let Some(window_id) = self.cursor.window() {
                     if let Some(window) = self.active_windows.get_mut(&window_id) {
-                        window.handle_event(&mut self.renderer, WindowEvent::MouseMotion(event));
+                        window.handle_event(
+                            &mut self.renderer,
+                            WindowEvent::MouseMotion(event),
+                            window_id,
+                        );
                     }
                 }
             }
             WindowEvent::KeyboardInput(event) => {
                 if let Some(window_id) = self.cursor.window() {
                     if let Some(window) = self.active_windows.get_mut(&window_id) {
-                        window.handle_event(&mut self.renderer, WindowEvent::KeyboardInput(event));
+                        window.handle_event(
+                            &mut self.renderer,
+                            WindowEvent::KeyboardInput(event),
+                            window_id,
+                        );
                     }
                 }
             }
             WindowEvent::MouseWheel(event) => {
                 if let Some(window_id) = self.cursor.window() {
                     if let Some(window) = self.active_windows.get_mut(&window_id) {
-                        window.handle_event(&mut self.renderer, WindowEvent::MouseWheel(event));
+                        window.handle_event(
+                            &mut self.renderer,
+                            WindowEvent::MouseWheel(event),
+                            window_id,
+                        );
                     }
                 }
             }
             WindowEvent::MouseButtonInput(event) => {
                 if let Some(window_id) = self.cursor.window() {
                     if let Some(window) = self.active_windows.get_mut(&window_id) {
-                        window
-                            .handle_event(&mut self.renderer, WindowEvent::MouseButtonInput(event));
+                        window.handle_event(
+                            &mut self.renderer,
+                            WindowEvent::MouseButtonInput(event),
+                            window_id,
+                        );
+                    }
+                }
+            }
+            WindowEvent::CursorMoved(event) => {
+                if let Some(window_id) = self.cursor.window() {
+                    if let Some(window) = self.active_windows.get_mut(&window_id) {
+                        window.handle_event(
+                            &mut self.renderer,
+                            WindowEvent::CursorMoved(event),
+                            window_id,
+                        );
                     }
                 }
             }
@@ -216,6 +246,8 @@ impl game_window::App for App {
 
             self.loading_windows.insert(id, event);
         }
+
+        self.scenes.update(&mut self.renderer);
 
         self.renderer.render();
         self.ui_state

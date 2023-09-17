@@ -41,6 +41,10 @@ impl RenderSurfaces {
         resize_surface(surface, device, size);
     }
 
+    pub fn get(&self, id: WindowId) -> Option<&SurfaceData> {
+        self.windows.get(&id)
+    }
+
     pub fn destroy(&mut self, id: WindowId) {
         self.windows.remove(&id);
     }

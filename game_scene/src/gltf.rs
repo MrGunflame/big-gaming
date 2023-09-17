@@ -1,4 +1,5 @@
 use game_asset::Assets;
+use game_common::components::transform::Transform;
 use game_gltf::{GltfData, GltfLoader, GltfMaterial};
 use game_render::mesh::Mesh;
 use game_render::pbr::PbrMaterial;
@@ -40,7 +41,10 @@ pub(crate) fn gltf_to_scene(
 
     // TODO: Children
 
-    Scene { nodes }
+    Scene {
+        nodes,
+        transform: Transform::default(),
+    }
 }
 
 fn create_material(material: GltfMaterial, images: &mut Images) -> PbrMaterial {

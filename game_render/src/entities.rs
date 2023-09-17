@@ -45,6 +45,14 @@ impl ObjectManager {
         ObjectId(key)
     }
 
+    pub fn get(&self, id: ObjectId) -> Option<&Object> {
+        self.objects.get(id.0)
+    }
+
+    pub fn get_mut(&mut self, id: ObjectId) -> Option<&mut Object> {
+        self.objects.get_mut(id.0)
+    }
+
     pub fn remove(&mut self, id: ObjectId) {
         self.objects.remove(id.0);
     }

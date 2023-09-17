@@ -9,8 +9,32 @@ use game_ui::widgets::{Callback, Widget};
 use game_window::events::VirtualKeyCode;
 use glam::UVec2;
 
+#[derive(Debug)]
 pub struct ContextMenu {
-    pub spawn_menu: Callback<Scope>,
+    spawn_menu: Callback<Scope>,
+    style: Style,
+}
+
+impl ContextMenu {
+    pub fn new() -> Self {
+        Self {
+            spawn_menu: Callback::from(|_| {}),
+            style: Style::default(),
+        }
+    }
+
+    pub fn style(mut self, style: Style) -> Self {
+        self.style = style;
+        self
+    }
+
+    pub fn spawn_menu<F>(mut self, f: F) -> Self
+    where
+        F: Into<Callback<Scope>>,
+    {
+        self.spawn_menu = f.into();
+        self
+    }
 }
 
 impl Widget for ContextMenu {
@@ -24,7 +48,7 @@ impl Widget for ContextMenu {
         let wrapper = cx.push(Node {
             element: Element {
                 body: ElementBody::Container,
-                style: Style::default(),
+                style: self.style,
             },
             events: ElementEventHandlers {
                 local: EventHandlers {
