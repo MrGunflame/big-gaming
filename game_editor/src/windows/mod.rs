@@ -10,6 +10,7 @@ mod world;
 use game_common::module::ModuleId;
 use game_data::record::{Record, RecordKind};
 use game_render::Renderer;
+use game_scene::Scenes;
 use game_ui::reactive::{Document, Runtime};
 use game_window::events::WindowEvent;
 use game_window::windows::WindowId;
@@ -49,6 +50,7 @@ impl Window {
 
 pub fn spawn_window(
     renderer: &mut Renderer,
+    scenes: &mut Scenes,
     state: EditorState,
     rt: Runtime,
     event: SpawnWindow,
@@ -96,7 +98,7 @@ pub fn spawn_window(
             });
         }
         SpawnWindow::View => {
-            let window = world::WorldWindowState::new(renderer, window_id);
+            let window = world::WorldWindowState::new(renderer, window_id, scenes);
             return Window::View(window);
         }
     }

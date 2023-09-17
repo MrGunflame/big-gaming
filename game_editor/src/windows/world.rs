@@ -10,6 +10,7 @@ use game_render::entities::{CameraId, Object, ObjectId};
 use game_render::light::PointLight;
 use game_render::pbr::PbrMaterial;
 use game_render::{shape, Renderer};
+use game_scene::Scenes;
 use game_window::events::{VirtualKeyCode, WindowEvent};
 use game_window::windows::WindowId;
 use glam::{Quat, Vec2, Vec3};
@@ -28,7 +29,7 @@ pub struct WorldWindowState {
 }
 
 impl WorldWindowState {
-    pub fn new(renderer: &mut Renderer, window_id: WindowId) -> Self {
+    pub fn new(renderer: &mut Renderer, window_id: WindowId, scenes: &mut Scenes) -> Self {
         let camera = renderer.entities.cameras().insert(Camera {
             projection: Default::default(),
             target: RenderTarget::Window(window_id),
@@ -59,6 +60,8 @@ impl WorldWindowState {
             radius: 100.0,
             color: Color::WHITE,
         });
+
+        let h = scenes.load("../../sponza.glb");
 
         Self {
             camera,
