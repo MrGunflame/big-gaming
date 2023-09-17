@@ -11,25 +11,33 @@ use game_render::light::PointLight;
 use game_render::pbr::PbrMaterial;
 use game_render::{shape, Renderer};
 use game_scene::Scenes;
+use game_ui::reactive::{Scope, WriteSignal};
+use game_ui::style::{Background, Style};
+use game_ui::widgets::{Button, Container, Text, Widget};
 use game_window::events::{VirtualKeyCode, WindowEvent};
 use game_window::windows::WindowId;
 use glam::{Quat, Vec2, Vec3};
+use parking_lot::Mutex;
 
 use crate::world::selection;
 
 pub struct WorldWindowState {
-    entities: Vec<ObjectId>,
     camera: CameraId,
     camera_controller: CameraController,
-    selection: Vec<ObjectId>,
     // TODO: Use `Cursor` instead of adding our own thing.
     cursor: Vec2,
     edit_mode: EditMode,
     edit_op: Option<EditOperation>,
+    state: State,
 }
 
 impl WorldWindowState {
-    pub fn new(renderer: &mut Renderer, window_id: WindowId, scenes: &mut Scenes) -> Self {
+    pub fn new(
+        state: State,
+        renderer: &mut Renderer,
+        window_id: WindowId,
+        scenes: &mut Scenes,
+    ) -> Self {
         let camera = renderer.entities.cameras().insert(Camera {
             projection: Default::default(),
             target: RenderTarget::Window(window_id),
@@ -39,8 +47,6 @@ impl WorldWindowState {
             },
         });
 
-        let mut entities = Vec::new();
-
         let id = renderer.entities.objects().insert(Object {
             transform: Transform::default(),
             material: renderer.materials.insert(PbrMaterial {
@@ -49,7 +55,8 @@ impl WorldWindowState {
             }),
             mesh: renderer.meshes.insert(shape::Plane { size: 100.0 }.into()),
         });
-        entities.push(id);
+
+        state.entities.update(|e| e.push(id));
 
         renderer.entities.point_lights().insert(PointLight {
             transform: Transform {
@@ -61,16 +68,15 @@ impl WorldWindowState {
             color: Color::WHITE,
         });
 
-        let h = scenes.load("../../sponza.glb");
+        // let h = scenes.load("../../sponza.glb");
 
         Self {
             camera,
             camera_controller: CameraController::default(),
-            entities,
-            selection: vec![],
             cursor: Vec2::ZERO,
             edit_mode: EditMode::None,
             edit_op: None,
+            state,
         }
     }
 
@@ -135,7 +141,7 @@ impl WorldWindowState {
                     _ => (),
                 }
 
-                if event.state.is_pressed() && !self.selection.is_empty() {
+                if event.state.is_pressed() && !self.state.selection.with(|v| v.is_empty()) {
                     match event.key_code {
                         Some(VirtualKeyCode::Escape) => {
                             self.reset_edit_op(renderer);
@@ -237,8 +243,8 @@ impl WorldWindowState {
         let surface = renderer.surfaces.get(id).unwrap();
         let viewport_size = Vec2::new(surface.config.width as f32, surface.config.height as f32);
 
-        self.selection.clear();
-        for id in &self.entities {
+        self.state.selection.update(|v| v.clear());
+        for id in &self.state.entities.get() {
             let object = renderer.entities.objects().get(*id).unwrap();
             let mesh = renderer.meshes.get(object.mesh.id()).unwrap();
 
@@ -246,7 +252,7 @@ impl WorldWindowState {
                 let ray = camera.viewport_to_world(camera.transform, viewport_size, self.cursor);
 
                 if selection::hit_test(ray, aabb) {
-                    self.selection.push(*id);
+                    self.state.selection.update(|v| v.push(*id));
                 }
             }
         }
@@ -255,7 +261,7 @@ impl WorldWindowState {
     fn create_edit_op(&mut self, renderer: &mut Renderer) {
         let mut entities = Vec::new();
 
-        for id in &self.selection {
+        for id in &self.state.selection.get() {
             let object = renderer.entities.objects().get(*id).unwrap();
 
             entities.push(EditEntity {
@@ -279,7 +285,7 @@ impl WorldWindowState {
 
         match self.edit_mode {
             EditMode::Translate(axis) => {
-                for id in &self.selection {
+                for id in &self.state.selection.get() {
                     let object = renderer.entities.objects().get_mut(*id).unwrap();
 
                     // Find the intersection of the camera ray with the plane placed
@@ -346,6 +352,66 @@ enum Axis {
     X,
     Y,
     Z,
+}
+
+pub struct State {
+    entities: WriteSignal<Vec<ObjectId>>,
+    selection: WriteSignal<Vec<ObjectId>>,
+}
+
+pub fn build_ui(cx: &Scope) -> State {
+    let root = cx.append(Container::new());
+
+    let (entities, set_entities) = cx.create_signal(Vec::new());
+    let (selection, set_selection) = cx.create_signal(Vec::new());
+
+    let nodes = Mutex::new(vec![]);
+    let cx2 = root.clone();
+    {
+        let set_selection = set_selection.clone();
+        root.create_effect(move || {
+            let entities = entities.get();
+            let selection = selection.get();
+
+            let mut nodes = nodes.lock();
+            for id in nodes.drain(..) {
+                cx2.remove(id);
+            }
+
+            for entity in entities {
+                let is_selected = selection.contains(&entity);
+
+                let style = Style {
+                    background: if is_selected {
+                        Background::YELLOW
+                    } else {
+                        Background::None
+                    },
+                    ..Default::default()
+                };
+
+                let on_click = {
+                    let set_selection = set_selection.clone();
+                    move |_| {
+                        set_selection.update(|v| {
+                            v.clear();
+                            v.push(entity);
+                        });
+                    }
+                };
+
+                let button = cx2.append(Button::new().style(style).on_click(on_click));
+                button.append(Text::new().text(format!("{:?}", entity)));
+
+                nodes.push(button.id().unwrap());
+            }
+        });
+    }
+
+    State {
+        entities: set_entities,
+        selection: set_selection,
+    }
 }
 
 // let id = commands
