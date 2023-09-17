@@ -283,12 +283,11 @@ impl WorldWindowState {
         let mut entities = Vec::new();
 
         for id in &self.state.selection.get() {
-            let object = scenes.objects(*id).unwrap().nth(0).unwrap();
-            let object = renderer.entities.objects().get(object).unwrap();
+            let transform = scenes.get_transform(*id).unwrap();
 
             entities.push(EditEntity {
                 id: *id,
-                origin: object.transform,
+                origin: transform,
             });
         }
 
@@ -314,28 +313,31 @@ impl WorldWindowState {
         match self.edit_mode {
             EditMode::Translate(axis) => {
                 for id in &self.state.selection.get() {
-                    let object = scenes.objects(*id).unwrap().nth(0).unwrap();
-                    let object = renderer.entities.objects().get_mut(object).unwrap();
+                    let mut transform = scenes.get_transform(*id).unwrap();
 
                     // Find the intersection of the camera ray with the plane placed
                     // at the object, facing the camera. The projected point is the new
                     // translation.
-                    let plane_origin = object.transform.translation;
+                    let plane_origin = transform.translation;
                     let plane_normal = camera_rotation * Vec3::Z;
                     // FIXME: What if no intersection?
                     let point = ray.plane_intersection(plane_origin, plane_normal).unwrap();
 
                     match axis {
-                        Some(Axis::X) => object.transform.translation.x = point.x,
-                        Some(Axis::Y) => object.transform.translation.y = point.y,
-                        Some(Axis::Z) => object.transform.translation.z = point.z,
-                        None => object.transform.translation = point,
+                        Some(Axis::X) => transform.translation.x = point.x,
+                        Some(Axis::Y) => transform.translation.y = point.y,
+                        Some(Axis::Z) => transform.translation.z = point.z,
+                        None => transform.translation = point,
                     }
+
+                    dbg!(transform);
 
                     self.state
                         .transform
                         .set_translation
-                        .update(|translation| *translation = object.transform.translation);
+                        .update(|translation| *translation = transform.translation);
+
+                    scenes.set_transform(*id, transform);
                 }
             }
             EditMode::None => (),
@@ -349,10 +351,7 @@ impl WorldWindowState {
         };
 
         for entity in &op.entities {
-            for obj in scenes.objects(entity.id).unwrap() {
-                let object = renderer.entities.objects().get_mut(obj).unwrap();
-                object.transform = entity.origin;
-            }
+            scenes.set_transform(entity.id, entity.origin);
         }
     }
 

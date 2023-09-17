@@ -65,8 +65,8 @@ impl TransformHierarchy {
     }
 
     /// Returns an iterator over all entities with an updated transform.
-    pub fn iter_changed_transform(&self) -> impl Iterator<Item = (Entity, Transform)> + '_ {
-        self.nodes.iter().map(|(k, v)| (Entity(k), *v))
+    pub fn iter_changed_global_transform(&self) -> impl Iterator<Item = (Entity, Transform)> + '_ {
+        self.global_transform.iter().map(|(k, v)| (*k, *v))
     }
 
     pub fn compute_transform(&mut self) {

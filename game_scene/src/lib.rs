@@ -88,13 +88,31 @@ impl Scenes {
     fn update_transform(&mut self, renderer: &mut Renderer) {
         self.hierarchy.compute_transform();
 
-        for (entity, transform) in self.hierarchy.iter_changed_transform() {
+        for (entity, transform) in self.hierarchy.iter_changed_global_transform() {
             // Not all entities have an render object associated.
             if let Some(id) = self.nodes.get(&entity) {
                 let object = renderer.entities.objects().get_mut(*id).unwrap();
                 object.transform = transform;
             }
         }
+    }
+
+    pub fn set_transform(&mut self, id: SceneId, transform: Transform) {
+        let scene = match self.scenes.get(id.0) {
+            Some(SceneState::Spawned(id)) => id,
+            _ => return,
+        };
+
+        self.hierarchy.set(*scene, transform);
+    }
+
+    pub fn get_transform(&self, id: SceneId) -> Option<Transform> {
+        let scene = match self.scenes.get(id.0) {
+            Some(SceneState::Spawned(id)) => id,
+            _ => return None,
+        };
+
+        self.hierarchy.get(*scene)
     }
 
     pub fn objects(&self, id: SceneId) -> Option<impl Iterator<Item = ObjectId>> {
