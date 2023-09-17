@@ -28,9 +28,7 @@ use game_render::pbr::PbrMaterial;
 use game_render::texture::Images;
 use gltf::gltf_to_scene;
 
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ScenePlugin;
-
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct SceneId(DefaultKey);
 
 #[derive(Debug, Default)]
@@ -97,6 +95,22 @@ impl Scenes {
                 object.transform = transform;
             }
         }
+    }
+
+    pub fn objects(&self, id: SceneId) -> Option<impl Iterator<Item = ObjectId>> {
+        let scene = match self.scenes.get(id.0)? {
+            SceneState::Spawned(id) => id,
+            _ => return None,
+        };
+
+        let mut nodes = vec![];
+        for node in self.hierarchy.children(*scene).unwrap() {
+            if let Some(obj) = self.nodes.get(&node) {
+                nodes.push(*obj);
+            }
+        }
+
+        Some(nodes.into_iter())
     }
 }
 

@@ -97,4 +97,8 @@ impl TransformHierarchy {
             *self.global_transform.get_mut(&Entity(key)).unwrap() = transform;
         }
     }
+
+    pub fn children(&self, entity: Entity) -> Option<impl Iterator<Item = Entity> + '_> {
+        self.children.get(&entity).map(|vec| vec.iter().copied())
+    }
 }
