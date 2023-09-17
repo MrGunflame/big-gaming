@@ -12,13 +12,14 @@ use game_render::pbr::PbrMaterial;
 use game_render::{shape, Renderer};
 use game_scene::Scenes;
 use game_ui::reactive::{Scope, WriteSignal};
-use game_ui::style::{Background, Bounds, Size, SizeVec2, Style};
+use game_ui::style::{Background, Bounds, Growth, Size, SizeVec2, Style};
 use game_ui::widgets::{Button, Container, Text, Widget};
 use game_window::events::{VirtualKeyCode, WindowEvent};
 use game_window::windows::WindowId;
 use glam::{Quat, UVec2, Vec2, Vec3};
 use parking_lot::Mutex;
 
+use crate::widgets::area::Area;
 use crate::world::selection;
 
 pub struct WorldWindowState {
@@ -360,12 +361,15 @@ pub struct State {
 }
 
 pub fn build_ui(cx: &Scope) -> State {
+    let cx = cx.append(Area::new());
+
     let style = Style {
         background: Background::GRAY,
-        bounds: Bounds::exact(SizeVec2 {
-            x: Size::Pixels(300),
-            y: Size::INFINITY,
-        }),
+        growth: Growth::splat(1.0),
+        // bounds: Bounds::exact(SizeVec2 {
+        //     // x: Size::Pixels(300),
+        //     // y: Size::Pixels(300), // y: Size::INFINITY,
+        // }),
         ..Default::default()
     };
 
