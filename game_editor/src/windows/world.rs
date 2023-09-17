@@ -11,17 +11,16 @@ use game_render::light::PointLight;
 use game_render::pbr::PbrMaterial;
 use game_render::{shape, Renderer};
 use game_scene::Scenes;
-use game_ui::reactive::{Scope, WriteSignal};
+use game_ui::reactive::{ReadSignal, Scope, WriteSignal};
 use game_ui::style::{
     Background, BorderRadius, Bounds, Direction, Growth, Justify, Size, SizeVec2, Style,
 };
-use game_ui::widgets::{Button, Container, ParseInput, Text, Widget};
+use game_ui::widgets::{Button, Container, ParseInput, Text};
 use game_window::events::{VirtualKeyCode, WindowEvent};
 use game_window::windows::WindowId;
-use glam::{Quat, UVec2, Vec2, Vec3};
+use glam::{Quat, Vec2, Vec3};
 use parking_lot::Mutex;
 
-use crate::widgets::area::Area;
 use crate::world::selection;
 
 pub struct WorldWindowState {
@@ -305,6 +304,11 @@ impl WorldWindowState {
                         Some(Axis::Z) => object.transform.translation.z = point.z,
                         None => object.transform.translation = point,
                     }
+
+                    self.state
+                        .transform
+                        .set_translation
+                        .update(|translation| *translation = object.transform.translation);
                 }
             }
             EditMode::None => (),
@@ -360,6 +364,7 @@ enum Axis {
 pub struct State {
     entities: WriteSignal<Vec<ObjectId>>,
     selection: WriteSignal<Vec<ObjectId>>,
+    transform: TransformState,
 }
 
 pub fn build_ui(cx: &Scope) -> State {
@@ -423,18 +428,27 @@ pub fn build_ui(cx: &Scope) -> State {
         });
     }
 
-    build_object_transform(&root);
+    let transform = build_object_transform(&root);
 
     State {
         entities: set_entities,
         selection: set_selection,
+        transform,
     }
 }
 
-fn build_object_transform(cx: &Scope) {
+struct TransformState {
+    translation: ReadSignal<Vec3>,
+    rotation: ReadSignal<Quat>,
+    set_translation: WriteSignal<Vec3>,
+    set_rotation: WriteSignal<Quat>,
+}
+
+fn build_object_transform(cx: &Scope) -> TransformState {
     let root = cx.append(Container::new());
 
     let (translation, set_translation) = root.create_signal(Vec3::ZERO);
+    let (rotation, set_rotation) = root.create_signal(Quat::IDENTITY);
 
     {
         let translation_row = cx.append(Container::new().style(Style {
@@ -463,8 +477,11 @@ fn build_object_transform(cx: &Scope) {
             }
         };
 
-        let set_z = move |val| {
-            set_translation.update(|translation| translation.z = val);
+        let set_z = {
+            let set_translation = set_translation.clone();
+            move |val| {
+                set_translation.update(|translation| translation.z = val);
+            }
         };
 
         let wrapper_style = Style {
@@ -484,6 +501,73 @@ fn build_object_transform(cx: &Scope) {
         let z = translation_row.append(Container::new().style(wrapper_style));
         z.append(Text::new().text("Z"));
         z.append(ParseInput::new(0.0).style(style).on_change(set_z));
+    }
+
+    {
+        let row = cx.append(Container::new().style(Style {
+            growth: Growth::x(1.0),
+            direction: Direction::Column,
+            justify: Justify::SpaceBetween,
+            border_radius: BorderRadius::splat(Size::Pixels(5)),
+            ..Default::default()
+        }));
+
+        let wrapper_style = Style {
+            growth: Growth::x(1.0),
+            direction: Direction::Column,
+            ..Default::default()
+        };
+
+        let set_x = {
+            let set_rotation = set_rotation.clone();
+            move |val| {
+                set_rotation.update(|rotation| rotation.x = val);
+            }
+        };
+
+        let set_y = {
+            let set_rotation = set_rotation.clone();
+            move |val| {
+                set_rotation.update(|rotation| rotation.y = val);
+            }
+        };
+
+        let set_z = {
+            let set_rotation = set_rotation.clone();
+            move |val| {
+                set_rotation.update(|rotation| rotation.z = val);
+            }
+        };
+
+        let set_w = {
+            let set_rotation = set_rotation.clone();
+            move |val| {
+                set_rotation.update(|rotation| rotation.w = val);
+            }
+        };
+
+        let x = row.append(Container::new().style(wrapper_style.clone()));
+        x.append(Text::new().text("X"));
+        x.append(ParseInput::new(0.0).on_change(set_x));
+
+        let y = row.append(Container::new().style(wrapper_style.clone()));
+        y.append(Text::new().text("Y"));
+        y.append(ParseInput::new(0.0).on_change(set_y));
+
+        let z = row.append(Container::new().style(wrapper_style.clone()));
+        z.append(Text::new().text("Z"));
+        z.append(ParseInput::new(0.0).on_change(set_z));
+
+        let w = row.append(Container::new().style(wrapper_style));
+        w.append(Text::new().text("W"));
+        w.append(ParseInput::new(1.0).on_change(set_w));
+    }
+
+    TransformState {
+        translation,
+        rotation,
+        set_translation,
+        set_rotation,
     }
 }
 
