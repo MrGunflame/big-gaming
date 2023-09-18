@@ -12,6 +12,7 @@ use game_gltf::uri::Uri;
 use game_model::{Decode, Model};
 use game_render::entities::ObjectId;
 use game_render::Renderer;
+use game_tracing::trace_span;
 use scene::spawn_scene;
 use slotmap::{DefaultKey, SlotMap};
 
@@ -66,6 +67,8 @@ impl Scenes {
     }
 
     pub fn update(&mut self, renderer: &mut Renderer) {
+        let _span = trace_span!("Scenes::update").entered();
+
         load_scenes(
             self,
             &mut renderer.meshes,
@@ -127,6 +130,8 @@ fn load_scenes(
     images: &mut Images,
 ) {
     'out: while let Some((handle, path)) = scenes.load_queue.pop_front() {
+        let _span = trace_span!("load_scene").entered();
+
         let uri = Uri::from(path);
 
         let mut file = match File::open(uri.as_path()) {
