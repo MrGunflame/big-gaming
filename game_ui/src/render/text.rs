@@ -1,4 +1,5 @@
 use ab_glyph::{point, Font, FontRef, Glyph, PxScale, ScaleFont};
+use game_tracing::trace_span;
 use glam::UVec2;
 use image::{ImageBuffer, Rgba, RgbaImage};
 
@@ -49,6 +50,8 @@ impl BuildPrimitiveElement for Text {
 }
 
 fn render_to_texture(text: &str, size: f32, max: UVec2) -> ImageBuffer<Rgba<u8>, Vec<u8>> {
+    let _span = trace_span!("text::render_to_texture").entered();
+
     let font = FontRef::try_from_slice(DEFAULT_FONT).unwrap();
 
     let scaled_font = font.as_scaled(PxScale::from(size));

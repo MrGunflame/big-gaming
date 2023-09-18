@@ -10,6 +10,7 @@ use std::sync::Arc;
 use ::image::{ImageBuffer, Rgba};
 use bytemuck::{Pod, Zeroable};
 use game_render::graph::{Node, RenderContext, RenderGraph};
+use game_tracing::trace_span;
 use game_window::windows::WindowId;
 use glam::{UVec2, Vec2};
 use parking_lot::RwLock;
@@ -86,6 +87,8 @@ impl UiRenderer {
     }
 
     pub fn update(&mut self, device: &Device, queue: &Queue) {
+        let _span = trace_span!("UiRenderer::update").entered();
+
         for (id, tree) in self.windows.iter_mut() {
             if !tree.is_changed() {
                 continue;
@@ -149,6 +152,8 @@ impl PrimitiveElement {
         image: &ImageBuffer<Rgba<u8>, Vec<u8>>,
         color: [f32; 4],
     ) -> Self {
+        let _span = trace_span!("PrimitiveElement::new").entered();
+
         if cfg!(debug_assertions) {
             if image.height() == 0 || image.width() == 0 {
                 panic!(
@@ -431,6 +436,8 @@ pub struct UiPass {
 
 impl Node for UiPass {
     fn render(&self, ctx: &mut RenderContext<'_>) {
+        let _span = trace_span!("UiPass::render").entered();
+
         let elems = self.elements.read();
         let Some(elements) = elems.get(&ctx.window) else {
             return;

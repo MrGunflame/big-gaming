@@ -1,5 +1,6 @@
 mod overlay;
 
+use game_tracing::trace_span;
 use glam::UVec2;
 use image::imageops::FilterType;
 use image::{ImageBuffer, Rgba};
@@ -67,6 +68,8 @@ impl BuildPrimitiveElement for Image {
 }
 
 pub fn apply_background(img: &mut ImageBuffer<Rgba<u8>, Vec<u8>>, style: &ComputedStyle) {
+    let _span = trace_span!("image::apply_background").entered();
+
     let width = img.width() + style.padding.left + style.padding.right;
     let height = img.height() + style.padding.top + style.padding.bottom;
 
@@ -153,6 +156,8 @@ fn apply_border_radius(
     img: &mut ImageBuffer<Rgba<u8>, Vec<u8>>,
     border_radius: ComputedBorderRadius,
 ) {
+    let _span = trace_span!("image::apply_border_radius").entered();
+
     if img.width() == 0 || img.height() == 0 {
         return;
     }
