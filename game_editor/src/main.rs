@@ -1,5 +1,4 @@
 #![deny(unsafe_op_in_unsafe_fn)]
-#![deny(unused_crate_dependencies)]
 
 mod backend;
 mod state;
@@ -60,7 +59,7 @@ impl State {
 }
 
 fn main() {
-    pretty_env_logger::init();
+    game_tracing::init();
 
     let (backend, handle) = Backend::new();
 

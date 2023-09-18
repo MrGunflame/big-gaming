@@ -9,6 +9,7 @@ license = "GPL-3.0-or-later"
 game_window = { version = "0.1.0", path = "../game_window" }
 game_common = { version = "0.1.0", path = "../game_common" }
 game_asset = { version = "0.1.0", path = "../game_asset" }
+game_tracing = { version = "0.1.0", path = "../game_tracing" }
 
 bytemuck = { version = "1.13.1", features = ["derive"] }
 futures-lite = "1.13.0"

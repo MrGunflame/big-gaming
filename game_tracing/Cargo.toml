@@ -8,3 +8,7 @@ license = "GPL-3.0-or-later"
 [dependencies]
 game_common = { version = "0.1.0", path = "../game_common" }
 glam = "0.24.1"
+tracing = "0.1.37"
+
+tracing-subscriber = "0.3.17"
+tracing-tracy = "0.10.4"

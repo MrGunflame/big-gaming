@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 
+use game_tracing::trace_span;
 use parking_lot::Mutex;
 use wgpu::{
     AddressMode, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
@@ -87,6 +88,8 @@ impl PostProcessPipeline {
         device: &Device,
         format: TextureFormat,
     ) {
+        let _span = trace_span!("PostProcessPass::render").entered();
+
         let mut pls = self.pipelines.lock();
         let pipeline = match pls.get(&format) {
             Some(pl) => pl,

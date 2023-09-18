@@ -3,6 +3,7 @@ use std::f32::consts::PI;
 use bytemuck::{Pod, Zeroable};
 use game_common::components::transform::Transform;
 use game_common::math::Ray;
+use game_tracing::trace_span;
 use game_window::windows::WindowId;
 use glam::{Mat4, UVec2, Vec2, Vec3};
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
@@ -98,6 +99,8 @@ impl CameraBuffer {
         device: &Device,
         target: RenderTarget,
     ) -> Self {
+        let _span = trace_span!("CameraBuffer::new").entered();
+
         let buffer = device.create_buffer_init(&BufferInitDescriptor {
             label: Some("camera_transform_buffer"),
             contents: bytemuck::cast_slice(&[CameraUniform::new(transform, projection)]),
