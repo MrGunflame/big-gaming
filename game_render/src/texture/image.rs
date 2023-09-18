@@ -3,6 +3,7 @@ use std::io::Read;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use game_tracing::trace_span;
 use glam::UVec2;
 use parking_lot::Mutex;
 
@@ -191,6 +192,8 @@ impl Drop for ImageHandle {
 }
 
 pub(crate) fn load_images(images: &mut Images) {
+    let _span = trace_span!("load_images").entered();
+
     while let Some((handle, source, format)) = images.load_queue.pop_front() {
         let buf = match source {
             LoadImage::Buffer(buf) => buf,
@@ -221,6 +224,8 @@ pub(crate) fn load_images(images: &mut Images) {
 }
 
 pub(crate) fn update_image_handles(images: &mut Images) {
+    let _span = trace_span!("update_image_handles").entered();
+
     let mut events = images.events.lock();
     while let Some(event) = events.pop_front() {
         match event {

@@ -1,5 +1,6 @@
 use bitflags::bitflags;
 use bytemuck::{Pod, Zeroable};
+use game_tracing::trace_span;
 use glam::UVec2;
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
 use wgpu::{
@@ -67,6 +68,8 @@ pub fn update_material_bind_group(
     material: &PbrMaterial,
     mipmap_generator: &mut MipMapGenerator,
 ) -> BindGroup {
+    let _span = trace_span!("update_material_bind_group").entered();
+
     let default_textures = &pipeline.default_textures;
 
     let constants = device.create_buffer_init(&BufferInitDescriptor {
@@ -148,6 +151,8 @@ fn create_material_texture(
     queue: &Queue,
     mipmap_generator: &mut MipMapGenerator,
 ) -> TextureView {
+    let _span = trace_span!("create_material_texture").entered();
+
     let mut encoder = device.create_command_encoder(&CommandEncoderDescriptor { label: None });
 
     let data = images.get(handle).unwrap();

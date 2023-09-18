@@ -15,6 +15,7 @@ game_render = { version = "0.1.0", path = "../game_render" }
 game_asset = { version = "0.1.0", path = "../game_asset" }
 game_model = { version = "0.1.0", path = "../game_model" }
 game_core = { version = "0.1.0", path = "../game_core" }
+game_tracing = { version = "0.1.0", path = "../game_tracing" }
 
 game_gltf = { version = "0.1.0", path = "../game_gltf", optional = true }
 tracing = "0.1.37"

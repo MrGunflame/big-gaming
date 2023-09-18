@@ -6,6 +6,7 @@ use std::cell::RefCell;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 
+use game_tracing::trace_span;
 use parking_lot::Mutex;
 use slotmap::{new_key_type, SlotMap};
 
@@ -153,6 +154,8 @@ impl Document {
     }
 
     pub fn run_effects(&self) {
+        let _span = trace_span!("Document::run_effects").entered();
+
         let mut doc = self.inner.lock();
 
         let mut rt = self.runtime.inner.lock();
@@ -229,6 +232,8 @@ impl Document {
     }
 
     pub fn flush_node_queue(&self, tree: &mut LayoutTree, events: &mut Events) {
+        let _span = trace_span!("Document::flush_node_queue").entered();
+
         let mut doc = self.inner.lock();
         let mut rt = self.runtime.inner.lock();
 

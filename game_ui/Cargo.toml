@@ -16,6 +16,7 @@ debug_render = []
 game_input = { version = "0.1.0", path = "../game_input" }
 game_render = { version = "0.1.0", path = "../game_render" }
 game_window = { version = "0.1.0", path = "../game_window" }
+game_tracing = { version = "0.1.0", path = "../game_tracing" }
 
 glam = "0.24.0"
 ab_glyph = "0.2.21"
