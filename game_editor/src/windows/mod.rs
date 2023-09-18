@@ -7,6 +7,8 @@ mod record;
 mod records;
 mod world;
 
+use std::sync::mpsc;
+
 use game_common::module::ModuleId;
 use game_data::record::{Record, RecordKind};
 use game_render::Renderer;
@@ -25,24 +27,38 @@ use self::main_window::MainWindow;
 use self::modules::Modules;
 use self::open_module::OpenModule;
 use self::record::CreateRecord;
+use self::world::spawn_entity::SpawnEntity;
 use self::world::WorldWindowState;
 
 pub enum Window {
-    View(WorldWindowState),
+    View(Document, WorldWindowState),
     Other(Document),
 }
 
 impl Window {
     pub fn doc(&self) -> Option<Document> {
         match self {
-            Self::View(_) => None,
+            Self::View(doc, _) => Some(doc.clone()),
             Self::Other(doc) => Some(doc.clone()),
         }
     }
 
-    pub fn handle_event(&mut self, renderer: &mut Renderer, event: WindowEvent, id: WindowId) {
+    pub fn handle_event(
+        &mut self,
+        renderer: &mut Renderer,
+        scenes: &mut Scenes,
+        event: WindowEvent,
+        id: WindowId,
+    ) {
         match self {
-            Self::View(window) => window.handle_event(renderer, event, id),
+            Self::View(_, window) => window.handle_event(renderer, scenes, event, id),
+            _ => (),
+        }
+    }
+
+    pub fn update(&mut self, renderer: &mut Renderer, scenes: &mut Scenes) {
+        match self {
+            Self::View(_, w) => w.update(renderer, scenes),
             _ => (),
         }
     }
@@ -98,8 +114,13 @@ pub fn spawn_window(
             });
         }
         SpawnWindow::View => {
-            let window = world::WorldWindowState::new(renderer, window_id, scenes);
-            return Window::View(window);
+            let state = world::build_ui(&cx, state);
+
+            let window = world::WorldWindowState::new(state, renderer, window_id, scenes);
+            return Window::View(document, window);
+        }
+        SpawnWindow::SpawnEntity(writer) => {
+            cx.append(SpawnEntity { state, writer });
         }
     }
 
@@ -117,4 +138,5 @@ pub enum SpawnWindow {
     Error(String),
     CreateRecord(RecordKind),
     EditRecord(ModuleId, Record),
+    SpawnEntity(mpsc::Sender<world::Event>),
 }

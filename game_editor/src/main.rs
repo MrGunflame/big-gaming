@@ -184,6 +184,7 @@ impl game_window::App for App {
                     if let Some(window) = self.active_windows.get_mut(&window_id) {
                         window.handle_event(
                             &mut self.renderer,
+                            &mut self.scenes,
                             WindowEvent::MouseMotion(event),
                             window_id,
                         );
@@ -195,6 +196,7 @@ impl game_window::App for App {
                     if let Some(window) = self.active_windows.get_mut(&window_id) {
                         window.handle_event(
                             &mut self.renderer,
+                            &mut self.scenes,
                             WindowEvent::KeyboardInput(event),
                             window_id,
                         );
@@ -206,6 +208,7 @@ impl game_window::App for App {
                     if let Some(window) = self.active_windows.get_mut(&window_id) {
                         window.handle_event(
                             &mut self.renderer,
+                            &mut self.scenes,
                             WindowEvent::MouseWheel(event),
                             window_id,
                         );
@@ -217,6 +220,7 @@ impl game_window::App for App {
                     if let Some(window) = self.active_windows.get_mut(&window_id) {
                         window.handle_event(
                             &mut self.renderer,
+                            &mut self.scenes,
                             WindowEvent::MouseButtonInput(event),
                             window_id,
                         );
@@ -228,6 +232,7 @@ impl game_window::App for App {
                     if let Some(window) = self.active_windows.get_mut(&window_id) {
                         window.handle_event(
                             &mut self.renderer,
+                            &mut self.scenes,
                             WindowEvent::CursorMoved(event),
                             window_id,
                         );
@@ -245,6 +250,10 @@ impl game_window::App for App {
             let id = self.windows.spawn(WindowBuilder::new());
 
             self.loading_windows.insert(id, event);
+        }
+
+        for window in self.active_windows.values_mut() {
+            window.update(&mut self.renderer, &mut self.scenes);
         }
 
         self.scenes.update(&mut self.renderer);

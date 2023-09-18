@@ -28,9 +28,7 @@ use game_render::pbr::PbrMaterial;
 use game_render::texture::Images;
 use gltf::gltf_to_scene;
 
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ScenePlugin;
-
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct SceneId(DefaultKey);
 
 #[derive(Debug, Default)]
@@ -90,13 +88,47 @@ impl Scenes {
     fn update_transform(&mut self, renderer: &mut Renderer) {
         self.hierarchy.compute_transform();
 
-        for (entity, transform) in self.hierarchy.iter_changed_transform() {
+        for (entity, transform) in self.hierarchy.iter_changed_global_transform() {
             // Not all entities have an render object associated.
             if let Some(id) = self.nodes.get(&entity) {
                 let object = renderer.entities.objects().get_mut(*id).unwrap();
                 object.transform = transform;
             }
         }
+    }
+
+    pub fn set_transform(&mut self, id: SceneId, transform: Transform) {
+        let scene = match self.scenes.get(id.0) {
+            Some(SceneState::Spawned(id)) => id,
+            _ => return,
+        };
+
+        self.hierarchy.set(*scene, transform);
+    }
+
+    pub fn get_transform(&self, id: SceneId) -> Option<Transform> {
+        let scene = match self.scenes.get(id.0) {
+            Some(SceneState::Spawned(id)) => id,
+            _ => return None,
+        };
+
+        self.hierarchy.get(*scene)
+    }
+
+    pub fn objects(&self, id: SceneId) -> Option<impl Iterator<Item = ObjectId>> {
+        let scene = match self.scenes.get(id.0)? {
+            SceneState::Spawned(id) => id,
+            _ => return None,
+        };
+
+        let mut nodes = vec![];
+        for node in self.hierarchy.children(*scene).unwrap() {
+            if let Some(obj) = self.nodes.get(&node) {
+                nodes.push(*obj);
+            }
+        }
+
+        Some(nodes.into_iter())
     }
 }
 
