@@ -1,3 +1,5 @@
+use std::ops::{Deref, DerefMut};
+
 use game_common::components::transform::Transform;
 use slotmap::{new_key_type, Key, SlotMap};
 
@@ -31,8 +33,13 @@ impl<K: Key, V: WithEvent<K> + Copy> EntityManager<K, V> {
         self.entities.get(id)
     }
 
-    pub fn get_mut(&mut self, id: K) -> Option<&mut V> {
-        self.entities.get_mut(id)
+    pub fn get_mut(&mut self, id: K) -> Option<EntityMut<'_, K, V>> {
+        let entity = self.entities.get_mut(id)?;
+        Some(EntityMut {
+            id,
+            entity,
+            events: &mut self.events,
+        })
     }
 
     pub fn remove(&mut self, id: K) {
@@ -46,6 +53,48 @@ impl<K: Key, V: WithEvent<K> + Copy> EntityManager<K, V> {
 
     pub fn values(&self) -> impl Iterator<Item = &V> {
         self.entities.values()
+    }
+}
+
+pub struct EntityMut<'a, K, V>
+where
+    K: Key + Copy,
+    V: WithEvent<K> + Copy,
+{
+    id: K,
+    entity: &'a mut V,
+    events: &'a mut Vec<Event>,
+}
+
+impl<'a, K, V> Drop for EntityMut<'a, K, V>
+where
+    K: Key + Copy,
+    V: WithEvent<K> + Copy,
+{
+    fn drop(&mut self) {
+        self.events.push(V::create(self.id, *self.entity));
+    }
+}
+
+impl<'a, K, V> Deref for EntityMut<'a, K, V>
+where
+    K: Key + Copy,
+    V: WithEvent<K> + Copy,
+{
+    type Target = V;
+
+    fn deref(&self) -> &Self::Target {
+        &self.entity
+    }
+}
+
+impl<'a, K, V> DerefMut for EntityMut<'a, K, V>
+where
+    K: Key + Copy,
+    V: WithEvent<K> + Copy,
+{
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.entity
     }
 }
 

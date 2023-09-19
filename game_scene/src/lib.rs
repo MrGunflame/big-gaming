@@ -96,7 +96,7 @@ impl Scenes {
         for (entity, transform) in self.hierarchy.iter_changed_global_transform() {
             // Not all entities have an render object associated.
             if let Some(id) = self.nodes.get(&entity) {
-                let object = renderer.entities.objects.get_mut(*id).unwrap();
+                let mut object = renderer.entities.objects.get_mut(*id).unwrap();
                 object.transform = transform;
             }
         }

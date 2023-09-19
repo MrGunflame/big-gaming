@@ -258,7 +258,6 @@ impl game_window::App for App {
         self.scenes.update(&mut self.renderer);
 
         self.renderer.render();
-        self.ui_state
-            .run(&self.renderer.device, &self.renderer.queue, &self.windows);
+        self.ui_state.run(&self.renderer, &self.windows);
     }
 }
