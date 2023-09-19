@@ -20,9 +20,11 @@ pub mod texture;
 
 mod depth_stencil;
 mod post_process;
+mod state;
+
+use std::thread::Thread;
 
 use game_tracing::trace_span;
-use tracing::Level;
 
 use camera::RenderTarget;
 use entities::SceneEntities;
@@ -36,6 +38,7 @@ use mipmap::MipMapGenerator;
 use pbr::PbrMaterial;
 use post_process::PostProcessPipeline;
 use render_pass::RenderPass;
+use state::RenderState;
 use surface::RenderSurfaces;
 use texture::Images;
 use wgpu::{
@@ -86,12 +89,14 @@ impl Renderer {
         .unwrap();
 
         let mut graph = RenderGraph::default();
-        graph.push(RenderPass);
+        graph.push(RenderPass {
+            state: RenderState::empty(&device),
+        });
 
         let mut images = Images::new();
 
         Self {
-            entities: SceneEntities::new(&device),
+            entities: SceneEntities::new(),
             forward: ForwardPipeline::new(&device, &mut images),
             post_process: PostProcessPipeline::new(&device),
             mipmap_generator: MipMapGenerator::new(&device),
@@ -116,7 +121,7 @@ impl Renderer {
     pub fn resize(&mut self, id: WindowId, size: UVec2) {
         self.surfaces.resize(id, &self.device, size);
 
-        for cam in self.entities.cameras().values_mut() {
+        for cam in self.entities.cameras.values_mut() {
             if cam.target == RenderTarget::Window(id) {
                 cam.update_aspect_ratio(size);
             }
@@ -132,16 +137,6 @@ impl Renderer {
 
         // FIXME: Should update on render pass.
         crate::texture::image::load_images(&mut self.images);
-
-        self.entities.rebuild(
-            &mut self.meshes,
-            &mut self.materials,
-            &mut self.images,
-            &self.device,
-            &self.queue,
-            &self.forward,
-            &mut self.mipmap_generator,
-        );
 
         for (window, surface) in self.surfaces.iter_mut() {
             let output = match surface.surface.get_current_texture() {
@@ -165,7 +160,6 @@ impl Renderer {
                 });
 
             let mut ctx = RenderContext {
-                state: &self.entities.state,
                 window: *window,
                 encoder: &mut encoder,
                 width: output.texture.width(),

@@ -14,6 +14,7 @@ use crate::camera::{CameraBuffer, RenderTarget};
 use crate::entities::{CameraId, ObjectId};
 use crate::graph::{Node, RenderContext};
 use crate::light::pipeline::{DirectionalLightUniform, PointLightUniform, SpotLightUniform};
+use crate::state::RenderState;
 
 pub struct GpuObject {
     pub indices: IndexBuffer,
@@ -63,11 +64,13 @@ impl GpuState {
     }
 }
 
-pub struct RenderPass;
+pub(crate) struct RenderPass {
+    pub state: RenderState,
+}
 
 impl Node for RenderPass {
     fn render(&self, ctx: &mut RenderContext<'_>) {
-        for cam in ctx.state.cameras.values() {
+        for cam in self.state.cameras.iter() {
             if cam.target == RenderTarget::Window(ctx.window) {
                 self.render_camera_target(&cam, ctx);
             }
@@ -82,10 +85,10 @@ impl RenderPass {
         let device = ctx.device;
         let pipeline = ctx.pipeline;
 
-        let bind_groups = ctx
+        let bind_groups = self
             .state
             .objects
-            .values()
+            .iter()
             .map(|node| {
                 device.create_bind_group(&BindGroupDescriptor {
                     label: Some("vs_bind_group"),
@@ -110,15 +113,15 @@ impl RenderPass {
             entries: &[
                 BindGroupEntry {
                     binding: 0,
-                    resource: ctx.state.directional_lights.as_entire_binding(),
+                    resource: self.state.directional_lights.as_entire_binding(),
                 },
                 BindGroupEntry {
                     binding: 1,
-                    resource: ctx.state.point_lights.as_entire_binding(),
+                    resource: self.state.point_lights.as_entire_binding(),
                 },
                 BindGroupEntry {
                     binding: 2,
-                    resource: ctx.state.spot_lights.as_entire_binding(),
+                    resource: self.state.spot_lights.as_entire_binding(),
                 },
             ],
         });
@@ -162,7 +165,7 @@ impl RenderPass {
 
         render_pass.set_pipeline(&pipeline.pipeline);
 
-        for (index, node) in ctx.state.objects.values().enumerate() {
+        for (index, node) in self.state.objects.iter().enumerate() {
             let vs_bind_group = &bind_groups[index];
 
             render_pass.set_bind_group(0, &vs_bind_group, &[]);

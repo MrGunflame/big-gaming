@@ -22,7 +22,6 @@ pub trait Node: Send + Sync + 'static {
 }
 
 pub struct RenderContext<'a> {
-    pub state: &'a GpuState,
     pub window: WindowId,
     pub encoder: &'a mut CommandEncoder,
     pub target: &'a TextureView,
