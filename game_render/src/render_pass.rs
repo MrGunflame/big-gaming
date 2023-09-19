@@ -129,15 +129,15 @@ impl RenderPass {
             entries: &[
                 BindGroupEntry {
                     binding: 0,
-                    resource: state.directional_lights.as_entire_binding(),
+                    resource: state.directional_lights_buffer.as_entire_binding(),
                 },
                 BindGroupEntry {
                     binding: 1,
-                    resource: state.point_lights.as_entire_binding(),
+                    resource: state.point_lights_buffer.as_entire_binding(),
                 },
                 BindGroupEntry {
                     binding: 2,
-                    resource: state.spot_lights.as_entire_binding(),
+                    resource: state.spot_lights_buffer.as_entire_binding(),
                 },
             ],
         });

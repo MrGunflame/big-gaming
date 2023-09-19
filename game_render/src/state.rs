@@ -8,7 +8,10 @@ use crate::buffer::{DynamicBuffer, IndexBuffer};
 use crate::camera::{Camera, CameraBuffer};
 use crate::entities::{CameraId, DirectionalLightId, Object, ObjectId, PointLightId, SpotLightId};
 use crate::forward::ForwardPipeline;
-use crate::light::pipeline::{DirectionalLightUniform, PointLightUniform, SpotLightUniform};
+use crate::light::pipeline::{
+    update_directional_lights, update_point_lights, update_spot_lights, DirectionalLightUniform,
+    PointLightUniform, SpotLightUniform,
+};
 use crate::light::{DirectionalLight, PointLight, SpotLight};
 use crate::mesh::Mesh;
 use crate::mipmap::MipMapGenerator;
@@ -23,9 +26,13 @@ pub(crate) struct RenderState {
     pub objects: HashMap<ObjectId, Object>,
     /// object transform buffers
     pub object_buffers: HashMap<ObjectId, Buffer>,
-    pub directional_lights: Buffer,
-    pub point_lights: Buffer,
-    pub spot_lights: Buffer,
+
+    pub directional_lights: HashMap<DirectionalLightId, DirectionalLight>,
+    pub point_lights: HashMap<PointLightId, PointLight>,
+    pub spot_lights: HashMap<SpotLightId, SpotLight>,
+    pub directional_lights_buffer: Buffer,
+    pub point_lights_buffer: Buffer,
+    pub spot_lights_buffer: Buffer,
 
     pub events: Vec<Event>,
 
@@ -71,9 +78,9 @@ impl RenderState {
         }
 
         Self {
-            directional_lights,
-            spot_lights,
-            point_lights,
+            directional_lights_buffer: directional_lights,
+            spot_lights_buffer: spot_lights,
+            point_lights_buffer: point_lights,
             cameras: HashMap::new(),
             objects: HashMap::new(),
             events: vec![],
@@ -84,6 +91,9 @@ impl RenderState {
             meshes_queued: HashMap::new(),
             camera_buffers: HashMap::new(),
             object_buffers: HashMap::new(),
+            directional_lights: HashMap::new(),
+            point_lights: HashMap::new(),
+            spot_lights: HashMap::new(),
         }
     }
 
@@ -128,7 +138,24 @@ impl RenderState {
                 }
             }
             Event::DestroyObject(id) => {}
-            _ => (),
+            Event::CreateDirectionalLight(id, light) => {
+                self.directional_lights.insert(id, light);
+            }
+            Event::DestroyDirectionalLight(id) => {
+                self.directional_lights.remove(&id);
+            }
+            Event::CreatePointLight(id, light) => {
+                self.point_lights.insert(id, light);
+            }
+            Event::DestroyPointLight(id) => {
+                self.point_lights.remove(&id);
+            }
+            Event::CreateSpotLight(id, light) => {
+                self.spot_lights.insert(id, light);
+            }
+            Event::DestroySpotLight(id) => {
+                self.spot_lights.remove(&id);
+            }
         }
     }
 
@@ -159,6 +186,10 @@ impl RenderState {
             self.materials.insert(id, bg);
         }
 
+        let mut rebuild_dir_lights = false;
+        let mut rebuild_point_lights = false;
+        let mut rebuild_spot_lights = false;
+
         for event in self.events.drain(..) {
             match event {
                 Event::CreateCamera(id, camera) => {
@@ -183,8 +214,31 @@ impl RenderState {
                     self.objects.remove(&id);
                     self.object_buffers.remove(&id);
                 }
-                _ => (),
+                Event::CreateDirectionalLight(_, _) | Event::DestroyDirectionalLight(_) => {
+                    rebuild_dir_lights = true;
+                }
+                Event::CreatePointLight(_, _) | Event::DestroyPointLight(_) => {
+                    rebuild_point_lights = true;
+                }
+                Event::CreateSpotLight(_, _) | Event::DestroySpotLight(_) => {
+                    rebuild_spot_lights = false;
+                }
             }
+        }
+
+        if rebuild_dir_lights {
+            self.directional_lights_buffer =
+                update_directional_lights(device, self.directional_lights.values().copied());
+        }
+
+        if rebuild_point_lights {
+            self.point_lights_buffer =
+                update_point_lights(device, self.point_lights.values().copied());
+        }
+
+        if rebuild_spot_lights {
+            self.spot_lights_buffer =
+                update_spot_lights(device, self.spot_lights.values().copied());
         }
     }
 }

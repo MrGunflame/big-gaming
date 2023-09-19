@@ -55,9 +55,9 @@ fn fs_main(in: FragInput) -> @location(0) vec4<f32> {
         light_strength += compute_spot_light(in, spot_lights.lights[i]);
     }
 
-    //color.r *= light_strength.r;
-    //color.g *= light_strength.g;
-    //color.b *= light_strength.b;
+    color.r *= light_strength.r;
+    color.g *= light_strength.g;
+    color.b *= light_strength.b;
     return color;
 }
 
