@@ -52,6 +52,10 @@ impl RenderSurfaces {
     pub fn iter_mut(&mut self) -> impl Iterator<Item = (&WindowId, &mut SurfaceData)> {
         self.windows.iter_mut()
     }
+
+    pub fn iter(&self) -> impl Iterator<Item = (&WindowId, &SurfaceData)> {
+        self.windows.iter()
+    }
 }
 
 #[derive(Debug)]

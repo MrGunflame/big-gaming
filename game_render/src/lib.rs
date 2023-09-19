@@ -19,10 +19,12 @@ pub mod surface;
 pub mod texture;
 
 mod depth_stencil;
+mod pipelined_rendering;
 mod post_process;
 mod state;
 
-use std::thread::Thread;
+use std::collections::VecDeque;
+use std::sync::Arc;
 
 use game_tracing::trace_span;
 
@@ -32,35 +34,29 @@ use forward::ForwardPipeline;
 use game_asset::Assets;
 use game_window::windows::{WindowId, WindowState};
 use glam::UVec2;
-use graph::{RenderContext, RenderGraph};
+use graph::RenderGraph;
 use mesh::Mesh;
-use mipmap::MipMapGenerator;
 use pbr::PbrMaterial;
+use pipelined_rendering::Pipeline;
 use post_process::PostProcessPipeline;
 use render_pass::RenderPass;
 use state::RenderState;
-use surface::RenderSurfaces;
 use texture::Images;
 use wgpu::{
-    Adapter, Backends, CommandEncoderDescriptor, Device, DeviceDescriptor, Features, Instance,
-    InstanceDescriptor, Limits, PowerPreference, Queue, RequestAdapterOptions,
-    TextureViewDescriptor,
+    Backends, DeviceDescriptor, Features, Instance, InstanceDescriptor, Limits, PowerPreference,
+    RequestAdapterOptions,
 };
 
 pub struct Renderer {
-    instance: Instance,
-    adapter: Adapter,
-    pub device: Device,
-    pub queue: Queue,
+    pipeline: Pipeline,
+
     pub graph: RenderGraph,
-    pub surfaces: RenderSurfaces,
     pub entities: SceneEntities,
     pub images: Images,
-    forward: ForwardPipeline,
-    post_process: PostProcessPipeline,
-    mipmap_generator: MipMapGenerator,
+    forward: Arc<ForwardPipeline>,
     pub meshes: Assets<Mesh>,
     pub materials: Assets<PbrMaterial>,
+    backlog: VecDeque<Event>,
 }
 
 impl Renderer {
@@ -88,38 +84,38 @@ impl Renderer {
         ))
         .unwrap();
 
+        let mut images = Images::new();
+        let forward = Arc::new(ForwardPipeline::new(&device, &mut images));
+        let post_process = PostProcessPipeline::new(&device);
+
         let mut graph = RenderGraph::default();
         graph.push(RenderPass {
             state: RenderState::empty(&device),
+            forward: forward.clone(),
+            post_process,
         });
 
-        let mut images = Images::new();
+        let pipeline = Pipeline::new(instance, adapter, device, queue);
 
         Self {
             entities: SceneEntities::new(),
-            forward: ForwardPipeline::new(&device, &mut images),
-            post_process: PostProcessPipeline::new(&device),
-            mipmap_generator: MipMapGenerator::new(&device),
-            instance,
-            adapter,
-            device,
-            queue,
+            forward,
             graph,
-            surfaces: RenderSurfaces::new(),
             images,
             materials: Assets::new(),
             meshes: Assets::new(),
+            backlog: VecDeque::new(),
+            pipeline,
         }
     }
 
     /// Create a new renderer for the window.
     pub fn create(&mut self, id: WindowId, window: WindowState) {
-        self.surfaces
-            .create(&self.instance, &self.adapter, &self.device, window, id);
+        self.backlog.push_back(Event::CreateSurface(id, window));
     }
 
     pub fn resize(&mut self, id: WindowId, size: UVec2) {
-        self.surfaces.resize(id, &self.device, size);
+        self.backlog.push_back(Event::ResizeSurface(id, size));
 
         for cam in self.entities.cameras.values_mut() {
             if cam.target == RenderTarget::Window(id) {
@@ -129,7 +125,7 @@ impl Renderer {
     }
 
     pub fn destroy(&mut self, id: WindowId) {
-        self.surfaces.destroy(id);
+        self.backlog.push_back(Event::DestroySurface(id));
     }
 
     pub fn render(&mut self) {
@@ -138,46 +134,53 @@ impl Renderer {
         // FIXME: Should update on render pass.
         crate::texture::image::load_images(&mut self.images);
 
-        for (window, surface) in self.surfaces.iter_mut() {
-            let output = match surface.surface.get_current_texture() {
-                Ok(output) => output,
-                Err(err) => {
-                    tracing::error!("failed to get surface: {}", err);
-                    continue;
-                }
-            };
+        //     for (window, surface) in self.surfaces.iter_mut() {
+        //         let output = match surface.surface.get_current_texture() {
+        //             Ok(output) => output,
+        //             Err(err) => {
+        //                 tracing::error!("failed to get surface: {}", err);
+        //                 continue;
+        //             }
+        //         };
 
-            let target = output.texture.create_view(&TextureViewDescriptor {
-                label: Some("surface_view"),
-                format: Some(surface.config.format),
-                ..Default::default()
-            });
+        //         let target = output.texture.create_view(&TextureViewDescriptor {
+        //             label: Some("surface_view"),
+        //             format: Some(surface.config.format),
+        //             ..Default::default()
+        //         });
 
-            let mut encoder = self
-                .device
-                .create_command_encoder(&CommandEncoderDescriptor {
-                    label: Some("render_encoder"),
-                });
+        //         let mut encoder = self
+        //             .device
+        //             .create_command_encoder(&CommandEncoderDescriptor {
+        //                 label: Some("render_encoder"),
+        //             });
 
-            let mut ctx = RenderContext {
-                window: *window,
-                encoder: &mut encoder,
-                width: output.texture.width(),
-                height: output.texture.height(),
-                format: surface.config.format,
-                target: &target,
-                surface: &surface,
-                pipeline: &self.forward,
-                post_process: &self.post_process,
-                device: &self.device,
-            };
+        //         let mut ctx = RenderContext {
+        //             window: *window,
+        //             encoder: &mut encoder,
+        //             width: output.texture.width(),
+        //             height: output.texture.height(),
+        //             format: surface.config.format,
+        //             target: &target,
+        //             surface: &surface,
+        //             pipeline: &self.forward,
+        //             post_process: &self.post_process,
+        //             device: &self.device,
+        //         };
 
-            for node in &self.graph.nodes {
-                node.render(&mut ctx);
-            }
+        //         for node in &self.graph.nodes {
+        //             node.render(&mut ctx);
+        //         }
 
-            self.queue.submit(std::iter::once(encoder.finish()));
-            output.present();
-        }
+        //         self.queue.submit(std::iter::once(encoder.finish()));
+        //         output.present();
+        //     }
     }
+}
+
+#[derive(Debug)]
+enum Event {
+    CreateSurface(WindowId, WindowState),
+    ResizeSurface(WindowId, UVec2),
+    DestroySurface(WindowId),
 }

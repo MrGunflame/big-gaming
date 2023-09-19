@@ -3,7 +3,6 @@ use wgpu::{CommandEncoder, Device, TextureFormat, TextureView};
 
 use crate::forward::ForwardPipeline;
 use crate::post_process::PostProcessPipeline;
-use crate::render_pass::GpuState;
 use crate::surface::SurfaceData;
 
 #[derive(Default)]
@@ -29,7 +28,5 @@ pub struct RenderContext<'a> {
     pub height: u32,
     pub format: TextureFormat,
     pub device: &'a Device,
-    pub pipeline: &'a ForwardPipeline,
     pub surface: &'a SurfaceData,
-    pub post_process: &'a PostProcessPipeline,
 }

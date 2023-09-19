@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use game_tracing::trace_span;
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
@@ -12,8 +13,10 @@ use wgpu::{
 use crate::buffer::{DynamicBuffer, IndexBuffer};
 use crate::camera::{CameraBuffer, RenderTarget};
 use crate::entities::{CameraId, ObjectId};
+use crate::forward::ForwardPipeline;
 use crate::graph::{Node, RenderContext};
 use crate::light::pipeline::{DirectionalLightUniform, PointLightUniform, SpotLightUniform};
+use crate::post_process::PostProcessPipeline;
 use crate::state::RenderState;
 
 pub struct GpuObject {
@@ -66,6 +69,8 @@ impl GpuState {
 
 pub(crate) struct RenderPass {
     pub state: RenderState,
+    pub forward: Arc<ForwardPipeline>,
+    pub post_process: PostProcessPipeline,
 }
 
 impl Node for RenderPass {
@@ -83,7 +88,7 @@ impl RenderPass {
         let _span = trace_span!("ForwardPass::render_camera_target").entered();
 
         let device = ctx.device;
-        let pipeline = ctx.pipeline;
+        let pipeline = &self.forward;
 
         let bind_groups = self
             .state
@@ -179,7 +184,7 @@ impl RenderPass {
 
         drop(render_pass);
 
-        ctx.post_process.render(
+        self.post_process.render(
             &mut ctx.encoder,
             &target_view,
             &ctx.target,
