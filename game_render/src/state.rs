@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use game_tracing::trace_span;
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
 use wgpu::{BindGroup, Buffer, BufferUsages, Device, Queue};
 
@@ -93,6 +94,8 @@ impl RenderState {
         materials: &Materials,
         images: &Images,
     ) {
+        let _span = trace_span!("RenderState::update").entered();
+
         self.events.push(event);
 
         match event {
@@ -125,7 +128,7 @@ impl RenderState {
                 }
             }
             Event::DestroyObject(id) => {}
-            _ => (),
+            _ => todo!(),
         }
     }
 
@@ -136,6 +139,8 @@ impl RenderState {
         pipeline: &ForwardPipeline,
         mipmap_generator: &mut MipMapGenerator,
     ) {
+        let _span = trace_span!("RenderState::update_buffers").entered();
+
         for (id, mesh) in self.meshes_queued.drain() {
             let (bg, buf) = update_mesh_bind_group(device, pipeline, &mesh);
             self.meshes.insert(id, (bg, buf));
