@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use game_tracing::trace_span;
+use parking_lot::Mutex;
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
 use wgpu::{
     BindGroup, BindGroupDescriptor, BindGroupEntry, Buffer, BufferUsages, Color, Device, Extent3d,
@@ -68,30 +69,36 @@ impl GpuState {
 }
 
 pub(crate) struct RenderPass {
-    pub state: RenderState,
+    pub state: Arc<Mutex<RenderState>>,
     pub forward: Arc<ForwardPipeline>,
     pub post_process: PostProcessPipeline,
 }
 
 impl Node for RenderPass {
     fn render(&self, ctx: &mut RenderContext<'_>) {
-        for cam in self.state.cameras.iter() {
+        let state = self.state.lock();
+
+        for cam in state.cameras.iter() {
             if cam.target == RenderTarget::Window(ctx.window) {
-                self.render_camera_target(&cam, ctx);
+                self.render_camera_target(&state, &cam, ctx);
             }
         }
     }
 }
 
 impl RenderPass {
-    fn render_camera_target(&self, camera: &CameraBuffer, ctx: &mut RenderContext<'_>) {
+    fn render_camera_target(
+        &self,
+        state: &RenderState,
+        camera: &CameraBuffer,
+        ctx: &mut RenderContext<'_>,
+    ) {
         let _span = trace_span!("ForwardPass::render_camera_target").entered();
 
         let device = ctx.device;
         let pipeline = &self.forward;
 
-        let bind_groups = self
-            .state
+        let bind_groups = state
             .objects
             .iter()
             .map(|node| {
@@ -118,15 +125,15 @@ impl RenderPass {
             entries: &[
                 BindGroupEntry {
                     binding: 0,
-                    resource: self.state.directional_lights.as_entire_binding(),
+                    resource: state.directional_lights.as_entire_binding(),
                 },
                 BindGroupEntry {
                     binding: 1,
-                    resource: self.state.point_lights.as_entire_binding(),
+                    resource: state.point_lights.as_entire_binding(),
                 },
                 BindGroupEntry {
                     binding: 2,
-                    resource: self.state.spot_lights.as_entire_binding(),
+                    resource: state.spot_lights.as_entire_binding(),
                 },
             ],
         });
@@ -170,7 +177,7 @@ impl RenderPass {
 
         render_pass.set_pipeline(&pipeline.pipeline);
 
-        for (index, node) in self.state.objects.iter().enumerate() {
+        for (index, node) in state.objects.iter().enumerate() {
             let vs_bind_group = &bind_groups[index];
 
             render_pass.set_bind_group(0, &vs_bind_group, &[]);

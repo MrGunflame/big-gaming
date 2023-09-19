@@ -36,12 +36,16 @@ use game_window::windows::{WindowId, WindowState};
 use glam::UVec2;
 use graph::RenderGraph;
 use mesh::Mesh;
+use parking_lot::Mutex;
+use pbr::material::Materials;
+use pbr::mesh::Meshes;
 use pbr::PbrMaterial;
 use pipelined_rendering::Pipeline;
 use post_process::PostProcessPipeline;
 use render_pass::RenderPass;
 use state::RenderState;
 use texture::Images;
+use tracing::Instrument;
 use wgpu::{
     Backends, DeviceDescriptor, Features, Instance, InstanceDescriptor, Limits, PowerPreference,
     RequestAdapterOptions,
@@ -50,13 +54,15 @@ use wgpu::{
 pub struct Renderer {
     pipeline: Pipeline,
 
-    pub graph: RenderGraph,
     pub entities: SceneEntities,
-    pub images: Images,
     forward: Arc<ForwardPipeline>,
-    pub meshes: Assets<Mesh>,
-    pub materials: Assets<PbrMaterial>,
+
     backlog: VecDeque<Event>,
+    state: Arc<Mutex<RenderState>>,
+
+    pub images: Images,
+    pub meshes: Meshes,
+    pub materials: Materials,
 }
 
 impl Renderer {
@@ -88,24 +94,28 @@ impl Renderer {
         let forward = Arc::new(ForwardPipeline::new(&device, &mut images));
         let post_process = PostProcessPipeline::new(&device);
 
-        let mut graph = RenderGraph::default();
-        graph.push(RenderPass {
-            state: RenderState::empty(&device),
-            forward: forward.clone(),
-            post_process,
-        });
+        let state = Arc::new(Mutex::new(RenderState::empty(&device)));
 
         let pipeline = Pipeline::new(instance, adapter, device, queue);
+
+        {
+            let mut graph = pipeline.shared.graph.lock();
+            graph.push(RenderPass {
+                state: state.clone(),
+                forward: forward.clone(),
+                post_process,
+            });
+        }
 
         Self {
             entities: SceneEntities::new(),
             forward,
-            graph,
             images,
-            materials: Assets::new(),
-            meshes: Assets::new(),
+            materials: Materials::new(),
+            meshes: Meshes::new(),
             backlog: VecDeque::new(),
             pipeline,
+            state,
         }
     }
 
@@ -134,47 +144,48 @@ impl Renderer {
         // FIXME: Should update on render pass.
         crate::texture::image::load_images(&mut self.images);
 
-        //     for (window, surface) in self.surfaces.iter_mut() {
-        //         let output = match surface.surface.get_current_texture() {
-        //             Ok(output) => output,
-        //             Err(err) => {
-        //                 tracing::error!("failed to get surface: {}", err);
-        //                 continue;
-        //             }
-        //         };
+        self.pipeline.wait_idle();
 
-        //         let target = output.texture.create_view(&TextureViewDescriptor {
-        //             label: Some("surface_view"),
-        //             format: Some(surface.config.format),
-        //             ..Default::default()
-        //         });
+        {
+            let mut surfaces = self.pipeline.shared.surfaces.lock();
+            let instance = &self.pipeline.shared.instance;
+            let adapter = &self.pipeline.shared.adapter;
+            let device = &self.pipeline.shared.device;
+            let queue = &self.pipeline.shared.queue;
+            let mut mipmap_generator = self.pipeline.shared.mipmap_generator.lock();
 
-        //         let mut encoder = self
-        //             .device
-        //             .create_command_encoder(&CommandEncoderDescriptor {
-        //                 label: Some("render_encoder"),
-        //             });
+            while let Some(event) = self.backlog.pop_front() {
+                match event {
+                    Event::CreateSurface(id, state) => {
+                        surfaces.create(instance, adapter, device, state, id);
+                    }
+                    Event::ResizeSurface(id, size) => {
+                        surfaces.resize(id, device, size);
+                    }
+                    Event::DestroySurface(id) => {
+                        surfaces.destroy(id);
+                    }
+                }
+            }
 
-        //         let mut ctx = RenderContext {
-        //             window: *window,
-        //             encoder: &mut encoder,
-        //             width: output.texture.width(),
-        //             height: output.texture.height(),
-        //             format: surface.config.format,
-        //             target: &target,
-        //             surface: &surface,
-        //             pipeline: &self.forward,
-        //             post_process: &self.post_process,
-        //             device: &self.device,
-        //         };
+            let state = RenderState::new(
+                device,
+                queue,
+                &self.meshes,
+                &self.materials,
+                &self.images,
+                &self.entities,
+                &self.forward,
+                &mut mipmap_generator,
+            );
 
-        //         for node in &self.graph.nodes {
-        //             node.render(&mut ctx);
-        //         }
+            *self.state.lock() = state;
+        }
 
-        //         self.queue.submit(std::iter::once(encoder.finish()));
-        //         output.present();
-        //     }
+        // SAFETY: We just waited for the renderer to be idle.
+        unsafe {
+            self.pipeline.render_unchecked();
+        }
     }
 }
 

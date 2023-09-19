@@ -18,31 +18,25 @@ enum PipelineState {
 }
 
 pub struct SharedState {
-    instance: Instance,
-    adapter: Adapter,
-    device: Device,
-    queue: Queue,
-    surfaces: Mutex<RenderSurfaces>,
-    mipmap_generator: MipMapGenerator,
+    pub instance: Instance,
+    pub adapter: Adapter,
+    pub device: Device,
+    pub queue: Queue,
+    pub surfaces: Mutex<RenderSurfaces>,
+    pub mipmap_generator: Mutex<MipMapGenerator>,
     state: Mutex<PipelineState>,
-    graph: Mutex<RenderGraph>,
+    pub graph: Mutex<RenderGraph>,
 }
 
 pub struct Pipeline {
-    shared: Arc<SharedState>,
+    pub shared: Arc<SharedState>,
     tx: mpsc::Sender<()>,
-}
-
-impl Pipeline {
-    pub fn is_idle(&self) -> bool {
-        *self.shared.state.lock() == PipelineState::Idle
-    }
 }
 
 impl Pipeline {
     pub fn new(instance: Instance, adapter: Adapter, device: Device, queue: Queue) -> Self {
         let shared = Arc::new(SharedState {
-            mipmap_generator: MipMapGenerator::new(&device),
+            mipmap_generator: Mutex::new(MipMapGenerator::new(&device)),
             instance,
             adapter,
             device,
@@ -57,15 +51,25 @@ impl Pipeline {
         Self { shared, tx }
     }
 
+    pub fn is_idle(&self) -> bool {
+        *self.shared.state.lock() == PipelineState::Idle
+    }
+
+    pub fn wait_idle(&self) {
+        while !self.is_idle() {
+            std::thread::sleep_ms(1);
+        }
+    }
+
     pub fn update(&mut self) {
         debug_assert!(self.is_idle());
     }
 
-    pub fn render(&mut self) {
-        // Wait until render thread is ready.
-        while !self.is_idle() {
-            std::thread::sleep_ms(1);
-        }
+    /// # Safety
+    ///
+    /// renderer must be idle.
+    pub unsafe fn render_unchecked(&mut self) {
+        debug_assert!(self.is_idle());
 
         let _ = self.tx.send(());
     }
