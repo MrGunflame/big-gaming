@@ -1,10 +1,11 @@
-use game_asset::Assets;
 use game_common::components::transform::Transform;
 use game_model::material::Material;
 use game_model::textures::Texture;
 use game_model::Model;
 use game_render::color::Color;
 use game_render::mesh::{Indices, Mesh};
+use game_render::pbr::material::Materials;
+use game_render::pbr::mesh::Meshes;
 use game_render::pbr::{AlphaMode, PbrMaterial};
 use game_render::texture::{Image, Images, TextureFormat};
 use glam::UVec2;
@@ -13,8 +14,8 @@ use crate::{Node, Scene};
 
 pub(crate) fn model_to_scene(
     data: Model,
-    meshes: &mut Assets<Mesh>,
-    materials: &mut Assets<PbrMaterial>,
+    meshes: &mut Meshes,
+    materials: &mut Materials,
     images: &mut Images,
 ) -> Scene {
     let mut nodes = Vec::new();

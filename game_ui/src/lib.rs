@@ -40,11 +40,11 @@ pub struct UiState {
 }
 
 impl UiState {
-    pub fn new(render_state: &mut Renderer) -> Self {
+    pub fn new(renderer: &Renderer) -> Self {
         let (command_tx, command_rx) = mpsc::channel();
 
         Self {
-            renderer: UiRenderer::new(&render_state.device, &mut render_state.graph),
+            renderer: UiRenderer::new(&renderer),
             runtime: Runtime::new(),
             windows: HashMap::new(),
             events: HashMap::new(),
@@ -106,7 +106,10 @@ impl UiState {
         }
     }
 
-    pub fn run(&mut self, device: &Device, queue: &Queue, windows: &Windows) {
+    pub fn run(&mut self, renderer: &Renderer, windows: &Windows) {
+        let device = renderer.device();
+        let queue = renderer.queue();
+
         let _span = trace_span!("UiState::update");
 
         for (id, doc) in self.windows.iter_mut() {

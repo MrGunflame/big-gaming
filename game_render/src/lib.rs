@@ -34,7 +34,7 @@ use forward::ForwardPipeline;
 use game_asset::Assets;
 use game_window::windows::{WindowId, WindowState};
 use glam::UVec2;
-use graph::RenderGraph;
+use graph::{Node, RenderGraph};
 use mesh::Mesh;
 use parking_lot::Mutex;
 use pbr::material::Materials;
@@ -47,8 +47,8 @@ use state::RenderState;
 use texture::Images;
 use tracing::Instrument;
 use wgpu::{
-    Backends, DeviceDescriptor, Features, Instance, InstanceDescriptor, Limits, PowerPreference,
-    RequestAdapterOptions,
+    Backends, Device, DeviceDescriptor, Features, Instance, InstanceDescriptor, Limits,
+    PowerPreference, QuerySet, Queue, RequestAdapterOptions,
 };
 
 pub struct Renderer {
@@ -119,6 +119,19 @@ impl Renderer {
         }
     }
 
+    pub fn device(&self) -> &Device {
+        &self.pipeline.shared.device
+    }
+
+    pub fn queue(&self) -> &Queue {
+        &self.pipeline.shared.queue
+    }
+
+    pub fn add_to_graph(&self, node: impl Node) {
+        let mut graph = self.pipeline.shared.graph.lock();
+        graph.push(node);
+    }
+
     /// Create a new renderer for the window.
     pub fn create(&mut self, id: WindowId, window: WindowState) {
         self.backlog.push_back(Event::CreateSurface(id, window));
@@ -136,6 +149,14 @@ impl Renderer {
 
     pub fn destroy(&mut self, id: WindowId) {
         self.backlog.push_back(Event::DestroySurface(id));
+    }
+
+    // TODO: Get rid of this shit.
+    pub fn get_surface_size(&self, id: WindowId) -> Option<UVec2> {
+        let surfaces = self.pipeline.shared.surfaces.lock();
+        surfaces
+            .get(id)
+            .map(|s| UVec2::new(s.config.width, s.config.height))
     }
 
     pub fn render(&mut self) {

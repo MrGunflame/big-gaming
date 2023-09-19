@@ -10,6 +10,7 @@ use std::sync::Arc;
 use ::image::{ImageBuffer, Rgba};
 use bytemuck::{Pod, Zeroable};
 use game_render::graph::{Node, RenderContext, RenderGraph};
+use game_render::Renderer;
 use game_tracing::trace_span;
 use game_window::windows::WindowId;
 use glam::{UVec2, Vec2};
@@ -45,11 +46,13 @@ pub struct UiRenderer {
 }
 
 impl UiRenderer {
-    pub fn new(device: &Device, graph: &mut RenderGraph) -> Self {
+    pub fn new(renderer: &Renderer) -> Self {
+        let device = renderer.device();
+
         let pipeline = Arc::new(UiPipeline::new(device));
         let elements = Arc::new(RwLock::new(HashMap::new()));
 
-        graph.push(UiPass {
+        renderer.add_to_graph(UiPass {
             pipeline: pipeline.clone(),
             elements: elements.clone(),
         });
