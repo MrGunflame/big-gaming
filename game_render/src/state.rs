@@ -37,7 +37,7 @@ pub(crate) struct RenderState {
 }
 
 impl RenderState {
-    pub fn new(device: &Device) -> Self {
+    pub fn new(device: &Device, pipeline: &ForwardPipeline, images: &Images) -> Self {
         let buffer = DynamicBuffer::<DirectionalLightUniform>::new();
         let directional_lights = device.create_buffer_init(&BufferInitDescriptor {
             label: None,
@@ -59,6 +59,16 @@ impl RenderState {
             usage: BufferUsages::STORAGE,
         });
 
+        let mut imgs = HashMap::new();
+        for id in [
+            pipeline.default_textures.default_base_color_texture,
+            pipeline.default_textures.default_normal_texture,
+            pipeline.default_textures.default_metallic_roughness_texture,
+        ] {
+            let img = images.get(id).unwrap().clone();
+            imgs.insert(id, img);
+        }
+
         Self {
             directional_lights,
             spot_lights,
@@ -69,7 +79,7 @@ impl RenderState {
             meshes: HashMap::new(),
             materials: HashMap::new(),
             materials_queued: HashMap::new(),
-            images: HashMap::new(),
+            images: imgs,
             meshes_queued: HashMap::new(),
             camera_buffers: HashMap::new(),
             object_buffers: HashMap::new(),
@@ -115,7 +125,7 @@ impl RenderState {
                 }
             }
             Event::DestroyObject(id) => {}
-            _ => todo!(),
+            _ => (),
         }
     }
 
@@ -168,7 +178,7 @@ impl RenderState {
                     self.objects.remove(&id);
                     self.object_buffers.remove(&id);
                 }
-                _ => todo!(),
+                _ => (),
             }
         }
     }

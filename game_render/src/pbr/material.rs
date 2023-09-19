@@ -29,9 +29,9 @@ bitflags! {
 
 #[derive(Clone, Debug)]
 pub struct DefaultTextures {
-    default_base_color_texture: ImageId,
-    default_normal_texture: ImageId,
-    default_metallic_roughness_texture: ImageId,
+    pub default_base_color_texture: ImageId,
+    pub default_normal_texture: ImageId,
+    pub default_metallic_roughness_texture: ImageId,
 }
 
 impl DefaultTextures {

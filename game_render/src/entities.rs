@@ -1,26 +1,30 @@
 use game_common::components::transform::Transform;
 use slotmap::{new_key_type, Key, SlotMap};
-use wgpu::Device;
 
 use crate::camera::Camera;
 use crate::light::{DirectionalLight, PointLight, SpotLight};
 use crate::pbr::material::MaterialId;
 use crate::pbr::mesh::MeshId;
+use crate::state::Event;
 
 #[derive(Clone, Debug)]
-pub struct EntityManager<K: Key, V> {
+pub struct EntityManager<K: Key, V: WithEvent<K>> {
     entities: SlotMap<K, V>,
+    pub(crate) events: Vec<Event>,
 }
 
-impl<K: Key, V> EntityManager<K, V> {
+impl<K: Key, V: WithEvent<K> + Copy> EntityManager<K, V> {
     fn new() -> Self {
         Self {
             entities: SlotMap::default(),
+            events: vec![],
         }
     }
 
     pub fn insert(&mut self, entity: V) -> K {
-        self.entities.insert(entity)
+        let id = self.entities.insert(entity);
+        self.events.push(V::create(id, entity));
+        id
     }
 
     pub fn get(&self, id: K) -> Option<&V> {
@@ -33,6 +37,7 @@ impl<K: Key, V> EntityManager<K, V> {
 
     pub fn remove(&mut self, id: K) {
         self.entities.remove(id);
+        self.events.push(V::destroy(id));
     }
 
     pub fn values_mut(&mut self) -> impl Iterator<Item = &mut V> {
@@ -78,4 +83,59 @@ pub struct Object {
     pub transform: Transform,
     pub mesh: MeshId,
     pub material: MaterialId,
+}
+
+pub trait WithEvent<K> {
+    fn create(id: K, v: Self) -> Event;
+    fn destroy(id: K) -> Event;
+}
+
+impl WithEvent<ObjectId> for Object {
+    fn create(id: ObjectId, v: Self) -> Event {
+        Event::CreateObject(id, v)
+    }
+
+    fn destroy(id: ObjectId) -> Event {
+        Event::DestroyObject(id)
+    }
+}
+
+impl WithEvent<CameraId> for Camera {
+    fn create(id: CameraId, v: Self) -> Event {
+        Event::CreateCamera(id, v)
+    }
+
+    fn destroy(id: CameraId) -> Event {
+        Event::DestroyCamera(id)
+    }
+}
+
+impl WithEvent<DirectionalLightId> for DirectionalLight {
+    fn create(id: DirectionalLightId, v: Self) -> Event {
+        Event::CreateDirectionalLight(id, v)
+    }
+
+    fn destroy(id: DirectionalLightId) -> Event {
+        Event::DestroyDirectionalLight(id)
+    }
+}
+
+impl WithEvent<PointLightId> for PointLight {
+    fn create(id: PointLightId, v: Self) -> Event {
+        Event::CreatePointLight(id, v)
+    }
+
+    fn destroy(id: PointLightId) -> Event {
+        Event::DestroyPointLight(id)
+    }
+}
+
+impl WithEvent<SpotLightId> for SpotLight {
+    fn create(id: SpotLightId, v: Self) -> Event {
+        Event::CreateSpotLight(id, v)
+    }
+
+    fn destroy(id: SpotLightId) -> Event {
+        Event::DestroySpotLight(id)
+    }
 }

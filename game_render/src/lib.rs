@@ -31,31 +31,26 @@ use game_tracing::trace_span;
 use camera::RenderTarget;
 use entities::SceneEntities;
 use forward::ForwardPipeline;
-use game_asset::Assets;
 use game_window::windows::{WindowId, WindowState};
 use glam::UVec2;
-use graph::{Node, RenderGraph};
-use mesh::Mesh;
+use graph::Node;
 use parking_lot::Mutex;
 use pbr::material::Materials;
 use pbr::mesh::Meshes;
-use pbr::PbrMaterial;
 use pipelined_rendering::Pipeline;
 use post_process::PostProcessPipeline;
 use render_pass::RenderPass;
 use state::RenderState;
 use texture::Images;
-use tracing::Instrument;
 use wgpu::{
     Backends, Device, DeviceDescriptor, Features, Instance, InstanceDescriptor, Limits,
-    PowerPreference, QuerySet, Queue, RequestAdapterOptions,
+    PowerPreference, Queue, RequestAdapterOptions,
 };
 
 pub struct Renderer {
     pipeline: Pipeline,
 
     pub entities: SceneEntities,
-    forward: Arc<ForwardPipeline>,
 
     backlog: VecDeque<Event>,
     state: Arc<Mutex<RenderState>>,
@@ -94,7 +89,7 @@ impl Renderer {
         let forward = Arc::new(ForwardPipeline::new(&device, &mut images));
         let post_process = PostProcessPipeline::new(&device);
 
-        let state = Arc::new(Mutex::new(RenderState::new(&device)));
+        let state = Arc::new(Mutex::new(RenderState::new(&device, &forward, &images)));
 
         let pipeline = Pipeline::new(instance, adapter, device, queue);
 
@@ -109,7 +104,6 @@ impl Renderer {
 
         Self {
             entities: SceneEntities::new(),
-            forward,
             images,
             materials: Materials::new(),
             meshes: Meshes::new(),
@@ -172,8 +166,6 @@ impl Renderer {
             let instance = &self.pipeline.shared.instance;
             let adapter = &self.pipeline.shared.adapter;
             let device = &self.pipeline.shared.device;
-            let queue = &self.pipeline.shared.queue;
-            let mut mipmap_generator = self.pipeline.shared.mipmap_generator.lock();
 
             while let Some(event) = self.backlog.pop_front() {
                 match event {
@@ -189,7 +181,19 @@ impl Renderer {
                 }
             }
 
-            // let mut state = self.state.lock();
+            let mut state = self.state.lock();
+            for iter in [
+                self.entities.cameras.events.drain(..),
+                self.entities.objects.events.drain(..),
+                self.entities.directional_lights.events.drain(..),
+                self.entities.point_lights.events.drain(..),
+                self.entities.spot_lights.events.drain(..),
+            ] {
+                for event in iter {
+                    state.update(event, &self.meshes, &self.materials, &self.images);
+                }
+            }
+
             // self.state
             //     .lock()
             //     .update(event, &self.meshes, &self.materials, &self.images);
