@@ -21,6 +21,9 @@ pub mod texture;
 mod depth_stencil;
 mod post_process;
 
+use game_tracing::trace_span;
+use tracing::Level;
+
 use camera::RenderTarget;
 use entities::SceneEntities;
 use forward::ForwardPipeline;
@@ -125,6 +128,8 @@ impl Renderer {
     }
 
     pub fn render(&mut self) {
+        let _span = trace_span!("Renderer::render").entered();
+
         // FIXME: Should update on render pass.
         crate::texture::image::load_images(&mut self.images);
 

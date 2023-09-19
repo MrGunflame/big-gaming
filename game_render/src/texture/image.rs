@@ -2,6 +2,7 @@ use std::collections::VecDeque;
 use std::io::Read;
 use std::path::PathBuf;
 
+use game_tracing::trace_span;
 use glam::UVec2;
 
 use slotmap::{DefaultKey, SlotMap};
@@ -151,6 +152,8 @@ impl Images {
 }
 
 pub(crate) fn load_images(images: &mut Images) {
+    let _span = trace_span!("load_images").entered();
+
     while let Some((key, source, format)) = images.load_queue.pop_front() {
         let buf = match source {
             LoadImage::Buffer(buf) => buf,

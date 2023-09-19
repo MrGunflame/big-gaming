@@ -20,6 +20,7 @@ pub mod widgets;
 
 use events::{Events, WindowCommand};
 use game_render::Renderer;
+use game_tracing::trace_span;
 use game_window::cursor::Cursor;
 use game_window::events::WindowEvent;
 use game_window::windows::{WindowId, Windows};
@@ -106,6 +107,8 @@ impl UiState {
     }
 
     pub fn run(&mut self, device: &Device, queue: &Queue, windows: &Windows) {
+        let _span = trace_span!("UiState::update");
+
         for (id, doc) in self.windows.iter_mut() {
             let tree = self.renderer.get_mut(*id).unwrap();
             let events = self.events.get_mut(id).unwrap();

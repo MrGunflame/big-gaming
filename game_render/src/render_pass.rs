@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use game_tracing::trace_span;
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
 use wgpu::{
     BindGroup, BindGroupDescriptor, BindGroupEntry, Buffer, BufferUsages, Color, Device, Extent3d,
@@ -76,6 +77,8 @@ impl Node for RenderPass {
 
 impl RenderPass {
     fn render_camera_target(&self, camera: &CameraBuffer, ctx: &mut RenderContext<'_>) {
+        let _span = trace_span!("ForwardPass::render_camera_target").entered();
+
         let device = ctx.device;
         let pipeline = ctx.pipeline;
 

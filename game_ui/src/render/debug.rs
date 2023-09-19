@@ -1,6 +1,7 @@
 use std::ops::{Deref, DerefMut};
 use std::sync::OnceLock;
 
+use game_tracing::trace_span;
 use image::{ImageBuffer, Pixel, Rgba};
 
 use crate::layout::computed_style::ComputedPadding;
@@ -34,6 +35,7 @@ where
     C: Deref<Target = [<Rgba<u8> as Pixel>::Subpixel]> + DerefMut,
 {
     assert!(is_debug_render_enabled());
+    let _span = trace_span!("debug_border").entered();
 
     if image.width() == 0 || image.height() == 0 {
         return;
@@ -69,6 +71,7 @@ where
     C: Deref<Target = [<Rgba<u8> as Pixel>::Subpixel]> + DerefMut,
 {
     assert!(is_debug_render_enabled());
+    let _span = trace_span!("debug_padding").entered();
 
     if cfg!(debug_assertions) {
         assert!(image.width() >= (padding.left + padding.right) as u32);

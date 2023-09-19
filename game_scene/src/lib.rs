@@ -12,6 +12,7 @@ use game_gltf::uri::Uri;
 use game_model::{Decode, Model};
 use game_render::entities::ObjectId;
 use game_render::Renderer;
+use game_tracing::trace_span;
 use scene::spawn_scene;
 use slotmap::{DefaultKey, SlotMap};
 
@@ -28,9 +29,7 @@ use game_render::pbr::PbrMaterial;
 use game_render::texture::Images;
 use gltf::gltf_to_scene;
 
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ScenePlugin;
-
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct SceneId(DefaultKey);
 
 #[derive(Debug, Default)]
@@ -66,6 +65,8 @@ impl Scenes {
     }
 
     pub fn update(&mut self, renderer: &mut Renderer) {
+        let _span = trace_span!("Scenes::update").entered();
+
         load_scenes(
             self,
             &mut renderer.meshes,
@@ -90,13 +91,47 @@ impl Scenes {
     fn update_transform(&mut self, renderer: &mut Renderer) {
         self.hierarchy.compute_transform();
 
-        for (entity, transform) in self.hierarchy.iter_changed_transform() {
+        for (entity, transform) in self.hierarchy.iter_changed_global_transform() {
             // Not all entities have an render object associated.
             if let Some(id) = self.nodes.get(&entity) {
                 let object = renderer.entities.objects().get_mut(*id).unwrap();
                 object.transform = transform;
             }
         }
+    }
+
+    pub fn set_transform(&mut self, id: SceneId, transform: Transform) {
+        let scene = match self.scenes.get(id.0) {
+            Some(SceneState::Spawned(id)) => id,
+            _ => return,
+        };
+
+        self.hierarchy.set(*scene, transform);
+    }
+
+    pub fn get_transform(&self, id: SceneId) -> Option<Transform> {
+        let scene = match self.scenes.get(id.0) {
+            Some(SceneState::Spawned(id)) => id,
+            _ => return None,
+        };
+
+        self.hierarchy.get(*scene)
+    }
+
+    pub fn objects(&self, id: SceneId) -> Option<impl Iterator<Item = ObjectId>> {
+        let scene = match self.scenes.get(id.0)? {
+            SceneState::Spawned(id) => id,
+            _ => return None,
+        };
+
+        let mut nodes = vec![];
+        for node in self.hierarchy.children(*scene).unwrap() {
+            if let Some(obj) = self.nodes.get(&node) {
+                nodes.push(*obj);
+            }
+        }
+
+        Some(nodes.into_iter())
     }
 }
 
@@ -127,6 +162,8 @@ fn load_scenes(
     images: &mut Images,
 ) {
     'out: while let Some((handle, path)) = scenes.load_queue.pop_front() {
+        let _span = trace_span!("load_scene").entered();
+
         let uri = Uri::from(path);
 
         let mut file = match File::open(uri.as_path()) {

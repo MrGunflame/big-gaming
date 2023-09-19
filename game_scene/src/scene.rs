@@ -6,6 +6,7 @@ use game_render::color::Color;
 use game_render::entities::{Object, ObjectId};
 use game_render::pbr::PbrMaterial;
 use game_render::{shape, Renderer};
+use game_tracing::trace_span;
 
 use crate::Scene;
 
@@ -15,6 +16,8 @@ pub(crate) fn spawn_scene(
     hierarchy: &mut TransformHierarchy,
     nodes: &mut HashMap<Entity, ObjectId>,
 ) -> Entity {
+    let _span = trace_span!("spawn_scene").entered();
+
     let root = hierarchy.append(None, Transform::default());
 
     for node in &scene.nodes {

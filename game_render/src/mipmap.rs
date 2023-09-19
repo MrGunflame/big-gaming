@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use game_tracing::trace_span;
 use wgpu::{
     AddressMode, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
     BindGroupLayoutEntry, BindingResource, BindingType, Color, ColorTargetState, ColorWrites,
@@ -86,6 +87,8 @@ impl MipMapGenerator {
         encoder: &mut CommandEncoder,
         texture: &Texture,
     ) {
+        let _span = trace_span!("MipMapGenerator::generate_mipmaps").entered();
+
         let pipeline = match self.pipelines.get(&texture.format()) {
             Some(pl) => pl,
             None => {

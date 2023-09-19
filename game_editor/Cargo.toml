@@ -13,6 +13,7 @@ game_window = { version = "0.1.0", path = "../game_window" }
 game_render = { version = "0.1.0", path = "../game_render" }
 game_input = { version = "0.1.0", path = "../game_input" }
 game_scene = { version = "0.1.0", path = "../game_scene" }
+game_tracing = { version = "0.1.0", path = "../game_tracing" }
 
 parking_lot = "0.12.1"
 tokio = { version = "1.27.0", features = ["full"] }

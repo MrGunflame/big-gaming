@@ -1,5 +1,6 @@
 use game_asset::{Assets, Handle};
 use game_common::components::transform::Transform;
+use game_tracing::trace_span;
 use slotmap::{DefaultKey, SlotMap};
 use wgpu::{Device, Queue};
 
@@ -252,6 +253,8 @@ impl SceneEntities {
         pipeline: &ForwardPipeline,
         mipmap_generator: &mut MipMapGenerator,
     ) {
+        let _span = trace_span!("SceneEntities::rebuild").entered();
+
         if self.update_directional_lights {
             self.state.directional_lights =
                 update_directional_lights(device, self.directional_lights.lights.values().copied());
