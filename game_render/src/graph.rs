@@ -1,7 +1,8 @@
 use game_window::windows::WindowId;
-use wgpu::{CommandEncoder, Device, TextureFormat, TextureView};
+use wgpu::{CommandEncoder, Device, Queue, TextureFormat, TextureView};
 
 use crate::forward::ForwardPipeline;
+use crate::mipmap::MipMapGenerator;
 use crate::post_process::PostProcessPipeline;
 use crate::surface::SurfaceData;
 
@@ -29,4 +30,6 @@ pub struct RenderContext<'a> {
     pub format: TextureFormat,
     pub device: &'a Device,
     pub surface: &'a SurfaceData,
+    pub queue: &'a Queue,
+    pub mipmap: &'a mut MipMapGenerator,
 }

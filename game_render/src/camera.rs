@@ -9,7 +9,7 @@ use glam::{Mat4, UVec2, Vec2, Vec3};
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
 use wgpu::{Buffer, BufferUsages, Device};
 
-#[derive(Clone, Debug)]
+#[derive(Copy, Clone, Debug)]
 pub struct Camera {
     pub transform: Transform,
     pub projection: Projection,
@@ -44,7 +44,7 @@ impl Camera {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum RenderTarget {
     /// Render to a window surface.
     Window(WindowId),

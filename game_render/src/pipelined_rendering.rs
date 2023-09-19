@@ -86,6 +86,7 @@ fn start_render_thread(shared: Arc<SharedState>) -> mpsc::Sender<()> {
 
             let surfaces = shared.surfaces.lock();
             let graph = shared.graph.lock();
+            let mut mipmap = shared.mipmap_generator.lock();
 
             for (window, surface) in surfaces.iter() {
                 let output = match surface.surface.get_current_texture() {
@@ -117,6 +118,8 @@ fn start_render_thread(shared: Arc<SharedState>) -> mpsc::Sender<()> {
                     surface: &surface,
                     format: surface.config.format,
                     device: &shared.device,
+                    queue: &shared.queue,
+                    mipmap: &mut mipmap,
                 };
 
                 for node in &graph.nodes {

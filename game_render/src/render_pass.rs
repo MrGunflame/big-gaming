@@ -76,9 +76,11 @@ pub(crate) struct RenderPass {
 
 impl Node for RenderPass {
     fn render(&self, ctx: &mut RenderContext<'_>) {
-        let state = self.state.lock();
+        let mut state = self.state.lock();
 
-        for cam in state.cameras.iter() {
+        state.update_buffers(ctx.device, ctx.queue, &self.forward, ctx.mipmap);
+
+        for cam in state.camera_buffers.values() {
             if cam.target == RenderTarget::Window(ctx.window) {
                 self.render_camera_target(&state, &cam, ctx);
             }
@@ -99,9 +101,9 @@ impl RenderPass {
         let pipeline = &self.forward;
 
         let bind_groups = state
-            .objects
-            .iter()
-            .map(|node| {
+            .object_buffers
+            .values()
+            .map(|transform| {
                 device.create_bind_group(&BindGroupDescriptor {
                     label: Some("vs_bind_group"),
                     layout: &pipeline.vs_bind_group_layout,
@@ -112,7 +114,7 @@ impl RenderPass {
                         },
                         BindGroupEntry {
                             binding: 1,
-                            resource: node.transform.as_entire_binding(),
+                            resource: transform.as_entire_binding(),
                         },
                     ],
                 })
@@ -177,16 +179,18 @@ impl RenderPass {
 
         render_pass.set_pipeline(&pipeline.pipeline);
 
-        for (index, node) in state.objects.iter().enumerate() {
+        for (index, obj) in state.objects.values().enumerate() {
             let vs_bind_group = &bind_groups[index];
+            let (mesh_bg, idx_buf) = state.meshes.get(&obj.mesh).unwrap();
+            let mat_bg = state.materials.get(&obj.material).unwrap();
 
             render_pass.set_bind_group(0, &vs_bind_group, &[]);
-            render_pass.set_bind_group(1, &node.mesh_bind_group, &[]);
-            render_pass.set_bind_group(2, &node.material_bind_group, &[]);
+            render_pass.set_bind_group(1, &mesh_bg, &[]);
+            render_pass.set_bind_group(2, &mat_bg, &[]);
             render_pass.set_bind_group(3, &light_bind_group, &[]);
 
-            render_pass.set_index_buffer(node.indices.buffer.slice(..), node.indices.format);
-            render_pass.draw_indexed(0..node.indices.len, 0, 0..1);
+            render_pass.set_index_buffer(idx_buf.buffer.slice(..), idx_buf.format);
+            render_pass.draw_indexed(0..idx_buf.len, 0, 0..1);
         }
 
         drop(render_pass);

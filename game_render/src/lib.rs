@@ -94,7 +94,7 @@ impl Renderer {
         let forward = Arc::new(ForwardPipeline::new(&device, &mut images));
         let post_process = PostProcessPipeline::new(&device);
 
-        let state = Arc::new(Mutex::new(RenderState::empty(&device)));
+        let state = Arc::new(Mutex::new(RenderState::new(&device)));
 
         let pipeline = Pipeline::new(instance, adapter, device, queue);
 
@@ -189,18 +189,10 @@ impl Renderer {
                 }
             }
 
-            let state = RenderState::new(
-                device,
-                queue,
-                &self.meshes,
-                &self.materials,
-                &self.images,
-                &self.entities,
-                &self.forward,
-                &mut mipmap_generator,
-            );
-
-            *self.state.lock() = state;
+            // let mut state = self.state.lock();
+            // self.state
+            //     .lock()
+            //     .update(event, &self.meshes, &self.materials, &self.images);
         }
 
         // SAFETY: We just waited for the renderer to be idle.

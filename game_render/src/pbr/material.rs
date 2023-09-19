@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use bitflags::bitflags;
 use bytemuck::{Pod, Zeroable};
 use game_tracing::trace_span;
@@ -64,7 +66,7 @@ impl DefaultTextures {
 pub fn update_material_bind_group(
     device: &Device,
     queue: &Queue,
-    images: &Images,
+    images: &HashMap<ImageId, Image>,
     pipeline: &ForwardPipeline,
     material: &PbrMaterial,
     mipmap_generator: &mut MipMapGenerator,
@@ -88,7 +90,7 @@ pub fn update_material_bind_group(
         material
             .base_color_texture
             .unwrap_or(default_textures.default_base_color_texture),
-        &images,
+        images,
         &device,
         &queue,
         mipmap_generator,
@@ -98,7 +100,7 @@ pub fn update_material_bind_group(
         material
             .normal_texture
             .unwrap_or(default_textures.default_normal_texture),
-        &images,
+        images,
         &device,
         &queue,
         mipmap_generator,
@@ -108,7 +110,7 @@ pub fn update_material_bind_group(
         material
             .metallic_roughness_texture
             .unwrap_or(default_textures.default_metallic_roughness_texture),
-        &images,
+        images,
         &device,
         &queue,
         mipmap_generator,
@@ -144,7 +146,7 @@ pub fn update_material_bind_group(
 
 fn create_material_texture(
     id: ImageId,
-    images: &Images,
+    images: &HashMap<ImageId, Image>,
     device: &Device,
     queue: &Queue,
     mipmap_generator: &mut MipMapGenerator,
@@ -153,7 +155,7 @@ fn create_material_texture(
 
     let mut encoder = device.create_command_encoder(&CommandEncoderDescriptor { label: None });
 
-    let data = images.get(id).unwrap();
+    let data = images.get(&id).unwrap();
 
     let size = Extent3d {
         width: data.width(),

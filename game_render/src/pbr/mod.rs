@@ -6,7 +6,7 @@ use crate::texture::ImageId;
 pub mod material;
 pub mod mesh;
 
-#[derive(Clone, Debug)]
+#[derive(Copy, Clone, Debug)]
 pub struct PbrMaterial {
     pub alpha_mode: AlphaMode,
     pub base_color: Color,
