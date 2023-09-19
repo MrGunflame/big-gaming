@@ -1,6 +1,7 @@
 use std::collections::VecDeque;
 use std::io::Read;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use game_tracing::trace_span;
 use glam::UVec2;
@@ -16,16 +17,19 @@ pub enum ImageFormat {
 
 #[derive(Clone, Debug)]
 pub struct Image {
-    bytes: Vec<u8>,
+    bytes: Arc<[u8]>,
     format: TextureFormat,
     width: u32,
     height: u32,
 }
 
 impl Image {
-    pub fn new(size: UVec2, format: TextureFormat, bytes: Vec<u8>) -> Self {
+    pub fn new<T>(size: UVec2, format: TextureFormat, bytes: T) -> Self
+    where
+        T: Into<Arc<[u8]>>,
+    {
         let this = Self {
-            bytes,
+            bytes: bytes.into(),
             format,
             width: size.x,
             height: size.y,
