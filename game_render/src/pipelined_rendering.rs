@@ -72,6 +72,7 @@ impl Pipeline {
     pub unsafe fn render_unchecked(&mut self) {
         debug_assert!(self.is_idle());
 
+        *self.shared.state.lock() = PipelineState::Rendering;
         let _ = self.tx.send(());
     }
 }
@@ -81,7 +82,8 @@ fn start_render_thread(shared: Arc<SharedState>) -> mpsc::Sender<()> {
 
     std::thread::spawn(move || {
         while let Ok(()) = rx.recv() {
-            *shared.state.lock() = PipelineState::Rendering;
+            // The caller must transition the state to `Rendering`.
+            debug_assert!(*shared.state.lock() == PipelineState::Rendering);
 
             let _span = trace_span!("render_frame").entered();
 
