@@ -11,6 +11,8 @@ use game_core::hierarchy::{Entity, TransformHierarchy};
 use game_gltf::uri::Uri;
 use game_model::{Decode, Model};
 use game_render::entities::ObjectId;
+use game_render::pbr::material::{MaterialId, Materials};
+use game_render::pbr::mesh::{MeshId, Meshes};
 use game_render::Renderer;
 use game_tracing::trace_span;
 use scene::spawn_scene;
@@ -94,7 +96,7 @@ impl Scenes {
         for (entity, transform) in self.hierarchy.iter_changed_global_transform() {
             // Not all entities have an render object associated.
             if let Some(id) = self.nodes.get(&entity) {
-                let object = renderer.entities.objects().get_mut(*id).unwrap();
+                let mut object = renderer.entities.objects.get_mut(*id).unwrap();
                 object.transform = transform;
             }
         }
@@ -148,17 +150,17 @@ enum SceneState {
     Spawned(Entity),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Copy, Clone, Debug)]
 pub struct Node {
-    pub mesh: Handle<Mesh>,
-    pub material: Handle<PbrMaterial>,
+    pub mesh: MeshId,
+    pub material: MaterialId,
     pub transform: Transform,
 }
 
 fn load_scenes(
     scenes: &mut Scenes,
-    meshes: &mut Assets<Mesh>,
-    materials: &mut Assets<PbrMaterial>,
+    meshes: &mut Meshes,
+    materials: &mut Materials,
     images: &mut Images,
 ) {
     'out: while let Some((handle, path)) = scenes.load_queue.pop_front() {

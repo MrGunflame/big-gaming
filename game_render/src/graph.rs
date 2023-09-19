@@ -1,9 +1,9 @@
 use game_window::windows::WindowId;
-use wgpu::{CommandEncoder, Device, TextureFormat, TextureView};
+use wgpu::{CommandEncoder, Device, Queue, TextureFormat, TextureView};
 
 use crate::forward::ForwardPipeline;
+use crate::mipmap::MipMapGenerator;
 use crate::post_process::PostProcessPipeline;
-use crate::render_pass::GpuState;
 use crate::surface::SurfaceData;
 
 #[derive(Default)]
@@ -22,7 +22,6 @@ pub trait Node: Send + Sync + 'static {
 }
 
 pub struct RenderContext<'a> {
-    pub state: &'a GpuState,
     pub window: WindowId,
     pub encoder: &'a mut CommandEncoder,
     pub target: &'a TextureView,
@@ -30,7 +29,7 @@ pub struct RenderContext<'a> {
     pub height: u32,
     pub format: TextureFormat,
     pub device: &'a Device,
-    pub pipeline: &'a ForwardPipeline,
     pub surface: &'a SurfaceData,
-    pub post_process: &'a PostProcessPipeline,
+    pub queue: &'a Queue,
+    pub mipmap: &'a mut MipMapGenerator,
 }

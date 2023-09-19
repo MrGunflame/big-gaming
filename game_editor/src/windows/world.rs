@@ -48,7 +48,7 @@ impl WorldWindowState {
         window_id: WindowId,
         scenes: &mut Scenes,
     ) -> Self {
-        let camera = renderer.entities.cameras().insert(Camera {
+        let camera = renderer.entities.cameras.insert(Camera {
             projection: Default::default(),
             target: RenderTarget::Window(window_id),
             transform: Transform {
@@ -57,7 +57,7 @@ impl WorldWindowState {
             },
         });
 
-        renderer.entities.point_lights().insert(PointLight {
+        renderer.entities.point_lights.insert(PointLight {
             transform: Transform {
                 translation: Vec3::new(0.0, 1.0, 0.0),
                 ..Default::default()
@@ -81,7 +81,7 @@ impl WorldWindowState {
 
         state.entities.update(|e| e.push(id));
 
-        // let h = scenes.load("../../sponza.glb");
+        let h = scenes.load("../../sponza.glb");
 
         Self {
             camera,
@@ -100,7 +100,7 @@ impl WorldWindowState {
         event: WindowEvent,
         window: WindowId,
     ) {
-        let camera = renderer.entities.cameras().get_mut(self.camera).unwrap();
+        let mut camera = renderer.entities.cameras.get_mut(self.camera).unwrap();
 
         match event {
             WindowEvent::MouseMotion(event) => {
@@ -116,8 +116,9 @@ impl WorldWindowState {
             WindowEvent::CursorMoved(event) => {
                 self.cursor = event.position;
 
-                let camera = camera.clone();
-                self.update_edit_op(renderer, scenes, window, camera);
+                let c = camera.clone();
+                drop(camera);
+                self.update_edit_op(renderer, scenes, window, c);
             }
             WindowEvent::KeyboardInput(event) => {
                 if event.key_code == Some(VirtualKeyCode::LShift) {
@@ -160,6 +161,11 @@ impl WorldWindowState {
                     _ => (),
                 }
 
+                let camera = {
+                    let c = camera.clone();
+                    drop(camera);
+                    c
+                };
                 if event.state.is_pressed() && !self.state.selection.with(|v| v.is_empty()) {
                     match event.key_code {
                         Some(VirtualKeyCode::Escape) => {
@@ -230,6 +236,7 @@ impl WorldWindowState {
                         return;
                     }
 
+                    drop(camera);
                     if self.edit_mode == EditMode::None {
                         self.update_selection(renderer, scenes, window);
                     } else {
@@ -238,6 +245,7 @@ impl WorldWindowState {
                 }
                 MouseButton::Right => {
                     if self.edit_mode != EditMode::None {
+                        drop(camera);
                         self.reset_edit_op(renderer, scenes);
                         self.edit_mode = EditMode::None;
                     }
@@ -255,19 +263,18 @@ impl WorldWindowState {
     fn update_selection(&mut self, renderer: &mut Renderer, scenes: &mut Scenes, id: WindowId) {
         let camera = renderer
             .entities
-            .cameras()
+            .cameras
             .get_mut(self.camera)
             .unwrap()
             .clone();
-        let surface = renderer.surfaces.get(id).unwrap();
-        let viewport_size = Vec2::new(surface.config.width as f32, surface.config.height as f32);
+        let viewport_size = renderer.get_surface_size(id).unwrap().as_vec2();
 
         self.state.selection.update(|v| v.clear());
         for id in &self.state.entities.get() {
             let object = scenes.objects(*id).unwrap().nth(0).unwrap();
-            let object = renderer.entities.objects().get(object).unwrap();
+            let object = renderer.entities.objects.get(object).unwrap();
 
-            let mesh = renderer.meshes.get(object.mesh.id()).unwrap();
+            let mesh = renderer.meshes.get(object.mesh).unwrap();
 
             if let Some(aabb) = mesh.compute_aabb() {
                 let ray = camera.viewport_to_world(camera.transform, viewport_size, self.cursor);
@@ -304,8 +311,7 @@ impl WorldWindowState {
         window: WindowId,
         camera: Camera,
     ) {
-        let surface = renderer.surfaces.get(window).unwrap();
-        let viewport_size = Vec2::new(surface.config.width as f32, surface.config.height as f32);
+        let viewport_size = renderer.get_surface_size(window).unwrap().as_vec2();
 
         let camera_rotation = camera.transform.rotation;
         let ray = camera.viewport_to_world(camera.transform, viewport_size, self.cursor);

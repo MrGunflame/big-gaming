@@ -1,7 +1,10 @@
+use std::collections::HashMap;
+
 use bitflags::bitflags;
 use bytemuck::{Pod, Zeroable};
 use game_tracing::trace_span;
 use glam::UVec2;
+use slotmap::{DefaultKey, SlotMap};
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
 use wgpu::{
     BindGroup, BindGroupDescriptor, BindGroupEntry, BindingResource, BufferUsages,
@@ -12,7 +15,7 @@ use wgpu::{
 
 use crate::forward::ForwardPipeline;
 use crate::mipmap::MipMapGenerator;
-use crate::texture::{Image, ImageHandle, Images};
+use crate::texture::{Image, ImageId, Images};
 
 use super::PbrMaterial;
 
@@ -26,9 +29,9 @@ bitflags! {
 
 #[derive(Clone, Debug)]
 pub struct DefaultTextures {
-    default_base_color_texture: ImageHandle,
-    default_normal_texture: ImageHandle,
-    default_metallic_roughness_texture: ImageHandle,
+    pub default_base_color_texture: ImageId,
+    pub default_normal_texture: ImageId,
+    pub default_metallic_roughness_texture: ImageId,
 }
 
 impl DefaultTextures {
@@ -63,7 +66,7 @@ impl DefaultTextures {
 pub fn update_material_bind_group(
     device: &Device,
     queue: &Queue,
-    images: &Images,
+    images: &HashMap<ImageId, Image>,
     pipeline: &ForwardPipeline,
     material: &PbrMaterial,
     mipmap_generator: &mut MipMapGenerator,
@@ -86,9 +89,8 @@ pub fn update_material_bind_group(
     let base_color_texture = create_material_texture(
         material
             .base_color_texture
-            .as_ref()
-            .unwrap_or(&default_textures.default_base_color_texture),
-        &images,
+            .unwrap_or(default_textures.default_base_color_texture),
+        images,
         &device,
         &queue,
         mipmap_generator,
@@ -97,9 +99,8 @@ pub fn update_material_bind_group(
     let normal_texture = create_material_texture(
         material
             .normal_texture
-            .as_ref()
-            .unwrap_or(&default_textures.default_normal_texture),
-        &images,
+            .unwrap_or(default_textures.default_normal_texture),
+        images,
         &device,
         &queue,
         mipmap_generator,
@@ -108,9 +109,8 @@ pub fn update_material_bind_group(
     let metallic_roughness_texture = create_material_texture(
         material
             .metallic_roughness_texture
-            .as_ref()
-            .unwrap_or(&default_textures.default_metallic_roughness_texture),
-        &images,
+            .unwrap_or(default_textures.default_metallic_roughness_texture),
+        images,
         &device,
         &queue,
         mipmap_generator,
@@ -145,8 +145,8 @@ pub fn update_material_bind_group(
 }
 
 fn create_material_texture(
-    handle: &ImageHandle,
-    images: &Images,
+    id: ImageId,
+    images: &HashMap<ImageId, Image>,
     device: &Device,
     queue: &Queue,
     mipmap_generator: &mut MipMapGenerator,
@@ -155,7 +155,7 @@ fn create_material_texture(
 
     let mut encoder = device.create_command_encoder(&CommandEncoderDescriptor { label: None });
 
-    let data = images.get(handle).unwrap();
+    let data = images.get(&id).unwrap();
 
     let size = Extent3d {
         width: data.width(),
@@ -208,4 +208,32 @@ pub struct MaterialConstants {
     pub base_roughness: f32,
     // Align to vec4<f32>.
     pub _pad: [u32; 2],
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct MaterialId(DefaultKey);
+
+pub struct Materials {
+    materials: SlotMap<DefaultKey, PbrMaterial>,
+}
+
+impl Materials {
+    pub fn new() -> Self {
+        Self {
+            materials: SlotMap::new(),
+        }
+    }
+
+    pub fn insert(&mut self, material: PbrMaterial) -> MaterialId {
+        let key = self.materials.insert(material);
+        MaterialId(key)
+    }
+
+    pub fn remove(&mut self, id: MaterialId) {
+        self.materials.remove(id.0);
+    }
+
+    pub fn get(&self, id: MaterialId) -> Option<&PbrMaterial> {
+        self.materials.get(id.0)
+    }
 }

@@ -1,7 +1,7 @@
-use game_asset::Assets;
 use game_common::components::transform::Transform;
 use game_gltf::{GltfData, GltfLoader, GltfMaterial};
-use game_render::mesh::Mesh;
+use game_render::pbr::material::Materials;
+use game_render::pbr::mesh::Meshes;
 use game_render::pbr::PbrMaterial;
 use game_render::texture::{Images, TextureFormat};
 
@@ -15,8 +15,8 @@ pub(crate) enum GltfState {
 
 pub(crate) fn gltf_to_scene(
     data: GltfData,
-    meshes: &mut Assets<Mesh>,
-    materials: &mut Assets<PbrMaterial>,
+    meshes: &mut Meshes,
+    materials: &mut Materials,
     images: &mut Images,
 ) -> Scene {
     let scenes = data.scenes().unwrap();

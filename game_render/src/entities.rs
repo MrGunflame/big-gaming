@@ -1,336 +1,190 @@
-use game_asset::{Assets, Handle};
+use std::ops::{Deref, DerefMut};
+
 use game_common::components::transform::Transform;
-use game_tracing::trace_span;
-use slotmap::{DefaultKey, SlotMap};
-use wgpu::{Device, Queue};
+use slotmap::{new_key_type, Key, SlotMap};
 
-use crate::camera::{Camera, CameraBuffer};
-use crate::forward::ForwardPipeline;
-use crate::light::pipeline::{update_directional_lights, update_point_lights, update_spot_lights};
+use crate::camera::Camera;
 use crate::light::{DirectionalLight, PointLight, SpotLight};
-use crate::mesh::Mesh;
-use crate::mipmap::MipMapGenerator;
-use crate::pbr::PbrMaterial;
-use crate::render_pass::{GpuObject, GpuState};
-use crate::texture::Images;
+use crate::pbr::material::MaterialId;
+use crate::pbr::mesh::MeshId;
+use crate::state::Event;
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct ObjectId(DefaultKey);
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct DirectionalLightId(DefaultKey);
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct PointLightId(DefaultKey);
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct SpotLightId(DefaultKey);
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct CameraId(DefaultKey);
-
-#[derive(Debug)]
-pub struct ObjectManager {
-    objects: SlotMap<DefaultKey, Object>,
+#[derive(Clone, Debug)]
+pub struct EntityManager<K: Key, V: WithEvent<K>> {
+    entities: SlotMap<K, V>,
+    pub(crate) events: Vec<Event>,
 }
 
-impl ObjectManager {
-    pub fn new() -> Self {
+impl<K: Key, V: WithEvent<K> + Copy> EntityManager<K, V> {
+    fn new() -> Self {
         Self {
-            objects: SlotMap::new(),
+            entities: SlotMap::default(),
+            events: vec![],
         }
     }
 
-    pub fn insert(&mut self, object: Object) -> ObjectId {
-        let key = self.objects.insert(object);
-        ObjectId(key)
+    pub fn insert(&mut self, entity: V) -> K {
+        let id = self.entities.insert(entity);
+        self.events.push(V::create(id, entity));
+        id
     }
 
-    pub fn get(&self, id: ObjectId) -> Option<&Object> {
-        self.objects.get(id.0)
+    pub fn get(&self, id: K) -> Option<&V> {
+        self.entities.get(id)
     }
 
-    pub fn get_mut(&mut self, id: ObjectId) -> Option<&mut Object> {
-        self.objects.get_mut(id.0)
+    pub fn get_mut(&mut self, id: K) -> Option<EntityMut<'_, K, V>> {
+        let entity = self.entities.get_mut(id)?;
+        Some(EntityMut {
+            id,
+            entity,
+            events: &mut self.events,
+        })
     }
 
-    pub fn remove(&mut self, id: ObjectId) {
-        self.objects.remove(id.0);
-    }
-}
-
-impl Default for ObjectManager {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-#[derive(Debug)]
-pub struct DirectionalLightManager {
-    lights: SlotMap<DefaultKey, DirectionalLight>,
-}
-
-impl DirectionalLightManager {
-    pub fn new() -> Self {
-        Self {
-            lights: SlotMap::new(),
-        }
+    pub fn remove(&mut self, id: K) {
+        self.entities.remove(id);
+        self.events.push(V::destroy(id));
     }
 
-    pub fn insert(&mut self, light: DirectionalLight) -> DirectionalLightId {
-        let key = self.lights.insert(light);
-        DirectionalLightId(key)
+    pub fn values_mut(&mut self) -> impl Iterator<Item = &mut V> {
+        self.entities.values_mut()
     }
 
-    pub fn remove(&mut self, id: DirectionalLightId) {
-        self.lights.remove(id.0);
+    pub fn values(&self) -> impl Iterator<Item = &V> {
+        self.entities.values()
     }
 }
 
-impl Default for DirectionalLightManager {
-    fn default() -> Self {
-        Self::new()
+pub struct EntityMut<'a, K, V>
+where
+    K: Key + Copy,
+    V: WithEvent<K> + Copy,
+{
+    id: K,
+    entity: &'a mut V,
+    events: &'a mut Vec<Event>,
+}
+
+impl<'a, K, V> Drop for EntityMut<'a, K, V>
+where
+    K: Key + Copy,
+    V: WithEvent<K> + Copy,
+{
+    fn drop(&mut self) {
+        self.events.push(V::create(self.id, *self.entity));
     }
 }
 
-#[derive(Debug)]
-pub struct PointLightManager {
-    lights: SlotMap<DefaultKey, PointLight>,
-}
+impl<'a, K, V> Deref for EntityMut<'a, K, V>
+where
+    K: Key + Copy,
+    V: WithEvent<K> + Copy,
+{
+    type Target = V;
 
-impl PointLightManager {
-    pub fn new() -> Self {
-        Self {
-            lights: SlotMap::new(),
-        }
-    }
-
-    pub fn insert(&mut self, light: PointLight) -> PointLightId {
-        let key = self.lights.insert(light);
-        PointLightId(key)
-    }
-
-    pub fn remove(&mut self, id: PointLightId) {
-        self.lights.remove(id.0);
+    fn deref(&self) -> &Self::Target {
+        &self.entity
     }
 }
 
-impl Default for PointLightManager {
-    fn default() -> Self {
-        Self::new()
+impl<'a, K, V> DerefMut for EntityMut<'a, K, V>
+where
+    K: Key + Copy,
+    V: WithEvent<K> + Copy,
+{
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.entity
     }
 }
 
-#[derive(Debug)]
-pub struct SpotLightManager {
-    lights: SlotMap<DefaultKey, SpotLight>,
+new_key_type! {
+    pub struct ObjectId;
+    pub struct DirectionalLightId;
+    pub struct PointLightId;
+    pub struct SpotLightId;
+    pub struct CameraId;
 }
 
-impl SpotLightManager {
-    pub fn new() -> Self {
-        Self {
-            lights: SlotMap::new(),
-        }
-    }
-
-    pub fn insert(&mut self, light: SpotLight) -> SpotLightId {
-        let key = self.lights.insert(light);
-        SpotLightId(key)
-    }
-
-    pub fn remove(&mut self, id: SpotLightId) {
-        self.lights.remove(id.0);
-    }
-}
-
-impl Default for SpotLightManager {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-#[derive(Debug)]
-pub struct CameraManager {
-    cameras: SlotMap<DefaultKey, Camera>,
-}
-
-impl CameraManager {
-    pub fn new() -> Self {
-        Self {
-            cameras: SlotMap::new(),
-        }
-    }
-
-    pub fn insert(&mut self, camera: Camera) -> CameraId {
-        let key = self.cameras.insert(camera);
-        CameraId(key)
-    }
-
-    pub fn get_mut(&mut self, id: CameraId) -> Option<&mut Camera> {
-        self.cameras.get_mut(id.0)
-    }
-
-    pub fn remove(&mut self, id: CameraId) {
-        self.cameras.remove(id.0);
-    }
-
-    pub fn values_mut(&mut self) -> impl Iterator<Item = &mut Camera> {
-        self.cameras.values_mut()
-    }
-}
-
-impl Default for CameraManager {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
+#[derive(Clone, Debug)]
 pub struct SceneEntities {
-    objects: ObjectManager,
-    cameras: CameraManager,
-    directional_lights: DirectionalLightManager,
-    point_lights: PointLightManager,
-    spot_lights: SpotLightManager,
-    update_objects: bool,
-    update_cameras: bool,
-    update_directional_lights: bool,
-    update_point_lights: bool,
-    update_spot_lights: bool,
-    pub(crate) state: GpuState,
+    pub objects: EntityManager<ObjectId, Object>,
+    pub cameras: EntityManager<CameraId, Camera>,
+    pub directional_lights: EntityManager<DirectionalLightId, DirectionalLight>,
+    pub point_lights: EntityManager<PointLightId, PointLight>,
+    pub spot_lights: EntityManager<SpotLightId, SpotLight>,
 }
 
 impl SceneEntities {
-    pub fn new(device: &Device) -> Self {
+    pub fn new() -> Self {
         Self {
-            objects: ObjectManager::new(),
-            cameras: CameraManager::new(),
-            directional_lights: DirectionalLightManager::new(),
-            point_lights: PointLightManager::new(),
-            spot_lights: SpotLightManager::new(),
-            state: GpuState::new(device),
-            update_cameras: false,
-            update_directional_lights: false,
-            update_objects: false,
-            update_point_lights: false,
-            update_spot_lights: false,
-        }
-    }
-
-    pub fn objects(&mut self) -> &mut ObjectManager {
-        self.update_objects = true;
-        &mut self.objects
-    }
-
-    pub fn cameras(&mut self) -> &mut CameraManager {
-        self.update_cameras = true;
-        &mut self.cameras
-    }
-
-    pub fn directional_lights(&mut self) -> &mut DirectionalLightManager {
-        self.update_directional_lights = true;
-        &mut self.directional_lights
-    }
-
-    pub fn point_lights(&mut self) -> &mut PointLightManager {
-        self.update_point_lights = true;
-        &mut self.point_lights
-    }
-
-    pub fn spot_lights(&mut self) -> &mut SpotLightManager {
-        self.update_spot_lights = true;
-        &mut self.spot_lights
-    }
-}
-
-impl SceneEntities {
-    pub fn rebuild(
-        &mut self,
-        meshes: &mut Assets<Mesh>,
-        materials: &mut Assets<PbrMaterial>,
-        images: &mut Images,
-        device: &Device,
-        queue: &Queue,
-        pipeline: &ForwardPipeline,
-        mipmap_generator: &mut MipMapGenerator,
-    ) {
-        let _span = trace_span!("SceneEntities::rebuild").entered();
-
-        if self.update_directional_lights {
-            self.state.directional_lights =
-                update_directional_lights(device, self.directional_lights.lights.values().copied());
-
-            self.update_directional_lights = false;
-        }
-
-        if self.update_point_lights {
-            self.state.point_lights =
-                update_point_lights(device, self.point_lights.lights.values().copied());
-
-            self.update_point_lights = false;
-        }
-
-        if self.update_spot_lights {
-            self.state.spot_lights =
-                update_spot_lights(device, self.spot_lights.lights.values().copied());
-
-            self.update_spot_lights = false;
-        }
-
-        if self.update_cameras {
-            self.state.cameras.clear();
-            for (id, cam) in &mut self.cameras.cameras {
-                let buffer =
-                    CameraBuffer::new(cam.transform, cam.projection, device, cam.target.clone());
-
-                self.state.cameras.insert(CameraId(id), buffer);
-            }
-
-            self.update_cameras = false;
-        }
-
-        if self.update_objects {
-            self.state.objects.clear();
-            for (id, obj) in &mut self.objects.objects {
-                let Some(mesh) = meshes.get(obj.mesh.id()) else {
-                    return;
-                };
-
-                let Some(material) = materials.get(obj.material.id()) else {
-                    return;
-                };
-
-                let (mesh_bg, indices) =
-                    crate::pbr::mesh::update_mesh_bind_group(device, pipeline, mesh);
-                let mat_bg = crate::pbr::material::update_material_bind_group(
-                    device,
-                    queue,
-                    images,
-                    pipeline,
-                    material,
-                    mipmap_generator,
-                );
-
-                let transform = crate::pbr::mesh::update_transform_buffer(obj.transform, device);
-
-                self.state.objects.insert(
-                    ObjectId(id),
-                    GpuObject {
-                        material_bind_group: mat_bg,
-                        mesh_bind_group: mesh_bg,
-                        transform,
-                        indices,
-                    },
-                );
-            }
-
-            self.update_objects = false;
+            objects: EntityManager::new(),
+            cameras: EntityManager::new(),
+            directional_lights: EntityManager::new(),
+            point_lights: EntityManager::new(),
+            spot_lights: EntityManager::new(),
         }
     }
 }
 
-#[derive(Debug)]
+#[derive(Copy, Clone, Debug)]
 pub struct Object {
     pub transform: Transform,
-    pub mesh: Handle<Mesh>,
-    pub material: Handle<PbrMaterial>,
+    pub mesh: MeshId,
+    pub material: MaterialId,
+}
+
+pub trait WithEvent<K> {
+    fn create(id: K, v: Self) -> Event;
+    fn destroy(id: K) -> Event;
+}
+
+impl WithEvent<ObjectId> for Object {
+    fn create(id: ObjectId, v: Self) -> Event {
+        Event::CreateObject(id, v)
+    }
+
+    fn destroy(id: ObjectId) -> Event {
+        Event::DestroyObject(id)
+    }
+}
+
+impl WithEvent<CameraId> for Camera {
+    fn create(id: CameraId, v: Self) -> Event {
+        Event::CreateCamera(id, v)
+    }
+
+    fn destroy(id: CameraId) -> Event {
+        Event::DestroyCamera(id)
+    }
+}
+
+impl WithEvent<DirectionalLightId> for DirectionalLight {
+    fn create(id: DirectionalLightId, v: Self) -> Event {
+        Event::CreateDirectionalLight(id, v)
+    }
+
+    fn destroy(id: DirectionalLightId) -> Event {
+        Event::DestroyDirectionalLight(id)
+    }
+}
+
+impl WithEvent<PointLightId> for PointLight {
+    fn create(id: PointLightId, v: Self) -> Event {
+        Event::CreatePointLight(id, v)
+    }
+
+    fn destroy(id: PointLightId) -> Event {
+        Event::DestroyPointLight(id)
+    }
+}
+
+impl WithEvent<SpotLightId> for SpotLight {
+    fn create(id: SpotLightId, v: Self) -> Event {
+        Event::CreateSpotLight(id, v)
+    }
+
+    fn destroy(id: SpotLightId) -> Event {
+        Event::DestroySpotLight(id)
+    }
 }

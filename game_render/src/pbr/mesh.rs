@@ -1,6 +1,7 @@
 use bytemuck::{Pod, Zeroable};
 use game_common::components::transform::Transform;
 use glam::{Mat3, Mat4, Vec4};
+use slotmap::{DefaultKey, SlotMap};
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
 use wgpu::{
     BindGroup, BindGroupDescriptor, BindGroupEntry, Buffer, BufferUsages, Device, IndexFormat,
@@ -141,5 +142,34 @@ impl From<Transform> for TransformUniform {
                 normal_z.to_array(),
             ],
         }
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct MeshId(DefaultKey);
+
+#[derive(Clone, Debug)]
+pub struct Meshes {
+    meshes: SlotMap<DefaultKey, Mesh>,
+}
+
+impl Meshes {
+    pub fn new() -> Self {
+        Self {
+            meshes: SlotMap::new(),
+        }
+    }
+
+    pub fn insert(&mut self, mesh: Mesh) -> MeshId {
+        let key = self.meshes.insert(mesh);
+        MeshId(key)
+    }
+
+    pub fn remove(&mut self, id: MeshId) {
+        self.meshes.remove(id.0);
+    }
+
+    pub fn get(&self, id: MeshId) -> Option<&Mesh> {
+        self.meshes.get(id.0)
     }
 }

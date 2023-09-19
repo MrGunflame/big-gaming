@@ -23,7 +23,7 @@ pub(crate) fn spawn_scene(
     for node in &scene.nodes {
         let key = hierarchy.append(Some(root), node.transform);
 
-        let id = renderer.entities.objects().insert(Object {
+        let id = renderer.entities.objects.insert(Object {
             transform: Transform::default(),
             mesh: node.mesh.clone(),
             material: node.material.clone(),
@@ -68,7 +68,7 @@ pub(crate) fn spawn_scene(
             Color::BLUE,
         ),
     ] {
-        renderer.entities.objects().insert(Object {
+        renderer.entities.objects.insert(Object {
             transform: Default::default(),
             mesh: renderer.meshes.insert(mesh.into()),
             material: renderer.materials.insert(PbrMaterial {

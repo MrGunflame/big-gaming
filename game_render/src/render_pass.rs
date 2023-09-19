@@ -1,6 +1,8 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use game_tracing::trace_span;
+use parking_lot::Mutex;
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
 use wgpu::{
     BindGroup, BindGroupDescriptor, BindGroupEntry, Buffer, BufferUsages, Color, Device, Extent3d,
@@ -12,8 +14,11 @@ use wgpu::{
 use crate::buffer::{DynamicBuffer, IndexBuffer};
 use crate::camera::{CameraBuffer, RenderTarget};
 use crate::entities::{CameraId, ObjectId};
+use crate::forward::ForwardPipeline;
 use crate::graph::{Node, RenderContext};
 use crate::light::pipeline::{DirectionalLightUniform, PointLightUniform, SpotLightUniform};
+use crate::post_process::PostProcessPipeline;
+use crate::state::RenderState;
 
 pub struct GpuObject {
     pub indices: IndexBuffer,
@@ -63,30 +68,44 @@ impl GpuState {
     }
 }
 
-pub struct RenderPass;
+pub(crate) struct RenderPass {
+    pub state: Arc<Mutex<RenderState>>,
+    pub forward: Arc<ForwardPipeline>,
+    pub post_process: PostProcessPipeline,
+}
 
 impl Node for RenderPass {
     fn render(&self, ctx: &mut RenderContext<'_>) {
-        for cam in ctx.state.cameras.values() {
+        let mut state = self.state.lock();
+
+        state.update_buffers(ctx.device, ctx.queue, &self.forward, ctx.mipmap);
+
+        for cam in state.camera_buffers.values() {
             if cam.target == RenderTarget::Window(ctx.window) {
-                self.render_camera_target(&cam, ctx);
+                self.render_camera_target(&state, &cam, ctx);
             }
         }
     }
 }
 
 impl RenderPass {
-    fn render_camera_target(&self, camera: &CameraBuffer, ctx: &mut RenderContext<'_>) {
+    fn render_camera_target(
+        &self,
+        state: &RenderState,
+        camera: &CameraBuffer,
+        ctx: &mut RenderContext<'_>,
+    ) {
         let _span = trace_span!("ForwardPass::render_camera_target").entered();
 
         let device = ctx.device;
-        let pipeline = ctx.pipeline;
+        let pipeline = &self.forward;
 
-        let bind_groups = ctx
-            .state
+        let bind_groups = state
             .objects
-            .values()
-            .map(|node| {
+            .keys()
+            .map(|&id| {
+                let transform = state.object_buffers.get(&id).unwrap();
+
                 device.create_bind_group(&BindGroupDescriptor {
                     label: Some("vs_bind_group"),
                     layout: &pipeline.vs_bind_group_layout,
@@ -97,7 +116,7 @@ impl RenderPass {
                         },
                         BindGroupEntry {
                             binding: 1,
-                            resource: node.transform.as_entire_binding(),
+                            resource: transform.as_entire_binding(),
                         },
                     ],
                 })
@@ -110,15 +129,15 @@ impl RenderPass {
             entries: &[
                 BindGroupEntry {
                     binding: 0,
-                    resource: ctx.state.directional_lights.as_entire_binding(),
+                    resource: state.directional_lights_buffer.as_entire_binding(),
                 },
                 BindGroupEntry {
                     binding: 1,
-                    resource: ctx.state.point_lights.as_entire_binding(),
+                    resource: state.point_lights_buffer.as_entire_binding(),
                 },
                 BindGroupEntry {
                     binding: 2,
-                    resource: ctx.state.spot_lights.as_entire_binding(),
+                    resource: state.spot_lights_buffer.as_entire_binding(),
                 },
             ],
         });
@@ -162,21 +181,23 @@ impl RenderPass {
 
         render_pass.set_pipeline(&pipeline.pipeline);
 
-        for (index, node) in ctx.state.objects.values().enumerate() {
+        for (index, obj) in state.objects.values().enumerate() {
             let vs_bind_group = &bind_groups[index];
+            let (mesh_bg, idx_buf) = state.meshes.get(&obj.mesh).unwrap();
+            let mat_bg = state.materials.get(&obj.material).unwrap();
 
             render_pass.set_bind_group(0, &vs_bind_group, &[]);
-            render_pass.set_bind_group(1, &node.mesh_bind_group, &[]);
-            render_pass.set_bind_group(2, &node.material_bind_group, &[]);
+            render_pass.set_bind_group(1, &mesh_bg, &[]);
+            render_pass.set_bind_group(2, &mat_bg, &[]);
             render_pass.set_bind_group(3, &light_bind_group, &[]);
 
-            render_pass.set_index_buffer(node.indices.buffer.slice(..), node.indices.format);
-            render_pass.draw_indexed(0..node.indices.len, 0, 0..1);
+            render_pass.set_index_buffer(idx_buf.buffer.slice(..), idx_buf.format);
+            render_pass.draw_indexed(0..idx_buf.len, 0, 0..1);
         }
 
         drop(render_pass);
 
-        ctx.post_process.render(
+        self.post_process.render(
             &mut ctx.encoder,
             &target_view,
             &ctx.target,

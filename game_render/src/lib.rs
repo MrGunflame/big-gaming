@@ -19,45 +19,45 @@ pub mod surface;
 pub mod texture;
 
 mod depth_stencil;
+mod pipelined_rendering;
 mod post_process;
+mod state;
+
+use std::collections::VecDeque;
+use std::sync::Arc;
 
 use game_tracing::trace_span;
-use tracing::Level;
 
 use camera::RenderTarget;
 use entities::SceneEntities;
 use forward::ForwardPipeline;
-use game_asset::Assets;
 use game_window::windows::{WindowId, WindowState};
 use glam::UVec2;
-use graph::{RenderContext, RenderGraph};
-use mesh::Mesh;
-use mipmap::MipMapGenerator;
-use pbr::PbrMaterial;
+use graph::Node;
+use parking_lot::Mutex;
+use pbr::material::Materials;
+use pbr::mesh::Meshes;
+use pipelined_rendering::Pipeline;
 use post_process::PostProcessPipeline;
 use render_pass::RenderPass;
-use surface::RenderSurfaces;
+use state::RenderState;
 use texture::Images;
 use wgpu::{
-    Adapter, Backends, CommandEncoderDescriptor, Device, DeviceDescriptor, Features, Instance,
-    InstanceDescriptor, Limits, PowerPreference, Queue, RequestAdapterOptions,
-    TextureViewDescriptor,
+    Backends, Device, DeviceDescriptor, Features, Instance, InstanceDescriptor, Limits,
+    PowerPreference, Queue, RequestAdapterOptions,
 };
 
 pub struct Renderer {
-    instance: Instance,
-    adapter: Adapter,
-    pub device: Device,
-    pub queue: Queue,
-    pub graph: RenderGraph,
-    pub surfaces: RenderSurfaces,
+    pipeline: Pipeline,
+
     pub entities: SceneEntities,
+
+    backlog: VecDeque<Event>,
+    state: Arc<Mutex<RenderState>>,
+
     pub images: Images,
-    forward: ForwardPipeline,
-    post_process: PostProcessPipeline,
-    mipmap_generator: MipMapGenerator,
-    pub meshes: Assets<Mesh>,
-    pub materials: Assets<PbrMaterial>,
+    pub meshes: Meshes,
+    pub materials: Materials,
 }
 
 impl Renderer {
@@ -85,38 +85,56 @@ impl Renderer {
         ))
         .unwrap();
 
-        let mut graph = RenderGraph::default();
-        graph.push(RenderPass);
-
         let mut images = Images::new();
+        let forward = Arc::new(ForwardPipeline::new(&device, &mut images));
+        let post_process = PostProcessPipeline::new(&device);
+
+        let state = Arc::new(Mutex::new(RenderState::new(&device, &forward, &images)));
+
+        let pipeline = Pipeline::new(instance, adapter, device, queue);
+
+        {
+            let mut graph = pipeline.shared.graph.lock();
+            graph.push(RenderPass {
+                state: state.clone(),
+                forward: forward.clone(),
+                post_process,
+            });
+        }
 
         Self {
-            entities: SceneEntities::new(&device),
-            forward: ForwardPipeline::new(&device, &mut images),
-            post_process: PostProcessPipeline::new(&device),
-            mipmap_generator: MipMapGenerator::new(&device),
-            instance,
-            adapter,
-            device,
-            queue,
-            graph,
-            surfaces: RenderSurfaces::new(),
+            entities: SceneEntities::new(),
             images,
-            materials: Assets::new(),
-            meshes: Assets::new(),
+            materials: Materials::new(),
+            meshes: Meshes::new(),
+            backlog: VecDeque::new(),
+            pipeline,
+            state,
         }
+    }
+
+    pub fn device(&self) -> &Device {
+        &self.pipeline.shared.device
+    }
+
+    pub fn queue(&self) -> &Queue {
+        &self.pipeline.shared.queue
+    }
+
+    pub fn add_to_graph(&self, node: impl Node) {
+        let mut graph = self.pipeline.shared.graph.lock();
+        graph.push(node);
     }
 
     /// Create a new renderer for the window.
     pub fn create(&mut self, id: WindowId, window: WindowState) {
-        self.surfaces
-            .create(&self.instance, &self.adapter, &self.device, window, id);
+        self.backlog.push_back(Event::CreateSurface(id, window));
     }
 
     pub fn resize(&mut self, id: WindowId, size: UVec2) {
-        self.surfaces.resize(id, &self.device, size);
+        self.backlog.push_back(Event::ResizeSurface(id, size));
 
-        for cam in self.entities.cameras().values_mut() {
+        for cam in self.entities.cameras.values_mut() {
             if cam.target == RenderTarget::Window(id) {
                 cam.update_aspect_ratio(size);
             }
@@ -124,7 +142,15 @@ impl Renderer {
     }
 
     pub fn destroy(&mut self, id: WindowId) {
-        self.surfaces.destroy(id);
+        self.backlog.push_back(Event::DestroySurface(id));
+    }
+
+    // TODO: Get rid of this shit.
+    pub fn get_surface_size(&self, id: WindowId) -> Option<UVec2> {
+        let surfaces = self.pipeline.shared.surfaces.lock();
+        surfaces
+            .get(id)
+            .map(|s| UVec2::new(s.config.width, s.config.height))
     }
 
     pub fn render(&mut self) {
@@ -132,59 +158,57 @@ impl Renderer {
 
         // FIXME: Should update on render pass.
         crate::texture::image::load_images(&mut self.images);
-        crate::texture::image::update_image_handles(&mut self.images);
 
-        self.entities.rebuild(
-            &mut self.meshes,
-            &mut self.materials,
-            &mut self.images,
-            &self.device,
-            &self.queue,
-            &self.forward,
-            &mut self.mipmap_generator,
-        );
+        self.pipeline.wait_idle();
 
-        for (window, surface) in self.surfaces.iter_mut() {
-            let output = match surface.surface.get_current_texture() {
-                Ok(output) => output,
-                Err(err) => {
-                    tracing::error!("failed to get surface: {}", err);
-                    continue;
+        {
+            let mut surfaces = self.pipeline.shared.surfaces.lock();
+            let instance = &self.pipeline.shared.instance;
+            let adapter = &self.pipeline.shared.adapter;
+            let device = &self.pipeline.shared.device;
+
+            while let Some(event) = self.backlog.pop_front() {
+                match event {
+                    Event::CreateSurface(id, state) => {
+                        surfaces.create(instance, adapter, device, state, id);
+                    }
+                    Event::ResizeSurface(id, size) => {
+                        surfaces.resize(id, device, size);
+                    }
+                    Event::DestroySurface(id) => {
+                        surfaces.destroy(id);
+                    }
                 }
-            };
-
-            let target = output.texture.create_view(&TextureViewDescriptor {
-                label: Some("surface_view"),
-                format: Some(surface.config.format),
-                ..Default::default()
-            });
-
-            let mut encoder = self
-                .device
-                .create_command_encoder(&CommandEncoderDescriptor {
-                    label: Some("render_encoder"),
-                });
-
-            let mut ctx = RenderContext {
-                state: &self.entities.state,
-                window: *window,
-                encoder: &mut encoder,
-                width: output.texture.width(),
-                height: output.texture.height(),
-                format: surface.config.format,
-                target: &target,
-                surface: &surface,
-                pipeline: &self.forward,
-                post_process: &self.post_process,
-                device: &self.device,
-            };
-
-            for node in &self.graph.nodes {
-                node.render(&mut ctx);
             }
 
-            self.queue.submit(std::iter::once(encoder.finish()));
-            output.present();
+            let mut state = self.state.lock();
+            for iter in [
+                self.entities.cameras.events.drain(..),
+                self.entities.objects.events.drain(..),
+                self.entities.directional_lights.events.drain(..),
+                self.entities.point_lights.events.drain(..),
+                self.entities.spot_lights.events.drain(..),
+            ] {
+                for event in iter {
+                    state.update(event, &self.meshes, &self.materials, &self.images);
+                }
+            }
+
+            // self.state
+            //     .lock()
+            //     .update(event, &self.meshes, &self.materials, &self.images);
+        }
+
+        // SAFETY: We just waited for the renderer to be idle.
+        unsafe {
+            self.pipeline.render_unchecked();
         }
     }
+}
+
+#[derive(Debug)]
+enum Event {
+    CreateSurface(WindowId, WindowState),
+    ResizeSurface(WindowId, UVec2),
+    DestroySurface(WindowId),
 }
