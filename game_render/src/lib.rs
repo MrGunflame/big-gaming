@@ -127,7 +127,6 @@ impl Renderer {
     pub fn render(&mut self) {
         // FIXME: Should update on render pass.
         crate::texture::image::load_images(&mut self.images);
-        crate::texture::image::update_image_handles(&mut self.images);
 
         self.entities.rebuild(
             &mut self.meshes,

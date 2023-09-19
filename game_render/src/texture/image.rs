@@ -1,11 +1,10 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::VecDeque;
 use std::io::Read;
 use std::path::PathBuf;
-use std::sync::Arc;
 
 use glam::UVec2;
-use parking_lot::Mutex;
 
+use slotmap::{DefaultKey, SlotMap};
 pub use wgpu::TextureFormat;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -98,100 +97,61 @@ impl AsRef<[u8]> for Image {
     }
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct ImageId(DefaultKey);
+
+#[derive(Clone, Debug)]
+enum Entry {
+    Image(Image),
+    Loading,
+}
+
 #[derive(Debug, Default)]
 pub struct Images {
-    next_id: u64,
-    images: HashMap<u64, Entry>,
-    load_queue: VecDeque<(u64, LoadImage, TextureFormat)>,
-    events: Arc<Mutex<VecDeque<Event>>>,
+    images: SlotMap<DefaultKey, Entry>,
+    load_queue: VecDeque<(DefaultKey, LoadImage, TextureFormat)>,
 }
 
 impl Images {
     pub fn new() -> Self {
         Self {
-            next_id: 0,
-            images: HashMap::new(),
+            images: SlotMap::new(),
             load_queue: VecDeque::new(),
-            events: Arc::default(),
         }
     }
 
-    pub fn insert(&mut self, image: Image) -> ImageHandle {
-        let id = self.next_id();
-        self.images.insert(
-            id,
-            Entry {
-                data: image,
-                ref_count: 1,
-            },
-        );
-        ImageHandle {
-            id,
-            events: self.events.clone(),
+    pub fn insert(&mut self, image: Image) -> ImageId {
+        let id = self.images.insert(Entry::Image(image));
+        ImageId(id)
+    }
+
+    pub fn get(&self, id: ImageId) -> Option<&Image> {
+        match self.images.get(id.0)? {
+            Entry::Image(img) => Some(img),
+            Entry::Loading => None,
         }
     }
 
-    pub fn get(&self, handle: &ImageHandle) -> Option<&Image> {
-        self.images.get(&handle.id).map(|entry| &entry.data)
-    }
-
-    fn next_id(&mut self) -> u64 {
-        let id = self.next_id;
-        self.next_id += 1;
-        id
-    }
-
-    pub fn load<S>(&mut self, source: S) -> ImageHandle
+    pub fn load<S>(&mut self, source: S) -> ImageId
     where
         S: Into<LoadImage>,
     {
         self.load_with_format(source, TextureFormat::Rgba8UnormSrgb)
     }
 
-    pub fn load_with_format<S>(&mut self, source: S, format: TextureFormat) -> ImageHandle
+    pub fn load_with_format<S>(&mut self, source: S, format: TextureFormat) -> ImageId
     where
         S: Into<LoadImage>,
     {
-        let id = self.next_id();
-        self.load_queue.push_back((id, source.into(), format));
-        ImageHandle {
-            id,
-            events: self.events.clone(),
-        }
-    }
-}
+        let key = self.images.insert(Entry::Loading);
 
-#[derive(Debug)]
-struct Entry {
-    data: Image,
-    ref_count: usize,
-}
-
-#[derive(Debug)]
-pub struct ImageHandle {
-    id: u64,
-    events: Arc<Mutex<VecDeque<Event>>>,
-}
-
-impl Clone for ImageHandle {
-    fn clone(&self) -> Self {
-        self.events.lock().push_back(Event::Clone(self.id));
-
-        Self {
-            id: self.id,
-            events: self.events.clone(),
-        }
-    }
-}
-
-impl Drop for ImageHandle {
-    fn drop(&mut self) {
-        self.events.lock().push_back(Event::Drop(self.id));
+        self.load_queue.push_back((key, source.into(), format));
+        ImageId(key)
     }
 }
 
 pub(crate) fn load_images(images: &mut Images) {
-    while let Some((handle, source, format)) = images.load_queue.pop_front() {
+    while let Some((key, source, format)) = images.load_queue.pop_front() {
         let buf = match source {
             LoadImage::Buffer(buf) => buf,
             LoadImage::File(path) => {
@@ -205,45 +165,17 @@ pub(crate) fn load_images(images: &mut Images) {
 
         let img = image::load_from_memory(&buf).unwrap().to_rgba8();
 
-        images.images.insert(
-            handle,
-            Entry {
-                data: Image {
-                    format,
-                    width: img.width(),
-                    height: img.height(),
-                    bytes: img.into_raw(),
+        if let Some(entry) = images.images.get_mut(key) {
+            *entry = Entry::Image(Image::new(
+                UVec2 {
+                    x: img.width(),
+                    y: img.height(),
                 },
-                ref_count: 1,
-            },
-        );
-    }
-}
-
-pub(crate) fn update_image_handles(images: &mut Images) {
-    let mut events = images.events.lock();
-    while let Some(event) = events.pop_front() {
-        match event {
-            Event::Clone(id) => {
-                let entry = images.images.get_mut(&id).unwrap();
-                entry.ref_count += 1;
-            }
-            Event::Drop(id) => {
-                let entry = images.images.get_mut(&id).unwrap();
-                entry.ref_count -= 1;
-
-                if entry.ref_count == 0 {
-                    images.images.remove(&id);
-                }
-            }
+                format,
+                img.into_raw(),
+            ));
         }
     }
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-enum Event {
-    Drop(u64),
-    Clone(u64),
 }
 
 #[derive(Clone, Debug)]

@@ -1,7 +1,7 @@
 use game_asset::Asset;
 
 use crate::color::Color;
-use crate::texture::ImageHandle;
+use crate::texture::ImageId;
 
 pub mod material;
 pub mod mesh;
@@ -10,13 +10,13 @@ pub mod mesh;
 pub struct PbrMaterial {
     pub alpha_mode: AlphaMode,
     pub base_color: Color,
-    pub base_color_texture: Option<ImageHandle>,
+    pub base_color_texture: Option<ImageId>,
 
-    pub normal_texture: Option<ImageHandle>,
+    pub normal_texture: Option<ImageId>,
 
     pub roughness: f32,
     pub metallic: f32,
-    pub metallic_roughness_texture: Option<ImageHandle>,
+    pub metallic_roughness_texture: Option<ImageId>,
 }
 
 impl Default for PbrMaterial {
