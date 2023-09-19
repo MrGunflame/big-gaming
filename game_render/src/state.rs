@@ -128,7 +128,7 @@ impl RenderState {
                 }
             }
             Event::DestroyObject(id) => {}
-            _ => todo!(),
+            _ => (),
         }
     }
 

@@ -1,7 +1,7 @@
 use std::sync::{mpsc, Arc};
 
 use game_tracing::trace_span;
-use parking_lot::Mutex;
+use parking_lot::{Condvar, Mutex};
 use wgpu::{Adapter, CommandEncoderDescriptor, Device, Instance, Queue, TextureViewDescriptor};
 
 use crate::graph::{RenderContext, RenderGraph};
@@ -26,6 +26,7 @@ pub struct SharedState {
     pub mipmap_generator: Mutex<MipMapGenerator>,
     state: Mutex<PipelineState>,
     pub graph: Mutex<RenderGraph>,
+    unparker: Condvar,
 }
 
 pub struct Pipeline {
@@ -44,6 +45,7 @@ impl Pipeline {
             surfaces: Mutex::new(RenderSurfaces::new()),
             state: Mutex::new(PipelineState::Idle),
             graph: Mutex::new(RenderGraph::default()),
+            unparker: Condvar::new(),
         });
 
         let tx = start_render_thread(shared.clone());
@@ -56,13 +58,12 @@ impl Pipeline {
     }
 
     pub fn wait_idle(&self) {
-        while !self.is_idle() {
-            std::thread::sleep_ms(1);
-        }
-    }
+        let _span = trace_span!("Pipeline::wait_idle").entered();
 
-    pub fn update(&mut self) {
-        debug_assert!(self.is_idle());
+        let mut state = self.shared.state.lock();
+        while *state != PipelineState::Idle {
+            self.shared.unparker.wait(&mut state);
+        }
     }
 
     /// # Safety
@@ -131,6 +132,7 @@ fn start_render_thread(shared: Arc<SharedState>) -> mpsc::Sender<()> {
             }
 
             *shared.state.lock() = PipelineState::Idle;
+            shared.unparker.notify_one();
         }
     });
 
