@@ -101,9 +101,11 @@ impl RenderPass {
         let pipeline = &self.forward;
 
         let bind_groups = state
-            .object_buffers
-            .values()
-            .map(|transform| {
+            .objects
+            .keys()
+            .map(|&id| {
+                let transform = state.object_buffers.get(&id).unwrap();
+
                 device.create_bind_group(&BindGroupDescriptor {
                     label: Some("vs_bind_group"),
                     layout: &pipeline.vs_bind_group_layout,
