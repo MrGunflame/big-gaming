@@ -2,11 +2,10 @@
 #![deny(unused_crate_dependencies)]
 
 mod config;
-//mod entities;
 mod net;
-//mod plugins;
 mod state;
 mod utils;
+mod world;
 
 use clap::Parser;
 use config::Config;
@@ -20,6 +19,7 @@ use game_window::WindowManager;
 use glam::UVec2;
 use state::main_menu::MainMenuState;
 use state::GameState;
+use world::GameWorldState;
 
 use crate::net::ServerConnection;
 
@@ -50,12 +50,17 @@ fn main() {
     let mut wm = WindowManager::new();
     let window_id = wm.windows().spawn(WindowBuilder::new());
 
-    let mut app = App {
+    let mut state = GameState::Startup;
+
+    if let Some(addr) = args.connect {
+        state = GameState::GameWorld(GameWorldState::new(&config, addr));
+    }
+
+    let app = App {
         window_id,
-        conn: ServerConnection::new(&config),
         renderer: Renderer::new(),
         windows: wm.windows().clone(),
-        state: GameState::Startup,
+        state,
         scenes: Scenes::new(),
     };
 
@@ -66,7 +71,6 @@ pub struct App {
     state: GameState,
     /// Primary window
     window_id: WindowId,
-    conn: ServerConnection<Interval>,
     renderer: Renderer,
     windows: Windows,
     scenes: Scenes,
@@ -85,7 +89,9 @@ impl game_window::App for App {
             GameState::MainMenu(state) => {
                 state.update(&mut self.renderer);
             }
-            GameState::GameWorld => {}
+            GameState::GameWorld(state) => {
+                state.update(&mut self.renderer, self.window_id);
+            }
             _ => todo!(),
         }
 
