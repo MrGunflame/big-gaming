@@ -244,7 +244,6 @@ mod tests {
     use crate::proto::sequence::Sequence;
     use crate::proto::{EntityCreate, EntityDestroy, EntityTranslate, Frame, SpawnHost};
     use crate::request::Request;
-    use crate::snapshot::CommandId;
 
     use super::FrameBuffer;
 
@@ -253,7 +252,6 @@ mod tests {
         let mut buffer = FrameBuffer::new();
 
         buffer.push(Request {
-            id: CommandId(0),
             sequence: Sequence::new(0),
             control_frame: ControlFrame(0),
             frame: Frame::EntityTranslate(EntityTranslate {
@@ -263,7 +261,6 @@ mod tests {
         });
 
         buffer.push(Request {
-            id: CommandId(1),
             sequence: Sequence::new(1),
             control_frame: ControlFrame(0),
             frame: Frame::EntityTranslate(EntityTranslate {
@@ -273,7 +270,6 @@ mod tests {
         });
 
         buffer.push(Request {
-            id: CommandId(2),
             sequence: Sequence::new(2),
             control_frame: ControlFrame(0),
             frame: Frame::EntityTranslate(EntityTranslate {
@@ -307,7 +303,6 @@ mod tests {
         let mut buffer = FrameBuffer::new();
 
         buffer.push(Request {
-            id: CommandId(0),
             sequence: Sequence::new(0),
             control_frame: ControlFrame(0),
             frame: Frame::EntityTranslate(EntityTranslate {
@@ -316,7 +311,6 @@ mod tests {
             }),
         });
         buffer.push(Request {
-            id: CommandId(1),
             sequence: Sequence::new(1),
             control_frame: ControlFrame(0),
             frame: Frame::EntityDestroy(EntityDestroy {
@@ -339,7 +333,6 @@ mod tests {
         let mut buffer = FrameBuffer::new();
 
         buffer.push(Request {
-            id: CommandId(0),
             sequence: Sequence::new(0),
             control_frame: ControlFrame(0),
             frame: Frame::EntityCreate(EntityCreate {
@@ -352,7 +345,6 @@ mod tests {
             }),
         });
         buffer.push(Request {
-            id: CommandId(1),
             sequence: Sequence::new(1),
             control_frame: ControlFrame(0),
             frame: Frame::EntityTranslate(EntityTranslate {
@@ -361,7 +353,6 @@ mod tests {
             }),
         });
         buffer.push(Request {
-            id: CommandId(2),
             sequence: Sequence::new(2),
             control_frame: ControlFrame(0),
             frame: Frame::EntityDestroy(EntityDestroy {
@@ -380,7 +371,6 @@ mod tests {
         let mut buffer = FrameBuffer::new();
 
         buffer.push(Request {
-            id: CommandId(0),
             sequence: Sequence::new(0),
             control_frame: ControlFrame(0),
             frame: Frame::SpawnHost(SpawnHost {
@@ -388,7 +378,6 @@ mod tests {
             }),
         });
         buffer.push(Request {
-            id: CommandId(1),
             sequence: Sequence::new(1),
             control_frame: ControlFrame(0),
             frame: Frame::SpawnHost(SpawnHost {
@@ -396,7 +385,6 @@ mod tests {
             }),
         });
         buffer.push(Request {
-            id: CommandId(2),
             sequence: Sequence::new(1),
             control_frame: ControlFrame(0),
             frame: Frame::SpawnHost(SpawnHost {
@@ -404,7 +392,6 @@ mod tests {
             }),
         });
         buffer.push(Request {
-            id: CommandId(3),
             sequence: Sequence::new(4),
             control_frame: ControlFrame(0),
             frame: Frame::SpawnHost(SpawnHost {

@@ -14,7 +14,6 @@ use thiserror::Error;
 use tokio::sync::mpsc;
 use tokio::time::MissedTickBehavior;
 
-use crate::buffer::FrameBuffer;
 use crate::message::{ControlMessage, DataMessage, Message};
 use crate::proto::ack::{Ack, AckAck, Nak};
 use crate::proto::handshake::{Handshake, HandshakeFlags, HandshakeType};
@@ -24,7 +23,6 @@ use crate::proto::{
     Decode, Encode, Flags, Frame, Header, Packet, PacketBody, PacketPosition, PacketType,
     SequenceRange,
 };
-use crate::snapshot::CommandId;
 use crate::socket::Socket;
 
 #[derive(Debug, Error)]
@@ -85,9 +83,6 @@ where
     next_peer_sequence: Sequence,
     next_ack_sequence: Sequence,
 
-    buffer: FrameBuffer,
-    ack_list: AckList,
-
     /// List of lost packets from the peer.
     loss_list: LossList,
 
@@ -146,8 +141,6 @@ where
             next_local_sequence: Sequence::default(),
             next_ack_sequence: Sequence::default(),
             next_peer_sequence: Sequence::default(),
-            buffer: FrameBuffer::new(),
-            ack_list: AckList::default(),
             loss_list: LossList::new(),
             inflight_packets: InflightPackets::new(8192),
 
@@ -248,8 +241,6 @@ where
                 },
             );
         }
-
-        self.buffer.clear();
     }
 
     fn init_write(&mut self, state: ConnectionState) {
@@ -344,11 +335,6 @@ where
             #[cfg(debug_assertions)]
             self.debug_validator.push(header, &frame);
 
-            let msgid = self.ack_list.next_cmd_id;
-            self.ack_list.next_cmd_id.0 += 1;
-
-            self.ack_list.list.insert(msgid, header.sequence);
-
             // Convert back to local control frame.
             let control_frame =
                 header.control_frame - (self.peer_start_control_frame - self.start_control_frame);
@@ -401,8 +387,6 @@ where
 
                 self.next_peer_sequence = body.initial_sequence;
                 self.peer_start_control_frame = header.control_frame;
-
-                self.ack_list.ack_seq = self.next_peer_sequence;
 
                 return self
                     .send_packet(resp, ConnectionState::Handshake(HandshakeState::Agreement));
@@ -459,8 +443,6 @@ where
 
                 self.next_peer_sequence = body.initial_sequence;
                 self.peer_start_control_frame = header.control_frame;
-
-                self.ack_list.ack_seq = self.next_peer_sequence;
 
                 return self
                     .send_packet(resp, ConnectionState::Handshake(HandshakeState::Agreement));
@@ -607,7 +589,7 @@ where
                     flags: Flags::new(),
                 },
                 body: PacketBody::Ack(Ack {
-                    sequence: self.ack_list.ack_seq,
+                    sequence: self.next_ack_sequence.fetch_next(),
                     ack_sequence,
                 }),
             };
@@ -782,12 +764,8 @@ impl ConnectionHandle {
         self.tx.send(packet).await.unwrap();
     }
 
-    pub fn send_cmd(&self, cmd: DataMessage) -> CommandId {
-        let id = self.next_id.fetch_add(1, Ordering::Relaxed);
-        // cmd.id = Some(CommandId(id));
-
+    pub fn send_cmd(&self, cmd: DataMessage) {
         self.chan_out.try_send(cmd).unwrap();
-        CommandId(id)
     }
 }
 
@@ -850,13 +828,6 @@ impl Tick {
     fn is_fire(&self) -> bool {
         true
     }
-}
-
-#[derive(Debug, Default)]
-pub struct AckList {
-    list: HashMap<CommandId, Sequence>,
-    next_cmd_id: CommandId,
-    ack_seq: Sequence,
 }
 
 #[derive(Clone, Debug)]

@@ -26,16 +26,13 @@
 pub mod backlog;
 mod buffer;
 pub mod conn;
-pub mod entity;
 pub mod host;
 pub mod message;
 pub mod proto;
 mod request;
 pub mod sequence;
 mod serial;
-pub mod snapshot;
 pub mod socket;
-mod stream;
 mod validator;
 
 pub use socket::Socket;
