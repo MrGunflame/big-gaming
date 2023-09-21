@@ -3,7 +3,7 @@ mod entities;
 //pub mod interpolate;
 // mod prediction;
 mod socket;
-mod world;
+pub mod world;
 
 use std::collections::VecDeque;
 
