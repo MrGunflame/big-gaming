@@ -5,7 +5,7 @@ use std::net::SocketAddr;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
-use std::task::{ready, Context, Poll};
+use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 
 use futures::FutureExt;
@@ -341,7 +341,7 @@ where
                 header.control_frame - (self.peer_start_control_frame - self.start_control_frame);
 
             let msg = DataMessage::try_from_frame(frame, control_frame);
-            self.writer.send(Message::Data(msg));
+            self.writer.try_send(Message::Data(msg)).unwrap();
         }
 
         if let Some(nak) = nak {
@@ -410,7 +410,8 @@ where
                 self.state = ConnectionState::Connected;
 
                 self.writer
-                    .send(Message::Control(ControlMessage::Connected()));
+                    .try_send(Message::Control(ControlMessage::Connected()))
+                    .unwrap();
             }
             // Listen mode
             HandshakeState::Hello if M::IS_LISTEN => {
@@ -482,7 +483,8 @@ where
                 };
 
                 self.writer
-                    .send(Message::Control(ControlMessage::Connected()));
+                    .try_send(Message::Control(ControlMessage::Connected()))
+                    .unwrap();
 
                 return self.send_packet(resp, ConnectionState::Connected);
             }
@@ -644,7 +646,8 @@ where
         // If the connection active we need to notify that the player left.
         if self.state == ConnectionState::Connected {
             self.writer
-                .send(Message::Control(ControlMessage::Disconnected));
+                .try_send(Message::Control(ControlMessage::Disconnected))
+                .unwrap();
         }
 
         self.state = ConnectionState::Closed;
@@ -656,7 +659,8 @@ where
         // If the connection active we need to notify that the player left.
         if M::IS_LISTEN && self.state == ConnectionState::Connected {
             self.writer
-                .send(Message::Control(ControlMessage::Disconnected));
+                .try_send(Message::Control(ControlMessage::Disconnected))
+                .unwrap();
         }
 
         let packet = Packet {
