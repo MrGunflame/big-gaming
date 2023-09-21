@@ -568,43 +568,49 @@ where
     }
 
     fn poll_tick(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), ErrorKind>> {
-        let tick = ready!(self.interval.poll_tick(cx));
+        // `tokio::time::Interval::poll_tick` does no longer register the waker if
+        // the interval yields on the first call. We need to register the waker to
+        // advance the state machine correctly. We expect that at some point `poll_tick`
+        // should yield `Pending` and the waker is registered, but handling multiple ticks
+        // is not actually necessary.
+        // FIXME: It might make sense to replace this with a custom time driver.
+        while let Poll::Ready(tick) = self.interval.poll_tick(cx) {
+            if self.last_time.elapsed() >= Duration::from_secs(15) {
+                tracing::info!("closing connection due to timeout");
 
-        if self.last_time.elapsed() >= Duration::from_secs(15) {
-            tracing::info!("closing connection due to timeout");
+                self.shutdown();
+                return Poll::Ready(Err(ErrorKind::TimedOut));
+            }
 
-            self.shutdown();
-            return Poll::Ready(Err(ErrorKind::TimedOut));
+            // Send periodic ACKs while connected.
+            if self.state == ConnectionState::Connected && tick.is_ack() {
+                let ack_sequence = self.next_ack_sequence;
+                self.next_ack_sequence += 1;
+
+                let packet = Packet {
+                    header: Header {
+                        packet_type: PacketType::ACK,
+                        sequence: Sequence::new(0),
+                        control_frame: self.last_cf,
+                        flags: Flags::new(),
+                    },
+                    body: PacketBody::Ack(Ack {
+                        sequence: self.next_ack_sequence.fetch_next(),
+                        ack_sequence,
+                    }),
+                };
+
+                self.ack_time_list.insert(ack_sequence);
+
+                self.send_packet(packet, ConnectionState::Connected);
+                return Poll::Ready(Ok(()));
+            } else if self.state == ConnectionState::Connected && tick.is_fire() {
+                self.write_snapshot();
+                return Poll::Ready(Ok(()));
+            }
         }
 
-        // Send periodic ACKs while connected.
-        if self.state == ConnectionState::Connected && tick.is_ack() {
-            let ack_sequence = self.next_ack_sequence;
-            self.next_ack_sequence += 1;
-
-            let packet = Packet {
-                header: Header {
-                    packet_type: PacketType::ACK,
-                    sequence: Sequence::new(0),
-                    control_frame: self.last_cf,
-                    flags: Flags::new(),
-                },
-                body: PacketBody::Ack(Ack {
-                    sequence: self.next_ack_sequence.fetch_next(),
-                    ack_sequence,
-                }),
-            };
-
-            self.ack_time_list.insert(ack_sequence);
-
-            self.send_packet(packet, ConnectionState::Connected);
-            Poll::Ready(Ok(()))
-        } else if self.state == ConnectionState::Connected && tick.is_fire() {
-            self.write_snapshot();
-            Poll::Ready(Ok(()))
-        } else {
-            Poll::Pending
-        }
+        Poll::Pending
     }
 
     fn reject(&mut self, reason: HandshakeType) -> Poll<()> {
