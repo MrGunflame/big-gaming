@@ -10,6 +10,7 @@ use std::time::{Duration, Instant};
 
 use futures::FutureExt;
 use game_common::world::control_frame::ControlFrame;
+use parking_lot::Mutex;
 use thiserror::Error;
 use tokio::sync::mpsc;
 use tokio::time::MissedTickBehavior;
@@ -115,7 +116,6 @@ where
 {
     pub fn new(
         peer: SocketAddr,
-        writer: mpsc::Sender<Message>,
         socket: Arc<Socket>,
         control_frame: ControlFrame,
         const_delay: ControlFrame,
@@ -124,6 +124,7 @@ where
 
         let (tx, rx) = mpsc::channel(4096);
         let (out_tx, out_rx) = mpsc::channel(4096);
+        let (writer, reader) = mpsc::channel(4096);
 
         let mut conn = Self {
             id,
@@ -172,7 +173,7 @@ where
                 id,
                 tx,
                 chan_out: out_tx,
-                next_id: Arc::new(AtomicU32::new(0)),
+                rx: Mutex::new(reader),
             },
         )
     }
@@ -751,12 +752,12 @@ enum HandshakeState {
     Agreement,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct ConnectionHandle {
     pub id: ConnectionId,
     tx: mpsc::Sender<Packet>,
     chan_out: mpsc::Sender<DataMessage>,
-    next_id: Arc<AtomicU32>,
+    rx: Mutex<mpsc::Receiver<Message>>,
 }
 
 impl ConnectionHandle {
@@ -766,6 +767,11 @@ impl ConnectionHandle {
 
     pub fn send_cmd(&self, cmd: DataMessage) {
         self.chan_out.try_send(cmd).unwrap();
+    }
+
+    pub fn recv(&self) -> Option<Message> {
+        let mut r = self.rx.lock();
+        r.try_recv().ok()
     }
 }
 

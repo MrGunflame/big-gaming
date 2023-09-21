@@ -8,7 +8,6 @@ use game_common::entity::EntityId;
 use game_common::math::RotationExt;
 use game_common::world::entity::{Actor, Entity, EntityBody};
 use game_common::world::world::WorldViewMut;
-use game_net::snapshot::PlayerMove;
 use glam::{Quat, Vec3};
 
 pub fn spawn_player(view: &mut WorldViewMut<'_>) -> SpawnPlayer {
@@ -36,28 +35,28 @@ pub struct SpawnPlayer {
     pub transform: Transform,
 }
 
-pub fn move_player(event: PlayerMove, entity_id: EntityId, view: &mut WorldViewMut<'_>) {
-    let Some(mut entity) = view.get_mut(entity_id) else {
-        return;
-    };
+// pub fn move_player(event: PlayerMove, entity_id: EntityId, view: &mut WorldViewMut<'_>) {
+//     let Some(mut entity) = view.get_mut(entity_id) else {
+//         return;
+//     };
 
-    let speed = 1.0;
+//     let speed = 1.0;
 
-    // FIXME: This is not quite correct, if the entity moves along two axes it
-    // should not move along both with the speed as if it were moving into one
-    // direction. (i.e. Forward+Left moves the player less along both the Forward
-    // and left axes than just a Foward/Left command).
-    let dir = (event.bits.forward as u8 as f32) * -Vec3::Z
-        + (event.bits.back as u8 as f32) * Vec3::Z
-        + (event.bits.left as u8 as f32) * -Vec3::X
-        + (event.bits.right as u8 as f32) * Vec3::X;
+//     // FIXME: This is not quite correct, if the entity moves along two axes it
+//     // should not move along both with the speed as if it were moving into one
+//     // direction. (i.e. Forward+Left moves the player less along both the Forward
+//     // and left axes than just a Foward/Left command).
+//     let dir = (event.bits.forward as u8 as f32) * -Vec3::Z
+//         + (event.bits.back as u8 as f32) * Vec3::Z
+//         + (event.bits.left as u8 as f32) * -Vec3::X
+//         + (event.bits.right as u8 as f32) * Vec3::X;
 
-    let delta = extract_actor_rotation(entity.transform.rotation) * dir * speed;
-    dbg!(delta);
-    entity.set_translation(entity.transform.translation + delta);
+//     let delta = extract_actor_rotation(entity.transform.rotation) * dir * speed;
+//     dbg!(delta);
+//     entity.set_translation(entity.transform.translation + delta);
 
-    dbg!(entity.transform.translation);
-}
+//     dbg!(entity.transform.translation);
+// }
 
 pub fn extract_actor_rotation(rotation: Quat) -> Quat {
     let mut pt = rotation.dir_vec();

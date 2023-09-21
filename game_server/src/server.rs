@@ -105,13 +105,7 @@ async fn handle_packet(addr: SocketAddr, socket: Arc<Socket>, state: &State, pac
 
     let control_frame = *state.control_frame.lock();
 
-    let (conn, handle) = Connection::<Listen>::new(
-        addr,
-        state.queue.clone(),
-        socket,
-        control_frame,
-        ControlFrame(0),
-    );
+    let (conn, handle) = Connection::<Listen>::new(addr, socket, control_frame, ControlFrame(0));
 
     {
         let state = state.clone();
@@ -126,6 +120,7 @@ async fn handle_packet(addr: SocketAddr, socket: Arc<Socket>, state: &State, pac
 
     handle.send(packet).await;
 
+    let handle = Arc::new(handle);
     state.pool.insert(addr, handle.clone());
     state.conns.insert(handle);
 }

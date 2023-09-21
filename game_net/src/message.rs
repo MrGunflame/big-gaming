@@ -27,6 +27,9 @@ pub struct DataMessage {
 pub enum DataMessageBody {
     EntityCreate(EntityCreate),
     EntityDestroy(EntityDestroy),
+    EntityTranslate(EntityTranslate),
+    EntityRotate(EntityRotate),
+    SpawnHost(SpawnHost),
 }
 
 #[derive(Clone, Debug)]
@@ -42,6 +45,23 @@ pub struct EntityDestroy {
     pub entity: ServerEntity,
 }
 
+#[derive(Copy, Clone, Debug)]
+pub struct SpawnHost {
+    pub entity: ServerEntity,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct EntityTranslate {
+    pub entity: ServerEntity,
+    pub translation: Vec3,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct EntityRotate {
+    pub entity: ServerEntity,
+    pub rotation: Quat,
+}
+
 impl DataMessage {
     pub(crate) fn to_frame(self) -> Frame {
         match self.body {
@@ -54,6 +74,19 @@ impl DataMessage {
             DataMessageBody::EntityDestroy(msg) => {
                 Frame::EntityDestroy(proto::EntityDestroy { entity: msg.entity })
             }
+            DataMessageBody::SpawnHost(msg) => {
+                Frame::SpawnHost(proto::SpawnHost { entity: msg.entity })
+            }
+            DataMessageBody::EntityTranslate(msg) => {
+                Frame::EntityTranslate(proto::EntityTranslate {
+                    entity: msg.entity,
+                    translation: msg.translation,
+                })
+            }
+            DataMessageBody::EntityRotate(msg) => Frame::EntityRotate(proto::EntityRotate {
+                entity: msg.entity,
+                rotation: msg.rotation,
+            }),
         }
     }
 
@@ -72,6 +105,26 @@ impl DataMessage {
                 control_frame: cf,
                 body: DataMessageBody::EntityDestroy(EntityDestroy {
                     entity: frame.entity,
+                }),
+            },
+            Frame::SpawnHost(frame) => Self {
+                control_frame: cf,
+                body: DataMessageBody::SpawnHost(SpawnHost {
+                    entity: frame.entity,
+                }),
+            },
+            Frame::EntityTranslate(frame) => Self {
+                control_frame: cf,
+                body: DataMessageBody::EntityTranslate(EntityTranslate {
+                    entity: frame.entity,
+                    translation: frame.translation,
+                }),
+            },
+            Frame::EntityRotate(frame) => Self {
+                control_frame: cf,
+                body: DataMessageBody::EntityRotate(EntityRotate {
+                    entity: frame.entity,
+                    rotation: frame.rotation,
                 }),
             },
             _ => todo!(),

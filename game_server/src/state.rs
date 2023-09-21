@@ -6,7 +6,6 @@ use std::sync::Arc;
 use ahash::AHashMap;
 use game_common::world::control_frame::ControlFrame;
 use game_net::conn::ConnectionHandle;
-use game_net::snapshot::CommandQueue;
 use parking_lot::{Mutex, RwLock};
 
 use crate::config::Config;
@@ -22,7 +21,6 @@ impl State {
         State(Arc::new(StateInner {
             config,
             pool: ConnectionPool::new(),
-            queue: CommandQueue::default(),
             conns: Connections::default(),
             control_frame: Mutex::default(),
         }))
@@ -42,7 +40,7 @@ impl Deref for State {
 pub struct StateInner {
     pub config: Config,
     pub pool: ConnectionPool,
-    pub queue: CommandQueue,
+
     pub conns: Connections,
     // TODO: This can probably be AtomicU32, but needs to be consitent.
     pub control_frame: Mutex<ControlFrame>,
@@ -50,7 +48,7 @@ pub struct StateInner {
 
 #[derive(Debug)]
 pub struct ConnectionPool {
-    inner: RwLock<AHashMap<ConnectionKey, ConnectionHandle>>,
+    inner: RwLock<AHashMap<ConnectionKey, Arc<ConnectionHandle>>>,
 }
 
 impl ConnectionPool {
@@ -60,7 +58,7 @@ impl ConnectionPool {
         }
     }
 
-    pub fn insert(&self, key: ConnectionKey, handle: ConnectionHandle) {
+    pub fn insert(&self, key: ConnectionKey, handle: Arc<ConnectionHandle>) {
         let mut inner = self.inner.write();
         inner.insert(key, handle);
     }
@@ -73,7 +71,7 @@ impl ConnectionPool {
         inner.remove(key.borrow());
     }
 
-    pub fn get<K>(&self, key: K) -> Option<ConnectionHandle>
+    pub fn get<K>(&self, key: K) -> Option<Arc<ConnectionHandle>>
     where
         K: Borrow<ConnectionKey>,
     {
