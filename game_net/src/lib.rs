@@ -28,6 +28,7 @@ mod buffer;
 pub mod conn;
 pub mod entity;
 pub mod host;
+pub mod message;
 pub mod proto;
 mod request;
 pub mod sequence;

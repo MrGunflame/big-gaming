@@ -15,7 +15,7 @@ use tokio::sync::mpsc;
 use tokio::time::MissedTickBehavior;
 
 use crate::buffer::FrameBuffer;
-use crate::entity::{pack_command, unpack_command};
+use crate::message::{ControlMessage, DataMessage, Message};
 use crate::proto::ack::{Ack, AckAck, Nak};
 use crate::proto::handshake::{Handshake, HandshakeFlags, HandshakeType};
 use crate::proto::sequence::Sequence;
@@ -24,9 +24,7 @@ use crate::proto::{
     Decode, Encode, Flags, Frame, Header, Packet, PacketBody, PacketPosition, PacketType,
     SequenceRange,
 };
-use crate::snapshot::{
-    Command, CommandId, CommandQueue, Connected, ConnectionMessage, Response, Status,
-};
+use crate::snapshot::CommandId;
 use crate::socket::Socket;
 
 #[derive(Debug, Error)]
@@ -68,31 +66,26 @@ where
     M: ConnectionMode,
 {
     pub id: ConnectionId,
-    /// Input stream from the socket
     socket_stream: mpsc::Receiver<Packet>,
     socket: Arc<Socket>,
 
-    /// Direction (from self)
-    local_stream: mpsc::Receiver<ConnectionMessage>,
+    reader: mpsc::Receiver<DataMessage>,
+    writer: mpsc::Sender<Message>,
 
     state: ConnectionState,
-
-    queue: CommandQueue,
-    peer: SocketAddr,
-    frame_queue: FrameQueue,
-    write: Option<WriteRequest>,
+    peer_addr: SocketAddr,
     interval: TickInterval,
     last_time: Instant,
-    start_time: Instant,
+
+    packet_queue: VecDeque<Packet>,
+    frame_queue: VecDeque<(Frame, ControlFrame)>,
+    write: Option<WriteRequest>,
 
     next_local_sequence: Sequence,
     next_peer_sequence: Sequence,
-
     next_ack_sequence: Sequence,
 
-    commands: Commands,
     buffer: FrameBuffer,
-    write_queue: WriteQueue,
     ack_list: AckList,
 
     /// List of lost packets from the peer.
@@ -127,7 +120,7 @@ where
 {
     pub fn new(
         peer: SocketAddr,
-        queue: CommandQueue,
+        writer: mpsc::Sender<Message>,
         socket: Arc<Socket>,
         control_frame: ControlFrame,
         const_delay: ControlFrame,
@@ -142,22 +135,18 @@ where
             socket_stream: rx,
             socket,
             state: ConnectionState::Handshake(HandshakeState::Hello),
-            local_stream: out_rx,
-            queue,
-            peer,
-            frame_queue: FrameQueue::new(),
+            reader: out_rx,
+            writer,
+            packet_queue: VecDeque::new(),
+            frame_queue: VecDeque::new(),
+            peer_addr: peer,
             write: None,
             interval: TickInterval::new(),
             last_time: Instant::now(),
             next_local_sequence: Sequence::default(),
             next_ack_sequence: Sequence::default(),
-            start_time: Instant::now(),
             next_peer_sequence: Sequence::default(),
-            commands: Commands {
-                cmds: Default::default(),
-            },
             buffer: FrameBuffer::new(),
-            write_queue: WriteQueue::new(),
             ack_list: AckList::default(),
             loss_list: LossList::new(),
             inflight_packets: InflightPackets::new(8192),
@@ -197,14 +186,12 @@ where
 
     fn poll_read(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), ErrorKind>> {
         // Flush the send buffer before reading any packets.
-        if !self.write_queue.is_empty() {
+        if !self.packet_queue.is_empty() {
             self.init_write(self.state);
             return Poll::Ready(Ok(()));
         }
 
         while let Poll::Ready(packet) = self.socket_stream.poll_recv(cx) {
-            tracing::debug!("recv {:?}", packet);
-
             self.last_time = Instant::now();
 
             let Some(packet) = packet else {
@@ -225,46 +212,14 @@ where
             return Poll::Pending;
         }
 
-        while let Poll::Ready(msg) = self.local_stream.poll_recv(cx) {
+        while let Poll::Ready(msg) = self.reader.poll_recv(cx) {
             let Some(msg) = msg else {
                 return self.shutdown();
             };
 
-            match &msg.command {
-                // The game loop has processed the commands.
-                // We can now acknowledge that we have processed the commands.
-                Command::ReceivedCommands(ids) => {
-                    for resp in ids {
-                        let seq = self.ack_list.list.remove(&resp.id).unwrap();
-                        // The last sequence acknowledged by the game loop.
-                        if seq < self.ack_list.ack_seq {
-                            panic!(
-                                "ack sequence went backwards: {:?} < {:?}",
-                                seq, self.ack_list.ack_seq
-                            );
-                        }
-                        self.ack_list.ack_seq = seq;
-                    }
-
-                    self.last_cf = msg.control_frame;
-
-                    continue;
-                }
-                _ => (),
-            }
-
-            let msgid = msg.id.unwrap();
-
-            let frame = match pack_command(&msg.command) {
-                Some(frame) => frame,
-                None => {
-                    tracing::trace!("skipping command: {:?}", msg.command,);
-
-                    continue;
-                }
-            };
-
-            self.frame_queue.push(frame, msgid, msg.control_frame);
+            let cf = msg.control_frame;
+            let frame = msg.to_frame();
+            self.frame_queue.push_back((frame, cf));
         }
 
         Poll::Pending
@@ -273,8 +228,25 @@ where
     fn write_snapshot(&mut self) {
         // Merge FrameQueue into FrameBuffer, compact then send.
 
-        while let Some((frame, id, cf)) = self.frame_queue.pop() {
-            self.push_data_frame(&frame, id, cf);
+        while let Some((frame, cf)) = self.frame_queue.pop_front() {
+            // Track the last sequence. `fragment_frame` always calls the closure
+            // at least once; for solo commands we only need to track the single
+            // sequence, but for fragmented commands we track the last sequence
+            // of the stream.
+            let mut last_seq = Sequence::default();
+
+            fragment_frame(
+                &frame,
+                &mut self.next_local_sequence,
+                cf,
+                self.max_data_size,
+                |packet| {
+                    last_seq = packet.header.sequence;
+
+                    self.inflight_packets.insert(packet.clone());
+                    self.packet_queue.push_back(packet);
+                },
+            );
         }
 
         self.buffer.clear();
@@ -282,9 +254,9 @@ where
 
     fn init_write(&mut self, state: ConnectionState) {
         let socket = self.socket.clone();
-        let peer = self.peer;
+        let peer = self.peer_addr;
 
-        let packet = self.write_queue.pop().unwrap();
+        let packet = self.packet_queue.pop_front().unwrap();
 
         self.write = Some(WriteRequest {
             future: Box::pin(async move {
@@ -372,11 +344,6 @@ where
             #[cfg(debug_assertions)]
             self.debug_validator.push(header, &frame);
 
-            let Some(cmd) = unpack_command(frame) else {
-                tracing::debug!("failed to translate cmd");
-                continue;
-            };
-
             let msgid = self.ack_list.next_cmd_id;
             self.ack_list.next_cmd_id.0 += 1;
 
@@ -386,12 +353,8 @@ where
             let control_frame =
                 header.control_frame - (self.peer_start_control_frame - self.start_control_frame);
 
-            self.queue.push(ConnectionMessage {
-                id: Some(msgid),
-                conn: self.id,
-                control_frame,
-                command: cmd,
-            });
+            let msg = DataMessage::try_from_frame(frame, control_frame);
+            self.writer.send(Message::Data(msg));
         }
 
         if let Some(nak) = nak {
@@ -460,14 +423,9 @@ where
                 }
 
                 self.state = ConnectionState::Connected;
-                self.queue.push(ConnectionMessage {
-                    id: None,
-                    conn: self.id,
-                    control_frame: ControlFrame(0),
-                    command: Command::Connected(Connected {
-                        peer_delay: ControlFrame(body.const_delay.into()),
-                    }),
-                });
+
+                self.writer
+                    .send(Message::Control(ControlMessage::Connected()));
             }
             // Listen mode
             HandshakeState::Hello if M::IS_LISTEN => {
@@ -540,15 +498,8 @@ where
                     }),
                 };
 
-                // Signal the game that the player spawns.
-                self.queue.push(ConnectionMessage {
-                    id: None,
-                    conn: self.id,
-                    control_frame: ControlFrame(0),
-                    command: Command::Connected(Connected {
-                        peer_delay: ControlFrame(body.const_delay.into()),
-                    }),
-                });
+                self.writer
+                    .send(Message::Control(ControlMessage::Connected()));
 
                 return self.send_packet(resp, ConnectionState::Connected);
             }
@@ -566,26 +517,6 @@ where
 
     fn handle_ack(&mut self, header: Header, body: Ack) -> Poll<()> {
         let sequence = body.sequence;
-
-        let control_frame =
-            header.control_frame - (self.peer_start_control_frame - self.start_control_frame);
-
-        let ids = self.commands.remove(sequence);
-        if !ids.is_empty() {
-            self.queue.push(ConnectionMessage {
-                id: None,
-                conn: self.id,
-                control_frame,
-                command: Command::ReceivedCommands(
-                    ids.into_iter()
-                        .map(|id| Response {
-                            id,
-                            status: Status::Received,
-                        })
-                        .collect(),
-                ),
-            });
-        }
 
         // Respond with ACKACK
         let packet = Packet {
@@ -618,7 +549,7 @@ where
         // This is an inclusive range.
         while start <= end {
             if let Some(packet) = self.inflight_packets.get(start) {
-                self.write_queue.push(packet.clone());
+                self.packet_queue.push_back(packet.clone());
             }
 
             start += 1;
@@ -723,12 +654,8 @@ where
     fn abort(&mut self) -> Poll<Result<(), ErrorKind>> {
         // If the connection active we need to notify that the player left.
         if self.state == ConnectionState::Connected {
-            self.queue.push(ConnectionMessage {
-                id: None,
-                conn: self.id,
-                control_frame: ControlFrame(0),
-                command: Command::Disconnected,
-            });
+            self.writer
+                .send(Message::Control(ControlMessage::Disconnected));
         }
 
         self.state = ConnectionState::Closed;
@@ -739,12 +666,8 @@ where
     fn shutdown(&mut self) -> Poll<Result<(), ErrorKind>> {
         // If the connection active we need to notify that the player left.
         if M::IS_LISTEN && self.state == ConnectionState::Connected {
-            self.queue.push(ConnectionMessage {
-                id: None,
-                conn: self.id,
-                control_frame: ControlFrame(0),
-                command: Command::Disconnected,
-            });
+            self.writer
+                .send(Message::Control(ControlMessage::Disconnected));
         }
 
         let packet = Packet {
@@ -765,7 +688,7 @@ where
 
     fn send_packet(&mut self, packet: Packet, state: ConnectionState) -> Poll<()> {
         let socket = self.socket.clone();
-        let peer = self.peer;
+        let peer = self.peer_addr;
         self.write = Some(WriteRequest {
             future: Box::pin(async move {
                 let mut buf = Vec::with_capacity(1500);
@@ -778,29 +701,6 @@ where
         });
 
         Poll::Ready(())
-    }
-
-    fn push_data_frame(&mut self, frame: &Frame, id: CommandId, control_frame: ControlFrame) {
-        // Track the last sequence. `fragment_frame` always calls the closure
-        // at least once; for solo commands we only need to track the single
-        // sequence, but for fragmented commands we track the last sequence
-        // of the stream.
-        let mut last_seq = Sequence::default();
-
-        fragment_frame(
-            frame,
-            &mut self.next_local_sequence,
-            control_frame,
-            self.max_data_size,
-            |packet| {
-                last_seq = packet.header.sequence;
-
-                self.inflight_packets.insert(packet.clone());
-                self.write_queue.push(packet);
-            },
-        );
-
-        self.commands.insert(last_seq, id);
     }
 }
 
@@ -870,37 +770,10 @@ enum HandshakeState {
 }
 
 #[derive(Clone, Debug)]
-pub struct FrameQueue {
-    queue: VecDeque<(Frame, CommandId, ControlFrame)>,
-}
-
-impl FrameQueue {
-    pub fn new() -> Self {
-        Self {
-            queue: VecDeque::new(),
-        }
-    }
-
-    pub fn push(&mut self, frame: Frame, id: CommandId, cf: ControlFrame) {
-        self.queue.push_back((frame, id, cf));
-    }
-
-    pub fn pop(&mut self) -> Option<(Frame, CommandId, ControlFrame)> {
-        self.queue.pop_front()
-    }
-}
-
-impl Extend<(Frame, CommandId, ControlFrame)> for FrameQueue {
-    fn extend<T: IntoIterator<Item = (Frame, CommandId, ControlFrame)>>(&mut self, iter: T) {
-        self.queue.extend(iter);
-    }
-}
-
-#[derive(Clone, Debug)]
 pub struct ConnectionHandle {
     pub id: ConnectionId,
     tx: mpsc::Sender<Packet>,
-    chan_out: mpsc::Sender<ConnectionMessage>,
+    chan_out: mpsc::Sender<DataMessage>,
     next_id: Arc<AtomicU32>,
 }
 
@@ -909,9 +782,9 @@ impl ConnectionHandle {
         self.tx.send(packet).await.unwrap();
     }
 
-    pub fn send_cmd(&self, mut cmd: ConnectionMessage) -> CommandId {
+    pub fn send_cmd(&self, cmd: DataMessage) -> CommandId {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
-        cmd.id = Some(CommandId(id));
+        // cmd.id = Some(CommandId(id));
 
         self.chan_out.try_send(cmd).unwrap();
         CommandId(id)
@@ -976,65 +849,6 @@ impl Tick {
 
     fn is_fire(&self) -> bool {
         true
-    }
-}
-
-struct Commands {
-    cmds: HashMap<Sequence, Vec<CommandId>>,
-}
-
-impl Commands {
-    fn insert(&mut self, seq: Sequence, cmd: CommandId) {
-        self.cmds.entry(seq).or_default().push(cmd);
-    }
-
-    /// Remove all commands where sequence  <= `seq`.
-    fn remove(&mut self, seq: Sequence) -> Vec<CommandId> {
-        let mut out = Vec::new();
-
-        self.cmds.retain(|s, cmds| {
-            if seq >= *s {
-                out.extend(cmds.iter().copied());
-                false
-            } else {
-                true
-            }
-        });
-
-        out
-    }
-}
-
-struct WriteQueue {
-    packets: VecDeque<Packet>,
-}
-
-impl WriteQueue {
-    #[inline]
-    fn new() -> Self {
-        Self {
-            packets: VecDeque::new(),
-        }
-    }
-
-    #[inline]
-    fn len(&self) -> usize {
-        self.packets.len()
-    }
-
-    #[inline]
-    fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-
-    #[inline]
-    fn push(&mut self, packet: Packet) {
-        self.packets.push_back(packet);
-    }
-
-    #[inline]
-    fn pop(&mut self) -> Option<Packet> {
-        self.packets.pop_front()
     }
 }
 
