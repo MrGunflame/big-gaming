@@ -108,29 +108,29 @@ fn flush_command_queue(srv_state: &mut ServerState) {
         let mut state = conn.state().write();
 
         match msg {
-            Message::Control(ControlMessage::Connected()) => {}
+            Message::Control(ControlMessage::Connected()) => {
+                let res = spawn_player(&mut view);
+
+                state.entities.insert(res.id);
+
+                view.insert_streaming_source(
+                    res.id,
+                    StreamingSource {
+                        distance: srv_state.state.config.player_streaming_source_distance,
+                    },
+                );
+
+                // At the connection time the delay must be 0, meaning the player is spawned
+                // without delay.
+                debug_assert_eq!(state.peer_delay, ControlFrame(0));
+
+                state.host.entity = Some(res.id);
+                state.peer_delay = ControlFrame(0);
+                state.cells = Cells::new(CellId::from(res.transform.translation));
+            }
             Message::Control(ControlMessage::Disconnected) => {}
             Message::Data(msg) => match msg.body {
-                DataMessageBody::EntityCreate(msg) => {
-                    let res = spawn_player(&mut view);
-
-                    state.entities.insert(res.id);
-
-                    view.insert_streaming_source(
-                        res.id,
-                        StreamingSource {
-                            distance: srv_state.state.config.player_streaming_source_distance,
-                        },
-                    );
-
-                    // At the connection time the delay must be 0, meaning the player is spawned
-                    // without delay.
-                    debug_assert_eq!(state.peer_delay, ControlFrame(0));
-
-                    state.host.entity = Some(res.id);
-                    state.peer_delay = ControlFrame(0);
-                    state.cells = Cells::new(CellId::from(res.transform.translation));
-                }
+                DataMessageBody::EntityCreate(msg) => {}
                 DataMessageBody::EntityDestroy(msg) => {
                     if let Some(id) = state.host.entity {
                         if view.despawn(id).is_none() {
