@@ -5,16 +5,14 @@ use std::sync::{mpsc, Arc};
 use game_common::world::control_frame::ControlFrame;
 use game_net::conn::{Connect, Connection, ConnectionHandle};
 use game_net::proto::{Decode, Packet};
-use game_net::snapshot::{Command, CommandQueue, ConnectionMessage};
 use game_net::Socket;
 use tokio::runtime::{Builder, UnhandledPanic};
 
 pub fn spawn_conn(
-    queue: CommandQueue,
     addr: SocketAddr,
     control_frame: ControlFrame,
     const_delay: ControlFrame,
-) -> Result<ConnectionHandle, Box<dyn std::error::Error + Send + Sync + 'static>> {
+) -> Result<Arc<ConnectionHandle>, Box<dyn std::error::Error + Send + Sync + 'static>> {
     let (tx, rx) = mpsc::channel();
 
     std::thread::spawn(move || {
@@ -32,15 +30,12 @@ pub fn spawn_conn(
                     return;
                 }
             };
-            let (mut conn, handle) = Connection::<Connect>::new(
-                addr,
-                queue.clone(),
-                socket.clone(),
-                control_frame,
-                const_delay,
-            );
+            let (mut conn, handle) =
+                Connection::<Connect>::new(addr, socket.clone(), control_frame, const_delay);
 
             tracing::info!("connected");
+
+            let handle = Arc::new(handle);
 
             tx.send(Ok(handle.clone())).unwrap();
 
@@ -54,13 +49,6 @@ pub fn spawn_conn(
             }
 
             tracing::info!("disconnected");
-
-            queue.push(ConnectionMessage {
-                id: None,
-                conn: conn.id,
-                command: Command::Disconnected,
-                control_frame: ControlFrame(0),
-            });
         });
     });
 
@@ -69,7 +57,7 @@ pub fn spawn_conn(
 
 fn accept_loop(
     socket: Arc<Socket>,
-    handle: ConnectionHandle,
+    handle: Arc<ConnectionHandle>,
 ) -> impl Future<Output = Result<(), Box<dyn std::error::Error>>> {
     async move {
         loop {

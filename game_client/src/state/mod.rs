@@ -12,5 +12,6 @@ pub enum GameState {
     Connecting,
     /// Connection failed
     ConnectionFailure,
-    World,
+    /// Connected to game world.
+    GameWorld,
 }

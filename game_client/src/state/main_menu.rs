@@ -28,7 +28,7 @@ impl MainMenuState {
 
         renderer.entities.point_lights.insert(PointLight {
             transform: Transform {
-                translation: Vec3::new(0.0, 0.0, 0.0),
+                translation: Vec3::new(0.0, 1.0, 0.0),
                 ..Default::default()
             },
             color: Color::WHITE,
@@ -44,11 +44,11 @@ impl MainMenuState {
 
         //camera.transform.translation.x = 10.0;
         //camera.transform.translation.z = 1.0;
-        camera.transform.translation.y += 0.01;
+        camera.transform.translation.y += 0.001;
         camera.transform = camera.transform.looking_at(Vec3::ZERO, Vec3::Y);
 
         if camera.transform.translation.y > 2.1 {
-            // camera.transform.translation.y = 0.0;
+            camera.transform.translation.y = 0.0;
         }
     }
 }

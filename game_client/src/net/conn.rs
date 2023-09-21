@@ -1,32 +1,34 @@
+use std::collections::VecDeque;
 use std::net::ToSocketAddrs;
+use std::sync::Arc;
 use std::time::Duration;
 
-use ahash::HashMap;
 use game_common::entity::EntityId;
 use game_common::world::control_frame::ControlFrame;
 use game_common::world::world::WorldState;
 use game_core::counter::{Interval, IntervalImpl, UpdateCounter};
 use game_core::time::Time;
 use game_net::backlog::Backlog;
-use game_net::conn::{ConnectionHandle, ConnectionId};
-use game_net::snapshot::{Command, CommandId, CommandQueue, ConnectionMessage};
+use game_net::conn::ConnectionHandle;
+use game_net::message::{DataMessage, DataMessageBody};
 use game_tracing::world::WorldTrace;
 
 use crate::config::Config;
 use crate::net::socket::spawn_conn;
 
 use super::entities::Entities;
-use super::prediction::ClientPredictions;
+use super::flush_command_queue;
+//use super::prediction::ClientPredictions;
+use super::world::{apply_world_delta, CommandBuffer};
 
 #[derive(Debug)]
 pub struct ServerConnection<I> {
     pub world: WorldState,
 
-    pub handle: Option<ConnectionHandle>,
+    pub handle: Option<Arc<ConnectionHandle>>,
     //pub entities: EntityMap,
-    pub predictions: ClientPredictions,
+    //pub predictions: ClientPredictions,
     pub host: EntityId,
-    pub queue: CommandQueue,
 
     pub game_tick: GameTick<I>,
 
@@ -35,17 +37,16 @@ pub struct ServerConnection<I> {
 
     pub server_entities: Entities,
 
-    buffer: CommandBuffer,
-
     /// The previously rendered frame, `None` if not rendered yet.
     pub last_render_frame: Option<ControlFrame>,
 
     pub trace: WorldTrace,
     pub backlog: Backlog,
 
-    pub commands_in_frame: HashMap<ControlFrame, Vec<CommandId>>,
     pub metrics: Metrics,
     pub config: Config,
+
+    buffer: VecDeque<DataMessageBody>,
 }
 
 impl<I> ServerConnection<I> {
@@ -55,10 +56,7 @@ impl<I> ServerConnection<I> {
 
         Self {
             handle: None,
-            //entities: EntityMap::default(),
-            predictions: ClientPredictions::new(),
             host: EntityId::dangling(),
-            queue: CommandQueue::new(),
             game_tick: GameTick {
                 interval,
                 current_control_frame: ControlFrame(0),
@@ -67,57 +65,36 @@ impl<I> ServerConnection<I> {
             },
             interplation_frames: ControlFrame(config.network.interpolation_frames),
             server_entities: Entities::new(),
-            buffer: CommandBuffer::default(),
             last_render_frame: None,
             trace: WorldTrace::new(),
             world,
             backlog: Backlog::new(),
-            commands_in_frame: HashMap::default(),
             metrics: Metrics::default(),
             config: config.clone(),
+            buffer: VecDeque::new(),
         }
-    }
-
-    pub fn is_connected(&self) -> bool {
-        self.handle.is_some()
-    }
-
-    pub fn send(&mut self, cmd: Command) {
-        if !self.is_connected() {
-            tracing::warn!("attempted to send a command, but the peer is not connected");
-            return;
-        }
-
-        if !matches!(cmd, Command::ReceivedCommands(_)) {
-            self.metrics.commands_sent += 1;
-        }
-
-        self.buffer.push(cmd.clone());
     }
 
     pub fn connect<T>(&mut self, addr: T)
     where
         T: ToSocketAddrs,
     {
-        self.reset_queue();
-
         fn inner(
-            queue: CommandQueue,
             addr: impl ToSocketAddrs,
             cf: ControlFrame,
             const_delay: ControlFrame,
-        ) -> Result<ConnectionHandle, Box<dyn std::error::Error + Send + Sync + 'static>> {
+        ) -> Result<Arc<ConnectionHandle>, Box<dyn std::error::Error + Send + Sync + 'static>>
+        {
             // TODO: Use async API
             let addr = match addr.to_socket_addrs()?.nth(0) {
                 Some(addr) => addr,
                 None => panic!("empty dns result"),
             };
 
-            spawn_conn(queue, addr, cf, const_delay)
+            spawn_conn(addr, cf, const_delay)
         }
 
         match inner(
-            self.queue.clone(),
             addr,
             // Note that we always start on the "next" frame.
             // The first frame must be empty to bootstrap the
@@ -134,11 +111,24 @@ impl<I> ServerConnection<I> {
         }
     }
 
+    pub fn is_connected(&self) -> bool {
+        self.handle.is_some()
+    }
+
+    pub fn send(&mut self, body: DataMessageBody) {
+        if !self.is_connected() {
+            tracing::warn!("attempted to send a command, but the peer is not connected");
+            return;
+        }
+
+        self.buffer.push_back(body);
+    }
+
     pub fn shutdown(&mut self) {
         // The connection will automatically shut down after the last
         // handle was dropped.
         self.handle = None;
-        self.reset_queue();
+        self.buffer.clear();
     }
 
     /// Returns the current control frame.
@@ -162,32 +152,30 @@ impl<I> ServerConnection<I> {
         CurrentControlFrame { head, render }
     }
 
-    fn reset_queue(&mut self) {
-        self.queue = CommandQueue::new();
-    }
-
     fn flush_buffer(&mut self) {
         let Some(handle) = &self.handle else {
             tracing::error!("not connected");
             return;
         };
 
-        for cmd in std::mem::take(&mut self.buffer.buffer) {
-            let cmd_id = handle.send_cmd(ConnectionMessage {
-                id: None,
-                conn: ConnectionId(0),
-                control_frame: self.game_tick.current_control_frame,
-                command: cmd.clone(),
+        let control_frame = self.game_tick.current_control_frame;
+        for body in self.buffer.drain(..) {
+            handle.send_cmd(DataMessage {
+                control_frame,
+                body,
             });
-
-            if self.config.network.prediction {
-                if let Some(id) = cmd.id() {
-                    let entity_id = self.server_entities.get(id).unwrap();
-
-                    self.predictions.push(entity_id, cmd_id, cmd);
-                }
-            }
         }
+    }
+}
+
+impl<I> ServerConnection<I>
+where
+    I: IntervalImpl,
+{
+    pub fn update(&mut self, time: &Time, buffer: &mut CommandBuffer) {
+        tick_game(time, self);
+        flush_command_queue(self);
+        apply_world_delta(self, buffer);
     }
 }
 
@@ -259,50 +247,6 @@ pub struct CurrentControlFrame {
     pub head: ControlFrame,
     /// The snapshot of the world that should be rendered, `None` if not ready.
     pub render: Option<ControlFrame>,
-}
-
-#[derive(Clone, Debug, Default)]
-struct CommandBuffer {
-    buffer: Vec<Command>,
-}
-
-impl CommandBuffer {
-    fn push(&mut self, cmd: Command) {
-        if matches!(cmd, Command::Connected(_) | Command::Disconnected) {
-            panic!("Connected | Disconnected may not be pushed to CommandBuffer");
-        }
-
-        // Clear all previous commands.
-        match cmd {
-            Command::EntityTranslate(cmd) => {
-                for (index, c) in self.buffer.iter().enumerate() {
-                    if let Command::EntityTranslate(c) = c {
-                        if cmd.id != c.id {
-                            continue;
-                        }
-
-                        self.buffer.remove(index);
-                        break;
-                    }
-                }
-            }
-            Command::EntityRotate(cmd) => {
-                for (index, c) in self.buffer.iter().enumerate() {
-                    if let Command::EntityRotate(c) = c {
-                        if cmd.id != c.id {
-                            continue;
-                        }
-
-                        self.buffer.remove(index);
-                        break;
-                    }
-                }
-            }
-            _ => (),
-        }
-
-        self.buffer.push(cmd);
-    }
 }
 
 #[derive(Copy, Clone, Debug, Default)]

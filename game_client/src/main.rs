@@ -85,6 +85,7 @@ impl game_window::App for App {
             GameState::MainMenu(state) => {
                 state.update(&mut self.renderer);
             }
+            GameState::GameWorld => {}
             _ => todo!(),
         }
 

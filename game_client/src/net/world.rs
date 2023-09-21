@@ -61,16 +61,16 @@ pub fn apply_world_delta<I>(conn: &mut ServerConnection<I>, cmd_buffer: &mut Com
         handle_event(event.clone(), &mut buffer, conn, cmd_buffer, render_cf);
     }
 
-    if let Some(cmds) = conn.commands_in_frame.remove(&render_cf) {
-        let view = conn.world.at(0).unwrap();
+    // if let Some(cmds) = conn.commands_in_frame.remove(&render_cf) {
+    //     let view = conn.world.at(0).unwrap();
 
-        for cmd in cmds {
-            conn.predictions.validate_pre_removal(cmd, view);
-            conn.predictions.remove(cmd);
-        }
-    }
+    //     for cmd in cmds {
+    //         conn.predictions.validate_pre_removal(cmd, view);
+    //         conn.predictions.remove(cmd);
+    //     }
+    // }
 
-    apply_local_prediction(conn, render_cf, cmd_buffer);
+    // apply_local_prediction(conn, render_cf, cmd_buffer);
 
     for entity in buffer.entities {
         conn.trace.spawn(render_cf, entity.entity.clone());
@@ -159,9 +159,9 @@ fn handle_event<I>(
             conn.trace.despawn(render_cf, id);
         }
         EntityChange::Translate { id, translation } => {
-            if conn.predictions.get_translation(view, id).is_some() {
-                return;
-            }
+            // if conn.predictions.get_translation(view, id).is_some() {
+            //     return;
+            // }
 
             conn.trace.set_translation(render_cf, id, translation);
 
@@ -173,9 +173,9 @@ fn handle_event<I>(
             });
         }
         EntityChange::Rotate { id, rotation } => {
-            if conn.predictions.get_rotation(id).is_some() {
-                return;
-            }
+            // if conn.predictions.get_rotation(id).is_some() {
+            //     return;
+            // }
 
             conn.trace.set_rotation(render_cf, id, rotation);
 
@@ -364,24 +364,24 @@ impl Buffer {
     }
 }
 
-fn apply_local_prediction<I>(
-    conn: &ServerConnection<I>,
-    render_cf: ControlFrame,
-    buffer: &mut CommandBuffer,
-) {
-    let view = conn.world.get(render_cf).unwrap();
+// fn apply_local_prediction<I>(
+//     conn: &ServerConnection<I>,
+//     render_cf: ControlFrame,
+//     buffer: &mut CommandBuffer,
+// ) {
+//     let view = conn.world.get(render_cf).unwrap();
 
-    for entity in view.iter() {
-        if let Some(translation) = conn.predictions.get_translation(view, entity.id) {
-            buffer.push(Command::Translate {
-                entity: entity.id,
-                start: render_cf,
-                end: render_cf + 1,
-                dst: translation,
-            });
-        }
-    }
-}
+//     for entity in view.iter() {
+//         if let Some(translation) = conn.predictions.get_translation(view, entity.id) {
+//             buffer.push(Command::Translate {
+//                 entity: entity.id,
+//                 start: render_cf,
+//                 end: render_cf + 1,
+//                 dst: translation,
+//             });
+//         }
+//     }
+// }
 
 fn add_inventory_item(inventory: &mut Inventory, modules: &Modules, event: InventoryItemAdd) {
     let module = modules.get(event.item.0.module).unwrap();
