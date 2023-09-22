@@ -12,6 +12,8 @@ use game_core::counter::Interval;
 use game_core::hierarchy::Entity;
 use game_core::time::Time;
 use game_input::keyboard::KeyboardInput;
+use game_input::mouse::MouseMotion;
+use game_net::message::{DataMessageBody, EntityRotate};
 use game_render::camera::{Camera, Projection, RenderTarget};
 use game_render::color::Color;
 use game_render::entities::CameraId;
@@ -130,19 +132,32 @@ impl GameWorldState {
     pub fn handle_event(&mut self, event: WindowEvent) {
         match event {
             WindowEvent::MouseMotion(event) => {
-                dbg!(event);
-                if let Some(mut view) = self.conn.world.back_mut() {
-                    if let Some(mut host) = view.get_mut(self.conn.host) {
-                        let transform = update_rotation(host.transform, event);
-                        host.set_translation(transform.translation);
-                        host.set_rotation(transform.rotation);
-                    }
-                }
+                self.handle_mouse_motion(event);
             }
             WindowEvent::KeyboardInput(event) => {
                 self.handle_keyboard_input(event);
             }
             _ => (),
+        }
+    }
+
+    fn handle_mouse_motion(&mut self, event: MouseMotion) {
+        let Some(mut view) = self.conn.world.back_mut() else {
+            return;
+        };
+
+        if let Some(mut host) = view.get_mut(self.conn.host) {
+            let transform = update_rotation(host.transform, event);
+            host.set_translation(transform.translation);
+            host.set_rotation(transform.rotation);
+            drop(view);
+
+            let entity = self.conn.server_entities.get(self.conn.host).unwrap();
+
+            self.conn.send(DataMessageBody::EntityRotate(EntityRotate {
+                entity,
+                rotation: transform.rotation,
+            }));
         }
     }
 
