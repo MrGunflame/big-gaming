@@ -3,18 +3,22 @@ pub mod movement;
 
 use std::net::ToSocketAddrs;
 
+use ahash::{HashMap, HashSet};
 use game_common::components::actor::ActorProperties;
 use game_common::components::transform::Transform;
+use game_common::entity::EntityId;
 use game_common::world::entity::EntityBody;
 use game_core::counter::Interval;
+use game_core::hierarchy::Entity;
 use game_core::time::Time;
+use game_input::keyboard::KeyboardInput;
 use game_render::camera::{Camera, Projection, RenderTarget};
 use game_render::color::Color;
 use game_render::entities::CameraId;
 use game_render::light::DirectionalLight;
 use game_render::Renderer;
-use game_scene::Scenes;
-use game_window::events::WindowEvent;
+use game_scene::{SceneId, Scenes};
+use game_window::events::{VirtualKeyCode, WindowEvent};
 use game_window::windows::WindowId;
 use glam::Vec3;
 
@@ -35,6 +39,7 @@ pub struct GameWorldState {
     camera_controller: CameraController,
     is_init: bool,
     primary_camera: Option<CameraId>,
+    entities: HashMap<EntityId, SceneId>,
 }
 
 impl GameWorldState {
@@ -47,6 +52,7 @@ impl GameWorldState {
             camera_controller: CameraController::new(),
             is_init: false,
             primary_camera: None,
+            entities: HashMap::default(),
         }
     }
 
@@ -83,7 +89,22 @@ impl GameWorldState {
 
         while let Some(cmd) = buf.pop() {
             match cmd {
-                Command::Spawn(entity) => spawn_entity(renderer, scenes, entity),
+                Command::Spawn(entity) => {
+                    let eid = entity.entity.id;
+                    let id = spawn_entity(renderer, scenes, entity);
+                    self.entities.insert(eid, id);
+                }
+                Command::Translate {
+                    entity,
+                    start,
+                    end,
+                    dst,
+                } => {
+                    let id = self.entities.get(&entity).unwrap();
+                    let mut transform = scenes.get_transform(*id).unwrap();
+                    transform.translation = dst;
+                    scenes.set_transform(*id, transform);
+                }
                 _ => todo!(),
             }
         }
@@ -118,15 +139,25 @@ impl GameWorldState {
                     }
                 }
             }
+            WindowEvent::KeyboardInput(event) => {
+                self.handle_keyboard_input(event);
+            }
+            _ => (),
+        }
+    }
+
+    fn handle_keyboard_input(&mut self, event: KeyboardInput) {
+        match event.key_code {
+            Some(VirtualKeyCode::Escape) => {}
             _ => (),
         }
     }
 }
 
-fn spawn_entity(renderer: &mut Renderer, scenes: &mut Scenes, entity: DelayedEntity) {
+fn spawn_entity(renderer: &mut Renderer, scenes: &mut Scenes, entity: DelayedEntity) -> SceneId {
     match entity.entity.body {
         EntityBody::Terrain(terrain) => {
-            spawn_terrain(scenes, renderer, &terrain.mesh, entity.entity.transform);
+            spawn_terrain(scenes, renderer, &terrain.mesh, entity.entity.transform)
         }
         EntityBody::Object(object) => spawn_object(
             scenes,

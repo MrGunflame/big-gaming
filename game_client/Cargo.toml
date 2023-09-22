@@ -12,6 +12,7 @@ game_net = { version = "0.1.0", path = "../game_net" }
 game_render = { version = "0.1.0", path = "../game_render" }
 game_window = { version = "0.1.0", path = "../game_window" }
 game_scene = { version = "0.1.0", path = "../game_scene" }
+game_input = { version = "0.1.0", path = "../game_input" }
 game_tracing = { version = "0.1.0", path = "../game_tracing" }
 
 ahash = "0.8.2"

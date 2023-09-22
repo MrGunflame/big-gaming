@@ -5,7 +5,7 @@ use game_common::world::CELL_SIZE_UINT;
 use game_render::mesh::{Indices, Mesh};
 use game_render::pbr::PbrMaterial;
 use game_render::Renderer;
-use game_scene::{Node, Scene, Scenes};
+use game_scene::{Node, Scene, SceneId, Scenes};
 use game_tracing::trace_span;
 use glam::{UVec2, Vec3};
 
@@ -19,7 +19,7 @@ pub fn spawn_terrain(
     renderer: &mut Renderer,
     terrain: &TerrainMesh,
     transform: Transform,
-) {
+) -> SceneId {
     let _span = trace_span!("spawn_terrain").entered();
 
     let mesh = build_mesh(terrain);
@@ -34,7 +34,7 @@ pub fn spawn_terrain(
             transform: Transform::default(),
         }],
         transform,
-    });
+    })
 }
 
 fn build_mesh(terrain: &TerrainMesh) -> Mesh {
