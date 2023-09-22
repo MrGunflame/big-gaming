@@ -2,6 +2,7 @@
 #![deny(unused_crate_dependencies)]
 
 mod config;
+mod entities;
 mod net;
 mod state;
 mod utils;
@@ -32,7 +33,8 @@ struct Args {
 }
 
 fn main() {
-    logger::init();
+    // logger::init();
+    game_tracing::init();
 
     let args = Args::parse();
 
@@ -95,7 +97,12 @@ impl game_window::App for App {
                 state.update(&mut self.renderer);
             }
             GameState::GameWorld(state) => {
-                state.update(&mut self.renderer, self.window_id, &self.time);
+                state.update(
+                    &mut self.renderer,
+                    &mut self.scenes,
+                    self.window_id,
+                    &self.time,
+                );
             }
             _ => todo!(),
         }
@@ -135,6 +142,11 @@ impl game_window::App for App {
             WindowEvent::MouseWheel(event) => {}
             WindowEvent::MouseButtonInput(event) => {}
             WindowEvent::MouseMotion(event) => {}
+        }
+
+        match &mut self.state {
+            GameState::GameWorld(state) => state.handle_event(event),
+            _ => (),
         }
     }
 }

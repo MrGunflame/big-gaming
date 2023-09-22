@@ -1,56 +1,40 @@
-use bevy_ecs::prelude::{Component, Entity};
-use bevy_ecs::system::{Commands, Query, ResMut};
-use game_asset::Assets;
 use game_common::components::transform::Transform;
 use game_common::world::entity::Terrain;
 use game_common::world::terrain::{Projection, TerrainMesh};
 use game_common::world::CELL_SIZE_UINT;
 use game_render::mesh::{Indices, Mesh};
 use game_render::pbr::PbrMaterial;
+use game_render::Renderer;
+use game_scene::{Node, Scene, Scenes};
+use game_tracing::trace_span;
 use glam::{UVec2, Vec3};
 
-#[derive(Clone, Debug, Component)]
+#[derive(Clone, Debug)]
 pub struct LoadTerrain {
     pub terrain: Terrain,
 }
 
-pub fn load_terrain(
-    mut commands: Commands,
-    entities: Query<(Entity, &LoadTerrain)>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<PbrMaterial>>,
+pub fn spawn_terrain(
+    scenes: &mut Scenes,
+    renderer: &mut Renderer,
+    terrain: &TerrainMesh,
+    transform: Transform,
 ) {
-    for (entity, terrain) in &entities {
-        let translation = terrain.terrain.mesh.cell.min();
+    let _span = trace_span!("spawn_terrain").entered();
 
-        tracing::trace!("spawning terrain at {:?}", translation);
+    let mesh = build_mesh(terrain);
+    let mesh = renderer.meshes.insert(mesh);
 
-        let mesh = build_mesh(&terrain.terrain.mesh);
+    let material = renderer.materials.insert(PbrMaterial::default());
 
-        let material = PbrMaterial {
-            ..Default::default()
-        };
-
-        commands
-            .entity(entity)
-            .insert(Transform {
-                translation,
-                ..Default::default()
-            })
-            .insert(PbrBundle {
-                mesh: meshes.insert(mesh),
-                material: materials.insert(material),
-                transform: TransformBundle {
-                    transform: Transform {
-                        translation,
-                        ..Default::default()
-                    },
-                    ..Default::default()
-                },
-            });
-
-        commands.entity(entity).remove::<LoadTerrain>();
-    }
+    scenes.insert(Scene {
+        nodes: vec![Node {
+            mesh,
+            material,
+            transform: Transform::default(),
+        }],
+        transform,
+    });
 }
 
 fn build_mesh(terrain: &TerrainMesh) -> Mesh {

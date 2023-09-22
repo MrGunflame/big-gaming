@@ -125,6 +125,7 @@ impl<I> ServerConnection<I> {
     }
 
     pub fn shutdown(&mut self) {
+        dbg!("shutdown");
         // The connection will automatically shut down after the last
         // handle was dropped.
         self.handle = None;

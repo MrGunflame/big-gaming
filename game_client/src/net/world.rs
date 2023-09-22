@@ -312,9 +312,9 @@ fn spawn_entity(entity: DelayedEntity) -> () {
 
 #[derive(Clone, Debug)]
 pub struct DelayedEntity {
-    entity: Entity,
-    host: bool,
-    inventory: Inventory,
+    pub entity: Entity,
+    pub host: bool,
+    pub inventory: Inventory,
 }
 
 impl From<Entity> for DelayedEntity {
