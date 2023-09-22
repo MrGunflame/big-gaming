@@ -134,11 +134,11 @@ impl Renderer {
     pub fn resize(&mut self, id: WindowId, size: UVec2) {
         self.backlog.push_back(Event::ResizeSurface(id, size));
 
-        for cam in self.entities.cameras.values_mut() {
-            if cam.target == RenderTarget::Window(id) {
-                cam.update_aspect_ratio(size);
+        self.entities.cameras.for_each_mut(|_, mut camera| {
+            if camera.target == RenderTarget::Window(id) {
+                camera.update_aspect_ratio(size);
             }
-        }
+        });
     }
 
     pub fn destroy(&mut self, id: WindowId) {
