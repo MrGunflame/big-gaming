@@ -47,12 +47,26 @@ impl<K: Key, V: WithEvent<K> + Copy> EntityManager<K, V> {
         self.events.push(V::destroy(id));
     }
 
-    pub fn values_mut(&mut self) -> impl Iterator<Item = &mut V> {
-        self.entities.values_mut()
-    }
-
     pub fn values(&self) -> impl Iterator<Item = &V> {
         self.entities.values()
+    }
+
+    // Provide this instead of `iter_mut` iterator, because it cannot be implemented
+    // soundly with the current event system.
+    pub(crate) fn for_each_mut<F>(&mut self, mut f: F)
+    where
+        F: FnMut(K, EntityMut<'_, K, V>),
+    {
+        for (key, val) in self.entities.iter_mut() {
+            f(
+                key,
+                EntityMut {
+                    id: key,
+                    entity: val,
+                    events: &mut self.events,
+                },
+            );
+        }
     }
 }
 
