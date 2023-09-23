@@ -113,6 +113,7 @@ pub struct Window {
 
 #[derive(Clone, Debug)]
 pub struct WindowState {
+    pub(crate) id: WindowId,
     // Note: It is important that the window handle itself sits
     // behind an Arc and is not immediately dropped once the window
     // component is despawned. Rendering surfaces require the handle
@@ -123,6 +124,11 @@ pub struct WindowState {
 }
 
 impl WindowState {
+    #[inline]
+    pub fn id(&self) -> WindowId {
+        self.id
+    }
+
     pub fn inner_size(&self) -> UVec2 {
         let size = self.inner.inner_size();
         UVec2 {

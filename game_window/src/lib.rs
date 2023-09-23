@@ -144,7 +144,9 @@ where
 
     event_loop.run(move |event, event_loop, control_flow| {
         match event {
-            Event::NewEvents(start) => {}
+            Event::NewEvents(start) => {
+                compat.set_position(cursor.position());
+            }
             Event::WindowEvent { window_id, event } => match event {
                 WindowEvent::Resized(size) => {
                     let window = *map.windows.get(&window_id).unwrap();
@@ -414,6 +416,7 @@ where
 
                     let mut windows = windows.windows.write();
                     windows.get_mut(id.0).as_mut().unwrap().state = Some(WindowState {
+                        id,
                         inner: Arc::new(window),
                         backend,
                     });

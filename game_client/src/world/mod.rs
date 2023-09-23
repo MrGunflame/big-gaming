@@ -20,8 +20,9 @@ use game_render::entities::CameraId;
 use game_render::light::DirectionalLight;
 use game_render::Renderer;
 use game_scene::{SceneId, Scenes};
+use game_window::cursor::{Cursor, CursorGrabMode};
 use game_window::events::{VirtualKeyCode, WindowEvent};
-use game_window::windows::WindowId;
+use game_window::windows::{WindowId, WindowState};
 use glam::Vec3;
 
 use crate::config::Config;
@@ -46,7 +47,15 @@ pub struct GameWorldState {
 }
 
 impl GameWorldState {
-    pub fn new(config: &Config, addr: impl ToSocketAddrs, modules: Modules) -> Self {
+    pub fn new(
+        config: &Config,
+        addr: impl ToSocketAddrs,
+        modules: Modules,
+        cursor: &Cursor,
+    ) -> Self {
+        cursor.lock();
+        cursor.set_visible(false);
+
         let mut conn = ServerConnection::new(config);
         conn.connect(addr);
 
@@ -64,7 +73,7 @@ impl GameWorldState {
         &mut self,
         renderer: &mut Renderer,
         scenes: &mut Scenes,
-        window: WindowId,
+        window: WindowState,
         time: &Time,
     ) {
         if !self.is_init {
@@ -73,7 +82,7 @@ impl GameWorldState {
             let camera = Camera {
                 transform: Transform::from_translation(Vec3::new(0.0, 1.0, 0.0)),
                 projection: Projection::default(),
-                target: RenderTarget::Window(window),
+                target: RenderTarget::Window(window.id()),
             };
 
             self.primary_camera = Some(renderer.entities.cameras.insert(camera));
@@ -144,13 +153,13 @@ impl GameWorldState {
         }
     }
 
-    pub fn handle_event(&mut self, scenes: &mut Scenes, event: WindowEvent) {
+    pub fn handle_event(&mut self, scenes: &mut Scenes, event: WindowEvent, cursor: &Cursor) {
         match event {
             WindowEvent::MouseMotion(event) => {
                 self.handle_mouse_motion(scenes, event);
             }
             WindowEvent::KeyboardInput(event) => {
-                self.handle_keyboard_input(scenes, event);
+                self.handle_keyboard_input(scenes, event, cursor);
             }
             _ => (),
         }
@@ -170,9 +179,24 @@ impl GameWorldState {
         }
     }
 
-    fn handle_keyboard_input(&mut self, scenes: &mut Scenes, event: KeyboardInput) {
+    fn handle_keyboard_input(
+        &mut self,
+        scenes: &mut Scenes,
+        event: KeyboardInput,
+        cursor: &Cursor,
+    ) {
         match event.key_code {
-            Some(VirtualKeyCode::Escape) => {}
+            Some(VirtualKeyCode::Escape) => {
+                if event.state.is_pressed() {
+                    if cursor.is_locked() {
+                        cursor.unlock();
+                        cursor.set_visible(true);
+                    } else {
+                        cursor.lock();
+                        cursor.set_visible(false);
+                    }
+                }
+            }
             // FIXME: Temporary, move translation to scripts instead.
             Some(VirtualKeyCode::W) => self.update_translation(scenes, -Vec3::Z),
             Some(VirtualKeyCode::S) => self.update_translation(scenes, Vec3::Z),

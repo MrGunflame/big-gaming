@@ -8,6 +8,8 @@ mod state;
 mod utils;
 mod world;
 
+use std::sync::Arc;
+
 use clap::Parser;
 use config::Config;
 use game_core::counter::Interval;
@@ -15,6 +17,7 @@ use game_core::logger::{self};
 use game_core::time::Time;
 use game_render::Renderer;
 use game_scene::Scenes;
+use game_window::cursor::Cursor;
 use game_window::events::WindowEvent;
 use game_window::windows::{WindowBuilder, WindowId, Windows};
 use game_window::WindowManager;
@@ -55,8 +58,10 @@ fn main() {
 
     let mut state = GameState::Startup;
 
+    let cursor = wm.cursor().clone();
+
     if let Some(addr) = args.connect {
-        state = GameState::GameWorld(GameWorldState::new(&config, addr, res.modules));
+        state = GameState::GameWorld(GameWorldState::new(&config, addr, res.modules, &cursor));
     }
 
     let app = App {
@@ -66,6 +71,7 @@ fn main() {
         state,
         scenes: Scenes::new(),
         time: Time::new(),
+        cursor: cursor,
     };
 
     wm.run(app);
@@ -79,11 +85,14 @@ pub struct App {
     windows: Windows,
     scenes: Scenes,
     time: Time,
+    cursor: Arc<Cursor>,
 }
 
 impl game_window::App for App {
     fn update(&mut self) {
         self.time.update();
+
+        let window = self.windows.state(self.window_id).unwrap();
 
         match &mut self.state {
             GameState::Startup => {
@@ -97,12 +106,7 @@ impl game_window::App for App {
                 state.update(&mut self.renderer);
             }
             GameState::GameWorld(state) => {
-                state.update(
-                    &mut self.renderer,
-                    &mut self.scenes,
-                    self.window_id,
-                    &self.time,
-                );
+                state.update(&mut self.renderer, &mut self.scenes, window, &self.time);
             }
             _ => todo!(),
         }
@@ -145,7 +149,9 @@ impl game_window::App for App {
         }
 
         match &mut self.state {
-            GameState::GameWorld(state) => state.handle_event(&mut self.scenes, event),
+            GameState::GameWorld(state) => {
+                state.handle_event(&mut self.scenes, event, &self.cursor)
+            }
             _ => (),
         }
     }
