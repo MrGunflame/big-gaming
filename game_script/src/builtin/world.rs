@@ -2,6 +2,7 @@ use game_common::components::components::Component;
 use game_common::entity::EntityId;
 use game_common::record::RecordReference;
 use game_wasm::raw::world::Entity;
+use glam::{Quat, Vec3};
 use wasmtime::{Caller, Error, Result};
 
 use crate::abi::{FromAbi, ToAbi};
@@ -177,4 +178,59 @@ pub fn world_entity_component_remove(
     } else {
         Ok(0)
     }
+}
+
+pub fn world_entity_set_translation(
+    mut caller: Caller<'_, State<'_, '_>>,
+    entity_id: u64,
+    x: f32,
+    y: f32,
+    z: f32,
+) -> Result<u32> {
+    tracing::trace!(
+        "world_entity_set_translation(entity_id = {}, x = {}, y = {}, z = {})",
+        entity_id,
+        x,
+        y,
+        z
+    );
+
+    let entity_id = EntityId::from_raw(entity_id);
+    let translation = Vec3::new(x, y, z);
+
+    let Some(mut entity) = caller.data_mut().world.get_mut(entity_id) else {
+        return Ok(ERROR_NO_ENTITY);
+    };
+
+    entity.set_translation(translation);
+    Ok(0)
+}
+
+pub fn world_entity_set_rotation(
+    mut caller: Caller<'_, State<'_, '_>>,
+    entity_id: u64,
+    x: f32,
+    y: f32,
+    z: f32,
+    w: f32,
+) -> Result<u32> {
+    tracing::trace!(
+        "world_entity_set_rotation(entity_id = {}, x = {}, y = {}, z = {}, w = {}",
+        entity_id,
+        x,
+        y,
+        z,
+        w
+    );
+
+    let entity_id = EntityId::from_raw(entity_id);
+    let rotation = Quat::from_xyzw(x, y, z, w);
+    assert!(rotation.is_normalized());
+
+    let Some(mut entity) = caller.data_mut().world.get_mut(entity_id) else {
+        return Ok(ERROR_NO_ENTITY);
+    };
+
+    entity.set_rotation(rotation);
+    Ok(0)
 }
