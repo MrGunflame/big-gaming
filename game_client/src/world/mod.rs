@@ -150,7 +150,7 @@ impl GameWorldState {
                 self.handle_mouse_motion(scenes, event);
             }
             WindowEvent::KeyboardInput(event) => {
-                self.handle_keyboard_input(event);
+                self.handle_keyboard_input(scenes, event);
             }
             _ => (),
         }
@@ -170,35 +170,30 @@ impl GameWorldState {
         }
     }
 
-    fn handle_keyboard_input(&mut self, event: KeyboardInput) {
+    fn handle_keyboard_input(&mut self, scenes: &mut Scenes, event: KeyboardInput) {
         match event.key_code {
             Some(VirtualKeyCode::Escape) => {}
             // FIXME: Temporary, move translation to scripts instead.
-            Some(VirtualKeyCode::W) => self.update_translation(-Vec3::Z),
-            Some(VirtualKeyCode::S) => self.update_translation(Vec3::Z),
-            Some(VirtualKeyCode::A) => self.update_translation(-Vec3::X),
-            Some(VirtualKeyCode::D) => self.update_translation(Vec3::X),
+            Some(VirtualKeyCode::W) => self.update_translation(scenes, -Vec3::Z),
+            Some(VirtualKeyCode::S) => self.update_translation(scenes, Vec3::Z),
+            Some(VirtualKeyCode::A) => self.update_translation(scenes, -Vec3::X),
+            Some(VirtualKeyCode::D) => self.update_translation(scenes, Vec3::X),
             _ => (),
         }
     }
 
-    fn update_translation(&mut self, dir: Vec3) {
-        let Some(mut view) = self.conn.world.back_mut() else {
-            return;
-        };
+    fn update_translation(&mut self, scenes: &mut Scenes, dir: Vec3) {
+        if let Some(id) = self.entities.get(&self.conn.host) {
+            if let Some(mut transform) = scenes.get_transform(*id) {
+                transform.translation += transform.rotation * dir * 0.01;
 
-        if let Some(mut host) = view.get_mut(self.conn.host) {
-            let mut transform = host.transform;
-            transform.translation += transform.rotation * dir * 0.01;
-            host.set_translation(transform.translation);
-            drop(view);
-
-            let entity = self.conn.server_entities.get(self.conn.host).unwrap();
-            self.conn
-                .send(DataMessageBody::EntityTranslate(EntityTranslate {
-                    entity,
-                    translation: transform.translation,
-                }));
+                let entity = self.conn.server_entities.get(self.conn.host).unwrap();
+                self.conn
+                    .send(DataMessageBody::EntityTranslate(EntityTranslate {
+                        entity,
+                        translation: transform.translation,
+                    }));
+            }
         }
     }
 }
