@@ -56,7 +56,7 @@ fn main() {
     let mut state = GameState::Startup;
 
     if let Some(addr) = args.connect {
-        state = GameState::GameWorld(GameWorldState::new(&config, addr));
+        state = GameState::GameWorld(GameWorldState::new(&config, addr, res.modules));
     }
 
     let app = App {

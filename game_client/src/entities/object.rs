@@ -1,5 +1,6 @@
 use game_common::components::object::ObjectId;
 use game_common::components::transform::Transform;
+use game_core::modules::Modules;
 use game_render::Renderer;
 use game_scene::{SceneId, Scenes};
 use game_tracing::trace_span;
@@ -10,9 +11,14 @@ pub struct SpawnObject {
     pub transform: Transform,
 }
 
-pub fn spawn_object(scenes: &mut Scenes, renderer: &mut Renderer, object: SpawnObject) -> SceneId {
-    let _span = trace_span!("spawn_object").entered();
+impl SpawnObject {
+    pub fn spawn(self, scenes: &mut Scenes, modules: &Modules) -> Option<SceneId> {
+        let _span = trace_span!("spawn_object").entered();
 
-    let id = scenes.load("../../sponza.glb");
-    id
+        let module = modules.get(self.id.0.module)?;
+        let record = module.records.get(self.id.0.record)?;
+        let body = record.body.as_object()?;
+
+        Some(scenes.load(&body.uri))
+    }
 }

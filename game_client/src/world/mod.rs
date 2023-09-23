@@ -9,6 +9,7 @@ use game_common::components::transform::Transform;
 use game_common::entity::EntityId;
 use game_common::world::entity::EntityBody;
 use game_core::counter::Interval;
+use game_core::modules::Modules;
 use game_core::time::Time;
 use game_input::keyboard::KeyboardInput;
 use game_input::mouse::MouseMotion;
@@ -25,7 +26,7 @@ use glam::Vec3;
 
 use crate::config::Config;
 use crate::entities::actor::spawn_actor;
-use crate::entities::object::{spawn_object, SpawnObject};
+use crate::entities::object::SpawnObject;
 use crate::entities::terrain::spawn_terrain;
 use crate::net::world::{Command, CommandBuffer, DelayedEntity};
 use crate::net::ServerConnection;
@@ -41,10 +42,11 @@ pub struct GameWorldState {
     is_init: bool,
     primary_camera: Option<CameraId>,
     entities: HashMap<EntityId, SceneId>,
+    modules: Modules,
 }
 
 impl GameWorldState {
-    pub fn new(config: &Config, addr: impl ToSocketAddrs) -> Self {
+    pub fn new(config: &Config, addr: impl ToSocketAddrs, modules: Modules) -> Self {
         let mut conn = ServerConnection::new(config);
         conn.connect(addr);
 
@@ -54,6 +56,7 @@ impl GameWorldState {
             is_init: false,
             primary_camera: None,
             entities: HashMap::default(),
+            modules,
         }
     }
 
@@ -92,8 +95,9 @@ impl GameWorldState {
             match cmd {
                 Command::Spawn(entity) => {
                     let eid = entity.entity.id;
-                    let id = spawn_entity(renderer, scenes, entity);
-                    self.entities.insert(eid, id);
+                    if let Some(id) = spawn_entity(renderer, scenes, entity, &self.modules) {
+                        self.entities.insert(eid, id);
+                    }
                 }
                 Command::Translate {
                     entity,
@@ -204,20 +208,26 @@ impl GameWorldState {
     }
 }
 
-fn spawn_entity(renderer: &mut Renderer, scenes: &mut Scenes, entity: DelayedEntity) -> SceneId {
+fn spawn_entity(
+    renderer: &mut Renderer,
+    scenes: &mut Scenes,
+    entity: DelayedEntity,
+    modules: &Modules,
+) -> Option<SceneId> {
     match entity.entity.body {
-        EntityBody::Terrain(terrain) => {
-            spawn_terrain(scenes, renderer, &terrain.mesh, entity.entity.transform)
-        }
-        EntityBody::Object(object) => spawn_object(
+        EntityBody::Terrain(terrain) => Some(spawn_terrain(
             scenes,
             renderer,
-            SpawnObject {
-                id: object.id,
-                transform: entity.entity.transform,
-            },
-        ),
-        EntityBody::Actor(actor) => spawn_actor(scenes),
+            &terrain.mesh,
+            entity.entity.transform,
+        )),
+        EntityBody::Object(object) => SpawnObject {
+            id: object.id,
+            transform: entity.entity.transform,
+        }
+        .spawn(scenes, modules),
+
+        EntityBody::Actor(actor) => Some(spawn_actor(scenes)),
         EntityBody::Item(item) => todo!(),
     }
 }
