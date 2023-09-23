@@ -141,8 +141,28 @@ fn flush_command_queue(srv_state: &mut ServerState) {
                     // Remove the player from the connections ref.
                     srv_state.state.conns.remove(id);
                 }
-                DataMessageBody::EntityTranslate(msg) => {}
-                DataMessageBody::EntityRotate(msg) => {}
+                DataMessageBody::EntityTranslate(msg) => {
+                    let Some(id) = state.entities.get(msg.entity) else {
+                        continue;
+                    };
+
+                    let Some(mut entity) = view.get_mut(id) else {
+                        continue;
+                    };
+
+                    entity.set_translation(msg.translation);
+                }
+                DataMessageBody::EntityRotate(msg) => {
+                    let Some(id) = state.entities.get(msg.entity) else {
+                        continue;
+                    };
+
+                    let Some(mut entity) = view.get_mut(id) else {
+                        continue;
+                    };
+
+                    entity.set_rotation(msg.rotation);
+                }
                 DataMessageBody::SpawnHost(_) => (),
             },
         }
