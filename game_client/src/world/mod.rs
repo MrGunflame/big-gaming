@@ -25,7 +25,7 @@ use game_window::windows::WindowId;
 use glam::Vec3;
 
 use crate::config::Config;
-use crate::entities::actor::spawn_actor;
+use crate::entities::actor::SpawnActor;
 use crate::entities::object::SpawnObject;
 use crate::entities::terrain::spawn_terrain;
 use crate::net::world::{Command, CommandBuffer, DelayedEntity};
@@ -226,8 +226,11 @@ fn spawn_entity(
             transform: entity.entity.transform,
         }
         .spawn(scenes, modules),
-
-        EntityBody::Actor(actor) => Some(spawn_actor(scenes)),
+        EntityBody::Actor(actor) => SpawnActor {
+            race: actor.race,
+            transform: entity.entity.transform,
+        }
+        .spawn(scenes, modules),
         EntityBody::Item(item) => todo!(),
     }
 }
