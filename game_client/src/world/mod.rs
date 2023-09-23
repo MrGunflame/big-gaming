@@ -3,17 +3,16 @@ pub mod movement;
 
 use std::net::ToSocketAddrs;
 
-use ahash::{HashMap, HashSet};
+use ahash::HashMap;
 use game_common::components::actor::ActorProperties;
 use game_common::components::transform::Transform;
 use game_common::entity::EntityId;
 use game_common::world::entity::EntityBody;
 use game_core::counter::Interval;
-use game_core::hierarchy::Entity;
 use game_core::time::Time;
 use game_input::keyboard::KeyboardInput;
 use game_input::mouse::MouseMotion;
-use game_net::message::{DataMessageBody, EntityRotate};
+use game_net::message::{DataMessageBody, EntityRotate, EntityTranslate};
 use game_render::camera::{Camera, Projection, RenderTarget};
 use game_render::color::Color;
 use game_render::entities::CameraId;
@@ -107,6 +106,17 @@ impl GameWorldState {
                     transform.translation = dst;
                     scenes.set_transform(*id, transform);
                 }
+                Command::Rotate {
+                    entity,
+                    start,
+                    end,
+                    dst,
+                } => {
+                    let id = self.entities.get(&entity).unwrap();
+                    let mut transform = scenes.get_transform(*id).unwrap();
+                    transform.rotation = dst;
+                    scenes.set_transform(*id, transform);
+                }
                 _ => todo!(),
             }
         }
@@ -164,7 +174,32 @@ impl GameWorldState {
     fn handle_keyboard_input(&mut self, event: KeyboardInput) {
         match event.key_code {
             Some(VirtualKeyCode::Escape) => {}
+            // FIXME: Temporary, move translation to scripts instead.
+            Some(VirtualKeyCode::W) => self.update_translation(-Vec3::Z),
+            Some(VirtualKeyCode::S) => self.update_translation(Vec3::Z),
+            Some(VirtualKeyCode::A) => self.update_translation(-Vec3::X),
+            Some(VirtualKeyCode::D) => self.update_translation(Vec3::X),
             _ => (),
+        }
+    }
+
+    fn update_translation(&mut self, dir: Vec3) {
+        let Some(mut view) = self.conn.world.back_mut() else {
+            return;
+        };
+
+        if let Some(mut host) = view.get_mut(self.conn.host) {
+            let mut transform = host.transform;
+            transform.translation += transform.rotation * dir * 0.01;
+            host.set_translation(transform.translation);
+            drop(view);
+
+            let entity = self.conn.server_entities.get(self.conn.host).unwrap();
+            self.conn
+                .send(DataMessageBody::EntityTranslate(EntityTranslate {
+                    entity,
+                    translation: transform.translation,
+                }));
         }
     }
 }

@@ -19,16 +19,6 @@ use glam::Vec3;
 pub use self::conn::ServerConnection;
 use self::world::CommandBuffer;
 
-pub fn tick(
-    mut conn: &mut ServerConnection<Interval>,
-    mut buffer: &mut CommandBuffer,
-    time: &Time,
-) {
-    conn::tick_game(&time, &mut conn);
-    flush_command_queue(&mut conn);
-    world::apply_world_delta(&mut conn, &mut buffer);
-}
-
 fn flush_command_queue<I>(conn: &mut ServerConnection<I>) {
     // Limit the maximum number of iterations in this frame.
     let mut iterations = 0;
