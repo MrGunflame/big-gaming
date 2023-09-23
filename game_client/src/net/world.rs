@@ -1,3 +1,5 @@
+use std::collections::VecDeque;
+
 use game_common::components::actions::{ActionId, Actions};
 use game_common::components::actor::ActorProperties;
 use game_common::components::components::{self, Components};
@@ -9,9 +11,10 @@ use game_common::entity::EntityId;
 use game_common::world::control_frame::ControlFrame;
 use game_common::world::entity::{Entity, EntityBody};
 use game_common::world::snapshot::{EntityChange, InventoryItemAdd};
-use game_common::world::world::WorldViewRef;
+use game_common::world::world::{AsView, WorldViewRef};
 use game_core::counter::Interval;
 use game_core::modules::Modules;
+use game_net::message::DataMessageBody;
 use glam::{Quat, Vec3};
 
 // use crate::entities::actor::LoadActor;
@@ -71,6 +74,32 @@ pub fn apply_world_delta<I>(conn: &mut ServerConnection<I>, cmd_buffer: &mut Com
     // }
 
     // apply_local_prediction(conn, render_cf, cmd_buffer);
+
+    for msg in conn.input_buffer.iter() {
+        match msg.body {
+            DataMessageBody::EntityTranslate(msg) => {
+                let id = conn.server_entities.get(msg.entity).unwrap();
+                cmd_buffer.push(Command::Translate {
+                    entity: id,
+                    start: render_cf,
+                    end: render_cf + 1,
+                    dst: msg.translation,
+                });
+            }
+            DataMessageBody::EntityRotate(msg) => {
+                let id = conn.server_entities.get(msg.entity).unwrap();
+                cmd_buffer.push(Command::Rotate {
+                    entity: id,
+                    start: render_cf,
+                    end: render_cf + 1,
+                    dst: msg.rotation,
+                });
+            }
+            _ => todo!(),
+        }
+    }
+
+    conn.input_buffer.remove(render_cf);
 
     for entity in buffer.entities {
         conn.trace.spawn(render_cf, entity.entity.clone());
@@ -474,20 +503,22 @@ fn create_snapshot_diff(prev: WorldViewRef, next: WorldViewRef) -> Vec<EntityCha
 
 #[derive(Clone, Debug, Default)]
 pub struct CommandBuffer {
-    buffer: Vec<Command>,
+    buffer: VecDeque<Command>,
 }
 
 impl CommandBuffer {
     pub fn new() -> Self {
-        Self { buffer: Vec::new() }
+        Self {
+            buffer: VecDeque::new(),
+        }
     }
 
     pub fn push(&mut self, cmd: Command) {
-        self.buffer.push(cmd);
+        self.buffer.push_back(cmd);
     }
 
     pub fn pop(&mut self) -> Option<Command> {
-        self.buffer.pop()
+        self.buffer.pop_front()
     }
 
     pub fn len(&self) -> usize {

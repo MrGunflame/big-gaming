@@ -42,5 +42,7 @@ impl CameraController {
             // Don't sync in detached mode.
             CameraMode::Detached => (),
         }
+
+        self.transform = entity;
     }
 }

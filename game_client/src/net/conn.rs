@@ -18,6 +18,7 @@ use crate::net::socket::spawn_conn;
 
 use super::entities::Entities;
 use super::flush_command_queue;
+use super::prediction::InputBuffer;
 //use super::prediction::ClientPredictions;
 use super::world::{apply_world_delta, CommandBuffer};
 
@@ -46,7 +47,9 @@ pub struct ServerConnection<I> {
     pub metrics: Metrics,
     pub config: Config,
 
-    buffer: VecDeque<DataMessageBody>,
+    buffer: VecDeque<DataMessage>,
+
+    pub(crate) input_buffer: InputBuffer,
 }
 
 impl<I> ServerConnection<I> {
@@ -72,6 +75,7 @@ impl<I> ServerConnection<I> {
             metrics: Metrics::default(),
             config: config.clone(),
             buffer: VecDeque::new(),
+            input_buffer: InputBuffer::new(),
         }
     }
 
@@ -121,7 +125,13 @@ impl<I> ServerConnection<I> {
             return;
         }
 
-        self.buffer.push_back(body);
+        let msg = DataMessage {
+            control_frame: self.game_tick.current_control_frame,
+            body,
+        };
+
+        self.input_buffer.push(msg.clone());
+        self.buffer.push_back(msg);
     }
 
     pub fn shutdown(&mut self) {
@@ -159,12 +169,8 @@ impl<I> ServerConnection<I> {
             return;
         };
 
-        let control_frame = self.game_tick.current_control_frame;
-        for body in self.buffer.drain(..) {
-            handle.send_cmd(DataMessage {
-                control_frame,
-                body,
-            });
+        for msg in self.buffer.drain(..) {
+            handle.send_cmd(msg);
         }
     }
 }

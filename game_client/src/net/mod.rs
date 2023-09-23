@@ -1,7 +1,6 @@
 mod conn;
 mod entities;
-//pub mod interpolate;
-// mod prediction;
+mod prediction;
 mod socket;
 pub mod world;
 
@@ -11,13 +10,10 @@ use game_common::components::components::Components;
 use game_common::components::transform::Transform;
 use game_common::entity::EntityId;
 use game_common::world::entity::Entity;
-use game_core::counter::Interval;
-use game_core::time::Time;
 use game_net::message::{ControlMessage, DataMessageBody, Message};
 use glam::Vec3;
 
 pub use self::conn::ServerConnection;
-use self::world::CommandBuffer;
 
 fn flush_command_queue<I>(conn: &mut ServerConnection<I>) {
     // Limit the maximum number of iterations in this frame.

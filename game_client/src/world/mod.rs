@@ -125,15 +125,16 @@ impl GameWorldState {
             }
         }
 
-        let host = self.conn.host;
-        if let Some(view) = self.conn.world.back() {
-            if let Some(host) = view.get(host) {
-                let props = ActorProperties {
-                    eyes: Vec3::new(0.0, 0.0, 1.8),
-                    rotation: extract_actor_rotation(host.transform.rotation),
-                };
-                self.camera_controller
-                    .sync_with_entity(host.transform, props);
+        {
+            let host = self.conn.host;
+            if let Some(id) = self.entities.get(&host) {
+                if let Some(transform) = scenes.get_transform(*id) {
+                    let props = ActorProperties {
+                        eyes: Vec3::new(0.0, 0.0, 1.8),
+                        rotation: extract_actor_rotation(transform.rotation),
+                    };
+                    self.camera_controller.sync_with_entity(transform, props);
+                }
             }
         }
 
@@ -143,10 +144,10 @@ impl GameWorldState {
         }
     }
 
-    pub fn handle_event(&mut self, event: WindowEvent) {
+    pub fn handle_event(&mut self, scenes: &mut Scenes, event: WindowEvent) {
         match event {
             WindowEvent::MouseMotion(event) => {
-                self.handle_mouse_motion(event);
+                self.handle_mouse_motion(scenes, event);
             }
             WindowEvent::KeyboardInput(event) => {
                 self.handle_keyboard_input(event);
@@ -155,23 +156,17 @@ impl GameWorldState {
         }
     }
 
-    fn handle_mouse_motion(&mut self, event: MouseMotion) {
-        let Some(mut view) = self.conn.world.back_mut() else {
-            return;
-        };
+    fn handle_mouse_motion(&mut self, scenes: &mut Scenes, event: MouseMotion) {
+        if let Some(id) = self.entities.get(&self.conn.host) {
+            if let Some(mut transform) = scenes.get_transform(*id) {
+                transform = update_rotation(transform, event);
 
-        if let Some(mut host) = view.get_mut(self.conn.host) {
-            let transform = update_rotation(host.transform, event);
-            host.set_translation(transform.translation);
-            host.set_rotation(transform.rotation);
-            drop(view);
-
-            let entity = self.conn.server_entities.get(self.conn.host).unwrap();
-
-            self.conn.send(DataMessageBody::EntityRotate(EntityRotate {
-                entity,
-                rotation: transform.rotation,
-            }));
+                let entity = self.conn.server_entities.get(self.conn.host).unwrap();
+                self.conn.send(DataMessageBody::EntityRotate(EntityRotate {
+                    entity,
+                    rotation: transform.rotation,
+                }));
+            }
         }
     }
 
