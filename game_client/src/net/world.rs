@@ -33,6 +33,11 @@ pub fn apply_world_delta<I>(conn: &mut ServerConnection<I>, cmd_buffer: &mut Com
         return;
     }
 
+    tracing::trace!(
+        "Applying CF {:?}",
+        conn.world.at(0).unwrap().control_frame()
+    );
+
     // The first time a frame is being produced, i.e. `last_render_frame` is
     // `None` we must produce a "diff" consisting of the entire world state.
     let (delta, should_pop) = if conn.last_render_frame.is_none() {
@@ -50,7 +55,6 @@ pub fn apply_world_delta<I>(conn: &mut ServerConnection<I>, cmd_buffer: &mut Com
     let mut buffer = Buffer::new();
 
     for event in delta {
-        dbg!(&event);
         handle_event(event.clone(), &mut buffer, conn, cmd_buffer, render_cf);
     }
 
@@ -78,7 +82,8 @@ pub fn apply_world_delta<I>(conn: &mut ServerConnection<I>, cmd_buffer: &mut Com
         }
     }
 
-    conn.input_buffer.remove(render_cf);
+    conn.input_buffer
+        .remove(conn.world.at(0).unwrap().control_frame());
 
     for entity in buffer.entities {
         conn.trace.spawn(render_cf, entity.entity.clone());
