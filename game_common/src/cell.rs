@@ -10,6 +10,7 @@ use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 /// - `UnsafeRefCell` is **NOT** `#[repr(transparent)]`. The memory layout is not defined.
 /// - `UnsafeRefCell` has extra assertions via RAII when `debug_assertions` are enabled.
 /// - `UnsafeRefCell` returns references instead of raw pointers.
+/// - `UnsafeRefCell` is `Sync` if `T: Sync`.
 #[derive(Debug, Default)]
 pub struct UnsafeRefCell<T>
 where
@@ -83,6 +84,8 @@ where
         }
     }
 }
+
+unsafe impl<T> Sync for UnsafeRefCell<T> where T: ?Sized + Sync {}
 
 /// An immutable reference to a value in a [`UnsafeRefCell`].
 #[derive(Debug)]
