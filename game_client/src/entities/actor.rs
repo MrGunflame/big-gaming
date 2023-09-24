@@ -22,10 +22,13 @@ impl SpawnActor {
         let record = module.records.get(self.race.0.record)?;
         let race = record.body.as_race()?;
 
-        let scene = Scene {
-            transform: Transform::default(),
-            nodes: vec![],
-        };
-        Some(scenes.insert(scene))
+        let scene = scenes.load("pistol.glb");
+
+        // let scene = Scene {
+        //     transform: Transform::default(),
+        //     nodes: vec![],
+        // };
+        // Some(scenes.insert(scene))
+        Some(scene)
     }
 }
