@@ -16,10 +16,6 @@ use glam::Vec3;
 pub use self::conn::ServerConnection;
 
 fn flush_command_queue<I>(conn: &mut ServerConnection<I>) {
-    // Limit the maximum number of iterations in this frame.
-    let mut iterations = 0;
-    const MAX_ITERATIONS: usize = 8192;
-
     let mut queue = VecDeque::new();
     let handle = conn.handle.as_ref().unwrap();
     while let Some(msg) = handle.recv() {
@@ -106,11 +102,6 @@ fn flush_command_queue<I>(conn: &mut ServerConnection<I>) {
                 }
                 None => (),
             },
-        }
-
-        iterations += 1;
-        if iterations >= MAX_ITERATIONS {
-            break;
         }
     }
 }

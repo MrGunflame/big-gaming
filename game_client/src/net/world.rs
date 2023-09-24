@@ -50,6 +50,7 @@ pub fn apply_world_delta<I>(conn: &mut ServerConnection<I>, cmd_buffer: &mut Com
     let mut buffer = Buffer::new();
 
     for event in delta {
+        dbg!(&event);
         handle_event(event.clone(), &mut buffer, conn, cmd_buffer, render_cf);
     }
 
@@ -113,7 +114,6 @@ fn handle_event<I>(
         EntityChange::Create { entity: _ } | EntityChange::Destroy { id: _ }
     ) {
         let entity_id = event.entity();
-        // if conn.entities.get(entity_id).is_none() {
         if let Some(entity) = buffer.get_mut(entity_id) {
             match event {
                 EntityChange::Create { entity: _ } => {}
@@ -144,11 +144,9 @@ fn handle_event<I>(
                 EntityChange::CreateStreamingSource { id, source } => {}
                 EntityChange::RemoveStreamingSource { id } => {}
             }
-        } else {
-            conn.backlog.push(entity_id, event);
-        }
 
-        return;
+            return;
+        }
     }
 
     match event {

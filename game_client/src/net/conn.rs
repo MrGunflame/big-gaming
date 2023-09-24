@@ -8,7 +8,6 @@ use game_common::world::control_frame::ControlFrame;
 use game_common::world::world::WorldState;
 use game_core::counter::{Interval, IntervalImpl, UpdateCounter};
 use game_core::time::Time;
-use game_net::backlog::Backlog;
 use game_net::conn::ConnectionHandle;
 use game_net::message::{DataMessage, DataMessageBody};
 use game_tracing::world::WorldTrace;
@@ -27,8 +26,6 @@ pub struct ServerConnection<I> {
     pub world: WorldState,
 
     pub handle: Option<Arc<ConnectionHandle>>,
-    //pub entities: EntityMap,
-    //pub predictions: ClientPredictions,
     pub host: EntityId,
 
     pub game_tick: GameTick<I>,
@@ -42,7 +39,6 @@ pub struct ServerConnection<I> {
     pub last_render_frame: Option<ControlFrame>,
 
     pub trace: WorldTrace,
-    pub backlog: Backlog,
 
     pub metrics: Metrics,
     pub config: Config,
@@ -71,7 +67,6 @@ impl<I> ServerConnection<I> {
             last_render_frame: None,
             trace: WorldTrace::new(),
             world,
-            backlog: Backlog::new(),
             metrics: Metrics::default(),
             config: config.clone(),
             buffer: VecDeque::new(),
