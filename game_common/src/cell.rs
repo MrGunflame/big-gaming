@@ -25,6 +25,7 @@ impl<T> UnsafeRefCell<T> {
     #[inline]
     pub const fn new(value: T) -> Self {
         Self {
+            #[cfg(debug_assertions)]
             state: RwLock::new(()),
             cell: UnsafeCell::new(value),
         }
@@ -57,8 +58,9 @@ where
         // for the duration of this borrow.
         let value = unsafe { &*self.cell.get() };
         Ref {
-            _guard: guard,
             value,
+            #[cfg(debug_assertions)]
+            _guard: guard,
         }
     }
 
@@ -80,6 +82,7 @@ where
         let value = unsafe { &mut *self.cell.get() };
         RefMut {
             value,
+            #[cfg(debug_assertions)]
             _guard: guard,
         }
     }
