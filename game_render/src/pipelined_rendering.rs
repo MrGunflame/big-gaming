@@ -1,5 +1,6 @@
 use std::sync::{mpsc, Arc};
 
+use game_common::cell::UnsafeRefCell;
 use game_tracing::trace_span;
 use parking_lot::{Condvar, Mutex};
 use wgpu::{Adapter, CommandEncoderDescriptor, Device, Instance, Queue, TextureViewDescriptor};
@@ -22,10 +23,10 @@ pub struct SharedState {
     pub adapter: Adapter,
     pub device: Device,
     pub queue: Queue,
-    pub surfaces: Mutex<RenderSurfaces>,
-    pub mipmap_generator: Mutex<MipMapGenerator>,
+    pub surfaces: UnsafeRefCell<RenderSurfaces>,
+    mipmap_generator: UnsafeRefCell<MipMapGenerator>,
     state: Mutex<PipelineState>,
-    pub graph: Mutex<RenderGraph>,
+    pub graph: UnsafeRefCell<RenderGraph>,
     unparker: Condvar,
 }
 
@@ -37,14 +38,14 @@ pub struct Pipeline {
 impl Pipeline {
     pub fn new(instance: Instance, adapter: Adapter, device: Device, queue: Queue) -> Self {
         let shared = Arc::new(SharedState {
-            mipmap_generator: Mutex::new(MipMapGenerator::new(&device)),
+            mipmap_generator: UnsafeRefCell::new(MipMapGenerator::new(&device)),
             instance,
             adapter,
             device,
             queue,
-            surfaces: Mutex::new(RenderSurfaces::new()),
+            surfaces: UnsafeRefCell::new(RenderSurfaces::new()),
             state: Mutex::new(PipelineState::Idle),
-            graph: Mutex::new(RenderGraph::default()),
+            graph: UnsafeRefCell::new(RenderGraph::default()),
             unparker: Condvar::new(),
         });
 
@@ -87,9 +88,9 @@ fn start_render_thread(shared: Arc<SharedState>) -> mpsc::Sender<()> {
 
             let _span = trace_span!("render_frame").entered();
 
-            let surfaces = shared.surfaces.lock();
-            let graph = shared.graph.lock();
-            let mut mipmap = shared.mipmap_generator.lock();
+            let surfaces = unsafe { shared.surfaces.get() };
+            let graph = unsafe { shared.graph.get() };
+            let mut mipmap = unsafe { shared.mipmap_generator.get_mut() };
 
             for (window, surface) in surfaces.iter() {
                 let output = match surface.surface.get_current_texture() {
