@@ -83,8 +83,13 @@ impl Node for RenderPass {
         for cam in state.camera_buffers.values() {
             if cam.target == RenderTarget::Window(ctx.window) {
                 self.render_camera_target(&state, &cam, ctx);
+                return;
             }
         }
+
+        // Some APIs don't play nicely when not submitting any work
+        // for the surface, so we just clear the surface color.
+        clear_pass(ctx);
     }
 }
 
@@ -205,4 +210,19 @@ impl RenderPass {
             ctx.format,
         );
     }
+}
+
+fn clear_pass(ctx: &mut RenderContext<'_>) {
+    ctx.encoder.begin_render_pass(&RenderPassDescriptor {
+        label: Some("clear_pass"),
+        color_attachments: &[Some(RenderPassColorAttachment {
+            view: &ctx.target,
+            resolve_target: None,
+            ops: Operations {
+                load: LoadOp::Clear(Color::BLACK),
+                store: true,
+            },
+        })],
+        depth_stencil_attachment: None,
+    });
 }
