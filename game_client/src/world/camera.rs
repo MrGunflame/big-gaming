@@ -43,6 +43,6 @@ impl CameraController {
             CameraMode::Detached => (),
         }
 
-        self.transform = entity;
+        //self.transform = entity;
     }
 }

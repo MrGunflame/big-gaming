@@ -33,7 +33,7 @@ use crate::net::world::{Command, CommandBuffer, DelayedEntity};
 use crate::net::ServerConnection;
 use crate::utils::extract_actor_rotation;
 
-use self::camera::CameraController;
+use self::camera::{CameraController, CameraMode};
 use self::movement::update_rotation;
 
 #[derive(Debug)]
@@ -139,7 +139,7 @@ impl GameWorldState {
             if let Some(id) = self.entities.get(&host) {
                 if let Some(transform) = scenes.get_transform(*id) {
                     let props = ActorProperties {
-                        eyes: Vec3::new(0.0, 0.0, 1.8),
+                        eyes: Vec3::new(0.0, 1.8, 0.0),
                         rotation: extract_actor_rotation(transform.rotation),
                     };
                     self.camera_controller.sync_with_entity(transform, props);
@@ -185,6 +185,10 @@ impl GameWorldState {
         event: KeyboardInput,
         cursor: &Cursor,
     ) {
+        if !event.state.is_pressed() {
+            return;
+        }
+
         match event.key_code {
             Some(VirtualKeyCode::Escape) => {
                 if event.state.is_pressed() {
@@ -202,6 +206,16 @@ impl GameWorldState {
             Some(VirtualKeyCode::S) => self.update_translation(scenes, Vec3::Z),
             Some(VirtualKeyCode::A) => self.update_translation(scenes, -Vec3::X),
             Some(VirtualKeyCode::D) => self.update_translation(scenes, Vec3::X),
+            Some(VirtualKeyCode::V) => match self.camera_controller.mode {
+                CameraMode::FirstPerson => {
+                    dbg!("sw");
+                    self.camera_controller.mode = CameraMode::ThirdPerson { distance: 5.0 }
+                }
+                CameraMode::ThirdPerson { distance } => {
+                    self.camera_controller.mode = CameraMode::FirstPerson;
+                }
+                _ => (),
+            },
             _ => (),
         }
     }
