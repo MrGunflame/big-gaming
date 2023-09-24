@@ -94,7 +94,7 @@ impl Renderer {
         let pipeline = Pipeline::new(instance, adapter, device, queue);
 
         {
-            let mut graph = pipeline.shared.graph.lock();
+            let mut graph = unsafe { pipeline.shared.graph.get_mut() };
             graph.push(RenderPass {
                 state: state.clone(),
                 forward: forward.clone(),
@@ -122,7 +122,9 @@ impl Renderer {
     }
 
     pub fn add_to_graph(&self, node: impl Node) {
-        let mut graph = self.pipeline.shared.graph.lock();
+        self.pipeline.wait_idle();
+
+        let mut graph = unsafe { self.pipeline.shared.graph.get_mut() };
         graph.push(node);
     }
 
@@ -147,7 +149,7 @@ impl Renderer {
 
     // TODO: Get rid of this shit.
     pub fn get_surface_size(&self, id: WindowId) -> Option<UVec2> {
-        let surfaces = self.pipeline.shared.surfaces.lock();
+        let surfaces = unsafe { self.pipeline.shared.surfaces.get() };
         surfaces
             .get(id)
             .map(|s| UVec2::new(s.config.width, s.config.height))
@@ -162,7 +164,7 @@ impl Renderer {
         self.pipeline.wait_idle();
 
         {
-            let mut surfaces = self.pipeline.shared.surfaces.lock();
+            let mut surfaces = unsafe { self.pipeline.shared.surfaces.get_mut() };
             let instance = &self.pipeline.shared.instance;
             let adapter = &self.pipeline.shared.adapter;
             let device = &self.pipeline.shared.device;
