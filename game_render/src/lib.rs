@@ -163,26 +163,11 @@ impl Renderer {
 
         self.pipeline.wait_idle();
 
+        unsafe {
+            self.update_surfaces();
+        }
+
         {
-            let mut surfaces = unsafe { self.pipeline.shared.surfaces.get_mut() };
-            let instance = &self.pipeline.shared.instance;
-            let adapter = &self.pipeline.shared.adapter;
-            let device = &self.pipeline.shared.device;
-
-            while let Some(event) = self.backlog.pop_front() {
-                match event {
-                    Event::CreateSurface(id, state) => {
-                        surfaces.create(instance, adapter, device, state, id);
-                    }
-                    Event::ResizeSurface(id, size) => {
-                        surfaces.resize(id, device, size);
-                    }
-                    Event::DestroySurface(id) => {
-                        surfaces.destroy(id);
-                    }
-                }
-            }
-
             let mut state = self.state.lock();
             for iter in [
                 self.entities.cameras.events.drain(..),
@@ -195,15 +180,35 @@ impl Renderer {
                     state.update(event, &self.meshes, &self.materials, &self.images);
                 }
             }
-
-            // self.state
-            //     .lock()
-            //     .update(event, &self.meshes, &self.materials, &self.images);
         }
 
         // SAFETY: We just waited for the renderer to be idle.
         unsafe {
             self.pipeline.render_unchecked();
+        }
+    }
+
+    /// # Safety
+    ///
+    ///  Caller guarantees that the renderer is idle.
+    unsafe fn update_surfaces(&mut self) {
+        let mut surfaces = unsafe { self.pipeline.shared.surfaces.get_mut() };
+        let instance = &self.pipeline.shared.instance;
+        let adapter = &self.pipeline.shared.adapter;
+        let device = &self.pipeline.shared.device;
+
+        while let Some(event) = self.backlog.pop_front() {
+            match event {
+                Event::CreateSurface(id, state) => {
+                    surfaces.create(instance, adapter, device, state, id);
+                }
+                Event::ResizeSurface(id, size) => {
+                    surfaces.resize(id, device, size);
+                }
+                Event::DestroySurface(id) => {
+                    surfaces.destroy(id);
+                }
+            }
         }
     }
 }
