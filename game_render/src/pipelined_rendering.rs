@@ -24,7 +24,7 @@ pub struct SharedState {
     pub device: Device,
     pub queue: Queue,
     pub surfaces: UnsafeRefCell<RenderSurfaces>,
-    pub mipmap_generator: UnsafeRefCell<MipMapGenerator>,
+    mipmap_generator: UnsafeRefCell<MipMapGenerator>,
     state: Mutex<PipelineState>,
     pub graph: UnsafeRefCell<RenderGraph>,
     unparker: Condvar,
