@@ -14,16 +14,16 @@ use game_core::modules::Modules;
 use game_core::time::Time;
 use game_input::keyboard::KeyboardInput;
 use game_input::mouse::MouseMotion;
-use game_net::message::{DataMessageBody, EntityRotate, EntityTranslate};
+use game_net::message::{DataMessageBody, EntityAction, EntityRotate, EntityTranslate};
 use game_render::camera::{Camera, Projection, RenderTarget};
 use game_render::color::Color;
 use game_render::entities::CameraId;
 use game_render::light::DirectionalLight;
 use game_render::Renderer;
 use game_scene::{SceneId, Scenes};
-use game_window::cursor::{Cursor, CursorGrabMode};
+use game_window::cursor::Cursor;
 use game_window::events::{VirtualKeyCode, WindowEvent};
-use game_window::windows::{WindowId, WindowState};
+use game_window::windows::WindowState;
 use glam::Vec3;
 
 use crate::config::Config;
@@ -134,9 +134,12 @@ impl GameWorldState {
                     transform.rotation = dst;
                     scenes.set_transform(*id, transform);
                 }
+                Command::SpawnHost(id) => {}
                 _ => todo!(),
             }
         }
+
+        self.dispatch_actions();
 
         {
             let host = self.conn.host;
@@ -165,6 +168,9 @@ impl GameWorldState {
             WindowEvent::KeyboardInput(event) => {
                 self.handle_keyboard_input(scenes, event, cursor);
             }
+            WindowEvent::MouseButtonInput(event) => {
+                self.actions.send_mouse_event(event);
+            }
             _ => (),
         }
     }
@@ -189,6 +195,8 @@ impl GameWorldState {
         event: KeyboardInput,
         cursor: &Cursor,
     ) {
+        self.actions.send_keyboard_event(event);
+
         if !event.state.is_pressed() {
             return;
         }
@@ -236,6 +244,21 @@ impl GameWorldState {
                         translation: transform.translation,
                     }));
             }
+        }
+    }
+
+    fn dispatch_actions(&mut self) {
+        let actions = self.actions.take_events();
+
+        let Some(entity) = self.conn.server_entities.get(self.conn.host) else {
+            return;
+        };
+
+        for action in actions {
+            self.conn.send(DataMessageBody::EntityAction(EntityAction {
+                entity,
+                action,
+            }));
         }
     }
 }

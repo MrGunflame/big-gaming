@@ -1,3 +1,4 @@
+use game_common::components::actions::ActionId;
 use game_common::net::ServerEntity;
 use game_common::world::control_frame::ControlFrame;
 use game_common::world::entity::EntityBody;
@@ -29,6 +30,7 @@ pub enum DataMessageBody {
     EntityDestroy(EntityDestroy),
     EntityTranslate(EntityTranslate),
     EntityRotate(EntityRotate),
+    EntityAction(EntityAction),
     SpawnHost(SpawnHost),
 }
 
@@ -62,6 +64,12 @@ pub struct EntityRotate {
     pub rotation: Quat,
 }
 
+#[derive(Copy, Clone, Debug)]
+pub struct EntityAction {
+    pub entity: ServerEntity,
+    pub action: ActionId,
+}
+
 impl DataMessage {
     pub(crate) fn to_frame(self) -> Frame {
         match self.body {
@@ -86,6 +94,10 @@ impl DataMessage {
             DataMessageBody::EntityRotate(msg) => Frame::EntityRotate(proto::EntityRotate {
                 entity: msg.entity,
                 rotation: msg.rotation,
+            }),
+            DataMessageBody::EntityAction(msg) => Frame::EntityAction(proto::EntityAction {
+                entity: msg.entity,
+                action: msg.action,
             }),
         }
     }
@@ -125,6 +137,13 @@ impl DataMessage {
                 body: DataMessageBody::EntityRotate(EntityRotate {
                     entity: frame.entity,
                     rotation: frame.rotation,
+                }),
+            },
+            Frame::EntityAction(frame) => Self {
+                control_frame: cf,
+                body: DataMessageBody::EntityAction(EntityAction {
+                    entity: frame.entity,
+                    action: frame.action,
                 }),
             },
             _ => todo!(),

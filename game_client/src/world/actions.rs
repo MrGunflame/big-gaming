@@ -1,10 +1,8 @@
 use ahash::HashMap;
 use game_common::components::actions::ActionId;
-use game_common::id;
 use game_common::module::ModuleId;
-use game_common::record::{RecordId, RecordReference};
+use game_common::record::RecordReference;
 use game_data::record::Record;
-use game_input::emulator::MouseEmulator;
 use game_input::hotkeys::{Hotkey, HotkeyCode, HotkeyId, Hotkeys, TriggerKind};
 use game_input::keyboard::KeyboardInput;
 use game_input::mouse::{MouseButton, MouseButtonInput};

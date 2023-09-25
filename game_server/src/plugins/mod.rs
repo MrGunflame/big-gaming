@@ -163,6 +163,7 @@ fn flush_command_queue(srv_state: &mut ServerState) {
 
                     entity.set_rotation(msg.rotation);
                 }
+                DataMessageBody::EntityAction(msg) => todo!(),
                 DataMessageBody::SpawnHost(_) => (),
             },
         }
