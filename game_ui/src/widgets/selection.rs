@@ -1,5 +1,5 @@
+use game_input::keyboard::KeyCode;
 use parking_lot::Mutex;
-use winit::event::VirtualKeyCode;
 
 use crate::events::{ElementEventHandlers, EventHandlers};
 use crate::reactive::{Node, NodeId, Scope, WriteSignal};
@@ -66,7 +66,7 @@ impl Widget for Selection {
                     keyboard_input: {
                         let set_state = set_state.clone();
                         Some(Box::new(move |ctx| {
-                            if ctx.event.key_code == Some(VirtualKeyCode::Escape) {
+                            if ctx.event.key_code == Some(KeyCode::Escape) {
                                 set_state.update(|state| *state = false);
                             }
                         }))

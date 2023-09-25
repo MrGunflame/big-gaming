@@ -24,8 +24,6 @@ image = "0.24.6"
 wgpu = "0.16.0"
 bytemuck = "1.13.1"
 
-# TODO: This should go throught `game_window` instead.
-winit = "0.28.5"
 parking_lot = "0.12.1"
 slotmap = "1.0.6"
 tracing = "0.1.37"
