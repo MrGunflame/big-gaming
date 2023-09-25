@@ -14,6 +14,7 @@ game_window = { version = "0.1.0", path = "../game_window" }
 game_scene = { version = "0.1.0", path = "../game_scene" }
 game_input = { version = "0.1.0", path = "../game_input" }
 game_tracing = { version = "0.1.0", path = "../game_tracing" }
+game_data = { version = "0.1.0", path = "../game_data" }
 
 ahash = "0.8.2"
 serde = { version = "1.0.149", features = ["derive"] }

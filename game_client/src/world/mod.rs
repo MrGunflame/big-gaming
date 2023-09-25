@@ -1,3 +1,4 @@
+mod actions;
 pub mod camera;
 pub mod movement;
 
@@ -33,6 +34,7 @@ use crate::net::world::{Command, CommandBuffer, DelayedEntity};
 use crate::net::ServerConnection;
 use crate::utils::extract_actor_rotation;
 
+use self::actions::ActiveActions;
 use self::camera::{CameraController, CameraMode};
 use self::movement::update_rotation;
 
@@ -44,6 +46,7 @@ pub struct GameWorldState {
     primary_camera: Option<CameraId>,
     entities: HashMap<EntityId, SceneId>,
     modules: Modules,
+    actions: ActiveActions,
 }
 
 impl GameWorldState {
@@ -66,6 +69,7 @@ impl GameWorldState {
             primary_camera: None,
             entities: HashMap::default(),
             modules,
+            actions: ActiveActions::new(),
         }
     }
 

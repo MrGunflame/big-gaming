@@ -3,6 +3,7 @@
 
 mod config;
 mod entities;
+mod input;
 mod net;
 mod state;
 mod utils;
@@ -26,8 +27,6 @@ use state::main_menu::MainMenuState;
 use state::GameState;
 use world::GameWorldState;
 
-use crate::net::ServerConnection;
-
 #[derive(Clone, Debug, Default, Parser)]
 #[command(author, version, about, long_about = None)]
 struct Args {
@@ -36,7 +35,6 @@ struct Args {
 }
 
 fn main() {
-    // logger::init();
     game_tracing::init();
 
     let args = Args::parse();
