@@ -78,7 +78,13 @@ pub fn apply_world_delta<I>(conn: &mut ServerConnection<I>, cmd_buffer: &mut Com
                     dst: msg.rotation,
                 });
             }
-            _ => todo!(),
+            DataMessageBody::EntityAction(msg) => {}
+            _ => {
+                // Should never be sent from the client.
+                if cfg!(debug_assertions) {
+                    unreachable!();
+                }
+            }
         }
     }
 
@@ -109,7 +115,13 @@ pub fn apply_world_delta<I>(conn: &mut ServerConnection<I>, cmd_buffer: &mut Com
                     let entity = snapshot.entities.get_mut(id).unwrap();
                     entity.transform.rotation = msg.rotation;
                 }
-                _ => todo!(),
+                DataMessageBody::EntityAction(msg) => {}
+                _ => {
+                    // Should never be sent from the client.
+                    if cfg!(debug_assertions) {
+                        unreachable!();
+                    }
+                }
             }
         }
 
