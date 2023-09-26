@@ -11,5 +11,6 @@ pub fn update_rotation(mut transform: Transform, event: MouseMotion) -> Transfor
 
     transform.rotation = q1 * transform.rotation;
     transform.rotation = transform.rotation * q2;
+    transform.rotation = transform.rotation.normalize();
     transform
 }
