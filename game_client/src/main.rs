@@ -3,7 +3,6 @@
 
 mod config;
 mod entities;
-mod input;
 mod net;
 mod state;
 mod utils;
