@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use game_common::entity::EntityId;
 use game_common::world::control_frame::ControlFrame;
-use game_common::world::world::WorldState;
+use game_common::world::world::{Snapshot, WorldState};
 use game_core::counter::{Interval, IntervalImpl, UpdateCounter};
 use game_core::time::Time;
 use game_net::conn::ConnectionHandle;
@@ -24,6 +24,7 @@ use super::world::{apply_world_delta, CommandBuffer};
 #[derive(Debug)]
 pub struct ServerConnection<I> {
     pub world: WorldState,
+    pub current_state: Option<Snapshot>,
 
     pub handle: Option<Arc<ConnectionHandle>>,
     pub host: EntityId,
@@ -71,6 +72,7 @@ impl<I> ServerConnection<I> {
             config: config.clone(),
             buffer: VecDeque::new(),
             input_buffer: InputBuffer::new(),
+            current_state: None,
         }
     }
 
@@ -203,8 +205,6 @@ pub fn tick_game<I>(time: &Time, conn: &mut ServerConnection<I>)
 where
     I: IntervalImpl,
 {
-    let conn = &mut *conn;
-
     while conn.game_tick.interval.is_ready(time.last_update()) {
         if conn.is_connected() {
             conn.flush_buffer();

@@ -160,13 +160,13 @@ impl GameWorldState {
         }
     }
 
-    pub fn handle_event(&mut self, scenes: &mut Scenes, event: WindowEvent, cursor: &Cursor) {
+    pub fn handle_event(&mut self, event: WindowEvent, cursor: &Cursor) {
         match event {
             WindowEvent::MouseMotion(event) => {
-                self.handle_mouse_motion(scenes, event);
+                self.handle_mouse_motion(event);
             }
             WindowEvent::KeyboardInput(event) => {
-                self.handle_keyboard_input(scenes, event, cursor);
+                self.handle_keyboard_input(event, cursor);
             }
             WindowEvent::MouseButtonInput(event) => {
                 self.actions.send_mouse_event(event);
@@ -175,26 +175,22 @@ impl GameWorldState {
         }
     }
 
-    fn handle_mouse_motion(&mut self, scenes: &mut Scenes, event: MouseMotion) {
-        if let Some(id) = self.entities.get(&self.conn.host) {
-            if let Some(mut transform) = scenes.get_transform(*id) {
-                transform = update_rotation(transform, event);
+    fn handle_mouse_motion(&mut self, event: MouseMotion) {
+        if let Some(snapshot) = &mut self.conn.current_state {
+            if let Some(host) = snapshot.entities.get_mut(self.conn.host) {
+                host.transform = update_rotation(host.transform, event);
+                let rotation = host.transform.rotation;
 
                 let entity = self.conn.server_entities.get(self.conn.host).unwrap();
                 self.conn.send(DataMessageBody::EntityRotate(EntityRotate {
                     entity,
-                    rotation: transform.rotation,
+                    rotation,
                 }));
             }
         }
     }
 
-    fn handle_keyboard_input(
-        &mut self,
-        scenes: &mut Scenes,
-        event: KeyboardInput,
-        cursor: &Cursor,
-    ) {
+    fn handle_keyboard_input(&mut self, event: KeyboardInput, cursor: &Cursor) {
         self.actions.send_keyboard_event(event);
 
         if !event.state.is_pressed() {
@@ -214,13 +210,12 @@ impl GameWorldState {
                 }
             }
             // FIXME: Temporary, move translation to scripts instead.
-            Some(VirtualKeyCode::W) => self.update_translation(scenes, -Vec3::Z),
-            Some(VirtualKeyCode::S) => self.update_translation(scenes, Vec3::Z),
-            Some(VirtualKeyCode::A) => self.update_translation(scenes, -Vec3::X),
-            Some(VirtualKeyCode::D) => self.update_translation(scenes, Vec3::X),
+            Some(VirtualKeyCode::W) => self.update_translation(-Vec3::Z),
+            Some(VirtualKeyCode::S) => self.update_translation(Vec3::Z),
+            Some(VirtualKeyCode::A) => self.update_translation(-Vec3::X),
+            Some(VirtualKeyCode::D) => self.update_translation(Vec3::X),
             Some(VirtualKeyCode::V) => match self.camera_controller.mode {
                 CameraMode::FirstPerson => {
-                    dbg!("sw");
                     self.camera_controller.mode = CameraMode::ThirdPerson { distance: 5.0 }
                 }
                 CameraMode::ThirdPerson { distance } => {
@@ -232,16 +227,17 @@ impl GameWorldState {
         }
     }
 
-    fn update_translation(&mut self, scenes: &mut Scenes, dir: Vec3) {
-        if let Some(id) = self.entities.get(&self.conn.host) {
-            if let Some(mut transform) = scenes.get_transform(*id) {
-                transform.translation += transform.rotation * dir * 0.01;
+    fn update_translation(&mut self, dir: Vec3) {
+        if let Some(snapshot) = &mut self.conn.current_state {
+            if let Some(host) = snapshot.entities.get_mut(self.conn.host) {
+                host.transform.translation += host.transform.rotation * dir * 0.01;
+                let translation = host.transform.translation;
 
                 let entity = self.conn.server_entities.get(self.conn.host).unwrap();
                 self.conn
                     .send(DataMessageBody::EntityTranslate(EntityTranslate {
                         entity,
-                        translation: transform.translation,
+                        translation,
                     }));
             }
         }

@@ -147,9 +147,7 @@ impl game_window::App for App {
         }
 
         match &mut self.state {
-            GameState::GameWorld(state) => {
-                state.handle_event(&mut self.scenes, event, &self.cursor)
-            }
+            GameState::GameWorld(state) => state.handle_event(event, &self.cursor),
             _ => (),
         }
     }

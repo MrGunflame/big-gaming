@@ -82,9 +82,6 @@ pub fn apply_world_delta<I>(conn: &mut ServerConnection<I>, cmd_buffer: &mut Com
         }
     }
 
-    conn.input_buffer
-        .remove(conn.world.at(0).unwrap().control_frame());
-
     for entity in buffer.entities {
         conn.trace.spawn(render_cf, entity.entity.clone());
 
@@ -92,8 +89,31 @@ pub fn apply_world_delta<I>(conn: &mut ServerConnection<I>, cmd_buffer: &mut Com
     }
 
     if should_pop {
-        conn.world.pop();
+        // We need to replicate the world snapshot as the client
+        // predicted it.
+        let mut snapshot = conn.world.pop().unwrap();
+
+        for msg in conn.input_buffer.iter() {
+            match msg.body {
+                DataMessageBody::EntityTranslate(msg) => {
+                    let id = conn.server_entities.get(msg.entity).unwrap();
+                    let entity = snapshot.entities.get_mut(id).unwrap();
+                    entity.transform.translation = msg.translation;
+                }
+                DataMessageBody::EntityRotate(msg) => {
+                    let id = conn.server_entities.get(msg.entity).unwrap();
+                    let entity = snapshot.entities.get_mut(id).unwrap();
+                    entity.transform.rotation = msg.rotation;
+                }
+                _ => todo!(),
+            }
+        }
+
+        conn.current_state = Some(snapshot);
     }
+
+    conn.input_buffer
+        .remove(conn.world.at(0).unwrap().control_frame());
 
     conn.last_render_frame = Some(render_cf);
 }

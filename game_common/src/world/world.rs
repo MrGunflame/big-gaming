@@ -132,7 +132,7 @@ impl WorldState {
         };
 
         let snapshot = self.snapshots.remove(index).unwrap();
-        self.drop_snapshot(snapshot);
+        self.drop_snapshot(&snapshot);
 
         if self.head > 0 {
             self.head -= 1;
@@ -140,13 +140,17 @@ impl WorldState {
     }
 
     /// Removes the oldest snapshot.
-    pub fn pop(&mut self) {
+    pub fn pop(&mut self) -> Option<Snapshot> {
         if let Some(snapshot) = self.snapshots.pop_front() {
-            self.drop_snapshot(snapshot);
+            self.drop_snapshot(&snapshot);
 
             if self.head > 0 {
                 self.head -= 1;
             }
+
+            Some(snapshot)
+        } else {
+            None
         }
     }
 
@@ -224,7 +228,7 @@ impl WorldState {
         &self.metrics
     }
 
-    fn drop_snapshot(&self, snapshot: Snapshot) {
+    fn drop_snapshot(&self, snapshot: &Snapshot) {
         self.metrics.snapshots.dec();
 
         let deltas = snapshot.deltas.len() as u64;
@@ -580,37 +584,37 @@ impl<'a> Deref for EntityMut<'a> {
 }
 
 #[derive(Clone, Debug, Default)]
-struct Entities {
+pub struct Entities {
     entities: HashMap<EntityId, Entity>,
 }
 
 impl Entities {
-    fn get(&self, id: EntityId) -> Option<&Entity> {
+    pub fn get(&self, id: EntityId) -> Option<&Entity> {
         self.entities.get(&id)
     }
 
-    fn get_mut(&mut self, id: EntityId) -> Option<&mut Entity> {
+    pub fn get_mut(&mut self, id: EntityId) -> Option<&mut Entity> {
         self.entities.get_mut(&id)
     }
 
-    fn insert(&mut self, entity: Entity) {
+    pub fn insert(&mut self, entity: Entity) {
         self.entities.insert(entity.id, entity);
     }
 
     /// The id must be set before insertion.
-    fn spawn(&mut self, entity: Entity) {
+    pub fn spawn(&mut self, entity: Entity) {
         self.entities.insert(entity.id, entity);
     }
 
-    fn despawn(&mut self, id: EntityId) -> Option<Entity> {
+    pub fn despawn(&mut self, id: EntityId) -> Option<Entity> {
         self.entities.remove(&id)
     }
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct Snapshot {
+pub struct Snapshot {
     control_frame: ControlFrame,
-    entities: Entities,
+    pub entities: Entities,
     streaming_sources: StreamingSources,
     pub deltas: Vec<EntityChange>,
     pub(crate) inventories: Inventories,
