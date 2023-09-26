@@ -52,16 +52,17 @@ impl Cursor {
     }
 
     #[inline]
-    pub fn lock(&mut self) {
-        let state = self.state.read();
-
-        if state.is_locked {
-            return;
-        }
+    pub fn lock(&self) {
+        let mut state = self.state.write();
 
         let Some(window) = state.window else {
             return;
         };
+
+        if state.is_locked {
+            state.is_locked = true;
+            return;
+        }
 
         let _ = self
             .tx
@@ -69,20 +70,31 @@ impl Cursor {
     }
 
     #[inline]
-    pub fn unlock(&mut self) {
-        let state = self.state.read();
-
-        if !state.is_locked {
-            return;
-        }
+    pub fn unlock(&self) {
+        let mut state = self.state.write();
 
         let Some(window) = state.window else {
             return;
         };
 
+        if !state.is_locked {
+            state.is_locked = false;
+            return;
+        }
+
         let _ = self
             .tx
             .send(UpdateEvent::CursorGrab(window, CursorGrabMode::None));
+    }
+
+    pub fn set_visible(&self, visible: bool) {
+        let state = self.state.read();
+
+        let Some(window) = state.window else {
+            return;
+        };
+
+        let _ = self.tx.send(UpdateEvent::CursorVisible(window, visible));
     }
 }
 
@@ -100,6 +112,7 @@ pub(crate) struct WindowCompat {
     cursor_grab_mode: CursorGrabMode,
     /// Cursor position should be reset.
     reset_cursor_position: bool,
+    cursor_position: Vec2,
 }
 
 impl WindowCompat {
@@ -108,7 +121,16 @@ impl WindowCompat {
             backend,
             cursor_grab_mode: CursorGrabMode::None,
             reset_cursor_position: false,
+            cursor_position: Vec2::ZERO,
         }
+    }
+
+    pub fn set_position(&mut self, pos: Vec2) {
+        self.cursor_position = pos;
+    }
+
+    pub fn set_grab_mode(&mut self, mode: CursorGrabMode) {
+        self.cursor_grab_mode = mode;
     }
 
     pub fn move_cursor(&mut self) {
@@ -121,7 +143,7 @@ impl WindowCompat {
     }
 
     pub fn emulate_cursor_grab_mode_locked(
-        &self,
+        &mut self,
         cursor: &Cursor,
         events: &mut VecDeque<UpdateEvent>,
     ) {
@@ -129,8 +151,11 @@ impl WindowCompat {
             return;
         }
 
+        self.reset_cursor_position = false;
+
+        dbg!(cursor.window());
         if let Some(id) = cursor.window() {
-            events.push_back(UpdateEvent::CursorPosition(id, cursor.position()));
+            events.push_back(UpdateEvent::CursorPosition(id, self.cursor_position));
         }
     }
 }

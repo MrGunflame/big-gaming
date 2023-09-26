@@ -12,7 +12,9 @@ game_net = { version = "0.1.0", path = "../game_net" }
 game_render = { version = "0.1.0", path = "../game_render" }
 game_window = { version = "0.1.0", path = "../game_window" }
 game_scene = { version = "0.1.0", path = "../game_scene" }
+game_input = { version = "0.1.0", path = "../game_input" }
 game_tracing = { version = "0.1.0", path = "../game_tracing" }
+game_data = { version = "0.1.0", path = "../game_data" }
 
 ahash = "0.8.2"
 serde = { version = "1.0.149", features = ["derive"] }
@@ -21,7 +23,6 @@ tokio = { version = "1.25.0", features = ["full"] }
 clap = { version = "4.1.6", features = ["derive"] }
 glam = "0.24.0"
 toml = "0.7.6"
-indexmap = "2.0.0"
 
 [features]
 default = []

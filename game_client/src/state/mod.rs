@@ -1,3 +1,5 @@
+use crate::world::GameWorldState;
+
 use self::main_menu::MainMenuState;
 
 pub mod main_menu;
@@ -12,5 +14,6 @@ pub enum GameState {
     Connecting,
     /// Connection failed
     ConnectionFailure,
-    World,
+    /// Connected to game world.
+    GameWorld(GameWorldState),
 }

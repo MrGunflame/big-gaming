@@ -2,26 +2,29 @@
 #![deny(unused_crate_dependencies)]
 
 mod config;
-//mod entities;
+mod entities;
 mod net;
-//mod plugins;
 mod state;
 mod utils;
+mod world;
+
+use std::sync::Arc;
 
 use clap::Parser;
 use config::Config;
 use game_core::counter::Interval;
 use game_core::logger::{self};
+use game_core::time::Time;
 use game_render::Renderer;
 use game_scene::Scenes;
+use game_window::cursor::Cursor;
 use game_window::events::WindowEvent;
 use game_window::windows::{WindowBuilder, WindowId, Windows};
 use game_window::WindowManager;
 use glam::UVec2;
 use state::main_menu::MainMenuState;
 use state::GameState;
-
-use crate::net::ServerConnection;
+use world::GameWorldState;
 
 #[derive(Clone, Debug, Default, Parser)]
 #[command(author, version, about, long_about = None)]
@@ -31,7 +34,7 @@ struct Args {
 }
 
 fn main() {
-    logger::init();
+    game_tracing::init();
 
     let args = Args::parse();
 
@@ -50,13 +53,22 @@ fn main() {
     let mut wm = WindowManager::new();
     let window_id = wm.windows().spawn(WindowBuilder::new());
 
-    let mut app = App {
+    let mut state = GameState::Startup;
+
+    let cursor = wm.cursor().clone();
+
+    if let Some(addr) = args.connect {
+        state = GameState::GameWorld(GameWorldState::new(&config, addr, res.modules, &cursor));
+    }
+
+    let app = App {
         window_id,
-        conn: ServerConnection::new(&config),
         renderer: Renderer::new(),
         windows: wm.windows().clone(),
-        state: GameState::Startup,
+        state,
         scenes: Scenes::new(),
+        time: Time::new(),
+        cursor: cursor,
     };
 
     wm.run(app);
@@ -66,14 +78,19 @@ pub struct App {
     state: GameState,
     /// Primary window
     window_id: WindowId,
-    conn: ServerConnection<Interval>,
     renderer: Renderer,
     windows: Windows,
     scenes: Scenes,
+    time: Time,
+    cursor: Arc<Cursor>,
 }
 
 impl game_window::App for App {
     fn update(&mut self) {
+        self.time.update();
+
+        let window = self.windows.state(self.window_id).unwrap();
+
         match &mut self.state {
             GameState::Startup => {
                 self.state = GameState::MainMenu(MainMenuState::new(
@@ -84,6 +101,9 @@ impl game_window::App for App {
             }
             GameState::MainMenu(state) => {
                 state.update(&mut self.renderer);
+            }
+            GameState::GameWorld(state) => {
+                state.update(&mut self.renderer, &mut self.scenes, window, &self.time);
             }
             _ => todo!(),
         }
@@ -123,6 +143,11 @@ impl game_window::App for App {
             WindowEvent::MouseWheel(event) => {}
             WindowEvent::MouseButtonInput(event) => {}
             WindowEvent::MouseMotion(event) => {}
+        }
+
+        match &mut self.state {
+            GameState::GameWorld(state) => state.handle_event(event, &self.cursor),
+            _ => (),
         }
     }
 }

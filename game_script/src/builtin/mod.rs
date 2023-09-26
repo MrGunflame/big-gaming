@@ -40,6 +40,8 @@ pub fn register_host_fns(store: &mut Linker<State>) {
         world_entity_component_get,
         world_entity_component_insert,
         world_entity_component_remove,
+        world_entity_set_translation,
+        world_entity_set_rotation,
         inventory_get,
         inventory_insert,
         inventory_remove,

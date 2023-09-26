@@ -84,8 +84,27 @@ impl Entity {
         Vec3::from_array(self.0.translation)
     }
 
+    pub fn set_translation(&mut self, translation: Vec3) {
+        self.0.translation = translation.to_array();
+
+        let [x, y, z] = translation.to_array();
+        unsafe {
+            let _ = raw::world_entity_set_translation(self.0.id, x, y, z);
+        }
+    }
+
     pub fn rotation(&self) -> Quat {
         Quat::from_array(self.0.rotation)
+    }
+
+    pub fn set_rotation(&mut self, rotation: Quat) {
+        assert!(rotation.is_normalized());
+        self.0.rotation = rotation.to_array();
+
+        let [x, y, z, w] = rotation.to_array();
+        unsafe {
+            let _ = raw::world_entity_set_rotation(self.0.id, x, y, z, w);
+        }
     }
 
     pub fn scale(&self) -> Vec3 {

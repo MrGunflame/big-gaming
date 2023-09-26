@@ -3,9 +3,7 @@ use std::iter::FusedIterator;
 use std::sync::Arc;
 
 use ahash::HashMap;
-use game_common::world::snapshot::EntityChange;
 use game_net::conn::{ConnectionHandle, ConnectionId};
-use game_net::snapshot::CommandId;
 use parking_lot::RwLock;
 
 use crate::net::state::ConnectionState;
@@ -18,7 +16,7 @@ pub struct Connections {
 }
 
 impl Connections {
-    pub fn insert(&self, handle: ConnectionHandle) {
+    pub fn insert(&self, handle: Arc<ConnectionHandle>) {
         let mut inner = self.connections.write();
 
         inner.insert(
@@ -28,7 +26,6 @@ impl Connections {
                     id: handle.id,
                     state: RwLock::new(ConnectionState::new()),
                     handle,
-                    processed_messages: RwLock::new(Vec::new()),
                 }),
             },
         );
@@ -114,41 +111,11 @@ impl Connection {
     pub fn state(&self) -> &RwLock<ConnectionState> {
         &self.inner.state
     }
-
-    pub fn push_proc_msg(&self, id: CommandId) {
-        let mut inner = self.inner.processed_messages.write();
-        inner.push(id);
-    }
-
-    pub fn take_proc_msg(&self) -> Vec<CommandId> {
-        let mut inner = self.inner.processed_messages.write();
-        std::mem::take(&mut *inner)
-    }
 }
 
 #[derive(Debug)]
 struct ConnectionInner {
     id: ConnectionId,
-    handle: ConnectionHandle,
+    handle: Arc<ConnectionHandle>,
     state: RwLock<ConnectionState>,
-    /// The messages handled from the peer in this tick.
-    ///
-    /// This buffer is filled in the read-commands phase and is drained in the send-snapshot phase.
-    processed_messages: RwLock<Vec<CommandId>>,
-}
-
-pub trait IntoDeltas {
-    fn into_deltas(self) -> Vec<EntityChange>;
-}
-
-impl IntoDeltas for EntityChange {
-    fn into_deltas(self) -> Vec<EntityChange> {
-        vec![self]
-    }
-}
-
-impl IntoDeltas for Vec<EntityChange> {
-    fn into_deltas(self) -> Vec<EntityChange> {
-        self
-    }
 }

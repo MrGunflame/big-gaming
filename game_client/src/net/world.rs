@@ -1,25 +1,17 @@
+use std::collections::VecDeque;
+
 use game_common::components::actions::{ActionId, Actions};
-use game_common::components::actor::ActorProperties;
 use game_common::components::components::{self, Components};
 use game_common::components::inventory::Inventory;
 use game_common::components::items::Item;
-use game_common::components::player::HostPlayer;
-use game_common::components::transform::Transform;
 use game_common::entity::EntityId;
 use game_common::world::control_frame::ControlFrame;
 use game_common::world::entity::{Entity, EntityBody};
 use game_common::world::snapshot::{EntityChange, InventoryItemAdd};
 use game_common::world::world::WorldViewRef;
-use game_core::counter::Interval;
 use game_core::modules::Modules;
+use game_net::message::DataMessageBody;
 use glam::{Quat, Vec3};
-
-// use crate::entities::actor::LoadActor;
-// use crate::entities::inventory::{AddInventoryItem, DestroyInventory, RemoveInventoryItem};
-// use crate::entities::item::LoadItem;
-// use crate::entities::object::LoadObject;
-// use crate::entities::terrain::LoadTerrain;
-// use crate::net::interpolate::{InterpolateRotation, InterpolateTranslation};
 
 use super::ServerConnection;
 
@@ -41,6 +33,11 @@ pub fn apply_world_delta<I>(conn: &mut ServerConnection<I>, cmd_buffer: &mut Com
         return;
     }
 
+    tracing::trace!(
+        "Applying CF {:?}",
+        conn.world.at(0).unwrap().control_frame()
+    );
+
     // The first time a frame is being produced, i.e. `last_render_frame` is
     // `None` we must produce a "diff" consisting of the entire world state.
     let (delta, should_pop) = if conn.last_render_frame.is_none() {
@@ -61,16 +58,35 @@ pub fn apply_world_delta<I>(conn: &mut ServerConnection<I>, cmd_buffer: &mut Com
         handle_event(event.clone(), &mut buffer, conn, cmd_buffer, render_cf);
     }
 
-    if let Some(cmds) = conn.commands_in_frame.remove(&render_cf) {
-        let view = conn.world.at(0).unwrap();
-
-        for cmd in cmds {
-            conn.predictions.validate_pre_removal(cmd, view);
-            conn.predictions.remove(cmd);
+    for msg in conn.input_buffer.iter() {
+        match msg.body {
+            DataMessageBody::EntityTranslate(msg) => {
+                let id = conn.server_entities.get(msg.entity).unwrap();
+                cmd_buffer.push(Command::Translate {
+                    entity: id,
+                    start: render_cf,
+                    end: render_cf + 1,
+                    dst: msg.translation,
+                });
+            }
+            DataMessageBody::EntityRotate(msg) => {
+                let id = conn.server_entities.get(msg.entity).unwrap();
+                cmd_buffer.push(Command::Rotate {
+                    entity: id,
+                    start: render_cf,
+                    end: render_cf + 1,
+                    dst: msg.rotation,
+                });
+            }
+            DataMessageBody::EntityAction(msg) => {}
+            _ => {
+                // Should never be sent from the client.
+                if cfg!(debug_assertions) {
+                    unreachable!();
+                }
+            }
         }
     }
-
-    apply_local_prediction(conn, render_cf, cmd_buffer);
 
     for entity in buffer.entities {
         conn.trace.spawn(render_cf, entity.entity.clone());
@@ -81,6 +97,39 @@ pub fn apply_world_delta<I>(conn: &mut ServerConnection<I>, cmd_buffer: &mut Com
     if should_pop {
         conn.world.pop();
     }
+
+    // We need to replicate the world snapshot as the client
+    // predicted it.
+    {
+        let mut snapshot = conn.world.front().unwrap().snapshot().clone();
+
+        for msg in conn.input_buffer.iter() {
+            match msg.body {
+                DataMessageBody::EntityTranslate(msg) => {
+                    let id = conn.server_entities.get(msg.entity).unwrap();
+                    let entity = snapshot.entities.get_mut(id).unwrap();
+                    entity.transform.translation = msg.translation;
+                }
+                DataMessageBody::EntityRotate(msg) => {
+                    let id = conn.server_entities.get(msg.entity).unwrap();
+                    let entity = snapshot.entities.get_mut(id).unwrap();
+                    entity.transform.rotation = msg.rotation;
+                }
+                DataMessageBody::EntityAction(msg) => {}
+                _ => {
+                    // Should never be sent from the client.
+                    if cfg!(debug_assertions) {
+                        unreachable!();
+                    }
+                }
+            }
+        }
+
+        conn.current_state = Some(snapshot);
+    }
+
+    conn.input_buffer
+        .remove(conn.world.at(0).unwrap().control_frame());
 
     conn.last_render_frame = Some(render_cf);
 }
@@ -106,7 +155,6 @@ fn handle_event<I>(
         EntityChange::Create { entity: _ } | EntityChange::Destroy { id: _ }
     ) {
         let entity_id = event.entity();
-        // if conn.entities.get(entity_id).is_none() {
         if let Some(entity) = buffer.get_mut(entity_id) {
             match event {
                 EntityChange::Create { entity: _ } => {}
@@ -137,12 +185,9 @@ fn handle_event<I>(
                 EntityChange::CreateStreamingSource { id, source } => {}
                 EntityChange::RemoveStreamingSource { id } => {}
             }
-        } else {
-            conn.backlog.push(entity_id, event);
-        }
 
-        return;
-        // }
+            return;
+        }
     }
 
     match event {
@@ -159,10 +204,6 @@ fn handle_event<I>(
             conn.trace.despawn(render_cf, id);
         }
         EntityChange::Translate { id, translation } => {
-            if conn.predictions.get_translation(view, id).is_some() {
-                return;
-            }
-
             conn.trace.set_translation(render_cf, id, translation);
 
             cmd_buffer.push(Command::Translate {
@@ -173,10 +214,6 @@ fn handle_event<I>(
             });
         }
         EntityChange::Rotate { id, rotation } => {
-            if conn.predictions.get_rotation(id).is_some() {
-                return;
-            }
-
             conn.trace.set_rotation(render_cf, id, rotation);
 
             cmd_buffer.push(Command::Rotate {
@@ -217,104 +254,11 @@ fn handle_event<I>(
     }
 }
 
-fn spawn_entity(entity: DelayedEntity) -> () {
-    // match entity.entity.body {
-    //     EntityBody::Terrain(terrain) => commands.spawn(LoadTerrain { terrain }).id(),
-    //     EntityBody::Object(object) => commands
-    //         .spawn(LoadObject {
-    //             transform: entity.entity.transform,
-    //             id: object.id,
-    //         })
-    //         .id(),
-    //     EntityBody::Actor(actor) => commands
-    //         .spawn(LoadActor {
-    //             transform: entity.entity.transform,
-    //             race: actor.race,
-    //             health: actor.health,
-    //             host: entity.host,
-    //             inventory: entity.inventory,
-    //         })
-    //         .id(),
-    //     EntityBody::Item(item) => commands
-    //         .spawn(LoadItem {
-    //             transform: entity.entity.transform,
-    //             id: item.id,
-    //         })
-    //         .id(),
-    // }
-    todo!()
-
-    // match &entity.entity.body {
-    //     EntityBody::Terrain(terrain) => {
-    //         let id = commands
-    //             .spawn(LoadTerrain {
-    //                 cell: terrain.cell,
-    //                 mesh: terrain.clone(),
-    //             })
-    //             .insert(TransformBundle {
-    //                 local: entity.entity.transform,
-    //                 global: Default::default(),
-    //             })
-    //             .insert(VisibilityBundle::new())
-    //             .insert(entity.entity)
-    //             .id();
-
-    //         id
-    //     }
-    //     EntityBody::Object(object) => {
-    //         let id = commands
-    //             .spawn(
-    //                 ObjectBundle::new(object.id)
-    //                     .translation(entity.entity.transform.translation)
-    //                     .rotation(entity.entity.transform.rotation),
-    //             )
-    //             .insert(entity.entity)
-    //             .insert(VisibilityBundle::new())
-    //             .id();
-
-    //         id
-    //     }
-    //     EntityBody::Actor(act) => {
-    //         let mut actor = ActorBundle::default();
-    //         actor.transform.transform.translation = entity.entity.transform.translation;
-    //         actor.transform.transform.rotation = entity.entity.transform.rotation;
-    //         actor.combat.health = act.health;
-
-    //         actor.properties.eyes = Vec3::new(0.0, 1.6, -0.1);
-
-    //         let mut cmds = commands.spawn(actor);
-    //         cmds.insert(entity.entity);
-    //         Human::default().spawn(assets, &mut cmds);
-
-    //         if entity.host {
-    //             cmds.insert(HostPlayer)
-    //                 .insert(StreamingSource::new())
-    //                 .insert(entity.inventory).insert(VisibilityBundle::new());
-    //         }
-
-    //         cmds.id()
-    //     }
-    //     EntityBody::Item(item) => {
-    //         let id = commands
-    //             .spawn(LoadItem::new(item.id))
-    //             .insert(TransformBundle {
-    //                 local: entity.entity.transform,
-    //                 global: Default::default(),
-    //             })
-    //             .insert(VisibilityBundle::new())
-    //             .insert(entity.entity)
-    //             .id();
-
-    //         id
-    //     }
-    // }
-}
-
 #[derive(Clone, Debug)]
 pub struct DelayedEntity {
-    entity: Entity,
-    host: bool,
-    inventory: Inventory,
+    pub entity: Entity,
+    pub host: bool,
+    pub inventory: Inventory,
 }
 
 impl From<Entity> for DelayedEntity {
@@ -364,25 +308,6 @@ impl Buffer {
     }
 }
 
-fn apply_local_prediction<I>(
-    conn: &ServerConnection<I>,
-    render_cf: ControlFrame,
-    buffer: &mut CommandBuffer,
-) {
-    let view = conn.world.get(render_cf).unwrap();
-
-    for entity in view.iter() {
-        if let Some(translation) = conn.predictions.get_translation(view, entity.id) {
-            buffer.push(Command::Translate {
-                entity: entity.id,
-                start: render_cf,
-                end: render_cf + 1,
-                dst: translation,
-            });
-        }
-    }
-}
-
 fn add_inventory_item(inventory: &mut Inventory, modules: &Modules, event: InventoryItemAdd) {
     let module = modules.get(event.item.0.module).unwrap();
     let record = module.records.get(event.item.0.record).unwrap();
@@ -420,6 +345,10 @@ fn create_initial_diff(view: WorldViewRef) -> Vec<EntityChange> {
         deltas.push(EntityChange::Create {
             entity: entity.clone(),
         });
+
+        if entity.is_host {
+            deltas.push(EntityChange::CreateHost { id: entity.id });
+        }
     }
 
     deltas
@@ -474,20 +403,22 @@ fn create_snapshot_diff(prev: WorldViewRef, next: WorldViewRef) -> Vec<EntityCha
 
 #[derive(Clone, Debug, Default)]
 pub struct CommandBuffer {
-    buffer: Vec<Command>,
+    buffer: VecDeque<Command>,
 }
 
 impl CommandBuffer {
     pub fn new() -> Self {
-        Self { buffer: Vec::new() }
+        Self {
+            buffer: VecDeque::new(),
+        }
     }
 
     pub fn push(&mut self, cmd: Command) {
-        self.buffer.push(cmd);
+        self.buffer.push_back(cmd);
     }
 
     pub fn pop(&mut self) -> Option<Command> {
-        self.buffer.pop()
+        self.buffer.pop_front()
     }
 
     pub fn len(&self) -> usize {
@@ -518,66 +449,6 @@ pub enum Command {
     SpawnHost(EntityId),
     DestroyHost(EntityId),
 }
-
-// pub fn write_back(
-//     mut commands: Commands,
-//     mut buffer: ResMut<CommandBuffer>,
-//     mut entities: Query<(
-//         bevy_ecs::entity::Entity,
-//         &Transform,
-//         Option<&mut ActorProperties>,
-//         &mut InterpolateTranslation,
-//         &mut InterpolateRotation,
-//     )>,
-//     conn: ResMut<ServerConnection<Interval>>,
-// ) {
-//     while let Some(cmd) = buffer.pop() {
-//         match cmd {
-//             Command::Spawn(entity) => {
-//                 let id = entity.entity.id;
-//                 let entity = spawn_entity(&mut commands, entity);
-//                 conn.entities.insert(id, entity);
-//             }
-//             Command::Despawn(entity) => {
-//                 let entity = conn.entities.get(entity).unwrap();
-
-//                 commands.entity(entity).despawn();
-//             }
-//             Command::Translate {
-//                 entity,
-//                 start,
-//                 end,
-//                 dst,
-//             } => {
-//                 let entity = conn.entities.get(entity).unwrap();
-
-//                 let (_, transform, _, mut interpolate, _) = entities.get_mut(entity).unwrap();
-//                 interpolate.set(transform.translation, dst, start, end);
-//             }
-//             Command::Rotate {
-//                 entity,
-//                 start,
-//                 end,
-//                 dst,
-//             } => {
-//                 let entity = conn.entities.get(entity).unwrap();
-
-//                 let (_, transform, _, _, mut interpolate) = entities.get_mut(entity).unwrap();
-//                 interpolate.set(transform.rotation, dst, start, end);
-//             }
-//             Command::SpawnHost(entity) => {
-//                 let entity = conn.entities.get(entity).unwrap();
-
-//                 commands.entity(entity).insert(HostPlayer);
-//             }
-//             Command::DestroyHost(entity) => {
-//                 let entity = conn.entities.get(entity).unwrap();
-
-//                 commands.entity(entity).remove::<HostPlayer>();
-//             }
-//         }
-//     }
-// }
 
 #[cfg(test)]
 mod tests {

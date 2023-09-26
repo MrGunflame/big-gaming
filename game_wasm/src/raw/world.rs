@@ -14,6 +14,10 @@ extern "C" {
     /// [`ERROR_NO_ENTITY`]: super::ERROR_NO_ENTITY
     pub fn world_entity_get(id: u64, out: PtrMut<Entity>) -> u32;
 
+    // FIXME: Reevaluate how update functions are supposted to work.
+    pub fn world_entity_set_translation(id: u64, x: f32, y: f32, z: f32) -> u32;
+    pub fn world_entity_set_rotation(id: u64, x: f32, y: f32, z: f32, w: f32) -> u32;
+
     /// Spawns a new entity.
     pub fn world_entity_spawn(entity: Ptr<Entity>, out: PtrMut<u64>) -> u32;
 

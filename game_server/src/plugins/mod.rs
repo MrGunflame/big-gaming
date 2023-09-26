@@ -1,5 +1,7 @@
 mod inventory;
 
+use std::collections::VecDeque;
+
 use ahash::HashSet;
 use game_common::events::{ActionEvent, Event};
 use game_common::world::control_frame::ControlFrame;
@@ -7,10 +9,9 @@ use game_common::world::snapshot::EntityChange;
 use game_common::world::source::StreamingSource;
 use game_common::world::world::{AsView, WorldState, WorldViewRef};
 use game_common::world::CellId;
-use game_net::conn::ConnectionId;
-use game_net::snapshot::{
-    Command, ConnectionMessage, EntityCreate, EntityDestroy, EntityRotate, EntityTranslate,
-    InventoryItemAdd, Response, SpawnHost, Status,
+use game_net::message::{
+    ControlMessage, DataMessage, DataMessageBody, EntityCreate, EntityDestroy, EntityRotate,
+    EntityTranslate, Message, SpawnHost,
 };
 use game_script::Context;
 
@@ -71,10 +72,15 @@ fn update_client_heads(state: &mut ServerState) {
 }
 
 fn flush_command_queue(srv_state: &mut ServerState) {
-    while let Some(msg) = srv_state.state.queue.pop() {
-        tracing::trace!("got command {:?}", msg.command);
+    let mut queue = VecDeque::new();
+    for conn in srv_state.state.conns.iter() {
+        while let Some(msg) = conn.handle().recv() {
+            queue.push_back((conn.id(), msg));
+        }
+    }
 
-        let conn = srv_state.state.conns.get(msg.conn).unwrap();
+    while let Some((id, msg)) = queue.pop_front() {
+        let conn = srv_state.state.conns.get(id).unwrap();
         let client_cf = conn.state().read().client_cf;
 
         // Fetch the world state at the client's computed render time.
@@ -100,43 +106,10 @@ fn flush_command_queue(srv_state: &mut ServerState) {
             }
         }
 
-        if let Some(id) = msg.id {
-            conn.push_proc_msg(id);
-        }
-
         let mut state = conn.state().write();
 
-        match msg.command {
-            Command::EntityCreate(event) => {}
-            Command::EntityDestroy(event) => {}
-            Command::EntityTranslate(event) => {
-                // Server-only frame
-            }
-            Command::EntityRotate(event) => {
-                let Some(entity_id) = state.entities.get(event.id) else {
-                    continue;
-                };
-
-                let mut entity = view.get_mut(entity_id).unwrap();
-                entity.set_rotation(event.rotation);
-            }
-            Command::EntityHealth(event) => {
-                tracing::warn!("received EntityHealth from client, ignored");
-            }
-            Command::EntityAction(event) => {
-                let Some(entity_id) = state.entities.get(event.id) else {
-                    continue;
-                };
-
-                srv_state.event_queue.push(Event::Action(ActionEvent {
-                    entity: entity_id,
-                    invoker: entity_id,
-                    action: event.action,
-                }));
-
-                // TODO
-            }
-            Command::Connected(event) => {
+        match msg {
+            Message::Control(ControlMessage::Connected()) => {
                 let res = spawn_player(&mut view);
 
                 state.entities.insert(res.id);
@@ -153,39 +126,58 @@ fn flush_command_queue(srv_state: &mut ServerState) {
                 debug_assert_eq!(state.peer_delay, ControlFrame(0));
 
                 state.host.entity = Some(res.id);
-                state.peer_delay = event.peer_delay;
+                state.peer_delay = ControlFrame(0);
                 state.cells = Cells::new(CellId::from(res.transform.translation));
-
-                tracing::info!("spawning host {:?} in cell", msg.id);
             }
-            Command::Disconnected => {
-                if let Some(id) = state.host.entity {
-                    if view.despawn(id).is_none() {
-                        tracing::warn!("attempted to destroy an unknown entity {:?}", id);
+            Message::Control(ControlMessage::Disconnected) => {}
+            Message::Data(msg) => match msg.body {
+                DataMessageBody::EntityCreate(msg) => {}
+                DataMessageBody::EntityDestroy(msg) => {
+                    if let Some(id) = state.host.entity {
+                        if view.despawn(id).is_none() {
+                            tracing::warn!("attempted to destroy an unknown entity {:?}", id);
+                        }
                     }
+
+                    // Remove the player from the connections ref.
+                    srv_state.state.conns.remove(id);
                 }
+                DataMessageBody::EntityTranslate(msg) => {
+                    let Some(id) = state.entities.get(msg.entity) else {
+                        continue;
+                    };
 
-                // Remove the player from the connections ref.
-                srv_state.state.conns.remove(msg.conn);
-            }
-            Command::SpawnHost(event) => (),
-            Command::InventoryItemAdd(event) => {
-                // Server-only frame
-            }
-            Command::InventoryItemRemove(event) => {
-                // Server-only frame
-            }
-            Command::InventoryUpdate(event) => {
-                // Server-only frame
-            }
-            Command::ReceivedCommands(ids) => (),
-            Command::PlayerMove(event) => {
-                let Some(entity_id) = state.entities.get(event.entity) else {
-                    continue;
-                };
+                    let Some(mut entity) = view.get_mut(id) else {
+                        continue;
+                    };
 
-                crate::world::player::move_player(event, entity_id, &mut view);
-            }
+                    entity.set_translation(msg.translation);
+                }
+                DataMessageBody::EntityRotate(msg) => {
+                    let Some(id) = state.entities.get(msg.entity) else {
+                        continue;
+                    };
+
+                    let Some(mut entity) = view.get_mut(id) else {
+                        continue;
+                    };
+
+                    entity.set_rotation(msg.rotation);
+                }
+                DataMessageBody::EntityAction(msg) => {
+                    let Some(entity) = state.entities.get(msg.entity) else {
+                        continue;
+                    };
+
+                    // TODO: Validate that the peer has the acton.
+                    srv_state.event_queue.push(Event::Action(ActionEvent {
+                        entity,
+                        invoker: entity,
+                        action: msg.action,
+                    }));
+                }
+                DataMessageBody::SpawnHost(_) => (),
+            },
         }
 
         drop(view);
@@ -243,12 +235,10 @@ fn update_client(conn: &Connection, view: WorldViewRef<'_>) {
 
                 let entity_id = state.entities.insert(entity.id);
 
-                conn.handle().send_cmd(ConnectionMessage {
-                    id: None,
-                    conn: ConnectionId(0),
+                conn.handle().send_cmd(DataMessage {
                     control_frame: view.control_frame(),
-                    command: Command::EntityCreate(EntityCreate {
-                        id: entity_id,
+                    body: DataMessageBody::EntityCreate(EntityCreate {
+                        entity: entity_id,
                         translation: entity.transform.translation,
                         rotation: entity.transform.rotation,
                         data: entity.body.clone(),
@@ -258,16 +248,7 @@ fn update_client(conn: &Connection, view: WorldViewRef<'_>) {
                 // Sync the entity inventory, if it has one.
                 if let Some(inventory) = view.inventories().get(entity.id) {
                     for item in inventory.iter() {
-                        conn.handle().send_cmd(ConnectionMessage {
-                            id: None,
-                            conn: ConnectionId(0),
-                            control_frame: view.control_frame(),
-                            command: Command::InventoryItemAdd(InventoryItemAdd {
-                                entity: entity_id,
-                                slot: item.id,
-                                item: item.item.id,
-                            }),
-                        });
+                        todo!()
                     }
                 }
             }
@@ -275,11 +256,9 @@ fn update_client(conn: &Connection, view: WorldViewRef<'_>) {
 
         // Also sent the host.
         let id = state.entities.get(host_id).unwrap();
-        conn.handle().send_cmd(ConnectionMessage {
-            id: None,
-            conn: ConnectionId(0),
+        conn.handle().send_cmd(DataMessage {
             control_frame: view.control_frame(),
-            command: Command::SpawnHost(SpawnHost { id }),
+            body: DataMessageBody::SpawnHost(SpawnHost { entity: id }),
         });
 
         return;
@@ -307,30 +286,14 @@ fn update_client(conn: &Connection, view: WorldViewRef<'_>) {
         }
     }
 
-    for cmd in update_client_entities(state, events) {
-        conn.handle().send_cmd(ConnectionMessage {
-            id: None,
-            conn: ConnectionId(0),
-            control_frame: view.control_frame(),
-            command: cmd,
-        });
+    let control_frame = view.control_frame();
+    for body in update_client_entities(state, events) {
+        let msg = DataMessage {
+            control_frame,
+            body,
+        };
+        conn.handle().send_cmd(msg);
     }
-
-    // Acknowledge client commands.
-    let ids = conn.take_proc_msg();
-    conn.handle().send_cmd(ConnectionMessage {
-        id: None,
-        conn: conn.id(),
-        control_frame: view.control_frame(),
-        command: Command::ReceivedCommands(
-            ids.into_iter()
-                .map(|id| Response {
-                    id,
-                    status: Status::Received,
-                })
-                .collect(),
-        ),
-    });
 }
 
 /// Update a player that hasn't moved cells.
@@ -382,7 +345,10 @@ where
     events
 }
 
-fn update_client_entities(state: &mut ConnectionState, events: Vec<EntityChange>) -> Vec<Command> {
+fn update_client_entities(
+    state: &mut ConnectionState,
+    events: Vec<EntityChange>,
+) -> Vec<DataMessageBody> {
     let mut cmds = Vec::new();
 
     for event in events {
@@ -391,8 +357,8 @@ fn update_client_entities(state: &mut ConnectionState, events: Vec<EntityChange>
                 let entity_id = state.entities.insert(entity.id);
                 state.known_entities.insert(entity.clone());
 
-                Command::EntityCreate(EntityCreate {
-                    id: entity_id,
+                DataMessageBody::EntityCreate(EntityCreate {
+                    entity: entity_id,
                     translation: entity.transform.translation,
                     rotation: entity.transform.rotation,
                     data: entity.body,
@@ -402,7 +368,7 @@ fn update_client_entities(state: &mut ConnectionState, events: Vec<EntityChange>
                 let entity_id = state.entities.remove(id).unwrap();
                 state.known_entities.remove(id);
 
-                Command::EntityDestroy(EntityDestroy { id: entity_id })
+                DataMessageBody::EntityDestroy(EntityDestroy { entity: entity_id })
             }
             EntityChange::Translate { id, translation } => {
                 let entity_id = state.entities.get(id).unwrap();
@@ -410,8 +376,8 @@ fn update_client_entities(state: &mut ConnectionState, events: Vec<EntityChange>
 
                 entity.transform.translation = translation;
 
-                Command::EntityTranslate(EntityTranslate {
-                    id: entity_id,
+                DataMessageBody::EntityTranslate(EntityTranslate {
+                    entity: entity_id,
                     translation,
                 })
             }
@@ -421,8 +387,8 @@ fn update_client_entities(state: &mut ConnectionState, events: Vec<EntityChange>
 
                 entity.transform.rotation = rotation;
 
-                Command::EntityRotate(EntityRotate {
-                    id: entity_id,
+                DataMessageBody::EntityRotate(EntityRotate {
+                    entity: entity_id,
                     rotation,
                 })
             }
