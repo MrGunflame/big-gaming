@@ -3,6 +3,7 @@ mod inventory;
 use std::collections::VecDeque;
 
 use ahash::HashSet;
+use game_common::events::{ActionEvent, Event};
 use game_common::world::control_frame::ControlFrame;
 use game_common::world::snapshot::EntityChange;
 use game_common::world::source::StreamingSource;
@@ -163,7 +164,18 @@ fn flush_command_queue(srv_state: &mut ServerState) {
 
                     entity.set_rotation(msg.rotation);
                 }
-                DataMessageBody::EntityAction(msg) => todo!(),
+                DataMessageBody::EntityAction(msg) => {
+                    let Some(entity) = state.entities.get(msg.entity) else {
+                        continue;
+                    };
+
+                    // TODO: Validate that the peer has the acton.
+                    srv_state.event_queue.push(Event::Action(ActionEvent {
+                        entity,
+                        invoker: entity,
+                        action: msg.action,
+                    }));
+                }
                 DataMessageBody::SpawnHost(_) => (),
             },
         }
