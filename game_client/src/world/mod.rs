@@ -148,16 +148,15 @@ impl GameWorldState {
 
         self.dispatch_actions();
 
-        {
-            let host = self.conn.host;
-            if let Some(id) = self.entities.get(&host) {
-                if let Some(transform) = scenes.get_transform(*id) {
-                    let props = ActorProperties {
-                        eyes: Vec3::new(0.0, 1.8, 0.0),
-                        rotation: extract_actor_rotation(transform.rotation),
-                    };
-                    self.camera_controller.sync_with_entity(transform, props);
-                }
+        if let Some(snapshot) = &self.conn.current_state {
+            if let Some(entity) = snapshot.entities.get(self.conn.host) {
+                let props = ActorProperties {
+                    eyes: Vec3::new(0.0, 1.8, 0.0),
+                    rotation: extract_actor_rotation(entity.transform.rotation),
+                };
+
+                self.camera_controller
+                    .sync_with_entity(entity.transform, props);
             }
         }
 

@@ -29,8 +29,7 @@ impl CameraController {
     pub fn sync_with_entity(&mut self, entity: Transform, props: ActorProperties) {
         match self.mode {
             CameraMode::FirstPerson => {
-                let mat = Mat3::from_quat(entity.rotation);
-                self.transform.translation = entity.translation + mat * props.eyes;
+                self.transform.translation = entity.translation + props.eyes;
                 self.transform.rotation = entity.rotation;
             }
             CameraMode::ThirdPerson { distance } => {
@@ -42,7 +41,5 @@ impl CameraController {
             // Don't sync in detached mode.
             CameraMode::Detached => (),
         }
-
-        //self.transform = entity;
     }
 }
