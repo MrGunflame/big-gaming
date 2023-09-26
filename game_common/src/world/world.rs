@@ -243,6 +243,10 @@ pub struct WorldViewRef<'a> {
 }
 
 impl<'a> WorldViewRef<'a> {
+    pub fn snapshot(&self) -> &'a Snapshot {
+        self.snapshot
+    }
+
     pub fn len(&self) -> usize {
         self.snapshot.entities.entities.len()
     }

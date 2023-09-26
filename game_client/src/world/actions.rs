@@ -6,6 +6,7 @@ use game_data::record::Record;
 use game_input::hotkeys::{Hotkey, HotkeyCode, HotkeyId, Hotkeys, TriggerKind};
 use game_input::keyboard::KeyboardInput;
 use game_input::mouse::{MouseButton, MouseButtonInput};
+use game_tracing::trace_span;
 
 #[derive(Debug)]
 pub struct ActiveActions {
@@ -23,7 +24,8 @@ impl ActiveActions {
         }
     }
 
-    pub fn register(&mut self, module: ModuleId, record: Record) {
+    pub fn register(&mut self, module: ModuleId, record: &Record) {
+        let _span = trace_span!("ActiveActions::register").entered();
         tracing::info!("registered action for {:?}", record);
 
         assert!(record.body.as_action().is_some());
@@ -56,7 +58,8 @@ impl ActiveActions {
         );
     }
 
-    pub fn unregister(&mut self, module: ModuleId, record: Record) {
+    pub fn unregister(&mut self, module: ModuleId, record: &Record) {
+        let _span = trace_span!("ActiveActions::unregister").entered();
         tracing::info!("unregistered action for {:?}", record);
 
         assert!(record.body.as_action().is_some());

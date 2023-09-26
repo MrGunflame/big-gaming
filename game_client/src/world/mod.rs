@@ -108,6 +108,11 @@ impl GameWorldState {
             match cmd {
                 Command::Spawn(entity) => {
                     let eid = entity.entity.id;
+
+                    if entity.host {
+                        self.update_host(eid);
+                    }
+
                     if let Some(id) = spawn_entity(renderer, scenes, entity, &self.modules) {
                         self.entities.insert(eid, id);
                     }
@@ -134,7 +139,9 @@ impl GameWorldState {
                     transform.rotation = dst;
                     scenes.set_transform(*id, transform);
                 }
-                Command::SpawnHost(id) => {}
+                Command::SpawnHost(id) => {
+                    self.update_host(id);
+                }
                 _ => todo!(),
             }
         }
@@ -255,6 +262,26 @@ impl GameWorldState {
                 entity,
                 action,
             }));
+        }
+    }
+
+    fn update_host(&mut self, id: EntityId) {
+        // TODO: Unregister previous host.
+        self.conn.host = id;
+
+        let snapshot = self.conn.current_state.as_ref().unwrap();
+        let entity = snapshot.entities.get(id).unwrap();
+        let actor = entity.body.as_actor().unwrap();
+
+        let module = self.modules.get(actor.race.0.module).unwrap();
+        let record = module.records.get(actor.race.0.record).unwrap();
+        let race = record.body.as_race().unwrap();
+
+        for action in &race.actions {
+            let module = self.modules.get(action.module).unwrap();
+            let record = module.records.get(action.record).unwrap();
+
+            self.actions.register(action.module, record);
         }
     }
 }

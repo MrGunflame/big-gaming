@@ -89,9 +89,13 @@ pub fn apply_world_delta<I>(conn: &mut ServerConnection<I>, cmd_buffer: &mut Com
     }
 
     if should_pop {
-        // We need to replicate the world snapshot as the client
-        // predicted it.
-        let mut snapshot = conn.world.pop().unwrap();
+        conn.world.pop();
+    }
+
+    // We need to replicate the world snapshot as the client
+    // predicted it.
+    {
+        let mut snapshot = conn.world.front().unwrap().snapshot().clone();
 
         for msg in conn.input_buffer.iter() {
             match msg.body {
@@ -329,6 +333,10 @@ fn create_initial_diff(view: WorldViewRef) -> Vec<EntityChange> {
         deltas.push(EntityChange::Create {
             entity: entity.clone(),
         });
+
+        if entity.is_host {
+            deltas.push(EntityChange::CreateHost { id: entity.id });
+        }
     }
 
     deltas

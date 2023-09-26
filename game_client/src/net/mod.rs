@@ -98,7 +98,6 @@ fn flush_command_queue<I>(conn: &mut ServerConnection<I>) {
             DataMessageBody::SpawnHost(msg) => match conn.server_entities.get(msg.entity) {
                 Some(id) => {
                     view.spawn_host(id);
-                    conn.host = id;
                 }
                 None => (),
             },

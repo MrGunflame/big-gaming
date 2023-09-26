@@ -47,6 +47,38 @@ impl EntityBody {
             Self::Item(_) => EntityKind::Item,
         }
     }
+
+    #[inline]
+    pub const fn as_terrain(&self) -> Option<&Terrain> {
+        match self {
+            Self::Terrain(terrain) => Some(terrain),
+            _ => None,
+        }
+    }
+
+    #[inline]
+    pub const fn as_object(&self) -> Option<&Object> {
+        match self {
+            Self::Object(object) => Some(object),
+            _ => None,
+        }
+    }
+
+    #[inline]
+    pub const fn as_actor(&self) -> Option<&Actor> {
+        match self {
+            Self::Actor(actor) => Some(actor),
+            _ => None,
+        }
+    }
+
+    #[inline]
+    pub const fn as_item(&self) -> Option<&Item> {
+        match self {
+            Self::Item(item) => Some(item),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
