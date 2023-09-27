@@ -1,3 +1,4 @@
+pub mod channel;
 pub mod socket;
 
 use std::collections::{HashMap, VecDeque};
@@ -685,7 +686,6 @@ where
     type Output = Result<(), Error>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        dbg!("poll");
         loop {
             if self.write.is_some() {
                 match self.poll_write(cx) {
