@@ -12,6 +12,7 @@ use std::time::{Duration, Instant};
 use futures::{Sink, SinkExt, Stream, StreamExt};
 use game_common::world::control_frame::ControlFrame;
 use parking_lot::Mutex;
+use rand::rngs::adapter::ReseedingRng;
 use thiserror::Error;
 use tokio::sync::mpsc;
 use tokio::time::MissedTickBehavior;
@@ -26,18 +27,15 @@ use crate::proto::{
     SequenceRange,
 };
 
-#[derive(Debug, Error)]
-#[error(transparent)]
-pub struct Error(#[from] ErrorKind);
-
-#[derive(Debug, Error)]
-enum ErrorKind {
-    #[error("connection refused")]
-    ConnectionRefused,
-    #[error("timed out")]
-    TimedOut,
-    #[error("peer shutdown")]
-    PeerShutdown,
+#[derive(Clone, Debug, Error)]
+pub enum Error<E>
+where
+    E: std::error::Error,
+{
+    #[error("peer timed out")]
+    Timeout,
+    #[error("stream error: {0}")]
+    Stream(#[from] E),
 }
 
 static CONNECTION_ID: AtomicU32 = AtomicU32::new(0);
@@ -70,6 +68,7 @@ pub trait ConnectionStream: Stream<Item = Packet> + Sink<Packet> + Unpin {
 pub struct Connection<S, M>
 where
     S: ConnectionStream,
+    S::Error: std::error::Error,
     M: ConnectionMode,
 {
     pub id: ConnectionId,
@@ -119,6 +118,7 @@ where
 impl<S, M> Connection<S, M>
 where
     S: ConnectionStream,
+    S::Error: std::error::Error,
     M: ConnectionMode,
 {
     pub fn new(
@@ -180,7 +180,7 @@ where
         )
     }
 
-    fn poll_read(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), ErrorKind>> {
+    fn poll_read(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Error<S::Error>>> {
         // Flush the send buffer before reading any packets.
         if !self.packet_queue.is_empty() {
             self.init_write(self.state);
@@ -261,7 +261,7 @@ where
         };
 
         match self.stream.poll_ready_unpin(cx) {
-            Poll::Ready(_) => {
+            Poll::Ready(res) => {
                 self.state = req.state;
                 self.write = None;
                 Poll::Ready(())
@@ -272,7 +272,7 @@ where
 
     ///
     /// Returns `Poll::Ready` on state change.
-    fn handle_packet(&mut self, packet: Packet) -> Poll<()> {
+    fn handle_packet(&mut self, packet: Packet) -> Poll<Result<(), Error<S::Error>>> {
         match packet.body {
             PacketBody::Handshake(body) => self.handle_handshake(packet.header, body),
             PacketBody::Shutdown(body) => self.handle_shutdown(packet.header, body),
@@ -283,11 +283,11 @@ where
         }
     }
 
-    fn handle_data(&mut self, header: Header, body: Vec<u8>) -> Poll<()> {
+    fn handle_data(&mut self, header: Header, body: Vec<u8>) -> Poll<Result<(), Error<S::Error>>> {
         // Drop out-of-order or duplicates.
         if header.sequence < self.next_peer_sequence && !self.loss_list.remove(header.sequence) {
             tracing::warn!("dropping duplicate packet {:?}", header.sequence);
-            return Poll::Ready(());
+            return Poll::Ready(Ok(()));
         }
 
         // Prepare NAK if we lost a packet.
@@ -338,14 +338,18 @@ where
         if let Some(nak) = nak {
             self.send_packet(nak, ConnectionState::Connected)
         } else {
-            Poll::Ready(())
+            Poll::Ready(Ok(()))
         }
     }
 
-    fn handle_handshake(&mut self, header: Header, body: Handshake) -> Poll<()> {
+    fn handle_handshake(
+        &mut self,
+        header: Header,
+        body: Handshake,
+    ) -> Poll<Result<(), Error<S::Error>>> {
         // Ignore if not in HS process.
         let ConnectionState::Handshake(state) = self.state else {
-            return Poll::Ready(());
+            return Poll::Ready(Ok(()));
         };
 
         match state {
@@ -354,7 +358,7 @@ where
                 if body.kind != HandshakeType::HELLO {
                     tracing::info!("abort: expected HELLO, but got {:?}", body.kind);
                     self.abort();
-                    return Poll::Ready(());
+                    return Poll::Ready(Ok(()));
                 }
 
                 // Send AGREEMENT
@@ -387,7 +391,7 @@ where
                 if body.kind != HandshakeType::AGREEMENT {
                     tracing::info!("abort: expected AGREEMENT, but got {:?}", body.kind);
                     self.abort();
-                    return Poll::Ready(());
+                    return Poll::Ready(Ok(()));
                 }
 
                 if self.next_peer_sequence != body.initial_sequence {
@@ -486,12 +490,16 @@ where
         Poll::Pending
     }
 
-    fn handle_shutdown(&mut self, header: Header, body: Shutdown) -> Poll<()> {
-        let _ = self.shutdown();
-        Poll::Ready(())
+    fn handle_shutdown(
+        &mut self,
+        header: Header,
+        body: Shutdown,
+    ) -> Poll<Result<(), Error<S::Error>>> {
+        self.shutdown();
+        Poll::Ready(Ok(()))
     }
 
-    fn handle_ack(&mut self, header: Header, body: Ack) -> Poll<()> {
+    fn handle_ack(&mut self, header: Header, body: Ack) -> Poll<Result<(), Error<S::Error>>> {
         let sequence = body.sequence;
 
         // Respond with ACKACK
@@ -510,7 +518,7 @@ where
         self.send_packet(packet, ConnectionState::Connected)
     }
 
-    fn handle_ackack(&mut self, header: Header, body: AckAck) -> Poll<()> {
+    fn handle_ackack(&mut self, header: Header, body: AckAck) -> Poll<Result<(), Error<S::Error>>> {
         if let Some(ts) = self.ack_time_list.remove(body.ack_sequence) {
             self.rtt.update(ts.elapsed().as_micros() as u32);
         }
@@ -518,7 +526,7 @@ where
         Poll::Pending
     }
 
-    fn handle_nak(&mut self, header: Header, body: Nak) -> Poll<()> {
+    fn handle_nak(&mut self, header: Header, body: Nak) -> Poll<Result<(), Error<S::Error>>> {
         let mut start = body.sequences.start;
         let end = body.sequences.end;
 
@@ -531,7 +539,7 @@ where
             start += 1;
         }
 
-        Poll::Ready(())
+        Poll::Ready(Ok(()))
     }
 
     fn prepare_connect(&mut self) {
@@ -560,7 +568,7 @@ where
         self.send_packet(packet, ConnectionState::Handshake(HandshakeState::Hello));
     }
 
-    fn poll_tick(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), ErrorKind>> {
+    fn poll_tick(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Error<S::Error>>> {
         // `tokio::time::Interval::poll_tick` does no longer register the waker if
         // the interval yields on the first call. We need to register the waker to
         // advance the state machine correctly. We expect that at some point `poll_tick`
@@ -572,7 +580,7 @@ where
                 tracing::info!("closing connection due to timeout");
 
                 self.shutdown();
-                return Poll::Ready(Err(ErrorKind::TimedOut));
+                return Poll::Ready(Err(Error::Timeout));
             }
 
             // Send periodic ACKs while connected.
@@ -606,7 +614,7 @@ where
         Poll::Pending
     }
 
-    fn reject(&mut self, reason: HandshakeType) -> Poll<()> {
+    fn reject(&mut self, reason: HandshakeType) -> Poll<Result<(), Error<S::Error>>> {
         // Don't accidently send a non-rejection.
         debug_assert!(reason.is_rejection());
 
@@ -633,7 +641,7 @@ where
     }
 
     /// Closes the connection without doing a shutdown process.
-    fn abort(&mut self) -> Poll<Result<(), ErrorKind>> {
+    fn abort(&mut self) -> Poll<Result<(), Error<S::Error>>> {
         // If the connection active we need to notify that the player left.
         if self.state == ConnectionState::Connected {
             self.writer
@@ -646,7 +654,7 @@ where
         Poll::Ready(Ok(()))
     }
 
-    fn shutdown(&mut self) -> Poll<Result<(), ErrorKind>> {
+    fn shutdown(&mut self) -> Poll<Result<(), Error<S::Error>>> {
         // If the connection active we need to notify that the player left.
         if M::IS_LISTEN && self.state == ConnectionState::Connected {
             self.writer
@@ -670,20 +678,25 @@ where
         Poll::Ready(Ok(()))
     }
 
-    fn send_packet(&mut self, packet: Packet, state: ConnectionState) -> Poll<()> {
-        self.stream.start_send_unpin(packet);
+    fn send_packet(
+        &mut self,
+        packet: Packet,
+        state: ConnectionState,
+    ) -> Poll<Result<(), Error<S::Error>>> {
+        self.stream.start_send_unpin(packet)?;
         self.write = Some(WriteRequest { state });
 
-        Poll::Ready(())
+        Poll::Ready(Ok(()))
     }
 }
 
 impl<S, M> Future for Connection<S, M>
 where
     S: ConnectionStream,
+    S::Error: std::error::Error,
     M: ConnectionMode,
 {
-    type Output = Result<(), Error>;
+    type Output = Result<(), Error<S::Error>>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         loop {
@@ -698,7 +711,7 @@ where
                 ConnectionState::Connected | ConnectionState::Handshake(_) => {
                     match self.poll_read(cx) {
                         Poll::Pending => return Poll::Pending,
-                        Poll::Ready(Err(err)) => return Poll::Ready(Err(Error(err))),
+                        Poll::Ready(Err(err)) => return Poll::Ready(Err(err)),
                         Poll::Ready(Ok(())) => (),
                     }
                 }
