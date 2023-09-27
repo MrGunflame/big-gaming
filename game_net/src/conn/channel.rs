@@ -16,6 +16,16 @@ pub struct ChannelStream {
     future: Option<Pin<Box<dyn Future<Output = ()> + Send + Sync>>>,
 }
 
+impl ChannelStream {
+    pub fn new(tx: mpsc::Sender<Packet>, rx: mpsc::Receiver<Packet>) -> Self {
+        Self {
+            tx,
+            rx,
+            future: None,
+        }
+    }
+}
+
 impl ConnectionStream for ChannelStream {
     const IS_RELIABLE: bool = true;
     const IS_ORDERED: bool = true;
