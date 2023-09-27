@@ -177,9 +177,48 @@ where
     I: IntervalImpl,
 {
     pub fn update(&mut self, time: &Time, buffer: &mut CommandBuffer) {
-        tick_game(time, self);
-        flush_command_queue(self);
-        apply_world_delta(self, buffer);
+        if !self.is_connected() {
+            return;
+        }
+
+        while self.game_tick.interval.is_ready(time.last_update()) {
+            // Flush input buffer from previous frame.
+            self.flush_buffer();
+
+            self.game_tick.current_control_frame += 1;
+            self.game_tick.counter.update();
+
+            debug_assert!(self
+                .world
+                .get(self.game_tick.current_control_frame)
+                .is_none());
+            self.world.insert(self.game_tick.current_control_frame);
+
+            // Snapshots render..head should now exist.
+            if cfg!(debug_assertions) {
+                let control_frame = self.control_frame();
+                let mut start = match control_frame.render {
+                    Some(render) => render,
+                    None => ControlFrame(0),
+                };
+                let end = control_frame.head;
+
+                while start != end + 1 {
+                    assert!(self.world.get(start).is_some());
+
+                    start += 1;
+                }
+            }
+
+            tracing::debug!(
+                "Stepping control frame to {:?} (UPS = {})",
+                self.game_tick.current_control_frame,
+                self.game_tick.counter.ups(),
+            );
+
+            flush_command_queue(self);
+            apply_world_delta(self, buffer);
+        }
     }
 }
 
@@ -199,48 +238,6 @@ pub struct GameTick<I> {
     // TODO: Maybe make this AtomicBool to prevent `control_frame()` being `&mut self`.
     initial_idle_passed: bool,
     counter: UpdateCounter,
-}
-
-pub fn tick_game<I>(time: &Time, conn: &mut ServerConnection<I>)
-where
-    I: IntervalImpl,
-{
-    while conn.game_tick.interval.is_ready(time.last_update()) {
-        if conn.is_connected() {
-            conn.flush_buffer();
-        }
-
-        conn.game_tick.current_control_frame += 1;
-        conn.game_tick.counter.update();
-
-        debug_assert!(conn
-            .world
-            .get(conn.game_tick.current_control_frame)
-            .is_none());
-        conn.world.insert(conn.game_tick.current_control_frame);
-
-        // Snapshots render..head should now exist.
-        if cfg!(debug_assertions) {
-            let control_frame = conn.control_frame();
-            let mut start = match control_frame.render {
-                Some(render) => render,
-                None => ControlFrame(0),
-            };
-            let end = control_frame.head;
-
-            while start != end + 1 {
-                assert!(conn.world.get(start).is_some());
-
-                start += 1;
-            }
-        }
-
-        tracing::debug!(
-            "Stepping control frame to {:?} (UPS = {})",
-            conn.game_tick.current_control_frame,
-            conn.game_tick.counter.ups(),
-        );
-    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
