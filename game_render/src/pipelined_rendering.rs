@@ -1,8 +1,9 @@
-use std::sync::{mpsc, Arc};
+use std::sync::Arc;
 
+use crossbeam::sync::{Parker, Unparker};
 use game_common::cell::UnsafeRefCell;
 use game_tracing::trace_span;
-use parking_lot::{Condvar, Mutex};
+use parking_lot::Mutex;
 use wgpu::{Adapter, CommandEncoderDescriptor, Device, Instance, Queue, TextureViewDescriptor};
 
 use crate::graph::{RenderContext, RenderGraph};
@@ -27,16 +28,22 @@ pub struct SharedState {
     mipmap_generator: UnsafeRefCell<MipMapGenerator>,
     state: Mutex<PipelineState>,
     pub graph: UnsafeRefCell<RenderGraph>,
-    unparker: Condvar,
+    /// Unparker for the calling thread.
+    main_unparker: Unparker,
 }
 
 pub struct Pipeline {
     pub shared: Arc<SharedState>,
-    tx: mpsc::Sender<()>,
+    main_parker: Parker,
+    /// Unparker for the render thread.
+    render_unparker: Unparker,
 }
 
 impl Pipeline {
     pub fn new(instance: Instance, adapter: Adapter, device: Device, queue: Queue) -> Self {
+        let main_parker = Parker::new();
+        let main_unparker = main_parker.unparker().clone();
+
         let shared = Arc::new(SharedState {
             mipmap_generator: UnsafeRefCell::new(MipMapGenerator::new(&device)),
             instance,
@@ -46,12 +53,16 @@ impl Pipeline {
             surfaces: UnsafeRefCell::new(RenderSurfaces::new()),
             state: Mutex::new(PipelineState::Idle),
             graph: UnsafeRefCell::new(RenderGraph::default()),
-            unparker: Condvar::new(),
+            main_unparker,
         });
 
-        let tx = start_render_thread(shared.clone());
+        let render_unparker = start_render_thread(shared.clone());
 
-        Self { shared, tx }
+        Self {
+            shared,
+            render_unparker,
+            main_parker,
+        }
     }
 
     pub fn is_idle(&self) -> bool {
@@ -61,9 +72,8 @@ impl Pipeline {
     pub fn wait_idle(&self) {
         let _span = trace_span!("Pipeline::wait_idle").entered();
 
-        let mut state = self.shared.state.lock();
-        while *state != PipelineState::Idle {
-            self.shared.unparker.wait(&mut state);
+        while *self.shared.state.lock() != PipelineState::Idle {
+            self.main_parker.park();
         }
     }
 
@@ -74,70 +84,78 @@ impl Pipeline {
         debug_assert!(self.is_idle());
 
         *self.shared.state.lock() = PipelineState::Rendering;
-        let _ = self.tx.send(());
+        self.render_unparker.unpark();
     }
 }
 
-fn start_render_thread(shared: Arc<SharedState>) -> mpsc::Sender<()> {
-    let (tx, rx) = mpsc::channel();
+fn start_render_thread(shared: Arc<SharedState>) -> Unparker {
+    let parker = Parker::new();
+    let unparker = parker.unparker().clone();
 
-    std::thread::spawn(move || {
-        while let Ok(()) = rx.recv() {
-            // The caller must transition the state to `Rendering`.
-            debug_assert!(*shared.state.lock() == PipelineState::Rendering);
-
-            let _span = trace_span!("render_frame").entered();
-
-            let surfaces = unsafe { shared.surfaces.get() };
-            let graph = unsafe { shared.graph.get() };
-            let mut mipmap = unsafe { shared.mipmap_generator.get_mut() };
-
-            for (window, surface) in surfaces.iter() {
-                let output = match surface.surface.get_current_texture() {
-                    Ok(output) => output,
-                    Err(err) => {
-                        tracing::error!("failed to get surface: {}", err);
-                        continue;
-                    }
-                };
-
-                let target = output.texture.create_view(&TextureViewDescriptor {
-                    label: Some("surface_view"),
-                    format: Some(surface.config.format),
-                    ..Default::default()
-                });
-
-                let mut encoder = shared
-                    .device
-                    .create_command_encoder(&CommandEncoderDescriptor {
-                        label: Some("render_encoder"),
-                    });
-
-                let mut ctx = RenderContext {
-                    window: *window,
-                    encoder: &mut encoder,
-                    width: output.texture.width(),
-                    height: output.texture.height(),
-                    target: &target,
-                    surface: &surface,
-                    format: surface.config.format,
-                    device: &shared.device,
-                    queue: &shared.queue,
-                    mipmap: &mut mipmap,
-                };
-
-                for node in &graph.nodes {
-                    node.render(&mut ctx);
-                }
-
-                shared.queue.submit(std::iter::once(encoder.finish()));
-                output.present();
-            }
-
-            *shared.state.lock() = PipelineState::Idle;
-            shared.unparker.notify_one();
+    std::thread::spawn(move || loop {
+        while *shared.state.lock() != PipelineState::Rendering {
+            parker.park();
         }
+
+        // SAFETY: The pipeline is in rendering state, the render thread
+        // has full access to the state.
+        unsafe {
+            execute_render(&shared);
+        }
+
+        *shared.state.lock() = PipelineState::Idle;
+        shared.main_unparker.unpark();
     });
 
-    tx
+    unparker
+}
+
+unsafe fn execute_render(shared: &SharedState) {
+    let _span = trace_span!("render_frame").entered();
+
+    let surfaces = unsafe { shared.surfaces.get() };
+    let graph = unsafe { shared.graph.get() };
+    let mut mipmap = unsafe { shared.mipmap_generator.get_mut() };
+
+    for (window, surface) in surfaces.iter() {
+        let output = match surface.surface.get_current_texture() {
+            Ok(output) => output,
+            Err(err) => {
+                tracing::error!("failed to get surface: {}", err);
+                continue;
+            }
+        };
+
+        let target = output.texture.create_view(&TextureViewDescriptor {
+            label: Some("surface_view"),
+            format: Some(surface.config.format),
+            ..Default::default()
+        });
+
+        let mut encoder = shared
+            .device
+            .create_command_encoder(&CommandEncoderDescriptor {
+                label: Some("render_encoder"),
+            });
+
+        let mut ctx = RenderContext {
+            window: *window,
+            encoder: &mut encoder,
+            width: output.texture.width(),
+            height: output.texture.height(),
+            target: &target,
+            surface: &surface,
+            format: surface.config.format,
+            device: &shared.device,
+            queue: &shared.queue,
+            mipmap: &mut mipmap,
+        };
+
+        for node in &graph.nodes {
+            node.render(&mut ctx);
+        }
+
+        shared.queue.submit(std::iter::once(encoder.finish()));
+        output.present();
+    }
 }
