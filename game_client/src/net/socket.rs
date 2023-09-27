@@ -3,6 +3,7 @@ use std::net::SocketAddr;
 use std::sync::{mpsc, Arc};
 
 use game_common::world::control_frame::ControlFrame;
+use game_net::conn::socket::UdpSocketStream;
 use game_net::conn::{Connect, Connection, ConnectionHandle};
 use game_net::proto::{Decode, Packet};
 use game_net::Socket;
@@ -30,8 +31,11 @@ pub fn spawn_conn(
                     return;
                 }
             };
+
+            let (stream_tx, stream_rx) = tokio::sync::mpsc::channel(4096);
+            let stream = UdpSocketStream::new(stream_rx, socket.clone(), addr);
             let (mut conn, handle) =
-                Connection::<Connect>::new(addr, socket.clone(), control_frame, const_delay);
+                Connection::<_, Connect>::new(stream, control_frame, const_delay);
 
             tracing::info!("connected");
 
@@ -45,7 +49,7 @@ pub fn spawn_conn(
                         tracing::error!("server error: {}", err);
                     }
                 }
-                _ = accept_loop(socket, handle) => {}
+                _ = accept_loop(socket, stream_tx) => {}
             }
 
             tracing::info!("disconnected");
@@ -57,7 +61,7 @@ pub fn spawn_conn(
 
 fn accept_loop(
     socket: Arc<Socket>,
-    handle: Arc<ConnectionHandle>,
+    tx: tokio::sync::mpsc::Sender<Packet>,
 ) -> impl Future<Output = Result<(), Box<dyn std::error::Error>>> {
     async move {
         loop {
@@ -73,7 +77,7 @@ fn accept_loop(
                 }
             };
 
-            handle.send(packet).await;
+            tx.send(packet).await.unwrap();
         }
     }
 }

@@ -5,8 +5,9 @@ use std::sync::Arc;
 
 use ahash::AHashMap;
 use game_common::world::control_frame::ControlFrame;
-use game_net::conn::ConnectionHandle;
+use game_net::proto::Packet;
 use parking_lot::{Mutex, RwLock};
+use tokio::sync::mpsc;
 
 use crate::config::Config;
 use crate::conn::Connections;
@@ -48,7 +49,7 @@ pub struct StateInner {
 
 #[derive(Debug)]
 pub struct ConnectionPool {
-    inner: RwLock<AHashMap<ConnectionKey, Arc<ConnectionHandle>>>,
+    inner: RwLock<AHashMap<ConnectionKey, mpsc::Sender<Packet>>>,
 }
 
 impl ConnectionPool {
@@ -58,7 +59,7 @@ impl ConnectionPool {
         }
     }
 
-    pub fn insert(&self, key: ConnectionKey, handle: Arc<ConnectionHandle>) {
+    pub fn insert(&self, key: ConnectionKey, handle: mpsc::Sender<Packet>) {
         let mut inner = self.inner.write();
         inner.insert(key, handle);
     }
@@ -71,7 +72,7 @@ impl ConnectionPool {
         inner.remove(key.borrow());
     }
 
-    pub fn get<K>(&self, key: K) -> Option<Arc<ConnectionHandle>>
+    pub fn get<K>(&self, key: K) -> Option<mpsc::Sender<Packet>>
     where
         K: Borrow<ConnectionKey>,
     {

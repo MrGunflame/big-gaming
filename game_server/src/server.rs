@@ -9,9 +9,11 @@ use bytes::BytesMut;
 use futures::stream::FuturesUnordered;
 use futures::{FutureExt, StreamExt};
 use game_common::world::control_frame::ControlFrame;
+use game_net::conn::socket::UdpSocketStream;
 use game_net::conn::{Connection, Listen};
 use game_net::proto::{Decode, Error, Packet};
 use game_net::socket::Socket;
+use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
 use crate::state::State;
@@ -93,7 +95,7 @@ impl Future for Worker {
 
 async fn handle_packet(addr: SocketAddr, socket: Arc<Socket>, state: &State, packet: Packet) {
     if let Some(handle) = state.pool.get(addr) {
-        handle.send(packet).await;
+        handle.send(packet).await.unwrap();
         return;
     }
 
@@ -105,7 +107,10 @@ async fn handle_packet(addr: SocketAddr, socket: Arc<Socket>, state: &State, pac
 
     let control_frame = *state.control_frame.lock();
 
-    let (conn, handle) = Connection::<Listen>::new(addr, socket, control_frame, ControlFrame(0));
+    let (tx, rx) = mpsc::channel(4096);
+    let stream = UdpSocketStream::new(rx, socket, addr);
+
+    let (conn, handle) = Connection::<_, Listen>::new(stream, control_frame, ControlFrame(0));
 
     {
         let state = state.clone();
@@ -118,9 +123,9 @@ async fn handle_packet(addr: SocketAddr, socket: Arc<Socket>, state: &State, pac
         });
     }
 
-    handle.send(packet).await;
+    tx.send(packet).await.unwrap();
 
     let handle = Arc::new(handle);
-    state.pool.insert(addr, handle.clone());
+    state.pool.insert(addr, tx);
     state.conns.insert(handle);
 }
