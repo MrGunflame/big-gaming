@@ -1,23 +1,18 @@
+use std::marker::PhantomData;
+use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::Arc;
 
 use crossbeam::sync::{Parker, Unparker};
 use game_common::cell::UnsafeRefCell;
 use game_tracing::trace_span;
-use parking_lot::Mutex;
 use wgpu::{Adapter, CommandEncoderDescriptor, Device, Instance, Queue, TextureViewDescriptor};
 
 use crate::graph::{RenderContext, RenderGraph};
 use crate::mipmap::MipMapGenerator;
 use crate::surface::RenderSurfaces;
 
-// TODO: We can likely replace this with atomics if we're careful.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-enum PipelineState {
-    /// The renderer is in the process of doing a render pass.
-    Rendering,
-    /// The renderer is waiting for work.
-    Idle,
-}
+const PIPELINE_STATE_RENDERING: u8 = 1;
+const PIPELINE_STATE_IDLE: u8 = 2;
 
 pub struct SharedState {
     pub instance: Instance,
@@ -26,8 +21,8 @@ pub struct SharedState {
     pub queue: Queue,
     pub surfaces: UnsafeRefCell<RenderSurfaces>,
     mipmap_generator: UnsafeRefCell<MipMapGenerator>,
-    state: Mutex<PipelineState>,
     pub graph: UnsafeRefCell<RenderGraph>,
+    state: AtomicU8,
     /// Unparker for the calling thread.
     main_unparker: Unparker,
 }
@@ -37,6 +32,10 @@ pub struct Pipeline {
     main_parker: Parker,
     /// Unparker for the render thread.
     render_unparker: Unparker,
+    // While `Pipeline` is not directly thread-unsafe, we make no guarantees
+    // whether atomic operations hold up when dispatching renders from multiple
+    // threads.
+    _marker: PhantomData<*const ()>,
 }
 
 impl Pipeline {
@@ -51,7 +50,7 @@ impl Pipeline {
             device,
             queue,
             surfaces: UnsafeRefCell::new(RenderSurfaces::new()),
-            state: Mutex::new(PipelineState::Idle),
+            state: AtomicU8::new(PIPELINE_STATE_IDLE),
             graph: UnsafeRefCell::new(RenderGraph::default()),
             main_unparker,
         });
@@ -62,17 +61,18 @@ impl Pipeline {
             shared,
             render_unparker,
             main_parker,
+            _marker: PhantomData,
         }
     }
 
     pub fn is_idle(&self) -> bool {
-        *self.shared.state.lock() == PipelineState::Idle
+        self.shared.state.load(Ordering::Acquire) == PIPELINE_STATE_IDLE
     }
 
     pub fn wait_idle(&self) {
         let _span = trace_span!("Pipeline::wait_idle").entered();
 
-        while *self.shared.state.lock() != PipelineState::Idle {
+        while !self.is_idle() {
             self.main_parker.park();
         }
     }
@@ -83,7 +83,10 @@ impl Pipeline {
     pub unsafe fn render_unchecked(&mut self) {
         debug_assert!(self.is_idle());
 
-        *self.shared.state.lock() = PipelineState::Rendering;
+        self.shared
+            .state
+            .store(PIPELINE_STATE_RENDERING, Ordering::Release);
+
         self.render_unparker.unpark();
     }
 }
@@ -93,7 +96,10 @@ fn start_render_thread(shared: Arc<SharedState>) -> Unparker {
     let unparker = parker.unparker().clone();
 
     std::thread::spawn(move || loop {
-        while *shared.state.lock() != PipelineState::Rendering {
+        // FIXME: If it is guaranteed that the parker will never yield
+        // before being signaled, there is not need to watch for the atomic
+        // to change.
+        while shared.state.load(Ordering::Acquire) != PIPELINE_STATE_RENDERING {
             parker.park();
         }
 
@@ -103,7 +109,7 @@ fn start_render_thread(shared: Arc<SharedState>) -> Unparker {
             execute_render(&shared);
         }
 
-        *shared.state.lock() = PipelineState::Idle;
+        shared.state.store(PIPELINE_STATE_IDLE, Ordering::Relaxed);
         shared.main_unparker.unpark();
     });
 
