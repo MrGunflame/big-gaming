@@ -1,14 +1,14 @@
+pub mod socket;
+
 use std::collections::{HashMap, VecDeque};
 use std::future::Future;
 use std::marker::PhantomData;
-use std::net::SocketAddr;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 
-use futures::FutureExt;
+use futures::{Sink, SinkExt, Stream, StreamExt};
 use game_common::world::control_frame::ControlFrame;
 use parking_lot::Mutex;
 use thiserror::Error;
@@ -24,7 +24,6 @@ use crate::proto::{
     Decode, Encode, Flags, Frame, Header, Packet, PacketBody, PacketPosition, PacketType,
     SequenceRange,
 };
-use crate::socket::Socket;
 
 #[derive(Debug, Error)]
 #[error(transparent)]
@@ -60,19 +59,25 @@ impl Default for ConnectionId {
     }
 }
 
-pub struct Connection<M>
+/// A bidirectional stream underlying a [`Connection`].
+// FIXME: We don't need `Unpin`.
+pub trait ConnectionStream: Stream<Item = Packet> + Sink<Packet> + Unpin {
+    const IS_RELIABLE: bool;
+    const IS_ORDERED: bool;
+}
+
+pub struct Connection<S, M>
 where
+    S: ConnectionStream,
     M: ConnectionMode,
 {
     pub id: ConnectionId,
-    socket_stream: mpsc::Receiver<Packet>,
-    socket: Arc<Socket>,
+    stream: S,
 
     reader: mpsc::Receiver<DataMessage>,
     writer: mpsc::Sender<Message>,
 
     state: ConnectionState,
-    peer_addr: SocketAddr,
     interval: TickInterval,
     last_time: Instant,
 
@@ -110,32 +115,29 @@ where
     last_cf: ControlFrame,
 }
 
-impl<M> Connection<M>
+impl<S, M> Connection<S, M>
 where
+    S: ConnectionStream,
     M: ConnectionMode,
 {
     pub fn new(
-        peer: SocketAddr,
-        socket: Arc<Socket>,
+        stream: S,
         control_frame: ControlFrame,
         const_delay: ControlFrame,
     ) -> (Self, ConnectionHandle) {
         let id = ConnectionId::new();
 
-        let (tx, rx) = mpsc::channel(4096);
         let (out_tx, out_rx) = mpsc::channel(4096);
         let (writer, reader) = mpsc::channel(4096);
 
         let mut conn = Self {
             id,
-            socket_stream: rx,
-            socket,
+            stream,
             state: ConnectionState::Handshake(HandshakeState::Hello),
             reader: out_rx,
             writer,
             packet_queue: VecDeque::new(),
             frame_queue: VecDeque::new(),
-            peer_addr: peer,
             write: None,
             interval: TickInterval::new(),
             last_time: Instant::now(),
@@ -171,7 +173,6 @@ where
             conn,
             ConnectionHandle {
                 id,
-                tx,
                 chan_out: out_tx,
                 rx: Mutex::new(reader),
             },
@@ -185,7 +186,7 @@ where
             return Poll::Ready(Ok(()));
         }
 
-        while let Poll::Ready(packet) = self.socket_stream.poll_recv(cx) {
+        while let Poll::Ready(packet) = self.stream.poll_next_unpin(cx) {
             self.last_time = Instant::now();
 
             let Some(packet) = packet else {
@@ -245,21 +246,10 @@ where
     }
 
     fn init_write(&mut self, state: ConnectionState) {
-        let socket = self.socket.clone();
-        let peer = self.peer_addr;
-
         let packet = self.packet_queue.pop_front().unwrap();
 
-        self.write = Some(WriteRequest {
-            future: Box::pin(async move {
-                let mut buf = Vec::with_capacity(1500);
-                packet.encode(&mut buf).unwrap();
-                if let Err(err) = socket.send_to(&buf, peer).await {
-                    tracing::error!("failed to send packet: {}", err);
-                }
-            }),
-            state,
-        });
+        self.stream.start_send_unpin(packet);
+        self.write = Some(WriteRequest { state });
     }
 
     fn poll_write(&mut self, cx: &mut Context<'_>) -> Poll<()> {
@@ -269,7 +259,7 @@ where
             unreachable!();
         };
 
-        match req.future.poll_unpin(cx) {
+        match self.stream.poll_ready_unpin(cx) {
             Poll::Ready(_) => {
                 self.state = req.state;
                 self.write = None;
@@ -680,30 +670,22 @@ where
     }
 
     fn send_packet(&mut self, packet: Packet, state: ConnectionState) -> Poll<()> {
-        let socket = self.socket.clone();
-        let peer = self.peer_addr;
-        self.write = Some(WriteRequest {
-            future: Box::pin(async move {
-                let mut buf = Vec::with_capacity(1500);
-                packet.encode(&mut buf).unwrap();
-                if let Err(err) = socket.send_to(&buf, peer).await {
-                    tracing::error!("Failed to send packet: {}", err);
-                }
-            }),
-            state,
-        });
+        self.stream.start_send_unpin(packet);
+        self.write = Some(WriteRequest { state });
 
         Poll::Ready(())
     }
 }
 
-impl<M> Future for Connection<M>
+impl<S, M> Future for Connection<S, M>
 where
+    S: ConnectionStream,
     M: ConnectionMode,
 {
     type Output = Result<(), Error>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        dbg!("poll");
         loop {
             if self.write.is_some() {
                 match self.poll_write(cx) {
@@ -741,7 +723,6 @@ impl Sender {
 }
 
 struct WriteRequest {
-    future: Pin<Box<(dyn Future<Output = ()> + Send + Sync + 'static)>>,
     /// The state to return to once done with writing.
     state: ConnectionState,
 }
@@ -765,16 +746,11 @@ enum HandshakeState {
 #[derive(Debug)]
 pub struct ConnectionHandle {
     pub id: ConnectionId,
-    tx: mpsc::Sender<Packet>,
     chan_out: mpsc::Sender<DataMessage>,
     rx: Mutex<mpsc::Receiver<Message>>,
 }
 
 impl ConnectionHandle {
-    pub async fn send(&self, packet: Packet) {
-        self.tx.send(packet).await.unwrap();
-    }
-
     pub fn send_cmd(&self, cmd: DataMessage) {
         self.chan_out.try_send(cmd).unwrap();
     }
