@@ -3,34 +3,30 @@ use std::sync::Arc;
 
 use parking_lot::{Condvar, Mutex};
 
-const EMPTY: usize = 0;
-const PARKED: usize = 1;
-const NOTIFIED: usize = 2;
-
 #[derive(Clone, Debug)]
 pub struct Parker {
-    inner: Arc<Inner>,
+    unparker: Unparker,
 }
 
 impl Parker {
     pub fn new() -> Self {
         Self {
-            inner: Arc::new(Inner {
-                state: AtomicUsize::new(0),
-                mutex: Mutex::new(()),
-                cvar: Condvar::new(),
-            }),
+            unparker: Unparker {
+                inner: Arc::new(Inner {
+                    state: AtomicUsize::new(0),
+                    mutex: Mutex::new(()),
+                    cvar: Condvar::new(),
+                }),
+            },
         }
     }
 
     pub fn park(&self) {
-        self.inner.park();
+        self.unparker.inner.park();
     }
 
-    pub fn unparker(&self) -> Unparker {
-        Unparker {
-            inner: self.inner.clone(),
-        }
+    pub fn unparker(&self) -> &Unparker {
+        &self.unparker
     }
 }
 
@@ -54,49 +50,39 @@ struct Inner {
 
 impl Inner {
     fn park(&self) {
-        if self
-            .state
-            .compare_exchange(NOTIFIED, EMPTY, Ordering::SeqCst, Ordering::SeqCst)
-            .is_ok()
-        {
-            return;
-        }
-
-        let mut m = self.mutex.lock();
-
-        match self
-            .state
-            .compare_exchange(EMPTY, PARKED, Ordering::SeqCst, Ordering::SeqCst)
-        {
-            Ok(_) => (),
-            Err(NOTIFIED) => {
-                self.state.store(EMPTY, Ordering::SeqCst);
-                return;
-            }
-            Err(_) => unreachable!(),
-        }
-
-        loop {
-            self.cvar.wait(&mut m);
+        let state = self.state.load(Ordering::Acquire);
+        while state > 0 {
             if self
                 .state
-                .compare_exchange(NOTIFIED, EMPTY, Ordering::SeqCst, Ordering::SeqCst)
+                .compare_exchange(state, state - 1, Ordering::SeqCst, Ordering::SeqCst)
                 .is_ok()
             {
                 return;
             }
         }
+
+        let mut m = self.mutex.lock();
+
+        loop {
+            self.cvar.wait(&mut m);
+
+            // Take one token from the pool.
+            let state = self.state.load(Ordering::Acquire);
+            while state > 0 {
+                if self
+                    .state
+                    .compare_exchange(state, state - 1, Ordering::SeqCst, Ordering::SeqCst)
+                    .is_ok()
+                {
+                    return;
+                }
+            }
+        }
     }
 
     fn unpark_one(&self) {
-        match self.state.swap(NOTIFIED, Ordering::Release) {
-            // No one waiting.
-            EMPTY => return,
-            // Already notified.
-            NOTIFIED => return,
-            PARKED => (),
-            _ => unreachable!(),
-        }
+        let state = self.state.fetch_add(1, Ordering::Acquire);
+        assert!(state <= usize::MAX);
 
         drop(self.mutex.lock());
         self.cvar.notify_one();
@@ -110,12 +96,29 @@ mod tests {
     #[test]
     fn test_park() {
         let parker = Parker::new();
-        let unparker = parker.unparker();
+        let unparker = parker.unparker().clone();
 
         std::thread::spawn(move || {
             unparker.unpark_one();
         });
 
         parker.park();
+    }
+
+    #[test]
+    fn test_park_many() {
+        let parker = Parker::new();
+        let unparker = parker.unparker.clone();
+
+        for _ in 0..4 {
+            let unparker = unparker.clone();
+            std::thread::spawn(move || {
+                unparker.unpark_one();
+            });
+        }
+
+        for _ in 0..4 {
+            parker.park();
+        }
     }
 }
