@@ -79,7 +79,7 @@ pub struct Task<T> {
 }
 
 impl<T> Task<T> {
-    pub fn alloc_new<F>(future: F) -> NonNull<()>
+    pub(crate) fn alloc_new<F>(future: F) -> NonNull<()>
     where
         F: Future<Output = T>,
     {
