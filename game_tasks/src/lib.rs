@@ -118,8 +118,6 @@ unsafe impl Sync for Inner {}
 
 fn spawn_worker_thread(inner: Arc<Inner>) -> JoinHandle<()> {
     std::thread::spawn(move || 'out: loop {
-        inner.parker.park();
-
         if inner.shutdown.load(Ordering::Acquire) {
             return;
         }
@@ -127,7 +125,10 @@ fn spawn_worker_thread(inner: Arc<Inner>) -> JoinHandle<()> {
         let task = loop {
             match inner.queue.steal() {
                 Steal::Success(task) => break task,
-                Steal::Empty => continue 'out,
+                Steal::Empty => {
+                    inner.parker.park();
+                    continue 'out;
+                }
                 Steal::Retry => continue,
             }
         };
@@ -193,5 +194,43 @@ mod tests {
         let waker = noop_waker();
         let mut cx = Context::from_waker(&waker);
         while Pin::new(&mut task).poll(&mut cx).is_pending() {}
+    }
+
+    #[test]
+    fn schedule_many() {
+        let executor = TaskPool::new(1);
+        let mut tasks = Vec::new();
+        for _ in 0..1024 {
+            let task = executor.spawn(async move {
+                println!("Hello World");
+            });
+
+            tasks.push(task);
+        }
+
+        let waker = noop_waker();
+        let mut cx = Context::from_waker(&waker);
+        for mut task in tasks {
+            while Pin::new(&mut task).poll(&mut cx).is_pending() {}
+        }
+    }
+
+    #[test]
+    fn schedule_many_threads() {
+        let executor = TaskPool::new(8);
+        let mut tasks = Vec::new();
+        for _ in 0..1024 {
+            let task = executor.spawn(async move {
+                println!("Hello World");
+            });
+
+            tasks.push(task);
+        }
+
+        let waker = noop_waker();
+        let mut cx = Context::from_waker(&waker);
+        for mut task in tasks {
+            while Pin::new(&mut task).poll(&mut cx).is_pending() {}
+        }
     }
 }

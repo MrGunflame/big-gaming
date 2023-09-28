@@ -27,6 +27,9 @@ pub struct Header {
     pub vtable: &'static Vtable,
 }
 
+// Casting `RawTask` to `Header` requires the header to be at
+// the start of the allocation.
+#[repr(C)]
 pub struct RawTask<T, F>
 where
     F: Future<Output = T>,
