@@ -23,6 +23,7 @@ members = [
     "game_worldgen",
     "game_model",
     "game_tracing",
+    "game_tasks",
     # TODO: Figure out how to move these to a separate
     # workspace.
     "mods/pickup",

@@ -1,0 +1,10 @@
+[package]
+name = "game_tasks"
+version = "0.1.0"
+edition = "2021"
+authors = ["MrGunflame <git@robbsrv.de>"]
+license = "GPL-3.0-or-later"
+
+[dependencies]
+crossbeam = "0.8.2"
+parking_lot = "0.12.1"
