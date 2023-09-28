@@ -26,6 +26,7 @@ mod state;
 use std::collections::VecDeque;
 use std::sync::Arc;
 
+use game_tasks::TaskPool;
 use game_tracing::trace_span;
 
 use camera::RenderTarget;
@@ -41,6 +42,7 @@ use pipelined_rendering::Pipeline;
 use post_process::PostProcessPipeline;
 use render_pass::RenderPass;
 use state::RenderState;
+use texture::image::ImageLoader;
 use texture::Images;
 use wgpu::{
     Backends, Device, DeviceDescriptor, Features, Instance, InstanceDescriptor, Limits,
@@ -58,6 +60,8 @@ pub struct Renderer {
     pub images: Images,
     pub meshes: Meshes,
     pub materials: Materials,
+
+    image_loader: ImageLoader,
 }
 
 impl Renderer {
@@ -110,6 +114,7 @@ impl Renderer {
             backlog: VecDeque::new(),
             pipeline,
             state,
+            image_loader: ImageLoader::default(),
         }
     }
 
@@ -155,11 +160,10 @@ impl Renderer {
             .map(|s| UVec2::new(s.config.width, s.config.height))
     }
 
-    pub fn render(&mut self) {
+    pub fn render(&mut self, pool: &TaskPool) {
         let _span = trace_span!("Renderer::render").entered();
 
-        // FIXME: Should update on render pass.
-        crate::texture::image::load_images(&mut self.images);
+        self.image_loader.update(&mut self.images, pool);
 
         self.pipeline.wait_idle();
 

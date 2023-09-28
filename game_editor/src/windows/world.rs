@@ -11,11 +11,11 @@ use game_input::mouse::{MouseButton, MouseMotion, MouseWheel};
 use game_input::ButtonState;
 use game_render::camera::{Camera, RenderTarget};
 use game_render::color::Color;
-use game_render::entities::{CameraId, ObjectId};
+use game_render::entities::CameraId;
 use game_render::light::PointLight;
-use game_render::pbr::PbrMaterial;
 use game_render::{shape, Renderer};
-use game_scene::{Node, Scene, SceneId, Scenes};
+use game_scene::scene::{Material, Node, Scene};
+use game_scene::{SceneId, Scenes};
 use game_ui::reactive::{ReadSignal, Scope, WriteSignal};
 use game_ui::style::{
     Background, BorderRadius, Bounds, Direction, Growth, Justify, Size, SizeVec2, Style,
@@ -68,15 +68,14 @@ impl WorldWindowState {
         });
 
         let id = scenes.insert(Scene {
-            transform: Transform::default(),
             nodes: vec![Node {
                 transform: Transform::default(),
-                material: renderer.materials.insert(PbrMaterial {
-                    base_color: Color::WHITE,
-                    ..Default::default()
-                }),
-                mesh: renderer.meshes.insert(shape::Plane { size: 100.0 }.into()),
+                mesh: 0,
+                material: 0,
             }],
+            meshes: vec![shape::Plane { size: 100.0 }.into()],
+            materials: vec![Material::default()],
+            images: vec![],
         });
 
         state.entities.update(|e| e.push(id));
@@ -335,8 +334,6 @@ impl WorldWindowState {
                         Some(Axis::Z) => transform.translation.z = point.z,
                         None => transform.translation = point,
                     }
-
-                    dbg!(transform);
 
                     self.state
                         .transform

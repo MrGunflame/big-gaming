@@ -13,6 +13,7 @@ use backend::{Backend, Handle, Response};
 
 use game_render::Renderer;
 use game_scene::Scenes;
+use game_tasks::TaskPool;
 use game_ui::UiState;
 use game_window::cursor::Cursor;
 use game_window::events::WindowEvent;
@@ -87,6 +88,7 @@ fn main() {
         loading_windows: HashMap::new(),
         active_windows: HashMap::new(),
         scenes: Scenes::new(),
+        pool: TaskPool::new(8),
     };
 
     state.window_manager.run(app);
@@ -132,6 +134,7 @@ pub struct App {
     loading_windows: HashMap<WindowId, SpawnWindow>,
     active_windows: HashMap<WindowId, crate::windows::Window>,
     scenes: Scenes,
+    pool: TaskPool,
 }
 
 impl game_window::App for App {
@@ -255,9 +258,9 @@ impl game_window::App for App {
             window.update(&mut self.renderer, &mut self.scenes);
         }
 
-        self.scenes.update(&mut self.renderer);
+        self.scenes.update(&mut self.renderer, &self.pool);
 
-        self.renderer.render();
+        self.renderer.render(&self.pool);
         self.ui_state.run(&self.renderer, &self.windows);
     }
 }
