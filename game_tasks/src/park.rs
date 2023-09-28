@@ -50,14 +50,14 @@ struct Inner {
 
 impl Inner {
     fn park(&self) {
-        let state = self.state.load(Ordering::Acquire);
+        let mut state = self.state.load(Ordering::Acquire);
         while state > 0 {
-            if self
+            match self
                 .state
                 .compare_exchange(state, state - 1, Ordering::SeqCst, Ordering::SeqCst)
-                .is_ok()
             {
-                return;
+                Ok(_) => return,
+                Err(val) => state = val,
             }
         }
 
@@ -67,21 +67,23 @@ impl Inner {
             self.cvar.wait(&mut m);
 
             // Take one token from the pool.
-            let state = self.state.load(Ordering::Acquire);
+            let mut state = self.state.load(Ordering::Acquire);
             while state > 0 {
-                if self
-                    .state
-                    .compare_exchange(state, state - 1, Ordering::SeqCst, Ordering::SeqCst)
-                    .is_ok()
-                {
-                    return;
+                match self.state.compare_exchange(
+                    state,
+                    state - 1,
+                    Ordering::SeqCst,
+                    Ordering::SeqCst,
+                ) {
+                    Ok(_) => return,
+                    Err(val) => state = val,
                 }
             }
         }
     }
 
     fn unpark_one(&self) {
-        let state = self.state.fetch_add(1, Ordering::Acquire);
+        let state = self.state.fetch_add(1, Ordering::Release);
         assert!(state <= usize::MAX);
 
         drop(self.mutex.lock());
@@ -91,7 +93,11 @@ impl Inner {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::{Arc, Barrier};
+
     use super::Parker;
+
+    const NUM_THREADS: usize = 128;
 
     #[test]
     fn test_park() {
@@ -110,15 +116,37 @@ mod tests {
         let parker = Parker::new();
         let unparker = parker.unparker.clone();
 
-        for _ in 0..4 {
+        for _ in 0..NUM_THREADS {
             let unparker = unparker.clone();
             std::thread::spawn(move || {
                 unparker.unpark_one();
             });
         }
 
-        for _ in 0..4 {
+        for _ in 0..NUM_THREADS {
             parker.park();
         }
+    }
+
+    #[test]
+    fn park_threads_at_once() {
+        let parker = Parker::new();
+        let unparker = parker.unparker.clone();
+        let barrier = Arc::new(Barrier::new(NUM_THREADS + 1));
+
+        for _ in 0..NUM_THREADS {
+            let parker = parker.clone();
+            let barrier = barrier.clone();
+            std::thread::spawn(move || {
+                parker.park();
+                barrier.wait();
+            });
+        }
+
+        for _ in 0..NUM_THREADS {
+            unparker.unpark_one();
+        }
+
+        barrier.wait();
     }
 }
