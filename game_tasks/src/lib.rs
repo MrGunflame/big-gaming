@@ -6,18 +6,16 @@ mod task;
 
 use std::future::Future;
 use std::marker::PhantomData;
-use std::pin::Pin;
 use std::ptr::NonNull;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
+use std::task::{Poll, RawWaker, RawWakerVTable, Waker};
 use std::thread::JoinHandle;
 
 use crossbeam::deque::{Injector, Steal};
-use crossbeam::epoch::Atomic;
 use park::Parker;
-use parking_lot::{Condvar, Mutex};
-use task::{Header, RawTask, Task, STATE_DONE};
+use parking_lot::Mutex;
+use task::{Header, Task, STATE_CLOSED, STATE_DONE, STATE_QUEUED, STATE_RUNNING, TASK_REF};
 
 #[derive(Debug)]
 pub struct TaskPool {
@@ -30,6 +28,7 @@ struct Inner {
     queue: Injector<NonNull<()>>,
     parker: Parker,
     shutdown: AtomicBool,
+    tasks: Mutex<Vec<NonNull<()>>>,
 }
 
 impl TaskPool {
@@ -40,6 +39,7 @@ impl TaskPool {
             queue: Injector::new(),
             parker: Parker::new(),
             shutdown: AtomicBool::new(false),
+            tasks: Mutex::new(vec![]),
         });
 
         let mut vec = Vec::new();
@@ -60,12 +60,37 @@ impl TaskPool {
         F::Output: Send,
     {
         let task = Task::alloc_new(future);
+        self.inner.tasks.lock().push(task);
+
         self.inner.queue.push(task);
         self.inner.parker.unparker().unpark_one();
 
         Task {
             ptr: task,
             _marker: PhantomData,
+        }
+    }
+
+    pub fn update(&self) {
+        let mut tasks = self.inner.tasks.lock();
+
+        let mut index = 0;
+        while index < tasks.len() {
+            let task = tasks[index];
+            let header = unsafe { &*(task.as_ptr() as *const Header) };
+            let state = header.state.load(Ordering::Acquire);
+
+            // Task is done, but has no associated `Task` handle.
+            if state & TASK_REF == 0 && state & (STATE_DONE | STATE_CLOSED) != 0 {
+                let drop_fn = header.vtable.drop;
+                unsafe { drop_fn(task) };
+                unsafe { task::dealloc_task(task) };
+
+                tasks.remove(index);
+                continue;
+            }
+
+            index += 1;
         }
     }
 }
@@ -80,6 +105,9 @@ impl Drop for TaskPool {
         for handle in self.threads.take().unwrap() {
             handle.join().unwrap();
         }
+
+        // All running tasks are now complete.
+        self.update();
     }
 }
 
@@ -109,8 +137,28 @@ fn spawn_worker_thread(inner: Arc<Inner>) -> JoinHandle<()> {
             match unsafe { poll_fn(task, &waker as *const Waker) } {
                 Poll::Pending => (),
                 Poll::Ready(()) => {
-                    let header = unsafe { task.cast::<Header>().as_ref() };
-                    header.state.store(STATE_DONE, Ordering::Release);
+                    let header = task.as_ptr() as *const Header;
+                    unsafe {
+                        loop {
+                            let old_state = (*header).state.load(Ordering::Acquire);
+                            let mut new_state = old_state;
+                            new_state &= !(STATE_QUEUED | STATE_RUNNING);
+                            new_state |= STATE_DONE;
+
+                            if (*header)
+                                .state
+                                .compare_exchange_weak(
+                                    old_state,
+                                    new_state,
+                                    Ordering::SeqCst,
+                                    Ordering::SeqCst,
+                                )
+                                .is_ok()
+                            {
+                                break;
+                            }
+                        }
+                    }
 
                     break;
                 }

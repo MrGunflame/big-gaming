@@ -12,6 +12,9 @@ pub const STATE_RUNNING: usize = 1 << 1;
 pub const STATE_DONE: usize = 1 << 2;
 pub const STATE_CLOSED: usize = 1 << 3;
 
+/// [`Task`] reference to this task exists.
+pub const TASK_REF: usize = 1 << 4;
+
 pub struct Vtable {
     pub poll: unsafe fn(NonNull<()>, cx: *const Waker) -> Poll<()>,
     pub drop: unsafe fn(NonNull<()>),
@@ -20,6 +23,7 @@ pub struct Vtable {
 
 pub struct Header {
     pub state: AtomicUsize,
+    pub layout: Layout,
     pub vtable: &'static Vtable,
 }
 
@@ -86,12 +90,13 @@ impl<T> Task<T> {
 
         let task = RawTask {
             header: Header {
-                state: AtomicUsize::new(STATE_QUEUED),
+                state: AtomicUsize::new(STATE_QUEUED | TASK_REF),
                 vtable: &Vtable {
                     poll: RawTask::<T, F>::poll,
                     drop: RawTask::<T, F>::drop,
                     read_output: RawTask::<T, F>::read_output,
                 },
+                layout,
             },
             future: ManuallyDrop::new(future),
             output: MaybeUninit::uninit(),
@@ -109,23 +114,28 @@ impl<T> Task<T> {
         unsafe {
             let state = (*header).state.load(Ordering::Acquire);
 
-            match state {
+            match state & (STATE_QUEUED | STATE_RUNNING | STATE_DONE | STATE_CLOSED) {
                 STATE_QUEUED | STATE_RUNNING => return Poll::Pending,
                 STATE_DONE => {
                     loop {
+                        let old_state = (*header).state.load(Ordering::Acquire);
+                        let mut new_state = old_state;
+                        new_state &= !STATE_DONE;
+                        new_state |= STATE_CLOSED;
+
                         // Advance the state from `STATE_DONE` to `STATE_CLOSED`.
                         // Only if the operation succeeds are we allowed to take
                         // the output value.
                         match (*header).state.compare_exchange_weak(
-                            STATE_DONE,
-                            STATE_CLOSED,
+                            old_state,
+                            new_state,
                             Ordering::SeqCst,
                             Ordering::SeqCst,
                         ) {
                             Ok(_) => break,
                             Err(state) => {
                                 // Task was already stolen by another thread.
-                                if state != STATE_DONE {
+                                if (state & STATE_DONE) == 0 {
                                     panic!()
                                 }
                             }
@@ -144,6 +154,20 @@ impl<T> Task<T> {
             }
         }
     }
+
+    fn detach(&self) {
+        let ptr = self.ptr.as_ptr();
+        let header = unsafe { &*(ptr as *const Header) };
+        let state = header.state.load(Ordering::Acquire);
+
+        // Remove the `TASK_REF` flag.
+        debug_assert!(state & TASK_REF != 0);
+        while header
+            .state
+            .compare_exchange_weak(state, state & !TASK_REF, Ordering::SeqCst, Ordering::SeqCst)
+            .is_err()
+        {}
+    }
 }
 
 impl<T> Unpin for Task<T> {}
@@ -157,11 +181,13 @@ impl<T> Future for Task<T> {
 }
 
 impl<T> Drop for Task<T> {
-    fn drop(&mut self) {}
+    fn drop(&mut self) {
+        self.detach();
+    }
 }
 
-struct OwnedTask {
-    pub ptr: NonNull<()>,
-}
+pub(crate) unsafe fn dealloc_task(ptr: NonNull<()>) {
+    let layout = unsafe { (*(ptr.as_ptr() as *const Header)).layout };
 
-impl OwnedTask {}
+    unsafe { alloc::alloc::dealloc(ptr.as_ptr() as *mut u8, layout) };
+}
