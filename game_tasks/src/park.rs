@@ -70,10 +70,12 @@ impl Inner {
     fn park(&self) {
         let mut state = self.state.load(Ordering::Acquire);
         while state > 0 {
-            match self
-                .state
-                .compare_exchange(state, state - 1, Ordering::SeqCst, Ordering::SeqCst)
-            {
+            match self.state.compare_exchange_weak(
+                state,
+                state - 1,
+                Ordering::Acquire,
+                Ordering::Relaxed,
+            ) {
                 Ok(_) => return,
                 Err(val) => state = val,
             }
@@ -87,11 +89,11 @@ impl Inner {
             // Take one token from the pool.
             let mut state = self.state.load(Ordering::Acquire);
             while state > 0 {
-                match self.state.compare_exchange(
+                match self.state.compare_exchange_weak(
                     state,
                     state - 1,
-                    Ordering::SeqCst,
-                    Ordering::SeqCst,
+                    Ordering::Acquire,
+                    Ordering::Relaxed,
                 ) {
                     Ok(_) => return,
                     Err(val) => state = val,
