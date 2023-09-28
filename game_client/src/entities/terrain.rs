@@ -3,9 +3,9 @@ use game_common::world::entity::Terrain;
 use game_common::world::terrain::{Projection, TerrainMesh};
 use game_common::world::CELL_SIZE_UINT;
 use game_render::mesh::{Indices, Mesh};
-use game_render::pbr::PbrMaterial;
 use game_render::Renderer;
-use game_scene::{Node, Scene, SceneId, Scenes};
+use game_scene::scene::{Material, Node, Scene};
+use game_scene::{SceneId, Scenes};
 use game_tracing::trace_span;
 use glam::{UVec2, Vec3};
 
@@ -23,17 +23,16 @@ pub fn spawn_terrain(
     let _span = trace_span!("spawn_terrain").entered();
 
     let mesh = build_mesh(terrain);
-    let mesh = renderer.meshes.insert(mesh);
-
-    let material = renderer.materials.insert(PbrMaterial::default());
 
     scenes.insert(Scene {
         nodes: vec![Node {
-            mesh,
-            material,
+            mesh: 0,
+            material: 0,
             transform: Transform::default(),
         }],
-        transform,
+        meshes: vec![mesh],
+        materials: vec![Material::default()],
+        images: vec![],
     })
 }
 

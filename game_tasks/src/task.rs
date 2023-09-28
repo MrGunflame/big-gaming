@@ -7,6 +7,8 @@ use std::ptr::NonNull;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::task::{Context, Poll, Waker};
 
+use crate::noop_waker;
+
 pub const STATE_QUEUED: usize = 1;
 pub const STATE_RUNNING: usize = 1 << 1;
 pub const STATE_DONE: usize = 1 << 2;
@@ -170,6 +172,15 @@ impl<T> Task<T> {
             .compare_exchange_weak(state, state & !TASK_REF, Ordering::SeqCst, Ordering::SeqCst)
             .is_err()
         {}
+    }
+
+    pub fn get_output(&mut self) -> Option<T> {
+        let waker = noop_waker();
+        let mut cx = Context::from_waker(&waker);
+        match self.poll_inner(&mut cx) {
+            Poll::Pending => None,
+            Poll::Ready(val) => Some(val),
+        }
     }
 }
 

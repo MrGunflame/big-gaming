@@ -1,35 +1,33 @@
 #![deny(unsafe_op_in_unsafe_fn)]
 #![deny(unused_crate_dependencies)]
 
+mod loader;
 mod model;
-mod scene;
+
+pub mod scene;
 
 #[cfg(feature = "gltf")]
 mod gltf;
 
 use game_core::hierarchy::{Entity, TransformHierarchy};
 use game_gltf::uri::Uri;
+use game_gltf::GltfData;
 use game_model::{Decode, Model};
 use game_render::entities::ObjectId;
-use game_render::pbr::material::{MaterialId, Materials};
-use game_render::pbr::mesh::{MeshId, Meshes};
 use game_render::Renderer;
+use game_tasks::TaskPool;
 use game_tracing::trace_span;
-use scene::spawn_scene;
+use loader::LoadScene;
+use scene::Scene;
 use slotmap::{DefaultKey, SlotMap};
 
 use std::collections::{HashMap, VecDeque};
 use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 
-use game_asset::{Assets, Handle};
 use game_common::components::transform::Transform;
-use game_gltf::GltfData;
-use game_render::mesh::Mesh;
-use game_render::pbr::PbrMaterial;
-use game_render::texture::Images;
-use gltf::gltf_to_scene;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct SceneId(DefaultKey);
@@ -40,6 +38,7 @@ pub struct Scenes {
     nodes: HashMap<Entity, ObjectId>,
     hierarchy: TransformHierarchy,
     load_queue: VecDeque<(DefaultKey, PathBuf)>,
+    queue: Arc<Mutex<Vec<(DefaultKey, Scene)>>>,
 }
 
 impl Scenes {
@@ -49,11 +48,12 @@ impl Scenes {
             hierarchy: TransformHierarchy::new(),
             load_queue: VecDeque::new(),
             nodes: HashMap::new(),
+            queue: Arc::default(),
         }
     }
 
     pub fn insert(&mut self, scene: Scene) -> SceneId {
-        let key = self.scenes.insert(SceneState::Ready(scene));
+        let key = self.scenes.insert(SceneState::Ready(Some(scene)));
         SceneId(key)
     }
 
@@ -66,21 +66,33 @@ impl Scenes {
         SceneId(id)
     }
 
-    pub fn update(&mut self, renderer: &mut Renderer) {
+    pub fn update(&mut self, renderer: &mut Renderer, pool: &TaskPool) {
         let _span = trace_span!("Scenes::update").entered();
 
-        load_scenes(
-            self,
-            &mut renderer.meshes,
-            &mut renderer.materials,
-            &mut renderer.images,
-        );
+        while let Some((key, path)) = self.load_queue.pop_back() {
+            let queue = self.queue.clone();
+            pool.spawn(async move {
+                if let Some(scene) = load_scene(path) {
+                    queue.lock().unwrap().push((key, scene));
+                }
+            });
+        }
+
+        let mut queue = self.queue.lock().unwrap();
+        while let Some((key, scene)) = queue.pop() {
+            *self.scenes.get_mut(key).unwrap() = SceneState::Ready(Some(scene));
+        }
+        drop(queue);
 
         for state in self.scenes.values_mut() {
             match state {
                 SceneState::Loading => (),
                 SceneState::Ready(scene) => {
-                    let id = spawn_scene(scene, renderer, &mut self.hierarchy, &mut self.nodes);
+                    let id =
+                        scene
+                            .take()
+                            .unwrap()
+                            .spawn(renderer, &mut self.hierarchy, &mut self.nodes);
                     *state = SceneState::Spawned(id);
                 }
                 SceneState::Spawned(_) => (),
@@ -138,98 +150,79 @@ impl Scenes {
 }
 
 #[derive(Clone, Debug)]
-pub struct Scene {
-    pub transform: Transform,
-    pub nodes: Vec<Node>,
-}
-
-#[derive(Clone, Debug)]
 enum SceneState {
     Loading,
-    Ready(Scene),
+    // Option so we can take.
+    Ready(Option<Scene>),
     Spawned(Entity),
 }
 
-#[derive(Copy, Clone, Debug)]
-pub struct Node {
-    pub mesh: MeshId,
-    pub material: MaterialId,
-    pub transform: Transform,
-}
+fn load_scene(path: PathBuf) -> Option<Scene> {
+    let _span = trace_span!("load_scene").entered();
 
-fn load_scenes(
-    scenes: &mut Scenes,
-    meshes: &mut Meshes,
-    materials: &mut Materials,
-    images: &mut Images,
-) {
-    'out: while let Some((handle, path)) = scenes.load_queue.pop_front() {
-        let _span = trace_span!("load_scene").entered();
+    let uri = Uri::from(path);
 
-        let uri = Uri::from(path);
+    let mut file = match File::open(uri.as_path()) {
+        Ok(file) => file,
+        Err(err) => {
+            tracing::error!("failed to load scene from {:?}: {}", uri, err);
+            return None;
+        }
+    };
 
-        let mut file = match File::open(uri.as_path()) {
-            Ok(file) => file,
-            Err(err) => {
-                tracing::error!("failed to load scene from {:?}: {}", uri, err);
-                continue;
-            }
-        };
+    let mut buf = Vec::new();
+    file.read_to_end(&mut buf).unwrap();
 
-        let mut buf = Vec::new();
-        file.read_to_end(&mut buf).unwrap();
+    let scene = match detect_format(&buf) {
+        Some(SceneFormat::Model) => {
+            let data = match Model::decode(&buf[..]) {
+                Ok(data) => data,
+                Err(err) => {
+                    tracing::error!("failed to load model: {:?}", err);
+                    return None;
+                }
+            };
 
-        let scene = match detect_format(&buf) {
-            Some(SceneFormat::Model) => {
-                let data = match Model::decode(&buf[..]) {
-                    Ok(data) => data,
+            data.load()
+        }
+        Some(SceneFormat::Gltf) => {
+            let mut gltf = match GltfData::new(&buf) {
+                Ok(gltf) => gltf,
+                Err(err) => {
+                    tracing::error!("failed to load GLTF file: {}", err);
+                    return None;
+                }
+            };
+
+            while let Some(path) = gltf.queue.pop() {
+                let mut uri = uri.clone();
+                uri.push(&path);
+                let mut file = match std::fs::File::open(uri.as_path()) {
+                    Ok(file) => file,
                     Err(err) => {
-                        tracing::error!("failed to load model: {:?}", err);
-                        continue;
-                    }
-                };
-
-                model::model_to_scene(data, meshes, materials, images)
-            }
-            Some(SceneFormat::Gltf) => {
-                let mut gltf = match GltfData::new(&buf) {
-                    Ok(gltf) => gltf,
-                    Err(err) => {
-                        tracing::error!("failed to load GLTF file: {}", err);
-                        continue;
-                    }
-                };
-
-                while let Some(path) = gltf.queue.pop() {
-                    let mut uri = uri.clone();
-                    uri.push(&path);
-                    let mut file = match std::fs::File::open(uri.as_path()) {
-                        Ok(file) => file,
-                        Err(err) => {
-                            tracing::error!("failed to load file for GLTF: {}", err);
-                            continue 'out;
-                        }
-                    };
-
-                    let mut buf = Vec::new();
-                    if let Err(err) = file.read_to_end(&mut buf) {
                         tracing::error!("failed to load file for GLTF: {}", err);
-                        continue 'out;
+                        return None;
                     }
+                };
 
-                    gltf.insert(path, buf);
+                let mut buf = Vec::new();
+                if let Err(err) = file.read_to_end(&mut buf) {
+                    tracing::error!("failed to load file for GLTF: {}", err);
+                    return None;
                 }
 
-                gltf_to_scene(gltf.create_unchecked(), meshes, materials, images)
+                gltf.insert(path, buf);
             }
-            None => {
-                tracing::error!("cannot detect scene format");
-                continue;
-            }
-        };
 
-        *scenes.scenes.get_mut(handle).unwrap() = SceneState::Ready(scene);
-    }
+            gltf.create_unchecked().load()
+        }
+        None => {
+            tracing::error!("cannot detect scene format");
+            return None;
+        }
+    };
+
+    Some(scene)
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]

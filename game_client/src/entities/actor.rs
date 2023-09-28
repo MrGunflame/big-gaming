@@ -1,7 +1,7 @@
 use game_common::components::race::RaceId;
 use game_common::components::transform::Transform;
 use game_core::modules::Modules;
-use game_scene::{Scene, SceneId, Scenes};
+use game_scene::{SceneId, Scenes};
 use game_tracing::trace_span;
 
 use crate::utils::extract_actor_rotation;
