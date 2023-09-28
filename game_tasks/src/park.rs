@@ -1,14 +1,24 @@
+//! Thread-parking primitives
+//!
+//! The [`Parker`] and [`Unparker`] primitives can be used to efficiently put threads to sleep.
+//! A single [`Parker`]/[`Unparker`] instance can be used to put multiple threads to sleep.
+//!
+//! [`Unparker::unpark`] will always wake up a single thread, or if none is available queue the
+//! next parking thread to wake up immediately.
+
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use parking_lot::{Condvar, Mutex};
 
+/// A thread parker.
 #[derive(Clone, Debug)]
 pub struct Parker {
     unparker: Unparker,
 }
 
 impl Parker {
+    /// Creates a new `Parker`.
     pub fn new() -> Self {
         Self {
             unparker: Unparker {
@@ -21,22 +31,30 @@ impl Parker {
         }
     }
 
+    /// Parks the thread until a token becomes available.
+    ///
+    /// If a token is available `park` will return immediately.
     pub fn park(&self) {
         self.unparker.inner.park();
     }
 
+    /// Returns the [`Unparker`] for this `Parker`.
     pub fn unparker(&self) -> &Unparker {
         &self.unparker
     }
 }
 
+/// A thread unparker.
 #[derive(Clone, Debug)]
 pub struct Unparker {
     inner: Arc<Inner>,
 }
 
 impl Unparker {
-    pub fn unpark_one(&self) {
+    /// Unparks a single parked thread.
+    ///
+    /// If no thread is waiting the next parked thread will wake up immediately.
+    pub fn unpark(&self) {
         self.inner.unpark_one();
     }
 }
@@ -105,7 +123,7 @@ mod tests {
         let unparker = parker.unparker().clone();
 
         std::thread::spawn(move || {
-            unparker.unpark_one();
+            unparker.unpark();
         });
 
         parker.park();
@@ -119,7 +137,7 @@ mod tests {
         for _ in 0..NUM_THREADS {
             let unparker = unparker.clone();
             std::thread::spawn(move || {
-                unparker.unpark_one();
+                unparker.unpark();
             });
         }
 
@@ -144,7 +162,7 @@ mod tests {
         }
 
         for _ in 0..NUM_THREADS {
-            unparker.unpark_one();
+            unparker.unpark();
         }
 
         barrier.wait();

@@ -65,7 +65,7 @@ impl TaskPool {
         self.inner.tasks.lock().push(task);
 
         self.inner.queue.push(task);
-        self.inner.parker.unparker().unpark_one();
+        self.inner.parker.unparker().unpark();
 
         Task {
             ptr: task,
@@ -101,7 +101,7 @@ impl Drop for TaskPool {
     fn drop(&mut self) {
         self.inner.shutdown.store(true, Ordering::Release);
         for _ in 0..self.threads.as_ref().unwrap().len() {
-            self.inner.parker.unparker().unpark_one();
+            self.inner.parker.unparker().unpark();
         }
 
         for handle in self.threads.take().unwrap() {
