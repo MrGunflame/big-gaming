@@ -10,6 +10,7 @@ use game_common::components::transform::Transform;
 use game_common::entity::EntityId;
 use game_common::world::entity::EntityBody;
 use game_core::counter::Interval;
+use game_core::hierarchy::{Entity, TransformHierarchy};
 use game_core::modules::Modules;
 use game_core::time::Time;
 use game_input::keyboard::KeyboardInput;
@@ -20,7 +21,7 @@ use game_render::color::Color;
 use game_render::entities::CameraId;
 use game_render::light::DirectionalLight;
 use game_render::Renderer;
-use game_scene::{SceneId, Scenes};
+use game_scene::Scenes;
 use game_window::cursor::Cursor;
 use game_window::events::{VirtualKeyCode, WindowEvent};
 use game_window::windows::WindowState;
@@ -44,7 +45,7 @@ pub struct GameWorldState {
     camera_controller: CameraController,
     is_init: bool,
     primary_camera: Option<CameraId>,
-    entities: HashMap<EntityId, SceneId>,
+    entities: HashMap<EntityId, Entity>,
     modules: Modules,
     actions: ActiveActions,
 }
@@ -79,6 +80,7 @@ impl GameWorldState {
         scenes: &mut Scenes,
         window: WindowState,
         time: &Time,
+        hierarchy: &mut TransformHierarchy,
     ) {
         if !self.is_init {
             self.is_init = true;
@@ -113,7 +115,9 @@ impl GameWorldState {
                         self.update_host(eid);
                     }
 
-                    if let Some(id) = spawn_entity(renderer, scenes, entity, &self.modules) {
+                    if let Some(id) =
+                        spawn_entity(renderer, scenes, entity, &self.modules, hierarchy)
+                    {
                         self.entities.insert(eid, id);
                     }
                 }
@@ -124,9 +128,16 @@ impl GameWorldState {
                     dst,
                 } => {
                     let id = self.entities.get(&entity).unwrap();
-                    let mut transform = scenes.get_transform(*id).unwrap();
+                    let transform = hierarchy.get_mut(*id).unwrap();
+
+                    tracing::trace!(
+                        "translate entity {:?} from {:?} to {:?}",
+                        entity,
+                        transform.translation,
+                        dst
+                    );
+
                     transform.translation = dst;
-                    scenes.set_transform(*id, transform);
                 }
                 Command::Rotate {
                     entity,
@@ -135,9 +146,16 @@ impl GameWorldState {
                     dst,
                 } => {
                     let id = self.entities.get(&entity).unwrap();
-                    let mut transform = scenes.get_transform(*id).unwrap();
+                    let transform = hierarchy.get_mut(*id).unwrap();
+
+                    tracing::trace!(
+                        "rotate entity {:?} from {:?} to {:?}",
+                        entity,
+                        transform.rotation,
+                        dst
+                    );
+
                     transform.rotation = dst;
-                    scenes.set_transform(*id, transform);
                 }
                 Command::SpawnHost(id) => {
                     self.update_host(id);
@@ -290,24 +308,28 @@ fn spawn_entity(
     scenes: &mut Scenes,
     entity: DelayedEntity,
     modules: &Modules,
-) -> Option<SceneId> {
+    hierarchy: &mut TransformHierarchy,
+) -> Option<Entity> {
+    // TODO: Check if can spawn an entity before allocating one.
+    let root = hierarchy.append(None, entity.entity.transform);
+
     match entity.entity.body {
-        EntityBody::Terrain(terrain) => Some(spawn_terrain(
-            scenes,
-            renderer,
-            &terrain.mesh,
-            entity.entity.transform,
-        )),
+        EntityBody::Terrain(terrain) => {
+            spawn_terrain(scenes, renderer, &terrain.mesh, root);
+        }
         EntityBody::Object(object) => SpawnObject {
             id: object.id,
-            transform: entity.entity.transform,
+            entity: root,
         }
         .spawn(scenes, modules),
         EntityBody::Actor(actor) => SpawnActor {
             race: actor.race,
             transform: entity.entity.transform,
+            entity: root,
         }
         .spawn(scenes, modules),
         EntityBody::Item(item) => todo!(),
     }
+
+    Some(root)
 }

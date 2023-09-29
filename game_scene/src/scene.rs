@@ -29,9 +29,10 @@ impl Scene {
     pub(crate) fn spawn(
         self,
         renderer: &mut Renderer,
+        parent: Entity,
         hierarchy: &mut TransformHierarchy,
         nodes: &mut HashMap<Entity, ObjectId>,
-    ) -> Entity {
+    ) -> Vec<Entity> {
         let _span = trace_span!("Scene::spawn").entered();
 
         let mut meshes = Vec::new();
@@ -62,10 +63,10 @@ impl Scene {
             materials.push(id);
         }
 
-        let root = hierarchy.append(None, Transform::default());
+        let mut entities = Vec::new();
 
         for node in &self.nodes {
-            let key = hierarchy.append(Some(root), node.transform);
+            let key = hierarchy.append(Some(parent), node.transform);
 
             let id = renderer.entities.objects.insert(Object {
                 transform: Transform::default(),
@@ -73,6 +74,7 @@ impl Scene {
                 material: materials[node.material],
             });
 
+            entities.push(key);
             nodes.insert(key, id);
         }
 
@@ -122,7 +124,7 @@ impl Scene {
             });
         }
 
-        root
+        entities
     }
 }
 

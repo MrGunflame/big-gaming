@@ -1,4 +1,5 @@
 use game_common::components::transform::Transform;
+use game_core::hierarchy::TransformHierarchy;
 use game_render::camera::{Camera, Projection, RenderTarget};
 use game_render::color::Color;
 use game_render::entities::CameraId;
@@ -14,7 +15,12 @@ pub struct MainMenuState {
 }
 
 impl MainMenuState {
-    pub fn new(scenes: &mut Scenes, renderer: &mut Renderer, window_id: WindowId) -> Self {
+    pub fn new(
+        scenes: &mut Scenes,
+        renderer: &mut Renderer,
+        window_id: WindowId,
+        hierarchy: &mut TransformHierarchy,
+    ) -> Self {
         let camera = renderer.entities.cameras.insert(Camera {
             transform: Transform {
                 translation: Vec3::new(10.0, 0.0, 0.0),
@@ -24,7 +30,8 @@ impl MainMenuState {
             target: RenderTarget::Window(window_id),
         });
 
-        let handle = scenes.load("sponza.model");
+        let entity = hierarchy.append(None, Transform::default());
+        scenes.load(entity, "sponza.model");
 
         renderer.entities.point_lights.insert(PointLight {
             transform: Transform {

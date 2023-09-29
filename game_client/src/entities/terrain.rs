@@ -2,10 +2,11 @@ use game_common::components::transform::Transform;
 use game_common::world::entity::Terrain;
 use game_common::world::terrain::{Projection, TerrainMesh};
 use game_common::world::CELL_SIZE_UINT;
+use game_core::hierarchy::Entity;
 use game_render::mesh::{Indices, Mesh};
 use game_render::Renderer;
 use game_scene::scene::{Material, Node, Scene};
-use game_scene::{SceneId, Scenes};
+use game_scene::Scenes;
 use game_tracing::trace_span;
 use glam::{UVec2, Vec3};
 
@@ -18,22 +19,25 @@ pub fn spawn_terrain(
     scenes: &mut Scenes,
     renderer: &mut Renderer,
     terrain: &TerrainMesh,
-    transform: Transform,
-) -> SceneId {
+    entity: Entity,
+) {
     let _span = trace_span!("spawn_terrain").entered();
 
     let mesh = build_mesh(terrain);
 
-    scenes.insert(Scene {
-        nodes: vec![Node {
-            mesh: 0,
-            material: 0,
-            transform: Transform::default(),
-        }],
-        meshes: vec![mesh],
-        materials: vec![Material::default()],
-        images: vec![],
-    })
+    scenes.insert(
+        entity,
+        Scene {
+            nodes: vec![Node {
+                mesh: 0,
+                material: 0,
+                transform: Transform::default(),
+            }],
+            meshes: vec![mesh],
+            materials: vec![Material::default()],
+            images: vec![],
+        },
+    );
 }
 
 fn build_mesh(terrain: &TerrainMesh) -> Mesh {

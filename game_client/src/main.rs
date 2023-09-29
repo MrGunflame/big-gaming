@@ -13,6 +13,7 @@ use std::sync::Arc;
 use clap::Parser;
 use config::Config;
 use game_core::counter::Interval;
+use game_core::hierarchy::TransformHierarchy;
 use game_core::logger::{self};
 use game_core::time::Time;
 use game_render::Renderer;
@@ -71,6 +72,7 @@ fn main() {
         time: Time::new(),
         cursor: cursor,
         pool: TaskPool::new(8),
+        hierarchy: TransformHierarchy::default(),
     };
 
     wm.run(app);
@@ -86,6 +88,7 @@ pub struct App {
     time: Time,
     cursor: Arc<Cursor>,
     pool: TaskPool,
+    hierarchy: TransformHierarchy,
 }
 
 impl game_window::App for App {
@@ -100,18 +103,27 @@ impl game_window::App for App {
                     &mut self.scenes,
                     &mut self.renderer,
                     self.window_id,
+                    &mut self.hierarchy,
                 ));
             }
             GameState::MainMenu(state) => {
                 state.update(&mut self.renderer);
             }
             GameState::GameWorld(state) => {
-                state.update(&mut self.renderer, &mut self.scenes, window, &self.time);
+                state.update(
+                    &mut self.renderer,
+                    &mut self.scenes,
+                    window,
+                    &self.time,
+                    &mut self.hierarchy,
+                );
             }
             _ => todo!(),
         }
 
-        self.scenes.update(&mut self.renderer, &self.pool);
+        self.hierarchy.compute_transform();
+        self.scenes
+            .update(&mut self.hierarchy, &mut self.renderer, &self.pool);
         self.renderer.render(&self.pool);
     }
 
