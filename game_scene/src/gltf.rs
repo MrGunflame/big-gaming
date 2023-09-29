@@ -1,64 +1,63 @@
-use game_common::components::transform::Transform;
-use game_gltf::{GltfData, GltfLoader, GltfMaterial};
-use game_render::pbr::material::Materials;
-use game_render::pbr::mesh::Meshes;
-use game_render::pbr::PbrMaterial;
-use game_render::texture::{Images, TextureFormat};
+use game_gltf::{GltfData, GltfMaterial};
+use game_render::texture::{Image, TextureFormat};
+use game_tracing::trace_span;
+use glam::UVec2;
 
-use crate::{Node, Scene};
+use crate::loader::LoadScene;
+use crate::scene::{Material, Node, Scene};
 
-#[derive(Clone, Debug)]
-pub(crate) enum GltfState {
-    Loading(GltfLoader),
-    Ready(GltfData),
-}
+impl LoadScene for GltfData {
+    fn load(self) -> Scene {
+        let _span = trace_span!("GltfData::load").entered();
 
-pub(crate) fn gltf_to_scene(
-    data: GltfData,
-    meshes: &mut Meshes,
-    materials: &mut Materials,
-    images: &mut Images,
-) -> Scene {
-    let scenes = data.scenes().unwrap();
-    let scene = scenes.into_iter().nth(0).unwrap();
+        let mut scene = Scene::default();
 
-    let mut nodes = Vec::new();
+        for node in self.scenes().unwrap().into_iter().nth(0).unwrap().nodes {
+            if let Some(mesh) = node.mesh {
+                for primitive in mesh.primitives {
+                    let mesh = scene.meshes.len();
+                    scene.meshes.push(primitive.mesh);
+                    let material = scene.materials.len();
+                    scene
+                        .materials
+                        .push(create_material(primitive.material, &mut scene.images));
 
-    for node in scene.nodes {
-        if let Some(mesh) = node.mesh {
-            for primitive in mesh.primitives {
-                let mesh = meshes.insert(primitive.mesh);
-                let material = materials.insert(create_material(primitive.material, images));
-
-                nodes.push(Node {
-                    mesh,
-                    material,
-                    transform: node.transform,
-                });
+                    scene.nodes.push(Node {
+                        mesh,
+                        material,
+                        transform: node.transform,
+                    });
+                }
             }
         }
-    }
 
-    // TODO: Children
+        // TODO: Children
 
-    Scene {
-        nodes,
-        transform: Transform::default(),
+        scene
     }
 }
 
-fn create_material(material: GltfMaterial, images: &mut Images) -> PbrMaterial {
-    let base_color_texture = material
-        .base_color_texture
-        .map(|buf| images.load_with_format(buf, TextureFormat::Rgba8UnormSrgb));
-    let normal_texture = material
-        .normal_texture
-        .map(|buf| images.load_with_format(buf, TextureFormat::Rgba8Unorm));
-    let metallic_roughness_texture = material
-        .metallic_roughness_texture
-        .map(|buf| images.load(buf));
+fn create_material(material: GltfMaterial, images: &mut Vec<Image>) -> Material {
+    let base_color_texture = material.base_color_texture.map(|buf| {
+        let index = images.len();
+        let img = load_image(&buf, TextureFormat::Rgba8UnormSrgb);
+        images.push(img);
+        index
+    });
+    let normal_texture = material.normal_texture.map(|buf| {
+        let index = images.len();
+        let img = load_image(&buf, TextureFormat::Rgba8Unorm);
+        images.push(img);
+        index
+    });
+    let metallic_roughness_texture = material.metallic_roughness_texture.map(|buf| {
+        let index = images.len();
+        let img = load_image(&buf, TextureFormat::Rgba8Unorm);
+        images.push(img);
+        index
+    });
 
-    PbrMaterial {
+    Material {
         alpha_mode: material.alpha_mode,
         base_color: material.base_color,
         base_color_texture,
@@ -67,4 +66,13 @@ fn create_material(material: GltfMaterial, images: &mut Images) -> PbrMaterial {
         metallic: material.metallic,
         metallic_roughness_texture,
     }
+}
+
+fn load_image(buf: &[u8], format: TextureFormat) -> Image {
+    let img = image::load_from_memory(&buf).unwrap().to_rgba8();
+    Image::new(
+        UVec2::new(img.width(), img.height()),
+        format,
+        img.into_raw(),
+    )
 }

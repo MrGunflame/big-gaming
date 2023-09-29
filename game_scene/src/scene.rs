@@ -4,79 +4,150 @@ use game_common::components::transform::Transform;
 use game_core::hierarchy::{Entity, TransformHierarchy};
 use game_render::color::Color;
 use game_render::entities::{Object, ObjectId};
-use game_render::pbr::PbrMaterial;
+use game_render::mesh::Mesh;
+use game_render::pbr::{AlphaMode, PbrMaterial};
+use game_render::texture::Image;
 use game_render::{shape, Renderer};
 use game_tracing::trace_span;
 
-use crate::Scene;
+#[derive(Clone, Debug, Default)]
+pub struct Scene {
+    pub nodes: Vec<Node>,
+    pub meshes: Vec<Mesh>,
+    pub materials: Vec<Material>,
+    pub images: Vec<Image>,
+}
 
-pub(crate) fn spawn_scene(
-    scene: &Scene,
-    renderer: &mut Renderer,
-    hierarchy: &mut TransformHierarchy,
-    nodes: &mut HashMap<Entity, ObjectId>,
-) -> Entity {
-    let _span = trace_span!("spawn_scene").entered();
+#[derive(Clone, Debug)]
+pub struct Node {
+    pub transform: Transform,
+    pub mesh: usize,
+    pub material: usize,
+}
 
-    let root = hierarchy.append(None, Transform::default());
+impl Scene {
+    pub(crate) fn spawn(
+        self,
+        renderer: &mut Renderer,
+        hierarchy: &mut TransformHierarchy,
+        nodes: &mut HashMap<Entity, ObjectId>,
+    ) -> Entity {
+        let _span = trace_span!("Scene::spawn").entered();
 
-    for node in &scene.nodes {
-        let key = hierarchy.append(Some(root), node.transform);
+        let mut meshes = Vec::new();
+        for mesh in self.meshes {
+            let id = renderer.meshes.insert(mesh);
+            meshes.push(id);
+        }
 
-        let id = renderer.entities.objects.insert(Object {
-            transform: Transform::default(),
-            mesh: node.mesh.clone(),
-            material: node.material.clone(),
-        });
+        let mut images = Vec::new();
+        for image in self.images {
+            let id = renderer.images.insert(image);
+            images.push(id);
+        }
 
-        nodes.insert(key, id);
+        let mut materials = Vec::new();
+        for material in self.materials {
+            let id = renderer.materials.insert(PbrMaterial {
+                alpha_mode: material.alpha_mode,
+                base_color: material.base_color,
+                base_color_texture: material.base_color_texture.map(|index| images[index]),
+                normal_texture: material.normal_texture.map(|index| images[index]),
+                roughness: material.roughness,
+                metallic: material.metallic,
+                metallic_roughness_texture: material
+                    .metallic_roughness_texture
+                    .map(|index| images[index]),
+            });
+            materials.push(id);
+        }
+
+        let root = hierarchy.append(None, Transform::default());
+
+        for node in &self.nodes {
+            let key = hierarchy.append(Some(root), node.transform);
+
+            let id = renderer.entities.objects.insert(Object {
+                transform: Transform::default(),
+                mesh: meshes[node.mesh],
+                material: materials[node.material],
+            });
+
+            nodes.insert(key, id);
+        }
+
+        // Local Coordinate axes for debugging
+        for (mesh, color) in [
+            (
+                shape::Box {
+                    min_x: 0.0,
+                    max_x: 2.0,
+                    min_y: -0.1,
+                    max_y: 0.1,
+                    min_z: -0.1,
+                    max_z: 0.1,
+                },
+                Color::RED,
+            ),
+            (
+                shape::Box {
+                    min_x: -0.1,
+                    max_x: 0.1,
+                    min_y: 0.0,
+                    max_y: 2.0,
+                    min_z: -0.1,
+                    max_z: 0.1,
+                },
+                Color::GREEN,
+            ),
+            (
+                shape::Box {
+                    min_x: -0.1,
+                    max_x: 0.1,
+                    min_y: -0.1,
+                    max_y: 0.1,
+                    min_z: 0.0,
+                    max_z: 2.0,
+                },
+                Color::BLUE,
+            ),
+        ] {
+            renderer.entities.objects.insert(Object {
+                transform: Default::default(),
+                mesh: renderer.meshes.insert(mesh.into()),
+                material: renderer.materials.insert(PbrMaterial {
+                    base_color: color,
+                    ..Default::default()
+                }),
+            });
+        }
+
+        root
     }
+}
 
-    // Local Coordinate axes for debugging
-    for (mesh, color) in [
-        (
-            shape::Box {
-                min_x: 0.0,
-                max_x: 2.0,
-                min_y: -0.1,
-                max_y: 0.1,
-                min_z: -0.1,
-                max_z: 0.1,
-            },
-            Color::RED,
-        ),
-        (
-            shape::Box {
-                min_x: -0.1,
-                max_x: 0.1,
-                min_y: 0.0,
-                max_y: 2.0,
-                min_z: -0.1,
-                max_z: 0.1,
-            },
-            Color::GREEN,
-        ),
-        (
-            shape::Box {
-                min_x: -0.1,
-                max_x: 0.1,
-                min_y: -0.1,
-                max_y: 0.1,
-                min_z: 0.0,
-                max_z: 2.0,
-            },
-            Color::BLUE,
-        ),
-    ] {
-        renderer.entities.objects.insert(Object {
-            transform: Default::default(),
-            mesh: renderer.meshes.insert(mesh.into()),
-            material: renderer.materials.insert(PbrMaterial {
-                base_color: color,
-                ..Default::default()
-            }),
-        });
+// The same as `game_render::PbrMaterial`, but with different image handles.
+#[derive(Copy, Clone, Debug)]
+pub struct Material {
+    pub alpha_mode: AlphaMode,
+    pub base_color: Color,
+    pub base_color_texture: Option<usize>,
+    pub normal_texture: Option<usize>,
+    pub roughness: f32,
+    pub metallic: f32,
+    pub metallic_roughness_texture: Option<usize>,
+}
+
+impl Default for Material {
+    fn default() -> Self {
+        Self {
+            alpha_mode: AlphaMode::default(),
+            base_color: Color::WHITE,
+            base_color_texture: None,
+            normal_texture: None,
+            roughness: 0.5,
+            metallic: 0.0,
+            metallic_roughness_texture: None,
+        }
     }
-
-    root
 }

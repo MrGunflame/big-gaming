@@ -17,6 +17,7 @@ use game_core::logger::{self};
 use game_core::time::Time;
 use game_render::Renderer;
 use game_scene::Scenes;
+use game_tasks::TaskPool;
 use game_window::cursor::Cursor;
 use game_window::events::WindowEvent;
 use game_window::windows::{WindowBuilder, WindowId, Windows};
@@ -69,6 +70,7 @@ fn main() {
         scenes: Scenes::new(),
         time: Time::new(),
         cursor: cursor,
+        pool: TaskPool::new(8),
     };
 
     wm.run(app);
@@ -83,6 +85,7 @@ pub struct App {
     scenes: Scenes,
     time: Time,
     cursor: Arc<Cursor>,
+    pool: TaskPool,
 }
 
 impl game_window::App for App {
@@ -108,8 +111,8 @@ impl game_window::App for App {
             _ => todo!(),
         }
 
-        self.scenes.update(&mut self.renderer);
-        self.renderer.render();
+        self.scenes.update(&mut self.renderer, &self.pool);
+        self.renderer.render(&self.pool);
     }
 
     fn handle_event(&mut self, event: WindowEvent) {
