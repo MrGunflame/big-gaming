@@ -6,10 +6,8 @@
 //! [`Unparker::unpark`] will always wake up a single thread, or if none is available queue the
 //! next parking thread to wake up immediately.
 
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
-
-use parking_lot::{Condvar, Mutex};
+use crate::loom::sync::atomic::{AtomicUsize, Ordering};
+use crate::loom::sync::{Arc, Condvar, Mutex};
 
 /// A thread parker.
 #[derive(Clone, Debug)]
@@ -68,6 +66,8 @@ struct Inner {
 
 impl Inner {
     fn park(&self) {
+        // To ensure any writes from the unpark operations are be observed we need to
+        // perform a `Acquire` load the the unpark thread can synchronize with.
         let mut state = self.state.load(Ordering::Acquire);
         while state > 0 {
             match self.state.compare_exchange_weak(
@@ -81,10 +81,28 @@ impl Inner {
             }
         }
 
-        let mut m = self.mutex.lock();
+        let mut m = self.mutex.lock().unwrap();
+
+        // It is possible for a token to after checking `state` but before we are going
+        // to sleep. The unpark operation will wait until it can acquire the mutex, signaling
+        // that we have gone to sleep.
+        // If the unpark thread wins the race for the mutex, a token is now available and we
+        // must consume it while we have locked the mutex.
+        let mut state = self.state.load(Ordering::Acquire);
+        while state > 0 {
+            match self.state.compare_exchange_weak(
+                state,
+                state - 1,
+                Ordering::Acquire,
+                Ordering::Relaxed,
+            ) {
+                Ok(_) => return,
+                Err(val) => state = val,
+            }
+        }
 
         loop {
-            self.cvar.wait(&mut m);
+            m = self.cvar.wait(m).unwrap();
 
             // Take one token from the pool.
             let mut state = self.state.load(Ordering::Acquire);
@@ -103,9 +121,17 @@ impl Inner {
     }
 
     fn unpark_one(&self) {
+        // In order for the parked thread to observe the write to `state` we need to
+        // perform a `Release` operation that the parked thread can synchronize with.
         let state = self.state.fetch_add(1, Ordering::Release);
         assert!(state <= usize::MAX);
 
+        // There is a period between the parking thread checking `state` and going
+        // to sleep. If we were to notify it during that time, it would go to sleep
+        // and never wake up again.
+        // During that time the parking thread acquires the mutex and only releases
+        // it again after going to sleep. By acquiring the mutex before notifying the
+        // parking thread we can guarantee that that it actually went to sleep.
         drop(self.mutex.lock());
         self.cvar.notify_one();
     }

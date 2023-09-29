@@ -2,6 +2,7 @@ extern crate alloc;
 
 pub mod park;
 
+mod loom;
 mod task;
 
 use std::future::Future;

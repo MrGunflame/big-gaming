@@ -8,3 +8,10 @@ license = "GPL-3.0-or-later"
 [dependencies]
 crossbeam = "0.8.2"
 parking_lot = "0.12.1"
+
+[target.'cfg(loom)'.dependencies]
+loom = "0.7.0"
+
+[[test]]
+name = "loom"
+path = "tests/park/loom.rs"
