@@ -27,8 +27,6 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-use game_common::components::transform::Transform;
-
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct SceneId(DefaultKey);
 
@@ -36,76 +34,92 @@ pub struct SceneId(DefaultKey);
 pub struct Scenes {
     scenes: SlotMap<DefaultKey, SceneState>,
     nodes: HashMap<Entity, ObjectId>,
-    hierarchy: TransformHierarchy,
-    load_queue: VecDeque<(DefaultKey, PathBuf)>,
-    queue: Arc<Mutex<Vec<(DefaultKey, Scene)>>>,
+    load_queue: VecDeque<(DefaultKey, Entity, PathBuf)>,
+    queue: Arc<Mutex<Vec<(DefaultKey, Entity, Scene)>>>,
+    // Parent => scene children
+    entites: HashMap<Entity, Vec<Entity>>,
 }
 
 impl Scenes {
     pub fn new() -> Self {
         Self {
             scenes: SlotMap::new(),
-            hierarchy: TransformHierarchy::new(),
             load_queue: VecDeque::new(),
             nodes: HashMap::new(),
             queue: Arc::default(),
+            entites: HashMap::new(),
         }
     }
 
-    pub fn insert(&mut self, scene: Scene) -> SceneId {
-        let key = self.scenes.insert(SceneState::Ready(Some(scene)));
-        SceneId(key)
+    pub fn insert(&mut self, entity: Entity, scene: Scene) {
+        self.scenes.insert(SceneState::Ready(Some(scene), entity));
     }
 
-    pub fn load<S>(&mut self, source: S) -> SceneId
+    pub fn load<S>(&mut self, entity: Entity, source: S)
     where
         S: AsRef<Path>,
     {
         let id = self.scenes.insert(SceneState::Loading);
-        self.load_queue.push_back((id, source.as_ref().into()));
-        SceneId(id)
+        self.load_queue
+            .push_back((id, entity, source.as_ref().into()));
     }
 
-    pub fn update(&mut self, renderer: &mut Renderer, pool: &TaskPool) {
+    pub fn update(
+        &mut self,
+        hierarchy: &mut TransformHierarchy,
+        renderer: &mut Renderer,
+        pool: &TaskPool,
+    ) {
         let _span = trace_span!("Scenes::update").entered();
 
-        while let Some((key, path)) = self.load_queue.pop_back() {
+        while let Some((key, entity, path)) = self.load_queue.pop_back() {
             let queue = self.queue.clone();
             pool.spawn(async move {
                 if let Some(scene) = load_scene(path) {
-                    queue.lock().unwrap().push((key, scene));
+                    queue.lock().unwrap().push((key, entity, scene));
                 }
             });
         }
 
         let mut queue = self.queue.lock().unwrap();
-        while let Some((key, scene)) = queue.pop() {
-            *self.scenes.get_mut(key).unwrap() = SceneState::Ready(Some(scene));
+        while let Some((key, entity, scene)) = queue.pop() {
+            *self.scenes.get_mut(key).unwrap() = SceneState::Ready(Some(scene), entity);
         }
         drop(queue);
 
-        for state in self.scenes.values_mut() {
-            match state {
-                SceneState::Loading => (),
-                SceneState::Ready(scene) => {
-                    let id =
-                        scene
-                            .take()
-                            .unwrap()
-                            .spawn(renderer, &mut self.hierarchy, &mut self.nodes);
-                    *state = SceneState::Spawned(id);
-                }
-                SceneState::Spawned(_) => (),
+        self.scenes.retain(|_, state| match state {
+            SceneState::Loading => true,
+            SceneState::Ready(scene, entity) => {
+                let entities =
+                    scene
+                        .take()
+                        .unwrap()
+                        .spawn(renderer, *entity, hierarchy, &mut self.nodes);
+                self.entites.insert(*entity, entities);
+                false
             }
-        }
+        });
 
-        self.update_transform(renderer);
+        self.update_transform(hierarchy, renderer);
     }
 
-    fn update_transform(&mut self, renderer: &mut Renderer) {
-        self.hierarchy.compute_transform();
+    fn update_transform(&mut self, hierarchy: &mut TransformHierarchy, renderer: &mut Renderer) {
+        // Despawn removed entities.
+        self.entites.retain(|parent, children| {
+            if !hierarchy.exists(*parent) {
+                for entity in children {
+                    if let Some(id) = self.nodes.remove(&entity) {
+                        renderer.entities.objects.remove(id);
+                    }
+                }
 
-        for (entity, transform) in self.hierarchy.iter_changed_global_transform() {
+                false
+            } else {
+                true
+            }
+        });
+
+        for (entity, transform) in hierarchy.iter_changed_global_transform() {
             // Not all entities have an render object associated.
             if let Some(id) = self.nodes.get(&entity) {
                 let mut object = renderer.entities.objects.get_mut(*id).unwrap();
@@ -114,38 +128,9 @@ impl Scenes {
         }
     }
 
-    pub fn set_transform(&mut self, id: SceneId, transform: Transform) {
-        let scene = match self.scenes.get(id.0) {
-            Some(SceneState::Spawned(id)) => id,
-            _ => return,
-        };
-
-        self.hierarchy.set(*scene, transform);
-    }
-
-    pub fn get_transform(&self, id: SceneId) -> Option<Transform> {
-        let scene = match self.scenes.get(id.0) {
-            Some(SceneState::Spawned(id)) => id,
-            _ => return None,
-        };
-
-        self.hierarchy.get(*scene)
-    }
-
-    pub fn objects(&self, id: SceneId) -> Option<impl Iterator<Item = ObjectId>> {
-        let scene = match self.scenes.get(id.0)? {
-            SceneState::Spawned(id) => id,
-            _ => return None,
-        };
-
-        let mut nodes = vec![];
-        for node in self.hierarchy.children(*scene).unwrap() {
-            if let Some(obj) = self.nodes.get(&node) {
-                nodes.push(*obj);
-            }
-        }
-
-        Some(nodes.into_iter())
+    pub fn objects(&self, entity: Entity) -> Option<impl Iterator<Item = ObjectId> + '_> {
+        let e = self.entites.get(&entity)?;
+        Some(e.iter().filter_map(|e| self.nodes.get(e)).copied())
     }
 }
 
@@ -153,8 +138,7 @@ impl Scenes {
 enum SceneState {
     Loading,
     // Option so we can take.
-    Ready(Option<Scene>),
-    Spawned(Entity),
+    Ready(Option<Scene>, Entity),
 }
 
 fn load_scene(path: PathBuf) -> Option<Scene> {

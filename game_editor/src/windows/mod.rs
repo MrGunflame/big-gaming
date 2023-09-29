@@ -10,6 +10,7 @@ mod world;
 use std::sync::mpsc;
 
 use game_common::module::ModuleId;
+use game_core::hierarchy::TransformHierarchy;
 use game_data::record::{Record, RecordKind};
 use game_render::Renderer;
 use game_scene::Scenes;
@@ -49,16 +50,22 @@ impl Window {
         scenes: &mut Scenes,
         event: WindowEvent,
         id: WindowId,
+        hierarchy: &mut TransformHierarchy,
     ) {
         match self {
-            Self::View(_, window) => window.handle_event(renderer, scenes, event, id),
+            Self::View(_, window) => window.handle_event(renderer, scenes, event, id, hierarchy),
             _ => (),
         }
     }
 
-    pub fn update(&mut self, renderer: &mut Renderer, scenes: &mut Scenes) {
+    pub fn update(
+        &mut self,
+        renderer: &mut Renderer,
+        scenes: &mut Scenes,
+        hierarchy: &mut TransformHierarchy,
+    ) {
         match self {
-            Self::View(_, w) => w.update(renderer, scenes),
+            Self::View(_, w) => w.update(renderer, scenes, hierarchy),
             _ => (),
         }
     }
@@ -71,6 +78,7 @@ pub fn spawn_window(
     rt: Runtime,
     event: SpawnWindow,
     window_id: WindowId,
+    hierarchy: &mut TransformHierarchy,
 ) -> Window {
     let document = Document::new(rt);
 
@@ -116,7 +124,8 @@ pub fn spawn_window(
         SpawnWindow::View => {
             let state = world::build_ui(&cx, state);
 
-            let window = world::WorldWindowState::new(state, renderer, window_id, scenes);
+            let window =
+                world::WorldWindowState::new(state, renderer, window_id, scenes, hierarchy);
             return Window::View(document, window);
         }
         SpawnWindow::SpawnEntity(writer) => {

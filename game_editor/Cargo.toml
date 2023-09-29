@@ -15,6 +15,7 @@ game_input = { version = "0.1.0", path = "../game_input" }
 game_scene = { version = "0.1.0", path = "../game_scene" }
 game_tracing = { version = "0.1.0", path = "../game_tracing" }
 game_tasks = { version = "0.1.0", path = "../game_tasks" }
+game_core = { version = "0.1.0", path = "../game_core" }
 
 parking_lot = "0.12.1"
 tokio = { version = "1.27.0", features = ["full"] }

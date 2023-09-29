@@ -58,6 +58,10 @@ impl TransformHierarchy {
         self.nodes.get(entity.0).copied()
     }
 
+    pub fn get_mut(&mut self, entity: Entity) -> Option<&mut Transform> {
+        self.nodes.get_mut(entity.0)
+    }
+
     pub fn set(&mut self, entity: Entity, transform: Transform) {
         if let Some(t) = self.nodes.get_mut(entity.0) {
             *t = transform;
@@ -106,6 +110,18 @@ impl TransformHierarchy {
 
     pub fn children(&self, entity: Entity) -> Option<impl Iterator<Item = Entity> + '_> {
         self.children.get(&entity).map(|vec| vec.iter().copied())
+    }
+
+    /// Removes all entities.
+    pub fn clear(&mut self) {
+        self.nodes.clear();
+        self.children.clear();
+        self.parents.clear();
+        self.global_transform.clear();
+    }
+
+    pub fn exists(&self, entity: Entity) -> bool {
+        self.nodes.contains_key(entity.0)
     }
 }
 

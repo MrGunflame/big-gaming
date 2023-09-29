@@ -11,6 +11,7 @@ use std::sync::{mpsc, Arc};
 
 use backend::{Backend, Handle, Response};
 
+use game_core::hierarchy::TransformHierarchy;
 use game_render::Renderer;
 use game_scene::Scenes;
 use game_tasks::TaskPool;
@@ -89,6 +90,7 @@ fn main() {
         active_windows: HashMap::new(),
         scenes: Scenes::new(),
         pool: TaskPool::new(8),
+        hierarchy: TransformHierarchy::default(),
     };
 
     state.window_manager.run(app);
@@ -135,6 +137,7 @@ pub struct App {
     active_windows: HashMap<WindowId, crate::windows::Window>,
     scenes: Scenes,
     pool: TaskPool,
+    hierarchy: TransformHierarchy,
 }
 
 impl game_window::App for App {
@@ -155,6 +158,7 @@ impl game_window::App for App {
                         self.ui_state.runtime.clone(),
                         spawn,
                         event.window,
+                        &mut self.hierarchy,
                     );
 
                     if let Some(doc) = window.doc() {
@@ -189,6 +193,7 @@ impl game_window::App for App {
                             &mut self.scenes,
                             WindowEvent::MouseMotion(event),
                             window_id,
+                            &mut self.hierarchy,
                         );
                     }
                 }
@@ -201,6 +206,7 @@ impl game_window::App for App {
                             &mut self.scenes,
                             WindowEvent::KeyboardInput(event),
                             window_id,
+                            &mut self.hierarchy,
                         );
                     }
                 }
@@ -213,6 +219,7 @@ impl game_window::App for App {
                             &mut self.scenes,
                             WindowEvent::MouseWheel(event),
                             window_id,
+                            &mut self.hierarchy,
                         );
                     }
                 }
@@ -225,6 +232,7 @@ impl game_window::App for App {
                             &mut self.scenes,
                             WindowEvent::MouseButtonInput(event),
                             window_id,
+                            &mut self.hierarchy,
                         );
                     }
                 }
@@ -237,6 +245,7 @@ impl game_window::App for App {
                             &mut self.scenes,
                             WindowEvent::CursorMoved(event),
                             window_id,
+                            &mut self.hierarchy,
                         );
                     }
                 }
@@ -255,10 +264,12 @@ impl game_window::App for App {
         }
 
         for window in self.active_windows.values_mut() {
-            window.update(&mut self.renderer, &mut self.scenes);
+            window.update(&mut self.renderer, &mut self.scenes, &mut self.hierarchy);
         }
 
-        self.scenes.update(&mut self.renderer, &self.pool);
+        self.hierarchy.compute_transform();
+        self.scenes
+            .update(&mut self.hierarchy, &mut self.renderer, &self.pool);
 
         self.renderer.render(&self.pool);
         self.ui_state.run(&self.renderer, &self.windows);

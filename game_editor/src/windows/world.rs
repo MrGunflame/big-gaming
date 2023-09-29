@@ -6,6 +6,7 @@ use std::sync::mpsc;
 use bitflags::bitflags;
 use game_common::components::transform::Transform;
 use game_common::record::RecordReference;
+use game_core::hierarchy::{Entity, TransformHierarchy};
 use game_data::record::{Record, RecordBody};
 use game_input::mouse::{MouseButton, MouseMotion, MouseWheel};
 use game_input::ButtonState;
@@ -15,7 +16,7 @@ use game_render::entities::CameraId;
 use game_render::light::PointLight;
 use game_render::{shape, Renderer};
 use game_scene::scene::{Material, Node, Scene};
-use game_scene::{SceneId, Scenes};
+use game_scene::Scenes;
 use game_ui::reactive::{ReadSignal, Scope, WriteSignal};
 use game_ui::style::{
     Background, BorderRadius, Bounds, Direction, Growth, Justify, Size, SizeVec2, Style,
@@ -47,6 +48,7 @@ impl WorldWindowState {
         renderer: &mut Renderer,
         window_id: WindowId,
         scenes: &mut Scenes,
+        hierarchy: &mut TransformHierarchy,
     ) -> Self {
         let camera = renderer.entities.cameras.insert(Camera {
             projection: Default::default(),
@@ -67,20 +69,26 @@ impl WorldWindowState {
             color: Color::WHITE,
         });
 
-        let id = scenes.insert(Scene {
-            nodes: vec![Node {
-                transform: Transform::default(),
-                mesh: 0,
-                material: 0,
-            }],
-            meshes: vec![shape::Plane { size: 100.0 }.into()],
-            materials: vec![Material::default()],
-            images: vec![],
-        });
+        let plane = hierarchy.append(None, Transform::default());
 
-        state.entities.update(|e| e.push(id));
+        scenes.insert(
+            plane,
+            Scene {
+                nodes: vec![Node {
+                    transform: Transform::default(),
+                    mesh: 0,
+                    material: 0,
+                }],
+                meshes: vec![shape::Plane { size: 100.0 }.into()],
+                materials: vec![Material::default()],
+                images: vec![],
+            },
+        );
 
-        let h = scenes.load("../../sponza.glb");
+        state.entities.update(|e| e.push(plane));
+
+        let s = hierarchy.append(None, Transform::default());
+        scenes.load(s, "../../sponza.glb");
 
         Self {
             camera,
@@ -98,6 +106,7 @@ impl WorldWindowState {
         scenes: &mut Scenes,
         event: WindowEvent,
         window: WindowId,
+        hierarchy: &mut TransformHierarchy,
     ) {
         let mut camera = renderer.entities.cameras.get_mut(self.camera).unwrap();
 
@@ -117,7 +126,7 @@ impl WorldWindowState {
 
                 let c = camera.clone();
                 drop(camera);
-                self.update_edit_op(renderer, scenes, window, c);
+                self.update_edit_op(renderer, scenes, window, c, hierarchy);
             }
             WindowEvent::KeyboardInput(event) => {
                 if event.key_code == Some(VirtualKeyCode::LShift) {
@@ -168,20 +177,20 @@ impl WorldWindowState {
                 if event.state.is_pressed() && !self.state.selection.with(|v| v.is_empty()) {
                     match event.key_code {
                         Some(VirtualKeyCode::Escape) => {
-                            self.reset_edit_op(renderer, scenes);
+                            self.reset_edit_op(renderer, scenes, hierarchy);
                             self.edit_mode = EditMode::None;
                         }
                         Some(VirtualKeyCode::G) => {
                             self.edit_mode = EditMode::Translate(None);
-                            self.create_edit_op(renderer, scenes);
+                            self.create_edit_op(renderer, scenes, hierarchy);
                         }
                         Some(VirtualKeyCode::R) => {
                             self.edit_mode = EditMode::Rotate(None);
-                            self.create_edit_op(renderer, scenes);
+                            self.create_edit_op(renderer, scenes, hierarchy);
                         }
                         Some(VirtualKeyCode::S) => {
                             self.edit_mode = EditMode::Scale(None);
-                            self.create_edit_op(renderer, scenes);
+                            self.create_edit_op(renderer, scenes, hierarchy);
                         }
                         Some(VirtualKeyCode::X) => {
                             match &mut self.edit_mode {
@@ -193,8 +202,8 @@ impl WorldWindowState {
 
                             if self.edit_mode != EditMode::None {
                                 let camera = camera.clone();
-                                self.reset_edit_op(renderer, scenes);
-                                self.update_edit_op(renderer, scenes, window, camera);
+                                self.reset_edit_op(renderer, scenes, hierarchy);
+                                self.update_edit_op(renderer, scenes, window, camera, hierarchy);
                             }
                         }
                         Some(VirtualKeyCode::Y) => {
@@ -207,8 +216,8 @@ impl WorldWindowState {
 
                             if self.edit_mode != EditMode::None {
                                 let camera = camera.clone();
-                                self.reset_edit_op(renderer, scenes);
-                                self.update_edit_op(renderer, scenes, window, camera);
+                                self.reset_edit_op(renderer, scenes, hierarchy);
+                                self.update_edit_op(renderer, scenes, window, camera, hierarchy);
                             }
                         }
                         Some(VirtualKeyCode::Z) => {
@@ -221,8 +230,8 @@ impl WorldWindowState {
 
                             if self.edit_mode != EditMode::None {
                                 let camera = camera.clone();
-                                self.reset_edit_op(renderer, scenes);
-                                self.update_edit_op(renderer, scenes, window, camera);
+                                self.reset_edit_op(renderer, scenes, hierarchy);
+                                self.update_edit_op(renderer, scenes, window, camera, hierarchy);
                             }
                         }
                         _ => (),
@@ -245,7 +254,7 @@ impl WorldWindowState {
                 MouseButton::Right => {
                     if self.edit_mode != EditMode::None {
                         drop(camera);
-                        self.reset_edit_op(renderer, scenes);
+                        self.reset_edit_op(renderer, scenes, hierarchy);
                         self.edit_mode = EditMode::None;
                     }
                 }
@@ -285,11 +294,16 @@ impl WorldWindowState {
         }
     }
 
-    fn create_edit_op(&mut self, renderer: &mut Renderer, scenes: &mut Scenes) {
+    fn create_edit_op(
+        &mut self,
+        renderer: &mut Renderer,
+        scenes: &mut Scenes,
+        hierarchy: &mut TransformHierarchy,
+    ) {
         let mut entities = Vec::new();
 
         for id in &self.state.selection.get() {
-            let transform = scenes.get_transform(*id).unwrap();
+            let transform = hierarchy.get(*id).unwrap();
 
             entities.push(EditEntity {
                 id: *id,
@@ -309,6 +323,7 @@ impl WorldWindowState {
         scenes: &mut Scenes,
         window: WindowId,
         camera: Camera,
+        hierarchy: &mut TransformHierarchy,
     ) {
         let viewport_size = renderer.get_surface_size(window).unwrap().as_vec2();
 
@@ -318,7 +333,7 @@ impl WorldWindowState {
         match self.edit_mode {
             EditMode::Translate(axis) => {
                 for id in &self.state.selection.get() {
-                    let mut transform = scenes.get_transform(*id).unwrap();
+                    let transform = hierarchy.get_mut(*id).unwrap();
 
                     // Find the intersection of the camera ray with the plane placed
                     // at the object, facing the camera. The projected point is the new
@@ -339,8 +354,6 @@ impl WorldWindowState {
                         .transform
                         .set_translation
                         .update(|translation| *translation = transform.translation);
-
-                    scenes.set_transform(*id, transform);
                 }
             }
             EditMode::None => (),
@@ -348,13 +361,18 @@ impl WorldWindowState {
         }
     }
 
-    fn reset_edit_op(&mut self, renderer: &mut Renderer, scenes: &mut Scenes) {
+    fn reset_edit_op(
+        &mut self,
+        renderer: &mut Renderer,
+        scenes: &mut Scenes,
+        hierarchy: &mut TransformHierarchy,
+    ) {
         let Some(op) = &self.edit_op else {
             return;
         };
 
         for entity in &op.entities {
-            scenes.set_transform(entity.id, entity.origin);
+            *hierarchy.get_mut(entity.id).unwrap() = entity.origin;
         }
     }
 
@@ -363,7 +381,12 @@ impl WorldWindowState {
         self.edit_mode = EditMode::None;
     }
 
-    pub fn update(&mut self, renderer: &mut Renderer, scenes: &mut Scenes) {
+    pub fn update(
+        &mut self,
+        renderer: &mut Renderer,
+        scenes: &mut Scenes,
+        hierarchy: &mut TransformHierarchy,
+    ) {
         while let Ok(event) = self.state.rx.try_recv() {
             match event {
                 Event::Spawn(record_ref) => {
@@ -375,20 +398,27 @@ impl WorldWindowState {
                         .records
                         .get(record_ref.module, record_ref.record)
                     {
-                        self.spawn_entity(renderer, scenes, record);
+                        self.spawn_entity(renderer, scenes, record, hierarchy);
                     }
                 }
             }
         }
     }
 
-    fn spawn_entity(&mut self, renderer: &mut Renderer, scenes: &mut Scenes, record: Record) {
+    fn spawn_entity(
+        &mut self,
+        renderer: &mut Renderer,
+        scenes: &mut Scenes,
+        record: Record,
+        hierarchy: &mut TransformHierarchy,
+    ) {
         match record.body {
             RecordBody::Object(object) => {
+                let entity = hierarchy.append(None, Transform::default());
                 let model = object.uri.as_ref().to_path_buf();
-                let id = scenes.load(model);
+                scenes.load(entity, model);
 
-                self.state.entities.update(|entities| entities.push(id));
+                self.state.entities.update(|entities| entities.push(entity));
             }
             _ => todo!(),
         }
@@ -403,7 +433,7 @@ struct EditOperation {
 
 #[derive(Clone, Debug)]
 struct EditEntity {
-    id: SceneId,
+    id: Entity,
     origin: Transform,
 }
 
@@ -425,8 +455,8 @@ enum Axis {
 
 pub struct State {
     rx: mpsc::Receiver<Event>,
-    entities: WriteSignal<Vec<SceneId>>,
-    selection: WriteSignal<Vec<SceneId>>,
+    entities: WriteSignal<Vec<Entity>>,
+    selection: WriteSignal<Vec<Entity>>,
     transform: TransformState,
     state: EditorState,
 }
