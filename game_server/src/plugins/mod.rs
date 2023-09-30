@@ -34,7 +34,7 @@ pub fn tick(state: &mut ServerState) {
     });
 
     if cfg!(feature = "physics") {
-        step_physics(state);
+        //step_physics(state);
     }
 
     // Push snapshots last always

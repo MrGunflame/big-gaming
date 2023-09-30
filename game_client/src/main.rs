@@ -18,6 +18,7 @@ use game_core::logger::{self};
 use game_core::time::Time;
 use game_render::Renderer;
 use game_scene::Scenes;
+use game_script::executor::ScriptExecutor;
 use game_tasks::TaskPool;
 use game_window::cursor::Cursor;
 use game_window::events::WindowEvent;
@@ -59,8 +60,16 @@ fn main() {
 
     let cursor = wm.cursor().clone();
 
+    let executor = Arc::new(ScriptExecutor::new(res.server, res.record_targets));
+
     if let Some(addr) = args.connect {
-        state = GameState::GameWorld(GameWorldState::new(&config, addr, res.modules, &cursor));
+        state = GameState::GameWorld(GameWorldState::new(
+            &config,
+            addr,
+            res.modules,
+            &cursor,
+            executor.clone(),
+        ));
     }
 
     let app = App {
@@ -73,6 +82,7 @@ fn main() {
         cursor: cursor,
         pool: TaskPool::new(8),
         hierarchy: TransformHierarchy::default(),
+        executor,
     };
 
     wm.run(app);
@@ -89,6 +99,9 @@ pub struct App {
     cursor: Arc<Cursor>,
     pool: TaskPool,
     hierarchy: TransformHierarchy,
+    // TODO: No need for Arc here, but we want the executor in game state
+    // not App state.
+    executor: Arc<ScriptExecutor>,
 }
 
 impl game_window::App for App {

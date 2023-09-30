@@ -3,9 +3,11 @@ use game_common::record::RecordReference;
 use game_common::world::entity::EntityBody;
 use game_tracing::trace_span;
 
+use crate::effect::Effects;
 use crate::scripts::RecordTargets;
 use crate::{Context, Handle, ScriptServer};
 
+#[derive(Debug)]
 pub struct ScriptExecutor {
     server: ScriptServer,
     targets: RecordTargets,
@@ -16,26 +18,31 @@ impl ScriptExecutor {
         Self { server, targets }
     }
 
-    pub fn run(&self, mut ctx: Context<'_, '_>) {
+    pub fn run(&self, mut ctx: Context<'_, '_>) -> Effects {
         let _span = trace_span!("ScriptExecutor::run").entered();
 
         let mut events = Vec::new();
 
         while let Some(event) = ctx.events.pop() {
+            dbg!(&event);
             match event {
                 Event::Action(event) => self.queue_action(event, &mut ctx, &mut events),
                 _ => (),
             }
         }
 
+        let mut effects = Effects::default();
+
         for event in events {
             let mut instance = self
                 .server
-                .get(&event.handle, ctx.view, ctx.physics_pipeline)
+                .get(&event.handle, ctx.view, ctx.physics_pipeline, &mut effects)
                 .unwrap();
 
             instance.run(&event.event).unwrap();
         }
+
+        effects
     }
 
     fn queue_action(

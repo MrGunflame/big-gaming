@@ -6,6 +6,7 @@ use glam::{Quat, Vec3};
 use wasmtime::{Caller, Error, Result};
 
 use crate::abi::{FromAbi, ToAbi};
+use crate::effect::Effect;
 use crate::instance::State;
 
 use super::CallerExt;
@@ -203,6 +204,10 @@ pub fn world_entity_set_translation(
     };
 
     entity.set_translation(translation);
+    caller
+        .data_mut()
+        .effects
+        .push(Effect::EntityTranslate(entity_id, translation));
     Ok(0)
 }
 

@@ -3,6 +3,7 @@ pub mod camera;
 pub mod movement;
 
 use std::net::ToSocketAddrs;
+use std::sync::Arc;
 
 use ahash::HashMap;
 use game_common::components::actor::ActorProperties;
@@ -22,6 +23,7 @@ use game_render::entities::CameraId;
 use game_render::light::DirectionalLight;
 use game_render::Renderer;
 use game_scene::Scenes;
+use game_script::executor::ScriptExecutor;
 use game_window::cursor::Cursor;
 use game_window::events::{VirtualKeyCode, WindowEvent};
 use game_window::windows::WindowState;
@@ -48,6 +50,7 @@ pub struct GameWorldState {
     entities: HashMap<EntityId, Entity>,
     modules: Modules,
     actions: ActiveActions,
+    executor: Arc<ScriptExecutor>,
 }
 
 impl GameWorldState {
@@ -56,6 +59,7 @@ impl GameWorldState {
         addr: impl ToSocketAddrs,
         modules: Modules,
         cursor: &Cursor,
+        executor: Arc<ScriptExecutor>,
     ) -> Self {
         cursor.lock();
         cursor.set_visible(false);
@@ -71,6 +75,7 @@ impl GameWorldState {
             entities: HashMap::default(),
             modules,
             actions: ActiveActions::new(),
+            executor,
         }
     }
 
@@ -104,7 +109,7 @@ impl GameWorldState {
         }
 
         let mut buf = CommandBuffer::new();
-        self.conn.update(time, &mut buf);
+        self.conn.update(time, &mut buf, &self.executor);
 
         while let Some(cmd) = buf.pop() {
             match cmd {
@@ -301,6 +306,8 @@ impl GameWorldState {
             self.actions.register(action.module, record);
         }
     }
+
+    fn run_scripts(&mut self) {}
 }
 
 fn spawn_entity(

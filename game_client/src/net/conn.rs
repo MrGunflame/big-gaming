@@ -4,12 +4,16 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use game_common::entity::EntityId;
+use game_common::events::EventQueue;
 use game_common::world::control_frame::ControlFrame;
 use game_common::world::world::{Snapshot, WorldState};
 use game_core::counter::{Interval, IntervalImpl, UpdateCounter};
 use game_core::time::Time;
 use game_net::conn::ConnectionHandle;
 use game_net::message::{DataMessage, DataMessageBody};
+use game_script::effect::Effect;
+use game_script::executor::ScriptExecutor;
+use game_script::Context;
 use game_tracing::world::WorldTrace;
 
 use crate::config::Config;
@@ -19,7 +23,7 @@ use super::entities::Entities;
 use super::flush_command_queue;
 use super::prediction::InputBuffer;
 //use super::prediction::ClientPredictions;
-use super::world::{apply_world_delta, CommandBuffer};
+use super::world::{apply_world_delta, Command, CommandBuffer};
 
 #[derive(Debug)]
 pub struct ServerConnection<I> {
@@ -47,6 +51,9 @@ pub struct ServerConnection<I> {
     buffer: VecDeque<DataMessage>,
 
     pub(crate) input_buffer: InputBuffer,
+
+    pub(crate) physics: game_physics::Pipeline,
+    pub(crate) event_queue: EventQueue,
 }
 
 impl<I> ServerConnection<I> {
@@ -73,6 +80,8 @@ impl<I> ServerConnection<I> {
             buffer: VecDeque::new(),
             input_buffer: InputBuffer::new(),
             current_state: None,
+            physics: game_physics::Pipeline::new(),
+            event_queue: EventQueue::new(),
         }
     }
 
@@ -170,13 +179,62 @@ impl<I> ServerConnection<I> {
             handle.send_cmd(msg);
         }
     }
+
+    fn step_physics(&mut self, cmd_buffer: &mut CommandBuffer) {
+        let mut world = WorldState::from_snapshot(self.current_state.clone().unwrap());
+        let mut view = world.front_mut().unwrap();
+        self.physics.step(&mut view, &mut self.event_queue);
+    }
+
+    fn run_scripts(&mut self, executor: &ScriptExecutor, cmd_buffer: &mut CommandBuffer) {
+        let mut world = WorldState::from_snapshot(self.current_state.clone().unwrap());
+        let mut view = world.front_mut().unwrap();
+
+        let effects = executor.run(Context {
+            view: &mut view,
+            physics_pipeline: &self.physics,
+            events: &mut self.event_queue,
+        });
+
+        for effect in effects.into_iter() {
+            match effect {
+                Effect::EntitySpawn(entity) => {
+                    todo!()
+                }
+                Effect::EntityDespawn(id) => todo!(),
+                Effect::EntityTranslate(id, translation) => {
+                    cmd_buffer.push(Command::Translate {
+                        entity: id,
+                        start: ControlFrame(0),
+                        end: ControlFrame(0),
+                        dst: translation,
+                    });
+
+                    self.current_state
+                        .as_mut()
+                        .unwrap()
+                        .entities
+                        .get_mut(id)
+                        .unwrap()
+                        .transform
+                        .translation = translation;
+                }
+                Effect::EntityRotate(id, rotation) => cmd_buffer.push(Command::Rotate {
+                    entity: id,
+                    start: ControlFrame(0),
+                    end: ControlFrame(0),
+                    dst: rotation,
+                }),
+            }
+        }
+    }
 }
 
 impl<I> ServerConnection<I>
 where
     I: IntervalImpl,
 {
-    pub fn update(&mut self, time: &Time, buffer: &mut CommandBuffer) {
+    pub fn update(&mut self, time: &Time, buffer: &mut CommandBuffer, executor: &ScriptExecutor) {
         if !self.is_connected() {
             return;
         }
@@ -217,7 +275,12 @@ where
             );
 
             flush_command_queue(self);
-            apply_world_delta(self, buffer);
+            apply_world_delta(self, buffer, executor);
+
+            if self.current_state.is_some() {
+                self.step_physics(buffer);
+                self.run_scripts(executor, buffer);
+            }
         }
     }
 }
