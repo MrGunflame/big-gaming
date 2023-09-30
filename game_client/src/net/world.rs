@@ -128,11 +128,7 @@ pub fn apply_world_delta<I>(conn: &mut ServerConnection<I>, cmd_buffer: &mut Com
         conn.current_state = Some(snapshot);
     }
 
-    // FIXME: This is just delaying the problem instead of actually solving
-    // it. We need to wait for the server to acknowledge our message, before
-    // being able to remove it.
-    conn.input_buffer
-        .remove(conn.world.front().unwrap().control_frame() - 10);
+    conn.input_buffer.clear(render_cf);
 
     conn.last_render_frame = Some(render_cf);
 }

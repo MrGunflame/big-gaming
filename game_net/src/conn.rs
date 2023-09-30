@@ -12,12 +12,11 @@ use std::time::{Duration, Instant};
 use futures::{Sink, SinkExt, Stream, StreamExt};
 use game_common::world::control_frame::ControlFrame;
 use parking_lot::Mutex;
-use rand::rngs::adapter::ReseedingRng;
 use thiserror::Error;
 use tokio::sync::mpsc;
 use tokio::time::MissedTickBehavior;
 
-use crate::message::{ControlMessage, DataMessage, Message};
+use crate::message::{ControlMessage, DataMessage, DataMessageBody, Message, MessageId};
 use crate::proto::ack::{Ack, AckAck, Nak};
 use crate::proto::handshake::{Handshake, HandshakeFlags, HandshakeType};
 use crate::proto::sequence::Sequence;
@@ -74,7 +73,7 @@ where
     pub id: ConnectionId,
     stream: S,
 
-    reader: mpsc::Receiver<DataMessage>,
+    reader: mpsc::Receiver<Message>,
     writer: mpsc::Sender<Message>,
 
     state: ConnectionState,
@@ -82,7 +81,7 @@ where
     last_time: Instant,
 
     packet_queue: VecDeque<Packet>,
-    frame_queue: VecDeque<(Frame, ControlFrame)>,
+    frame_queue: VecDeque<(Frame, ControlFrame, MessageId)>,
     write: Option<WriteRequest>,
 
     next_local_sequence: Sequence,
@@ -113,6 +112,10 @@ where
     rtt: Rtt,
     /// Last Processed control frame
     last_cf: ControlFrame,
+    message_out: HashMap<Sequence, MessageId>,
+    // MessageId => last sequence
+    messages_in: HashMap<MessageId, Sequence>,
+    next_id: u32,
 }
 
 impl<S, M> Connection<S, M>
@@ -164,6 +167,9 @@ where
             ack_time_list: AckTimeList::new(),
             rtt: Rtt::new(),
             last_cf: ControlFrame(0),
+            message_out: HashMap::new(),
+            messages_in: HashMap::new(),
+            next_id: 0,
         };
 
         if M::IS_CONNECT {
@@ -213,9 +219,34 @@ where
                 return self.shutdown();
             };
 
-            let cf = msg.control_frame;
-            let frame = msg.to_frame();
-            self.frame_queue.push_back((frame, cf));
+            match msg {
+                Message::Control(ControlMessage::Acknowledge(id)) => {
+                    if let Some(seq) = self.messages_in.remove(&id) {
+                        let packet = Packet {
+                            header: Header {
+                                packet_type: PacketType::ACK,
+                                sequence: Sequence::new(0),
+                                control_frame: self.last_cf,
+                                flags: Flags::new(),
+                            },
+                            body: PacketBody::Ack(Ack {
+                                sequence: seq,
+                                ack_sequence: self.next_ack_sequence.fetch_next(),
+                            }),
+                        };
+
+                        self.send_packet(packet, ConnectionState::Connected);
+                        return Poll::Ready(Ok(()));
+                    }
+                }
+                Message::Data(msg) => {
+                    let id = msg.id;
+                    let cf = msg.control_frame;
+                    let frame = msg.body.to_frame();
+                    self.frame_queue.push_back((frame, cf, id));
+                }
+                _ => unreachable!(),
+            }
         }
 
         Poll::Pending
@@ -224,7 +255,7 @@ where
     fn write_snapshot(&mut self) {
         // Merge FrameQueue into FrameBuffer, compact then send.
 
-        while let Some((frame, cf)) = self.frame_queue.pop_front() {
+        while let Some((frame, cf, id)) = self.frame_queue.pop_front() {
             // Track the last sequence. `fragment_frame` always calls the closure
             // at least once; for solo commands we only need to track the single
             // sequence, but for fragmented commands we track the last sequence
@@ -243,6 +274,10 @@ where
                     self.packet_queue.push_back(packet);
                 },
             );
+
+            // Frames are only received once all packets for that frame arrived.
+            // Therefore we only care about the last sequence in the chain.
+            self.message_out.insert(last_seq, id);
         }
     }
 
@@ -323,7 +358,7 @@ where
         self.reassembly_buffer
             .insert(header.sequence, header.flags.packet_position(), body);
 
-        while let Some(frame) = self.reassembly_buffer.pop() {
+        while let Some((frame, seq)) = self.reassembly_buffer.pop() {
             #[cfg(debug_assertions)]
             self.debug_validator.push(header, &frame);
 
@@ -331,8 +366,18 @@ where
             let control_frame =
                 header.control_frame - (self.peer_start_control_frame - self.start_control_frame);
 
-            let msg = DataMessage::try_from_frame(frame, control_frame);
-            self.writer.try_send(Message::Data(msg)).unwrap();
+            let id = MessageId(self.next_id);
+            self.next_id = self.next_id.wrapping_add(1);
+            self.messages_in.insert(id, seq);
+
+            let body = DataMessageBody::from_frame(frame, control_frame);
+            self.writer
+                .try_send(Message::Data(DataMessage {
+                    id,
+                    control_frame,
+                    body,
+                }))
+                .unwrap();
         }
 
         if let Some(nak) = nak {
@@ -502,6 +547,12 @@ where
     fn handle_ack(&mut self, header: Header, body: Ack) -> Poll<Result<(), Error<S::Error>>> {
         let sequence = body.sequence;
 
+        if let Some(id) = self.message_out.remove(&sequence) {
+            self.writer
+                .try_send(Message::Control(ControlMessage::Acknowledge(id)))
+                .unwrap();
+        }
+
         // Respond with ACKACK
         let packet = Packet {
             header: Header {
@@ -585,8 +636,17 @@ where
 
             // Send periodic ACKs while connected.
             if self.state == ConnectionState::Connected && tick.is_ack() {
-                let ack_sequence = self.next_ack_sequence;
-                self.next_ack_sequence += 1;
+                // FIXME: This seems kinda awkward.
+                // What should we actually send? The last received sequence,
+                // last recevied sequence without NAKs, or the last sequence
+                // + 1? The current connection impl only acknowledges messages
+                // if the ACK contains the exact sequence of the last packet,
+                // so if we actually `next_peer_sequence`, but previous packet
+                // was lost, the peer will still acknowledge the message.
+                // This is bad.
+                let sequence = self.next_peer_sequence - 1;
+
+                let ack_sequence = self.next_ack_sequence.fetch_next();
 
                 let packet = Packet {
                     header: Header {
@@ -596,12 +656,12 @@ where
                         flags: Flags::new(),
                     },
                     body: PacketBody::Ack(Ack {
-                        sequence: self.next_ack_sequence.fetch_next(),
+                        sequence,
                         ack_sequence,
                     }),
                 };
 
-                self.ack_time_list.insert(ack_sequence);
+                self.ack_time_list.insert(sequence);
 
                 self.send_packet(packet, ConnectionState::Connected);
                 return Poll::Ready(Ok(()));
@@ -721,20 +781,6 @@ where
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct Sender {
-    tx: mpsc::Sender<Frame>,
-}
-
-impl Sender {
-    pub fn send<T>(&self, frame: T)
-    where
-        T: Into<Frame>,
-    {
-        let _ = self.tx.try_send(frame.into());
-    }
-}
-
 struct WriteRequest {
     /// The state to return to once done with writing.
     state: ConnectionState,
@@ -759,13 +805,21 @@ enum HandshakeState {
 #[derive(Debug)]
 pub struct ConnectionHandle {
     pub id: ConnectionId,
-    chan_out: mpsc::Sender<DataMessage>,
+    chan_out: mpsc::Sender<Message>,
     rx: Mutex<mpsc::Receiver<Message>>,
 }
 
 impl ConnectionHandle {
-    pub fn send_cmd(&self, cmd: DataMessage) {
-        self.chan_out.try_send(cmd).unwrap();
+    /// Client must set id.
+    pub fn send(&self, msg: DataMessage) {
+        self.chan_out.try_send(Message::Data(msg)).unwrap();
+    }
+
+    /// Acknowledges the use of the message.
+    pub fn acknowledge(&self, id: MessageId) {
+        self.chan_out
+            .try_send(Message::Control(ControlMessage::Acknowledge(id)))
+            .unwrap();
     }
 
     pub fn recv(&self) -> Option<Message> {
@@ -932,7 +986,7 @@ pub struct ReassemblyBuffer {
     first_segments: HashMap<Sequence, Vec<u8>>,
     /// Middle and Last frames.
     other_segments: HashMap<Sequence, (Vec<u8>, PacketPosition)>,
-    ready_frames: Vec<Frame>,
+    ready_frames: Vec<(Frame, Sequence)>,
 }
 
 impl ReassemblyBuffer {
@@ -947,7 +1001,7 @@ impl ReassemblyBuffer {
                     }
                 };
 
-                self.ready_frames.push(frame);
+                self.ready_frames.push((frame, seq));
                 return;
             }
             PacketPosition::First => {
@@ -1005,10 +1059,10 @@ impl ReassemblyBuffer {
             }
         };
 
-        self.ready_frames.push(frame);
+        self.ready_frames.push((frame, seq));
     }
 
-    pub fn pop(&mut self) -> Option<Frame> {
+    pub fn pop(&mut self) -> Option<(Frame, Sequence)> {
         self.ready_frames.pop()
     }
 }

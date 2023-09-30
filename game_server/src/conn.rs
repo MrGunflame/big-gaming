@@ -4,7 +4,8 @@ use std::sync::Arc;
 
 use ahash::HashMap;
 use game_net::conn::{ConnectionHandle, ConnectionId};
-use parking_lot::RwLock;
+use game_net::message::MessageId;
+use parking_lot::{Mutex, RwLock};
 
 use crate::net::state::ConnectionState;
 
@@ -26,6 +27,7 @@ impl Connections {
                     id: handle.id,
                     state: RwLock::new(ConnectionState::new()),
                     handle,
+                    messages_in_frame: Mutex::new(vec![]),
                 }),
             },
         );
@@ -111,6 +113,14 @@ impl Connection {
     pub fn state(&self) -> &RwLock<ConnectionState> {
         &self.inner.state
     }
+
+    pub fn push_message_in_frame(&self, id: MessageId) {
+        self.inner.messages_in_frame.lock().push(id);
+    }
+
+    pub fn take_messages_in_frame(&self) -> Vec<MessageId> {
+        std::mem::take(&mut *self.inner.messages_in_frame.lock())
+    }
 }
 
 #[derive(Debug)]
@@ -118,4 +128,5 @@ struct ConnectionInner {
     id: ConnectionId,
     handle: Arc<ConnectionHandle>,
     state: RwLock<ConnectionState>,
+    messages_in_frame: Mutex<Vec<MessageId>>,
 }

@@ -31,6 +31,11 @@ fn flush_command_queue<I>(conn: &mut ServerConnection<I>) {
                 conn.shutdown();
                 continue;
             }
+            Message::Control(ControlMessage::Acknowledge(id)) => {
+                let cf = conn.control_frame();
+                conn.input_buffer.remove(cf, id);
+                continue;
+            }
             Message::Data(msg) => msg,
         };
 
