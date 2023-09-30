@@ -9,7 +9,7 @@ use game_common::world::world::{Snapshot, WorldState};
 use game_core::counter::{Interval, IntervalImpl, UpdateCounter};
 use game_core::time::Time;
 use game_net::conn::ConnectionHandle;
-use game_net::message::{DataMessage, DataMessageBody};
+use game_net::message::{DataMessage, DataMessageBody, MessageId};
 use game_tracing::world::WorldTrace;
 
 use crate::config::Config;
@@ -47,6 +47,7 @@ pub struct ServerConnection<I> {
     buffer: VecDeque<DataMessage>,
 
     pub(crate) input_buffer: InputBuffer,
+    next_message_id: u32,
 }
 
 impl<I> ServerConnection<I> {
@@ -73,6 +74,7 @@ impl<I> ServerConnection<I> {
             buffer: VecDeque::new(),
             input_buffer: InputBuffer::new(),
             current_state: None,
+            next_message_id: 0,
         }
     }
 
@@ -123,9 +125,11 @@ impl<I> ServerConnection<I> {
         }
 
         let msg = DataMessage {
+            id: MessageId(self.next_message_id),
             control_frame: self.game_tick.current_control_frame,
             body,
         };
+        self.next_message_id += 1;
 
         self.input_buffer.push(msg.clone());
         self.buffer.push_back(msg);
@@ -167,7 +171,7 @@ impl<I> ServerConnection<I> {
         };
 
         for msg in self.buffer.drain(..) {
-            handle.send_cmd(msg);
+            handle.send(msg);
         }
     }
 }

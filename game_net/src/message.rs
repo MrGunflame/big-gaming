@@ -7,7 +7,7 @@ use glam::{Quat, Vec3};
 use crate::proto::{self, Frame};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct MessageId(pub(crate) u32);
+pub struct MessageId(pub u32);
 
 #[derive(Clone, Debug)]
 pub enum Message {
