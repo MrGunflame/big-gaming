@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 
-use futures::{Sink, SinkExt, Stream, StreamExt, TryFutureExt};
+use futures::{Sink, SinkExt, Stream, StreamExt};
 use game_common::world::control_frame::ControlFrame;
 use parking_lot::Mutex;
 use thiserror::Error;
@@ -636,8 +636,17 @@ where
 
             // Send periodic ACKs while connected.
             if self.state == ConnectionState::Connected && tick.is_ack() {
-                let ack_sequence = self.next_ack_sequence;
-                self.next_ack_sequence += 1;
+                // FIXME: This seems kinda awkward.
+                // What should we actually send? The last received sequence,
+                // last recevied sequence without NAKs, or the last sequence
+                // + 1? The current connection impl only acknowledges messages
+                // if the ACK contains the exact sequence of the last packet,
+                // so if we actually `next_peer_sequence`, but previous packet
+                // was lost, the peer will still acknowledge the message.
+                // This is bad.
+                let sequence = self.next_peer_sequence - 1;
+
+                let ack_sequence = self.next_ack_sequence.fetch_next();
 
                 let packet = Packet {
                     header: Header {
@@ -647,12 +656,12 @@ where
                         flags: Flags::new(),
                     },
                     body: PacketBody::Ack(Ack {
-                        sequence: self.next_ack_sequence.fetch_next(),
+                        sequence,
                         ack_sequence,
                     }),
                 };
 
-                self.ack_time_list.insert(ack_sequence);
+                self.ack_time_list.insert(sequence);
 
                 self.send_packet(packet, ConnectionState::Connected);
                 return Poll::Ready(Ok(()));
