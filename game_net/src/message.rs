@@ -6,6 +6,9 @@ use glam::{Quat, Vec3};
 
 use crate::proto::{self, Frame};
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct MessageId(pub(crate) u32);
+
 #[derive(Clone, Debug)]
 pub enum Message {
     Control(ControlMessage),
@@ -16,10 +19,12 @@ pub enum Message {
 pub enum ControlMessage {
     Connected(),
     Disconnected,
+    Acknowledge(MessageId),
 }
 
 #[derive(Clone, Debug)]
 pub struct DataMessage {
+    pub id: MessageId,
     pub control_frame: ControlFrame,
     pub body: DataMessageBody,
 }
@@ -70,9 +75,9 @@ pub struct EntityAction {
     pub action: ActionId,
 }
 
-impl DataMessage {
+impl DataMessageBody {
     pub(crate) fn to_frame(self) -> Frame {
-        match self.body {
+        match self {
             DataMessageBody::EntityCreate(msg) => Frame::EntityCreate(proto::EntityCreate {
                 entity: msg.entity,
                 translation: msg.translation,
@@ -102,50 +107,32 @@ impl DataMessage {
         }
     }
 
-    pub(crate) fn try_from_frame(frame: Frame, cf: ControlFrame) -> Self {
+    pub(crate) fn from_frame(frame: Frame, cf: ControlFrame) -> Self {
         match frame {
-            Frame::EntityCreate(frame) => Self {
-                control_frame: cf,
-                body: DataMessageBody::EntityCreate(EntityCreate {
-                    entity: frame.entity,
-                    translation: frame.translation,
-                    rotation: frame.rotation,
-                    data: frame.data,
-                }),
-            },
-            Frame::EntityDestroy(frame) => Self {
-                control_frame: cf,
-                body: DataMessageBody::EntityDestroy(EntityDestroy {
-                    entity: frame.entity,
-                }),
-            },
-            Frame::SpawnHost(frame) => Self {
-                control_frame: cf,
-                body: DataMessageBody::SpawnHost(SpawnHost {
-                    entity: frame.entity,
-                }),
-            },
-            Frame::EntityTranslate(frame) => Self {
-                control_frame: cf,
-                body: DataMessageBody::EntityTranslate(EntityTranslate {
-                    entity: frame.entity,
-                    translation: frame.translation,
-                }),
-            },
-            Frame::EntityRotate(frame) => Self {
-                control_frame: cf,
-                body: DataMessageBody::EntityRotate(EntityRotate {
-                    entity: frame.entity,
-                    rotation: frame.rotation,
-                }),
-            },
-            Frame::EntityAction(frame) => Self {
-                control_frame: cf,
-                body: DataMessageBody::EntityAction(EntityAction {
-                    entity: frame.entity,
-                    action: frame.action,
-                }),
-            },
+            Frame::EntityCreate(frame) => Self::EntityCreate(EntityCreate {
+                entity: frame.entity,
+                translation: frame.translation,
+                rotation: frame.rotation,
+                data: frame.data,
+            }),
+            Frame::EntityDestroy(frame) => Self::EntityDestroy(EntityDestroy {
+                entity: frame.entity,
+            }),
+            Frame::SpawnHost(frame) => Self::SpawnHost(SpawnHost {
+                entity: frame.entity,
+            }),
+            Frame::EntityTranslate(frame) => Self::EntityTranslate(EntityTranslate {
+                entity: frame.entity,
+                translation: frame.translation,
+            }),
+            Frame::EntityRotate(frame) => Self::EntityRotate(EntityRotate {
+                entity: frame.entity,
+                rotation: frame.rotation,
+            }),
+            Frame::EntityAction(frame) => Self::EntityAction(EntityAction {
+                entity: frame.entity,
+                action: frame.action,
+            }),
             _ => todo!(),
         }
     }
