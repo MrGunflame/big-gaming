@@ -34,7 +34,7 @@ pub fn tick(state: &mut ServerState) {
     });
 
     if cfg!(feature = "physics") {
-        //step_physics(state);
+        step_physics(state);
     }
 
     // Push snapshots last always
@@ -42,12 +42,15 @@ pub fn tick(state: &mut ServerState) {
 }
 
 fn step_physics(state: &mut ServerState) {
-    let start = state.world.front().unwrap().control_frame();
+    let mut start = state.world.front().unwrap().control_frame();
     let end = state.world.back().unwrap().control_frame();
+    start = end;
 
-    state
-        .pipeline
-        .step(&mut state.world, start, end, &mut state.event_queue);
+    while start <= end {
+        let mut view = state.world.get_mut(start).unwrap();
+        state.pipeline.step(&mut view, &mut state.event_queue);
+        start += 1;
+    }
 }
 
 fn update_client_heads(state: &mut ServerState) {
