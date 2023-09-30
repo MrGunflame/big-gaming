@@ -27,12 +27,10 @@ pub fn tick(state: &mut ServerState) {
 
     crate::world::level::update_level_cells(state);
 
-    game_script::plugin::flush_event_queue(Context {
+    state.script_executor.run(Context {
         view: &mut state.world.back_mut().unwrap(),
         physics_pipeline: &state.pipeline,
         events: &mut state.event_queue,
-        server: &state.server,
-        record_targets: &state.record_targets,
     });
 
     if cfg!(feature = "physics") {
@@ -322,6 +320,7 @@ where
             let known = state.known_entities.get(entity.id).unwrap();
 
             if known.transform.translation != entity.transform.translation {
+                dbg!(entity.transform.translation);
                 events.push(EntityChange::Translate {
                     id: entity.id,
                     translation: entity.transform.translation,

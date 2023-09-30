@@ -9,15 +9,14 @@ use game_common::events::EventQueue;
 use game_common::world::world::WorldViewMut;
 use instance::ScriptInstance;
 use script::Script;
-use scripts::RecordTargets;
 use slotmap::{DefaultKey, SlotMap};
 use wasmtime::{Config, Engine};
 
 pub mod abi;
 pub mod actions;
 pub mod events;
+pub mod executor;
 pub mod instance;
-pub mod plugin;
 pub mod script;
 pub mod scripts;
 
@@ -73,7 +72,5 @@ pub struct Handle {
 pub struct Context<'a, 'b> {
     pub view: &'a mut WorldViewMut<'b>,
     pub physics_pipeline: &'a game_physics::Pipeline,
-    pub record_targets: &'a RecordTargets,
     pub events: &'a mut EventQueue,
-    pub server: &'a ScriptServer,
 }

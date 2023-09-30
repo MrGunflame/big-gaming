@@ -8,7 +8,9 @@ use crate::Handle;
 
 #[derive(Clone, Debug, Default)]
 pub struct RecordTargets {
+    /// Records that have scripts attached to them.
     pub(crate) scripts: HashMap<RecordReference, Vec<Handle>>,
+    /// Records that have actions attached to them.
     pub(crate) actions: HashMap<RecordReference, Vec<RecordReference>>,
 }
 

@@ -13,7 +13,7 @@ use glam::{Quat, Vec3};
 pub fn spawn_player(view: &mut WorldViewMut<'_>) -> SpawnPlayer {
     let race = "0a73147476444aba90f71207b22d7419:02".parse().unwrap();
 
-    let transform = Transform::from_translation(Vec3::new(10.0, 32.0, 10.0));
+    let transform = Transform::from_translation(Vec3::new(0.0, 0.0, 0.0));
 
     let id = view.spawn(Entity {
         id: EntityId::dangling(),

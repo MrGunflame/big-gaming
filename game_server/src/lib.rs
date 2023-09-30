@@ -3,6 +3,7 @@
 
 // Used by the binary target.
 use clap as _;
+use game_script::executor::ScriptExecutor;
 use game_worldgen as _;
 
 pub mod config;
@@ -77,10 +78,9 @@ pub struct ServerState {
     pub level: world::level::Level,
     pub pipeline: game_physics::Pipeline,
     pub event_queue: EventQueue,
-    pub server: ScriptServer,
     pub modules: Modules,
     pub state: State,
-    pub record_targets: RecordTargets,
+    pub script_executor: ScriptExecutor,
 }
 
 impl ServerState {
@@ -96,10 +96,9 @@ impl ServerState {
             level: world::level::Level::new(generator),
             pipeline: game_physics::Pipeline::new(),
             event_queue: EventQueue::new(),
-            server,
             modules,
             state: State::new(config),
-            record_targets,
+            script_executor: ScriptExecutor::new(server, record_targets),
         }
     }
 }
