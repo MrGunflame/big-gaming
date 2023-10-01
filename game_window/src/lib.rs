@@ -10,8 +10,8 @@ use std::sync::{mpsc, Arc};
 
 use cursor::{Cursor, CursorGrabMode, WindowCompat};
 use events::{
-    CursorEntered, CursorLeft, CursorMoved, ReceivedCharacter, WindowCloseRequested, WindowCreated,
-    WindowDestroyed, WindowResized,
+    convert_key_code, CursorEntered, CursorLeft, CursorMoved, ReceivedCharacter,
+    WindowCloseRequested, WindowCreated, WindowDestroyed, WindowResized,
 };
 use game_input::keyboard::{KeyboardInput, ScanCode};
 use game_input::mouse::{MouseButton, MouseButtonInput, MouseMotion, MouseScrollUnit, MouseWheel};
@@ -192,7 +192,7 @@ where
 
                     let event = events::WindowEvent::KeyboardInput(KeyboardInput {
                         scan_code: ScanCode(input.scancode),
-                        key_code: input.virtual_keycode,
+                        key_code: input.virtual_keycode.map(|k| convert_key_code(k)),
                         state: match input.state {
                             ElementState::Pressed => ButtonState::Pressed,
                             ElementState::Released => ButtonState::Released,

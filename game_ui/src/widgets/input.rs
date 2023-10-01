@@ -1,8 +1,8 @@
 use std::ops::Deref;
 
+use game_input::keyboard::KeyCode;
 use game_window::cursor::CursorIcon;
 use parking_lot::Mutex;
-use winit::event::VirtualKeyCode;
 
 use crate::events::{ElementEventHandlers, EventHandlers};
 use crate::reactive::{Node, Scope};
@@ -75,16 +75,16 @@ impl Widget for Input {
                             }
 
                             match ctx.event.key_code {
-                                Some(VirtualKeyCode::Left) => {
+                                Some(KeyCode::Left) => {
                                     set_value.update(|string| string.move_back());
                                 }
-                                Some(VirtualKeyCode::Right) => {
+                                Some(KeyCode::Right) => {
                                     set_value.update(|string| string.move_forward());
                                 }
-                                Some(VirtualKeyCode::Home) => {
+                                Some(KeyCode::Home) => {
                                     set_value.update(|string| string.move_to_start());
                                 }
-                                Some(VirtualKeyCode::End) => {
+                                Some(KeyCode::End) => {
                                     set_value.update(|string| string.move_to_end());
                                 }
                                 _ => (),
