@@ -1,0 +1,11 @@
+[package]
+name = "make"
+version = "0.1.0"
+edition = "2021"
+authors = ["MrGunflame <git@robbsrv.de>"]
+license = "GPL-3.0-or-later"
+
+[dependencies]
+clap = { version = "4.3.17", features = ["derive"] }
+log = "0.4.20"
+pretty_env_logger = "0.5.0"

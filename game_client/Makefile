@@ -1,10 +1,10 @@
 CARGO := cargo
-
-FEATURES := simd,tracing/release_max_level_info
+TARGET := dist
 
 .PHONY: build
 
 all: build
 
 build:
-	$(CARGO) +nightly build --release --no-default-features --features=$(FEATURES)
+	cd .. && $(CARGO) build --release --bin=make
+	cd .. && ./target/release/make --target-dir=$(TARGET)
