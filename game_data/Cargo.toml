@@ -9,7 +9,6 @@ license = "GPL-3.0-or-later"
 game_common = { version = "0.1.0", path = "../game_common" }
 
 bytes = "1.4.0"
-indexmap = "1.9.3"
 thiserror = "1.0.40"
 tokio = { version = "1.27.0", features = ["fs", "io-util"] }
 tracing = "0.1.37"

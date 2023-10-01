@@ -4,7 +4,7 @@ use game_common::record::{RecordId, RecordReference};
 use thiserror::Error;
 
 use crate::components::actions::ActionRecord;
-use crate::components::components::ComponentRecord;
+use crate::components::components::{ComponentRecord, ComponentValue};
 use crate::components::item::ItemRecord;
 use crate::components::objects::ObjectRecord;
 use crate::components::race::RaceRecord;
@@ -59,6 +59,7 @@ impl Decode for RecordReference {
 pub struct Record {
     pub id: RecordId,
     pub name: String,
+    pub components: Vec<ComponentValue>,
     pub scripts: Vec<Uri>,
     pub body: RecordBody,
 }
@@ -345,6 +346,7 @@ impl Decode for Record {
     {
         let id = RecordId::decode(&mut buf).map_err(RecordError::Id)?;
         let name = String::decode(&mut buf).map_err(RecordError::Name)?;
+        let components = Vec::decode(&mut buf).map_err(RecordError::Components)?;
         let scripts = Vec::decode(&mut buf).map_err(RecordError::Scripts)?;
         let kind = RecordKind::decode(&mut buf).map_err(RecordError::Kind)?;
 
@@ -374,6 +376,7 @@ impl Decode for Record {
         Ok(Self {
             id,
             name,
+            components,
             scripts,
             body,
         })
@@ -386,6 +389,8 @@ pub enum RecordError {
     Id(<RecordId as Decode>::Error),
     #[error("failed to decode record name: {0}")]
     Name(<String as Decode>::Error),
+    #[error("failed to decode record components: {0}")]
+    Components(<Vec<ComponentValue> as Decode>::Error),
     #[error("failed to decode scripts: {0}")]
     Scripts(<Vec<Uri> as Decode>::Error),
     #[error("failed to decode record kind: {0}")]
