@@ -48,7 +48,7 @@ macro_rules! impl_movement {
 
 #[inline]
 pub fn on_action_impl(entity: u64, _invoker: u64, dir: Vec3) {
-    let entity = Entity::get(EntityId::from_raw(entity)).unwrap();
+    let mut entity = Entity::get(EntityId::from_raw(entity)).unwrap();
 
     let speed: f32 = entity.components().get(MOVEMENT_SPEED).unwrap().read();
 
@@ -56,6 +56,7 @@ pub fn on_action_impl(entity: u64, _invoker: u64, dir: Vec3) {
     let mut translation = entity.translation();
 
     translation += rotation * dir * (speed / UPS);
+    entity.set_translation(translation);
 }
 
 pub mod components {
