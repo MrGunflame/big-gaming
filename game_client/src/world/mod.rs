@@ -246,11 +246,6 @@ impl GameWorldState {
                     }
                 }
             }
-            // FIXME: Temporary, move translation to scripts instead.
-            Some(KeyCode::W) => self.update_translation(-Vec3::Z),
-            Some(KeyCode::S) => self.update_translation(Vec3::Z),
-            Some(KeyCode::A) => self.update_translation(-Vec3::X),
-            Some(KeyCode::D) => self.update_translation(Vec3::X),
             Some(KeyCode::V) => match self.camera_controller.mode {
                 CameraMode::FirstPerson => {
                     self.camera_controller.mode = CameraMode::ThirdPerson { distance: 5.0 }
@@ -261,22 +256,6 @@ impl GameWorldState {
                 _ => (),
             },
             _ => (),
-        }
-    }
-
-    fn update_translation(&mut self, dir: Vec3) {
-        if let Some(snapshot) = &mut self.conn.current_state {
-            if let Some(host) = snapshot.entities.get_mut(self.conn.host) {
-                host.transform.translation += host.transform.rotation * dir * 0.01;
-                let translation = host.transform.translation;
-
-                let entity = self.conn.server_entities.get(self.conn.host).unwrap();
-                self.conn
-                    .send(DataMessageBody::EntityTranslate(EntityTranslate {
-                        entity,
-                        translation,
-                    }));
-            }
         }
     }
 
