@@ -1,0 +1,48 @@
+{
+    "id": "ec7d043851c74c41a35de44befde13b5",
+    "name": "Movement",
+    "version": "0.1.0",
+    "records": {
+        "actions": [
+            {
+                "id": "01",
+                "name": "Move Forward",
+                "description": "Move Forward",
+                "scripts": [
+                    "scripts/move_forward.wasm"
+                ]
+            },
+            {
+                "id": "02",
+                "name": "Move Back",
+                "description": "Move Back",
+                "scripts": [
+                    "scripts/move_back.wasm"
+                ]
+            },
+            {
+                "id": "03",
+                "name": "Move Left",
+                "description": "Move Left",
+                "scripts": [
+                    "scripts/move_left.wasm"
+                ]
+            },
+            {
+                "id": "04",
+                "name": "Move Right",
+                "description": "Move Right",
+                "scripts": [
+                    "scripts/move_right.wasm"
+                ]
+            }
+        ],
+        "components": [
+            {
+                "id": "05",
+                "name": "Movement Speed in m/s",
+                "description": "Movement Speed"
+            }
+        ]
+    }
+}
