@@ -314,6 +314,7 @@ impl Encode for Record {
     {
         self.id.encode(&mut buf);
         self.name.encode(&mut buf);
+        self.components.encode(&mut buf);
         self.scripts.encode(&mut buf);
 
         self.body.kind().encode(&mut buf);
