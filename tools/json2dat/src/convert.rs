@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use game_common::module::{Dependency, Module, Version};
 use game_data::components::actions::ActionRecord;
+use game_data::components::components::{ComponentRecord, ComponentValue};
 use game_data::components::race::RaceRecord;
 use game_data::record::{Record, RecordBody};
 use game_data::uri::Uri;
@@ -37,12 +38,22 @@ pub fn encode(root: Root) -> Vec<u8> {
             body: RecordBody::Action(ActionRecord {
                 description: action.description,
             }),
+            components: vec![],
         };
 
         buffer.records.push(record);
     }
 
     for race in root.records.races {
+        let components = race
+            .components
+            .into_iter()
+            .map(|(id, val)| ComponentValue {
+                id: id.0,
+                bytes: val,
+            })
+            .collect();
+
         let record = Record {
             id: race.id.0,
             name: race.name,
@@ -50,6 +61,25 @@ pub fn encode(root: Root) -> Vec<u8> {
             body: RecordBody::Race(RaceRecord {
                 actions: race.actions.into_iter().map(|a| a.0).collect(),
             }),
+            components,
+        };
+
+        buffer.records.push(record);
+    }
+
+    for component in root.records.components {
+        let record = Record {
+            id: component.id.0,
+            name: component.name,
+            scripts: component
+                .scripts
+                .into_iter()
+                .map(|s| Uri::from(PathBuf::from(s)))
+                .collect(),
+            body: RecordBody::Component(ComponentRecord {
+                description: component.description,
+            }),
+            components: vec![],
         };
 
         buffer.records.push(record);

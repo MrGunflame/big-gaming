@@ -5,6 +5,7 @@ use game_common::world::world::WorldViewMut;
 use game_common::world::CellId;
 use wasmtime::{Engine, Instance, Linker, Module, Store};
 
+use crate::effect::Effects;
 use crate::events::{Events, OnAction, OnCellLoad, OnCellUnload, OnCollision, OnEquip, OnUnequip};
 
 pub struct ScriptInstance<'world, 'view> {
@@ -20,12 +21,14 @@ impl<'world, 'view> ScriptInstance<'world, 'view> {
         events: Events,
         world: &'view mut WorldViewMut<'world>,
         physics_pipeline: &'view game_physics::Pipeline,
+        effects: &'view mut Effects,
     ) -> Self {
         let mut store = Store::new(
             engine,
             State {
                 world,
                 physics_pipeline,
+                effects,
             },
         );
 
@@ -91,4 +94,5 @@ impl<'world, 'view> ScriptInstance<'world, 'view> {
 pub struct State<'world, 'view> {
     pub world: &'view mut WorldViewMut<'world>,
     pub physics_pipeline: &'view game_physics::Pipeline,
+    pub effects: &'view mut Effects,
 }

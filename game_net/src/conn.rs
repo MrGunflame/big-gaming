@@ -220,13 +220,13 @@ where
             };
 
             match msg {
-                Message::Control(ControlMessage::Acknowledge(id)) => {
+                Message::Control(ControlMessage::Acknowledge(id, cf)) => {
                     if let Some(seq) = self.messages_in.remove(&id) {
                         let packet = Packet {
                             header: Header {
                                 packet_type: PacketType::ACK,
                                 sequence: Sequence::new(0),
-                                control_frame: self.last_cf,
+                                control_frame: cf,
                                 flags: Flags::new(),
                             },
                             body: PacketBody::Ack(Ack {
@@ -547,9 +547,16 @@ where
     fn handle_ack(&mut self, header: Header, body: Ack) -> Poll<Result<(), Error<S::Error>>> {
         let sequence = body.sequence;
 
+        // Convert back to local control frame.
+        let control_frame =
+            header.control_frame - (self.peer_start_control_frame - self.start_control_frame);
+
         if let Some(id) = self.message_out.remove(&sequence) {
             self.writer
-                .try_send(Message::Control(ControlMessage::Acknowledge(id)))
+                .try_send(Message::Control(ControlMessage::Acknowledge(
+                    id,
+                    control_frame,
+                )))
                 .unwrap();
         }
 
@@ -816,9 +823,9 @@ impl ConnectionHandle {
     }
 
     /// Acknowledges the use of the message.
-    pub fn acknowledge(&self, id: MessageId) {
+    pub fn acknowledge(&self, id: MessageId, cf: ControlFrame) {
         self.chan_out
-            .try_send(Message::Control(ControlMessage::Acknowledge(id)))
+            .try_send(Message::Control(ControlMessage::Acknowledge(id, cf)))
             .unwrap();
     }
 

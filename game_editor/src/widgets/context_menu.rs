@@ -1,12 +1,12 @@
 //! Context-menu (right-click)
 
+use game_input::keyboard::KeyCode;
 use game_ui::events::{ElementEventHandlers, EventHandlers};
 use game_ui::reactive::{Node, Scope};
 
 use game_ui::render::{Element, ElementBody};
 use game_ui::style::{Position, Style};
 use game_ui::widgets::{Callback, Widget};
-use game_window::events::VirtualKeyCode;
 use glam::UVec2;
 
 #[derive(Debug)]
@@ -108,7 +108,7 @@ impl Widget for ContextMenu {
                                     })),
                                     keyboard_input: Some(Box::new(move |ctx| {
                                         if ctx.event.state.is_pressed()
-                                            && ctx.event.key_code == Some(VirtualKeyCode::Escape)
+                                            && ctx.event.key_code == Some(KeyCode::Escape)
                                         {
                                             set_state.update(|state| state.is_active = false);
                                         }

@@ -19,7 +19,10 @@ pub enum Message {
 pub enum ControlMessage {
     Connected(),
     Disconnected,
-    Acknowledge(MessageId),
+    /// The message was acknowledged by the peer in the given [`ControlFrame`].
+    ///
+    /// This means that the message was processed at [`ControlFrame`].
+    Acknowledge(MessageId, ControlFrame),
 }
 
 #[derive(Clone, Debug)]

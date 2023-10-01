@@ -5,17 +5,24 @@ use game_common::components::components::{self, Components};
 use game_common::components::inventory::Inventory;
 use game_common::components::items::Item;
 use game_common::entity::EntityId;
+use game_common::events::{ActionEvent, Event};
 use game_common::world::control_frame::ControlFrame;
 use game_common::world::entity::{Entity, EntityBody};
 use game_common::world::snapshot::{EntityChange, InventoryItemAdd};
-use game_common::world::world::WorldViewRef;
+use game_common::world::world::{WorldState, WorldViewRef};
 use game_core::modules::Modules;
 use game_net::message::DataMessageBody;
+use game_script::executor::ScriptExecutor;
+use game_script::Context;
 use glam::{Quat, Vec3};
 
 use super::ServerConnection;
 
-pub fn apply_world_delta<I>(conn: &mut ServerConnection<I>, cmd_buffer: &mut CommandBuffer) {
+pub fn apply_world_delta<I>(
+    conn: &mut ServerConnection<I>,
+    cmd_buffer: &mut CommandBuffer,
+    executor: &ScriptExecutor,
+) {
     let cf = conn.control_frame();
 
     // Don't start rendering if the initial interpoation window is not
@@ -78,7 +85,10 @@ pub fn apply_world_delta<I>(conn: &mut ServerConnection<I>, cmd_buffer: &mut Com
                     dst: msg.rotation,
                 });
             }
-            DataMessageBody::EntityAction(msg) => {}
+            DataMessageBody::EntityAction(msg) => {
+                // We don't directly handle actions here.
+                // Actions are queued and handled at a later stage.
+            }
             _ => {
                 // Should never be sent from the client.
                 if cfg!(debug_assertions) {
@@ -115,7 +125,14 @@ pub fn apply_world_delta<I>(conn: &mut ServerConnection<I>, cmd_buffer: &mut Com
                     let entity = snapshot.entities.get_mut(id).unwrap();
                     entity.transform.rotation = msg.rotation;
                 }
-                DataMessageBody::EntityAction(msg) => {}
+                DataMessageBody::EntityAction(msg) => {
+                    let id = conn.server_entities.get(msg.entity).unwrap();
+                    conn.event_queue.push(Event::Action(ActionEvent {
+                        entity: id,
+                        invoker: id,
+                        action: msg.action,
+                    }));
+                }
                 _ => {
                     // Should never be sent from the client.
                     if cfg!(debug_assertions) {

@@ -1,7 +1,6 @@
 //! WASM host bindings
 #![no_std]
 #![deny(unsafe_op_in_unsafe_fn)]
-#![deny(unused_crate_dependencies)]
 
 extern crate alloc;
 

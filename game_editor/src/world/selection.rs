@@ -6,7 +6,6 @@ use game_render::aabb::Aabb;
 use game_render::camera::{Camera, Projection};
 use game_render::entities::ObjectId;
 use game_window::cursor::Cursor;
-use game_window::events::VirtualKeyCode;
 use glam::{Quat, Vec2, Vec3};
 
 // pub fn handle_selection_input(

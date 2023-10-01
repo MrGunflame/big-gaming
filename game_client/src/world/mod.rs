@@ -3,27 +3,33 @@ pub mod camera;
 pub mod movement;
 
 use std::net::ToSocketAddrs;
+use std::sync::Arc;
 
 use ahash::HashMap;
 use game_common::components::actor::ActorProperties;
 use game_common::components::transform::Transform;
 use game_common::entity::EntityId;
+use game_common::module::ModuleId;
+use game_common::record::RecordReference;
 use game_common::world::entity::EntityBody;
 use game_core::counter::Interval;
 use game_core::hierarchy::{Entity, TransformHierarchy};
 use game_core::modules::Modules;
 use game_core::time::Time;
-use game_input::keyboard::KeyboardInput;
+use game_data::record::Record;
+use game_input::hotkeys::{HotkeyCode, Key};
+use game_input::keyboard::{KeyCode, KeyboardInput};
 use game_input::mouse::MouseMotion;
-use game_net::message::{DataMessageBody, EntityAction, EntityRotate, EntityTranslate};
+use game_net::message::{DataMessageBody, EntityAction, EntityRotate};
 use game_render::camera::{Camera, Projection, RenderTarget};
 use game_render::color::Color;
 use game_render::entities::CameraId;
 use game_render::light::DirectionalLight;
 use game_render::Renderer;
 use game_scene::Scenes;
+use game_script::executor::ScriptExecutor;
 use game_window::cursor::Cursor;
-use game_window::events::{VirtualKeyCode, WindowEvent};
+use game_window::events::WindowEvent;
 use game_window::windows::WindowState;
 use glam::Vec3;
 
@@ -31,6 +37,7 @@ use crate::config::Config;
 use crate::entities::actor::SpawnActor;
 use crate::entities::object::SpawnObject;
 use crate::entities::terrain::spawn_terrain;
+use crate::input::{InputKey, Inputs};
 use crate::net::world::{Command, CommandBuffer, DelayedEntity};
 use crate::net::ServerConnection;
 use crate::utils::extract_actor_rotation;
@@ -48,6 +55,8 @@ pub struct GameWorldState {
     entities: HashMap<EntityId, Entity>,
     modules: Modules,
     actions: ActiveActions,
+    executor: Arc<ScriptExecutor>,
+    inputs: Inputs,
 }
 
 impl GameWorldState {
@@ -56,12 +65,15 @@ impl GameWorldState {
         addr: impl ToSocketAddrs,
         modules: Modules,
         cursor: &Cursor,
+        executor: Arc<ScriptExecutor>,
+        inputs: Inputs,
     ) -> Self {
         cursor.lock();
         cursor.set_visible(false);
 
         let mut conn = ServerConnection::new(config);
         conn.connect(addr);
+        conn.modules = modules.clone();
 
         Self {
             conn,
@@ -71,6 +83,8 @@ impl GameWorldState {
             entities: HashMap::default(),
             modules,
             actions: ActiveActions::new(),
+            executor,
+            inputs,
         }
     }
 
@@ -104,7 +118,7 @@ impl GameWorldState {
         }
 
         let mut buf = CommandBuffer::new();
-        self.conn.update(time, &mut buf);
+        self.conn.update(time, &mut buf, &self.executor);
 
         while let Some(cmd) = buf.pop() {
             match cmd {
@@ -222,7 +236,7 @@ impl GameWorldState {
         }
 
         match event.key_code {
-            Some(VirtualKeyCode::Escape) => {
+            Some(KeyCode::Escape) => {
                 if event.state.is_pressed() {
                     if cursor.is_locked() {
                         cursor.unlock();
@@ -233,12 +247,7 @@ impl GameWorldState {
                     }
                 }
             }
-            // FIXME: Temporary, move translation to scripts instead.
-            Some(VirtualKeyCode::W) => self.update_translation(-Vec3::Z),
-            Some(VirtualKeyCode::S) => self.update_translation(Vec3::Z),
-            Some(VirtualKeyCode::A) => self.update_translation(-Vec3::X),
-            Some(VirtualKeyCode::D) => self.update_translation(Vec3::X),
-            Some(VirtualKeyCode::V) => match self.camera_controller.mode {
+            Some(KeyCode::V) => match self.camera_controller.mode {
                 CameraMode::FirstPerson => {
                     self.camera_controller.mode = CameraMode::ThirdPerson { distance: 5.0 }
                 }
@@ -248,22 +257,6 @@ impl GameWorldState {
                 _ => (),
             },
             _ => (),
-        }
-    }
-
-    fn update_translation(&mut self, dir: Vec3) {
-        if let Some(snapshot) = &mut self.conn.current_state {
-            if let Some(host) = snapshot.entities.get_mut(self.conn.host) {
-                host.transform.translation += host.transform.rotation * dir * 0.01;
-                let translation = host.transform.translation;
-
-                let entity = self.conn.server_entities.get(self.conn.host).unwrap();
-                self.conn
-                    .send(DataMessageBody::EntityTranslate(EntityTranslate {
-                        entity,
-                        translation,
-                    }));
-            }
         }
     }
 
@@ -298,7 +291,34 @@ impl GameWorldState {
             let module = self.modules.get(action.module).unwrap();
             let record = module.records.get(action.record).unwrap();
 
-            self.actions.register(action.module, record);
+            self.actions.register(
+                action.module,
+                record,
+                self.get_key_for_action(action.module, record),
+            );
+        }
+    }
+
+    fn run_scripts(&mut self) {}
+
+    fn get_key_for_action(&self, module: ModuleId, record: &Record) -> Key {
+        let input = self
+            .inputs
+            .inputs
+            .get(&RecordReference {
+                module,
+                record: record.id,
+            })
+            .unwrap();
+
+        let key = match input.input_keys[0] {
+            InputKey::KeyCode(key) => HotkeyCode::KeyCode { key_code: key },
+            InputKey::ScanCode(key) => HotkeyCode::ScanCode { scan_code: key },
+        };
+
+        Key {
+            trigger: input.trigger,
+            code: key,
         }
     }
 }

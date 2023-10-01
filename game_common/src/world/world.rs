@@ -53,6 +53,20 @@ impl WorldState {
         }
     }
 
+    pub fn from_snapshot(snapshot: Snapshot) -> Self {
+        let mut w = Self {
+            snapshots: VecDeque::new(),
+            head: 0,
+            #[cfg(feature = "tracing")]
+            resource_span: span!(Level::DEBUG, "WorldState"),
+            metrics: WorldMetrics::new(),
+            next_entity_id: 0,
+        };
+
+        w.snapshots.push_back(snapshot);
+        w
+    }
+
     pub fn get(&self, cf: ControlFrame) -> Option<WorldViewRef<'_>> {
         let mut index = 0;
 

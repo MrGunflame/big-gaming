@@ -8,14 +8,15 @@ mod pipeline;
 pub mod query;
 
 use std::collections::HashMap;
+use std::fmt::Debug;
 
 use control::CharacterController;
 use convert::{point, quat, rotation, vec3, vector};
 use game_common::entity::EntityId;
 use game_common::events::{self, Event, EventQueue};
-use game_common::world::control_frame::ControlFrame;
 use game_common::world::entity::{Entity, EntityBody};
-use game_common::world::world::{AsView, WorldState, WorldViewMut};
+use game_common::world::world::{AsView, WorldViewMut};
+use game_tracing::trace_span;
 use glam::{Quat, Vec3};
 use handle::HandleMap;
 use nalgebra::Isometry;
@@ -77,47 +78,32 @@ impl Pipeline {
         }
     }
 
-    pub fn step(
-        &mut self,
-        world: &mut WorldState,
-        mut start: ControlFrame,
-        end: ControlFrame,
-        events: &mut EventQueue,
-    ) {
-        let mut steps = 0;
+    pub fn step(&mut self, view: &mut WorldViewMut<'_>, events: &mut EventQueue) {
+        let _span = trace_span!("Pipeline::step").entered();
 
-        while start <= end {
-            let mut view = world.get_mut(start).unwrap();
-            self.read_snapshot(&view);
+        self.read_snapshot(&*view);
 
-            self.pipeline.step(
-                &self.gravity,
-                &self.integration_parameters,
-                &mut self.islands,
-                &mut self.broad_phase,
-                &mut self.narrow_phase,
-                &mut self.bodies,
-                &mut self.colliders,
-                &mut self.impulse_joints,
-                &mut self.multibody_joints,
-                &mut self.ccd_solver,
-                None,
-                &(),
-                &self.event_handler,
-            );
+        self.pipeline.step(
+            &self.gravity,
+            &self.integration_parameters,
+            &mut self.islands,
+            &mut self.broad_phase,
+            &mut self.narrow_phase,
+            &mut self.bodies,
+            &mut self.colliders,
+            &mut self.impulse_joints,
+            &mut self.multibody_joints,
+            &mut self.ccd_solver,
+            None,
+            &(),
+            &self.event_handler,
+        );
 
-            self.drive_controllers();
+        self.drive_controllers();
 
-            self.emit_events(events);
+        self.emit_events(events);
 
-            self.write_snapshot(&mut view);
-
-            steps += 1;
-
-            start += 1;
-        }
-
-        tracing::trace!("stepping physics for {} steps", steps);
+        self.write_snapshot(view);
     }
 
     fn read_snapshot<V>(&mut self, view: V)
@@ -403,4 +389,10 @@ fn extract_actor_rotation(input: Quat) -> Quat {
     };
 
     Quat::from_axis_angle(Vec3::Y, angle)
+}
+
+impl Debug for Pipeline {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Pipeline").finish_non_exhaustive()
+    }
 }

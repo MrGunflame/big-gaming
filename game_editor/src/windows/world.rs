@@ -8,6 +8,7 @@ use game_common::components::transform::Transform;
 use game_common::record::RecordReference;
 use game_core::hierarchy::{Entity, TransformHierarchy};
 use game_data::record::{Record, RecordBody};
+use game_input::keyboard::KeyCode;
 use game_input::mouse::{MouseButton, MouseMotion, MouseWheel};
 use game_input::ButtonState;
 use game_render::camera::{Camera, RenderTarget};
@@ -22,7 +23,7 @@ use game_ui::style::{
     Background, BorderRadius, Bounds, Direction, Growth, Justify, Size, SizeVec2, Style,
 };
 use game_ui::widgets::{Button, Container, ParseInput, Text};
-use game_window::events::{VirtualKeyCode, WindowEvent};
+use game_window::events::WindowEvent;
 use game_window::windows::WindowId;
 use glam::{Quat, Vec2, Vec3};
 use parking_lot::Mutex;
@@ -129,7 +130,7 @@ impl WorldWindowState {
                 self.update_edit_op(renderer, scenes, window, c, hierarchy);
             }
             WindowEvent::KeyboardInput(event) => {
-                if event.key_code == Some(VirtualKeyCode::LShift) {
+                if event.key_code == Some(KeyCode::LShift) {
                     match event.state {
                         ButtonState::Pressed => self.camera_controller.mode |= Mode::SHIFT,
                         ButtonState::Released => self.camera_controller.mode &= !Mode::SHIFT,
@@ -138,7 +139,7 @@ impl WorldWindowState {
 
                 match event.key_code {
                     // Front view
-                    Some(VirtualKeyCode::Numpad1) => {
+                    Some(KeyCode::Numpad1) => {
                         let distance =
                             (self.camera_controller.origin - camera.transform.translation).length();
 
@@ -147,7 +148,7 @@ impl WorldWindowState {
                         camera.transform = camera.transform.looking_to(-Vec3::Z, Vec3::Y);
                     }
                     // Right view
-                    Some(VirtualKeyCode::Numpad3) => {
+                    Some(KeyCode::Numpad3) => {
                         let distance =
                             (self.camera_controller.origin - camera.transform.translation).length();
 
@@ -156,7 +157,7 @@ impl WorldWindowState {
                         camera.transform = camera.transform.looking_to(-Vec3::X, Vec3::Y);
                     }
                     // Top view
-                    Some(VirtualKeyCode::Numpad7) => {
+                    Some(KeyCode::Numpad7) => {
                         let distance = (self.camera_controller.origin
                             - camera.transform.translation)
                             .length()
@@ -176,23 +177,23 @@ impl WorldWindowState {
                 };
                 if event.state.is_pressed() && !self.state.selection.with(|v| v.is_empty()) {
                     match event.key_code {
-                        Some(VirtualKeyCode::Escape) => {
+                        Some(KeyCode::Escape) => {
                             self.reset_edit_op(renderer, scenes, hierarchy);
                             self.edit_mode = EditMode::None;
                         }
-                        Some(VirtualKeyCode::G) => {
+                        Some(KeyCode::G) => {
                             self.edit_mode = EditMode::Translate(None);
                             self.create_edit_op(renderer, scenes, hierarchy);
                         }
-                        Some(VirtualKeyCode::R) => {
+                        Some(KeyCode::R) => {
                             self.edit_mode = EditMode::Rotate(None);
                             self.create_edit_op(renderer, scenes, hierarchy);
                         }
-                        Some(VirtualKeyCode::S) => {
+                        Some(KeyCode::S) => {
                             self.edit_mode = EditMode::Scale(None);
                             self.create_edit_op(renderer, scenes, hierarchy);
                         }
-                        Some(VirtualKeyCode::X) => {
+                        Some(KeyCode::X) => {
                             match &mut self.edit_mode {
                                 EditMode::Translate(axis) => *axis = Some(Axis::X),
                                 EditMode::Rotate(axis) => *axis = Some(Axis::X),
@@ -206,7 +207,7 @@ impl WorldWindowState {
                                 self.update_edit_op(renderer, scenes, window, camera, hierarchy);
                             }
                         }
-                        Some(VirtualKeyCode::Y) => {
+                        Some(KeyCode::Y) => {
                             match &mut self.edit_mode {
                                 EditMode::Translate(axis) => *axis = Some(Axis::Y),
                                 EditMode::Rotate(axis) => *axis = Some(Axis::Y),
@@ -220,7 +221,7 @@ impl WorldWindowState {
                                 self.update_edit_op(renderer, scenes, window, camera, hierarchy);
                             }
                         }
-                        Some(VirtualKeyCode::Z) => {
+                        Some(KeyCode::Z) => {
                             match &mut self.edit_mode {
                                 EditMode::Translate(axis) => *axis = Some(Axis::Z),
                                 EditMode::Rotate(axis) => *axis = Some(Axis::Z),

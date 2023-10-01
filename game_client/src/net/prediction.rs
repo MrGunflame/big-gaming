@@ -2,8 +2,6 @@ use ahash::HashMap;
 use game_common::world::control_frame::ControlFrame;
 use game_net::message::{DataMessage, MessageId};
 
-use super::conn::CurrentControlFrame;
-
 #[derive(Clone, Debug)]
 pub struct InputBuffer {
     buffer: Vec<DataMessage>,
@@ -24,8 +22,8 @@ impl InputBuffer {
         self.buffer.push(msg);
     }
 
-    pub fn remove(&mut self, cf: CurrentControlFrame, id: MessageId) {
-        self.removal_queue.entry(cf.head).or_default().push(id);
+    pub fn remove(&mut self, cf: ControlFrame, id: MessageId) {
+        self.removal_queue.entry(cf).or_default().push(id);
     }
 
     pub fn clear(&mut self, render_cf: ControlFrame) {

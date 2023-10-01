@@ -238,6 +238,7 @@ fn create_record(
                     name,
                     scripts,
                     body,
+                    components: vec![],
                 };
 
                 records.update(module_id, record);
@@ -250,6 +251,7 @@ fn create_record(
                     name,
                     scripts,
                     body,
+                    components: vec![],
                 };
 
                 records.insert(module_id, record);

@@ -3,25 +3,28 @@
 #![deny(unsafe_op_in_unsafe_fn)]
 #![deny(unused_crate_dependencies)]
 
+use std::fmt::Debug;
 use std::path::Path;
 
+use effect::Effects;
 use game_common::events::EventQueue;
 use game_common::world::world::WorldViewMut;
 use instance::ScriptInstance;
 use script::Script;
-use scripts::RecordTargets;
 use slotmap::{DefaultKey, SlotMap};
 use wasmtime::{Config, Engine};
 
 pub mod abi;
 pub mod actions;
+pub mod effect;
 pub mod events;
+pub mod executor;
 pub mod instance;
-pub mod plugin;
 pub mod script;
 pub mod scripts;
 
 mod builtin;
+mod dependency;
 
 pub struct ScriptServer {
     scripts: SlotMap<DefaultKey, Script>,
@@ -52,6 +55,7 @@ impl ScriptServer {
         handle: &Handle,
         world: &'view mut WorldViewMut<'world>,
         physics_pipeline: &'view game_physics::Pipeline,
+        effects: &'view mut Effects,
     ) -> Option<ScriptInstance<'world, 'view>> {
         let script = self.scripts.get(handle.id)?;
 
@@ -61,6 +65,7 @@ impl ScriptServer {
             script.events,
             world,
             physics_pipeline,
+            effects,
         ))
     }
 }
@@ -73,7 +78,11 @@ pub struct Handle {
 pub struct Context<'a, 'b> {
     pub view: &'a mut WorldViewMut<'b>,
     pub physics_pipeline: &'a game_physics::Pipeline,
-    pub record_targets: &'a RecordTargets,
     pub events: &'a mut EventQueue,
-    pub server: &'a ScriptServer,
+}
+
+impl Debug for ScriptServer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ScriptServer").finish_non_exhaustive()
+    }
 }

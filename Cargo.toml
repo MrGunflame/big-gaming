@@ -27,6 +27,11 @@ members = [
     # TODO: Figure out how to move these to a separate
     # workspace.
     "mods/pickup",
+    "mods/movement/scripts/move_forward",
+    "mods/movement/scripts/move_back",
+    "mods/movement/scripts/move_left",
+    "mods/movement/scripts/move_right",
+    "mods/movement/scripts/shared",
     "tools/json2dat",
     "tools/gltf2model",
 ]

@@ -3,7 +3,7 @@ use game_common::components::actions::ActionId;
 use game_common::module::ModuleId;
 use game_common::record::RecordReference;
 use game_data::record::Record;
-use game_input::hotkeys::{Hotkey, HotkeyCode, HotkeyId, Hotkeys, TriggerKind};
+use game_input::hotkeys::{Hotkey, HotkeyCode, HotkeyId, Hotkeys, Key, TriggerKind};
 use game_input::keyboard::KeyboardInput;
 use game_input::mouse::{MouseButton, MouseButtonInput};
 use game_tracing::trace_span;
@@ -24,7 +24,7 @@ impl ActiveActions {
         }
     }
 
-    pub fn register(&mut self, module: ModuleId, record: &Record) {
+    pub fn register(&mut self, module: ModuleId, record: &Record, key: Key) {
         let _span = trace_span!("ActiveActions::register").entered();
         tracing::info!("registered action for {:?}", record);
 
@@ -33,12 +33,7 @@ impl ActiveActions {
         let id = self.hotkeys.register(Hotkey {
             id: HotkeyId(0),
             name: record.name.to_owned().into(),
-            default: game_input::hotkeys::Key {
-                trigger: TriggerKind::JUST_PRESSED,
-                code: HotkeyCode::MouseButton {
-                    button: MouseButton::Left,
-                },
-            },
+            default: key,
         });
 
         self.inputs

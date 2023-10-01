@@ -1,30 +1,25 @@
 use std::f32::consts::PI;
 
-use game_common::components::combat::Health;
-use game_common::components::components::Components;
-use game_common::components::race::RaceId;
 use game_common::components::transform::Transform;
 use game_common::entity::EntityId;
 use game_common::math::RotationExt;
-use game_common::world::entity::{Actor, Entity, EntityBody};
 use game_common::world::world::WorldViewMut;
+use game_core::entity::SpawnEntity;
+use game_core::modules::Modules;
 use glam::{Quat, Vec3};
 
-pub fn spawn_player(view: &mut WorldViewMut<'_>) -> SpawnPlayer {
-    let race = "0a73147476444aba90f71207b22d7419:02".parse().unwrap();
+pub fn spawn_player(modules: &Modules, view: &mut WorldViewMut<'_>) -> SpawnPlayer {
+    let race = "ec7d043851c74c41a35de44befde13b5:06".parse().unwrap();
 
-    let transform = Transform::from_translation(Vec3::new(10.0, 32.0, 10.0));
+    let transform = Transform::from_translation(Vec3::new(0.0, 0.0, 0.0));
 
-    let id = view.spawn(Entity {
-        id: EntityId::dangling(),
+    let id = SpawnEntity {
+        id: race,
         transform,
-        body: EntityBody::Actor(Actor {
-            race: RaceId(race),
-            health: Health::new(50),
-        }),
-        components: Components::new(),
         is_host: false,
-    });
+    }
+    .spawn(modules, view)
+    .unwrap();
 
     SpawnPlayer { id, transform }
 }
