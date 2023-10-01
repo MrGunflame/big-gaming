@@ -1,6 +1,7 @@
 mod inventory;
 
 use std::collections::VecDeque;
+use std::sync::Arc;
 
 use ahash::HashSet;
 use game_common::events::{ActionEvent, Event};
@@ -11,7 +12,7 @@ use game_common::world::world::{AsView, WorldState, WorldViewRef};
 use game_common::world::CellId;
 use game_net::message::{
     ControlMessage, DataMessage, DataMessageBody, EntityCreate, EntityDestroy, EntityRotate,
-    EntityTranslate, Message, SpawnHost,
+    EntityTranslate, Message, MessageId, SpawnHost,
 };
 use game_script::Context;
 
@@ -131,54 +132,59 @@ fn flush_command_queue(srv_state: &mut ServerState) {
                 state.cells = Cells::new(CellId::from(res.transform.translation));
             }
             Message::Control(ControlMessage::Disconnected) => {}
-            Message::Data(msg) => match msg.body {
-                DataMessageBody::EntityCreate(msg) => {}
-                DataMessageBody::EntityDestroy(msg) => {
-                    if let Some(id) = state.host.entity {
-                        if view.despawn(id).is_none() {
-                            tracing::warn!("attempted to destroy an unknown entity {:?}", id);
+            Message::Control(ControlMessage::Acknowledge(_)) => {}
+            Message::Data(msg) => {
+                conn.push_message_in_frame(msg.id);
+
+                match msg.body {
+                    DataMessageBody::EntityCreate(msg) => {}
+                    DataMessageBody::EntityDestroy(msg) => {
+                        if let Some(id) = state.host.entity {
+                            if view.despawn(id).is_none() {
+                                tracing::warn!("attempted to destroy an unknown entity {:?}", id);
+                            }
                         }
+
+                        // Remove the player from the connections ref.
+                        srv_state.state.conns.remove(id);
                     }
+                    DataMessageBody::EntityTranslate(msg) => {
+                        let Some(id) = state.entities.get(msg.entity) else {
+                            continue;
+                        };
 
-                    // Remove the player from the connections ref.
-                    srv_state.state.conns.remove(id);
+                        let Some(mut entity) = view.get_mut(id) else {
+                            continue;
+                        };
+
+                        entity.set_translation(msg.translation);
+                    }
+                    DataMessageBody::EntityRotate(msg) => {
+                        let Some(id) = state.entities.get(msg.entity) else {
+                            continue;
+                        };
+
+                        let Some(mut entity) = view.get_mut(id) else {
+                            continue;
+                        };
+
+                        entity.set_rotation(msg.rotation);
+                    }
+                    DataMessageBody::EntityAction(msg) => {
+                        let Some(entity) = state.entities.get(msg.entity) else {
+                            continue;
+                        };
+
+                        // TODO: Validate that the peer has the acton.
+                        srv_state.event_queue.push(Event::Action(ActionEvent {
+                            entity,
+                            invoker: entity,
+                            action: msg.action,
+                        }));
+                    }
+                    DataMessageBody::SpawnHost(_) => (),
                 }
-                DataMessageBody::EntityTranslate(msg) => {
-                    let Some(id) = state.entities.get(msg.entity) else {
-                        continue;
-                    };
-
-                    let Some(mut entity) = view.get_mut(id) else {
-                        continue;
-                    };
-
-                    entity.set_translation(msg.translation);
-                }
-                DataMessageBody::EntityRotate(msg) => {
-                    let Some(id) = state.entities.get(msg.entity) else {
-                        continue;
-                    };
-
-                    let Some(mut entity) = view.get_mut(id) else {
-                        continue;
-                    };
-
-                    entity.set_rotation(msg.rotation);
-                }
-                DataMessageBody::EntityAction(msg) => {
-                    let Some(entity) = state.entities.get(msg.entity) else {
-                        continue;
-                    };
-
-                    // TODO: Validate that the peer has the acton.
-                    srv_state.event_queue.push(Event::Action(ActionEvent {
-                        entity,
-                        invoker: entity,
-                        action: msg.action,
-                    }));
-                }
-                DataMessageBody::SpawnHost(_) => (),
-            },
+            }
         }
 
         drop(view);
@@ -236,7 +242,8 @@ fn update_client(conn: &Connection, view: WorldViewRef<'_>) {
 
                 let entity_id = state.entities.insert(entity.id);
 
-                conn.handle().send_cmd(DataMessage {
+                conn.handle().send(DataMessage {
+                    id: MessageId(0),
                     control_frame: view.control_frame(),
                     body: DataMessageBody::EntityCreate(EntityCreate {
                         entity: entity_id,
@@ -257,7 +264,8 @@ fn update_client(conn: &Connection, view: WorldViewRef<'_>) {
 
         // Also sent the host.
         let id = state.entities.get(host_id).unwrap();
-        conn.handle().send_cmd(DataMessage {
+        conn.handle().send(DataMessage {
+            id: MessageId(0),
             control_frame: view.control_frame(),
             body: DataMessageBody::SpawnHost(SpawnHost { entity: id }),
         });
@@ -290,10 +298,15 @@ fn update_client(conn: &Connection, view: WorldViewRef<'_>) {
     let control_frame = view.control_frame();
     for body in update_client_entities(state, events) {
         let msg = DataMessage {
+            id: MessageId(0),
             control_frame,
             body,
         };
-        conn.handle().send_cmd(msg);
+        conn.handle().send(msg);
+    }
+
+    for id in conn.take_messages_in_frame() {
+        conn.handle().acknowledge(id);
     }
 }
 

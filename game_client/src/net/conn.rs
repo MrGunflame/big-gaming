@@ -10,7 +10,7 @@ use game_common::world::world::{Snapshot, WorldState};
 use game_core::counter::{Interval, IntervalImpl, UpdateCounter};
 use game_core::time::Time;
 use game_net::conn::ConnectionHandle;
-use game_net::message::{DataMessage, DataMessageBody};
+use game_net::message::{DataMessage, DataMessageBody, MessageId};
 use game_script::effect::Effect;
 use game_script::executor::ScriptExecutor;
 use game_script::Context;
@@ -54,6 +54,7 @@ pub struct ServerConnection<I> {
 
     pub(crate) physics: game_physics::Pipeline,
     pub(crate) event_queue: EventQueue,
+    next_message_id: u32,
 }
 
 impl<I> ServerConnection<I> {
@@ -82,6 +83,7 @@ impl<I> ServerConnection<I> {
             current_state: None,
             physics: game_physics::Pipeline::new(),
             event_queue: EventQueue::new(),
+            next_message_id: 0,
         }
     }
 
@@ -132,9 +134,11 @@ impl<I> ServerConnection<I> {
         }
 
         let msg = DataMessage {
+            id: MessageId(self.next_message_id),
             control_frame: self.game_tick.current_control_frame,
             body,
         };
+        self.next_message_id += 1;
 
         self.input_buffer.push(msg.clone());
         self.buffer.push_back(msg);
@@ -176,7 +180,7 @@ impl<I> ServerConnection<I> {
         };
 
         for msg in self.buffer.drain(..) {
-            handle.send_cmd(msg);
+            handle.send(msg);
         }
     }
 
