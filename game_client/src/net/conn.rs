@@ -8,6 +8,7 @@ use game_common::events::EventQueue;
 use game_common::world::control_frame::ControlFrame;
 use game_common::world::world::{Snapshot, WorldState};
 use game_core::counter::{Interval, IntervalImpl, UpdateCounter};
+use game_core::modules::Modules;
 use game_core::time::Time;
 use game_net::conn::ConnectionHandle;
 use game_net::message::{DataMessage, DataMessageBody, MessageId};
@@ -55,6 +56,7 @@ pub struct ServerConnection<I> {
     pub(crate) physics: game_physics::Pipeline,
     pub(crate) event_queue: EventQueue,
     next_message_id: u32,
+    pub(crate) modules: Modules,
 }
 
 impl<I> ServerConnection<I> {
@@ -84,6 +86,7 @@ impl<I> ServerConnection<I> {
             physics: game_physics::Pipeline::new(),
             event_queue: EventQueue::new(),
             next_message_id: 0,
+            modules: Modules::new(),
         }
     }
 

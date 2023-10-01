@@ -112,7 +112,7 @@ fn flush_command_queue(srv_state: &mut ServerState) {
 
         match msg {
             Message::Control(ControlMessage::Connected()) => {
-                let res = spawn_player(&mut view);
+                let res = spawn_player(&srv_state.modules, &mut view);
 
                 state.entities.insert(res.id);
 
@@ -337,7 +337,6 @@ where
             let known = state.known_entities.get(entity.id).unwrap();
 
             if known.transform.translation != entity.transform.translation {
-                dbg!(entity.transform.translation);
                 events.push(EntityChange::Translate {
                     id: entity.id,
                     translation: entity.transform.translation,

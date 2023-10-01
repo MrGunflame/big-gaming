@@ -6,10 +6,9 @@ pub mod world;
 
 use std::collections::VecDeque;
 
-use game_common::components::components::Components;
 use game_common::components::transform::Transform;
-use game_common::entity::EntityId;
-use game_common::world::entity::Entity;
+use game_common::world::entity::EntityBody;
+use game_core::entity::SpawnEntity;
 use game_net::message::{ControlMessage, DataMessageBody, Message};
 use glam::Vec3;
 
@@ -59,21 +58,24 @@ fn flush_command_queue<I>(conn: &mut ServerConnection<I>) {
         };
 
         match msg.body {
-            DataMessageBody::EntityCreate(msg) => {
-                let id = view.spawn(Entity {
-                    id: EntityId::dangling(),
-                    transform: Transform {
-                        translation: msg.translation,
-                        rotation: msg.rotation,
-                        scale: Vec3::splat(1.0),
-                    },
-                    body: msg.data,
-                    components: Components::new(),
-                    is_host: false,
-                });
+            DataMessageBody::EntityCreate(msg) => match msg.data {
+                EntityBody::Actor(actor) => {
+                    let id = SpawnEntity {
+                        id: actor.race.0,
+                        transform: Transform {
+                            translation: msg.translation,
+                            rotation: msg.rotation,
+                            scale: Vec3::splat(1.0),
+                        },
+                        is_host: false,
+                    }
+                    .spawn(&conn.modules, &mut view)
+                    .unwrap();
 
-                conn.server_entities.insert(id, msg.entity);
-            }
+                    conn.server_entities.insert(id, msg.entity);
+                }
+                _ => todo!(),
+            },
             DataMessageBody::EntityDestroy(msg) => match conn.server_entities.remove(msg.entity) {
                 Some(id) => {
                     if view.despawn(id).is_none() {

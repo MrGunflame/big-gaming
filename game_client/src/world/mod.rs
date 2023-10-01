@@ -17,10 +17,10 @@ use game_core::hierarchy::{Entity, TransformHierarchy};
 use game_core::modules::Modules;
 use game_core::time::Time;
 use game_data::record::Record;
-use game_input::hotkeys::{HotkeyCode, HotkeyKind, Key};
+use game_input::hotkeys::{HotkeyCode, Key};
 use game_input::keyboard::{KeyCode, KeyboardInput};
 use game_input::mouse::MouseMotion;
-use game_net::message::{DataMessageBody, EntityAction, EntityRotate, EntityTranslate};
+use game_net::message::{DataMessageBody, EntityAction, EntityRotate};
 use game_render::camera::{Camera, Projection, RenderTarget};
 use game_render::color::Color;
 use game_render::entities::CameraId;
@@ -73,6 +73,7 @@ impl GameWorldState {
 
         let mut conn = ServerConnection::new(config);
         conn.connect(addr);
+        conn.modules = modules.clone();
 
         Self {
             conn,
