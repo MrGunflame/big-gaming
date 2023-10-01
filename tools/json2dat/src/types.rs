@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fmt::{self, Formatter};
 
 use game_common::module::ModuleId;
@@ -22,6 +23,8 @@ pub struct Records {
     pub actions: Vec<Action>,
     #[serde(default)]
     pub races: Vec<Race>,
+    #[serde(default)]
+    pub components: Vec<Component>,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -169,5 +172,17 @@ pub struct Action {
 pub struct Race {
     pub id: JsonRecordId,
     pub name: String,
+    #[serde(default)]
     pub actions: Vec<JsonRecordReference>,
+    #[serde(default)]
+    pub components: HashMap<JsonRecordReference, Vec<u8>>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Component {
+    pub id: JsonRecordId,
+    pub name: String,
+    pub description: String,
+    #[serde(default)]
+    pub scripts: Vec<String>,
 }
