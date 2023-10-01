@@ -1,6 +1,7 @@
 use game_input::keyboard::{KeyCode, KeyboardInput};
 use game_input::mouse::{MouseButtonInput, MouseMotion, MouseWheel};
 use glam::Vec2;
+use winit::event::VirtualKeyCode;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum WindowEvent {
@@ -62,9 +63,6 @@ pub struct ReceivedCharacter {
 pub struct WindowCloseRequested {
     pub window: WindowId,
 }
-
-// FIXME: Export a custom type from input crate.
-pub use winit::event::VirtualKeyCode;
 
 use crate::windows::WindowId;
 
