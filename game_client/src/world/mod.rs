@@ -9,12 +9,16 @@ use ahash::HashMap;
 use game_common::components::actor::ActorProperties;
 use game_common::components::transform::Transform;
 use game_common::entity::EntityId;
+use game_common::module::ModuleId;
+use game_common::record::RecordReference;
 use game_common::world::entity::EntityBody;
 use game_core::counter::Interval;
 use game_core::hierarchy::{Entity, TransformHierarchy};
 use game_core::modules::Modules;
 use game_core::time::Time;
-use game_input::keyboard::KeyboardInput;
+use game_data::record::Record;
+use game_input::hotkeys::{HotkeyCode, HotkeyKind, Key};
+use game_input::keyboard::{KeyCode, KeyboardInput};
 use game_input::mouse::MouseMotion;
 use game_net::message::{DataMessageBody, EntityAction, EntityRotate, EntityTranslate};
 use game_render::camera::{Camera, Projection, RenderTarget};
@@ -25,7 +29,7 @@ use game_render::Renderer;
 use game_scene::Scenes;
 use game_script::executor::ScriptExecutor;
 use game_window::cursor::Cursor;
-use game_window::events::{VirtualKeyCode, WindowEvent};
+use game_window::events::WindowEvent;
 use game_window::windows::WindowState;
 use glam::Vec3;
 
@@ -33,6 +37,7 @@ use crate::config::Config;
 use crate::entities::actor::SpawnActor;
 use crate::entities::object::SpawnObject;
 use crate::entities::terrain::spawn_terrain;
+use crate::input::{InputKey, Inputs};
 use crate::net::world::{Command, CommandBuffer, DelayedEntity};
 use crate::net::ServerConnection;
 use crate::utils::extract_actor_rotation;
@@ -51,6 +56,7 @@ pub struct GameWorldState {
     modules: Modules,
     actions: ActiveActions,
     executor: Arc<ScriptExecutor>,
+    inputs: Inputs,
 }
 
 impl GameWorldState {
@@ -60,6 +66,7 @@ impl GameWorldState {
         modules: Modules,
         cursor: &Cursor,
         executor: Arc<ScriptExecutor>,
+        inputs: Inputs,
     ) -> Self {
         cursor.lock();
         cursor.set_visible(false);
@@ -76,6 +83,7 @@ impl GameWorldState {
             modules,
             actions: ActiveActions::new(),
             executor,
+            inputs,
         }
     }
 
@@ -227,7 +235,7 @@ impl GameWorldState {
         }
 
         match event.key_code {
-            Some(VirtualKeyCode::Escape) => {
+            Some(KeyCode::Escape) => {
                 if event.state.is_pressed() {
                     if cursor.is_locked() {
                         cursor.unlock();
@@ -239,11 +247,11 @@ impl GameWorldState {
                 }
             }
             // FIXME: Temporary, move translation to scripts instead.
-            Some(VirtualKeyCode::W) => self.update_translation(-Vec3::Z),
-            Some(VirtualKeyCode::S) => self.update_translation(Vec3::Z),
-            Some(VirtualKeyCode::A) => self.update_translation(-Vec3::X),
-            Some(VirtualKeyCode::D) => self.update_translation(Vec3::X),
-            Some(VirtualKeyCode::V) => match self.camera_controller.mode {
+            Some(KeyCode::W) => self.update_translation(-Vec3::Z),
+            Some(KeyCode::S) => self.update_translation(Vec3::Z),
+            Some(KeyCode::A) => self.update_translation(-Vec3::X),
+            Some(KeyCode::D) => self.update_translation(Vec3::X),
+            Some(KeyCode::V) => match self.camera_controller.mode {
                 CameraMode::FirstPerson => {
                     self.camera_controller.mode = CameraMode::ThirdPerson { distance: 5.0 }
                 }
@@ -303,11 +311,36 @@ impl GameWorldState {
             let module = self.modules.get(action.module).unwrap();
             let record = module.records.get(action.record).unwrap();
 
-            self.actions.register(action.module, record);
+            self.actions.register(
+                action.module,
+                record,
+                self.get_key_for_action(action.module, record),
+            );
         }
     }
 
     fn run_scripts(&mut self) {}
+
+    fn get_key_for_action(&self, module: ModuleId, record: &Record) -> Key {
+        let input = self
+            .inputs
+            .inputs
+            .get(&RecordReference {
+                module,
+                record: record.id,
+            })
+            .unwrap();
+
+        let key = match input.input_keys[0] {
+            InputKey::KeyCode(key) => HotkeyCode::KeyCode { key_code: key },
+            InputKey::ScanCode(key) => HotkeyCode::ScanCode { scan_code: key },
+        };
+
+        Key {
+            trigger: input.trigger,
+            code: key,
+        }
+    }
 }
 
 fn spawn_entity(

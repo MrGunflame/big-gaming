@@ -3,6 +3,7 @@
 
 mod config;
 mod entities;
+mod input;
 mod net;
 mod state;
 mod utils;
@@ -25,6 +26,7 @@ use game_window::events::WindowEvent;
 use game_window::windows::{WindowBuilder, WindowId, Windows};
 use game_window::WindowManager;
 use glam::UVec2;
+use input::Inputs;
 use state::main_menu::MainMenuState;
 use state::GameState;
 use world::GameWorldState;
@@ -61,6 +63,7 @@ fn main() {
     let cursor = wm.cursor().clone();
 
     let executor = Arc::new(ScriptExecutor::new(res.server, res.record_targets));
+    let inputs = Inputs::from_file("inputs");
 
     if let Some(addr) = args.connect {
         state = GameState::GameWorld(GameWorldState::new(
@@ -69,6 +72,7 @@ fn main() {
             res.modules,
             &cursor,
             executor.clone(),
+            inputs,
         ));
     }
 
