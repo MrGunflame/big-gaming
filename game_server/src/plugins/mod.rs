@@ -1,7 +1,6 @@
 mod inventory;
 
 use std::collections::VecDeque;
-use std::sync::Arc;
 
 use ahash::HashSet;
 use game_common::events::{ActionEvent, Event};
@@ -39,7 +38,8 @@ pub fn tick(state: &mut ServerState) {
     }
 
     // Push snapshots last always
-    update_snapshots(&state.state.conns, &state.world);
+    let cf = *state.state.control_frame.lock();
+    update_snapshots(&state.state.conns, &state.world, cf);
 }
 
 fn step_physics(state: &mut ServerState) {
@@ -132,7 +132,7 @@ fn flush_command_queue(srv_state: &mut ServerState) {
                 state.cells = Cells::new(CellId::from(res.transform.translation));
             }
             Message::Control(ControlMessage::Disconnected) => {}
-            Message::Control(ControlMessage::Acknowledge(_)) => {}
+            Message::Control(ControlMessage::Acknowledge(_, _)) => {}
             Message::Data(msg) => {
                 conn.push_message_in_frame(msg.id);
 
@@ -196,6 +196,7 @@ fn update_snapshots(
     // FIXME: Make dedicated type for all shared entities.
     // mut entities: Query<(&mut Entity, &Transform)>,
     world: &WorldState,
+    cf: ControlFrame,
 ) {
     let Some(view) = world.back() else {
         return;
@@ -204,11 +205,11 @@ fn update_snapshots(
     // tracing::info!("Sending snapshots for {:?}", view.control_frame());
 
     for conn in connections.iter() {
-        update_client(&conn, view);
+        update_client(&conn, view, cf);
     }
 }
 
-fn update_client(conn: &Connection, view: WorldViewRef<'_>) {
+fn update_client(conn: &Connection, view: WorldViewRef<'_>, cf: ControlFrame) {
     let state = &mut *conn.state().write();
 
     let Some(host_id) = state.host.entity else {
@@ -306,7 +307,7 @@ fn update_client(conn: &Connection, view: WorldViewRef<'_>) {
     }
 
     for id in conn.take_messages_in_frame() {
-        conn.handle().acknowledge(id);
+        conn.handle().acknowledge(id, cf);
     }
 }
 

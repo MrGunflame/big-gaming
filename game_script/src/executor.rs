@@ -24,7 +24,6 @@ impl ScriptExecutor {
         let mut events = Vec::new();
 
         while let Some(event) = ctx.events.pop() {
-            dbg!(&event);
             match event {
                 Event::Action(event) => self.queue_action(event, &mut ctx, &mut events),
                 _ => (),
