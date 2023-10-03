@@ -74,7 +74,7 @@ impl WorldState {
             let snapshot = &self.snapshots[index];
 
             if cf == snapshot.control_frame {
-                return Some(WorldViewRef { snapshot, index });
+                return Some(WorldViewRef { snapshot });
             }
 
             index += 1;
@@ -170,10 +170,7 @@ impl WorldState {
 
     /// Returns the newest snapshot.
     pub fn back(&self) -> Option<WorldViewRef<'_>> {
-        self.snapshots.back().map(|s| WorldViewRef {
-            snapshot: s,
-            index: self.len() - 1,
-        })
+        self.snapshots.back().map(|s| WorldViewRef { snapshot: s })
     }
 
     /// Returns the newest snapshot.
@@ -189,10 +186,7 @@ impl WorldState {
 
     /// Returns the oldest snapshot.
     pub fn front(&self) -> Option<WorldViewRef<'_>> {
-        self.snapshots.front().map(|s| WorldViewRef {
-            snapshot: s,
-            index: 0,
-        })
+        self.snapshots.front().map(|s| WorldViewRef { snapshot: s })
     }
 
     /// Returns the oldest snapshot.
@@ -209,7 +203,7 @@ impl WorldState {
     pub fn at(&self, index: usize) -> Option<WorldViewRef<'_>> {
         self.snapshots
             .get(index)
-            .map(|s| WorldViewRef { snapshot: s, index })
+            .map(|s| WorldViewRef { snapshot: s })
     }
 
     pub fn at_mut(&mut self, index: usize) -> Option<WorldViewMut<'_>> {
@@ -253,7 +247,6 @@ impl WorldState {
 #[derive(Copy, Clone, Debug)]
 pub struct WorldViewRef<'a> {
     snapshot: &'a Snapshot,
-    index: usize,
 }
 
 impl<'a> WorldViewRef<'a> {
@@ -380,16 +373,18 @@ impl<'a> WorldViewMut<'a> {
         self.world.metrics.entities.dec();
         self.world.metrics.deltas.inc();
 
-        let translation = entity.transform.translation;
-
         #[cfg(feature = "tracing")]
-        event!(
-            Level::TRACE,
-            "[{}] despawning {:?} (C = {})",
-            self.index,
-            id,
-            CellId::from(translation).to_f32()
-        );
+        {
+            let translation = entity.transform.translation;
+
+            event!(
+                Level::TRACE,
+                "[{}] despawning {:?} (C = {})",
+                self.index,
+                id,
+                CellId::from(translation).to_f32()
+            );
+        }
 
         self.new_deltas.push(EntityChange::Destroy { id });
 
@@ -424,13 +419,13 @@ impl<'a> WorldViewMut<'a> {
 
         self.snapshot().streaming_sources.insert(id, source);
 
-        let entity = self.get(id).unwrap();
+        assert!(self.get(id).is_some());
         self.new_deltas
             .push(EntityChange::CreateStreamingSource { id, source });
     }
 
     pub fn remove_streaming_source(&mut self, id: EntityId) -> Option<StreamingSource> {
-        let entity = self.get(id)?;
+        self.get(id)?;
 
         let source = self.snapshot().streaming_sources.remove(id)?;
 
@@ -678,8 +673,7 @@ impl Snapshot {
                 self.entities.insert(entity);
             }
             EntityChange::Destroy { id } => {
-                let Some(translation) = self.entities.get(id).map(|s| s.transform.translation)
-                else {
+                if self.entities.get(id).is_none() {
                     tracing::warn!("no such entiy to despawn: {:?}", id);
                     return;
                 };
@@ -977,8 +971,6 @@ mod tests {
 
         let view = world.at(0).unwrap();
         assert!(view.get(id).is_some());
-
-        drop(view);
     }
 
     #[test]
