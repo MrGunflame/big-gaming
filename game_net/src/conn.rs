@@ -6,10 +6,10 @@ use std::future::Future;
 use std::marker::PhantomData;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::task::{Context, Poll};
+use std::task::{ready, Context, Poll};
 use std::time::{Duration, Instant};
 
-use futures::future::FusedFuture;
+use futures::future::{ErrInto, FusedFuture};
 use futures::{Sink, SinkExt, Stream, StreamExt};
 use game_common::world::control_frame::ControlFrame;
 use parking_lot::Mutex;
@@ -715,7 +715,7 @@ where
         };
 
         self.packet_queue.push_back(resp);
-        self.state = ConnectionState::Closed;
+        self.state = ConnectionState::Closing;
     }
 
     /// Closes the connection without doing a shutdown process.
@@ -727,7 +727,7 @@ where
                 .unwrap();
         }
 
-        self.state = ConnectionState::Closed;
+        self.state = ConnectionState::Closing;
     }
 
     fn shutdown(&mut self) {
@@ -751,7 +751,17 @@ where
         };
 
         self.packet_queue.push_back(packet);
+        self.state = ConnectionState::Closing;
+    }
+
+    fn poll_closing(
+        &mut self,
+        cx: &mut Context<'_>,
+    ) -> Poll<Result<(), Error<<S as Sink<Packet>>::Error>>> {
+        let res = ready!(self.stream.poll_close_unpin(cx));
         self.state = ConnectionState::Closed;
+
+        Poll::Ready(res.map_err(Error::Stream))
     }
 }
 
@@ -780,6 +790,7 @@ where
                         Poll::Ready(Ok(())) => (),
                     }
                 }
+                ConnectionState::Closing => return self.poll_closing(cx),
                 ConnectionState::Closed => return Poll::Ready(Ok(())),
             }
         }
@@ -802,6 +813,7 @@ where
 enum ConnectionState {
     Handshake(HandshakeState),
     Connected,
+    Closing,
     Closed,
 }
 
