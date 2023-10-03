@@ -54,10 +54,7 @@ impl Windows {
 
     pub fn state(&self, id: WindowId) -> Option<WindowState> {
         let windows = self.windows.read();
-        windows
-            .get(id.0)
-            .map(|window| window.state.clone())
-            .flatten()
+        windows.get(id.0).and_then(|window| window.state.clone())
     }
 
     pub fn get(&self, id: WindowId) -> Option<Window> {
@@ -169,10 +166,6 @@ impl WindowState {
 
     pub fn set_cursor_icon(&self, icon: CursorIcon) {
         self.inner.set_cursor_icon(icon)
-    }
-
-    pub(crate) fn backend(&self) -> Backend {
-        self.backend
     }
 }
 

@@ -69,6 +69,12 @@ impl WindowManager {
     }
 }
 
+impl Default for WindowManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[derive(Debug)]
 struct WindowManagerState {
     event_loop: EventLoop<()>,
@@ -142,9 +148,9 @@ where
     let mut compat = WindowCompat::new(backend);
     let mut is_locked = false;
 
-    event_loop.run(move |event, event_loop, control_flow| {
+    event_loop.run(move |event, event_loop, _control_flow| {
         match event {
-            Event::NewEvents(start) => {
+            Event::NewEvents(_start) => {
                 compat.set_position(cursor.position());
             }
             Event::WindowEvent { window_id, event } => match event {
@@ -183,16 +189,10 @@ where
                     app.handle_event(event);
                 }
                 WindowEvent::Focused(_) => {}
-                WindowEvent::KeyboardInput {
-                    device_id,
-                    input,
-                    is_synthetic,
-                } => {
-                    let window = *map.windows.get(&window_id).unwrap();
-
+                WindowEvent::KeyboardInput { input, .. } => {
                     let event = events::WindowEvent::KeyboardInput(KeyboardInput {
                         scan_code: ScanCode(input.scancode),
-                        key_code: input.virtual_keycode.map(|k| convert_key_code(k)),
+                        key_code: input.virtual_keycode.map(convert_key_code),
                         state: match input.state {
                             ElementState::Pressed => ButtonState::Pressed,
                             ElementState::Released => ButtonState::Released,
@@ -205,7 +205,7 @@ where
                 WindowEvent::CursorMoved {
                     device_id: _,
                     position,
-                    modifiers: _,
+                    ..
                 } => {
                     let window = *map.windows.get(&window_id).unwrap();
 
@@ -240,45 +240,32 @@ where
                         cursor_state.window = None;
                     }
                 }
-                WindowEvent::MouseWheel {
-                    device_id,
-                    delta,
-                    phase,
-                    modifiers,
-                } => {
+                WindowEvent::MouseWheel { delta, .. } => {
                     // `winit 0.28.4` does not emit `DeviceEvent::MouseWheel` for wayland
                     // event loops. Whether this is a bug or a "feature" is to be determined.
                     // Until then we have to manually capture MouseWheel events from the window
                     // and ignore `DeviceEvent::MouseWheel` (in case the behavoir changes in the
                     // future).
-                    match backend {
-                        Backend::Wayland => {
-                            let event = match delta {
-                                // Direction is inverted compared to X11.
-                                MouseScrollDelta::LineDelta(x, y) => MouseWheel {
-                                    unit: MouseScrollUnit::Line,
-                                    x: -x,
-                                    y: -y,
-                                },
-                                MouseScrollDelta::PixelDelta(pos) => MouseWheel {
-                                    unit: MouseScrollUnit::Pixel,
-                                    x: pos.x as f32,
-                                    y: pos.y as f32,
-                                },
-                            };
+                    if backend == Backend::Wayland {
+                        let event = match delta {
+                            // Direction is inverted compared to X11.
+                            MouseScrollDelta::LineDelta(x, y) => MouseWheel {
+                                unit: MouseScrollUnit::Line,
+                                x: -x,
+                                y: -y,
+                            },
+                            MouseScrollDelta::PixelDelta(pos) => MouseWheel {
+                                unit: MouseScrollUnit::Pixel,
+                                x: pos.x as f32,
+                                y: pos.y as f32,
+                            },
+                        };
 
-                            let event = events::WindowEvent::MouseWheel(event);
-                            app.handle_event(event);
-                        }
-                        _ => (),
+                        let event = events::WindowEvent::MouseWheel(event);
+                        app.handle_event(event);
                     }
                 }
-                WindowEvent::MouseInput {
-                    device_id,
-                    state,
-                    button,
-                    modifiers,
-                } => {
+                WindowEvent::MouseInput { state, button, .. } => {
                     let event = MouseButtonInput {
                         button: match button {
                             winit::event::MouseButton::Left => MouseButton::Left,
@@ -294,36 +281,17 @@ where
 
                     app.handle_event(events::WindowEvent::MouseButtonInput(event));
                 }
-                WindowEvent::TouchpadMagnify {
-                    device_id,
-                    delta,
-                    phase,
-                } => {}
-                WindowEvent::SmartMagnify { device_id } => {}
-                WindowEvent::TouchpadRotate {
-                    device_id,
-                    delta,
-                    phase,
-                } => {}
-                WindowEvent::TouchpadPressure {
-                    device_id,
-                    pressure,
-                    stage,
-                } => {}
-                WindowEvent::AxisMotion {
-                    device_id,
-                    axis,
-                    value,
-                } => {}
+                WindowEvent::TouchpadMagnify { .. } => {}
+                WindowEvent::SmartMagnify { .. } => {}
+                WindowEvent::TouchpadRotate { .. } => {}
+                WindowEvent::TouchpadPressure { .. } => {}
+                WindowEvent::AxisMotion { .. } => {}
                 WindowEvent::Touch(_) => {}
-                WindowEvent::ScaleFactorChanged {
-                    scale_factor,
-                    new_inner_size,
-                } => {}
+                WindowEvent::ScaleFactorChanged { .. } => {}
                 WindowEvent::ThemeChanged(_) => {}
                 WindowEvent::Occluded(_) => {}
             },
-            Event::DeviceEvent { device_id, event } => match event {
+            Event::DeviceEvent { event, .. } => match event {
                 DeviceEvent::Added => {}
                 DeviceEvent::Removed => {}
                 DeviceEvent::MouseMotion { delta: (x, y) } => {
@@ -357,37 +325,19 @@ where
                         app.handle_event(events::WindowEvent::MouseWheel(event));
                     }
                 },
-                DeviceEvent::Motion { axis, value } => {}
-                DeviceEvent::Button { button, state } => {}
-                DeviceEvent::Key(key) => {}
-                DeviceEvent::Text { codepoint } => {}
+                DeviceEvent::Motion { .. } => {}
+                DeviceEvent::Button { .. } => {}
+                DeviceEvent::Key(_) => {}
+                DeviceEvent::Text { .. } => {}
             },
             Event::UserEvent(()) => (),
             Event::Suspended => {}
             Event::Resumed => {}
             Event::MainEventsCleared => {
                 app.update();
-
-                // let should_update = true;
-
-                // if should_update {
-                //     state.last_update = Instant::now();
-                //     app.update();
-                // }
-
-                // let mut query = app.world.query::<&WindowState>();
-                // for entity in app.world.resource::<Windows>().windows.values() {
-                //     // If the window entity doesn't exist anymore, it was despawned
-                //     // in this loop and will get removed in the next update.
-                //     let Ok(window) = query.get(&app.world, *entity) else {
-                //         continue;
-                //     };
-
-                //     window.inner.request_redraw();
-                // }
             }
             Event::RedrawEventsCleared => {}
-            Event::RedrawRequested(window_id) => {}
+            Event::RedrawRequested(_) => {}
             Event::LoopDestroyed => (),
         }
 
@@ -409,7 +359,7 @@ where
 
                     let window = WindowBuilder::new()
                         .with_title(window.title)
-                        .build(&event_loop)
+                        .build(event_loop)
                         .expect("failed to create window");
 
                     map.windows.insert(window.id(), id);
