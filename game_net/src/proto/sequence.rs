@@ -51,7 +51,7 @@ impl Sequence {
 
     #[inline]
     pub fn fetch_next(&mut self) -> Self {
-        let mut seq = *self;
+        let seq = *self;
         *self += 1;
         seq
     }

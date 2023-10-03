@@ -190,7 +190,7 @@ where
     fn poll_read(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Error<S::Error>>> {
         // Flush the send buffer before reading any packets.
         if !self.packet_queue.is_empty() {
-            self.init_write();
+            self.init_write()?;
             return Poll::Ready(Ok(()));
         }
 
@@ -286,17 +286,14 @@ where
         }
     }
 
-    fn init_write(&mut self) {
+    fn init_write(&mut self) -> Result<(), S::Error> {
         self.is_writing = true;
         let packet = self.packet_queue.pop_front().unwrap();
-        self.stream.start_send_unpin(packet).unwrap();
+        self.stream.start_send_unpin(packet)
     }
 
-    fn poll_write(&mut self, cx: &mut Context<'_>) -> Poll<()> {
-        match self.stream.poll_ready_unpin(cx) {
-            Poll::Ready(res) => Poll::Ready(()),
-            Poll::Pending => Poll::Pending,
-        }
+    fn poll_write(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), S::Error>> {
+        self.stream.poll_ready_unpin(cx)
     }
 
     ///
@@ -778,7 +775,8 @@ where
             if self.is_writing {
                 match self.poll_write(cx) {
                     Poll::Pending => return Poll::Pending,
-                    Poll::Ready(()) => (),
+                    Poll::Ready(Ok(())) => (),
+                    Poll::Ready(Err(err)) => return Poll::Ready(Err(err.into())),
                 }
             }
 
