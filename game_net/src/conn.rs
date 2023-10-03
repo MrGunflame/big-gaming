@@ -5,7 +5,6 @@ use std::collections::{HashMap, VecDeque};
 use std::future::Future;
 use std::marker::PhantomData;
 use std::pin::Pin;
-use std::sync::atomic::{AtomicU32, Ordering};
 use std::task::{ready, Context, Poll};
 use std::time::{Duration, Instant};
 
@@ -38,26 +37,6 @@ where
     Stream(#[from] E),
 }
 
-static CONNECTION_ID: AtomicU32 = AtomicU32::new(0);
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct ConnectionId(pub u32);
-
-impl ConnectionId {
-    #[inline]
-    pub fn new() -> Self {
-        let id = CONNECTION_ID.fetch_add(1, Ordering::Relaxed);
-        Self(id)
-    }
-}
-
-impl Default for ConnectionId {
-    #[inline]
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 /// A bidirectional stream underlying a [`Connection`].
 // FIXME: We don't need `Unpin`.
 pub trait ConnectionStream: Stream<Item = Packet> + Sink<Packet> + Unpin {
@@ -71,7 +50,6 @@ where
     S::Error: std::error::Error,
     M: ConnectionMode,
 {
-    pub id: ConnectionId,
     stream: S,
 
     reader: mpsc::Receiver<Message>,
@@ -130,13 +108,10 @@ where
         control_frame: ControlFrame,
         const_delay: ControlFrame,
     ) -> (Self, ConnectionHandle) {
-        let id = ConnectionId::new();
-
         let (out_tx, out_rx) = mpsc::channel(4096);
         let (writer, reader) = mpsc::channel(4096);
 
         let mut conn = Self {
-            id,
             stream,
             state: ConnectionState::Handshake(HandshakeState::Hello),
             reader: out_rx,
@@ -180,7 +155,6 @@ where
         (
             conn,
             ConnectionHandle {
-                id,
                 chan_out: out_tx,
                 rx: Mutex::new(reader),
             },
@@ -865,7 +839,6 @@ enum HandshakeState {
 
 #[derive(Debug)]
 pub struct ConnectionHandle {
-    pub id: ConnectionId,
     chan_out: mpsc::Sender<Message>,
     rx: Mutex<mpsc::Receiver<Message>>,
 }

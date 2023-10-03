@@ -1,13 +1,27 @@
 use std::borrow::Borrow;
 use std::iter::FusedIterator;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 
 use ahash::HashMap;
-use game_net::conn::{ConnectionHandle, ConnectionId};
+use game_net::conn::ConnectionHandle;
 use game_net::message::MessageId;
 use parking_lot::{Mutex, RwLock};
 
 use crate::net::state::ConnectionState;
+
+static CONNECTION_ID: AtomicU32 = AtomicU32::new(0);
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct ConnectionId(u32);
+
+impl Default for ConnectionId {
+    fn default() -> Self {
+        let id = CONNECTION_ID.fetch_add(1, Ordering::Relaxed);
+        assert_ne!(id, u32::MAX);
+        Self(id)
+    }
+}
 
 /// List of connections
 // FIXME: Maybe merge with ConnectionPool.
@@ -19,12 +33,13 @@ pub struct Connections {
 impl Connections {
     pub fn insert(&self, handle: Arc<ConnectionHandle>) {
         let mut inner = self.connections.write();
+        let id = ConnectionId::default();
 
         inner.insert(
-            handle.id,
+            id,
             Connection {
                 inner: Arc::new(ConnectionInner {
-                    id: handle.id,
+                    id,
                     state: RwLock::new(ConnectionState::new()),
                     handle,
                     messages_in_frame: Mutex::new(vec![]),
