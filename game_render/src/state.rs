@@ -112,7 +112,7 @@ impl RenderState {
             Event::CreateCamera(id, camera) => {
                 self.cameras.insert(id, camera);
             }
-            Event::DestroyCamera(id) => {}
+            Event::DestroyCamera(_id) => {}
             Event::CreateObject(id, object) => {
                 self.objects.insert(id, object);
 
@@ -122,22 +122,23 @@ impl RenderState {
                 }
 
                 if !self.materials.contains_key(&object.material) {
-                    let material = materials.get(object.material).unwrap().clone();
+                    let material = *materials.get(object.material).unwrap();
                     self.materials_queued.insert(object.material, material);
 
-                    for tex in [
+                    for id in [
                         material.base_color_texture,
                         material.normal_texture,
                         material.metallic_roughness_texture,
-                    ] {
-                        if let Some(id) = tex {
-                            let img = images.get(id).unwrap().clone();
-                            self.images.insert(id, img);
-                        }
+                    ]
+                    .into_iter()
+                    .flatten()
+                    {
+                        let img = images.get(id).unwrap().clone();
+                        self.images.insert(id, img);
                     }
                 }
             }
-            Event::DestroyObject(id) => {}
+            Event::DestroyObject(_id) => {}
             Event::CreateDirectionalLight(id, light) => {
                 self.directional_lights.insert(id, light);
             }

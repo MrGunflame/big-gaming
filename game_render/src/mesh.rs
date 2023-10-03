@@ -1,6 +1,5 @@
 use game_asset::Asset;
 use glam::{Vec2, Vec3, Vec4};
-use wgpu::PrimitiveTopology;
 
 use crate::aabb::Aabb;
 
@@ -8,7 +7,6 @@ use crate::aabb::Aabb;
 // we don't want to have it attached to every entity.
 #[derive(Clone, Debug)]
 pub struct Mesh {
-    topology: PrimitiveTopology,
     indices: Option<Indices>,
     positions: Vec<[f32; 3]>,
     normals: Vec<[f32; 3]>,
@@ -20,7 +18,6 @@ pub struct Mesh {
 impl Mesh {
     pub fn new() -> Self {
         Self {
-            topology: PrimitiveTopology::TriangleList,
             indices: None,
             positions: vec![],
             normals: vec![],
@@ -148,6 +145,12 @@ impl Mesh {
         }
 
         Some(Aabb::from_min_max(min, max))
+    }
+}
+
+impl Default for Mesh {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

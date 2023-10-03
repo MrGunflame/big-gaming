@@ -150,7 +150,7 @@ unsafe fn execute_render(shared: &SharedState) {
             width: output.texture.width(),
             height: output.texture.height(),
             target: &target,
-            surface: &surface,
+            surface,
             format: surface.config.format,
             device: &shared.device,
             queue: &shared.queue,

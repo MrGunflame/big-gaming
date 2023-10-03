@@ -123,7 +123,7 @@ impl From<Box> for Mesh {
         ];
 
         let mut mesh = Mesh::new();
-        mesh.set_positions(positions.iter().copied().collect());
+        mesh.set_positions(positions.to_vec());
         mesh.set_indices(Indices::U32(indicies));
         mesh.set_normals(normals.to_vec());
         mesh.set_uvs(uvs.to_vec());

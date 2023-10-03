@@ -141,7 +141,7 @@ impl MipMapGenerator {
                 depth_stencil_attachment: None,
             });
 
-            render_pass.set_pipeline(&pipeline);
+            render_pass.set_pipeline(pipeline);
             render_pass.set_bind_group(0, &bind_group, &[]);
             render_pass.draw(0..3, 0..1);
         }

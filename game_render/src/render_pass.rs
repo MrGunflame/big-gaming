@@ -82,7 +82,7 @@ impl Node for RenderPass {
 
         for cam in state.camera_buffers.values() {
             if cam.target == RenderTarget::Window(ctx.window) {
-                self.render_camera_target(&state, &cam, ctx);
+                self.render_camera_target(&state, cam, ctx);
                 return;
             }
         }
@@ -191,9 +191,9 @@ impl RenderPass {
             let (mesh_bg, idx_buf) = state.meshes.get(&obj.mesh).unwrap();
             let mat_bg = state.materials.get(&obj.material).unwrap();
 
-            render_pass.set_bind_group(0, &vs_bind_group, &[]);
-            render_pass.set_bind_group(1, &mesh_bg, &[]);
-            render_pass.set_bind_group(2, &mat_bg, &[]);
+            render_pass.set_bind_group(0, vs_bind_group, &[]);
+            render_pass.set_bind_group(1, mesh_bg, &[]);
+            render_pass.set_bind_group(2, mat_bg, &[]);
             render_pass.set_bind_group(3, &light_bind_group, &[]);
 
             render_pass.set_index_buffer(idx_buf.buffer.slice(..), idx_buf.format);
@@ -202,13 +202,8 @@ impl RenderPass {
 
         drop(render_pass);
 
-        self.post_process.render(
-            &mut ctx.encoder,
-            &target_view,
-            &ctx.target,
-            device,
-            ctx.format,
-        );
+        self.post_process
+            .render(ctx.encoder, &target_view, ctx.target, device, ctx.format);
     }
 }
 
@@ -216,7 +211,7 @@ fn clear_pass(ctx: &mut RenderContext<'_>) {
     ctx.encoder.begin_render_pass(&RenderPassDescriptor {
         label: Some("clear_pass"),
         color_attachments: &[Some(RenderPassColorAttachment {
-            view: &ctx.target,
+            view: ctx.target,
             resolve_target: None,
             ops: Operations {
                 load: LoadOp::Clear(Color::BLACK),

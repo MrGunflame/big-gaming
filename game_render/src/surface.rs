@@ -29,7 +29,7 @@ impl RenderSurfaces {
         window: WindowState,
         id: WindowId,
     ) {
-        let surfce = create_surface(window, &instance, &adapter, &device).unwrap();
+        let surfce = create_surface(window, instance, adapter, device).unwrap();
         self.windows.insert(id, surfce);
     }
 
@@ -112,7 +112,7 @@ fn create_surface(
         view_formats: vec![],
     };
 
-    surface.configure(&device, &config);
+    surface.configure(device, &config);
 
     Ok(SurfaceData {
         surface,
@@ -148,9 +148,8 @@ fn get_surface_present_mode(modes: &[PresentMode]) -> Option<PresentMode> {
     // TODO: FIFO is always supported, but
     // support other (better) modes is beneficial.
     for mode in modes {
-        match mode {
-            PresentMode::Fifo => return Some(*mode),
-            _ => (),
+        if *mode == PresentMode::Fifo {
+            return Some(*mode);
         }
     }
 

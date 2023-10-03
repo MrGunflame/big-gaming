@@ -100,6 +100,10 @@ where
         u32::from_ne_bytes(bytes.try_into().unwrap())
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     pub fn push(&mut self, item: T) {
         let index = self.len() as usize;
         self.buf.resize(T::ALIGN + (index + 1) * T::SIZE, 0);

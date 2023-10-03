@@ -91,8 +91,8 @@ pub fn update_material_bind_group(
             .base_color_texture
             .unwrap_or(default_textures.default_base_color_texture),
         images,
-        &device,
-        &queue,
+        device,
+        queue,
         mipmap_generator,
     );
 
@@ -101,8 +101,8 @@ pub fn update_material_bind_group(
             .normal_texture
             .unwrap_or(default_textures.default_normal_texture),
         images,
-        &device,
-        &queue,
+        device,
+        queue,
         mipmap_generator,
     );
 
@@ -111,8 +111,8 @@ pub fn update_material_bind_group(
             .metallic_roughness_texture
             .unwrap_or(default_textures.default_metallic_roughness_texture),
         images,
-        &device,
-        &queue,
+        device,
+        queue,
         mipmap_generator,
     );
 
@@ -235,5 +235,11 @@ impl Materials {
 
     pub fn get(&self, id: MaterialId) -> Option<&PbrMaterial> {
         self.materials.get(id.0)
+    }
+}
+
+impl Default for Materials {
+    fn default() -> Self {
+        Self::new()
     }
 }
