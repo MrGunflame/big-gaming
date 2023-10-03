@@ -40,6 +40,12 @@ impl UpdateCounter {
     }
 }
 
+impl Default for UpdateCounter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Interval {
     last_update: Instant,
@@ -97,5 +103,11 @@ impl IntervalImpl for ManualInterval {
         let is_ready = self.is_ready;
         self.is_ready ^= true;
         is_ready
+    }
+}
+
+impl Default for ManualInterval {
+    fn default() -> Self {
+        Self::new()
     }
 }

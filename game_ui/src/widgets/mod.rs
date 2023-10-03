@@ -13,7 +13,7 @@ pub use checkbox::Checkbox;
 pub use container::Container;
 pub use input::Input;
 pub use parse_input::ParseInput;
-pub use selection::{Selection, SelectionProps};
+pub use selection::Selection;
 pub use text::Text;
 
 use std::fmt::{self, Debug, Formatter};

@@ -49,6 +49,12 @@ impl Input {
     }
 }
 
+impl Default for Input {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Widget for Input {
     fn build(self, cx: &Scope) -> Scope {
         let (value, set_value) = cx.create_signal(Buffer::new(self.value));
@@ -148,8 +154,6 @@ impl Widget for Input {
                     })),
                     ..Default::default()
                 },
-
-                ..Default::default()
             },
         });
 
@@ -212,7 +216,9 @@ impl Buffer {
             }
 
             // self.cursor exists means that at least 1 char exists.
-            let ch = s.chars().nth(0).unwrap();
+            if cfg!(debug_assertions) {
+                s.chars().nth(0).unwrap();
+            }
 
             self.string.remove(self.cursor);
         }

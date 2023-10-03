@@ -6,8 +6,6 @@ use std::time::{Duration, Instant};
 
 #[derive(Clone, Debug)]
 pub struct Time {
-    startup: Instant,
-    speed: f64,
     delta: Duration,
     last_update: Instant,
 }
@@ -17,8 +15,6 @@ impl Time {
         let now = Instant::now();
 
         Self {
-            startup: now,
-            speed: 1.0,
             delta: Duration::ZERO,
             last_update: now,
         }
@@ -37,5 +33,11 @@ impl Time {
 
         self.delta = now - self.last_update;
         self.last_update = now;
+    }
+}
+
+impl Default for Time {
+    fn default() -> Self {
+        Self::new()
     }
 }

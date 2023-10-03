@@ -370,7 +370,7 @@ where
             self.next_id = self.next_id.wrapping_add(1);
             self.messages_in.insert(id, seq);
 
-            let body = DataMessageBody::from_frame(frame, control_frame);
+            let body = DataMessageBody::from_frame(frame);
             self.writer
                 .try_send(Message::Data(DataMessage {
                     id,

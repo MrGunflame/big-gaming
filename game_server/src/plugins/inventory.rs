@@ -27,7 +27,6 @@ pub fn add_item(inventory: &mut InventoryMut<'_>, id: ItemId, modules: &Modules)
     let item = Item {
         id,
         mass: base_item.mass,
-        resistances: Default::default(),
         components,
         actions,
         equipped: false,

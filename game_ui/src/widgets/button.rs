@@ -41,7 +41,7 @@ impl Widget for Button {
             },
             events: ElementEventHandlers {
                 local: EventHandlers {
-                    mouse_button_input: self.on_click.map(|f| input_handler(f)),
+                    mouse_button_input: self.on_click.map(input_handler),
                     ..Default::default()
                 },
                 ..Default::default()

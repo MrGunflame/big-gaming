@@ -5,7 +5,7 @@ use glam::Vec2;
 use crate::mouse::{MouseButton, MouseButtonInput, MouseMotion};
 use crate::ButtonState;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct MouseEmulator {
     buttons: VecDeque<MouseButtonInput>,
     motions: VecDeque<MouseMotion>,

@@ -173,3 +173,9 @@ impl Meshes {
         self.meshes.get(id.0)
     }
 }
+
+impl Default for Meshes {
+    fn default() -> Self {
+        Self::new()
+    }
+}

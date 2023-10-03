@@ -19,7 +19,7 @@ use crate::world::snapshot::EntityChange;
 pub use metrics::WorldMetrics;
 
 use super::control_frame::ControlFrame;
-use super::entity::{Entity, EntityBody};
+use super::entity::Entity;
 use super::inventory::InventoriesMut;
 use super::source::StreamingSource;
 
@@ -74,7 +74,7 @@ impl WorldState {
             let snapshot = &self.snapshots[index];
 
             if cf == snapshot.control_frame {
-                return Some(WorldViewRef { snapshot, index });
+                return Some(WorldViewRef { snapshot });
             }
 
             index += 1;
@@ -170,10 +170,7 @@ impl WorldState {
 
     /// Returns the newest snapshot.
     pub fn back(&self) -> Option<WorldViewRef<'_>> {
-        self.snapshots.back().map(|s| WorldViewRef {
-            snapshot: s,
-            index: self.len() - 1,
-        })
+        self.snapshots.back().map(|s| WorldViewRef { snapshot: s })
     }
 
     /// Returns the newest snapshot.
@@ -189,10 +186,7 @@ impl WorldState {
 
     /// Returns the oldest snapshot.
     pub fn front(&self) -> Option<WorldViewRef<'_>> {
-        self.snapshots.front().map(|s| WorldViewRef {
-            snapshot: s,
-            index: 0,
-        })
+        self.snapshots.front().map(|s| WorldViewRef { snapshot: s })
     }
 
     /// Returns the oldest snapshot.
@@ -209,7 +203,7 @@ impl WorldState {
     pub fn at(&self, index: usize) -> Option<WorldViewRef<'_>> {
         self.snapshots
             .get(index)
-            .map(|s| WorldViewRef { snapshot: s, index })
+            .map(|s| WorldViewRef { snapshot: s })
     }
 
     pub fn at_mut(&mut self, index: usize) -> Option<WorldViewMut<'_>> {
@@ -250,10 +244,15 @@ impl WorldState {
     }
 }
 
+impl Default for WorldState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[derive(Copy, Clone, Debug)]
 pub struct WorldViewRef<'a> {
     snapshot: &'a Snapshot,
-    index: usize,
 }
 
 impl<'a> WorldViewRef<'a> {
@@ -315,6 +314,10 @@ pub struct WorldViewMut<'a> {
 impl<'a> WorldViewMut<'a> {
     pub fn len(&self) -> usize {
         self.snapshot_ref().entities.entities.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 
     pub(crate) fn snapshot_ref(&self) -> &Snapshot {
@@ -380,16 +383,18 @@ impl<'a> WorldViewMut<'a> {
         self.world.metrics.entities.dec();
         self.world.metrics.deltas.inc();
 
-        let translation = entity.transform.translation;
-
         #[cfg(feature = "tracing")]
-        event!(
-            Level::TRACE,
-            "[{}] despawning {:?} (C = {})",
-            self.index,
-            id,
-            CellId::from(translation).to_f32()
-        );
+        {
+            let translation = entity.transform.translation;
+
+            event!(
+                Level::TRACE,
+                "[{}] despawning {:?} (C = {})",
+                self.index,
+                id,
+                CellId::from(translation).to_f32()
+            );
+        }
 
         self.new_deltas.push(EntityChange::Destroy { id });
 
@@ -424,13 +429,13 @@ impl<'a> WorldViewMut<'a> {
 
         self.snapshot().streaming_sources.insert(id, source);
 
-        let entity = self.get(id).unwrap();
+        assert!(self.get(id).is_some());
         self.new_deltas
             .push(EntityChange::CreateStreamingSource { id, source });
     }
 
     pub fn remove_streaming_source(&mut self, id: EntityId) -> Option<StreamingSource> {
-        let entity = self.get(id)?;
+        self.get(id)?;
 
         let source = self.snapshot().streaming_sources.remove(id)?;
 
@@ -597,7 +602,7 @@ impl<'a> Deref for EntityMut<'a> {
     type Target = Entity;
 
     fn deref(&self) -> &Self::Target {
-        &self.entity
+        self.entity
     }
 }
 
@@ -678,8 +683,7 @@ impl Snapshot {
                 self.entities.insert(entity);
             }
             EntityChange::Destroy { id } => {
-                let Some(translation) = self.entities.get(id).map(|s| s.transform.translation)
-                else {
+                if self.entities.get(id).is_none() {
                     tracing::warn!("no such entiy to despawn: {:?}", id);
                     return;
                 };
@@ -700,13 +704,6 @@ impl Snapshot {
                     tracing::warn!("tried to rotate a non-existant entity");
                 }
             }
-            EntityChange::Health { id, health } => {
-                if let Some(entity) = self.entities.get_mut(id) {
-                    if let EntityBody::Actor(actor) = &mut entity.body {
-                        actor.health = health;
-                    }
-                }
-            }
             EntityChange::CreateHost { id } => {
                 if let Some(entity) = self.entities.get_mut(id) {
                     entity.is_host = true;
@@ -722,7 +719,6 @@ impl Snapshot {
 
                 let item = Item {
                     id: event.item,
-                    resistances: None,
                     actions: Default::default(),
                     components: Default::default(),
                     mass: Default::default(),
@@ -809,9 +805,7 @@ impl Inventories {
     }
 
     pub fn get_mut_or_insert(&mut self, id: EntityId) -> &mut Inventory {
-        if !self.inventories.contains_key(&id) {
-            self.inventories.insert(id, Inventory::new());
-        }
+        self.inventories.entry(id).or_insert_with(Inventory::new);
 
         self.get_mut(id).unwrap()
     }
@@ -906,7 +900,7 @@ mod tests {
     use crate::components::object::ObjectId;
     use crate::components::transform::Transform;
     use crate::record::RecordReference;
-    use crate::world::entity::Object;
+    use crate::world::entity::{EntityBody, Object};
 
     use super::*;
 
@@ -985,8 +979,6 @@ mod tests {
 
         let view = world.at(0).unwrap();
         assert!(view.get(id).is_some());
-
-        drop(view);
     }
 
     #[test]

@@ -4,7 +4,7 @@ use crate::keyboard::{KeyCode, KeyboardInput, ScanCode};
 use crate::ButtonState;
 
 /// An emulator for a keyboard device.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct KeyboardEmulator {
     queue: VecDeque<KeyboardInput>,
 }

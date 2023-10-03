@@ -411,7 +411,6 @@ mod tests {
         Item {
             id: ItemId(RecordReference::STUB),
             mass: Mass::new(),
-            resistances: None,
             actions: Actions::new(),
             components: Components::new(),
             equipped: false,

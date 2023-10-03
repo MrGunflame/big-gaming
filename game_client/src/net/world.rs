@@ -181,12 +181,6 @@ fn handle_event<I>(
                 EntityChange::Rotate { id: _, rotation } => {
                     entity.entity.transform.rotation = rotation;
                 }
-                EntityChange::Health { id, health } => match &mut entity.entity.body {
-                    EntityBody::Actor(actor) => actor.health = health,
-                    _ => {
-                        tracing::warn!("tried to apply health to a non-actor entity: {:?}", id);
-                    }
-                },
                 EntityChange::CreateHost { id: _ } => entity.host = true,
                 EntityChange::DestroyHost { id: _ } => entity.host = false,
                 EntityChange::InventoryItemAdd(event) => {
@@ -244,11 +238,6 @@ fn handle_event<I>(
         }
         EntityChange::DestroyHost { id } => {
             cmd_buffer.push(Command::Despawn(id));
-        }
-        EntityChange::Health { id, health } => {
-            // let entity = conn.entities.get(id).unwrap();
-
-            // TODO
         }
         EntityChange::InventoryItemAdd(event) => {
             // let entity = conn.entities.get(event.entity).unwrap();
@@ -341,7 +330,6 @@ fn add_inventory_item(inventory: &mut Inventory, modules: &Modules, event: Inven
 
     let item = Item {
         id: event.item,
-        resistances: None,
         mass: item.mass,
         actions,
         components,

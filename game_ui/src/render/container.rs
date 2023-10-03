@@ -25,7 +25,7 @@ impl BuildPrimitiveElement for Container {
         if !style.style.background.is_none() || is_debug_render_enabled() {
             // `Image` will already render a debugging border around
             // the container.
-            let image = ImageBuffer::new(width as u32, height as u32);
+            let image = ImageBuffer::new(width, height);
             Image { image }.build(style, layout, pipeline, device, queue, size)
         } else {
             None

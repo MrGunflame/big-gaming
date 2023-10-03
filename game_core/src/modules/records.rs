@@ -27,3 +27,9 @@ impl Records {
         self.records.values()
     }
 }
+
+impl Default for Records {
+    fn default() -> Self {
+        Self::new()
+    }
+}

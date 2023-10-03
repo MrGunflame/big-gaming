@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use ::image::{ImageBuffer, Rgba};
 use bytemuck::{Pod, Zeroable};
-use game_render::graph::{Node, RenderContext, RenderGraph};
+use game_render::graph::{Node, RenderContext};
 use game_render::Renderer;
 use game_tracing::trace_span;
 use game_window::windows::WindowId;
@@ -104,7 +104,7 @@ impl UiRenderer {
             let mut elems = vec![];
             for (elem, layout) in tree.elements().zip(tree.layouts()) {
                 // Don't render elements with a zero size.
-                if layout.width <= 0 || layout.height <= 0 {
+                if layout.width == 0 || layout.height == 0 {
                     continue;
                 }
 
@@ -130,7 +130,7 @@ impl UiRenderer {
 
             tree.unchanged();
 
-            *self.elements.write().get_mut(&id).unwrap() = elems;
+            *self.elements.write().get_mut(id).unwrap() = elems;
         }
     }
 }
@@ -157,14 +157,12 @@ impl PrimitiveElement {
     ) -> Self {
         let _span = trace_span!("PrimitiveElement::new").entered();
 
-        if cfg!(debug_assertions) {
-            if image.height() == 0 || image.width() == 0 {
-                panic!(
-                    "attempted to render a image with zero dimension x={}, y={}",
-                    image.width(),
-                    image.height()
-                );
-            }
+        if cfg!(debug_assertions) && (image.height() == 0 || image.width() == 0) {
+            panic!(
+                "attempted to render a image with zero dimension x={}, y={}",
+                image.width(),
+                image.height()
+            );
         }
 
         let vertices = [
@@ -227,7 +225,7 @@ impl PrimitiveElement {
                 origin: Origin3d::ZERO,
                 aspect: TextureAspect::All,
             },
-            &image,
+            image,
             ImageDataLayout {
                 offset: 0,
                 bytes_per_row: Some(4 * image.width()),
@@ -449,7 +447,7 @@ impl Node for UiPass {
         let mut render_pass = ctx.encoder.begin_render_pass(&RenderPassDescriptor {
             label: Some("ui_pass"),
             color_attachments: &[Some(RenderPassColorAttachment {
-                view: &ctx.target,
+                view: ctx.target,
                 resolve_target: None,
                 ops: Operations {
                     load: LoadOp::Load,

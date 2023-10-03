@@ -18,6 +18,10 @@ impl Components {
         self.components.len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     pub fn insert(&mut self, r: RecordReference, comp: Component) {
         self.components.insert(r, comp);
     }
@@ -49,6 +53,10 @@ pub struct Component {
 impl Component {
     pub fn len(&self) -> usize {
         self.bytes.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 
     pub fn as_ptr(&self) -> *const u8 {

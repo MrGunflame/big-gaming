@@ -251,7 +251,7 @@ impl Color {
     pub fn from_hex(s: &str) -> Result<Self, FromHexError> {
         let bytes = hex::decode(s)?;
 
-        let r = *bytes.get(0).ok_or(FromHexError::InvalidLength)?;
+        let r = *bytes.first().ok_or(FromHexError::InvalidLength)?;
         let g = *bytes.get(1).ok_or(FromHexError::InvalidLength)?;
         let b = *bytes.get(2).ok_or(FromHexError::InvalidLength)?;
         let a = 255;

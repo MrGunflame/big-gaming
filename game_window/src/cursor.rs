@@ -129,10 +129,6 @@ impl WindowCompat {
         self.cursor_position = pos;
     }
 
-    pub fn set_grab_mode(&mut self, mode: CursorGrabMode) {
-        self.cursor_grab_mode = mode;
-    }
-
     pub fn move_cursor(&mut self) {
         if self.backend.supports_locked_cursor() || self.cursor_grab_mode != CursorGrabMode::Locked
         {

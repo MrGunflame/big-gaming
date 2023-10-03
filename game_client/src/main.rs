@@ -13,9 +13,7 @@ use std::sync::Arc;
 
 use clap::Parser;
 use config::Config;
-use game_core::counter::Interval;
 use game_core::hierarchy::TransformHierarchy;
-use game_core::logger::{self};
 use game_core::time::Time;
 use game_render::Renderer;
 use game_scene::Scenes;

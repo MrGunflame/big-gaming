@@ -1,6 +1,7 @@
 use game_common::metrics::Gauge;
 
 #[derive(Clone, Debug)]
+#[non_exhaustive]
 pub struct WorldMetrics {
     /// The total number of snapshots in the world.
     pub snapshots: Gauge,
@@ -8,7 +9,6 @@ pub struct WorldMetrics {
     pub entities: Gauge,
     /// The number of current buffered deltas across all snapshots across all cells.
     pub deltas: Gauge,
-    _priv: (),
 }
 
 impl WorldMetrics {
@@ -17,7 +17,6 @@ impl WorldMetrics {
             snapshots: Gauge::new(),
             entities: Gauge::new(),
             deltas: Gauge::new(),
-            _priv: (),
         }
     }
 }

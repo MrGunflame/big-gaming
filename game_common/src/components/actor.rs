@@ -11,26 +11,6 @@ use glam::{Quat, Vec3};
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Actor;
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-#[deprecated(note = "Use ActorFlags instead")]
-pub struct ActorState(NonZeroU32);
-
-impl ActorState {
-    pub const DEFAULT: Self = Self(unsafe { NonZeroU32::new_unchecked(1) });
-    pub const DEAD: Self = Self(unsafe { NonZeroU32::new_unchecked(2) });
-
-    pub fn is_default(self) -> bool {
-        self == Self::DEFAULT
-    }
-}
-
-impl Default for ActorState {
-    #[inline]
-    fn default() -> Self {
-        Self::DEFAULT
-    }
-}
-
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 #[repr(transparent)]
 pub struct ActorFlag(NonZeroU32);
@@ -130,6 +110,9 @@ impl Limb {
         Self(NonZeroU8::new(id).unwrap())
     }
 
+    /// # Safety
+    ///
+    /// `id > 0`.
     #[inline]
     pub const unsafe fn new_unchecked(id: u8) -> Self {
         unsafe { Self(NonZeroU8::new_unchecked(id)) }
@@ -211,4 +194,10 @@ pub struct ActorProperties {
     /// The local offset (from the actor root) at which the camera sits.
     pub eyes: Vec3,
     // TODO: Add custom props
+}
+
+impl Default for SpawnPoints {
+    fn default() -> Self {
+        Self::new()
+    }
 }

@@ -1,9 +1,7 @@
 use game_window::windows::WindowId;
 use wgpu::{CommandEncoder, Device, Queue, TextureFormat, TextureView};
 
-use crate::forward::ForwardPipeline;
 use crate::mipmap::MipMapGenerator;
-use crate::post_process::PostProcessPipeline;
 use crate::surface::SurfaceData;
 
 #[derive(Default)]

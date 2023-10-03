@@ -77,7 +77,7 @@ impl<'a> Deref for InventoryMut<'a> {
     type Target = Inventory;
 
     fn deref(&self) -> &Self::Target {
-        &self.inventory
+        self.inventory
     }
 }
 
@@ -94,7 +94,6 @@ impl<'r, 'view> InventoriesMut<'r, 'view> {
     pub fn get_mut(&mut self, id: EntityId) -> Option<InventoryMut<'_>> {
         // FIXME: Optimally these two queries should be swapped,
         // failing early if an entity does not have an inventory.
-        let cell_id = self.view.get(id)?.cell();
         let events = &mut self.view.new_deltas;
 
         let inventory = self.view.world.snapshots[self.view.index]
@@ -127,119 +126,5 @@ impl<'r, 'view> InventoriesMut<'r, 'view> {
 
     pub fn remove(&mut self, id: EntityId) {
         self.view.snapshot().inventories.remove(id);
-    }
-}
-
-pub(crate) fn delta_inventory(
-    entity: EntityId,
-    prev: &Inventory,
-    curr: &Inventory,
-) -> Vec<EntityChange> {
-    let mut curr = curr.clone();
-
-    let mut events = Vec::new();
-
-    for item in prev.iter() {
-        // Item removed between prev and curr.
-        if curr.remove(&item.id).is_none() {
-            events.push(EntityChange::InventoryItemRemove(InventoryItemRemove {
-                entity,
-                id: item.id,
-            }));
-        }
-
-        // TODO: Updated items
-    }
-
-    // Items that were missing in prev.
-    for item in curr.iter() {
-        events.push(EntityChange::InventoryItemAdd(InventoryItemAdd {
-            entity,
-            id: item.id,
-            item: item.item.id,
-        }))
-    }
-
-    events
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::components::inventory::{Inventory, InventoryId};
-    use crate::components::items::{Item, ItemId};
-    use crate::entity::EntityId;
-    use crate::record::RecordReference;
-    use crate::units::Mass;
-    use crate::world::snapshot::EntityChange;
-
-    use super::delta_inventory;
-
-    #[test]
-    fn delta_inventory_item_added() {
-        let entity = EntityId::dangling();
-        let item_id = ItemId(RecordReference::STUB);
-
-        let prev = Inventory::new();
-        let mut curr = Inventory::new();
-        curr.insert(Item {
-            id: item_id,
-            resistances: None,
-            mass: Mass::default(),
-            actions: Default::default(),
-            components: Default::default(),
-            equipped: false,
-            hidden: false,
-        })
-        .unwrap();
-
-        let events = delta_inventory(entity, &prev, &curr);
-
-        assert_eq!(events.len(), 1);
-        let event = match &events[0] {
-            EntityChange::InventoryItemAdd(event) => event,
-            event => panic!(
-                "unexpected event {:?}, expected {}",
-                event,
-                stringify!(EntityChange::InventoryItemAdd),
-            ),
-        };
-
-        assert_eq!(event.entity, entity);
-        assert_eq!(event.id, InventoryId::from_raw(0));
-        assert_eq!(event.item, item_id);
-    }
-
-    #[test]
-    fn delta_inventory_item_removed() {
-        let entity = EntityId::dangling();
-
-        let mut prev = Inventory::new();
-        let id = prev
-            .insert(Item {
-                id: ItemId(RecordReference::STUB),
-                resistances: None,
-                mass: Mass::default(),
-                actions: Default::default(),
-                components: Default::default(),
-                equipped: false,
-                hidden: false,
-            })
-            .unwrap();
-        let curr = Inventory::new();
-
-        let events = delta_inventory(entity, &prev, &curr);
-
-        assert_eq!(events.len(), 1);
-        let event = match &events[0] {
-            EntityChange::InventoryItemRemove(event) => event,
-            event => panic!(
-                "unexpected event {:?}, expected {}",
-                event,
-                stringify!(EntityChange::InventoryItemRemove),
-            ),
-        };
-
-        assert_eq!(event.entity, entity);
-        assert_eq!(event.id, id);
     }
 }

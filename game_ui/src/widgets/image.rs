@@ -31,6 +31,12 @@ impl Image {
     }
 }
 
+impl Default for Image {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Widget for Image {
     fn build(self, cx: &Scope) -> Scope {
         cx.push(Node {

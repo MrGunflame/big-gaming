@@ -70,6 +70,12 @@ impl<K: Key, V: WithEvent<K> + Copy> EntityManager<K, V> {
     }
 }
 
+impl<K: Key, V: WithEvent<K> + Copy> Default for EntityManager<K, V> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 pub struct EntityMut<'a, K, V>
 where
     K: Key + Copy,
@@ -98,7 +104,7 @@ where
     type Target = V;
 
     fn deref(&self) -> &Self::Target {
-        &self.entity
+        self.entity
     }
 }
 
@@ -108,7 +114,7 @@ where
     V: WithEvent<K> + Copy,
 {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.entity
+        self.entity
     }
 }
 
@@ -120,7 +126,7 @@ new_key_type! {
     pub struct CameraId;
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct SceneEntities {
     pub objects: EntityManager<ObjectId, Object>,
     pub cameras: EntityManager<CameraId, Camera>,

@@ -33,7 +33,6 @@ pub mod sequence;
 pub mod shutdown;
 
 mod action;
-mod combat;
 mod components;
 mod inventory;
 mod properties;
@@ -42,12 +41,10 @@ mod record;
 mod terrain;
 
 use game_common::components::actions::ActionId;
-use game_common::components::combat::Health;
 use game_common::components::inventory::InventoryId;
 use game_common::components::items::ItemId;
 use game_common::components::object::ObjectId;
 use game_common::components::race::RaceId;
-use game_common::id::WeakId;
 use game_common::record::RecordReference;
 use game_common::world::control_frame::ControlFrame;
 use game_common::world::entity::{Actor, EntityBody, Item, Object, Terrain};
@@ -568,7 +565,6 @@ impl Encode for EntityBody {
             Self::Actor(actor) => {
                 2u8.encode(&mut buf)?;
                 actor.race.encode(&mut buf)?;
-                actor.health.encode(&mut buf)?;
             }
             Self::Item(item) => {
                 3u8.encode(&mut buf)?;
@@ -601,9 +597,8 @@ impl Decode for EntityBody {
             }
             2u8 => {
                 let race = RaceId::decode(&mut buf)?;
-                let health = Health::decode(&mut buf)?;
 
-                Ok(Self::Actor(Actor { race, health }))
+                Ok(Self::Actor(Actor { race }))
             }
             3u8 => {
                 let id = ItemId::decode(&mut buf)?;
@@ -685,7 +680,6 @@ pub struct EntityRotate {
 #[derive(Copy, Clone, Debug, Encode, Decode)]
 pub struct EntityHealth {
     pub entity: ServerEntity,
-    pub health: Health,
 }
 
 #[derive(Copy, Clone, Debug, Encode, Decode)]
@@ -1315,34 +1309,6 @@ impl From<u8> for InvalidEntityKind {
 pub enum EncryptionField {
     None,
     Aes128,
-}
-
-impl<T> Encode for WeakId<T>
-where
-    T: Encode,
-{
-    type Error = <T as Encode>::Error;
-
-    fn encode<B>(&self, buf: B) -> Result<(), Self::Error>
-    where
-        B: BufMut,
-    {
-        self.0.encode(buf)
-    }
-}
-
-impl<T> Decode for WeakId<T>
-where
-    T: Decode,
-{
-    type Error = <T as Decode>::Error;
-
-    fn decode<B>(buf: B) -> Result<Self, Self::Error>
-    where
-        B: Buf,
-    {
-        T::decode(buf).map(Self)
-    }
 }
 
 impl Encode for ObjectId {

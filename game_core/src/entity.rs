@@ -1,4 +1,3 @@
-use game_common::components::combat::Health;
 use game_common::components::components::{Component, Components};
 use game_common::components::object::ObjectId;
 use game_common::components::race::RaceId;
@@ -37,7 +36,6 @@ impl SpawnEntity {
             }),
             RecordBody::Race(race) => EntityBody::Actor(Actor {
                 race: RaceId(self.id),
-                health: Health::default(),
             }),
         };
 

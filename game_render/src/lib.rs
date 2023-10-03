@@ -54,7 +54,7 @@ pub struct Renderer {
 
     pub entities: SceneEntities,
 
-    backlog: VecDeque<Event>,
+    backlog: VecDeque<SurfaceEvent>,
     state: Arc<Mutex<RenderState>>,
 
     pub images: Images,
@@ -135,11 +135,11 @@ impl Renderer {
 
     /// Create a new renderer for the window.
     pub fn create(&mut self, id: WindowId, window: WindowState) {
-        self.backlog.push_back(Event::CreateSurface(id, window));
+        self.backlog.push_back(SurfaceEvent::Create(id, window));
     }
 
     pub fn resize(&mut self, id: WindowId, size: UVec2) {
-        self.backlog.push_back(Event::ResizeSurface(id, size));
+        self.backlog.push_back(SurfaceEvent::Resize(id, size));
 
         self.entities.cameras.for_each_mut(|_, mut camera| {
             if camera.target == RenderTarget::Window(id) {
@@ -149,7 +149,7 @@ impl Renderer {
     }
 
     pub fn destroy(&mut self, id: WindowId) {
-        self.backlog.push_back(Event::DestroySurface(id));
+        self.backlog.push_back(SurfaceEvent::Destroy(id));
     }
 
     // TODO: Get rid of this shit.
@@ -203,13 +203,13 @@ impl Renderer {
 
         while let Some(event) = self.backlog.pop_front() {
             match event {
-                Event::CreateSurface(id, state) => {
+                SurfaceEvent::Create(id, state) => {
                     surfaces.create(instance, adapter, device, state, id);
                 }
-                Event::ResizeSurface(id, size) => {
+                SurfaceEvent::Resize(id, size) => {
                     surfaces.resize(id, device, size);
                 }
-                Event::DestroySurface(id) => {
+                SurfaceEvent::Destroy(id) => {
                     surfaces.destroy(id);
                 }
             }
@@ -217,9 +217,15 @@ impl Renderer {
     }
 }
 
+impl Default for Renderer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[derive(Debug)]
-enum Event {
-    CreateSurface(WindowId, WindowState),
-    ResizeSurface(WindowId, UVec2),
-    DestroySurface(WindowId),
+enum SurfaceEvent {
+    Create(WindowId, WindowState),
+    Resize(WindowId, UVec2),
+    Destroy(WindowId),
 }

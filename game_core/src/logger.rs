@@ -88,6 +88,12 @@ impl Logger {
     }
 }
 
+impl Default for Logger {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Subscriber for Logger {
     fn enabled(&self, metadata: &Metadata<'_>) -> bool {
         *metadata.level() <= self.level

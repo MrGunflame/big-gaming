@@ -249,7 +249,7 @@ impl LayoutTree {
                     let mut bounds = ComputedBounds::ZERO;
                     for key in children {
                         // Elements with absolute position are excluded.
-                        let child = self.elems.get(&key).unwrap();
+                        let child = self.elems.get(key).unwrap();
                         if child.style.position.is_absolute() {
                             continue;
                         }
@@ -583,7 +583,7 @@ impl LayoutTree {
 
     fn computed_sizes(&mut self) {
         for (key, elem) in self.elems.iter() {
-            let layout = self.layouts.get_mut(&key).unwrap();
+            let layout = self.layouts.get_mut(key).unwrap();
 
             layout.style = ComputedStyle::new(elem.style.clone(), self.size);
 
@@ -604,7 +604,7 @@ impl LayoutTree {
         }
     }
 
-    pub fn keys<'a>(&'a self) -> impl Iterator<Item = Key> + 'a {
+    pub fn keys(&self) -> impl Iterator<Item = Key> + '_ {
         self.elems.keys().copied()
     }
 
@@ -620,6 +620,12 @@ impl LayoutTree {
 
     pub fn layout(&self, key: Key) -> Option<&Layout> {
         self.layouts.get(&key)
+    }
+}
+
+impl Default for LayoutTree {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -657,7 +663,7 @@ impl<'a> Iterator for Layouts<'a> {
     type Item = &'a Layout;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.keys.next().map(|(k, _)| self.layouts.get(&k).unwrap())
+        self.keys.next().map(|(k, _)| self.layouts.get(k).unwrap())
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {

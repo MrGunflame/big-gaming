@@ -110,7 +110,7 @@ impl DataMessageBody {
         }
     }
 
-    pub(crate) fn from_frame(frame: Frame, cf: ControlFrame) -> Self {
+    pub(crate) fn from_frame(frame: Frame) -> Self {
         match frame {
             Frame::EntityCreate(frame) => Self::EntityCreate(EntityCreate {
                 entity: frame.entity,
