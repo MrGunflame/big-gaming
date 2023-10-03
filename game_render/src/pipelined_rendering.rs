@@ -2,8 +2,8 @@ use std::marker::PhantomData;
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::Arc;
 
-use crossbeam::sync::{Parker, Unparker};
 use game_common::cell::UnsafeRefCell;
+use game_tasks::park::Parker;
 use game_tracing::trace_span;
 use wgpu::{Adapter, CommandEncoderDescriptor, Device, Instance, Queue, TextureViewDescriptor};
 
@@ -24,14 +24,14 @@ pub struct SharedState {
     pub graph: UnsafeRefCell<RenderGraph>,
     state: AtomicU8,
     /// Unparker for the calling thread.
-    main_unparker: Unparker,
+    main_unparker: Arc<Parker>,
 }
 
 pub struct Pipeline {
     pub shared: Arc<SharedState>,
-    main_parker: Parker,
+    main_parker: Arc<Parker>,
     /// Unparker for the render thread.
-    render_unparker: Unparker,
+    render_unparker: Arc<Parker>,
     // While `Pipeline` is not directly thread-unsafe, we make no guarantees
     // whether atomic operations hold up when dispatching renders from multiple
     // threads.
@@ -40,8 +40,8 @@ pub struct Pipeline {
 
 impl Pipeline {
     pub fn new(instance: Instance, adapter: Adapter, device: Device, queue: Queue) -> Self {
-        let main_parker = Parker::new();
-        let main_unparker = main_parker.unparker().clone();
+        let main_parker = Arc::new(Parker::new());
+        let main_unparker = main_parker.clone();
 
         let shared = Arc::new(SharedState {
             mipmap_generator: UnsafeRefCell::new(MipMapGenerator::new(&device)),
@@ -91,9 +91,9 @@ impl Pipeline {
     }
 }
 
-fn start_render_thread(shared: Arc<SharedState>) -> Unparker {
-    let parker = Parker::new();
-    let unparker = parker.unparker().clone();
+fn start_render_thread(shared: Arc<SharedState>) -> Arc<Parker> {
+    let parker = Arc::new(Parker::new());
+    let unparker = parker.clone();
 
     std::thread::spawn(move || loop {
         // FIXME: If it is guaranteed that the parker will never yield
