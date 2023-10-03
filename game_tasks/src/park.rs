@@ -7,65 +7,36 @@
 //! next parking thread to wake up immediately.
 
 use crate::loom::sync::atomic::{AtomicUsize, Ordering};
-use crate::loom::sync::{Arc, Condvar, Mutex};
+use crate::loom::sync::{Condvar, Mutex};
 
-/// A thread parker.
-#[derive(Clone, Debug)]
-pub struct Parker {
-    unparker: Unparker,
-}
-
-impl Parker {
-    /// Creates a new `Parker`.
-    pub fn new() -> Self {
-        Self {
-            unparker: Unparker {
-                inner: Arc::new(Inner {
-                    state: AtomicUsize::new(0),
-                    mutex: Mutex::new(()),
-                    cvar: Condvar::new(),
-                }),
-            },
-        }
-    }
-
-    /// Parks the thread until a token becomes available.
-    ///
-    /// If a token is available `park` will return immediately.
-    pub fn park(&self) {
-        self.unparker.inner.park();
-    }
-
-    /// Returns the [`Unparker`] for this `Parker`.
-    pub fn unparker(&self) -> &Unparker {
-        &self.unparker
-    }
-}
-
-/// A thread unparker.
-#[derive(Clone, Debug)]
-pub struct Unparker {
-    inner: Arc<Inner>,
-}
-
-impl Unparker {
-    /// Unparks a single parked thread.
-    ///
-    /// If no thread is waiting the next parked thread will wake up immediately.
-    pub fn unpark(&self) {
-        self.inner.unpark_one();
-    }
-}
-
+/// A thread parking/unparking token.
 #[derive(Debug)]
-struct Inner {
+pub struct Parker {
     state: AtomicUsize,
     mutex: Mutex<()>,
     cvar: Condvar,
 }
 
-impl Inner {
-    fn park(&self) {
+impl Parker {
+    #[cfg(not(loom))]
+    pub const fn new() -> Self {
+        Self {
+            state: AtomicUsize::new(0),
+            mutex: Mutex::new(()),
+            cvar: Condvar::new(),
+        }
+    }
+
+    #[cfg(loom)]
+    pub fn new() -> Self {
+        Self {
+            state: AtomicUsize::new(0),
+            mutex: Mutex::new(()),
+            cvar: Condvar::new(),
+        }
+    }
+
+    pub fn park(&self) {
         // To ensure any writes from the unpark operations are be observed we need to
         // perform a `Acquire` load the the unpark thread can synchronize with.
         let mut state = self.state.load(Ordering::Acquire);
@@ -120,7 +91,7 @@ impl Inner {
         }
     }
 
-    fn unpark_one(&self) {
+    pub fn unpark(&self) {
         // In order for the parked thread to observe the write to `state` we need to
         // perform a `Release` operation that the parked thread can synchronize with.
         let state = self.state.fetch_add(1, Ordering::Release);
@@ -147,8 +118,8 @@ mod tests {
 
     #[test]
     fn test_park() {
-        let parker = Parker::new();
-        let unparker = parker.unparker().clone();
+        let parker = Arc::new(Parker::new());
+        let unparker = parker.clone();
 
         std::thread::spawn(move || {
             unparker.unpark();
@@ -159,8 +130,8 @@ mod tests {
 
     #[test]
     fn test_park_many() {
-        let parker = Parker::new();
-        let unparker = parker.unparker.clone();
+        let parker = Arc::new(Parker::new());
+        let unparker = parker.clone();
 
         for _ in 0..NUM_THREADS {
             let unparker = unparker.clone();
@@ -176,8 +147,8 @@ mod tests {
 
     #[test]
     fn park_threads_at_once() {
-        let parker = Parker::new();
-        let unparker = parker.unparker.clone();
+        let parker = Arc::new(Parker::new());
+        let unparker = parker.clone();
         let barrier = Arc::new(Barrier::new(NUM_THREADS + 1));
 
         for _ in 0..NUM_THREADS {
