@@ -79,7 +79,7 @@ pub struct EntityAction {
 }
 
 impl DataMessageBody {
-    pub(crate) fn to_frame(self) -> Frame {
+    pub(crate) fn into_frame(self) -> Frame {
         match self {
             DataMessageBody::EntityCreate(msg) => Frame::EntityCreate(proto::EntityCreate {
                 entity: msg.entity,

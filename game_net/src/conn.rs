@@ -5,10 +5,10 @@ use std::collections::{HashMap, VecDeque};
 use std::future::Future;
 use std::marker::PhantomData;
 use std::pin::Pin;
-use std::sync::atomic::{AtomicU32, Ordering};
-use std::task::{Context, Poll};
+use std::task::{ready, Context, Poll};
 use std::time::{Duration, Instant};
 
+use futures::future::FusedFuture;
 use futures::{Sink, SinkExt, Stream, StreamExt};
 use game_common::world::control_frame::ControlFrame;
 use parking_lot::Mutex;
@@ -37,26 +37,6 @@ where
     Stream(#[from] E),
 }
 
-static CONNECTION_ID: AtomicU32 = AtomicU32::new(0);
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct ConnectionId(pub u32);
-
-impl ConnectionId {
-    #[inline]
-    pub fn new() -> Self {
-        let id = CONNECTION_ID.fetch_add(1, Ordering::Relaxed);
-        Self(id)
-    }
-}
-
-impl Default for ConnectionId {
-    #[inline]
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 /// A bidirectional stream underlying a [`Connection`].
 // FIXME: We don't need `Unpin`.
 pub trait ConnectionStream: Stream<Item = Packet> + Sink<Packet> + Unpin {
@@ -70,7 +50,6 @@ where
     S::Error: std::error::Error,
     M: ConnectionMode,
 {
-    pub id: ConnectionId,
     stream: S,
 
     reader: mpsc::Receiver<Message>,
@@ -82,7 +61,6 @@ where
 
     packet_queue: VecDeque<Packet>,
     frame_queue: VecDeque<(Frame, ControlFrame, MessageId)>,
-    write: Option<WriteRequest>,
 
     next_local_sequence: Sequence,
     next_peer_sequence: Sequence,
@@ -116,6 +94,7 @@ where
     // MessageId => last sequence
     messages_in: HashMap<MessageId, Sequence>,
     next_id: u32,
+    is_writing: bool,
 }
 
 impl<S, M> Connection<S, M>
@@ -129,20 +108,16 @@ where
         control_frame: ControlFrame,
         const_delay: ControlFrame,
     ) -> (Self, ConnectionHandle) {
-        let id = ConnectionId::new();
-
         let (out_tx, out_rx) = mpsc::channel(4096);
         let (writer, reader) = mpsc::channel(4096);
 
         let mut conn = Self {
-            id,
             stream,
             state: ConnectionState::Handshake(HandshakeState::Hello),
             reader: out_rx,
             writer,
             packet_queue: VecDeque::new(),
             frame_queue: VecDeque::new(),
-            write: None,
             interval: TickInterval::new(),
             last_time: Instant::now(),
             next_local_sequence: Sequence::default(),
@@ -156,7 +131,7 @@ where
 
             _mode: PhantomData,
 
-            const_delay: const_delay.0 as u16,
+            const_delay: const_delay.0,
 
             max_data_size: 512,
             reassembly_buffer: ReassemblyBuffer::default(),
@@ -170,6 +145,7 @@ where
             message_out: HashMap::new(),
             messages_in: HashMap::new(),
             next_id: 0,
+            is_writing: false,
         };
 
         if M::IS_CONNECT {
@@ -179,7 +155,6 @@ where
         (
             conn,
             ConnectionHandle {
-                id,
                 chan_out: out_tx,
                 rx: Mutex::new(reader),
             },
@@ -189,7 +164,7 @@ where
     fn poll_read(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Error<S::Error>>> {
         // Flush the send buffer before reading any packets.
         if !self.packet_queue.is_empty() {
-            self.init_write(self.state);
+            self.init_write()?;
             return Poll::Ready(Ok(()));
         }
 
@@ -197,7 +172,10 @@ where
             self.last_time = Instant::now();
 
             let Some(packet) = packet else {
-                return self.abort();
+                // `None` means the remote peer has hung up and will
+                // no longer send/receive packets.
+                self.abort();
+                return Poll::Ready(Ok(()));
             };
 
             if self.handle_packet(packet).is_ready() {
@@ -216,7 +194,8 @@ where
 
         while let Poll::Ready(msg) = self.reader.poll_recv(cx) {
             let Some(msg) = msg else {
-                return self.shutdown();
+                self.shutdown();
+                return Poll::Ready(Ok(()));
             };
 
             match msg {
@@ -235,14 +214,14 @@ where
                             }),
                         };
 
-                        self.send_packet(packet, ConnectionState::Connected);
+                        self.packet_queue.push_back(packet);
                         return Poll::Ready(Ok(()));
                     }
                 }
                 Message::Data(msg) => {
                     let id = msg.id;
                     let cf = msg.control_frame;
-                    let frame = msg.body.to_frame();
+                    let frame = msg.body.into_frame();
                     self.frame_queue.push_back((frame, cf, id));
                 }
                 _ => unreachable!(),
@@ -281,28 +260,14 @@ where
         }
     }
 
-    fn init_write(&mut self, state: ConnectionState) {
+    fn init_write(&mut self) -> Result<(), S::Error> {
+        self.is_writing = true;
         let packet = self.packet_queue.pop_front().unwrap();
-
-        self.stream.start_send_unpin(packet);
-        self.write = Some(WriteRequest { state });
+        self.stream.start_send_unpin(packet)
     }
 
-    fn poll_write(&mut self, cx: &mut Context<'_>) -> Poll<()> {
-        debug_assert!(self.write.is_some());
-
-        let Some(req) = &mut self.write else {
-            unreachable!();
-        };
-
-        match self.stream.poll_ready_unpin(cx) {
-            Poll::Ready(res) => {
-                self.state = req.state;
-                self.write = None;
-                Poll::Ready(())
-            }
-            Poll::Pending => Poll::Pending,
-        }
+    fn poll_write(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), S::Error>> {
+        self.stream.poll_ready_unpin(cx)
     }
 
     ///
@@ -381,7 +346,9 @@ where
         }
 
         if let Some(nak) = nak {
-            self.send_packet(nak, ConnectionState::Connected)
+            self.packet_queue.push_back(nak);
+            self.state = ConnectionState::Connected;
+            Poll::Ready(Ok(()))
         } else {
             Poll::Ready(Ok(()))
         }
@@ -429,8 +396,9 @@ where
                 self.next_peer_sequence = body.initial_sequence;
                 self.peer_start_control_frame = header.control_frame;
 
-                return self
-                    .send_packet(resp, ConnectionState::Handshake(HandshakeState::Agreement));
+                self.packet_queue.push_back(resp);
+                self.state = ConnectionState::Handshake(HandshakeState::Agreement);
+                return Poll::Ready(Ok(()));
             }
             HandshakeState::Agreement if M::IS_CONNECT => {
                 if body.kind != HandshakeType::AGREEMENT {
@@ -457,7 +425,8 @@ where
             HandshakeState::Hello if M::IS_LISTEN => {
                 if body.kind != HandshakeType::HELLO {
                     tracing::info!("reject: expected HELLO, but got {:?}", body.kind);
-                    return self.reject(HandshakeType::REJ_ROGUE);
+                    self.reject(HandshakeType::REJ_ROGUE);
+                    return Poll::Ready(Ok(()));
                 }
 
                 let initial_sequence = create_initial_sequence();
@@ -486,13 +455,15 @@ where
                 self.next_peer_sequence = body.initial_sequence;
                 self.peer_start_control_frame = header.control_frame;
 
-                return self
-                    .send_packet(resp, ConnectionState::Handshake(HandshakeState::Agreement));
+                self.packet_queue.push_back(resp);
+                self.state = ConnectionState::Handshake(HandshakeState::Agreement);
+                return Poll::Ready(Ok(()));
             }
             HandshakeState::Agreement if M::IS_LISTEN => {
                 if body.kind != HandshakeType::AGREEMENT {
                     tracing::info!("reject: expected AGREEMENT, but got {:?}", body.kind);
-                    return self.reject(HandshakeType::REJ_ROGUE);
+                    self.reject(HandshakeType::REJ_ROGUE);
+                    return Poll::Ready(Ok(()));
                 }
 
                 if self.next_peer_sequence != body.initial_sequence {
@@ -526,7 +497,9 @@ where
                     .try_send(Message::Control(ControlMessage::Connected()))
                     .unwrap();
 
-                return self.send_packet(resp, ConnectionState::Connected);
+                self.packet_queue.push_back(resp);
+                self.state = ConnectionState::Connected;
+                return Poll::Ready(Ok(()));
             }
             // `M` is configured incorrectly. It must be either `IS_LISTEN` OR `IS_CONNECT`.
             HandshakeState::Hello | HandshakeState::Agreement => unreachable!(),
@@ -537,14 +510,49 @@ where
 
     fn handle_shutdown(
         &mut self,
-        header: Header,
+        _header: Header,
         body: Shutdown,
     ) -> Poll<Result<(), Error<S::Error>>> {
-        self.shutdown();
+        // The shutdown packet is the confirmation of our request.
+        // The connection is now considred dead.
+        if self.state == ConnectionState::Shutdown {
+            self.state = ConnectionState::Closing;
+            return Poll::Ready(Ok(()));
+        }
+
+        // The shutdown was initialized from the remote peer.
+
+        // If the connection active we need to notify that the player left.
+        if M::IS_LISTEN && self.state == ConnectionState::Connected {
+            // It is possible that both sides hang up simultaneously,
+            // at which point this will return `Err(..)`.
+            let _ = self
+                .writer
+                .try_send(Message::Control(ControlMessage::Disconnected));
+        }
+
+        let packet = Packet {
+            header: Header {
+                packet_type: PacketType::SHUTDOWN,
+                sequence: Sequence::new(0),
+                control_frame: ControlFrame(0),
+                flags: Flags::new(),
+            },
+            body: PacketBody::Shutdown(Shutdown {
+                reason: body.reason,
+            }),
+        };
+
+        self.packet_queue.push_back(packet);
+        self.state = ConnectionState::Closing;
         Poll::Ready(Ok(()))
     }
 
     fn handle_ack(&mut self, header: Header, body: Ack) -> Poll<Result<(), Error<S::Error>>> {
+        if !matches!(self.state, ConnectionState::Connected) {
+            return Poll::Pending;
+        }
+
         let sequence = body.sequence;
 
         // Convert back to local control frame.
@@ -573,10 +581,16 @@ where
             }),
         };
 
-        self.send_packet(packet, ConnectionState::Connected)
+        self.packet_queue.push_back(packet);
+        self.state = ConnectionState::Connected;
+        Poll::Ready(Ok(()))
     }
 
-    fn handle_ackack(&mut self, header: Header, body: AckAck) -> Poll<Result<(), Error<S::Error>>> {
+    fn handle_ackack(
+        &mut self,
+        _header: Header,
+        body: AckAck,
+    ) -> Poll<Result<(), Error<S::Error>>> {
         if let Some(ts) = self.ack_time_list.remove(body.ack_sequence) {
             self.rtt.update(ts.elapsed().as_micros() as u32);
         }
@@ -584,7 +598,7 @@ where
         Poll::Pending
     }
 
-    fn handle_nak(&mut self, header: Header, body: Nak) -> Poll<Result<(), Error<S::Error>>> {
+    fn handle_nak(&mut self, _header: Header, body: Nak) -> Poll<Result<(), Error<S::Error>>> {
         let mut start = body.sequences.start;
         let end = body.sequences.end;
 
@@ -623,7 +637,9 @@ where
             }),
         };
 
-        self.send_packet(packet, ConnectionState::Handshake(HandshakeState::Hello));
+        self.packet_queue.push_back(packet);
+        self.state = ConnectionState::Handshake(HandshakeState::Hello);
+        self.init_write().unwrap();
     }
 
     fn poll_tick(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Error<S::Error>>> {
@@ -670,7 +686,7 @@ where
 
                 self.ack_time_list.insert(sequence);
 
-                self.send_packet(packet, ConnectionState::Connected);
+                self.packet_queue.push_back(packet);
                 return Poll::Ready(Ok(()));
             } else if self.state == ConnectionState::Connected && tick.is_fire() {
                 self.write_snapshot();
@@ -681,7 +697,7 @@ where
         Poll::Pending
     }
 
-    fn reject(&mut self, reason: HandshakeType) -> Poll<Result<(), Error<S::Error>>> {
+    fn reject(&mut self, reason: HandshakeType) {
         // Don't accidently send a non-rejection.
         debug_assert!(reason.is_rejection());
 
@@ -704,11 +720,12 @@ where
             }),
         };
 
-        self.send_packet(resp, ConnectionState::Closed)
+        self.packet_queue.push_back(resp);
+        self.state = ConnectionState::Closing;
     }
 
     /// Closes the connection without doing a shutdown process.
-    fn abort(&mut self) -> Poll<Result<(), Error<S::Error>>> {
+    fn abort(&mut self) {
         // If the connection active we need to notify that the player left.
         if self.state == ConnectionState::Connected {
             self.writer
@@ -716,17 +733,16 @@ where
                 .unwrap();
         }
 
-        self.state = ConnectionState::Closed;
-
-        Poll::Ready(Ok(()))
+        self.state = ConnectionState::Closing;
     }
 
-    fn shutdown(&mut self) -> Poll<Result<(), Error<S::Error>>> {
+    /// Initialize a connection shutdown.
+    fn shutdown(&mut self) {
         // If the connection active we need to notify that the player left.
         if M::IS_LISTEN && self.state == ConnectionState::Connected {
-            self.writer
-                .try_send(Message::Control(ControlMessage::Disconnected))
-                .unwrap();
+            let _ = self
+                .writer
+                .try_send(Message::Control(ControlMessage::Disconnected));
         }
 
         let packet = Packet {
@@ -741,19 +757,20 @@ where
             }),
         };
 
-        self.send_packet(packet, ConnectionState::Closed);
-        Poll::Ready(Ok(()))
+        // Wait for the remote peer to confirm the shutdown
+        // before closing the stream.
+        self.packet_queue.push_back(packet);
+        self.state = ConnectionState::Shutdown;
     }
 
-    fn send_packet(
+    fn poll_closing(
         &mut self,
-        packet: Packet,
-        state: ConnectionState,
-    ) -> Poll<Result<(), Error<S::Error>>> {
-        self.stream.start_send_unpin(packet)?;
-        self.write = Some(WriteRequest { state });
+        cx: &mut Context<'_>,
+    ) -> Poll<Result<(), Error<<S as Sink<Packet>>::Error>>> {
+        let res = ready!(self.stream.poll_close_unpin(cx));
+        self.state = ConnectionState::Closed;
 
-        Poll::Ready(Ok(()))
+        Poll::Ready(res.map_err(Error::Stream))
     }
 }
 
@@ -767,36 +784,47 @@ where
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         loop {
-            if self.write.is_some() {
+            if self.is_writing {
                 match self.poll_write(cx) {
                     Poll::Pending => return Poll::Pending,
-                    Poll::Ready(()) => (),
+                    Poll::Ready(Ok(())) => (),
+                    Poll::Ready(Err(err)) => return Poll::Ready(Err(err.into())),
                 }
             }
 
             match self.state {
-                ConnectionState::Connected | ConnectionState::Handshake(_) => {
-                    match self.poll_read(cx) {
-                        Poll::Pending => return Poll::Pending,
-                        Poll::Ready(Err(err)) => return Poll::Ready(Err(err)),
-                        Poll::Ready(Ok(())) => (),
-                    }
-                }
+                ConnectionState::Connected
+                | ConnectionState::Handshake(_)
+                | ConnectionState::Shutdown => match self.poll_read(cx) {
+                    Poll::Pending => return Poll::Pending,
+                    Poll::Ready(Err(err)) => return Poll::Ready(Err(err)),
+                    Poll::Ready(Ok(())) => (),
+                },
+                ConnectionState::Closing => return self.poll_closing(cx),
                 ConnectionState::Closed => return Poll::Ready(Ok(())),
             }
         }
     }
 }
 
-struct WriteRequest {
-    /// The state to return to once done with writing.
-    state: ConnectionState,
+impl<S, M> FusedFuture for Connection<S, M>
+where
+    S: ConnectionStream,
+    S::Error: std::error::Error,
+    M: ConnectionMode,
+{
+    #[inline]
+    fn is_terminated(&self) -> bool {
+        matches!(self.state, ConnectionState::Closed)
+    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 enum ConnectionState {
     Handshake(HandshakeState),
     Connected,
+    Shutdown,
+    Closing,
     Closed,
 }
 
@@ -811,7 +839,6 @@ enum HandshakeState {
 
 #[derive(Debug)]
 pub struct ConnectionHandle {
-    pub id: ConnectionId,
     chan_out: mpsc::Sender<Message>,
     rx: Mutex<mpsc::Receiver<Message>>,
 }
@@ -1009,7 +1036,6 @@ impl ReassemblyBuffer {
                 };
 
                 self.ready_frames.push((frame, seq));
-                return;
             }
             PacketPosition::First => {
                 self.first_segments.insert(seq, buf);

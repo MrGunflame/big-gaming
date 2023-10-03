@@ -1082,7 +1082,7 @@ impl PacketBody {
     #[inline]
     pub fn as_data(&self) -> Option<&[u8]> {
         match self {
-            Self::Data(buf) => Some(&buf),
+            Self::Data(buf) => Some(buf),
             _ => None,
         }
     }
@@ -1167,7 +1167,7 @@ impl Encode for Packet {
                 header.packet_type = PacketType::DATA;
                 header.encode(&mut buf)?;
 
-                buf.put_slice(&body);
+                buf.put_slice(body);
             }
         }
 
