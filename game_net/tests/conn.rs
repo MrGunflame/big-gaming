@@ -189,3 +189,35 @@ async fn shutdown() {
 
     drop(handle);
 }
+
+#[tokio::test]
+async fn listener_shutdown() {
+    let (mut tx, mut rx, handle) = create_listen_connection();
+    do_handshake(&mut tx, &mut rx).await;
+
+    drop(handle);
+
+    let mut reason = None;
+    while let Some(packet) = rx.recv().await {
+        match packet.body {
+            PacketBody::Shutdown(shutdown) => {
+                reason = Some(shutdown.reason);
+                break;
+            }
+            _ => (),
+        }
+    }
+
+    tx.try_send(Packet {
+        header: Header {
+            packet_type: PacketType::SHUTDOWN,
+            sequence: Sequence::new(0),
+            control_frame: ControlFrame(0),
+            flags: Flags::new(),
+        },
+        body: PacketBody::Shutdown(Shutdown {
+            reason: reason.unwrap(),
+        }),
+    })
+    .unwrap();
+}

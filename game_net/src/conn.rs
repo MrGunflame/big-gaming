@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::task::{ready, Context, Poll};
 use std::time::{Duration, Instant};
 
-use futures::future::{ErrInto, FusedFuture};
+use futures::future::FusedFuture;
 use futures::{Sink, SinkExt, Stream, StreamExt};
 use game_common::world::control_frame::ControlFrame;
 use parking_lot::Mutex;
@@ -539,7 +539,38 @@ where
         header: Header,
         body: Shutdown,
     ) -> Poll<Result<(), Error<S::Error>>> {
-        self.shutdown();
+        // The shutdown packet is the confirmation of our request.
+        // The connection is now considred dead.
+        if self.state == ConnectionState::Shutdown {
+            self.state = ConnectionState::Closing;
+            return Poll::Ready(Ok(()));
+        }
+
+        // The shutdown was initialized from the remote peer.
+
+        // If the connection active we need to notify that the player left.
+        if M::IS_LISTEN && self.state == ConnectionState::Connected {
+            // It is possible that both sides hang up simultaneously,
+            // at which point this will return `Err(..)`.
+            let _ = self
+                .writer
+                .try_send(Message::Control(ControlMessage::Disconnected));
+        }
+
+        let packet = Packet {
+            header: Header {
+                packet_type: PacketType::SHUTDOWN,
+                sequence: Sequence::new(0),
+                control_frame: ControlFrame(0),
+                flags: Flags::new(),
+            },
+            body: PacketBody::Shutdown(Shutdown {
+                reason: body.reason,
+            }),
+        };
+
+        self.packet_queue.push_back(packet);
+        self.state = ConnectionState::Closing;
         Poll::Ready(Ok(()))
     }
 
@@ -727,12 +758,13 @@ where
         self.state = ConnectionState::Closing;
     }
 
+    /// Initialize a connection shutdown.
     fn shutdown(&mut self) {
         // If the connection active we need to notify that the player left.
         if M::IS_LISTEN && self.state == ConnectionState::Connected {
-            self.writer
-                .try_send(Message::Control(ControlMessage::Disconnected))
-                .unwrap();
+            let _ = self
+                .writer
+                .try_send(Message::Control(ControlMessage::Disconnected));
         }
 
         let packet = Packet {
@@ -747,8 +779,10 @@ where
             }),
         };
 
+        // Wait for the remote peer to confirm the shutdown
+        // before closing the stream.
         self.packet_queue.push_back(packet);
-        self.state = ConnectionState::Closing;
+        self.state = ConnectionState::Shutdown;
     }
 
     fn poll_closing(
@@ -781,13 +815,13 @@ where
             }
 
             match self.state {
-                ConnectionState::Connected | ConnectionState::Handshake(_) => {
-                    match self.poll_read(cx) {
-                        Poll::Pending => return Poll::Pending,
-                        Poll::Ready(Err(err)) => return Poll::Ready(Err(err)),
-                        Poll::Ready(Ok(())) => (),
-                    }
-                }
+                ConnectionState::Connected
+                | ConnectionState::Handshake(_)
+                | ConnectionState::Shutdown => match self.poll_read(cx) {
+                    Poll::Pending => return Poll::Pending,
+                    Poll::Ready(Err(err)) => return Poll::Ready(Err(err)),
+                    Poll::Ready(Ok(())) => (),
+                },
                 ConnectionState::Closing => return self.poll_closing(cx),
                 ConnectionState::Closed => return Poll::Ready(Ok(())),
             }
@@ -811,6 +845,7 @@ where
 enum ConnectionState {
     Handshake(HandshakeState),
     Connected,
+    Shutdown,
     Closing,
     Closed,
 }
