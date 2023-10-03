@@ -1,10 +1,10 @@
-use std::convert::Infallible;
 use std::future::Future;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
 use futures::{FutureExt, Sink, Stream};
 use tokio::sync::mpsc;
+use tokio::sync::mpsc::error::SendError;
 
 use crate::proto::Packet;
 
@@ -13,7 +13,7 @@ use super::ConnectionStream;
 pub struct ChannelStream {
     tx: mpsc::Sender<Packet>,
     rx: mpsc::Receiver<Packet>,
-    future: Option<Pin<Box<dyn Future<Output = ()> + Send + Sync>>>,
+    future: Option<Pin<Box<dyn Future<Output = Result<(), SendError<Packet>>> + Send + Sync>>>,
 }
 
 impl ChannelStream {
@@ -40,16 +40,17 @@ impl Stream for ChannelStream {
 }
 
 impl Sink<Packet> for ChannelStream {
-    type Error = Infallible;
+    type Error = SendError<Packet>;
 
     fn poll_ready(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         match &mut self.future {
             Some(fut) => match fut.poll_unpin(cx) {
                 Poll::Pending => Poll::Pending,
-                Poll::Ready(res) => {
+                Poll::Ready(Ok(())) => {
                     self.future = None;
                     Poll::Ready(Ok(()))
                 }
+                Poll::Ready(Err(err)) => Poll::Ready(Err(err)),
             },
             None => Poll::Ready(Ok(())),
         }
@@ -57,17 +58,15 @@ impl Sink<Packet> for ChannelStream {
 
     fn start_send(mut self: Pin<&mut Self>, item: Packet) -> Result<(), Self::Error> {
         let tx = self.tx.clone();
-        self.future = Some(Box::pin(async move {
-            tx.send(item).await;
-        }));
+        self.future = Some(Box::pin(async move { tx.send(item).await }));
         Ok(())
     }
 
-    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+    fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         Poll::Ready(Ok(()))
     }
 
-    fn poll_close(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+    fn poll_close(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         Poll::Ready(Ok(()))
     }
 }
