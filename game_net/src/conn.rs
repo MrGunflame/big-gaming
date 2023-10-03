@@ -156,7 +156,7 @@ where
 
             _mode: PhantomData,
 
-            const_delay: const_delay.0 as u16,
+            const_delay: const_delay.0,
 
             max_data_size: 512,
             reassembly_buffer: ReassemblyBuffer::default(),
@@ -247,7 +247,7 @@ where
                 Message::Data(msg) => {
                     let id = msg.id;
                     let cf = msg.control_frame;
-                    let frame = msg.body.to_frame();
+                    let frame = msg.body.into_frame();
                     self.frame_queue.push_back((frame, cf, id));
                 }
                 _ => unreachable!(),
@@ -536,7 +536,7 @@ where
 
     fn handle_shutdown(
         &mut self,
-        header: Header,
+        _header: Header,
         body: Shutdown,
     ) -> Poll<Result<(), Error<S::Error>>> {
         // The shutdown packet is the confirmation of our request.
@@ -609,10 +609,14 @@ where
 
         self.packet_queue.push_back(packet);
         self.state = ConnectionState::Connected;
-        return Poll::Ready(Ok(()));
+        Poll::Ready(Ok(()))
     }
 
-    fn handle_ackack(&mut self, header: Header, body: AckAck) -> Poll<Result<(), Error<S::Error>>> {
+    fn handle_ackack(
+        &mut self,
+        _header: Header,
+        body: AckAck,
+    ) -> Poll<Result<(), Error<S::Error>>> {
         if let Some(ts) = self.ack_time_list.remove(body.ack_sequence) {
             self.rtt.update(ts.elapsed().as_micros() as u32);
         }
@@ -620,7 +624,7 @@ where
         Poll::Pending
     }
 
-    fn handle_nak(&mut self, header: Header, body: Nak) -> Poll<Result<(), Error<S::Error>>> {
+    fn handle_nak(&mut self, _header: Header, body: Nak) -> Poll<Result<(), Error<S::Error>>> {
         let mut start = body.sequences.start;
         let end = body.sequences.end;
 
@@ -661,7 +665,7 @@ where
 
         self.packet_queue.push_back(packet);
         self.state = ConnectionState::Handshake(HandshakeState::Hello);
-        self.init_write();
+        self.init_write().unwrap();
     }
 
     fn poll_tick(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Error<S::Error>>> {
@@ -1059,7 +1063,6 @@ impl ReassemblyBuffer {
                 };
 
                 self.ready_frames.push((frame, seq));
-                return;
             }
             PacketPosition::First => {
                 self.first_segments.insert(seq, buf);
