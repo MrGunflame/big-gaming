@@ -11,26 +11,6 @@ use glam::{Quat, Vec3};
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Actor;
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-#[deprecated(note = "Use ActorFlags instead")]
-pub struct ActorState(NonZeroU32);
-
-impl ActorState {
-    pub const DEFAULT: Self = Self(unsafe { NonZeroU32::new_unchecked(1) });
-    pub const DEAD: Self = Self(unsafe { NonZeroU32::new_unchecked(2) });
-
-    pub fn is_default(self) -> bool {
-        self == Self::DEFAULT
-    }
-}
-
-impl Default for ActorState {
-    #[inline]
-    fn default() -> Self {
-        Self::DEFAULT
-    }
-}
-
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 #[repr(transparent)]
 pub struct ActorFlag(NonZeroU32);
