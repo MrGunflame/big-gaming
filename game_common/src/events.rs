@@ -23,6 +23,10 @@ impl EventQueue {
         self.events.len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     pub fn push(&mut self, event: Event) {
         self.events.push_back(event);
     }

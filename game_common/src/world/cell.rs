@@ -26,9 +26,9 @@ pub struct CellId(u128);
 impl CellId {
     pub const ZERO: Self = Self::from_i32(IVec3::splat(0));
 
-    const MASK_X: u128 = 0x0000_0000_FFFF_FFFF__0000_0000_0000_0000;
-    const MASK_Y: u128 = 0x0000_0000_0000_0000__FFFF_FFFF_0000_0000;
-    const MASK_Z: u128 = 0x0000_0000_0000_0000__0000_0000_FFFF_FFFF;
+    const MASK_X: u128 = 0x0000_0000_FFFF_FFFF_0000_0000_0000_0000;
+    const MASK_Y: u128 = 0x0000_0000_0000_0000_FFFF_FFFF_0000_0000;
+    const MASK_Z: u128 = 0x0000_0000_0000_0000_0000_0000_FFFF_FFFF;
 
     /// Creates a new `CellId` from the given coordinates.
     #[inline]
@@ -196,7 +196,7 @@ impl Cell {
     }
 
     #[inline]
-    pub fn is_empty(&mut self) -> bool {
+    pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
 

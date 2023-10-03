@@ -110,6 +110,9 @@ impl Limb {
         Self(NonZeroU8::new(id).unwrap())
     }
 
+    /// # Safety
+    ///
+    /// `id > 0`.
     #[inline]
     pub const unsafe fn new_unchecked(id: u8) -> Self {
         unsafe { Self(NonZeroU8::new_unchecked(id)) }
@@ -191,4 +194,10 @@ pub struct ActorProperties {
     /// The local offset (from the actor root) at which the camera sits.
     pub eyes: Vec3,
     // TODO: Add custom props
+}
+
+impl Default for SpawnPoints {
+    fn default() -> Self {
+        Self::new()
+    }
 }

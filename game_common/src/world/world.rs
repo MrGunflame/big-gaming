@@ -244,6 +244,12 @@ impl WorldState {
     }
 }
 
+impl Default for WorldState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[derive(Copy, Clone, Debug)]
 pub struct WorldViewRef<'a> {
     snapshot: &'a Snapshot,
@@ -308,6 +314,10 @@ pub struct WorldViewMut<'a> {
 impl<'a> WorldViewMut<'a> {
     pub fn len(&self) -> usize {
         self.snapshot_ref().entities.entities.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 
     pub(crate) fn snapshot_ref(&self) -> &Snapshot {
@@ -592,7 +602,7 @@ impl<'a> Deref for EntityMut<'a> {
     type Target = Entity;
 
     fn deref(&self) -> &Self::Target {
-        &self.entity
+        self.entity
     }
 }
 
@@ -795,9 +805,7 @@ impl Inventories {
     }
 
     pub fn get_mut_or_insert(&mut self, id: EntityId) -> &mut Inventory {
-        if !self.inventories.contains_key(&id) {
-            self.inventories.insert(id, Inventory::new());
-        }
+        self.inventories.entry(id).or_insert_with(Inventory::new);
 
         self.get_mut(id).unwrap()
     }

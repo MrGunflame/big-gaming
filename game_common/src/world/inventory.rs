@@ -77,7 +77,7 @@ impl<'a> Deref for InventoryMut<'a> {
     type Target = Inventory;
 
     fn deref(&self) -> &Self::Target {
-        &self.inventory
+        self.inventory
     }
 }
 

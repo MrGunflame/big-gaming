@@ -33,7 +33,7 @@ impl TerrainMesh {
 
             let y = projection.get(x, z);
 
-            vertices.push(Vec3::new(x as f32, y as f32, z as f32));
+            vertices.push(Vec3::new(x as f32, y, z as f32));
 
             if x != size_x - 1 && z != size_z - 1 {
                 // Up tri (index -> index + 10 -> index + 10 + 1)

@@ -23,7 +23,7 @@ impl FromStr for RecordId {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let bytes = hex::decode(s).map_err(ParseRecordIdError::InvalidHex)?;
 
-        if bytes.len() == 0 || bytes.len() > 4 {
+        if bytes.is_empty() || bytes.len() > 4 {
             return Err(ParseRecordIdError::Length(bytes.len()));
         }
 

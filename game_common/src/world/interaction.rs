@@ -55,3 +55,9 @@ impl Debug for Interaction {
             .finish_non_exhaustive()
     }
 }
+
+impl Default for Interactions {
+    fn default() -> Self {
+        Self::new()
+    }
+}
