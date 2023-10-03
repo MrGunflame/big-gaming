@@ -52,9 +52,8 @@
 //!
 
 use std::borrow::{Borrow, Cow};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::hash::Hash;
-use std::iter::FusedIterator;
 use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign};
 use std::sync::atomic::{AtomicU32, Ordering};
 
@@ -65,9 +64,8 @@ use crate::ButtonState;
 static EVENT_ID: AtomicU32 = AtomicU32::new(1);
 
 /// The global registry managing hotkeys.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Hotkeys {
-    inputs: InputMap,
     hotkeys: HotkeyMap,
 }
 
@@ -75,7 +73,6 @@ impl Hotkeys {
     /// Creates a new `Hotkeys`.
     pub fn new() -> Self {
         Self {
-            inputs: InputMap::new(),
             hotkeys: HotkeyMap::new(),
         }
     }
@@ -149,7 +146,7 @@ impl Hotkeys {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 struct HotkeyMap {
     hotkeys: Vec<(Hotkey, HotkeyState)>,
     ids: HashMap<HotkeyId, usize>,
@@ -241,83 +238,6 @@ impl HotkeyMap {
             let (_, state) = &mut self.hotkeys[*index];
             state.release(key);
         }
-    }
-
-    /// Returns an iterator over all [`HotkeyState`]s in this `HotkeyMap`.
-    #[inline]
-    fn states(&self) -> States<'_> {
-        States {
-            inner: self,
-            next: 0,
-        }
-    }
-}
-
-/// An iterator over all [`HotkeyState`]s in a [`HotkeyMap`].
-///
-/// Returned by [`states`].
-///
-/// [`states`]: HotkeyMap::states
-#[derive(Clone, Debug)]
-struct States<'a> {
-    inner: &'a HotkeyMap,
-    next: usize,
-}
-
-impl<'a> Iterator for States<'a> {
-    type Item = &'a HotkeyState;
-
-    #[inline]
-    fn next(&mut self) -> Option<Self::Item> {
-        let elem = self.inner.hotkeys.get(self.next)?;
-        self.next += 1;
-        Some(&elem.1)
-    }
-
-    #[inline]
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        (self.len(), Some(self.len()))
-    }
-}
-
-impl<'a> ExactSizeIterator for States<'a> {
-    #[inline]
-    fn len(&self) -> usize {
-        self.inner.hotkeys.len() - self.next
-    }
-}
-
-impl<'a> FusedIterator for States<'a> {}
-
-#[derive(Debug)]
-struct InputMap {
-    pressed: HashSet<KeyCode>,
-    just_pressed: HashSet<KeyCode>,
-    just_released: HashSet<KeyCode>,
-}
-
-impl InputMap {
-    fn new() -> Self {
-        Self {
-            pressed: HashSet::new(),
-            just_pressed: HashSet::new(),
-            just_released: HashSet::new(),
-        }
-    }
-
-    fn press(&mut self, key: KeyCode) {
-        self.pressed.insert(key);
-        self.just_pressed.insert(key);
-    }
-
-    fn release(&mut self, key: KeyCode) {
-        self.pressed.remove(&key);
-        self.just_released.insert(key);
-    }
-
-    fn clear(&mut self) {
-        self.just_pressed.clear();
-        self.just_released.clear();
     }
 }
 
@@ -673,8 +593,55 @@ pub struct HotkeyId(pub u32);
 
 #[cfg(test)]
 mod tests {
-    use super::{Hotkey, HotkeyMap, TriggerKind};
+    use std::iter::FusedIterator;
+
+    use super::{Hotkey, HotkeyMap, HotkeyState, TriggerKind};
     use crate::keyboard::KeyCode;
+
+    impl HotkeyMap {
+        fn states(&self) -> States<'_> {
+            States {
+                inner: self,
+                next: 0,
+            }
+        }
+    }
+
+    /// An iterator over all [`HotkeyState`]s in a [`HotkeyMap`].
+    ///
+    /// Returned by [`states`].
+    ///
+    /// [`states`]: HotkeyMap::states
+    #[derive(Clone, Debug)]
+    struct States<'a> {
+        inner: &'a HotkeyMap,
+        next: usize,
+    }
+
+    impl<'a> Iterator for States<'a> {
+        type Item = &'a HotkeyState;
+
+        #[inline]
+        fn next(&mut self) -> Option<Self::Item> {
+            let elem = self.inner.hotkeys.get(self.next)?;
+            self.next += 1;
+            Some(&elem.1)
+        }
+
+        #[inline]
+        fn size_hint(&self) -> (usize, Option<usize>) {
+            (self.len(), Some(self.len()))
+        }
+    }
+
+    impl<'a> ExactSizeIterator for States<'a> {
+        #[inline]
+        fn len(&self) -> usize {
+            self.inner.hotkeys.len() - self.next
+        }
+    }
+
+    impl<'a> FusedIterator for States<'a> {}
 
     #[test]
     fn test_hotkeymap() {
