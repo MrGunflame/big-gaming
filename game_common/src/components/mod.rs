@@ -2,13 +2,9 @@
 
 pub mod actions;
 pub mod actor;
-pub mod animation;
 pub mod camera;
-pub mod character;
-pub mod combat;
 pub mod components;
 pub mod entity;
-pub mod faction;
 pub mod inventory;
 pub mod items;
 pub mod object;

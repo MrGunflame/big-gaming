@@ -183,7 +183,6 @@ mod tests {
         let mut curr = Inventory::new();
         curr.insert(Item {
             id: item_id,
-            resistances: None,
             mass: Mass::default(),
             actions: Default::default(),
             components: Default::default(),
@@ -217,7 +216,6 @@ mod tests {
         let id = prev
             .insert(Item {
                 id: ItemId(RecordReference::STUB),
-                resistances: None,
                 mass: Mass::default(),
                 actions: Default::default(),
                 components: Default::default(),

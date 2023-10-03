@@ -6,7 +6,6 @@ use crate::record::RecordReference;
 use crate::units::Mass;
 
 use super::actions::Actions;
-use super::combat::Resistances;
 use super::components::Components;
 
 /// A stack of up to `u32::MAX` items.
@@ -32,8 +31,6 @@ impl ItemStack {
 #[derive(Clone, Debug)]
 pub struct Item {
     pub id: ItemId,
-    // TODO: Should these really be hardcoded here?
-    pub resistances: Option<Resistances>,
     pub mass: Mass,
     pub actions: Actions,
     pub components: Components,
