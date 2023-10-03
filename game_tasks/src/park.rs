@@ -124,7 +124,7 @@ impl Inner {
         // In order for the parked thread to observe the write to `state` we need to
         // perform a `Release` operation that the parked thread can synchronize with.
         let state = self.state.fetch_add(1, Ordering::Release);
-        assert!(state <= usize::MAX);
+        assert!(state < usize::MAX);
 
         // There is a period between the parking thread checking `state` and going
         // to sleep. If we were to notify it during that time, it would go to sleep
