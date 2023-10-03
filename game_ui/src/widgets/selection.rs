@@ -8,13 +8,6 @@ use crate::style::{Background, Bounds, Size, SizeVec2, Style};
 
 use super::{Callback, Input, Widget};
 
-pub struct SelectionProps {
-    pub options: Vec<String>,
-    /// default
-    pub value: Option<usize>,
-    pub on_change: SelectionChangeHandler,
-}
-
 pub struct Selection {
     options: Vec<String>,
     value: Option<usize>,
@@ -49,6 +42,12 @@ impl Selection {
     }
 }
 
+impl Default for Selection {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Widget for Selection {
     fn build(self, cx: &Scope) -> Scope {
         let num_options = self.options.len();
@@ -76,7 +75,7 @@ impl Widget for Selection {
                 local: EventHandlers {
                     mouse_button_input: {
                         let set_state = set_state.clone();
-                        Some(Box::new(move |ctx| {
+                        Some(Box::new(move |_ctx| {
                             set_state.update(|state| *state = true);
                         }))
                     },
@@ -170,7 +169,7 @@ impl Widget for Selection {
                                     let set_state = set_state.clone();
                                     let set_value = set_value.clone();
 
-                                    Some(Box::new(move |ctx| {
+                                    Some(Box::new(move |_ctx| {
                                         set_state.update(|state| *state = false);
                                         set_value.update(|val| *val = Value::Option(index));
                                     }))

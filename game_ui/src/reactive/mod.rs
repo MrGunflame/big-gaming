@@ -245,8 +245,7 @@ impl Document {
                     let parent = doc
                         .nodes
                         .parent(id)
-                        .map(|parent| doc.nodes.get(parent))
-                        .flatten();
+                        .and_then(|parent| doc.nodes.get(parent));
 
                     let key = tree.push(parent, node.element);
 

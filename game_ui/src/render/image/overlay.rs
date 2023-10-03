@@ -13,7 +13,7 @@ use image::{ImageBuffer, Rgba};
 /// top must fit on bottom without overlapping, i.e. `bottom.width() >= top.width() + x` and
 /// `bottom.height() >= top.height() + y` must both be true.
 pub unsafe fn overlay_unchecked(
-    mut bottom: &mut ImageBuffer<Rgba<u8>, Vec<u8>>,
+    bottom: &mut ImageBuffer<Rgba<u8>, Vec<u8>>,
     top: &ImageBuffer<Rgba<u8>, Vec<u8>>,
     x: u32,
     y: u32,
@@ -28,7 +28,7 @@ pub unsafe fn overlay_unchecked(
         target_feature = "sse"
     ))]
     {
-        unsafe { x86::overlay(&mut bottom, &top, x, y) };
+        unsafe { x86::overlay(bottom, top, x, y) };
         return;
     }
 

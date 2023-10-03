@@ -14,11 +14,11 @@ use crate::layout::{Key, LayoutTree};
 use crate::render::Rect;
 
 #[derive(Clone, Debug)]
+#[non_exhaustive]
 pub struct Context<T> {
     pub cursor: Arc<Cursor>,
     pub event: T,
     pub window: WindowContext,
-    _priv: (),
 }
 
 impl<T> Context<T> {
@@ -27,7 +27,6 @@ impl<T> Context<T> {
             cursor: self.cursor,
             event,
             window: self.window,
-            _priv: (),
         }
     }
 }
@@ -168,7 +167,7 @@ pub(crate) fn dispatch_cursor_moved_events(
     window.hovered_elements.clear();
 
     for (key, rect) in &window.positions {
-        let Some(handlers) = window.events.get(&key) else {
+        let Some(handlers) = window.events.get(key) else {
             continue;
         };
 
@@ -179,7 +178,6 @@ pub(crate) fn dispatch_cursor_moved_events(
                 window: event.window,
                 tx: tx.clone(),
             },
-            _priv: (),
         };
 
         if let Some(f) = &handlers.global.cursor_moved {
@@ -212,7 +210,6 @@ pub(crate) fn dispatch_cursor_moved_events(
                 window: event.window,
                 tx: tx.clone(),
             },
-            _priv: (),
         };
 
         if let Some(f) = &handlers.local.cursor_left {
@@ -236,7 +233,7 @@ pub(crate) fn dispatch_mouse_button_input_events(
     };
 
     for (key, rect) in &window.positions {
-        let Some(handlers) = window.events.get(&key) else {
+        let Some(handlers) = window.events.get(key) else {
             continue;
         };
 
@@ -247,7 +244,6 @@ pub(crate) fn dispatch_mouse_button_input_events(
                 window: cursor.window().unwrap(),
                 tx: tx.clone(),
             },
-            _priv: (),
         };
 
         if let Some(f) = &handlers.global.mouse_button_input {
@@ -277,7 +273,7 @@ pub(crate) fn dispatch_mouse_wheel_events(
     };
 
     for (key, rect) in &window.positions {
-        let Some(handlers) = window.events.get(&key) else {
+        let Some(handlers) = window.events.get(key) else {
             continue;
         };
 
@@ -288,7 +284,6 @@ pub(crate) fn dispatch_mouse_wheel_events(
                 window: cursor.window().unwrap(),
                 tx: tx.clone(),
             },
-            _priv: (),
         };
 
         if let Some(f) = &handlers.global.mouse_wheel {
@@ -318,7 +313,7 @@ pub(crate) fn dispatch_received_character_events(
     };
 
     for (key, rect) in &window.positions {
-        let Some(handlers) = window.events.get(&key) else {
+        let Some(handlers) = window.events.get(key) else {
             continue;
         };
 
@@ -329,7 +324,6 @@ pub(crate) fn dispatch_received_character_events(
                 window: cursor.window().unwrap(),
                 tx: tx.clone(),
             },
-            _priv: (),
         };
 
         if let Some(f) = &handlers.global.received_character {
@@ -359,7 +353,7 @@ pub(crate) fn dispatch_keyboard_input_events(
     };
 
     for (key, rect) in &window.positions {
-        let Some(handlers) = window.events.get(&key) else {
+        let Some(handlers) = window.events.get(key) else {
             continue;
         };
 
@@ -370,7 +364,6 @@ pub(crate) fn dispatch_keyboard_input_events(
                 window: cursor.window().unwrap(),
                 tx: tx.clone(),
             },
-            _priv: (),
         };
 
         if let Some(f) = &handlers.global.keyboard_input {

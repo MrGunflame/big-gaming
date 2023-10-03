@@ -74,33 +74,33 @@ where
     let _span = trace_span!("debug_padding").entered();
 
     if cfg!(debug_assertions) {
-        assert!(image.width() >= (padding.left + padding.right) as u32);
-        assert!(image.height() >= (padding.top + padding.bottom) as u32);
+        assert!(image.width() >= (padding.left + padding.right));
+        assert!(image.height() >= (padding.top + padding.bottom));
     }
 
     // Top
-    for y in 0..padding.top as u32 {
+    for y in 0..padding.top {
         for x in 0..image.width() {
             image.get_pixel_mut(x, y).blend(&PADDING_COLOR);
         }
     }
 
     // Bottom
-    for y in image.height() - padding.bottom as u32..image.height() {
+    for y in image.height() - padding.bottom..image.height() {
         for x in 0..image.width() {
             image.get_pixel_mut(x, y).blend(&PADDING_COLOR);
         }
     }
 
     // Left
-    for x in 0..padding.left as u32 {
+    for x in 0..padding.left {
         for y in 0..image.height() {
             image.get_pixel_mut(x, y).blend(&PADDING_COLOR);
         }
     }
 
     // Right
-    for x in image.width() - padding.right as u32..image.width() {
+    for x in image.width() - padding.right..image.width() {
         for y in 0..image.height() {
             image.get_pixel_mut(x, y).blend(&PADDING_COLOR);
         }

@@ -28,7 +28,6 @@ use glam::UVec2;
 use reactive::{Document, Runtime};
 
 use render::UiRenderer;
-use wgpu::{Device, Queue};
 
 pub struct UiState {
     renderer: UiRenderer,
@@ -44,7 +43,7 @@ impl UiState {
         let (command_tx, command_rx) = mpsc::channel();
 
         Self {
-            renderer: UiRenderer::new(&renderer),
+            renderer: UiRenderer::new(renderer),
             runtime: Runtime::new(),
             windows: HashMap::new(),
             events: HashMap::new(),

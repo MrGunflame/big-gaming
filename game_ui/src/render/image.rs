@@ -85,8 +85,8 @@ pub fn apply_background(img: &mut ImageBuffer<Rgba<u8>, Vec<u8>>, style: &Comput
 
             let mut buffer = ImageBuffer::new(width, height);
 
-            let start_x = style.padding.left as u32;
-            let start_y = style.padding.top as u32;
+            let start_x = style.padding.left;
+            let start_y = style.padding.top;
 
             for x in start_x..start_x + img.width() {
                 for y in start_y..start_y + img.height() {
@@ -101,8 +101,7 @@ pub fn apply_background(img: &mut ImageBuffer<Rgba<u8>, Vec<u8>>, style: &Comput
         Background::Color(color) => {
             let size = (width as usize)
                 .checked_mul(height as usize)
-                .map(|r| r.checked_mul(std::mem::size_of::<Rgba<u8>>()))
-                .flatten()
+                .and_then(|r| r.checked_mul(std::mem::size_of::<Rgba<u8>>()))
                 .unwrap();
 
             let mut buf: Vec<u8> = Vec::with_capacity(size);
@@ -125,12 +124,7 @@ pub fn apply_background(img: &mut ImageBuffer<Rgba<u8>, Vec<u8>>, style: &Comput
             let mut buffer = ImageBuffer::from_raw(width, height, buf).unwrap();
 
             unsafe {
-                overlay_unchecked(
-                    &mut buffer,
-                    &img,
-                    style.padding.left as u32,
-                    style.padding.top as u32,
-                );
+                overlay_unchecked(&mut buffer, img, style.padding.left, style.padding.top);
             };
 
             *img = buffer;
@@ -139,12 +133,7 @@ pub fn apply_background(img: &mut ImageBuffer<Rgba<u8>, Vec<u8>>, style: &Comput
             let mut buffer = image::imageops::resize(image, width, height, FilterType::Nearest);
 
             unsafe {
-                overlay_unchecked(
-                    &mut buffer,
-                    &img,
-                    style.padding.left as u32,
-                    style.padding.top as u32,
-                );
+                overlay_unchecked(&mut buffer, img, style.padding.left, style.padding.top);
             }
 
             *img = buffer;
@@ -175,8 +164,8 @@ fn apply_border_radius(
         start.y + border_radius.top_left,
     );
 
-    for x in start.x as u32..end.x as u32 {
-        for y in start.y as u32..end.y as u32 {
+    for x in start.x..end.x {
+        for y in start.y..end.y {
             let distance = (end.as_vec2() - UVec2::new(x, y).as_vec2()).length();
 
             if distance as u32 > border_radius.top_left {
@@ -194,8 +183,8 @@ fn apply_border_radius(
         start.y.saturating_sub(border_radius.bottom_left + 1),
     );
 
-    for x in start.x as u32..end.x as u32 {
-        for y in end.y as u32..start.y as u32 {
+    for x in start.x..end.x {
+        for y in end.y..start.y {
             let distance = (end.as_vec2() - UVec2::new(x, y).as_vec2()).length();
 
             if distance as u32 > border_radius.bottom_left {
@@ -213,8 +202,8 @@ fn apply_border_radius(
         start.y + border_radius.top_right,
     );
 
-    for x in end.x as u32..start.x as u32 {
-        for y in start.y as u32..end.y as u32 {
+    for x in end.x..start.x {
+        for y in start.y..end.y {
             let distance = (end.as_vec2() - UVec2::new(x, y).as_vec2()).length();
 
             if distance as u32 > border_radius.top_right {
@@ -232,8 +221,8 @@ fn apply_border_radius(
         start.y.saturating_sub(border_radius.bottom_right + 1),
     );
 
-    for x in end.x as u32..start.x as u32 {
-        for y in end.y as u32..start.y as u32 {
+    for x in end.x..start.x {
+        for y in end.y..start.y {
             let distance = (end.as_vec2() - UVec2::new(x, y).as_vec2()).length();
 
             if distance as u32 > border_radius.bottom_right {
