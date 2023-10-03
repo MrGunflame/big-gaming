@@ -19,7 +19,7 @@ use crate::world::snapshot::EntityChange;
 pub use metrics::WorldMetrics;
 
 use super::control_frame::ControlFrame;
-use super::entity::{Entity, EntityBody};
+use super::entity::Entity;
 use super::inventory::InventoriesMut;
 use super::source::StreamingSource;
 
@@ -700,13 +700,6 @@ impl Snapshot {
                     tracing::warn!("tried to rotate a non-existant entity");
                 }
             }
-            EntityChange::Health { id, health } => {
-                if let Some(entity) = self.entities.get_mut(id) {
-                    if let EntityBody::Actor(actor) = &mut entity.body {
-                        actor.health = health;
-                    }
-                }
-            }
             EntityChange::CreateHost { id } => {
                 if let Some(entity) = self.entities.get_mut(id) {
                     entity.is_host = true;
@@ -722,7 +715,6 @@ impl Snapshot {
 
                 let item = Item {
                     id: event.item,
-                    resistances: None,
                     actions: Default::default(),
                     components: Default::default(),
                     mass: Default::default(),
@@ -906,7 +898,7 @@ mod tests {
     use crate::components::object::ObjectId;
     use crate::components::transform::Transform;
     use crate::record::RecordReference;
-    use crate::world::entity::Object;
+    use crate::world::entity::{EntityBody, Object};
 
     use super::*;
 

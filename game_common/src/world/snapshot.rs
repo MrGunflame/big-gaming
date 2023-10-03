@@ -58,9 +58,6 @@ pub enum EntityChange {
         id: EntityId,
         rotation: Quat,
     },
-    Health {
-        id: EntityId,
-    },
     // Update { id: EntityId, data: Entity },
     Destroy {
         id: EntityId,
@@ -90,7 +87,6 @@ impl EntityChange {
             Self::Destroy { id } => *id,
             Self::Translate { id, translation: _ } => *id,
             Self::Rotate { id, rotation: _ } => *id,
-            Self::Health { id } => *id,
             Self::CreateHost { id } => *id,
             Self::DestroyHost { id } => *id,
             Self::InventoryItemAdd(event) => event.entity,
