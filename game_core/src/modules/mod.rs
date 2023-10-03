@@ -30,6 +30,10 @@ impl Modules {
         self.modules.len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     pub fn get(&self, id: ModuleId) -> Option<&ModuleData> {
         self.modules.get(&id)
     }
@@ -44,6 +48,12 @@ impl Modules {
 
     pub fn iter(&self) -> impl Iterator<Item = &ModuleData> {
         self.modules.values()
+    }
+}
+
+impl Default for Modules {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -179,7 +189,7 @@ fn load_module(
         }
     }
 
-    if let Err(err) = validate_module(&modules, &data) {
+    if let Err(err) = validate_module(modules, &data) {
         tracing::error!(
             "failed to load module {} ({}): {}",
             data.header.module.name,
@@ -247,7 +257,7 @@ fn validate_module(modules: &Modules, module: &DataBuffer) -> Result<(), Validat
                         });
                     }
 
-                    match fetch_record(&modules, &module, component.record) {
+                    match fetch_record(modules, module, component.record) {
                         Ok(rec) => {
                             if !rec.body.kind().is_component() {
                                 return Err(ValidationError {
@@ -298,14 +308,12 @@ fn fetch_record<'a>(
         return Err(ValidationErrorKind::UnknownDependency(id.module));
     }
 
-    module
-        .records
-        .iter()
-        .find(|rec| rec.id == id.record)
-        .ok_or_else(|| ValidationErrorKind::UnknownRecord {
+    module.records.iter().find(|rec| rec.id == id.record).ok_or(
+        ValidationErrorKind::UnknownRecord {
             module: id.module,
             id: id.record,
-        })
+        },
+    )
 }
 
 /// Temporary store used while loading modules.
