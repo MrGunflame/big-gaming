@@ -12,6 +12,8 @@ use game_core::entity::SpawnEntity;
 use game_net::message::{ControlMessage, DataMessageBody, Message};
 use glam::Vec3;
 
+use crate::entities::terrain::spawn_terrain;
+
 pub use self::conn::ServerConnection;
 
 fn flush_command_queue<I>(conn: &mut ServerConnection<I>) {
@@ -58,24 +60,28 @@ fn flush_command_queue<I>(conn: &mut ServerConnection<I>) {
         };
 
         match msg.body {
-            DataMessageBody::EntityCreate(msg) => match msg.data {
-                EntityBody::Actor(actor) => {
-                    let id = SpawnEntity {
-                        id: actor.race.0,
-                        transform: Transform {
-                            translation: msg.translation,
-                            rotation: msg.rotation,
-                            scale: Vec3::splat(1.0),
-                        },
-                        is_host: false,
-                    }
-                    .spawn(&conn.modules, &mut view)
-                    .unwrap();
+            DataMessageBody::EntityCreate(msg) => {
+                let id = match msg.data {
+                    EntityBody::Actor(actor) => actor.race.0,
+                    EntityBody::Object(object) => object.id.0,
+                    EntityBody::Item(item) => item.id.0,
+                    EntityBody::Terrain(terrain) => todo!(),
+                };
 
-                    conn.server_entities.insert(id, msg.entity);
+                let id = SpawnEntity {
+                    id,
+                    transform: Transform {
+                        translation: msg.translation,
+                        rotation: msg.rotation,
+                        scale: Vec3::splat(1.0),
+                    },
+                    is_host: false,
                 }
-                _ => todo!(),
-            },
+                .spawn(&conn.modules, &mut view)
+                .unwrap();
+
+                conn.server_entities.insert(id, msg.entity);
+            }
             DataMessageBody::EntityDestroy(msg) => match conn.server_entities.remove(msg.entity) {
                 Some(id) => {
                     if view.despawn(id).is_none() {
