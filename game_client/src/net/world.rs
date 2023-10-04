@@ -65,6 +65,10 @@ pub fn apply_world_delta<I>(
         handle_event(event.clone(), &mut buffer, conn, cmd_buffer, render_cf);
     }
 
+    // Remove all inputs that were acknowledged for this frame
+    // BEFORE we apply them.
+    conn.input_buffer.clear(render_cf);
+
     for msg in conn.input_buffer.iter() {
         match msg.body {
             DataMessageBody::EntityTranslate(msg) => {
@@ -144,8 +148,6 @@ pub fn apply_world_delta<I>(
 
         conn.current_state = Some(snapshot);
     }
-
-    conn.input_buffer.clear(render_cf);
 
     conn.last_render_frame = Some(render_cf);
 }

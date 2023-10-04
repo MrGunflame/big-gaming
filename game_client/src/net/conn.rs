@@ -226,12 +226,23 @@ impl<I> ServerConnection<I> {
                         .transform
                         .translation = translation;
                 }
-                Effect::EntityRotate(id, rotation) => cmd_buffer.push(Command::Rotate {
-                    entity: id,
-                    start: ControlFrame(0),
-                    end: ControlFrame(0),
-                    dst: rotation,
-                }),
+                Effect::EntityRotate(id, rotation) => {
+                    cmd_buffer.push(Command::Rotate {
+                        entity: id,
+                        start: ControlFrame(0),
+                        end: ControlFrame(0),
+                        dst: rotation,
+                    });
+
+                    self.current_state
+                        .as_mut()
+                        .unwrap()
+                        .entities
+                        .get_mut(id)
+                        .unwrap()
+                        .transform
+                        .rotation = rotation;
+                }
             }
         }
     }
