@@ -296,6 +296,14 @@ fn update_client(conn: &Connection, view: WorldViewRef<'_>, cf: ControlFrame) {
         }
     }
 
+    // ACKs need to be sent out before the actual data frames
+    // in the control frame. If we were to sent the data before
+    // a client with a low buffer might render the new state before
+    // removing the predicted input for the frame.
+    for id in conn.take_messages_in_frame() {
+        conn.handle().acknowledge(id, cf);
+    }
+
     let control_frame = view.control_frame();
     for body in update_client_entities(state, events) {
         let msg = DataMessage {
@@ -304,10 +312,6 @@ fn update_client(conn: &Connection, view: WorldViewRef<'_>, cf: ControlFrame) {
             body,
         };
         conn.handle().send(msg);
-    }
-
-    for id in conn.take_messages_in_frame() {
-        conn.handle().acknowledge(id, cf);
     }
 }
 

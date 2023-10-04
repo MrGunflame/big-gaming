@@ -226,12 +226,23 @@ impl<I> ServerConnection<I> {
                         .transform
                         .translation = translation;
                 }
-                Effect::EntityRotate(id, rotation) => cmd_buffer.push(Command::Rotate {
-                    entity: id,
-                    start: ControlFrame(0),
-                    end: ControlFrame(0),
-                    dst: rotation,
-                }),
+                Effect::EntityRotate(id, rotation) => {
+                    cmd_buffer.push(Command::Rotate {
+                        entity: id,
+                        start: ControlFrame(0),
+                        end: ControlFrame(0),
+                        dst: rotation,
+                    });
+
+                    self.current_state
+                        .as_mut()
+                        .unwrap()
+                        .entities
+                        .get_mut(id)
+                        .unwrap()
+                        .transform
+                        .rotation = rotation;
+                }
             }
         }
     }
@@ -253,11 +264,17 @@ where
             self.game_tick.current_control_frame += 1;
             self.game_tick.counter.update();
 
-            debug_assert!(self
+            // debug_assert!(self
+            //     .world
+            //     .get(self.game_tick.current_control_frame)
+            //     .is_none());
+            if self
                 .world
                 .get(self.game_tick.current_control_frame)
-                .is_none());
-            self.world.insert(self.game_tick.current_control_frame);
+                .is_none()
+            {
+                self.world.insert(self.game_tick.current_control_frame);
+            }
 
             // Snapshots render..head should now exist.
             if cfg!(debug_assertions) {

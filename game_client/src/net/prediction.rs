@@ -8,6 +8,8 @@ pub struct InputBuffer {
     // We need to buffer acknowledged messages until we render
     // that frame.
     removal_queue: HashMap<ControlFrame, Vec<MessageId>>,
+    /// Last rendered control frame.
+    last_cf: ControlFrame,
 }
 
 impl InputBuffer {
@@ -15,6 +17,7 @@ impl InputBuffer {
         Self {
             buffer: Vec::new(),
             removal_queue: HashMap::default(),
+            last_cf: ControlFrame(0),
         }
     }
 
@@ -23,7 +26,12 @@ impl InputBuffer {
     }
 
     pub fn remove(&mut self, cf: ControlFrame, id: MessageId) {
-        self.removal_queue.entry(cf).or_default().push(id);
+        if cf <= self.last_cf {
+            tracing::warn!("ACK for {:?} arrived too late, frame already rendered", cf);
+            self.buffer.retain(|msg| msg.id != id);
+        } else {
+            self.removal_queue.entry(cf).or_default().push(id);
+        }
     }
 
     pub fn clear(&mut self, render_cf: ControlFrame) {
@@ -32,6 +40,8 @@ impl InputBuffer {
                 self.buffer.retain(|msg| msg.id != id);
             }
         }
+
+        self.last_cf = render_cf;
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &DataMessage> {
