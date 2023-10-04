@@ -34,28 +34,37 @@ fn flush_command_queue<I>(conn: &mut ServerConnection<I>) {
                 // FIXME: Somehow the server tends to run 1 CF ahead of the client.
                 // Reducing the CF by 1 magically resolves all problems for low latency
                 // connections, but is this actually correct?
-                conn.input_buffer.remove(cf - 1, id);
+                conn.input_buffer.remove(cf, id);
                 continue;
             }
             Message::Data(msg) => msg,
         };
 
-        let Some(mut view) = conn.world.get_mut(msg.control_frame) else {
-            // If the control frame does not exist on the client ast least one of these issues are to blame:
-            // 1. The server is sending garbage data, refereing to a control frame that has either already
-            //    passed or is still too far in the future.
-            // 2. The client's clock is desynced and creating new snapshots too slow/fast.
-            // 3. The server's clock is desynced and creating new snapshots too slow/fast.
-            let front = conn.world.front().unwrap();
-            let back = conn.world.back().unwrap();
-            tracing::warn!(
-                "received snapshot for unknwon control frame: {:?} (snapshots  {:?}..={:?} exist)",
-                msg.control_frame,
-                front.control_frame(),
-                back.control_frame()
-            );
-            continue;
-        };
+        if conn.world.get(msg.control_frame).is_none() {
+            conn.world.insert(msg.control_frame);
+        }
+
+        let mut view = conn.world.get_mut(msg.control_frame).unwrap();
+
+        // let Some(mut view) = conn.world.get_mut(msg.control_frame) else {
+        //     // If the control frame does not exist on the client ast least one of these issues are to blame:
+        //     // 1. The server is sending garbage data, refereing to a control frame that has either already
+        //     //    passed or is still too far in the future.
+        //     // 2. The client's clock is desynced and creating new snapshots too slow/fast.
+        //     // 3. The server's clock is desynced and creating new snapshots too slow/fast.
+        //     // let front = conn.world.front().unwrap();
+        //     // let back = conn.world.back().unwrap();
+        //     // tracing::warn!(
+        //     //     "received snapshot for unknwon control frame: {:?} (snapshots  {:?}..={:?} exist)",
+        //     //     msg.control_frame,
+        //     //     front.control_frame(),
+        //     //     back.control_frame()
+        //     // );
+        //     // continue;
+
+        //     conn.world.insert(msg.control_frame);
+        //     conn.world.get_mut(msg.control_frame).unwrap()
+        // };
 
         match msg.body {
             DataMessageBody::EntityCreate(msg) => match msg.data {

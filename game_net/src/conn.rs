@@ -192,6 +192,8 @@ where
             return Poll::Pending;
         }
 
+        let mut packets_written = false;
+        let mut frames_written = false;
         while let Poll::Ready(msg) = self.reader.poll_recv(cx) {
             let Some(msg) = msg else {
                 self.shutdown();
@@ -215,7 +217,7 @@ where
                         };
 
                         self.packet_queue.push_back(packet);
-                        return Poll::Ready(Ok(()));
+                        packets_written = true;
                     }
                 }
                 Message::Data(msg) => {
@@ -223,12 +225,22 @@ where
                     let cf = msg.control_frame;
                     let frame = msg.body.into_frame();
                     self.frame_queue.push_back((frame, cf, id));
+                    frames_written = true;
                 }
                 _ => unreachable!(),
             }
         }
 
-        Poll::Pending
+        if frames_written {
+            self.write_snapshot();
+            packets_written = true;
+        }
+
+        if packets_written {
+            return Poll::Ready(Ok(()));
+        } else {
+            Poll::Pending
+        }
     }
 
     fn write_snapshot(&mut self) {
@@ -688,9 +700,6 @@ where
 
                 self.packet_queue.push_back(packet);
                 return Poll::Ready(Ok(()));
-            } else if self.state == ConnectionState::Connected && tick.is_fire() {
-                self.write_snapshot();
-                return Poll::Ready(Ok(()));
             }
         }
 
@@ -916,10 +925,6 @@ struct Tick {
 impl Tick {
     fn is_ack(&self) -> bool {
         (self.tick & 10) == 0
-    }
-
-    fn is_fire(&self) -> bool {
-        true
     }
 }
 

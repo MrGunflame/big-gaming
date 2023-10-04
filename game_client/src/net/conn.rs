@@ -253,11 +253,17 @@ where
             self.game_tick.current_control_frame += 1;
             self.game_tick.counter.update();
 
-            debug_assert!(self
+            // debug_assert!(self
+            //     .world
+            //     .get(self.game_tick.current_control_frame)
+            //     .is_none());
+            if self
                 .world
                 .get(self.game_tick.current_control_frame)
-                .is_none());
-            self.world.insert(self.game_tick.current_control_frame);
+                .is_none()
+            {
+                self.world.insert(self.game_tick.current_control_frame);
+            }
 
             // Snapshots render..head should now exist.
             if cfg!(debug_assertions) {
