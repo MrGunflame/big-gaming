@@ -25,6 +25,8 @@ pub struct Records {
     pub races: Vec<Race>,
     #[serde(default)]
     pub components: Vec<Component>,
+    #[serde(default)]
+    pub objects: Vec<Object>,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -185,4 +187,14 @@ pub struct Component {
     pub description: String,
     #[serde(default)]
     pub scripts: Vec<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Object {
+    pub id: JsonRecordId,
+    pub name: String,
+    pub description: String,
+    #[serde(default)]
+    pub scripts: Vec<String>,
+    pub model: String,
 }
