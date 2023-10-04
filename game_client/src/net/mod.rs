@@ -31,9 +31,6 @@ fn flush_command_queue<I>(conn: &mut ServerConnection<I>) {
                 continue;
             }
             Message::Control(ControlMessage::Acknowledge(id, cf)) => {
-                // FIXME: Somehow the server tends to run 1 CF ahead of the client.
-                // Reducing the CF by 1 magically resolves all problems for low latency
-                // connections, but is this actually correct?
                 conn.input_buffer.remove(cf, id);
                 continue;
             }

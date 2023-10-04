@@ -72,8 +72,8 @@ where
     /// Packets that have been sent and are buffered until an ACK is received for them.
     inflight_packets: InflightPackets,
 
+    /// Starting control frame.
     start_control_frame: ControlFrame,
-    peer_start_control_frame: ControlFrame,
 
     /// Local constant buffer in control frames.
     const_delay: u16,
@@ -127,7 +127,6 @@ where
             inflight_packets: InflightPackets::new(8192),
 
             start_control_frame: control_frame,
-            peer_start_control_frame: ControlFrame::default(),
 
             _mode: PhantomData,
 
@@ -207,7 +206,7 @@ where
                             header: Header {
                                 packet_type: PacketType::ACK,
                                 sequence: Sequence::new(0),
-                                control_frame: cf,
+                                control_frame: cf - self.start_control_frame,
                                 flags: Flags::new(),
                             },
                             body: PacketBody::Ack(Ack {
@@ -222,7 +221,7 @@ where
                 }
                 Message::Data(msg) => {
                     let id = msg.id;
-                    let cf = msg.control_frame;
+                    let cf = msg.control_frame - self.start_control_frame;
                     let frame = msg.body.into_frame();
                     self.frame_queue.push_back((frame, cf, id));
                     frames_written = true;
@@ -340,8 +339,7 @@ where
             self.debug_validator.push(header, &frame);
 
             // Convert back to local control frame.
-            let control_frame =
-                header.control_frame - (self.peer_start_control_frame - self.start_control_frame);
+            let control_frame = header.control_frame + self.start_control_frame;
 
             let id = MessageId(self.next_id);
             self.next_id = self.next_id.wrapping_add(1);
@@ -368,7 +366,7 @@ where
 
     fn handle_handshake(
         &mut self,
-        header: Header,
+        _header: Header,
         body: Handshake,
     ) -> Poll<Result<(), Error<S::Error>>> {
         // Ignore if not in HS process.
@@ -390,7 +388,7 @@ where
                     header: Header {
                         packet_type: PacketType::HANDSHAKE,
                         sequence: Sequence::default(),
-                        control_frame: self.start_control_frame,
+                        control_frame: ControlFrame(0),
                         flags: Flags::new(),
                     },
                     body: PacketBody::Handshake(Handshake {
@@ -406,7 +404,6 @@ where
                 };
 
                 self.next_peer_sequence = body.initial_sequence;
-                self.peer_start_control_frame = header.control_frame;
 
                 self.packet_queue.push_back(resp);
                 self.state = ConnectionState::Handshake(HandshakeState::Agreement);
@@ -449,7 +446,7 @@ where
                     header: Header {
                         packet_type: PacketType::HANDSHAKE,
                         sequence: Sequence::default(),
-                        control_frame: self.start_control_frame,
+                        control_frame: ControlFrame(0),
                         flags: Flags::new(),
                     },
                     body: PacketBody::Handshake(Handshake {
@@ -465,7 +462,6 @@ where
                 };
 
                 self.next_peer_sequence = body.initial_sequence;
-                self.peer_start_control_frame = header.control_frame;
 
                 self.packet_queue.push_back(resp);
                 self.state = ConnectionState::Handshake(HandshakeState::Agreement);
@@ -490,7 +486,7 @@ where
                     header: Header {
                         packet_type: PacketType::HANDSHAKE,
                         sequence: Sequence::default(),
-                        control_frame: self.start_control_frame,
+                        control_frame: ControlFrame(0),
                         flags: Flags::new(),
                     },
                     body: PacketBody::Handshake(Handshake {
@@ -568,8 +564,7 @@ where
         let sequence = body.sequence;
 
         // Convert back to local control frame.
-        let control_frame =
-            header.control_frame - (self.peer_start_control_frame - self.start_control_frame);
+        let control_frame = header.control_frame + self.start_control_frame;
 
         if let Some(id) = self.message_out.remove(&sequence) {
             self.writer
@@ -634,7 +629,7 @@ where
             header: Header {
                 packet_type: PacketType::HANDSHAKE,
                 sequence: Sequence::default(),
-                control_frame: self.start_control_frame,
+                control_frame: ControlFrame(0),
                 flags: Flags::new(),
             },
             body: PacketBody::Handshake(Handshake {
