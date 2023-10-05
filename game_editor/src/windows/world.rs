@@ -33,6 +33,10 @@ use crate::world::selection;
 
 use super::SpawnWindow;
 
+const ZOOM_DISTANCE_MIN: f32 = 0.2;
+const ZOOM_DISTANCE_MAX: f32 = 100.0;
+const ZOOM_FACTOR: f32 = 0.15 / 120.0;
+
 pub struct WorldWindowState {
     camera: CameraId,
     camera_controller: CameraController,
@@ -1012,8 +1016,16 @@ struct CameraController {
 
 impl CameraController {
     fn zoom(&self, camera_transform: &mut Transform, event: MouseWheel) {
+        let distance = (camera_transform.translation - self.origin).length();
+        let factor = ZOOM_FACTOR * event.y;
+        let offset = f32::clamp(
+            distance * (1.0 + factor),
+            ZOOM_DISTANCE_MIN,
+            ZOOM_DISTANCE_MAX,
+        );
+
         let dir = camera_transform.rotation * -Vec3::Z;
-        camera_transform.translation -= dir * event.y * 0.05;
+        camera_transform.translation = self.origin - (dir * offset);
     }
 
     fn update(&mut self, camera_transform: &mut Transform, event: MouseMotion) {
