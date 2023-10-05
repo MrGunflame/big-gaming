@@ -1,4 +1,5 @@
 //! An immutable view of a scene.
+mod node;
 pub mod spawn_entity;
 
 use std::sync::mpsc;
@@ -14,7 +15,7 @@ use game_input::ButtonState;
 use game_render::camera::{Camera, RenderTarget};
 use game_render::color::Color;
 use game_render::entities::CameraId;
-use game_render::light::PointLight;
+use game_render::light::{DirectionalLight, PointLight, SpotLight};
 use game_render::{shape, Renderer};
 use game_scene::scene::{Material, Node, Scene};
 use game_scene::Scenes;
@@ -406,6 +407,34 @@ impl WorldWindowState {
                         self.spawn_entity(renderer, scenes, record, hierarchy);
                     }
                 }
+                Event::SpawnDirectionalLight => {
+                    renderer
+                        .entities
+                        .directional_lights
+                        .insert(DirectionalLight {
+                            transform: Transform::default(),
+                            color: Color::WHITE,
+                            illuminance: 100_000.0,
+                        });
+                }
+                Event::SpawnPointLight => {
+                    renderer.entities.point_lights.insert(PointLight {
+                        transform: Transform::default(),
+                        color: Color::WHITE,
+                        intensity: 70.0,
+                        radius: 50.0,
+                    });
+                }
+                Event::SpawnSpotLight => {
+                    renderer.entities.spot_lights.insert(SpotLight {
+                        transform: Transform::default(),
+                        color: Color::WHITE,
+                        intensity: 70.0,
+                        radius: 50.0,
+                        inner_cutoff: 45.0,
+                        outer_cutoff: 50.0,
+                    });
+                }
             }
         }
     }
@@ -687,8 +716,12 @@ fn build_object_transform(cx: &Scope) -> TransformState {
     }
 }
 
+#[derive(Copy, Clone, Debug)]
 pub enum Event {
     Spawn(RecordReference),
+    SpawnDirectionalLight,
+    SpawnPointLight,
+    SpawnSpotLight,
 }
 
 // let id = commands
