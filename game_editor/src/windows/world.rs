@@ -1031,7 +1031,7 @@ impl CameraController {
     fn update(&mut self, camera_transform: &mut Transform, event: MouseMotion) {
         match self.mode {
             mode if mode == Mode::TRANSLATE => {
-                let x = event.delta.x * 0.01;
+                let x = -event.delta.x * 0.01;
                 let y = event.delta.y * 0.01;
 
                 let mut distance = (camera_transform.rotation * Vec3::X) * x;
