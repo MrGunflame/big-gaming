@@ -4,10 +4,10 @@ pub mod park;
 
 mod loom;
 mod task;
+mod waker;
 
 use std::future::Future;
 use std::marker::PhantomData;
-use std::ptr::NonNull;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::task::{Poll, RawWaker, RawWakerVTable, Waker};
@@ -19,6 +19,7 @@ use parking_lot::Mutex;
 use task::{Header, RawTaskPtr, STATE_CLOSED, STATE_DONE, STATE_QUEUED, STATE_RUNNING, TASK_REF};
 
 pub use task::Task;
+use waker::WakerData;
 
 #[derive(Debug)]
 pub struct TaskPool {
@@ -136,39 +137,34 @@ fn spawn_worker_thread(inner: Arc<Inner>) -> JoinHandle<()> {
 
         let poll_fn = unsafe { task.as_ptr().cast::<Header>().as_ref().vtable.poll };
 
-        let waker = noop_waker();
-        loop {
-            match unsafe { poll_fn(task.as_ptr(), &waker as *const Waker) } {
-                Poll::Pending => (),
-                Poll::Ready(()) => {
-                    let header = task.header();
-                    unsafe {
-                        loop {
-                            let old_state = (*header).state.load(Ordering::Acquire);
-                            let mut new_state = old_state;
-                            new_state &= !(STATE_QUEUED | STATE_RUNNING);
-                            new_state |= STATE_DONE;
-
-                            if (*header)
-                                .state
-                                .compare_exchange_weak(
-                                    old_state,
-                                    new_state,
-                                    Ordering::SeqCst,
-                                    Ordering::SeqCst,
-                                )
-                                .is_ok()
-                            {
-                                break;
-                            }
-                        }
-                    }
-
-                    break;
-                }
+        let waker = WakerData::new(task, inner.clone());
+        match unsafe { poll_fn(task.as_ptr(), &waker as *const Waker) } {
+            Poll::Pending => {}
+            Poll::Ready(()) => {
+                set_task_done(task);
             }
         }
     })
+}
+
+fn set_task_done(task: RawTaskPtr) {
+    let header = task.header();
+    unsafe {
+        loop {
+            let old_state = (*header).state.load(Ordering::Acquire);
+            let mut new_state = old_state;
+            new_state &= !(STATE_QUEUED | STATE_RUNNING);
+            new_state |= STATE_DONE;
+
+            if (*header)
+                .state
+                .compare_exchange_weak(old_state, new_state, Ordering::SeqCst, Ordering::SeqCst)
+                .is_ok()
+            {
+                return;
+            }
+        }
+    }
 }
 
 fn noop_waker() -> Waker {
@@ -190,7 +186,7 @@ mod tests {
     #[test]
     fn schedule_basic() {
         let executor = TaskPool::new(1);
-        let mut task = executor.spawn(async move {
+        let mut task = executor.spawn(async {
             println!("Hello World");
         });
 
@@ -204,7 +200,7 @@ mod tests {
         let executor = TaskPool::new(1);
         let mut tasks = Vec::new();
         for _ in 0..1024 {
-            let task = executor.spawn(async move {
+            let task = executor.spawn(async {
                 println!("Hello World");
             });
 
@@ -223,7 +219,7 @@ mod tests {
         let executor = TaskPool::new(8);
         let mut tasks = Vec::new();
         for _ in 0..1024 {
-            let task = executor.spawn(async move {
+            let task = executor.spawn(async {
                 println!("Hello World");
             });
 

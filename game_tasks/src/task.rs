@@ -7,6 +7,8 @@ use std::ptr::NonNull;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::task::{Context, Poll, Waker};
 
+use futures::future::FusedFuture;
+
 use crate::noop_waker;
 
 pub const STATE_QUEUED: usize = 1;
@@ -208,6 +210,14 @@ impl<T> Future for Task<T> {
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         self.poll_inner(cx)
+    }
+}
+
+impl<T> FusedFuture for Task<T> {
+    fn is_terminated(&self) -> bool {
+        let header = self.ptr.header();
+        let state = unsafe { (*header).state.load(Ordering::Acquire) };
+        state & STATE_CLOSED != 0
     }
 }
 
