@@ -255,4 +255,24 @@ mod tests {
         let mut cx = Context::from_waker(&waker);
         while Pin::new(&mut task).poll(&mut cx).is_pending() {}
     }
+
+    #[test]
+    fn wake_task_when_ready() {
+        let executor = TaskPool::new(1);
+        let task = executor.spawn(async {
+            let mut yielded = false;
+            poll_fn(|cx| {
+                if yielded {
+                    return Poll::Ready(());
+                }
+
+                yielded = true;
+                cx.waker().wake_by_ref();
+                Poll::Pending
+            })
+            .await
+        });
+
+        futures::executor::block_on(task);
+    }
 }

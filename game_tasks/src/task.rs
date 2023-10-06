@@ -3,11 +3,12 @@ use std::future::Future;
 use std::marker::PhantomData;
 use std::mem::{ManuallyDrop, MaybeUninit};
 use std::pin::Pin;
-use std::ptr::NonNull;
+use std::ptr::{addr_of_mut, NonNull};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::task::{Context, Poll, Waker};
 
 use futures::future::FusedFuture;
+use futures::task::AtomicWaker;
 
 use crate::noop_waker;
 
@@ -39,6 +40,7 @@ where
     F: Future<Output = T>,
 {
     header: Header,
+    waker: AtomicWaker,
     future: ManuallyDrop<F>,
     output: MaybeUninit<T>,
 }
@@ -65,14 +67,21 @@ where
     }
 
     unsafe fn poll(ptr: NonNull<()>, waker: *const Waker) -> Poll<()> {
-        let this = ptr.cast::<Self>().as_mut();
+        let ptr = ptr.cast::<Self>();
+
+        let task_waker = unsafe { &*addr_of_mut!((*ptr.as_ptr()).waker) };
+        let future = unsafe { &mut *addr_of_mut!((*ptr.as_ptr()).future) };
+        let output = unsafe { &mut *addr_of_mut!((*ptr.as_ptr()).output) };
 
         let mut cx = Context::from_waker(&*waker);
-        let pin: Pin<&mut F> = Pin::new_unchecked(&mut this.future);
+        let pin: Pin<&mut F> = Pin::new_unchecked(future);
         match F::poll(pin, &mut cx) {
             Poll::Pending => Poll::Pending,
             Poll::Ready(val) => {
-                this.output.write(val);
+                // Write the final value **BEFORE** waking.
+                output.write(val);
+                task_waker.wake();
+
                 Poll::Ready(())
             }
         }
@@ -93,6 +102,11 @@ impl RawTaskPtr {
 
     pub(crate) fn as_ptr(self) -> NonNull<()> {
         self.ptr
+    }
+
+    pub(crate) fn waker(self) -> *const AtomicWaker {
+        let offset = std::mem::size_of::<Header>();
+        unsafe { self.ptr.as_ptr().cast::<u8>().add(offset) as *const AtomicWaker }
     }
 }
 
@@ -122,6 +136,7 @@ impl<T> Task<T> {
                 },
                 layout,
             },
+            waker: AtomicWaker::new(),
             future: ManuallyDrop::new(future),
             output: MaybeUninit::uninit(),
         };
@@ -135,6 +150,11 @@ impl<T> Task<T> {
 
     fn poll_inner(&mut self, cx: &mut Context<'_>) -> Poll<T> {
         let header = self.ptr.header();
+        let waker = unsafe { &*self.ptr.waker() };
+        // The waker might be different that on the last
+        // call to `poll`. Since `AtomicWaker` doesn't allow
+        // `will_wake`.
+        waker.register(cx.waker());
 
         unsafe {
             let state = (*header).state.load(Ordering::Acquire);
