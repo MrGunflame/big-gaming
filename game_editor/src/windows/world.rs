@@ -1,20 +1,23 @@
 //! An immutable view of a scene.
+mod hierarchy;
 mod node;
 pub mod spawn_entity;
 
+use std::collections::{HashMap, HashSet, VecDeque};
+use std::f32::consts::E;
 use std::sync::mpsc;
 
 use bitflags::bitflags;
 use game_common::components::transform::Transform;
 use game_common::record::RecordReference;
-use game_core::hierarchy::{Entity, TransformHierarchy};
+use game_core::hierarchy::{Entity, Hierarchy, Key, TransformHierarchy};
 use game_data::record::{Record, RecordBody};
 use game_input::keyboard::KeyCode;
 use game_input::mouse::{MouseButton, MouseMotion, MouseWheel};
 use game_input::ButtonState;
 use game_render::camera::{Camera, RenderTarget};
 use game_render::color::Color;
-use game_render::entities::CameraId;
+use game_render::entities::{CameraId, DirectionalLightId};
 use game_render::light::{DirectionalLight, PointLight, SpotLight};
 use game_render::{shape, Renderer};
 use game_scene::scene::{Material, Node, Scene};
@@ -30,7 +33,10 @@ use glam::{Quat, Vec2, Vec3};
 use parking_lot::Mutex;
 
 use crate::state::EditorState;
+use crate::windows::world::node::{NodeBody, NodeKind};
 use crate::world::selection;
+
+use self::hierarchy::NodeHierarchy;
 
 use super::SpawnWindow;
 
@@ -46,6 +52,7 @@ pub struct WorldWindowState {
     edit_mode: EditMode,
     edit_op: Option<EditOperation>,
     state: State,
+    directional_lights: HashMap<Key, DirectionalLightId>,
 }
 
 impl WorldWindowState {
@@ -91,7 +98,7 @@ impl WorldWindowState {
             },
         );
 
-        state.entities.update(|e| e.push(plane));
+        // state.entities.update(|e| e.push(plane));
 
         let s = hierarchy.append(None, Transform::default());
         scenes.load(s, "../../sponza.glb");
@@ -103,6 +110,7 @@ impl WorldWindowState {
             edit_mode: EditMode::None,
             edit_op: None,
             state,
+            directional_lights: HashMap::new(),
         }
     }
 
@@ -171,6 +179,19 @@ impl WorldWindowState {
                         camera.transform.translation =
                             self.camera_controller.origin + Vec3::new(0.0, distance, 0.0);
                         camera.transform = camera.transform.looking_to(-Vec3::Y, Vec3::Z);
+                    }
+                    Some(KeyCode::Delete) => {
+                        let keys: Vec<_> = self
+                            .state
+                            .selection
+                            .update(|selection| selection.drain().collect());
+
+                        self.state.nodes.update(|nodes| {
+                            for key in keys {
+                                nodes.remove(key);
+                                self.state.events.push_back(Event::Destroy { node: key });
+                            }
+                        });
                     }
                     _ => (),
                 }
@@ -275,29 +296,29 @@ impl WorldWindowState {
     }
 
     fn update_selection(&mut self, renderer: &mut Renderer, scenes: &mut Scenes, id: WindowId) {
-        let camera = renderer
-            .entities
-            .cameras
-            .get_mut(self.camera)
-            .unwrap()
-            .clone();
-        let viewport_size = renderer.get_surface_size(id).unwrap().as_vec2();
+        // let camera = renderer
+        //     .entities
+        //     .cameras
+        //     .get_mut(self.camera)
+        //     .unwrap()
+        //     .clone();
+        // let viewport_size = renderer.get_surface_size(id).unwrap().as_vec2();
 
-        self.state.selection.update(|v| v.clear());
-        for id in &self.state.entities.get() {
-            let object = scenes.objects(*id).unwrap().nth(0).unwrap();
-            let object = renderer.entities.objects.get(object).unwrap();
+        // self.state.selection.update(|v| v.clear());
+        // for id in &self.state.entities.get() {
+        //     let object = scenes.objects(*id).unwrap().nth(0).unwrap();
+        //     let object = renderer.entities.objects.get(object).unwrap();
 
-            let mesh = renderer.meshes.get(object.mesh).unwrap();
+        //     let mesh = renderer.meshes.get(object.mesh).unwrap();
 
-            if let Some(aabb) = mesh.compute_aabb() {
-                let ray = camera.viewport_to_world(camera.transform, viewport_size, self.cursor);
+        //     if let Some(aabb) = mesh.compute_aabb() {
+        //         let ray = camera.viewport_to_world(camera.transform, viewport_size, self.cursor);
 
-                if selection::hit_test(ray, aabb) {
-                    self.state.selection.update(|v| v.push(*id));
-                }
-            }
-        }
+        //         if selection::hit_test(ray, aabb) {
+        //             self.state.selection.update(|v| v.push(*id));
+        //         }
+        //     }
+        // }
     }
 
     fn create_edit_op(
@@ -306,21 +327,21 @@ impl WorldWindowState {
         scenes: &mut Scenes,
         hierarchy: &mut TransformHierarchy,
     ) {
-        let mut entities = Vec::new();
+        // let mut entities = Vec::new();
 
-        for id in &self.state.selection.get() {
-            let transform = hierarchy.get(*id).unwrap();
+        // for id in &self.state.selection.get() {
+        //     let transform = hierarchy.get(*id).unwrap();
 
-            entities.push(EditEntity {
-                id: *id,
-                origin: transform,
-            });
-        }
+        //     entities.push(EditEntity {
+        //         id: *id,
+        //         origin: transform,
+        //     });
+        // }
 
-        self.edit_op = Some(EditOperation {
-            cursor_origin: self.cursor,
-            entities,
-        });
+        // self.edit_op = Some(EditOperation {
+        //     cursor_origin: self.cursor,
+        //     entities,
+        // });
     }
 
     fn update_edit_op(
@@ -331,40 +352,40 @@ impl WorldWindowState {
         camera: Camera,
         hierarchy: &mut TransformHierarchy,
     ) {
-        let viewport_size = renderer.get_surface_size(window).unwrap().as_vec2();
+        // let viewport_size = renderer.get_surface_size(window).unwrap().as_vec2();
 
-        let camera_rotation = camera.transform.rotation;
-        let ray = camera.viewport_to_world(camera.transform, viewport_size, self.cursor);
+        // let camera_rotation = camera.transform.rotation;
+        // let ray = camera.viewport_to_world(camera.transform, viewport_size, self.cursor);
 
-        match self.edit_mode {
-            EditMode::Translate(axis) => {
-                for id in &self.state.selection.get() {
-                    let transform = hierarchy.get_mut(*id).unwrap();
+        // match self.edit_mode {
+        //     EditMode::Translate(axis) => {
+        //         for id in &self.state.selection.get() {
+        //             let transform = hierarchy.get_mut(*id).unwrap();
 
-                    // Find the intersection of the camera ray with the plane placed
-                    // at the object, facing the camera. The projected point is the new
-                    // translation.
-                    let plane_origin = transform.translation;
-                    let plane_normal = camera_rotation * Vec3::Z;
-                    // FIXME: What if no intersection?
-                    let point = ray.plane_intersection(plane_origin, plane_normal).unwrap();
+        //             // Find the intersection of the camera ray with the plane placed
+        //             // at the object, facing the camera. The projected point is the new
+        //             // translation.
+        //             let plane_origin = transform.translation;
+        //             let plane_normal = camera_rotation * Vec3::Z;
+        //             // FIXME: What if no intersection?
+        //             let point = ray.plane_intersection(plane_origin, plane_normal).unwrap();
 
-                    match axis {
-                        Some(Axis::X) => transform.translation.x = point.x,
-                        Some(Axis::Y) => transform.translation.y = point.y,
-                        Some(Axis::Z) => transform.translation.z = point.z,
-                        None => transform.translation = point,
-                    }
+        //             match axis {
+        //                 Some(Axis::X) => transform.translation.x = point.x,
+        //                 Some(Axis::Y) => transform.translation.y = point.y,
+        //                 Some(Axis::Z) => transform.translation.z = point.z,
+        //                 None => transform.translation = point,
+        //             }
 
-                    self.state
-                        .transform
-                        .set_translation
-                        .update(|translation| *translation = transform.translation);
-                }
-            }
-            EditMode::None => (),
-            _ => todo!(),
-        }
+        //             self.state
+        //                 .transform
+        //                 .set_translation
+        //                 .update(|translation| *translation = transform.translation);
+        //         }
+        //     }
+        //     EditMode::None => (),
+        //     _ => todo!(),
+        // }
     }
 
     fn reset_edit_op(
@@ -394,7 +415,20 @@ impl WorldWindowState {
         hierarchy: &mut TransformHierarchy,
     ) {
         while let Ok(event) = self.state.rx.try_recv() {
+            self.state.events.push_back(event);
+        }
+
+        while let Some(event) = self.state.events.pop_front() {
             match event {
+                Event::UpdateSelection { node, additive } => {
+                    self.state.selection.update(|selection| {
+                        if !additive {
+                            selection.clear();
+                        }
+
+                        selection.insert(node);
+                    });
+                }
                 Event::Spawn(record_ref) => {
                     // It is possible the record is already deleted once we
                     // receive this event.
@@ -408,7 +442,21 @@ impl WorldWindowState {
                     }
                 }
                 Event::SpawnDirectionalLight => {
-                    renderer
+                    let key = self.state.nodes.update(|hierarchy| {
+                        hierarchy.append(
+                            None,
+                            node::Node {
+                                transform: Transform::default(),
+                                name: NodeKind::DirectionalLight.default_name().into(),
+                                body: NodeBody::DirectionalLight(node::DirectionalLight {
+                                    color: Color::WHITE,
+                                    illuminance: 100_000.0,
+                                }),
+                            },
+                        )
+                    });
+
+                    let id = renderer
                         .entities
                         .directional_lights
                         .insert(DirectionalLight {
@@ -416,6 +464,8 @@ impl WorldWindowState {
                             color: Color::WHITE,
                             illuminance: 100_000.0,
                         });
+
+                    self.directional_lights.insert(key, id);
                 }
                 Event::SpawnPointLight => {
                     renderer.entities.point_lights.insert(PointLight {
@@ -435,6 +485,11 @@ impl WorldWindowState {
                         outer_cutoff: 50.0,
                     });
                 }
+                Event::Destroy { node } => {
+                    if let Some(id) = self.directional_lights.remove(&node) {
+                        renderer.entities.directional_lights.remove(id);
+                    }
+                }
             }
         }
     }
@@ -446,16 +501,16 @@ impl WorldWindowState {
         record: Record,
         hierarchy: &mut TransformHierarchy,
     ) {
-        match record.body {
-            RecordBody::Object(object) => {
-                let entity = hierarchy.append(None, Transform::default());
-                let model = object.uri.as_ref().to_path_buf();
-                scenes.load(entity, model);
+        // match record.body {
+        //     RecordBody::Object(object) => {
+        //         let entity = hierarchy.append(None, Transform::default());
+        //         let model = object.uri.as_ref().to_path_buf();
+        //         scenes.load(entity, model);
 
-                self.state.entities.update(|entities| entities.push(entity));
-            }
-            _ => todo!(),
-        }
+        //         self.state.entities.update(|entities| entities.push(entity));
+        //     }
+        //     _ => todo!(),
+        // }
     }
 }
 
@@ -488,9 +543,10 @@ enum Axis {
 }
 
 pub struct State {
+    events: VecDeque<Event>,
     rx: mpsc::Receiver<Event>,
-    entities: WriteSignal<Vec<Entity>>,
-    selection: WriteSignal<Vec<Entity>>,
+    nodes: WriteSignal<Hierarchy<node::Node>>,
+    selection: WriteSignal<HashSet<Key>>,
     transform: TransformState,
     state: EditorState,
 }
@@ -512,69 +568,21 @@ pub fn build_ui(cx: &Scope, state: EditorState) -> State {
 
     let root = cx.append(Container::new().style(style));
 
-    let header = root.append(Container::new().style(Style {
-        direction: Direction::Column,
-        ..Default::default()
-    }));
+    let (nodes, set_nodes) = cx.create_signal(Hierarchy::new());
+    let (selection, set_selection) = cx.create_signal(HashSet::new());
 
-    let writer = tx.clone();
-    let state2 = state.clone();
-    let new_button = header.append(Button::new().on_click(move |_| {
-        let writer = writer.clone();
-        state2.spawn_windows.send(SpawnWindow::SpawnEntity(writer));
-    }));
-    new_button.append(Text::new().text("Spawn new"));
-
-    let (entities, set_entities) = cx.create_signal(Vec::new());
-    let (selection, set_selection) = cx.create_signal(Vec::new());
-
-    let nodes = Mutex::new(vec![]);
-    let cx2 = root.clone();
-    {
-        let set_selection = set_selection.clone();
-        root.create_effect(move || {
-            let entities = entities.get();
-            let selection = selection.get();
-
-            let mut nodes = nodes.lock();
-            for id in nodes.drain(..) {
-                cx2.remove(id);
-            }
-
-            for entity in entities {
-                let is_selected = selection.contains(&entity);
-
-                let style = Style {
-                    background: if is_selected {
-                        Background::YELLOW
-                    } else {
-                        Background::None
-                    },
-                    ..Default::default()
-                };
-
-                let on_click = {
-                    let set_selection = set_selection.clone();
-                    move |_| {
-                        set_selection.update(|v| {
-                            v.clear();
-                            v.push(entity);
-                        });
-                    }
-                };
-
-                let button = cx2.append(Button::new().style(style).on_click(on_click));
-                button.append(Text::new().text(format!("{:?}", entity)));
-
-                nodes.push(button.id().unwrap());
-            }
-        });
-    }
+    root.append(NodeHierarchy {
+        writer: tx.clone(),
+        nodes,
+        selection,
+        state: state.clone(),
+    });
 
     let transform = build_object_transform(&root);
 
     State {
-        entities: set_entities,
+        events: VecDeque::new(),
+        nodes: set_nodes,
         selection: set_selection,
         transform,
         rx,
@@ -718,7 +726,9 @@ fn build_object_transform(cx: &Scope) -> TransformState {
 
 #[derive(Copy, Clone, Debug)]
 pub enum Event {
+    UpdateSelection { node: Key, additive: bool },
     Spawn(RecordReference),
+    Destroy { node: Key },
     SpawnDirectionalLight,
     SpawnPointLight,
     SpawnSpotLight,

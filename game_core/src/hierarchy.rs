@@ -72,6 +72,10 @@ impl<T> Hierarchy<T> {
     pub fn contains_key(&self, key: Key) -> bool {
         self.nodes.contains_key(key.0)
     }
+
+    pub fn iter(&self) -> impl Iterator<Item = (Key, &T)> + '_ {
+        self.nodes.iter().map(|(k, v)| (Key(k), v))
+    }
 }
 
 impl<T> Default for Hierarchy<T> {
