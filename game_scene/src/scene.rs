@@ -4,11 +4,14 @@ use game_common::components::transform::Transform;
 use game_core::hierarchy::{Entity, TransformHierarchy};
 use game_render::color::Color;
 use game_render::entities::{Object, ObjectId};
+use game_render::light::DirectionalLight;
 use game_render::mesh::Mesh;
 use game_render::pbr::{AlphaMode, PbrMaterial};
 use game_render::texture::Image;
 use game_render::{shape, Renderer};
 use game_tracing::trace_span;
+
+use super::Entities;
 
 #[derive(Clone, Debug, Default)]
 pub struct Scene {
@@ -21,8 +24,25 @@ pub struct Scene {
 #[derive(Clone, Debug)]
 pub struct Node {
     pub transform: Transform,
+    pub body: NodeBody,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub enum NodeBody {
+    Object(ObjectNode),
+    DirectionalLight(DirectionalLightNode),
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct ObjectNode {
     pub mesh: usize,
     pub material: usize,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct DirectionalLightNode {
+    pub color: Color,
+    pub illuminance: f32,
 }
 
 impl Scene {
@@ -31,7 +51,7 @@ impl Scene {
         renderer: &mut Renderer,
         parent: Entity,
         hierarchy: &mut TransformHierarchy,
-        nodes: &mut HashMap<Entity, ObjectId>,
+        entities: &mut Entities,
     ) -> Vec<Entity> {
         let _span = trace_span!("Scene::spawn").entered();
 
@@ -63,19 +83,36 @@ impl Scene {
             materials.push(id);
         }
 
-        let mut entities = Vec::new();
+        let mut children = Vec::new();
 
         for node in &self.nodes {
             let key = hierarchy.append(Some(parent), node.transform);
 
-            let id = renderer.entities.objects.insert(Object {
-                transform: Transform::default(),
-                mesh: meshes[node.mesh],
-                material: materials[node.material],
-            });
+            match node.body {
+                NodeBody::Object(object) => {
+                    let id = renderer.entities.objects.insert(Object {
+                        transform: node.transform,
+                        mesh: meshes[object.mesh],
+                        material: materials[object.material],
+                    });
 
-            entities.push(key);
-            nodes.insert(key, id);
+                    entities.objects.insert(key, id);
+                }
+                NodeBody::DirectionalLight(dir_light) => {
+                    let id = renderer
+                        .entities
+                        .directional_lights
+                        .insert(DirectionalLight {
+                            transform: node.transform,
+                            color: dir_light.color,
+                            illuminance: dir_light.illuminance,
+                        });
+
+                    entities.directional_lights.insert(key, id);
+                }
+            }
+
+            children.push(key);
         }
 
         // Local Coordinate axes for debugging
@@ -124,7 +161,7 @@ impl Scene {
             });
         }
 
-        entities
+        children
     }
 }
 

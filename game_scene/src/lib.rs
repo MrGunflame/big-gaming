@@ -13,7 +13,7 @@ use game_core::hierarchy::{Entity, TransformHierarchy};
 use game_gltf::uri::Uri;
 use game_gltf::GltfData;
 use game_model::{Decode, Model};
-use game_render::entities::ObjectId;
+use game_render::entities::{DirectionalLightId, ObjectId, PointLightId, SpotLightId};
 use game_render::Renderer;
 use game_tasks::TaskPool;
 use game_tracing::trace_span;
@@ -33,11 +33,20 @@ pub struct SceneId(DefaultKey);
 #[derive(Debug, Default)]
 pub struct Scenes {
     scenes: SlotMap<DefaultKey, SceneState>,
-    nodes: HashMap<Entity, ObjectId>,
     load_queue: VecDeque<(DefaultKey, Entity, PathBuf)>,
     queue: Arc<Mutex<Vec<(DefaultKey, Entity, Scene)>>>,
+    entities: Entities,
+}
+
+#[derive(Debug, Default)]
+struct Entities {
+    objects: HashMap<Entity, ObjectId>,
+    directional_lights: HashMap<Entity, DirectionalLightId>,
+    point_lights: HashMap<Entity, PointLightId>,
+    spot_lights: HashMap<Entity, SpotLightId>,
+
     // Parent => scene children
-    entites: HashMap<Entity, Vec<Entity>>,
+    children: HashMap<Entity, Vec<Entity>>,
 }
 
 impl Scenes {
@@ -45,9 +54,8 @@ impl Scenes {
         Self {
             scenes: SlotMap::new(),
             load_queue: VecDeque::new(),
-            nodes: HashMap::new(),
             queue: Arc::default(),
-            entites: HashMap::new(),
+            entities: Entities::default(),
         }
     }
 
@@ -94,8 +102,8 @@ impl Scenes {
                     scene
                         .take()
                         .unwrap()
-                        .spawn(renderer, *entity, hierarchy, &mut self.nodes);
-                self.entites.insert(*entity, entities);
+                        .spawn(renderer, *entity, hierarchy, &mut self.entities);
+                self.entities.children.insert(*entity, entities);
                 false
             }
         });
@@ -105,11 +113,23 @@ impl Scenes {
 
     fn update_transform(&mut self, hierarchy: &mut TransformHierarchy, renderer: &mut Renderer) {
         // Despawn removed entities.
-        self.entites.retain(|parent, children| {
+        self.entities.children.retain(|parent, children| {
             if !hierarchy.exists(*parent) {
                 for entity in children {
-                    if let Some(id) = self.nodes.remove(&entity) {
+                    if let Some(id) = self.entities.objects.remove(&entity) {
                         renderer.entities.objects.remove(id);
+                    }
+
+                    if let Some(id) = self.entities.directional_lights.remove(&entity) {
+                        renderer.entities.directional_lights.remove(id);
+                    }
+
+                    if let Some(id) = self.entities.point_lights.remove(&entity) {
+                        renderer.entities.point_lights.remove(id);
+                    }
+
+                    if let Some(id) = self.entities.spot_lights.remove(&entity) {
+                        renderer.entities.spot_lights.remove(id);
                     }
                 }
 
@@ -120,17 +140,36 @@ impl Scenes {
         });
 
         for (entity, transform) in hierarchy.iter_changed_global_transform() {
-            // Not all entities have an render object associated.
-            if let Some(id) = self.nodes.get(&entity) {
+            // Not all nodes have an assocaited renderable entity.
+            if let Some(id) = self.entities.objects.get(&entity) {
                 let mut object = renderer.entities.objects.get_mut(*id).unwrap();
                 object.transform = transform;
+            }
+
+            if let Some(id) = self.entities.directional_lights.get(&entity) {
+                let mut dir_light = renderer.entities.directional_lights.get_mut(*id).unwrap();
+                dir_light.transform = transform;
+            }
+
+            if let Some(id) = self.entities.point_lights.get(&entity) {
+                let mut point_light = renderer.entities.point_lights.get_mut(*id).unwrap();
+                point_light.transform = transform;
+            }
+
+            if let Some(id) = self.entities.spot_lights.get(&entity) {
+                let mut spot_light = renderer.entities.spot_lights.get_mut(*id).unwrap();
+                spot_light.transform = transform;
             }
         }
     }
 
     pub fn objects(&self, entity: Entity) -> Option<impl Iterator<Item = ObjectId> + '_> {
-        let e = self.entites.get(&entity)?;
-        Some(e.iter().filter_map(|e| self.nodes.get(e)).copied())
+        let e = self.entities.children.get(&entity)?;
+        Some(
+            e.iter()
+                .filter_map(|e| self.entities.objects.get(e))
+                .copied(),
+        )
     }
 }
 

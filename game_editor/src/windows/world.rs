@@ -21,7 +21,7 @@ use game_render::color::Color;
 use game_render::entities::{CameraId, DirectionalLightId};
 use game_render::light::{DirectionalLight, PointLight, SpotLight};
 use game_render::{shape, Renderer};
-use game_scene::scene::{Material, Node, Scene};
+use game_scene::scene::{Material, Node, NodeBody, ObjectNode, Scene};
 use game_scene::Scenes;
 use game_ui::reactive::{ReadSignal, Scope, WriteSignal};
 use game_ui::style::{
@@ -34,7 +34,7 @@ use glam::{Quat, Vec2, Vec3};
 use parking_lot::Mutex;
 
 use crate::state::EditorState;
-use crate::windows::world::node::{NodeBody, NodeKind};
+use crate::windows::world::node::NodeKind;
 use crate::world::selection;
 
 use self::edit::{EditMode, EditOperation};
@@ -90,8 +90,10 @@ impl WorldWindowState {
             Scene {
                 nodes: vec![Node {
                     transform: Transform::default(),
-                    mesh: 0,
-                    material: 0,
+                    body: NodeBody::Object(ObjectNode {
+                        mesh: 0,
+                        material: 0,
+                    }),
                 }],
                 meshes: vec![shape::Plane { size: 100.0 }.into()],
                 materials: vec![Material::default()],
@@ -445,7 +447,7 @@ impl WorldWindowState {
                             node::Node {
                                 transform: Transform::default(),
                                 name: NodeKind::DirectionalLight.default_name().into(),
-                                body: NodeBody::DirectionalLight(node::DirectionalLight {
+                                body: node::NodeBody::DirectionalLight(node::DirectionalLight {
                                     color: Color::WHITE,
                                     illuminance: 100_000.0,
                                 }),

@@ -8,7 +8,7 @@ use game_tracing::trace_span;
 use glam::UVec2;
 
 use crate::loader::LoadScene;
-use crate::scene::{Node, Scene};
+use crate::scene::{Node, NodeBody, ObjectNode, Scene};
 
 impl LoadScene for Model {
     fn load(self) -> Scene {
@@ -53,9 +53,8 @@ impl LoadScene for Model {
             let material = node.material as usize;
 
             scene.nodes.push(Node {
-                mesh,
-                material,
                 transform: node.transform,
+                body: NodeBody::Object(ObjectNode { mesh, material }),
             });
         }
 
