@@ -1,4 +1,5 @@
 //! An immutable view of a scene.
+mod edit;
 mod hierarchy;
 mod node;
 pub mod spawn_entity;
@@ -36,6 +37,7 @@ use crate::state::EditorState;
 use crate::windows::world::node::{NodeBody, NodeKind};
 use crate::world::selection;
 
+use self::edit::{EditMode, EditOperation};
 use self::hierarchy::NodeHierarchy;
 
 use super::SpawnWindow;
@@ -49,10 +51,9 @@ pub struct WorldWindowState {
     camera_controller: CameraController,
     // TODO: Use `Cursor` instead of adding our own thing.
     cursor: Vec2,
-    edit_mode: EditMode,
-    edit_op: Option<EditOperation>,
     state: State,
     directional_lights: HashMap<Key, DirectionalLightId>,
+    edit_op: EditOperation,
 }
 
 impl WorldWindowState {
@@ -107,8 +108,7 @@ impl WorldWindowState {
             camera,
             camera_controller: CameraController::default(),
             cursor: Vec2::ZERO,
-            edit_mode: EditMode::None,
-            edit_op: None,
+            edit_op: EditOperation::new(),
             state,
             directional_lights: HashMap::new(),
         }
@@ -205,57 +205,57 @@ impl WorldWindowState {
                     match event.key_code {
                         Some(KeyCode::Escape) => {
                             self.reset_edit_op(renderer, scenes, hierarchy);
-                            self.edit_mode = EditMode::None;
+                            self.edit_op.mode = EditMode::None;
                         }
                         Some(KeyCode::G) => {
-                            self.edit_mode = EditMode::Translate(None);
+                            self.edit_op.mode = EditMode::Translate(None);
                             self.create_edit_op(renderer, scenes, hierarchy);
                         }
                         Some(KeyCode::R) => {
-                            self.edit_mode = EditMode::Rotate(None);
+                            self.edit_op.mode = EditMode::Rotate(None);
                             self.create_edit_op(renderer, scenes, hierarchy);
                         }
                         Some(KeyCode::S) => {
-                            self.edit_mode = EditMode::Scale(None);
+                            self.edit_op.mode = EditMode::Scale(None);
                             self.create_edit_op(renderer, scenes, hierarchy);
                         }
                         Some(KeyCode::X) => {
-                            match &mut self.edit_mode {
+                            match &mut self.edit_op.mode {
                                 EditMode::Translate(axis) => *axis = Some(Axis::X),
                                 EditMode::Rotate(axis) => *axis = Some(Axis::X),
                                 EditMode::Scale(axis) => *axis = Some(Axis::X),
                                 EditMode::None => (),
                             }
 
-                            if self.edit_mode != EditMode::None {
+                            if self.edit_op.mode != EditMode::None {
                                 let camera = camera.clone();
                                 self.reset_edit_op(renderer, scenes, hierarchy);
                                 self.update_edit_op(renderer, scenes, window, camera, hierarchy);
                             }
                         }
                         Some(KeyCode::Y) => {
-                            match &mut self.edit_mode {
+                            match &mut self.edit_op.mode {
                                 EditMode::Translate(axis) => *axis = Some(Axis::Y),
                                 EditMode::Rotate(axis) => *axis = Some(Axis::Y),
                                 EditMode::Scale(axis) => *axis = Some(Axis::Y),
                                 EditMode::None => (),
                             }
 
-                            if self.edit_mode != EditMode::None {
+                            if self.edit_op.mode != EditMode::None {
                                 let camera = camera.clone();
                                 self.reset_edit_op(renderer, scenes, hierarchy);
                                 self.update_edit_op(renderer, scenes, window, camera, hierarchy);
                             }
                         }
                         Some(KeyCode::Z) => {
-                            match &mut self.edit_mode {
+                            match &mut self.edit_op.mode {
                                 EditMode::Translate(axis) => *axis = Some(Axis::Z),
                                 EditMode::Rotate(axis) => *axis = Some(Axis::Z),
                                 EditMode::Scale(axis) => *axis = Some(Axis::Z),
                                 EditMode::None => (),
                             };
 
-                            if self.edit_mode != EditMode::None {
+                            if self.edit_op.mode != EditMode::None {
                                 let camera = camera.clone();
                                 self.reset_edit_op(renderer, scenes, hierarchy);
                                 self.update_edit_op(renderer, scenes, window, camera, hierarchy);
@@ -272,17 +272,17 @@ impl WorldWindowState {
                     }
 
                     drop(camera);
-                    if self.edit_mode == EditMode::None {
+                    if self.edit_op.mode == EditMode::None {
                         self.update_selection(renderer, scenes, window);
                     } else {
                         self.confirm_edit_op(renderer);
                     }
                 }
                 MouseButton::Right => {
-                    if self.edit_mode != EditMode::None {
+                    if self.edit_op.mode != EditMode::None {
                         drop(camera);
                         self.reset_edit_op(renderer, scenes, hierarchy);
-                        self.edit_mode = EditMode::None;
+                        self.edit_op.mode = EditMode::None;
                     }
                 }
                 MouseButton::Middle => match event.state {
@@ -327,21 +327,18 @@ impl WorldWindowState {
         scenes: &mut Scenes,
         hierarchy: &mut TransformHierarchy,
     ) {
-        // let mut entities = Vec::new();
+        self.edit_op.create(self.cursor);
 
-        // for id in &self.state.selection.get() {
-        //     let transform = hierarchy.get(*id).unwrap();
+        self.state.selection.with(|selection| {
+            for id in selection {
+                let transform = self
+                    .state
+                    .nodes
+                    .with(|nodes| nodes.get(*id).unwrap().transform);
 
-        //     entities.push(EditEntity {
-        //         id: *id,
-        //         origin: transform,
-        //     });
-        // }
-
-        // self.edit_op = Some(EditOperation {
-        //     cursor_origin: self.cursor,
-        //     entities,
-        // });
+                self.edit_op.push(*id, transform);
+            }
+        });
     }
 
     fn update_edit_op(
@@ -352,10 +349,10 @@ impl WorldWindowState {
         camera: Camera,
         hierarchy: &mut TransformHierarchy,
     ) {
-        // let viewport_size = renderer.get_surface_size(window).unwrap().as_vec2();
+        let viewport_size = renderer.get_surface_size(window).unwrap().as_vec2();
 
-        // let camera_rotation = camera.transform.rotation;
-        // let ray = camera.viewport_to_world(camera.transform, viewport_size, self.cursor);
+        let camera_rotation = camera.transform.rotation;
+        let ray = camera.viewport_to_world(camera.transform, viewport_size, self.cursor);
 
         // match self.edit_mode {
         //     EditMode::Translate(axis) => {
@@ -386,6 +383,10 @@ impl WorldWindowState {
         //     EditMode::None => (),
         //     _ => todo!(),
         // }
+
+        for node in self.edit_op.update(ray, camera_rotation) {
+            todo!()
+        }
     }
 
     fn reset_edit_op(
@@ -394,18 +395,14 @@ impl WorldWindowState {
         scenes: &mut Scenes,
         hierarchy: &mut TransformHierarchy,
     ) {
-        let Some(op) = &self.edit_op else {
-            return;
-        };
-
-        for entity in &op.entities {
-            *hierarchy.get_mut(entity.id).unwrap() = entity.origin;
+        for (key, transform) in self.edit_op.reset() {
+            todo!()
         }
     }
 
     fn confirm_edit_op(&mut self, renderer: &mut Renderer) {
-        self.edit_op = None;
-        self.edit_mode = EditMode::None;
+        self.edit_op.mode = EditMode::None;
+        self.edit_op.confirm();
     }
 
     pub fn update(
@@ -512,27 +509,6 @@ impl WorldWindowState {
         //     _ => todo!(),
         // }
     }
-}
-
-#[derive(Clone, Debug)]
-struct EditOperation {
-    cursor_origin: Vec2,
-    entities: Vec<EditEntity>,
-}
-
-#[derive(Clone, Debug)]
-struct EditEntity {
-    id: Entity,
-    origin: Transform,
-}
-
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
-enum EditMode {
-    #[default]
-    None,
-    Translate(Option<Axis>),
-    Rotate(Option<Axis>),
-    Scale(Option<Axis>),
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
