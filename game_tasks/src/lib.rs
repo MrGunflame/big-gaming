@@ -16,7 +16,7 @@ use std::thread::JoinHandle;
 use crossbeam::deque::{Injector, Steal};
 use park::Parker;
 use parking_lot::Mutex;
-use task::{Header, STATE_CLOSED, STATE_DONE, STATE_QUEUED, STATE_RUNNING, TASK_REF};
+use task::{Header, RawTaskPtr, STATE_CLOSED, STATE_DONE, STATE_QUEUED, STATE_RUNNING, TASK_REF};
 
 pub use task::Task;
 
@@ -28,10 +28,10 @@ pub struct TaskPool {
 
 #[derive(Debug)]
 struct Inner {
-    queue: Injector<NonNull<()>>,
+    queue: Injector<RawTaskPtr>,
     parker: Parker,
     shutdown: AtomicBool,
-    tasks: Mutex<Vec<NonNull<()>>>,
+    tasks: Mutex<Vec<RawTaskPtr>>,
 }
 
 impl TaskPool {
@@ -80,14 +80,14 @@ impl TaskPool {
         let mut index = 0;
         while index < tasks.len() {
             let task = tasks[index];
-            let header = unsafe { &*(task.as_ptr() as *const Header) };
+            let header = unsafe { &*task.header() };
             let state = header.state.load(Ordering::Acquire);
 
             // Task is done, but has no associated `Task` handle.
             if state & TASK_REF == 0 && state & (STATE_DONE | STATE_CLOSED) != 0 {
                 let drop_fn = header.vtable.drop;
-                unsafe { drop_fn(task) };
-                unsafe { task::dealloc_task(task) };
+                unsafe { drop_fn(task.as_ptr()) };
+                unsafe { task::dealloc_task(task.as_ptr()) };
 
                 tasks.remove(index);
                 continue;
@@ -134,14 +134,14 @@ fn spawn_worker_thread(inner: Arc<Inner>) -> JoinHandle<()> {
             }
         };
 
-        let poll_fn = unsafe { task.cast::<Header>().as_ref().vtable.poll };
+        let poll_fn = unsafe { task.as_ptr().cast::<Header>().as_ref().vtable.poll };
 
         let waker = noop_waker();
         loop {
-            match unsafe { poll_fn(task, &waker as *const Waker) } {
+            match unsafe { poll_fn(task.as_ptr(), &waker as *const Waker) } {
                 Poll::Pending => (),
                 Poll::Ready(()) => {
-                    let header = task.as_ptr() as *const Header;
+                    let header = task.header();
                     unsafe {
                         loop {
                             let old_state = (*header).state.load(Ordering::Acquire);
@@ -181,7 +181,9 @@ fn noop_waker() -> Waker {
 mod tests {
     use std::future::Future;
     use std::pin::Pin;
-    use std::task::Context;
+    use std::task::{Context, Poll};
+
+    use futures::future::poll_fn;
 
     use crate::{noop_waker, TaskPool};
 
@@ -233,5 +235,28 @@ mod tests {
         for mut task in tasks {
             while Pin::new(&mut task).poll(&mut cx).is_pending() {}
         }
+    }
+
+    #[test]
+    fn schedule_yield_pending() {
+        let executor = TaskPool::new(1);
+        let mut task = executor.spawn(async {
+            let mut yielded = false;
+
+            poll_fn(|cx| {
+                if yielded {
+                    return Poll::Ready(());
+                }
+
+                yielded = true;
+                cx.waker().wake_by_ref();
+                Poll::Pending
+            })
+            .await;
+        });
+
+        let waker = noop_waker();
+        let mut cx = Context::from_waker(&waker);
+        while Pin::new(&mut task).poll(&mut cx).is_pending() {}
     }
 }

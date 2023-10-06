@@ -77,14 +77,31 @@ where
     }
 }
 
+/// An opaque pointer to a typed [`RawTask`].
+#[derive(Copy, Clone, Debug)]
+#[repr(transparent)]
+pub(crate) struct RawTaskPtr {
+    ptr: NonNull<()>,
+}
+
+impl RawTaskPtr {
+    pub(crate) fn header(self) -> *const Header {
+        self.ptr.as_ptr() as *const Header
+    }
+
+    pub(crate) fn as_ptr(self) -> NonNull<()> {
+        self.ptr
+    }
+}
+
 pub struct Task<T> {
     /// Untyped task pointer.
-    pub(crate) ptr: NonNull<()>,
+    pub(crate) ptr: RawTaskPtr,
     pub(crate) _marker: PhantomData<T>,
 }
 
 impl<T> Task<T> {
-    pub(crate) fn alloc_new<F>(future: F) -> NonNull<()>
+    pub(crate) fn alloc_new<F>(future: F) -> RawTaskPtr
     where
         F: Future<Output = T>,
     {
@@ -109,12 +126,13 @@ impl<T> Task<T> {
 
         unsafe { ptr.write(task) };
 
-        NonNull::new(ptr as *mut ()).unwrap()
+        RawTaskPtr {
+            ptr: NonNull::new(ptr as *mut ()).unwrap(),
+        }
     }
 
     fn poll_inner(&mut self, cx: &mut Context<'_>) -> Poll<T> {
-        let ptr = self.ptr.as_ptr();
-        let header = ptr as *const Header;
+        let header = self.ptr.header();
 
         unsafe {
             let state = (*header).state.load(Ordering::Acquire);
@@ -147,7 +165,7 @@ impl<T> Task<T> {
                         }
                     }
 
-                    let output_ptr = ((*header).vtable.read_output)(self.ptr);
+                    let output_ptr = ((*header).vtable.read_output)(self.ptr.as_ptr());
                     let output = std::ptr::read(output_ptr as *const T);
                     return Poll::Ready(output);
                 }
@@ -161,8 +179,7 @@ impl<T> Task<T> {
     }
 
     fn detach(&self) {
-        let ptr = self.ptr.as_ptr();
-        let header = unsafe { &*(ptr as *const Header) };
+        let header = unsafe { &*self.ptr.header() };
         let state = header.state.load(Ordering::Acquire);
 
         // Remove the `TASK_REF` flag.
