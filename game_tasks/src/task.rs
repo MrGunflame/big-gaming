@@ -40,7 +40,7 @@ where
     F: Future<Output = T>,
 {
     header: Header,
-    waker: AtomicWaker,
+    waker: ManuallyDrop<AtomicWaker>,
     future: ManuallyDrop<F>,
     output: MaybeUninit<T>,
 }
@@ -59,6 +59,7 @@ where
         assert!(!std::mem::needs_drop::<Header>());
 
         let this = ptr.cast::<Self>().as_mut();
+        ManuallyDrop::drop(&mut this.waker);
         ManuallyDrop::drop(&mut this.future);
 
         if *this.header.state.get_mut() == STATE_DONE {
@@ -136,7 +137,7 @@ impl<T> Task<T> {
                 },
                 layout,
             },
-            waker: AtomicWaker::new(),
+            waker: ManuallyDrop::new(AtomicWaker::new()),
             future: ManuallyDrop::new(future),
             output: MaybeUninit::uninit(),
         };
