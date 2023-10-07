@@ -21,7 +21,7 @@ use game_render::color::Color;
 use game_render::entities::{CameraId, DirectionalLightId};
 use game_render::light::{DirectionalLight, PointLight, SpotLight};
 use game_render::{shape, Renderer};
-use game_scene::scene::{Material, Node, NodeBody, ObjectNode, Scene};
+use game_scene::scene::{DirectionalLightNode, Material, Node, NodeBody, ObjectNode, Scene};
 use game_scene::Scenes;
 use game_ui::reactive::{ReadSignal, Scope, WriteSignal};
 use game_ui::style::{
@@ -54,6 +54,8 @@ pub struct WorldWindowState {
     state: State,
     directional_lights: HashMap<Key, DirectionalLightId>,
     edit_op: EditOperation,
+    /// Map nodes to rendered entities.
+    node_map: HashMap<Key, Entity>,
 }
 
 impl WorldWindowState {
@@ -113,6 +115,7 @@ impl WorldWindowState {
             edit_op: EditOperation::new(),
             state,
             directional_lights: HashMap::new(),
+            node_map: HashMap::new(),
         }
     }
 
@@ -386,7 +389,11 @@ impl WorldWindowState {
         //     _ => todo!(),
         // }
 
-        for node in self.edit_op.update(ray, camera_rotation) {
+        for (key, transform) in self.edit_op.update(ray, camera_rotation) {
+            self.state.nodes.update(|nodes| {
+                nodes.get_mut(key).unwrap().transform = transform;
+            });
+
             todo!()
         }
     }
@@ -455,16 +462,24 @@ impl WorldWindowState {
                         )
                     });
 
-                    let id = renderer
-                        .entities
-                        .directional_lights
-                        .insert(DirectionalLight {
-                            transform: Transform::default(),
-                            color: Color::WHITE,
-                            illuminance: 100_000.0,
-                        });
+                    let entity = hierarchy.append(None, Transform::default());
+                    scenes.insert(
+                        entity,
+                        Scene {
+                            nodes: vec![Node {
+                                transform: Transform::default(),
+                                body: NodeBody::DirectionalLight(DirectionalLightNode {
+                                    color: Color::WHITE,
+                                    illuminance: 100_000.0,
+                                }),
+                            }],
+                            materials: vec![],
+                            meshes: vec![],
+                            images: vec![],
+                        },
+                    );
 
-                    self.directional_lights.insert(key, id);
+                    self.node_map.insert(key, entity);
                 }
                 Event::SpawnPointLight => {
                     renderer.entities.point_lights.insert(PointLight {
@@ -485,8 +500,9 @@ impl WorldWindowState {
                     });
                 }
                 Event::Destroy { node } => {
-                    if let Some(id) = self.directional_lights.remove(&node) {
-                        renderer.entities.directional_lights.remove(id);
+                    // FIXME: Removing parent should remove all childrne.
+                    if let Some(entity) = self.node_map.remove(&node) {
+                        hierarchy.remove(entity);
                     }
                 }
             }
