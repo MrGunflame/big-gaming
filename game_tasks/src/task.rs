@@ -3,9 +3,12 @@ use std::future::Future;
 use std::marker::PhantomData;
 use std::mem::{ManuallyDrop, MaybeUninit};
 use std::pin::Pin;
-use std::ptr::NonNull;
+use std::ptr::{addr_of_mut, NonNull};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::task::{Context, Poll, Waker};
+
+use futures::future::FusedFuture;
+use futures::task::AtomicWaker;
 
 use crate::noop_waker;
 
@@ -37,6 +40,7 @@ where
     F: Future<Output = T>,
 {
     header: Header,
+    waker: ManuallyDrop<AtomicWaker>,
     future: ManuallyDrop<F>,
     output: MaybeUninit<T>,
 }
@@ -55,6 +59,7 @@ where
         assert!(!std::mem::needs_drop::<Header>());
 
         let this = ptr.cast::<Self>().as_mut();
+        ManuallyDrop::drop(&mut this.waker);
         ManuallyDrop::drop(&mut this.future);
 
         if *this.header.state.get_mut() == STATE_DONE {
@@ -63,28 +68,84 @@ where
     }
 
     unsafe fn poll(ptr: NonNull<()>, waker: *const Waker) -> Poll<()> {
-        let this = ptr.cast::<Self>().as_mut();
+        let ptr = ptr.cast::<Self>();
+
+        let header = unsafe { &*ptr.cast::<Header>().as_ptr() };
+        let task_waker = unsafe { &*addr_of_mut!((*ptr.as_ptr()).waker) };
+        let future = unsafe { &mut *addr_of_mut!((*ptr.as_ptr()).future) };
+        let output = unsafe { &mut *addr_of_mut!((*ptr.as_ptr()).output) };
 
         let mut cx = Context::from_waker(&*waker);
-        let pin: Pin<&mut F> = Pin::new_unchecked(&mut this.future);
+        let pin: Pin<&mut F> = Pin::new_unchecked(future);
         match F::poll(pin, &mut cx) {
             Poll::Pending => Poll::Pending,
             Poll::Ready(val) => {
-                this.output.write(val);
+                // Write the final value **BEFORE** waking.
+                output.write(val);
+
+                // Set the `DONE` bit (and remove the `QUEUED | RUNNING` bits).
+                // This must happen after the output value has been written, but
+                // before calling the waker.
+                // As soon as the `DONE` bit is set another thread is allowed to
+                // read the output value.
+                loop {
+                    let old_state = (*header).state.load(Ordering::Acquire);
+                    let mut new_state = old_state;
+                    new_state &= !(STATE_QUEUED | STATE_RUNNING);
+                    new_state |= STATE_DONE;
+
+                    if (*header)
+                        .state
+                        .compare_exchange_weak(
+                            old_state,
+                            new_state,
+                            Ordering::SeqCst,
+                            Ordering::SeqCst,
+                        )
+                        .is_ok()
+                    {
+                        break;
+                    }
+                }
+
+                task_waker.wake();
+
                 Poll::Ready(())
             }
         }
     }
 }
 
+/// An opaque pointer to a typed [`RawTask`].
+#[derive(Copy, Clone, Debug)]
+#[repr(transparent)]
+pub(crate) struct RawTaskPtr {
+    ptr: NonNull<()>,
+}
+
+impl RawTaskPtr {
+    pub(crate) fn header(self) -> *const Header {
+        self.ptr.as_ptr() as *const Header
+    }
+
+    pub(crate) fn as_ptr(self) -> NonNull<()> {
+        self.ptr
+    }
+
+    pub(crate) fn waker(self) -> *const AtomicWaker {
+        let offset = std::mem::size_of::<Header>();
+        unsafe { self.ptr.as_ptr().cast::<u8>().add(offset) as *const AtomicWaker }
+    }
+}
+
 pub struct Task<T> {
     /// Untyped task pointer.
-    pub(crate) ptr: NonNull<()>,
+    pub(crate) ptr: RawTaskPtr,
     pub(crate) _marker: PhantomData<T>,
 }
 
 impl<T> Task<T> {
-    pub(crate) fn alloc_new<F>(future: F) -> NonNull<()>
+    pub(crate) fn alloc_new<F>(future: F) -> RawTaskPtr
     where
         F: Future<Output = T>,
     {
@@ -103,18 +164,25 @@ impl<T> Task<T> {
                 },
                 layout,
             },
+            waker: ManuallyDrop::new(AtomicWaker::new()),
             future: ManuallyDrop::new(future),
             output: MaybeUninit::uninit(),
         };
 
         unsafe { ptr.write(task) };
 
-        NonNull::new(ptr as *mut ()).unwrap()
+        RawTaskPtr {
+            ptr: NonNull::new(ptr as *mut ()).unwrap(),
+        }
     }
 
     fn poll_inner(&mut self, cx: &mut Context<'_>) -> Poll<T> {
-        let ptr = self.ptr.as_ptr();
-        let header = ptr as *const Header;
+        let header = self.ptr.header();
+        let waker = unsafe { &*self.ptr.waker() };
+        // The waker might be different that on the last
+        // call to `poll`. Since `AtomicWaker` doesn't allow
+        // `will_wake`.
+        waker.register(cx.waker());
 
         unsafe {
             let state = (*header).state.load(Ordering::Acquire);
@@ -147,7 +215,7 @@ impl<T> Task<T> {
                         }
                     }
 
-                    let output_ptr = ((*header).vtable.read_output)(self.ptr);
+                    let output_ptr = ((*header).vtable.read_output)(self.ptr.as_ptr());
                     let output = std::ptr::read(output_ptr as *const T);
                     return Poll::Ready(output);
                 }
@@ -161,8 +229,7 @@ impl<T> Task<T> {
     }
 
     fn detach(&self) {
-        let ptr = self.ptr.as_ptr();
-        let header = unsafe { &*(ptr as *const Header) };
+        let header = unsafe { &*self.ptr.header() };
         let state = header.state.load(Ordering::Acquire);
 
         // Remove the `TASK_REF` flag.
@@ -191,6 +258,14 @@ impl<T> Future for Task<T> {
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         self.poll_inner(cx)
+    }
+}
+
+impl<T> FusedFuture for Task<T> {
+    fn is_terminated(&self) -> bool {
+        let header = self.ptr.header();
+        let state = unsafe { (*header).state.load(Ordering::Acquire) };
+        state & STATE_CLOSED != 0
     }
 }
 
