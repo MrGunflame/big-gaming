@@ -141,30 +141,11 @@ fn spawn_worker_thread(inner: Arc<Inner>) -> JoinHandle<()> {
         match unsafe { poll_fn(task.as_ptr(), &waker as *const Waker) } {
             Poll::Pending => {}
             Poll::Ready(()) => {
-                set_task_done(task);
+                // The `poll` function handles advancing the internal state
+                // when the future yields `Ready`.
             }
         }
     })
-}
-
-fn set_task_done(task: RawTaskPtr) {
-    let header = task.header();
-    unsafe {
-        loop {
-            let old_state = (*header).state.load(Ordering::Acquire);
-            let mut new_state = old_state;
-            new_state &= !(STATE_QUEUED | STATE_RUNNING);
-            new_state |= STATE_DONE;
-
-            if (*header)
-                .state
-                .compare_exchange_weak(old_state, new_state, Ordering::SeqCst, Ordering::SeqCst)
-                .is_ok()
-            {
-                return;
-            }
-        }
-    }
 }
 
 fn noop_waker() -> Waker {

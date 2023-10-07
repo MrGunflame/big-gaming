@@ -70,6 +70,7 @@ where
     unsafe fn poll(ptr: NonNull<()>, waker: *const Waker) -> Poll<()> {
         let ptr = ptr.cast::<Self>();
 
+        let header = unsafe { &*ptr.cast::<Header>().as_ptr() };
         let task_waker = unsafe { &*addr_of_mut!((*ptr.as_ptr()).waker) };
         let future = unsafe { &mut *addr_of_mut!((*ptr.as_ptr()).future) };
         let output = unsafe { &mut *addr_of_mut!((*ptr.as_ptr()).output) };
@@ -81,6 +82,32 @@ where
             Poll::Ready(val) => {
                 // Write the final value **BEFORE** waking.
                 output.write(val);
+
+                // Set the `DONE` bit (and remove the `QUEUED | RUNNING` bits).
+                // This must happen after the output value has been written, but
+                // before calling the waker.
+                // As soon as the `DONE` bit is set another thread is allowed to
+                // read the output value.
+                loop {
+                    let old_state = (*header).state.load(Ordering::Acquire);
+                    let mut new_state = old_state;
+                    new_state &= !(STATE_QUEUED | STATE_RUNNING);
+                    new_state |= STATE_DONE;
+
+                    if (*header)
+                        .state
+                        .compare_exchange_weak(
+                            old_state,
+                            new_state,
+                            Ordering::SeqCst,
+                            Ordering::SeqCst,
+                        )
+                        .is_ok()
+                    {
+                        break;
+                    }
+                }
+
                 task_waker.wake();
 
                 Poll::Ready(())
