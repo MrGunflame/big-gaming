@@ -103,7 +103,19 @@ impl WorldWindowState {
             },
         );
 
-        // state.entities.update(|e| e.push(plane));
+        let key = state.nodes.update(|nodes| {
+            nodes.append(
+                None,
+                node::Node {
+                    name: "Plane".into(),
+                    transform: Transform::default(),
+                    body: node::NodeBody::Model(),
+                },
+            )
+        });
+
+        let mut node_map = HashMap::new();
+        node_map.insert(key, plane);
 
         let s = hierarchy.append(None, Transform::default());
         scenes.load(s, "../../sponza.glb");
@@ -115,7 +127,7 @@ impl WorldWindowState {
             edit_op: EditOperation::new(),
             state,
             directional_lights: HashMap::new(),
-            node_map: HashMap::new(),
+            node_map,
         }
     }
 
@@ -301,29 +313,30 @@ impl WorldWindowState {
     }
 
     fn update_selection(&mut self, renderer: &mut Renderer, scenes: &mut Scenes, id: WindowId) {
-        // let camera = renderer
-        //     .entities
-        //     .cameras
-        //     .get_mut(self.camera)
-        //     .unwrap()
-        //     .clone();
-        // let viewport_size = renderer.get_surface_size(id).unwrap().as_vec2();
+        let camera = renderer
+            .entities
+            .cameras
+            .get_mut(self.camera)
+            .unwrap()
+            .clone();
+        let viewport_size = renderer.get_surface_size(id).unwrap().as_vec2();
 
-        // self.state.selection.update(|v| v.clear());
-        // for id in &self.state.entities.get() {
-        //     let object = scenes.objects(*id).unwrap().nth(0).unwrap();
-        //     let object = renderer.entities.objects.get(object).unwrap();
+        for (node, entity) in self.node_map.iter() {
+            let Some(object) = scenes.objects(*entity).unwrap().nth(0) else {
+                continue;
+            };
+            let object = renderer.entities.objects.get(object).unwrap();
 
-        //     let mesh = renderer.meshes.get(object.mesh).unwrap();
+            let mesh = renderer.meshes.get(object.mesh).unwrap();
 
-        //     if let Some(aabb) = mesh.compute_aabb() {
-        //         let ray = camera.viewport_to_world(camera.transform, viewport_size, self.cursor);
+            if let Some(aabb) = mesh.compute_aabb() {
+                let ray = camera.viewport_to_world(camera.transform, viewport_size, self.cursor);
 
-        //         if selection::hit_test(ray, aabb) {
-        //             self.state.selection.update(|v| v.push(*id));
-        //         }
-        //     }
-        // }
+                if selection::hit_test(ray, aabb) {
+                    self.state.selection.update(|v| v.insert(*node));
+                }
+            }
+        }
     }
 
     fn create_edit_op(
@@ -359,42 +372,13 @@ impl WorldWindowState {
         let camera_rotation = camera.transform.rotation;
         let ray = camera.viewport_to_world(camera.transform, viewport_size, self.cursor);
 
-        // match self.edit_mode {
-        //     EditMode::Translate(axis) => {
-        //         for id in &self.state.selection.get() {
-        //             let transform = hierarchy.get_mut(*id).unwrap();
-
-        //             // Find the intersection of the camera ray with the plane placed
-        //             // at the object, facing the camera. The projected point is the new
-        //             // translation.
-        //             let plane_origin = transform.translation;
-        //             let plane_normal = camera_rotation * Vec3::Z;
-        //             // FIXME: What if no intersection?
-        //             let point = ray.plane_intersection(plane_origin, plane_normal).unwrap();
-
-        //             match axis {
-        //                 Some(Axis::X) => transform.translation.x = point.x,
-        //                 Some(Axis::Y) => transform.translation.y = point.y,
-        //                 Some(Axis::Z) => transform.translation.z = point.z,
-        //                 None => transform.translation = point,
-        //             }
-
-        //             self.state
-        //                 .transform
-        //                 .set_translation
-        //                 .update(|translation| *translation = transform.translation);
-        //         }
-        //     }
-        //     EditMode::None => (),
-        //     _ => todo!(),
-        // }
-
         for (key, transform) in self.edit_op.update(ray, camera_rotation) {
             self.state.nodes.update(|nodes| {
                 nodes.get_mut(key).unwrap().transform = transform;
             });
 
-            todo!()
+            let entity = self.node_map.get(&key).unwrap();
+            hierarchy.set(*entity, transform);
         }
     }
 
@@ -405,7 +389,12 @@ impl WorldWindowState {
         hierarchy: &mut TransformHierarchy,
     ) {
         for (key, transform) in self.edit_op.reset() {
-            todo!()
+            self.state.nodes.update(|nodes| {
+                nodes.get_mut(key).unwrap().transform = transform;
+            });
+
+            let entity = self.node_map.get(&key).unwrap();
+            hierarchy.set(*entity, transform);
         }
     }
 
