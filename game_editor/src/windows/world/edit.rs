@@ -12,7 +12,7 @@ use super::Axis;
 pub struct EditOperation {
     origin: Vec2,
     nodes: Vec<EditNode>,
-    pub mode: EditMode,
+    mode: EditMode,
 }
 
 impl EditOperation {
@@ -34,6 +34,17 @@ impl EditOperation {
             origin,
             current: origin,
         });
+    }
+
+    pub fn mode(&self) -> EditMode {
+        self.mode
+    }
+
+    pub fn set_mode(&mut self, mode: EditMode) {
+        if self.mode != mode {
+            self.reset_to_origin();
+            self.mode = mode;
+        }
     }
 
     pub fn update(
@@ -74,6 +85,12 @@ impl EditOperation {
 
     pub fn reset(&mut self) -> impl Iterator<Item = (Key, Transform)> + '_ {
         self.nodes.drain(..).map(|node| (node.id, node.origin))
+    }
+
+    fn reset_to_origin(&mut self) {
+        for node in &mut self.nodes {
+            node.current = node.origin;
+        }
     }
 }
 

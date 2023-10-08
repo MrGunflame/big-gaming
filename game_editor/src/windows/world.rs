@@ -5,21 +5,20 @@ mod node;
 pub mod spawn_entity;
 
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::f32::consts::E;
 use std::sync::mpsc;
 
 use bitflags::bitflags;
 use game_common::components::transform::Transform;
 use game_common::record::RecordReference;
 use game_core::hierarchy::{Entity, Hierarchy, Key, TransformHierarchy};
-use game_data::record::{Record, RecordBody};
+use game_data::record::Record;
 use game_input::keyboard::KeyCode;
 use game_input::mouse::{MouseButton, MouseMotion, MouseWheel};
 use game_input::ButtonState;
 use game_render::camera::{Camera, RenderTarget};
 use game_render::color::Color;
 use game_render::entities::{CameraId, DirectionalLightId};
-use game_render::light::{DirectionalLight, PointLight, SpotLight};
+use game_render::light::{PointLight, SpotLight};
 use game_render::{shape, Renderer};
 use game_scene::scene::{DirectionalLightNode, Material, Node, NodeBody, ObjectNode, Scene};
 use game_scene::Scenes;
@@ -27,11 +26,10 @@ use game_ui::reactive::{ReadSignal, Scope, WriteSignal};
 use game_ui::style::{
     Background, BorderRadius, Bounds, Direction, Growth, Justify, Size, SizeVec2, Style,
 };
-use game_ui::widgets::{Button, Container, ParseInput, Text};
+use game_ui::widgets::{Container, ParseInput, Text};
 use game_window::events::WindowEvent;
 use game_window::windows::WindowId;
 use glam::{Quat, Vec2, Vec3};
-use parking_lot::Mutex;
 
 use crate::state::EditorState;
 use crate::windows::world::node::NodeKind;
@@ -39,8 +37,6 @@ use crate::world::selection;
 
 use self::edit::{EditMode, EditOperation};
 use self::hierarchy::NodeHierarchy;
-
-use super::SpawnWindow;
 
 const ZOOM_DISTANCE_MIN: f32 = 0.2;
 const ZOOM_DISTANCE_MAX: f32 = 100.0;
@@ -222,59 +218,59 @@ impl WorldWindowState {
                     match event.key_code {
                         Some(KeyCode::Escape) => {
                             self.reset_edit_op(renderer, scenes, hierarchy);
-                            self.edit_op.mode = EditMode::None;
+                            self.edit_op.set_mode(EditMode::None);
                         }
                         Some(KeyCode::G) => {
-                            self.edit_op.mode = EditMode::Translate(None);
+                            self.edit_op.set_mode(EditMode::Translate(None));
                             self.create_edit_op(renderer, scenes, hierarchy);
                         }
                         Some(KeyCode::R) => {
-                            self.edit_op.mode = EditMode::Rotate(None);
+                            self.edit_op.set_mode(EditMode::Rotate(None));
                             self.create_edit_op(renderer, scenes, hierarchy);
                         }
                         Some(KeyCode::S) => {
-                            self.edit_op.mode = EditMode::Scale(None);
+                            self.edit_op.set_mode(EditMode::Scale(None));
                             self.create_edit_op(renderer, scenes, hierarchy);
                         }
                         Some(KeyCode::X) => {
-                            match &mut self.edit_op.mode {
-                                EditMode::Translate(axis) => *axis = Some(Axis::X),
-                                EditMode::Rotate(axis) => *axis = Some(Axis::X),
-                                EditMode::Scale(axis) => *axis = Some(Axis::X),
-                                EditMode::None => (),
-                            }
+                            let mode = match self.edit_op.mode() {
+                                EditMode::Translate(_) => EditMode::Translate(Some(Axis::X)),
+                                EditMode::Rotate(_) => EditMode::Rotate(Some(Axis::X)),
+                                EditMode::Scale(_) => EditMode::Scale(Some(Axis::X)),
+                                EditMode::None => EditMode::None,
+                            };
+                            self.edit_op.set_mode(mode);
 
-                            if self.edit_op.mode != EditMode::None {
+                            if self.edit_op.mode() != EditMode::None {
                                 let camera = camera.clone();
-                                self.reset_edit_op(renderer, scenes, hierarchy);
                                 self.update_edit_op(renderer, scenes, window, camera, hierarchy);
                             }
                         }
                         Some(KeyCode::Y) => {
-                            match &mut self.edit_op.mode {
-                                EditMode::Translate(axis) => *axis = Some(Axis::Y),
-                                EditMode::Rotate(axis) => *axis = Some(Axis::Y),
-                                EditMode::Scale(axis) => *axis = Some(Axis::Y),
-                                EditMode::None => (),
-                            }
+                            let mode = match self.edit_op.mode() {
+                                EditMode::Translate(_) => EditMode::Translate(Some(Axis::Y)),
+                                EditMode::Rotate(_) => EditMode::Rotate(Some(Axis::Y)),
+                                EditMode::Scale(_) => EditMode::Scale(Some(Axis::Y)),
+                                EditMode::None => EditMode::None,
+                            };
+                            self.edit_op.set_mode(mode);
 
-                            if self.edit_op.mode != EditMode::None {
+                            if self.edit_op.mode() != EditMode::None {
                                 let camera = camera.clone();
-                                self.reset_edit_op(renderer, scenes, hierarchy);
                                 self.update_edit_op(renderer, scenes, window, camera, hierarchy);
                             }
                         }
                         Some(KeyCode::Z) => {
-                            match &mut self.edit_op.mode {
-                                EditMode::Translate(axis) => *axis = Some(Axis::Z),
-                                EditMode::Rotate(axis) => *axis = Some(Axis::Z),
-                                EditMode::Scale(axis) => *axis = Some(Axis::Z),
-                                EditMode::None => (),
+                            let mode = match self.edit_op.mode() {
+                                EditMode::Translate(_) => EditMode::Translate(Some(Axis::Z)),
+                                EditMode::Rotate(_) => EditMode::Rotate(Some(Axis::Z)),
+                                EditMode::Scale(_) => EditMode::Scale(Some(Axis::Z)),
+                                EditMode::None => EditMode::None,
                             };
+                            self.edit_op.set_mode(mode);
 
-                            if self.edit_op.mode != EditMode::None {
+                            if self.edit_op.mode() != EditMode::None {
                                 let camera = camera.clone();
-                                self.reset_edit_op(renderer, scenes, hierarchy);
                                 self.update_edit_op(renderer, scenes, window, camera, hierarchy);
                             }
                         }
@@ -289,17 +285,17 @@ impl WorldWindowState {
                     }
 
                     drop(camera);
-                    if self.edit_op.mode == EditMode::None {
+                    if self.edit_op.mode() == EditMode::None {
                         self.update_selection(renderer, scenes, window);
                     } else {
                         self.confirm_edit_op(renderer);
                     }
                 }
                 MouseButton::Right => {
-                    if self.edit_op.mode != EditMode::None {
+                    if self.edit_op.mode() != EditMode::None {
                         drop(camera);
                         self.reset_edit_op(renderer, scenes, hierarchy);
-                        self.edit_op.mode = EditMode::None;
+                        self.edit_op.set_mode(EditMode::None);
                     }
                 }
                 MouseButton::Middle => match event.state {
@@ -399,7 +395,7 @@ impl WorldWindowState {
     }
 
     fn confirm_edit_op(&mut self, renderer: &mut Renderer) {
-        self.edit_op.mode = EditMode::None;
+        self.edit_op.set_mode(EditMode::None);
         self.edit_op.confirm();
     }
 
