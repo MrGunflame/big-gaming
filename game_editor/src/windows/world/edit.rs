@@ -15,7 +15,6 @@ pub struct EditOperation {
     camera_ray: Ray,
     nodes: Vec<EditNode>,
     mode: EditMode,
-    camera_rotation: Quat,
 }
 
 impl EditOperation {
@@ -25,14 +24,12 @@ impl EditOperation {
             nodes: Vec::new(),
             mode: EditMode::None,
             camera_ray: Ray::ZERO,
-            camera_rotation: Quat::IDENTITY,
         }
     }
 
-    pub fn create(&mut self, cursor_origin: Vec2, camera_ray: Ray, camera_rotation: Quat) {
+    pub fn create(&mut self, cursor_origin: Vec2, camera_ray: Ray) {
         self.origin = cursor_origin;
         self.camera_ray = camera_ray;
-        self.camera_rotation = camera_rotation;
     }
 
     pub fn push(&mut self, id: Key, origin: Transform) {
@@ -92,7 +89,7 @@ impl EditOperation {
                     // there must always be an intersection point.
                     let p1 = self.camera_ray.plane_intersection_unchecked(
                         node.current.translation,
-                        self.camera_rotation * Vec3::Z,
+                        camera_rotation * Vec3::Z,
                     );
                     let p2 = ray.plane_intersection_unchecked(
                         node.current.translation,
@@ -127,7 +124,7 @@ impl EditOperation {
                 for node in &mut self.nodes {
                     let p1 = self.camera_ray.plane_intersection_unchecked(
                         node.current.translation,
-                        self.camera_rotation * Vec3::Z,
+                        camera_rotation * Vec3::Z,
                     );
                     let p2 = ray.plane_intersection_unchecked(
                         node.current.translation,

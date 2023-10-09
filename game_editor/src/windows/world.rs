@@ -351,8 +351,7 @@ impl WorldWindowState {
         let viewport_size = renderer.get_surface_size(id).unwrap().as_vec2();
         let ray = camera.viewport_to_world(camera.transform, viewport_size, self.cursor);
 
-        self.edit_op
-            .create(self.cursor, ray, camera.transform.rotation);
+        self.edit_op.create(self.cursor, ray);
 
         self.state.selection.with(|selection| {
             for id in selection {
