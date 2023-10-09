@@ -10,9 +10,12 @@ use super::Axis;
 
 #[derive(Clone, Debug, Default)]
 pub struct EditOperation {
+    /// The cursor translation when the edit started.
     origin: Vec2,
+    camera_ray: Ray,
     nodes: Vec<EditNode>,
     mode: EditMode,
+    camera_rotation: Quat,
 }
 
 impl EditOperation {
@@ -21,11 +24,15 @@ impl EditOperation {
             origin: Vec2::ZERO,
             nodes: Vec::new(),
             mode: EditMode::None,
+            camera_ray: Ray::ZERO,
+            camera_rotation: Quat::IDENTITY,
         }
     }
 
-    pub fn create(&mut self, cursor_origin: Vec2) {
+    pub fn create(&mut self, cursor_origin: Vec2, camera_ray: Ray, camera_rotation: Quat) {
         self.origin = cursor_origin;
+        self.camera_ray = camera_ray;
+        self.camera_rotation = camera_rotation;
     }
 
     pub fn push(&mut self, id: Key, origin: Transform) {
@@ -69,6 +76,31 @@ impl EditOperation {
                         Some(Axis::Z) => node.current.translation.z = point.z,
                         None => node.current.translation = point,
                     }
+                }
+            }
+            EditMode::Rotate(axis) => {
+                for node in &mut self.nodes {
+                    let p1 = self
+                        .camera_ray
+                        .plane_intersection(
+                            node.current.translation,
+                            self.camera_rotation * Vec3::Z,
+                        )
+                        .unwrap();
+                    let p2 = ray
+                        .plane_intersection(node.current.translation, camera_rotation * Vec3::Z)
+                        .unwrap();
+
+                    let a1 = (p1 - node.current.translation).normalize_or_zero();
+                    let a2 = (p2 - node.current.translation).normalize_or_zero();
+
+                    dbg!(p1, p2, a1, a2);
+
+                    let angle = a1.dot(a2).clamp(-1.0, 1.0).acos();
+                    dbg!(angle);
+                    let rotation = Quat::from_axis_angle(Vec3::Y, angle);
+
+                    node.current.rotation = (node.origin.rotation * rotation).normalize();
                 }
             }
             EditMode::None => (),

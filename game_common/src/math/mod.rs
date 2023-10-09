@@ -3,13 +3,18 @@ mod rotation;
 use glam::Vec3;
 pub use rotation::{Rotation, RotationExt};
 
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, Default, PartialEq)]
 pub struct Ray {
     pub origin: Vec3,
     pub direction: Vec3,
 }
 
 impl Ray {
+    pub const ZERO: Self = Self {
+        origin: Vec3::ZERO,
+        direction: Vec3::ZERO,
+    };
+
     pub fn point(self, distance: f32) -> Vec3 {
         self.origin + self.direction * distance
     }

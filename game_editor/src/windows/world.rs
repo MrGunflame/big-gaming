@@ -222,15 +222,15 @@ impl WorldWindowState {
                         }
                         Some(KeyCode::G) => {
                             self.edit_op.set_mode(EditMode::Translate(None));
-                            self.create_edit_op(renderer, scenes, hierarchy);
+                            self.create_edit_op(renderer, scenes, hierarchy, window);
                         }
                         Some(KeyCode::R) => {
                             self.edit_op.set_mode(EditMode::Rotate(None));
-                            self.create_edit_op(renderer, scenes, hierarchy);
+                            self.create_edit_op(renderer, scenes, hierarchy, window);
                         }
                         Some(KeyCode::S) => {
                             self.edit_op.set_mode(EditMode::Scale(None));
-                            self.create_edit_op(renderer, scenes, hierarchy);
+                            self.create_edit_op(renderer, scenes, hierarchy, window);
                         }
                         Some(KeyCode::X) => {
                             let mode = match self.edit_op.mode() {
@@ -340,8 +340,19 @@ impl WorldWindowState {
         renderer: &mut Renderer,
         scenes: &mut Scenes,
         hierarchy: &mut TransformHierarchy,
+        id: WindowId,
     ) {
-        self.edit_op.create(self.cursor);
+        let camera = renderer
+            .entities
+            .cameras
+            .get_mut(self.camera)
+            .unwrap()
+            .clone();
+        let viewport_size = renderer.get_surface_size(id).unwrap().as_vec2();
+        let ray = camera.viewport_to_world(camera.transform, viewport_size, self.cursor);
+
+        self.edit_op
+            .create(self.cursor, ray, camera.transform.rotation);
 
         self.state.selection.with(|selection| {
             for id in selection {
