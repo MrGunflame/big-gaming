@@ -1,8 +1,6 @@
 //! 3D Transform editing
 //!
 
-use std::f32::consts::PI;
-
 use game_common::components::transform::Transform;
 use game_common::math::Ray;
 use game_core::hierarchy::Key;
@@ -112,7 +110,13 @@ impl EditOperation {
                         angle = -angle;
                     }
 
-                    let rotation = Quat::from_axis_angle(plane_normal, angle);
+                    let rotation_axis = match axis {
+                        Some(Axis::X) => Vec3::X,
+                        Some(Axis::Y) => Vec3::Y,
+                        Some(Axis::Z) => Vec3::Z,
+                        None => plane_normal,
+                    };
+                    let rotation = Quat::from_axis_angle(rotation_axis, angle);
 
                     // The new rotation is absolute, so we must base it off the
                     // the original object rotation.
