@@ -123,8 +123,32 @@ impl EditOperation {
                     node.current.rotation = (node.origin.rotation * rotation).normalize();
                 }
             }
+            EditMode::Scale(axis) => {
+                for node in &mut self.nodes {
+                    let p1 = self.camera_ray.plane_intersection_unchecked(
+                        node.current.translation,
+                        self.camera_rotation * Vec3::Z,
+                    );
+                    let p2 = ray.plane_intersection_unchecked(
+                        node.current.translation,
+                        camera_rotation * Vec3::Z,
+                    );
+
+                    if p1.length() == 0.0 || p2.length() == 0.0 {
+                        continue;
+                    }
+
+                    let factor = p2.length() / p1.length();
+
+                    match axis {
+                        Some(Axis::X) => node.current.scale.x = node.origin.scale.x * factor,
+                        Some(Axis::Y) => node.current.scale.y = node.origin.scale.y * factor,
+                        Some(Axis::Z) => node.current.scale.z = node.origin.scale.z * factor,
+                        None => node.current.scale = node.origin.scale * factor,
+                    }
+                }
+            }
             EditMode::None => (),
-            _ => todo!(),
         }
 
         self.nodes.iter().map(|node| (node.id, node.current))
