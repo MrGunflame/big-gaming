@@ -1,6 +1,8 @@
 //! 3D Transform editing
 //!
 
+use std::f32::consts::PI;
+
 use game_common::components::transform::Transform;
 use game_common::math::Ray;
 use game_core::hierarchy::Key;
@@ -80,26 +82,40 @@ impl EditOperation {
             }
             EditMode::Rotate(axis) => {
                 for node in &mut self.nodes {
-                    let p1 = self
-                        .camera_ray
-                        .plane_intersection(
-                            node.current.translation,
-                            self.camera_rotation * Vec3::Z,
-                        )
-                        .unwrap();
-                    let p2 = ray
-                        .plane_intersection(node.current.translation, camera_rotation * Vec3::Z)
-                        .unwrap();
+                    // To find the new rotation we use the starting cursor translation
+                    // and current cursor translation to determine the angle between them.
+                    // To determine the quadrant in which the cursor is located we use a
+                    // a separate vector that sits orthogonal to the starting cursor vector
+                    // on the plane.
+
+                    let plane_normal = camera_rotation * Vec3::Z;
+
+                    // The ray always points towards the frustrum plane,
+                    // there must always be an intersection point.
+                    let p1 = self.camera_ray.plane_intersection_unchecked(
+                        node.current.translation,
+                        self.camera_rotation * Vec3::Z,
+                    );
+                    let p2 = ray.plane_intersection_unchecked(
+                        node.current.translation,
+                        camera_rotation * Vec3::Z,
+                    );
 
                     let a1 = (p1 - node.current.translation).normalize_or_zero();
                     let a2 = (p2 - node.current.translation).normalize_or_zero();
 
-                    dbg!(p1, p2, a1, a2);
+                    // Create vector orthogonal to `a1` that sits on the frustrum plane.
+                    let f = a1.cross(plane_normal);
 
-                    let angle = a1.dot(a2).clamp(-1.0, 1.0).acos();
-                    dbg!(angle);
-                    let rotation = Quat::from_axis_angle(Vec3::Y, angle);
+                    let mut angle = a1.dot(a2).clamp(-1.0, 1.0).acos();
+                    if f.dot(a2).is_sign_positive() {
+                        angle = -angle;
+                    }
 
+                    let rotation = Quat::from_axis_angle(plane_normal, angle);
+
+                    // The new rotation is absolute, so we must base it off the
+                    // the original object rotation.
                     node.current.rotation = (node.origin.rotation * rotation).normalize();
                 }
             }
