@@ -79,6 +79,7 @@ where
 {
     buf: Vec<u8>,
     _marker: PhantomData<T>,
+    cap: u32,
 }
 
 impl<T> DynamicBuffer<T>
@@ -86,15 +87,21 @@ where
     T: GpuBuffer,
 {
     pub fn new() -> Self {
-        // TODO: What if ALIGN < 4?
-        let buf = vec![0; T::ALIGN + T::SIZE];
+        //
+        let buf = vec![
+            0;
+            Self::counter_offset() // Memory for counter
+            + T::SIZE + Self::padding_needed() // Memory for first element
+        ];
 
         Self {
             buf,
             _marker: PhantomData,
+            cap: 1,
         }
     }
 
+    /// Returns the number of elements in this buffer.
     pub fn len(&self) -> u32 {
         let bytes = &self.buf[0..4];
         u32::from_ne_bytes(bytes.try_into().unwrap())
@@ -105,10 +112,13 @@ where
     }
 
     pub fn push(&mut self, item: T) {
-        let index = self.len() as usize;
-        self.buf.resize(T::ALIGN + (index + 1) * T::SIZE, 0);
+        let index = self.len();
 
-        let slice = &mut self.buf[index + T::ALIGN..index + T::ALIGN + T::SIZE];
+        if self.cap <= self.len() {
+            self.reserve(1);
+        }
+
+        let slice = self.get_memory_mut(index);
         slice.copy_from_slice(bytemuck::bytes_of(&item));
 
         self.set_len(self.len() + 1);
@@ -121,6 +131,32 @@ where
     fn set_len(&mut self, len: u32) {
         let bytes = &mut self.buf[0..4];
         bytes.copy_from_slice(&len.to_ne_bytes());
+    }
+
+    fn reserve(&mut self, additional: usize) {
+        let pad = Self::padding_needed();
+        let size = T::SIZE + pad;
+
+        self.buf.resize(self.buf.len() + size * additional, 0);
+        self.cap += additional as u32;
+    }
+
+    fn padding_needed() -> usize {
+        (T::SIZE.wrapping_add(T::ALIGN).wrapping_sub(1) & !T::ALIGN.wrapping_sub(1))
+            .wrapping_sub(T::SIZE)
+    }
+
+    fn get_memory_mut(&mut self, index: u32) -> &mut [u8] {
+        let size = T::SIZE + Self::padding_needed();
+
+        let start = Self::counter_offset() + size * index as usize;
+        let end = start + size;
+
+        &mut self.buf[start..end]
+    }
+
+    fn counter_offset() -> usize {
+        T::ALIGN.max(std::mem::size_of::<u32>())
     }
 }
 
@@ -206,6 +242,46 @@ mod tests {
                 0, 0, 0, 0, // align
                 0, 0, 0, 0, // align
                 0, 0, 0, 0, // align
+                1, 2, 3, 4, // a + b
+                5, 6, 7, 8, // c + d
+                9, 10, 11, 12, // e + f + g
+                13, 14, 15, 16, // h
+            ]
+        );
+    }
+
+    #[test]
+    fn dynamic_buffer_push_many() {
+        let mut buffer = DynamicBuffer::new();
+
+        for _ in 0..3 {
+            buffer.push(TestStruct {
+                a: [1, 2, 3],
+                b: 4,
+                c: [5, 6, 7],
+                d: 8,
+                e: 9,
+                f: 10,
+                g: [11, 12],
+                h: [13, 14, 15, 16],
+            });
+        }
+
+        assert_eq!(
+            buffer.as_bytes(),
+            [
+                3, 0, 0, 0, // count
+                0, 0, 0, 0, // align
+                0, 0, 0, 0, // align
+                0, 0, 0, 0, // align
+                1, 2, 3, 4, // a + b
+                5, 6, 7, 8, // c + d
+                9, 10, 11, 12, // e + f + g
+                13, 14, 15, 16, // h
+                1, 2, 3, 4, // a + b
+                5, 6, 7, 8, // c + d
+                9, 10, 11, 12, // e + f + g
+                13, 14, 15, 16, // h
                 1, 2, 3, 4, // a + b
                 5, 6, 7, 8, // c + d
                 9, 10, 11, 12, // e + f + g
