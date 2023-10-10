@@ -13,6 +13,7 @@ pub enum NodeBody {
     Model(),
     DirectionalLight(DirectionalLight),
     PointLight(PointLight),
+    SpotLight(SpotLight),
 }
 
 impl NodeBody {
@@ -21,6 +22,7 @@ impl NodeBody {
             Self::Model() => NodeKind::Model,
             Self::DirectionalLight(_) => NodeKind::DirectionalLight,
             Self::PointLight(_) => NodeKind::PointLight,
+            Self::SpotLight(_) => NodeKind::SpotLight,
         }
     }
 }
@@ -36,6 +38,15 @@ pub struct PointLight {
     pub color: Color,
     pub intensity: f32,
     pub radius: f32,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct SpotLight {
+    pub color: Color,
+    pub intensity: f32,
+    pub radius: f32,
+    pub inner_cutoff: f32,
+    pub outer_cutoff: f32,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]

@@ -1,10 +1,8 @@
-use std::collections::HashMap;
-
 use game_common::components::transform::Transform;
 use game_core::hierarchy::{Entity, TransformHierarchy};
 use game_render::color::Color;
-use game_render::entities::{Object, ObjectId};
-use game_render::light::DirectionalLight;
+use game_render::entities::Object;
+use game_render::light::{DirectionalLight, PointLight, SpotLight};
 use game_render::mesh::Mesh;
 use game_render::pbr::{AlphaMode, PbrMaterial};
 use game_render::texture::Image;
@@ -31,6 +29,8 @@ pub struct Node {
 pub enum NodeBody {
     Object(ObjectNode),
     DirectionalLight(DirectionalLightNode),
+    PointLight(PointLightNode),
+    SpotLight(SpotLightNode),
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -43,6 +43,22 @@ pub struct ObjectNode {
 pub struct DirectionalLightNode {
     pub color: Color,
     pub illuminance: f32,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct PointLightNode {
+    pub color: Color,
+    pub intensity: f32,
+    pub radius: f32,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct SpotLightNode {
+    pub color: Color,
+    pub intensity: f32,
+    pub radius: f32,
+    pub inner_cutoff: f32,
+    pub outer_cutoff: f32,
 }
 
 impl Scene {
@@ -98,17 +114,39 @@ impl Scene {
 
                     entities.objects.insert(key, id);
                 }
-                NodeBody::DirectionalLight(dir_light) => {
+                NodeBody::DirectionalLight(light) => {
                     let id = renderer
                         .entities
                         .directional_lights
                         .insert(DirectionalLight {
                             transform: node.transform,
-                            color: dir_light.color,
-                            illuminance: dir_light.illuminance,
+                            color: light.color,
+                            illuminance: light.illuminance,
                         });
 
                     entities.directional_lights.insert(key, id);
+                }
+                NodeBody::PointLight(light) => {
+                    let id = renderer.entities.point_lights.insert(PointLight {
+                        transform: node.transform,
+                        color: light.color,
+                        intensity: light.intensity,
+                        radius: light.radius,
+                    });
+
+                    entities.point_lights.insert(key, id);
+                }
+                NodeBody::SpotLight(light) => {
+                    let id = renderer.entities.spot_lights.insert(SpotLight {
+                        transform: node.transform,
+                        color: light.color,
+                        intensity: light.intensity,
+                        radius: light.radius,
+                        inner_cutoff: light.inner_cutoff,
+                        outer_cutoff: light.outer_cutoff,
+                    });
+
+                    entities.spot_lights.insert(key, id);
                 }
             }
 

@@ -20,7 +20,10 @@ use game_render::color::Color;
 use game_render::entities::{CameraId, DirectionalLightId};
 use game_render::light::{PointLight, SpotLight};
 use game_render::{shape, Renderer};
-use game_scene::scene::{DirectionalLightNode, Material, Node, NodeBody, ObjectNode, Scene};
+use game_scene::scene::{
+    DirectionalLightNode, Material, Node, NodeBody, ObjectNode, PointLightNode, Scene,
+    SpotLightNode,
+};
 use game_scene::Scenes;
 use game_ui::reactive::{ReadSignal, Scope, WriteSignal};
 use game_ui::style::{
@@ -71,15 +74,15 @@ impl WorldWindowState {
             },
         });
 
-        renderer.entities.point_lights.insert(PointLight {
-            transform: Transform {
-                translation: Vec3::new(0.0, 1.0, 0.0),
-                ..Default::default()
-            },
-            intensity: 70.0,
-            radius: 100.0,
-            color: Color::WHITE,
-        });
+        // renderer.entities.point_lights.insert(PointLight {
+        //     transform: Transform {
+        //         translation: Vec3::new(0.0, 1.0, 0.0),
+        //         ..Default::default()
+        //     },
+        //     intensity: 70.0,
+        //     radius: 100.0,
+        //     color: Color::WHITE,
+        // });
 
         let plane = hierarchy.append(None, Transform::default());
 
@@ -477,22 +480,80 @@ impl WorldWindowState {
                     self.node_map.insert(key, entity);
                 }
                 Event::SpawnPointLight => {
-                    renderer.entities.point_lights.insert(PointLight {
-                        transform: Transform::default(),
-                        color: Color::WHITE,
-                        intensity: 70.0,
-                        radius: 50.0,
+                    let key = self.state.nodes.update(|hierarchy| {
+                        hierarchy.append(
+                            None,
+                            node::Node {
+                                transform: Transform::default(),
+                                name: NodeKind::PointLight.default_name().into(),
+                                body: node::NodeBody::PointLight(node::PointLight {
+                                    color: Color::WHITE,
+                                    intensity: 100.0,
+                                    radius: 100.0,
+                                }),
+                            },
+                        )
                     });
+
+                    let entity = hierarchy.append(None, Transform::default());
+                    scenes.insert(
+                        entity,
+                        Scene {
+                            nodes: vec![Node {
+                                transform: Transform::default(),
+                                body: NodeBody::PointLight(PointLightNode {
+                                    color: Color::WHITE,
+                                    intensity: 100.0,
+                                    radius: 100.0,
+                                }),
+                            }],
+                            materials: vec![],
+                            images: vec![],
+                            meshes: vec![],
+                        },
+                    );
+
+                    self.node_map.insert(key, entity);
                 }
                 Event::SpawnSpotLight => {
-                    renderer.entities.spot_lights.insert(SpotLight {
-                        transform: Transform::default(),
-                        color: Color::WHITE,
-                        intensity: 70.0,
-                        radius: 50.0,
-                        inner_cutoff: 45.0,
-                        outer_cutoff: 50.0,
+                    let key = self.state.nodes.update(|hierarchy| {
+                        hierarchy.append(
+                            None,
+                            node::Node {
+                                transform: Transform::default(),
+                                name: NodeKind::SpotLight.default_name().into(),
+                                body: node::NodeBody::SpotLight(node::SpotLight {
+                                    color: Color::WHITE,
+                                    intensity: 100.0,
+                                    radius: 100.0,
+                                    inner_cutoff: 45.0,
+                                    outer_cutoff: 50.0,
+                                }),
+                            },
+                        )
                     });
+
+                    let entity = hierarchy.append(None, Transform::default());
+                    scenes.insert(
+                        entity,
+                        Scene {
+                            nodes: vec![Node {
+                                transform: Transform::default(),
+                                body: NodeBody::SpotLight(SpotLightNode {
+                                    color: Color::WHITE,
+                                    intensity: 100.0,
+                                    radius: 100.0,
+                                    inner_cutoff: 45.0,
+                                    outer_cutoff: 45.0,
+                                }),
+                            }],
+                            materials: vec![],
+                            images: vec![],
+                            meshes: vec![],
+                        },
+                    );
+
+                    self.node_map.insert(key, entity);
                 }
                 Event::Destroy { node } => {
                     // FIXME: Removing parent should remove all childrne.
