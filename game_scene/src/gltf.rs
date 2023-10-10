@@ -4,7 +4,7 @@ use game_tracing::trace_span;
 use glam::UVec2;
 
 use crate::loader::LoadScene;
-use crate::scene::{Material, Node, Scene};
+use crate::scene::{Material, Node, NodeBody, ObjectNode, Scene};
 
 impl LoadScene for GltfData {
     fn load(self) -> Scene {
@@ -23,9 +23,8 @@ impl LoadScene for GltfData {
                         .push(create_material(primitive.material, &mut scene.images));
 
                     scene.nodes.push(Node {
-                        mesh,
-                        material,
                         transform: node.transform,
+                        body: NodeBody::Object(ObjectNode { mesh, material }),
                     });
                 }
             }

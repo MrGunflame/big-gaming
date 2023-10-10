@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use game_common::module::{Dependency, Module, Version};
 use game_data::components::actions::ActionRecord;
 use game_data::components::components::{ComponentRecord, ComponentValue};
+use game_data::components::objects::ObjectRecord;
 use game_data::components::race::RaceRecord;
 use game_data::record::{Record, RecordBody};
 use game_data::uri::Uri;
@@ -78,6 +79,25 @@ pub fn encode(root: Root) -> Vec<u8> {
                 .collect(),
             body: RecordBody::Component(ComponentRecord {
                 description: component.description,
+            }),
+            components: vec![],
+        };
+
+        buffer.records.push(record);
+    }
+
+    for object in root.records.objects {
+        let record = Record {
+            id: object.id.0,
+            name: object.name,
+            scripts: object
+                .scripts
+                .into_iter()
+                .map(|s| Uri::from(PathBuf::from(s)))
+                .collect(),
+            body: RecordBody::Object(ObjectRecord {
+                uri: Uri::from(PathBuf::from(object.model)),
+                components: vec![],
             }),
             components: vec![],
         };

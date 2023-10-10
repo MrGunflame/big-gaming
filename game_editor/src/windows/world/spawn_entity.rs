@@ -25,6 +25,21 @@ impl Widget for SpawnEntity {
             ..Default::default()
         }));
 
+        for (light, event) in [
+            ("Directional Light", Event::SpawnDirectionalLight),
+            ("Point Light", Event::SpawnPointLight),
+            ("SpotLight", Event::SpawnSpotLight),
+        ] {
+            let writer = self.writer.clone();
+            let on_spawn = move |ctx: Context<MouseButtonInput>| {
+                writer.send(event);
+                ctx.window.close();
+            };
+
+            let button = root.append(Button::new().on_click(on_spawn));
+            button.append(Text::new().text(light));
+        }
+
         for (module_id, record) in self.state.records.iter() {
             // TODO: Support appropriate non-objects.
             if record.kind() != RecordKind::Object {
