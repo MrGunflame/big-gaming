@@ -5,7 +5,7 @@ use game_common::world::CELL_SIZE_UINT;
 use game_core::hierarchy::Entity;
 use game_render::mesh::{Indices, Mesh};
 use game_render::Renderer;
-use game_scene::scene::{Material, Node, Scene};
+use game_scene::scene::{Material, Node, NodeBody, ObjectNode, Scene};
 use game_scene::Scenes;
 use game_tracing::trace_span;
 use glam::{UVec2, Vec3};
@@ -29,9 +29,11 @@ pub fn spawn_terrain(
         entity,
         Scene {
             nodes: vec![Node {
-                mesh: 0,
-                material: 0,
                 transform: Transform::default(),
+                body: NodeBody::Object(ObjectNode {
+                    mesh: 0,
+                    material: 0,
+                }),
             }],
             meshes: vec![mesh],
             materials: vec![Material::default()],
