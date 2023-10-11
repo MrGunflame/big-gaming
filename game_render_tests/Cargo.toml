@@ -1,7 +1,0 @@
-[package]
-name = "game_render_tests"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-game_render = { version = "0.1.0", path = "../game_render" }
