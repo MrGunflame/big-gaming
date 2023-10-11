@@ -222,7 +222,7 @@ impl RenderState {
                     rebuild_point_lights = true;
                 }
                 Event::CreateSpotLight(_, _) | Event::DestroySpotLight(_) => {
-                    rebuild_spot_lights = false;
+                    rebuild_spot_lights = true;
                 }
             }
         }
