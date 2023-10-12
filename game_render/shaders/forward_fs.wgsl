@@ -308,7 +308,7 @@ fn surface_shading(in: FragInput, light: Light) -> vec3<f32> {
     let LoH = clamp(dot(light.direction, half_dir), 0.0, 1.0);
 
     let Fr = specular_color(in, half_dir, NoV, NoL, NoH, LoH);
-    let Fd = diffuse_color(in, NoV, NoL, LoH);
+    let Fd = diffuse_color(in, NoV, NoL, LoH, diffuse_color);
 
     let color = Fd + Fr;
 
@@ -371,8 +371,11 @@ fn isotropic(in: FragInput, h: vec3<f32>, NoV: f32, NoL: f32, NoH: f32, LoH: f32
     let roughness = perceptual_roughness_to_roughness(get_roughness(in));
     let metallic = get_metallic(in);
 
-    var f0 = vec3(0.04);
-    f0 = mix(f0, albedo, metallic);
+    // Remap reflectance
+    // TODO: Hardcoded to 0.5 (0.04) for now, but we should
+    // add this to the material.
+    let reflectance = 0.5;
+    let f0 = 0.16 * reflectance * (1.0 - metallic) + albedo.rgb * metallic;
 
     let d = distribution(roughness, NoH, h);
     let v = visibility(roughness, NoV, NoL);
@@ -396,10 +399,9 @@ fn diffuse(roughness: f32, NoV: f32, NoL: f32, LoH: f32) -> f32 {
     return Fd_Burley(roughness, NoV, NoL, LoH);
 }
 
-fn diffuse_color(in: FragInput, NoV: f32, NoL: f32, LoH: f32) -> vec3<f32> {
-    let color = get_albedo(in);
+fn diffuse_color(in: FragInput, NoV: f32, NoL: f32, LoH: f32, diffuse_color: vec3<f32>) -> vec3<f32> {
     let roughness = perceptual_roughness_to_roughness(get_roughness(in));
-    return color * diffuse(roughness, NoV, NoL, LoH);
+    return diffuse_color * diffuse(roughness, NoV, NoL, LoH);
 }
 
 struct Light {
