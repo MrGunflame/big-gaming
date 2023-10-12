@@ -75,11 +75,20 @@ fn compute_directional_light(in: FragInput, light: DirectionalLight) -> vec3<f32
 
     let specular = pow(max(dot(normal, half_dir), 0.0), 32.0);
 
-    return (ambient + diffuse + specular) * light.intensity * light.color;
+    //return (ambient + diffuse + specular) * light.intensity * light.color;
     //let NoL = clamp(dot(normal, light_dir), 0.0, 1.0);
     //let illuminance = light.intensity * NoL;
 
     //return brdf(in, light_dir) * light.color * illuminance;
+
+    var l: Light;
+    l.color = light.color;
+    l.color.r *= light.intensity;
+    l.color.g *= light.intensity;
+    l.color.b *= light.intensity;
+    l.attenuation = 1.0;
+    l.direction = light_dir;
+    return surface_shading(in, l);
 }
 
 fn compute_point_light(in: FragInput, light: PointLight) -> vec3<f32> {
@@ -105,6 +114,9 @@ fn compute_point_light(in: FragInput, light: PointLight) -> vec3<f32> {
 
     var l: Light;
     l.color = light.color;
+    l.color.r *= light.intensity;
+    l.color.g *= light.intensity;
+    l.color.b *= light.intensity;
     l.attenuation = attenuation;
     l.direction = light_dir;
 
@@ -137,10 +149,16 @@ fn compute_spot_light(in: FragInput, light: SpotLight) -> vec3<f32> {
 
     let epsilon = cos_inner - cos_outer;
     let intensity = clamp((theta - cos_outer) / epsilon, 0.0, 1.0);
-    diffuse *= intensity;
-    specular *= intensity;
 
-    return ((ambient + diffuse + specular) * light.intensity * attenuation) * light.color;
+    var l: Light;
+    l.color = light.color;
+    l.color.r *= light.intensity;
+    l.color.g *= light.intensity;
+    l.color.b *= light.intensity;
+    l.attenuation = attenuation;
+    l.direction = light_dir;
+
+    return surface_shading(in, l);
 }
 
 struct DirectionalLights {
