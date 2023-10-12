@@ -85,6 +85,7 @@ fn create_material(material: Material) -> crate::scene::Material {
         metallic_roughness_texture: metallic_roughness_texture,
         roughness: material.roughness as f32 / 255.0,
         metallic: material.metallic as f32 / 255.0,
+        ..Default::default()
     }
 }
 

@@ -64,6 +64,7 @@ fn create_material(material: GltfMaterial, images: &mut Vec<Image>) -> Material 
         roughness: material.roughness,
         metallic: material.metallic,
         metallic_roughness_texture,
+        ..Default::default()
     }
 }
 

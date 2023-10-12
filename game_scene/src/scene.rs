@@ -95,6 +95,7 @@ impl Scene {
                 metallic_roughness_texture: material
                     .metallic_roughness_texture
                     .map(|index| images[index]),
+                reflectance: material.reflectance,
             });
             materials.push(id);
         }
@@ -213,6 +214,7 @@ pub struct Material {
     pub roughness: f32,
     pub metallic: f32,
     pub metallic_roughness_texture: Option<usize>,
+    pub reflectance: f32,
 }
 
 impl Default for Material {
@@ -225,6 +227,7 @@ impl Default for Material {
             roughness: 0.5,
             metallic: 0.0,
             metallic_roughness_texture: None,
+            reflectance: 0.5,
         }
     }
 }
