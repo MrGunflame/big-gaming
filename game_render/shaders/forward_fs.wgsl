@@ -4,6 +4,7 @@ struct MaterialConstants {
     base_color: vec4<f32>,
     metallic: f32,
     roughness: f32,
+    reflectance: f32,
 }
 
 @group(0) @binding(0)
@@ -313,10 +314,8 @@ fn isotropic(in: FragInput, h: vec3<f32>, NoV: f32, NoL: f32, NoH: f32, LoH: f32
     let roughness = perceptual_roughness_to_roughness(get_roughness(in));
     let metallic = get_metallic(in);
 
-    // Remap reflectance
-    // TODO: Hardcoded to 0.5 (0.04) for now, but we should
-    // add this to the material.
-    let reflectance = 0.5;
+    // Remap reflectance to f0 from `[0.0, 1.0]`.
+    let reflectance = constants.reflectance;
     let f0 = 0.16 * reflectance * (1.0 - metallic) + albedo.rgb * metallic;
 
     let d = distribution(roughness, NoH, h);
