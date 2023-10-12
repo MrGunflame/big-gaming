@@ -234,66 +234,6 @@ fn get_distance_attenuation(distance_square: f32, inv_range_squared: f32) -> f32
 // PBR implementation based on
 // https://google.github.io/filament/Filament.html
 
-// fn D_GGX(NoH: f32, roughness: f32) -> f32 {
-//     let a = NoH * roughness;
-//     let k = roughness / (1.0 - NoH * NoH + a * a);
-//     return k * k * (1.0 / PI);
-// }
-
-// fn V_SmithGGXCorrelated(NoV: f32, NoL: f32, roughness: f32) -> f32 {
-//     let a2 = roughness * roughness;
-//     let GGXV = NoL * sqrt(NoV * NoV * (1.0 - a2) + a2);
-//     let GGXL = NoV * sqrt(NoL * NoL * (1.0 - a2) + a2);
-//     return 0.5 / (GGXV + GGXL);
-// }
-
-// fn Fd_Lambert() -> f32 {
-//     return 1.0 / PI;
-// }
-
-// fn brdf(in: FragInput, light_dir: vec3<f32>, ) -> vec3<f32> {
-//     let albedo = get_albedo(in);
-//     let normal = get_normal(in);
-//     let roughness = get_roughness(in);
-//     let metallic = get_metallic(in);
-
-//     let view_dir = normalize(camera.position - in.world_position);
-//     let half_dir = normalize(view_dir + light_dir);
-
-//     let NoV = abs(dot(normal, view_dir)) + 1e-5;
-//     let NoL = clamp(dot(normal, light_dir), 0.0, 1.0);
-//     let NoH = clamp(dot(normal, half_dir), 0.0, 1.0);
-//     let LoH = clamp(dot(light_dir, half_dir), 0.0, 1.0);
-
-//     let a = roughness * roughness;
-//     var f0 = vec3(0.04);
-//     f0 = mix(f0, albedo, metallic);
-
-//     // let D = D_GGX(NoH, a);
-//     // let F = F_Schlick(LoH, f0);
-//     // let V = V_SmithGGXCorrelated(NoV, NoL, roughness);
-
-//     // Specular BRDF
-//     //let Fr = (D * V) * F;
-//     // Diffuse BRDF
-//     //let Fd = albedo * Fd_Lambert();
-
-//     let spec = specular(f0, roughness, half_dir, NoV, NoL, NoH, LoH);
-//     //let diffuse = Fd_Burley(roughness, NoV, NoL, LoH) * albedo;
-//     return spec;
-
-//     //return Fd + Fr;
-// }
-
-// fn specular(f0: vec3<f32>, roughness: f32, half_dir: vec3<f32>, NoV: f32, NoL: f32, NoH: f32, LoH: f32) -> vec3<f32> {
-//     let D = D_GGX(NoH, roughness);
-//     let V = V_SmithGGXCorrelated(NoV, NoL, roughness);
-//     let F = fresnel(f0, LoH);
-
-//     let Fr = D * V * F;
-//     return Fr;
-// }
-
 fn surface_shading(in: FragInput, light: Light) -> vec3<f32> {
     let view_dir = normalize(camera.position - in.world_position);
     let half_dir = normalize(view_dir + light.direction);
@@ -310,6 +250,8 @@ fn surface_shading(in: FragInput, light: Light) -> vec3<f32> {
     let Fr = specular_color(in, half_dir, NoV, NoL, NoH, LoH);
     let Fd = diffuse_color(in, NoV, NoL, LoH, diffuse_color);
 
+    // FIXME: Implement energy compensation:
+    // https://google.github.io/filament/Filament.html#materialsystem/improvingthebrdfs
     let color = Fd + Fr;
 
     return (color * light.color) * (light.attenuation * NoL);
