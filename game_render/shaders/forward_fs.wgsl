@@ -75,11 +75,11 @@ fn compute_directional_light(in: FragInput, light: DirectionalLight) -> vec3<f32
 
     let specular = pow(max(dot(normal, half_dir), 0.0), 32.0);
 
-    //return (ambient + diffuse + specular) * light.intensity * light.color;
-    let NoL = clamp(dot(normal, light_dir), 0.0, 1.0);
-    let illuminance = light.intensity * NoL;
+    return (ambient + diffuse + specular) * light.intensity * light.color;
+    //let NoL = clamp(dot(normal, light_dir), 0.0, 1.0);
+    //let illuminance = light.intensity * NoL;
 
-    return brdf(in, light_dir) * light.color * illuminance;
+    //return brdf(in, light_dir) * light.color * illuminance;
 }
 
 fn compute_point_light(in: FragInput, light: PointLight) -> vec3<f32> {
@@ -100,10 +100,16 @@ fn compute_point_light(in: FragInput, light: PointLight) -> vec3<f32> {
     let half_dir = normalize(view_dir + light_dir);
     let specular = pow(max(dot(normal, half_dir), 0.0), 32.0);
 
-    let NoL = clamp(dot(normal, light_dir), 0.0, 1.0);
-    return (brdf(in, light_dir) * light.intensity * attenuation * NoL) * light.color;
+    //let NoL = clamp(dot(normal, light_dir), 0.0, 1.0);
+    //return (brdf(in, light_dir) * light.intensity * attenuation * NoL) * light.color;
+
+    var l: Light;
+    l.color = light.color;
+    l.attenuation = attenuation;
+    l.direction = light_dir;
 
     //return ((ambient + diffuse + specular) * light.intensity * attenuation) * light.color;
+    return surface_shading(in, l);
 }
 
 fn compute_spot_light(in: FragInput, light: SpotLight) -> vec3<f32> {
@@ -210,17 +216,122 @@ fn get_distance_attenuation(distance_square: f32, inv_range_squared: f32) -> f32
 // PBR implementation based on
 // https://google.github.io/filament/Filament.html
 
-fn D_GGX(NoH: f32, roughness: f32) -> f32 {
-    let a = NoH * roughness;
-    let k = roughness / (1.0 - NoH * NoH + a * a);
-    return k * k * (1.0 / PI);
+// fn D_GGX(NoH: f32, roughness: f32) -> f32 {
+//     let a = NoH * roughness;
+//     let k = roughness / (1.0 - NoH * NoH + a * a);
+//     return k * k * (1.0 / PI);
+// }
+
+// fn V_SmithGGXCorrelated(NoV: f32, NoL: f32, roughness: f32) -> f32 {
+//     let a2 = roughness * roughness;
+//     let GGXV = NoL * sqrt(NoV * NoV * (1.0 - a2) + a2);
+//     let GGXL = NoV * sqrt(NoL * NoL * (1.0 - a2) + a2);
+//     return 0.5 / (GGXV + GGXL);
+// }
+
+// fn Fd_Lambert() -> f32 {
+//     return 1.0 / PI;
+// }
+
+// fn brdf(in: FragInput, light_dir: vec3<f32>, ) -> vec3<f32> {
+//     let albedo = get_albedo(in);
+//     let normal = get_normal(in);
+//     let roughness = get_roughness(in);
+//     let metallic = get_metallic(in);
+
+//     let view_dir = normalize(camera.position - in.world_position);
+//     let half_dir = normalize(view_dir + light_dir);
+
+//     let NoV = abs(dot(normal, view_dir)) + 1e-5;
+//     let NoL = clamp(dot(normal, light_dir), 0.0, 1.0);
+//     let NoH = clamp(dot(normal, half_dir), 0.0, 1.0);
+//     let LoH = clamp(dot(light_dir, half_dir), 0.0, 1.0);
+
+//     let a = roughness * roughness;
+//     var f0 = vec3(0.04);
+//     f0 = mix(f0, albedo, metallic);
+
+//     // let D = D_GGX(NoH, a);
+//     // let F = F_Schlick(LoH, f0);
+//     // let V = V_SmithGGXCorrelated(NoV, NoL, roughness);
+
+//     // Specular BRDF
+//     //let Fr = (D * V) * F;
+//     // Diffuse BRDF
+//     //let Fd = albedo * Fd_Lambert();
+
+//     let spec = specular(f0, roughness, half_dir, NoV, NoL, NoH, LoH);
+//     //let diffuse = Fd_Burley(roughness, NoV, NoL, LoH) * albedo;
+//     return spec;
+
+//     //return Fd + Fr;
+// }
+
+// fn specular(f0: vec3<f32>, roughness: f32, half_dir: vec3<f32>, NoV: f32, NoL: f32, NoH: f32, LoH: f32) -> vec3<f32> {
+//     let D = D_GGX(NoH, roughness);
+//     let V = V_SmithGGXCorrelated(NoV, NoL, roughness);
+//     let F = fresnel(f0, LoH);
+
+//     let Fr = D * V * F;
+//     return Fr;
+// }
+
+fn surface_shading(in: FragInput, light: Light) -> vec3<f32> {
+    let view_dir = normalize(camera.position - in.world_position);
+    let half_dir = normalize(view_dir + light.direction);
+
+    let normal = get_normal(in);
+
+    let NoV = abs(dot(normal, view_dir));
+    let NoL = clamp(dot(normal, light.direction), 0.0, 1.0);
+    let NoH = clamp(dot(normal, half_dir), 0.0, 1.0);
+    let LoH = clamp(dot(light.direction, half_dir), 0.0, 1.0);
+
+    let Fr = specular_color(in, half_dir, NoV, NoL, NoH, LoH);
+    let Fd = diffuse_color(in, NoV, NoL, LoH);
+
+    let color = Fd + Fr;
+
+    return (color * light.color) * (light.attenuation * NoL);
 }
 
-fn V_SmithGGXCorrelated(NoV: f32, NoL: f32, roughness: f32) -> f32 {
+// ---
+// --- Specular impl
+// ---
+
+const MEDIUM_FLT_MAX: f32 = 65504.0;
+fn saturate_medium_p(x: f32) -> f32 {
+    return min(x, MEDIUM_FLT_MAX);
+}
+
+fn D_GGX(roughness: f32, NoH: f32, h: vec3<f32>) -> f32 {
+    let one_minus_noh_squared = 1.0 - NoH * NoH;
+
+    let a = NoH * roughness;
+    let k = roughness / (one_minus_noh_squared + a * a);
+    let d = k * k * (1.0 / PI);
+    return saturate_medium_p(d);
+}
+
+fn V_SmithGGXCorrelated(roughness: f32, NoV: f32, NoL: f32) -> f32 {
     let a2 = roughness * roughness;
-    let GGXV = NoL * sqrt(NoV * NoV * (1.0 - a2) + a2);
-    let GGXL = NoV * sqrt(NoL * NoL * (1.0 - a2) + a2);
-    return 0.5 / (GGXV + GGXL);
+    let lambda_v = NoV * sqrt((NoV - a2 * NoV) * NoV + a2);
+    let lambda_l = NoL * sqrt((NoL - a2 * NoL) * NoL + a2);
+    let v = 0.5 / (lambda_v + lambda_l);
+    return saturate_medium_p(v);
+}
+
+fn distribution(roughness: f32, NoH: f32, h: vec3<f32>) -> f32 {
+    return D_GGX(roughness, NoH, h);
+}
+
+fn visibility(roughness: f32, NoV: f32, NoL: f32) -> f32 {
+    return V_SmithGGXCorrelated(roughness, NoV, NoL);
+}
+
+fn fresnel(f0: vec3<f32>, LoH: f32) -> vec3<f32> {
+    let f90 = saturate(dot(f0, vec3<f32>(50.0 * 0.33)));
+    return F_Schlick_vec3(f0, f90, LoH);
 }
 
 fn F_Schlick_vec3(f0: vec3<f32>, f90: f32, VoH: f32) -> vec3<f32> {
@@ -231,61 +342,48 @@ fn F_Schlick(f0: f32, f90: f32, VoH: f32) -> f32 {
     return f0 + (f90 - f0) * pow(1.0 - VoH, 5.0);
 }
 
-fn Fd_Lambert() -> f32 {
-    return 1.0 / PI;
+fn specular_color(in: FragInput, h: vec3<f32>, NoV: f32, NoL: f32, NoH: f32, LoH: f32) -> vec3<f32> {
+    return isotropic(in, h, NoV, NoL, NoH, LoH);
 }
 
-fn fresnel(f0: vec3<f32>, LoH: f32) -> vec3<f32> {
-    let f90 = saturate(dot(f0, vec3<f32>(50.0 * 0.33)));
-    return F_Schlick_vec3(f0, f90, LoH);
-}
-
-fn brdf(in: FragInput, light_dir: vec3<f32>, ) -> vec3<f32> {
+fn isotropic(in: FragInput, h: vec3<f32>, NoV: f32, NoL: f32, NoH: f32, LoH: f32) -> vec3<f32> {
     let albedo = get_albedo(in);
-    let normal = get_normal(in);
     let roughness = get_roughness(in);
     let metallic = get_metallic(in);
 
-    let view_dir = normalize(camera.position - in.world_position);
-    let half_dir = normalize(view_dir + light_dir);
-
-    let NoV = abs(dot(normal, view_dir)) + 1e-5;
-    let NoL = clamp(dot(normal, light_dir), 0.0, 1.0);
-    let NoH = clamp(dot(normal, half_dir), 0.0, 1.0);
-    let LoH = clamp(dot(light_dir, half_dir), 0.0, 1.0);
-
-    let a = roughness * roughness;
     var f0 = vec3(0.04);
     f0 = mix(f0, albedo, metallic);
 
-    // let D = D_GGX(NoH, a);
-    // let F = F_Schlick(LoH, f0);
-    // let V = V_SmithGGXCorrelated(NoV, NoL, roughness);
+    let d = distribution(roughness, NoH, h);
+    let v = visibility(roughness, NoV, NoL);
+    let f = fresnel(f0, LoH);
 
-    // Specular BRDF
-    //let Fr = (D * V) * F;
-    // Diffuse BRDF
-    //let Fd = albedo * Fd_Lambert();
-
-    let spec = specular(f0, roughness, half_dir, NoV, NoL, NoH, LoH);
-    let diffuse = Fd_Burley(roughness, NoV, NoL, LoH) * albedo;
-    return diffuse + spec;
-
-    //return Fd + Fr;
+    return (d * v) * f;
 }
 
-fn specular(f0: vec3<f32>, roughness: f32, half_dir: vec3<f32>, NoV: f32, NoL: f32, NoH: f32, LoH: f32) -> vec3<f32> {
-    let D = D_GGX(roughness, NoH);
-    let V = V_SmithGGXCorrelated(NoV, NoL, roughness);
-    let F = fresnel(f0, LoH);
-
-    let Fr = D * V * F;
-    return Fr;
-}
+// ----------------
+// --- Diffuse impl
+// ----------------
 
 fn Fd_Burley(roughness: f32, NoV: f32, NoL: f32, LoH: f32) -> f32 {
     let f90 = 0.5 + 2.0 * roughness * LoH * LoH;
     let light_scatter = F_Schlick(1.0, f90, NoL);
     let view_scatter = F_Schlick(1.0, f90, NoV);
     return light_scatter * view_scatter * (1.0 / PI);
+}
+
+fn diffuse(roughness: f32, NoV: f32, NoL: f32, LoH: f32) -> f32 {
+    return Fd_Burley(roughness, NoV, NoL, LoH);
+}
+
+fn diffuse_color(in: FragInput, NoV: f32, NoL: f32, LoH: f32) -> vec3<f32> {
+    let color = get_albedo(in);
+    let roughness = get_roughness(in);
+    return color * diffuse(roughness, NoV, NoL, LoH);
+}
+
+struct Light {
+    color: vec3<f32>,
+    attenuation: f32,
+    direction: vec3<f32>,
 }
