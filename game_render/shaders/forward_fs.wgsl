@@ -300,6 +300,8 @@ fn surface_shading(in: FragInput, light: Light) -> vec3<f32> {
 
     let normal = get_normal(in);
 
+    let diffuse_color = get_albedo(in).rgb * (1.0 - get_metallic(in));
+
     let NoV = abs(dot(normal, view_dir));
     let NoL = clamp(dot(normal, light.direction), 0.0, 1.0);
     let NoH = clamp(dot(normal, half_dir), 0.0, 1.0);
@@ -366,7 +368,7 @@ fn specular_color(in: FragInput, h: vec3<f32>, NoV: f32, NoL: f32, NoH: f32, LoH
 
 fn isotropic(in: FragInput, h: vec3<f32>, NoV: f32, NoL: f32, NoH: f32, LoH: f32) -> vec3<f32> {
     let albedo = get_albedo(in);
-    let roughness = get_roughness(in);
+    let roughness = perceptual_roughness_to_roughness(get_roughness(in));
     let metallic = get_metallic(in);
 
     var f0 = vec3(0.04);
@@ -396,7 +398,7 @@ fn diffuse(roughness: f32, NoV: f32, NoL: f32, LoH: f32) -> f32 {
 
 fn diffuse_color(in: FragInput, NoV: f32, NoL: f32, LoH: f32) -> vec3<f32> {
     let color = get_albedo(in);
-    let roughness = get_roughness(in);
+    let roughness = perceptual_roughness_to_roughness(get_roughness(in));
     return color * diffuse(roughness, NoV, NoL, LoH);
 }
 
@@ -404,4 +406,13 @@ struct Light {
     color: vec3<f32>,
     attenuation: f32,
     direction: vec3<f32>,
+}
+
+fn perceptual_roughness_to_roughness(perceptual_roughness: f32) -> f32 {
+    // We clamp the roughness to 0.089 to prevent precision problems.
+    // We might be able to lower that value to 0.045 since we're using
+    // 32-bit floats.
+    // See https://google.github.io/filament/Filament.html#toc4.8.3.3
+    let clamped_perceptual_roughness = clamp(perceptual_roughness, 0.089, 1.0);
+    return clamped_perceptual_roughness * clamped_perceptual_roughness;
 }
