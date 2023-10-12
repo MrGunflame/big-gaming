@@ -42,6 +42,28 @@ fn tonemap(color: vec3<f32>) -> vec3<f32> {
 }
 
 fn gamma_correct(color: vec3<f32>) -> vec3<f32> {
-    let gamma = 2.2;
-    return pow(color, vec3(1.0 / gamma));
+    var out_color = vec3(0.0);
+    out_color.r = linear_to_srgb(color.r);
+    out_color.g = linear_to_srgb(color.g);
+    out_color.b = linear_to_srgb(color.b);
+    return color;
+}
+
+// sRGB transfer functions
+// https://en.wikipedia.org/wiki/SRGB#Transformation
+
+fn linear_to_srgb(color: f32) -> f32 {
+    if color <= 0.0031308 {
+        return color * 12.92;
+    } else {
+        return (pow(color, 1.0 / 2.4) * 1.055) - 0.055;
+    }
+}
+
+fn srgb_to_linear(color: f32) -> f32 {
+    if color <= 0.04045 {
+        return color / 12.92;
+    } else {
+        return pow((color + 0.055) / 1.055, 2.4);
+    }
 }
