@@ -5,6 +5,7 @@ mod node;
 pub mod spawn_entity;
 
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::f32::consts::PI;
 use std::sync::mpsc;
 
 use bitflags::bitflags;
@@ -543,8 +544,8 @@ impl WorldWindowState {
                                     color: Color::WHITE,
                                     intensity: 100.0,
                                     radius: 100.0,
-                                    inner_cutoff: 45.0,
-                                    outer_cutoff: 45.0,
+                                    inner_cutoff: 45.0f32.to_radians(),
+                                    outer_cutoff: 60.0f32.to_radians(),
                                 }),
                             }],
                             materials: vec![],

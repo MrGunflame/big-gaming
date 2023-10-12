@@ -81,7 +81,8 @@ pub fn update_material_bind_group(
             base_color: material.base_color.0,
             base_metallic: material.metallic,
             base_roughness: material.roughness,
-            _pad: [0; 2],
+            reflectance: material.reflectance,
+            _pad: [0; 1],
         }]),
         usage: BufferUsages::UNIFORM,
     });
@@ -206,8 +207,9 @@ pub struct MaterialConstants {
     pub base_color: [f32; 4],
     pub base_metallic: f32,
     pub base_roughness: f32,
+    pub reflectance: f32,
     // Align to vec4<f32>.
-    pub _pad: [u32; 2],
+    pub _pad: [u32; 1],
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]

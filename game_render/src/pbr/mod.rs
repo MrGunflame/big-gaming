@@ -14,9 +14,17 @@ pub struct PbrMaterial {
 
     pub normal_texture: Option<ImageId>,
 
+    /// Linear perceptual roughness.
+    ///
+    /// Defaults to `0.5`.
     pub roughness: f32,
     pub metallic: f32,
     pub metallic_roughness_texture: Option<ImageId>,
+
+    /// Specular intensity between `[0.0, 1.0]`.
+    ///
+    /// Defaults to `0.5`, which corresponds to 0.04 in the shader.
+    pub reflectance: f32,
 }
 
 impl Default for PbrMaterial {
@@ -29,6 +37,7 @@ impl Default for PbrMaterial {
             roughness: 0.5,
             metallic: 0.0,
             metallic_roughness_texture: None,
+            reflectance: 0.5,
         }
     }
 }
