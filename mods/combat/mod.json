@@ -1,0 +1,29 @@
+{
+    "id": "848b1d80bfc74af3ae27d922c5da238d",
+    "name": "Combat",
+    "version": "0.1.0",
+    "records": {
+        "actions": [
+            {
+                "id": "01",
+                "name": "Fire"
+            },
+            {
+                "id": "02",
+                "name": "Reload"
+            }
+        ],
+        "components": [
+            {
+                "id": "04",
+                "name": "Gun Properties",
+                "description": "Gun Properties"
+            },
+            {
+                "id": "05",
+                "name": "Ammo",
+                "description": "Ammo in mag"
+            }
+        ]
+    }
+}
