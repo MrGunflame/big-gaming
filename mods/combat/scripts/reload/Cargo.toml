@@ -1,0 +1,13 @@
+[package]
+name = "reload"
+version = "0.1.0"
+edition = "2021"
+authors = ["MrGunflame <git@robbsrv.de>"]
+license = "GPL-3.0-or-later"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+game_wasm = { version = "0.1.0", path = "../../../../game_wasm" }
+combat_shared = { version = "0.1.0", path = "../combat_shared" }

@@ -161,11 +161,11 @@ impl EntityComponents {
             )
         };
 
-        unsafe {
-            bytes.set_len(len as usize);
-        }
-
         if res == 0 {
+            unsafe {
+                bytes.set_len(len as usize);
+            }
+
             Ok(Component::new(bytes))
         } else {
             Err(Error)
