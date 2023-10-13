@@ -107,17 +107,16 @@ impl Component {
         }
     }
 
-    pub fn update<T, F>(&mut self, f: F)
+    pub fn update<T, U, F>(&mut self, f: F) -> U
     where
         T: Pod,
-        F: FnOnce(&mut T),
+        F: FnOnce(&mut T) -> U,
     {
         if T::IS_ZST {
             // Any correctly aligned non-zero pointer is valid for ZST `T`s.
             let mut ptr = NonNull::<T>::dangling();
             let val = unsafe { ptr.as_mut() };
-            f(val);
-            return;
+            return f(val);
         }
 
         assert!(self.bytes.len() >= mem::size_of::<T>());
@@ -132,11 +131,12 @@ impl Component {
 
         if ptr.align_offset(mem::align_of::<T>()) == 0 {
             let value = unsafe { &mut *(ptr as *mut T) };
-            f(value);
+            f(value)
         } else {
             let mut value = unsafe { self.read_unchecked() };
-            f(&mut value);
+            let res = f(&mut value);
             unsafe { self.write_unchecked(value) };
+            res
         }
     }
 }
@@ -173,7 +173,7 @@ mod tests {
         struct Target;
 
         let mut component = Component { bytes: Vec::new() };
-        component.update::<Target, _>(|val| {
+        component.update::<Target, _, _>(|val| {
             *val = Target;
         });
 
@@ -195,7 +195,7 @@ mod tests {
                 == 0
         );
 
-        component.update::<Target, _>(|val| {
+        component.update::<Target, _, _>(|val| {
             *val = Target(1);
         });
 
@@ -232,7 +232,7 @@ mod tests {
                 != 0
         );
 
-        component.update::<Target, _>(|val| {
+        component.update::<Target, _, _>(|val| {
             *val = Target([1; 32]);
         });
 
