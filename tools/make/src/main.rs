@@ -43,6 +43,14 @@ fn main() {
             path: "mods/movement/scripts/move_right",
             destination: "scripts/move_right.wasm",
         },
+        Script {
+            path: "mods/combat/scripts/fire",
+            destination: "scripts/fire.wasm",
+        },
+        Script {
+            path: "mods/combat/scripts/reload",
+            destination: "scripts/reload.wasm",
+        },
     ] {
         build_script(&root, &script);
 
