@@ -79,7 +79,14 @@ pub const ERROR_NO_ENTITY: u32 = 1;
 /// The component does not exist on the entity.
 pub const ERROR_NO_COMPONENT: u32 = 2;
 
+#[cfg(target_arch = "wasm32")]
 #[link(wasm_import_module = "host")]
 extern "C" {
     pub fn log(level: u32, ptr: Usize, len: Usize);
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub unsafe extern "C" fn log(level: u32, ptr: Usize, len: Usize) {
+    let _ = (level, ptr, len);
+    panic!("`log` is not implemented on this target");
 }
