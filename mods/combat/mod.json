@@ -1,16 +1,25 @@
 {
     "id": "848b1d80bfc74af3ae27d922c5da238d",
     "name": "Combat",
+    "description": "Combat",
     "version": "0.1.0",
     "records": {
         "actions": [
             {
                 "id": "01",
-                "name": "Fire"
+                "name": "Fire",
+                "description": "Fire",
+                "scripts": [
+                    "scripts/fire.wasm"
+                ]
             },
             {
                 "id": "02",
-                "name": "Reload"
+                "name": "Reload",
+                "description": "Reload",
+                "scripts": [
+                    "scripts/reload.wasm"
+                ]
             }
         ],
         "components": [
