@@ -43,7 +43,7 @@ use crate::net::ServerConnection;
 use crate::utils::extract_actor_rotation;
 
 use self::actions::ActiveActions;
-use self::camera::{CameraController, CameraMode};
+use self::camera::{CameraController, CameraMode, DetachedState};
 use self::movement::update_rotation;
 
 #[derive(Debug)]
@@ -180,15 +180,41 @@ impl GameWorldState {
 
         self.dispatch_actions();
 
-        if let Some(snapshot) = &self.conn.current_state {
-            if let Some(entity) = snapshot.entities.get(self.conn.host) {
-                let props = ActorProperties {
-                    eyes: Vec3::new(0.0, 1.8, 0.0),
-                    rotation: extract_actor_rotation(entity.transform.rotation),
-                };
+        if self.camera_controller.mode != CameraMode::Detached {
+            if let Some(snapshot) = &self.conn.current_state {
+                if let Some(entity) = snapshot.entities.get(self.conn.host) {
+                    let props = ActorProperties {
+                        eyes: Vec3::new(0.0, 1.8, 0.0),
+                        rotation: extract_actor_rotation(entity.transform.rotation),
+                    };
 
-                self.camera_controller
-                    .sync_with_entity(entity.transform, props);
+                    self.camera_controller
+                        .sync_with_entity(entity.transform, props);
+                }
+            }
+        } else {
+            // We are in detached mode and need to manually
+            // check if we are moving.
+            const SPEED: f32 = 0.1;
+
+            if self.camera_controller.detached_state.forward {
+                self.camera_controller.transform.translation +=
+                    self.camera_controller.transform.rotation * -Vec3::Z * SPEED;
+            }
+
+            if self.camera_controller.detached_state.back {
+                self.camera_controller.transform.translation +=
+                    self.camera_controller.transform.rotation * Vec3::Z * SPEED;
+            }
+
+            if self.camera_controller.detached_state.left {
+                self.camera_controller.transform.translation +=
+                    self.camera_controller.transform.rotation * -Vec3::X * SPEED;
+            }
+
+            if self.camera_controller.detached_state.right {
+                self.camera_controller.transform.translation +=
+                    self.camera_controller.transform.rotation * Vec3::X * SPEED;
             }
         }
 
@@ -214,6 +240,14 @@ impl GameWorldState {
     }
 
     fn handle_mouse_motion(&mut self, event: MouseMotion) {
+        // If the camera is in detached mode, control it directly.
+        if self.camera_controller.mode == CameraMode::Detached {
+            self.camera_controller.transform =
+                update_rotation(self.camera_controller.transform, event);
+
+            return;
+        }
+
         if let Some(snapshot) = &mut self.conn.current_state {
             if let Some(host) = snapshot.entities.get_mut(self.conn.host) {
                 host.transform = update_rotation(host.transform, event);
@@ -229,12 +263,6 @@ impl GameWorldState {
     }
 
     fn handle_keyboard_input(&mut self, event: KeyboardInput, cursor: &Cursor) {
-        self.actions.send_keyboard_event(event);
-
-        if !event.state.is_pressed() {
-            return;
-        }
-
         match event.key_code {
             Some(KeyCode::Escape) => {
                 if event.state.is_pressed() {
@@ -246,18 +274,58 @@ impl GameWorldState {
                         cursor.set_visible(false);
                     }
                 }
+
+                return;
             }
-            Some(KeyCode::V) => match self.camera_controller.mode {
+            Some(KeyCode::V) if event.state.is_pressed() => match self.camera_controller.mode {
                 CameraMode::FirstPerson => {
-                    self.camera_controller.mode = CameraMode::ThirdPerson { distance: 5.0 }
+                    self.camera_controller.mode = CameraMode::ThirdPerson { distance: 5.0 };
+                    return;
                 }
                 CameraMode::ThirdPerson { distance } => {
                     self.camera_controller.mode = CameraMode::FirstPerson;
+                    return;
                 }
                 _ => (),
             },
+            // Hardcoded controls for detached camera mode.
+            // FIXME: Optimally we'd like to integrate these with the default
+            // movement hotkeys, but they come from a module and are implemented
+            // as an action, which makes this process non-trivial.
+            Some(KeyCode::W) if self.camera_controller.mode == CameraMode::Detached => {
+                self.camera_controller.detached_state.forward = event.state.is_pressed();
+                return;
+            }
+            Some(KeyCode::S) if self.camera_controller.mode == CameraMode::Detached => {
+                self.camera_controller.detached_state.back = event.state.is_pressed();
+                return;
+            }
+            Some(KeyCode::A) if self.camera_controller.mode == CameraMode::Detached => {
+                self.camera_controller.detached_state.left = event.state.is_pressed();
+                return;
+            }
+            Some(KeyCode::D) if self.camera_controller.mode == CameraMode::Detached => {
+                self.camera_controller.detached_state.right = event.state.is_pressed();
+                return;
+            }
+            // Toggle to go into detached camera mode.
+            Some(KeyCode::Tab) if event.state.is_pressed() => {
+                self.camera_controller.mode = match self.camera_controller.mode {
+                    CameraMode::Detached => CameraMode::FirstPerson,
+                    CameraMode::FirstPerson | CameraMode::ThirdPerson { distance: _ } => {
+                        CameraMode::Detached
+                    }
+                };
+
+                self.camera_controller.detached_state = DetachedState::default();
+                return;
+            }
             _ => (),
         }
+
+        // Only trigger an action if we didn't already "consume"
+        // the input.
+        self.actions.send_keyboard_event(event);
     }
 
     fn dispatch_actions(&mut self) {
