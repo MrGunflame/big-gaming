@@ -61,7 +61,8 @@
                     "ec7d043851c74c41a35de44befde13b5:02",
                     "ec7d043851c74c41a35de44befde13b5:03",
                     "ec7d043851c74c41a35de44befde13b5:04"
-                ]
+                ],
+                "model": "assets/human.glb"
             }
         ]
     }
