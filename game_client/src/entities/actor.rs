@@ -30,6 +30,6 @@ impl SpawnActor {
             return;
         };
 
-        scenes.load(self.entity, "pistol.glb");
+        scenes.load(self.entity, &race.model);
     }
 }

@@ -60,6 +60,7 @@ pub fn encode(root: Root) -> Vec<u8> {
             name: race.name,
             scripts: vec![],
             body: RecordBody::Race(RaceRecord {
+                model: Uri::from(PathBuf::from(race.model)),
                 actions: race.actions.into_iter().map(|a| a.0).collect(),
             }),
             components,

@@ -178,6 +178,7 @@ pub struct Race {
     pub actions: Vec<JsonRecordReference>,
     #[serde(default)]
     pub components: HashMap<JsonRecordReference, Vec<u8>>,
+    pub model: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
