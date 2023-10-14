@@ -1,16 +1,20 @@
 //! Conversions between Host and Guest ABIs
 
+use std::convert::Infallible;
+
 use bytemuck::cast;
+use game_common::components::actions::Actions;
 use game_common::components::components::Components;
-use game_common::components::items::Item as HostItem;
+use game_common::components::items::{Item as HostItem, ItemId, ItemStack as HostItemStack};
 use game_common::components::transform::Transform;
 use game_common::entity::EntityId;
 use game_common::record::RecordReference;
+use game_common::units::Mass;
 use game_common::world::entity::Entity as HostEntity;
 use game_common::world::entity::EntityBody as HostEntityBody;
 use game_common::world::entity::EntityKind as HostEntityKind;
 use game_common::world::entity::Object;
-use game_wasm::raw::inventory::Item as GuestItem;
+use game_wasm::raw::inventory::{Item as GuestItem, ItemStack as GuestItemStack};
 use game_wasm::raw::world::Entity as GuestEntity;
 use game_wasm::raw::world::EntityBody as GuestEntityBody;
 use game_wasm::raw::world::EntityKind as GuestEntityKind;
@@ -124,12 +128,34 @@ impl FromAbi for GuestEntity {
     }
 }
 
-impl ToAbi for HostItem {
-    type Target = GuestItem;
+impl ToAbi for HostItemStack {
+    type Target = GuestItemStack;
 
     fn to_abi(&self) -> Self::Target {
-        GuestItem {
-            id: bytemuck::cast(self.id.0),
+        GuestItemStack {
+            item: GuestItem {
+                id: bytemuck::cast(self.item.id.0),
+            },
+            quantity: self.quantity,
         }
+    }
+}
+
+impl FromAbi for GuestItemStack {
+    type Target = HostItemStack;
+    type Error = Infallible;
+
+    fn from_abi(&self) -> Result<Self::Target, Self::Error> {
+        Ok(HostItemStack {
+            item: HostItem {
+                id: ItemId(bytemuck::cast(self.item.id)),
+                mass: Mass::default(),
+                actions: Actions::new(),
+                components: Components::new(),
+                equipped: false,
+                hidden: false,
+            },
+            quantity: self.quantity,
+        })
     }
 }

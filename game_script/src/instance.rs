@@ -1,4 +1,4 @@
-use game_common::components::inventory::InventoryId;
+use game_common::components::inventory::InventorySlotId;
 use game_common::entity::EntityId;
 use game_common::events::Event;
 use game_common::world::world::WorldViewMut;
@@ -68,12 +68,12 @@ impl<'world, 'view> ScriptInstance<'world, 'view> {
         func.call(&mut self.store, (entity.into_raw(), other.into_raw()))
     }
 
-    pub fn on_equip(&mut self, item: InventoryId, entity: EntityId) -> wasmtime::Result<()> {
+    pub fn on_equip(&mut self, item: InventorySlotId, entity: EntityId) -> wasmtime::Result<()> {
         let func: OnEquip = self.inner.get_typed_func(&mut self.store, "on_equip")?;
         func.call(&mut self.store, (item.into_raw(), entity.into_raw()))
     }
 
-    pub fn on_unequip(&mut self, item: InventoryId, entity: EntityId) -> wasmtime::Result<()> {
+    pub fn on_unequip(&mut self, item: InventorySlotId, entity: EntityId) -> wasmtime::Result<()> {
         let func: OnUnequip = self.inner.get_typed_func(&mut self.store, "on_unequip")?;
         func.call(&mut self.store, (item.into_raw(), entity.into_raw()))
     }

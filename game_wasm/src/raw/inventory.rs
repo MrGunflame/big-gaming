@@ -8,11 +8,13 @@ use crate::record::RecordReference;
 extern "C" {
     pub fn inventory_get(entity_id: u64, slot_id: u64, out: PtrMut<ItemStack>) -> u32;
 
-    pub fn inventory_insert(entity_id: u64, slot_id: u64, ptr: Ptr<ItemStack>) -> u32;
+    pub fn inventory_insert(
+        entity_id: u64,
+        item_stack: Ptr<ItemStack>,
+        slot_id: PtrMut<u64>,
+    ) -> u32;
 
-    pub fn inventory_remove(entity_id: u64, id: u64) -> u32;
-
-    pub fn inventory_remove_stack(entity_id: u64, slot_id: u64) -> u32;
+    pub fn inventory_remove(entity_id: u64, id: u64, quantity: u64) -> u32;
 
     pub fn inventory_clear(entity_id: u64) -> u32;
 
@@ -74,12 +76,6 @@ pub unsafe extern "C" fn inventory_insert(
 pub unsafe extern "C" fn inventory_remove(entity_id: u64, slot_id: u64) -> u32 {
     let _ = (entity_id, slot_id);
     panic!("`inventory_remove` is not implemented on this target");
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-pub unsafe extern "C" fn inventory_remove_stack(entity_id: u64, slot_id: u64) -> u32 {
-    let _ = (entity_id, slot_id);
-    panic!("`inventory_remove_stack` is not implemented on this target");
 }
 
 pub unsafe extern "C" fn inventory_clear(entity_id: u64) -> u32 {

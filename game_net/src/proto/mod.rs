@@ -41,7 +41,7 @@ mod record;
 mod terrain;
 
 use game_common::components::actions::ActionId;
-use game_common::components::inventory::InventoryId;
+use game_common::components::inventory::InventorySlotId;
 use game_common::components::items::ItemId;
 use game_common::components::object::ObjectId;
 use game_common::components::race::RaceId;
@@ -699,20 +699,20 @@ pub struct SpawnHost {
 #[derive(Copy, Clone, Debug, Encode, Decode)]
 pub struct InventoryItemAdd {
     pub entity: ServerEntity,
-    pub id: InventoryId,
+    pub id: InventorySlotId,
     pub item: ItemId,
 }
 
 #[derive(Copy, Clone, Debug, Encode, Decode)]
 pub struct InventoryItemRemove {
     pub entity: ServerEntity,
-    pub id: InventoryId,
+    pub id: InventorySlotId,
 }
 
 #[derive(Copy, Clone, Debug)]
 pub struct InventoryItemUpdate {
     pub entity: ServerEntity,
-    pub id: InventoryId,
+    pub id: InventorySlotId,
     pub equipped: Option<bool>,
     pub hidden: Option<bool>,
 }
@@ -762,7 +762,7 @@ impl Decode for InventoryItemUpdate {
         B: Buf,
     {
         let entity = ServerEntity::decode(&mut buf)?;
-        let id = InventoryId::decode(&mut buf)?;
+        let id = InventorySlotId::decode(&mut buf)?;
 
         let flags = ItemUpdateFlags::decode(&mut buf)?;
 
@@ -1333,7 +1333,7 @@ impl Decode for ObjectId {
     }
 }
 
-impl Encode for InventoryId {
+impl Encode for InventorySlotId {
     type Error = <u64 as Encode>::Error;
 
     fn encode<B>(&self, buf: B) -> Result<(), Self::Error>
@@ -1344,7 +1344,7 @@ impl Encode for InventoryId {
     }
 }
 
-impl Decode for InventoryId {
+impl Decode for InventorySlotId {
     type Error = <u64 as Decode>::Error;
 
     fn decode<B>(buf: B) -> Result<Self, Self::Error>

@@ -1,20 +1,16 @@
 //! Container inventories
 
 use std::borrow::Borrow;
-use std::cmp::Ordering;
 use std::hash::Hash;
-use std::iter::FusedIterator;
 use std::num::NonZeroU8;
-use std::ops::{Deref, DerefMut};
 
-use ahash::{HashMap, HashSet, RandomState};
+use ahash::HashMap;
 use bytemuck::{Pod, Zeroable};
-use indexmap::IndexMap;
 use thiserror::Error;
 
 use crate::units::Mass;
 
-use super::items::{Item, ItemStack};
+use super::items::{IntoItemStack, Item, ItemStack};
 
 /// A unique id to a "stack" slot in an inventory.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash, Zeroable, Pod)]
@@ -95,7 +91,31 @@ impl Inventory {
     }
 
     /// Inserts a new [`Item`] or [`ItemStack`] into the `Inventory`.
-    pub fn insert(&mut self, item: Item) -> Result<InventorySlotId, InsertionError> {
+    pub fn insert<T>(&mut self, items: T) -> Result<InventorySlotId, InsertionError<T>>
+    where
+        T: IntoItemStack,
+    {
+        match self.has_capacity(&items) {
+            (false, _) => return Err(InsertionError::MaxItems(items)),
+            (_, false) => return Err(InsertionError::MaxMass(items)),
+            _ => (),
+        }
+
+        Ok(self.insert_stack_unchecked(items.into_item_stack()))
+    }
+
+    /// Returns whether we have enough capacity to store the stack.
+    fn has_capacity<T>(&self, stack: &T) -> (bool, bool)
+    where
+        T: IntoItemStack,
+    {
+        (
+            self.count.checked_add(stack.quantity() as usize).is_some(),
+            self.mass.checked_add(stack.mass()).is_some(),
+        )
+    }
+
+    fn insert_stack_unchecked(&mut self, stack: ItemStack) -> InventorySlotId {
         // TODO: Instead of inserting into a new slot we should
         // first check whether we can put the item onto an existing
         // slot.
@@ -105,35 +125,28 @@ impl Inventory {
         assert_ne!(id.0, u64::MAX);
 
         // Update inventory item quantity.
-        match self.count.checked_add(1) {
-            Some(count) => self.count = count,
-            None => return Err(InsertionError::MaxItems(item)),
-        }
+        self.count += stack.quantity as usize;
 
         // Update inventory mass.
-        match self.mass.checked_add(item.mass) {
-            Some(mass) => self.mass = mass,
-            None => return Err(InsertionError::MaxMass(item)),
-        }
+        self.mass += stack.mass();
 
-        self.items.insert(id, ItemStack { item, quantity: 1 });
-
-        Ok(id)
+        self.items.insert(id, stack);
+        id
     }
 
     /// Removes and returns a single [`Item`] from this `Inventory`. Returns `None` if the item
     /// doesn't exist in this `Inventory`.
-    pub fn remove<T>(&mut self, id: T) -> Option<Item>
+    pub fn remove<T>(&mut self, id: T, quantity: u32) -> Option<Item>
     where
         T: Borrow<InventorySlotId>,
     {
         let stack = self.items.get_mut(id.borrow())?;
 
+        // Any stack should always have a quantity greater than zero.
         debug_assert!(stack.quantity >= 1);
-        stack.quantity -= 1;
+        stack.quantity -= quantity;
 
-        // We always only remove a single item.
-        self.count -= 1;
+        self.count -= quantity as usize;
         self.mass -= stack.item.mass;
 
         if stack.quantity == 0 {
@@ -152,19 +165,19 @@ impl Inventory {
 }
 
 #[derive(Clone, Debug, Error)]
-pub enum InsertionError {
+pub enum InsertionError<T> {
     /// The insertion failed because the [`Inventory`] already contains the maximum number of
     /// total items.
     #[error("inventory reached maximum number of items")]
-    MaxItems(Item),
+    MaxItems(T),
     /// The insertion failed because the [`Inventory`] already carries the maximum combined
     /// [`Mass`].
     #[error("inventory reached maximum total mass")]
-    MaxMass(Item),
+    MaxMass(T),
 }
 
-impl InsertionError {
-    pub fn into_inner(self) -> Item {
+impl<T> InsertionError<T> {
+    pub fn into_inner(self) -> T {
         match self {
             Self::MaxItems(inner) => inner,
             Self::MaxMass(inner) => inner,

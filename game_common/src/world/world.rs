@@ -452,6 +452,10 @@ impl<'a> WorldViewMut<'a> {
         &self.snapshot_ref().inventories
     }
 
+    pub fn inventories_mut(&mut self) -> &mut Inventories {
+        &mut self.snapshot().inventories
+    }
+
     pub fn streaming_sources(&self) -> &StreamingSources {
         &self.snapshot_ref().streaming_sources
     }
@@ -726,7 +730,7 @@ impl Snapshot {
             }
             EntityChange::InventoryItemRemove(event) => {
                 if let Some(inventory) = self.inventories.get_mut(event.entity) {
-                    inventory.remove(event.id);
+                    inventory.remove(event.id, 1);
                 }
             }
             EntityChange::InventoryDestroy(event) => {
