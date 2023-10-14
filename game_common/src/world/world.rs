@@ -20,7 +20,6 @@ pub use metrics::WorldMetrics;
 
 use super::control_frame::ControlFrame;
 use super::entity::Entity;
-use super::inventory::InventoriesMut;
 use super::source::StreamingSource;
 
 /// The world state at constant time intervals.
@@ -451,10 +450,6 @@ impl<'a> WorldViewMut<'a> {
 
     pub fn inventories(&self) -> &Inventories {
         &self.snapshot_ref().inventories
-    }
-
-    pub fn inventories_mut(&mut self) -> InventoriesMut<'_, 'a> {
-        InventoriesMut { view: self }
     }
 
     pub fn streaming_sources(&self) -> &StreamingSources {

@@ -3,7 +3,7 @@
 use std::collections::VecDeque;
 
 use crate::components::actions::ActionId;
-use crate::components::inventory::InventoryId;
+use crate::components::inventory::InventorySlotId;
 use crate::entity::EntityId;
 use crate::world::CellId;
 
@@ -99,7 +99,7 @@ impl From<CollisionEvent> for Event {
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct EquipEvent {
     pub entity: EntityId,
-    pub item: InventoryId,
+    pub item: InventorySlotId,
 }
 
 impl From<EquipEvent> for Event {
@@ -112,7 +112,7 @@ impl From<EquipEvent> for Event {
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct UnequipEvent {
     pub entity: EntityId,
-    pub item: InventoryId,
+    pub item: InventorySlotId,
 }
 
 impl From<UnequipEvent> for Event {

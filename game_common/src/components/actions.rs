@@ -1,11 +1,10 @@
+#![deprecated]
+
 use std::fmt::Debug;
 
 use bytemuck::{Pod, Zeroable};
 
-use crate::entity::EntityId;
 use crate::record::RecordReference;
-
-use super::inventory::InventoryId;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Zeroable, Pod)]
 #[repr(transparent)]
@@ -30,11 +29,4 @@ impl Actions {
     pub fn iter(&self) -> impl Iterator<Item = ActionId> + '_ {
         self.actions.iter().copied()
     }
-}
-
-#[derive(Clone, Debug)]
-pub struct Action {
-    pub entity: EntityId,
-    pub id: ActionId,
-    pub item: Option<InventoryId>,
 }

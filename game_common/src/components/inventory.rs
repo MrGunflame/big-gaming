@@ -7,21 +7,21 @@ use std::iter::FusedIterator;
 use std::num::NonZeroU8;
 use std::ops::{Deref, DerefMut};
 
-use ahash::{HashSet, RandomState};
+use ahash::{HashMap, HashSet, RandomState};
 use bytemuck::{Pod, Zeroable};
 use indexmap::IndexMap;
 use thiserror::Error;
 
 use crate::units::Mass;
 
-use super::items::Item;
+use super::items::{Item, ItemStack};
 
-/// A unique id refering an item inside exactly one inventory.
+/// A unique id to a "stack" slot in an inventory.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash, Zeroable, Pod)]
 #[repr(C)]
-pub struct InventoryId(u64);
+pub struct InventorySlotId(u64);
 
-impl InventoryId {
+impl InventorySlotId {
     #[inline]
     pub const fn into_raw(self) -> u64 {
         self.0
@@ -39,25 +39,22 @@ impl InventoryId {
 /// `Mass::MAX`, whichever is reached first.
 #[derive(Clone, Debug, Default)]
 pub struct Inventory {
-    items: IndexMap<InventoryId, Item, RandomState>,
+    items: HashMap<InventorySlotId, ItemStack>,
     /// The count of all items in this `Inventory`.
     count: usize,
     /// The sum of all items in this inventory.
     mass: Mass,
-    next_id: InventoryId,
-    /// Keys for equipped items.
-    equipped: HashSet<InventoryId>,
+    next_id: u64,
 }
 
 impl Inventory {
     /// Creates a new, empty `Inventory`.
     pub fn new() -> Self {
         Self {
-            items: IndexMap::with_hasher(RandomState::new()),
+            items: HashMap::default(),
             count: 0,
             mass: Mass::new(),
-            next_id: InventoryId(0),
-            equipped: HashSet::default(),
+            next_id: 0,
         }
     }
 
@@ -83,33 +80,29 @@ impl Inventory {
         self.mass
     }
 
-    pub fn get<T>(&self, id: T) -> Option<&Item>
+    pub fn get<T>(&self, id: T) -> Option<&ItemStack>
     where
-        T: Borrow<InventoryId>,
+        T: Borrow<InventorySlotId>,
     {
         self.items.get(id.borrow())
     }
 
-    pub fn get_mut<T>(&mut self, id: T) -> Option<ItemMut<'_>>
+    pub fn get_mut<T>(&mut self, id: T) -> Option<&mut ItemStack>
     where
-        T: Borrow<InventoryId>,
+        T: Borrow<InventorySlotId>,
     {
-        let id = *id.borrow();
-        let item = self.items.get_mut(&id)?;
-
-        let was_equipped = item.equipped;
-
-        Some(ItemMut {
-            id,
-            inventory: self,
-            was_equipped,
-        })
+        self.items.get_mut(id.borrow())
     }
 
     /// Inserts a new [`Item`] or [`ItemStack`] into the `Inventory`.
-    pub fn insert(&mut self, item: Item) -> Result<InventoryId, InsertionError> {
-        let id = self.next_id;
-        self.next_id.0 += 1;
+    pub fn insert(&mut self, item: Item) -> Result<InventorySlotId, InsertionError> {
+        // TODO: Instead of inserting into a new slot we should
+        // first check whether we can put the item onto an existing
+        // slot.
+
+        let id = InventorySlotId(self.next_id);
+        self.next_id += 1;
+        assert_ne!(id.0, u64::MAX);
 
         // Update inventory item quantity.
         match self.count.checked_add(1) {
@@ -123,61 +116,41 @@ impl Inventory {
             None => return Err(InsertionError::MaxMass(item)),
         }
 
-        self.items.insert(id, item);
+        self.items.insert(id, ItemStack { item, quantity: 1 });
 
         Ok(id)
     }
 
     /// Removes and returns a single [`Item`] from this `Inventory`. Returns `None` if the item
     /// doesn't exist in this `Inventory`.
-    ///
-    /// The returned value is a [`Cow::Borrowed`] if the removed item still remains in the
-    /// `Inventory` (only the `quantity` was reduced) and [`Cow::Owned`] if the last item was
-    /// removed from the `Inventory`.
     pub fn remove<T>(&mut self, id: T) -> Option<Item>
     where
-        T: Borrow<InventoryId>,
+        T: Borrow<InventorySlotId>,
     {
-        let item = self.items.get_mut(id.borrow())?;
+        let stack = self.items.get_mut(id.borrow())?;
+
+        debug_assert!(stack.quantity >= 1);
+        stack.quantity -= 1;
 
         // We always only remove a single item.
         self.count -= 1;
-        self.mass -= item.mass;
+        self.mass -= stack.item.mass;
 
-        Some(self.items.remove(id.borrow()).unwrap())
-    }
-
-    pub fn sort_by<F>(&mut self, mut f: F)
-    where
-        F: FnMut(&Item, &Item) -> Ordering,
-    {
-        self.items.sort_by(|_, lhs, _, rhs| f(lhs, rhs))
-    }
-
-    pub fn iter(&self) -> Iter<'_> {
-        Iter {
-            iter: self.items.iter(),
+        if stack.quantity == 0 {
+            Some(self.items.remove(id.borrow()).unwrap().item)
+        } else {
+            Some(stack.item.clone())
         }
     }
 
     pub fn clear(&mut self) {
         self.items.clear();
-        self.equipped.clear();
         self.count = 0;
         self.mass = Mass::new();
-        self.next_id = InventoryId(0);
+        self.next_id = 0;
     }
 }
 
-impl<'a> IntoIterator for &'a Inventory {
-    type Item = ItemRef<'a>;
-    type IntoIter = Iter<'a>;
-
-    #[inline]
-    fn into_iter(self) -> Self::IntoIter {
-        self.iter()
-    }
-}
 #[derive(Clone, Debug, Error)]
 pub enum InsertionError {
     /// The insertion failed because the [`Inventory`] already contains the maximum number of
@@ -224,135 +197,6 @@ impl EquipmentSlot {
     pub const RIGHT_LEG: Self = Self(unsafe { NonZeroU8::new_unchecked(75) });
     pub const RIGHT_FOOT: Self = Self(unsafe { NonZeroU8::new_unchecked(76) });
 }
-
-#[derive(Clone, Debug)]
-pub struct Iter<'a> {
-    iter: indexmap::map::Iter<'a, InventoryId, Item>,
-}
-
-impl<'a> Iterator for Iter<'a> {
-    type Item = ItemRef<'a>;
-
-    #[inline]
-    fn next(&mut self) -> Option<Self::Item> {
-        self.iter.next().map(|(id, item)| ItemRef { id: *id, item })
-    }
-
-    #[inline]
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        self.iter.size_hint()
-    }
-}
-
-impl<'a> ExactSizeIterator for Iter<'a> {
-    #[inline]
-    fn len(&self) -> usize {
-        self.iter.len()
-    }
-}
-
-impl<'a> FusedIterator for Iter<'a> {}
-
-#[derive(Copy, Clone, Debug)]
-pub struct ItemRef<'a> {
-    pub id: InventoryId,
-    pub item: &'a Item,
-}
-
-#[derive(Debug)]
-pub struct ItemMut<'a> {
-    id: InventoryId,
-    inventory: &'a mut Inventory,
-    // Prev flags
-    was_equipped: bool,
-}
-
-impl<'a> Deref for ItemMut<'a> {
-    type Target = Item;
-
-    fn deref(&self) -> &Self::Target {
-        self.inventory.get(self.id).unwrap()
-    }
-}
-
-impl<'a> DerefMut for ItemMut<'a> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        self.inventory.items.get_mut(&self.id).unwrap()
-    }
-}
-
-impl<'a> Drop for ItemMut<'a> {
-    fn drop(&mut self) {
-        match (self.was_equipped, self.equipped) {
-            (true, false) => {
-                self.inventory.equipped.remove(&self.id);
-            }
-            (false, true) => {
-                self.inventory.equipped.insert(self.id);
-            }
-            (false, false) => (),
-            (true, true) => (),
-        }
-    }
-}
-
-#[derive(Copy, Clone, Debug)]
-pub struct Equipment<'a> {
-    inventory: &'a Inventory,
-}
-
-impl<'a> Equipment<'a> {
-    pub fn get(&self, id: InventoryId) -> Option<&Item> {
-        if self.inventory.equipped.contains(&id) {
-            // The item MUST be contained in self.inventory and
-            // MUST have the equipped flag set.
-            let item = self.inventory.get(id).unwrap();
-            debug_assert!(item.equipped);
-            Some(item)
-        } else {
-            None
-        }
-    }
-
-    pub fn iter(&self) -> EquipmentIter<'a> {
-        EquipmentIter {
-            inventory: self.inventory,
-            iter: self.inventory.equipped.iter(),
-        }
-    }
-}
-
-/// An iterator over all the equipped items in an [`Inventory`].
-#[derive(Clone, Debug)]
-pub struct EquipmentIter<'a> {
-    inventory: &'a Inventory,
-    iter: std::collections::hash_set::Iter<'a, InventoryId>,
-}
-
-impl<'a> Iterator for EquipmentIter<'a> {
-    type Item = ItemRef<'a>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let id = self.iter.next()?;
-
-        // The item MUST be contained in self.inventory.
-        let item = self.inventory.get(id).unwrap();
-
-        Some(ItemRef { id: *id, item })
-    }
-
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        (self.len(), Some(self.len()))
-    }
-}
-
-impl<'a> ExactSizeIterator for EquipmentIter<'a> {
-    fn len(&self) -> usize {
-        self.iter.len()
-    }
-}
-
-impl<'a> FusedIterator for EquipmentIter<'a> {}
 
 #[cfg(test)]
 mod tests {
