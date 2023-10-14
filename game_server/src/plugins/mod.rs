@@ -256,9 +256,7 @@ fn update_client(conn: &Connection, view: WorldViewRef<'_>, cf: ControlFrame) {
 
                 // Sync the entity inventory, if it has one.
                 if let Some(inventory) = view.inventories().get(entity.id) {
-                    for item in inventory.iter() {
-                        todo!()
-                    }
+                    todo!()
                 }
             }
         }

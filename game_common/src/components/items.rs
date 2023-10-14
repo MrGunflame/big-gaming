@@ -15,6 +15,8 @@ use super::components::Components;
 #[derive(Clone, Debug)]
 pub struct ItemStack {
     pub item: Item,
+    // FIXME: Any stack always has a quantity greater than zero,
+    // so we can actually make this `NonZero`.
     pub quantity: u32,
 }
 
@@ -57,11 +59,22 @@ pub struct ItemComponent {}
 /// A type that can be converted into a [`ItemStack`].
 pub trait IntoItemStack {
     fn into_item_stack(self) -> ItemStack;
+
+    fn quantity(&self) -> u32;
+    fn mass(&self) -> Mass;
 }
 
 impl IntoItemStack for ItemStack {
     fn into_item_stack(self) -> ItemStack {
         self
+    }
+
+    fn quantity(&self) -> u32 {
+        self.quantity
+    }
+
+    fn mass(&self) -> Mass {
+        ItemStack::mass(self)
     }
 }
 
@@ -71,6 +84,14 @@ impl IntoItemStack for Item {
             item: self,
             quantity: 1,
         }
+    }
+
+    fn quantity(&self) -> u32 {
+        1
+    }
+
+    fn mass(&self) -> Mass {
+        self.mass
     }
 }
 

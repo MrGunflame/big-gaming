@@ -189,7 +189,7 @@ fn handle_event<I>(
                     //add_inventory_item(&mut entity.inventory, modules, event);
                 }
                 EntityChange::InventoryItemRemove(event) => {
-                    entity.inventory.remove(event.id);
+                    entity.inventory.remove(event.id, 1);
                 }
                 EntityChange::InventoryDestroy(event) => {
                     entity.inventory.clear();
