@@ -6,8 +6,8 @@ use bytemuck::{Pod, Zeroable};
 use crate::component::Component;
 use crate::entity::EntityId;
 use crate::raw::inventory::{
-    inventory_component_get, inventory_component_insert, inventory_component_len, inventory_get,
-    Item as RawItem,
+    inventory_clear, inventory_component_get, inventory_component_insert, inventory_component_len,
+    inventory_get, Item as RawItem,
 };
 
 use crate::raw::{Ptr, PtrMut, Usize};
@@ -37,6 +37,13 @@ impl Inventory {
             Ok(Item { id: item.id })
         } else {
             Err(InventoryError)
+        }
+    }
+
+    pub fn clear(&mut self) -> Result<(), InventoryError> {
+        match unsafe { inventory_clear(self.entity.into_raw()) } {
+            0 => Ok(()),
+            _ => Err(InventoryError),
         }
     }
 
