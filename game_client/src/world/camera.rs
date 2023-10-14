@@ -1,11 +1,20 @@
 use game_common::components::actor::ActorProperties;
 use game_common::components::transform::Transform;
-use glam::{Mat3, Vec3};
+use glam::Vec3;
 
 #[derive(Clone, Debug, Default)]
 pub struct CameraController {
     pub transform: Transform,
     pub mode: CameraMode,
+    pub detached_state: DetachedState,
+}
+
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
+pub struct DetachedState {
+    pub forward: bool,
+    pub left: bool,
+    pub right: bool,
+    pub back: bool,
 }
 
 #[derive(Copy, Clone, Debug, Default, PartialEq)]
@@ -18,11 +27,14 @@ pub enum CameraMode {
     Detached,
 }
 
+impl CameraMode {}
+
 impl CameraController {
     pub fn new() -> Self {
         Self {
             transform: Transform::default(),
             mode: CameraMode::FirstPerson,
+            detached_state: DetachedState::default(),
         }
     }
 
