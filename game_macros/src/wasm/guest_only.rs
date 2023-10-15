@@ -37,7 +37,7 @@ fn expand_stub_function(item: ForeignItemFn) -> TokenStream2 {
     let attrs = item.attrs;
 
     let panic_msg = LitStr::new(
-        &format!("`{}` is not implemented on this target", ident.to_string()),
+        &format!("`{}` is not implemented on this target", ident),
         Span::call_site(),
     );
 
