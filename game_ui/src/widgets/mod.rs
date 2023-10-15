@@ -7,6 +7,8 @@ mod parse_input;
 mod selection;
 mod text;
 
+pub mod value_slider;
+
 pub use self::image::Image;
 pub use button::Button;
 pub use checkbox::Checkbox;
