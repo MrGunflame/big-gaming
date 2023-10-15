@@ -47,7 +47,7 @@ impl Widget for EditRecord {
             fields,
             Some(record_id),
         )));
-        button.append(Text::new().text("Ok"));
+        button.append(Text::new().text("Ok".to_owned()));
 
         root
     }
@@ -70,7 +70,7 @@ impl Widget for CreateRecord {
         let fields = render_record(&root, &self.modules, self.kind, None);
 
         let button = root.append(Button::new().on_click(create_record(self.records, fields, None)));
-        button.append(Text::new().text("Ok"));
+        button.append(Text::new().text("Ok".to_owned()));
 
         root
     }
@@ -109,7 +109,7 @@ fn render_record(
     let val_col = metadata.append(Container::new());
 
     for text in ["Module", "ID", "Name"] {
-        name_col.append(Text::new().text(text));
+        name_col.append(Text::new().text(text.to_owned()));
     }
 
     let opts: Vec<ModuleId> = modules.iter().map(|m| m.module.id).collect();
@@ -125,7 +125,7 @@ fn render_record(
     };
 
     val_col.append(Selection::new().options(opts_string).on_change(on_change));
-    val_col.append(Text::new().text("TODO"));
+    val_col.append(Text::new().text("TODO".to_owned()));
 
     let style = Style {
         bounds: Bounds {
@@ -326,7 +326,7 @@ fn render_item(cx: &Scope, item: Option<ItemRecord>) -> ItemFields {
     };
 
     // Value
-    name_col.append(Text::new().text("Value"));
+    name_col.append(Text::new().text("Value".to_owned()));
     val_col.append(
         ParseInput::new(value.get_untracked())
             .style(style.clone())
@@ -334,7 +334,7 @@ fn render_item(cx: &Scope, item: Option<ItemRecord>) -> ItemFields {
     );
 
     // Mass
-    name_col.append(Text::new().text("Mass"));
+    name_col.append(Text::new().text("Mass".to_owned()));
     val_col.append(
         ParseInput::new(mass.get_untracked().to_grams())
             .style(style.clone())
@@ -342,7 +342,7 @@ fn render_item(cx: &Scope, item: Option<ItemRecord>) -> ItemFields {
     );
 
     // Model
-    name_col.append(Text::new().text("Model"));
+    name_col.append(Text::new().text("Model".to_owned()));
     val_col.append(
         ParseInput::new(scene.get_untracked())
             .style(style)
@@ -384,7 +384,7 @@ fn render_object(cx: &Scope, object: Option<ObjectRecord>) -> ObjectFields {
     };
 
     // Model
-    name_col.append(Text::new().text("Model"));
+    name_col.append(Text::new().text("Model".to_owned()));
     val_col.append(
         Input::new()
             .value(model.get_untracked())
@@ -450,7 +450,7 @@ fn render_script_section(cx: &Scope) -> ReadSignal<Vec<String>> {
     );
 
     let button = root.append(Button::new().on_click(on_click));
-    button.append(Text::new().text("New Script"));
+    button.append(Text::new().text("New Script".to_owned()));
 
     scripts
 }

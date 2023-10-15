@@ -62,7 +62,7 @@ impl Widget for Records {
                     .style(style)
                     .on_click(change_category(*category, set_cat.clone())),
             );
-            button.append(Text::new().text(category_str(*category)));
+            button.append(Text::new().text(category_str(*category).to_owned()));
 
             cats.push((*category, button.id().unwrap()));
         }

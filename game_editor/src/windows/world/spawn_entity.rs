@@ -37,7 +37,7 @@ impl Widget for SpawnEntity {
             };
 
             let button = root.append(Button::new().on_click(on_spawn));
-            button.append(Text::new().text(light));
+            button.append(Text::new().text(light.to_owned()));
         }
 
         for (module_id, record) in self.state.records.iter() {

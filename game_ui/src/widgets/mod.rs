@@ -24,6 +24,55 @@ use std::sync::Arc;
 
 use crate::reactive::{ReadSignal, Scope};
 
+#[derive(Clone, Debug)]
+pub enum ValueProvider<T>
+where
+    T: Send + Sync + 'static,
+{
+    Static(T),
+    Reader(ReadSignal<T>),
+}
+
+impl<T> ValueProvider<T>
+where
+    T: Send + Sync + 'static,
+{
+    pub fn with<U, F>(&self, f: F) -> U
+    where
+        F: FnOnce(&T) -> U,
+    {
+        match self {
+            Self::Static(value) => f(value),
+            Self::Reader(reader) => reader.with_untracked(f),
+        }
+    }
+
+    pub fn get(&self) -> T
+    where
+        T: Clone,
+    {
+        self.with(T::clone)
+    }
+}
+
+impl<T> Default for ValueProvider<T>
+where
+    T: Send + Sync + 'static + Default,
+{
+    fn default() -> Self {
+        Self::Static(T::default())
+    }
+}
+
+impl<T> From<T> for ValueProvider<T>
+where
+    T: Send + Sync + 'static,
+{
+    fn from(value: T) -> Self {
+        Self::Static(value)
+    }
+}
+
 pub trait Widget {
     fn build(self, cx: &Scope) -> Scope;
 }
