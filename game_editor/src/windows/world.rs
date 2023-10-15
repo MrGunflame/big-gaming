@@ -390,6 +390,8 @@ impl WorldWindowState {
 
             let entity = self.node_map.get(&key).unwrap();
             hierarchy.set(*entity, transform);
+
+            self.state.props.update(|props| props.transform = transform);
         }
     }
 
@@ -406,6 +408,8 @@ impl WorldWindowState {
 
             let entity = self.node_map.get(&key).unwrap();
             hierarchy.set(*entity, transform);
+
+            self.state.props.update(|props| props.transform = transform);
         }
     }
 
