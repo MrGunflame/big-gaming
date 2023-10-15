@@ -70,17 +70,17 @@ impl Widget for Modules {
 
         {
             let button = root.append(Button::new().on_click(on_open(self.state.clone())));
-            button.append(Text::new().text("Open"));
+            button.append(Text::new().text("Open".to_owned()));
         }
 
         {
             let button = root.append(Button::new().on_click(on_create(self.state.clone())));
-            button.append(Text::new().text("Create"));
+            button.append(Text::new().text("Create".to_owned()));
         }
 
         {
             let button = root.append(Button::new().on_click(on_save(self.state)));
-            button.append(Text::new().text("Save"));
+            button.append(Text::new().text("Save".to_owned()));
         }
 
         root

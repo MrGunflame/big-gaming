@@ -43,10 +43,10 @@ impl Widget for CreateModule {
         let val_col = table.append(Container::new());
 
         for key in ["ID", "Name"] {
-            key_col.append(Text::new().text(key));
+            key_col.append(Text::new().text(key.to_owned()));
         }
 
-        val_col.append(Text::new().text(id.get_untracked()));
+        val_col.append(Text::new().text(id.get_untracked().to_string()));
 
         let style = Style {
             bounds: Bounds {
@@ -83,7 +83,7 @@ impl Widget for CreateModule {
         );
 
         let button = bottom.append(Button::new().on_click(on_create));
-        button.append(Text::new().text("OK"));
+        button.append(Text::new().text("OK".to_owned()));
 
         root
     }

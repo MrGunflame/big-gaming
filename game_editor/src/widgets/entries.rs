@@ -50,7 +50,7 @@ impl Widget for Entries {
 
         for key in &self.data.keys {
             let col = root.append(Container::new());
-            col.append(Text::new().text(key));
+            col.append(Text::new().text(key.to_owned()));
 
             cols.push(col);
         }
@@ -72,7 +72,7 @@ impl Widget for Entries {
                     let ctx_menu = cx.append(
                         ContextMenu::new().spawn_menu(spawn_ctx_menu(&callbacks, row_index)),
                     );
-                    ctx_menu.append(Text::new().text(column));
+                    ctx_menu.append(Text::new().text(column.to_owned()));
 
                     written_cols += 1;
                 }
@@ -104,7 +104,7 @@ fn spawn_root_menu(callbacks: &ContextCallbacks) -> Callback<Scope> {
 
         if let Some(f) = &add_entry {
             let button = root.append(Button::new().on_click(f.clone()));
-            button.append(Text::new().text("New"));
+            button.append(Text::new().text("New".to_owned()));
         }
     })
 }
@@ -125,7 +125,7 @@ fn spawn_ctx_menu(callbacks: &ContextCallbacks, index: usize) -> Callback<Scope>
 
         if let Some(f) = &add_entry {
             let button = root.append(Button::new().on_click(f.clone()));
-            button.append(Text::new().text("New"));
+            button.append(Text::new().text("New".to_owned()));
         }
 
         if let Some(f) = &edit_entry {
@@ -135,7 +135,7 @@ fn spawn_ctx_menu(callbacks: &ContextCallbacks, index: usize) -> Callback<Scope>
             });
 
             let button = root.append(Button::new().on_click(edit_entry));
-            button.append(Text::new().text("Edit"));
+            button.append(Text::new().text("Edit".to_owned()));
         }
 
         if let Some(f) = &remove_entry {
@@ -145,7 +145,7 @@ fn spawn_ctx_menu(callbacks: &ContextCallbacks, index: usize) -> Callback<Scope>
             });
 
             let button = root.append(Button::new().on_click(remove_entry));
-            button.append(Text::new().text("Delete"));
+            button.append(Text::new().text("Delete".to_owned()));
         }
     })
 }

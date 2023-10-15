@@ -39,7 +39,7 @@ impl Widget for NodeHierarchy {
             };
 
             let new = header.append(Button::new().on_click(on_click));
-            new.append(Text::new().text("New"));
+            new.append(Text::new().text("New".to_owned()));
         }
 
         {
@@ -77,7 +77,7 @@ impl Widget for NodeHierarchy {
                     };
 
                     let button = cx2.append(Button::new().style(style).on_click(on_click));
-                    button.append(Text::new().text(&node.name));
+                    button.append(Text::new().text(node.name.to_owned()));
 
                     nodes.push(button.id().unwrap());
                 }

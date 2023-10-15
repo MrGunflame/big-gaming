@@ -2,7 +2,6 @@ use std::ops::Deref;
 
 use game_input::keyboard::KeyCode;
 use game_window::cursor::CursorIcon;
-use parking_lot::Mutex;
 
 use crate::events::{ElementEventHandlers, EventHandlers};
 use crate::reactive::{Node, Scope};
@@ -10,10 +9,10 @@ use crate::render::{Element, ElementBody};
 use crate::style::Style;
 
 use super::text::Text;
-use super::{Callback, Widget};
+use super::{Callback, ValueProvider, Widget};
 
 pub struct Input {
-    value: String,
+    value: ValueProvider<String>,
     style: Style,
     on_change: Option<Callback<String>>,
 }
@@ -21,7 +20,7 @@ pub struct Input {
 impl Input {
     pub fn new() -> Self {
         Self {
-            value: String::new(),
+            value: ValueProvider::Static(String::new()),
             style: Style::default(),
             on_change: None,
         }
@@ -29,9 +28,9 @@ impl Input {
 
     pub fn value<T>(mut self, value: T) -> Self
     where
-        T: ToString,
+        T: Into<ValueProvider<String>>,
     {
-        self.value = value.to_string();
+        self.value = value.into();
         self
     }
 
@@ -57,7 +56,28 @@ impl Default for Input {
 
 impl Widget for Input {
     fn build(self, cx: &Scope) -> Scope {
-        let (value, set_value) = cx.create_signal(Buffer::new(self.value));
+        let (value, set_value) = cx.create_signal(self.value.get());
+        let (buffer, set_buffer) = cx.create_signal(Buffer::new(self.value.get()));
+
+        match self.value {
+            ValueProvider::Static(_) => (),
+            ValueProvider::Reader(reader) => {
+                let set_buffer = set_buffer.clone();
+                cx.create_effect(move || {
+                    let value = reader.get();
+
+                    set_value.update(|val| *val = value.clone());
+                    set_buffer.update(|buf| {
+                        buf.string = value;
+                        // We don't know if the new string has the same
+                        // length, so just reset the cursor to start.
+                        buf.move_to_start();
+                        buf.user_updated = false;
+                    })
+                });
+            }
+        }
+
         let (focus, set_focus) = cx.create_signal(false);
 
         let root = cx.push(Node {
@@ -68,7 +88,7 @@ impl Widget for Input {
             events: ElementEventHandlers {
                 global: EventHandlers {
                     keyboard_input: Some(Box::new({
-                        let set_value = set_value.clone();
+                        let set_value = set_buffer.clone();
                         let focus = focus.clone();
 
                         move |ctx| {
@@ -108,21 +128,27 @@ impl Widget for Input {
                             match ctx.event.char {
                                 // Return creates a newline.
                                 '\r' => {
-                                    set_value.update(|string| {
+                                    set_buffer.update(|string| {
                                         string.push('\n');
+                                        string.user_updated = true;
                                     });
                                 }
                                 // Backspace
-                                '\u{8}' => set_value.update(|string| {
+                                '\u{8}' => set_buffer.update(|string| {
                                     string.remove_prev();
+                                    string.user_updated = true;
                                 }),
                                 // Delete
-                                '\u{7F}' => set_value.update(|string| {
+                                '\u{7F}' => set_buffer.update(|string| {
                                     string.remove_next();
+                                    string.user_updated = true;
                                 }),
                                 char => {
                                     if !char.is_control() {
-                                        set_value.update(|string| string.push(char));
+                                        set_buffer.update(|string| {
+                                            string.push(char);
+                                            string.user_updated = true;
+                                        });
                                     }
                                 }
                             }
@@ -158,9 +184,16 @@ impl Widget for Input {
         });
 
         {
-            let value = value.clone();
+            let value = buffer.clone();
             cx.create_effect(move || {
                 let buffer = value.get();
+
+                // Only update if the user has caused the change. This is
+                // important because we don't want to call `on_change` if
+                // the value changed via a `ReadSignal`.
+                if !buffer.user_updated {
+                    return;
+                }
 
                 if let Some(cb) = &self.on_change {
                     (cb.0)(buffer.string);
@@ -168,18 +201,7 @@ impl Widget for Input {
             });
         }
 
-        let text = root.append(Text::new().text(""));
-        let id = Mutex::new(text.id().unwrap());
-        let r2 = root.clone();
-        cx.create_effect(move || {
-            let value = value.get();
-
-            let mut id = id.lock();
-
-            text.remove(*id);
-            let cx = r2.append(Text::new().text(value.to_string()));
-            *id = cx.id().unwrap();
-        });
+        root.append(Text::new().text(ValueProvider::Reader(value)));
 
         root
     }
@@ -191,6 +213,10 @@ struct Buffer {
     string: String,
     /// Position of the cursor.
     cursor: usize,
+    /// Whether the buffer was update by the user.
+    ///
+    /// This is important to break circular updates when the value changes via a read signal.
+    user_updated: bool,
 }
 
 impl Buffer {
@@ -201,7 +227,11 @@ impl Buffer {
             .map(|(i, c)| i + c.len_utf8())
             .unwrap_or(0);
 
-        Self { string, cursor }
+        Self {
+            string,
+            cursor,
+            user_updated: false,
+        }
     }
 
     fn push(&mut self, ch: char) {

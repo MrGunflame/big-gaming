@@ -317,6 +317,13 @@ impl LayoutTree {
         bounds.min.x = u32::max(bounds.min.x, min_x);
         bounds.min.y = u32::max(bounds.min.y, min_y);
 
+        // If min bounds > max bounds we clamp the min bounds to
+        // max.
+        // FIXME: Is this actually what we want? Define what happens
+        // if min > max.
+        bounds.min.x = u32::min(bounds.min.x, max_x);
+        bounds.min.y = u32::min(bounds.min.y, max_y);
+
         bounds.max.x = u32::clamp(bounds.max.x, bounds.min.x, max_x);
         bounds.max.y = u32::clamp(bounds.max.y, bounds.min.y, max_y);
 
@@ -991,6 +998,29 @@ mod tests {
 
         assert_eq!(bounds.min, UVec2::new(15, 15 * 10));
         assert_eq!(bounds.max, UVec2::new(15, 15 * 10));
+    }
+
+    #[test]
+    fn computed_bounds_padding_overflow() {
+        let mut tree = LayoutTree::new();
+        tree.resize(UVec2::splat(1000));
+
+        let root = tree.push(
+            None,
+            Element {
+                body: ElementBody::Container,
+                style: Style {
+                    bounds: Bounds::exact(SizeVec2::splat(Size::Pixels(u32::MAX))),
+                    padding: Padding::splat(Size::Pixels(1)),
+                    ..Default::default()
+                },
+            },
+        );
+
+        let bounds = tree.compute_bounds(root);
+
+        assert_eq!(bounds.min, UVec2::new(u32::MAX, u32::MAX));
+        assert_eq!(bounds.max, UVec2::new(u32::MAX, u32::MAX));
     }
 
     #[test]

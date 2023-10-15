@@ -101,7 +101,7 @@ impl Widget for Explorer {
             drop(id);
 
             let name_col = table.append(Container::new());
-            name_col.append(Text::new().text("Name"));
+            name_col.append(Text::new().text("Name".to_owned()));
 
             let signals: Vec<(ReadSignal<_>, WriteSignal<_>)> = (0..entries.len())
                 .map(|_| cx.create_signal(false))
@@ -137,13 +137,13 @@ impl Widget for Explorer {
                 let on_click = on_click(index, set_selected, entry.clone());
 
                 let button = name_col.append(Button::new().style(style).on_click(on_click));
-                button.append(Text::new().text(entry.name.to_string_lossy()));
+                button.append(Text::new().text(entry.name.to_string_lossy().to_string()));
 
                 rows[index].push(button.id().unwrap());
             }
 
             let date_modified_col = table.append(Container::new());
-            date_modified_col.append(Text::new().text("Date Modified"));
+            date_modified_col.append(Text::new().text("Date Modified".to_owned()));
 
             for (index, entry) in entries.iter().enumerate() {
                 let background = TABLE_BACKGROUND_COLOR[index % 2].clone();
@@ -165,7 +165,7 @@ impl Widget for Explorer {
             }
 
             let size_col = table.append(Container::new());
-            size_col.append(Text::new().text("Size"));
+            size_col.append(Text::new().text("Size".to_owned()));
 
             for (index, entry) in entries.iter().enumerate() {
                 let background = TABLE_BACKGROUND_COLOR[index % 2].clone();
@@ -283,10 +283,10 @@ impl Widget for Explorer {
         };
 
         let cancel = bottom.append(Button::new().on_click(on_cancel));
-        cancel.append(Text::new().text("Cancel"));
+        cancel.append(Text::new().text("Cancel".to_owned()));
 
         let open = bottom.append(Button::new().on_click(on_open));
-        open.append(Text::new().text("Open"));
+        open.append(Text::new().text("Open".to_owned()));
 
         root
     }
@@ -393,7 +393,7 @@ impl Widget for Topbar {
 
         for (text, cb) in [("UP", directory_up(self.directory_up_sig))] {
             let button = root.append(Button::new().on_click(cb));
-            button.append(Text::new().text(text));
+            button.append(Text::new().text(text.to_owned()));
         }
 
         let path_box = root.append(Container::new());
