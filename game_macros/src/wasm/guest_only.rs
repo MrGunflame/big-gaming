@@ -1,7 +1,7 @@
 use proc_macro::TokenStream;
 use proc_macro2::{Span, TokenStream as TokenStream2};
 use quote::quote;
-use syn::{parse_macro_input, ForeignItem, ForeignItemFn, ItemFn, LitStr};
+use syn::{parse_macro_input, ForeignItemFn, LitStr};
 
 pub fn guest_only(_attr: TokenStream, input: TokenStream) -> TokenStream {
     let item = parse_macro_input!(input as ForeignItemFn);
@@ -22,6 +22,7 @@ pub fn guest_only(_attr: TokenStream, input: TokenStream) -> TokenStream {
 
 fn expand_binding_function(item: ForeignItemFn) -> TokenStream2 {
     quote! {
+        #[link(wasm_import_module = "host")]
         extern "C" {
             #item
         }
@@ -40,6 +41,7 @@ fn expand_stub_function(item: ForeignItemFn) -> TokenStream2 {
     );
 
     quote! {
+        #[allow(unused_variables)]
         #vis unsafe extern "C" fn #ident(#inputs) #output {
             ::core::panic!(#panic_msg);
         }
