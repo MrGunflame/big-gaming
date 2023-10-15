@@ -2,14 +2,15 @@
 #![deny(unused_crate_dependencies)]
 
 mod accessor;
-mod image;
 mod material;
 mod mesh;
 mod mime;
 mod scene;
+mod types;
 
 pub mod uri;
 
+use std::collections::HashMap;
 use std::fmt::{self, Display, Formatter};
 use std::fs::File;
 use std::io::Read;
@@ -23,37 +24,42 @@ use base64::engine::GeneralPurposeConfig;
 use base64::Engine;
 use bytes::Buf;
 use game_common::components::transform::Transform;
+use game_core::hierarchy::Hierarchy;
 use game_render::color::Color;
-use game_render::mesh::Indices;
-use game_render::mesh::Mesh;
 use game_render::pbr::AlphaMode;
-use glam::{Quat, Vec3, Vec4};
+use game_render::texture::{Image, TextureFormat};
+use glam::{Quat, UVec2, Vec2, Vec3, Vec4};
 use gltf::accessor::DataType;
 use gltf::accessor::Dimensions;
 use gltf::buffer::Source;
 use gltf::mesh::Mode;
 use gltf::Material;
+use gltf::Node;
 use gltf::{Accessor, Gltf, Semantic};
-use gltf::{Image, Node};
 use indexmap::IndexMap;
 use indexmap::IndexSet;
 use mime::InvalidMimeType;
 use mime::MimeType;
 use serde_json::{Number, Value};
 use thiserror::Error;
+use types::{GltfMaterial, GltfMesh, GltfMeshMaterial, GltfNode, MaterialIndex, TextureIndex};
 use uri::Uri;
 
-pub use material::GltfMaterial;
-pub use mesh::{GltfMesh, GltfNode, GltfPrimitive};
 pub use scene::GltfScene;
 
 use gltf::image::Source as ImageSource;
+
+use crate::types::MeshIndex;
 
 /// A fully loaded GLTF file with buffers.
 #[derive(Clone, Debug)]
 pub struct GltfData {
     pub gltf: Gltf,
     pub buffers: IndexMap<String, Vec<u8>>,
+    meshes: HashMap<MeshIndex, GltfMesh>,
+    scenes: Vec<GltfScene>,
+    images: HashMap<TextureIndex, Image>,
+    materials: HashMap<MaterialIndex, GltfMaterial>,
 }
 
 /// A GLTF file that is being loaded.
@@ -159,9 +165,31 @@ impl GltfData {
         }
 
         Ok(GltfLoader {
-            data: GltfData { gltf, buffers },
+            data: GltfData {
+                gltf,
+                buffers,
+                meshes: HashMap::new(),
+                scenes: Vec::new(),
+                images: HashMap::new(),
+                materials: HashMap::new(),
+            },
             queue,
         })
+    }
+
+    pub fn create(&mut self) -> Result<(), Error> {
+        for scene in self.gltf.scenes() {
+            let mut nodes = Hierarchy::new();
+
+            let mut queue = Vec::new();
+
+            for node in scene.nodes() {
+                let key = nodes.append(None, self.load_node(&node)?);
+                queue.push((key, node.children()));
+            }
+        }
+
+        Ok(())
     }
 
     pub fn open<P>(path: P) -> Result<Self, Error>
@@ -198,7 +226,7 @@ impl GltfData {
         for scene in self.gltf.scenes() {
             let mut nodes = Vec::new();
             for node in scene.nodes() {
-                nodes.push(self.load_node(node)?);
+                nodes.push(self.load_node(&node)?);
             }
 
             scenes.push(GltfScene { nodes });
@@ -207,17 +235,17 @@ impl GltfData {
         Ok(scenes)
     }
 
-    fn load_node(&self, node: Node<'_>) -> Result<GltfNode, Error> {
-        let children = node
-            .children()
-            .into_iter()
-            .map(|node| self.load_node(node))
-            .collect::<Result<Vec<_>, Error>>()?;
+    fn load_node(&mut self, node: &Node<'_>) -> Result<GltfNode, Error> {
+        // let children = node
+        //     .children()
+        //     .into_iter()
+        //     .map(|node| self.load_node(node))
+        //     .collect::<Result<Vec<_>, Error>>()?;
 
-        let mesh = if let Some(mesh) = node.mesh() {
-            Some(self.load_mesh(mesh)?)
+        let meshes = if let Some(mesh) = node.mesh() {
+            self.load_node_meshes(mesh)?
         } else {
-            None
+            vec![]
         };
 
         let (translation, rotation, scale) = node.transform().decomposed();
@@ -230,78 +258,79 @@ impl GltfData {
         // TODO: Error instead of panicking.
         assert!(transform.rotation.is_normalized());
 
-        Ok(GltfNode {
-            children,
-            mesh,
-            transform,
-        })
+        Ok(GltfNode { transform, meshes })
     }
 
-    fn load_mesh(&self, mesh: gltf::Mesh<'_>) -> Result<GltfMesh, Error> {
-        let mut primitives = Vec::new();
+    fn load_node_meshes(&mut self, mesh: gltf::Mesh<'_>) -> Result<Vec<GltfMeshMaterial>, Error> {
+        let mut meshes = Vec::new();
 
         for primitive in mesh.primitives() {
-            let mut mesh = Mesh::new();
-
-            assert_eq!(primitive.mode(), Mode::Triangles);
-
-            let mut tangents_set = false;
-
-            for (semantic, accessor) in primitive.attributes() {
-                assert!(accessor.sparse().is_none());
-
-                match semantic {
-                    Semantic::Positions => {
-                        let mut positions = Vec::new();
-                        self.load_positions(&accessor, &mut positions)?;
-                        mesh.set_positions(positions);
-                    }
-                    Semantic::Normals => {
-                        let mut normals = Vec::new();
-                        self.load_normals(&accessor, &mut normals)?;
-                        mesh.set_normals(normals);
-                    }
-                    Semantic::Tangents => {
-                        let mut tangents = vec![];
-                        self.load_tangents(&accessor, &mut tangents)?;
-                        mesh.set_tangents(tangents);
-
-                        tangents_set = true;
-                    }
-                    Semantic::TexCoords(index) => {
-                        if index != 0 {
-                            panic!("multiple texture coordinates not yet supported");
-                        }
-
-                        let mut uvs = vec![];
-                        self.load_uvs(&accessor, &mut uvs)?;
-                        mesh.set_uvs(uvs);
-                    }
-                    Semantic::Colors(x) => {}
-                    _ => {
-                        todo!()
-                    }
-                }
-            }
-
-            if let Some(accessor) = primitive.indices() {
-                let mut indices = Indices::U16(vec![]);
-                self.load_indices(&accessor, &mut indices)?;
-                mesh.set_indices(indices);
-            }
-
-            if !tangents_set {
-                mesh.compute_tangents();
-            }
-
+            let mesh = self.load_mesh(&primitive)?;
             let material = self.load_material(primitive.material())?;
 
-            mesh::validate_mesh(&mesh);
+            //mesh::validate_mesh(&mesh);
 
-            primitives.push(GltfPrimitive { mesh, material });
+            meshes.push(GltfMeshMaterial { mesh, material });
         }
 
-        Ok(GltfMesh { primitives })
+        Ok(meshes)
+    }
+
+    fn load_mesh(&mut self, primitive: &gltf::Primitive<'_>) -> Result<MeshIndex, Error> {
+        if self.meshes.contains_key(&MeshIndex(primitive.index())) {
+            return Ok(MeshIndex(primitive.index()));
+        }
+
+        let mut mesh = GltfMesh::default();
+
+        assert_eq!(primitive.mode(), Mode::Triangles);
+
+        let mut tangents_set = false;
+
+        for (semantic, accessor) in primitive.attributes() {
+            assert!(accessor.sparse().is_none());
+
+            match semantic {
+                Semantic::Positions => {
+                    self.load_positions(&accessor, &mut mesh.positions)?;
+                }
+                Semantic::Normals => {
+                    self.load_normals(&accessor, &mut mesh.normals)?;
+                }
+                Semantic::Tangents => {
+                    self.load_tangents(&accessor, &mut mesh.tangents)?;
+
+                    tangents_set = true;
+                }
+                Semantic::TexCoords(index) => {
+                    if index != 0 {
+                        tracing::warn!("loading GLTF meshes with multiple texture coords are not supported and are ignored");
+                    }
+
+                    self.load_uvs(&accessor, &mut mesh.uvs)?;
+                }
+                Semantic::Colors(_) => {
+                    tracing::warn!("loading GLTF meshes with vertex colors are not supported");
+                }
+                _ => {
+                    todo!()
+                }
+            }
+        }
+
+        if let Some(accessor) = primitive.indices() {
+            let mut indices = vec![];
+            self.load_indices(&accessor, &mut indices)?;
+        }
+
+        if !tangents_set {
+            //mesh.compute_tangents();
+            todo!()
+        }
+
+        let index = MeshIndex(primitive.index());
+        self.meshes.insert(index, mesh);
+        Ok(index)
     }
 
     fn buffer(&self, source: Source, offset: usize, length: usize) -> Result<&[u8], Error> {
@@ -325,11 +354,7 @@ impl GltfData {
         }
     }
 
-    fn load_positions(
-        &self,
-        accessor: &Accessor,
-        positions: &mut Vec<[f32; 3]>,
-    ) -> Result<(), Error> {
+    fn load_positions(&self, accessor: &Accessor, positions: &mut Vec<Vec3>) -> Result<(), Error> {
         let data_type = accessor.data_type();
         if data_type != DataType::F32 {
             return Err(Error::InvalidDataType(data_type));
@@ -345,42 +370,12 @@ impl GltfData {
             .map(|min| AccessorValue::load(Dimensions::Vec3, data_type, min));
 
         let reader: ItemReader<'_, Positions> = ItemReader::new(accessor, self);
-        positions.extend(reader);
-
-        // match (accessor.min(), accessor.max()) {
-        //     (Some(min), Some(max)) => {
-        //         let min = AccessorValue::load(Dimensions::Vec3, data_type, min)?;
-        //         let max = AccessorValue::load(Dimensions::Vec3, data_type, max)?;
-
-        //         for _ in 0..accessor.count() {
-        //             let x = read_f32(&mut buf)?;
-        //             let y = read_f32(&mut buf)?;
-        //             let z = read_f32(&mut buf)?;
-
-        //             validate_accessor_range(
-        //                 AccessorValue::Vec3([x.into(), y.into(), z.into()]),
-        //                 min,
-        //                 max,
-        //             )?;
-
-        //             positions.push([x, y, z]);
-        //         }
-        //     }
-        //     _ => {
-        //         for _ in 0..accessor.count() {
-        //             let x = read_f32(&mut buf)?;
-        //             let y = read_f32(&mut buf)?;
-        //             let z = read_f32(&mut buf)?;
-
-        //             positions.push([x, y, z]);
-        //         }
-        //     }
-        // }
+        positions.extend(reader.map(Vec3::from_array));
 
         Ok(())
     }
 
-    fn load_normals(&self, accessor: &Accessor, normals: &mut Vec<[f32; 3]>) -> Result<(), Error> {
+    fn load_normals(&self, accessor: &Accessor, normals: &mut Vec<Vec3>) -> Result<(), Error> {
         let data_type = accessor.data_type();
         if data_type != DataType::F32 {
             return Err(Error::InvalidDataType(data_type));
@@ -392,7 +387,7 @@ impl GltfData {
         }
 
         let reader: ItemReader<'_, Normals> = ItemReader::new(accessor, self);
-        normals.extend(reader);
+        normals.extend(reader.map(Vec3::from_array));
 
         Ok(())
     }
@@ -414,7 +409,7 @@ impl GltfData {
         Ok(())
     }
 
-    fn load_uvs(&self, accessor: &Accessor, uvs: &mut Vec<[f32; 2]>) -> Result<(), Error> {
+    fn load_uvs(&self, accessor: &Accessor, uvs: &mut Vec<Vec2>) -> Result<(), Error> {
         let data_type = accessor.data_type();
         if data_type != DataType::F32 {
             return Err(Error::InvalidDataType(data_type));
@@ -426,12 +421,12 @@ impl GltfData {
         }
 
         let reader: ItemReader<'_, Uvs> = ItemReader::new(accessor, self);
-        uvs.extend(reader);
+        uvs.extend(reader.map(Vec2::from_array));
 
         Ok(())
     }
 
-    fn load_indices(&self, accessor: &Accessor, indices: &mut Indices) -> Result<(), Error> {
+    fn load_indices(&self, accessor: &Accessor, indices: &mut Vec<u32>) -> Result<(), Error> {
         let data_type = accessor.data_type();
 
         let dimensions = accessor.dimensions();
@@ -453,20 +448,12 @@ impl GltfData {
 
         match data_type {
             DataType::U16 => {
-                let mut out = vec![];
-
                 let reader: ItemReader<'_, u16> = ItemReader::new(accessor, self);
-                out.extend(reader);
-
-                *indices = Indices::U16(out);
+                indices.extend(reader.map(u32::from));
             }
             DataType::U32 => {
-                let mut out = vec![];
-
                 let reader: ItemReader<'_, u32> = ItemReader::new(accessor, self);
-                out.extend(reader);
-
-                *indices = Indices::U32(out);
+                indices.extend(reader);
             }
             _ => (),
         }
@@ -480,8 +467,14 @@ impl GltfData {
         Ok(())
     }
 
-    fn load_material(&self, material: Material<'_>) -> Result<GltfMaterial, Error> {
-        let alpha_mode = convert_alpha_mode(material.alpha_mode());
+    fn load_material(&mut self, material: Material<'_>) -> Result<MaterialIndex, Error> {
+        if let Some(index) = material.index() {
+            if self.materials.contains_key(&MaterialIndex(index)) {
+                return Ok(MaterialIndex(index));
+            }
+        }
+
+        let alpha_mode = material.alpha_mode();
 
         let pbr = material.pbr_metallic_roughness();
 
@@ -490,8 +483,7 @@ impl GltfData {
         let base_color_texture = if let Some(info) = pbr.base_color_texture() {
             let image = info.texture().source();
 
-            let buf = self.load_image(image)?;
-            Some(buf.to_vec())
+            Some(self.load_image(image, TextureFormat::Rgba8UnormSrgb)?)
         } else {
             None
         };
@@ -499,8 +491,7 @@ impl GltfData {
         let normal_texture = if let Some(info) = material.normal_texture() {
             let image = info.texture().source();
 
-            let buf = self.load_image(image)?;
-            Some(buf.to_vec())
+            Some(self.load_image(image, TextureFormat::Rgba8Unorm)?)
         } else {
             None
         };
@@ -511,25 +502,39 @@ impl GltfData {
         let metallic_roughness_texture = if let Some(info) = pbr.metallic_roughness_texture() {
             let image = info.texture().source();
 
-            let buf = self.load_image(image)?;
-            Some(buf.to_vec())
+            Some(self.load_image(image, TextureFormat::Rgba8UnormSrgb)?)
         } else {
             None
         };
 
-        Ok(GltfMaterial {
-            alpha_mode,
-            base_color: Color(base_color),
-            base_color_texture,
-            normal_texture,
-            roughness,
-            metallic,
-            metallic_roughness_texture,
-        })
+        let index = material.index().unwrap();
+
+        self.materials.insert(
+            MaterialIndex(index),
+            GltfMaterial {
+                alpha_mode,
+                base_color: Color(base_color),
+                base_color_texture,
+                normal_texture,
+                roughness,
+                metallic,
+                metallic_roughness_texture,
+            },
+        );
+
+        Ok(MaterialIndex(index))
     }
 
-    fn load_image(&self, image: Image<'_>) -> Result<&[u8], Error> {
-        match image.source() {
+    fn load_image(
+        &mut self,
+        image: gltf::Image<'_>,
+        format: TextureFormat,
+    ) -> Result<TextureIndex, Error> {
+        if self.images.contains_key(&TextureIndex(image.index())) {
+            return Ok(TextureIndex(image.index()));
+        }
+
+        let buf = match image.source() {
             ImageSource::View { view, mime_type: _ } => {
                 self.buffer(view.buffer().source(), view.offset(), view.length())
             }
@@ -537,7 +542,19 @@ impl GltfData {
                 let len = self.buffers.get(uri).unwrap().len();
                 self.buffer(Source::Uri(uri), 0, len)
             }
-        }
+        }?;
+
+        let index = TextureIndex(image.index());
+        let img = image::load_from_memory(buf)?.into_rgba8();
+        self.images.insert(
+            index,
+            Image::new(
+                UVec2::new(img.width(), img.height()),
+                format,
+                img.into_raw(),
+            ),
+        );
+        Ok(index)
     }
 }
 
