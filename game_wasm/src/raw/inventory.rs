@@ -78,6 +78,7 @@ pub unsafe extern "C" fn inventory_remove(entity_id: u64, slot_id: u64) -> u32 {
     panic!("`inventory_remove` is not implemented on this target");
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 pub unsafe extern "C" fn inventory_clear(entity_id: u64) -> u32 {
     let _ = entity_id;
     panic!("`inventory_clear` is not implemented on this target");
