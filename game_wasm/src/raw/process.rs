@@ -1,10 +1,4 @@
-#[cfg(target_arch = "wasm32")]
-#[link(wasm_import_module = "host")]
-extern "C" {
-    pub fn abort() -> !;
-}
+use game_macros::guest_only;
 
-#[cfg(not(target_arch = "wasm32"))]
-pub unsafe extern "C" fn abort() -> ! {
-    panic!("`abort` is not implemented on this target");
-}
+#[guest_only]
+pub fn abort() -> !;
