@@ -5,7 +5,7 @@ mod node;
 pub mod spawn_entity;
 
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::f32::consts::PI;
+use std::f32::consts::{E, PI};
 use std::sync::mpsc;
 
 use bitflags::bitflags;
@@ -36,6 +36,7 @@ use game_window::windows::WindowId;
 use glam::{Quat, Vec2, Vec3};
 
 use crate::state::EditorState;
+use crate::widgets::area::Area;
 use crate::windows::world::node::NodeKind;
 use crate::world::selection;
 
@@ -433,6 +434,16 @@ impl WorldWindowState {
 
                         selection.insert(node);
                     });
+
+                    // FIXME: We select the most-recent node right now. Need to
+                    // figure out what to display when selecting multiple nodes.
+                    // let transform = self
+                    //     .state
+                    //     .nodes
+                    //     .with(|hierarchy| hierarchy.get(node).unwrap().transform);
+                    // self.state.props.update(|props| {
+                    //     props.transform = transform;
+                    // });
                 }
                 Event::Spawn(record_ref) => {
                     // It is possible the record is already deleted once we
@@ -558,8 +569,31 @@ impl WorldWindowState {
                 }
                 Event::Destroy { node } => {
                     // FIXME: Removing parent should remove all childrne.
+
+                    self.state.nodes.update(|hierarchy| {
+                        hierarchy.remove(node);
+                    });
+
                     if let Some(entity) = self.node_map.remove(&node) {
                         hierarchy.remove(entity);
+                    }
+                }
+                Event::UpdateTransform { transform } => {
+                    let nodes = self.state.selection.get();
+
+                    for node in nodes {
+                        self.state.nodes.update(|hierarchy| {
+                            let node = hierarchy.get_mut(node).unwrap();
+                            node.transform = transform;
+                        });
+
+                        if let Some(entity) = self.node_map.get(&node) {
+                            hierarchy.set(*entity, transform);
+                        }
+
+                        // self.state.props.update(|props| {
+                        //     props.transform = transform;
+                        // });
                     }
                 }
             }
@@ -598,8 +632,8 @@ pub struct State {
     rx: mpsc::Receiver<Event>,
     nodes: WriteSignal<Hierarchy<node::Node>>,
     selection: WriteSignal<HashSet<Key>>,
-    transform: TransformState,
     state: EditorState,
+    props: WriteSignal<NodeProperties>,
 }
 
 pub fn build_ui(cx: &Scope, state: EditorState) -> State {
@@ -621,6 +655,7 @@ pub fn build_ui(cx: &Scope, state: EditorState) -> State {
 
     let (nodes, set_nodes) = cx.create_signal(Hierarchy::new());
     let (selection, set_selection) = cx.create_signal(HashSet::new());
+    let (props, set_props) = cx.create_signal(NodeProperties::default());
 
     root.append(NodeHierarchy {
         writer: tx.clone(),
@@ -629,30 +664,20 @@ pub fn build_ui(cx: &Scope, state: EditorState) -> State {
         state: state.clone(),
     });
 
-    let transform = build_object_transform(&root);
+    build_object_transform(&root, props, tx);
 
     State {
         events: VecDeque::new(),
         nodes: set_nodes,
         selection: set_selection,
-        transform,
         rx,
         state,
+        props: set_props,
     }
 }
 
-struct TransformState {
-    translation: ReadSignal<Vec3>,
-    rotation: ReadSignal<Quat>,
-    set_translation: WriteSignal<Vec3>,
-    set_rotation: WriteSignal<Quat>,
-}
-
-fn build_object_transform(cx: &Scope) -> TransformState {
+fn build_object_transform(cx: &Scope, props: ReadSignal<NodeProperties>, tx: mpsc::Sender<Event>) {
     let root = cx.append(Container::new());
-
-    let (translation, set_translation) = root.create_signal(Vec3::ZERO);
-    let (rotation, set_rotation) = root.create_signal(Quat::IDENTITY);
 
     {
         let translation_row = cx.append(Container::new().style(Style {
@@ -668,23 +693,35 @@ fn build_object_transform(cx: &Scope) -> TransformState {
         };
 
         let set_x = {
-            let set_translation = set_translation.clone();
+            let props = props.clone();
+            let tx = tx.clone();
+
             move |val| {
-                set_translation.update(|translation| translation.x = val);
+                let mut transform = props.with(|props| props.transform);
+                transform.translation.x = val;
+                tx.send(Event::UpdateTransform { transform });
             }
         };
 
         let set_y = {
-            let set_translation = set_translation.clone();
+            let props = props.clone();
+            let tx = tx.clone();
+
             move |val| {
-                set_translation.update(|translation| translation.y = val);
+                let mut transform = props.with(|props| props.transform);
+                transform.translation.y = val;
+                tx.send(Event::UpdateTransform { transform });
             }
         };
 
         let set_z = {
-            let set_translation = set_translation.clone();
+            let props = props.clone();
+            let tx = tx.clone();
+
             move |val| {
-                set_translation.update(|translation| translation.z = val);
+                let mut transform = props.with(|props| props.transform);
+                transform.translation.z = val;
+                tx.send(Event::UpdateTransform { transform });
             }
         };
 
@@ -723,30 +760,43 @@ fn build_object_transform(cx: &Scope) -> TransformState {
         };
 
         let set_x = {
-            let set_rotation = set_rotation.clone();
+            let props = props.clone();
+            let tx = tx.clone();
+
             move |val| {
-                set_rotation.update(|rotation| rotation.x = val);
+                let mut transform = props.with(|props| props.transform);
+                transform.rotation.x = val;
+                tx.send(Event::UpdateTransform { transform });
             }
         };
 
         let set_y = {
-            let set_rotation = set_rotation.clone();
+            let props = props.clone();
+            let tx = tx.clone();
+
             move |val| {
-                set_rotation.update(|rotation| rotation.y = val);
+                let mut transform = props.with(|props| props.transform);
+                transform.rotation.y = val;
+                tx.send(Event::UpdateTransform { transform });
             }
         };
 
         let set_z = {
-            let set_rotation = set_rotation.clone();
+            let props = props.clone();
+            let tx = tx.clone();
+
             move |val| {
-                set_rotation.update(|rotation| rotation.z = val);
+                let mut transform = props.with(|props| props.transform);
+                transform.rotation.z = val;
+                tx.send(Event::UpdateTransform { transform });
             }
         };
 
         let set_w = {
-            let set_rotation = set_rotation.clone();
             move |val| {
-                set_rotation.update(|rotation| rotation.w = val);
+                let mut transform = props.with(|props| props.transform);
+                transform.rotation.w = val;
+                tx.send(Event::UpdateTransform { transform });
             }
         };
 
@@ -766,13 +816,6 @@ fn build_object_transform(cx: &Scope) -> TransformState {
         w.append(Text::new().text("W"));
         w.append(ParseInput::new(1.0).on_change(set_w));
     }
-
-    TransformState {
-        translation,
-        rotation,
-        set_translation,
-        set_rotation,
-    }
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -783,6 +826,12 @@ pub enum Event {
     SpawnDirectionalLight,
     SpawnPointLight,
     SpawnSpotLight,
+    UpdateTransform { transform: Transform },
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct NodeProperties {
+    transform: Transform,
 }
 
 // let id = commands
