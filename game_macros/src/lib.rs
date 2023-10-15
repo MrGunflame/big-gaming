@@ -56,3 +56,9 @@ reexport_attribute_macro! {
     wasm__event_on_cell_load => wasm::events::on_cell_load,
     wasm__event_on_cell_unload => wasm::events::on_cell_unload,
 }
+
+#[cfg(feature = "wasm")]
+#[proc_macro_attribute]
+pub fn guest_only(attr: TokenStream, input: TokenStream) -> TokenStream {
+    crate::wasm::guest_only::guest_only(attr, input)
+}

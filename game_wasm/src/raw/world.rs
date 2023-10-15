@@ -1,130 +1,64 @@
 use bytemuck::{Pod, Zeroable};
+use game_macros::guest_only;
 
 use super::{Ptr, PtrMut, Usize};
 use crate::record::RecordReference;
 
-#[cfg(target_arch = "wasm32")]
-#[link(wasm_import_module = "host")]
-extern "C" {
-    /// Returns the entity with the given `id`.
-    ///
-    /// # Errors
-    ///
-    /// - [`ERROR_NO_ENTITY`]: The entity does not exist.
-    ///
-    /// [`ERROR_NO_ENTITY`]: super::ERROR_NO_ENTITY
-    pub fn world_entity_get(id: u64, out: PtrMut<Entity>) -> u32;
+/// Returns the entity with the given `id`.
+///
+/// # Errors
+///
+/// - [`ERROR_NO_ENTITY`]: The entity does not exist.
+///
+/// [`ERROR_NO_ENTITY`]: super::ERROR_NO_ENTITY
+#[guest_only]
+pub fn world_entity_get(entity_id: u64, out: PtrMut<Entity>) -> u32;
 
-    // FIXME: Reevaluate how update functions are supposted to work.
-    pub fn world_entity_set_translation(id: u64, x: f32, y: f32, z: f32) -> u32;
-    pub fn world_entity_set_rotation(id: u64, x: f32, y: f32, z: f32, w: f32) -> u32;
+// FIXME: Reevaluate how update functions are supposted to work.
+#[guest_only]
+pub fn world_entity_set_translation(entity_id: u64, x: f32, y: f32, z: f32) -> u32;
+#[guest_only]
+pub fn world_entity_set_rotation(entity_id: u64, x: f32, y: f32, z: f32, w: f32) -> u32;
 
-    /// Spawns a new entity.
-    pub fn world_entity_spawn(entity: Ptr<Entity>, out: PtrMut<u64>) -> u32;
+/// Spawns a new entity.
+#[guest_only]
+pub fn world_entity_spawn(entity: Ptr<Entity>, out: PtrMut<u64>) -> u32;
 
-    /// Despawns the entity with the given `id`.
-    ///
-    /// # Errors
-    ///
-    /// - [`ERROR_NO_ENTITY`]: The entity does not exist.
-    ///
-    /// [`ERROR_NO_ENTITY`]: super::ERROR_NO_ENTITY
-    pub fn world_entity_despawn(id: u64) -> u32;
+/// Despawns the entity with the given `id`.
+///
+/// # Errors
+///
+/// - [`ERROR_NO_ENTITY`]: The entity does not exist.
+///
+/// [`ERROR_NO_ENTITY`]: super::ERROR_NO_ENTITY
+#[guest_only]
+pub fn world_entity_despawn(id: u64) -> u32;
 
-    pub fn world_entity_component_len(
-        entity_id: u64,
-        component_id: Ptr<RecordReference>,
-        out: PtrMut<Usize>,
-    ) -> u32;
-
-    pub fn world_entity_component_get(
-        entity_id: u64,
-        component_id: Ptr<RecordReference>,
-        out: PtrMut<u8>,
-        len: Usize,
-    ) -> u32;
-
-    pub fn world_entity_component_insert(
-        entity_id: u64,
-        component_id: Ptr<RecordReference>,
-        ptr: Ptr<u8>,
-        len: Usize,
-    ) -> u32;
-
-    pub fn world_entity_component_remove(entity_id: u64, component_id: Ptr<RecordReference>)
-        -> u32;
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-pub unsafe extern "C" fn world_entity_get(id: u64, out: PtrMut<Entity>) -> u32 {
-    let _ = (id, out);
-    panic!("`world_entity_get` is not implemented on this target");
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-pub unsafe extern "C" fn world_entity_set_translation(id: u64, x: f32, y: f32, z: f32) -> u32 {
-    let _ = (id, x, y, z);
-    panic!("`world_entity_set_translation` is not implemented on this target");
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-pub unsafe extern "C" fn world_entity_set_rotation(id: u64, x: f32, y: f32, z: f32, w: f32) -> u32 {
-    let _ = (id, x, y, z, w);
-    panic!("`world_entity_set_rotation` is not implemented on this target");
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-pub unsafe extern "C" fn world_entity_spawn(entity: Ptr<Entity>, out: PtrMut<u64>) -> u32 {
-    let _ = (entity, out);
-    panic!("`world_entity_spawn` is not implemented on this target");
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-pub unsafe extern "C" fn world_entity_despawn(id: u64) -> u32 {
-    let _ = id;
-    panic!("`world_entity_despawn` is not implemented on this target");
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-pub unsafe extern "C" fn world_entity_component_len(
+#[guest_only]
+pub fn world_entity_component_len(
     entity_id: u64,
-    componnet_id: Ptr<RecordReference>,
+    component_id: Ptr<RecordReference>,
     out: PtrMut<Usize>,
-) -> u32 {
-    let _ = (entity_id, componnet_id, out);
-    panic!("`world_entity_component_len` is not implemented on this target");
-}
+) -> u32;
 
-#[cfg(not(target_arch = "wasm32"))]
-pub unsafe extern "C" fn world_entity_component_get(
+#[guest_only]
+pub fn world_entity_component_get(
     entity_id: u64,
-    componnet_id: Ptr<RecordReference>,
+    component_id: Ptr<RecordReference>,
     out: PtrMut<u8>,
     len: Usize,
-) -> u32 {
-    let _ = (entity_id, componnet_id, out, len);
-    panic!("`world_entity_component_get` is not implemented on this target");
-}
+) -> u32;
 
-#[cfg(not(target_arch = "wasm32"))]
-pub unsafe extern "C" fn world_entity_component_insert(
+#[guest_only]
+pub fn world_entity_component_insert(
     entity_id: u64,
-    componnet_id: Ptr<RecordReference>,
+    component_id: Ptr<RecordReference>,
     ptr: Ptr<u8>,
     len: Usize,
-) -> u32 {
-    let _ = (entity_id, componnet_id, ptr, len);
-    panic!("`world_entity_component_insert` is not implemented on this target");
-}
+) -> u32;
 
-#[cfg(not(target_arch = "wasm32"))]
-pub unsafe extern "C" fn world_entity_component_remove(
-    entity_id: u64,
-    componnet_id: Ptr<RecordReference>,
-) -> u32 {
-    let _ = (entity_id, componnet_id);
-    panic!("`world_entity_component_remove` is not implemented on this target");
-}
+#[guest_only]
+pub fn world_entity_component_remove(entity_id: u64, component_id: Ptr<RecordReference>) -> u32;
 
 #[derive(Copy, Clone, Zeroable, Pod)]
 #[repr(C)]
