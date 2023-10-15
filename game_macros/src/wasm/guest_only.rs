@@ -1,6 +1,6 @@
 use proc_macro::TokenStream;
 use proc_macro2::{Span, TokenStream as TokenStream2};
-use quote::quote;
+use quote::{quote, ToTokens};
 use syn::{parse_macro_input, ForeignItemFn, LitStr};
 
 pub fn guest_only(_attr: TokenStream, input: TokenStream) -> TokenStream {
@@ -34,13 +34,17 @@ fn expand_stub_function(item: ForeignItemFn) -> TokenStream2 {
     let ident = item.sig.ident;
     let inputs = item.sig.inputs;
     let output = item.sig.output;
+    let attrs = item.attrs;
 
     let panic_msg = LitStr::new(
         &format!("`{}` is not implemented on this target", ident.to_string()),
         Span::call_site(),
     );
 
+    let attrs: TokenStream2 = attrs.iter().map(ToTokens::to_token_stream).collect();
+
     quote! {
+        #attrs
         #[allow(unused_variables)]
         #vis unsafe extern "C" fn #ident(#inputs) #output {
             ::core::panic!(#panic_msg);
