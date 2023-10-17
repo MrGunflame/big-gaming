@@ -312,6 +312,7 @@ impl GltfStagingData {
                         nodes.append(Some(*parent), node);
                     }
 
+                    parents.remove(child);
                     for child in node.children() {
                         parents.insert(child.index(), *parent);
                     }
@@ -648,14 +649,6 @@ impl GltfStagingData {
             ),
         );
         Ok(index)
-    }
-}
-
-fn convert_alpha_mode(value: gltf::material::AlphaMode) -> AlphaMode {
-    match value {
-        gltf::material::AlphaMode::Opaque => AlphaMode::Opaque,
-        gltf::material::AlphaMode::Mask => AlphaMode::Mask,
-        gltf::material::AlphaMode::Blend => AlphaMode::Blend,
     }
 }
 
