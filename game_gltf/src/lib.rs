@@ -10,7 +10,7 @@ mod types;
 
 pub mod uri;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::{self, Display, Formatter};
 use std::fs::File;
 use std::io::Read;
@@ -68,27 +68,83 @@ pub struct GltfData {
 /// before the data in the GLTF file can be accessed.
 ///
 /// The URIs that are required for this GLTF file are stored in `queue`.
-#[derive(Clone, Debug)]
-pub struct GltfLoader {
-    data: GltfData,
-    // FIXME: This could be &str since the string buffer
-    // is already in self.gltf.
-    pub queue: IndexSet<String>,
+// #[derive(Clone, Debug)]
+// pub struct GltfLoader {
+//     data: GltfData,
+//     // FIXME: This could be &str since the string buffer
+//     // is already in self.gltf.
+//     pub queue: IndexSet<String>,
+// }
+
+// impl GltfLoader {
+//     pub fn insert(&mut self, uri: String, buf: Vec<u8>) {
+//         self.queue.remove(&uri);
+//         self.data.buffers.insert(uri.to_owned(), buf.to_vec());
+//     }
+
+//     pub fn create(self) -> GltfData {
+//         assert!(self.queue.is_empty());
+//         self.create_unchecked()
+//     }
+
+//     pub fn create_unchecked(self) -> GltfData {
+//         self.data
+//     }
+// }
+
+const BASE64_PREFIX: &str = "data:application/octet-stream;base64,";
+
+pub struct GltfDecoder {
+    gltf: Gltf,
+    buffers: HashMap<String, Vec<u8>>,
+    external_sources: HashSet<String>,
 }
 
-impl GltfLoader {
-    pub fn insert(&mut self, uri: String, buf: Vec<u8>) {
-        self.queue.remove(&uri);
-        self.data.buffers.insert(uri.to_owned(), buf.to_vec());
-    }
+impl GltfDecoder {
+    pub fn new(slice: &[u8]) -> Result<Self, Error> {
+        let gltf = Gltf::from_slice(slice)?;
 
-    pub fn create(self) -> GltfData {
-        assert!(self.queue.is_empty());
-        self.create_unchecked()
-    }
+        let mut buffers = HashMap::new();
+        let mut external_sources = HashSet::new();
 
-    pub fn create_unchecked(self) -> GltfData {
-        self.data
+        for buffer in gltf.buffers() {
+            match buffer.source() {
+                Source::Bin => {
+                    buffers.insert(String::from(""), gltf.blob.clone().unwrap());
+                }
+                Source::Uri(uri) => {
+                    if let Some(data) = uri.strip_prefix(BASE64_PREFIX) {
+                        let engine = GeneralPurpose::new(&STANDARD, GeneralPurposeConfig::new());
+                        let buf = engine.decode(data)?;
+
+                        buffers.insert(uri.to_owned(), buf);
+                    } else {
+                        external_sources.insert(uri.to_owned());
+                    }
+                }
+            }
+        }
+
+        for image in gltf.images() {
+            if let ImageSource::Uri { uri, mime_type } = image.source() {
+                // Validate the mime type.
+                if let Some(mime_type) = mime_type {
+                    let mime_type = mime_type.parse::<MimeType>()?;
+
+                    if !mime_type.is_image() {
+                        return Err(Error::NoImage(mime_type));
+                    }
+                }
+
+                external_sources.insert(uri.to_owned());
+            }
+        }
+
+        Ok(Self {
+            gltf,
+            buffers,
+            external_sources,
+        })
     }
 }
 
