@@ -1,5 +1,7 @@
+use std::collections::HashMap;
+
 use game_common::components::transform::Transform;
-use game_core::hierarchy::{Entity, TransformHierarchy};
+use game_core::hierarchy::{Entity, Hierarchy, TransformHierarchy};
 use game_render::color::Color;
 use game_render::entities::Object;
 use game_render::light::{DirectionalLight, PointLight, SpotLight};
@@ -13,7 +15,7 @@ use super::Entities;
 
 #[derive(Clone, Debug, Default)]
 pub struct Scene {
-    pub nodes: Vec<Node>,
+    pub nodes: Hierarchy<Node>,
     pub meshes: Vec<Mesh>,
     pub materials: Vec<Material>,
     pub images: Vec<Image>,
@@ -27,6 +29,7 @@ pub struct Node {
 
 #[derive(Copy, Clone, Debug)]
 pub enum NodeBody {
+    Empty,
     Object(ObjectNode),
     DirectionalLight(DirectionalLightNode),
     PointLight(PointLightNode),
@@ -102,8 +105,19 @@ impl Scene {
 
         let mut children = Vec::new();
 
-        for node in &self.nodes {
-            let key = hierarchy.append(Some(parent), node.transform);
+        let mut parents = HashMap::new();
+
+        for (key, node) in self.nodes.iter() {
+            if self.nodes.parent(key).is_some() {
+                continue;
+            }
+
+            let entity = hierarchy.append(Some(parent), node.transform);
+            if let Some(children) = self.nodes.children(key) {
+                for (child, _) in children {
+                    parents.insert(child, entity);
+                }
+            }
 
             match node.body {
                 NodeBody::Object(object) => {
@@ -113,7 +127,7 @@ impl Scene {
                         material: materials[object.material],
                     });
 
-                    entities.objects.insert(key, id);
+                    entities.objects.insert(entity, id);
                 }
                 NodeBody::DirectionalLight(light) => {
                     let id = renderer
@@ -125,7 +139,7 @@ impl Scene {
                             illuminance: light.illuminance,
                         });
 
-                    entities.directional_lights.insert(key, id);
+                    entities.directional_lights.insert(entity, id);
                 }
                 NodeBody::PointLight(light) => {
                     let id = renderer.entities.point_lights.insert(PointLight {
@@ -135,7 +149,7 @@ impl Scene {
                         radius: light.radius,
                     });
 
-                    entities.point_lights.insert(key, id);
+                    entities.point_lights.insert(entity, id);
                 }
                 NodeBody::SpotLight(light) => {
                     let id = renderer.entities.spot_lights.insert(SpotLight {
@@ -147,11 +161,75 @@ impl Scene {
                         outer_cutoff: light.outer_cutoff,
                     });
 
-                    entities.spot_lights.insert(key, id);
+                    entities.spot_lights.insert(entity, id);
                 }
+                NodeBody::Empty => (),
             }
 
-            children.push(key);
+            children.push(entity);
+        }
+
+        while !parents.is_empty() {
+            for (child, parent) in parents.clone().iter() {
+                let node = self.nodes.get(*child).unwrap();
+                parents.remove(child);
+
+                let entity = hierarchy.append(Some(*parent), node.transform);
+                if let Some(children) = self.nodes.children(*child) {
+                    for (child, _) in children {
+                        parents.insert(child, entity);
+                    }
+                }
+
+                match node.body {
+                    NodeBody::Object(object) => {
+                        let id = renderer.entities.objects.insert(Object {
+                            transform: node.transform,
+                            mesh: meshes[object.mesh],
+                            material: materials[object.material],
+                        });
+
+                        entities.objects.insert(entity, id);
+                    }
+                    NodeBody::DirectionalLight(light) => {
+                        let id = renderer
+                            .entities
+                            .directional_lights
+                            .insert(DirectionalLight {
+                                transform: node.transform,
+                                color: light.color,
+                                illuminance: light.illuminance,
+                            });
+
+                        entities.directional_lights.insert(entity, id);
+                    }
+                    NodeBody::PointLight(light) => {
+                        let id = renderer.entities.point_lights.insert(PointLight {
+                            transform: node.transform,
+                            color: light.color,
+                            intensity: light.intensity,
+                            radius: light.radius,
+                        });
+
+                        entities.point_lights.insert(entity, id);
+                    }
+                    NodeBody::SpotLight(light) => {
+                        let id = renderer.entities.spot_lights.insert(SpotLight {
+                            transform: node.transform,
+                            color: light.color,
+                            intensity: light.intensity,
+                            radius: light.radius,
+                            inner_cutoff: light.inner_cutoff,
+                            outer_cutoff: light.outer_cutoff,
+                        });
+
+                        entities.spot_lights.insert(entity, id);
+                    }
+                    NodeBody::Empty => (),
+                }
+
+                children.push(entity);
+            }
         }
 
         // Local Coordinate axes for debugging

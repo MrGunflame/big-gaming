@@ -153,6 +153,14 @@ impl<T> Default for Hierarchy<T> {
     }
 }
 
+impl<T> From<T> for Hierarchy<T> {
+    fn from(value: T) -> Self {
+        let mut hierarchy = Self::new();
+        hierarchy.append(None, value);
+        hierarchy
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct TransformHierarchy {
     hierarchy: Hierarchy<Transform>,

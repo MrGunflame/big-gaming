@@ -20,7 +20,7 @@ impl LoadScene for GltfData {
         let mut mesh_indices = HashMap::new();
         let mut material_indices = HashMap::new();
 
-        for (key, node) in self
+        scene.nodes = self
             .scenes
             .iter()
             .enumerate()
@@ -34,41 +34,43 @@ impl LoadScene for GltfData {
             .nth(0)
             .unwrap()
             .nodes
-            .iter()
-        {
-            // Mesh and material always come together as one or nothing.
-            // There is no such thing as a mesh without material.
-            if let (Some(mesh), Some(material)) = (node.mesh, node.material) {
-                let mesh_index = mesh_indices.entry(mesh).or_insert_with(|| {
-                    let mesh_index = scene.meshes.len();
-                    scene
-                        .meshes
-                        .insert(mesh_index, convert_mesh(self.meshes[&mesh].clone()));
+            .convert(|node| {
+                // Mesh and material always come together as one or nothing.
+                // There is no such thing as a mesh without material.
+                if let (Some(mesh), Some(material)) = (node.mesh, node.material) {
+                    let mesh_index = mesh_indices.entry(mesh).or_insert_with(|| {
+                        let mesh_index = scene.meshes.len();
+                        scene
+                            .meshes
+                            .insert(mesh_index, convert_mesh(self.meshes[&mesh].clone()));
 
-                    mesh_index
-                });
+                        mesh_index
+                    });
 
-                let material_index = material_indices.entry(material).or_insert_with(|| {
-                    let material_index = scene.materials.len();
-                    scene.materials.push(create_material(
-                        self.materials[&material],
-                        &mut scene.images,
-                        &mut self.images,
-                    ));
-                    material_index
-                });
+                    let material_index = material_indices.entry(material).or_insert_with(|| {
+                        let material_index = scene.materials.len();
+                        scene.materials.push(create_material(
+                            self.materials[&material],
+                            &mut scene.images,
+                            &mut self.images,
+                        ));
+                        material_index
+                    });
 
-                scene.nodes.push(Node {
-                    transform: node.transform,
-                    body: NodeBody::Object(ObjectNode {
-                        mesh: *mesh_index,
-                        material: *material_index,
-                    }),
-                });
-            }
-        }
-
-        // TODO: Children
+                    Node {
+                        transform: node.transform,
+                        body: NodeBody::Object(ObjectNode {
+                            mesh: *mesh_index,
+                            material: *material_index,
+                        }),
+                    }
+                } else {
+                    Node {
+                        transform: node.transform,
+                        body: NodeBody::Empty,
+                    }
+                }
+            });
 
         scene
     }
