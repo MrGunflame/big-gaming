@@ -137,6 +137,15 @@ impl GltfDecoder {
         })
     }
 
+    pub fn pop_source(&mut self) -> Option<String> {
+        if let Some(source) = self.external_sources.iter().nth(0).cloned() {
+            self.external_sources.remove(&source);
+            Some(source)
+        } else {
+            None
+        }
+    }
+
     pub fn push_source(&mut self, uri: String, buf: Vec<u8>) {
         assert!(self.external_sources.contains(&uri));
 
