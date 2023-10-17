@@ -55,11 +55,15 @@ fn validate_output(data: &GltfData) {
     assert_eq!(data.scenes.len(), 1);
 
     let nodes = &data.scenes[0].nodes;
-    assert_eq!(nodes.len(), 1);
+    assert_eq!(nodes.len(), 2);
 
-    let node = nodes.values().nth(0).unwrap();
+    let node = nodes
+        .values()
+        .filter(|node| node.mesh.is_some())
+        .nth(0)
+        .unwrap();
 
-    let mesh = &data.meshes[&node.mesh];
+    let mesh = &data.meshes[&node.mesh.unwrap()];
 
     // TODO: Move cmp to Vec3.
     assert_eq!(

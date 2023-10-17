@@ -9,8 +9,8 @@ mod material;
 mod mesh;
 mod mime;
 mod scene;
-mod types;
 
+pub mod types;
 pub mod uri;
 
 use std::collections::{HashMap, HashSet};
@@ -29,7 +29,6 @@ use bytes::Buf;
 use game_common::components::transform::Transform;
 use game_core::hierarchy::Hierarchy;
 use game_render::color::Color;
-use game_render::pbr::AlphaMode;
 use game_render::texture::{Image, TextureFormat};
 use glam::{Quat, UVec2, Vec2, Vec3, Vec4};
 use gltf::accessor::DataType;
@@ -46,6 +45,7 @@ use thiserror::Error;
 use types::{GltfMaterial, GltfMesh, GltfMeshMaterial, GltfNode, MaterialIndex, TextureIndex};
 use uri::Uri;
 
+pub use gltf::material::AlphaMode;
 pub use scene::GltfScene;
 
 use gltf::image::Source as ImageSource;
@@ -273,9 +273,40 @@ impl GltfStagingData {
         for scene in gltf.scenes() {
             let mut nodes = Hierarchy::new();
 
+            let mut parents = HashMap::new();
+
             for node in scene.nodes() {
-                let node = self.load_node(&node)?;
-                nodes.append(None, node);
+                let parent = nodes.append(
+                    None,
+                    GltfNode {
+                        transform: Transform::default(),
+                        mesh: None,
+                        material: None,
+                    },
+                );
+
+                for node in self.load_node(&node)? {
+                    nodes.append(Some(parent), node);
+                }
+
+                if !node.children().len() != 0 {
+                    for child in node.children() {
+                        parents.insert(child.index(), parent);
+                    }
+                }
+            }
+
+            while !parents.is_empty() {
+                for (child, parent) in parents.clone().iter() {
+                    let node = gltf.nodes().nth(*child).unwrap();
+                    for node in self.load_node(&node)? {
+                        nodes.append(Some(*parent), node);
+                    }
+
+                    for child in node.children() {
+                        parents.insert(child.index(), *parent);
+                    }
+                }
             }
 
             scenes.push(GltfScene { nodes });
@@ -285,7 +316,10 @@ impl GltfStagingData {
         Ok(())
     }
 
-    fn load_node(&mut self, node: &Node<'_>) -> Result<GltfNode, Error> {
+    // Note that in gltf a single node can contain multiple "primitives" which are
+    // already formed like a node (with mesh + material). We flatten this hierarchy
+    // into a list of nodes instead.
+    fn load_node(&mut self, node: &Node<'_>) -> Result<Vec<GltfNode>, Error> {
         let meshes = if let Some(mesh) = node.mesh() {
             self.load_node_meshes(mesh)?
         } else {
@@ -302,7 +336,14 @@ impl GltfStagingData {
         // TODO: Error instead of panicking.
         assert!(transform.rotation.is_normalized());
 
-        Ok(GltfNode { transform, meshes })
+        Ok(meshes
+            .into_iter()
+            .map(|primitive| GltfNode {
+                transform,
+                mesh: Some(primitive.mesh),
+                material: Some(primitive.material),
+            })
+            .collect())
     }
 
     fn load_node_meshes(&mut self, mesh: gltf::Mesh<'_>) -> Result<Vec<GltfMeshMaterial>, Error> {
@@ -363,13 +404,12 @@ impl GltfStagingData {
         }
 
         if let Some(accessor) = primitive.indices() {
-            let mut indices = vec![];
-            self.load_indices(&accessor, &mut indices)?;
+            self.load_indices(&accessor, &mut mesh.indices)?;
         }
 
         if !tangents_set {
             //mesh.compute_tangents();
-            todo!()
+            //todo!()
         }
 
         let index = MeshIndex(primitive.index());

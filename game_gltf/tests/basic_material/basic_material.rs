@@ -33,9 +33,13 @@ fn basic_material_gltf_embedded() {
 
 fn validate_output(data: &GltfData) {
     let nodes = &data.scenes[0].nodes;
-    let node = nodes.values().nth(0).unwrap();
+    let node = nodes
+        .values()
+        .filter(|node| node.material.is_some())
+        .nth(0)
+        .unwrap();
 
-    let material = &data.materials[&node.material];
+    let material = &data.materials[&node.material.unwrap()];
 
     assert_eq!(material.alpha_mode, ALPHA_MODE);
     assert_eq!(material.base_color, BASE_COLOR);

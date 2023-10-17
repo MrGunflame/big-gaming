@@ -12,7 +12,8 @@ pub struct GltfScene {
 #[derive(Clone, Debug)]
 pub struct GltfNode {
     pub transform: Transform,
-    pub meshes: Vec<GltfMeshMaterial>,
+    pub mesh: Option<MeshIndex>,
+    pub material: Option<MaterialIndex>,
 }
 
 #[derive(Copy, Clone, Debug)]
