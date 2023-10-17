@@ -8,7 +8,7 @@ pub type Uvs = [f32; 2];
 use bytes::Buf;
 use gltf::Accessor;
 
-use crate::GltfData;
+use crate::GltfStagingData;
 
 pub trait Item: Sized + Copy {
     fn from_slice(buf: &[u8]) -> Self;
@@ -269,7 +269,7 @@ impl<'a, T> ItemReader<'a, T>
 where
     T: Item,
 {
-    pub fn new(accessor: &Accessor, data: &'a GltfData) -> Self {
+    pub(crate) fn new(accessor: &Accessor, data: &'a GltfStagingData) -> Self {
         let view = accessor.view().unwrap();
         let buffer = view.buffer();
 

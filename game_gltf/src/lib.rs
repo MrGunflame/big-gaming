@@ -1,3 +1,6 @@
+//! GLTF loader
+//!
+//!
 #![deny(unsafe_op_in_unsafe_fn)]
 #![deny(unused_crate_dependencies)]
 
@@ -36,8 +39,6 @@ use gltf::mesh::Mode;
 use gltf::Material;
 use gltf::Node;
 use gltf::{Accessor, Gltf, Semantic};
-use indexmap::IndexMap;
-use indexmap::IndexSet;
 use mime::InvalidMimeType;
 use mime::MimeType;
 use serde_json::{Number, Value};
@@ -50,17 +51,6 @@ pub use scene::GltfScene;
 use gltf::image::Source as ImageSource;
 
 use crate::types::MeshIndex;
-
-/// A fully loaded GLTF file with buffers.
-#[derive(Clone, Debug)]
-pub struct GltfData {
-    pub gltf: Gltf,
-    pub buffers: IndexMap<String, Vec<u8>>,
-    meshes: HashMap<MeshIndex, GltfMesh>,
-    scenes: Vec<GltfScene>,
-    images: HashMap<TextureIndex, Image>,
-    materials: HashMap<MaterialIndex, GltfMaterial>,
-}
 
 /// A GLTF file that is being loaded.
 ///
@@ -146,6 +136,52 @@ impl GltfDecoder {
             external_sources,
         })
     }
+
+    pub fn push_source(&mut self, uri: String, buf: Vec<u8>) {
+        assert!(self.external_sources.contains(&uri));
+
+        self.external_sources.remove(&uri);
+        self.buffers.insert(uri, buf);
+    }
+
+    pub fn from_file<P>(path: P) -> Result<Self, Error>
+    where
+        P: AsRef<Path>,
+    {
+        let mut file = File::open(path.as_ref())?;
+
+        let mut buf = Vec::new();
+        file.read_to_end(&mut buf)?;
+
+        let mut decoder = Self::new(&buf)?;
+
+        for uri in decoder.external_sources.iter() {
+            let mut path = Uri::from(path.as_ref());
+            path.push(&uri);
+
+            let mut file = File::open(path.as_path())?;
+
+            let mut buf = Vec::new();
+            file.read_to_end(&mut buf)?;
+
+            decoder.buffers.insert(uri.clone(), buf);
+        }
+
+        Ok(decoder)
+    }
+
+    pub fn finish(self) -> Result<GltfData, Error> {
+        let mut data = GltfStagingData::new(self.buffers);
+        data.finish(self.gltf)?;
+
+        Ok(GltfData {
+            scenes: data.scenes,
+            meshes: data.meshes,
+            materials: data.materials,
+            images: data.images,
+            default_scene: data.default_scene,
+        })
+    }
 }
 
 /// An error that can occur when loading an GLTF file.
@@ -181,123 +217,75 @@ pub enum Error {
     LoadImage(#[from] ::image::ImageError),
 }
 
+/// A parsed glTF file.
+#[derive(Clone, Debug)]
+pub struct GltfData {
+    pub scenes: Vec<GltfScene>,
+    pub meshes: HashMap<MeshIndex, GltfMesh>,
+    pub materials: HashMap<MaterialIndex, GltfMaterial>,
+    pub images: HashMap<TextureIndex, Image>,
+    pub default_scene: Option<usize>,
+}
+
 impl GltfData {
-    pub fn new(slice: &[u8]) -> Result<GltfLoader, Error> {
-        let gltf = Gltf::from_slice(slice)?;
-        let mut queue = IndexSet::new();
-        let mut buffers = IndexMap::new();
-
-        for buffer in gltf.buffers() {
-            match buffer.source() {
-                Source::Bin => {
-                    buffers.insert(String::from(""), gltf.blob.clone().unwrap());
-                }
-                Source::Uri(uri) => {
-                    if let Some(data) = uri.strip_prefix("data:application/octet-stream;base64,") {
-                        let engine = GeneralPurpose::new(&STANDARD, GeneralPurposeConfig::new());
-                        let buf = engine.decode(data)?;
-
-                        buffers.insert(uri.to_owned(), buf);
-                    } else {
-                        queue.insert(uri.to_owned());
-                    }
-                }
-            }
-        }
-
-        for image in gltf.images() {
-            if let ImageSource::Uri { uri, mime_type } = image.source() {
-                // Validate the mime type.
-                if let Some(mime_type) = mime_type {
-                    let mime_type = mime_type.parse::<MimeType>()?;
-
-                    if !mime_type.is_image() {
-                        return Err(Error::NoImage(mime_type));
-                    }
-                }
-
-                queue.insert(uri.to_owned());
-            }
-        }
-
-        Ok(GltfLoader {
-            data: GltfData {
-                gltf,
-                buffers,
-                meshes: HashMap::new(),
-                scenes: Vec::new(),
-                images: HashMap::new(),
-                materials: HashMap::new(),
-            },
-            queue,
-        })
+    pub fn default_scene(&self) -> Option<&GltfScene> {
+        self.default_scene
+            .map(|index| self.scenes.get(index).unwrap())
     }
 
-    pub fn create(&mut self) -> Result<(), Error> {
-        for scene in self.gltf.scenes() {
-            let mut nodes = Hierarchy::new();
-
-            let mut queue = Vec::new();
-
-            for node in scene.nodes() {
-                let key = nodes.append(None, self.load_node(&node)?);
-                queue.push((key, node.children()));
-            }
-        }
-
-        Ok(())
-    }
-
-    pub fn open<P>(path: P) -> Result<Self, Error>
+    pub fn from_file<P>(path: P) -> Result<Self, Error>
     where
         P: AsRef<Path>,
     {
-        let mut file = File::open(path.as_ref())?;
+        GltfDecoder::from_file(path)?.finish()
+    }
+}
 
-        let mut buf = Vec::new();
-        file.read_to_end(&mut buf)?;
+#[derive(Clone, Debug)]
+struct GltfStagingData {
+    buffers: HashMap<String, Vec<u8>>,
+    meshes: HashMap<MeshIndex, GltfMesh>,
+    scenes: Vec<GltfScene>,
+    images: HashMap<TextureIndex, Image>,
+    materials: HashMap<MaterialIndex, GltfMaterial>,
+    default_scene: Option<usize>,
+}
 
-        let mut loader = Self::new(&buf)?;
-
-        while let Some(uri) = loader.queue.swap_remove_index(0) {
-            let mut path = Uri::from(path.as_ref());
-            path.push(&uri);
-
-            let mut file = File::open(path.as_path())?;
-
-            let mut buf = Vec::new();
-            file.read_to_end(&mut buf)?;
-
-            loader.insert(uri, buf);
+impl GltfStagingData {
+    fn new(buffers: HashMap<String, Vec<u8>>) -> Self {
+        Self {
+            buffers,
+            materials: HashMap::new(),
+            scenes: vec![],
+            images: HashMap::new(),
+            meshes: HashMap::new(),
+            default_scene: None,
         }
-
-        Ok(loader.create_unchecked())
     }
 
-    // FIXME: Do we want to have validation on accessor methods, or do it
-    // on loading the object instead?.
-    pub fn scenes(&self) -> Result<Vec<GltfScene>, Error> {
+    pub fn finish(&mut self, gltf: Gltf) -> Result<(), Error> {
         let mut scenes = Vec::new();
 
-        for scene in self.gltf.scenes() {
-            let mut nodes = Vec::new();
+        if let Some(scene) = gltf.default_scene() {
+            self.default_scene = Some(scene.index());
+        }
+
+        for scene in gltf.scenes() {
+            let mut nodes = Hierarchy::new();
+
             for node in scene.nodes() {
-                nodes.push(self.load_node(&node)?);
+                let node = self.load_node(&node)?;
+                nodes.append(None, node);
             }
 
             scenes.push(GltfScene { nodes });
         }
 
-        Ok(scenes)
+        self.scenes = scenes;
+        Ok(())
     }
 
     fn load_node(&mut self, node: &Node<'_>) -> Result<GltfNode, Error> {
-        // let children = node
-        //     .children()
-        //     .into_iter()
-        //     .map(|node| self.load_node(node))
-        //     .collect::<Result<Vec<_>, Error>>()?;
-
         let meshes = if let Some(mesh) = node.mesh() {
             self.load_node_meshes(mesh)?
         } else {
@@ -318,7 +306,7 @@ impl GltfData {
     }
 
     fn load_node_meshes(&mut self, mesh: gltf::Mesh<'_>) -> Result<Vec<GltfMeshMaterial>, Error> {
-        let mut meshes = Vec::new();
+        let mut meshes_out = Vec::new();
 
         for primitive in mesh.primitives() {
             let mesh = self.load_mesh(&primitive)?;
@@ -326,10 +314,10 @@ impl GltfData {
 
             //mesh::validate_mesh(&mesh);
 
-            meshes.push(GltfMeshMaterial { mesh, material });
+            meshes_out.push(GltfMeshMaterial { mesh, material });
         }
 
-        Ok(meshes)
+        Ok(meshes_out)
     }
 
     fn load_mesh(&mut self, primitive: &gltf::Primitive<'_>) -> Result<MeshIndex, Error> {
@@ -392,7 +380,7 @@ impl GltfData {
     fn buffer(&self, source: Source, offset: usize, length: usize) -> Result<&[u8], Error> {
         let buf = match source {
             Source::Bin => {
-                let (_, buf) = self.buffers.first().unwrap();
+                let buf = self.buffers.get("").unwrap();
                 buf
             }
             Source::Uri(uri) => {
