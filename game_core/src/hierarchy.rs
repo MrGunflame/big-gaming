@@ -25,6 +25,14 @@ impl<T> Hierarchy<T> {
         }
     }
 
+    pub fn len(&self) -> usize {
+        self.nodes.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     pub fn append(&mut self, parent: Option<Key>, node: T) -> Key {
         let key = Key(self.nodes.insert(node));
 
@@ -75,6 +83,10 @@ impl<T> Hierarchy<T> {
 
     pub fn iter(&self) -> impl Iterator<Item = (Key, &T)> + '_ {
         self.nodes.iter().map(|(k, v)| (Key(k), v))
+    }
+
+    pub fn values(&self) -> impl Iterator<Item = &T> + '_ {
+        self.nodes.values()
     }
 }
 
