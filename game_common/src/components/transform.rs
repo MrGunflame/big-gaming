@@ -23,6 +23,20 @@ impl Transform {
         }
     }
 
+    pub const fn from_rotation(rotation: Quat) -> Self {
+        Self {
+            rotation,
+            ..Self::IDENTITY
+        }
+    }
+
+    pub const fn from_scale(scale: Vec3) -> Self {
+        Self {
+            scale,
+            ..Self::IDENTITY
+        }
+    }
+
     pub fn looking_at(self, target: Vec3, up: Vec3) -> Self {
         self.looking_to(target - self.translation, up)
     }
