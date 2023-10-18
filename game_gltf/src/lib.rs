@@ -13,7 +13,7 @@ mod scene;
 pub mod types;
 pub mod uri;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::{self, Display, Formatter};
 use std::fs::File;
 use std::io::Read;
@@ -30,6 +30,7 @@ use game_common::components::transform::Transform;
 use game_core::hierarchy::Hierarchy;
 use game_render::color::Color;
 use game_render::texture::{Image, TextureFormat};
+use game_tracing::trace_span;
 use glam::{Quat, UVec2, Vec2, Vec3, Vec4};
 use gltf::accessor::DataType;
 use gltf::accessor::Dimensions;
@@ -92,6 +93,8 @@ pub struct GltfDecoder {
 
 impl GltfDecoder {
     pub fn new(slice: &[u8]) -> Result<Self, Error> {
+        let _span = trace_span!("GltfDecoder::new").entered();
+
         let gltf = Gltf::from_slice(slice)?;
 
         let mut buffers = HashMap::new();
@@ -180,6 +183,8 @@ impl GltfDecoder {
     }
 
     pub fn finish(self) -> Result<GltfData, Error> {
+        let _span = trace_span!("GltfDecoder::finish").entered();
+
         let mut data = GltfStagingData::new(self.buffers);
         data.finish(self.gltf)?;
 
@@ -282,7 +287,7 @@ impl GltfStagingData {
         for scene in gltf.scenes() {
             let mut nodes = Hierarchy::new();
 
-            let mut parents = HashMap::new();
+            let mut parents = BTreeMap::new();
 
             for node in scene.nodes() {
                 let parent = nodes.append(
@@ -394,21 +399,16 @@ impl GltfStagingData {
                 }
                 Semantic::Tangents => {
                     self.load_tangents(&accessor, &mut mesh.tangents)?;
-
                     tangents_set = true;
                 }
-                Semantic::TexCoords(index) => {
-                    if index != 0 {
-                        tracing::warn!("loading GLTF meshes with multiple texture coords are not supported and are ignored");
-                    }
-
+                Semantic::TexCoords(0) => {
                     self.load_uvs(&accessor, &mut mesh.uvs)?;
                 }
-                Semantic::Colors(_) => {
-                    tracing::warn!("loading GLTF meshes with vertex colors are not supported");
-                }
                 _ => {
-                    todo!()
+                    tracing::warn!(
+                        "invalid/unsupported gltf semantic: {}",
+                        semantic.to_string()
+                    );
                 }
             }
         }
@@ -566,6 +566,24 @@ impl GltfStagingData {
             if self.materials.contains_key(&MaterialIndex(index)) {
                 return Ok(MaterialIndex(index));
             }
+        } else {
+            // `usize::MAX` should be big enough to never cause it collide with
+            // a valid material index.
+            const DEFAULT_MATERIAL_INDEX: usize = usize::MAX;
+            if self
+                .materials
+                .contains_key(&MaterialIndex(DEFAULT_MATERIAL_INDEX))
+            {
+                return Ok(MaterialIndex(DEFAULT_MATERIAL_INDEX));
+            }
+
+            // The material is undefined. We must use the default material specified
+            // by the glTF spec: https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html#default-material
+            let material = default_material();
+
+            self.materials
+                .insert(MaterialIndex(DEFAULT_MATERIAL_INDEX), material);
+            return Ok(MaterialIndex(DEFAULT_MATERIAL_INDEX));
         }
 
         let alpha_mode = material.alpha_mode();
@@ -932,4 +950,20 @@ pub enum InvalidScalar {
     InvalidI16(Number),
     #[error("invalid f32: {0}")]
     InvalidF32(Number),
+}
+
+/// Returns the default material.
+fn default_material() -> GltfMaterial {
+    // The default material values as specified by
+    // https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html#reference-material
+
+    GltfMaterial {
+        alpha_mode: AlphaMode::Opaque,
+        base_color: Color([1.0, 1.0, 1.0, 1.0]),
+        base_color_texture: None,
+        metallic: 1.0,
+        roughness: 1.0,
+        metallic_roughness_texture: None,
+        normal_texture: None,
+    }
 }
