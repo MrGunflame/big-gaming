@@ -65,6 +65,9 @@ impl LoadScene for GltfData {
                         }),
                     }
                 } else {
+                    debug_assert!(node.mesh.is_none());
+                    debug_assert!(node.material.is_none());
+
                     Node {
                         transform: node.transform,
                         body: NodeBody::Empty,
