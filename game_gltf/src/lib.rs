@@ -312,14 +312,23 @@ impl GltfStagingData {
 
             while !parents.is_empty() {
                 for (child, parent) in parents.clone().iter() {
+                    let parent = nodes.append(
+                        Some(*parent),
+                        GltfNode {
+                            transform: Transform::default(),
+                            mesh: None,
+                            material: None,
+                        },
+                    );
+
                     let node = gltf.nodes().nth(*child).unwrap();
                     for node in self.load_node(&node)? {
-                        nodes.append(Some(*parent), node);
+                        nodes.append(Some(parent), node);
                     }
 
                     parents.remove(child);
                     for child in node.children() {
-                        parents.insert(child.index(), *parent);
+                        parents.insert(child.index(), parent);
                     }
                 }
             }
