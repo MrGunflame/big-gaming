@@ -175,6 +175,14 @@ impl TransformHierarchy {
         }
     }
 
+    pub fn len(&self) -> usize {
+        self.hierarchy.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     pub fn append(&mut self, parent: Option<Entity>, transform: Transform) -> Entity {
         let key = self.hierarchy.append(parent.map(|e| e.0), transform);
         self.global_transform.insert(Entity(key), transform);
