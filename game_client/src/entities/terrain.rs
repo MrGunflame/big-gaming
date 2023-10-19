@@ -2,7 +2,7 @@ use game_common::components::transform::Transform;
 use game_common::world::entity::Terrain;
 use game_common::world::terrain::{Projection, TerrainMesh};
 use game_common::world::CELL_SIZE_UINT;
-use game_core::hierarchy::Entity;
+use game_core::hierarchy::{Entity, Hierarchy};
 use game_render::mesh::{Indices, Mesh};
 use game_render::Renderer;
 use game_scene::scene::{Material, Node, NodeBody, ObjectNode, Scene};
@@ -25,16 +25,22 @@ pub fn spawn_terrain(
 
     let mesh = build_mesh(terrain);
 
+    let mut nodes = Hierarchy::new();
+    nodes.append(
+        None,
+        Node {
+            transform: Transform::default(),
+            body: NodeBody::Object(ObjectNode {
+                mesh: 0,
+                material: 0,
+            }),
+        },
+    );
+
     scenes.insert(
         entity,
         Scene {
-            nodes: vec![Node {
-                transform: Transform::default(),
-                body: NodeBody::Object(ObjectNode {
-                    mesh: 0,
-                    material: 0,
-                }),
-            }],
+            nodes,
             meshes: vec![mesh],
             materials: vec![Material::default()],
             images: vec![],
