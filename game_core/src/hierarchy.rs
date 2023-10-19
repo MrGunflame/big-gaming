@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use game_common::components::transform::Transform;
 use slotmap::{DefaultKey, SlotMap};
+use tracing::trace_span;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Key(DefaultKey);
@@ -209,6 +210,8 @@ impl TransformHierarchy {
     }
 
     pub fn compute_transform(&mut self) {
+        let _span = trace_span!("TransformHierarchy::compute_transform").entered();
+
         // FIXME: This is a 1:1 copy from the old ECS implementation that is
         // still extreamly inefficient.
 
