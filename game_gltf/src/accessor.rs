@@ -1,4 +1,3 @@
-use std::io::Read;
 use std::marker::PhantomData;
 
 pub type Positions = [f32; 3];

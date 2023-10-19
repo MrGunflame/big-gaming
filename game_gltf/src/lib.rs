@@ -27,7 +27,6 @@ use base64::alphabet::STANDARD;
 use base64::engine::GeneralPurpose;
 use base64::engine::GeneralPurposeConfig;
 use base64::Engine;
-use bytes::Buf;
 use game_common::components::transform::Transform;
 use game_core::hierarchy::Hierarchy;
 use game_render::color::Color;
@@ -212,8 +211,6 @@ pub enum Error {
     NoImage(MimeType),
     #[error(transparent)]
     Base64(#[from] base64::DecodeError),
-    #[error("unexpected eof")]
-    Eof,
     #[error("invalid data type: {0:?}")]
     InvalidDataType(DataType),
     #[error("invalid dimensions: {0:?}")]
@@ -232,6 +229,8 @@ pub enum Error {
     LoadImage(#[from] ::image::ImageError),
     #[error("eof reading buffer: {0}")]
     EofReadingBuffer(#[from] EofError),
+    #[error("invalid indices: {0}")]
+    InvalidIndicies(#[from] InvalidIndices),
 }
 
 /// An error returned when reaching an eof while accessing a buffer.
@@ -243,6 +242,24 @@ pub struct EofError {
     bytes_avail: usize,
     /// The total number required in the buffer.
     bytes_required: usize,
+}
+
+/// The indices are invalid.
+///
+/// From <https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html#meshes-overview>:
+/// > - For *points*, it **MUST** be non-zero.
+/// > - For *line loops* and *line strips*, it **MUST** be 2 or greater.
+/// > - For *triangle strips* and *triangle fans*, it **MUST** be 3 or greater.
+/// > - For *lines*, it **MUST** be divisible by 2 and non-zero.
+/// > - For *triangles*, it **MUST** be divisible by 3 and non-zero.
+#[derive(Copy, Clone, Debug, Error)]
+pub enum InvalidIndices {
+    /// The indices are empty.
+    #[error("indices have zero length")]
+    Zero,
+    // TODO: Add topology for better info.
+    #[error("indices have invalid count: {count}")]
+    InvalidCount { count: usize },
 }
 
 /// A parsed glTF file.
@@ -498,10 +515,6 @@ impl GltfStagingData {
             return Err(Error::InvalidDimensions(dimensions));
         }
 
-        let min = accessor
-            .min()
-            .map(|min| AccessorValue::load(Dimensions::Vec3, data_type, min));
-
         let reader: ItemReader<'_, Positions> = ItemReader::new("POSITIONS", accessor, self)?;
         positions.extend(reader.map(Vec3::from_array));
 
@@ -591,13 +604,14 @@ impl GltfStagingData {
             _ => (),
         }
 
-        assert!(
-            indices.len() % 3 == 0,
-            "Indices % 3 != 0; len = {}",
-            indices.len()
-        );
-
-        Ok(())
+        match indices.len() {
+            0 => Err(InvalidIndices::Zero.into()),
+            // TODO: Check for non-trinalge topology. Event if we
+            // don't support them we should return an correct error
+            // if we encounter them.
+            count if count % 3 != 0 => Err(InvalidIndices::InvalidCount { count }.into()),
+            _ => Ok(()),
+        }
     }
 
     fn load_material(&mut self, material: Material<'_>) -> Result<MaterialIndex, Error> {
@@ -707,83 +721,6 @@ impl GltfStagingData {
         );
         Ok(index)
     }
-}
-
-fn read_f32(buf: &mut &[u8]) -> Result<f32, Error> {
-    if buf.len() < std::mem::size_of::<f32>() {
-        Err(Error::Eof)
-    } else {
-        Ok(buf.get_f32_le())
-    }
-}
-
-fn read_u16(buf: &mut &[u8]) -> Result<u16, Error> {
-    if buf.len() < std::mem::size_of::<u16>() {
-        Err(Error::Eof)
-    } else {
-        Ok(buf.get_u16_le())
-    }
-}
-
-fn read_u32(buf: &mut &[u8]) -> Result<u32, Error> {
-    if buf.len() < std::mem::size_of::<u32>() {
-        Err(Error::Eof)
-    } else {
-        Ok(buf.get_u32_le())
-    }
-}
-
-fn validate_accessor_range<T>(value: T, min: T, max: T) -> Result<(), Error>
-where
-    T: Into<AccessorValue>,
-{
-    let value = value.into();
-    let min = min.into();
-    let max = max.into();
-
-    match (value, min, max) {
-        (AccessorValue::Scalar(value), AccessorValue::Scalar(min), AccessorValue::Scalar(max)) => {
-            if value < min || value > max {
-                return Err(Error::ScalarOutOfRange { value, min, max });
-            }
-        }
-        (AccessorValue::Vec2(value), AccessorValue::Vec2(min), AccessorValue::Vec2(max)) => {
-            for index in 0..2 {
-                let value = value[index];
-                let min = min[index];
-                let max = max[index];
-
-                if value < min || value > max {
-                    return Err(Error::ScalarOutOfRange { value, min, max });
-                }
-            }
-        }
-        (AccessorValue::Vec3(value), AccessorValue::Vec3(min), AccessorValue::Vec3(max)) => {
-            for index in 0..3 {
-                let value = value[index];
-                let min = min[index];
-                let max = max[index];
-
-                if value < min || value > max {
-                    return Err(Error::ScalarOutOfRange { value, min, max });
-                }
-            }
-        }
-        (AccessorValue::Vec4(value), AccessorValue::Vec4(min), AccessorValue::Vec4(max)) => {
-            for index in 0..4 {
-                let value = value[index];
-                let min = min[index];
-                let max = max[index];
-
-                if value < min || value > max {
-                    return Err(Error::ScalarOutOfRange { value, min, max });
-                }
-            }
-        }
-        _ => todo!(),
-    }
-
-    Ok(())
 }
 
 #[derive(Clone, Debug, PartialEq, Error)]
