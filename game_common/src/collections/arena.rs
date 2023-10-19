@@ -2,6 +2,7 @@ use std::hint::unreachable_unchecked;
 use std::iter::FusedIterator;
 use std::num::NonZeroU32;
 
+/// A generic container for values with fast insertion, access and removal.
 #[derive(Clone, Debug)]
 pub struct Arena<T> {
     entries: Vec<Entry<T>>,
@@ -10,6 +11,7 @@ pub struct Arena<T> {
 }
 
 impl<T> Arena<T> {
+    /// Creates a new, empty `Arena`.
     pub const fn new() -> Self {
         Self {
             entries: Vec::new(),
@@ -18,6 +20,7 @@ impl<T> Arena<T> {
         }
     }
 
+    /// Creates a new `Arena` preallocated with the specified `capacity`.
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             entries: Vec::with_capacity(capacity),
@@ -26,14 +29,21 @@ impl<T> Arena<T> {
         }
     }
 
+    /// Returns the number of elements in the `Arena`.
     pub const fn len(&self) -> usize {
         self.len
     }
 
+    /// Returns `true` if the `Arena` contains no elements.
     pub const fn is_empty(&self) -> bool {
         self.len() == 0
     }
 
+    /// Inserts a new value into the `Arena`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the `Arena` is at maximum capacity.
     pub fn insert(&mut self, value: T) -> Key {
         #[inline(never)]
         #[cold]
@@ -47,6 +57,8 @@ impl<T> Arena<T> {
         }
     }
 
+    /// Attempts to inserts a new value into the `Arena`, returning an `Err` if the `Arena` is at
+    /// maximum capacity.
     pub fn try_insert(&mut self, value: T) -> Result<Key, T> {
         // Attempt to increment length.
         match self.len.checked_add(1) {
@@ -81,6 +93,7 @@ impl<T> Arena<T> {
         }
     }
 
+    /// Removes and returns an element from the `Arena`.
     pub fn remove(&mut self, key: Key) -> Option<T> {
         let slot = self.entries.get_mut(key.index as usize)?;
 
@@ -103,14 +116,17 @@ impl<T> Arena<T> {
         }
     }
 
+    /// Returns `true` if the element with the `key` exists in the `Arena`.
     #[inline]
-    pub fn contains(&self, key: Key) -> bool {
+    pub fn contains_key(&self, key: Key) -> bool {
         match self.entries.get(key.index as usize) {
             Some(Entry::Occupied(entry)) if entry.generation == key.generation => true,
             _ => false,
         }
     }
 
+    /// Returns a reference to the elment with the given `key`. Returns `None` if the `key` does
+    /// not exist in the `Arena`.
     #[inline]
     pub fn get(&self, key: Key) -> Option<&T> {
         match self.entries.get(key.index as usize) {
@@ -121,6 +137,8 @@ impl<T> Arena<T> {
         }
     }
 
+    /// Returns a mutable reference to the element with the given `key`. Returns `None` if the
+    /// `key` does not exist in the `Arena`.
     #[inline]
     pub fn get_mut(&mut self, key: Key) -> Option<&mut T> {
         match self.entries.get_mut(key.index as usize) {
@@ -131,9 +149,14 @@ impl<T> Arena<T> {
         }
     }
 
+    /// Returns a reference to the element with the given `key`.
+    ///
+    /// # Safety
+    ///
+    /// The given `key` must exist within the `Arena`.
     #[inline]
     pub unsafe fn get_unchecked(&self, key: Key) -> &T {
-        debug_assert!(self.contains(key));
+        debug_assert!(self.contains_key(key));
 
         unsafe {
             match self.entries.get_unchecked(key.index as usize) {
@@ -143,9 +166,14 @@ impl<T> Arena<T> {
         }
     }
 
+    /// Returns a mutable reference to the element with the given `key`.
+    ///
+    /// # Safety
+    ///
+    /// The given `key` must exist within the `Arena`.
     #[inline]
     pub unsafe fn get_unchecked_mut(&mut self, key: Key) -> &mut T {
-        debug_assert!(self.contains(key));
+        debug_assert!(self.contains_key(key));
 
         unsafe {
             match self.entries.get_unchecked_mut(key.index as usize) {
@@ -155,6 +183,7 @@ impl<T> Arena<T> {
         }
     }
 
+    /// Returns an `Iterator` over the elements within the `Arena`.
     pub fn iter(&self) -> Iter<'_, T> {
         Iter {
             arena: self,
@@ -163,6 +192,7 @@ impl<T> Arena<T> {
         }
     }
 
+    /// Returns an `Iterator` over the elements within the `Arena`.
     pub fn iter_mut(&mut self) -> IterMut<'_, T> {
         IterMut {
             iter: self.entries.iter_mut(),
