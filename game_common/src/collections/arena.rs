@@ -18,6 +18,22 @@ impl<T> Arena<T> {
         }
     }
 
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self {
+            entries: Vec::with_capacity(capacity),
+            len: 0,
+            free_head: None,
+        }
+    }
+
+    pub const fn len(&self) -> usize {
+        self.len
+    }
+
+    pub const fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     pub fn insert(&mut self, value: T) -> Key {
         self.len += 1;
         assert!(self.len <= u32::MAX as usize);
@@ -54,6 +70,8 @@ impl<T> Arena<T> {
 
         match slot {
             Entry::Occupied(entry) => {
+                self.len -= 1;
+
                 let new = Entry::Vacant(VacantEntry {
                     next_free: self.free_head,
                     generation: entry.generation,
@@ -125,7 +143,36 @@ impl<T> Arena<T> {
         Iter {
             arena: self,
             index: 0,
+            len: self.len,
         }
+    }
+
+    pub fn iter_mut(&mut self) -> IterMut<'_, T> {
+        IterMut {
+            iter: self.entries.iter_mut(),
+            index: 0,
+            len: self.len,
+        }
+    }
+}
+
+impl<'a, T> IntoIterator for &'a Arena<T> {
+    type Item = <Self::IntoIter as Iterator>::Item;
+    type IntoIter = Iter<'a, T>;
+
+    #[inline]
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+impl<'a, T> IntoIterator for &'a mut Arena<T> {
+    type Item = <Self::IntoIter as Iterator>::Item;
+    type IntoIter = IterMut<'a, T>;
+
+    #[inline]
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter_mut()
     }
 }
 
@@ -141,15 +188,15 @@ struct OccupiedEntry<T> {
     generation: Generation,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct Key {
-    index: u32,
-    generation: Generation,
-}
-
 #[derive(Clone, Debug)]
 struct VacantEntry {
     next_free: Option<usize>,
+    generation: Generation,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct Key {
+    index: u32,
     generation: Generation,
 }
 
@@ -171,6 +218,7 @@ impl Generation {
 pub struct Iter<'a, T> {
     arena: &'a Arena<T>,
     index: usize,
+    len: usize,
 }
 
 impl<'a, T> Iterator for Iter<'a, T> {
@@ -179,29 +227,34 @@ impl<'a, T> Iterator for Iter<'a, T> {
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             let slot = self.arena.entries.get(self.index)?;
+
             match slot {
                 Entry::Occupied(entry) => {
                     let key = Key {
                         index: self.index as u32,
                         generation: entry.generation,
                     };
+
                     self.index += 1;
+                    self.len -= 1;
 
                     return Some((key, &entry.value));
                 }
-                _ => (),
+                Entry::Vacant(_) => {
+                    self.index += 1;
+                }
             }
         }
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        (self.len(), Some(self.len()))
+        (self.len, Some(self.len))
     }
 }
 
 impl<'a, T> ExactSizeIterator for Iter<'a, T> {
     fn len(&self) -> usize {
-        self.arena.len as usize
+        self.len
     }
 }
 
@@ -209,6 +262,73 @@ impl<'a, T> FusedIterator for Iter<'a, T> {}
 
 #[derive(Debug)]
 pub struct IterMut<'a, T> {
-    arena: &'a mut Arena<T>,
+    iter: std::slice::IterMut<'a, Entry<T>>,
     index: usize,
+    len: usize,
+}
+
+impl<'a, T> Iterator for IterMut<'a, T> {
+    type Item = (Key, &'a mut T);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            match self.iter.next() {
+                Some(entry) => match entry {
+                    Entry::Occupied(entry) => {
+                        let key = Key {
+                            index: self.index as u32,
+                            generation: entry.generation,
+                        };
+                        self.index += 1;
+
+                        return Some((key, &mut entry.value));
+                    }
+                    Entry::Vacant(_) => {
+                        self.index += 1;
+                    }
+                },
+                None => return None,
+            }
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.len, Some(self.len))
+    }
+}
+
+impl<'a, T> ExactSizeIterator for IterMut<'a, T> {
+    fn len(&self) -> usize {
+        self.len
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Arena;
+
+    #[test]
+    fn insert_get() {
+        let mut arena = Arena::new();
+
+        for index in 0..128 {
+            assert_eq!(arena.len(), index);
+
+            let key = arena.insert(index);
+            assert_eq!(*arena.get(key).unwrap(), index);
+        }
+    }
+
+    #[test]
+    fn insert_get_remove() {
+        let mut arena = Arena::new();
+
+        for index in 0..128 {
+            let key = arena.insert(index);
+            assert_eq!(*arena.get(key).unwrap(), index);
+            assert_eq!(arena.remove(key).unwrap(), index);
+        }
+
+        assert_eq!(arena.len(), 0);
+    }
 }
