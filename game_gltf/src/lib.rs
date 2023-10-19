@@ -1,6 +1,8 @@
-//! GLTF loader
+//! glTF file format loader
 //!
-//!
+//! References:
+//! - https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html
+
 #![deny(unsafe_op_in_unsafe_fn)]
 #![deny(unused_crate_dependencies)]
 
@@ -228,6 +230,19 @@ pub enum Error {
     InvalidAccessor(#[from] InvalidAccessorValue),
     #[error("failed to load image: {0}")]
     LoadImage(#[from] ::image::ImageError),
+    #[error("eof reading buffer: {0}")]
+    EofReadingBuffer(#[from] EofError),
+}
+
+/// An error returned when reaching an eof while accessing a buffer.
+#[derive(Clone, Debug, Error)]
+#[error("eof while reading {semantic} after {bytes_avail} bytes: missing {bytes_required} bytes")]
+pub struct EofError {
+    semantic: &'static str,
+    /// The number of bytes that are available in the buffer.
+    bytes_avail: usize,
+    /// The total number required in the buffer.
+    bytes_required: usize,
 }
 
 /// A parsed glTF file.
@@ -487,7 +502,7 @@ impl GltfStagingData {
             .min()
             .map(|min| AccessorValue::load(Dimensions::Vec3, data_type, min));
 
-        let reader: ItemReader<'_, Positions> = ItemReader::new(accessor, self);
+        let reader: ItemReader<'_, Positions> = ItemReader::new("POSITIONS", accessor, self)?;
         positions.extend(reader.map(Vec3::from_array));
 
         Ok(())
@@ -504,7 +519,7 @@ impl GltfStagingData {
             return Err(Error::InvalidDimensions(dimensions));
         }
 
-        let reader: ItemReader<'_, Normals> = ItemReader::new(accessor, self);
+        let reader: ItemReader<'_, Normals> = ItemReader::new("NORMALS", accessor, self)?;
         normals.extend(reader.map(Vec3::from_array));
 
         Ok(())
@@ -521,7 +536,7 @@ impl GltfStagingData {
             return Err(Error::InvalidDimensions(dimensions));
         }
 
-        let reader: ItemReader<'_, Tangents> = ItemReader::new(accessor, self);
+        let reader: ItemReader<'_, Tangents> = ItemReader::new("TANGENTS", accessor, self)?;
         tangents.extend(reader.map(|arr| Vec4::from_array(arr)));
 
         Ok(())
@@ -538,7 +553,7 @@ impl GltfStagingData {
             return Err(Error::InvalidDimensions(dimensions));
         }
 
-        let reader: ItemReader<'_, Uvs> = ItemReader::new(accessor, self);
+        let reader: ItemReader<'_, Uvs> = ItemReader::new("TEXCOORD_0", accessor, self)?;
         uvs.extend(reader.map(Vec2::from_array));
 
         Ok(())
@@ -566,11 +581,11 @@ impl GltfStagingData {
 
         match data_type {
             DataType::U16 => {
-                let reader: ItemReader<'_, u16> = ItemReader::new(accessor, self);
+                let reader: ItemReader<'_, u16> = ItemReader::new("INDICES", accessor, self)?;
                 indices.extend(reader.map(u32::from));
             }
             DataType::U32 => {
-                let reader: ItemReader<'_, u32> = ItemReader::new(accessor, self);
+                let reader: ItemReader<'_, u32> = ItemReader::new("INDICIES", accessor, self)?;
                 indices.extend(reader);
             }
             _ => (),
