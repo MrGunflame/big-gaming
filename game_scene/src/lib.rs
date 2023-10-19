@@ -11,7 +11,7 @@ mod gltf;
 
 use game_core::hierarchy::{Entity, TransformHierarchy};
 use game_gltf::uri::Uri;
-use game_gltf::GltfData;
+use game_gltf::GltfDecoder;
 use game_model::{Decode, Model};
 use game_render::entities::{DirectionalLightId, ObjectId, PointLightId, SpotLightId};
 use game_render::Renderer;
@@ -209,7 +209,7 @@ fn load_scene(path: PathBuf) -> Option<Scene> {
             data.load()
         }
         Some(SceneFormat::Gltf) => {
-            let mut gltf = match GltfData::new(&buf) {
+            let mut gltf = match GltfDecoder::new(&buf) {
                 Ok(gltf) => gltf,
                 Err(err) => {
                     tracing::error!("failed to load GLTF file: {}", err);
@@ -217,7 +217,7 @@ fn load_scene(path: PathBuf) -> Option<Scene> {
                 }
             };
 
-            while let Some(path) = gltf.queue.pop() {
+            while let Some(path) = gltf.pop_source() {
                 let mut uri = uri.clone();
                 uri.push(&path);
                 let mut file = match std::fs::File::open(uri.as_path()) {
@@ -234,10 +234,16 @@ fn load_scene(path: PathBuf) -> Option<Scene> {
                     return None;
                 }
 
-                gltf.insert(path, buf);
+                gltf.push_source(path, buf);
             }
 
-            gltf.create_unchecked().load()
+            match gltf.finish() {
+                Ok(gltf) => gltf.load(),
+                Err(err) => {
+                    tracing::error!("failed to load GLTF file: {}", err);
+                    return None;
+                }
+            }
         }
         None => {
             tracing::error!("cannot detect scene format");

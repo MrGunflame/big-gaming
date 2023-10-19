@@ -23,6 +23,14 @@ impl<K: Key, V: WithEvent<K> + Copy> EntityManager<K, V> {
         }
     }
 
+    pub fn len(&self) -> usize {
+        self.entities.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     pub fn insert(&mut self, entity: V) -> K {
         let id = self.entities.insert(entity);
         self.events.push(V::create(id, entity));

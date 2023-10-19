@@ -10,13 +10,15 @@ base64 = "0.21.0"
 bytes = "1.4.0"
 game_render = { version = "0.1.0", path = "../game_render" }
 game_common = { version = "0.1.0", path = "../game_common" }
+game_core = { version = "0.1.0", path = "../game_core" }
+game_tracing = { version = "0.1.0", path = "../game_tracing" }
 glam = "0.24.0"
 
-gltf = "1.1.0"
+gltf = "1.3.0"
 image = "0.24.6"
-indexmap = "1.9.3"
 serde_json = "1.0.96"
 thiserror = "1.0.40"
+tracing = "0.1.39"
 
 [[test]]
 name = "gltf_box"
@@ -25,3 +27,7 @@ path = "tests/gltf_box/gltf_box.rs"
 [[test]]
 name = "basic_material"
 path = "tests/basic_material/basic_material.rs"
+
+[[test]]
+name = "nested_nodes"
+path = "tests/nested_nodes/nested_nodes.rs"

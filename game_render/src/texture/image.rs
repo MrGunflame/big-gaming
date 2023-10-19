@@ -104,6 +104,23 @@ impl AsRef<[u8]> for Image {
     }
 }
 
+impl PartialEq for &Image {
+    fn eq(&self, other: &Self) -> bool {
+        if self.format != other.format || self.width != other.width || self.height != other.height {
+            return false;
+        }
+
+        // The images always the same if they refer to
+        // the same allocation. This check avoids us avoid
+        // a big memcmp if true.
+        if Arc::ptr_eq(&self.bytes, &other.bytes) {
+            return true;
+        }
+
+        self.bytes == other.bytes
+    }
+}
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ImageId(DefaultKey);
 

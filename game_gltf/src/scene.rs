@@ -1,6 +1,8 @@
+use game_core::hierarchy::Hierarchy;
+
 use crate::GltfNode;
 
 #[derive(Clone, Debug)]
 pub struct GltfScene {
-    pub nodes: Vec<GltfNode>,
+    pub nodes: Hierarchy<GltfNode>,
 }

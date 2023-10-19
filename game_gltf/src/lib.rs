@@ -1,15 +1,21 @@
+//! glTF file format loader
+//!
+//! References:
+//! - https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html
+
 #![deny(unsafe_op_in_unsafe_fn)]
 #![deny(unused_crate_dependencies)]
 
 mod accessor;
-mod image;
 mod material;
 mod mesh;
 mod mime;
 mod scene;
 
+pub mod types;
 pub mod uri;
 
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::{self, Display, Formatter};
 use std::fs::File;
 use std::io::Read;
@@ -21,40 +27,32 @@ use base64::alphabet::STANDARD;
 use base64::engine::GeneralPurpose;
 use base64::engine::GeneralPurposeConfig;
 use base64::Engine;
-use bytes::Buf;
 use game_common::components::transform::Transform;
+use game_core::hierarchy::Hierarchy;
 use game_render::color::Color;
-use game_render::mesh::Indices;
-use game_render::mesh::Mesh;
-use game_render::pbr::AlphaMode;
-use glam::{Quat, Vec3, Vec4};
+use game_render::texture::{Image, TextureFormat};
+use game_tracing::trace_span;
+use glam::{Quat, UVec2, Vec2, Vec3, Vec4};
 use gltf::accessor::DataType;
 use gltf::accessor::Dimensions;
 use gltf::buffer::Source;
 use gltf::mesh::Mode;
 use gltf::Material;
+use gltf::Node;
 use gltf::{Accessor, Gltf, Semantic};
-use gltf::{Image, Node};
-use indexmap::IndexMap;
-use indexmap::IndexSet;
 use mime::InvalidMimeType;
 use mime::MimeType;
 use serde_json::{Number, Value};
 use thiserror::Error;
+use types::{GltfMaterial, GltfMesh, GltfMeshMaterial, GltfNode, MaterialIndex, TextureIndex};
 use uri::Uri;
 
-pub use material::GltfMaterial;
-pub use mesh::{GltfMesh, GltfNode, GltfPrimitive};
+pub use gltf::material::AlphaMode;
 pub use scene::GltfScene;
 
 use gltf::image::Source as ImageSource;
 
-/// A fully loaded GLTF file with buffers.
-#[derive(Clone, Debug)]
-pub struct GltfData {
-    pub gltf: Gltf,
-    pub buffers: IndexMap<String, Vec<u8>>,
-}
+use crate::types::MeshIndex;
 
 /// A GLTF file that is being loaded.
 ///
@@ -62,68 +60,46 @@ pub struct GltfData {
 /// before the data in the GLTF file can be accessed.
 ///
 /// The URIs that are required for this GLTF file are stored in `queue`.
-#[derive(Clone, Debug)]
-pub struct GltfLoader {
-    data: GltfData,
-    // FIXME: This could be &str since the string buffer
-    // is already in self.gltf.
-    pub queue: IndexSet<String>,
+// #[derive(Clone, Debug)]
+// pub struct GltfLoader {
+//     data: GltfData,
+//     // FIXME: This could be &str since the string buffer
+//     // is already in self.gltf.
+//     pub queue: IndexSet<String>,
+// }
+
+// impl GltfLoader {
+//     pub fn insert(&mut self, uri: String, buf: Vec<u8>) {
+//         self.queue.remove(&uri);
+//         self.data.buffers.insert(uri.to_owned(), buf.to_vec());
+//     }
+
+//     pub fn create(self) -> GltfData {
+//         assert!(self.queue.is_empty());
+//         self.create_unchecked()
+//     }
+
+//     pub fn create_unchecked(self) -> GltfData {
+//         self.data
+//     }
+// }
+
+const BASE64_PREFIX: &str = "data:application/octet-stream;base64,";
+
+pub struct GltfDecoder {
+    gltf: Gltf,
+    buffers: HashMap<String, Vec<u8>>,
+    external_sources: HashSet<String>,
 }
 
-impl GltfLoader {
-    pub fn insert(&mut self, uri: String, buf: Vec<u8>) {
-        self.queue.remove(&uri);
-        self.data.buffers.insert(uri.to_owned(), buf.to_vec());
-    }
+impl GltfDecoder {
+    pub fn new(slice: &[u8]) -> Result<Self, Error> {
+        let _span = trace_span!("GltfDecoder::new").entered();
 
-    pub fn create(self) -> GltfData {
-        assert!(self.queue.is_empty());
-        self.create_unchecked()
-    }
-
-    pub fn create_unchecked(self) -> GltfData {
-        self.data
-    }
-}
-
-/// An error that can occur when loading an GLTF file.
-#[derive(Debug, Error)]
-pub enum Error {
-    #[error(transparent)]
-    Io(#[from] std::io::Error),
-    #[error(transparent)]
-    Gltf(#[from] gltf::Error),
-    #[error(transparent)]
-    InvalidMimeType(#[from] InvalidMimeType),
-    #[error("mime-type {0:?} invalid for image")]
-    NoImage(MimeType),
-    #[error(transparent)]
-    Base64(#[from] base64::DecodeError),
-    #[error("unexpected eof")]
-    Eof,
-    #[error("invalid data type: {0:?}")]
-    InvalidDataType(DataType),
-    #[error("invalid dimensions: {0:?}")]
-    InvalidDimensions(Dimensions),
-    #[error("invalid buffer view {view:?} for buffer with length {length:?}")]
-    InvalidBufferView { view: Range<usize>, length: usize },
-    #[error("scalar value of {value} outside of valid range [{min}, {max}]")]
-    ScalarOutOfRange {
-        value: ScalarValue,
-        min: ScalarValue,
-        max: ScalarValue,
-    },
-    #[error("invalid acessor value: {0}")]
-    InvalidAccessor(#[from] InvalidAccessorValue),
-    #[error("failed to load image: {0}")]
-    LoadImage(#[from] ::image::ImageError),
-}
-
-impl GltfData {
-    pub fn new(slice: &[u8]) -> Result<GltfLoader, Error> {
         let gltf = Gltf::from_slice(slice)?;
-        let mut queue = IndexSet::new();
-        let mut buffers = IndexMap::new();
+
+        let mut buffers = HashMap::new();
+        let mut external_sources = HashSet::new();
 
         for buffer in gltf.buffers() {
             match buffer.source() {
@@ -131,13 +107,13 @@ impl GltfData {
                     buffers.insert(String::from(""), gltf.blob.clone().unwrap());
                 }
                 Source::Uri(uri) => {
-                    if let Some(data) = uri.strip_prefix("data:application/octet-stream;base64,") {
+                    if let Some(data) = uri.strip_prefix(BASE64_PREFIX) {
                         let engine = GeneralPurpose::new(&STANDARD, GeneralPurposeConfig::new());
                         let buf = engine.decode(data)?;
 
                         buffers.insert(uri.to_owned(), buf);
                     } else {
-                        queue.insert(uri.to_owned());
+                        external_sources.insert(uri.to_owned());
                     }
                 }
             }
@@ -154,17 +130,33 @@ impl GltfData {
                     }
                 }
 
-                queue.insert(uri.to_owned());
+                external_sources.insert(uri.to_owned());
             }
         }
 
-        Ok(GltfLoader {
-            data: GltfData { gltf, buffers },
-            queue,
+        Ok(Self {
+            gltf,
+            buffers,
+            external_sources,
         })
     }
 
-    pub fn open<P>(path: P) -> Result<Self, Error>
+    pub fn pop_source(&mut self) -> Option<String> {
+        if let Some(source) = self.external_sources.iter().nth(0).cloned() {
+            Some(source)
+        } else {
+            None
+        }
+    }
+
+    pub fn push_source(&mut self, uri: String, buf: Vec<u8>) {
+        assert!(self.external_sources.contains(&uri));
+
+        self.external_sources.remove(&uri);
+        self.buffers.insert(uri, buf);
+    }
+
+    pub fn from_file<P>(path: P) -> Result<Self, Error>
     where
         P: AsRef<Path>,
     {
@@ -173,9 +165,9 @@ impl GltfData {
         let mut buf = Vec::new();
         file.read_to_end(&mut buf)?;
 
-        let mut loader = Self::new(&buf)?;
+        let mut decoder = Self::new(&buf)?;
 
-        while let Some(uri) = loader.queue.swap_remove_index(0) {
+        for uri in decoder.external_sources.iter() {
             let mut path = Uri::from(path.as_ref());
             path.push(&uri);
 
@@ -184,40 +176,211 @@ impl GltfData {
             let mut buf = Vec::new();
             file.read_to_end(&mut buf)?;
 
-            loader.insert(uri, buf);
+            decoder.buffers.insert(uri.clone(), buf);
         }
 
-        Ok(loader.create_unchecked())
+        Ok(decoder)
     }
 
-    // FIXME: Do we want to have validation on accessor methods, or do it
-    // on loading the object instead?.
-    pub fn scenes(&self) -> Result<Vec<GltfScene>, Error> {
+    pub fn finish(self) -> Result<GltfData, Error> {
+        let _span = trace_span!("GltfDecoder::finish").entered();
+
+        let mut data = GltfStagingData::new(self.buffers);
+        data.finish(self.gltf)?;
+
+        Ok(GltfData {
+            scenes: data.scenes,
+            meshes: data.meshes,
+            materials: data.materials,
+            images: data.images,
+            default_scene: data.default_scene,
+        })
+    }
+}
+
+/// An error that can occur when loading an GLTF file.
+#[derive(Debug, Error)]
+pub enum Error {
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
+    #[error(transparent)]
+    Gltf(#[from] gltf::Error),
+    #[error(transparent)]
+    InvalidMimeType(#[from] InvalidMimeType),
+    #[error("mime-type {0:?} invalid for image")]
+    NoImage(MimeType),
+    #[error(transparent)]
+    Base64(#[from] base64::DecodeError),
+    #[error("invalid data type: {0:?}")]
+    InvalidDataType(DataType),
+    #[error("invalid dimensions: {0:?}")]
+    InvalidDimensions(Dimensions),
+    #[error("invalid buffer view {view:?} for buffer with length {length:?}")]
+    InvalidBufferView { view: Range<usize>, length: usize },
+    #[error("scalar value of {value} outside of valid range [{min}, {max}]")]
+    ScalarOutOfRange {
+        value: ScalarValue,
+        min: ScalarValue,
+        max: ScalarValue,
+    },
+    #[error("invalid acessor value: {0}")]
+    InvalidAccessor(#[from] InvalidAccessorValue),
+    #[error("failed to load image: {0}")]
+    LoadImage(#[from] ::image::ImageError),
+    #[error("eof reading buffer: {0}")]
+    EofReadingBuffer(#[from] EofError),
+    #[error("invalid indices: {0}")]
+    InvalidIndicies(#[from] InvalidIndices),
+}
+
+/// An error returned when reaching an eof while accessing a buffer.
+#[derive(Clone, Debug, Error)]
+#[error("eof while reading {semantic} after {bytes_avail} bytes: missing {bytes_required} bytes")]
+pub struct EofError {
+    semantic: &'static str,
+    /// The number of bytes that are available in the buffer.
+    bytes_avail: usize,
+    /// The total number required in the buffer.
+    bytes_required: usize,
+}
+
+/// The indices are invalid.
+///
+/// From <https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html#meshes-overview>:
+/// > - For *points*, it **MUST** be non-zero.
+/// > - For *line loops* and *line strips*, it **MUST** be 2 or greater.
+/// > - For *triangle strips* and *triangle fans*, it **MUST** be 3 or greater.
+/// > - For *lines*, it **MUST** be divisible by 2 and non-zero.
+/// > - For *triangles*, it **MUST** be divisible by 3 and non-zero.
+#[derive(Copy, Clone, Debug, Error)]
+pub enum InvalidIndices {
+    /// The indices are empty.
+    #[error("indices have zero length")]
+    Zero,
+    // TODO: Add topology for better info.
+    #[error("indices have invalid count: {count}")]
+    InvalidCount { count: usize },
+}
+
+/// A parsed glTF file.
+#[derive(Clone, Debug)]
+pub struct GltfData {
+    pub scenes: Vec<GltfScene>,
+    pub meshes: HashMap<MeshIndex, GltfMesh>,
+    pub materials: HashMap<MaterialIndex, GltfMaterial>,
+    pub images: HashMap<TextureIndex, Image>,
+    pub default_scene: Option<usize>,
+}
+
+impl GltfData {
+    pub fn default_scene(&self) -> Option<&GltfScene> {
+        self.default_scene
+            .map(|index| self.scenes.get(index).unwrap())
+    }
+
+    pub fn from_file<P>(path: P) -> Result<Self, Error>
+    where
+        P: AsRef<Path>,
+    {
+        GltfDecoder::from_file(path)?.finish()
+    }
+}
+
+#[derive(Clone, Debug)]
+struct GltfStagingData {
+    buffers: HashMap<String, Vec<u8>>,
+    meshes: HashMap<MeshIndex, GltfMesh>,
+    scenes: Vec<GltfScene>,
+    images: HashMap<TextureIndex, Image>,
+    materials: HashMap<MaterialIndex, GltfMaterial>,
+    default_scene: Option<usize>,
+}
+
+impl GltfStagingData {
+    fn new(buffers: HashMap<String, Vec<u8>>) -> Self {
+        Self {
+            buffers,
+            materials: HashMap::new(),
+            scenes: vec![],
+            images: HashMap::new(),
+            meshes: HashMap::new(),
+            default_scene: None,
+        }
+    }
+
+    pub fn finish(&mut self, gltf: Gltf) -> Result<(), Error> {
         let mut scenes = Vec::new();
 
-        for scene in self.gltf.scenes() {
-            let mut nodes = Vec::new();
+        if let Some(scene) = gltf.default_scene() {
+            self.default_scene = Some(scene.index());
+        }
+
+        for scene in gltf.scenes() {
+            let mut nodes = Hierarchy::new();
+
+            let mut parents = BTreeMap::new();
+
             for node in scene.nodes() {
-                nodes.push(self.load_node(node)?);
+                let parent = nodes.append(
+                    None,
+                    GltfNode {
+                        transform: Transform::default(),
+                        mesh: None,
+                        material: None,
+                        name: None,
+                    },
+                );
+
+                for node in self.load_node(&node)? {
+                    nodes.append(Some(parent), node);
+                }
+
+                if !node.children().len() != 0 {
+                    for child in node.children() {
+                        parents.insert(child.index(), parent);
+                    }
+                }
+            }
+
+            while !parents.is_empty() {
+                for (child, parent) in parents.clone().iter() {
+                    let parent = nodes.append(
+                        Some(*parent),
+                        GltfNode {
+                            transform: Transform::default(),
+                            mesh: None,
+                            material: None,
+                            name: None,
+                        },
+                    );
+
+                    let node = gltf.nodes().nth(*child).unwrap();
+                    for node in self.load_node(&node)? {
+                        nodes.append(Some(parent), node);
+                    }
+
+                    parents.remove(child);
+                    for child in node.children() {
+                        parents.insert(child.index(), parent);
+                    }
+                }
             }
 
             scenes.push(GltfScene { nodes });
         }
 
-        Ok(scenes)
+        self.scenes = scenes;
+        Ok(())
     }
 
-    fn load_node(&self, node: Node<'_>) -> Result<GltfNode, Error> {
-        let children = node
-            .children()
-            .into_iter()
-            .map(|node| self.load_node(node))
-            .collect::<Result<Vec<_>, Error>>()?;
-
-        let mesh = if let Some(mesh) = node.mesh() {
-            Some(self.load_mesh(mesh)?)
+    // Note that in gltf a single node can contain multiple "primitives" which are
+    // already formed like a node (with mesh + material). We flatten this hierarchy
+    // into a list of nodes instead.
+    fn load_node(&mut self, node: &Node<'_>) -> Result<Vec<GltfNode>, Error> {
+        let meshes = if let Some(mesh) = node.mesh() {
+            self.load_node_meshes(mesh)?
         } else {
-            None
+            vec![]
         };
 
         let (translation, rotation, scale) = node.transform().decomposed();
@@ -230,84 +393,100 @@ impl GltfData {
         // TODO: Error instead of panicking.
         assert!(transform.rotation.is_normalized());
 
-        Ok(GltfNode {
-            children,
-            mesh,
-            transform,
-        })
+        Ok(meshes
+            .into_iter()
+            .map(|primitive| GltfNode {
+                transform,
+                mesh: Some(primitive.mesh),
+                material: Some(primitive.material),
+                name: node.name().map(|s| s.to_owned()),
+            })
+            .collect())
     }
 
-    fn load_mesh(&self, mesh: gltf::Mesh<'_>) -> Result<GltfMesh, Error> {
-        let mut primitives = Vec::new();
+    fn load_node_meshes(&mut self, mesh: gltf::Mesh<'_>) -> Result<Vec<GltfMeshMaterial>, Error> {
+        let mut meshes_out = Vec::new();
 
         for primitive in mesh.primitives() {
-            let mut mesh = Mesh::new();
-
-            assert_eq!(primitive.mode(), Mode::Triangles);
-
-            let mut tangents_set = false;
-
-            for (semantic, accessor) in primitive.attributes() {
-                assert!(accessor.sparse().is_none());
-
-                match semantic {
-                    Semantic::Positions => {
-                        let mut positions = Vec::new();
-                        self.load_positions(&accessor, &mut positions)?;
-                        mesh.set_positions(positions);
-                    }
-                    Semantic::Normals => {
-                        let mut normals = Vec::new();
-                        self.load_normals(&accessor, &mut normals)?;
-                        mesh.set_normals(normals);
-                    }
-                    Semantic::Tangents => {
-                        let mut tangents = vec![];
-                        self.load_tangents(&accessor, &mut tangents)?;
-                        mesh.set_tangents(tangents);
-
-                        tangents_set = true;
-                    }
-                    Semantic::TexCoords(index) => {
-                        if index != 0 {
-                            panic!("multiple texture coordinates not yet supported");
-                        }
-
-                        let mut uvs = vec![];
-                        self.load_uvs(&accessor, &mut uvs)?;
-                        mesh.set_uvs(uvs);
-                    }
-                    Semantic::Colors(x) => {}
-                    _ => {
-                        todo!()
-                    }
-                }
-            }
-
-            if let Some(accessor) = primitive.indices() {
-                let mut indices = Indices::U16(vec![]);
-                self.load_indices(&accessor, &mut indices)?;
-                mesh.set_indices(indices);
-            }
-
-            if !tangents_set {
-                mesh.compute_tangents();
-            }
-
+            let mesh = self.load_mesh(&primitive, mesh.index())?;
             let material = self.load_material(primitive.material())?;
 
-            mesh::validate_mesh(&mesh);
+            //mesh::validate_mesh(&mesh);
 
-            primitives.push(GltfPrimitive { mesh, material });
+            meshes_out.push(GltfMeshMaterial { mesh, material });
         }
 
-        Ok(GltfMesh { primitives })
+        Ok(meshes_out)
+    }
+
+    fn load_mesh(
+        &mut self,
+        primitive: &gltf::Primitive<'_>,
+        mesh_index: usize,
+    ) -> Result<MeshIndex, Error> {
+        if self.meshes.contains_key(&MeshIndex {
+            mesh: mesh_index,
+            primitive: primitive.index(),
+        }) {
+            return Ok(MeshIndex {
+                mesh: mesh_index,
+                primitive: primitive.index(),
+            });
+        }
+
+        let mut mesh = GltfMesh::default();
+
+        assert_eq!(primitive.mode(), Mode::Triangles);
+
+        let mut tangents_set = false;
+
+        for (semantic, accessor) in primitive.attributes() {
+            assert!(accessor.sparse().is_none());
+
+            match semantic {
+                Semantic::Positions => {
+                    self.load_positions(&accessor, &mut mesh.positions)?;
+                }
+                Semantic::Normals => {
+                    self.load_normals(&accessor, &mut mesh.normals)?;
+                }
+                Semantic::Tangents => {
+                    self.load_tangents(&accessor, &mut mesh.tangents)?;
+                    tangents_set = true;
+                }
+                Semantic::TexCoords(0) => {
+                    self.load_uvs(&accessor, &mut mesh.uvs)?;
+                }
+                _ => {
+                    tracing::warn!(
+                        "invalid/unsupported gltf semantic: {}",
+                        semantic.to_string()
+                    );
+                }
+            }
+        }
+
+        if let Some(accessor) = primitive.indices() {
+            self.load_indices(&accessor, &mut mesh.indices)?;
+        }
+
+        if !tangents_set {
+            //mesh.compute_tangents();
+            //todo!()
+        }
+
+        let index = MeshIndex {
+            mesh: mesh_index,
+            primitive: primitive.index(),
+        };
+        self.meshes.insert(index, mesh);
+        Ok(index)
     }
 
     fn buffer(&self, source: Source, offset: usize, length: usize) -> Result<&[u8], Error> {
         let buf = match source {
             Source::Bin => {
-                let (_, buf) = self.buffers.first().unwrap();
+                let buf = self.buffers.get("").unwrap();
                 buf
             }
             Source::Uri(uri) => {
@@ -325,11 +504,7 @@ impl GltfData {
         }
     }
 
-    fn load_positions(
-        &self,
-        accessor: &Accessor,
-        positions: &mut Vec<[f32; 3]>,
-    ) -> Result<(), Error> {
+    fn load_positions(&self, accessor: &Accessor, positions: &mut Vec<Vec3>) -> Result<(), Error> {
         let data_type = accessor.data_type();
         if data_type != DataType::F32 {
             return Err(Error::InvalidDataType(data_type));
@@ -340,47 +515,13 @@ impl GltfData {
             return Err(Error::InvalidDimensions(dimensions));
         }
 
-        let min = accessor
-            .min()
-            .map(|min| AccessorValue::load(Dimensions::Vec3, data_type, min));
-
-        let reader: ItemReader<'_, Positions> = ItemReader::new(accessor, self);
-        positions.extend(reader);
-
-        // match (accessor.min(), accessor.max()) {
-        //     (Some(min), Some(max)) => {
-        //         let min = AccessorValue::load(Dimensions::Vec3, data_type, min)?;
-        //         let max = AccessorValue::load(Dimensions::Vec3, data_type, max)?;
-
-        //         for _ in 0..accessor.count() {
-        //             let x = read_f32(&mut buf)?;
-        //             let y = read_f32(&mut buf)?;
-        //             let z = read_f32(&mut buf)?;
-
-        //             validate_accessor_range(
-        //                 AccessorValue::Vec3([x.into(), y.into(), z.into()]),
-        //                 min,
-        //                 max,
-        //             )?;
-
-        //             positions.push([x, y, z]);
-        //         }
-        //     }
-        //     _ => {
-        //         for _ in 0..accessor.count() {
-        //             let x = read_f32(&mut buf)?;
-        //             let y = read_f32(&mut buf)?;
-        //             let z = read_f32(&mut buf)?;
-
-        //             positions.push([x, y, z]);
-        //         }
-        //     }
-        // }
+        let reader: ItemReader<'_, Positions> = ItemReader::new("POSITIONS", accessor, self)?;
+        positions.extend(reader.map(Vec3::from_array));
 
         Ok(())
     }
 
-    fn load_normals(&self, accessor: &Accessor, normals: &mut Vec<[f32; 3]>) -> Result<(), Error> {
+    fn load_normals(&self, accessor: &Accessor, normals: &mut Vec<Vec3>) -> Result<(), Error> {
         let data_type = accessor.data_type();
         if data_type != DataType::F32 {
             return Err(Error::InvalidDataType(data_type));
@@ -391,8 +532,8 @@ impl GltfData {
             return Err(Error::InvalidDimensions(dimensions));
         }
 
-        let reader: ItemReader<'_, Normals> = ItemReader::new(accessor, self);
-        normals.extend(reader);
+        let reader: ItemReader<'_, Normals> = ItemReader::new("NORMALS", accessor, self)?;
+        normals.extend(reader.map(Vec3::from_array));
 
         Ok(())
     }
@@ -408,13 +549,13 @@ impl GltfData {
             return Err(Error::InvalidDimensions(dimensions));
         }
 
-        let reader: ItemReader<'_, Tangents> = ItemReader::new(accessor, self);
+        let reader: ItemReader<'_, Tangents> = ItemReader::new("TANGENTS", accessor, self)?;
         tangents.extend(reader.map(|arr| Vec4::from_array(arr)));
 
         Ok(())
     }
 
-    fn load_uvs(&self, accessor: &Accessor, uvs: &mut Vec<[f32; 2]>) -> Result<(), Error> {
+    fn load_uvs(&self, accessor: &Accessor, uvs: &mut Vec<Vec2>) -> Result<(), Error> {
         let data_type = accessor.data_type();
         if data_type != DataType::F32 {
             return Err(Error::InvalidDataType(data_type));
@@ -425,13 +566,13 @@ impl GltfData {
             return Err(Error::InvalidDimensions(dimensions));
         }
 
-        let reader: ItemReader<'_, Uvs> = ItemReader::new(accessor, self);
-        uvs.extend(reader);
+        let reader: ItemReader<'_, Uvs> = ItemReader::new("TEXCOORD_0", accessor, self)?;
+        uvs.extend(reader.map(Vec2::from_array));
 
         Ok(())
     }
 
-    fn load_indices(&self, accessor: &Accessor, indices: &mut Indices) -> Result<(), Error> {
+    fn load_indices(&self, accessor: &Accessor, indices: &mut Vec<u32>) -> Result<(), Error> {
         let data_type = accessor.data_type();
 
         let dimensions = accessor.dimensions();
@@ -453,35 +594,52 @@ impl GltfData {
 
         match data_type {
             DataType::U16 => {
-                let mut out = vec![];
-
-                let reader: ItemReader<'_, u16> = ItemReader::new(accessor, self);
-                out.extend(reader);
-
-                *indices = Indices::U16(out);
+                let reader: ItemReader<'_, u16> = ItemReader::new("INDICES", accessor, self)?;
+                indices.extend(reader.map(u32::from));
             }
             DataType::U32 => {
-                let mut out = vec![];
-
-                let reader: ItemReader<'_, u32> = ItemReader::new(accessor, self);
-                out.extend(reader);
-
-                *indices = Indices::U32(out);
+                let reader: ItemReader<'_, u32> = ItemReader::new("INDICIES", accessor, self)?;
+                indices.extend(reader);
             }
             _ => (),
         }
 
-        assert!(
-            indices.len() % 3 == 0,
-            "Indices % 3 != 0; len = {}",
-            indices.len()
-        );
-
-        Ok(())
+        match indices.len() {
+            0 => Err(InvalidIndices::Zero.into()),
+            // TODO: Check for non-trinalge topology. Event if we
+            // don't support them we should return an correct error
+            // if we encounter them.
+            count if count % 3 != 0 => Err(InvalidIndices::InvalidCount { count }.into()),
+            _ => Ok(()),
+        }
     }
 
-    fn load_material(&self, material: Material<'_>) -> Result<GltfMaterial, Error> {
-        let alpha_mode = convert_alpha_mode(material.alpha_mode());
+    fn load_material(&mut self, material: Material<'_>) -> Result<MaterialIndex, Error> {
+        if let Some(index) = material.index() {
+            if self.materials.contains_key(&MaterialIndex(index)) {
+                return Ok(MaterialIndex(index));
+            }
+        } else {
+            // `usize::MAX` should be big enough to never cause it collide with
+            // a valid material index.
+            const DEFAULT_MATERIAL_INDEX: usize = usize::MAX;
+            if self
+                .materials
+                .contains_key(&MaterialIndex(DEFAULT_MATERIAL_INDEX))
+            {
+                return Ok(MaterialIndex(DEFAULT_MATERIAL_INDEX));
+            }
+
+            // The material is undefined. We must use the default material specified
+            // by the glTF spec: https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html#default-material
+            let material = default_material();
+
+            self.materials
+                .insert(MaterialIndex(DEFAULT_MATERIAL_INDEX), material);
+            return Ok(MaterialIndex(DEFAULT_MATERIAL_INDEX));
+        }
+
+        let alpha_mode = material.alpha_mode();
 
         let pbr = material.pbr_metallic_roughness();
 
@@ -490,8 +648,7 @@ impl GltfData {
         let base_color_texture = if let Some(info) = pbr.base_color_texture() {
             let image = info.texture().source();
 
-            let buf = self.load_image(image)?;
-            Some(buf.to_vec())
+            Some(self.load_image(image, TextureFormat::Rgba8UnormSrgb)?)
         } else {
             None
         };
@@ -499,8 +656,7 @@ impl GltfData {
         let normal_texture = if let Some(info) = material.normal_texture() {
             let image = info.texture().source();
 
-            let buf = self.load_image(image)?;
-            Some(buf.to_vec())
+            Some(self.load_image(image, TextureFormat::Rgba8Unorm)?)
         } else {
             None
         };
@@ -511,25 +667,39 @@ impl GltfData {
         let metallic_roughness_texture = if let Some(info) = pbr.metallic_roughness_texture() {
             let image = info.texture().source();
 
-            let buf = self.load_image(image)?;
-            Some(buf.to_vec())
+            Some(self.load_image(image, TextureFormat::Rgba8UnormSrgb)?)
         } else {
             None
         };
 
-        Ok(GltfMaterial {
-            alpha_mode,
-            base_color: Color(base_color),
-            base_color_texture,
-            normal_texture,
-            roughness,
-            metallic,
-            metallic_roughness_texture,
-        })
+        let index = material.index().unwrap();
+
+        self.materials.insert(
+            MaterialIndex(index),
+            GltfMaterial {
+                alpha_mode,
+                base_color: Color(base_color),
+                base_color_texture,
+                normal_texture,
+                roughness,
+                metallic,
+                metallic_roughness_texture,
+            },
+        );
+
+        Ok(MaterialIndex(index))
     }
 
-    fn load_image(&self, image: Image<'_>) -> Result<&[u8], Error> {
-        match image.source() {
+    fn load_image(
+        &mut self,
+        image: gltf::Image<'_>,
+        format: TextureFormat,
+    ) -> Result<TextureIndex, Error> {
+        if self.images.contains_key(&TextureIndex(image.index())) {
+            return Ok(TextureIndex(image.index()));
+        }
+
+        let buf = match image.source() {
             ImageSource::View { view, mime_type: _ } => {
                 self.buffer(view.buffer().source(), view.offset(), view.length())
             }
@@ -537,93 +707,20 @@ impl GltfData {
                 let len = self.buffers.get(uri).unwrap().len();
                 self.buffer(Source::Uri(uri), 0, len)
             }
-        }
+        }?;
+
+        let index = TextureIndex(image.index());
+        let img = image::load_from_memory(buf)?.into_rgba8();
+        self.images.insert(
+            index,
+            Image::new(
+                UVec2::new(img.width(), img.height()),
+                format,
+                img.into_raw(),
+            ),
+        );
+        Ok(index)
     }
-}
-
-fn convert_alpha_mode(value: gltf::material::AlphaMode) -> AlphaMode {
-    match value {
-        gltf::material::AlphaMode::Opaque => AlphaMode::Opaque,
-        gltf::material::AlphaMode::Mask => AlphaMode::Mask,
-        gltf::material::AlphaMode::Blend => AlphaMode::Blend,
-    }
-}
-
-fn read_f32(buf: &mut &[u8]) -> Result<f32, Error> {
-    if buf.len() < std::mem::size_of::<f32>() {
-        Err(Error::Eof)
-    } else {
-        Ok(buf.get_f32_le())
-    }
-}
-
-fn read_u16(buf: &mut &[u8]) -> Result<u16, Error> {
-    if buf.len() < std::mem::size_of::<u16>() {
-        Err(Error::Eof)
-    } else {
-        Ok(buf.get_u16_le())
-    }
-}
-
-fn read_u32(buf: &mut &[u8]) -> Result<u32, Error> {
-    if buf.len() < std::mem::size_of::<u32>() {
-        Err(Error::Eof)
-    } else {
-        Ok(buf.get_u32_le())
-    }
-}
-
-fn validate_accessor_range<T>(value: T, min: T, max: T) -> Result<(), Error>
-where
-    T: Into<AccessorValue>,
-{
-    let value = value.into();
-    let min = min.into();
-    let max = max.into();
-
-    match (value, min, max) {
-        (AccessorValue::Scalar(value), AccessorValue::Scalar(min), AccessorValue::Scalar(max)) => {
-            if value < min || value > max {
-                return Err(Error::ScalarOutOfRange { value, min, max });
-            }
-        }
-        (AccessorValue::Vec2(value), AccessorValue::Vec2(min), AccessorValue::Vec2(max)) => {
-            for index in 0..2 {
-                let value = value[index];
-                let min = min[index];
-                let max = max[index];
-
-                if value < min || value > max {
-                    return Err(Error::ScalarOutOfRange { value, min, max });
-                }
-            }
-        }
-        (AccessorValue::Vec3(value), AccessorValue::Vec3(min), AccessorValue::Vec3(max)) => {
-            for index in 0..3 {
-                let value = value[index];
-                let min = min[index];
-                let max = max[index];
-
-                if value < min || value > max {
-                    return Err(Error::ScalarOutOfRange { value, min, max });
-                }
-            }
-        }
-        (AccessorValue::Vec4(value), AccessorValue::Vec4(min), AccessorValue::Vec4(max)) => {
-            for index in 0..4 {
-                let value = value[index];
-                let min = min[index];
-                let max = max[index];
-
-                if value < min || value > max {
-                    return Err(Error::ScalarOutOfRange { value, min, max });
-                }
-            }
-        }
-        _ => todo!(),
-    }
-
-    Ok(())
 }
 
 #[derive(Clone, Debug, PartialEq, Error)]
@@ -829,4 +926,20 @@ pub enum InvalidScalar {
     InvalidI16(Number),
     #[error("invalid f32: {0}")]
     InvalidF32(Number),
+}
+
+/// Returns the default material.
+fn default_material() -> GltfMaterial {
+    // The default material values as specified by
+    // https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html#reference-material
+
+    GltfMaterial {
+        alpha_mode: AlphaMode::Opaque,
+        base_color: Color([1.0, 1.0, 1.0, 1.0]),
+        base_color_texture: None,
+        metallic: 1.0,
+        roughness: 1.0,
+        metallic_roughness_texture: None,
+        normal_texture: None,
+    }
 }

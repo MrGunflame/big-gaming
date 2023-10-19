@@ -1,7 +1,7 @@
 mod ir;
 
 use std::fs::File;
-use std::io::{Read, Write};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use clap::Parser;
@@ -39,123 +39,118 @@ fn main() {
 }
 
 fn load_gltf(path: impl AsRef<Path>) -> Result<GltfData, Box<dyn std::error::Error>> {
-    let mut file = File::open(path)?;
-
-    let mut buf = Vec::new();
-    file.read_to_end(&mut buf)?;
-
-    let mut data = GltfData::new(&buf)?;
-
-    while let Some(path) = data.queue.pop() {
-        let mut file = File::open(&path)?;
-
-        let mut buf = Vec::new();
-        file.read_to_end(&mut buf)?;
-
-        data.insert(path, buf);
-    }
-
-    Ok(data.create())
+    let data = GltfData::from_file(path)?;
+    Ok(data)
 }
 
 fn convert_gltf_to_ir(gltf: GltfData) -> ModelIr {
     let mut ir = ModelIr::default();
 
-    for scene in gltf.scenes().unwrap() {
-        for node in scene.nodes {
-            if !node.children.is_empty() {
+    for scene in gltf.scenes {
+        for (key, node) in scene.nodes.iter() {
+            if !scene.nodes.parent(key).is_some() {
                 panic!("nested nodes are not yet supported");
             }
 
-            let Some(mesh) = node.mesh else {
+            let (Some(mesh), Some(material)) = (node.mesh, node.material) else {
                 continue;
             };
 
-            for primitive in mesh.primitives {
-                let mut positions = Vec::new();
-                for pos in primitive.mesh.positions() {
-                    positions.extend(bytemuck::bytes_of(pos));
-                }
+            let mesh = gltf.meshes[&mesh].clone();
+            let material = gltf.materials[&material];
 
-                let mut normals = Vec::new();
-                for norm in primitive.mesh.normals() {
-                    normals.extend(bytemuck::bytes_of(norm));
-                }
-
-                let mut tangents = Vec::new();
-                for tang in primitive.mesh.tangents() {
-                    tangents.extend(bytemuck::bytes_of(tang));
-                }
-
-                let mut uvs = Vec::new();
-                for uv in primitive.mesh.uvs() {
-                    uvs.extend(bytemuck::bytes_of(uv));
-                }
-
-                let mut indices = Vec::new();
-                for index in primitive.mesh.indicies().unwrap().into_u32() {
-                    indices.extend(bytemuck::bytes_of(&index));
-                }
-
-                let positions = ir.buffers.insert(Buffer { bytes: positions });
-                let normals = ir.buffers.insert(Buffer { bytes: normals });
-                let tangents = ir.buffers.insert(Buffer { bytes: tangents });
-                let uvs = ir.buffers.insert(Buffer { bytes: uvs });
-                let indices = ir.buffers.insert(Buffer { bytes: indices });
-
-                let mut albedo_texture = None;
-                let mut normal_texture = None;
-                let mut metallic_roughness_texture = None;
-
-                if let Some(buf) = primitive.material.base_color_texture {
-                    let index = ir
-                        .textures
-                        .insert(create_texture(&buf, TextureFormat::Rgba8UnormSrgb));
-
-                    albedo_texture = Some(index);
-                }
-
-                if let Some(buf) = primitive.material.normal_texture {
-                    let index = ir
-                        .textures
-                        .insert(create_texture(&buf, TextureFormat::Rgba8Unorm));
-
-                    normal_texture = Some(index);
-                }
-
-                if let Some(buf) = primitive.material.metallic_roughness_texture {
-                    let index = ir
-                        .textures
-                        .insert(create_texture(&buf, TextureFormat::Rgba8UnormSrgb));
-
-                    metallic_roughness_texture = Some(index);
-                }
-
-                let mesh = ir.meshes.insert(Mesh {
-                    positions: positions.0,
-                    normals: normals.0,
-                    tangents: tangents.0,
-                    indices: indices.0,
-                    uvs: uvs.0,
-                });
-
-                let material =
-                    ir.materials
-                        .insert(Material::MetallicRoughness(MetallicRoughnessMaterial {
-                            base_color: primitive.material.base_color.0.map(|v| (v * 255.0) as u8),
-                            metallic: (primitive.material.metallic * 255.0) as u8,
-                            roughness: (primitive.material.roughness * 255.0) as u8,
-                            albedo_texture: albedo_texture.map(|s| s.0),
-                            normal_texture: normal_texture.map(|s| s.0),
-                            metallic_roughness_texture: metallic_roughness_texture.map(|s| s.0),
-                        }));
-
-                ir.nodes.push(Node {
-                    transform: node.transform,
-                    mesh: mesh.0,
-                    material: material.0,
-                });
+            let mut positions = Vec::new();
+            for pos in &mesh.positions {
+                positions.extend(bytemuck::bytes_of(pos));
             }
+
+            let mut normals = Vec::new();
+            for norm in &mesh.normals {
+                normals.extend(bytemuck::bytes_of(norm));
+            }
+
+            let mut tangents = Vec::new();
+            for tang in &mesh.tangents {
+                tangents.extend(bytemuck::bytes_of(tang));
+            }
+
+            let mut uvs = Vec::new();
+            for uv in &mesh.uvs {
+                uvs.extend(bytemuck::bytes_of(uv));
+            }
+
+            let mut indices = Vec::new();
+            for index in mesh.indices {
+                indices.extend(bytemuck::bytes_of(&index));
+            }
+
+            let positions = ir.buffers.insert(Buffer { bytes: positions });
+            let normals = ir.buffers.insert(Buffer { bytes: normals });
+            let tangents = ir.buffers.insert(Buffer { bytes: tangents });
+            let uvs = ir.buffers.insert(Buffer { bytes: uvs });
+            let indices = ir.buffers.insert(Buffer { bytes: indices });
+
+            let mut albedo_texture = None;
+            let mut normal_texture = None;
+            let mut metallic_roughness_texture = None;
+
+            if let Some(tex_index) = material.base_color_texture {
+                let texture = gltf.images[&tex_index].clone();
+
+                let index = ir.textures.insert(create_texture(
+                    texture.as_bytes(),
+                    TextureFormat::Rgba8UnormSrgb,
+                ));
+
+                albedo_texture = Some(index);
+            }
+
+            if let Some(tex_index) = material.normal_texture {
+                let texture = gltf.images[&tex_index].clone();
+
+                let index = ir.textures.insert(create_texture(
+                    texture.as_bytes(),
+                    TextureFormat::Rgba8Unorm,
+                ));
+
+                normal_texture = Some(index);
+            }
+
+            if let Some(tex_index) = material.metallic_roughness_texture {
+                let texture = gltf.images[&tex_index].clone();
+
+                let index = ir.textures.insert(create_texture(
+                    texture.as_bytes(),
+                    TextureFormat::Rgba8UnormSrgb,
+                ));
+
+                metallic_roughness_texture = Some(index);
+            }
+
+            let mesh = ir.meshes.insert(Mesh {
+                positions: positions.0,
+                normals: normals.0,
+                tangents: tangents.0,
+                indices: indices.0,
+                uvs: uvs.0,
+            });
+
+            let material =
+                ir.materials
+                    .insert(Material::MetallicRoughness(MetallicRoughnessMaterial {
+                        base_color: material.base_color.0.map(|v| (v * 255.0) as u8),
+                        metallic: (material.metallic * 255.0) as u8,
+                        roughness: (material.roughness * 255.0) as u8,
+                        albedo_texture: albedo_texture.map(|s| s.0),
+                        normal_texture: normal_texture.map(|s| s.0),
+                        metallic_roughness_texture: metallic_roughness_texture.map(|s| s.0),
+                    }));
+
+            ir.nodes.push(Node {
+                transform: node.transform,
+                mesh: mesh.0,
+                material: material.0,
+            });
         }
     }
 

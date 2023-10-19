@@ -91,13 +91,14 @@ impl WorldWindowState {
         scenes.insert(
             plane,
             Scene {
-                nodes: vec![Node {
+                nodes: Node {
                     transform: Transform::default(),
                     body: NodeBody::Object(ObjectNode {
                         mesh: 0,
                         material: 0,
                     }),
-                }],
+                }
+                .into(),
                 meshes: vec![shape::Plane { size: 100.0 }.into()],
                 materials: vec![Material::default()],
                 images: vec![],
@@ -119,7 +120,7 @@ impl WorldWindowState {
         node_map.insert(key, plane);
 
         let s = hierarchy.append(None, Transform::default());
-        scenes.load(s, "../../sponza.glb");
+        scenes.load(s, "../../bistro.glb");
 
         Self {
             camera,
@@ -480,13 +481,14 @@ impl WorldWindowState {
                     scenes.insert(
                         entity,
                         Scene {
-                            nodes: vec![Node {
+                            nodes: Node {
                                 transform: Transform::default(),
                                 body: NodeBody::DirectionalLight(DirectionalLightNode {
                                     color: Color::WHITE,
                                     illuminance: 100_000.0,
                                 }),
-                            }],
+                            }
+                            .into(),
                             materials: vec![],
                             meshes: vec![],
                             images: vec![],
@@ -515,14 +517,15 @@ impl WorldWindowState {
                     scenes.insert(
                         entity,
                         Scene {
-                            nodes: vec![Node {
+                            nodes: Node {
                                 transform: Transform::default(),
                                 body: NodeBody::PointLight(PointLightNode {
                                     color: Color::WHITE,
                                     intensity: 100.0,
                                     radius: 100.0,
                                 }),
-                            }],
+                            }
+                            .into(),
                             materials: vec![],
                             images: vec![],
                             meshes: vec![],
@@ -553,7 +556,7 @@ impl WorldWindowState {
                     scenes.insert(
                         entity,
                         Scene {
-                            nodes: vec![Node {
+                            nodes: Node {
                                 transform: Transform::default(),
                                 body: NodeBody::SpotLight(SpotLightNode {
                                     color: Color::WHITE,
@@ -562,7 +565,8 @@ impl WorldWindowState {
                                     inner_cutoff: 45.0f32.to_radians(),
                                     outer_cutoff: 60.0f32.to_radians(),
                                 }),
-                            }],
+                            }
+                            .into(),
                             materials: vec![],
                             images: vec![],
                             meshes: vec![],

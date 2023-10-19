@@ -8,7 +8,7 @@ pub type Uvs = [f32; 2];
 use bytes::Buf;
 use gltf::Accessor;
 
-use crate::GltfData;
+use crate::{EofError, GltfStagingData};
 
 pub trait Item: Sized + Copy {
     fn from_slice(buf: &[u8]) -> Self;
@@ -269,7 +269,11 @@ impl<'a, T> ItemReader<'a, T>
 where
     T: Item,
 {
-    pub fn new(accessor: &Accessor, data: &'a GltfData) -> Self {
+    pub(crate) fn new(
+        semantic: &'static str,
+        accessor: &Accessor,
+        data: &'a GltfStagingData,
+    ) -> Result<Self, EofError> {
         let view = accessor.view().unwrap();
         let buffer = view.buffer();
 
@@ -282,11 +286,22 @@ where
         let start = accessor.offset();
         let end = start + stride * (accessor.count() - 1) + std::mem::size_of::<T>();
 
-        Self {
+        let Some(slice) = buffer.get(start..end) else {
+            let bytes_required = end - start;
+            let bytes_avail = buffer.len();
+
+            return Err(EofError {
+                semantic,
+                bytes_avail,
+                bytes_required,
+            });
+        };
+
+        Ok(Self {
             stride,
-            buffer: &buffer[start..end],
+            buffer: slice,
             _marker: PhantomData,
-        }
+        })
     }
 }
 

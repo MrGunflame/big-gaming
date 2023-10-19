@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use game_common::components::transform::Transform;
 use slotmap::{DefaultKey, SlotMap};
+use tracing::trace_span;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Key(DefaultKey);
@@ -23,6 +24,14 @@ impl<T> Hierarchy<T> {
             children: HashMap::new(),
             parents: HashMap::new(),
         }
+    }
+
+    pub fn len(&self) -> usize {
+        self.nodes.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 
     pub fn append(&mut self, parent: Option<Key>, node: T) -> Key {
@@ -76,11 +85,80 @@ impl<T> Hierarchy<T> {
     pub fn iter(&self) -> impl Iterator<Item = (Key, &T)> + '_ {
         self.nodes.iter().map(|(k, v)| (Key(k), v))
     }
+
+    pub fn values(&self) -> impl Iterator<Item = &T> + '_ {
+        self.nodes.values()
+    }
+
+    pub fn parent(&self, key: Key) -> Option<&T> {
+        let parent = self.parents.get(&key)?;
+        Some(self.nodes.get(parent.0).unwrap())
+    }
+
+    pub fn children(&self, parent: Key) -> Option<impl Iterator<Item = (Key, &T)> + '_> {
+        let children = self.children.get(&parent)?;
+        Some(children.iter().map(|key| {
+            let node = self.nodes.get(key.0).unwrap();
+            (*key, node)
+        }))
+    }
+
+    /// Converts a `Hierarchy<T>` into a `Hierarchy<U>`, retaining the existing hierarchy.
+    pub fn convert<U, F>(&self, mut f: F) -> Hierarchy<U>
+    where
+        F: FnMut(&T) -> U,
+    {
+        // FIXME: Actually we only need to create a new arena in the same
+        // state, apply `F` on all elements and then reuse the existing keys
+        // as `self.nodes`, but `SlotMap` doesn't allow us to do these things.
+        // We can do this only we have our own `Arena` type.
+        // For now we must manually recreate the parents/children maps.
+        let mut nodes = SlotMap::with_capacity(self.nodes.len());
+        let mut parents = HashMap::with_capacity(self.parents.len());
+        let mut children = HashMap::with_capacity(self.children.len());
+
+        let mut old_to_new_keys = HashMap::new();
+
+        for (old_key, node) in &self.nodes {
+            let new_key = nodes.insert(f(node));
+            old_to_new_keys.insert(old_key, new_key);
+        }
+
+        for (old_key, old_parent) in &self.parents {
+            let new_key = old_to_new_keys.get(&old_key.0).unwrap();
+            let new_parent = old_to_new_keys.get(&old_parent.0).unwrap();
+            parents.insert(Key(*new_key), Key(*new_parent));
+        }
+
+        for (old_key, old_children) in &self.children {
+            let new_key = old_to_new_keys.get(&old_key.0).unwrap();
+            let new_children = old_children
+                .iter()
+                .map(|k| Key(*old_to_new_keys.get(&k.0).unwrap()))
+                .collect();
+
+            children.insert(Key(*new_key), new_children);
+        }
+
+        Hierarchy {
+            nodes,
+            children,
+            parents,
+        }
+    }
 }
 
 impl<T> Default for Hierarchy<T> {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl<T> From<T> for Hierarchy<T> {
+    fn from(value: T) -> Self {
+        let mut hierarchy = Self::new();
+        hierarchy.append(None, value);
+        hierarchy
     }
 }
 
@@ -96,6 +174,14 @@ impl TransformHierarchy {
             hierarchy: Hierarchy::new(),
             global_transform: HashMap::new(),
         }
+    }
+
+    pub fn len(&self) -> usize {
+        self.hierarchy.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 
     pub fn append(&mut self, parent: Option<Entity>, transform: Transform) -> Entity {
@@ -124,6 +210,8 @@ impl TransformHierarchy {
     }
 
     pub fn compute_transform(&mut self) {
+        let _span = trace_span!("TransformHierarchy::compute_transform").entered();
+
         // FIXME: This is a 1:1 copy from the old ECS implementation that is
         // still extreamly inefficient.
 

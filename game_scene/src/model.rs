@@ -52,10 +52,13 @@ impl LoadScene for Model {
             let mesh = node.mesh as usize;
             let material = node.material as usize;
 
-            scene.nodes.push(Node {
-                transform: node.transform,
-                body: NodeBody::Object(ObjectNode { mesh, material }),
-            });
+            scene.nodes.append(
+                None,
+                Node {
+                    transform: node.transform,
+                    body: NodeBody::Object(ObjectNode { mesh, material }),
+                },
+            );
         }
 
         scene
