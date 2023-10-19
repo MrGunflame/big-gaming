@@ -14,6 +14,7 @@ pub struct GltfNode {
     pub transform: Transform,
     pub mesh: Option<MeshIndex>,
     pub material: Option<MaterialIndex>,
+    pub name: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -43,7 +44,13 @@ pub struct GltfMaterial {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct MeshIndex(pub(crate) usize);
+pub struct MeshIndex {
+    // A `MeshIndex` is composed of the gltf mesh and primitive index.
+    // The primitive is what our scene "mesh" actually is.
+    // Neither index is enough to uniquely identify the mesh.
+    pub(crate) mesh: usize,
+    pub(crate) primitive: usize,
+}
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct MaterialIndex(pub(crate) usize);

@@ -142,7 +142,6 @@ impl GltfDecoder {
 
     pub fn pop_source(&mut self) -> Option<String> {
         if let Some(source) = self.external_sources.iter().nth(0).cloned() {
-            self.external_sources.remove(&source);
             Some(source)
         } else {
             None
@@ -296,6 +295,7 @@ impl GltfStagingData {
                         transform: Transform::default(),
                         mesh: None,
                         material: None,
+                        name: None,
                     },
                 );
 
@@ -318,6 +318,7 @@ impl GltfStagingData {
                             transform: Transform::default(),
                             mesh: None,
                             material: None,
+                            name: None,
                         },
                     );
 
@@ -366,6 +367,7 @@ impl GltfStagingData {
                 transform,
                 mesh: Some(primitive.mesh),
                 material: Some(primitive.material),
+                name: node.name().map(|s| s.to_owned()),
             })
             .collect())
     }
@@ -374,7 +376,7 @@ impl GltfStagingData {
         let mut meshes_out = Vec::new();
 
         for primitive in mesh.primitives() {
-            let mesh = self.load_mesh(&primitive)?;
+            let mesh = self.load_mesh(&primitive, mesh.index())?;
             let material = self.load_material(primitive.material())?;
 
             //mesh::validate_mesh(&mesh);
@@ -385,9 +387,19 @@ impl GltfStagingData {
         Ok(meshes_out)
     }
 
-    fn load_mesh(&mut self, primitive: &gltf::Primitive<'_>) -> Result<MeshIndex, Error> {
-        if self.meshes.contains_key(&MeshIndex(primitive.index())) {
-            return Ok(MeshIndex(primitive.index()));
+    fn load_mesh(
+        &mut self,
+        primitive: &gltf::Primitive<'_>,
+        mesh_index: usize,
+    ) -> Result<MeshIndex, Error> {
+        if self.meshes.contains_key(&MeshIndex {
+            mesh: mesh_index,
+            primitive: primitive.index(),
+        }) {
+            return Ok(MeshIndex {
+                mesh: mesh_index,
+                primitive: primitive.index(),
+            });
         }
 
         let mut mesh = GltfMesh::default();
@@ -431,7 +443,10 @@ impl GltfStagingData {
             //todo!()
         }
 
-        let index = MeshIndex(primitive.index());
+        let index = MeshIndex {
+            mesh: mesh_index,
+            primitive: primitive.index(),
+        };
         self.meshes.insert(index, mesh);
         Ok(index)
     }
