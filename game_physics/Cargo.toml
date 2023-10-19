@@ -11,10 +11,6 @@ game_tracing = { version = "0.1.0", path = "../game_tracing" }
 
 nalgebra = { version = "0.32.1" }
 parking_lot = "0.12.1"
-rapier3d = "0.17.2"
+rapier3d = { version = "0.17.2", features = ["simd-stable"] }
 tracing = "0.1.37"
 glam = { version = "0.24.0" }
-
-[features]
-default = ["simd"]
-simd = ["rapier3d/simd-nightly"]

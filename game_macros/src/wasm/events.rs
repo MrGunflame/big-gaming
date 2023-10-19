@@ -82,11 +82,7 @@ struct EmptyArgs;
 impl Parse for EmptyArgs {
     fn parse(input: ParseStream) -> Result<Self> {
         if !input.is_empty() {
-            input
-                .span()
-                .unwrap()
-                .error("cannot add arguments to event macro")
-                .emit();
+            panic!("cannot add arguments to event macro");
         }
 
         Ok(Self {})
