@@ -35,8 +35,24 @@ impl<T> Arena<T> {
     }
 
     pub fn insert(&mut self, value: T) -> Key {
-        self.len += 1;
-        assert!(self.len <= u32::MAX as usize);
+        #[inline(never)]
+        #[cold]
+        fn panic_on_err() -> ! {
+            panic!("`Arena` is at maximum capacity")
+        }
+
+        match self.try_insert(value) {
+            Ok(key) => key,
+            Err(_) => panic_on_err(),
+        }
+    }
+
+    pub fn try_insert(&mut self, value: T) -> Result<Key, T> {
+        // Attempt to increment length.
+        match self.len.checked_add(1) {
+            Some(len) => self.len = len,
+            None => return Err(value),
+        }
 
         if let Some(index) = self.free_head {
             let slot = self.entries.get_mut(index).unwrap();
@@ -50,10 +66,10 @@ impl<T> Arena<T> {
             let generation = entry.generation.next();
             *slot = Entry::Occupied(OccupiedEntry { value, generation });
 
-            Key {
+            Ok(Key {
                 index: index as u32,
                 generation,
-            }
+            })
         } else {
             let generation = Generation::new();
             let index: u32 = self.entries.len().try_into().unwrap();
@@ -61,7 +77,7 @@ impl<T> Arena<T> {
             self.entries
                 .push(Entry::Occupied(OccupiedEntry { value, generation }));
 
-            Key { index, generation }
+            Ok(Key { index, generation })
         }
     }
 
