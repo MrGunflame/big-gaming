@@ -6,10 +6,10 @@ use glam::{Mat4, Vec3};
 use parking_lot::Mutex;
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
 use wgpu::{
-    BindGroup, BindGroupDescriptor, BindGroupEntry, Buffer, BufferUsages, Color, Device, Extent3d,
-    LoadOp, Operations, RenderPassColorAttachment, RenderPassDepthStencilAttachment,
-    RenderPassDescriptor, TextureDescriptor, TextureDimension, TextureFormat, TextureUsages,
-    TextureViewDescriptor,
+    BindGroup, BindGroupDescriptor, BindGroupEntry, BindingResource, Buffer, BufferUsages, Color,
+    Device, Extent3d, LoadOp, Operations, RenderPassColorAttachment,
+    RenderPassDepthStencilAttachment, RenderPassDescriptor, Texture, TextureDescriptor,
+    TextureDimension, TextureFormat, TextureUsages, TextureViewDescriptor,
 };
 
 use crate::buffer::{DynamicBuffer, IndexBuffer};
@@ -104,9 +104,14 @@ impl Node for RenderPass {
 }
 
 impl RenderPass {
-    fn render_shadows(&self, state: &RenderState, ctx: &mut RenderContext<'_>) {
+    fn render_shadows(
+        &self,
+        state: &RenderState,
+        ctx: &mut RenderContext<'_>,
+        shadow_maps: &mut Vec<Texture>,
+    ) {
         for light in state.directional_lights.values() {
-            self.render_directional_light_shadow(*light, state, ctx);
+            shadow_maps.push(self.render_directional_light_shadow(*light, state, ctx));
         }
     }
 
@@ -115,7 +120,7 @@ impl RenderPass {
         light: DirectionalLight,
         state: &RenderState,
         ctx: &mut RenderContext<'_>,
-    ) {
+    ) -> Texture {
         let view = Mat4::look_to_rh(
             light.transform.translation,
             light.transform.rotation * -Vec3::Z,
@@ -198,6 +203,8 @@ impl RenderPass {
             );
             render_pass.draw_indexed(0..mesh_data.index_buffer.len, 0, 0..1);
         }
+
+        shadow_map
     }
 
     fn render_camera_target(
@@ -208,7 +215,12 @@ impl RenderPass {
     ) {
         let _span = trace_span!("ForwardPass::render_camera_target").entered();
 
-        self.render_shadows(state, ctx);
+        let mut shadow_maps = vec![];
+        self.render_shadows(state, ctx, &mut shadow_maps);
+
+        let Some(shadow_map) = shadow_maps.get(0) else {
+            return;
+        };
 
         let device = ctx.device;
         let pipeline = &self.forward;
@@ -251,6 +263,12 @@ impl RenderPass {
                 BindGroupEntry {
                     binding: 2,
                     resource: state.spot_lights_buffer.as_entire_binding(),
+                },
+                BindGroupEntry {
+                    binding: 3,
+                    resource: BindingResource::TextureView(
+                        &shadow_map.create_view(&Default::default()),
+                    ),
                 },
             ],
         });

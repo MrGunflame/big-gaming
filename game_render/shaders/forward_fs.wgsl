@@ -32,6 +32,8 @@ var<storage> directional_lights: DirectionalLights;
 var<storage> point_lights: PointLights;
 @group(3) @binding(2)
 var<storage> spot_lights: SpotLights;
+@group(3) @binding(3)
+var shadow_maps: texture_depth_2d;
 
 struct FragInput {
     @builtin(position) clip_position: vec4<f32>,
@@ -82,11 +84,13 @@ fn compute_directional_light(in: FragInput, light: DirectionalLight) -> vec3<f32
 
     //return brdf(in, light_dir) * light.color * illuminance;
 
+    let shadow = 1.0 - shadow_occlusion(light.proj * vec4(in.world_position, 1.0));
+
     var l: Light;
     l.color = light.color;
-    l.color.r *= light.intensity;
-    l.color.g *= light.intensity;
-    l.color.b *= light.intensity;
+    l.color.r *= (light.intensity * shadow);
+    l.color.g *= (light.intensity * shadow);
+    l.color.b *= (light.intensity * shadow);
     l.attenuation = 1.0;
     l.direction = light_dir;
     return surface_shading(in, l);
@@ -168,6 +172,7 @@ struct DirectionalLights {
 }
 
 struct DirectionalLight {
+    proj: mat4x4<f32>,
     direction: vec3<f32>,
     color: vec3<f32>,
     intensity: f32,
@@ -358,4 +363,29 @@ fn perceptual_roughness_to_roughness(perceptual_roughness: f32) -> f32 {
     // See https://google.github.io/filament/Filament.html#toc4.8.3.3
     let clamped_perceptual_roughness = clamp(perceptual_roughness, 0.089, 1.0);
     return clamped_perceptual_roughness * clamped_perceptual_roughness;
+}
+
+// SHADOW MAPPING
+
+// light_space: fragment position is light space
+fn shadow_occlusion(light_space: vec4<f32>) -> f32 {
+    // Flip Y.
+    let flip_correction = vec2<f32>(0.5, -0.5);
+    let proj_correction = 1.0 / light_space.w;
+    let light_local = light_space.xy * flip_correction * proj_correction + vec2<f32>(0.5, 0.5);
+
+    let closest_depth: f32 = textureSample(shadow_maps, linear_sampler, light_local);
+    let current_depth = light_space.z * proj_correction;
+
+    // Coordinates outside of the shadow map are considered to
+    // not be in shadow.
+    if light_local.x > 1.0 || light_local.x < 0.0 {
+        return 0.0;
+    } else {
+        if current_depth > closest_depth {
+            return 1.0;
+        }
+
+        return 0.0;
+    }
 }

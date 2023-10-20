@@ -1,15 +1,17 @@
 use bytemuck::{Pod, Zeroable};
-use glam::Vec3;
+use glam::{Mat4, Vec3};
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
 use wgpu::{Buffer, BufferUsages, Device};
 
 use crate::buffer::{DynamicBuffer, GpuBuffer};
+use crate::camera::OPENGL_TO_WGPU;
 
 use super::{DirectionalLight, PointLight, SpotLight};
 
 #[derive(Copy, Clone, Debug, PartialEq, Zeroable, Pod)]
 #[repr(C)]
 pub(crate) struct DirectionalLightUniform {
+    pub light_space_matrix: [[f32; 4]; 4],
     pub direction: [f32; 3],
     pub _pad0: u32,
     pub color: [f32; 3],
@@ -66,7 +68,16 @@ pub fn update_directional_lights(
     for entity in entities {
         let direction = entity.transform.rotation * -Vec3::Z;
 
+        let view = Mat4::look_to_rh(
+            entity.transform.translation,
+            entity.transform.rotation * -Vec3::Z,
+            entity.transform.rotation * Vec3::Y,
+        );
+        let proj = Mat4::orthographic_rh(-10.0, 10.0, -10.0, 10.0, 0.1, 1000.0);
+        let view_proj = (OPENGL_TO_WGPU * view * proj).to_cols_array_2d();
+
         let uniform = DirectionalLightUniform {
+            light_space_matrix: view_proj,
             direction: direction.to_array(),
             color: entity.color.as_rgb(),
             intensity: illuminance_to_candelas(entity.illuminance),
