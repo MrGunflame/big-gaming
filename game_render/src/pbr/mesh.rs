@@ -10,12 +10,14 @@ use wgpu::{
 use crate::buffer::IndexBuffer;
 use crate::forward::ForwardPipeline;
 use crate::mesh::{Indices, Mesh};
+use crate::shadow::ShadowPipeline;
 
 pub fn update_mesh_bind_group(
     device: &Device,
     pipeline: &ForwardPipeline,
+    shadow: &ShadowPipeline,
     mesh: &Mesh,
-) -> (BindGroup, IndexBuffer) {
+) -> (BindGroup, IndexBuffer, BindGroup) {
     // FIXME: Since meshes are user controlled, we might not catch invalid
     // meshes with a panic and simply ignore them.
     assert!(!mesh.positions().is_empty());
@@ -101,7 +103,16 @@ pub fn update_mesh_bind_group(
         ],
     });
 
-    (mesh_bind_group, indices)
+    let shadow_bg = device.create_bind_group(&BindGroupDescriptor {
+        label: Some("shadow_bind_group"),
+        layout: &shadow.mesh_bind_group_layout,
+        entries: &[BindGroupEntry {
+            binding: 0,
+            resource: positions.as_entire_binding(),
+        }],
+    });
+
+    (mesh_bind_group, indices, shadow_bg)
 }
 
 pub fn update_transform_buffer(transform: Transform, device: &Device) -> Buffer {

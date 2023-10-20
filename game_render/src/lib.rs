@@ -21,6 +21,7 @@ pub mod texture;
 mod depth_stencil;
 mod pipelined_rendering;
 mod post_process;
+mod shadow;
 mod state;
 
 use std::collections::VecDeque;
@@ -41,6 +42,7 @@ use pbr::mesh::Meshes;
 use pipelined_rendering::Pipeline;
 use post_process::PostProcessPipeline;
 use render_pass::RenderPass;
+use shadow::ShadowPipeline;
 use state::RenderState;
 use texture::image::ImageLoader;
 use texture::Images;
@@ -92,6 +94,7 @@ impl Renderer {
         let mut images = Images::new();
         let forward = Arc::new(ForwardPipeline::new(&device, &mut images));
         let post_process = PostProcessPipeline::new(&device);
+        let shadow = Arc::new(ShadowPipeline::new(&device));
 
         let state = Arc::new(Mutex::new(RenderState::new(&device, &forward, &images)));
 
@@ -103,6 +106,7 @@ impl Renderer {
                 state: state.clone(),
                 forward: forward.clone(),
                 post_process,
+                shadow,
             });
         }
 

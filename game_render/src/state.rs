@@ -18,7 +18,15 @@ use crate::mipmap::MipMapGenerator;
 use crate::pbr::material::{update_material_bind_group, MaterialId, Materials};
 use crate::pbr::mesh::{update_mesh_bind_group, update_transform_buffer, MeshId, Meshes};
 use crate::pbr::PbrMaterial;
+use crate::shadow::ShadowPipeline;
 use crate::texture::{Image, ImageId, Images};
+
+#[derive(Debug)]
+pub(crate) struct MeshData {
+    pub bind_group: BindGroup,
+    pub index_buffer: IndexBuffer,
+    pub shadow_bind_group: BindGroup,
+}
 
 pub(crate) struct RenderState {
     pub cameras: HashMap<CameraId, Camera>,
@@ -36,7 +44,7 @@ pub(crate) struct RenderState {
 
     pub events: Vec<Event>,
 
-    pub meshes: HashMap<MeshId, (BindGroup, IndexBuffer)>,
+    pub meshes: HashMap<MeshId, MeshData>,
     pub materials: HashMap<MaterialId, BindGroup>,
 
     pub meshes_queued: HashMap<MeshId, Mesh>,
@@ -165,13 +173,21 @@ impl RenderState {
         device: &Device,
         queue: &Queue,
         pipeline: &ForwardPipeline,
+        shaodw: &ShadowPipeline,
         mipmap_generator: &mut MipMapGenerator,
     ) {
         let _span = trace_span!("RenderState::update_buffers").entered();
 
         for (id, mesh) in self.meshes_queued.drain() {
-            let (bg, buf) = update_mesh_bind_group(device, pipeline, &mesh);
-            self.meshes.insert(id, (bg, buf));
+            let (bg, buf, shadow_bg) = update_mesh_bind_group(device, pipeline, shaodw, &mesh);
+            self.meshes.insert(
+                id,
+                MeshData {
+                    bind_group: bg,
+                    index_buffer: buf,
+                    shadow_bind_group: shadow_bg,
+                },
+            );
         }
 
         for (id, material) in self.materials_queued.drain() {
