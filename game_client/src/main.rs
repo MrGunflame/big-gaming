@@ -139,6 +139,7 @@ impl game_window::App for App {
                     window,
                     &self.time,
                     &mut self.hierarchy,
+                    &mut self.ui_state,
                 );
             }
             _ => todo!(),
@@ -161,7 +162,6 @@ impl game_window::App for App {
                 self.renderer.create(event.window, window);
 
                 let cx = self.ui_state.get_mut(event.window).unwrap().root_scope();
-                crate::ui::inventory::InventoryUi {}.build(&cx);
             }
             WindowEvent::WindowResized(event) => {
                 debug_assert_eq!(event.window, self.window_id);
@@ -194,7 +194,9 @@ impl game_window::App for App {
         }
 
         match &mut self.state {
-            GameState::GameWorld(state) => state.handle_event(event, &self.cursor),
+            GameState::GameWorld(state) => {
+                state.handle_event(event, &self.cursor, &mut self.ui_state, self.window_id)
+            }
             _ => (),
         }
 

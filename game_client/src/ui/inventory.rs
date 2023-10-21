@@ -1,17 +1,22 @@
 //! Freeform inventory item list
 
-use std::sync::{Arc, Mutex};
+use std::sync::{mpsc, Arc, Mutex};
 
-use game_common::components::inventory::Inventory;
+use game_common::components::inventory::{Inventory, InventorySlotId};
+use game_common::components::items::ItemStack;
+use game_core::modules::Modules;
 use game_input::mouse::MouseButtonInput;
 use game_ui::events::Context;
-use game_ui::reactive::Scope;
+use game_ui::reactive::{Document, NodeId, Scope};
 use game_ui::style::{Bounds, Direction, Growth, Justify, Position, Size, SizeVec2, Style};
 use game_ui::widgets::{Button, Container, Text, Widget};
+use game_ui::UiState;
 use glam::UVec2;
 
 pub struct InventoryUi {
-    //inventory: Inventory,
+    inventory: Inventory,
+    modules: Modules,
+    events: mpsc::Sender<InventoryEvent>,
 }
 
 impl Widget for InventoryUi {
@@ -22,13 +27,20 @@ impl Widget for InventoryUi {
             ..Default::default()
         }));
 
-        InventoryBox {}.build(&root);
+        InventoryBox {
+            modules: self.modules,
+            events: self.events,
+        }
+        .build(&root);
 
         root
     }
 }
 
-struct InventoryBox {}
+struct InventoryBox {
+    modules: Modules,
+    events: mpsc::Sender<InventoryEvent>,
+}
 
 impl Widget for InventoryBox {
     fn build(self, cx: &Scope) -> Scope {
@@ -46,7 +58,9 @@ impl Widget for InventoryBox {
         }));
 
         ItemList {
-            items: vec!["test".into(), "test2".into()],
+            items: vec![],
+            modules: self.modules,
+            events: self.events,
         }
         .build(&align_x);
 
@@ -55,7 +69,9 @@ impl Widget for InventoryBox {
 }
 
 struct ItemList {
-    items: Vec<String>,
+    items: Vec<(InventorySlotId, ItemStack)>,
+    modules: Modules,
+    events: mpsc::Sender<InventoryEvent>,
 }
 
 impl Widget for ItemList {
@@ -64,12 +80,15 @@ impl Widget for ItemList {
 
         let context_menu = Arc::new(Mutex::new(None));
 
-        for item in self.items {
+        for (id, stack) in self.items {
+            let events = self.events.clone();
+
             let root2 = root.clone();
             let context_menu = context_menu.clone();
             let wrapper = root.append(Button::new().on_click(
                 move |ctx: Context<MouseButtonInput>| {
                     let mut ctx_menu = context_menu.lock().unwrap();
+                    let events = events.clone();
 
                     if let Some(id) = &*ctx_menu {
                         root2.remove(*id);
@@ -77,13 +96,19 @@ impl Widget for ItemList {
 
                     *ctx_menu = ContextMenu {
                         position: ctx.cursor.position().as_uvec2(),
+                        id,
+                        events,
                     }
                     .build(&root2)
                     .id();
                 },
             ));
 
-            wrapper.append(Text::new().text(item));
+            let module = self.modules.get(stack.item.id.0.module).unwrap();
+            let record = module.records.get(stack.item.id.0.record).unwrap();
+
+            let label = format!("{} ({})", record.name, stack.quantity);
+            wrapper.append(Text::new().text(label));
         }
 
         root
@@ -92,6 +117,8 @@ impl Widget for ItemList {
 
 struct ContextMenu {
     position: UVec2,
+    id: InventorySlotId,
+    events: mpsc::Sender<InventoryEvent>,
 }
 
 impl Widget for ContextMenu {
@@ -101,11 +128,57 @@ impl Widget for ContextMenu {
             ..Default::default()
         }));
 
-        for action in ["Drop"] {
-            let button = root.append(Button::new());
-            button.append(Text::new().text(action.to_string()));
+        let events = self.events.clone();
+
+        let actions = [("Drop", move |ctx| {
+            events
+                .send(InventoryEvent::Drop(DropItemStack {
+                    id: self.id,
+                    quantity: 0,
+                }))
+                .unwrap();
+        })];
+
+        for (label, on_click) in actions {
+            let button = root.append(Button::new().on_click(on_click));
+            button.append(Text::new().text(label.to_string()));
         }
 
         root
+    }
+}
+
+pub enum InventoryEvent {
+    Drop(DropItemStack),
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct DropItemStack {
+    pub id: InventorySlotId,
+    pub quantity: u32,
+}
+
+#[derive(Debug)]
+pub struct InventoryProxy {
+    pub rx: mpsc::Receiver<InventoryEvent>,
+    pub id: NodeId,
+}
+
+impl InventoryProxy {
+    pub fn new(inventory: Inventory, modules: Modules, doc: &mut Document) -> Self {
+        let (tx, rx) = mpsc::channel();
+
+        let cx = doc.root_scope();
+
+        let root = cx.append(InventoryUi {
+            inventory,
+            modules,
+            events: tx,
+        });
+
+        Self {
+            rx,
+            id: root.id().unwrap(),
+        }
     }
 }
