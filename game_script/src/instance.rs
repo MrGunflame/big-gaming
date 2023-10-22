@@ -1,12 +1,18 @@
+use std::marker::PhantomData;
+
+use game_common::components::components::Component;
 use game_common::components::inventory::InventorySlotId;
 use game_common::entity::EntityId;
 use game_common::events::Event;
-use game_common::world::world::WorldViewMut;
+use game_common::record::RecordReference;
+use game_common::world::entity::Entity;
 use game_common::world::CellId;
+use glam::{Quat, Vec3};
 use wasmtime::{Engine, Instance, Linker, Module, Store};
 
-use crate::effect::Effects;
+use crate::effect::{Effect, Effects};
 use crate::events::{Events, OnAction, OnCellLoad, OnCellUnload, OnCollision, OnEquip, OnUnequip};
+use crate::WorldProvider;
 
 pub struct ScriptInstance<'world, 'view> {
     store: Store<State<'world, 'view>>,
@@ -19,7 +25,7 @@ impl<'world, 'view> ScriptInstance<'world, 'view> {
         engine: &Engine,
         module: &Module,
         events: Events,
-        world: &'view mut WorldViewMut<'world>,
+        world: &'view dyn WorldProvider,
         physics_pipeline: &'view game_physics::Pipeline,
         effects: &'view mut Effects,
     ) -> Self {
@@ -29,6 +35,7 @@ impl<'world, 'view> ScriptInstance<'world, 'view> {
                 world,
                 physics_pipeline,
                 effects,
+                _stub: PhantomData,
             },
         );
 
@@ -92,7 +99,116 @@ impl<'world, 'view> ScriptInstance<'world, 'view> {
 }
 
 pub struct State<'world, 'view> {
-    pub world: &'view mut WorldViewMut<'world>,
+    pub world: &'view dyn WorldProvider,
     pub physics_pipeline: &'view game_physics::Pipeline,
     pub effects: &'view mut Effects,
+    _stub: PhantomData<&'world ()>,
+}
+
+impl State<'_, '_> {
+    pub fn spawn(&mut self, entity: Entity) -> EntityId {
+        self.effects.push(Effect::EntitySpawn(entity));
+        todo!()
+    }
+
+    pub fn get(&self, id: EntityId) -> Option<Entity> {
+        self.reconstruct_entity(id)
+    }
+
+    pub fn despawn(&mut self, id: EntityId) -> Option<Entity> {
+        if let Some(entity) = self.reconstruct_entity(id) {
+            self.effects.push(Effect::EntityDespawn(id));
+            Some(entity)
+        } else {
+            None
+        }
+    }
+
+    pub fn set_translation(&mut self, id: EntityId, translation: Vec3) -> bool {
+        if self.reconstruct_entity(id).is_some() {
+            self.effects.push(Effect::EntityTranslate(id, translation));
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn set_rotation(&mut self, id: EntityId, rotation: Quat) -> bool {
+        if self.reconstruct_entity(id).is_some() {
+            self.effects.push(Effect::EntityRotate(id, rotation));
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn get_component(
+        &self,
+        entity_id: EntityId,
+        component: RecordReference,
+    ) -> Option<&Component> {
+        let entity = self.reconstruct_entity(entity_id)?;
+        entity.components.get(component)
+    }
+
+    pub fn insert_component(
+        &mut self,
+        entity_id: EntityId,
+        id: RecordReference,
+        component: Component,
+    ) {
+        self.effects.push(Effect::EntityComponentInsert(
+            entity_id,
+            id,
+            component.bytes,
+        ));
+    }
+
+    pub fn remove_component(&mut self, entity_id: EntityId, id: RecordReference) -> bool {
+        if let Some(ent) = self.reconstruct_entity(entity_id) {
+            if ent.components.get(id).is_some() {
+                self.effects
+                    .push(Effect::EntityComponentRemove(entity_id, id));
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        }
+    }
+
+    fn reconstruct_entity(&self, id: EntityId) -> Option<Entity> {
+        let mut entity = self.world.get(id).cloned();
+
+        for effect in self.effects.iter() {
+            match effect {
+                Effect::EntitySpawn(e) if e.id == id => {
+                    entity = Some(e.clone());
+                }
+                Effect::EntityDespawn(eid) if *eid == id => {
+                    entity = None;
+                }
+                Effect::EntityTranslate(eid, translation) if *eid == id => {
+                    entity.as_mut().unwrap().transform.translation = *translation;
+                }
+                Effect::EntityRotate(eid, rotation) if *eid == id => {
+                    entity.as_mut().unwrap().transform.rotation = *rotation;
+                }
+                Effect::EntityComponentInsert(eid, cid, bytes) if *eid == id => {
+                    entity.as_mut().unwrap().components.insert(
+                        *cid,
+                        Component {
+                            bytes: bytes.to_vec(),
+                        },
+                    );
+                }
+                Effect::EntityComponentRemove(eid, cid) if *eid == id => {
+                    entity.as_mut().unwrap().components.remove(*cid);
+                }
+            }
+        }
+
+        entity
+    }
 }

@@ -6,7 +6,6 @@ use glam::{Quat, Vec3};
 use wasmtime::{Caller, Error, Result};
 
 use crate::abi::{FromAbi, ToAbi};
-use crate::effect::Effect;
 use crate::instance::State;
 
 use super::CallerExt;
@@ -28,7 +27,7 @@ pub fn world_entity_spawn(
         Err(err) => return Err(Error::new(err)),
     };
 
-    let id = caller.data_mut().world.spawn(entity);
+    let id = caller.data_mut().spawn(entity);
     caller.write(out, &id)?;
 
     Ok(0)
@@ -52,7 +51,7 @@ pub fn world_entity_despawn(mut caller: Caller<'_, State<'_, '_>>, id: u64) -> R
 
     let id = EntityId::from_raw(id);
 
-    if caller.data_mut().world.despawn(id).is_none() {
+    if caller.data_mut().despawn(id).is_none() {
         Ok(ERROR_NO_ENTITY)
     } else {
         Ok(0)
@@ -146,13 +145,14 @@ pub fn world_entity_component_insert(
     let component_id: RecordReference = caller.read(component_id)?;
     let bytes = caller.read_memory(ptr, len)?.to_owned();
 
-    let Some(mut entity) = caller.data_mut().world.get_mut(entity_id) else {
+    let Some(mut entity) = caller.data_mut().get(entity_id) else {
         return Ok(ERROR_NO_ENTITY);
     };
 
-    entity
-        .components()
-        .insert(component_id, Component { bytes });
+    caller
+        .data_mut()
+        .insert_component(entity_id, component_id, Component { bytes });
+
     Ok(0)
 }
 
@@ -170,11 +170,11 @@ pub fn world_entity_component_remove(
     let entity_id = EntityId::from_raw(entity_id);
     let component_id: RecordReference = caller.read(component_id)?;
 
-    let Some(mut entity) = caller.data_mut().world.get_mut(entity_id) else {
+    let Some(mut entity) = caller.data_mut().get(entity_id) else {
         return Ok(ERROR_NO_ENTITY);
     };
 
-    if entity.components().remove(component_id).is_none() {
+    if !caller.data_mut().remove_component(entity_id, component_id) {
         Ok(ERROR_NO_COMPONENT)
     } else {
         Ok(0)
@@ -199,15 +199,10 @@ pub fn world_entity_set_translation(
     let entity_id = EntityId::from_raw(entity_id);
     let translation = Vec3::new(x, y, z);
 
-    let Some(mut entity) = caller.data_mut().world.get_mut(entity_id) else {
+    if !caller.data_mut().set_translation(entity_id, translation) {
         return Ok(ERROR_NO_ENTITY);
-    };
+    }
 
-    entity.set_translation(translation);
-    caller
-        .data_mut()
-        .effects
-        .push(Effect::EntityTranslate(entity_id, translation));
     Ok(0)
 }
 
@@ -232,10 +227,9 @@ pub fn world_entity_set_rotation(
     let rotation = Quat::from_xyzw(x, y, z, w);
     assert!(rotation.is_normalized());
 
-    let Some(mut entity) = caller.data_mut().world.get_mut(entity_id) else {
+    if !caller.data_mut().set_rotation(entity_id, rotation) {
         return Ok(ERROR_NO_ENTITY);
     };
 
-    entity.set_rotation(rotation);
     Ok(0)
 }

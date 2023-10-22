@@ -18,7 +18,7 @@ impl ScriptExecutor {
         Self { server, targets }
     }
 
-    pub fn run(&self, mut ctx: Context<'_, '_>) -> Effects {
+    pub fn run(&self, mut ctx: Context<'_>) -> Effects {
         let _span = trace_span!("ScriptExecutor::run").entered();
 
         let mut events = Vec::new();
@@ -44,12 +44,7 @@ impl ScriptExecutor {
         effects
     }
 
-    fn queue_action(
-        &self,
-        event: ActionEvent,
-        ctx: &mut Context<'_, '_>,
-        events: &mut Vec<FireEvent>,
-    ) {
+    fn queue_action(&self, event: ActionEvent, ctx: &mut Context<'_>, events: &mut Vec<FireEvent>) {
         let Some(entity) = ctx.view.get(event.invoker) else {
             tracing::warn!(
                 "entity {:?} referenced by `ActionEvent` {:?} does not exist",
@@ -104,7 +99,7 @@ impl ScriptExecutor {
     fn queue_collision(
         &self,
         event: CollisionEvent,
-        ctx: &mut Context<'_, '_>,
+        ctx: &mut Context<'_>,
         events: &mut Vec<FireEvent>,
     ) {
         let Some(entity) = ctx.view.get(event.entity) else {
