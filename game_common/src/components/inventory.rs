@@ -2,6 +2,7 @@
 
 use std::borrow::Borrow;
 use std::hash::Hash;
+use std::iter::FusedIterator;
 use std::num::NonZeroU8;
 
 use ahash::HashMap;
@@ -184,6 +185,31 @@ impl<T> InsertionError<T> {
         }
     }
 }
+
+#[derive(Clone, Debug)]
+pub struct Iter<'a> {
+    inner: std::collections::hash_map::Iter<'a, InventorySlotId, ItemStack>,
+}
+
+impl<'a> Iterator for Iter<'a> {
+    type Item = (InventorySlotId, &'a ItemStack);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.next().map(|(k, v)| (*k, v))
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.inner.size_hint()
+    }
+}
+
+impl<'a> ExactSizeIterator for Iter<'a> {
+    fn len(&self) -> usize {
+        self.inner.len()
+    }
+}
+
+impl<'a> FusedIterator for Iter<'a> {}
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct EquipmentSlot(NonZeroU8);
