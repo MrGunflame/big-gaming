@@ -1,28 +1,29 @@
 use std::collections::HashMap;
 
+use game_common::collections::arena::{self, Arena};
+use game_common::collections::vec_map::VecMap;
 use game_common::components::transform::Transform;
-use slotmap::{DefaultKey, SlotMap};
 use tracing::trace_span;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct Key(DefaultKey);
+pub struct Key(arena::Key);
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Entity(Key);
 
 #[derive(Clone, Debug)]
 pub struct Hierarchy<T> {
-    nodes: SlotMap<DefaultKey, T>,
+    nodes: Arena<T>,
     children: HashMap<Key, Vec<Key>>,
-    parents: HashMap<Key, Key>,
+    parents: VecMap<arena::Key, arena::Key>,
 }
 
 impl<T> Hierarchy<T> {
     pub fn new() -> Self {
         Self {
-            nodes: SlotMap::new(),
+            nodes: Arena::new(),
             children: HashMap::new(),
-            parents: HashMap::new(),
+            parents: VecMap::new(),
         }
     }
 
@@ -40,7 +41,7 @@ impl<T> Hierarchy<T> {
         if let Some(parent) = parent {
             debug_assert!(self.nodes.contains_key(parent.0));
 
-            self.parents.insert(key, parent);
+            self.parents.insert(key.0, parent.0);
             self.children.entry(parent).or_default().push(key);
         }
 
@@ -50,8 +51,8 @@ impl<T> Hierarchy<T> {
     pub fn remove(&mut self, key: Key) {
         self.nodes.remove(key.0);
 
-        if let Some(parent) = self.parents.remove(&key) {
-            if let Some(children) = self.children.get_mut(&parent) {
+        if let Some(parent) = self.parents.remove(key.0) {
+            if let Some(children) = self.children.get_mut(&Key(parent)) {
                 children.retain(|id| *id != key);
             }
         }
@@ -91,8 +92,8 @@ impl<T> Hierarchy<T> {
     }
 
     pub fn parent(&self, key: Key) -> Option<&T> {
-        let parent = self.parents.get(&key)?;
-        Some(self.nodes.get(parent.0).unwrap())
+        let parent = self.parents.get(key.0)?;
+        Some(self.nodes.get(*parent).unwrap())
     }
 
     pub fn children(&self, parent: Key) -> Option<impl Iterator<Item = (Key, &T)> + '_> {
@@ -113,8 +114,8 @@ impl<T> Hierarchy<T> {
         // as `self.nodes`, but `SlotMap` doesn't allow us to do these things.
         // We can do this only we have our own `Arena` type.
         // For now we must manually recreate the parents/children maps.
-        let mut nodes = SlotMap::with_capacity(self.nodes.len());
-        let mut parents = HashMap::with_capacity(self.parents.len());
+        let mut nodes = Arena::with_capacity(self.nodes.len());
+        let mut parents = VecMap::new();
         let mut children = HashMap::with_capacity(self.children.len());
 
         let mut old_to_new_keys = HashMap::new();
@@ -124,10 +125,10 @@ impl<T> Hierarchy<T> {
             old_to_new_keys.insert(old_key, new_key);
         }
 
-        for (old_key, old_parent) in &self.parents {
-            let new_key = old_to_new_keys.get(&old_key.0).unwrap();
-            let new_parent = old_to_new_keys.get(&old_parent.0).unwrap();
-            parents.insert(Key(*new_key), Key(*new_parent));
+        for (old_key, old_parent) in self.parents.iter() {
+            let new_key = old_to_new_keys.get(&old_key).unwrap();
+            let new_parent = old_to_new_keys.get(&old_parent).unwrap();
+            parents.insert(*new_key, *new_parent);
         }
 
         for (old_key, old_children) in &self.children {
@@ -219,7 +220,7 @@ impl TransformHierarchy {
         let mut parents = HashMap::new();
 
         for (key, transform) in &self.hierarchy.nodes {
-            if self.hierarchy.parents.get(&Key(key)).is_none() {
+            if self.hierarchy.parent(Key(key)).is_none() {
                 transforms.insert(key, *transform);
             }
 
