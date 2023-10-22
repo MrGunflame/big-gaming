@@ -5,7 +5,6 @@ use bytemuck::{Pod, Zeroable};
 use crate::record::RecordReference;
 use crate::units::Mass;
 
-use super::actions::Actions;
 use super::components::Components;
 
 /// A stack of up to `u32::MAX` items.
@@ -34,7 +33,6 @@ impl ItemStack {
 pub struct Item {
     pub id: ItemId,
     pub mass: Mass,
-    pub actions: Actions,
     pub components: Components,
     /// Whether the item is currently considered equipped.
     ///

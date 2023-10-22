@@ -11,7 +11,7 @@ use game_common::world::world::{AsView, WorldState, WorldViewRef};
 use game_common::world::CellId;
 use game_net::message::{
     ControlMessage, DataMessage, DataMessageBody, EntityCreate, EntityDestroy, EntityRotate,
-    EntityTranslate, Message, MessageId, SpawnHost,
+    EntityTranslate, InventoryItemAdd, Message, MessageId, SpawnHost,
 };
 use game_script::Context;
 
@@ -183,6 +183,7 @@ fn flush_command_queue(srv_state: &mut ServerState) {
                         }));
                     }
                     DataMessageBody::SpawnHost(_) => (),
+                    DataMessageBody::InventoryItemAdd(_) => (),
                 }
             }
         }
@@ -256,7 +257,18 @@ fn update_client(conn: &Connection, view: WorldViewRef<'_>, cf: ControlFrame) {
 
                 // Sync the entity inventory, if it has one.
                 if let Some(inventory) = view.inventories().get(entity.id) {
-                    todo!()
+                    for (id, stack) in inventory.iter() {
+                        conn.handle().send(DataMessage {
+                            id: MessageId(0),
+                            control_frame: view.control_frame(),
+                            body: DataMessageBody::InventoryItemAdd(InventoryItemAdd {
+                                entity: entity_id,
+                                id,
+                                quantity: stack.quantity,
+                                item: stack.item.id,
+                            }),
+                        });
+                    }
                 }
             }
         }

@@ -696,11 +696,13 @@ pub struct SpawnHost {
     pub entity: ServerEntity,
 }
 
+/// Inserts a new item into an inventory.
 #[derive(Copy, Clone, Debug, Encode, Decode)]
 pub struct InventoryItemAdd {
     pub entity: ServerEntity,
     pub id: InventorySlotId,
     pub item: ItemId,
+    pub quantity: u32,
 }
 
 #[derive(Copy, Clone, Debug, Encode, Decode)]

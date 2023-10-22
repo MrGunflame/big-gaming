@@ -2,6 +2,7 @@
 
 use std::borrow::Borrow;
 use std::hash::Hash;
+use std::iter::FusedIterator;
 use std::num::NonZeroU8;
 
 use ahash::HashMap;
@@ -162,6 +163,12 @@ impl Inventory {
         self.mass = Mass::new();
         self.next_id = 0;
     }
+
+    pub fn iter(&self) -> Iter<'_> {
+        Iter {
+            iter: self.items.iter(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Error)]
@@ -184,6 +191,31 @@ impl<T> InsertionError<T> {
         }
     }
 }
+
+#[derive(Clone, Debug)]
+pub struct Iter<'a> {
+    iter: std::collections::hash_map::Iter<'a, InventorySlotId, ItemStack>,
+}
+
+impl<'a> Iterator for Iter<'a> {
+    type Item = (InventorySlotId, &'a ItemStack);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next().map(|(k, v)| (*k, v))
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.iter.size_hint()
+    }
+}
+
+impl<'a> ExactSizeIterator for Iter<'a> {
+    fn len(&self) -> usize {
+        self.iter.len()
+    }
+}
+
+impl<'a> FusedIterator for Iter<'a> {}
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct EquipmentSlot(NonZeroU8);
@@ -213,7 +245,6 @@ impl EquipmentSlot {
 
 #[cfg(test)]
 mod tests {
-    use crate::components::actions::Actions;
     use crate::components::components::Components;
     use crate::components::inventory::InsertionError;
     use crate::components::items::{Item, ItemId};
@@ -268,7 +299,6 @@ mod tests {
         Item {
             id: ItemId(RecordReference::STUB),
             mass: Mass::new(),
-            actions: Actions::new(),
             components: Components::new(),
             equipped: false,
             hidden: false,

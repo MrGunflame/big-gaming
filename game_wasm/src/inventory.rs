@@ -7,7 +7,7 @@ use crate::component::Component;
 use crate::entity::EntityId;
 use crate::raw::inventory::{
     inventory_clear, inventory_component_get, inventory_component_insert, inventory_component_len,
-    inventory_get, Item as RawItem,
+    inventory_get, ItemStack as RawItemStack,
 };
 
 use crate::raw::{Ptr, PtrMut, Usize};
@@ -27,14 +27,14 @@ impl Inventory {
     }
 
     pub fn get(&self, id: InventoryId) -> Result<Item, InventoryError> {
-        let mut item = MaybeUninit::<RawItem>::uninit();
+        let mut item = MaybeUninit::<RawItemStack>::uninit();
         let ptr = item.as_mut_ptr() as Usize;
 
         let res = unsafe { inventory_get(self.entity.into_raw(), id.0, PtrMut::from_raw(ptr)) };
 
         if res == 0 {
             let item = unsafe { item.assume_init() };
-            Ok(Item { id: item.id })
+            Ok(Item { id: item.item.id })
         } else {
             Err(InventoryError)
         }

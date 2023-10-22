@@ -150,7 +150,6 @@ impl FromAbi for GuestItemStack {
             item: HostItem {
                 id: ItemId(bytemuck::cast(self.item.id)),
                 mass: Mass::default(),
-                actions: Actions::new(),
                 components: Components::new(),
                 equipped: false,
                 hidden: false,

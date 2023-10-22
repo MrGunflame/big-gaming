@@ -718,7 +718,6 @@ impl Snapshot {
 
                 let item = Item {
                     id: event.item,
-                    actions: Default::default(),
                     components: Default::default(),
                     mass: Default::default(),
                     equipped: false,
