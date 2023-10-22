@@ -200,6 +200,16 @@ impl<T> Arena<T> {
             len: self.len,
         }
     }
+
+    pub fn clear(&mut self) {
+        self.entries.clear();
+        self.len = 0;
+        self.free_head = None;
+    }
+
+    pub fn values(&self) -> Values<'_, T> {
+        Values { iter: self.iter() }
+    }
 }
 
 impl<'a, T> IntoIterator for &'a Arena<T> {
@@ -244,6 +254,18 @@ struct VacantEntry {
 pub struct Key {
     index: u32,
     generation: Generation,
+}
+
+impl Key {
+    pub const DANGLING: Self = Self {
+        index: u32::MAX,
+        generation: Generation(NonZeroU32::MAX),
+    };
+
+    #[inline]
+    pub const fn index(&self) -> usize {
+        self.index as usize
+    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -348,6 +370,33 @@ impl<'a, T> ExactSizeIterator for IterMut<'a, T> {
         self.len
     }
 }
+
+impl<'a, T> FusedIterator for IterMut<'a, T> {}
+
+#[derive(Clone, Debug)]
+pub struct Values<'a, T> {
+    iter: Iter<'a, T>,
+}
+
+impl<'a, T> Iterator for Values<'a, T> {
+    type Item = &'a T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next().map(|(_, v)| v)
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.iter.size_hint()
+    }
+}
+
+impl<'a, T> ExactSizeIterator for Values<'a, T> {
+    fn len(&self) -> usize {
+        self.iter.len()
+    }
+}
+
+impl<'a, T> FusedIterator for Values<'a, T> {}
 
 #[cfg(test)]
 mod tests {
