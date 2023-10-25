@@ -1,7 +1,8 @@
 use std::marker::PhantomData;
 
 use game_common::components::components::Component;
-use game_common::components::inventory::InventorySlotId;
+use game_common::components::inventory::{Inventory, InventorySlotId};
+use game_common::components::items::ItemStack;
 use game_common::entity::EntityId;
 use game_common::events::Event;
 use game_common::record::RecordReference;
@@ -146,9 +147,9 @@ impl State<'_, '_> {
         &self,
         entity_id: EntityId,
         component: RecordReference,
-    ) -> Option<&Component> {
+    ) -> Option<Component> {
         let entity = self.reconstruct_entity(entity_id)?;
-        entity.components.get(component)
+        entity.components.get(component).cloned()
     }
 
     pub fn insert_component(
@@ -206,9 +207,146 @@ impl State<'_, '_> {
                 Effect::EntityComponentRemove(eid, cid) if *eid == id => {
                     entity.as_mut().unwrap().components.remove(*cid);
                 }
+                _ => (),
             }
         }
 
         entity
+    }
+
+    fn reconstruct_inventory(&self, id: EntityId) -> Option<Inventory> {
+        let mut inventory = self.world.inventory(id).cloned();
+
+        for effect in self.effects.iter() {
+            match effect {
+                Effect::InventoryInsert(eid, stack) if *eid == id => {
+                    inventory.as_mut().unwrap().insert(stack.clone()).unwrap();
+                }
+                Effect::InventoryRemove(eid, slot_id, quantity) if *eid == id => {
+                    inventory
+                        .as_mut()
+                        .unwrap()
+                        .remove(slot_id, *quantity as u32);
+                }
+                Effect::InventoryClear(eid) if *eid == id => {
+                    inventory.as_mut().unwrap().clear();
+                }
+                Effect::InventoryComponentInsert(eid, slot_id, comp_id, comp) if *eid == id => {
+                    inventory
+                        .as_mut()
+                        .unwrap()
+                        .get_mut(slot_id)
+                        .unwrap()
+                        .item
+                        .components
+                        .insert(*comp_id, comp.clone());
+                }
+                Effect::InventoryComponentRemove(eid, slot_id, comp_id) if *eid == id => {
+                    inventory
+                        .as_mut()
+                        .unwrap()
+                        .get_mut(slot_id)
+                        .unwrap()
+                        .item
+                        .components
+                        .remove(*comp_id);
+                }
+                _ => (),
+            }
+        }
+
+        inventory
+    }
+
+    pub fn inventory_get(&self, entity: EntityId, slot: InventorySlotId) -> Option<ItemStack> {
+        self.reconstruct_inventory(entity)?.get(slot).cloned()
+    }
+
+    pub fn inventory_insert(&mut self, entity: EntityId, stack: ItemStack) -> InventorySlotId {
+        self.effects.push(Effect::InventoryInsert(entity, stack));
+
+        todo!()
+    }
+
+    pub fn inventory_remove(
+        &mut self,
+        entity: EntityId,
+        slot: InventorySlotId,
+        quantity: u64,
+    ) -> bool {
+        let Some(inventory) = self.world.inventory(entity) else {
+            return false;
+        };
+
+        if inventory.clone().remove(slot, quantity as u32).is_some() {
+            self.effects
+                .push(Effect::InventoryRemove(entity, slot, quantity));
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn inventory_clear(&mut self, entity: EntityId) -> bool {
+        if self.reconstruct_inventory(entity).is_none() {
+            return false;
+        };
+
+        self.effects.push(Effect::InventoryClear(entity));
+        true
+    }
+
+    pub fn inventory_component_get(
+        &self,
+        entity: EntityId,
+        slot: InventorySlotId,
+        component: RecordReference,
+    ) -> Option<Component> {
+        let inventory = self.reconstruct_inventory(entity)?;
+        inventory.get(slot)?.item.components.get(component).cloned()
+    }
+
+    pub fn inventory_component_insert(
+        &mut self,
+        entity: EntityId,
+        slot: InventorySlotId,
+        component_id: RecordReference,
+        component: Component,
+    ) -> bool {
+        let Some(inventory) = self.reconstruct_inventory(entity) else {
+            return false;
+        };
+
+        if inventory.get(slot).is_none() {
+            return false;
+        };
+
+        self.effects.push(Effect::InventoryComponentInsert(
+            entity,
+            slot,
+            component_id,
+            component,
+        ));
+        true
+    }
+
+    pub fn inventory_component_remove(
+        &mut self,
+        entity: EntityId,
+        slot: InventorySlotId,
+        component_id: RecordReference,
+    ) -> bool {
+        let Some(inventory) = self.world.inventory(entity) else {
+            return false;
+        };
+
+        if inventory.get(slot).is_none() {
+            return false;
+        };
+
+        self.effects
+            .push(Effect::InventoryComponentRemove(entity, slot, component_id));
+
+        true
     }
 }

@@ -1,3 +1,6 @@
+use game_common::components::components::Component;
+use game_common::components::inventory::InventorySlotId;
+use game_common::components::items::ItemStack;
 use game_common::entity::EntityId;
 use game_common::record::RecordReference;
 use game_common::world::entity::Entity;
@@ -30,4 +33,9 @@ pub enum Effect {
     EntityRotate(EntityId, Quat),
     EntityComponentInsert(EntityId, RecordReference, Vec<u8>),
     EntityComponentRemove(EntityId, RecordReference),
+    InventoryInsert(EntityId, ItemStack),
+    InventoryRemove(EntityId, InventorySlotId, u64),
+    InventoryClear(EntityId),
+    InventoryComponentInsert(EntityId, InventorySlotId, RecordReference, Component),
+    InventoryComponentRemove(EntityId, InventorySlotId, RecordReference),
 }
