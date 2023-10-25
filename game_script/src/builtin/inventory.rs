@@ -2,6 +2,7 @@ use game_common::components::components::Component;
 use game_common::components::inventory::InventorySlotId;
 use game_common::entity::EntityId;
 use game_common::record::RecordReference;
+use game_tracing::trace_span;
 use game_wasm::raw::inventory::ItemStack;
 use wasmtime::{Caller, Error, Result};
 
@@ -16,6 +17,8 @@ pub fn inventory_get(
     slot_id: u64,
     out: u32,
 ) -> Result<u32> {
+    let _span = trace_span!("inventory_get").entered();
+
     let entity_id = EntityId::from_raw(entity_id);
     let slot_id = InventorySlotId::from_raw(slot_id);
 
@@ -33,6 +36,8 @@ pub fn inventory_insert(
     item_stack_ptr: u32,
     slot_id_ptr: u32,
 ) -> Result<u32> {
+    let _span = trace_span!("inventory_insert").entered();
+
     let entity_id = EntityId::from_raw(entity_id);
 
     let stack = match caller.read::<ItemStack>(item_stack_ptr)?.from_abi() {
@@ -52,6 +57,8 @@ pub fn inventory_remove(
     slot_id: u64,
     quantity: u64,
 ) -> Result<u32> {
+    let _span = trace_span!("inventory_remove").entered();
+
     let entity_id = EntityId::from_raw(entity_id);
     let slot_id = InventorySlotId::from_raw(slot_id);
 
@@ -72,6 +79,8 @@ pub fn inventory_component_len(
     component_id: u32,
     out: u32,
 ) -> Result<u32> {
+    let _span = trace_span!("inventory_component_len").entered();
+
     let entity_id = EntityId::from_raw(entity_id);
     let slot_id = InventorySlotId::from_raw(slot_id);
     let component_id: RecordReference = caller.read(component_id)?;
@@ -97,6 +106,8 @@ pub fn inventory_component_get(
     out: u32,
     len: u32,
 ) -> Result<u32> {
+    let _span = trace_span!("inventory_component_get").entered();
+
     let entity_id = EntityId::from_raw(entity_id);
     let slot_id = InventorySlotId::from_raw(slot_id);
     let component_id: RecordReference = caller.read(component_id)?;
@@ -129,6 +140,8 @@ pub fn inventory_component_insert(
     ptr: u32,
     len: u32,
 ) -> Result<u32> {
+    let _span = trace_span!("inventory_component_insert").entered();
+
     let entity_id = EntityId::from_raw(entity_id);
     let slot_id = InventorySlotId::from_raw(slot_id);
     let component_id: RecordReference = caller.read(component_id)?;
@@ -153,6 +166,8 @@ pub fn inventory_component_remove(
     slot_id: u64,
     component_id: u32,
 ) -> Result<u32> {
+    let _span = trace_span!("inventory_component_remove").entered();
+
     let entity_id = EntityId::from_raw(entity_id);
     let slot_id = InventorySlotId::from_raw(slot_id);
     let component_id: RecordReference = caller.read(component_id)?;
@@ -213,6 +228,8 @@ pub fn inventory_unequip(
 }
 
 pub fn inventory_clear(mut caller: Caller<'_, State<'_, '_>>, entity_id: u64) -> Result<u32> {
+    let _span = trace_span!("inventory_clear").entered();
+
     let entity_id = EntityId::from_raw(entity_id);
 
     if !caller.data_mut().inventory_clear(entity_id) {

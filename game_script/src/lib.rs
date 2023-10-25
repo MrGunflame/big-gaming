@@ -80,7 +80,7 @@ pub struct Handle {
 }
 
 pub struct Context<'a> {
-    pub view: &'a mut dyn WorldProvider,
+    pub view: &'a dyn WorldProvider,
     pub physics_pipeline: &'a game_physics::Pipeline,
     pub events: &'a mut EventQueue,
 }

@@ -1,6 +1,7 @@
 use game_common::components::components::Component;
 use game_common::entity::EntityId;
 use game_common::record::RecordReference;
+use game_tracing::trace_span;
 use game_wasm::raw::world::Entity;
 use glam::{Quat, Vec3};
 use wasmtime::{Caller, Error, Result};
@@ -18,6 +19,7 @@ pub fn world_entity_spawn(
     ptr: u32,
     out: u32,
 ) -> Result<u32> {
+    let _span = trace_span!("world_entity_spawn").entered();
     tracing::trace!("world_entity_spawn(ptr = {}, out = {})", ptr, out);
 
     let entity: Entity = caller.read(ptr)?;
@@ -34,6 +36,7 @@ pub fn world_entity_spawn(
 }
 
 pub fn world_entity_get(mut caller: Caller<'_, State<'_, '_>>, id: u64, out: u32) -> Result<u32> {
+    let _span = trace_span!("world_entity_get").entered();
     tracing::trace!("world_entity_get(id = {}, out = {})", id, out);
 
     let Some(entity) = caller.data_mut().world.get(EntityId::from_raw(id)) else {
@@ -47,6 +50,7 @@ pub fn world_entity_get(mut caller: Caller<'_, State<'_, '_>>, id: u64, out: u32
 }
 
 pub fn world_entity_despawn(mut caller: Caller<'_, State<'_, '_>>, id: u64) -> Result<u32> {
+    let _span = trace_span!("world_entity_despawn").entered();
     tracing::trace!("world_entity_despawn(id = {})", id);
 
     let id = EntityId::from_raw(id);
@@ -64,6 +68,7 @@ pub fn world_entity_component_len(
     component_id: u32,
     out: u32,
 ) -> Result<u32> {
+    let _span = trace_span!("world_entity_component_len").entered();
     tracing::trace!(
         "world_entity_component_len(entity_id = {}, component_id = {}, out = {})",
         entity_id,
@@ -95,6 +100,7 @@ pub fn world_entity_component_get(
     out: u32,
     len: u32,
 ) -> Result<u32> {
+    let _span = trace_span!("world_entity_component_get").entered();
     tracing::trace!(
         "world_entity_component_get(entity_id = {}, component_id = {}, out = {}, len = {})",
         entity_id,
@@ -133,6 +139,7 @@ pub fn world_entity_component_insert(
     ptr: u32,
     len: u32,
 ) -> Result<u32> {
+    let _span = trace_span!("world_entity_component_insert").entered();
     tracing::trace!(
         "world_entity_component_insert(entity_id = {}, component_id = {}, ptr = {}, len = {})",
         entity_id,
@@ -161,6 +168,7 @@ pub fn world_entity_component_remove(
     entity_id: u64,
     component_id: u32,
 ) -> Result<u32> {
+    let _span = trace_span!("world_entity_component_remove").entered();
     tracing::trace!(
         "world_entity_component_remove(entity_id = {}, component_id = {})",
         entity_id,
@@ -188,6 +196,7 @@ pub fn world_entity_set_translation(
     y: f32,
     z: f32,
 ) -> Result<u32> {
+    let _span = trace_span!("world_entity_set_translation").entered();
     tracing::trace!(
         "world_entity_set_translation(entity_id = {}, x = {}, y = {}, z = {})",
         entity_id,
@@ -214,6 +223,7 @@ pub fn world_entity_set_rotation(
     z: f32,
     w: f32,
 ) -> Result<u32> {
+    let _span = trace_span!("world_entity_set_rotation").entered();
     tracing::trace!(
         "world_entity_set_rotation(entity_id = {}, x = {}, y = {}, z = {}, w = {}",
         entity_id,

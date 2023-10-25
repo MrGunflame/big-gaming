@@ -1,6 +1,7 @@
 use game_common::entity::EntityId;
 use game_common::math::Ray;
 use game_physics::query::QueryFilter;
+use game_tracing::trace_span;
 use game_wasm::raw::physics::{CastRayResult, QueryFilter as RawQueryFilter};
 use glam::Vec3;
 use wasmtime::Caller;
@@ -20,6 +21,7 @@ pub fn physics_cast_ray(
     filter_ptr: u32,
     out: u32,
 ) -> wasmtime::Result<u32> {
+    let _span = trace_span!("physics_cast_ray").entered();
     tracing::trace!("physics_cast_ray(origin_x = {}, origin_y = {}, origin_z = {}, direction_x = {}, direction_y = {}, direction_z = {}, max_toi = {})", origin_x, origin_y, origin_z, direction_x, direction_y, direction_z, max_toi);
 
     let ray = Ray {
