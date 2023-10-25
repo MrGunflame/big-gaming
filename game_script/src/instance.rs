@@ -30,15 +30,7 @@ impl<'world, 'view> ScriptInstance<'world, 'view> {
         physics_pipeline: &'view game_physics::Pipeline,
         effects: &'view mut Effects,
     ) -> Self {
-        let mut store = Store::new(
-            engine,
-            State {
-                world,
-                physics_pipeline,
-                effects,
-                _stub: PhantomData,
-            },
-        );
+        let mut store = Store::new(engine, State::new(world, physics_pipeline, effects));
 
         let mut linker = Linker::<State>::new(&engine);
 
@@ -104,12 +96,33 @@ pub struct State<'world, 'view> {
     pub physics_pipeline: &'view game_physics::Pipeline,
     pub effects: &'view mut Effects,
     _stub: PhantomData<&'world ()>,
+    next_entity_id: u64,
+    next_inventory_id: u64,
+}
+
+impl<'world, 'view> State<'world, 'view> {
+    pub fn new(
+        world: &'view dyn WorldProvider,
+        physics_pipeline: &'view game_physics::Pipeline,
+        effects: &'view mut Effects,
+    ) -> Self {
+        Self {
+            world,
+            physics_pipeline,
+            effects,
+            _stub: PhantomData,
+            next_entity_id: 0,
+            next_inventory_id: 0,
+        }
+    }
 }
 
 impl State<'_, '_> {
-    pub fn spawn(&mut self, entity: Entity) -> EntityId {
+    pub fn spawn(&mut self, mut entity: Entity) -> EntityId {
+        let id = self.allocate_temporary_entity_id();
+        entity.id = id;
         self.effects.push(Effect::EntitySpawn(entity));
-        todo!()
+        id
     }
 
     pub fn get(&self, id: EntityId) -> Option<Entity> {
@@ -219,7 +232,7 @@ impl State<'_, '_> {
 
         for effect in self.effects.iter() {
             match effect {
-                Effect::InventoryInsert(eid, stack) if *eid == id => {
+                Effect::InventoryInsert(eid, slot_id, stack) if *eid == id => {
                     inventory.as_mut().unwrap().insert(stack.clone()).unwrap();
                 }
                 Effect::InventoryRemove(eid, slot_id, quantity) if *eid == id => {
@@ -263,9 +276,10 @@ impl State<'_, '_> {
     }
 
     pub fn inventory_insert(&mut self, entity: EntityId, stack: ItemStack) -> InventorySlotId {
-        self.effects.push(Effect::InventoryInsert(entity, stack));
-
-        todo!()
+        let id = self.allocate_temporary_inventory_id();
+        self.effects
+            .push(Effect::InventoryInsert(entity, id, stack));
+        id
     }
 
     pub fn inventory_remove(
@@ -348,5 +362,31 @@ impl State<'_, '_> {
             .push(Effect::InventoryComponentRemove(entity, slot, component_id));
 
         true
+    }
+
+    /// Allocate a temporary [`EntityId`].
+    // If a script spawns a new entity we need to acquire a temporary id, until
+    // the game commits the effect. The id is only valid for this script local
+    // script invocation and must be commited to a real id before the next script
+    // invocation.
+    fn allocate_temporary_entity_id(&mut self) -> EntityId {
+        // FIXME: There is no guarantee how the bits for an entity id are used
+        // currently. (In fact it is currently an ever-increasing counter). We should
+        // reserve a section of the id to mark an id as temporary to avoid it colliding
+        // with a real id.
+
+        // For now we just use the top bit as a temporary sign.
+        let bits = self.next_entity_id | (1 << 63);
+        self.next_entity_id += 1;
+        EntityId::from_raw(bits)
+    }
+
+    /// Allocate a temporary [`InventorySlotId`].
+    fn allocate_temporary_inventory_id(&mut self) -> InventorySlotId {
+        // FIXME: See comment in `allocate_temporary_entity_id`. The same applies
+        // here.
+        let bits = self.next_inventory_id | (1 << 63);
+        self.next_inventory_id += 1;
+        InventorySlotId::from_raw(bits)
     }
 }

@@ -33,7 +33,7 @@ pub enum Effect {
     EntityRotate(EntityId, Quat),
     EntityComponentInsert(EntityId, RecordReference, Vec<u8>),
     EntityComponentRemove(EntityId, RecordReference),
-    InventoryInsert(EntityId, ItemStack),
+    InventoryInsert(EntityId, InventorySlotId, ItemStack),
     InventoryRemove(EntityId, InventorySlotId, u64),
     InventoryClear(EntityId),
     InventoryComponentInsert(EntityId, InventorySlotId, RecordReference, Component),

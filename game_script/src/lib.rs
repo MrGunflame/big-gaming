@@ -12,7 +12,7 @@ use game_common::entity::EntityId;
 use game_common::events::EventQueue;
 use game_common::record::RecordReference;
 use game_common::world::entity::Entity;
-use game_common::world::world::WorldViewMut;
+use game_common::world::world::{WorldViewMut, WorldViewRef};
 use instance::ScriptInstance;
 use script::Script;
 use slotmap::{DefaultKey, SlotMap};
@@ -94,6 +94,16 @@ impl Debug for ScriptServer {
 pub trait WorldProvider {
     fn get(&self, id: EntityId) -> Option<&Entity>;
     fn inventory(&self, id: EntityId) -> Option<&Inventory>;
+}
+
+impl WorldProvider for WorldViewRef<'_> {
+    fn get(&self, id: EntityId) -> Option<&Entity> {
+        self.get(id)
+    }
+
+    fn inventory(&self, id: EntityId) -> Option<&Inventory> {
+        self.inventories().get(id)
+    }
 }
 
 impl WorldProvider for WorldViewMut<'_> {
