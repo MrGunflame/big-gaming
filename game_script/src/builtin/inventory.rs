@@ -12,7 +12,7 @@ use crate::instance::State;
 use super::CallerExt;
 
 pub fn inventory_get(
-    mut caller: Caller<'_, State<'_, '_>>,
+    mut caller: Caller<'_, State<'_>>,
     entity_id: u64,
     slot_id: u64,
     out: u32,
@@ -31,7 +31,7 @@ pub fn inventory_get(
 }
 
 pub fn inventory_insert(
-    mut caller: Caller<'_, State<'_, '_>>,
+    mut caller: Caller<'_, State<'_>>,
     entity_id: u64,
     item_stack_ptr: u32,
     slot_id_ptr: u32,
@@ -52,7 +52,7 @@ pub fn inventory_insert(
 }
 
 pub fn inventory_remove(
-    mut caller: Caller<'_, State<'_, '_>>,
+    mut caller: Caller<'_, State<'_>>,
     entity_id: u64,
     slot_id: u64,
     quantity: u64,
@@ -73,7 +73,7 @@ pub fn inventory_remove(
 }
 
 pub fn inventory_component_len(
-    mut caller: Caller<'_, State<'_, '_>>,
+    mut caller: Caller<'_, State<'_>>,
     entity_id: u64,
     slot_id: u64,
     component_id: u32,
@@ -99,7 +99,7 @@ pub fn inventory_component_len(
 }
 
 pub fn inventory_component_get(
-    mut caller: Caller<'_, State<'_, '_>>,
+    mut caller: Caller<'_, State<'_>>,
     entity_id: u64,
     slot_id: u64,
     component_id: u32,
@@ -133,7 +133,7 @@ pub fn inventory_component_get(
 }
 
 pub fn inventory_component_insert(
-    mut caller: Caller<'_, State<'_, '_>>,
+    mut caller: Caller<'_, State<'_>>,
     entity_id: u64,
     slot_id: u64,
     component_id: u32,
@@ -161,7 +161,7 @@ pub fn inventory_component_insert(
 }
 
 pub fn inventory_component_remove(
-    mut caller: Caller<'_, State<'_, '_>>,
+    mut caller: Caller<'_, State<'_>>,
     entity_id: u64,
     slot_id: u64,
     component_id: u32,
@@ -183,7 +183,7 @@ pub fn inventory_component_remove(
 }
 
 pub fn inventory_equip(
-    mut caller: Caller<'_, State<'_, '_>>,
+    mut caller: Caller<'_, State<'_>>,
     entity_id: u64,
     slot_id: u64,
 ) -> Result<u32> {
@@ -206,7 +206,7 @@ pub fn inventory_equip(
 }
 
 pub fn inventory_unequip(
-    mut caller: Caller<'_, State<'_, '_>>,
+    mut caller: Caller<'_, State<'_>>,
     entity_id: u64,
     slot_id: u64,
 ) -> Result<u32> {
@@ -227,7 +227,7 @@ pub fn inventory_unequip(
     Ok(0)
 }
 
-pub fn inventory_clear(mut caller: Caller<'_, State<'_, '_>>, entity_id: u64) -> Result<u32> {
+pub fn inventory_clear(mut caller: Caller<'_, State<'_>>, entity_id: u64) -> Result<u32> {
     let _span = trace_span!("inventory_clear").entered();
 
     let entity_id = EntityId::from_raw(entity_id);

@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::marker::PhantomData;
 
 use game_common::components::components::Component;
 use game_common::components::inventory::{Inventory, InventorySlotId};
@@ -17,21 +16,21 @@ use crate::effect::{Effect, Effects};
 use crate::events::{Events, OnAction, OnCellLoad, OnCellUnload, OnCollision, OnEquip, OnUnequip};
 use crate::WorldProvider;
 
-pub struct ScriptInstance<'world, 'view> {
-    store: Store<State<'world, 'view>>,
+pub struct ScriptInstance<'a> {
+    store: Store<State<'a>>,
     inner: Instance,
     events: Events,
 }
 
-impl<'world, 'view> ScriptInstance<'world, 'view> {
+impl<'a> ScriptInstance<'a> {
     pub fn new(
         engine: &Engine,
         module: &Module,
         events: Events,
-        world: &'view dyn WorldProvider,
-        physics_pipeline: &'view game_physics::Pipeline,
-        effects: &'view mut Effects,
-        dependencies: &'view mut Dependencies,
+        world: &'a dyn WorldProvider,
+        physics_pipeline: &'a game_physics::Pipeline,
+        effects: &'a mut Effects,
+        dependencies: &'a mut Dependencies,
     ) -> Self {
         let mut store = Store::new(
             engine,
@@ -97,12 +96,11 @@ impl<'world, 'view> ScriptInstance<'world, 'view> {
     }
 }
 
-pub struct State<'world, 'view> {
-    pub world: &'view dyn WorldProvider,
-    pub physics_pipeline: &'view game_physics::Pipeline,
-    pub effects: &'view mut Effects,
-    pub dependencies: &'view mut Dependencies,
-    _stub: PhantomData<&'world ()>,
+pub struct State<'a> {
+    pub world: &'a dyn WorldProvider,
+    pub physics_pipeline: &'a game_physics::Pipeline,
+    pub effects: &'a mut Effects,
+    pub dependencies: &'a mut Dependencies,
     next_entity_id: u64,
     next_inventory_id: u64,
     /// Entities in its current state, if overwritten.
@@ -111,18 +109,17 @@ pub struct State<'world, 'view> {
     entities: HashMap<EntityId, Option<Entity>>,
 }
 
-impl<'world, 'view> State<'world, 'view> {
+impl<'a> State<'a> {
     pub fn new(
-        world: &'view dyn WorldProvider,
-        physics_pipeline: &'view game_physics::Pipeline,
-        effects: &'view mut Effects,
-        dependencies: &'view mut Dependencies,
+        world: &'a dyn WorldProvider,
+        physics_pipeline: &'a game_physics::Pipeline,
+        effects: &'a mut Effects,
+        dependencies: &'a mut Dependencies,
     ) -> Self {
         Self {
             world,
             physics_pipeline,
             effects,
-            _stub: PhantomData,
             next_entity_id: 0,
             next_inventory_id: 0,
             entities: HashMap::with_capacity(16),
@@ -131,7 +128,7 @@ impl<'world, 'view> State<'world, 'view> {
     }
 }
 
-impl State<'_, '_> {
+impl<'a> State<'a> {
     pub fn spawn(&mut self, mut entity: Entity) -> EntityId {
         let id = self.allocate_temporary_entity_id();
         entity.id = id;

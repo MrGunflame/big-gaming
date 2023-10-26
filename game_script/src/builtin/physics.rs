@@ -10,7 +10,7 @@ use crate::builtin::CallerExt;
 use crate::instance::State;
 
 pub fn physics_cast_ray(
-    mut caller: Caller<'_, State<'_, '_>>,
+    mut caller: Caller<'_, State<'_>>,
     origin_x: f32,
     origin_y: f32,
     origin_z: f32,
@@ -53,7 +53,7 @@ pub fn physics_cast_ray(
 }
 
 fn read_query_filter(
-    caller: &mut Caller<'_, State<'_, '_>>,
+    caller: &mut Caller<'_, State<'_>>,
     ptr: u32,
 ) -> wasmtime::Result<QueryFilter> {
     let filter: RawQueryFilter = caller.read(ptr)?;

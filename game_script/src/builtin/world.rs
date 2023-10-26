@@ -14,11 +14,7 @@ use super::CallerExt;
 const ERROR_NO_ENTITY: u32 = 1;
 const ERROR_NO_COMPONENT: u32 = 2;
 
-pub fn world_entity_spawn(
-    mut caller: Caller<'_, State<'_, '_>>,
-    ptr: u32,
-    out: u32,
-) -> Result<u32> {
+pub fn world_entity_spawn(mut caller: Caller<'_, State<'_>>, ptr: u32, out: u32) -> Result<u32> {
     let _span = trace_span!("world_entity_spawn").entered();
     tracing::trace!("world_entity_spawn(ptr = {}, out = {})", ptr, out);
 
@@ -35,7 +31,7 @@ pub fn world_entity_spawn(
     Ok(0)
 }
 
-pub fn world_entity_get(mut caller: Caller<'_, State<'_, '_>>, id: u64, out: u32) -> Result<u32> {
+pub fn world_entity_get(mut caller: Caller<'_, State<'_>>, id: u64, out: u32) -> Result<u32> {
     let _span = trace_span!("world_entity_get").entered();
     tracing::trace!("world_entity_get(id = {}, out = {})", id, out);
 
@@ -51,7 +47,7 @@ pub fn world_entity_get(mut caller: Caller<'_, State<'_, '_>>, id: u64, out: u32
     Ok(0)
 }
 
-pub fn world_entity_despawn(mut caller: Caller<'_, State<'_, '_>>, id: u64) -> Result<u32> {
+pub fn world_entity_despawn(mut caller: Caller<'_, State<'_>>, id: u64) -> Result<u32> {
     let _span = trace_span!("world_entity_despawn").entered();
     tracing::trace!("world_entity_despawn(id = {})", id);
 
@@ -65,7 +61,7 @@ pub fn world_entity_despawn(mut caller: Caller<'_, State<'_, '_>>, id: u64) -> R
 }
 
 pub fn world_entity_component_len(
-    mut caller: Caller<'_, State<'_, '_>>,
+    mut caller: Caller<'_, State<'_>>,
     entity_id: u64,
     component_id: u32,
     out: u32,
@@ -96,7 +92,7 @@ pub fn world_entity_component_len(
 }
 
 pub fn world_entity_component_get(
-    mut caller: Caller<'_, State<'_, '_>>,
+    mut caller: Caller<'_, State<'_>>,
     entity_id: u64,
     component_id: u32,
     out: u32,
@@ -135,7 +131,7 @@ pub fn world_entity_component_get(
 }
 
 pub fn world_entity_component_insert(
-    mut caller: Caller<'_, State<'_, '_>>,
+    mut caller: Caller<'_, State<'_>>,
     entity_id: u64,
     component_id: u32,
     ptr: u32,
@@ -166,7 +162,7 @@ pub fn world_entity_component_insert(
 }
 
 pub fn world_entity_component_remove(
-    mut caller: Caller<'_, State<'_, '_>>,
+    mut caller: Caller<'_, State<'_>>,
     entity_id: u64,
     component_id: u32,
 ) -> Result<u32> {
@@ -192,7 +188,7 @@ pub fn world_entity_component_remove(
 }
 
 pub fn world_entity_set_translation(
-    mut caller: Caller<'_, State<'_, '_>>,
+    mut caller: Caller<'_, State<'_>>,
     entity_id: u64,
     x: f32,
     y: f32,
@@ -218,7 +214,7 @@ pub fn world_entity_set_translation(
 }
 
 pub fn world_entity_set_rotation(
-    mut caller: Caller<'_, State<'_, '_>>,
+    mut caller: Caller<'_, State<'_>>,
     entity_id: u64,
     x: f32,
     y: f32,

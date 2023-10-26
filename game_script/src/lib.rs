@@ -54,14 +54,14 @@ impl ScriptServer {
         Ok(Handle { id })
     }
 
-    pub fn get<'world, 'view>(
+    pub fn get<'a>(
         &self,
         handle: &Handle,
-        world: &'view dyn WorldProvider,
-        physics_pipeline: &'view game_physics::Pipeline,
-        effects: &'view mut Effects,
-        dependencies: &'view mut Dependencies,
-    ) -> Option<ScriptInstance<'world, 'view>> {
+        world: &'a dyn WorldProvider,
+        physics_pipeline: &'a game_physics::Pipeline,
+        effects: &'a mut Effects,
+        dependencies: &'a mut Dependencies,
+    ) -> Option<ScriptInstance<'a>> {
         let script = self.scripts.get(handle.id)?;
 
         Some(ScriptInstance::new(
