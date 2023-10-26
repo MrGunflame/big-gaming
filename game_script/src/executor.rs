@@ -3,6 +3,7 @@ use game_common::record::RecordReference;
 use game_common::world::entity::EntityBody;
 use game_tracing::trace_span;
 
+use crate::dependency::Dependencies;
 use crate::effect::Effects;
 use crate::scripts::RecordTargets;
 use crate::{Context, Handle, ScriptServer};
@@ -18,7 +19,7 @@ impl ScriptExecutor {
         Self { server, targets }
     }
 
-    pub fn run(&self, mut ctx: Context<'_, '_>) -> Effects {
+    pub fn run(&self, mut ctx: Context<'_>) -> Effects {
         let _span = trace_span!("ScriptExecutor::run").entered();
 
         let mut events = Vec::new();
@@ -32,10 +33,19 @@ impl ScriptExecutor {
 
         let mut effects = Effects::default();
 
+        // TODO: Implement dependency tracking.
+        let mut dependencies = Dependencies::default();
+
         for event in events {
             let mut instance = self
                 .server
-                .get(&event.handle, ctx.view, ctx.physics_pipeline, &mut effects)
+                .get(
+                    &event.handle,
+                    ctx.view,
+                    ctx.physics_pipeline,
+                    &mut effects,
+                    &mut dependencies,
+                )
                 .unwrap();
 
             instance.run(&event.event).unwrap();
@@ -44,12 +54,7 @@ impl ScriptExecutor {
         effects
     }
 
-    fn queue_action(
-        &self,
-        event: ActionEvent,
-        ctx: &mut Context<'_, '_>,
-        events: &mut Vec<FireEvent>,
-    ) {
+    fn queue_action(&self, event: ActionEvent, ctx: &mut Context<'_>, events: &mut Vec<FireEvent>) {
         let Some(entity) = ctx.view.get(event.invoker) else {
             tracing::warn!(
                 "entity {:?} referenced by `ActionEvent` {:?} does not exist",
@@ -104,7 +109,7 @@ impl ScriptExecutor {
     fn queue_collision(
         &self,
         event: CollisionEvent,
-        ctx: &mut Context<'_, '_>,
+        ctx: &mut Context<'_>,
         events: &mut Vec<FireEvent>,
     ) {
         let Some(entity) = ctx.view.get(event.entity) else {
