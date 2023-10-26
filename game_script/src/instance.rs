@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::marker::PhantomData;
 
 use game_common::components::components::Component;
@@ -98,6 +99,10 @@ pub struct State<'world, 'view> {
     _stub: PhantomData<&'world ()>,
     next_entity_id: u64,
     next_inventory_id: u64,
+    /// Entities in its current state, if overwritten.
+    ///
+    /// `None` indicates that the entity was despawned.
+    entities: HashMap<EntityId, Option<Entity>>,
 }
 
 impl<'world, 'view> State<'world, 'view> {
@@ -113,6 +118,7 @@ impl<'world, 'view> State<'world, 'view> {
             _stub: PhantomData,
             next_entity_id: 0,
             next_inventory_id: 0,
+            entities: HashMap::with_capacity(16),
         }
     }
 }
@@ -121,48 +127,68 @@ impl State<'_, '_> {
     pub fn spawn(&mut self, mut entity: Entity) -> EntityId {
         let id = self.allocate_temporary_entity_id();
         entity.id = id;
+
+        self.entities.insert(id, Some(entity.clone()));
         self.effects.push(Effect::EntitySpawn(entity));
         id
     }
 
-    pub fn get(&self, id: EntityId) -> Option<Entity> {
-        self.reconstruct_entity(id)
+    pub fn get(&self, id: EntityId) -> Option<&Entity> {
+        self.get_entity(id)
     }
 
-    pub fn despawn(&mut self, id: EntityId) -> Option<Entity> {
-        if let Some(entity) = self.reconstruct_entity(id) {
-            self.effects.push(Effect::EntityDespawn(id));
-            Some(entity)
-        } else {
-            None
+    pub fn despawn(&mut self, id: EntityId) -> bool {
+        if self.get_entity(id).is_none() {
+            return false;
         }
+
+        *self.entities.entry(id).or_insert(None) = None;
+        self.effects.push(Effect::EntityDespawn(id));
+        true
     }
 
     pub fn set_translation(&mut self, id: EntityId, translation: Vec3) -> bool {
-        if self.reconstruct_entity(id).is_some() {
-            self.effects.push(Effect::EntityTranslate(id, translation));
-            true
-        } else {
-            false
-        }
+        let Some(entity) = self.get_entity(id).cloned() else {
+            return false;
+        };
+
+        self.entities
+            .entry(id)
+            .or_insert_with(|| Some(entity))
+            .as_mut()
+            .unwrap()
+            .transform
+            .translation = translation;
+
+        self.effects.push(Effect::EntityTranslate(id, translation));
+        true
     }
 
     pub fn set_rotation(&mut self, id: EntityId, rotation: Quat) -> bool {
-        if self.reconstruct_entity(id).is_some() {
-            self.effects.push(Effect::EntityRotate(id, rotation));
-            true
-        } else {
-            false
-        }
+        let Some(entity) = self.get_entity(id).cloned() else {
+            return false;
+        };
+
+        self.entities
+            .entry(id)
+            .or_insert_with(|| Some(entity))
+            .as_mut()
+            .unwrap()
+            .transform
+            .rotation = rotation;
+
+        self.effects.push(Effect::EntityRotate(id, rotation));
+        true
     }
 
     pub fn get_component(
         &self,
         entity_id: EntityId,
         component: RecordReference,
-    ) -> Option<Component> {
-        let entity = self.reconstruct_entity(entity_id)?;
-        entity.components.get(component).cloned()
+    ) -> Option<&Component> {
+        self.get_entity(entity_id)
+            .map(|entity| entity.components.get(component))
+            .flatten()
     }
 
     pub fn insert_component(
@@ -171,6 +197,18 @@ impl State<'_, '_> {
         id: RecordReference,
         component: Component,
     ) {
+        let Some(entity) = self.get_entity(entity_id).cloned() else {
+            return;
+        };
+
+        self.entities
+            .entry(entity_id)
+            .or_insert_with(|| Some(entity))
+            .as_mut()
+            .unwrap()
+            .components
+            .insert(id, component.clone());
+
         self.effects.push(Effect::EntityComponentInsert(
             entity_id,
             id,
@@ -179,52 +217,34 @@ impl State<'_, '_> {
     }
 
     pub fn remove_component(&mut self, entity_id: EntityId, id: RecordReference) -> bool {
-        if let Some(ent) = self.reconstruct_entity(entity_id) {
-            if ent.components.get(id).is_some() {
-                self.effects
-                    .push(Effect::EntityComponentRemove(entity_id, id));
-                true
-            } else {
-                false
-            }
+        let Some(entity) = self.get_entity(entity_id).cloned() else {
+            return false;
+        };
+
+        if self
+            .entities
+            .entry(entity_id)
+            .or_insert_with(|| Some(entity))
+            .as_mut()
+            .unwrap()
+            .components
+            .remove(id)
+            .is_some()
+        {
+            self.effects
+                .push(Effect::EntityComponentRemove(entity_id, id));
+            true
         } else {
             false
         }
     }
 
-    fn reconstruct_entity(&self, id: EntityId) -> Option<Entity> {
-        let mut entity = self.world.get(id).cloned();
-
-        for effect in self.effects.iter() {
-            match effect {
-                Effect::EntitySpawn(e) if e.id == id => {
-                    entity = Some(e.clone());
-                }
-                Effect::EntityDespawn(eid) if *eid == id => {
-                    entity = None;
-                }
-                Effect::EntityTranslate(eid, translation) if *eid == id => {
-                    entity.as_mut().unwrap().transform.translation = *translation;
-                }
-                Effect::EntityRotate(eid, rotation) if *eid == id => {
-                    entity.as_mut().unwrap().transform.rotation = *rotation;
-                }
-                Effect::EntityComponentInsert(eid, cid, bytes) if *eid == id => {
-                    entity.as_mut().unwrap().components.insert(
-                        *cid,
-                        Component {
-                            bytes: bytes.to_vec(),
-                        },
-                    );
-                }
-                Effect::EntityComponentRemove(eid, cid) if *eid == id => {
-                    entity.as_mut().unwrap().components.remove(*cid);
-                }
-                _ => (),
-            }
+    fn get_entity(&self, id: EntityId) -> Option<&Entity> {
+        match self.entities.get(&id) {
+            Some(Some(entity)) => Some(entity),
+            Some(None) => None,
+            None => self.world.get(id),
         }
-
-        entity
     }
 
     fn reconstruct_inventory(&self, id: EntityId) -> Option<Inventory> {

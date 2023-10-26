@@ -39,7 +39,9 @@ pub fn world_entity_get(mut caller: Caller<'_, State<'_, '_>>, id: u64, out: u32
     let _span = trace_span!("world_entity_get").entered();
     tracing::trace!("world_entity_get(id = {}, out = {})", id, out);
 
-    let Some(entity) = caller.data_mut().world.get(EntityId::from_raw(id)) else {
+    let entity_id = EntityId::from_raw(id);
+
+    let Some(entity) = caller.data_mut().world.get(entity_id) else {
         return Ok(ERROR_NO_ENTITY);
     };
 
@@ -55,7 +57,7 @@ pub fn world_entity_despawn(mut caller: Caller<'_, State<'_, '_>>, id: u64) -> R
 
     let id = EntityId::from_raw(id);
 
-    if caller.data_mut().despawn(id).is_none() {
+    if !caller.data_mut().despawn(id) {
         Ok(ERROR_NO_ENTITY)
     } else {
         Ok(0)
