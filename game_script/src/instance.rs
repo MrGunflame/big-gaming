@@ -97,10 +97,10 @@ impl<'a> ScriptInstance<'a> {
 }
 
 pub struct State<'a> {
-    pub world: &'a dyn WorldProvider,
+    world: &'a dyn WorldProvider,
     pub physics_pipeline: &'a game_physics::Pipeline,
-    pub effects: &'a mut Effects,
-    pub dependencies: &'a mut Dependencies,
+    effects: &'a mut Effects,
+    dependencies: &'a mut Dependencies,
     next_entity_id: u64,
     next_inventory_id: u64,
     /// Entities in its current state, if overwritten.

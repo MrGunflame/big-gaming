@@ -37,7 +37,7 @@ pub fn world_entity_get(mut caller: Caller<'_, State<'_>>, id: u64, out: u32) ->
 
     let entity_id = EntityId::from_raw(id);
 
-    let Some(entity) = caller.data_mut().world.get(entity_id) else {
+    let Some(entity) = caller.data_mut().get(entity_id) else {
         return Ok(ERROR_NO_ENTITY);
     };
 
@@ -77,11 +77,11 @@ pub fn world_entity_component_len(
     let entity_id = EntityId::from_raw(entity_id);
     let component_id: RecordReference = caller.read(component_id)?;
 
-    let Some(entity) = caller.data().world.get(entity_id) else {
+    let Some(entity) = caller.data_mut().get(entity_id) else {
         return Ok(ERROR_NO_ENTITY);
     };
 
-    let Some(component) = entity.components.get(component_id) else {
+    let Some(component) = caller.data_mut().get_component(entity_id, component_id) else {
         return Ok(ERROR_NO_COMPONENT);
     };
 
@@ -110,11 +110,11 @@ pub fn world_entity_component_get(
     let entity_id = EntityId::from_raw(entity_id);
     let component_id: RecordReference = caller.read(component_id)?;
 
-    let Some(entity) = caller.data().world.get(entity_id) else {
+    let Some(entity) = caller.data_mut().get(entity_id) else {
         return Ok(ERROR_NO_ENTITY);
     };
 
-    let Some(component) = entity.components.get(component_id) else {
+    let Some(component) = caller.data_mut().get_component(entity_id, component_id) else {
         return Ok(ERROR_NO_COMPONENT);
     };
 

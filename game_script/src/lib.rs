@@ -18,17 +18,16 @@ use script::Script;
 use slotmap::{DefaultKey, SlotMap};
 use wasmtime::{Config, Engine};
 
-pub mod abi;
-pub mod actions;
 pub mod effect;
-pub mod events;
 pub mod executor;
-pub mod instance;
-pub mod script;
 pub mod scripts;
 
+mod abi;
 mod builtin;
 mod dependency;
+mod events;
+mod instance;
+mod script;
 
 pub struct ScriptServer {
     scripts: SlotMap<DefaultKey, Script>,
