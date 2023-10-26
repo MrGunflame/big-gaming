@@ -3,6 +3,7 @@ use game_common::record::RecordReference;
 use game_common::world::entity::EntityBody;
 use game_tracing::trace_span;
 
+use crate::dependency::Dependencies;
 use crate::effect::Effects;
 use crate::scripts::RecordTargets;
 use crate::{Context, Handle, ScriptServer};
@@ -32,10 +33,19 @@ impl ScriptExecutor {
 
         let mut effects = Effects::default();
 
+        // TODO: Implement dependency tracking.
+        let mut dependencies = Dependencies::default();
+
         for event in events {
             let mut instance = self
                 .server
-                .get(&event.handle, ctx.view, ctx.physics_pipeline, &mut effects)
+                .get(
+                    &event.handle,
+                    ctx.view,
+                    ctx.physics_pipeline,
+                    &mut effects,
+                    &mut dependencies,
+                )
                 .unwrap();
 
             instance.run(&event.event).unwrap();

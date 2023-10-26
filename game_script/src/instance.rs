@@ -12,6 +12,7 @@ use game_common::world::CellId;
 use glam::{Quat, Vec3};
 use wasmtime::{Engine, Instance, Linker, Module, Store};
 
+use crate::dependency::{Dependencies, Dependency};
 use crate::effect::{Effect, Effects};
 use crate::events::{Events, OnAction, OnCellLoad, OnCellUnload, OnCollision, OnEquip, OnUnequip};
 use crate::WorldProvider;
@@ -30,8 +31,12 @@ impl<'world, 'view> ScriptInstance<'world, 'view> {
         world: &'view dyn WorldProvider,
         physics_pipeline: &'view game_physics::Pipeline,
         effects: &'view mut Effects,
+        dependencies: &'view mut Dependencies,
     ) -> Self {
-        let mut store = Store::new(engine, State::new(world, physics_pipeline, effects));
+        let mut store = Store::new(
+            engine,
+            State::new(world, physics_pipeline, effects, dependencies),
+        );
 
         let mut linker = Linker::<State>::new(&engine);
 
@@ -96,6 +101,7 @@ pub struct State<'world, 'view> {
     pub world: &'view dyn WorldProvider,
     pub physics_pipeline: &'view game_physics::Pipeline,
     pub effects: &'view mut Effects,
+    pub dependencies: &'view mut Dependencies,
     _stub: PhantomData<&'world ()>,
     next_entity_id: u64,
     next_inventory_id: u64,
@@ -110,6 +116,7 @@ impl<'world, 'view> State<'world, 'view> {
         world: &'view dyn WorldProvider,
         physics_pipeline: &'view game_physics::Pipeline,
         effects: &'view mut Effects,
+        dependencies: &'view mut Dependencies,
     ) -> Self {
         Self {
             world,
@@ -119,6 +126,7 @@ impl<'world, 'view> State<'world, 'view> {
             next_entity_id: 0,
             next_inventory_id: 0,
             entities: HashMap::with_capacity(16),
+            dependencies,
         }
     }
 }
@@ -133,7 +141,9 @@ impl State<'_, '_> {
         id
     }
 
-    pub fn get(&self, id: EntityId) -> Option<&Entity> {
+    pub fn get(&mut self, id: EntityId) -> Option<&Entity> {
+        // We track the entity even if the entity does not exist.
+        self.dependencies.push(Dependency::Entity(id));
         self.get_entity(id)
     }
 
@@ -182,10 +192,13 @@ impl State<'_, '_> {
     }
 
     pub fn get_component(
-        &self,
+        &mut self,
         entity_id: EntityId,
         component: RecordReference,
     ) -> Option<&Component> {
+        self.dependencies
+            .push(Dependency::EntityComponent(entity_id, component));
+
         self.get_entity(entity_id)
             .map(|entity| entity.components.get(component))
             .flatten()
@@ -291,7 +304,11 @@ impl State<'_, '_> {
         inventory
     }
 
-    pub fn inventory_get(&self, entity: EntityId, slot: InventorySlotId) -> Option<ItemStack> {
+    pub fn inventory_get(&mut self, entity: EntityId, slot: InventorySlotId) -> Option<ItemStack> {
+        // We track the slot even if it does not exist.
+        self.dependencies
+            .push(Dependency::InventorySlot(entity, slot));
+
         self.reconstruct_inventory(entity)?.get(slot).cloned()
     }
 
@@ -331,11 +348,14 @@ impl State<'_, '_> {
     }
 
     pub fn inventory_component_get(
-        &self,
+        &mut self,
         entity: EntityId,
         slot: InventorySlotId,
         component: RecordReference,
     ) -> Option<Component> {
+        self.dependencies
+            .push(Dependency::InventorySlotComponent(entity, slot, component));
+
         let inventory = self.reconstruct_inventory(entity)?;
         inventory.get(slot)?.item.components.get(component).cloned()
     }

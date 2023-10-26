@@ -6,11 +6,11 @@
 use std::fmt::Debug;
 use std::path::Path;
 
+use dependency::Dependencies;
 use effect::Effects;
 use game_common::components::inventory::Inventory;
 use game_common::entity::EntityId;
 use game_common::events::EventQueue;
-use game_common::record::RecordReference;
 use game_common::world::entity::Entity;
 use game_common::world::world::{WorldViewMut, WorldViewRef};
 use instance::ScriptInstance;
@@ -60,6 +60,7 @@ impl ScriptServer {
         world: &'view dyn WorldProvider,
         physics_pipeline: &'view game_physics::Pipeline,
         effects: &'view mut Effects,
+        dependencies: &'view mut Dependencies,
     ) -> Option<ScriptInstance<'world, 'view>> {
         let script = self.scripts.get(handle.id)?;
 
@@ -70,6 +71,7 @@ impl ScriptServer {
             world,
             physics_pipeline,
             effects,
+            dependencies,
         ))
     }
 }

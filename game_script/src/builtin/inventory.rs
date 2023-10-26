@@ -22,7 +22,7 @@ pub fn inventory_get(
     let entity_id = EntityId::from_raw(entity_id);
     let slot_id = InventorySlotId::from_raw(slot_id);
 
-    let Some(stack) = caller.data().inventory_get(entity_id, slot_id) else {
+    let Some(stack) = caller.data_mut().inventory_get(entity_id, slot_id) else {
         return Ok(1);
     };
 
