@@ -1,6 +1,7 @@
 //! Container inventories
 
 use std::borrow::Borrow;
+use std::collections::hash_map::Entry;
 use std::hash::Hash;
 use std::iter::FusedIterator;
 use std::num::NonZeroU8;
@@ -105,6 +106,23 @@ impl Inventory {
         Ok(self.insert_stack_unchecked(items.into_item_stack()))
     }
 
+    pub fn insert_at_slot<T>(
+        &mut self,
+        slot: InventorySlotId,
+        items: T,
+    ) -> Result<Option<ItemStack>, InsertionError<T>>
+    where
+        T: IntoItemStack,
+    {
+        match self.has_capacity(&items) {
+            (false, _) => return Err(InsertionError::MaxItems(items)),
+            (_, false) => return Err(InsertionError::MaxMass(items)),
+            _ => (),
+        }
+
+        Ok(self.insert_into_slot_unchecked(slot, items.into_item_stack()))
+    }
+
     /// Returns whether we have enough capacity to store the stack.
     fn has_capacity<T>(&self, stack: &T) -> (bool, bool)
     where
@@ -114,6 +132,20 @@ impl Inventory {
             self.count.checked_add(stack.quantity() as usize).is_some(),
             self.mass.checked_add(stack.mass()).is_some(),
         )
+    }
+
+    fn insert_into_slot_unchecked(
+        &mut self,
+        slot: InventorySlotId,
+        stack: ItemStack,
+    ) -> Option<ItemStack> {
+        match self.items.entry(slot) {
+            Entry::Occupied(entry) => Some(std::mem::replace(entry.into_mut(), stack)),
+            Entry::Vacant(entry) => {
+                entry.insert(stack);
+                None
+            }
+        }
     }
 
     fn insert_stack_unchecked(&mut self, stack: ItemStack) -> InventorySlotId {
