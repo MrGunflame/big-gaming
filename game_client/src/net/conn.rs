@@ -243,6 +243,7 @@ impl<I> ServerConnection<I> {
                         .transform
                         .rotation = rotation;
                 }
+                _ => todo!(),
             }
         }
     }

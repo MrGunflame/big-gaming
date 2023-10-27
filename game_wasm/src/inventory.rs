@@ -27,14 +27,14 @@ impl Inventory {
     }
 
     pub fn get(&self, id: InventoryId) -> Result<Item, InventoryError> {
-        let mut item = MaybeUninit::<RawItemStack>::uninit();
-        let ptr = item.as_mut_ptr() as Usize;
+        let mut stack = MaybeUninit::<RawItemStack>::uninit();
+        let ptr = stack.as_mut_ptr() as Usize;
 
         let res = unsafe { inventory_get(self.entity.into_raw(), id.0, PtrMut::from_raw(ptr)) };
 
         if res == 0 {
-            let item = unsafe { item.assume_init() };
-            Ok(Item { id: item.item.id })
+            let stack = unsafe { stack.assume_init() };
+            Ok(Item { id: stack.item.id })
         } else {
             Err(InventoryError)
         }

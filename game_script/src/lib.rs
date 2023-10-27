@@ -6,25 +6,28 @@
 use std::fmt::Debug;
 use std::path::Path;
 
+use dependency::Dependencies;
 use effect::Effects;
+use game_common::components::inventory::Inventory;
+use game_common::entity::EntityId;
 use game_common::events::EventQueue;
-use game_common::world::world::WorldViewMut;
+use game_common::world::entity::Entity;
+use game_common::world::world::{WorldViewMut, WorldViewRef};
 use instance::ScriptInstance;
 use script::Script;
 use slotmap::{DefaultKey, SlotMap};
 use wasmtime::{Config, Engine};
 
-pub mod abi;
-pub mod actions;
 pub mod effect;
-pub mod events;
 pub mod executor;
-pub mod instance;
-pub mod script;
 pub mod scripts;
 
+mod abi;
 mod builtin;
 mod dependency;
+mod events;
+mod instance;
+mod script;
 
 pub struct ScriptServer {
     scripts: SlotMap<DefaultKey, Script>,
@@ -50,13 +53,14 @@ impl ScriptServer {
         Ok(Handle { id })
     }
 
-    pub fn get<'world, 'view>(
+    pub fn get<'a>(
         &self,
         handle: &Handle,
-        world: &'view mut WorldViewMut<'world>,
-        physics_pipeline: &'view game_physics::Pipeline,
-        effects: &'view mut Effects,
-    ) -> Option<ScriptInstance<'world, 'view>> {
+        world: &'a dyn WorldProvider,
+        physics_pipeline: &'a game_physics::Pipeline,
+        effects: &'a mut Effects,
+        dependencies: &'a mut Dependencies,
+    ) -> Option<ScriptInstance<'a>> {
         let script = self.scripts.get(handle.id)?;
 
         Some(ScriptInstance::new(
@@ -66,6 +70,7 @@ impl ScriptServer {
             world,
             physics_pipeline,
             effects,
+            dependencies,
         ))
     }
 }
@@ -75,8 +80,8 @@ pub struct Handle {
     id: DefaultKey,
 }
 
-pub struct Context<'a, 'b> {
-    pub view: &'a mut WorldViewMut<'b>,
+pub struct Context<'a> {
+    pub view: &'a dyn WorldProvider,
     pub physics_pipeline: &'a game_physics::Pipeline,
     pub events: &'a mut EventQueue,
 }
@@ -84,5 +89,30 @@ pub struct Context<'a, 'b> {
 impl Debug for ScriptServer {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ScriptServer").finish_non_exhaustive()
+    }
+}
+
+pub trait WorldProvider {
+    fn get(&self, id: EntityId) -> Option<&Entity>;
+    fn inventory(&self, id: EntityId) -> Option<&Inventory>;
+}
+
+impl WorldProvider for WorldViewRef<'_> {
+    fn get(&self, id: EntityId) -> Option<&Entity> {
+        self.get(id)
+    }
+
+    fn inventory(&self, id: EntityId) -> Option<&Inventory> {
+        self.inventories().get(id)
+    }
+}
+
+impl WorldProvider for WorldViewMut<'_> {
+    fn get(&self, id: EntityId) -> Option<&Entity> {
+        self.get(id)
+    }
+
+    fn inventory(&self, id: EntityId) -> Option<&Inventory> {
+        self.inventories().get(id)
     }
 }

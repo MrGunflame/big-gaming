@@ -166,7 +166,7 @@ impl Inventory {
 
     pub fn iter(&self) -> Iter<'_> {
         Iter {
-            iter: self.items.iter(),
+            inner: self.items.iter(),
         }
     }
 }
@@ -194,24 +194,24 @@ impl<T> InsertionError<T> {
 
 #[derive(Clone, Debug)]
 pub struct Iter<'a> {
-    iter: std::collections::hash_map::Iter<'a, InventorySlotId, ItemStack>,
+    inner: std::collections::hash_map::Iter<'a, InventorySlotId, ItemStack>,
 }
 
 impl<'a> Iterator for Iter<'a> {
     type Item = (InventorySlotId, &'a ItemStack);
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.iter.next().map(|(k, v)| (*k, v))
+        self.inner.next().map(|(k, v)| (*k, v))
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        self.iter.size_hint()
+        self.inner.size_hint()
     }
 }
 
 impl<'a> ExactSizeIterator for Iter<'a> {
     fn len(&self) -> usize {
-        self.iter.len()
+        self.inner.len()
     }
 }
 

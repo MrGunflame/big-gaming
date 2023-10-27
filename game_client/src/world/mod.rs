@@ -7,6 +7,7 @@ use std::sync::Arc;
 
 use ahash::HashMap;
 use game_common::components::actor::ActorProperties;
+use game_common::components::inventory::Inventory;
 use game_common::components::transform::Transform;
 use game_common::entity::EntityId;
 use game_common::module::ModuleId;
@@ -28,9 +29,10 @@ use game_render::light::DirectionalLight;
 use game_render::Renderer;
 use game_scene::Scenes;
 use game_script::executor::ScriptExecutor;
+use game_ui::UiState;
 use game_window::cursor::Cursor;
 use game_window::events::WindowEvent;
-use game_window::windows::WindowState;
+use game_window::windows::{WindowId, WindowState};
 use glam::Vec3;
 
 use crate::config::Config;
@@ -40,6 +42,7 @@ use crate::entities::terrain::spawn_terrain;
 use crate::input::{InputKey, Inputs};
 use crate::net::world::{Command, CommandBuffer, DelayedEntity};
 use crate::net::ServerConnection;
+use crate::ui::inventory::InventoryProxy;
 use crate::utils::extract_actor_rotation;
 
 use self::actions::ActiveActions;
@@ -57,6 +60,7 @@ pub struct GameWorldState {
     actions: ActiveActions,
     executor: Arc<ScriptExecutor>,
     inputs: Inputs,
+    inventory_proxy: Option<InventoryProxy>,
 }
 
 impl GameWorldState {
@@ -85,6 +89,7 @@ impl GameWorldState {
             actions: ActiveActions::new(),
             executor,
             inputs,
+            inventory_proxy: None,
         }
     }
 
@@ -95,6 +100,7 @@ impl GameWorldState {
         window: WindowState,
         time: &Time,
         hierarchy: &mut TransformHierarchy,
+        ui_state: &mut UiState,
     ) {
         if !self.is_init {
             self.is_init = true;
@@ -224,13 +230,19 @@ impl GameWorldState {
         }
     }
 
-    pub fn handle_event(&mut self, event: WindowEvent, cursor: &Cursor) {
+    pub fn handle_event(
+        &mut self,
+        event: WindowEvent,
+        cursor: &Cursor,
+        ui_state: &mut UiState,
+        window: WindowId,
+    ) {
         match event {
             WindowEvent::MouseMotion(event) => {
                 self.handle_mouse_motion(event);
             }
             WindowEvent::KeyboardInput(event) => {
-                self.handle_keyboard_input(event, cursor);
+                self.handle_keyboard_input(event, cursor, ui_state, window);
             }
             WindowEvent::MouseButtonInput(event) => {
                 self.actions.send_mouse_event(event);
@@ -262,7 +274,13 @@ impl GameWorldState {
         }
     }
 
-    fn handle_keyboard_input(&mut self, event: KeyboardInput, cursor: &Cursor) {
+    fn handle_keyboard_input(
+        &mut self,
+        event: KeyboardInput,
+        cursor: &Cursor,
+        state: &mut UiState,
+        window: WindowId,
+    ) {
         match event.key_code {
             Some(KeyCode::Escape) => {
                 if event.state.is_pressed() {
@@ -320,6 +338,21 @@ impl GameWorldState {
                 self.camera_controller.detached_state = DetachedState::default();
                 return;
             }
+            Some(KeyCode::I) if event.state.is_pressed() => match &mut self.inventory_proxy {
+                Some(pxy) => {
+                    state.get_mut(window).unwrap().root_scope().remove(pxy.id);
+                    self.inventory_proxy = None;
+                }
+                None => {
+                    let doc = state.get_mut(window).unwrap();
+
+                    self.inventory_proxy = Some(InventoryProxy::new(
+                        Inventory::new(),
+                        self.modules.clone(),
+                        doc,
+                    ));
+                }
+            },
             _ => (),
         }
 

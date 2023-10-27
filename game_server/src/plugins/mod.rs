@@ -1,18 +1,20 @@
 mod inventory;
 
 use std::collections::VecDeque;
+use std::thread::available_parallelism;
 
 use ahash::HashSet;
 use game_common::events::{ActionEvent, Event};
 use game_common::world::control_frame::ControlFrame;
 use game_common::world::snapshot::EntityChange;
 use game_common::world::source::StreamingSource;
-use game_common::world::world::{AsView, WorldState, WorldViewRef};
+use game_common::world::world::{AsView, WorldState, WorldViewMut, WorldViewRef};
 use game_common::world::CellId;
 use game_net::message::{
     ControlMessage, DataMessage, DataMessageBody, EntityCreate, EntityDestroy, EntityRotate,
     EntityTranslate, InventoryItemAdd, Message, MessageId, SpawnHost,
 };
+use game_script::effect::{Effect, Effects};
 use game_script::Context;
 
 use crate::conn::{Connection, Connections};
@@ -27,11 +29,12 @@ pub fn tick(state: &mut ServerState) {
 
     crate::world::level::update_level_cells(state);
 
-    state.script_executor.run(Context {
-        view: &mut state.world.back_mut().unwrap(),
+    let effects = state.script_executor.run(Context {
+        view: &state.world.back().unwrap(),
         physics_pipeline: &state.pipeline,
         events: &mut state.event_queue,
     });
+    apply_effects(effects, &mut state.world.back_mut().unwrap());
 
     if cfg!(feature = "physics") {
         //step_physics(state);
@@ -40,6 +43,20 @@ pub fn tick(state: &mut ServerState) {
     // Push snapshots last always
     let cf = *state.state.control_frame.lock();
     update_snapshots(&state.state.conns, &state.world, cf);
+}
+
+fn apply_effects(effects: Effects, view: &mut WorldViewMut<'_>) {
+    for effect in effects.into_iter() {
+        match effect {
+            Effect::EntityTranslate(id, translation) => {
+                view.get_mut(id).unwrap().set_translation(translation);
+            }
+            Effect::EntityRotate(id, rotation) => {
+                view.get_mut(id).unwrap().set_rotation(rotation);
+            }
+            _ => todo!(),
+        }
+    }
 }
 
 fn step_physics(state: &mut ServerState) {
