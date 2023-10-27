@@ -20,7 +20,6 @@ use game_render::Renderer;
 use game_scene::Scenes;
 use game_script::executor::ScriptExecutor;
 use game_tasks::TaskPool;
-use game_ui::widgets::Widget;
 use game_ui::UiState;
 use game_window::cursor::Cursor;
 use game_window::events::WindowEvent;

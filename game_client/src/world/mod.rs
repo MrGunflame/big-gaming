@@ -346,11 +346,17 @@ impl GameWorldState {
                 None => {
                     let doc = state.get_mut(window).unwrap();
 
-                    self.inventory_proxy = Some(InventoryProxy::new(
-                        Inventory::new(),
-                        self.modules.clone(),
-                        doc,
-                    ));
+                    // Ignore if the current player entity has no inventory.
+                    let Some(snapshot) = &self.conn.current_state else {
+                        return;
+                    };
+
+                    let Some(inventory) = snapshot.inventories.get(self.conn.host) else {
+                        return;
+                    };
+
+                    self.inventory_proxy =
+                        Some(InventoryProxy::new(inventory, self.modules.clone(), doc));
                 }
             },
             _ => (),

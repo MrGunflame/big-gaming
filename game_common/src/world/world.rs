@@ -674,7 +674,7 @@ pub struct Snapshot {
     pub entities: Entities,
     streaming_sources: StreamingSources,
     pub deltas: Vec<EntityChange>,
-    pub(crate) inventories: Inventories,
+    pub inventories: Inventories,
 }
 
 /// Entities that keep chunks loaded.
