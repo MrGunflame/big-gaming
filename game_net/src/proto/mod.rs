@@ -39,6 +39,7 @@ mod properties;
 mod quat;
 mod record;
 mod terrain;
+mod varint;
 
 use game_common::components::actions::ActionId;
 use game_common::components::inventory::InventorySlotId;
@@ -64,6 +65,7 @@ use self::components::{ComponentAdd, ComponentRemove, ComponentUpdate};
 use self::handshake::{Handshake, InvalidHandshakeFlags, InvalidHandshakeType};
 use self::sequence::Sequence;
 use self::shutdown::Shutdown;
+use self::varint::VarInt;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Error)]
 #[error(transparent)]
@@ -230,7 +232,7 @@ impl Encode for ServerEntity {
     where
         B: BufMut,
     {
-        self.0.encode(buf)
+        VarInt(self.0).encode(buf)
     }
 }
 
@@ -241,7 +243,7 @@ impl Decode for ServerEntity {
     where
         B: Buf,
     {
-        u64::decode(buf).map(Self)
+        VarInt::decode(buf).map(|val| Self(val.0))
     }
 }
 
@@ -1380,7 +1382,7 @@ impl Encode for InventorySlotId {
     where
         B: BufMut,
     {
-        self.into_raw().encode(buf)
+        VarInt(self.into_raw()).encode(buf)
     }
 }
 
@@ -1391,7 +1393,7 @@ impl Decode for InventorySlotId {
     where
         B: Buf,
     {
-        u64::decode(buf).map(Self::from_raw)
+        VarInt::<u64>::decode(buf).map(|val| Self::from_raw(val.0))
     }
 }
 
