@@ -1,9 +1,11 @@
 use glam::{Quat, Vec3};
 use std::ops::{Add, AddAssign, Sub, SubAssign};
 
+use crate::components::components::Component;
 use crate::components::inventory::InventorySlotId;
 use crate::components::items::ItemId;
 use crate::entity::EntityId;
+use crate::record::RecordReference;
 
 use super::entity::Entity;
 use super::source::StreamingSource;
@@ -78,6 +80,20 @@ pub enum EntityChange {
     RemoveStreamingSource {
         id: EntityId,
     },
+    ComponentAdd {
+        entity: EntityId,
+        component_id: RecordReference,
+        component: Component,
+    },
+    ComponentRemove {
+        entity: EntityId,
+        component_id: RecordReference,
+    },
+    ComponentUpdate {
+        entity: EntityId,
+        component_id: RecordReference,
+        component: Component,
+    },
 }
 
 impl EntityChange {
@@ -94,6 +110,20 @@ impl EntityChange {
             Self::InventoryDestroy(event) => event.entity,
             Self::CreateStreamingSource { id, source: _ } => *id,
             Self::RemoveStreamingSource { id } => *id,
+            Self::ComponentAdd {
+                entity,
+                component_id: _,
+                component: _,
+            } => *entity,
+            Self::ComponentRemove {
+                entity,
+                component_id: _,
+            } => *entity,
+            Self::ComponentUpdate {
+                entity,
+                component_id: _,
+                component: _,
+            } => *entity,
         }
     }
 }

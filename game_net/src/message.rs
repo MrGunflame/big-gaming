@@ -2,6 +2,7 @@ use game_common::components::actions::ActionId;
 use game_common::components::inventory::InventorySlotId;
 use game_common::components::items::ItemId;
 use game_common::net::ServerEntity;
+use game_common::record::RecordReference;
 use game_common::world::control_frame::ControlFrame;
 use game_common::world::entity::EntityBody;
 use glam::{Quat, Vec3};
@@ -41,6 +42,9 @@ pub enum DataMessageBody {
     EntityTranslate(EntityTranslate),
     EntityRotate(EntityRotate),
     EntityAction(EntityAction),
+    EntityComponentAdd(EntityComponentAdd),
+    EntityComponentRemove(EntityComponentRemove),
+    EntityComponentUpdate(EntityComponentUpdate),
     SpawnHost(SpawnHost),
     InventoryItemAdd(InventoryItemAdd),
 }
@@ -81,6 +85,26 @@ pub struct EntityAction {
     pub action: ActionId,
 }
 
+#[derive(Clone, Debug)]
+pub struct EntityComponentAdd {
+    pub entity: ServerEntity,
+    pub component: RecordReference,
+    pub bytes: Vec<u8>,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct EntityComponentRemove {
+    pub entity: ServerEntity,
+    pub component: RecordReference,
+}
+
+#[derive(Clone, Debug)]
+pub struct EntityComponentUpdate {
+    pub entity: ServerEntity,
+    pub component: RecordReference,
+    pub bytes: Vec<u8>,
+}
+
 #[derive(Copy, Clone, Debug)]
 pub struct InventoryItemAdd {
     pub entity: ServerEntity,
@@ -118,6 +142,26 @@ impl DataMessageBody {
                 entity: msg.entity,
                 action: msg.action,
             }),
+            DataMessageBody::EntityComponentAdd(msg) => {
+                Frame::EntityComponentAdd(proto::components::ComponentAdd {
+                    entity: msg.entity,
+                    component_id: msg.component,
+                    bytes: msg.bytes,
+                })
+            }
+            DataMessageBody::EntityComponentRemove(msg) => {
+                Frame::EntityComponentRemove(proto::components::ComponentRemove {
+                    entity: msg.entity,
+                    component_id: msg.component,
+                })
+            }
+            DataMessageBody::EntityComponentUpdate(msg) => {
+                Frame::EntityComponentUpdate(proto::components::ComponentUpdate {
+                    entity: msg.entity,
+                    component_id: msg.component,
+                    bytes: msg.bytes,
+                })
+            }
             DataMessageBody::InventoryItemAdd(msg) => {
                 Frame::InventoryItemAdd(proto::InventoryItemAdd {
                     entity: msg.entity,
@@ -155,6 +199,24 @@ impl DataMessageBody {
                 entity: frame.entity,
                 action: frame.action,
             }),
+            Frame::EntityComponentAdd(frame) => Self::EntityComponentAdd(EntityComponentAdd {
+                entity: frame.entity,
+                component: frame.component_id,
+                bytes: frame.bytes,
+            }),
+            Frame::EntityComponentRemove(frame) => {
+                Self::EntityComponentRemove(EntityComponentRemove {
+                    entity: frame.entity,
+                    component: frame.component_id,
+                })
+            }
+            Frame::EntityComponentUpdate(frame) => {
+                Self::EntityComponentUpdate(EntityComponentUpdate {
+                    entity: frame.entity,
+                    component: frame.component_id,
+                    bytes: frame.bytes,
+                })
+            }
             Frame::InventoryItemAdd(frame) => Self::InventoryItemAdd(InventoryItemAdd {
                 entity: frame.entity,
                 id: frame.id,

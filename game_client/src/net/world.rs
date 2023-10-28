@@ -196,6 +196,21 @@ fn handle_event<I>(
                 }
                 EntityChange::CreateStreamingSource { id, source } => {}
                 EntityChange::RemoveStreamingSource { id } => {}
+                // Components are not relevant here.
+                EntityChange::ComponentAdd {
+                    entity: _,
+                    component_id: _,
+                    component: _,
+                } => {}
+                EntityChange::ComponentRemove {
+                    entity: _,
+                    component_id: _,
+                } => {}
+                EntityChange::ComponentUpdate {
+                    entity: _,
+                    component_id: _,
+                    component: _,
+                } => {}
             }
 
             return;
@@ -258,6 +273,21 @@ fn handle_event<I>(
         }
         EntityChange::CreateStreamingSource { id, source } => {}
         EntityChange::RemoveStreamingSource { id } => {}
+        // Components are not relevant here.
+        EntityChange::ComponentAdd {
+            entity: _,
+            component_id: _,
+            component: _,
+        } => (),
+        EntityChange::ComponentRemove {
+            entity: _,
+            component_id: _,
+        } => (),
+        EntityChange::ComponentUpdate {
+            entity: _,
+            component_id: _,
+            component: _,
+        } => (),
     }
 }
 

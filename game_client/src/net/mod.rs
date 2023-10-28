@@ -6,7 +6,7 @@ pub mod world;
 
 use std::collections::VecDeque;
 
-use game_common::components::components::Components;
+use game_common::components::components::{Component, Components};
 use game_common::components::items::{Item, ItemStack};
 use game_common::components::transform::Transform;
 use game_common::units::Mass;
@@ -141,6 +141,33 @@ fn flush_command_queue<I>(conn: &mut ServerConnection<I>) {
                 match conn.server_entities.get(msg.entity) {
                     Some(id) => {
                         view.inventory_insert_items(id, msg.id, stack);
+                    }
+                    None => (),
+                }
+            }
+            DataMessageBody::EntityComponentAdd(msg) => {
+                match conn.server_entities.get(msg.entity) {
+                    Some(id) => {
+                        let mut entity = view.get_mut(id).unwrap();
+                        entity.insert_component(msg.component, Component { bytes: msg.bytes });
+                    }
+                    None => (),
+                }
+            }
+            DataMessageBody::EntityComponentRemove(msg) => {
+                match conn.server_entities.get(msg.entity) {
+                    Some(id) => {
+                        let mut entity = view.get_mut(id).unwrap();
+                        entity.remove_component(msg.component);
+                    }
+                    None => (),
+                }
+            }
+            DataMessageBody::EntityComponentUpdate(msg) => {
+                match conn.server_entities.get(msg.entity) {
+                    Some(id) => {
+                        let mut entity = view.get_mut(id).unwrap();
+                        entity.update_component(msg.component, Component { bytes: msg.bytes });
                     }
                     None => (),
                 }

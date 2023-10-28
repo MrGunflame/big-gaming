@@ -10,10 +10,11 @@ use glam::{Quat, Vec3};
 #[cfg(feature = "tracing")]
 use tracing::{event, span, Level, Span};
 
-use crate::components::components::Components;
+use crate::components::components::Component;
 use crate::components::inventory::{Inventory, InventorySlotId};
 use crate::components::items::{Item, ItemStack};
 use crate::entity::EntityId;
+use crate::record::RecordReference;
 use crate::world::snapshot::EntityChange;
 
 pub use metrics::WorldMetrics;
@@ -626,9 +627,33 @@ impl<'a> EntityMut<'a> {
         });
     }
 
-    pub fn components(&mut self) -> &mut Components {
-        // TODO: Track component changes
-        &mut self.entity.components
+    pub fn insert_component(&mut self, id: RecordReference, component: Component) {
+        self.entity.components.insert(id, component.clone());
+
+        self.deltas.push(EntityChange::ComponentAdd {
+            entity: self.entity.id,
+            component_id: id,
+            component,
+        });
+    }
+
+    pub fn remove_component(&mut self, id: RecordReference) {
+        self.entity.components.remove(id);
+
+        self.deltas.push(EntityChange::ComponentRemove {
+            entity: self.entity.id,
+            component_id: id,
+        });
+    }
+
+    pub fn update_component(&mut self, id: RecordReference, component: Component) {
+        self.entity.components.insert(id, component.clone());
+
+        self.deltas.push(EntityChange::ComponentUpdate {
+            entity: self.entity.id,
+            component_id: id,
+            component,
+        });
     }
 }
 
@@ -775,6 +800,38 @@ impl Snapshot {
             }
             EntityChange::RemoveStreamingSource { id } => {
                 self.streaming_sources.remove(id);
+            }
+            EntityChange::ComponentAdd {
+                entity,
+                component_id,
+                component,
+            } => {
+                if let Some(entity) = self.entities.get_mut(entity) {
+                    entity.components.insert(component_id, component);
+                } else {
+                    tracing::warn!("no such entity: {:?}", entity);
+                }
+            }
+            EntityChange::ComponentRemove {
+                entity,
+                component_id,
+            } => {
+                if let Some(entity) = self.entities.get_mut(entity) {
+                    entity.components.remove(component_id);
+                } else {
+                    tracing::warn!("no such entity: {:?}", entity);
+                }
+            }
+            EntityChange::ComponentUpdate {
+                entity,
+                component_id,
+                component,
+            } => {
+                if let Some(entity) = self.entities.get_mut(entity) {
+                    entity.components.insert(component_id, component);
+                } else {
+                    tracing::warn!("no such entity: {:?}", entity);
+                }
             }
         }
     }
