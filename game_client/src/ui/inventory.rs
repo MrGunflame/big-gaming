@@ -1,5 +1,6 @@
 //! Freeform inventory item list
 
+use std::marker::PhantomData;
 use std::sync::{mpsc, Arc, Mutex};
 
 use game_common::components::inventory::{Inventory, InventorySlotId};
@@ -10,16 +11,15 @@ use game_ui::events::Context;
 use game_ui::reactive::{Document, NodeId, Scope};
 use game_ui::style::{Bounds, Direction, Growth, Justify, Position, Size, SizeVec2, Style};
 use game_ui::widgets::{Button, Container, Text, Widget};
-use game_ui::UiState;
 use glam::UVec2;
 
-pub struct InventoryUi {
-    inventory: Inventory,
+pub struct InventoryUi<'a> {
+    inventory: &'a Inventory,
     modules: Modules,
     events: mpsc::Sender<InventoryEvent>,
 }
 
-impl Widget for InventoryUi {
+impl<'a> Widget for InventoryUi<'a> {
     fn build(self, cx: &Scope) -> Scope {
         let root = cx.append(Container::new().style(Style {
             bounds: Bounds::from_min(SizeVec2::splat(Size::ZERO)),
@@ -28,6 +28,7 @@ impl Widget for InventoryUi {
         }));
 
         InventoryBox {
+            inventory: self.inventory,
             modules: self.modules,
             events: self.events,
         }
@@ -37,12 +38,13 @@ impl Widget for InventoryUi {
     }
 }
 
-struct InventoryBox {
+struct InventoryBox<'a> {
+    inventory: &'a Inventory,
     modules: Modules,
     events: mpsc::Sender<InventoryEvent>,
 }
 
-impl Widget for InventoryBox {
+impl<'a> Widget for InventoryBox<'a> {
     fn build(self, cx: &Scope) -> Scope {
         let align_y = cx.append(Container::new().style(Style {
             justify: Justify::Center,
@@ -57,10 +59,13 @@ impl Widget for InventoryBox {
             ..Default::default()
         }));
 
+        let items = self.inventory.iter();
+
         ItemList {
-            items: vec![],
+            items,
             modules: self.modules,
             events: self.events,
+            _marker: PhantomData,
         }
         .build(&align_x);
 
@@ -68,13 +73,18 @@ impl Widget for InventoryBox {
     }
 }
 
-struct ItemList {
-    items: Vec<(InventorySlotId, ItemStack)>,
+struct ItemList<'a, I> {
+    items: I,
     modules: Modules,
     events: mpsc::Sender<InventoryEvent>,
+    // FIXME: Can we get rid of this marker?
+    _marker: PhantomData<&'a ()>,
 }
 
-impl Widget for ItemList {
+impl<'a, I> Widget for ItemList<'a, I>
+where
+    I: Iterator<Item = (InventorySlotId, &'a ItemStack)>,
+{
     fn build(self, cx: &Scope) -> Scope {
         let root = cx.append(Container::new());
 
@@ -165,7 +175,7 @@ pub struct InventoryProxy {
 }
 
 impl InventoryProxy {
-    pub fn new(inventory: Inventory, modules: Modules, doc: &mut Document) -> Self {
+    pub fn new(inventory: &Inventory, modules: Modules, doc: &mut Document) -> Self {
         let (tx, rx) = mpsc::channel();
 
         let cx = doc.root_scope();

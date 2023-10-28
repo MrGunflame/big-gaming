@@ -11,8 +11,8 @@ use glam::{Quat, Vec3};
 use tracing::{event, span, Level, Span};
 
 use crate::components::components::Components;
-use crate::components::inventory::Inventory;
-use crate::components::items::Item;
+use crate::components::inventory::{Inventory, InventorySlotId};
+use crate::components::items::{Item, ItemStack};
 use crate::entity::EntityId;
 use crate::world::snapshot::EntityChange;
 
@@ -20,6 +20,7 @@ pub use metrics::WorldMetrics;
 
 use super::control_frame::ControlFrame;
 use super::entity::Entity;
+use super::snapshot::{InventoryItemAdd, InventoryItemRemove};
 use super::source::StreamingSource;
 
 /// The world state at constant time intervals.
@@ -456,6 +457,40 @@ impl<'a> WorldViewMut<'a> {
         &mut self.snapshot().inventories
     }
 
+    // FIXME: Rework inventory API.
+    pub fn inventory_insert_items(
+        &mut self,
+        id: EntityId,
+        slot: InventorySlotId,
+        items: ItemStack,
+    ) {
+        let item_id = items.item.id;
+
+        let inventory = self.inventories_mut().get_mut_or_insert(id);
+        inventory.insert_at_slot(slot, items).unwrap();
+
+        self.new_deltas
+            .push(EntityChange::InventoryItemAdd(InventoryItemAdd {
+                entity: id,
+                id: slot,
+                item: item_id,
+            }));
+    }
+
+    pub fn inventory_remove_items(&mut self, id: EntityId, slot: InventorySlotId, quantity: u32) {
+        let Some(inventory) = self.inventories_mut().get_mut(id) else {
+            return;
+        };
+
+        inventory.remove(slot, quantity);
+
+        self.new_deltas
+            .push(EntityChange::InventoryItemRemove(InventoryItemRemove {
+                entity: id,
+                id: slot,
+            }));
+    }
+
     pub fn streaming_sources(&self) -> &StreamingSources {
         &self.snapshot_ref().streaming_sources
     }
@@ -639,7 +674,7 @@ pub struct Snapshot {
     pub entities: Entities,
     streaming_sources: StreamingSources,
     pub deltas: Vec<EntityChange>,
-    pub(crate) inventories: Inventories,
+    pub inventories: Inventories,
 }
 
 /// Entities that keep chunks loaded.
@@ -718,7 +753,6 @@ impl Snapshot {
 
                 let item = Item {
                     id: event.item,
-                    actions: Default::default(),
                     components: Default::default(),
                     mass: Default::default(),
                     equipped: false,
@@ -815,6 +849,10 @@ impl Inventories {
 
     pub fn remove(&mut self, id: EntityId) {
         self.inventories.remove(&id);
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (EntityId, &Inventory)> {
+        self.inventories.iter().map(|(k, v)| (*k, v))
     }
 }
 

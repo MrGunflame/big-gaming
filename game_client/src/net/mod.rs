@@ -6,7 +6,10 @@ pub mod world;
 
 use std::collections::VecDeque;
 
+use game_common::components::components::Components;
+use game_common::components::items::{Item, ItemStack};
 use game_common::components::transform::Transform;
+use game_common::units::Mass;
 use game_common::world::entity::EntityBody;
 use game_core::entity::SpawnEntity;
 use game_net::message::{ControlMessage, DataMessageBody, Message};
@@ -123,6 +126,25 @@ fn flush_command_queue<I>(conn: &mut ServerConnection<I>) {
                 None => (),
             },
             DataMessageBody::EntityAction(msg) => todo!(),
+            DataMessageBody::InventoryItemAdd(msg) => {
+                let stack = ItemStack {
+                    item: Item {
+                        id: msg.item,
+                        mass: Mass::default(),
+                        components: Components::default(),
+                        equipped: false,
+                        hidden: false,
+                    },
+                    quantity: msg.quantity,
+                };
+
+                match conn.server_entities.get(msg.entity) {
+                    Some(id) => {
+                        view.inventory_insert_items(id, msg.id, stack);
+                    }
+                    None => (),
+                }
+            }
         }
     }
 }

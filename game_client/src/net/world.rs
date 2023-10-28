@@ -8,7 +8,7 @@ use game_common::entity::EntityId;
 use game_common::events::{ActionEvent, Event};
 use game_common::world::control_frame::ControlFrame;
 use game_common::world::entity::{Entity, EntityBody};
-use game_common::world::snapshot::{EntityChange, InventoryItemAdd};
+use game_common::world::snapshot::{EntityChange, InventoryItemAdd, InventoryItemRemove};
 use game_common::world::world::{WorldState, WorldViewRef};
 use game_core::modules::Modules;
 use game_net::message::DataMessageBody;
@@ -333,7 +333,6 @@ fn add_inventory_item(inventory: &mut Inventory, modules: &Modules, event: Inven
     let item = Item {
         id: event.item,
         mass: item.mass,
-        actions,
         components,
         equipped: false,
         hidden: false,
@@ -354,6 +353,16 @@ fn create_initial_diff(view: WorldViewRef) -> Vec<EntityChange> {
 
         if entity.is_host {
             deltas.push(EntityChange::CreateHost { id: entity.id });
+        }
+    }
+
+    for (entity_id, inventory) in view.inventories().iter() {
+        for (slot, stack) in inventory.iter() {
+            deltas.push(EntityChange::InventoryItemAdd(InventoryItemAdd {
+                entity: entity_id,
+                id: slot,
+                item: stack.item.id,
+            }));
         }
     }
 
@@ -392,6 +401,59 @@ fn create_snapshot_diff(prev: WorldViewRef, next: WorldViewRef) -> Vec<EntityCha
             (false, true) => deltas.push(EntityChange::CreateHost { id: entity.id }),
             (true, false) => deltas.push(EntityChange::DestroyHost { id: entity.id }),
         }
+
+        // Compute inventory diff
+        match (
+            prev.inventories().get(entity.id),
+            next.inventories().get(entity.id),
+        ) {
+            (Some(prev_inv), Some(next_inv)) => {
+                let mut known_slots = vec![];
+
+                for (slot, stack) in prev_inv.iter() {
+                    known_slots.push(slot);
+
+                    let Some(next_stack) = next_inv.get(slot) else {
+                        deltas.push(EntityChange::InventoryItemRemove(InventoryItemRemove {
+                            entity: entity.id,
+                            id: slot,
+                        }));
+                        continue;
+                    };
+
+                    // TODO: Implement stack diffing (for components/quantity)
+                }
+
+                for (slot, stack) in next_inv
+                    .iter()
+                    .filter(|(slot, _)| !known_slots.contains(slot))
+                {
+                    deltas.push(EntityChange::InventoryItemAdd(InventoryItemAdd {
+                        entity: entity.id,
+                        id: slot,
+                        item: stack.item.id,
+                    }));
+                }
+            }
+            (Some(prev_inv), None) => {
+                for (slot, stack) in prev_inv.iter() {
+                    deltas.push(EntityChange::InventoryItemRemove(InventoryItemRemove {
+                        entity: entity.id,
+                        id: slot,
+                    }));
+                }
+            }
+            (None, Some(next_inv)) => {
+                for (slot, stack) in next_inv.iter() {
+                    deltas.push(EntityChange::InventoryItemAdd(InventoryItemAdd {
+                        entity: entity.id,
+                        id: slot,
+                        item: stack.item.id,
+                    }));
+                }
+            }
+            (None, None) => (),
+        }
     }
 
     for entity in next.iter().filter(|e| !visited_entities.contains(&e.id)) {
@@ -401,6 +463,16 @@ fn create_snapshot_diff(prev: WorldViewRef, next: WorldViewRef) -> Vec<EntityCha
 
         if entity.is_host {
             deltas.push(EntityChange::CreateHost { id: entity.id });
+        }
+
+        if let Some(inventory) = next.inventories().get(entity.id) {
+            for (slot, stack) in inventory.iter() {
+                deltas.push(EntityChange::InventoryItemAdd(InventoryItemAdd {
+                    entity: entity.id,
+                    id: slot,
+                    item: stack.item.id,
+                }));
+            }
         }
     }
 

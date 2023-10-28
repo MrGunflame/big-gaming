@@ -1,4 +1,6 @@
 use game_common::components::actions::ActionId;
+use game_common::components::inventory::InventorySlotId;
+use game_common::components::items::ItemId;
 use game_common::net::ServerEntity;
 use game_common::world::control_frame::ControlFrame;
 use game_common::world::entity::EntityBody;
@@ -40,6 +42,7 @@ pub enum DataMessageBody {
     EntityRotate(EntityRotate),
     EntityAction(EntityAction),
     SpawnHost(SpawnHost),
+    InventoryItemAdd(InventoryItemAdd),
 }
 
 #[derive(Clone, Debug)]
@@ -78,6 +81,14 @@ pub struct EntityAction {
     pub action: ActionId,
 }
 
+#[derive(Copy, Clone, Debug)]
+pub struct InventoryItemAdd {
+    pub entity: ServerEntity,
+    pub id: InventorySlotId,
+    pub item: ItemId,
+    pub quantity: u32,
+}
+
 impl DataMessageBody {
     pub(crate) fn into_frame(self) -> Frame {
         match self {
@@ -107,6 +118,14 @@ impl DataMessageBody {
                 entity: msg.entity,
                 action: msg.action,
             }),
+            DataMessageBody::InventoryItemAdd(msg) => {
+                Frame::InventoryItemAdd(proto::InventoryItemAdd {
+                    entity: msg.entity,
+                    id: msg.id,
+                    item: msg.item,
+                    quantity: msg.quantity,
+                })
+            }
         }
     }
 
@@ -135,6 +154,12 @@ impl DataMessageBody {
             Frame::EntityAction(frame) => Self::EntityAction(EntityAction {
                 entity: frame.entity,
                 action: frame.action,
+            }),
+            Frame::InventoryItemAdd(frame) => Self::InventoryItemAdd(InventoryItemAdd {
+                entity: frame.entity,
+                id: frame.id,
+                item: frame.item,
+                quantity: frame.quantity,
             }),
             _ => todo!(),
         }
