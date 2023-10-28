@@ -1,7 +1,6 @@
 mod inventory;
 
 use std::collections::VecDeque;
-use std::thread::available_parallelism;
 
 use ahash::HashSet;
 use game_common::events::{ActionEvent, Event};
@@ -199,6 +198,9 @@ fn flush_command_queue(srv_state: &mut ServerState) {
                             action: msg.action,
                         }));
                     }
+                    DataMessageBody::EntityComponentAdd(_) => (),
+                    DataMessageBody::EntityComponentRemove(_) => (),
+                    DataMessageBody::EntityComponentUpdate(_) => (),
                     DataMessageBody::SpawnHost(_) => (),
                     DataMessageBody::InventoryItemAdd(_) => (),
                 }

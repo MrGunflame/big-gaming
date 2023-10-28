@@ -28,12 +28,12 @@
 //!
 
 pub mod ack;
+pub mod components;
 pub mod handshake;
 pub mod sequence;
 pub mod shutdown;
 
 mod action;
-mod components;
 mod inventory;
 mod properties;
 mod quat;
