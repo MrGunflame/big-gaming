@@ -60,6 +60,7 @@ use glam::{Quat, UVec2, Vec3};
 use thiserror::Error;
 
 use self::ack::{Ack, AckAck, Nak};
+use self::components::{ComponentAdd, ComponentRemove, ComponentUpdate};
 use self::handshake::{Handshake, InvalidHandshakeFlags, InvalidHandshakeType};
 use self::sequence::Sequence;
 use self::shutdown::Shutdown;
@@ -908,6 +909,9 @@ pub enum Frame {
     EntityRotate(EntityRotate),
     EntityHealth(EntityHealth),
     EntityAction(EntityAction),
+    EntityComponentAdd(ComponentAdd),
+    EntityComponentRemove(ComponentRemove),
+    EntityComponentUpdate(ComponentUpdate),
     SpawnHost(SpawnHost),
     InventoryItemAdd(InventoryItemAdd),
     InventoryItemRemove(InventoryItemRemove),
@@ -928,6 +932,9 @@ impl Frame {
             Self::EntityRotate(frame) => frame.entity,
             Self::EntityHealth(frame) => frame.entity,
             Self::EntityAction(frame) => frame.entity,
+            Self::EntityComponentAdd(frame) => frame.entity,
+            Self::EntityComponentRemove(frame) => frame.entity,
+            Self::EntityComponentUpdate(frame) => frame.entity,
             Self::SpawnHost(frame) => frame.entity,
             Self::InventoryItemAdd(frame) => frame.entity,
             Self::InventoryItemRemove(frame) => frame.entity,
@@ -967,6 +974,18 @@ impl Encode for Frame {
             }
             Self::EntityAction(frame) => {
                 FrameType::ENTITY_ACTION.encode(&mut buf)?;
+                frame.encode(buf)
+            }
+            Self::EntityComponentAdd(frame) => {
+                FrameType::ENTITY_COMPONENT_ADD.encode(&mut buf)?;
+                frame.encode(buf)
+            }
+            Self::EntityComponentRemove(frame) => {
+                FrameType::ENTITY_COMPONENT_REMOVE.encode(&mut buf)?;
+                frame.encode(buf)
+            }
+            Self::EntityComponentUpdate(frame) => {
+                FrameType::ENTITY_COMPONENT_UPDATE.encode(&mut buf)?;
                 frame.encode(buf)
             }
             Self::SpawnHost(frame) => {
@@ -1026,6 +1045,18 @@ impl Decode for Frame {
             FrameType::ENTITY_ACTION => {
                 let frame = EntityAction::decode(buf)?;
                 Ok(Self::EntityAction(frame))
+            }
+            FrameType::ENTITY_COMPONENT_ADD => {
+                let frame = ComponentAdd::decode(buf)?;
+                Ok(Self::EntityComponentAdd(frame))
+            }
+            FrameType::ENTITY_COMPONENT_REMOVE => {
+                let frame = ComponentRemove::decode(buf)?;
+                Ok(Self::EntityComponentRemove(frame))
+            }
+            FrameType::ENTITY_COMPONENT_UPDATE => {
+                let frame = ComponentUpdate::decode(buf)?;
+                Ok(Self::EntityComponentUpdate(frame))
             }
             FrameType::SPAWN_HOST => {
                 let frame = SpawnHost::decode(buf)?;
@@ -1238,6 +1269,10 @@ impl FrameType {
     pub const INVENTORY_ITEM_UPDATE: Self = Self(0x32);
 
     pub const PLAYER_MOVE: Self = Self(0x41);
+
+    pub const ENTITY_COMPONENT_ADD: Self = Self(0x50);
+    pub const ENTITY_COMPONENT_REMOVE: Self = Self(0x51);
+    pub const ENTITY_COMPONENT_UPDATE: Self = Self(0x52);
 }
 
 impl TryFrom<u16> for FrameType {
@@ -1251,6 +1286,9 @@ impl TryFrom<u16> for FrameType {
             Self::ENTITY_ROTATE => Ok(Self::ENTITY_ROTATE),
             Self::ENTITY_HEALTH => Ok(Self::ENTITY_HEALTH),
             Self::ENTITY_ACTION => Ok(Self::ENTITY_ACTION),
+            Self::ENTITY_COMPONENT_ADD => Ok(Self::ENTITY_COMPONENT_ADD),
+            Self::ENTITY_COMPONENT_REMOVE => Ok(Self::ENTITY_COMPONENT_REMOVE),
+            Self::ENTITY_COMPONENT_UPDATE => Ok(Self::ENTITY_COMPONENT_UPDATE),
             Self::SPAWN_HOST => Ok(Self::SPAWN_HOST),
             Self::PLAYER_JOIN => Ok(Self::PLAYER_JOIN),
             Self::PLAYER_LEAVE => Ok(Self::PLAYER_LEAVE),

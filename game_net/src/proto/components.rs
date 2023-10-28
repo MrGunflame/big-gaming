@@ -1,59 +1,106 @@
 use std::convert::Infallible;
 
 use bytes::{Buf, BufMut};
-use game_common::components::components::{Component, Components};
+use game_common::net::ServerEntity;
 use game_common::record::RecordReference;
 
-use super::{Decode, Encode, EofError};
+use super::{Decode, Encode, EofError, Error};
 
-impl Encode for Components {
+#[derive(Clone, Debug)]
+pub struct ComponentAdd {
+    pub entity: ServerEntity,
+    pub component_id: RecordReference,
+    pub bytes: Vec<u8>,
+}
+
+impl Encode for ComponentAdd {
     type Error = Infallible;
 
     fn encode<B>(&self, mut buf: B) -> Result<(), Self::Error>
     where
         B: BufMut,
     {
-        (self.len() as u64).encode(&mut buf)?;
-        for (id, val) in self.iter() {
-            id.encode(&mut buf)?;
-
-            let bytes = val.as_bytes();
-            (bytes.len() as u64).encode(&mut buf)?;
-            buf.put_slice(bytes);
-        }
-
+        self.entity.encode(&mut buf)?;
+        self.component_id.encode(&mut buf)?;
+        (self.bytes.len() as u64).encode(&mut buf)?;
+        buf.put_slice(&self.bytes);
         Ok(())
     }
 }
 
-impl Decode for Components {
+impl Decode for ComponentAdd {
     type Error = EofError;
 
     fn decode<B>(mut buf: B) -> Result<Self, Self::Error>
     where
         B: Buf,
     {
+        let entity = ServerEntity::decode(&mut buf)?;
+        let component_id = RecordReference::decode(&mut buf)?;
+
         let len = u64::decode(&mut buf)?;
-
-        let mut components = Self::new();
+        let mut bytes = Vec::new();
         for _ in 0..len {
-            let id = RecordReference::decode(&mut buf)?;
-
-            let len = u64::decode(&mut buf)? as usize;
-
-            if buf.remaining() < len {
-                return Err(EofError {
-                    expected: len,
-                    found: buf.remaining(),
-                });
-            }
-
-            let mut bytes = vec![0; len];
-            buf.copy_to_slice(&mut bytes);
-
-            components.insert(id, Component { bytes });
+            bytes.push(u8::decode(&mut buf)?);
         }
 
-        Ok(components)
+        Ok(Self {
+            entity,
+            component_id,
+            bytes,
+        })
+    }
+}
+
+#[derive(Copy, Clone, Debug, Encode, Decode)]
+pub struct ComponentRemove {
+    pub entity: ServerEntity,
+    pub component_id: RecordReference,
+}
+
+#[derive(Clone, Debug)]
+pub struct ComponentUpdate {
+    pub entity: ServerEntity,
+    pub component_id: RecordReference,
+    pub bytes: Vec<u8>,
+}
+
+impl Encode for ComponentUpdate {
+    type Error = Infallible;
+
+    fn encode<B>(&self, mut buf: B) -> Result<(), Self::Error>
+    where
+        B: BufMut,
+    {
+        self.entity.encode(&mut buf)?;
+        self.component_id.encode(&mut buf)?;
+
+        (self.bytes.len() as u64).encode(&mut buf)?;
+        buf.put_slice(&self.bytes);
+        Ok(())
+    }
+}
+
+impl Decode for ComponentUpdate {
+    type Error = EofError;
+
+    fn decode<B>(mut buf: B) -> Result<Self, Self::Error>
+    where
+        B: Buf,
+    {
+        let entity = ServerEntity::decode(&mut buf)?;
+        let component_id = RecordReference::decode(&mut buf)?;
+
+        let len = u64::decode(&mut buf)?;
+        let mut bytes = Vec::new();
+        for _ in 0..len {
+            bytes.push(u8::decode(&mut buf)?);
+        }
+
+        Ok(Self {
+            entity,
+            component_id,
+            bytes,
+        })
     }
 }
