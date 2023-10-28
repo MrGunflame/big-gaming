@@ -1382,7 +1382,7 @@ impl Encode for InventorySlotId {
     where
         B: BufMut,
     {
-        self.into_raw().encode(buf)
+        VarInt(self.into_raw()).encode(buf)
     }
 }
 
@@ -1393,7 +1393,7 @@ impl Decode for InventorySlotId {
     where
         B: Buf,
     {
-        u64::decode(buf).map(Self::from_raw)
+        VarInt::<u64>::decode(buf).map(|val| Self::from_raw(val.0))
     }
 }
 

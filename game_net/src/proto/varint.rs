@@ -67,6 +67,20 @@ macro_rules! impl_varint {
                 }
             }
         }
+
+        impl From<$t> for VarInt<$t> {
+            #[inline]
+            fn from(value: $t) -> Self {
+                Self(value)
+            }
+        }
+
+        impl From<VarInt<$t>> for $t {
+            #[inline]
+            fn from(value: VarInt<$t>) -> Self {
+                value.0
+            }
+        }
     };
 }
 
