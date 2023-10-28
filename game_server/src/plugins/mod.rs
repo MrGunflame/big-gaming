@@ -3,15 +3,19 @@ mod inventory;
 use std::collections::VecDeque;
 
 use ahash::HashSet;
+use game_common::components::components::Components;
+use game_common::entity::EntityId;
 use game_common::events::{ActionEvent, Event};
+use game_common::net::ServerEntity;
 use game_common::world::control_frame::ControlFrame;
 use game_common::world::snapshot::EntityChange;
 use game_common::world::source::StreamingSource;
 use game_common::world::world::{AsView, WorldState, WorldViewMut, WorldViewRef};
 use game_common::world::CellId;
 use game_net::message::{
-    ControlMessage, DataMessage, DataMessageBody, EntityCreate, EntityDestroy, EntityRotate,
-    EntityTranslate, InventoryItemAdd, Message, MessageId, SpawnHost,
+    ControlMessage, DataMessage, DataMessageBody, EntityComponentAdd, EntityComponentRemove,
+    EntityComponentUpdate, EntityCreate, EntityDestroy, EntityRotate, EntityTranslate,
+    InventoryItemAdd, Message, MessageId, SpawnHost,
 };
 use game_script::effect::{Effect, Effects};
 use game_script::Context;
@@ -274,6 +278,19 @@ fn update_client(conn: &Connection, view: WorldViewRef<'_>, cf: ControlFrame) {
                     }),
                 });
 
+                // Sync all components.
+                for (id, component) in entity.components.iter() {
+                    conn.handle().send(DataMessage {
+                        id: MessageId(0),
+                        control_frame: view.control_frame(),
+                        body: DataMessageBody::EntityComponentAdd(EntityComponentAdd {
+                            entity: entity_id,
+                            component: id,
+                            bytes: component.bytes.clone(),
+                        }),
+                    });
+                }
+
                 // Sync the entity inventory, if it has one.
                 if let Some(inventory) = view.inventories().get(entity.id) {
                     for (id, stack) in inventory.iter() {
@@ -362,6 +379,15 @@ where
                     entity: entity.clone(),
                 });
 
+                // Sync components.
+                for (id, component) in entity.components.iter() {
+                    events.push(EntityChange::ComponentAdd {
+                        entity: entity.id,
+                        component_id: id,
+                        component: component.clone(),
+                    });
+                }
+
                 continue;
             }
 
@@ -382,12 +408,57 @@ where
                     rotation: entity.transform.rotation,
                 });
             }
+
+            update_components(entity.id, &entity.components, &known.components);
         }
     }
 
     // Despawn all entities that were not existent in any of the player's cells.
     for id in stale_entities {
         events.push(EntityChange::Destroy { id });
+    }
+
+    events
+}
+
+fn update_components(
+    entity_id: EntityId,
+    server_state: &Components,
+    client_state: &Components,
+) -> Vec<EntityChange> {
+    let mut events = Vec::new();
+
+    for (id, component) in server_state.iter() {
+        if client_state.get(id).is_none() {
+            events.push(EntityChange::ComponentAdd {
+                entity: entity_id,
+                component_id: id,
+                component: component.clone(),
+            });
+
+            continue;
+        }
+
+        let server_component = component;
+        let client_component = client_state.get(id).unwrap();
+
+        if server_component != client_component {
+            events.push(EntityChange::ComponentUpdate {
+                entity: entity_id,
+                component_id: id,
+                component: server_component.clone(),
+            });
+        }
+    }
+
+    for (id, _) in client_state
+        .iter()
+        .filter(|(id, _)| server_state.get(*id).is_none())
+    {
+        events.push(EntityChange::ComponentRemove {
+            entity: entity_id,
+            component_id: id,
+        });
     }
 
     events
@@ -438,6 +509,52 @@ fn update_client_entities(
                 DataMessageBody::EntityRotate(EntityRotate {
                     entity: entity_id,
                     rotation,
+                })
+            }
+            EntityChange::ComponentAdd {
+                entity,
+                component_id,
+                component,
+            } => {
+                let entity_id = state.entities.get(entity).unwrap();
+                let entity = state.known_entities.get_mut(entity).unwrap();
+
+                entity.components.insert(component_id, component.clone());
+
+                DataMessageBody::EntityComponentAdd(EntityComponentAdd {
+                    entity: entity_id,
+                    component: component_id,
+                    bytes: component.bytes,
+                })
+            }
+            EntityChange::ComponentRemove {
+                entity,
+                component_id,
+            } => {
+                let entity_id = state.entities.get(entity).unwrap();
+                let entity = state.known_entities.get_mut(entity).unwrap();
+
+                entity.components.remove(component_id);
+
+                DataMessageBody::EntityComponentRemove(EntityComponentRemove {
+                    entity: entity_id,
+                    component: component_id,
+                })
+            }
+            EntityChange::ComponentUpdate {
+                entity,
+                component_id,
+                component,
+            } => {
+                let entity_id = state.entities.get(entity).unwrap();
+                let entity = state.known_entities.get_mut(entity).unwrap();
+
+                entity.components.insert(component_id, component.clone());
+
+                DataMessageBody::EntityComponentUpdate(EntityComponentUpdate {
+                    entity: entity_id,
+                    component: component_id,
+                    bytes: component.bytes,
                 })
             }
             _ => todo!(),
