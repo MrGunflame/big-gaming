@@ -16,10 +16,10 @@ pub enum ItemRecordError {
     Value(<u64 as Decode>::Error),
     #[error("failed to decode tem uri: {0}")]
     Uri(<Uri as Decode>::Error),
-    #[error("failed to decode item components: {0}")]
-    Components(<Vec<ItemComponent> as Decode>::Error),
     #[error("failed to decode item actions: {0}")]
     Actions(<Vec<RecordReference> as Decode>::Error),
+    #[error("failed to decode item icon: {0}")]
+    Icon(<Uri as Decode>::Error),
 }
 
 #[derive(Clone, Debug)]
@@ -27,8 +27,8 @@ pub struct ItemRecord {
     pub mass: Mass,
     pub value: u64,
     pub scene: Uri,
-    pub components: Vec<ItemComponent>,
     pub actions: Vec<RecordReference>,
+    pub icon: Uri,
 }
 
 impl Encode for ItemRecord {
@@ -39,8 +39,8 @@ impl Encode for ItemRecord {
         self.mass.encode(&mut buf);
         self.value.encode(&mut buf);
         self.scene.encode(&mut buf);
-        self.components.encode(&mut buf);
         self.actions.encode(&mut buf);
+        self.icon.encode(&mut buf);
     }
 }
 
@@ -54,15 +54,15 @@ impl Decode for ItemRecord {
         let mass = Mass::decode(&mut buf).map_err(ItemRecordError::Mass)?;
         let value = u64::decode(&mut buf).map_err(ItemRecordError::Value)?;
         let scene = Uri::decode(&mut buf).map_err(ItemRecordError::Uri)?;
-        let components = Vec::decode(&mut buf).map_err(ItemRecordError::Components)?;
         let actions = Vec::decode(&mut buf).map_err(ItemRecordError::Actions)?;
+        let icon = Uri::decode(&mut buf).map_err(ItemRecordError::Icon)?;
 
         Ok(Self {
             mass,
             value,
             scene,
-            components,
             actions,
+            icon,
         })
     }
 }

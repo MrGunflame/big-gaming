@@ -351,8 +351,13 @@ fn add_inventory_item(inventory: &mut Inventory, modules: &Modules, event: Inven
     let item = record.clone().body.unwrap_item();
 
     let mut components = Components::new();
-    for comp in item.components {
-        components.insert(comp.record, components::Component { bytes: comp.value });
+    for comp in &record.components {
+        components.insert(
+            comp.id,
+            components::Component {
+                bytes: comp.bytes.clone(),
+            },
+        );
     }
 
     let mut actions = Actions::new();

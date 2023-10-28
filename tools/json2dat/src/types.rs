@@ -27,6 +27,8 @@ pub struct Records {
     pub components: Vec<Component>,
     #[serde(default)]
     pub objects: Vec<Object>,
+    #[serde(default)]
+    pub items: Vec<Item>,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -198,4 +200,20 @@ pub struct Object {
     #[serde(default)]
     pub scripts: Vec<String>,
     pub model: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Item {
+    pub id: JsonRecordId,
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub components: HashMap<JsonRecordReference, Vec<u8>>,
+    #[serde(default)]
+    pub actions: Vec<JsonRecordReference>,
+    pub model: String,
+    pub icon: String,
+    pub mass: u32,
+    pub value: u64,
 }
