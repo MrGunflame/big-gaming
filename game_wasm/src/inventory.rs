@@ -7,7 +7,7 @@ use crate::component::Component;
 use crate::entity::EntityId;
 use crate::raw::inventory::{
     inventory_clear, inventory_component_get, inventory_component_insert, inventory_component_len,
-    inventory_get, ItemStack as RawItemStack,
+    inventory_get, inventory_insert, inventory_remove, Item as RawItem, ItemStack as RawItemStack,
 };
 
 use crate::raw::{Ptr, PtrMut, Usize};
@@ -37,6 +37,46 @@ impl Inventory {
             Ok(Item { id: stack.item.id })
         } else {
             Err(InventoryError)
+        }
+    }
+
+    pub fn insert<T>(&self, items: T) -> Result<InventoryId, InventoryError>
+    where
+        T: IntoItemStack,
+    {
+        self.insert_inner(items.into_item_stack())
+    }
+
+    fn insert_inner(&self, items: ItemStack) -> Result<InventoryId, InventoryError> {
+        let raw_stack = RawItemStack {
+            item: RawItem { id: items.item.id },
+            quantity: items.quantity,
+        };
+
+        let mut slot_id = MaybeUninit::uninit();
+
+        let res = unsafe {
+            inventory_insert(
+                self.entity.into_raw(),
+                Ptr::from_raw(&raw_stack as *const _ as Usize),
+                PtrMut::from_raw(slot_id.as_mut_ptr() as Usize),
+            )
+        };
+
+        match res {
+            0 => {
+                let slot_id = unsafe { slot_id.assume_init() };
+                Ok(slot_id)
+            }
+            _ => Err(InventoryError),
+        }
+    }
+
+    pub fn remove(&self, slot_id: InventoryId, quantity: u64) -> Result<(), InventoryError> {
+        let res = unsafe { inventory_remove(self.entity.into_raw(), slot_id.0, quantity) };
+        match res {
+            0 => Ok(()),
+            _ => Err(InventoryError),
         }
     }
 
@@ -123,9 +163,46 @@ impl Inventory {
     }
 }
 
+#[derive(Copy, Clone, Debug)]
+pub struct ItemStack {
+    pub item: Item,
+    pub quantity: u32,
+}
+
+#[derive(Copy, Clone, Debug)]
 pub struct Item {
     pub id: RecordReference,
 }
 
 #[derive(Clone, Debug)]
 pub struct InventoryError;
+
+pub trait IntoItemStack: private::Sealed {}
+
+mod private {
+    use super::ItemStack;
+
+    pub trait Sealed {
+        fn into_item_stack(self) -> ItemStack;
+    }
+}
+
+impl IntoItemStack for ItemStack {}
+impl IntoItemStack for Item {}
+
+impl private::Sealed for ItemStack {
+    #[inline]
+    fn into_item_stack(self) -> ItemStack {
+        self
+    }
+}
+
+impl private::Sealed for Item {
+    #[inline]
+    fn into_item_stack(self) -> ItemStack {
+        ItemStack {
+            item: self,
+            quantity: 1,
+        }
+    }
+}
