@@ -2,7 +2,7 @@ mod inventory;
 
 use std::collections::VecDeque;
 
-use ahash::HashSet;
+use ahash::{HashMap, HashSet};
 use game_common::components::components::Components;
 use game_common::entity::EntityId;
 use game_common::events::{ActionEvent, Event};
@@ -49,13 +49,51 @@ pub fn tick(state: &mut ServerState) {
 }
 
 fn apply_effects(effects: Effects, view: &mut WorldViewMut<'_>) {
+    // Since the script executing uses its own temporary ID namespace
+    // for newly created IDs we must remap all IDs into "real" IDs.
+    // A temporary ID must **never** overlap with an existing ID.
+    // FIXME: We should use a linear IDs here so we can avoid
+    // the need for hasing and just use array indexing.
+    let mut entity_id_remap = HashMap::default();
+    let mut inventory_slot_id_remap = HashMap::default();
+
     for effect in effects.into_iter() {
         match effect {
+            Effect::EntitySpawn(entity) => {
+                debug_assert!(entity_id_remap.get(&entity.id).is_none());
+                debug_assert!(view.get(entity.id).is_none());
+
+                let temp_id = entity.id;
+                let real_id = view.spawn(entity);
+                entity_id_remap.insert(temp_id, real_id);
+            }
+            Effect::EntityDespawn(id) => {
+                let id = entity_id_remap.get(&id).copied().unwrap_or(id);
+                let entity = view.despawn(id);
+                debug_assert!(entity.is_some());
+            }
             Effect::EntityTranslate(id, translation) => {
+                let id = entity_id_remap.get(&id).copied().unwrap_or(id);
                 view.get_mut(id).unwrap().set_translation(translation);
             }
             Effect::EntityRotate(id, rotation) => {
+                let id = entity_id_remap.get(&id).copied().unwrap_or(id);
                 view.get_mut(id).unwrap().set_rotation(rotation);
+            }
+            Effect::InventoryInsert(id, temp_slot_id, stack) => {
+                let entity_id = entity_id_remap.get(&id).copied().unwrap_or(id);
+
+                let real_id = view.inventory_insert_without_id(entity_id, stack);
+                inventory_slot_id_remap.insert(temp_slot_id, real_id);
+            }
+            Effect::InventoryRemove(id, slot_id, quantity) => {
+                let entity_id = entity_id_remap.get(&id).copied().unwrap_or(id);
+                let slot_id = inventory_slot_id_remap
+                    .get(&slot_id)
+                    .copied()
+                    .unwrap_or(slot_id);
+
+                view.inventory_remove_items(entity_id, slot_id, quantity as u32);
             }
             _ => todo!(),
         }

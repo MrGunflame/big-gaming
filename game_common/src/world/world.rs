@@ -478,6 +478,25 @@ impl<'a> WorldViewMut<'a> {
             }));
     }
 
+    pub fn inventory_insert_without_id(
+        &mut self,
+        id: EntityId,
+        items: ItemStack,
+    ) -> InventorySlotId {
+        let item_id = items.item.id;
+
+        let inventory = self.inventories_mut().get_mut_or_insert(id);
+        let slot = inventory.insert(items).unwrap();
+
+        self.new_deltas
+            .push(EntityChange::InventoryItemAdd(InventoryItemAdd {
+                entity: id,
+                id: slot,
+                item: item_id,
+            }));
+        slot
+    }
+
     pub fn inventory_remove_items(&mut self, id: EntityId, slot: InventorySlotId, quantity: u32) {
         let Some(inventory) = self.inventories_mut().get_mut(id) else {
             return;
