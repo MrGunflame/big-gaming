@@ -749,7 +749,7 @@ impl Encode for InventoryItemUpdate {
         flags.encode(&mut buf)?;
 
         if let Some(quantity) = self.quantity {
-            quantity.encode(&mut buf)?;
+            VarInt::<u32>(quantity).encode(&mut buf)?;
         }
 
         Ok(())
@@ -771,7 +771,7 @@ impl Decode for InventoryItemUpdate {
         let hidden = flags.is_hidden();
 
         let quantity = if flags.quantity() {
-            Some(u32::decode(&mut buf)?)
+            Some(VarInt::<u32>::decode(&mut buf)?.0)
         } else {
             None
         };
