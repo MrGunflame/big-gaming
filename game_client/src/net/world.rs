@@ -561,6 +561,7 @@ pub enum Command {
     },
     SpawnHost(EntityId),
     DestroyHost(EntityId),
+    InventoryItemAdd {},
 }
 
 #[cfg(test)]

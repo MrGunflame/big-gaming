@@ -383,7 +383,10 @@ impl GameWorldState {
     }
 
     fn update_host(&mut self, id: EntityId) {
-        // TODO: Unregister previous host.
+        // Remove all registered actions from the previous host.
+        // If this is the first host this is a noop.
+        self.actions.clear();
+
         self.conn.host = id;
 
         let snapshot = self.conn.current_state.as_ref().unwrap();
@@ -403,6 +406,30 @@ impl GameWorldState {
                 record,
                 self.get_key_for_action(action.module, record),
             );
+        }
+
+        // Register all actions from equipped items.
+        if let Some(inventory) = snapshot.inventories.get(self.conn.host) {
+            for (_, stack) in inventory.iter() {
+                if !stack.item.equipped {
+                    continue;
+                }
+
+                let module = self.modules.get(stack.item.id.0.module).unwrap();
+                let record = module.records.get(stack.item.id.0.record).unwrap();
+                let item = record.body.clone().unwrap_item();
+
+                for action in item.actions {
+                    let module = self.modules.get(action.module).unwrap();
+                    let record = module.records.get(action.record).unwrap();
+
+                    self.actions.register(
+                        action.module,
+                        record,
+                        self.get_key_for_action(action.module, record),
+                    );
+                }
+            }
         }
     }
 
