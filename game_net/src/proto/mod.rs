@@ -718,6 +718,7 @@ pub struct InventoryItemUpdate {
     pub id: InventorySlotId,
     pub equipped: bool,
     pub hidden: bool,
+    pub quantity: Option<u32>,
 }
 
 impl Encode for InventoryItemUpdate {
@@ -739,7 +740,15 @@ impl Encode for InventoryItemUpdate {
             flags |= ItemUpdateFlags::HIDDEN;
         }
 
+        if self.quantity.is_some() {
+            flags |= ItemUpdateFlags::QUANTITY;
+        }
+
         flags.encode(&mut buf)?;
+
+        if let Some(quantity) = self.quantity {
+            quantity.encode(&mut buf)?;
+        }
 
         Ok(())
     }
@@ -759,11 +768,18 @@ impl Decode for InventoryItemUpdate {
         let equipped = flags.is_equipped();
         let hidden = flags.is_hidden();
 
+        let quantity = if flags.quantity() {
+            Some(u32::decode(&mut buf)?)
+        } else {
+            None
+        };
+
         Ok(Self {
             entity,
             id,
             equipped,
             hidden,
+            quantity,
         })
     }
 }
@@ -784,15 +800,25 @@ impl ItemUpdateFlags {
     /// Set if the item is hidden.
     pub const HIDDEN: Self = Self(1 << 2);
 
-    /// Set if a set of components follows.
-    pub const COMPONENTS: Self = Self(1 << 3);
+    /// Set if the quantity follows.
+    pub const QUANTITY: Self = Self(1 << 3);
 
+    /// Set if a set of components follows.
+    pub const COMPONENTS: Self = Self(1 << 4);
+
+    #[inline]
     pub const fn is_equipped(self) -> bool {
         self.0 & Self::EQUIPPED.0 != 0
     }
 
+    #[inline]
     pub const fn is_hidden(self) -> bool {
         self.0 & Self::HIDDEN.0 != 0
+    }
+
+    #[inline]
+    pub const fn quantity(self) -> bool {
+        self.0 & Self::QUANTITY.0 != 0
     }
 }
 
