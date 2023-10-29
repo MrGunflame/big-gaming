@@ -194,6 +194,9 @@ fn handle_event<I>(
                 EntityChange::InventoryDestroy(event) => {
                     entity.inventory.clear();
                 }
+                EntityChange::InventoryItemUpdate(event) => {
+                    todo!()
+                }
                 EntityChange::CreateStreamingSource { id, source } => {}
                 EntityChange::RemoveStreamingSource { id } => {}
                 // Components are not relevant here.
@@ -288,6 +291,7 @@ fn handle_event<I>(
             component_id: _,
             component: _,
         } => (),
+        EntityChange::InventoryItemUpdate(event) => todo!(),
     }
 }
 
@@ -397,6 +401,7 @@ fn create_initial_diff(view: WorldViewRef) -> Vec<EntityChange> {
                 entity: entity_id,
                 id: slot,
                 item: stack.item.id,
+                quantity: stack.quantity,
             }));
         }
     }
@@ -467,6 +472,7 @@ fn create_snapshot_diff(prev: WorldViewRef, next: WorldViewRef) -> Vec<EntityCha
                         entity: entity.id,
                         id: slot,
                         item: stack.item.id,
+                        quantity: stack.quantity,
                     }));
                 }
             }
@@ -484,6 +490,7 @@ fn create_snapshot_diff(prev: WorldViewRef, next: WorldViewRef) -> Vec<EntityCha
                         entity: entity.id,
                         id: slot,
                         item: stack.item.id,
+                        quantity: stack.quantity,
                     }));
                 }
             }
@@ -506,6 +513,7 @@ fn create_snapshot_diff(prev: WorldViewRef, next: WorldViewRef) -> Vec<EntityCha
                     entity: entity.id,
                     id: slot,
                     item: stack.item.id,
+                    quantity: stack.quantity,
                 }));
             }
         }

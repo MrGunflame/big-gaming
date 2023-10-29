@@ -4,9 +4,12 @@ use std::collections::VecDeque;
 
 use ahash::{HashMap, HashSet};
 use game_common::components::components::Components;
+use game_common::components::inventory::Inventory;
+use game_common::components::items::Item;
 use game_common::entity::EntityId;
 use game_common::events::{ActionEvent, Event};
 use game_common::net::ServerEntity;
+use game_common::units::Mass;
 use game_common::world::control_frame::ControlFrame;
 use game_common::world::snapshot::EntityChange;
 use game_common::world::source::StreamingSource;
@@ -15,7 +18,7 @@ use game_common::world::CellId;
 use game_net::message::{
     ControlMessage, DataMessage, DataMessageBody, EntityComponentAdd, EntityComponentRemove,
     EntityComponentUpdate, EntityCreate, EntityDestroy, EntityRotate, EntityTranslate,
-    InventoryItemAdd, Message, MessageId, SpawnHost,
+    InventoryItemAdd, InventoryItemRemove, Message, MessageId, SpawnHost,
 };
 use game_script::effect::{Effect, Effects};
 use game_script::Context;
@@ -23,7 +26,7 @@ use game_script::Context;
 use crate::conn::{Connection, Connections};
 use crate::net::state::{Cells, ConnectionState};
 use crate::world::player::spawn_player;
-use crate::ServerState;
+use crate::{server, ServerState};
 
 // All systems need to run sequentially.
 pub fn tick(state: &mut ServerState) {
@@ -245,6 +248,7 @@ fn flush_command_queue(srv_state: &mut ServerState) {
                     DataMessageBody::EntityComponentUpdate(_) => (),
                     DataMessageBody::SpawnHost(_) => (),
                     DataMessageBody::InventoryItemAdd(_) => (),
+                    DataMessageBody::InventoryItemRemove(_) => (),
                 }
             }
         }
@@ -426,6 +430,20 @@ where
                     });
                 }
 
+                // Sync inventory.
+                if let Some(inventory) = view.inventory(entity.id) {
+                    for (id, stack) in inventory.iter() {
+                        events.push(EntityChange::InventoryItemAdd(
+                            game_common::world::snapshot::InventoryItemAdd {
+                                entity: entity.id,
+                                id,
+                                item: stack.item.id,
+                                quantity: stack.quantity,
+                            },
+                        ));
+                    }
+                }
+
                 continue;
             }
 
@@ -448,6 +466,39 @@ where
             }
 
             update_components(entity.id, &entity.components, &known.components);
+
+            // Sync inventory
+            match (
+                view.inventory(entity.id),
+                state.known_entities.inventories.get(&entity.id),
+            ) {
+                (Some(server_inv), Some(client_inv)) => {
+                    events.extend(update_inventory(entity.id, server_inv, client_inv))
+                }
+                (Some(server_inv), None) => {
+                    for (id, stack) in server_inv.iter() {
+                        events.push(EntityChange::InventoryItemAdd(
+                            game_common::world::snapshot::InventoryItemAdd {
+                                entity: entity.id,
+                                id,
+                                item: stack.item.id,
+                                quantity: stack.quantity,
+                            },
+                        ));
+                    }
+                }
+                (None, Some(client_inv)) => {
+                    for (id, _) in client_inv.iter() {
+                        events.push(EntityChange::InventoryItemRemove(
+                            game_common::world::snapshot::InventoryItemRemove {
+                                entity: entity.id,
+                                id,
+                            },
+                        ));
+                    }
+                }
+                (None, None) => (),
+            }
         }
     }
 
@@ -502,6 +553,75 @@ fn update_components(
     events
 }
 
+fn update_inventory(
+    entity_id: EntityId,
+    server_state: &Inventory,
+    client_state: &Inventory,
+) -> Vec<EntityChange> {
+    let mut events = Vec::new();
+
+    for (id, server_stack) in server_state.iter() {
+        let Some(client_stack) = client_state.get(id) else {
+            events.push(EntityChange::InventoryItemAdd(
+                game_common::world::snapshot::InventoryItemAdd {
+                    entity: entity_id,
+                    id,
+                    item: server_stack.item.id,
+                    quantity: server_stack.quantity,
+                },
+            ));
+
+            continue;
+        };
+
+        // This should never actually happen since we don't allow modification
+        // of the item id once inserted. This is only available via removal and
+        // re-insertion.
+        if server_stack.item.id != client_stack.item.id {
+            panic!("Server-side state inventory state missmatch");
+        }
+
+        // We need to send an update if the equipped/hidden state or the stack
+        // quantity changed.
+        let mut needs_update = false;
+
+        if server_stack.item.equipped != client_stack.item.equipped
+            || server_stack.item.hidden != client_stack.item.hidden
+        {
+            needs_update = true;
+        }
+
+        let mut quantity = None;
+        if server_stack.quantity != client_stack.quantity {
+            needs_update = true;
+            quantity = Some(server_stack.quantity);
+        }
+
+        if needs_update {
+            EntityChange::InventoryItemUpdate(game_common::world::snapshot::InventoryItemUpdate {
+                entity: entity_id,
+                equipped: server_stack.item.equipped,
+                hidden: server_stack.item.hidden,
+                quantity,
+            });
+        }
+    }
+
+    for (id, _) in client_state
+        .iter()
+        .filter(|(id, _)| server_state.get(*id).is_none())
+    {
+        events.push(EntityChange::InventoryItemRemove(
+            game_common::world::snapshot::InventoryItemRemove {
+                entity: entity_id,
+                id,
+            },
+        ))
+    }
+
+    events
+}
+
 fn update_client_entities(
     state: &mut ConnectionState,
     events: Vec<EntityChange>,
@@ -524,6 +644,7 @@ fn update_client_entities(
             EntityChange::Destroy { id } => {
                 let entity_id = state.entities.remove(id).unwrap();
                 state.known_entities.remove(id);
+                state.known_entities.inventories.remove(&id);
 
                 DataMessageBody::EntityDestroy(EntityDestroy { entity: entity_id })
             }
@@ -593,6 +714,48 @@ fn update_client_entities(
                     entity: entity_id,
                     component: component_id,
                     bytes: component.bytes,
+                })
+            }
+            EntityChange::InventoryItemAdd(event) => {
+                let entity_id = state.entities.get(event.entity).unwrap();
+
+                state
+                    .known_entities
+                    .inventories
+                    .entry(event.entity)
+                    .or_default()
+                    .insert_at_slot(
+                        event.id,
+                        Item {
+                            id: event.item,
+                            mass: Mass::default(),
+                            equipped: false,
+                            hidden: false,
+                            components: Components::default(),
+                        },
+                    )
+                    .unwrap();
+
+                DataMessageBody::InventoryItemAdd(InventoryItemAdd {
+                    entity: entity_id,
+                    id: event.id,
+                    item: event.item,
+                    quantity: event.quantity,
+                })
+            }
+            EntityChange::InventoryItemRemove(event) => {
+                let entity_id = state.entities.get(event.entity).unwrap();
+
+                state
+                    .known_entities
+                    .inventories
+                    .get_mut(&event.entity)
+                    .unwrap()
+                    .remove(event.id, u32::MAX);
+
+                DataMessageBody::InventoryItemRemove(InventoryItemRemove {
+                    entity: entity_id,
+                    slot: event.id,
                 })
             }
             _ => todo!(),

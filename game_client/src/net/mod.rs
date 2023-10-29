@@ -145,6 +145,14 @@ fn flush_command_queue<I>(conn: &mut ServerConnection<I>) {
                     None => (),
                 }
             }
+            DataMessageBody::InventoryItemRemove(msg) => {
+                match conn.server_entities.get(msg.entity) {
+                    Some(id) => {
+                        view.inventory_remove_items(id, msg.slot, u32::MAX);
+                    }
+                    None => (),
+                }
+            }
             DataMessageBody::EntityComponentAdd(msg) => {
                 match conn.server_entities.get(msg.entity) {
                     Some(id) => {

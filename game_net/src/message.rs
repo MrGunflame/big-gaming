@@ -47,6 +47,7 @@ pub enum DataMessageBody {
     EntityComponentUpdate(EntityComponentUpdate),
     SpawnHost(SpawnHost),
     InventoryItemAdd(InventoryItemAdd),
+    InventoryItemRemove(InventoryItemRemove),
 }
 
 #[derive(Clone, Debug)]
@@ -113,6 +114,12 @@ pub struct InventoryItemAdd {
     pub quantity: u32,
 }
 
+#[derive(Copy, Clone, Debug)]
+pub struct InventoryItemRemove {
+    pub entity: ServerEntity,
+    pub slot: InventorySlotId,
+}
+
 impl DataMessageBody {
     pub(crate) fn into_frame(self) -> Frame {
         match self {
@@ -170,6 +177,12 @@ impl DataMessageBody {
                     quantity: msg.quantity,
                 })
             }
+            DataMessageBody::InventoryItemRemove(msg) => {
+                Frame::InventoryItemRemove(proto::InventoryItemRemove {
+                    entity: msg.entity,
+                    id: msg.slot,
+                })
+            }
         }
     }
 
@@ -222,6 +235,10 @@ impl DataMessageBody {
                 id: frame.id,
                 item: frame.item,
                 quantity: frame.quantity,
+            }),
+            Frame::InventoryItemRemove(frame) => Self::InventoryItemRemove(InventoryItemRemove {
+                entity: frame.entity,
+                slot: frame.id,
             }),
             _ => todo!(),
         }

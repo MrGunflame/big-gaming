@@ -466,6 +466,7 @@ impl<'a> WorldViewMut<'a> {
         items: ItemStack,
     ) {
         let item_id = items.item.id;
+        let quantity = items.quantity;
 
         let inventory = self.inventories_mut().get_mut_or_insert(id);
         inventory.insert_at_slot(slot, items).unwrap();
@@ -475,6 +476,7 @@ impl<'a> WorldViewMut<'a> {
                 entity: id,
                 id: slot,
                 item: item_id,
+                quantity,
             }));
     }
 
@@ -484,6 +486,7 @@ impl<'a> WorldViewMut<'a> {
         items: ItemStack,
     ) -> InventorySlotId {
         let item_id = items.item.id;
+        let quantity = items.quantity;
 
         let inventory = self.inventories_mut().get_mut_or_insert(id);
         let slot = inventory.insert(items).unwrap();
@@ -493,6 +496,7 @@ impl<'a> WorldViewMut<'a> {
                 entity: id,
                 id: slot,
                 item: item_id,
+                quantity,
             }));
         slot
     }
@@ -852,6 +856,7 @@ impl Snapshot {
                     tracing::warn!("no such entity: {:?}", entity);
                 }
             }
+            EntityChange::InventoryItemUpdate(event) => todo!(),
         }
     }
 }
@@ -944,6 +949,8 @@ pub trait AsView {
     fn cell(&self, id: CellId) -> CellViewRef<'_>;
 
     fn iter(&self) -> EntitiesIter<'_>;
+
+    fn inventory(&self, id: EntityId) -> Option<&Inventory>;
 }
 
 impl<'a> AsView for WorldViewRef<'a> {
@@ -967,6 +974,10 @@ impl<'a> AsView for WorldViewRef<'a> {
             inner: self.snapshot.entities.entities.values(),
         }
     }
+
+    fn inventory(&self, id: EntityId) -> Option<&Inventory> {
+        self.inventories().get(id)
+    }
 }
 
 impl<'a> AsView for &'a WorldViewMut<'a> {
@@ -989,6 +1000,10 @@ impl<'a> AsView for &'a WorldViewMut<'a> {
         EntitiesIter {
             inner: self.snapshot_ref().entities.entities.values(),
         }
+    }
+
+    fn inventory(&self, id: EntityId) -> Option<&Inventory> {
+        self.inventories().get(id)
     }
 }
 
