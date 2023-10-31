@@ -30,6 +30,42 @@ pub fn inventory_get(
     Ok(0)
 }
 
+pub fn inventory_len(mut caller: Caller<'_, State<'_>>, entity_id: u64, out: u32) -> Result<u32> {
+    let _span = trace_span!("inventory_len").entered();
+
+    let entity_id = EntityId::from_raw(entity_id);
+
+    let Some(inventory) = caller.data_mut().inventory(entity_id) else {
+        return Ok(1);
+    };
+
+    caller.write(out, &(inventory.len() as u32))?;
+    Ok(0)
+}
+
+pub fn inventory_list(
+    mut caller: Caller<'_, State<'_>>,
+    entity_id: u64,
+    out: u32,
+    len: u32,
+) -> Result<u32> {
+    let _span = trace_span!("inventory_list").entered();
+
+    let entity_id = EntityId::from_raw(entity_id);
+
+    let Some(inventory) = caller.data_mut().inventory(entity_id) else {
+        return Ok(1);
+    };
+
+    // Write at most len elements.
+    for ((id, _), index) in inventory.iter().zip(0..len) {
+        let ptr = out + (index * std::mem::size_of::<ItemStack>() as u32);
+        caller.write(ptr, &id.into_raw())?;
+    }
+
+    Ok(0)
+}
+
 pub fn inventory_insert(
     mut caller: Caller<'_, State<'_>>,
     entity_id: u64,

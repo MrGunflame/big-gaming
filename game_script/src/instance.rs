@@ -301,6 +301,11 @@ impl<'a> State<'a> {
         inventory
     }
 
+    pub fn inventory(&mut self, entity: EntityId) -> Option<Inventory> {
+        self.dependencies.push(Dependency::Inventory(entity));
+        self.reconstruct_inventory(entity)
+    }
+
     pub fn inventory_get(&mut self, entity: EntityId, slot: InventorySlotId) -> Option<ItemStack> {
         // We track the slot even if it does not exist.
         self.dependencies

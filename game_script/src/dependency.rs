@@ -36,6 +36,8 @@ impl Dependencies {
 pub enum Dependency {
     Entity(EntityId),
     EntityComponent(EntityId, RecordReference),
+    /// Inventory metadata, i.e. len/list of keys.
+    Inventory(EntityId),
     InventorySlot(EntityId, InventorySlotId),
     InventorySlotComponent(EntityId, InventorySlotId, RecordReference),
 }

@@ -1,3 +1,4 @@
+use core::iter::FusedIterator;
 use core::mem::MaybeUninit;
 use core::ops::Deref;
 
@@ -8,8 +9,8 @@ use crate::component::Component;
 use crate::entity::EntityId;
 use crate::raw::inventory::{
     inventory_clear, inventory_component_get, inventory_component_insert, inventory_component_len,
-    inventory_equip, inventory_get, inventory_insert, inventory_remove, inventory_unequip,
-    Item as RawItem, ItemStack as RawItemStack,
+    inventory_equip, inventory_get, inventory_insert, inventory_len, inventory_list,
+    inventory_remove, inventory_unequip, Item as RawItem, ItemStack as RawItemStack,
 };
 
 use crate::raw::{Ptr, PtrMut, Usize};
@@ -46,6 +47,22 @@ impl Inventory {
             })
         } else {
             Err(InventoryError)
+        }
+    }
+
+    /// Returns the number of [`ItemStack`]s contained in this `Inventory`.
+    pub fn len(&self) -> Result<u32, InventoryError> {
+        let mut len = MaybeUninit::uninit();
+
+        let res = unsafe {
+            inventory_len(
+                self.entity.into_raw(),
+                PtrMut::from_raw(len.as_mut_ptr() as Usize),
+            )
+        };
+        match res {
+            0 => Ok(unsafe { len.assume_init() }),
+            _ => Err(InventoryError),
         }
     }
 
@@ -170,6 +187,28 @@ impl Inventory {
             Err(InventoryError)
         }
     }
+
+    pub fn keys(&self) -> Result<Keys, InventoryError> {
+        let len = self.len()?;
+        let mut keys = Vec::with_capacity(len.try_into().unwrap());
+
+        let res = unsafe {
+            inventory_list(
+                self.entity.into_raw(),
+                PtrMut::from_raw(keys.as_mut_ptr() as Usize),
+                len,
+            )
+        };
+        match res {
+            0 => {
+                unsafe { keys.set_len(len.try_into().unwrap()) };
+                Ok(Keys {
+                    inner: keys.into_iter(),
+                })
+            }
+            _ => Err(InventoryError),
+        }
+    }
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -253,3 +292,32 @@ impl private::Sealed for Item {
         }
     }
 }
+
+/// An `Iterator` over all the [`InventoryId`]s in an [`Inventory`].
+#[derive(Clone, Debug)]
+pub struct Keys {
+    inner: alloc::vec::IntoIter<InventoryId>,
+}
+
+impl Iterator for Keys {
+    type Item = InventoryId;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.next()
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.inner.size_hint()
+    }
+}
+
+impl ExactSizeIterator for Keys {
+    #[inline]
+    fn len(&self) -> usize {
+        self.inner.len()
+    }
+}
+
+impl FusedIterator for Keys {}
