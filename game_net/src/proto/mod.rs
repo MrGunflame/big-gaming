@@ -718,8 +718,9 @@ pub struct InventoryItemRemove {
 pub struct InventoryItemUpdate {
     pub entity: ServerEntity,
     pub id: InventorySlotId,
-    pub equipped: Option<bool>,
-    pub hidden: Option<bool>,
+    pub equipped: bool,
+    pub hidden: bool,
+    pub quantity: Option<u32>,
 }
 
 impl Encode for InventoryItemUpdate {
@@ -732,28 +733,24 @@ impl Encode for InventoryItemUpdate {
         self.entity.encode(&mut buf)?;
         self.id.encode(&mut buf)?;
 
-        let mut flags = ItemUpdateFlags(0);
-        if self.equipped.is_some() {
+        let mut flags = ItemUpdateFlags::new();
+        if self.equipped {
             flags |= ItemUpdateFlags::EQUIPPED;
         }
-        if self.hidden.is_some() {
+
+        if self.hidden {
             flags |= ItemUpdateFlags::HIDDEN;
         }
 
-        // Bits 0, 1, 2, 3 indicate what serialized data is following the frame.
-        // If EQUIPPED (0) is set, bit 6 contains the bool value.
-        // If HIDDEN (1) is set, bit 7 contains the bool value.
-        let mut bits = flags.0;
-
-        if let Some(equipped) = self.equipped {
-            bits |= 1 << 6;
+        if self.quantity.is_some() {
+            flags |= ItemUpdateFlags::QUANTITY;
         }
 
-        if let Some(hidden) = self.hidden {
-            bits |= 1 << 7;
-        }
+        flags.encode(&mut buf)?;
 
-        bits.encode(&mut buf)?;
+        if let Some(quantity) = self.quantity {
+            VarInt::<u32>(quantity).encode(&mut buf)?;
+        }
 
         Ok(())
     }
@@ -768,36 +765,63 @@ impl Decode for InventoryItemUpdate {
     {
         let entity = ServerEntity::decode(&mut buf)?;
         let id = InventorySlotId::decode(&mut buf)?;
-
         let flags = ItemUpdateFlags::decode(&mut buf)?;
 
-        let mut equipped = None;
-        if flags & ItemUpdateFlags::EQUIPPED != ItemUpdateFlags(0) {
-            equipped = Some(flags.0 & (1 << 6) == 1 << 6);
-        }
+        let equipped = flags.is_equipped();
+        let hidden = flags.is_hidden();
 
-        let mut hidden = None;
-        if flags & ItemUpdateFlags::HIDDEN != ItemUpdateFlags(0) {
-            hidden = Some(flags.0 & (1 << 7) == 1 << 7);
-        }
+        let quantity = if flags.quantity() {
+            Some(VarInt::<u32>::decode(&mut buf)?.0)
+        } else {
+            None
+        };
 
         Ok(Self {
             entity,
             id,
             equipped,
             hidden,
+            quantity,
         })
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Hash)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Hash)]
 #[repr(transparent)]
 pub struct ItemUpdateFlags(u8);
 
 impl ItemUpdateFlags {
+    #[inline]
+    pub const fn new() -> Self {
+        Self(0)
+    }
+
+    /// Set if the item is equipped.
     pub const EQUIPPED: Self = Self(1 << 1);
+
+    /// Set if the item is hidden.
     pub const HIDDEN: Self = Self(1 << 2);
-    pub const COMPONENTS: Self = Self(1 << 3);
+
+    /// Set if the quantity follows.
+    pub const QUANTITY: Self = Self(1 << 3);
+
+    /// Set if a set of components follows.
+    pub const COMPONENTS: Self = Self(1 << 4);
+
+    #[inline]
+    pub const fn is_equipped(self) -> bool {
+        self.0 & Self::EQUIPPED.0 != 0
+    }
+
+    #[inline]
+    pub const fn is_hidden(self) -> bool {
+        self.0 & Self::HIDDEN.0 != 0
+    }
+
+    #[inline]
+    pub const fn quantity(self) -> bool {
+        self.0 & Self::QUANTITY.0 != 0
+    }
 }
 
 impl Encode for ItemUpdateFlags {

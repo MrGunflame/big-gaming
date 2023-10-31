@@ -5,6 +5,12 @@ use super::{Ptr, PtrMut, Usize};
 use crate::record::RecordReference;
 
 #[guest_only]
+pub fn inventory_list(entity_id: u64, out: PtrMut<u64>, len: Usize) -> u32;
+
+#[guest_only]
+pub fn inventory_len(entity_id: u64, out: PtrMut<u32>) -> u32;
+
+#[guest_only]
 pub fn inventory_get(entity_id: u64, slot_id: u64, out: PtrMut<ItemStack>) -> u32;
 
 #[guest_only]

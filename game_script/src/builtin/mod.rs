@@ -52,6 +52,8 @@ pub fn register_host_fns(store: &mut Linker<State>) {
         inventory_equip,
         inventory_unequip,
         inventory_clear,
+        inventory_len,
+        inventory_list,
         physics_cast_ray,
     }
 }

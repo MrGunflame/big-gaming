@@ -206,13 +206,14 @@ fn create_record(
                 let value = item.value.get_untracked();
                 let mass = item.mass.get_untracked();
                 let scene = item.scene.get_untracked();
+                let icon = item.icon.get_untracked();
 
                 RecordBody::Item(ItemRecord {
                     mass,
                     value,
                     scene: Uri::from(PathBuf::from(scene)),
-                    components: Default::default(),
                     actions: Default::default(),
+                    icon: Uri::from(PathBuf::from(icon)),
                 })
             }
             RecordBodyFields::Action => RecordBody::Action(ActionRecord {
@@ -278,6 +279,7 @@ struct ItemFields {
     mass: ReadSignal<Mass>,
     value: ReadSignal<u64>,
     scene: ReadSignal<String>,
+    icon: ReadSignal<String>,
 }
 
 fn render_item(cx: &Scope, item: Option<ItemRecord>) -> ItemFields {
@@ -302,6 +304,15 @@ fn render_item(cx: &Scope, item: Option<ItemRecord>) -> ItemFields {
     let (scene, set_scene) = {
         let value = match &item {
             Some(item) => item.scene.as_ref().to_string_lossy().to_string(),
+            None => String::new(),
+        };
+
+        cx.create_signal(value)
+    };
+
+    let (icon, set_icon) = {
+        let value = match item {
+            Some(item) => item.icon.as_ref().to_string_lossy().to_string(),
             None => String::new(),
         };
 
@@ -345,11 +356,24 @@ fn render_item(cx: &Scope, item: Option<ItemRecord>) -> ItemFields {
     name_col.append(Text::new().text("Model".to_owned()));
     val_col.append(
         ParseInput::new(scene.get_untracked())
-            .style(style)
+            .style(style.clone())
             .on_change(move |val| set_scene.set(val)),
     );
 
-    ItemFields { mass, value, scene }
+    // Icon
+    name_col.append(Text::new().text("Icon".to_owned()));
+    val_col.append(
+        ParseInput::new(icon.get_untracked())
+            .style(style)
+            .on_change(move |val| set_icon.set(val)),
+    );
+
+    ItemFields {
+        mass,
+        value,
+        scene,
+        icon,
+    }
 }
 
 struct ObjectFields {

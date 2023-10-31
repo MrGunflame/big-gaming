@@ -30,6 +30,42 @@ pub fn inventory_get(
     Ok(0)
 }
 
+pub fn inventory_len(mut caller: Caller<'_, State<'_>>, entity_id: u64, out: u32) -> Result<u32> {
+    let _span = trace_span!("inventory_len").entered();
+
+    let entity_id = EntityId::from_raw(entity_id);
+
+    let Some(inventory) = caller.data_mut().inventory(entity_id) else {
+        return Ok(1);
+    };
+
+    caller.write(out, &(inventory.len() as u32))?;
+    Ok(0)
+}
+
+pub fn inventory_list(
+    mut caller: Caller<'_, State<'_>>,
+    entity_id: u64,
+    out: u32,
+    len: u32,
+) -> Result<u32> {
+    let _span = trace_span!("inventory_list").entered();
+
+    let entity_id = EntityId::from_raw(entity_id);
+
+    let Some(inventory) = caller.data_mut().inventory(entity_id) else {
+        return Ok(1);
+    };
+
+    // Write at most len elements.
+    for ((id, _), index) in inventory.iter().zip(0..len) {
+        let ptr = out + (index * std::mem::size_of::<ItemStack>() as u32);
+        caller.write(ptr, &id.into_raw())?;
+    }
+
+    Ok(0)
+}
+
 pub fn inventory_insert(
     mut caller: Caller<'_, State<'_>>,
     entity_id: u64,
@@ -187,43 +223,36 @@ pub fn inventory_equip(
     entity_id: u64,
     slot_id: u64,
 ) -> Result<u32> {
-    // let entity_id = EntityId::from_raw(entity_id);
-    // let id = InventorySlotId::from_raw(slot_id);
+    let entity_id = EntityId::from_raw(entity_id);
+    let slot_id = InventorySlotId::from_raw(slot_id);
 
-    // todo!();
-    // let inventories = caller.data_mut().world.inventories_mut();
-    // let Some(inventory) = inventories.get_mut(entity_id) else {
-    //     return Ok(1);
-    // };
+    if !caller
+        .data_mut()
+        .inventory_set_equipped(entity_id, slot_id, true)
+    {
+        return Ok(1);
+    }
 
-    // let Some(stack) = inventory.get_mut(id) else {
-    //     return Ok(1);
-    // };
-
-    // // ItemMut drop does the rest.
-    // stack.item.equipped = true;
     Ok(0)
 }
 
+// FIXME: It probably does make more sense to merge this into `inventory_equip` with
+// a bool param.
 pub fn inventory_unequip(
     mut caller: Caller<'_, State<'_>>,
     entity_id: u64,
     slot_id: u64,
 ) -> Result<u32> {
-    // let entity_id = EntityId::from_raw(entity_id);
-    // let id = InventorySlotId::from_raw(slot_id);
+    let entity_id = EntityId::from_raw(entity_id);
+    let slot_id = InventorySlotId::from_raw(slot_id);
 
-    // let inventories = caller.data_mut().world.inventories_mut();
-    // let Some(inventory) = inventories.get_mut(entity_id) else {
-    //     return Ok(1);
-    // };
+    if !caller
+        .data_mut()
+        .inventory_set_equipped(entity_id, slot_id, false)
+    {
+        return Ok(1);
+    }
 
-    // let Some(stack) = inventory.get_mut(id) else {
-    //     return Ok(1);
-    // };
-
-    // // ItemMut drop does the rest.
-    // stack.item.equipped = false;
     Ok(0)
 }
 

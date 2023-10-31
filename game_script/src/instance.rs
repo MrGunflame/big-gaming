@@ -301,6 +301,11 @@ impl<'a> State<'a> {
         inventory
     }
 
+    pub fn inventory(&mut self, entity: EntityId) -> Option<Inventory> {
+        self.dependencies.push(Dependency::Inventory(entity));
+        self.reconstruct_inventory(entity)
+    }
+
     pub fn inventory_get(&mut self, entity: EntityId, slot: InventorySlotId) -> Option<ItemStack> {
         // We track the slot even if it does not exist.
         self.dependencies
@@ -399,6 +404,31 @@ impl<'a> State<'a> {
             .push(Effect::InventoryComponentRemove(entity, slot, component_id));
 
         true
+    }
+
+    pub fn inventory_set_equipped(
+        &mut self,
+        entity: EntityId,
+        slot: InventorySlotId,
+        equipped: bool,
+    ) -> bool {
+        let Some(inventory) = self.world.inventory(entity) else {
+            return false;
+        };
+
+        let Some(stack) = inventory.get(slot) else {
+            return false;
+        };
+
+        if stack.item.equipped == equipped {
+            // Item is already in desired state, don't update
+            // anything.
+            false
+        } else {
+            self.effects
+                .push(Effect::InventoryItemUpdateEquip(entity, slot, equipped));
+            true
+        }
     }
 
     /// Allocate a temporary [`EntityId`].

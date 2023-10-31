@@ -109,6 +109,11 @@ impl Hotkeys {
 
     /// Clear all hotkeys from the previous frame.
     pub fn reset(&mut self) {
+        self.hotkeys.reset();
+    }
+
+    /// Removes all registered hotkeys.
+    pub fn clear(&mut self) {
         self.hotkeys.clear();
     }
 
@@ -204,10 +209,16 @@ impl HotkeyMap {
     }
 
     /// Clears the inputs from the last tick.
-    fn clear(&mut self) {
+    fn reset(&mut self) {
         for (_, state) in self.hotkeys.iter_mut() {
-            state.clear();
+            state.reset();
         }
+    }
+
+    fn clear(&mut self) {
+        self.hotkeys.clear();
+        self.ids.clear();
+        self.keys.clear();
     }
 
     /// Signals that `key` was *just pressed*.
@@ -288,7 +299,7 @@ impl HotkeyState {
         None
     }
 
-    fn clear(&mut self) {
+    fn reset(&mut self) {
         self.just_pressed = false;
         self.just_released = false;
     }
@@ -660,7 +671,7 @@ mod tests {
         let hotkey = hotkeys.states().nth(0).unwrap();
         assert_eq!(hotkey.get(), Some(TriggerKind::JUST_PRESSED));
 
-        hotkeys.clear();
+        hotkeys.reset();
         let hotkey = hotkeys.states().nth(0).unwrap();
         assert!(hotkey.get().is_none());
 
@@ -668,7 +679,7 @@ mod tests {
         let hotkey = hotkeys.states().nth(0).unwrap();
         assert!(hotkey.get().is_none());
 
-        hotkeys.clear();
+        hotkeys.reset();
         let hotkey = hotkeys.states().nth(0).unwrap();
         assert!(hotkey.get().is_none());
 
@@ -694,7 +705,7 @@ mod tests {
         let hotkey = hotkeys.states().nth(0).unwrap();
         assert_eq!(hotkey.get(), Some(TriggerKind::JUST_PRESSED));
 
-        hotkeys.clear();
+        hotkeys.reset();
         let hotkey = hotkeys.states().nth(0).unwrap();
         assert_eq!(hotkey.get(), None);
 
@@ -702,7 +713,7 @@ mod tests {
         let hotkey = hotkeys.states().nth(0).unwrap();
         assert_eq!(hotkey.get(), Some(TriggerKind::JUST_RELEASED));
 
-        hotkeys.clear();
+        hotkeys.reset();
         let hotkey = hotkeys.states().nth(0).unwrap();
         assert_eq!(hotkey.get(), None);
 

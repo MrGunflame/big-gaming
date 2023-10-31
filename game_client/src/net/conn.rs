@@ -3,6 +3,7 @@ use std::net::ToSocketAddrs;
 use std::sync::Arc;
 use std::time::Duration;
 
+use ahash::HashMap;
 use game_common::entity::EntityId;
 use game_common::events::EventQueue;
 use game_common::world::control_frame::ControlFrame;
@@ -57,6 +58,9 @@ pub struct ServerConnection<I> {
     pub(crate) event_queue: EventQueue,
     next_message_id: u32,
     pub(crate) modules: Modules,
+    // Flag to indicate that the inventory actions need to be rebuilt.
+    // FIXME: Replace with a more fine-grained update method.
+    pub(crate) inventory_update: bool,
 }
 
 impl<I> ServerConnection<I> {
@@ -87,6 +91,7 @@ impl<I> ServerConnection<I> {
             event_queue: EventQueue::new(),
             next_message_id: 0,
             modules: Modules::new(),
+            inventory_update: false,
         }
     }
 
@@ -203,6 +208,13 @@ impl<I> ServerConnection<I> {
             events: &mut self.event_queue,
         });
 
+        // Since the script executing uses its own temporary ID namespace
+        // for newly created IDs we must remap all IDs into "real" IDs.
+        // A temporary ID must **never** overlap with an existing ID.
+        // FIXME: We should use a linear IDs here so we can avoid
+        // the need for hasing and just use array indexing.
+        let mut inventory_slot_id_remap = HashMap::default();
+
         for effect in effects.into_iter() {
             match effect {
                 Effect::EntitySpawn(entity) => {
@@ -242,6 +254,52 @@ impl<I> ServerConnection<I> {
                         .unwrap()
                         .transform
                         .rotation = rotation;
+                }
+                Effect::InventoryInsert(id, temp_slot_id, stack) => {
+                    let inventory = self
+                        .current_state
+                        .as_mut()
+                        .unwrap()
+                        .inventories
+                        .get_mut_or_insert(id);
+
+                    let real_slot_id = inventory.insert(stack).unwrap();
+
+                    inventory_slot_id_remap.insert(temp_slot_id, real_slot_id);
+                    self.inventory_update = true;
+                }
+                Effect::InventoryRemove(id, slot_id, quantity) => {
+                    let slot_id = inventory_slot_id_remap
+                        .get(&slot_id)
+                        .copied()
+                        .unwrap_or(slot_id);
+
+                    let inventory = self
+                        .current_state
+                        .as_mut()
+                        .unwrap()
+                        .inventories
+                        .get_mut(id)
+                        .unwrap();
+                    inventory.remove(slot_id, quantity as u32);
+                    self.inventory_update = true;
+                }
+                Effect::InventoryItemUpdateEquip(id, slot_id, equipped) => {
+                    let slot_id = inventory_slot_id_remap
+                        .get(&slot_id)
+                        .copied()
+                        .unwrap_or(slot_id);
+
+                    let inventory = self
+                        .current_state
+                        .as_mut()
+                        .unwrap()
+                        .inventories
+                        .get_mut(id)
+                        .unwrap();
+
+                    inventory.get_mut(slot_id).unwrap().item.equipped = equipped;
+                    self.inventory_update = true;
                 }
                 _ => todo!(),
             }

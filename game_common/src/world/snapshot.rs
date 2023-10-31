@@ -73,6 +73,7 @@ pub enum EntityChange {
     InventoryItemAdd(InventoryItemAdd),
     InventoryItemRemove(InventoryItemRemove),
     InventoryDestroy(InventoryDestroy),
+    InventoryItemUpdate(InventoryItemUpdate),
     CreateStreamingSource {
         id: EntityId,
         source: StreamingSource,
@@ -124,6 +125,7 @@ impl EntityChange {
                 component_id: _,
                 component: _,
             } => *entity,
+            Self::InventoryItemUpdate(event) => event.entity,
         }
     }
 }
@@ -133,6 +135,7 @@ pub struct InventoryItemAdd {
     pub entity: EntityId,
     pub id: InventorySlotId,
     pub item: ItemId,
+    pub quantity: u32,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -144,4 +147,13 @@ pub struct InventoryItemRemove {
 #[derive(Copy, Clone, Debug)]
 pub struct InventoryDestroy {
     pub entity: EntityId,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct InventoryItemUpdate {
+    pub entity: EntityId,
+    pub slot_id: InventorySlotId,
+    pub equipped: bool,
+    pub hidden: bool,
+    pub quantity: Option<u32>,
 }

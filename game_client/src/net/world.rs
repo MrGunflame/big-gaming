@@ -194,6 +194,9 @@ fn handle_event<I>(
                 EntityChange::InventoryDestroy(event) => {
                     entity.inventory.clear();
                 }
+                EntityChange::InventoryItemUpdate(event) => {
+                    todo!()
+                }
                 EntityChange::CreateStreamingSource { id, source } => {}
                 EntityChange::RemoveStreamingSource { id } => {}
                 // Components are not relevant here.
@@ -288,6 +291,7 @@ fn handle_event<I>(
             component_id: _,
             component: _,
         } => (),
+        EntityChange::InventoryItemUpdate(event) => todo!(),
     }
 }
 
@@ -351,8 +355,13 @@ fn add_inventory_item(inventory: &mut Inventory, modules: &Modules, event: Inven
     let item = record.clone().body.unwrap_item();
 
     let mut components = Components::new();
-    for comp in item.components {
-        components.insert(comp.record, components::Component { bytes: comp.value });
+    for comp in &record.components {
+        components.insert(
+            comp.id,
+            components::Component {
+                bytes: comp.bytes.clone(),
+            },
+        );
     }
 
     let mut actions = Actions::new();
@@ -392,6 +401,7 @@ fn create_initial_diff(view: WorldViewRef) -> Vec<EntityChange> {
                 entity: entity_id,
                 id: slot,
                 item: stack.item.id,
+                quantity: stack.quantity,
             }));
         }
     }
@@ -462,6 +472,7 @@ fn create_snapshot_diff(prev: WorldViewRef, next: WorldViewRef) -> Vec<EntityCha
                         entity: entity.id,
                         id: slot,
                         item: stack.item.id,
+                        quantity: stack.quantity,
                     }));
                 }
             }
@@ -479,6 +490,7 @@ fn create_snapshot_diff(prev: WorldViewRef, next: WorldViewRef) -> Vec<EntityCha
                         entity: entity.id,
                         id: slot,
                         item: stack.item.id,
+                        quantity: stack.quantity,
                     }));
                 }
             }
@@ -501,6 +513,7 @@ fn create_snapshot_diff(prev: WorldViewRef, next: WorldViewRef) -> Vec<EntityCha
                     entity: entity.id,
                     id: slot,
                     item: stack.item.id,
+                    quantity: stack.quantity,
                 }));
             }
         }
@@ -556,6 +569,7 @@ pub enum Command {
     },
     SpawnHost(EntityId),
     DestroyHost(EntityId),
+    InventoryItemAdd {},
 }
 
 #[cfg(test)]

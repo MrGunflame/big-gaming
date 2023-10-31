@@ -1,4 +1,5 @@
 use ahash::HashMap;
+use game_common::components::inventory::Inventory;
 use game_common::entity::EntityId;
 use game_common::world::cell::square;
 use game_common::world::control_frame::ControlFrame;
@@ -80,12 +81,14 @@ impl Cells {
 #[derive(Clone, Debug, Default)]
 pub struct KnownEntities {
     pub entities: HashMap<EntityId, Entity>,
+    pub inventories: HashMap<EntityId, Inventory>,
 }
 
 impl KnownEntities {
     pub fn new() -> Self {
         Self {
             entities: HashMap::default(),
+            inventories: HashMap::default(),
         }
     }
 

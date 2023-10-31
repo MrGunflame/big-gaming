@@ -38,4 +38,5 @@ pub enum Effect {
     InventoryClear(EntityId),
     InventoryComponentInsert(EntityId, InventorySlotId, RecordReference, Component),
     InventoryComponentRemove(EntityId, InventorySlotId, RecordReference),
+    InventoryItemUpdateEquip(EntityId, InventorySlotId, bool),
 }

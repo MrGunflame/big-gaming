@@ -236,48 +236,48 @@ pub enum ValidationErrorKind {
 
 fn validate_module(modules: &Modules, module: &DataBuffer) -> Result<(), ValidationError> {
     for record in &module.records {
+        for component in &record.components {
+            let module_id = component.id.module;
+
+            if module_id != module.header.module.id
+                && !module
+                    .header
+                    .module
+                    .dependencies
+                    .iter()
+                    .any(|dep| dep.id == component.id.module)
+            {
+                return Err(ValidationError {
+                    record: record.id,
+                    kind: ValidationErrorKind::UnknownDependency(module_id),
+                });
+            }
+
+            match fetch_record(modules, module, component.id) {
+                Ok(rec) => {
+                    if !rec.body.kind().is_component() {
+                        return Err(ValidationError {
+                            record: record.id,
+                            kind: ValidationErrorKind::InvalidKind {
+                                found: rec.body.kind(),
+                                expected: RecordKind::Component,
+                            },
+                        });
+                    }
+                }
+                Err(err) => {
+                    return Err(ValidationError {
+                        record: record.id,
+                        kind: err,
+                    });
+                }
+            }
+        }
+
         match &record.body {
             RecordBody::Action(_) => {}
             RecordBody::Component(_) => {}
-            RecordBody::Item(item) => {
-                for component in &item.components {
-                    let module_id = component.record.module;
-
-                    if module_id != module.header.module.id
-                        && !module
-                            .header
-                            .module
-                            .dependencies
-                            .iter()
-                            .any(|dep| dep.id == component.record.module)
-                    {
-                        return Err(ValidationError {
-                            record: record.id,
-                            kind: ValidationErrorKind::UnknownDependency(module_id),
-                        });
-                    }
-
-                    match fetch_record(modules, module, component.record) {
-                        Ok(rec) => {
-                            if !rec.body.kind().is_component() {
-                                return Err(ValidationError {
-                                    record: record.id,
-                                    kind: ValidationErrorKind::InvalidKind {
-                                        found: rec.body.kind(),
-                                        expected: RecordKind::Component,
-                                    },
-                                });
-                            }
-                        }
-                        Err(err) => {
-                            return Err(ValidationError {
-                                record: record.id,
-                                kind: err,
-                            });
-                        }
-                    }
-                }
-            }
+            RecordBody::Item(item) => {}
             RecordBody::Object(object) => {}
             RecordBody::Race(race) => {}
         }

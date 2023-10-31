@@ -124,11 +124,11 @@ fn build_entity(modules: &Modules, cell: CellId, builder: EntityBuilder) -> Opti
 
     let body = match &record.body {
         RecordBody::Item(item) => {
-            for component in &item.components {
+            for component in &record.components {
                 components.insert(
-                    component.record,
+                    component.id,
                     Component {
-                        bytes: component.value.clone(),
+                        bytes: component.bytes.clone(),
                     },
                 );
             }

@@ -24,16 +24,16 @@ pub fn spawn_player(modules: &Modules, view: &mut WorldViewMut<'_>) -> SpawnPlay
     .spawn(modules, view)
     .unwrap();
 
-    view.inventories_mut()
-        .get_mut_or_insert(id)
-        .insert(Item {
-            id: ItemId("ec7d043851c74c41a35de44befde13b5:06".parse().unwrap()),
-            mass: Mass::default(),
-            components: Components::default(),
-            equipped: false,
-            hidden: false,
-        })
-        .unwrap();
+    // view.inventories_mut()
+    //     .get_mut_or_insert(id)
+    //     .insert(Item {
+    //         id: ItemId("ec7d043851c74c41a35de44befde13b5:06".parse().unwrap()),
+    //         mass: Mass::default(),
+    //         components: Components::default(),
+    //         equipped: false,
+    //         hidden: false,
+    //     })
+    //     .unwrap();
 
     SpawnPlayer { id, transform }
 }

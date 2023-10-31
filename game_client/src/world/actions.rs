@@ -81,6 +81,12 @@ impl ActiveActions {
         }
     }
 
+    pub fn clear(&mut self) {
+        self.inputs.clear();
+        self.hotkeys.clear();
+        self.actions.clear();
+    }
+
     pub fn take_events(&mut self) -> Vec<ActionId> {
         let mut events = Vec::new();
         self.hotkeys.send_events(&mut events);

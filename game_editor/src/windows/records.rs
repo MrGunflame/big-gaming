@@ -143,7 +143,7 @@ impl Widget for Records {
                     RecordBody::Item(item) => {
                         row.push(format!("{}g", item.mass.to_grams()));
                         row.push(item.value.to_string());
-                        row.push(item.components.len().to_string());
+                        row.push(record.components.len().to_string());
                         row.push(item.actions.len().to_string());
                     }
                     RecordBody::Action(action) => {}

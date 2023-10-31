@@ -1,4 +1,6 @@
+use core::iter::FusedIterator;
 use core::mem::MaybeUninit;
+use core::ops::Deref;
 
 use alloc::vec::Vec;
 use bytemuck::{Pod, Zeroable};
@@ -7,7 +9,8 @@ use crate::component::Component;
 use crate::entity::EntityId;
 use crate::raw::inventory::{
     inventory_clear, inventory_component_get, inventory_component_insert, inventory_component_len,
-    inventory_get, ItemStack as RawItemStack,
+    inventory_equip, inventory_get, inventory_insert, inventory_len, inventory_list,
+    inventory_remove, inventory_unequip, Item as RawItem, ItemStack as RawItemStack,
 };
 
 use crate::raw::{Ptr, PtrMut, Usize};
@@ -26,7 +29,7 @@ impl Inventory {
         Self { entity }
     }
 
-    pub fn get(&self, id: InventoryId) -> Result<Item, InventoryError> {
+    pub fn get(&self, id: InventoryId) -> Result<ItemStackRef, InventoryError> {
         let mut stack = MaybeUninit::<RawItemStack>::uninit();
         let ptr = stack.as_mut_ptr() as Usize;
 
@@ -34,9 +37,72 @@ impl Inventory {
 
         if res == 0 {
             let stack = unsafe { stack.assume_init() };
-            Ok(Item { id: stack.item.id })
+            Ok(ItemStackRef {
+                inner: ItemStack {
+                    item: Item { id: stack.item.id },
+                    quantity: stack.quantity,
+                },
+                slot_id: id,
+                entity_id: self.entity,
+            })
         } else {
             Err(InventoryError)
+        }
+    }
+
+    /// Returns the number of [`ItemStack`]s contained in this `Inventory`.
+    pub fn len(&self) -> Result<u32, InventoryError> {
+        let mut len = MaybeUninit::uninit();
+
+        let res = unsafe {
+            inventory_len(
+                self.entity.into_raw(),
+                PtrMut::from_raw(len.as_mut_ptr() as Usize),
+            )
+        };
+        match res {
+            0 => Ok(unsafe { len.assume_init() }),
+            _ => Err(InventoryError),
+        }
+    }
+
+    pub fn insert<T>(&self, items: T) -> Result<InventoryId, InventoryError>
+    where
+        T: IntoItemStack,
+    {
+        self.insert_inner(items.into_item_stack())
+    }
+
+    fn insert_inner(&self, items: ItemStack) -> Result<InventoryId, InventoryError> {
+        let raw_stack = RawItemStack {
+            item: RawItem { id: items.item.id },
+            quantity: items.quantity,
+        };
+
+        let mut slot_id = MaybeUninit::uninit();
+
+        let res = unsafe {
+            inventory_insert(
+                self.entity.into_raw(),
+                Ptr::from_raw(&raw_stack as *const _ as Usize),
+                PtrMut::from_raw(slot_id.as_mut_ptr() as Usize),
+            )
+        };
+
+        match res {
+            0 => {
+                let slot_id = unsafe { slot_id.assume_init() };
+                Ok(slot_id)
+            }
+            _ => Err(InventoryError),
+        }
+    }
+
+    pub fn remove(&self, slot_id: InventoryId, quantity: u64) -> Result<(), InventoryError> {
+        let res = unsafe { inventory_remove(self.entity.into_raw(), slot_id.0, quantity) };
+        match res {
+            0 => Ok(()),
+            _ => Err(InventoryError),
         }
     }
 
@@ -121,11 +187,137 @@ impl Inventory {
             Err(InventoryError)
         }
     }
+
+    pub fn keys(&self) -> Result<Keys, InventoryError> {
+        let len = self.len()?;
+        let mut keys = Vec::with_capacity(len.try_into().unwrap());
+
+        let res = unsafe {
+            inventory_list(
+                self.entity.into_raw(),
+                PtrMut::from_raw(keys.as_mut_ptr() as Usize),
+                len,
+            )
+        };
+        match res {
+            0 => {
+                unsafe { keys.set_len(len.try_into().unwrap()) };
+                Ok(Keys {
+                    inner: keys.into_iter(),
+                })
+            }
+            _ => Err(InventoryError),
+        }
+    }
 }
 
+#[derive(Copy, Clone, Debug)]
+pub struct ItemStack {
+    pub item: Item,
+    pub quantity: u32,
+}
+
+#[derive(Debug)]
+pub struct ItemStackRef {
+    inner: ItemStack,
+    entity_id: EntityId,
+    slot_id: InventoryId,
+}
+
+impl ItemStackRef {
+    pub fn equip(&mut self, equipped: bool) -> Result<(), InventoryError> {
+        let res = if equipped {
+            unsafe { inventory_equip(self.entity_id.into_raw(), self.slot_id.0) }
+        } else {
+            unsafe { inventory_unequip(self.entity_id.into_raw(), self.slot_id.0) }
+        };
+
+        match res {
+            0 => Ok(()),
+            _ => Err(InventoryError),
+        }
+    }
+}
+
+impl Deref for ItemStackRef {
+    type Target = ItemStack;
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+impl AsRef<ItemStack> for ItemStackRef {
+    #[inline]
+    fn as_ref(&self) -> &ItemStack {
+        &self.inner
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
 pub struct Item {
     pub id: RecordReference,
 }
 
 #[derive(Clone, Debug)]
 pub struct InventoryError;
+
+pub trait IntoItemStack: private::Sealed {}
+
+mod private {
+    use super::ItemStack;
+
+    pub trait Sealed {
+        fn into_item_stack(self) -> ItemStack;
+    }
+}
+
+impl IntoItemStack for ItemStack {}
+impl IntoItemStack for Item {}
+
+impl private::Sealed for ItemStack {
+    #[inline]
+    fn into_item_stack(self) -> ItemStack {
+        self
+    }
+}
+
+impl private::Sealed for Item {
+    #[inline]
+    fn into_item_stack(self) -> ItemStack {
+        ItemStack {
+            item: self,
+            quantity: 1,
+        }
+    }
+}
+
+/// An `Iterator` over all the [`InventoryId`]s in an [`Inventory`].
+#[derive(Clone, Debug)]
+pub struct Keys {
+    inner: alloc::vec::IntoIter<InventoryId>,
+}
+
+impl Iterator for Keys {
+    type Item = InventoryId;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.next()
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.inner.size_hint()
+    }
+}
+
+impl ExactSizeIterator for Keys {
+    #[inline]
+    fn len(&self) -> usize {
+        self.inner.len()
+    }
+}
+
+impl FusedIterator for Keys {}
