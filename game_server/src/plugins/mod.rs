@@ -98,6 +98,15 @@ fn apply_effects(effects: Effects, view: &mut WorldViewMut<'_>) {
 
                 view.inventory_remove_items(entity_id, slot_id, quantity as u32);
             }
+            Effect::InventoryItemUpdateEquip(id, slot_id, equipped) => {
+                let entity_id = entity_id_remap.get(&id).copied().unwrap_or(id);
+                let slot_id = inventory_slot_id_remap
+                    .get(&slot_id)
+                    .copied()
+                    .unwrap_or(slot_id);
+
+                view.inventory_set_equipped(entity_id, slot_id, equipped);
+            }
             _ => todo!(),
         }
     }
@@ -600,6 +609,7 @@ fn update_inventory(
         if needs_update {
             EntityChange::InventoryItemUpdate(game_common::world::snapshot::InventoryItemUpdate {
                 entity: entity_id,
+                slot_id: id,
                 equipped: server_stack.item.equipped,
                 hidden: server_stack.item.hidden,
                 quantity,

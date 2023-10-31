@@ -152,6 +152,7 @@ pub struct InventoryDestroy {
 #[derive(Copy, Clone, Debug)]
 pub struct InventoryItemUpdate {
     pub entity: EntityId,
+    pub slot_id: InventorySlotId,
     pub equipped: bool,
     pub hidden: bool,
     pub quantity: Option<u32>,

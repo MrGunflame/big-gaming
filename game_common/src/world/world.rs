@@ -21,7 +21,7 @@ pub use metrics::WorldMetrics;
 
 use super::control_frame::ControlFrame;
 use super::entity::Entity;
-use super::snapshot::{InventoryItemAdd, InventoryItemRemove};
+use super::snapshot::{InventoryItemAdd, InventoryItemRemove, InventoryItemUpdate};
 use super::source::StreamingSource;
 
 /// The world state at constant time intervals.
@@ -515,6 +515,30 @@ impl<'a> WorldViewMut<'a> {
             }));
     }
 
+    pub fn inventory_set_equipped(&mut self, id: EntityId, slot: InventorySlotId, equipped: bool) {
+        let Some(inventory) = self.inventories_mut().get_mut(id) else {
+            return;
+        };
+
+        let Some(stack) = inventory.get_mut(slot) else {
+            return;
+        };
+
+        stack.item.equipped = equipped;
+
+        let equipped = stack.item.equipped;
+        let hidden = stack.item.hidden;
+
+        self.new_deltas
+            .push(EntityChange::InventoryItemUpdate(InventoryItemUpdate {
+                entity: id,
+                slot_id: slot,
+                equipped,
+                hidden,
+                quantity: None,
+            }));
+    }
+
     pub fn streaming_sources(&self) -> &StreamingSources {
         &self.snapshot_ref().streaming_sources
     }
@@ -856,7 +880,20 @@ impl Snapshot {
                     tracing::warn!("no such entity: {:?}", entity);
                 }
             }
-            EntityChange::InventoryItemUpdate(event) => todo!(),
+            EntityChange::InventoryItemUpdate(event) => {
+                if let Some(inventory) = self.inventories.get_mut(event.entity) {
+                    if let Some(stack) = inventory.get_mut(event.slot_id) {
+                        stack.item.equipped = event.equipped;
+                        stack.item.hidden = event.hidden;
+
+                        if let Some(quantity) = event.quantity {
+                            stack.quantity = quantity;
+                        }
+                    }
+                } else {
+                    tracing::warn!("no such entity: {:?}", event.entity);
+                }
+            }
         }
     }
 }

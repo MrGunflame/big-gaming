@@ -278,6 +278,22 @@ impl<I> ServerConnection<I> {
                         .unwrap();
                     inventory.remove(slot_id, quantity as u32);
                 }
+                Effect::InventoryItemUpdateEquip(id, slot_id, equipped) => {
+                    let slot_id = inventory_slot_id_remap
+                        .get(&slot_id)
+                        .copied()
+                        .unwrap_or(slot_id);
+
+                    let inventory = self
+                        .current_state
+                        .as_mut()
+                        .unwrap()
+                        .inventories
+                        .get_mut(id)
+                        .unwrap();
+
+                    inventory.get_mut(slot_id).unwrap().item.equipped = equipped;
+                }
                 _ => todo!(),
             }
         }

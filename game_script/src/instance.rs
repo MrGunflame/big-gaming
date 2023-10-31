@@ -401,6 +401,31 @@ impl<'a> State<'a> {
         true
     }
 
+    pub fn inventory_set_equipped(
+        &mut self,
+        entity: EntityId,
+        slot: InventorySlotId,
+        equipped: bool,
+    ) -> bool {
+        let Some(inventory) = self.world.inventory(entity) else {
+            return false;
+        };
+
+        let Some(stack) = inventory.get(slot) else {
+            return false;
+        };
+
+        if stack.item.equipped == equipped {
+            // Item is already in desired state, don't update
+            // anything.
+            false
+        } else {
+            self.effects
+                .push(Effect::InventoryItemUpdateEquip(entity, slot, equipped));
+            true
+        }
+    }
+
     /// Allocate a temporary [`EntityId`].
     // If a script spawns a new entity we need to acquire a temporary id, until
     // the game commits the effect. The id is only valid for this script local
