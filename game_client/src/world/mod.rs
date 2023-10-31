@@ -6,8 +6,10 @@ use std::net::ToSocketAddrs;
 use std::sync::Arc;
 
 use ahash::HashMap;
+use game_common::components::actions::ActionId;
 use game_common::components::actor::ActorProperties;
 use game_common::components::inventory::Inventory;
+use game_common::components::items::ItemId;
 use game_common::components::transform::Transform;
 use game_common::entity::EntityId;
 use game_common::module::ModuleId;
@@ -61,6 +63,7 @@ pub struct GameWorldState {
     executor: Arc<ScriptExecutor>,
     inputs: Inputs,
     inventory_proxy: Option<InventoryProxy>,
+    inventory_actions: Vec<ActionId>,
 }
 
 impl GameWorldState {
@@ -90,6 +93,7 @@ impl GameWorldState {
             executor,
             inputs,
             inventory_proxy: None,
+            inventory_actions: vec![],
         }
     }
 
@@ -182,6 +186,11 @@ impl GameWorldState {
                 }
                 _ => todo!(),
             }
+        }
+
+        if self.conn.inventory_update {
+            self.conn.inventory_update = false;
+            self.update_inventory_actions();
         }
 
         self.dispatch_actions();
@@ -433,7 +442,49 @@ impl GameWorldState {
         }
     }
 
-    fn run_scripts(&mut self) {}
+    fn update_inventory_actions(&mut self) {
+        // This is a quick-and-dirty implementation that throws out all previous
+        // inventory item actions and registers all equipped all items once again
+        // every time the inventory is updated.
+
+        // Unregister all actions.
+        for id in self.inventory_actions.drain(..) {
+            let module = self.modules.get(id.0.module).unwrap();
+            let record = module.records.get(id.0.record).unwrap();
+            self.actions.unregister(id.0.module, record);
+        }
+
+        let snapshot = self.conn.current_state.as_ref().unwrap();
+
+        if let Some(inventory) = snapshot.inventories.get(self.conn.host) {
+            for (_, stack) in inventory.clone().iter() {
+                if !stack.item.equipped {
+                    continue;
+                }
+
+                self.register_item_actions(stack.item.id);
+            }
+        }
+    }
+
+    fn register_item_actions(&mut self, id: ItemId) {
+        let module = self.modules.get(id.0.module).unwrap();
+        let record = module.records.get(id.0.record).unwrap();
+        let item = record.body.clone().unwrap_item();
+
+        for action in item.actions {
+            let module = self.modules.get(action.module).unwrap();
+            let record = module.records.get(action.record).unwrap();
+
+            self.actions.register(
+                action.module,
+                record,
+                self.get_key_for_action(action.module, record),
+            );
+
+            self.inventory_actions.push(ActionId(action));
+        }
+    }
 
     fn get_key_for_action(&self, module: ModuleId, record: &Record) -> Key {
         let input = self

@@ -58,6 +58,9 @@ pub struct ServerConnection<I> {
     pub(crate) event_queue: EventQueue,
     next_message_id: u32,
     pub(crate) modules: Modules,
+    // Flag to indicate that the inventory actions need to be rebuilt.
+    // FIXME: Replace with a more fine-grained update method.
+    pub(crate) inventory_update: bool,
 }
 
 impl<I> ServerConnection<I> {
@@ -88,6 +91,7 @@ impl<I> ServerConnection<I> {
             event_queue: EventQueue::new(),
             next_message_id: 0,
             modules: Modules::new(),
+            inventory_update: false,
         }
     }
 
@@ -262,6 +266,7 @@ impl<I> ServerConnection<I> {
                     let real_slot_id = inventory.insert(stack).unwrap();
 
                     inventory_slot_id_remap.insert(temp_slot_id, real_slot_id);
+                    self.inventory_update = true;
                 }
                 Effect::InventoryRemove(id, slot_id, quantity) => {
                     let slot_id = inventory_slot_id_remap
@@ -277,6 +282,7 @@ impl<I> ServerConnection<I> {
                         .get_mut(id)
                         .unwrap();
                     inventory.remove(slot_id, quantity as u32);
+                    self.inventory_update = true;
                 }
                 Effect::InventoryItemUpdateEquip(id, slot_id, equipped) => {
                     let slot_id = inventory_slot_id_remap
@@ -293,6 +299,7 @@ impl<I> ServerConnection<I> {
                         .unwrap();
 
                     inventory.get_mut(slot_id).unwrap().item.equipped = equipped;
+                    self.inventory_update = true;
                 }
                 _ => todo!(),
             }
