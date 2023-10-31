@@ -1,4 +1,5 @@
 use core::mem::MaybeUninit;
+use core::ops::Deref;
 
 use alloc::vec::Vec;
 use bytemuck::{Pod, Zeroable};
@@ -7,7 +8,8 @@ use crate::component::Component;
 use crate::entity::EntityId;
 use crate::raw::inventory::{
     inventory_clear, inventory_component_get, inventory_component_insert, inventory_component_len,
-    inventory_get, inventory_insert, inventory_remove, Item as RawItem, ItemStack as RawItemStack,
+    inventory_equip, inventory_get, inventory_insert, inventory_remove, inventory_unequip,
+    Item as RawItem, ItemStack as RawItemStack,
 };
 
 use crate::raw::{Ptr, PtrMut, Usize};
@@ -26,7 +28,7 @@ impl Inventory {
         Self { entity }
     }
 
-    pub fn get(&self, id: InventoryId) -> Result<Item, InventoryError> {
+    pub fn get(&self, id: InventoryId) -> Result<ItemStackRef, InventoryError> {
         let mut stack = MaybeUninit::<RawItemStack>::uninit();
         let ptr = stack.as_mut_ptr() as Usize;
 
@@ -34,7 +36,14 @@ impl Inventory {
 
         if res == 0 {
             let stack = unsafe { stack.assume_init() };
-            Ok(Item { id: stack.item.id })
+            Ok(ItemStackRef {
+                inner: ItemStack {
+                    item: Item { id: stack.item.id },
+                    quantity: stack.quantity,
+                },
+                slot_id: id,
+                entity_id: self.entity,
+            })
         } else {
             Err(InventoryError)
         }
@@ -167,6 +176,44 @@ impl Inventory {
 pub struct ItemStack {
     pub item: Item,
     pub quantity: u32,
+}
+
+#[derive(Debug)]
+pub struct ItemStackRef {
+    inner: ItemStack,
+    entity_id: EntityId,
+    slot_id: InventoryId,
+}
+
+impl ItemStackRef {
+    pub fn equip(&mut self, equipped: bool) -> Result<(), InventoryError> {
+        let res = if equipped {
+            unsafe { inventory_equip(self.entity_id.into_raw(), self.slot_id.0) }
+        } else {
+            unsafe { inventory_unequip(self.entity_id.into_raw(), self.slot_id.0) }
+        };
+
+        match res {
+            0 => Ok(()),
+            _ => Err(InventoryError),
+        }
+    }
+}
+
+impl Deref for ItemStackRef {
+    type Target = ItemStack;
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+impl AsRef<ItemStack> for ItemStackRef {
+    #[inline]
+    fn as_ref(&self) -> &ItemStack {
+        &self.inner
+    }
 }
 
 #[derive(Copy, Clone, Debug)]
