@@ -402,6 +402,7 @@ fn create_initial_diff(view: WorldViewRef) -> Vec<EntityChange> {
                 id: slot,
                 item: stack.item.id,
                 quantity: stack.quantity,
+                components: stack.item.components.clone(),
             }));
         }
     }
@@ -473,6 +474,7 @@ fn create_snapshot_diff(prev: WorldViewRef, next: WorldViewRef) -> Vec<EntityCha
                         id: slot,
                         item: stack.item.id,
                         quantity: stack.quantity,
+                        components: stack.item.components.clone(),
                     }));
                 }
             }
@@ -491,6 +493,7 @@ fn create_snapshot_diff(prev: WorldViewRef, next: WorldViewRef) -> Vec<EntityCha
                         id: slot,
                         item: stack.item.id,
                         quantity: stack.quantity,
+                        components: stack.item.components.clone(),
                     }));
                 }
             }
@@ -514,6 +517,7 @@ fn create_snapshot_diff(prev: WorldViewRef, next: WorldViewRef) -> Vec<EntityCha
                     id: slot,
                     item: stack.item.id,
                     quantity: stack.quantity,
+                    components: stack.item.components.clone(),
                 }));
             }
         }

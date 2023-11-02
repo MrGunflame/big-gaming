@@ -180,6 +180,9 @@ fn flush_command_queue<I>(conn: &mut ServerConnection<I>) {
                     None => (),
                 }
             }
+            DataMessageBody::InventoryItemUpdate(msg) => {
+                todo!()
+            }
         }
     }
 }

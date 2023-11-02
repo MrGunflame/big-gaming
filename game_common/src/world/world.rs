@@ -10,7 +10,7 @@ use glam::{Quat, Vec3};
 #[cfg(feature = "tracing")]
 use tracing::{event, span, Level, Span};
 
-use crate::components::components::Component;
+use crate::components::components::{Component, Components};
 use crate::components::inventory::{Inventory, InventorySlotId};
 use crate::components::items::{Item, ItemStack};
 use crate::entity::EntityId;
@@ -477,6 +477,7 @@ impl<'a> WorldViewMut<'a> {
                 id: slot,
                 item: item_id,
                 quantity,
+                components: Components::new(),
             }));
     }
 
@@ -497,6 +498,7 @@ impl<'a> WorldViewMut<'a> {
                 id: slot,
                 item: item_id,
                 quantity,
+                components: Components::new(),
             }));
         slot
     }

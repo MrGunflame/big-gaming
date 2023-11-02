@@ -258,6 +258,7 @@ fn flush_command_queue(srv_state: &mut ServerState) {
                     DataMessageBody::SpawnHost(_) => (),
                     DataMessageBody::InventoryItemAdd(_) => (),
                     DataMessageBody::InventoryItemRemove(_) => (),
+                    DataMessageBody::InventoryItemUpdate(_) => (),
                 }
             }
         }
@@ -353,6 +354,7 @@ fn update_client(conn: &Connection, view: WorldViewRef<'_>, cf: ControlFrame) {
                                 id,
                                 quantity: stack.quantity,
                                 item: stack.item.id,
+                                components: stack.item.components.clone(),
                             }),
                         });
                     }
@@ -448,6 +450,7 @@ where
                                 id,
                                 item: stack.item.id,
                                 quantity: stack.quantity,
+                                components: stack.item.components.clone(),
                             },
                         ));
                     }
@@ -492,6 +495,7 @@ where
                                 id,
                                 item: stack.item.id,
                                 quantity: stack.quantity,
+                                components: stack.item.components.clone(),
                             },
                         ));
                     }
@@ -577,6 +581,7 @@ fn update_inventory(
                     id,
                     item: server_stack.item.id,
                     quantity: server_stack.quantity,
+                    components: server_stack.item.components.clone(),
                 },
             ));
 
@@ -751,6 +756,7 @@ fn update_client_entities(
                     id: event.id,
                     item: event.item,
                     quantity: event.quantity,
+                    components: event.components,
                 })
             }
             EntityChange::InventoryItemRemove(event) => {

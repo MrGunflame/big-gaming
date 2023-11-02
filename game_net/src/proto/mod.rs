@@ -42,6 +42,7 @@ mod terrain;
 mod varint;
 
 use game_common::components::actions::ActionId;
+use game_common::components::components::Components;
 use game_common::components::inventory::InventorySlotId;
 use game_common::components::items::ItemId;
 use game_common::components::object::ObjectId;
@@ -700,12 +701,13 @@ pub struct SpawnHost {
 }
 
 /// Inserts a new item into an inventory.
-#[derive(Copy, Clone, Debug, Encode, Decode)]
+#[derive(Clone, Debug, Encode, Decode)]
 pub struct InventoryItemAdd {
     pub entity: ServerEntity,
     pub id: InventorySlotId,
     pub item: ItemId,
     pub quantity: u32,
+    pub components: Components,
 }
 
 #[derive(Copy, Clone, Debug, Encode, Decode)]
@@ -714,13 +716,14 @@ pub struct InventoryItemRemove {
     pub id: InventorySlotId,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Clone, Debug)]
 pub struct InventoryItemUpdate {
     pub entity: ServerEntity,
     pub id: InventorySlotId,
     pub equipped: bool,
     pub hidden: bool,
     pub quantity: Option<u32>,
+    pub components: Option<Components>,
 }
 
 impl Encode for InventoryItemUpdate {
@@ -733,23 +736,31 @@ impl Encode for InventoryItemUpdate {
         self.entity.encode(&mut buf)?;
         self.id.encode(&mut buf)?;
 
-        let mut flags = ItemUpdateFlags::new();
+        let mut flags = ItemFlags::new();
         if self.equipped {
-            flags |= ItemUpdateFlags::EQUIPPED;
+            flags |= ItemFlags::EQUIPPED;
         }
 
         if self.hidden {
-            flags |= ItemUpdateFlags::HIDDEN;
+            flags |= ItemFlags::HIDDEN;
         }
 
         if self.quantity.is_some() {
-            flags |= ItemUpdateFlags::QUANTITY;
+            flags |= ItemFlags::QUANTITY;
+        }
+
+        if self.components.is_some() {
+            flags |= ItemFlags::COMPONENTS;
         }
 
         flags.encode(&mut buf)?;
 
         if let Some(quantity) = self.quantity {
             VarInt::<u32>(quantity).encode(&mut buf)?;
+        }
+
+        if let Some(components) = &self.components {
+            components.encode(&mut buf)?;
         }
 
         Ok(())
@@ -765,7 +776,7 @@ impl Decode for InventoryItemUpdate {
     {
         let entity = ServerEntity::decode(&mut buf)?;
         let id = InventorySlotId::decode(&mut buf)?;
-        let flags = ItemUpdateFlags::decode(&mut buf)?;
+        let flags = ItemFlags::decode(&mut buf)?;
 
         let equipped = flags.is_equipped();
         let hidden = flags.is_hidden();
@@ -776,21 +787,28 @@ impl Decode for InventoryItemUpdate {
             None
         };
 
+        let components = if flags.components() {
+            Some(Components::decode(&mut buf)?)
+        } else {
+            None
+        };
+
         Ok(Self {
             entity,
             id,
             equipped,
             hidden,
             quantity,
+            components,
         })
     }
 }
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Hash)]
 #[repr(transparent)]
-pub struct ItemUpdateFlags(u8);
+pub struct ItemFlags(u8);
 
-impl ItemUpdateFlags {
+impl ItemFlags {
     #[inline]
     pub const fn new() -> Self {
         Self(0)
@@ -822,9 +840,14 @@ impl ItemUpdateFlags {
     pub const fn quantity(self) -> bool {
         self.0 & Self::QUANTITY.0 != 0
     }
+
+    #[inline]
+    pub const fn components(self) -> bool {
+        self.0 & Self::COMPONENTS.0 != 0
+    }
 }
 
-impl Encode for ItemUpdateFlags {
+impl Encode for ItemFlags {
     type Error = <u8 as Encode>::Error;
 
     fn encode<B>(&self, buf: B) -> Result<(), Self::Error>
@@ -835,7 +858,7 @@ impl Encode for ItemUpdateFlags {
     }
 }
 
-impl Decode for ItemUpdateFlags {
+impl Decode for ItemFlags {
     type Error = <u8 as Decode>::Error;
 
     fn decode<B>(buf: B) -> Result<Self, Self::Error>
@@ -846,7 +869,7 @@ impl Decode for ItemUpdateFlags {
     }
 }
 
-impl BitAnd for ItemUpdateFlags {
+impl BitAnd for ItemFlags {
     type Output = Self;
 
     fn bitand(self, rhs: Self) -> Self::Output {
@@ -854,13 +877,13 @@ impl BitAnd for ItemUpdateFlags {
     }
 }
 
-impl BitAndAssign for ItemUpdateFlags {
+impl BitAndAssign for ItemFlags {
     fn bitand_assign(&mut self, rhs: Self) {
         *self = *self & rhs;
     }
 }
 
-impl BitOr for ItemUpdateFlags {
+impl BitOr for ItemFlags {
     type Output = Self;
 
     fn bitor(self, rhs: Self) -> Self::Output {
@@ -868,7 +891,7 @@ impl BitOr for ItemUpdateFlags {
     }
 }
 
-impl BitOrAssign for ItemUpdateFlags {
+impl BitOrAssign for ItemFlags {
     fn bitor_assign(&mut self, rhs: Self) {
         *self = *self | rhs;
     }
