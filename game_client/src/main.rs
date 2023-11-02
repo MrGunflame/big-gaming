@@ -23,8 +23,8 @@ use game_tasks::TaskPool;
 use game_ui::UiState;
 use game_window::cursor::Cursor;
 use game_window::events::WindowEvent;
-use game_window::windows::{WindowBuilder, WindowId, Windows};
-use game_window::WindowManager;
+use game_window::windows::{WindowBuilder, WindowId};
+use game_window::{WindowManager, WindowManagerContext};
 use glam::UVec2;
 use input::Inputs;
 use state::main_menu::MainMenuState;
@@ -56,7 +56,7 @@ fn main() {
     let res = game_core::modules::load_modules();
 
     let mut wm = WindowManager::new();
-    let window_id = wm.windows().spawn(WindowBuilder::new());
+    let window_id = wm.windows_mut().spawn(WindowBuilder::new());
 
     let mut state = GameState::Startup;
 
@@ -82,7 +82,6 @@ fn main() {
     let app = App {
         window_id,
         renderer,
-        windows: wm.windows().clone(),
         state,
         scenes: Scenes::new(),
         time: Time::new(),
@@ -101,7 +100,6 @@ pub struct App {
     /// Primary window
     window_id: WindowId,
     renderer: Renderer,
-    windows: Windows,
     scenes: Scenes,
     time: Time,
     cursor: Arc<Cursor>,
@@ -114,10 +112,10 @@ pub struct App {
 }
 
 impl game_window::App for App {
-    fn update(&mut self) {
+    fn update(&mut self, mut ctx: WindowManagerContext<'_>) {
         self.time.update();
 
-        let window = self.windows.state(self.window_id).unwrap();
+        let window = ctx.windows.state(self.window_id).unwrap();
 
         match &mut self.state {
             GameState::Startup => {
@@ -148,15 +146,15 @@ impl game_window::App for App {
         self.scenes
             .update(&mut self.hierarchy, &mut self.renderer, &self.pool);
         self.renderer.render(&self.pool);
-        self.ui_state.run(&self.renderer, &self.windows);
+        self.ui_state.run(&self.renderer, &mut ctx.windows);
     }
 
-    fn handle_event(&mut self, event: WindowEvent) {
+    fn handle_event(&mut self, ctx: WindowManagerContext<'_>, event: WindowEvent) {
         match event {
             WindowEvent::WindowCreated(event) => {
                 debug_assert_eq!(event.window, self.window_id);
 
-                let window = self.windows.state(event.window).unwrap();
+                let window = ctx.windows.state(event.window).unwrap();
                 self.ui_state.create(event.window, window.inner_size());
                 self.renderer.create(event.window, window);
 

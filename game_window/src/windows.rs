@@ -2,7 +2,6 @@ use std::borrow::Cow;
 use std::sync::{mpsc, Arc};
 
 use glam::{UVec2, Vec2};
-use parking_lot::RwLock;
 use raw_window_handle::{
     HasRawDisplayHandle, HasRawWindowHandle, RawDisplayHandle, RawWindowHandle,
 };
@@ -18,47 +17,50 @@ const DEFAULT_TITLE: &str = "DEFAULT_TITLE";
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct WindowId(pub(crate) DefaultKey);
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct Windows {
-    pub(crate) windows: Arc<RwLock<SlotMap<DefaultKey, Window>>>,
+    pub(crate) windows: SlotMap<DefaultKey, Window>,
     tx: mpsc::Sender<UpdateEvent>,
 }
 
 impl Windows {
     pub(crate) fn new(tx: mpsc::Sender<UpdateEvent>) -> Self {
         Self {
-            windows: Arc::new(RwLock::new(SlotMap::new())),
+            windows: SlotMap::new(),
             tx,
         }
     }
 
-    pub fn spawn<T>(&self, window: T) -> WindowId
+    pub fn spawn<T>(&mut self, window: T) -> WindowId
     where
         T: Into<Window>,
     {
         let window = window.into();
 
-        let mut windows = self.windows.write();
-        let key = windows.insert(window);
+        let key = self.windows.insert(window);
 
         let _ = self.tx.send(UpdateEvent::Create(WindowId(key)));
         WindowId(key)
     }
 
-    pub fn despawn(&self, id: WindowId) {
-        let mut windows = self.windows.write();
-        windows.remove(id.0);
+    pub fn despawn(&mut self, id: WindowId) {
+        self.windows.remove(id.0);
 
         let _ = self.tx.send(UpdateEvent::Destroy(id));
     }
 
     pub fn state(&self, id: WindowId) -> Option<WindowState> {
-        let windows = self.windows.read();
-        windows.get(id.0).and_then(|window| window.state.clone())
+        self.windows
+            .get(id.0)
+            .and_then(|window| window.state.clone())
     }
 
-    pub fn get(&self, id: WindowId) -> Option<Window> {
-        self.windows.read().get(id.0).cloned()
+    pub fn get(&self, id: WindowId) -> Option<&Window> {
+        self.windows.get(id.0)
+    }
+
+    pub(crate) fn get_mut(&mut self, id: WindowId) -> Option<&mut Window> {
+        self.windows.get_mut(id.0)
     }
 }
 
