@@ -18,8 +18,8 @@ use game_tasks::TaskPool;
 use game_ui::UiState;
 use game_window::cursor::Cursor;
 use game_window::events::WindowEvent;
-use game_window::windows::{WindowBuilder, WindowId, Windows};
-use game_window::WindowManager;
+use game_window::windows::{WindowBuilder, WindowId};
+use game_window::{WindowManager, WindowManagerContext};
 use glam::UVec2;
 use state::module::Modules;
 use state::record::Records;
@@ -65,7 +65,7 @@ fn main() {
 
     let (backend, handle) = Backend::new();
 
-    let (mut state, rx) = State::new(handle);
+    let (state, rx) = State::new(handle);
 
     let mut editor_state = state.state.clone();
     std::thread::spawn(move || {
@@ -84,7 +84,6 @@ fn main() {
         ui_state: state.ui_state,
         state: state.state,
         rx,
-        windows: state.window_manager.windows().clone(),
         cursor: state.window_manager.cursor().clone(),
         loading_windows: HashMap::new(),
         active_windows: HashMap::new(),
@@ -129,7 +128,6 @@ fn load_from_backend(state: &mut EditorState, resp: Response) {
 pub struct App {
     renderer: Renderer,
     ui_state: UiState,
-    windows: Windows,
     rx: mpsc::Receiver<SpawnWindow>,
     state: EditorState,
     cursor: Arc<Cursor>,
@@ -141,10 +139,14 @@ pub struct App {
 }
 
 impl game_window::App for App {
-    fn handle_event(&mut self, event: game_window::events::WindowEvent) {
+    fn handle_event(
+        &mut self,
+        ctx: WindowManagerContext<'_>,
+        event: game_window::events::WindowEvent,
+    ) {
         match event {
             WindowEvent::WindowCreated(event) => {
-                let window = self.windows.state(event.window).unwrap();
+                let window = ctx.windows.state(event.window).unwrap();
                 let size = window.inner_size();
 
                 self.renderer.create(event.window, window);
@@ -183,7 +185,7 @@ impl game_window::App for App {
             WindowEvent::WindowCloseRequested(event) => {
                 // TODO: Ask for confirmation if the window contains
                 // unsaved data.
-                self.windows.despawn(event.window);
+                ctx.windows.despawn(event.window);
             }
             WindowEvent::MouseMotion(event) => {
                 if let Some(window_id) = self.cursor.window() {
@@ -256,9 +258,9 @@ impl game_window::App for App {
         self.ui_state.send_event(&self.cursor, event);
     }
 
-    fn update(&mut self) {
+    fn update(&mut self, mut ctx: WindowManagerContext<'_>) {
         while let Ok(event) = self.rx.try_recv() {
-            let id = self.windows.spawn(WindowBuilder::new());
+            let id = ctx.windows.spawn(WindowBuilder::new());
 
             self.loading_windows.insert(id, event);
         }
@@ -272,6 +274,6 @@ impl game_window::App for App {
             .update(&mut self.hierarchy, &mut self.renderer, &self.pool);
 
         self.renderer.render(&self.pool);
-        self.ui_state.run(&self.renderer, &self.windows);
+        self.ui_state.run(&self.renderer, &mut ctx.windows);
     }
 }

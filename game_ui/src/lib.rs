@@ -105,7 +105,7 @@ impl UiState {
         }
     }
 
-    pub fn run(&mut self, renderer: &Renderer, windows: &Windows) {
+    pub fn run(&mut self, renderer: &Renderer, windows: &mut Windows) {
         let device = renderer.device();
         let queue = renderer.queue();
 
