@@ -17,6 +17,9 @@ const DEFAULT_TITLE: &str = "DEFAULT_TITLE";
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct WindowId(pub(crate) DefaultKey);
 
+// We don't provide a `Clone` impl to prevent accidently
+// cloning and leaking the window state, which would cause
+// a deadlock.
 #[derive(Debug)]
 pub struct Windows {
     pub(crate) windows: SlotMap<DefaultKey, Window>,
@@ -31,6 +34,7 @@ impl Windows {
         }
     }
 
+    /// Spawns a new [`Window`].
     pub fn spawn<T>(&mut self, window: T) -> WindowId
     where
         T: Into<Window>,
@@ -43,6 +47,7 @@ impl Windows {
         WindowId(key)
     }
 
+    /// Despawns the window with the given `id`.
     pub fn despawn(&mut self, id: WindowId) {
         self.windows.remove(id.0);
 

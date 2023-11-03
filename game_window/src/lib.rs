@@ -17,11 +17,12 @@ use game_input::keyboard::{KeyboardInput, ScanCode};
 use game_input::mouse::{MouseButton, MouseButtonInput, MouseMotion, MouseScrollUnit, MouseWheel};
 use game_input::ButtonState;
 use glam::Vec2;
-use windows::{UpdateEvent, WindowState};
+use windows::{UpdateEvent, WindowState, Windows};
 use winit::event::{DeviceEvent, ElementState, Event, MouseScrollDelta, WindowEvent};
 use winit::event_loop::EventLoop;
 use winit::window::{WindowBuilder, WindowId};
 
+/// The entrypoint for interacting with the OS windowing system.
 #[derive(Debug)]
 pub struct WindowManager {
     state: WindowManagerState,
@@ -30,6 +31,13 @@ pub struct WindowManager {
 }
 
 impl WindowManager {
+    /// Creates a new `WindowManager`.
+    ///
+    /// Note that this does not automatically create a window. To create a new window when the
+    /// application lauches you can call [`Windows::spawn`] before calling [`WindowManager::run`].
+    ///
+    /// [`Windows::spawn`]: Windows::spawn
+    /// [`WindowManager::run`]: WindowManager::run
     pub fn new() -> Self {
         let event_loop = EventLoop::new();
         let (update_tx, update_rx) = mpsc::channel();
@@ -47,11 +55,15 @@ impl WindowManager {
         }
     }
 
-    pub fn windows(&self) -> &windows::Windows {
+    /// Returns a reference to the active [`Windows`].
+    #[inline]
+    pub fn windows(&self) -> &Windows {
         &self.windows
     }
 
-    pub fn windows_mut(&mut self) -> &mut windows::Windows {
+    /// Returns a mutable reference to the active [`Windows`].
+    #[inline]
+    pub fn windows_mut(&mut self) -> &mut Windows {
         &mut self.windows
     }
 
@@ -59,6 +71,9 @@ impl WindowManager {
         &self.cursor
     }
 
+    /// Starts the `WindowManager` using the given [`App`].
+    ///
+    /// Note that the call to `run` will never return.
     pub fn run<T>(self, app: T) -> !
     where
         T: App,
@@ -68,6 +83,7 @@ impl WindowManager {
 }
 
 impl Default for WindowManager {
+    #[inline]
     fn default() -> Self {
         Self::new()
     }
@@ -91,7 +107,7 @@ pub(crate) enum Backend {
 }
 
 impl Backend {
-    pub const fn supports_locked_cursor(self) -> bool {
+    pub(crate) const fn supports_locked_cursor(self) -> bool {
         match self {
             Self::Unknown | Self::Wayland => true,
             Self::X11 | Self::Windows => false,
@@ -422,7 +438,7 @@ where
 
                     map.windows.insert(window.id(), id);
 
-                    windows.get_mut(id).as_mut().unwrap().state = Some(WindowState {
+                    windows.get_mut(id).unwrap().state = Some(WindowState {
                         id,
                         inner: Arc::new(window),
                         backend,

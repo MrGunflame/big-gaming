@@ -149,7 +149,6 @@ impl WindowCompat {
 
         self.reset_cursor_position = false;
 
-        dbg!(cursor.window());
         if let Some(id) = cursor.window() {
             events.push_back(UpdateEvent::CursorPosition(id, self.cursor_position));
         }
