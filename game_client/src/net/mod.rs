@@ -35,13 +35,6 @@ fn flush_command_queue(conn: &mut ServerConnection) {
             Message::Data(msg) => msg,
         };
 
-        if conn.world.get(msg.control_frame).is_none() {
-            conn.world.insert(msg.control_frame);
-        }
-
-        let mut view = conn.world.get_mut(msg.control_frame).unwrap();
-        let cf = msg.control_frame;
-
-        conn.backlog.insert(cf, msg);
+        conn.backlog.insert(msg.control_frame, msg);
     }
 }

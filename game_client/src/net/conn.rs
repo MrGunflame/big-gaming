@@ -1,85 +1,34 @@
 use std::collections::VecDeque;
 use std::net::ToSocketAddrs;
 use std::sync::Arc;
-use std::time::Duration;
 
-use ahash::HashMap;
-use game_common::entity::EntityId;
-use game_common::events::EventQueue;
 use game_common::world::control_frame::ControlFrame;
-use game_common::world::world::{Snapshot, WorldState};
-use game_core::counter::{Interval, IntervalImpl, UpdateCounter};
-use game_core::modules::Modules;
-use game_core::time::Time;
 use game_net::conn::ConnectionHandle;
 use game_net::message::{DataMessage, DataMessageBody, MessageId};
-use game_script::effect::Effect;
-use game_script::executor::ScriptExecutor;
-use game_script::Context;
-use game_tracing::world::WorldTrace;
 
-use crate::config::Config;
 use crate::net::socket::spawn_conn;
 
-use super::entities::Entities;
 use super::flush_command_queue;
 use super::prediction::InputBuffer;
 use super::snapshot::MessageBacklog;
 //use super::prediction::ClientPredictions;
-use super::world::CommandBuffer;
 
 #[derive(Debug)]
 pub struct ServerConnection {
-    pub world: WorldState,
     pub backlog: MessageBacklog,
-
     pub handle: Option<Arc<ConnectionHandle>>,
-    pub host: EntityId,
-
-    pub server_entities: Entities,
-
-    /// The previously rendered frame, `None` if not rendered yet.
-    pub last_render_frame: Option<ControlFrame>,
-
-    pub trace: WorldTrace,
-
-    pub metrics: Metrics,
-    pub config: Config,
-
-    buffer: VecDeque<DataMessage>,
-
     pub(crate) input_buffer: InputBuffer,
-
-    pub(crate) physics: game_physics::Pipeline,
-    pub(crate) event_queue: EventQueue,
+    buffer: VecDeque<DataMessage>,
     next_message_id: u32,
-    pub(crate) modules: Modules,
-    // Flag to indicate that the inventory actions need to be rebuilt.
-    // FIXME: Replace with a more fine-grained update method.
-    pub(crate) inventory_update: bool,
 }
 
 impl ServerConnection {
-    pub fn new(config: &Config) -> Self {
-        let mut world = WorldState::new();
-        world.insert(ControlFrame(0));
-
+    pub fn new() -> Self {
         Self {
             handle: None,
-            host: EntityId::dangling(),
-            server_entities: Entities::new(),
-            last_render_frame: None,
-            trace: WorldTrace::new(),
-            world,
-            metrics: Metrics::default(),
-            config: config.clone(),
             buffer: VecDeque::new(),
             input_buffer: InputBuffer::new(),
-            physics: game_physics::Pipeline::new(),
-            event_queue: EventQueue::new(),
             next_message_id: 0,
-            modules: Modules::new(),
-            inventory_update: false,
             backlog: MessageBacklog::new(8192),
         }
     }

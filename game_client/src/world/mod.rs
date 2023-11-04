@@ -82,14 +82,13 @@ impl GameWorldState {
         cursor.lock();
         cursor.set_visible(false);
 
-        let mut conn = ServerConnection::new(config);
+        let mut conn = ServerConnection::new();
         conn.connect(addr);
-        conn.modules = modules.clone();
 
         let interval = Interval::new(Duration::from_secs(1) / config.timestep);
 
         Self {
-            world: GameWorld::new(conn, interval, executor),
+            world: GameWorld::new(conn, interval, executor, config),
             camera_controller: CameraController::new(),
             is_init: false,
             primary_camera: None,

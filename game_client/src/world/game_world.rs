@@ -19,6 +19,7 @@ use game_script::executor::ScriptExecutor;
 use game_tracing::trace_span;
 use glam::Quat;
 
+use crate::config::Config;
 use crate::net::world::{Command, CommandBuffer, DelayedEntity};
 use crate::net::{Entities, ServerConnection};
 use crate::world::script::run_scripts;
@@ -46,7 +47,14 @@ impl<I> GameWorld<I>
 where
     I: IntervalImpl,
 {
-    pub fn new(conn: ServerConnection, interval: I, executor: ScriptExecutor) -> Self {
+    pub fn new(
+        conn: ServerConnection,
+        interval: I,
+        executor: ScriptExecutor,
+        config: &Config,
+    ) -> Self {
+        let render_delay = ControlFrame(config.network.interpolation_frames);
+
         Self {
             conn,
             game_tick: GameTick {
@@ -56,7 +64,7 @@ where
             },
             newest_state: WorldState::new(),
             server_entities: Entities::default(),
-            next_frame_counter: NextFrameCounter::new(ControlFrame(0)),
+            next_frame_counter: NextFrameCounter::new(render_delay),
             physics_pipeline: game_physics::Pipeline::new(),
             executor,
             event_queue: EventQueue::new(),
