@@ -1,14 +1,17 @@
 mod actions;
 pub mod camera;
+pub mod game_world;
 pub mod movement;
+pub mod script;
+pub mod state;
 
 use std::net::ToSocketAddrs;
 use std::sync::Arc;
+use std::time::Duration;
 
 use ahash::HashMap;
 use game_common::components::actions::ActionId;
 use game_common::components::actor::ActorProperties;
-use game_common::components::inventory::Inventory;
 use game_common::components::items::ItemId;
 use game_common::components::transform::Transform;
 use game_common::entity::EntityId;
@@ -49,11 +52,12 @@ use crate::utils::extract_actor_rotation;
 
 use self::actions::ActiveActions;
 use self::camera::{CameraController, CameraMode, DetachedState};
+use self::game_world::GameWorld;
 use self::movement::update_rotation;
 
 #[derive(Debug)]
 pub struct GameWorldState {
-    pub conn: ServerConnection<Interval>,
+    pub world: GameWorld<Interval>,
     camera_controller: CameraController,
     is_init: bool,
     primary_camera: Option<CameraId>,
@@ -72,7 +76,7 @@ impl GameWorldState {
         addr: impl ToSocketAddrs,
         modules: Modules,
         cursor: &Cursor,
-        executor: Arc<ScriptExecutor>,
+        executor: ScriptExecutor,
         inputs: Inputs,
     ) -> Self {
         cursor.lock();
@@ -82,8 +86,10 @@ impl GameWorldState {
         conn.connect(addr);
         conn.modules = modules.clone();
 
+        let interval = Interval::new(Duration::from_secs(1) / config.timestep);
+
         Self {
-            conn,
+            world: GameWorld::new(conn, interval, executor),
             camera_controller: CameraController::new(),
             is_init: false,
             primary_camera: None,
@@ -145,12 +151,7 @@ impl GameWorldState {
                         self.entities.insert(eid, id);
                     }
                 }
-                Command::Translate {
-                    entity,
-                    start,
-                    end,
-                    dst,
-                } => {
+                Command::Translate { entity, dst } => {
                     let id = self.entities.get(&entity).unwrap();
                     let transform = hierarchy.get_mut(*id).unwrap();
 
@@ -163,12 +164,7 @@ impl GameWorldState {
 
                     transform.translation = dst;
                 }
-                Command::Rotate {
-                    entity,
-                    start,
-                    end,
-                    dst,
-                } => {
+                Command::Rotate { entity, dst } => {
                     let id = self.entities.get(&entity).unwrap();
                     let transform = hierarchy.get_mut(*id).unwrap();
 
@@ -196,16 +192,14 @@ impl GameWorldState {
         self.dispatch_actions();
 
         if self.camera_controller.mode != CameraMode::Detached {
-            if let Some(snapshot) = &self.conn.current_state {
-                if let Some(entity) = snapshot.entities.get(self.conn.host) {
-                    let props = ActorProperties {
-                        eyes: Vec3::new(0.0, 1.8, 0.0),
-                        rotation: extract_actor_rotation(entity.transform.rotation),
-                    };
+            if let Some(entity) = self.world_state.entities.get(self.conn.host) {
+                let props = ActorProperties {
+                    eyes: Vec3::new(0.0, 1.8, 0.0),
+                    rotation: extract_actor_rotation(entity.transform.rotation),
+                };
 
-                    self.camera_controller
-                        .sync_with_entity(entity.transform, props);
-                }
+                self.camera_controller
+                    .sync_with_entity(entity.transform, props);
             }
         } else {
             // We are in detached mode and need to manually
@@ -269,17 +263,15 @@ impl GameWorldState {
             return;
         }
 
-        if let Some(snapshot) = &mut self.conn.current_state {
-            if let Some(host) = snapshot.entities.get_mut(self.conn.host) {
-                host.transform = update_rotation(host.transform, event);
-                let rotation = host.transform.rotation;
+        if let Some(host) = self.world_state.entities.get_mut(self.conn.host) {
+            host.transform = update_rotation(host.transform, event);
+            let rotation = host.transform.rotation;
 
-                let entity = self.conn.server_entities.get(self.conn.host).unwrap();
-                self.conn.send(DataMessageBody::EntityRotate(EntityRotate {
-                    entity,
-                    rotation,
-                }));
-            }
+            let entity = self.conn.server_entities.get(self.conn.host).unwrap();
+            self.conn.send(DataMessageBody::EntityRotate(EntityRotate {
+                entity,
+                rotation,
+            }));
         }
     }
 
@@ -356,11 +348,7 @@ impl GameWorldState {
                     let doc = state.get_mut(window).unwrap();
 
                     // Ignore if the current player entity has no inventory.
-                    let Some(snapshot) = &self.conn.current_state else {
-                        return;
-                    };
-
-                    let Some(inventory) = snapshot.inventories.get(self.conn.host) else {
+                    let Some(inventory) = self.world_state.inventories.get(self.conn.host) else {
                         return;
                     };
 
@@ -398,8 +386,7 @@ impl GameWorldState {
 
         self.conn.host = id;
 
-        let snapshot = self.conn.current_state.as_ref().unwrap();
-        let entity = snapshot.entities.get(id).unwrap();
+        let entity = self.world_state.entities.get(id).unwrap();
         let actor = entity.body.as_actor().unwrap();
 
         let module = self.modules.get(actor.race.0.module).unwrap();
@@ -418,7 +405,7 @@ impl GameWorldState {
         }
 
         // Register all actions from equipped items.
-        if let Some(inventory) = snapshot.inventories.get(self.conn.host) {
+        if let Some(inventory) = self.world_state.inventories.get(self.conn.host) {
             for (_, stack) in inventory.iter() {
                 if !stack.item.equipped {
                     continue;
@@ -454,9 +441,7 @@ impl GameWorldState {
             self.actions.unregister(id.0.module, record);
         }
 
-        let snapshot = self.conn.current_state.as_ref().unwrap();
-
-        if let Some(inventory) = snapshot.inventories.get(self.conn.host) {
+        if let Some(inventory) = self.world_state.inventories.get(self.conn.host) {
             for (_, stack) in inventory.clone().iter() {
                 if !stack.item.equipped {
                     continue;

@@ -13,7 +13,6 @@ use game_common::world::world::{WorldState, WorldViewRef};
 use game_core::modules::Modules;
 use game_net::message::DataMessageBody;
 use game_script::executor::ScriptExecutor;
-use game_script::Context;
 use glam::{Quat, Vec3};
 
 use super::ServerConnection;
@@ -75,8 +74,6 @@ pub fn apply_world_delta<I>(
                 let id = conn.server_entities.get(msg.entity).unwrap();
                 cmd_buffer.push(Command::Translate {
                     entity: id,
-                    start: render_cf,
-                    end: render_cf + 1,
                     dst: msg.translation,
                 });
             }
@@ -84,8 +81,6 @@ pub fn apply_world_delta<I>(
                 let id = conn.server_entities.get(msg.entity).unwrap();
                 cmd_buffer.push(Command::Rotate {
                     entity: id,
-                    start: render_cf,
-                    end: render_cf + 1,
                     dst: msg.rotation,
                 });
             }
@@ -238,8 +233,6 @@ fn handle_event<I>(
 
             cmd_buffer.push(Command::Translate {
                 entity: id,
-                start: render_cf,
-                end: render_cf + 1,
                 dst: translation,
             });
         }
@@ -248,8 +241,6 @@ fn handle_event<I>(
 
             cmd_buffer.push(Command::Rotate {
                 entity: id,
-                start: render_cf,
-                end: render_cf + 1,
                 dst: rotation,
             });
         }
@@ -555,18 +546,8 @@ impl CommandBuffer {
 pub enum Command {
     Spawn(DelayedEntity),
     Despawn(EntityId),
-    Translate {
-        entity: EntityId,
-        start: ControlFrame,
-        end: ControlFrame,
-        dst: Vec3,
-    },
-    Rotate {
-        entity: EntityId,
-        start: ControlFrame,
-        end: ControlFrame,
-        dst: Quat,
-    },
+    Translate { entity: EntityId, dst: Vec3 },
+    Rotate { entity: EntityId, dst: Quat },
     SpawnHost(EntityId),
     DestroyHost(EntityId),
     InventoryItemAdd {},

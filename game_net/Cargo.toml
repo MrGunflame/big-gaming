@@ -8,6 +8,7 @@ license = "GPL-3.0-or-later"
 [features]
 default = ["tracing"]
 tracing = []
+log-peer-errors = []
 
 [dependencies]
 game_macros = { version = "0.1.0", path = "../game_macros", features = ["net"] }

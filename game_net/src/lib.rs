@@ -35,3 +35,13 @@ pub mod socket;
 mod validator;
 
 pub use socket::Socket;
+
+/// Logs a peer error.
+#[macro_export]
+macro_rules! peer_error {
+    ($($arg:tt)*) => {{
+        if cfg!(feature = "log-peer-errors") {
+            tracing::warn!($($arg)*);
+        }
+    }};
+}
