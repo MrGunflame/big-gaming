@@ -26,7 +26,7 @@ use super::flush_command_queue;
 use super::prediction::InputBuffer;
 use super::snapshot::MessageBacklog;
 //use super::prediction::ClientPredictions;
-use super::world::{apply_world_delta, CommandBuffer};
+use super::world::CommandBuffer;
 
 #[derive(Debug)]
 pub struct ServerConnection {
@@ -35,9 +35,6 @@ pub struct ServerConnection {
 
     pub handle: Option<Arc<ConnectionHandle>>,
     pub host: EntityId,
-
-    /// How many frames to backlog and interpolate over.
-    interplation_frames: ControlFrame,
 
     pub server_entities: Entities,
 
@@ -62,21 +59,14 @@ pub struct ServerConnection {
     pub(crate) inventory_update: bool,
 }
 
-impl<I> ServerConnection<I> {
-    pub fn new_with_interval(config: &Config, interval: I) -> Self {
+impl ServerConnection {
+    pub fn new(config: &Config) -> Self {
         let mut world = WorldState::new();
         world.insert(ControlFrame(0));
 
         Self {
             handle: None,
             host: EntityId::dangling(),
-            game_tick: GameTick {
-                interval,
-                current_control_frame: ControlFrame(0),
-                initial_idle_passed: false,
-                counter: UpdateCounter::new(),
-            },
-            interplation_frames: ControlFrame(config.network.interpolation_frames),
             server_entities: Entities::new(),
             last_render_frame: None,
             trace: WorldTrace::new(),
@@ -113,14 +103,7 @@ impl<I> ServerConnection<I> {
             spawn_conn(addr, cf, const_delay)
         }
 
-        match inner(
-            addr,
-            // Note that we always start on the "next" frame.
-            // The first frame must be empty to bootstrap the
-            // first interpolation tick.
-            self.game_tick.current_control_frame + 1,
-            self.interplation_frames,
-        ) {
+        match inner(addr, ControlFrame(0), ControlFrame(0)) {
             Ok(handle) => {
                 self.handle = Some(handle);
             }
@@ -134,7 +117,7 @@ impl<I> ServerConnection<I> {
         self.handle.is_some()
     }
 
-    pub fn send(&mut self, body: DataMessageBody) {
+    pub fn send(&mut self, control_frame: ControlFrame, body: DataMessageBody) {
         if !self.is_connected() {
             tracing::warn!("attempted to send a command, but the peer is not connected");
             return;
@@ -142,7 +125,7 @@ impl<I> ServerConnection<I> {
 
         let msg = DataMessage {
             id: MessageId(self.next_message_id),
-            control_frame: self.game_tick.current_control_frame,
+            control_frame,
             body,
         };
         self.next_message_id += 1;
@@ -152,32 +135,10 @@ impl<I> ServerConnection<I> {
     }
 
     pub fn shutdown(&mut self) {
-        dbg!("shutdown");
         // The connection will automatically shut down after the last
         // handle was dropped.
         self.handle = None;
         self.buffer.clear();
-    }
-
-    /// Returns the current control frame.
-    pub fn control_frame(&mut self) -> CurrentControlFrame {
-        let interpolation_period = self.interplation_frames;
-
-        let head = self.game_tick.current_control_frame;
-
-        // If the initial idle phase passed, ControlFrame wraps around.
-        let render = if self.game_tick.initial_idle_passed {
-            Some(head - interpolation_period)
-        } else {
-            if let Some(cf) = head.checked_sub(interpolation_period) {
-                self.game_tick.initial_idle_passed = true;
-                Some(cf)
-            } else {
-                None
-            }
-        };
-
-        CurrentControlFrame { head, render }
     }
 
     fn flush_buffer(&mut self) {
@@ -191,7 +152,7 @@ impl<I> ServerConnection<I> {
         }
     }
 
-    pub fn update2(&mut self) {
+    pub fn update(&mut self) {
         if !self.is_connected() {
             tracing::warn!("not connected");
             return;
@@ -201,85 +162,6 @@ impl<I> ServerConnection<I> {
 
         flush_command_queue(self);
     }
-}
-
-impl<I> ServerConnection<I>
-where
-    I: IntervalImpl,
-{
-    pub fn update(&mut self, time: &Time, buffer: &mut CommandBuffer, executor: &ScriptExecutor) {
-        if !self.is_connected() {
-            return;
-        }
-
-        while self.game_tick.interval.is_ready(time.last_update()) {
-            // Flush input buffer from previous frame.
-            self.flush_buffer();
-
-            self.game_tick.current_control_frame += 1;
-            self.game_tick.counter.update();
-
-            // debug_assert!(self
-            //     .world
-            //     .get(self.game_tick.current_control_frame)
-            //     .is_none());
-            if self
-                .world
-                .get(self.game_tick.current_control_frame)
-                .is_none()
-            {
-                self.world.insert(self.game_tick.current_control_frame);
-            }
-
-            // Snapshots render..head should now exist.
-            if cfg!(debug_assertions) {
-                let control_frame = self.control_frame();
-                let mut start = match control_frame.render {
-                    Some(render) => render,
-                    None => ControlFrame(0),
-                };
-                let end = control_frame.head;
-
-                while start != end + 1 {
-                    assert!(self.world.get(start).is_some());
-
-                    start += 1;
-                }
-            }
-
-            tracing::debug!(
-                "Stepping control frame to {:?} (UPS = {})",
-                self.game_tick.current_control_frame,
-                self.game_tick.counter.ups(),
-            );
-
-            flush_command_queue(self);
-            apply_world_delta(self, buffer, executor);
-
-            if self.current_state.is_some() {
-                self.step_physics(buffer);
-                self.run_scripts(executor, buffer);
-            }
-        }
-    }
-}
-
-impl ServerConnection<Interval> {
-    pub fn new(config: &Config) -> Self {
-        let interval = Interval::new(Duration::from_secs(1) / config.timestep);
-        Self::new_with_interval(config, interval)
-    }
-}
-
-#[derive(Debug)]
-pub struct GameTick<I> {
-    pub interval: I,
-    current_control_frame: ControlFrame,
-    /// Whether the initial idle phase passed. In this phase the renderer is waiting for the
-    /// initial interpolation window to build up.
-    // TODO: Maybe make this AtomicBool to prevent `control_frame()` being `&mut self`.
-    initial_idle_passed: bool,
-    counter: UpdateCounter,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]

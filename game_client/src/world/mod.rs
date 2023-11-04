@@ -52,7 +52,7 @@ use crate::utils::extract_actor_rotation;
 
 use self::actions::ActiveActions;
 use self::camera::{CameraController, CameraMode, DetachedState};
-use self::game_world::GameWorld;
+use self::game_world::{GameWorld, SendCommand};
 use self::movement::update_rotation;
 
 #[derive(Debug)]
@@ -64,10 +64,10 @@ pub struct GameWorldState {
     entities: HashMap<EntityId, Entity>,
     modules: Modules,
     actions: ActiveActions,
-    executor: Arc<ScriptExecutor>,
     inputs: Inputs,
     inventory_proxy: Option<InventoryProxy>,
     inventory_actions: Vec<ActionId>,
+    host: EntityId,
 }
 
 impl GameWorldState {
@@ -96,10 +96,10 @@ impl GameWorldState {
             entities: HashMap::default(),
             modules,
             actions: ActiveActions::new(),
-            executor,
             inputs,
             inventory_proxy: None,
             inventory_actions: vec![],
+            host: EntityId::dangling(),
         }
     }
 
@@ -134,7 +134,7 @@ impl GameWorldState {
         }
 
         let mut buf = CommandBuffer::new();
-        self.conn.update(time, &mut buf, &self.executor);
+        self.world.update(time, &self.modules, &mut buf);
 
         while let Some(cmd) = buf.pop() {
             match cmd {
@@ -184,15 +184,10 @@ impl GameWorldState {
             }
         }
 
-        if self.conn.inventory_update {
-            self.conn.inventory_update = false;
-            self.update_inventory_actions();
-        }
-
         self.dispatch_actions();
 
         if self.camera_controller.mode != CameraMode::Detached {
-            if let Some(entity) = self.world_state.entities.get(self.conn.host) {
+            if let Some(entity) = self.world.state().entities.get(self.host) {
                 let props = ActorProperties {
                     eyes: Vec3::new(0.0, 1.8, 0.0),
                     rotation: extract_actor_rotation(entity.transform.rotation),
@@ -263,15 +258,14 @@ impl GameWorldState {
             return;
         }
 
-        if let Some(host) = self.world_state.entities.get_mut(self.conn.host) {
-            host.transform = update_rotation(host.transform, event);
-            let rotation = host.transform.rotation;
+        if let Some(host) = self.world.state().entities.get(self.host) {
+            let transform = update_rotation(host.transform, event);
+            let rotation = transform.rotation;
 
-            let entity = self.conn.server_entities.get(self.conn.host).unwrap();
-            self.conn.send(DataMessageBody::EntityRotate(EntityRotate {
-                entity,
+            self.world.send(SendCommand::Rotate {
+                entity: self.host,
                 rotation,
-            }));
+            });
         }
     }
 
@@ -348,7 +342,7 @@ impl GameWorldState {
                     let doc = state.get_mut(window).unwrap();
 
                     // Ignore if the current player entity has no inventory.
-                    let Some(inventory) = self.world_state.inventories.get(self.conn.host) else {
+                    let Some(inventory) = self.world.state().inventories.get(self.host) else {
                         return;
                     };
 
@@ -367,15 +361,15 @@ impl GameWorldState {
     fn dispatch_actions(&mut self) {
         let actions = self.actions.take_events();
 
-        let Some(entity) = self.conn.server_entities.get(self.conn.host) else {
+        if self.world.state().entities.get(self.host).is_none() {
             return;
-        };
+        }
 
         for action in actions {
-            self.conn.send(DataMessageBody::EntityAction(EntityAction {
-                entity,
+            self.world.send(SendCommand::Action {
+                entity: self.host,
                 action,
-            }));
+            });
         }
     }
 
@@ -384,9 +378,9 @@ impl GameWorldState {
         // If this is the first host this is a noop.
         self.actions.clear();
 
-        self.conn.host = id;
+        self.host = id;
 
-        let entity = self.world_state.entities.get(id).unwrap();
+        let entity = self.world.state().entities.get(id).unwrap();
         let actor = entity.body.as_actor().unwrap();
 
         let module = self.modules.get(actor.race.0.module).unwrap();
@@ -405,7 +399,7 @@ impl GameWorldState {
         }
 
         // Register all actions from equipped items.
-        if let Some(inventory) = self.world_state.inventories.get(self.conn.host) {
+        if let Some(inventory) = self.world.state().inventories.get(self.host) {
             for (_, stack) in inventory.iter() {
                 if !stack.item.equipped {
                     continue;
@@ -441,7 +435,7 @@ impl GameWorldState {
             self.actions.unregister(id.0.module, record);
         }
 
-        if let Some(inventory) = self.world_state.inventories.get(self.conn.host) {
+        if let Some(inventory) = self.world.state().inventories.get(self.host) {
             for (_, stack) in inventory.clone().iter() {
                 if !stack.item.equipped {
                     continue;

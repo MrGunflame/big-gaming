@@ -13,12 +13,12 @@ pub struct MessageBacklog {
 impl MessageBacklog {
     pub fn new() -> Self {
         Self {
-            snapshots: VecDeque::new(),
+            snapshots: HashMap::default(),
         }
     }
 
     pub fn insert(&mut self, cf: ControlFrame, msg: DataMessage) {
-        let snapshot = self.snapshots.entry(&cf).or_default();
+        let snapshot = self.snapshots.entry(cf).or_default();
         snapshot.events.push_back(msg);
     }
 
@@ -29,11 +29,6 @@ impl MessageBacklog {
         Some(Drain {
             inner: snapshot.events.drain(..),
         })
-    }
-
-    #[inline]
-    fn get_index(&self, cf: ControlFrame) -> usize {
-        (self.base_cf - cf).0 as usize
     }
 }
 

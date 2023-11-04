@@ -10,8 +10,9 @@ use std::collections::VecDeque;
 use game_net::message::{ControlMessage, Message};
 
 pub use self::conn::ServerConnection;
+pub use self::entities::Entities;
 
-fn flush_command_queue<I>(conn: &mut ServerConnection<I>) {
+fn flush_command_queue(conn: &mut ServerConnection) {
     let mut queue = VecDeque::new();
     let handle = conn.handle.as_ref().unwrap();
     while let Some(msg) = handle.recv() {

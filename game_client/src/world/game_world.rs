@@ -1,11 +1,11 @@
-use ahash::HashMap;
+use game_common::components::actions::ActionId;
 use game_common::components::components::{Component, Components};
+use game_common::components::inventory::Inventory;
 use game_common::components::object::ObjectId;
 use game_common::components::race::RaceId;
 use game_common::components::transform::Transform;
 use game_common::entity::EntityId;
-use game_common::events::EventQueue;
-use game_common::net::ServerEntity;
+use game_common::events::{ActionEvent, Event, EventQueue};
 use game_common::record::RecordReference;
 use game_common::world::control_frame::ControlFrame;
 use game_common::world::entity::{Actor, Entity, EntityBody, Object};
@@ -13,13 +13,14 @@ use game_core::counter::{IntervalImpl, UpdateCounter};
 use game_core::modules::Modules;
 use game_core::time::Time;
 use game_data::record::RecordBody;
-use game_net::message::DataMessageBody;
+use game_net::message::{DataMessageBody, EntityAction, EntityRotate};
 use game_net::peer_error;
 use game_script::executor::ScriptExecutor;
 use game_tracing::trace_span;
+use glam::Quat;
 
-use crate::net::world::{Command, CommandBuffer};
-use crate::net::ServerConnection;
+use crate::net::world::{Command, CommandBuffer, DelayedEntity};
+use crate::net::{Entities, ServerConnection};
 use crate::world::script::run_scripts;
 
 use super::state::WorldState;
@@ -30,11 +31,15 @@ pub struct GameWorld<I> {
     game_tick: GameTick<I>,
     next_frame_counter: NextFrameCounter,
     /// Server to local entity mapping.
-    server_entities: HashMap<ServerEntity, EntityId>,
-    state: WorldState,
+    server_entities: Entities,
     physics_pipeline: game_physics::Pipeline,
     executor: ScriptExecutor,
     event_queue: EventQueue,
+
+    /// Newest fresh state from the server.
+    newest_state: WorldState,
+    /// The newest state from the server with locally predicted inputs applied.
+    predicted_state: WorldState,
 }
 
 impl<I> GameWorld<I>
@@ -49,12 +54,13 @@ where
                 counter: UpdateCounter::new(),
                 current_control_frame: ControlFrame(0),
             },
-            state: WorldState::new(),
-            server_entities: HashMap::default(),
+            newest_state: WorldState::new(),
+            server_entities: Entities::default(),
             next_frame_counter: NextFrameCounter::new(ControlFrame(0)),
             physics_pipeline: game_physics::Pipeline::new(),
             executor,
             event_queue: EventQueue::new(),
+            predicted_state: WorldState::new(),
         }
     }
 
@@ -62,7 +68,7 @@ where
         let _span = trace_span!("GameWorld::update").entered();
 
         while self.game_tick.interval.is_ready(time.last_update()) {
-            self.conn.update2();
+            self.conn.update();
 
             self.game_tick.current_control_frame += 1;
             self.game_tick.counter.update();
@@ -74,10 +80,10 @@ where
             );
 
             if let Some(render_cf) = self.next_frame_counter.render_frame {
-                self.process_frame(self.game_tick.current_control_frame, modules, cmd_buffer);
+                self.process_frame(render_cf, modules, cmd_buffer);
 
                 run_scripts(
-                    &mut self.state,
+                    &mut self.predicted_state,
                     &self.physics_pipeline,
                     &self.executor,
                     &mut self.event_queue,
@@ -112,7 +118,7 @@ where
                         _ => todo!(),
                     };
 
-                    let entity = spawn_entity(
+                    let Some(entity) = spawn_entity(
                         id,
                         Transform {
                             translation: msg.translation,
@@ -120,30 +126,36 @@ where
                             ..Default::default()
                         },
                         modules,
-                    );
+                    ) else {
+                        continue;
+                    };
 
-                    let id = self.state.entities.insert(entity);
-                    self.server_entities.insert(msg.entity, id);
+                    let id = self.newest_state.entities.insert(entity.clone());
+                    self.server_entities.insert(id, msg.entity);
 
-                    cmd_buffer.push(Command::Spawn(entity));
+                    cmd_buffer.push(Command::Spawn(DelayedEntity {
+                        entity,
+                        inventory: Inventory::new(),
+                        host: false,
+                    }));
                 }
                 DataMessageBody::EntityDestroy(msg) => {
-                    let Some(id) = self.server_entities.get(&msg.entity).copied() else {
+                    let Some(id) = self.server_entities.get(msg.entity) else {
                         peer_error!("invalid entity: {:?}", msg.entity);
                         continue;
                     };
 
-                    self.state.entities.remove(id);
+                    self.newest_state.entities.remove(id);
 
                     cmd_buffer.push(Command::Despawn(id));
                 }
                 DataMessageBody::EntityTranslate(msg) => {
-                    let Some(id) = self.server_entities.get(&msg.entity).copied() else {
+                    let Some(id) = self.server_entities.get(msg.entity) else {
                         peer_error!("invalid entity: {:?}", msg.entity);
                         continue;
                     };
 
-                    self.state
+                    self.newest_state
                         .entities
                         .get_mut(id)
                         .unwrap()
@@ -156,19 +168,132 @@ where
                     });
                 }
                 DataMessageBody::EntityRotate(msg) => {
-                    let Some(id) = self.server_entities.get(&msg.entity).copied() else {
+                    let Some(id) = self.server_entities.get(msg.entity) else {
                         peer_error!("invalid entity: {:?}", msg.entity);
                         continue;
                     };
 
-                    self.state.entities.get_mut(id).unwrap().transform.rotation = msg.rotation;
+                    self.newest_state
+                        .entities
+                        .get_mut(id)
+                        .unwrap()
+                        .transform
+                        .rotation = msg.rotation;
 
                     cmd_buffer.push(Command::Rotate {
                         entity: id,
                         dst: msg.rotation,
                     });
                 }
-                _ => todo!(),
+                DataMessageBody::SpawnHost(msg) => {
+                    let Some(id) = self.server_entities.get(msg.entity) else {
+                        peer_error!("invalid entity: {:?}", msg.entity);
+                        continue;
+                    };
+
+                    cmd_buffer.push(Command::SpawnHost(id));
+                }
+                _ => (),
+            }
+        }
+
+        // Apply predicted inputs.
+
+        // Remove all inputs that were acknowledged for this frame
+        // BEFORE we apply them.
+        self.conn.input_buffer.clear(cf);
+
+        for msg in self.conn.input_buffer.iter() {
+            match msg.body {
+                DataMessageBody::EntityTranslate(msg) => {
+                    let id = self.server_entities.get(msg.entity).unwrap();
+                    cmd_buffer.push(Command::Translate {
+                        entity: id,
+                        dst: msg.translation,
+                    });
+                }
+                DataMessageBody::EntityRotate(msg) => {
+                    let id = self.server_entities.get(msg.entity).unwrap();
+                    cmd_buffer.push(Command::Rotate {
+                        entity: id,
+                        dst: msg.rotation,
+                    });
+                }
+                DataMessageBody::EntityAction(msg) => {
+                    // We don't directly handle actions here.
+                    // Actions are queued and handled at a later stage.
+                }
+                _ => {
+                    // Should never be sent from the client.
+                    if cfg!(debug_assertions) {
+                        unreachable!();
+                    }
+                }
+            }
+        }
+
+        // We need to replicate the world snapshot as the client
+        // predicted it.
+        self.predicted_state = self.newest_state.clone();
+
+        for msg in self.conn.input_buffer.iter() {
+            match msg.body {
+                DataMessageBody::EntityTranslate(msg) => {
+                    let id = self.server_entities.get(msg.entity).unwrap();
+                    let entity = self.predicted_state.entities.get_mut(id).unwrap();
+                    entity.transform.translation = msg.translation;
+                }
+                DataMessageBody::EntityRotate(msg) => {
+                    let id = self.server_entities.get(msg.entity).unwrap();
+                    let entity = self.predicted_state.entities.get_mut(id).unwrap();
+                    entity.transform.rotation = msg.rotation;
+                }
+                DataMessageBody::EntityAction(msg) => {
+                    let id = self.server_entities.get(msg.entity).unwrap();
+                    self.event_queue.push(Event::Action(ActionEvent {
+                        entity: id,
+                        invoker: id,
+                        action: msg.action,
+                    }));
+                }
+                _ => {
+                    // Should never be sent from the client.
+                    if cfg!(debug_assertions) {
+                        unreachable!();
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn state(&self) -> &WorldState {
+        &self.predicted_state
+    }
+
+    pub fn send(&mut self, cmd: SendCommand) {
+        match cmd {
+            SendCommand::Rotate { entity, rotation } => {
+                let Some(id) = self.server_entities.get(entity) else {
+                    return;
+                };
+
+                self.conn.send(
+                    self.next_frame_counter.newest_frame,
+                    DataMessageBody::EntityRotate(EntityRotate {
+                        entity: id,
+                        rotation,
+                    }),
+                );
+            }
+            SendCommand::Action { entity, action } => {
+                let Some(id) = self.server_entities.get(entity) else {
+                    return;
+                };
+
+                self.conn.send(
+                    self.next_frame_counter.newest_frame,
+                    DataMessageBody::EntityAction(EntityAction { entity: id, action }),
+                );
             }
         }
     }
@@ -246,4 +371,9 @@ fn spawn_entity(id: RecordReference, transform: Transform, modules: &Modules) ->
         components,
         is_host: false,
     })
+}
+
+pub enum SendCommand {
+    Rotate { entity: EntityId, rotation: Quat },
+    Action { entity: EntityId, action: ActionId },
 }

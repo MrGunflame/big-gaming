@@ -17,274 +17,274 @@ use glam::{Quat, Vec3};
 
 use super::ServerConnection;
 
-pub fn apply_world_delta<I>(
-    conn: &mut ServerConnection<I>,
-    cmd_buffer: &mut CommandBuffer,
-    executor: &ScriptExecutor,
-) {
-    let cf = conn.control_frame();
+// pub fn apply_world_delta<I>(
+//     conn: &mut ServerConnection<I>,
+//     cmd_buffer: &mut CommandBuffer,
+//     executor: &ScriptExecutor,
+// ) {
+//     let cf = conn.control_frame();
 
-    // Don't start rendering if the initial interpoation window is not
-    // yet filled.
-    let Some(render_cf) = cf.render else {
-        return;
-    };
+//     // Don't start rendering if the initial interpoation window is not
+//     // yet filled.
+//     let Some(render_cf) = cf.render else {
+//         return;
+//     };
 
-    debug_assert!(conn.world.len() >= 2);
+//     debug_assert!(conn.world.len() >= 2);
 
-    // Called while we're still on the same frame, we won't do anything.
-    // FIXME: This check might better be moved to a different place, like
-    // being only called once the tick is stepped forward for example.
-    if conn.last_render_frame == Some(render_cf) {
-        return;
-    }
+//     // Called while we're still on the same frame, we won't do anything.
+//     // FIXME: This check might better be moved to a different place, like
+//     // being only called once the tick is stepped forward for example.
+//     if conn.last_render_frame == Some(render_cf) {
+//         return;
+//     }
 
-    tracing::trace!(
-        "Applying CF {:?}",
-        conn.world.at(0).unwrap().control_frame()
-    );
+//     tracing::trace!(
+//         "Applying CF {:?}",
+//         conn.world.at(0).unwrap().control_frame()
+//     );
 
-    // The first time a frame is being produced, i.e. `last_render_frame` is
-    // `None` we must produce a "diff" consisting of the entire world state.
-    let (delta, should_pop) = if conn.last_render_frame.is_none() {
-        let view = conn.world.at(0).unwrap();
-        (create_initial_diff(view), false)
-    } else {
-        let prev = conn.world.at(0).unwrap();
-        let next = conn.world.at(1).unwrap();
-        (create_snapshot_diff(prev, next), true)
-    };
+//     // The first time a frame is being produced, i.e. `last_render_frame` is
+//     // `None` we must produce a "diff" consisting of the entire world state.
+//     let (delta, should_pop) = if conn.last_render_frame.is_none() {
+//         let view = conn.world.at(0).unwrap();
+//         (create_initial_diff(view), false)
+//     } else {
+//         let prev = conn.world.at(0).unwrap();
+//         let next = conn.world.at(1).unwrap();
+//         (create_snapshot_diff(prev, next), true)
+//     };
 
-    // Since events are received in batches, and commands are not applied until
-    // the system is done, we buffer all created entities so we can modify them
-    // in place within the same batch before they are spawned into the world.
-    let mut buffer = Buffer::new();
+//     // Since events are received in batches, and commands are not applied until
+//     // the system is done, we buffer all created entities so we can modify them
+//     // in place within the same batch before they are spawned into the world.
+//     let mut buffer = Buffer::new();
 
-    for event in delta {
-        handle_event(event.clone(), &mut buffer, conn, cmd_buffer, render_cf);
-    }
+//     for event in delta {
+//         handle_event(event.clone(), &mut buffer, conn, cmd_buffer, render_cf);
+//     }
 
-    // Remove all inputs that were acknowledged for this frame
-    // BEFORE we apply them.
-    conn.input_buffer.clear(render_cf);
+//     // Remove all inputs that were acknowledged for this frame
+//     // BEFORE we apply them.
+//     conn.input_buffer.clear(render_cf);
 
-    for msg in conn.input_buffer.iter() {
-        match msg.body {
-            DataMessageBody::EntityTranslate(msg) => {
-                let id = conn.server_entities.get(msg.entity).unwrap();
-                cmd_buffer.push(Command::Translate {
-                    entity: id,
-                    dst: msg.translation,
-                });
-            }
-            DataMessageBody::EntityRotate(msg) => {
-                let id = conn.server_entities.get(msg.entity).unwrap();
-                cmd_buffer.push(Command::Rotate {
-                    entity: id,
-                    dst: msg.rotation,
-                });
-            }
-            DataMessageBody::EntityAction(msg) => {
-                // We don't directly handle actions here.
-                // Actions are queued and handled at a later stage.
-            }
-            _ => {
-                // Should never be sent from the client.
-                if cfg!(debug_assertions) {
-                    unreachable!();
-                }
-            }
-        }
-    }
+//     for msg in conn.input_buffer.iter() {
+//         match msg.body {
+//             DataMessageBody::EntityTranslate(msg) => {
+//                 let id = conn.server_entities.get(msg.entity).unwrap();
+//                 cmd_buffer.push(Command::Translate {
+//                     entity: id,
+//                     dst: msg.translation,
+//                 });
+//             }
+//             DataMessageBody::EntityRotate(msg) => {
+//                 let id = conn.server_entities.get(msg.entity).unwrap();
+//                 cmd_buffer.push(Command::Rotate {
+//                     entity: id,
+//                     dst: msg.rotation,
+//                 });
+//             }
+//             DataMessageBody::EntityAction(msg) => {
+//                 // We don't directly handle actions here.
+//                 // Actions are queued and handled at a later stage.
+//             }
+//             _ => {
+//                 // Should never be sent from the client.
+//                 if cfg!(debug_assertions) {
+//                     unreachable!();
+//                 }
+//             }
+//         }
+//     }
 
-    for entity in buffer.entities {
-        conn.trace.spawn(render_cf, entity.entity.clone());
+//     for entity in buffer.entities {
+//         conn.trace.spawn(render_cf, entity.entity.clone());
 
-        cmd_buffer.push(Command::Spawn(entity));
-    }
+//         cmd_buffer.push(Command::Spawn(entity));
+//     }
 
-    if should_pop {
-        conn.world.pop();
-    }
+//     if should_pop {
+//         conn.world.pop();
+//     }
 
-    // We need to replicate the world snapshot as the client
-    // predicted it.
-    {
-        let mut snapshot = conn.world.front().unwrap().snapshot().clone();
+//     // We need to replicate the world snapshot as the client
+//     // predicted it.
+//     {
+//         let mut snapshot = conn.world.front().unwrap().snapshot().clone();
 
-        for msg in conn.input_buffer.iter() {
-            match msg.body {
-                DataMessageBody::EntityTranslate(msg) => {
-                    let id = conn.server_entities.get(msg.entity).unwrap();
-                    let entity = snapshot.entities.get_mut(id).unwrap();
-                    entity.transform.translation = msg.translation;
-                }
-                DataMessageBody::EntityRotate(msg) => {
-                    let id = conn.server_entities.get(msg.entity).unwrap();
-                    let entity = snapshot.entities.get_mut(id).unwrap();
-                    entity.transform.rotation = msg.rotation;
-                }
-                DataMessageBody::EntityAction(msg) => {
-                    let id = conn.server_entities.get(msg.entity).unwrap();
-                    conn.event_queue.push(Event::Action(ActionEvent {
-                        entity: id,
-                        invoker: id,
-                        action: msg.action,
-                    }));
-                }
-                _ => {
-                    // Should never be sent from the client.
-                    if cfg!(debug_assertions) {
-                        unreachable!();
-                    }
-                }
-            }
-        }
+//         for msg in conn.input_buffer.iter() {
+//             match msg.body {
+//                 DataMessageBody::EntityTranslate(msg) => {
+//                     let id = conn.server_entities.get(msg.entity).unwrap();
+//                     let entity = snapshot.entities.get_mut(id).unwrap();
+//                     entity.transform.translation = msg.translation;
+//                 }
+//                 DataMessageBody::EntityRotate(msg) => {
+//                     let id = conn.server_entities.get(msg.entity).unwrap();
+//                     let entity = snapshot.entities.get_mut(id).unwrap();
+//                     entity.transform.rotation = msg.rotation;
+//                 }
+//                 DataMessageBody::EntityAction(msg) => {
+//                     let id = conn.server_entities.get(msg.entity).unwrap();
+//                     conn.event_queue.push(Event::Action(ActionEvent {
+//                         entity: id,
+//                         invoker: id,
+//                         action: msg.action,
+//                     }));
+//                 }
+//                 _ => {
+//                     // Should never be sent from the client.
+//                     if cfg!(debug_assertions) {
+//                         unreachable!();
+//                     }
+//                 }
+//             }
+//         }
 
-        conn.current_state = Some(snapshot);
-    }
+//         conn.current_state = Some(snapshot);
+//     }
 
-    conn.last_render_frame = Some(render_cf);
-}
+//     conn.last_render_frame = Some(render_cf);
+// }
 
-fn handle_event<I>(
-    event: EntityChange,
-    buffer: &mut Buffer,
-    conn: &mut ServerConnection<I>,
-    cmd_buffer: &mut CommandBuffer,
-    render_cf: ControlFrame,
-) {
-    // Frame that is being interpolated from.
-    let view = conn.world.at(0).unwrap();
+// fn handle_event<I>(
+//     event: EntityChange,
+//     buffer: &mut Buffer,
+//     conn: &mut ServerConnection<I>,
+//     cmd_buffer: &mut CommandBuffer,
+//     render_cf: ControlFrame,
+// ) {
+//     // Frame that is being interpolated from.
+//     let view = conn.world.at(0).unwrap();
 
-    tracing::trace!(
-        concat!("handle ", stringify!(WorldState), " event: {:?}"),
-        event
-    );
+//     tracing::trace!(
+//         concat!("handle ", stringify!(WorldState), " event: {:?}"),
+//         event
+//     );
 
-    // Create and Destroy require special treatment.
-    if !matches!(
-        event,
-        EntityChange::Create { entity: _ } | EntityChange::Destroy { id: _ }
-    ) {
-        let entity_id = event.entity();
-        if let Some(entity) = buffer.get_mut(entity_id) {
-            match event {
-                EntityChange::Create { entity: _ } => {}
-                EntityChange::Destroy { id: _ } => {}
-                EntityChange::Translate { id: _, translation } => {
-                    entity.entity.transform.translation = translation;
-                }
-                EntityChange::Rotate { id: _, rotation } => {
-                    entity.entity.transform.rotation = rotation;
-                }
-                EntityChange::CreateHost { id: _ } => entity.host = true,
-                EntityChange::DestroyHost { id: _ } => entity.host = false,
-                EntityChange::InventoryItemAdd(event) => {
-                    //add_inventory_item(&mut entity.inventory, modules, event);
-                }
-                EntityChange::InventoryItemRemove(event) => {
-                    entity.inventory.remove(event.id, 1);
-                }
-                EntityChange::InventoryDestroy(event) => {
-                    entity.inventory.clear();
-                }
-                EntityChange::InventoryItemUpdate(event) => {
-                    todo!()
-                }
-                EntityChange::CreateStreamingSource { id, source } => {}
-                EntityChange::RemoveStreamingSource { id } => {}
-                // Components are not relevant here.
-                EntityChange::ComponentAdd {
-                    entity: _,
-                    component_id: _,
-                    component: _,
-                } => {}
-                EntityChange::ComponentRemove {
-                    entity: _,
-                    component_id: _,
-                } => {}
-                EntityChange::ComponentUpdate {
-                    entity: _,
-                    component_id: _,
-                    component: _,
-                } => {}
-            }
+//     // Create and Destroy require special treatment.
+//     if !matches!(
+//         event,
+//         EntityChange::Create { entity: _ } | EntityChange::Destroy { id: _ }
+//     ) {
+//         let entity_id = event.entity();
+//         if let Some(entity) = buffer.get_mut(entity_id) {
+//             match event {
+//                 EntityChange::Create { entity: _ } => {}
+//                 EntityChange::Destroy { id: _ } => {}
+//                 EntityChange::Translate { id: _, translation } => {
+//                     entity.entity.transform.translation = translation;
+//                 }
+//                 EntityChange::Rotate { id: _, rotation } => {
+//                     entity.entity.transform.rotation = rotation;
+//                 }
+//                 EntityChange::CreateHost { id: _ } => entity.host = true,
+//                 EntityChange::DestroyHost { id: _ } => entity.host = false,
+//                 EntityChange::InventoryItemAdd(event) => {
+//                     //add_inventory_item(&mut entity.inventory, modules, event);
+//                 }
+//                 EntityChange::InventoryItemRemove(event) => {
+//                     entity.inventory.remove(event.id, 1);
+//                 }
+//                 EntityChange::InventoryDestroy(event) => {
+//                     entity.inventory.clear();
+//                 }
+//                 EntityChange::InventoryItemUpdate(event) => {
+//                     todo!()
+//                 }
+//                 EntityChange::CreateStreamingSource { id, source } => {}
+//                 EntityChange::RemoveStreamingSource { id } => {}
+//                 // Components are not relevant here.
+//                 EntityChange::ComponentAdd {
+//                     entity: _,
+//                     component_id: _,
+//                     component: _,
+//                 } => {}
+//                 EntityChange::ComponentRemove {
+//                     entity: _,
+//                     component_id: _,
+//                 } => {}
+//                 EntityChange::ComponentUpdate {
+//                     entity: _,
+//                     component_id: _,
+//                     component: _,
+//                 } => {}
+//             }
 
-            return;
-        }
-    }
+//             return;
+//         }
+//     }
 
-    match event {
-        EntityChange::Create { entity } => {
-            tracing::debug!("spawning entity {:?}", entity);
+//     match event {
+//         EntityChange::Create { entity } => {
+//             tracing::debug!("spawning entity {:?}", entity);
 
-            buffer.push(entity);
-        }
-        EntityChange::Destroy { id } => {
-            if !buffer.remove(id) {
-                cmd_buffer.push(Command::Despawn(id));
-            }
+//             buffer.push(entity);
+//         }
+//         EntityChange::Destroy { id } => {
+//             if !buffer.remove(id) {
+//                 cmd_buffer.push(Command::Despawn(id));
+//             }
 
-            conn.trace.despawn(render_cf, id);
-        }
-        EntityChange::Translate { id, translation } => {
-            conn.trace.set_translation(render_cf, id, translation);
+//             conn.trace.despawn(render_cf, id);
+//         }
+//         EntityChange::Translate { id, translation } => {
+//             conn.trace.set_translation(render_cf, id, translation);
 
-            cmd_buffer.push(Command::Translate {
-                entity: id,
-                dst: translation,
-            });
-        }
-        EntityChange::Rotate { id, rotation } => {
-            conn.trace.set_rotation(render_cf, id, rotation);
+//             cmd_buffer.push(Command::Translate {
+//                 entity: id,
+//                 dst: translation,
+//             });
+//         }
+//         EntityChange::Rotate { id, rotation } => {
+//             conn.trace.set_rotation(render_cf, id, rotation);
 
-            cmd_buffer.push(Command::Rotate {
-                entity: id,
-                dst: rotation,
-            });
-        }
-        EntityChange::CreateHost { id } => {
-            cmd_buffer.push(Command::SpawnHost(id));
-        }
-        EntityChange::DestroyHost { id } => {
-            cmd_buffer.push(Command::Despawn(id));
-        }
-        EntityChange::InventoryItemAdd(event) => {
-            // let entity = conn.entities.get(event.entity).unwrap();
+//             cmd_buffer.push(Command::Rotate {
+//                 entity: id,
+//                 dst: rotation,
+//             });
+//         }
+//         EntityChange::CreateHost { id } => {
+//             cmd_buffer.push(Command::SpawnHost(id));
+//         }
+//         EntityChange::DestroyHost { id } => {
+//             cmd_buffer.push(Command::Despawn(id));
+//         }
+//         EntityChange::InventoryItemAdd(event) => {
+//             // let entity = conn.entities.get(event.entity).unwrap();
 
-            // TODO
-        }
-        EntityChange::InventoryItemRemove(event) => {
-            // let entity = conn.entities.get(event.entity).unwrap();
+//             // TODO
+//         }
+//         EntityChange::InventoryItemRemove(event) => {
+//             // let entity = conn.entities.get(event.entity).unwrap();
 
-            // TODO
-        }
-        EntityChange::InventoryDestroy(event) => {
-            // let entity = conn.entities.get(event.entity).unwrap();
+//             // TODO
+//         }
+//         EntityChange::InventoryDestroy(event) => {
+//             // let entity = conn.entities.get(event.entity).unwrap();
 
-            // TODO
-        }
-        EntityChange::CreateStreamingSource { id, source } => {}
-        EntityChange::RemoveStreamingSource { id } => {}
-        // Components are not relevant here.
-        EntityChange::ComponentAdd {
-            entity: _,
-            component_id: _,
-            component: _,
-        } => (),
-        EntityChange::ComponentRemove {
-            entity: _,
-            component_id: _,
-        } => (),
-        EntityChange::ComponentUpdate {
-            entity: _,
-            component_id: _,
-            component: _,
-        } => (),
-        EntityChange::InventoryItemUpdate(event) => todo!(),
-    }
-}
+//             // TODO
+//         }
+//         EntityChange::CreateStreamingSource { id, source } => {}
+//         EntityChange::RemoveStreamingSource { id } => {}
+//         // Components are not relevant here.
+//         EntityChange::ComponentAdd {
+//             entity: _,
+//             component_id: _,
+//             component: _,
+//         } => (),
+//         EntityChange::ComponentRemove {
+//             entity: _,
+//             component_id: _,
+//         } => (),
+//         EntityChange::ComponentUpdate {
+//             entity: _,
+//             component_id: _,
+//             component: _,
+//         } => (),
+//         EntityChange::InventoryItemUpdate(event) => todo!(),
+//     }
+// }
 
 #[derive(Clone, Debug)]
 pub struct DelayedEntity {
