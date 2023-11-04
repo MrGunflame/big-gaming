@@ -104,98 +104,96 @@ where
         let _span = trace_span!("GameWorld::process_frame").entered();
 
         // If we didn't receive any messages in this CF this is `None`
-        // and we don't have to do anything.
-        let Some(iter) = self.conn.backlog.drain(cf) else {
-            return;
-        };
+        // but we still have to handle predicted inputs for this frame.
+        if let Some(iter) = self.conn.backlog.drain(cf) {
+            for msg in iter {
+                match msg.body {
+                    DataMessageBody::EntityCreate(msg) => {
+                        let id = match msg.data {
+                            EntityBody::Actor(actor) => actor.race.0,
+                            EntityBody::Object(object) => object.id.0,
+                            _ => todo!(),
+                        };
 
-        for msg in iter {
-            match msg.body {
-                DataMessageBody::EntityCreate(msg) => {
-                    let id = match msg.data {
-                        EntityBody::Actor(actor) => actor.race.0,
-                        EntityBody::Object(object) => object.id.0,
-                        _ => todo!(),
-                    };
+                        let Some(mut entity) = spawn_entity(
+                            id,
+                            Transform {
+                                translation: msg.translation,
+                                rotation: msg.rotation,
+                                ..Default::default()
+                            },
+                            modules,
+                        ) else {
+                            continue;
+                        };
 
-                    let Some(mut entity) = spawn_entity(
-                        id,
-                        Transform {
-                            translation: msg.translation,
-                            rotation: msg.rotation,
-                            ..Default::default()
-                        },
-                        modules,
-                    ) else {
-                        continue;
-                    };
+                        let id = self.newest_state.entities.insert(entity.clone());
+                        entity.id = id;
 
-                    let id = self.newest_state.entities.insert(entity.clone());
-                    entity.id = id;
+                        self.server_entities.insert(id, msg.entity);
 
-                    self.server_entities.insert(id, msg.entity);
+                        cmd_buffer.push(Command::Spawn(DelayedEntity {
+                            entity,
+                            inventory: Inventory::new(),
+                            host: false,
+                        }));
+                    }
+                    DataMessageBody::EntityDestroy(msg) => {
+                        let Some(id) = self.server_entities.get(msg.entity) else {
+                            peer_error!("invalid entity: {:?}", msg.entity);
+                            continue;
+                        };
 
-                    cmd_buffer.push(Command::Spawn(DelayedEntity {
-                        entity,
-                        inventory: Inventory::new(),
-                        host: false,
-                    }));
+                        self.newest_state.entities.remove(id);
+
+                        cmd_buffer.push(Command::Despawn(id));
+                    }
+                    DataMessageBody::EntityTranslate(msg) => {
+                        let Some(id) = self.server_entities.get(msg.entity) else {
+                            peer_error!("invalid entity: {:?}", msg.entity);
+                            continue;
+                        };
+
+                        self.newest_state
+                            .entities
+                            .get_mut(id)
+                            .unwrap()
+                            .transform
+                            .translation = msg.translation;
+
+                        cmd_buffer.push(Command::Translate {
+                            entity: id,
+                            dst: msg.translation,
+                        });
+                    }
+                    DataMessageBody::EntityRotate(msg) => {
+                        let Some(id) = self.server_entities.get(msg.entity) else {
+                            peer_error!("invalid entity: {:?}", msg.entity);
+                            continue;
+                        };
+
+                        self.newest_state
+                            .entities
+                            .get_mut(id)
+                            .unwrap()
+                            .transform
+                            .rotation = msg.rotation;
+
+                        cmd_buffer.push(Command::Rotate {
+                            entity: id,
+                            dst: msg.rotation,
+                        });
+                    }
+                    DataMessageBody::SpawnHost(msg) => {
+                        let Some(id) = self.server_entities.get(msg.entity) else {
+                            peer_error!("invalid entity: {:?}", msg.entity);
+                            continue;
+                        };
+
+                        cmd_buffer.push(Command::SpawnHost(id));
+                    }
+                    _ => (),
                 }
-                DataMessageBody::EntityDestroy(msg) => {
-                    let Some(id) = self.server_entities.get(msg.entity) else {
-                        peer_error!("invalid entity: {:?}", msg.entity);
-                        continue;
-                    };
-
-                    self.newest_state.entities.remove(id);
-
-                    cmd_buffer.push(Command::Despawn(id));
-                }
-                DataMessageBody::EntityTranslate(msg) => {
-                    let Some(id) = self.server_entities.get(msg.entity) else {
-                        peer_error!("invalid entity: {:?}", msg.entity);
-                        continue;
-                    };
-
-                    self.newest_state
-                        .entities
-                        .get_mut(id)
-                        .unwrap()
-                        .transform
-                        .translation = msg.translation;
-
-                    cmd_buffer.push(Command::Translate {
-                        entity: id,
-                        dst: msg.translation,
-                    });
-                }
-                DataMessageBody::EntityRotate(msg) => {
-                    let Some(id) = self.server_entities.get(msg.entity) else {
-                        peer_error!("invalid entity: {:?}", msg.entity);
-                        continue;
-                    };
-
-                    self.newest_state
-                        .entities
-                        .get_mut(id)
-                        .unwrap()
-                        .transform
-                        .rotation = msg.rotation;
-
-                    cmd_buffer.push(Command::Rotate {
-                        entity: id,
-                        dst: msg.rotation,
-                    });
-                }
-                DataMessageBody::SpawnHost(msg) => {
-                    let Some(id) = self.server_entities.get(msg.entity) else {
-                        peer_error!("invalid entity: {:?}", msg.entity);
-                        continue;
-                    };
-
-                    cmd_buffer.push(Command::SpawnHost(id));
-                }
-                _ => (),
             }
         }
 
