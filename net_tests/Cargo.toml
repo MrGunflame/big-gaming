@@ -1,0 +1,11 @@
+[package]
+name = "net_tests"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+game_server = { version = "0.1.0", path = "../game_server" }
+game_common = { version = "0.1.0", path = "../game_common" }
+game_core = { version = "0.1.0", path = "../game_core" }
+game_data = { version = "0.1.0", path = "../game_data" }
+game_script = { version = "0.1.0", path = "../game_script" }

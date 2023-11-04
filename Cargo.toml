@@ -38,6 +38,7 @@ members = [
     "tools/json2dat",
     "tools/gltf2model",
     "tools/make",
+    "net_tests",
 ]
 
 resolver = "2"

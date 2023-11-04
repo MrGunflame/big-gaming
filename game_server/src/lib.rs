@@ -5,6 +5,7 @@
 use clap as _;
 use game_script::executor::ScriptExecutor;
 use game_worldgen as _;
+use tokio::task::JoinHandle;
 
 pub mod config;
 pub mod conn;
@@ -20,7 +21,7 @@ use std::time::{Duration, Instant};
 use game_common::events::EventQueue;
 use game_common::world::gen::Generator;
 use game_common::world::world::WorldState;
-use game_core::counter::{Interval, UpdateCounter};
+use game_core::counter::{Interval, IntervalImpl, UpdateCounter};
 use game_core::modules::Modules;
 use game_script::scripts::RecordTargets;
 use game_script::ScriptServer;
@@ -100,5 +101,62 @@ impl ServerState {
             state: State::new(config),
             script_executor: ScriptExecutor::new(server, record_targets),
         }
+    }
+}
+
+pub struct GameServer<I> {
+    pub state: ServerState,
+    interval: I,
+    counter: UpdateCounter,
+    handle: JoinHandle<()>,
+}
+
+impl<I> GameServer<I>
+where
+    I: IntervalImpl,
+{
+    pub fn new(state: ServerState, interval: I) -> Self {
+        let handle = {
+            let state = state.state.clone();
+            tokio::task::spawn(async move {
+                let server = match Server::new(state.clone()) {
+                    Ok(s) => s,
+                    Err(err) => {
+                        tracing::error!("failed to run server: {}", err);
+                        return;
+                    }
+                };
+
+                if let Err(err) = server.await {
+                    tracing::error!("failed to run server: {}", err);
+                }
+            })
+        };
+
+        Self {
+            state,
+            interval,
+            counter: UpdateCounter::new(),
+            handle,
+        }
+    }
+
+    pub fn update(&mut self) {
+        if !self.interval.is_ready(Instant::now()) {
+            return;
+        }
+
+        tick(&mut self.state);
+
+        let mut cf = self.state.state.control_frame.lock();
+        *cf += 1;
+
+        self.counter.update();
+
+        tracing::debug!(
+            "Stepping Control frame to {:?} (UPS = {})",
+            cf,
+            self.counter.ups()
+        );
     }
 }

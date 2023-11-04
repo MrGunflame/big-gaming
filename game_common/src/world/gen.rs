@@ -2,6 +2,9 @@
 //!
 //!
 
+pub mod flat;
+pub mod stub;
+
 use glam::{Quat, Vec3};
 
 use crate::components::components::{Component, Components};
@@ -10,7 +13,6 @@ use crate::record::RecordReference;
 
 use super::entity::Terrain;
 use super::CellId;
-pub mod flat;
 
 pub struct Generator {
     inner: Box<dyn Generate>,
