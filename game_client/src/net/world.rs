@@ -544,7 +544,7 @@ impl CommandBuffer {
 
 #[derive(Clone, Debug)]
 pub enum Command {
-    Spawn(DelayedEntity),
+    Spawn(Entity),
     Despawn(EntityId),
     Translate { entity: EntityId, dst: Vec3 },
     Rotate { entity: EntityId, dst: Quat },

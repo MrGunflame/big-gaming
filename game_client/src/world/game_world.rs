@@ -140,11 +140,7 @@ where
 
                         self.server_entities.insert(id, msg.entity);
 
-                        cmd_buffer.push(Command::Spawn(DelayedEntity {
-                            entity,
-                            inventory: Inventory::new(),
-                            host: false,
-                        }));
+                        cmd_buffer.push(Command::Spawn(entity));
                     }
                     DataMessageBody::EntityDestroy(msg) => {
                         let Some(id) = self.server_entities.get(msg.entity) else {

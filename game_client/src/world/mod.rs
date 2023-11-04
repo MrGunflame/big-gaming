@@ -138,11 +138,7 @@ impl GameWorldState {
         while let Some(cmd) = buf.pop() {
             match cmd {
                 Command::Spawn(entity) => {
-                    let eid = entity.entity.id;
-
-                    if entity.host {
-                        self.update_host(eid);
-                    }
+                    let eid = entity.id;
 
                     if let Some(id) =
                         spawn_entity(renderer, scenes, entity, &self.modules, hierarchy)
@@ -489,14 +485,14 @@ impl GameWorldState {
 fn spawn_entity(
     renderer: &mut Renderer,
     scenes: &mut Scenes,
-    entity: DelayedEntity,
+    entity: game_common::world::entity::Entity,
     modules: &Modules,
     hierarchy: &mut TransformHierarchy,
 ) -> Option<Entity> {
     // TODO: Check if can spawn an entity before allocating one.
-    let root = hierarchy.append(None, entity.entity.transform);
+    let root = hierarchy.append(None, entity.transform);
 
-    match entity.entity.body {
+    match entity.body {
         EntityBody::Terrain(terrain) => {
             spawn_terrain(scenes, renderer, &terrain.mesh, root);
         }
@@ -507,7 +503,7 @@ fn spawn_entity(
         .spawn(scenes, modules),
         EntityBody::Actor(actor) => SpawnActor {
             race: actor.race,
-            transform: entity.entity.transform,
+            transform: entity.transform,
             entity: root,
         }
         .spawn(scenes, modules),
