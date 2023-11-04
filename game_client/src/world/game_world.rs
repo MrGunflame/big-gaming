@@ -118,7 +118,7 @@ where
                         _ => todo!(),
                     };
 
-                    let Some(entity) = spawn_entity(
+                    let Some(mut entity) = spawn_entity(
                         id,
                         Transform {
                             translation: msg.translation,
@@ -131,6 +131,8 @@ where
                     };
 
                     let id = self.newest_state.entities.insert(entity.clone());
+                    entity.id = id;
+
                     self.server_entities.insert(id, msg.entity);
 
                     cmd_buffer.push(Command::Spawn(DelayedEntity {

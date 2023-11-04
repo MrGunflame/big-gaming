@@ -39,10 +39,11 @@ impl Entities {
         self.entities.get_mut(&id)
     }
 
-    pub fn insert(&mut self, entity: Entity) -> EntityId {
+    pub fn insert(&mut self, mut entity: Entity) -> EntityId {
         let id = EntityId::from_raw(self.next_id);
         self.next_id += 1;
 
+        entity.id = id;
         self.entities.insert(id, entity);
         id
     }
