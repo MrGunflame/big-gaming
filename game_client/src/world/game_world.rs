@@ -1,11 +1,13 @@
 use game_common::components::actions::ActionId;
 use game_common::components::components::{Component, Components};
+use game_common::components::items::{Item, ItemStack};
 use game_common::components::object::ObjectId;
 use game_common::components::race::RaceId;
 use game_common::components::transform::Transform;
 use game_common::entity::EntityId;
 use game_common::events::{ActionEvent, Event, EventQueue};
 use game_common::record::RecordReference;
+use game_common::units::Mass;
 use game_common::world::control_frame::ControlFrame;
 use game_common::world::entity::{Actor, Entity, EntityBody, Object};
 use game_core::counter::{IntervalImpl, UpdateCounter};
@@ -195,7 +197,74 @@ where
 
                         cmd_buffer.push(Command::SpawnHost(id));
                     }
-                    _ => (),
+                    DataMessageBody::InventoryItemAdd(msg) => {
+                        let Some(id) = self.server_entities.get(msg.entity) else {
+                            peer_error!("invalid entity: {:?}", msg.entity);
+                            continue;
+                        };
+
+                        if self.newest_state.inventories.get(id).is_none() {
+                            self.newest_state.inventories.insert(id);
+                        }
+
+                        let inventory = self.newest_state.inventories.get_mut(id).unwrap();
+                        inventory
+                            .insert_at_slot(
+                                msg.id,
+                                ItemStack {
+                                    item: Item {
+                                        id: msg.item,
+                                        mass: Mass::default(),
+                                        components: Components::default(),
+                                        equipped: false,
+                                        hidden: false,
+                                    },
+                                    quantity: msg.quantity,
+                                },
+                            )
+                            .unwrap();
+                    }
+                    DataMessageBody::InventoryItemRemove(msg) => {
+                        let Some(id) = self.server_entities.get(msg.entity) else {
+                            peer_error!("invalid entity: {:?}", msg.entity);
+                            continue;
+                        };
+
+                        let inventory = self.newest_state.inventories.get_mut(id).unwrap();
+                        inventory.remove(msg.slot, u32::MAX);
+                    }
+                    DataMessageBody::EntityComponentAdd(msg) => {
+                        let Some(id) = self.server_entities.get(msg.entity) else {
+                            peer_error!("invalid entity: {:?}", msg.entity);
+                            continue;
+                        };
+
+                        let entity = self.newest_state.entities.get_mut(id).unwrap();
+                        entity
+                            .components
+                            .insert(msg.component, Component { bytes: msg.bytes });
+                    }
+                    DataMessageBody::EntityComponentRemove(msg) => {
+                        let Some(id) = self.server_entities.get(msg.entity) else {
+                            peer_error!("invalid entity: {:?}", msg.entity);
+                            continue;
+                        };
+
+                        let entity = self.newest_state.entities.get_mut(id).unwrap();
+                        entity.components.remove(msg.component);
+                    }
+                    DataMessageBody::EntityComponentUpdate(msg) => {
+                        let Some(id) = self.server_entities.get(msg.entity) else {
+                            peer_error!("invalid entity: {:?}", msg.entity);
+                            continue;
+                        };
+
+                        let entity = self.newest_state.entities.get_mut(id).unwrap();
+                        entity
+                            .components
+                            .insert(msg.component, Component { bytes: msg.bytes });
+                    }
+                    DataMessageBody::EntityAction(msg) => todo!(),
                 }
             }
         }
