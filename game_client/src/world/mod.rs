@@ -144,6 +144,10 @@ impl GameWorldState {
                         self.entities.insert(eid, id);
                     }
                 }
+                Command::Despawn(id) => {
+                    let entity = self.entities.remove(&id).unwrap();
+                    hierarchy.remove(entity);
+                }
                 Command::Translate { entity, dst } => {
                     let id = self.entities.get(&entity).unwrap();
                     let transform = hierarchy.get_mut(*id).unwrap();
@@ -173,7 +177,10 @@ impl GameWorldState {
                 Command::SpawnHost(id) => {
                     self.update_host(id);
                 }
-                _ => todo!(),
+                Command::ComponentAdd { entity, component } => {}
+                Command::ComponentRemove { entity, component } => {}
+                Command::InventoryItemEquip { entity, slot } => {}
+                Command::InventoryItemUnequip { entity, slot } => {}
             }
         }
 

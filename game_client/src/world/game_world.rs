@@ -243,6 +243,11 @@ where
                         entity
                             .components
                             .insert(msg.component, Component { bytes: msg.bytes });
+
+                        cmd_buffer.push(Command::ComponentAdd {
+                            entity: id,
+                            component: msg.component,
+                        });
                     }
                     DataMessageBody::EntityComponentRemove(msg) => {
                         let Some(id) = self.server_entities.get(msg.entity) else {
@@ -252,6 +257,11 @@ where
 
                         let entity = self.newest_state.entities.get_mut(id).unwrap();
                         entity.components.remove(msg.component);
+
+                        cmd_buffer.push(Command::ComponentRemove {
+                            entity: id,
+                            component: msg.component,
+                        });
                     }
                     DataMessageBody::EntityComponentUpdate(msg) => {
                         let Some(id) = self.server_entities.get(msg.entity) else {
