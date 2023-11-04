@@ -80,7 +80,7 @@ impl ServerConnection {
             next_message_id: 0,
             modules: Modules::new(),
             inventory_update: false,
-            backlog: MessageBacklog::new(),
+            backlog: MessageBacklog::new(8192),
         }
     }
 

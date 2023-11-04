@@ -1,30 +1,54 @@
 use std::collections::VecDeque;
 use std::iter::FusedIterator;
 
-use ahash::HashMap;
 use game_common::world::control_frame::ControlFrame;
 use game_net::message::DataMessage;
 
 #[derive(Clone, Debug, Default)]
 pub struct MessageBacklog {
-    snapshots: HashMap<ControlFrame, Snapshot>,
+    snapshots: Box<[Snapshot]>,
+    tail: ControlFrame,
 }
 
 impl MessageBacklog {
-    pub fn new() -> Self {
+    pub fn new(size: usize) -> Self {
+        let mut snapshots = Vec::with_capacity(size);
+        for _ in 0..size {
+            snapshots.push(Snapshot::default());
+        }
+
         Self {
-            snapshots: HashMap::default(),
+            snapshots: snapshots.into_boxed_slice(),
+            tail: ControlFrame(0),
         }
     }
 
     pub fn insert(&mut self, cf: ControlFrame, msg: DataMessage) {
-        let snapshot = self.snapshots.entry(cf).or_default();
+        // If the message if older than the last consumed message,
+        // enqueue it for the oldest available snapshot.
+        if cf < self.tail {
+            let snapshot = &mut self.snapshots[self.tail.0 as usize % self.snapshots.len()];
+            snapshot.events.push_front(msg);
+            snapshot.has_data = true;
+            return;
+        }
+
+        let index = cf.0 as usize % self.snapshots.len();
+        let snapshot = &mut self.snapshots[index];
         snapshot.events.push_back(msg);
+        snapshot.has_data = true;
     }
 
     /// Drains the buffer for a specific frame.
     pub fn drain(&mut self, cf: ControlFrame) -> Option<Drain<'_>> {
-        let snapshot = self.snapshots.get_mut(&cf)?;
+        self.tail = cf;
+        let index = cf.0 as usize % self.snapshots.len();
+
+        let snapshot = &mut self.snapshots[index];
+        // FIXME: Should we just return an empty iterator instead?
+        if !snapshot.has_data {
+            return None;
+        }
 
         Some(Drain {
             inner: snapshot.events.drain(..),
@@ -34,6 +58,7 @@ impl MessageBacklog {
 
 #[derive(Clone, Debug, Default)]
 struct Snapshot {
+    has_data: bool,
     events: VecDeque<DataMessage>,
 }
 
