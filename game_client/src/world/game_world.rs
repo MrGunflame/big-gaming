@@ -1,6 +1,5 @@
 use game_common::components::actions::ActionId;
 use game_common::components::components::{Component, Components};
-use game_common::components::inventory::Inventory;
 use game_common::components::object::ObjectId;
 use game_common::components::race::RaceId;
 use game_common::components::transform::Transform;
@@ -20,7 +19,7 @@ use game_tracing::trace_span;
 use glam::Quat;
 
 use crate::config::Config;
-use crate::net::world::{Command, CommandBuffer, DelayedEntity};
+use crate::net::world::{Command, CommandBuffer};
 use crate::net::{Entities, ServerConnection};
 use crate::world::script::run_scripts;
 

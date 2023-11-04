@@ -6,7 +6,6 @@ pub mod script;
 pub mod state;
 
 use std::net::ToSocketAddrs;
-use std::sync::Arc;
 use std::time::Duration;
 
 use ahash::HashMap;
@@ -26,7 +25,6 @@ use game_data::record::Record;
 use game_input::hotkeys::{HotkeyCode, Key};
 use game_input::keyboard::{KeyCode, KeyboardInput};
 use game_input::mouse::MouseMotion;
-use game_net::message::{DataMessageBody, EntityAction, EntityRotate};
 use game_render::camera::{Camera, Projection, RenderTarget};
 use game_render::color::Color;
 use game_render::entities::CameraId;
@@ -45,7 +43,7 @@ use crate::entities::actor::SpawnActor;
 use crate::entities::object::SpawnObject;
 use crate::entities::terrain::spawn_terrain;
 use crate::input::{InputKey, Inputs};
-use crate::net::world::{Command, CommandBuffer, DelayedEntity};
+use crate::net::world::{Command, CommandBuffer};
 use crate::net::ServerConnection;
 use crate::ui::inventory::InventoryProxy;
 use crate::utils::extract_actor_rotation;
