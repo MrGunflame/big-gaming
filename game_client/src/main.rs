@@ -10,6 +10,7 @@ mod ui;
 mod utils;
 mod world;
 
+use std::f32::consts::E;
 use std::sync::Arc;
 
 use clap::Parser;
@@ -62,7 +63,7 @@ fn main() {
 
     let cursor = wm.cursor().clone();
 
-    let executor = Arc::new(ScriptExecutor::new(res.server, res.record_targets));
+    let executor = ScriptExecutor::new(res.server, res.record_targets);
     let inputs = Inputs::from_file("inputs");
 
     if let Some(addr) = args.connect {
@@ -71,7 +72,7 @@ fn main() {
             addr,
             res.modules,
             &cursor,
-            executor.clone(),
+            executor,
             inputs,
         ));
     }
@@ -88,7 +89,6 @@ fn main() {
         cursor: cursor,
         pool: TaskPool::new(8),
         hierarchy: TransformHierarchy::default(),
-        executor,
         ui_state,
     };
 
@@ -105,9 +105,6 @@ pub struct App {
     cursor: Arc<Cursor>,
     pool: TaskPool,
     hierarchy: TransformHierarchy,
-    // TODO: No need for Arc here, but we want the executor in game state
-    // not App state.
-    executor: Arc<ScriptExecutor>,
     ui_state: UiState,
 }
 

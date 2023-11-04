@@ -1,14 +1,16 @@
 mod actions;
 pub mod camera;
+pub mod game_world;
 pub mod movement;
+pub mod script;
+pub mod state;
 
 use std::net::ToSocketAddrs;
-use std::sync::Arc;
+use std::time::Duration;
 
 use ahash::HashMap;
 use game_common::components::actions::ActionId;
 use game_common::components::actor::ActorProperties;
-use game_common::components::inventory::Inventory;
 use game_common::components::items::ItemId;
 use game_common::components::transform::Transform;
 use game_common::entity::EntityId;
@@ -23,7 +25,6 @@ use game_data::record::Record;
 use game_input::hotkeys::{HotkeyCode, Key};
 use game_input::keyboard::{KeyCode, KeyboardInput};
 use game_input::mouse::MouseMotion;
-use game_net::message::{DataMessageBody, EntityAction, EntityRotate};
 use game_render::camera::{Camera, Projection, RenderTarget};
 use game_render::color::Color;
 use game_render::entities::CameraId;
@@ -42,28 +43,29 @@ use crate::entities::actor::SpawnActor;
 use crate::entities::object::SpawnObject;
 use crate::entities::terrain::spawn_terrain;
 use crate::input::{InputKey, Inputs};
-use crate::net::world::{Command, CommandBuffer, DelayedEntity};
+use crate::net::world::{Command, CommandBuffer};
 use crate::net::ServerConnection;
 use crate::ui::inventory::InventoryProxy;
 use crate::utils::extract_actor_rotation;
 
 use self::actions::ActiveActions;
 use self::camera::{CameraController, CameraMode, DetachedState};
+use self::game_world::{GameWorld, SendCommand};
 use self::movement::update_rotation;
 
 #[derive(Debug)]
 pub struct GameWorldState {
-    pub conn: ServerConnection<Interval>,
+    pub world: GameWorld<Interval>,
     camera_controller: CameraController,
     is_init: bool,
     primary_camera: Option<CameraId>,
     entities: HashMap<EntityId, Entity>,
     modules: Modules,
     actions: ActiveActions,
-    executor: Arc<ScriptExecutor>,
     inputs: Inputs,
     inventory_proxy: Option<InventoryProxy>,
     inventory_actions: Vec<ActionId>,
+    host: EntityId,
 }
 
 impl GameWorldState {
@@ -72,28 +74,29 @@ impl GameWorldState {
         addr: impl ToSocketAddrs,
         modules: Modules,
         cursor: &Cursor,
-        executor: Arc<ScriptExecutor>,
+        executor: ScriptExecutor,
         inputs: Inputs,
     ) -> Self {
         cursor.lock();
         cursor.set_visible(false);
 
-        let mut conn = ServerConnection::new(config);
+        let mut conn = ServerConnection::new();
         conn.connect(addr);
-        conn.modules = modules.clone();
+
+        let interval = Interval::new(Duration::from_secs(1) / config.timestep);
 
         Self {
-            conn,
+            world: GameWorld::new(conn, interval, executor, config),
             camera_controller: CameraController::new(),
             is_init: false,
             primary_camera: None,
             entities: HashMap::default(),
             modules,
             actions: ActiveActions::new(),
-            executor,
             inputs,
             inventory_proxy: None,
             inventory_actions: vec![],
+            host: EntityId::dangling(),
         }
     }
 
@@ -128,16 +131,12 @@ impl GameWorldState {
         }
 
         let mut buf = CommandBuffer::new();
-        self.conn.update(time, &mut buf, &self.executor);
+        self.world.update(time, &self.modules, &mut buf);
 
         while let Some(cmd) = buf.pop() {
             match cmd {
                 Command::Spawn(entity) => {
-                    let eid = entity.entity.id;
-
-                    if entity.host {
-                        self.update_host(eid);
-                    }
+                    let eid = entity.id;
 
                     if let Some(id) =
                         spawn_entity(renderer, scenes, entity, &self.modules, hierarchy)
@@ -145,12 +144,11 @@ impl GameWorldState {
                         self.entities.insert(eid, id);
                     }
                 }
-                Command::Translate {
-                    entity,
-                    start,
-                    end,
-                    dst,
-                } => {
+                Command::Despawn(id) => {
+                    let entity = self.entities.remove(&id).unwrap();
+                    hierarchy.remove(entity);
+                }
+                Command::Translate { entity, dst } => {
                     let id = self.entities.get(&entity).unwrap();
                     let transform = hierarchy.get_mut(*id).unwrap();
 
@@ -163,12 +161,7 @@ impl GameWorldState {
 
                     transform.translation = dst;
                 }
-                Command::Rotate {
-                    entity,
-                    start,
-                    end,
-                    dst,
-                } => {
+                Command::Rotate { entity, dst } => {
                     let id = self.entities.get(&entity).unwrap();
                     let transform = hierarchy.get_mut(*id).unwrap();
 
@@ -184,28 +177,24 @@ impl GameWorldState {
                 Command::SpawnHost(id) => {
                     self.update_host(id);
                 }
-                _ => todo!(),
+                Command::ComponentAdd { entity, component } => {}
+                Command::ComponentRemove { entity, component } => {}
+                Command::InventoryItemEquip { entity, slot } => {}
+                Command::InventoryItemUnequip { entity, slot } => {}
             }
-        }
-
-        if self.conn.inventory_update {
-            self.conn.inventory_update = false;
-            self.update_inventory_actions();
         }
 
         self.dispatch_actions();
 
         if self.camera_controller.mode != CameraMode::Detached {
-            if let Some(snapshot) = &self.conn.current_state {
-                if let Some(entity) = snapshot.entities.get(self.conn.host) {
-                    let props = ActorProperties {
-                        eyes: Vec3::new(0.0, 1.8, 0.0),
-                        rotation: extract_actor_rotation(entity.transform.rotation),
-                    };
+            if let Some(entity) = self.world.state().entities.get(self.host) {
+                let props = ActorProperties {
+                    eyes: Vec3::new(0.0, 1.8, 0.0),
+                    rotation: extract_actor_rotation(entity.transform.rotation),
+                };
 
-                    self.camera_controller
-                        .sync_with_entity(entity.transform, props);
-                }
+                self.camera_controller
+                    .sync_with_entity(entity.transform, props);
             }
         } else {
             // We are in detached mode and need to manually
@@ -269,17 +258,14 @@ impl GameWorldState {
             return;
         }
 
-        if let Some(snapshot) = &mut self.conn.current_state {
-            if let Some(host) = snapshot.entities.get_mut(self.conn.host) {
-                host.transform = update_rotation(host.transform, event);
-                let rotation = host.transform.rotation;
+        if let Some(host) = self.world.state().entities.get(self.host) {
+            let transform = update_rotation(host.transform, event);
+            let rotation = transform.rotation;
 
-                let entity = self.conn.server_entities.get(self.conn.host).unwrap();
-                self.conn.send(DataMessageBody::EntityRotate(EntityRotate {
-                    entity,
-                    rotation,
-                }));
-            }
+            self.world.send(SendCommand::Rotate {
+                entity: self.host,
+                rotation,
+            });
         }
     }
 
@@ -356,11 +342,7 @@ impl GameWorldState {
                     let doc = state.get_mut(window).unwrap();
 
                     // Ignore if the current player entity has no inventory.
-                    let Some(snapshot) = &self.conn.current_state else {
-                        return;
-                    };
-
-                    let Some(inventory) = snapshot.inventories.get(self.conn.host) else {
+                    let Some(inventory) = self.world.state().inventories.get(self.host) else {
                         return;
                     };
 
@@ -379,15 +361,15 @@ impl GameWorldState {
     fn dispatch_actions(&mut self) {
         let actions = self.actions.take_events();
 
-        let Some(entity) = self.conn.server_entities.get(self.conn.host) else {
+        if self.world.state().entities.get(self.host).is_none() {
             return;
-        };
+        }
 
         for action in actions {
-            self.conn.send(DataMessageBody::EntityAction(EntityAction {
-                entity,
+            self.world.send(SendCommand::Action {
+                entity: self.host,
                 action,
-            }));
+            });
         }
     }
 
@@ -396,10 +378,9 @@ impl GameWorldState {
         // If this is the first host this is a noop.
         self.actions.clear();
 
-        self.conn.host = id;
+        self.host = id;
 
-        let snapshot = self.conn.current_state.as_ref().unwrap();
-        let entity = snapshot.entities.get(id).unwrap();
+        let entity = self.world.state().entities.get(id).unwrap();
         let actor = entity.body.as_actor().unwrap();
 
         let module = self.modules.get(actor.race.0.module).unwrap();
@@ -418,7 +399,7 @@ impl GameWorldState {
         }
 
         // Register all actions from equipped items.
-        if let Some(inventory) = snapshot.inventories.get(self.conn.host) {
+        if let Some(inventory) = self.world.state().inventories.get(self.host) {
             for (_, stack) in inventory.iter() {
                 if !stack.item.equipped {
                     continue;
@@ -454,9 +435,7 @@ impl GameWorldState {
             self.actions.unregister(id.0.module, record);
         }
 
-        let snapshot = self.conn.current_state.as_ref().unwrap();
-
-        if let Some(inventory) = snapshot.inventories.get(self.conn.host) {
+        if let Some(inventory) = self.world.state().inventories.get(self.host) {
             for (_, stack) in inventory.clone().iter() {
                 if !stack.item.equipped {
                     continue;
@@ -511,14 +490,14 @@ impl GameWorldState {
 fn spawn_entity(
     renderer: &mut Renderer,
     scenes: &mut Scenes,
-    entity: DelayedEntity,
+    entity: game_common::world::entity::Entity,
     modules: &Modules,
     hierarchy: &mut TransformHierarchy,
 ) -> Option<Entity> {
     // TODO: Check if can spawn an entity before allocating one.
-    let root = hierarchy.append(None, entity.entity.transform);
+    let root = hierarchy.append(None, entity.transform);
 
-    match entity.entity.body {
+    match entity.body {
         EntityBody::Terrain(terrain) => {
             spawn_terrain(scenes, renderer, &terrain.mesh, root);
         }
@@ -529,7 +508,7 @@ fn spawn_entity(
         .spawn(scenes, modules),
         EntityBody::Actor(actor) => SpawnActor {
             race: actor.race,
-            transform: entity.entity.transform,
+            transform: entity.transform,
             entity: root,
         }
         .spawn(scenes, modules),
