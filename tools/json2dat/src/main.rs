@@ -21,6 +21,7 @@ fn main() {
 
     if let Err(err) = convert_file(&args.input, &args.output) {
         eprintln!("conversion error: {}", err);
+        std::process::exit(1);
     }
 }
 
