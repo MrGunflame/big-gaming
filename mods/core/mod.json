@@ -1,5 +1,103 @@
 {
-    "id": "c626b9b0-ab19-40ab-a693-2ea7726d0175",
+    "id": "c626b9b0ab1940aba6932ea7726d0175",
     "name": "core",
-    "version": "0.1.0"
+    "version": "0.1.0",
+    "records": {
+        "actions": [
+            {
+                "id": "01",
+                "name": "Move Forward",
+                "description": "Move Forward",
+                "scripts": [
+                    "scripts/move_forward.wasm"
+                ]
+            },
+            {
+                "id": "02",
+                "name": "Move Back",
+                "description": "Move Back",
+                "scripts": [
+                    "scripts/move_back.wasm"
+                ]
+            },
+            {
+                "id": "03",
+                "name": "Move Left",
+                "description": "Move Left",
+                "scripts": [
+                    "scripts/move_left.wasm"
+                ]
+            },
+            {
+                "id": "04",
+                "name": "Move Right",
+                "description": "Move Right",
+                "scripts": [
+                    "scripts/move_right.wasm"
+                ]
+            }
+        ],
+        "components": [
+            {
+                "id": "05",
+                "name": "Movement Speed in m/s",
+                "description": "Movement Speed"
+            }
+        ],
+        "races": [
+            {
+                "id": "06",
+                "name": "Humanoid",
+                "components": {
+                    "c626b9b0ab1940aba6932ea7726d0175:05": [
+                        205,
+                        204,
+                        204,
+                        61
+                    ]
+                },
+                "actions": [
+                    "c626b9b0ab1940aba6932ea7726d0175:01",
+                    "c626b9b0ab1940aba6932ea7726d0175:02",
+                    "c626b9b0ab1940aba6932ea7726d0175:03",
+                    "c626b9b0ab1940aba6932ea7726d0175:04"
+                ],
+                "model": "assets/human.glb"
+            }
+        ],
+        "items": [
+            {
+                "id": "07",
+                "name": "Wood",
+                "icon": "assets/icons/wood.png",
+                "model": "",
+                "mass": 0,
+                "value": 0
+            },
+            {
+                "id": "08",
+                "name": "Glass",
+                "icon": "assets/icons/glass.png",
+                "model": "",
+                "mass": 0,
+                "value": 0
+            },
+            {
+                "id": "09",
+                "name": "Copper",
+                "icon": "assets/icons/copper.png",
+                "model": "",
+                "mass": 0,
+                "value": 0
+            },
+            {
+                "id": "0a",
+                "name": "Cloth",
+                "icon": "assets/icons/cloth.png",
+                "model": "",
+                "mass": 0,
+                "value": 0
+            }
+        ]
+    }
 }

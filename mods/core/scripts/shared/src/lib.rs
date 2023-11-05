@@ -63,8 +63,10 @@ pub mod components {
     use game_wasm::record::{ModuleId, RecordId};
     use game_wasm::world::RecordReference;
 
+    const MODULE: ModuleId = ModuleId::from_str_const("c626b9b0ab1940aba6932ea7726d0175");
+
     pub const MOVEMENT_SPEED: RecordReference = RecordReference {
-        module: ModuleId::from_str_const("ec7d043851c74c41a35de44befde13b5"),
+        module: MODULE,
         record: RecordId(5),
     };
 }
