@@ -2,10 +2,12 @@ use std::f32::consts::PI;
 
 pub use game_wasm::math::Vec3;
 
+use bytemuck::{Pod, Zeroable};
 use components::MOVEMENT_SPEED;
 use game_wasm::entity::EntityId;
 use game_wasm::math::Quat;
 use game_wasm::world::Entity;
+use game_wasm::world::RecordReference;
 
 /// Updates per second.
 // FIXME: Unhardcode this value, it should be provided by the runtime
@@ -59,12 +61,49 @@ pub fn on_action_impl(entity: u64, _invoker: u64, dir: Vec3) {
     entity.set_translation(translation);
 }
 
+#[derive(Copy, Clone, Debug, Zeroable, Pod)]
+#[repr(C)]
+pub struct GunProperties {
+    /// Damage multiplier.
+    pub damage: f32,
+    /// The cooldown between each shot.
+    ///
+    /// Maps inversely to rate of fire.
+    pub cooldown: f32,
+    /// The maximum number of rounds in the magazine.
+    pub magazine_capacity: u32,
+    /// The object id of the projectile that is being fired.
+    pub projectile: RecordReference,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Zeroable, Pod)]
+#[repr(transparent)]
+pub struct Ammo(pub u32);
+
+impl Ammo {
+    pub fn try_decrement(&mut self) -> bool {
+        self.0.checked_sub(1).is_some()
+    }
+}
+
 pub mod components {
     use game_wasm::record::{ModuleId, RecordId};
     use game_wasm::world::RecordReference;
 
+    const MODULE: ModuleId = ModuleId::from_str_const("c626b9b0ab1940aba6932ea7726d0175");
+
     pub const MOVEMENT_SPEED: RecordReference = RecordReference {
-        module: ModuleId::from_str_const("ec7d043851c74c41a35de44befde13b5"),
+        module: MODULE,
         record: RecordId(5),
+    };
+
+    pub const GUN_PROPERTIES: RecordReference = RecordReference {
+        module: MODULE,
+        record: RecordId(0xb),
+    };
+
+    pub const AMMO: RecordReference = RecordReference {
+        module: MODULE,
+        record: RecordId(0xc),
     };
 }

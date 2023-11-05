@@ -26,15 +26,7 @@ members = [
     "game_tasks",
     # TODO: Figure out how to move these to a separate
     # workspace.
-    "mods/pickup",
-    "mods/movement/scripts/move_forward",
-    "mods/movement/scripts/move_back",
-    "mods/movement/scripts/move_left",
-    "mods/movement/scripts/move_right",
-    "mods/movement/scripts/shared",
-    "mods/combat/scripts/fire",
-    "mods/combat/scripts/reload",
-    "mods/combat/scripts/combat_shared",
+    "mods/core/scripts/*",
     "tools/json2dat",
     "tools/gltf2model",
     "tools/make",

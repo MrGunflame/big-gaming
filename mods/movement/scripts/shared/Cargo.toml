@@ -1,9 +1,0 @@
-[package]
-name = "shared"
-version = "0.1.0"
-edition = "2021"
-authors = ["MrGunflame <git@robbsrv.de>"]
-license = "GPL-3.0-or-later"
-
-[dependencies]
-game_wasm = { version = "0.1.0", path = "../../../../game_wasm" }
