@@ -51,6 +51,14 @@
                 "scripts": [
                     "scripts/weapon_reload.wasm"
                 ]
+            },
+            {
+                "id": "0f",
+                "name": "Pickup",
+                "description": "",
+                "scripts": [
+                    "scripts/pickup.wasm"
+                ]
             }
         ],
         "components": [
@@ -86,7 +94,8 @@
                     "c626b9b0ab1940aba6932ea7726d0175:01",
                     "c626b9b0ab1940aba6932ea7726d0175:02",
                     "c626b9b0ab1940aba6932ea7726d0175:03",
-                    "c626b9b0ab1940aba6932ea7726d0175:04"
+                    "c626b9b0ab1940aba6932ea7726d0175:04",
+                    "c626b9b0ab1940aba6932ea7726d0175:0f"
                 ],
                 "model": "assets/human.glb"
             }
