@@ -1,8 +1,8 @@
-use combat_shared::components::{AMMO, GUN_PROPERTIES};
-use combat_shared::{Ammo, GunProperties};
 use game_wasm::entity::EntityId;
 use game_wasm::events::on_action;
 use game_wasm::inventory::{Inventory, InventoryId};
+use shared::components::{AMMO, GUN_PROPERTIES};
+use shared::{Ammo, GunProperties};
 
 #[on_action]
 fn on_action(entity: u64, invoker: u64) {

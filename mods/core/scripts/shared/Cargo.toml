@@ -7,3 +7,4 @@ license = "GPL-3.0-or-later"
 
 [dependencies]
 game_wasm = { version = "0.1.0", path = "../../../../game_wasm" }
+bytemuck = "1.14.0"

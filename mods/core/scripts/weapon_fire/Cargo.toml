@@ -1,5 +1,5 @@
 [package]
-name = "reload"
+name = "weapon_fire"
 version = "0.1.0"
 edition = "2021"
 authors = ["MrGunflame <git@robbsrv.de>"]
@@ -10,4 +10,4 @@ crate-type = ["cdylib"]
 
 [dependencies]
 game_wasm = { version = "0.1.0", path = "../../../../game_wasm" }
-combat_shared = { version = "0.1.0", path = "../combat_shared" }
+shared = { version = "0.1.0", path = "../shared" }

@@ -35,6 +35,22 @@
                 "scripts": [
                     "scripts/move_right.wasm"
                 ]
+            },
+            {
+                "id": "0d",
+                "name": "Fire",
+                "description": "",
+                "scripts": [
+                    "scripts/weapon_fire.wasm"
+                ]
+            },
+            {
+                "id": "0e",
+                "name": "Reload",
+                "description": "",
+                "scripts": [
+                    "scripts/weapon_reload.wasm"
+                ]
             }
         ],
         "components": [
@@ -42,6 +58,16 @@
                 "id": "05",
                 "name": "Movement Speed in m/s",
                 "description": "Movement Speed"
+            },
+            {
+                "id": "0b",
+                "name": "Gun Properties",
+                "description": ""
+            },
+            {
+                "id": "oc",
+                "name": "Ammo",
+                "description": ""
             }
         ],
         "races": [
