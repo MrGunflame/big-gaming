@@ -3,7 +3,6 @@
 use std::convert::Infallible;
 
 use bytemuck::cast;
-use game_common::components::actions::Actions;
 use game_common::components::components::Components;
 use game_common::components::items::{Item as HostItem, ItemId, ItemStack as HostItemStack};
 use game_common::components::transform::Transform;
@@ -135,6 +134,9 @@ impl ToAbi for HostItemStack {
         GuestItemStack {
             item: GuestItem {
                 id: bytemuck::cast(self.item.id.0),
+                equipped: self.item.equipped as u8,
+                hidden: self.item.hidden as u8,
+                _pad0: 0,
             },
             quantity: self.quantity,
         }

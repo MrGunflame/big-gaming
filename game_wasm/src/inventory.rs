@@ -39,7 +39,11 @@ impl Inventory {
             let stack = unsafe { stack.assume_init() };
             Ok(ItemStackRef {
                 inner: ItemStack {
-                    item: Item { id: stack.item.id },
+                    item: Item {
+                        id: stack.item.id,
+                        equipped: stack.item.equipped != 0,
+                        hidden: stack.item.hidden != 0,
+                    },
                     quantity: stack.quantity,
                 },
                 slot_id: id,
@@ -75,7 +79,12 @@ impl Inventory {
 
     fn insert_inner(&self, items: ItemStack) -> Result<InventoryId, InventoryError> {
         let raw_stack = RawItemStack {
-            item: RawItem { id: items.item.id },
+            item: RawItem {
+                id: items.item.id,
+                equipped: items.item.equipped as u8,
+                hidden: items.item.hidden as u8,
+                _pad0: 0,
+            },
             quantity: items.quantity,
         };
 
@@ -258,6 +267,8 @@ impl AsRef<ItemStack> for ItemStackRef {
 #[derive(Copy, Clone, Debug)]
 pub struct Item {
     pub id: RecordReference,
+    pub equipped: bool,
+    pub hidden: bool,
 }
 
 #[derive(Clone, Debug)]

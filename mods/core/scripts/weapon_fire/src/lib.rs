@@ -9,10 +9,10 @@ use shared::{Ammo, GunProperties};
 fn on_action(entity: u64, invoker: u64) {
     let inventory = Inventory::new(EntityId::from_raw(invoker));
 
-    let properties = inventory
-        .component_get(InventoryId(entity), GUN_PROPERTIES)
-        .unwrap();
-    let mut ammo = inventory.component_get(InventoryId(entity), AMMO).unwrap();
+    let id = find_equipped_gun(&inventory).unwrap();
+
+    let properties = inventory.component_get(id, GUN_PROPERTIES).unwrap();
+    let mut ammo = inventory.component_get(id, AMMO).unwrap();
 
     let has_ammo = ammo.update(|ammo: &mut Ammo| ammo.try_decrement());
 
@@ -38,4 +38,15 @@ fn build_projectile(invoker: EntityId, projectile: RecordReference) {
         .build()
         .spawn()
         .unwrap();
+}
+
+fn find_equipped_gun(inventory: &Inventory) -> Option<InventoryId> {
+    for id in inventory.keys().unwrap() {
+        let stack = inventory.get(id).unwrap();
+        if stack.item.equipped && inventory.component_get(id, GUN_PROPERTIES).is_ok() {
+            return Some(id);
+        }
+    }
+
+    None
 }

@@ -72,4 +72,9 @@ pub struct ItemStack {
 #[repr(C)]
 pub struct Item {
     pub id: RecordReference,
+    // bool
+    pub equipped: u8,
+    // bool
+    pub hidden: u8,
+    pub _pad0: u16,
 }
