@@ -32,11 +32,12 @@ use game_render::light::DirectionalLight;
 use game_render::Renderer;
 use game_scene::Scenes;
 use game_script::executor::ScriptExecutor;
+use game_ui::reactive::NodeId;
 use game_ui::UiState;
 use game_window::cursor::Cursor;
 use game_window::events::WindowEvent;
 use game_window::windows::{WindowId, WindowState};
-use glam::Vec3;
+use glam::{Quat, Vec3};
 
 use crate::config::Config;
 use crate::entities::actor::SpawnActor;
@@ -46,6 +47,7 @@ use crate::input::{InputKey, Inputs};
 use crate::net::world::{Command, CommandBuffer};
 use crate::net::ServerConnection;
 use crate::ui::inventory::InventoryProxy;
+use crate::ui::main_menu::MainMenu;
 use crate::utils::extract_actor_rotation;
 
 use self::actions::ActiveActions;
@@ -65,6 +67,8 @@ pub struct GameWorldState {
     inputs: Inputs,
     inventory_proxy: Option<InventoryProxy>,
     inventory_actions: Vec<ActionId>,
+    main_menu: Option<NodeId>,
+    cursor_pinned: CursorPinState,
     host: EntityId,
 }
 
@@ -77,8 +81,10 @@ impl GameWorldState {
         executor: ScriptExecutor,
         inputs: Inputs,
     ) -> Self {
-        cursor.lock();
-        cursor.set_visible(false);
+        let mut cursor_pinned = CursorPinState::new();
+        if cursor.window().is_some() {
+            cursor_pinned.pin(cursor);
+        }
 
         let mut conn = ServerConnection::new();
         conn.connect(addr);
@@ -97,6 +103,8 @@ impl GameWorldState {
             inventory_proxy: None,
             inventory_actions: vec![],
             host: EntityId::dangling(),
+            main_menu: None,
+            cursor_pinned,
         }
     }
 
@@ -124,7 +132,11 @@ impl GameWorldState {
                 .entities
                 .directional_lights
                 .insert(DirectionalLight {
-                    transform: Transform::default(),
+                    transform: Transform {
+                        translation: Vec3::splat(100.0),
+                        ..Default::default()
+                    }
+                    .looking_at(Vec3::splat(0.0), Vec3::Y),
                     color: Color::WHITE,
                     illuminance: 100_000.0,
                 });
@@ -245,11 +257,26 @@ impl GameWorldState {
             WindowEvent::MouseButtonInput(event) => {
                 self.actions.send_mouse_event(event);
             }
+            WindowEvent::CursorLeft(event) => {
+                if !self.cursor_pinned.is_pinned() {
+                    return;
+                }
+
+                let cx = ui_state.get_mut(window).unwrap().root_scope();
+                self.main_menu = Some(cx.append(MainMenu {}).id().unwrap());
+                self.cursor_pinned.unpin(cursor);
+            }
             _ => (),
         }
     }
 
     fn handle_mouse_motion(&mut self, event: MouseMotion) {
+        // Don't control the camera if the cursor is not pinned
+        // (e.g. when it is in a UI window).
+        if !self.cursor_pinned.is_pinned() {
+            return;
+        }
+
         // If the camera is in detached mode, control it directly.
         if self.camera_controller.mode == CameraMode::Detached {
             self.camera_controller.transform =
@@ -277,14 +304,17 @@ impl GameWorldState {
         window: WindowId,
     ) {
         match event.key_code {
-            Some(KeyCode::Escape) => {
-                if event.state.is_pressed() {
-                    if cursor.is_locked() {
-                        cursor.unlock();
-                        cursor.set_visible(true);
-                    } else {
-                        cursor.lock();
-                        cursor.set_visible(false);
+            Some(KeyCode::Escape) if event.state.is_pressed() => {
+                match self.main_menu {
+                    Some(id) => {
+                        state.get_mut(window).unwrap().root_scope().remove(id);
+                        self.main_menu = None;
+                        self.cursor_pinned.pin(cursor);
+                    }
+                    None => {
+                        let cx = state.get_mut(window).unwrap().root_scope();
+                        self.main_menu = Some(cx.append(MainMenu {}).id().unwrap());
+                        self.cursor_pinned.unpin(cursor);
                     }
                 }
 
@@ -337,6 +367,7 @@ impl GameWorldState {
                 Some(pxy) => {
                     state.get_mut(window).unwrap().root_scope().remove(pxy.id);
                     self.inventory_proxy = None;
+                    self.cursor_pinned.pin(cursor);
                 }
                 None => {
                     let doc = state.get_mut(window).unwrap();
@@ -348,9 +379,15 @@ impl GameWorldState {
 
                     self.inventory_proxy =
                         Some(InventoryProxy::new(inventory, self.modules.clone(), doc));
+                    self.cursor_pinned.unpin(cursor);
                 }
             },
             _ => (),
+        }
+
+        // UI consumes the event.
+        if !self.cursor_pinned.is_pinned() {
+            return;
         }
 
         // Only trigger an action if we didn't already "consume"
@@ -516,4 +553,32 @@ fn spawn_entity(
     }
 
     Some(root)
+}
+
+#[derive(Clone, Debug)]
+struct CursorPinState {
+    /// Whether the cursor is pinned (locked) in the current window.
+    pinned: bool,
+}
+
+impl CursorPinState {
+    pub fn new() -> Self {
+        Self { pinned: false }
+    }
+
+    pub fn pin(&mut self, cursor: &Cursor) {
+        cursor.lock();
+        cursor.set_visible(false);
+        self.pinned = true;
+    }
+
+    pub fn unpin(&mut self, cursor: &Cursor) {
+        cursor.unlock();
+        cursor.set_visible(true);
+        self.pinned = false;
+    }
+
+    pub fn is_pinned(&self) -> bool {
+        self.pinned
+    }
 }
