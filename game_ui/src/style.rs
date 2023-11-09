@@ -1,6 +1,8 @@
 use glam::UVec2;
-use image::{ImageBuffer, Rgba};
+use image::ImageBuffer;
 use thiserror::Error;
+
+pub use image::Rgba;
 
 #[derive(Clone, Debug, Default)]
 pub struct Style {
