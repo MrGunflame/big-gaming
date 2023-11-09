@@ -36,7 +36,7 @@ use game_ui::UiState;
 use game_window::cursor::Cursor;
 use game_window::events::WindowEvent;
 use game_window::windows::{WindowId, WindowState};
-use glam::Vec3;
+use glam::{Quat, Vec3};
 
 use crate::config::Config;
 use crate::entities::actor::SpawnActor;
@@ -124,7 +124,11 @@ impl GameWorldState {
                 .entities
                 .directional_lights
                 .insert(DirectionalLight {
-                    transform: Transform::default(),
+                    transform: Transform {
+                        translation: Vec3::splat(100.0),
+                        ..Default::default()
+                    }
+                    .looking_at(Vec3::splat(0.0), Vec3::Y),
                     color: Color::WHITE,
                     illuminance: 100_000.0,
                 });
