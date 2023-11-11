@@ -138,6 +138,14 @@ impl WindowCompat {
         self.reset_cursor_position = true;
     }
 
+    pub fn lock_cursor(&mut self) {
+        self.cursor_grab_mode = CursorGrabMode::Locked;
+    }
+
+    pub fn unlock_cursor(&mut self) {
+        self.cursor_grab_mode = CursorGrabMode::None;
+    }
+
     pub fn emulate_cursor_grab_mode_locked(
         &mut self,
         cursor: &Cursor,
