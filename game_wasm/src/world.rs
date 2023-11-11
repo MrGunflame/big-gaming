@@ -3,14 +3,11 @@ use core::mem::MaybeUninit;
 use alloc::vec::Vec;
 use glam::{Quat, Vec3};
 
-use crate::component::Component;
+use crate::component::{Component, Components};
 use crate::entity::EntityId;
-use crate::raw::record::{
-    get_record_component_get, get_record_component_keys, get_record_component_len,
-    get_record_len_component,
-};
 use crate::raw::{Ptr, PtrMut, Usize, ERROR_NO_ENTITY};
 pub use crate::record::RecordReference;
+use crate::record::{Record, RecordKind};
 use crate::Error;
 
 use crate::raw::world::{self as raw, EntityBody, EntityKind as RawEntityKind};
@@ -216,71 +213,26 @@ pub struct EntityBuilder {
     scale: Vec3,
     kind: RawEntityKind,
     body: EntityBody,
-    components: Vec<(RecordReference, Vec<u8>)>,
+    components: Components,
 }
 
 impl EntityBuilder {
     pub fn from_record(id: RecordReference) -> Self {
-        let id = Ptr::from_raw(&id as *const RecordReference as Usize);
+        let record = Record::get(id);
 
-        let len = {
-            let mut len = MaybeUninit::uninit();
-            let out = PtrMut::from_raw(len.as_mut_ptr() as Usize);
-
-            let res = unsafe { get_record_len_component(id, out) };
-            assert!(res == 0);
-
-            unsafe { len.assume_init() }
+        let (kind, body) = match record.kind {
+            RecordKind::Item => (RawEntityKind::ITEM, EntityBody { item: id }),
+            RecordKind::Object => (RawEntityKind::OBJECT, EntityBody { object: id }),
+            RecordKind::Race => (RawEntityKind::ACTOR, EntityBody { actor: [0u8; 20] }),
         };
-
-        let keys = {
-            let mut keys = Vec::with_capacity(len);
-
-            let res = unsafe { get_record_component_keys(id, PtrMut::from_ptr(keys.as_mut_ptr())) };
-            assert!(res == 0);
-
-            unsafe {
-                keys.set_len(len);
-                keys
-            }
-        };
-
-        let mut components = Vec::with_capacity(keys.len());
-
-        for component_id in keys.into_iter() {
-            let mut len = MaybeUninit::uninit();
-
-            let res = unsafe {
-                get_record_component_len(
-                    id,
-                    Ptr::from_ptr(&component_id),
-                    PtrMut::from_ptr(len.as_mut_ptr()),
-                )
-            };
-            assert!(res == 0);
-
-            let len = unsafe { len.assume_init() };
-
-            let mut bytes = Vec::with_capacity(len as usize);
-
-            let res = unsafe {
-                get_record_component_get(
-                    id,
-                    Ptr::from_ptr(&component_id),
-                    PtrMut::from_ptr(bytes.as_mut_ptr()),
-                    len,
-                )
-            };
-            assert!(res == 0);
-
-            components.push((component_id, bytes));
-        }
 
         Self {
             translation: Vec3::ZERO,
             rotation: Quat::IDENTITY,
             scale: Vec3::splat(1.0),
-            components,
+            components: record.components,
+            kind,
+            body,
         }
     }
 
@@ -294,7 +246,7 @@ impl EntityBuilder {
             scale: Vec3::splat(1.0),
             kind: entity.kind(),
             body: entity.body(),
-            components: Vec::new(),
+            components: Components::new(),
         }
     }
 

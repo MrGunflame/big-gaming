@@ -3,7 +3,6 @@ use game_macros::guest_only;
 
 use crate::world::RecordReference;
 
-use super::world::EntityKind;
 use super::{Ptr, PtrMut, Usize};
 
 #[guest_only]
@@ -13,7 +12,11 @@ pub fn get_record(id: Ptr<RecordReference>, out: PtrMut<Record>) -> u32;
 pub fn get_record_len_component(id: Ptr<RecordReference>, out: PtrMut<Usize>) -> u32;
 
 #[guest_only]
-pub fn get_record_component_keys(id: Ptr<RecordReference>, out: PtrMut<RecordReference>) -> u32;
+pub fn get_record_component_keys(
+    id: Ptr<RecordReference>,
+    out: PtrMut<RecordReference>,
+    len: Usize,
+) -> u32;
 
 #[guest_only]
 pub fn get_record_component_len(

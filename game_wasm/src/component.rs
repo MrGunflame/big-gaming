@@ -4,6 +4,63 @@ use core::ptr::NonNull;
 use alloc::vec::Vec;
 use bytemuck::{AnyBitPattern, NoUninit, Pod};
 
+use crate::world::RecordReference;
+
+#[derive(Clone, Debug, Default)]
+pub struct Components {
+    // FIXME: We don't have access to HashMap in no_std.
+    components: Vec<(RecordReference, Component)>,
+}
+
+impl Components {
+    pub fn new() -> Self {
+        Self {
+            components: Vec::new(),
+        }
+    }
+
+    pub fn insert(&mut self, id: RecordReference, component: Component) {
+        if let Some(index) = self.get_index(id) {
+            self.components.get_mut(index).unwrap().1 = component;
+        } else {
+            self.components.push((id, component));
+        }
+    }
+
+    pub fn remove(&mut self, id: RecordReference) -> Option<Component> {
+        if let Some(index) = self.get_index(id) {
+            Some(self.components.remove(index).1)
+        } else {
+            None
+        }
+    }
+
+    pub fn get(&self, id: RecordReference) -> Option<&Component> {
+        self.get_index(id).map(|index| &self.components[index].1)
+    }
+
+    pub fn get_mut(&mut self, id: RecordReference) -> Option<&mut Component> {
+        self.get_index(id)
+            .map(|index| &mut self.components[index].1)
+    }
+
+    pub fn contains_key(&mut self, id: RecordReference) -> bool {
+        self.components
+            .iter()
+            .any(|(component_id, _)| *component_id == id)
+    }
+
+    fn get_index(&self, id: RecordReference) -> Option<usize> {
+        for (index, (component_id, _)) in self.components.iter().enumerate() {
+            if *component_id == id {
+                return Some(index);
+            }
+        }
+
+        None
+    }
+}
+
 /// A byte buffer containing component data.
 ///
 /// Note that the buffer has the alignment of `u8`. If you read values from the buffer you must use

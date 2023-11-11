@@ -1,8 +1,13 @@
 use core::mem::MaybeUninit;
 
+use alloc::vec::Vec;
 use bytemuck::{Pod, Zeroable};
 
-use crate::raw::record::{get_record, RecordKind as RawRecordKind};
+use crate::component::{Component, Components};
+use crate::raw::record::{
+    get_record, get_record_component_get, get_record_component_keys, get_record_component_len,
+    get_record_len_component, RecordKind as RawRecordKind,
+};
 use crate::raw::{Ptr, PtrMut};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Zeroable, Pod)]
@@ -78,7 +83,8 @@ pub struct RecordId(pub u32);
 
 #[derive(Clone, Debug)]
 pub struct Record {
-    kind: RecordKind,
+    pub(crate) kind: RecordKind,
+    pub(crate) components: Components,
 }
 
 impl Record {
@@ -91,12 +97,18 @@ impl Record {
         let record = unsafe { record.assume_init() };
         Self {
             kind: RecordKind::from_raw(record.kind),
+            components: fetch_components(id),
         }
     }
 
     #[inline]
     pub const fn kind(&self) -> RecordKind {
         self.kind
+    }
+
+    #[inline]
+    pub const fn components(&self) -> &Components {
+        &self.components
     }
 }
 
@@ -113,6 +125,62 @@ impl RecordKind {
             RawRecordKind::ITEM => Self::Item,
             RawRecordKind::OBJECT => Self::Object,
             RawRecordKind::RACE => Self::Race,
+            _ => unreachable!(),
         }
     }
+}
+
+fn fetch_components(id: RecordReference) -> Components {
+    let mut len = MaybeUninit::uninit();
+
+    let res =
+        unsafe { get_record_len_component(Ptr::from_ptr(&id), PtrMut::from_ptr(len.as_mut_ptr())) };
+    assert!(res == 0);
+
+    let len = unsafe { len.assume_init() };
+
+    let mut keys = Vec::with_capacity(len as usize);
+    let res = unsafe {
+        get_record_component_keys(Ptr::from_ptr(&id), PtrMut::from_ptr(keys.as_mut_ptr()), len)
+    };
+    assert!(res == 0);
+    unsafe { keys.set_len(len as usize) };
+
+    let mut components = Components::new();
+    for key in keys.into_iter() {
+        let comp = fetch_component(id, key);
+        components.insert(key, comp);
+    }
+
+    components
+}
+
+fn fetch_component(id: RecordReference, component: RecordReference) -> Component {
+    let mut len = MaybeUninit::uninit();
+
+    let res = unsafe {
+        get_record_component_len(
+            Ptr::from_ptr(&id),
+            Ptr::from_ptr(&component),
+            PtrMut::from_ptr(len.as_mut_ptr()),
+        )
+    };
+    assert!(res == 0);
+
+    let len = unsafe { len.assume_init() };
+    let mut bytes = Vec::with_capacity(len as usize);
+
+    let res = unsafe {
+        get_record_component_get(
+            Ptr::from_ptr(&id),
+            Ptr::from_ptr(&component),
+            PtrMut::from_ptr(bytes.as_mut_ptr()),
+            len,
+        )
+    };
+    assert!(res == 0);
+
+    unsafe { bytes.set_len(len as usize) };
+
+    Component::new(bytes)
 }
