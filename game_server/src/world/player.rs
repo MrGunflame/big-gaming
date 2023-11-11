@@ -12,7 +12,7 @@ use game_core::modules::Modules;
 use glam::{Quat, Vec3};
 
 pub fn spawn_player(modules: &Modules, view: &mut WorldViewMut<'_>) -> SpawnPlayer {
-    let race = "ec7d043851c74c41a35de44befde13b5:06".parse().unwrap();
+    let race = "c626b9b0ab1940aba6932ea7726d0175:06".parse().unwrap();
 
     let transform = Transform::from_translation(Vec3::new(0.0, 0.0, 0.0));
 

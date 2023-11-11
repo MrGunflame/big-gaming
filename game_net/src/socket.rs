@@ -3,7 +3,9 @@ use std::net::{SocketAddr, ToSocketAddrs};
 
 #[cfg(unix)]
 use std::os::fd::{AsRawFd, RawFd};
+use std::task::{Context, Poll};
 
+use tokio::io::ReadBuf;
 use tokio::net::UdpSocket;
 
 #[derive(Debug)]
@@ -52,6 +54,14 @@ impl Socket {
 
     pub fn local_addr(&self) -> io::Result<SocketAddr> {
         self.socket.local_addr()
+    }
+
+    pub fn poll_recv_from(
+        &self,
+        cx: &mut Context<'_>,
+        buf: &mut [u8],
+    ) -> Poll<io::Result<SocketAddr>> {
+        self.socket.poll_recv_from(cx, &mut ReadBuf::new(buf))
     }
 }
 

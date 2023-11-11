@@ -1,9 +1,11 @@
 use std::convert::Infallible;
 
 use bytes::{Buf, BufMut};
+use game_common::components::components::{Component, Components};
 use game_common::net::ServerEntity;
 use game_common::record::RecordReference;
 
+use super::varint::VarInt;
 use super::{Decode, Encode, EofError, Error};
 
 #[derive(Clone, Debug)]
@@ -102,5 +104,48 @@ impl Decode for ComponentUpdate {
             component_id,
             bytes,
         })
+    }
+}
+
+impl Encode for Components {
+    type Error = Infallible;
+
+    fn encode<B>(&self, mut buf: B) -> Result<(), Self::Error>
+    where
+        B: BufMut,
+    {
+        VarInt::<u64>(self.len() as u64).encode(&mut buf)?;
+        for (id, bytes) in self.iter() {
+            id.encode(&mut buf)?;
+            VarInt::<u64>(bytes.len() as u64).encode(&mut buf)?;
+            buf.put_slice(bytes.as_bytes());
+        }
+
+        Ok(())
+    }
+}
+
+impl Decode for Components {
+    type Error = EofError;
+
+    fn decode<B>(mut buf: B) -> Result<Self, Self::Error>
+    where
+        B: Buf,
+    {
+        let len = VarInt::<u64>::decode(&mut buf)?.0;
+
+        let mut components = Components::new();
+        for _ in 0..len {
+            let id = RecordReference::decode(&mut buf)?;
+            let len = VarInt::<u64>::decode(&mut buf)?.0;
+            let mut bytes = Vec::new();
+            for _ in 0..len {
+                bytes.push(u8::decode(&mut buf)?);
+            }
+
+            components.insert(id, Component { bytes });
+        }
+
+        Ok(components)
     }
 }
