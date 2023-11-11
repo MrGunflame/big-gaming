@@ -70,7 +70,11 @@
             {
                 "id": "0b",
                 "name": "Gun Properties",
-                "description": ""
+                "description": "",
+                "actions": [
+                    "c626b9b0ab1940aba6932ea7726d0175:0d",
+                    "c626b9b0ab1940aba6932ea7726d0175:0e"
+                ]
             },
             {
                 "id": "0c",
@@ -132,6 +136,65 @@
                 "model": "",
                 "mass": 0,
                 "value": 0
+            },
+            {
+                "id": "11",
+                "name": "TestWeapon",
+                "icon": "",
+                "model": "",
+                "mass": 0,
+                "value": 0,
+                "components": {
+                    "c626b9b0ab1940aba6932ea7726d0175:0b": [
+                        0,
+                        0,
+                        128,
+                        63,
+                        0,
+                        0,
+                        128,
+                        63,
+                        30,
+                        0,
+                        0,
+                        0,
+                        198,
+                        38,
+                        185,
+                        176,
+                        171,
+                        25,
+                        64,
+                        171,
+                        166,
+                        147,
+                        46,
+                        167,
+                        114,
+                        109,
+                        1,
+                        117,
+                        18,
+                        0,
+                        0,
+                        0
+                    ]
+                }
+            }
+        ],
+        "objects": [
+            {
+                "id": "10",
+                "name": "Box",
+                "model": "assets/box.glb",
+                "description": "",
+                "components": []
+            },
+            {
+                "id": "12",
+                "name": "Projectile",
+                "model": "",
+                "description": ""
             }
         ]
     }

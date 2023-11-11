@@ -469,7 +469,7 @@ impl<'a> WorldViewMut<'a> {
         let quantity = items.quantity;
 
         let inventory = self.inventories_mut().get_mut_or_insert(id);
-        inventory.insert_at_slot(slot, items).unwrap();
+        inventory.insert_at_slot(slot, items.clone()).unwrap();
 
         self.new_deltas
             .push(EntityChange::InventoryItemAdd(InventoryItemAdd {
@@ -477,6 +477,7 @@ impl<'a> WorldViewMut<'a> {
                 id: slot,
                 item: item_id,
                 quantity,
+                components: items.item.components,
             }));
     }
 
@@ -489,7 +490,7 @@ impl<'a> WorldViewMut<'a> {
         let quantity = items.quantity;
 
         let inventory = self.inventories_mut().get_mut_or_insert(id);
-        let slot = inventory.insert(items).unwrap();
+        let slot = inventory.insert(items.clone()).unwrap();
 
         self.new_deltas
             .push(EntityChange::InventoryItemAdd(InventoryItemAdd {
@@ -497,6 +498,7 @@ impl<'a> WorldViewMut<'a> {
                 id: slot,
                 item: item_id,
                 quantity,
+                components: items.item.components,
             }));
         slot
     }
@@ -536,6 +538,69 @@ impl<'a> WorldViewMut<'a> {
                 equipped,
                 hidden,
                 quantity: None,
+                components: None,
+            }));
+    }
+
+    pub fn inventory_component_insert(
+        &mut self,
+        id: EntityId,
+        slot: InventorySlotId,
+        component: RecordReference,
+        data: Component,
+    ) {
+        let Some(inventory) = self.inventories_mut().get_mut(id) else {
+            return;
+        };
+
+        let Some(stack) = inventory.get_mut(slot) else {
+            return;
+        };
+
+        stack.item.components.insert(component, data);
+
+        let equipped = stack.item.equipped;
+        let hidden = stack.item.hidden;
+        let components = stack.item.components.clone();
+
+        self.new_deltas
+            .push(EntityChange::InventoryItemUpdate(InventoryItemUpdate {
+                entity: id,
+                slot_id: slot,
+                equipped,
+                hidden,
+                quantity: None,
+                components: Some(components),
+            }));
+    }
+
+    pub fn inventory_component_remove(
+        &mut self,
+        id: EntityId,
+        slot: InventorySlotId,
+        component: RecordReference,
+    ) {
+        let Some(inventory) = self.inventories_mut().get_mut(id) else {
+            return;
+        };
+
+        let Some(stack) = inventory.get_mut(slot) else {
+            return;
+        };
+
+        stack.item.components.remove(component);
+        let equipped = stack.item.equipped;
+        let hidden = stack.item.hidden;
+        let components = stack.item.components.clone();
+
+        self.new_deltas
+            .push(EntityChange::InventoryItemUpdate(InventoryItemUpdate {
+                entity: id,
+                slot_id: slot,
+                equipped,
+                quantity: None,
+                components: Some(components),
+                hidden,
             }));
     }
 

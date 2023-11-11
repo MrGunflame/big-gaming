@@ -42,6 +42,7 @@ mod terrain;
 mod varint;
 
 use game_common::components::actions::ActionId;
+use game_common::components::components::Components;
 use game_common::components::inventory::InventorySlotId;
 use game_common::components::items::ItemId;
 use game_common::components::object::ObjectId;
@@ -700,12 +701,13 @@ pub struct SpawnHost {
 }
 
 /// Inserts a new item into an inventory.
-#[derive(Copy, Clone, Debug, Encode, Decode)]
+#[derive(Clone, Debug, Encode, Decode)]
 pub struct InventoryItemAdd {
     pub entity: ServerEntity,
     pub id: InventorySlotId,
     pub item: ItemId,
     pub quantity: u32,
+    pub components: Components,
 }
 
 #[derive(Copy, Clone, Debug, Encode, Decode)]
@@ -714,13 +716,16 @@ pub struct InventoryItemRemove {
     pub id: InventorySlotId,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Clone, Debug)]
 pub struct InventoryItemUpdate {
     pub entity: ServerEntity,
     pub id: InventorySlotId,
     pub equipped: bool,
     pub hidden: bool,
     pub quantity: Option<u32>,
+    // TODO: Send a diff for changed components instead of sending
+    // all components every time.
+    pub components: Option<Components>,
 }
 
 impl Encode for InventoryItemUpdate {
@@ -746,10 +751,18 @@ impl Encode for InventoryItemUpdate {
             flags |= ItemUpdateFlags::QUANTITY;
         }
 
+        if self.components.is_some() {
+            flags |= ItemUpdateFlags::COMPONENTS;
+        }
+
         flags.encode(&mut buf)?;
 
         if let Some(quantity) = self.quantity {
             VarInt::<u32>(quantity).encode(&mut buf)?;
+        }
+
+        if let Some(components) = &self.components {
+            components.encode(&mut buf)?;
         }
 
         Ok(())
@@ -776,12 +789,19 @@ impl Decode for InventoryItemUpdate {
             None
         };
 
+        let components = if flags.components() {
+            Some(Components::decode(&mut buf)?)
+        } else {
+            None
+        };
+
         Ok(Self {
             entity,
             id,
             equipped,
             hidden,
             quantity,
+            components,
         })
     }
 }
@@ -821,6 +841,11 @@ impl ItemUpdateFlags {
     #[inline]
     pub const fn quantity(self) -> bool {
         self.0 & Self::QUANTITY.0 != 0
+    }
+
+    #[inline]
+    pub const fn components(self) -> bool {
+        self.0 & Self::COMPONENTS.0 != 0
     }
 }
 

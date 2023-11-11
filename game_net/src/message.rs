@@ -1,4 +1,5 @@
 use game_common::components::actions::ActionId;
+use game_common::components::components::Components;
 use game_common::components::inventory::InventorySlotId;
 use game_common::components::items::ItemId;
 use game_common::net::ServerEntity;
@@ -48,6 +49,7 @@ pub enum DataMessageBody {
     SpawnHost(SpawnHost),
     InventoryItemAdd(InventoryItemAdd),
     InventoryItemRemove(InventoryItemRemove),
+    InventoryItemUpdate(InventoryItemUpdate),
 }
 
 #[derive(Clone, Debug)]
@@ -106,18 +108,29 @@ pub struct EntityComponentUpdate {
     pub bytes: Vec<u8>,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Clone, Debug)]
 pub struct InventoryItemAdd {
     pub entity: ServerEntity,
     pub id: InventorySlotId,
     pub item: ItemId,
     pub quantity: u32,
+    pub components: Components,
 }
 
 #[derive(Copy, Clone, Debug)]
 pub struct InventoryItemRemove {
     pub entity: ServerEntity,
     pub slot: InventorySlotId,
+}
+
+#[derive(Clone, Debug)]
+pub struct InventoryItemUpdate {
+    pub entity: ServerEntity,
+    pub slot: InventorySlotId,
+    pub quantity: Option<u32>,
+    pub hidden: bool,
+    pub equipped: bool,
+    pub components: Option<Components>,
 }
 
 impl DataMessageBody {
@@ -175,12 +188,23 @@ impl DataMessageBody {
                     id: msg.id,
                     item: msg.item,
                     quantity: msg.quantity,
+                    components: msg.components,
                 })
             }
             DataMessageBody::InventoryItemRemove(msg) => {
                 Frame::InventoryItemRemove(proto::InventoryItemRemove {
                     entity: msg.entity,
                     id: msg.slot,
+                })
+            }
+            DataMessageBody::InventoryItemUpdate(msg) => {
+                Frame::InventoryItemUpdate(proto::InventoryItemUpdate {
+                    entity: msg.entity,
+                    id: msg.slot,
+                    equipped: msg.equipped,
+                    hidden: msg.hidden,
+                    quantity: msg.quantity,
+                    components: msg.components,
                 })
             }
         }
@@ -235,6 +259,7 @@ impl DataMessageBody {
                 id: frame.id,
                 item: frame.item,
                 quantity: frame.quantity,
+                components: frame.components,
             }),
             Frame::InventoryItemRemove(frame) => Self::InventoryItemRemove(InventoryItemRemove {
                 entity: frame.entity,
