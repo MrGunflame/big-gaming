@@ -162,9 +162,7 @@ where
 
     event_loop.run(move |event, event_loop, _control_flow| {
         match event {
-            Event::NewEvents(_start) => {
-                compat.set_position(cursor.position());
-            }
+            Event::NewEvents(_start) => {}
             Event::WindowEvent { window_id, event } => match event {
                 WindowEvent::Resized(size) => {
                     let window = *map.windows.get(&window_id).unwrap();
@@ -263,6 +261,7 @@ where
                         let mut cursor_state = cursor.state.write();
                         cursor_state.position = Vec2::new(position.x as f32, position.y as f32);
                         cursor_state.window = Some(window);
+                        compat.set_position(Vec2::new(position.x as f32, position.y as f32));
                     }
                 }
                 WindowEvent::CursorEntered { device_id: _ } => {
@@ -478,10 +477,12 @@ where
                         CursorGrabMode::None => {
                             cursor_state.is_locked = false;
                             is_locked = false;
+                            compat.unlock_cursor();
                         }
                         CursorGrabMode::Locked => {
                             cursor_state.is_locked = true;
                             is_locked = true;
+                            compat.lock_cursor();
                         }
                     }
                 }
