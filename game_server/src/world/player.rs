@@ -1,7 +1,8 @@
 use std::f32::consts::PI;
 
 use game_common::components::components::Components;
-use game_common::components::items::{Item, ItemId};
+use game_common::components::inventory::Inventory;
+use game_common::components::items::{Item, ItemId, ItemStack};
 use game_common::components::transform::Transform;
 use game_common::entity::EntityId;
 use game_common::math::RotationExt;
@@ -24,6 +25,20 @@ pub fn spawn_player(modules: &Modules, view: &mut WorldViewMut<'_>) -> SpawnPlay
     .spawn(modules, view)
     .unwrap();
 
+    let mut inventory = Inventory::new();
+    inventory
+        .insert(ItemStack {
+            item: Item {
+                id: ItemId("c626b9b0ab1940aba6932ea7726d0175:11".parse().unwrap()),
+                mass: Default::default(),
+                components: Default::default(),
+                equipped: true,
+                hidden: false,
+            },
+            quantity: 1,
+        })
+        .unwrap();
+
     // view.inventories_mut()
     //     .get_mut_or_insert(id)
     //     .insert(Item {
@@ -35,13 +50,18 @@ pub fn spawn_player(modules: &Modules, view: &mut WorldViewMut<'_>) -> SpawnPlay
     //     })
     //     .unwrap();
 
-    SpawnPlayer { id, transform }
+    SpawnPlayer {
+        id,
+        transform,
+        inventory,
+    }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Clone, Debug)]
 pub struct SpawnPlayer {
     pub id: EntityId,
     pub transform: Transform,
+    pub inventory: Inventory,
 }
 
 // pub fn move_player(event: PlayerMove, entity_id: EntityId, view: &mut WorldViewMut<'_>) {

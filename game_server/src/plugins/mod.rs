@@ -193,6 +193,8 @@ fn flush_command_queue(srv_state: &mut ServerState) {
                     },
                 );
 
+                view.inventories_mut().insert(res.id, res.inventory);
+
                 // At the connection time the delay must be 0, meaning the player is spawned
                 // without delay.
                 debug_assert_eq!(state.peer_delay, ControlFrame(0));
