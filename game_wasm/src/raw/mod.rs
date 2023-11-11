@@ -3,6 +3,7 @@ pub mod health;
 pub mod inventory;
 pub mod physics;
 pub mod process;
+pub mod record;
 pub mod world;
 
 use core::marker::PhantomData;
@@ -43,6 +44,14 @@ impl<T> Ptr<T> {
             _marker: PhantomData,
         }
     }
+
+    #[inline]
+    pub fn from_ptr(ptr: *const T) -> Self {
+        Self {
+            ptr: ptr as Usize,
+            _marker: PhantomData,
+        }
+    }
 }
 
 /// A transparent mutable pointer type.
@@ -70,6 +79,14 @@ impl<T> PtrMut<T> {
     pub fn from_raw(ptr: Usize) -> Self {
         Self {
             ptr,
+            _marker: PhantomData,
+        }
+    }
+
+    #[inline]
+    pub fn from_ptr(ptr: *mut T) -> Self {
+        Self {
+            ptr: ptr as Usize,
             _marker: PhantomData,
         }
     }

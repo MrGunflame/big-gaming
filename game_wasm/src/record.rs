@@ -1,4 +1,9 @@
+use core::mem::MaybeUninit;
+
 use bytemuck::{Pod, Zeroable};
+
+use crate::raw::record::{get_record, RecordKind as RawRecordKind};
+use crate::raw::{Ptr, PtrMut};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Zeroable, Pod)]
 #[repr(C)]
@@ -70,3 +75,44 @@ impl ModuleId {
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Zeroable, Pod)]
 #[repr(transparent)]
 pub struct RecordId(pub u32);
+
+#[derive(Clone, Debug)]
+pub struct Record {
+    kind: RecordKind,
+}
+
+impl Record {
+    pub fn get(id: RecordReference) -> Self {
+        let mut record = MaybeUninit::uninit();
+
+        let res = unsafe { get_record(Ptr::from_ptr(&id), PtrMut::from_ptr(record.as_mut_ptr())) };
+        assert!(res == 0);
+
+        let record = unsafe { record.assume_init() };
+        Self {
+            kind: RecordKind::from_raw(record.kind),
+        }
+    }
+
+    #[inline]
+    pub const fn kind(&self) -> RecordKind {
+        self.kind
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum RecordKind {
+    Object,
+    Item,
+    Race,
+}
+
+impl RecordKind {
+    fn from_raw(kind: RawRecordKind) -> Self {
+        match kind {
+            RawRecordKind::ITEM => Self::Item,
+            RawRecordKind::OBJECT => Self::Object,
+            RawRecordKind::RACE => Self::Race,
+        }
+    }
+}

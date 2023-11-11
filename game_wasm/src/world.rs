@@ -5,6 +5,10 @@ use glam::{Quat, Vec3};
 
 use crate::component::Component;
 use crate::entity::EntityId;
+use crate::raw::record::{
+    get_record_component_get, get_record_component_keys, get_record_component_len,
+    get_record_len_component,
+};
 use crate::raw::{Ptr, PtrMut, Usize, ERROR_NO_ENTITY};
 pub use crate::record::RecordReference;
 use crate::Error;
@@ -212,9 +216,74 @@ pub struct EntityBuilder {
     scale: Vec3,
     kind: RawEntityKind,
     body: EntityBody,
+    components: Vec<(RecordReference, Vec<u8>)>,
 }
 
 impl EntityBuilder {
+    pub fn from_record(id: RecordReference) -> Self {
+        let id = Ptr::from_raw(&id as *const RecordReference as Usize);
+
+        let len = {
+            let mut len = MaybeUninit::uninit();
+            let out = PtrMut::from_raw(len.as_mut_ptr() as Usize);
+
+            let res = unsafe { get_record_len_component(id, out) };
+            assert!(res == 0);
+
+            unsafe { len.assume_init() }
+        };
+
+        let keys = {
+            let mut keys = Vec::with_capacity(len);
+
+            let res = unsafe { get_record_component_keys(id, PtrMut::from_ptr(keys.as_mut_ptr())) };
+            assert!(res == 0);
+
+            unsafe {
+                keys.set_len(len);
+                keys
+            }
+        };
+
+        let mut components = Vec::with_capacity(keys.len());
+
+        for component_id in keys.into_iter() {
+            let mut len = MaybeUninit::uninit();
+
+            let res = unsafe {
+                get_record_component_len(
+                    id,
+                    Ptr::from_ptr(&component_id),
+                    PtrMut::from_ptr(len.as_mut_ptr()),
+                )
+            };
+            assert!(res == 0);
+
+            let len = unsafe { len.assume_init() };
+
+            let mut bytes = Vec::with_capacity(len as usize);
+
+            let res = unsafe {
+                get_record_component_get(
+                    id,
+                    Ptr::from_ptr(&component_id),
+                    PtrMut::from_ptr(bytes.as_mut_ptr()),
+                    len,
+                )
+            };
+            assert!(res == 0);
+
+            components.push((component_id, bytes));
+        }
+
+        Self {
+            translation: Vec3::ZERO,
+            rotation: Quat::IDENTITY,
+            scale: Vec3::splat(1.0),
+            components,
+        }
+    }
+
     pub fn new<T>(entity: T) -> Self
     where
         T: IntoEntityBody,
@@ -225,6 +294,7 @@ impl EntityBuilder {
             scale: Vec3::splat(1.0),
             kind: entity.kind(),
             body: entity.body(),
+            components: Vec::new(),
         }
     }
 
