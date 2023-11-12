@@ -115,6 +115,8 @@ pub struct InventoryItemAdd {
     pub item: ItemId,
     pub quantity: u32,
     pub components: Components,
+    pub equipped: bool,
+    pub hidden: bool,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -189,6 +191,8 @@ impl DataMessageBody {
                     item: msg.item,
                     quantity: msg.quantity,
                     components: msg.components,
+                    equipped: msg.equipped,
+                    hidden: msg.hidden,
                 })
             }
             DataMessageBody::InventoryItemRemove(msg) => {
@@ -260,6 +264,8 @@ impl DataMessageBody {
                 item: frame.item,
                 quantity: frame.quantity,
                 components: frame.components,
+                equipped: frame.equipped,
+                hidden: frame.hidden,
             }),
             Frame::InventoryItemRemove(frame) => Self::InventoryItemRemove(InventoryItemRemove {
                 entity: frame.entity,

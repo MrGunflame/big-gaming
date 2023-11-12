@@ -137,6 +137,8 @@ pub struct InventoryItemAdd {
     pub item: ItemId,
     pub quantity: u32,
     pub components: Components,
+    pub equipped: bool,
+    pub hidden: bool,
 }
 
 #[derive(Copy, Clone, Debug)]

@@ -1,6 +1,6 @@
 use std::f32::consts::PI;
 
-use game_common::components::components::Components;
+use game_common::components::components::{Component, Components};
 use game_common::components::inventory::Inventory;
 use game_common::components::items::{Item, ItemId, ItemStack};
 use game_common::components::transform::Transform;
@@ -25,13 +25,24 @@ pub fn spawn_player(modules: &Modules, view: &mut WorldViewMut<'_>) -> SpawnPlay
     .spawn(modules, view)
     .unwrap();
 
+    let mut components = Components::new();
+    components.insert(
+        "c626b9b0ab1940aba6932ea7726d0175:0b".parse().unwrap(),
+        Component {
+            bytes: vec![
+                0, 0, 128, 63, 0, 0, 128, 63, 30, 0, 0, 0, 198, 38, 185, 176, 171, 25, 64, 171,
+                166, 147, 46, 167, 114, 109, 1, 117, 18, 0, 0, 0,
+            ],
+        },
+    );
+
     let mut inventory = Inventory::new();
     inventory
         .insert(ItemStack {
             item: Item {
                 id: ItemId("c626b9b0ab1940aba6932ea7726d0175:11".parse().unwrap()),
                 mass: Default::default(),
-                components: Default::default(),
+                components,
                 equipped: true,
                 hidden: false,
             },

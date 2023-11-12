@@ -478,6 +478,8 @@ impl<'a> WorldViewMut<'a> {
                 item: item_id,
                 quantity,
                 components: items.item.components,
+                equipped: items.item.equipped,
+                hidden: items.item.hidden,
             }));
     }
 
@@ -499,6 +501,8 @@ impl<'a> WorldViewMut<'a> {
                 item: item_id,
                 quantity,
                 components: items.item.components,
+                equipped: items.item.equipped,
+                hidden: items.item.hidden,
             }));
         slot
     }
