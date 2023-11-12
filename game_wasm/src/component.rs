@@ -1,3 +1,4 @@
+use core::iter::FusedIterator;
 use core::mem;
 use core::ptr::NonNull;
 
@@ -50,6 +51,12 @@ impl Components {
             .any(|(component_id, _)| *component_id == id)
     }
 
+    pub fn iter(&self) -> Iter<'_> {
+        Iter {
+            inner: self.components.iter(),
+        }
+    }
+
     fn get_index(&self, id: RecordReference) -> Option<usize> {
         for (index, (component_id, _)) in self.components.iter().enumerate() {
             if *component_id == id {
@@ -60,6 +67,43 @@ impl Components {
         None
     }
 }
+
+impl<'a> IntoIterator for &'a Components {
+    type IntoIter = Iter<'a>;
+    type Item = <Self::IntoIter as Iterator>::Item;
+
+    #[inline]
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+pub struct Iter<'a> {
+    inner: core::slice::Iter<'a, (RecordReference, Component)>,
+}
+
+impl<'a> Iterator for Iter<'a> {
+    type Item = (RecordReference, &'a Component);
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.next().map(|(id, comp)| (*id, comp))
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.inner.size_hint()
+    }
+}
+
+impl<'a> ExactSizeIterator for Iter<'a> {
+    #[inline]
+    fn len(&self) -> usize {
+        self.inner.len()
+    }
+}
+
+impl<'a> FusedIterator for Iter<'a> {}
 
 /// A byte buffer containing component data.
 ///
@@ -87,6 +131,11 @@ impl Component {
 
     pub fn as_bytes(&self) -> &[u8] {
         &self.bytes
+    }
+
+    #[inline]
+    pub fn as_ptr(&self) -> *const u8 {
+        self.bytes.as_ptr()
     }
 
     /// Reads the value `T` from the buffer.

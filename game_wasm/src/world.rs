@@ -265,15 +265,46 @@ impl EntityBuilder {
         self
     }
 
-    pub fn build(self) -> Entity {
-        Entity(raw::Entity {
+    /// Spawns this entity.
+    pub fn spawn(&self) -> Result<EntityId, Error> {
+        let mut entity_id = MaybeUninit::uninit();
+
+        let entity = raw::Entity {
             id: 0,
             translation: self.translation.to_array(),
             rotation: self.rotation.to_array(),
             scale: self.scale.to_array(),
             kind: self.kind,
             body: self.body,
-        })
+        };
+
+        let res = unsafe {
+            raw::world_entity_spawn(
+                Ptr::from_ptr(&entity),
+                PtrMut::from_ptr(entity_id.as_mut_ptr()),
+            )
+        };
+        if res != 0 {
+            return Err(Error);
+        }
+
+        let entity_id = unsafe { entity_id.assume_init() };
+
+        for (id, component) in &self.components {
+            let res = unsafe {
+                raw::world_entity_component_insert(
+                    entity_id,
+                    Ptr::from_ptr(&id),
+                    Ptr::from_ptr(component.as_ptr()),
+                    component.len() as u32,
+                )
+            };
+            if res != 0 {
+                return Err(Error);
+            }
+        }
+
+        Ok(EntityId::from_raw(entity_id))
     }
 }
 
