@@ -82,6 +82,7 @@ pub fn encode(root: Root) -> Vec<u8> {
                 .collect(),
             body: RecordBody::Component(ComponentRecord {
                 description: component.description,
+                actions: component.actions.into_iter().map(|a| a.0).collect(),
             }),
             components: vec![],
         };

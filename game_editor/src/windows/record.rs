@@ -221,6 +221,7 @@ fn create_record(
             }),
             RecordBodyFields::Component => RecordBody::Component(ComponentRecord {
                 description: String::new(),
+                actions: vec![],
             }),
             RecordBodyFields::Object(object) => {
                 let model = object.model.get_untracked();

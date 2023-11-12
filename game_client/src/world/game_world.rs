@@ -259,6 +259,28 @@ where
                             continue;
                         };
 
+                        // Check whether if the actions of the stack may have changed.
+                        // This happens when the items component changes and the item
+                        // is equipped.
+                        match (stack.item.equipped, msg.equipped, &msg.components) {
+                            // 1. The item is not equipped, or component haven't changed.
+                            (true, true, None) | (false, false, _) => (),
+                            // 2. The item was equipped or the components have changed.
+                            (true, true, Some(_)) | (false, true, _) => {
+                                cmd_buffer.push(Command::InventoryItemEquip {
+                                    entity: id,
+                                    slot: msg.slot,
+                                });
+                            }
+                            // 3. The item was uneqipped.
+                            (true, false, _) => {
+                                cmd_buffer.push(Command::InventoryItemUnequip {
+                                    entity: id,
+                                    slot: msg.slot,
+                                });
+                            }
+                        }
+
                         stack.item.hidden = msg.hidden;
                         stack.item.equipped = msg.equipped;
 
@@ -268,13 +290,6 @@ where
 
                         if let Some(components) = msg.components {
                             stack.item.components = components;
-                        }
-
-                        if msg.equipped {
-                            cmd_buffer.push(Command::InventoryItemEquip {
-                                entity: id,
-                                slot: msg.slot,
-                            });
                         }
                     }
                     DataMessageBody::EntityComponentAdd(msg) => {

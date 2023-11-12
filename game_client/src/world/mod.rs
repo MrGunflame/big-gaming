@@ -6,12 +6,13 @@ pub mod script;
 pub mod state;
 
 use std::net::ToSocketAddrs;
+use std::thread::panicking;
 use std::time::Duration;
 
 use ahash::HashMap;
 use game_common::components::actions::ActionId;
 use game_common::components::actor::ActorProperties;
-use game_common::components::items::ItemId;
+use game_common::components::items::{ItemId, ItemStack};
 use game_common::components::transform::Transform;
 use game_common::entity::EntityId;
 use game_common::module::ModuleId;
@@ -21,7 +22,7 @@ use game_core::counter::Interval;
 use game_core::hierarchy::{Entity, TransformHierarchy};
 use game_core::modules::Modules;
 use game_core::time::Time;
-use game_data::record::Record;
+use game_data::record::{Record, RecordBody};
 use game_input::hotkeys::{HotkeyCode, Key};
 use game_input::keyboard::{KeyCode, KeyboardInput};
 use game_input::mouse::MouseMotion;
@@ -486,17 +487,28 @@ impl GameWorldState {
                     continue;
                 }
 
-                self.register_item_actions(stack.item.id);
+                self.register_record_action(stack.item.id.0);
+
+                for (id, _) in stack.item.components.iter() {
+                    self.register_record_action(id);
+                }
             }
         }
     }
 
-    fn register_item_actions(&mut self, id: ItemId) {
-        let module = self.modules.get(id.0.module).unwrap();
-        let record = module.records.get(id.0.record).unwrap();
-        let item = record.body.clone().unwrap_item();
+    fn register_record_action(&mut self, id: RecordReference) {
+        let module = self.modules.get(id.module).unwrap();
+        let record = module.records.get(id.record).unwrap();
 
-        for action in item.actions {
+        let actions = match &record.body {
+            RecordBody::Action(_) => return,
+            RecordBody::Race(race) => &race.actions,
+            RecordBody::Component(component) => &component.actions,
+            RecordBody::Item(item) => &item.actions,
+            RecordBody::Object(_) => return,
+        };
+
+        for action in actions {
             let module = self.modules.get(action.module).unwrap();
             let record = module.records.get(action.record).unwrap();
 
@@ -506,7 +518,7 @@ impl GameWorldState {
                 self.get_key_for_action(action.module, record),
             );
 
-            self.inventory_actions.push(ActionId(action));
+            self.inventory_actions.push(ActionId(*action));
         }
     }
 
