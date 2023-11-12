@@ -194,6 +194,8 @@ fn flush_command_queue(srv_state: &mut ServerState) {
                     },
                 );
 
+                view.inventories_mut().insert(res.id, res.inventory);
+
                 // At the connection time the delay must be 0, meaning the player is spawned
                 // without delay.
                 debug_assert_eq!(state.peer_delay, ControlFrame(0));
@@ -259,6 +261,7 @@ fn flush_command_queue(srv_state: &mut ServerState) {
                     DataMessageBody::SpawnHost(_) => (),
                     DataMessageBody::InventoryItemAdd(_) => (),
                     DataMessageBody::InventoryItemRemove(_) => (),
+                    DataMessageBody::InventoryItemUpdate(_) => (),
                 }
             }
         }
@@ -354,6 +357,7 @@ fn update_client(conn: &Connection, view: WorldViewRef<'_>, cf: ControlFrame) {
                                 id,
                                 quantity: stack.quantity,
                                 item: stack.item.id,
+                                components: stack.item.components.clone(),
                             }),
                         });
                     }
@@ -449,6 +453,7 @@ where
                                 id,
                                 item: stack.item.id,
                                 quantity: stack.quantity,
+                                components: stack.item.components.clone(),
                             },
                         ));
                     }
@@ -493,6 +498,7 @@ where
                                 id,
                                 item: stack.item.id,
                                 quantity: stack.quantity,
+                                components: stack.item.components.clone(),
                             },
                         ));
                     }
@@ -578,6 +584,7 @@ fn update_inventory(
                     id,
                     item: server_stack.item.id,
                     quantity: server_stack.quantity,
+                    components: server_stack.item.components.clone(),
                 },
             ));
 
@@ -607,6 +614,12 @@ fn update_inventory(
             quantity = Some(server_stack.quantity);
         }
 
+        let mut components = None;
+        if server_stack.item.components != client_stack.item.components {
+            needs_update = true;
+            components = Some(server_stack.item.components.clone());
+        }
+
         if needs_update {
             EntityChange::InventoryItemUpdate(game_common::world::snapshot::InventoryItemUpdate {
                 entity: entity_id,
@@ -614,6 +627,7 @@ fn update_inventory(
                 equipped: server_stack.item.equipped,
                 hidden: server_stack.item.hidden,
                 quantity,
+                components,
             });
         }
     }
@@ -752,6 +766,7 @@ fn update_client_entities(
                     id: event.id,
                     item: event.item,
                     quantity: event.quantity,
+                    components: event.components,
                 })
             }
             EntityChange::InventoryItemRemove(event) => {

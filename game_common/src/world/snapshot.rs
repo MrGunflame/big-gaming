@@ -1,7 +1,7 @@
 use glam::{Quat, Vec3};
 use std::ops::{Add, AddAssign, Sub, SubAssign};
 
-use crate::components::components::Component;
+use crate::components::components::{Component, Components};
 use crate::components::inventory::InventorySlotId;
 use crate::components::items::ItemId;
 use crate::entity::EntityId;
@@ -136,6 +136,7 @@ pub struct InventoryItemAdd {
     pub id: InventorySlotId,
     pub item: ItemId,
     pub quantity: u32,
+    pub components: Components,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -149,11 +150,12 @@ pub struct InventoryDestroy {
     pub entity: EntityId,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Clone, Debug)]
 pub struct InventoryItemUpdate {
     pub entity: EntityId,
     pub slot_id: InventorySlotId,
     pub equipped: bool,
     pub hidden: bool,
     pub quantity: Option<u32>,
+    pub components: Option<Components>,
 }

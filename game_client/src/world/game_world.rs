@@ -216,7 +216,7 @@ where
                                     item: Item {
                                         id: msg.item,
                                         mass: Mass::default(),
-                                        components: Components::default(),
+                                        components: msg.components,
                                         equipped: false,
                                         hidden: false,
                                     },
@@ -233,6 +233,29 @@ where
 
                         let inventory = self.newest_state.inventories.get_mut(id).unwrap();
                         inventory.remove(msg.slot, u32::MAX);
+                    }
+                    DataMessageBody::InventoryItemUpdate(msg) => {
+                        let Some(id) = self.server_entities.get(msg.entity) else {
+                            peer_error!("invalid entity: {:?}", msg.entity);
+                            continue;
+                        };
+
+                        let inventory = self.newest_state.inventories.get_mut(id).unwrap();
+                        let Some(stack) = inventory.get_mut(msg.slot) else {
+                            peer_error!("invalid inventory slot: {:?}", msg.slot);
+                            continue;
+                        };
+
+                        stack.item.hidden = msg.hidden;
+                        stack.item.equipped = msg.equipped;
+
+                        if let Some(quantity) = msg.quantity {
+                            stack.quantity = quantity;
+                        }
+
+                        if let Some(components) = msg.components {
+                            stack.item.components = components;
+                        }
                     }
                     DataMessageBody::EntityComponentAdd(msg) => {
                         let Some(id) = self.server_entities.get(msg.entity) else {
