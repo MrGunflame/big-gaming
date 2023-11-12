@@ -223,6 +223,13 @@ where
                                 },
                             )
                             .unwrap();
+
+                        if msg.equipped {
+                            cmd_buffer.push(Command::InventoryItemEquip {
+                                entity: id,
+                                slot: msg.id,
+                            });
+                        }
                     }
                     DataMessageBody::InventoryItemRemove(msg) => {
                         let Some(id) = self.server_entities.get(msg.entity) else {
@@ -231,7 +238,14 @@ where
                         };
 
                         let inventory = self.newest_state.inventories.get_mut(id).unwrap();
-                        inventory.remove(msg.slot, u32::MAX);
+                        if let Some(item) = inventory.remove(msg.slot, u32::MAX) {
+                            if item.equipped {
+                                cmd_buffer.push(Command::InventoryItemUnequip {
+                                    entity: id,
+                                    slot: msg.slot,
+                                });
+                            }
+                        }
                     }
                     DataMessageBody::InventoryItemUpdate(msg) => {
                         let Some(id) = self.server_entities.get(msg.entity) else {
@@ -254,6 +268,13 @@ where
 
                         if let Some(components) = msg.components {
                             stack.item.components = components;
+                        }
+
+                        if msg.equipped {
+                            cmd_buffer.push(Command::InventoryItemEquip {
+                                entity: id,
+                                slot: msg.slot,
+                            });
                         }
                     }
                     DataMessageBody::EntityComponentAdd(msg) => {

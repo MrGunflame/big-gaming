@@ -191,8 +191,16 @@ impl GameWorldState {
                 }
                 Command::ComponentAdd { entity, component } => {}
                 Command::ComponentRemove { entity, component } => {}
-                Command::InventoryItemEquip { entity, slot } => {}
-                Command::InventoryItemUnequip { entity, slot } => {}
+                Command::InventoryItemEquip { entity, slot } => {
+                    if entity == self.host {
+                        self.update_inventory_actions();
+                    }
+                }
+                Command::InventoryItemUnequip { entity, slot } => {
+                    if entity == self.host {
+                        self.update_inventory_actions();
+                    }
+                }
             }
         }
 
