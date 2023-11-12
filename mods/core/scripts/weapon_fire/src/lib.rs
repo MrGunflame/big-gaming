@@ -32,10 +32,9 @@ fn on_action(entity: u64, invoker: u64) {
 fn build_projectile(invoker: EntityId, projectile: RecordReference) {
     let actor = Entity::get(invoker).unwrap();
 
-    EntityBuilder::new(Object { id: projectile })
+    EntityBuilder::from_record(projectile)
         .translation(actor.translation())
         .rotation(actor.rotation())
-        .build()
         .spawn()
         .unwrap();
 }

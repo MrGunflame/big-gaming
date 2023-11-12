@@ -5,7 +5,7 @@ use core::ops::Deref;
 use alloc::vec::Vec;
 use bytemuck::{Pod, Zeroable};
 
-use crate::component::Component;
+use crate::component::{Component, Components};
 use crate::entity::EntityId;
 use crate::raw::inventory::{
     inventory_clear, inventory_component_get, inventory_component_insert, inventory_component_len,
@@ -14,6 +14,7 @@ use crate::raw::inventory::{
 };
 
 use crate::raw::{Ptr, PtrMut, Usize};
+use crate::record::{Record, RecordKind};
 use crate::world::RecordReference;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Zeroable, Pod)]
@@ -321,3 +322,63 @@ impl ExactSizeIterator for Keys {
 }
 
 impl FusedIterator for Keys {}
+
+#[derive(Clone, Debug)]
+pub struct ItemStackBuilder {
+    id: RecordReference,
+    components: Components,
+    quantity: u32,
+}
+
+impl ItemStackBuilder {
+    pub fn from_record(id: RecordReference) -> Self {
+        let record = Record::get(id);
+        assert_eq!(record.kind, RecordKind::Item);
+
+        Self {
+            id,
+            components: record.components,
+            quantity: 1,
+        }
+    }
+
+    pub fn quantity(mut self, quantity: u32) -> Self {
+        self.quantity = quantity;
+        self
+    }
+
+    pub fn insert(&self, inventory: &mut Inventory) -> InventoryId {
+        let mut slot_id = MaybeUninit::uninit();
+
+        let stack = RawItemStack {
+            item: RawItem { id: self.id },
+            quantity: self.quantity,
+        };
+
+        let res = unsafe {
+            inventory_insert(
+                inventory.entity.into_raw(),
+                Ptr::from_ptr(&stack),
+                PtrMut::from_ptr(slot_id.as_mut_ptr()),
+            )
+        };
+        assert!(res == 0);
+
+        let slot_id = unsafe { slot_id.assume_init() };
+
+        for (id, component) in &self.components {
+            let res = unsafe {
+                inventory_component_insert(
+                    inventory.entity.into_raw(),
+                    slot_id,
+                    Ptr::from_ptr(&id),
+                    Ptr::from_ptr(component.as_ptr()),
+                    component.len() as u32,
+                )
+            };
+            assert!(res == 0);
+        }
+
+        InventoryId(slot_id)
+    }
+}

@@ -14,7 +14,7 @@ use wasmtime::{Engine, Instance, Linker, Module, Store};
 use crate::dependency::{Dependencies, Dependency};
 use crate::effect::{Effect, Effects};
 use crate::events::{Events, OnAction, OnCellLoad, OnCellUnload, OnCollision, OnEquip, OnUnequip};
-use crate::WorldProvider;
+use crate::{RecordProvider, WorldProvider};
 
 pub struct ScriptInstance<'a> {
     store: Store<State<'a>>,
@@ -31,10 +31,11 @@ impl<'a> ScriptInstance<'a> {
         physics_pipeline: &'a game_physics::Pipeline,
         effects: &'a mut Effects,
         dependencies: &'a mut Dependencies,
+        records: &'a dyn RecordProvider,
     ) -> Self {
         let mut store = Store::new(
             engine,
-            State::new(world, physics_pipeline, effects, dependencies),
+            State::new(world, physics_pipeline, effects, dependencies, records),
         );
 
         let mut linker = Linker::<State>::new(&engine);
@@ -98,6 +99,7 @@ impl<'a> ScriptInstance<'a> {
 
 pub struct State<'a> {
     world: &'a dyn WorldProvider,
+    pub records: &'a dyn RecordProvider,
     pub physics_pipeline: &'a game_physics::Pipeline,
     effects: &'a mut Effects,
     dependencies: &'a mut Dependencies,
@@ -115,6 +117,7 @@ impl<'a> State<'a> {
         physics_pipeline: &'a game_physics::Pipeline,
         effects: &'a mut Effects,
         dependencies: &'a mut Dependencies,
+        records: &'a dyn RecordProvider,
     ) -> Self {
         Self {
             world,
@@ -124,6 +127,7 @@ impl<'a> State<'a> {
             next_inventory_id: 0,
             entities: HashMap::with_capacity(16),
             dependencies,
+            records,
         }
     }
 }
