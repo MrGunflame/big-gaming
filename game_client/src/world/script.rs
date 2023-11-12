@@ -3,6 +3,7 @@ use game_common::components::inventory::Inventory;
 use game_common::entity::EntityId;
 use game_common::events::EventQueue;
 use game_common::world::entity::Entity;
+use game_core::modules::Modules;
 use game_script::effect::Effect;
 use game_script::executor::ScriptExecutor;
 use game_script::{Context, WorldProvider};
@@ -17,11 +18,13 @@ pub fn run_scripts(
     executor: &ScriptExecutor,
     event_queue: &mut EventQueue,
     buffer: &mut CommandBuffer,
+    modules: &Modules,
 ) {
     let effects = executor.run(Context {
         view: world,
         physics_pipeline,
         events: event_queue,
+        records: modules,
     });
 
     // Since the script executing uses its own temporary ID namespace

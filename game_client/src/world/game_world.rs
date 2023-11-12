@@ -97,6 +97,7 @@ where
                     &self.executor,
                     &mut self.event_queue,
                     cmd_buffer,
+                    &modules,
                 );
             }
 

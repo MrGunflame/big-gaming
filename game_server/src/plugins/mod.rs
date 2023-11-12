@@ -39,6 +39,7 @@ pub fn tick(state: &mut ServerState) {
         view: &state.world.back().unwrap(),
         physics_pipeline: &state.pipeline,
         events: &mut state.event_queue,
+        records: &state.modules,
     });
     apply_effects(effects, &mut state.world.back_mut().unwrap());
 
