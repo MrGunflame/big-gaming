@@ -308,11 +308,14 @@ fn queue_action(
     };
 
     if race.actions.contains(&action.0) {
+        tracing::trace!("found action {:?} on race", action);
+
         queue.push(Event::Action(ActionEvent {
             entity: entity_id,
             invoker: entity_id,
             action,
         }));
+        return;
     }
 
     for (id, _) in entity.components.iter() {
@@ -327,6 +330,8 @@ fn queue_action(
         };
 
         if component.actions.contains(&action.0) {
+            tracing::trace!("found action {:?} on component", action);
+
             queue.push(Event::Action(ActionEvent {
                 entity: entity_id,
                 invoker: entity_id,
@@ -353,11 +358,14 @@ fn queue_action(
         };
 
         if item.actions.contains(&action.0) {
+            tracing::trace!("found action {:?} on item", action);
+
             queue.push(Event::Action(ActionEvent {
                 entity: entity_id,
                 invoker: entity_id,
                 action,
             }));
+            return;
         }
 
         for (id, _) in stack.item.components.iter() {
@@ -372,14 +380,19 @@ fn queue_action(
             };
 
             if component.actions.contains(&action.0) {
+                tracing::trace!("found action {:?} on item component", action);
+
                 queue.push(Event::Action(ActionEvent {
                     entity: entity_id,
                     invoker: entity_id,
                     action,
                 }));
+                return;
             }
         }
     }
+
+    tracing::trace!("action {:?} unavailable for entity {:?}", action, entity_id);
 }
 
 fn update_snapshots(

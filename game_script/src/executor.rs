@@ -25,9 +25,16 @@ impl ScriptExecutor {
         let mut events = Vec::new();
 
         while let Some(event) = ctx.events.pop() {
-            match event {
-                Event::Action(event) => self.queue_action(event, &mut ctx, &mut events),
-                _ => (),
+            let handles = match &event {
+                Event::Action(event) => self.call_action_event(&ctx, event),
+                _ => continue,
+            };
+
+            for handle in handles {
+                events.push(ExecScript {
+                    handle,
+                    event: event.clone(),
+                });
             }
         }
 
@@ -55,77 +62,15 @@ impl ScriptExecutor {
         effects
     }
 
-    fn queue_action(&self, event: ActionEvent, ctx: &mut Context<'_>, events: &mut Vec<FireEvent>) {
-        let Some(entity) = ctx.view.get(event.invoker) else {
-            tracing::warn!(
-                "entity {:?} referenced by `ActionEvent` {:?} does not exist",
-                event.invoker,
-                event
-            );
-
-            return;
-        };
-
-        let actor = match &entity.body {
-            EntityBody::Actor(actor) => actor,
-            _ => {
-                tracing::warn!(
-                    "`ActionEvent` must be an actor, but was {:?}",
-                    entity.body.kind()
-                );
-
-                return;
-            }
-        };
-
-        let mut active_actions: Vec<RecordReference> = vec![];
-
-        if let Some(actions) = self.targets.actions.get(&actor.race.0) {
-            active_actions.extend(actions);
-        }
-
-        for (id, _) in entity.components.iter() {
-            if let Some(actions) = self.targets.actions.get(&id) {
-                active_actions.extend(actions);
-            }
-        }
-
-        // TODO: We're only handling race/actor components here,
-        // but we also must handle item actions.
-
-        for action in active_actions {
-            if action == event.action.0 {
-                if let Some(scripts) = self.targets.scripts.get(&action) {
-                    for handle in scripts {
-                        events.push(FireEvent {
-                            handle: handle.clone(),
-                            event: event.into(),
-                        });
-                    }
-                }
-            }
-        }
-    }
-
-    fn queue_collision(
-        &self,
-        event: CollisionEvent,
-        ctx: &mut Context<'_>,
-        events: &mut Vec<FireEvent>,
-    ) {
-        let Some(entity) = ctx.view.get(event.entity) else {
-            tracing::warn!(
-                "entity {:?} referenced by `CollisionEvent` {:?} does not eixst",
-                event.entity,
-                event
-            );
-            return;
-        };
+    fn call_action_event(&self, ctx: &Context<'_>, event: &ActionEvent) -> &[Handle] {
+        // The calling entity should exist.
+        debug_assert!(ctx.view.get(event.invoker).is_some());
+        self.targets.scripts.get(&event.action.0).unwrap()
     }
 }
 
 #[derive(Clone, Debug)]
-struct FireEvent {
-    handle: Handle,
+struct ExecScript<'a> {
+    handle: &'a Handle,
     event: Event,
 }
