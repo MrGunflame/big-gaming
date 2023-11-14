@@ -18,11 +18,13 @@ use game_common::world::source::StreamingSource;
 use game_common::world::world::{AsView, WorldState, WorldViewMut, WorldViewRef};
 use game_common::world::CellId;
 use game_core::modules::Modules;
+use game_data::components::item;
 use game_net::message::{
     ControlMessage, DataMessage, DataMessageBody, EntityComponentAdd, EntityComponentRemove,
     EntityComponentUpdate, EntityCreate, EntityDestroy, EntityRotate, EntityTranslate,
     InventoryItemAdd, InventoryItemRemove, Message, MessageId, SpawnHost,
 };
+use game_net::peer_error;
 use game_script::effect::{Effect, Effects};
 use game_script::Context;
 
@@ -251,12 +253,18 @@ fn flush_command_queue(srv_state: &mut ServerState) {
                             continue;
                         };
 
-                        // TODO: Validate that the peer has the acton.
-                        srv_state.event_queue.push(Event::Action(ActionEvent {
+                        if state.host.entity != Some(entity) {
+                            peer_error!("peer tried to control entity it does not own");
+                            continue;
+                        }
+
+                        queue_action(
+                            &view,
                             entity,
-                            invoker: entity,
-                            action: msg.action,
-                        }));
+                            &srv_state.modules,
+                            msg.action,
+                            &mut srv_state.event_queue,
+                        );
                     }
                     DataMessageBody::EntityComponentAdd(_) => (),
                     DataMessageBody::EntityComponentRemove(_) => (),
@@ -317,6 +325,60 @@ fn queue_action(
         else {
             return;
         };
+
+        if component.actions.contains(&action.0) {
+            queue.push(Event::Action(ActionEvent {
+                entity: entity_id,
+                invoker: entity_id,
+                action,
+            }));
+        }
+    }
+
+    let Some(inventory) = view.inventory(entity_id) else {
+        return;
+    };
+
+    for (_, stack) in inventory.iter().filter(|(_, stack)| stack.item.equipped) {
+        let item_id = stack.item.id;
+
+        let Some(item) = modules
+            .get(item_id.0.module)
+            .map(|module| module.records.get(item_id.0.record))
+            .flatten()
+            .map(|record| record.body.as_item())
+            .flatten()
+        else {
+            return;
+        };
+
+        if item.actions.contains(&action.0) {
+            queue.push(Event::Action(ActionEvent {
+                entity: entity_id,
+                invoker: entity_id,
+                action,
+            }));
+        }
+
+        for (id, _) in stack.item.components.iter() {
+            let Some(component) = modules
+                .get(id.module)
+                .map(|module| module.records.get(id.record))
+                .flatten()
+                .map(|record| record.body.as_component())
+                .flatten()
+            else {
+                return;
+            };
+
+            if component.actions.contains(&action.0) {
+                queue.push(Event::Action(ActionEvent {
+                    entity: entity_id,
+                    invoker: entity_id,
+                    action,
+                }));
+            }
+        }
     }
 }
 
