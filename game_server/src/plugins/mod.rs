@@ -3,18 +3,21 @@ mod inventory;
 use std::collections::VecDeque;
 
 use ahash::{HashMap, HashSet};
+use game_common::components::actions::ActionId;
 use game_common::components::components::Components;
 use game_common::components::inventory::Inventory;
 use game_common::components::items::Item;
 use game_common::entity::EntityId;
-use game_common::events::{ActionEvent, Event};
+use game_common::events::{ActionEvent, Event, EventQueue};
 use game_common::net::ServerEntity;
 use game_common::units::Mass;
 use game_common::world::control_frame::ControlFrame;
+use game_common::world::entity::EntityBody;
 use game_common::world::snapshot::EntityChange;
 use game_common::world::source::StreamingSource;
 use game_common::world::world::{AsView, WorldState, WorldViewMut, WorldViewRef};
 use game_common::world::CellId;
+use game_core::modules::Modules;
 use game_net::message::{
     ControlMessage, DataMessage, DataMessageBody, EntityComponentAdd, EntityComponentRemove,
     EntityComponentUpdate, EntityCreate, EntityDestroy, EntityRotate, EntityTranslate,
@@ -266,6 +269,53 @@ fn flush_command_queue(srv_state: &mut ServerState) {
         }
 
         drop(view);
+    }
+}
+
+fn queue_action(
+    view: impl AsView,
+    entity_id: EntityId,
+    modules: &Modules,
+    action: ActionId,
+    queue: &mut EventQueue,
+) {
+    let Some(entity) = view.get(entity_id) else {
+        return;
+    };
+
+    let race = match &entity.body {
+        EntityBody::Actor(actor) => actor.race,
+        _ => return,
+    };
+
+    let Some(race) = modules
+        .get(race.0.module)
+        .map(|module| module.records.get(race.0.record))
+        .flatten()
+        .map(|record| record.body.as_race())
+        .flatten()
+    else {
+        return;
+    };
+
+    if race.actions.contains(&action.0) {
+        queue.push(Event::Action(ActionEvent {
+            entity: entity_id,
+            invoker: entity_id,
+            action,
+        }));
+    }
+
+    for (id, _) in entity.components.iter() {
+        let Some(component) = modules
+            .get(id.module)
+            .map(|module| module.records.get(id.record))
+            .flatten()
+            .map(|record| record.body.as_component())
+            .flatten()
+        else {
+            return;
+        };
     }
 }
 
