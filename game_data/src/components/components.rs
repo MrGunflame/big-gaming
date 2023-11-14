@@ -11,11 +11,14 @@ pub enum ComponentRecordError {
     Description(<String as Decode>::Error),
     #[error("failed to decode component script: {0}")]
     Script(<Uri as Decode>::Error),
+    #[error("failed to decode component actions: {0}")]
+    Actions(<Vec<RecordReference> as Decode>::Error),
 }
 
 #[derive(Clone, Debug)]
 pub struct ComponentRecord {
     pub description: String,
+    pub actions: Vec<RecordReference>,
 }
 
 impl Encode for ComponentRecord {
@@ -24,6 +27,7 @@ impl Encode for ComponentRecord {
         B: BufMut,
     {
         self.description.encode(&mut buf);
+        self.actions.encode(&mut buf);
     }
 }
 
@@ -35,8 +39,12 @@ impl Decode for ComponentRecord {
         B: Buf,
     {
         let description = String::decode(&mut buf).map_err(ComponentRecordError::Description)?;
+        let actions = Vec::decode(&mut buf).map_err(ComponentRecordError::Actions)?;
 
-        Ok(Self { description })
+        Ok(Self {
+            description,
+            actions,
+        })
     }
 }
 
