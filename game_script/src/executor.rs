@@ -45,6 +45,7 @@ impl ScriptExecutor {
                     ctx.physics_pipeline,
                     &mut effects,
                     &mut dependencies,
+                    ctx.records,
                 )
                 .unwrap();
 

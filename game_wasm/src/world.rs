@@ -3,10 +3,11 @@ use core::mem::MaybeUninit;
 use alloc::vec::Vec;
 use glam::{Quat, Vec3};
 
-use crate::component::Component;
+use crate::component::{Component, Components};
 use crate::entity::EntityId;
 use crate::raw::{Ptr, PtrMut, Usize, ERROR_NO_ENTITY};
 pub use crate::record::RecordReference;
+use crate::record::{Record, RecordKind};
 use crate::Error;
 
 use crate::raw::world::{self as raw, EntityBody, EntityKind as RawEntityKind};
@@ -212,9 +213,29 @@ pub struct EntityBuilder {
     scale: Vec3,
     kind: RawEntityKind,
     body: EntityBody,
+    components: Components,
 }
 
 impl EntityBuilder {
+    pub fn from_record(id: RecordReference) -> Self {
+        let record = Record::get(id);
+
+        let (kind, body) = match record.kind {
+            RecordKind::Item => (RawEntityKind::ITEM, EntityBody { item: id }),
+            RecordKind::Object => (RawEntityKind::OBJECT, EntityBody { object: id }),
+            RecordKind::Race => (RawEntityKind::ACTOR, EntityBody { actor: [0u8; 20] }),
+        };
+
+        Self {
+            translation: Vec3::ZERO,
+            rotation: Quat::IDENTITY,
+            scale: Vec3::splat(1.0),
+            components: record.components,
+            kind,
+            body,
+        }
+    }
+
     pub fn new<T>(entity: T) -> Self
     where
         T: IntoEntityBody,
@@ -225,6 +246,7 @@ impl EntityBuilder {
             scale: Vec3::splat(1.0),
             kind: entity.kind(),
             body: entity.body(),
+            components: Components::new(),
         }
     }
 
@@ -243,15 +265,46 @@ impl EntityBuilder {
         self
     }
 
-    pub fn build(self) -> Entity {
-        Entity(raw::Entity {
+    /// Spawns this entity.
+    pub fn spawn(&self) -> Result<EntityId, Error> {
+        let mut entity_id = MaybeUninit::uninit();
+
+        let entity = raw::Entity {
             id: 0,
             translation: self.translation.to_array(),
             rotation: self.rotation.to_array(),
             scale: self.scale.to_array(),
             kind: self.kind,
             body: self.body,
-        })
+        };
+
+        let res = unsafe {
+            raw::world_entity_spawn(
+                Ptr::from_ptr(&entity),
+                PtrMut::from_ptr(entity_id.as_mut_ptr()),
+            )
+        };
+        if res != 0 {
+            return Err(Error);
+        }
+
+        let entity_id = unsafe { entity_id.assume_init() };
+
+        for (id, component) in &self.components {
+            let res = unsafe {
+                raw::world_entity_component_insert(
+                    entity_id,
+                    Ptr::from_ptr(&id),
+                    Ptr::from_ptr(component.as_ptr()),
+                    component.len() as u32,
+                )
+            };
+            if res != 0 {
+                return Err(Error);
+            }
+        }
+
+        Ok(EntityId::from_raw(entity_id))
     }
 }
 

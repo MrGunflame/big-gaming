@@ -11,8 +11,10 @@ use effect::Effects;
 use game_common::components::inventory::Inventory;
 use game_common::entity::EntityId;
 use game_common::events::EventQueue;
+use game_common::record::RecordReference;
 use game_common::world::entity::Entity;
 use game_common::world::world::{WorldViewMut, WorldViewRef};
+use game_data::record::Record;
 use instance::ScriptInstance;
 use script::Script;
 use slotmap::{DefaultKey, SlotMap};
@@ -60,6 +62,7 @@ impl ScriptServer {
         physics_pipeline: &'a game_physics::Pipeline,
         effects: &'a mut Effects,
         dependencies: &'a mut Dependencies,
+        records: &'a dyn RecordProvider,
     ) -> Option<ScriptInstance<'a>> {
         let script = self.scripts.get(handle.id)?;
 
@@ -71,6 +74,7 @@ impl ScriptServer {
             physics_pipeline,
             effects,
             dependencies,
+            records,
         ))
     }
 }
@@ -84,6 +88,7 @@ pub struct Context<'a> {
     pub view: &'a dyn WorldProvider,
     pub physics_pipeline: &'a game_physics::Pipeline,
     pub events: &'a mut EventQueue,
+    pub records: &'a dyn RecordProvider,
 }
 
 impl Debug for ScriptServer {
@@ -115,4 +120,8 @@ impl WorldProvider for WorldViewMut<'_> {
     fn inventory(&self, id: EntityId) -> Option<&Inventory> {
         self.inventories().get(id)
     }
+}
+
+pub trait RecordProvider {
+    fn get(&self, id: RecordReference) -> Option<&Record>;
 }

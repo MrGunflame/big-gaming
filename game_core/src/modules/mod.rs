@@ -6,7 +6,7 @@ use game_data::loader::FileLoader;
 use game_data::record::{Record, RecordBody, RecordKind};
 use game_data::DataBuffer;
 use game_script::scripts::RecordTargets;
-use game_script::ScriptServer;
+use game_script::{RecordProvider, ScriptServer};
 use thiserror::Error;
 use tokio::runtime::Runtime;
 
@@ -54,6 +54,14 @@ impl Modules {
 impl Default for Modules {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl RecordProvider for Modules {
+    fn get(&self, id: RecordReference) -> Option<&Record> {
+        self.get(id.module)
+            .map(|module| module.records.get(id.record))
+            .flatten()
     }
 }
 

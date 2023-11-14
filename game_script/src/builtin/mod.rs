@@ -4,6 +4,7 @@ mod inventory;
 mod log;
 mod physics;
 mod process;
+mod record;
 mod world;
 
 use std::mem;
@@ -27,6 +28,7 @@ pub fn register_host_fns(store: &mut Linker<State>) {
     use log::*;
     use physics::*;
     use process::*;
+    use record::*;
     use world::*;
 
     register_fns! {
@@ -55,6 +57,11 @@ pub fn register_host_fns(store: &mut Linker<State>) {
         inventory_len,
         inventory_list,
         physics_cast_ray,
+        get_record,
+        get_record_len_component,
+        get_record_component_keys,
+        get_record_component_len,
+        get_record_component_get,
     }
 }
 

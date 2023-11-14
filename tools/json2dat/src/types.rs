@@ -190,6 +190,8 @@ pub struct Component {
     pub description: String,
     #[serde(default)]
     pub scripts: Vec<String>,
+    #[serde(default)]
+    pub actions: Vec<JsonRecordReference>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

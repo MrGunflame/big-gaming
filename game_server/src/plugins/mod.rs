@@ -42,6 +42,7 @@ pub fn tick(state: &mut ServerState) {
         view: &state.world.back().unwrap(),
         physics_pipeline: &state.pipeline,
         events: &mut state.event_queue,
+        records: &state.modules,
     });
     apply_effects(effects, &mut state.world.back_mut().unwrap());
 
@@ -407,6 +408,8 @@ fn update_client(conn: &Connection, view: WorldViewRef<'_>, cf: ControlFrame) {
                                 quantity: stack.quantity,
                                 item: stack.item.id,
                                 components: stack.item.components.clone(),
+                                equipped: stack.item.equipped,
+                                hidden: stack.item.hidden,
                             }),
                         });
                     }
@@ -503,6 +506,8 @@ where
                                 item: stack.item.id,
                                 quantity: stack.quantity,
                                 components: stack.item.components.clone(),
+                                equipped: stack.item.equipped,
+                                hidden: stack.item.hidden,
                             },
                         ));
                     }
@@ -548,6 +553,8 @@ where
                                 item: stack.item.id,
                                 quantity: stack.quantity,
                                 components: stack.item.components.clone(),
+                                equipped: stack.item.equipped,
+                                hidden: stack.item.hidden,
                             },
                         ));
                     }
@@ -634,6 +641,8 @@ fn update_inventory(
                     item: server_stack.item.id,
                     quantity: server_stack.quantity,
                     components: server_stack.item.components.clone(),
+                    equipped: server_stack.item.equipped,
+                    hidden: server_stack.item.hidden,
                 },
             ));
 
@@ -816,6 +825,8 @@ fn update_client_entities(
                     item: event.item,
                     quantity: event.quantity,
                     components: event.components,
+                    equipped: event.equipped,
+                    hidden: event.hidden,
                 })
             }
             EntityChange::InventoryItemRemove(event) => {

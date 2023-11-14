@@ -97,6 +97,7 @@ where
                     &self.executor,
                     &mut self.event_queue,
                     cmd_buffer,
+                    &modules,
                 );
             }
 
@@ -216,13 +217,20 @@ where
                                         id: msg.item,
                                         mass: Mass::default(),
                                         components: msg.components,
-                                        equipped: false,
-                                        hidden: false,
+                                        equipped: msg.equipped,
+                                        hidden: msg.hidden,
                                     },
                                     quantity: msg.quantity,
                                 },
                             )
                             .unwrap();
+
+                        if msg.equipped {
+                            cmd_buffer.push(Command::InventoryItemEquip {
+                                entity: id,
+                                slot: msg.id,
+                            });
+                        }
                     }
                     DataMessageBody::InventoryItemRemove(msg) => {
                         let Some(id) = self.server_entities.get(msg.entity) else {
@@ -231,7 +239,14 @@ where
                         };
 
                         let inventory = self.newest_state.inventories.get_mut(id).unwrap();
-                        inventory.remove(msg.slot, u32::MAX);
+                        if let Some(item) = inventory.remove(msg.slot, u32::MAX) {
+                            if item.equipped {
+                                cmd_buffer.push(Command::InventoryItemUnequip {
+                                    entity: id,
+                                    slot: msg.slot,
+                                });
+                            }
+                        }
                     }
                     DataMessageBody::InventoryItemUpdate(msg) => {
                         let Some(id) = self.server_entities.get(msg.entity) else {
@@ -244,6 +259,28 @@ where
                             peer_error!("invalid inventory slot: {:?}", msg.slot);
                             continue;
                         };
+
+                        // Check whether if the actions of the stack may have changed.
+                        // This happens when the items component changes and the item
+                        // is equipped.
+                        match (stack.item.equipped, msg.equipped, &msg.components) {
+                            // 1. The item is not equipped, or component haven't changed.
+                            (true, true, None) | (false, false, _) => (),
+                            // 2. The item was equipped or the components have changed.
+                            (true, true, Some(_)) | (false, true, _) => {
+                                cmd_buffer.push(Command::InventoryItemEquip {
+                                    entity: id,
+                                    slot: msg.slot,
+                                });
+                            }
+                            // 3. The item was uneqipped.
+                            (true, false, _) => {
+                                cmd_buffer.push(Command::InventoryItemUnequip {
+                                    entity: id,
+                                    slot: msg.slot,
+                                });
+                            }
+                        }
 
                         stack.item.hidden = msg.hidden;
                         stack.item.equipped = msg.equipped;
