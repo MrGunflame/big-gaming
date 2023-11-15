@@ -52,8 +52,6 @@ impl<'a> ScriptInstance<'a> {
     }
 
     pub fn run(&mut self, event: &Event) -> wasmtime::Result<()> {
-        tracing::info!("exec {:?}", event);
-
         match event {
             Event::Action(event) => self.on_action(event.entity, event.invoker),
             Event::Collision(event) => self.on_collision(event.entity, event.other),

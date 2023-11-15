@@ -56,7 +56,9 @@ impl ScriptExecutor {
                 )
                 .unwrap();
 
-            instance.run(&event.event).unwrap();
+            if let Err(err) = instance.run(&event.event) {
+                tracing::error!("error executing script: {}", err);
+            }
         }
 
         effects
