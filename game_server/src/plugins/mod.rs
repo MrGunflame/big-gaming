@@ -4,7 +4,7 @@ use std::collections::VecDeque;
 
 use ahash::{HashMap, HashSet};
 use game_common::components::actions::ActionId;
-use game_common::components::components::Components;
+use game_common::components::components::{Component, Components};
 use game_common::components::inventory::Inventory;
 use game_common::components::items::Item;
 use game_common::entity::EntityId;
@@ -112,6 +112,24 @@ fn apply_effects(effects: Effects, view: &mut WorldViewMut<'_>) {
                     .unwrap_or(slot_id);
 
                 view.inventory_set_equipped(entity_id, slot_id, equipped);
+            }
+            Effect::InventoryComponentInsert(id, slot_id, component, data) => {
+                let entity_id = entity_id_remap.get(&id).copied().unwrap_or(id);
+                let slot_id = inventory_slot_id_remap
+                    .get(&slot_id)
+                    .copied()
+                    .unwrap_or(slot_id);
+
+                view.inventory_component_insert(id, slot_id, component, data);
+            }
+            Effect::InventoryComponentRemove(id, slot_id, component) => {
+                let entity_id = entity_id_remap.get(&id).copied().unwrap_or(id);
+                let slot_id = inventory_slot_id_remap
+                    .get(&slot_id)
+                    .copied()
+                    .unwrap_or(slot_id);
+
+                view.inventory_component_remove(id, slot_id, component);
             }
             _ => todo!(),
         }
