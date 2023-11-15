@@ -204,6 +204,71 @@ impl EntityComponents {
             Err(Error)
         }
     }
+
+    pub fn entry(&self, id: RecordReference) -> ComponentEntry<'_> {
+        match self.get(id) {
+            Ok(component) => ComponentEntry::Occupied(OccupiedComponentEntry {
+                components: self,
+                component,
+                id,
+            }),
+            Err(_) => ComponentEntry::Vacant(VacantComponentEntry {
+                components: self,
+                id,
+            }),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum ComponentEntry<'a> {
+    Occupied(OccupiedComponentEntry<'a>),
+    Vacant(VacantComponentEntry<'a>),
+}
+
+#[derive(Debug)]
+pub struct OccupiedComponentEntry<'a> {
+    components: &'a EntityComponents,
+    id: RecordReference,
+    component: Component,
+}
+
+impl<'a> OccupiedComponentEntry<'a> {
+    #[inline]
+    pub fn key(&self) -> RecordReference {
+        self.id
+    }
+
+    pub fn get(&self) -> &Component {
+        &self.component
+    }
+
+    pub fn get_mut(&mut self) -> &mut Component {
+        &mut self.component
+    }
+
+    pub fn remove(self) -> Component {
+        self.components.remove(self.id).unwrap();
+        self.component
+    }
+}
+
+#[derive(Debug)]
+pub struct VacantComponentEntry<'a> {
+    components: &'a EntityComponents,
+    id: RecordReference,
+}
+
+impl<'a> VacantComponentEntry<'a> {
+    pub fn insert(self, value: Component) -> Component {
+        self.components.insert(self.id, &value).unwrap();
+        value
+    }
+
+    #[inline]
+    pub fn key(&self) -> RecordReference {
+        self.id
+    }
 }
 
 #[derive(Clone)]
