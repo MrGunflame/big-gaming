@@ -34,6 +34,7 @@ impl InventoryId {
     }
 }
 
+#[derive(Debug)]
 pub struct Inventory {
     entity: EntityId,
 }
@@ -223,6 +224,13 @@ impl Inventory {
             _ => Err(InventoryError),
         }
     }
+
+    pub fn iter(&self) -> Result<Iter<'_>, InventoryError> {
+        Ok(Iter {
+            keys: self.keys()?,
+            inventory: self,
+        })
+    }
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -335,6 +343,42 @@ impl ExactSizeIterator for Keys {
 }
 
 impl FusedIterator for Keys {}
+
+#[derive(Clone, Debug)]
+pub struct Iter<'a> {
+    inventory: &'a Inventory,
+    keys: Keys,
+}
+
+impl<'a> Iterator for Iter<'a> {
+    type Item = (InventoryId, ItemStack);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let key = self.keys.next()?;
+        let stack = self.inventory.get(key).unwrap();
+        Some((
+            key,
+            ItemStack {
+                item: stack.item,
+                quantity: stack.quantity,
+            },
+        ))
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.keys.size_hint()
+    }
+}
+
+impl<'a> ExactSizeIterator for Iter<'a> {
+    #[inline]
+    fn len(&self) -> usize {
+        self.keys.len()
+    }
+}
+
+impl<'a> FusedIterator for Iter<'a> {}
 
 #[derive(Clone, Debug)]
 pub struct ItemStackBuilder {
