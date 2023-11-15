@@ -111,7 +111,7 @@ impl<'a> FusedIterator for Iter<'a> {}
 /// [`read_unaligned`].
 ///
 /// [`read_unaligned`]: ptr::read_unaligned
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Component {
     bytes: Vec<u8>,
 }

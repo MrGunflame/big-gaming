@@ -8,18 +8,12 @@ use crate::Handle;
 
 #[derive(Clone, Debug, Default)]
 pub struct RecordTargets {
-    /// Records that have scripts attached to them.
+    /// Scripts attached to records.
     pub(crate) scripts: HashMap<RecordReference, Vec<Handle>>,
-    /// Records that have actions attached to them.
-    pub(crate) actions: HashMap<RecordReference, Vec<RecordReference>>,
 }
 
 impl RecordTargets {
-    pub fn push_script(&mut self, record: RecordReference, handle: Handle) {
-        self.scripts.entry(record).or_default().push(handle);
-    }
-
-    pub fn push_action(&mut self, record: RecordReference, action: RecordReference) {
-        self.actions.entry(record).or_default().push(action);
+    pub fn push(&mut self, id: RecordReference, handle: Handle) {
+        self.scripts.entry(id).or_default().push(handle);
     }
 }

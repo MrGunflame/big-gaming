@@ -169,31 +169,13 @@ fn load_module(
                 }
             };
 
-            record_targets.push_script(
+            record_targets.push(
                 RecordReference {
                     module: data.header.module.id,
                     record: record.id,
                 },
                 handle,
             );
-        }
-
-        match &record.body {
-            RecordBody::Item(_) => {}
-            RecordBody::Object(_) => {}
-            RecordBody::Action(action) => {}
-            RecordBody::Component(component) => {}
-            RecordBody::Race(race) => {
-                for action in &race.actions {
-                    record_targets.push_action(
-                        RecordReference {
-                            module: data.header.module.id,
-                            record: record.id,
-                        },
-                        *action,
-                    );
-                }
-            }
         }
     }
 

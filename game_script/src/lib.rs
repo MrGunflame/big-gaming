@@ -18,7 +18,7 @@ use game_data::record::Record;
 use instance::ScriptInstance;
 use script::Script;
 use slotmap::{DefaultKey, SlotMap};
-use wasmtime::{Config, Engine};
+use wasmtime::{Config, Engine, WasmBacktraceDetails};
 
 pub mod effect;
 pub mod executor;
@@ -38,7 +38,9 @@ pub struct ScriptServer {
 
 impl ScriptServer {
     pub fn new() -> Self {
-        let config = Config::new();
+        let mut config = Config::new();
+        config.wasm_backtrace(true);
+        config.wasm_backtrace_details(WasmBacktraceDetails::Enable);
 
         Self {
             scripts: SlotMap::new(),

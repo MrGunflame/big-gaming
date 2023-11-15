@@ -8,7 +8,9 @@ use game_common::events::Event;
 use game_common::record::RecordReference;
 use game_common::world::entity::Entity;
 use game_common::world::CellId;
+use game_tracing::trace_span;
 use glam::{Quat, Vec3};
+use tracing::span::Id;
 use wasmtime::{Engine, Instance, Linker, Module, Store};
 
 use crate::dependency::{Dependencies, Dependency};
@@ -52,7 +54,7 @@ impl<'a> ScriptInstance<'a> {
     }
 
     pub fn run(&mut self, event: &Event) -> wasmtime::Result<()> {
-        tracing::info!("exec {:?}", event);
+        let _span = trace_span!("Instance::run").entered();
 
         match event {
             Event::Action(event) => self.on_action(event.entity, event.invoker),

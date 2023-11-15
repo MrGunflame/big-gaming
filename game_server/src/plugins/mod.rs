@@ -3,23 +3,28 @@ mod inventory;
 use std::collections::VecDeque;
 
 use ahash::{HashMap, HashSet};
-use game_common::components::components::Components;
+use game_common::components::actions::ActionId;
+use game_common::components::components::{Component, Components};
 use game_common::components::inventory::Inventory;
 use game_common::components::items::Item;
 use game_common::entity::EntityId;
-use game_common::events::{ActionEvent, Event};
+use game_common::events::{ActionEvent, Event, EventQueue};
 use game_common::net::ServerEntity;
 use game_common::units::Mass;
 use game_common::world::control_frame::ControlFrame;
+use game_common::world::entity::EntityBody;
 use game_common::world::snapshot::EntityChange;
 use game_common::world::source::StreamingSource;
 use game_common::world::world::{AsView, WorldState, WorldViewMut, WorldViewRef};
 use game_common::world::CellId;
+use game_core::modules::Modules;
+use game_data::components::item;
 use game_net::message::{
     ControlMessage, DataMessage, DataMessageBody, EntityComponentAdd, EntityComponentRemove,
     EntityComponentUpdate, EntityCreate, EntityDestroy, EntityRotate, EntityTranslate,
     InventoryItemAdd, InventoryItemRemove, Message, MessageId, SpawnHost,
 };
+use game_net::peer_error;
 use game_script::effect::{Effect, Effects};
 use game_script::Context;
 
@@ -107,6 +112,24 @@ fn apply_effects(effects: Effects, view: &mut WorldViewMut<'_>) {
                     .unwrap_or(slot_id);
 
                 view.inventory_set_equipped(entity_id, slot_id, equipped);
+            }
+            Effect::InventoryComponentInsert(id, slot_id, component, data) => {
+                let entity_id = entity_id_remap.get(&id).copied().unwrap_or(id);
+                let slot_id = inventory_slot_id_remap
+                    .get(&slot_id)
+                    .copied()
+                    .unwrap_or(slot_id);
+
+                view.inventory_component_insert(id, slot_id, component, data);
+            }
+            Effect::InventoryComponentRemove(id, slot_id, component) => {
+                let entity_id = entity_id_remap.get(&id).copied().unwrap_or(id);
+                let slot_id = inventory_slot_id_remap
+                    .get(&slot_id)
+                    .copied()
+                    .unwrap_or(slot_id);
+
+                view.inventory_component_remove(id, slot_id, component);
             }
             _ => todo!(),
         }
@@ -248,12 +271,18 @@ fn flush_command_queue(srv_state: &mut ServerState) {
                             continue;
                         };
 
-                        // TODO: Validate that the peer has the acton.
-                        srv_state.event_queue.push(Event::Action(ActionEvent {
+                        if state.host.entity != Some(entity) {
+                            peer_error!("peer tried to control entity it does not own");
+                            continue;
+                        }
+
+                        queue_action(
+                            &view,
                             entity,
-                            invoker: entity,
-                            action: msg.action,
-                        }));
+                            &srv_state.modules,
+                            msg.action,
+                            &mut srv_state.event_queue,
+                        );
                     }
                     DataMessageBody::EntityComponentAdd(_) => (),
                     DataMessageBody::EntityComponentRemove(_) => (),
@@ -268,6 +297,120 @@ fn flush_command_queue(srv_state: &mut ServerState) {
 
         drop(view);
     }
+}
+
+fn queue_action(
+    view: impl AsView,
+    entity_id: EntityId,
+    modules: &Modules,
+    action: ActionId,
+    queue: &mut EventQueue,
+) {
+    let Some(entity) = view.get(entity_id) else {
+        return;
+    };
+
+    let race = match &entity.body {
+        EntityBody::Actor(actor) => actor.race,
+        _ => return,
+    };
+
+    let Some(race) = modules
+        .get(race.0.module)
+        .map(|module| module.records.get(race.0.record))
+        .flatten()
+        .map(|record| record.body.as_race())
+        .flatten()
+    else {
+        return;
+    };
+
+    if race.actions.contains(&action.0) {
+        tracing::trace!("found action {:?} on race", action);
+
+        queue.push(Event::Action(ActionEvent {
+            entity: entity_id,
+            invoker: entity_id,
+            action,
+        }));
+        return;
+    }
+
+    for (id, _) in entity.components.iter() {
+        let Some(component) = modules
+            .get(id.module)
+            .map(|module| module.records.get(id.record))
+            .flatten()
+            .map(|record| record.body.as_component())
+            .flatten()
+        else {
+            return;
+        };
+
+        if component.actions.contains(&action.0) {
+            tracing::trace!("found action {:?} on component", action);
+
+            queue.push(Event::Action(ActionEvent {
+                entity: entity_id,
+                invoker: entity_id,
+                action,
+            }));
+        }
+    }
+
+    let Some(inventory) = view.inventory(entity_id) else {
+        return;
+    };
+
+    for (_, stack) in inventory.iter().filter(|(_, stack)| stack.item.equipped) {
+        let item_id = stack.item.id;
+
+        let Some(item) = modules
+            .get(item_id.0.module)
+            .map(|module| module.records.get(item_id.0.record))
+            .flatten()
+            .map(|record| record.body.as_item())
+            .flatten()
+        else {
+            return;
+        };
+
+        if item.actions.contains(&action.0) {
+            tracing::trace!("found action {:?} on item", action);
+
+            queue.push(Event::Action(ActionEvent {
+                entity: entity_id,
+                invoker: entity_id,
+                action,
+            }));
+            return;
+        }
+
+        for (id, _) in stack.item.components.iter() {
+            let Some(component) = modules
+                .get(id.module)
+                .map(|module| module.records.get(id.record))
+                .flatten()
+                .map(|record| record.body.as_component())
+                .flatten()
+            else {
+                return;
+            };
+
+            if component.actions.contains(&action.0) {
+                tracing::trace!("found action {:?} on item component", action);
+
+                queue.push(Event::Action(ActionEvent {
+                    entity: entity_id,
+                    invoker: entity_id,
+                    action,
+                }));
+                return;
+            }
+        }
+    }
+
+    tracing::trace!("action {:?} unavailable for entity {:?}", action, entity_id);
 }
 
 fn update_snapshots(

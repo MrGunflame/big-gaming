@@ -84,6 +84,34 @@ pub fn run_scripts(
                 let inventory = world.inventories.get_mut(id).unwrap();
                 inventory.get_mut(slot_id).unwrap().item.equipped = equipped;
             }
+            Effect::InventoryComponentInsert(id, slot_id, component, data) => {
+                let slot_id = inventory_slot_id_remap
+                    .get(&slot_id)
+                    .copied()
+                    .unwrap_or(slot_id);
+
+                let inventory = world.inventories.get_mut(id).unwrap();
+                inventory
+                    .get_mut(slot_id)
+                    .unwrap()
+                    .item
+                    .components
+                    .insert(component, data);
+            }
+            Effect::InventoryComponentRemove(id, slot_id, component) => {
+                let slot_id = inventory_slot_id_remap
+                    .get(&slot_id)
+                    .copied()
+                    .unwrap_or(slot_id);
+
+                let inventory = world.inventories.get_mut(id).unwrap();
+                inventory
+                    .get_mut(slot_id)
+                    .unwrap()
+                    .item
+                    .components
+                    .remove(component);
+            }
             _ => todo!(),
         }
     }
