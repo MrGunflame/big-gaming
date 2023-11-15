@@ -17,9 +17,22 @@ use crate::raw::{Ptr, PtrMut, Usize};
 use crate::record::{Record, RecordKind};
 use crate::world::RecordReference;
 
+/// A unique identifier to in [`ItemStack`] in an [`Inventory`].
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Zeroable, Pod)]
 #[repr(transparent)]
-pub struct InventoryId(pub u64);
+pub struct InventoryId(u64);
+
+impl InventoryId {
+    #[inline]
+    pub const fn from_raw(bits: u64) -> Self {
+        Self(bits)
+    }
+
+    #[inline]
+    pub const fn into_raw(self) -> u64 {
+        self.0
+    }
+}
 
 pub struct Inventory {
     entity: EntityId,
