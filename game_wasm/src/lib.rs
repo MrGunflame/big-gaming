@@ -12,9 +12,6 @@ pub mod raw;
 #[cfg(not(feature = "raw"))]
 mod raw;
 
-// #[cfg(feature = "panic_handler")]
-// mod panic;
-
 pub mod component;
 pub mod entity;
 pub mod events;
@@ -28,3 +25,7 @@ pub mod world;
 
 #[derive(Clone, Debug)]
 pub struct Error;
+
+#[cfg(feature = "global_alloc")]
+#[global_allocator]
+static DLMALLOC: dlmalloc::GlobalDlmalloc = dlmalloc::GlobalDlmalloc;

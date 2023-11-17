@@ -41,6 +41,7 @@ pub struct Inventory {
 }
 
 impl Inventory {
+    #[inline]
     pub fn new(entity: EntityId) -> Self {
         Self { entity }
     }
@@ -286,6 +287,7 @@ impl ItemStackRef {
         }
     }
 
+    #[inline]
     pub fn components(&self) -> ItemComponents<'_> {
         ItemComponents { parent: self }
     }

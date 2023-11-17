@@ -1,5 +1,8 @@
-use std::f32::consts::PI;
+#![no_std]
 
+use core::f32::consts::PI;
+
+use game_wasm::math::Real;
 pub use game_wasm::math::Vec3;
 
 use bytemuck::{Pod, Zeroable};
@@ -41,6 +44,8 @@ pub fn extract_actor_rotation(rotation: Quat) -> Quat {
 #[macro_export]
 macro_rules! impl_movement {
     ($dir:expr) => {
+        $crate::panic_handler!();
+
         #[game_wasm::events::on_action]
         fn on_action(invoker: game_wasm::entity::EntityId) {
             $crate::on_action_impl(invoker, $dir);
@@ -105,5 +110,16 @@ pub mod components {
     pub const AMMO: RecordReference = RecordReference {
         module: MODULE,
         record: RecordId(0xc),
+    };
+}
+
+#[macro_export]
+macro_rules! panic_handler {
+    () => {
+        #[cfg(not(test))]
+        #[panic_handler]
+        fn panic_handler(info: &core::panic::PanicInfo) -> ! {
+            loop {}
+        }
     };
 }

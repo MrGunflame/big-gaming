@@ -1,9 +1,13 @@
+#![no_std]
+
 use game_wasm::entity::EntityId;
 use game_wasm::events::on_action;
 use game_wasm::inventory::Inventory;
 use game_wasm::world::{Entity, EntityBuilder, RecordReference};
 use shared::components::{AMMO, GUN_PROPERTIES};
-use shared::{Ammo, GunProperties};
+use shared::{panic_handler, Ammo, GunProperties};
+
+panic_handler!();
 
 #[on_action]
 fn on_action(invoker: EntityId) {

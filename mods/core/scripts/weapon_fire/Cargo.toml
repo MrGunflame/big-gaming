@@ -11,3 +11,8 @@ crate-type = ["cdylib"]
 [dependencies]
 game_wasm = { version = "0.1.0", path = "../../../../game_wasm" }
 shared = { version = "0.1.0", path = "../shared" }
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1

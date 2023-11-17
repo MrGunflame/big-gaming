@@ -1,8 +1,13 @@
+#![no_std]
+
 use game_wasm::entity::EntityId;
 use game_wasm::events::on_action;
 use game_wasm::math::{Ray, Vec3};
 use game_wasm::physics::{cast_ray, QueryFilter};
 use game_wasm::world::Entity;
+use shared::panic_handler;
+
+panic_handler!();
 
 #[on_action]
 fn on_action(invoker: EntityId) {
