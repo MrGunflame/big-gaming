@@ -32,15 +32,27 @@ pub fn run_scripts(
     // A temporary ID must **never** overlap with an existing ID.
     // FIXME: We should use a linear IDs here so we can avoid
     // the need for hasing and just use array indexing.
+    let mut entity_id_remap = HashMap::default();
     let mut inventory_slot_id_remap = HashMap::default();
 
     for effect in effects.into_iter() {
         match effect {
             Effect::EntitySpawn(entity) => {
-                todo!()
+                debug_assert!(entity_id_remap.get(&entity.id).is_none());
+                debug_assert!(world.entities.get(entity.id).is_none());
+
+                let temp_id = entity.id;
+                let real_id = world.entities.insert(entity);
+                entity_id_remap.insert(temp_id, real_id);
             }
-            Effect::EntityDespawn(id) => todo!(),
+            Effect::EntityDespawn(id) => {
+                let id = entity_id_remap.get(&id).copied().unwrap_or(id);
+                world.entities.remove(id);
+                world.inventories.remove(id);
+            }
             Effect::EntityTranslate(id, translation) => {
+                let id = entity_id_remap.get(&id).copied().unwrap_or(id);
+
                 buffer.push(Command::Translate {
                     entity: id,
                     dst: translation,
@@ -49,6 +61,8 @@ pub fn run_scripts(
                 world.entities.get_mut(id).unwrap().transform.translation = translation;
             }
             Effect::EntityRotate(id, rotation) => {
+                let id = entity_id_remap.get(&id).copied().unwrap_or(id);
+
                 buffer.push(Command::Rotate {
                     entity: id,
                     dst: rotation,
@@ -57,6 +71,8 @@ pub fn run_scripts(
                 world.entities.get_mut(id).unwrap().transform.rotation = rotation;
             }
             Effect::InventoryInsert(id, temp_slot_id, stack) => {
+                let id = entity_id_remap.get(&id).copied().unwrap_or(id);
+
                 if world.inventories.get(id).is_none() {
                     world.inventories.insert(id);
                 }
@@ -67,6 +83,7 @@ pub fn run_scripts(
                 inventory_slot_id_remap.insert(temp_slot_id, real_slot_id);
             }
             Effect::InventoryRemove(id, slot_id, quantity) => {
+                let id = entity_id_remap.get(&id).copied().unwrap_or(id);
                 let slot_id = inventory_slot_id_remap
                     .get(&slot_id)
                     .copied()
@@ -76,6 +93,7 @@ pub fn run_scripts(
                 inventory.remove(slot_id, quantity as u32);
             }
             Effect::InventoryItemUpdateEquip(id, slot_id, equipped) => {
+                let id = entity_id_remap.get(&id).copied().unwrap_or(id);
                 let slot_id = inventory_slot_id_remap
                     .get(&slot_id)
                     .copied()
@@ -85,6 +103,7 @@ pub fn run_scripts(
                 inventory.get_mut(slot_id).unwrap().item.equipped = equipped;
             }
             Effect::InventoryComponentInsert(id, slot_id, component, data) => {
+                let id = entity_id_remap.get(&id).copied().unwrap_or(id);
                 let slot_id = inventory_slot_id_remap
                     .get(&slot_id)
                     .copied()
@@ -99,6 +118,7 @@ pub fn run_scripts(
                     .insert(component, data);
             }
             Effect::InventoryComponentRemove(id, slot_id, component) => {
+                let id = entity_id_remap.get(&id).copied().unwrap_or(id);
                 let slot_id = inventory_slot_id_remap
                     .get(&slot_id)
                     .copied()
