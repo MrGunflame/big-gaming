@@ -42,15 +42,15 @@ pub fn extract_actor_rotation(rotation: Quat) -> Quat {
 macro_rules! impl_movement {
     ($dir:expr) => {
         #[game_wasm::events::on_action]
-        fn on_action(entity: u64, invoker: u64) {
-            $crate::on_action_impl(entity, invoker, $dir);
+        fn on_action(invoker: game_wasm::entity::EntityId) {
+            $crate::on_action_impl(invoker, $dir);
         }
     };
 }
 
 #[inline]
-pub fn on_action_impl(entity: u64, _invoker: u64, dir: Vec3) {
-    let mut entity = Entity::get(EntityId::from_raw(entity)).unwrap();
+pub fn on_action_impl(entity: EntityId, dir: Vec3) {
+    let mut entity = Entity::get(entity).unwrap();
 
     let speed: f32 = entity.components().get(MOVEMENT_SPEED).unwrap().read();
 
