@@ -117,6 +117,11 @@ pub struct Component {
 }
 
 impl Component {
+    #[inline]
+    pub(crate) const fn empty() -> Self {
+        Self { bytes: Vec::new() }
+    }
+
     pub(crate) fn new(bytes: Vec<u8>) -> Self {
         Self { bytes }
     }

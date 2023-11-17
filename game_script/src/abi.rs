@@ -135,6 +135,9 @@ impl ToAbi for HostItemStack {
         GuestItemStack {
             item: GuestItem {
                 id: bytemuck::cast(self.item.id.0),
+                equipped: self.item.equipped as u8,
+                hdden: self.item.hidden as u8,
+                _pad0: 0,
             },
             quantity: self.quantity,
         }

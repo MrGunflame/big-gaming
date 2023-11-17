@@ -9,8 +9,9 @@ use crate::component::{Component, Components};
 use crate::entity::EntityId;
 use crate::raw::inventory::{
     inventory_clear, inventory_component_get, inventory_component_insert, inventory_component_len,
-    inventory_equip, inventory_get, inventory_insert, inventory_len, inventory_list,
-    inventory_remove, inventory_unequip, Item as RawItem, ItemStack as RawItemStack,
+    inventory_component_remove, inventory_equip, inventory_get, inventory_insert, inventory_len,
+    inventory_list, inventory_remove, inventory_unequip, Item as RawItem,
+    ItemStack as RawItemStack,
 };
 
 use crate::raw::{Ptr, PtrMut, Usize};
@@ -54,7 +55,11 @@ impl Inventory {
             let stack = unsafe { stack.assume_init() };
             Ok(ItemStackRef {
                 inner: ItemStack {
-                    item: Item { id: stack.item.id },
+                    item: Item {
+                        id: stack.item.id,
+                        equipped: stack.item.equipped != 0,
+                        hidden: stack.item.hdden != 0,
+                    },
                     quantity: stack.quantity,
                 },
                 slot_id: id,
@@ -90,7 +95,12 @@ impl Inventory {
 
     fn insert_inner(&self, items: ItemStack) -> Result<InventoryId, InventoryError> {
         let raw_stack = RawItemStack {
-            item: RawItem { id: items.item.id },
+            item: RawItem {
+                id: items.item.id,
+                equipped: 0,
+                hdden: 0,
+                _pad0: 0,
+            },
             quantity: items.quantity,
         };
 
@@ -203,6 +213,22 @@ impl Inventory {
         }
     }
 
+    fn component_remove(
+        &self,
+        id: InventoryId,
+        component_id: RecordReference,
+    ) -> Result<(), InventoryError> {
+        let res = unsafe {
+            inventory_component_remove(self.entity.into_raw(), id.0, Ptr::from_ptr(&component_id))
+        };
+
+        if res == 0 {
+            Ok(())
+        } else {
+            Err(InventoryError)
+        }
+    }
+
     pub fn keys(&self) -> Result<Keys, InventoryError> {
         let len = self.len()?;
         let mut keys = Vec::with_capacity(len.try_into().unwrap());
@@ -259,6 +285,10 @@ impl ItemStackRef {
             _ => Err(InventoryError),
         }
     }
+
+    pub fn components(&self) -> ItemComponents<'_> {
+        ItemComponents { parent: self }
+    }
 }
 
 impl Deref for ItemStackRef {
@@ -277,9 +307,130 @@ impl AsRef<ItemStack> for ItemStackRef {
     }
 }
 
+#[derive(Debug)]
+pub struct ItemComponents<'a> {
+    parent: &'a ItemStackRef,
+}
+
+impl<'a> ItemComponents<'a> {
+    pub fn get(&self, id: RecordReference) -> Result<Component, InventoryError> {
+        Inventory::new(self.parent.entity_id).component_get(self.parent.slot_id, id)
+    }
+
+    pub fn insert(&self, id: RecordReference, component: &Component) -> Result<(), InventoryError> {
+        Inventory::new(self.parent.entity_id).component_insert(self.parent.slot_id, id, component)
+    }
+
+    pub fn remove(&self, id: RecordReference) -> Result<(), InventoryError> {
+        Inventory::new(self.parent.entity_id).component_remove(self.parent.slot_id, id)
+    }
+
+    pub fn entry(&self, id: RecordReference) -> ComponentEntry<'_> {
+        match self.get(id) {
+            Ok(component) => ComponentEntry::Occupied(OccupiedComponentEntry {
+                components: self,
+                id,
+                component,
+            }),
+            Err(_) => ComponentEntry::Vacant(VacantComponentEntry {
+                components: self,
+                id,
+            }),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum ComponentEntry<'a> {
+    Occupied(OccupiedComponentEntry<'a>),
+    Vacant(VacantComponentEntry<'a>),
+}
+
+impl<'a> ComponentEntry<'a> {
+    pub fn or_default(self) -> Component {
+        match self {
+            Self::Occupied(entry) => entry.component,
+            Self::Vacant(_) => Component::empty(),
+        }
+    }
+
+    pub fn or_insert_with<F>(self, f: F) -> Component
+    where
+        F: FnOnce(&mut Component),
+    {
+        match self {
+            Self::Occupied(entry) => entry.component,
+            Self::Vacant(_) => {
+                let mut component = Component::empty();
+                f(&mut component);
+                component
+            }
+        }
+    }
+}
+
+impl<'a> ComponentEntry<'a> {
+    #[inline]
+    pub fn key(&self) -> RecordReference {
+        match self {
+            Self::Occupied(entry) => entry.key(),
+            Self::Vacant(entry) => entry.key(),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct OccupiedComponentEntry<'a> {
+    components: &'a ItemComponents<'a>,
+    id: RecordReference,
+    component: Component,
+}
+
+impl<'a> OccupiedComponentEntry<'a> {
+    #[inline]
+    pub fn key(&self) -> RecordReference {
+        self.id
+    }
+
+    #[inline]
+    pub fn get(&self) -> &Component {
+        &self.component
+    }
+
+    #[inline]
+    pub fn get_mut(&mut self) -> &mut Component {
+        &mut self.component
+    }
+
+    pub fn remove(self) -> Component {
+        self.components.remove(self.id).unwrap();
+        self.component
+    }
+}
+
+#[derive(Debug)]
+pub struct VacantComponentEntry<'a> {
+    components: &'a ItemComponents<'a>,
+    id: RecordReference,
+}
+
+impl<'a> VacantComponentEntry<'a> {
+    pub fn insert(self, value: Component) -> Component {
+        self.components.insert(self.id, &value).unwrap();
+        value
+    }
+
+    #[inline]
+    pub fn key(&self) -> RecordReference {
+        self.id
+    }
+}
+
 #[derive(Copy, Clone, Debug)]
 pub struct Item {
     pub id: RecordReference,
+    pub equipped: bool,
+    pub hidden: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -351,18 +502,12 @@ pub struct Iter<'a> {
 }
 
 impl<'a> Iterator for Iter<'a> {
-    type Item = (InventoryId, ItemStack);
+    type Item = ItemStackRef;
 
     fn next(&mut self) -> Option<Self::Item> {
         let key = self.keys.next()?;
         let stack = self.inventory.get(key).unwrap();
-        Some((
-            key,
-            ItemStack {
-                item: stack.item,
-                quantity: stack.quantity,
-            },
-        ))
+        Some(stack)
     }
 
     #[inline]
@@ -408,7 +553,12 @@ impl ItemStackBuilder {
         let mut slot_id = MaybeUninit::uninit();
 
         let stack = RawItemStack {
-            item: RawItem { id: self.id },
+            item: RawItem {
+                id: self.id,
+                equipped: 0,
+                hdden: 0,
+                _pad0: 0,
+            },
             quantity: self.quantity,
         };
 

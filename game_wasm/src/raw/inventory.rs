@@ -72,4 +72,8 @@ pub struct ItemStack {
 #[repr(C)]
 pub struct Item {
     pub id: RecordReference,
+    // Note that `equipped` and `hidden` flags are currently only for reads.
+    pub equipped: u8,
+    pub hdden: u8,
+    pub _pad0: u16,
 }

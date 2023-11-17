@@ -68,7 +68,7 @@ impl<'a> ScriptInstance<'a> {
 
     pub fn on_action(&mut self, entity: EntityId, invoker: EntityId) -> wasmtime::Result<()> {
         let func: OnAction = self.inner.get_typed_func(&mut self.store, "on_action")?;
-        func.call(&mut self.store, (entity.into_raw(), invoker.into_raw()))
+        func.call(&mut self.store, invoker.into_raw())
     }
 
     pub fn on_collision(&mut self, entity: EntityId, other: EntityId) -> wasmtime::Result<()> {
