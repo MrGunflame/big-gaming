@@ -5,18 +5,12 @@ use glam::{Quat, Vec3};
 
 use crate::component::{Component, Components};
 use crate::entity::EntityId;
-use crate::raw::{Ptr, PtrMut, Usize, ERROR_NO_ENTITY};
+use crate::raw::{Ptr, PtrMut, Usize, RESULT_NO_COMPONENT, RESULT_NO_ENTITY, RESULT_OK};
 pub use crate::record::RecordReference;
 use crate::record::{Record, RecordKind};
-use crate::Error;
+use crate::{unreachable_unchecked, Error, ErrorImpl};
 
 use crate::raw::world::{self as raw, EntityBody, EntityKind as RawEntityKind};
-
-/// The requested entity does not exist.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct NoEntity {
-    _priv: (),
-}
 
 #[derive(Clone)]
 pub struct Entity(raw::Entity);
@@ -27,18 +21,19 @@ impl Entity {
     /// # Errors
     ///
     /// Returns [`NoEntity`] if the requested `id` does not currently exist.
-    pub fn get(id: EntityId) -> Result<Self, NoEntity> {
+    pub fn get(id: EntityId) -> Result<Self, Error> {
         let mut entity = MaybeUninit::<raw::Entity>::uninit();
         let ptr = entity.as_mut_ptr() as Usize;
 
         let res = unsafe { raw::world_entity_get(id.into_raw(), PtrMut::from_raw(ptr)) };
 
-        if res == 0 {
-            Ok(Self(unsafe { entity.assume_init_read() }))
-        } else {
-            debug_assert_eq!(res, ERROR_NO_ENTITY);
-
-            Err(NoEntity { _priv: () })
+        match res {
+            RESULT_OK => {
+                let entity = unsafe { entity.assume_init_read() };
+                Ok(Entity(entity))
+            }
+            RESULT_NO_ENTITY => Err(ErrorImpl::NoEntity(id).into_error()),
+            _ => unsafe { unreachable_unchecked() },
         }
     }
 
@@ -51,12 +46,12 @@ impl Entity {
 
         let res = unsafe { raw::world_entity_spawn(Ptr::from_raw(ptr), PtrMut::from_raw(out_ptr)) };
 
-        if res == 0 {
-            self.0.id = id;
-
-            Ok(())
-        } else {
-            Err(Error)
+        match res {
+            RESULT_OK => {
+                self.0.id = id;
+                Ok(())
+            }
+            _ => unsafe { unreachable_unchecked() },
         }
     }
 
@@ -65,15 +60,14 @@ impl Entity {
     /// # Errors
     ///
     /// Returns [`NoEntity`] if the requested `id` does not currently exist.
-    pub fn despawn(&self) -> Result<(), NoEntity> {
+    pub fn despawn(&self) -> Result<(), Error> {
         let res = unsafe { raw::world_entity_despawn(self.0.id) };
-
-        if res == 0 {
-            Ok(())
-        } else {
-            debug_assert_eq!(res, ERROR_NO_ENTITY);
-
-            Err(NoEntity { _priv: () })
+        match res {
+            RESULT_OK => Ok(()),
+            RESULT_NO_ENTITY => {
+                Err(ErrorImpl::NoEntity(EntityId::from_raw(self.0.id)).into_error())
+            }
+            _ => unsafe { unreachable_unchecked() },
         }
     }
 
@@ -141,8 +135,13 @@ impl EntityComponents {
             )
         };
 
-        if res != 0 {
-            return Err(Error);
+        match res {
+            RESULT_OK => (),
+            RESULT_NO_ENTITY => {
+                return Err(ErrorImpl::NoEntity(EntityId::from_raw(self.entity)).into_error())
+            }
+            RESULT_NO_COMPONENT => return Err(ErrorImpl::NoComponent(id).into_error()),
+            _ => unsafe { unreachable_unchecked() },
         }
 
         // No need to fetch the component data when we know
@@ -162,15 +161,16 @@ impl EntityComponents {
             )
         };
 
-        if res == 0 {
-            unsafe {
-                bytes.set_len(len as usize);
-            }
-
-            Ok(Component::new(bytes))
-        } else {
-            Err(Error)
+        // The call to `world_entity_component_get` should never fail as
+        // `world_entity_component_len` returned that the component exists and in between these
+        // two calls no code executed that could change that.
+        // The VM guarantees that we have "exclusive" access to the component.
+        debug_assert!(res == RESULT_OK);
+        unsafe {
+            bytes.set_len(len as usize);
         }
+
+        Ok(Component::new(bytes))
     }
 
     pub fn insert(&self, id: RecordReference, component: &Component) -> Result<(), Error> {
@@ -186,10 +186,12 @@ impl EntityComponents {
             )
         };
 
-        if res == 0 {
-            Ok(())
-        } else {
-            Err(Error)
+        match res {
+            RESULT_OK => Ok(()),
+            RESULT_NO_ENTITY => {
+                Err(ErrorImpl::NoEntity(EntityId::from_raw(self.entity)).into_error())
+            }
+            _ => unsafe { unreachable_unchecked() },
         }
     }
 
@@ -198,10 +200,12 @@ impl EntityComponents {
 
         let res = unsafe { raw::world_entity_component_remove(self.entity, Ptr::from_raw(id)) };
 
-        if res == 0 {
-            Ok(())
-        } else {
-            Err(Error)
+        match res {
+            RESULT_OK => Ok(()),
+            RESULT_NO_ENTITY => {
+                Err(ErrorImpl::NoEntity(EntityId::from_raw(self.entity)).into_error())
+            }
+            _ => unsafe { unreachable_unchecked() },
         }
     }
 
@@ -349,9 +353,7 @@ impl EntityBuilder {
                 PtrMut::from_ptr(entity_id.as_mut_ptr()),
             )
         };
-        if res != 0 {
-            return Err(Error);
-        }
+        assert!(res == RESULT_OK);
 
         let entity_id = unsafe { entity_id.assume_init() };
 
@@ -364,9 +366,7 @@ impl EntityBuilder {
                     component.len() as u32,
                 )
             };
-            if res != 0 {
-                return Err(Error);
-            }
+            debug_assert!(res == RESULT_OK);
         }
 
         Ok(EntityId::from_raw(entity_id))

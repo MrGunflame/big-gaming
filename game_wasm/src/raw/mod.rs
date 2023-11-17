@@ -92,11 +92,10 @@ impl<T> PtrMut<T> {
     }
 }
 
-/// The entity does not exist.
-pub const ERROR_NO_ENTITY: u32 = 1;
-
-/// The component does not exist on the entity.
-pub const ERROR_NO_COMPONENT: u32 = 2;
+pub const RESULT_OK: u32 = 0;
+pub const RESULT_NO_ENTITY: u32 = 1;
+pub const RESULT_NO_COMPONENT: u32 = 2;
+pub const RESULT_NO_INVENTORY_SLOT: u32 = 3;
 
 #[guest_only]
 pub fn log(level: u32, ptr: Usize, len: Usize);
