@@ -3,8 +3,6 @@
 //!
 //!
 
-#![deny(unsafe_op_in_unsafe_fn)]
-
 // Allow usage of proc macros on the crate.
 
 extern crate self as game_common;

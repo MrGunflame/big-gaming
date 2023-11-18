@@ -1,5 +1,3 @@
-#![deny(unsafe_op_in_unsafe_fn)]
-
 use proc_macro::TokenStream;
 
 #[cfg(feature = "net")]

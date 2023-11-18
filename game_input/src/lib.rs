@@ -1,5 +1,3 @@
-#![deny(unsafe_op_in_unsafe_fn)]
-
 pub mod emulator;
 pub mod hotkeys;
 pub mod keyboard;

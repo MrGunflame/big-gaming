@@ -1,5 +1,3 @@
-#![deny(unsafe_op_in_unsafe_fn)]
-
 pub mod backend;
 pub mod channel;
 pub mod effects;

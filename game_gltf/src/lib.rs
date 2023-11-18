@@ -3,8 +3,6 @@
 //! References:
 //! - https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html
 
-#![deny(unsafe_op_in_unsafe_fn)]
-
 mod accessor;
 mod material;
 mod mesh;

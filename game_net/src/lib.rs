@@ -20,8 +20,6 @@
 //! # Lag compensation
 //!
 
-#![deny(unsafe_op_in_unsafe_fn)]
-
 mod buffer;
 pub mod conn;
 pub mod host;

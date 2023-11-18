@@ -1,7 +1,5 @@
 //! Game (dynamic) scripting
 
-#![deny(unsafe_op_in_unsafe_fn)]
-
 use std::fmt::Debug;
 use std::path::Path;
 

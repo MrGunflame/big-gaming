@@ -1,14 +1,7 @@
 //! UI related systems
 
-#![deny(unsafe_op_in_unsafe_fn)]
-
 use std::collections::HashMap;
 use std::sync::{mpsc, Arc};
-
-// We need criterion for benches, but it is incorrectly detected
-// by `unused_crate_dependencies`.
-#[cfg(test)]
-use criterion as _;
 
 pub mod events;
 pub mod layout;
