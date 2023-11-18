@@ -8,6 +8,9 @@ license = "GPL-3.0-or-later"
 [lib]
 crate-type = ["cdylib"]
 
+[lints]
+workspace = true
+
 [dependencies]
 game_wasm = { version = "0.1.0", path = "../../../../game_wasm" }
 shared = { version = "0.1.0", path = "../shared" }

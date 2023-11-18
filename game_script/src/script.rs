@@ -7,8 +7,6 @@ use wasmtime::{Engine, ExternType, Module, ValType};
 
 use crate::events::Events;
 
-const MAGIC_WASM: [u8; 4] = [0x00, 0x61, 0x73, 0x6d];
-
 const EXPORT_FUNCTIONS: &[FunctionExport] = &[
     FunctionExport {
         name: "on_init",
@@ -128,7 +126,7 @@ fn display_function_sig(
             let _ = write!(buf, ")");
         }
         1 => {
-            let _ = write!(buf, ") -> {}", results.nth(0).unwrap());
+            let _ = write!(buf, ") -> {}", results.next().unwrap());
         }
         _ => {
             let _ = write!(buf, ") -> (");

@@ -35,7 +35,11 @@ pub trait Real: private::Sealed {
 impl Real for f32 {
     #[inline]
     fn abs(self) -> Self {
-        f32::abs(self)
+        if self.is_sign_negative() {
+            -self
+        } else {
+            self
+        }
     }
 
     #[inline]
@@ -122,7 +126,11 @@ impl Real for f32 {
 impl Real for f64 {
     #[inline]
     fn abs(self) -> Self {
-        f64::abs(self)
+        if self.is_sign_negative() {
+            -self
+        } else {
+            self
+        }
     }
 
     #[inline]

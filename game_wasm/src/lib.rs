@@ -1,6 +1,5 @@
 //! WASM host bindings
 #![no_std]
-#![deny(unsafe_op_in_unsafe_fn)]
 
 use core::fmt::{self, Display, Formatter};
 

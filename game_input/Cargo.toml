@@ -5,5 +5,8 @@ edition = "2021"
 authors = ["MrGunflame <git@robbsrv.de>"]
 license = "GPL-3.0-or-later"
 
+[lints]
+workspace = true
+
 [dependencies]
 glam = "0.24.0"

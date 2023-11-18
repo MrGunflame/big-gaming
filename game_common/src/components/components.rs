@@ -2,7 +2,7 @@ use ahash::HashMap;
 
 use crate::record::RecordReference;
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Components {
     components: HashMap<RecordReference, Component>,
 }
@@ -45,7 +45,7 @@ impl Components {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Component {
     pub bytes: Vec<u8>,
 }

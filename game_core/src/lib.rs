@@ -1,7 +1,5 @@
 //! The core game systems.
 
-#![deny(unsafe_op_in_unsafe_fn)]
-
 pub mod counter;
 pub mod entity;
 pub mod hierarchy;

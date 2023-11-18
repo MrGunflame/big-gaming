@@ -80,7 +80,7 @@ fn expand_assertion_block(ident: Ident, inputs: Punctuated<Type, Comma>) -> Toke
 struct EmptyArgs;
 
 impl Parse for EmptyArgs {
-    fn parse(input: ParseStream) -> Result<Self> {
+    fn parse(input: ParseStream<'_>) -> Result<Self> {
         if !input.is_empty() {
             panic!("cannot add arguments to event macro");
         }

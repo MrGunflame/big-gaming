@@ -86,9 +86,7 @@ impl Hotkeys {
         T: Into<Hotkey>,
     {
         let id = EVENT_ID.fetch_add(1, Ordering::Relaxed);
-        if id == 0 {
-            panic!("Overflown HotkeyId");
-        }
+        assert_ne!(id, 0);
 
         let mut hotkey = hotkey.into();
         hotkey.id = HotkeyId(id);
@@ -203,7 +201,7 @@ impl HotkeyMap {
         for (index, (hotkey, _)) in self.hotkeys.iter().enumerate() {
             self.ids.insert(hotkey.id, index);
 
-            let indices = self.keys.entry(hotkey.default.code).or_insert(Vec::new());
+            let indices = self.keys.entry(hotkey.default.code).or_default();
             indices.push(index);
         }
     }

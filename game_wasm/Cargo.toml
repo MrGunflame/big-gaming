@@ -10,6 +10,9 @@ default = []
 raw = []
 global_alloc = ["dlmalloc"]
 
+[lints]
+workspace = true
+
 [dependencies]
 game_macros = { version = "0.1.0", path = "../game_macros", features = ["wasm"] }
 libm = "0.2.8"

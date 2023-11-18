@@ -33,3 +33,89 @@ members = [
 ]
 
 resolver = "2"
+
+[workspace.lints.rust]
+renamed_and_removed_lints = "forbid"
+unsafe_op_in_unsafe_fn = "forbid"
+ffi-unwind-calls = "forbid"
+missing-abi = "forbid"
+non-ascii-idents = "forbid"
+pointer_structural_match = "forbid"
+
+# Correctness warnings
+elided-lifetimes-in-paths = "warn"
+explicit-outlives-requirements = "warn"
+
+# Style
+absolute-paths-not-starting-with-crate = "warn"
+unused-import-braces = "warn"
+unused-lifetimes = "warn"
+unused-macro-rules = "warn"
+unused-qualifications = "warn"
+unused-tuple-struct-fields = "warn"
+
+# Maybe change in future.
+missing-debug-implementations = "allow"
+missing-docs = "allow"
+unreachable-pub = "allow"
+
+[workspace.lints.clippy]
+disallowed_script_idents = "forbid"
+
+# Correctness warnings
+borrow_as_ptr = "warn"
+cloned_instead_of_copied = "warn"
+copy_iterator = "warn"
+dbg_macro = "warn"
+# Can cause the literal patterns to silently become a wildcard pattern
+# if the enum is changed.
+enum_glob_use = "warn"
+fallible_impl_from = "warn"
+
+# Probably incorrect
+derive_partial_eq_without_eq = "warn"
+doc_link_with_quotes = "warn"
+empty_drop = "warn"
+filetype_is_file = "warn"
+fn_to_numeric_cast_any = "warn"
+large_stack_arrays = "warn"
+large_stack_frames = "warn"
+no_effect_underscore_binding = "warn"
+no_mangle_with_rust_abi = "warn"
+redundant_clone = "warn"
+tests_outside_test_module = "warn"
+transmute_ptr_to_ptr = "warn"
+unused_async = "warn"
+
+# Style
+empty_line_after_doc_comments = "warn"
+empty_line_after_outer_attr = "warn"
+empty_structs_with_brackets = "warn"
+equatable_if_let = "warn"
+ignored_unit_patterns = "warn"
+try_err = "warn"
+
+# Pedantic warnings
+# Probably to restrictive most of the time.
+arithmetic_side_effects = "allow"
+cast_possible_truncation = "allow"
+cast_possible_wrap = "allow"
+expect_used = "allow"
+get_unwrap = "allow"
+impl_trait_in_params = "allow"
+indexing_slicing = "allow"
+mem_forget = "allow"
+panic = "allow"
+print_stderr = "allow"
+print_stdout = "allow"
+todo = "allow"
+unimplemented = "allow"
+unreachable = "allow"
+unwrap_used = "allow"
+use_debug = "allow"
+
+# Docs
+# Too noisy for "assertion panics".
+missing_panics_doc = "allow"
+missing_errors_doc = "warn"
+missing_safety_doc = "warn"

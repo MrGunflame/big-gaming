@@ -115,7 +115,7 @@ pub struct Terrain {
     pub mesh: TerrainMesh,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Object {
     pub id: ObjectId,
 }
@@ -126,12 +126,12 @@ impl Object {
     // }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Actor {
     pub race: RaceId,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Item {
     pub id: ItemId,
 }
@@ -161,11 +161,11 @@ impl From<Actor> for EntityBody {
 }
 
 pub trait BuildEntity {
-    fn build(self, view: &mut WorldViewMut);
+    fn build(self, view: &mut WorldViewMut<'_>);
 }
 
 impl BuildEntity for Entity {
-    fn build(self, view: &mut WorldViewMut) {
+    fn build(self, view: &mut WorldViewMut<'_>) {
         view.spawn(self);
     }
 }

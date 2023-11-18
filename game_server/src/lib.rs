@@ -1,10 +1,3 @@
-#![deny(unsafe_op_in_unsafe_fn)]
-
-// Used by the binary target.
-use clap as _;
-use game_script::executor::ScriptExecutor;
-use game_worldgen as _;
-
 pub mod config;
 pub mod conn;
 pub mod net;
@@ -21,6 +14,7 @@ use game_common::world::gen::Generator;
 use game_common::world::world::WorldState;
 use game_core::counter::{Interval, UpdateCounter};
 use game_core::modules::Modules;
+use game_script::executor::ScriptExecutor;
 use game_script::scripts::RecordTargets;
 use game_script::ScriptServer;
 use tracing::{span, Level};

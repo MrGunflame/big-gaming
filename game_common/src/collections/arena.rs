@@ -59,6 +59,11 @@ impl<T> Arena<T> {
 
     /// Attempts to inserts a new value into the `Arena`, returning an `Err` if the `Arena` is at
     /// maximum capacity.
+    ///
+    /// # Errors
+    ///
+    /// Returns the `value` if the `Arena` is at maximum capacity and would need to reallocate to
+    /// insert the `value`.
     pub fn try_insert(&mut self, value: T) -> Result<Key, T> {
         // Attempt to increment length.
         match self.len.checked_add(1) {

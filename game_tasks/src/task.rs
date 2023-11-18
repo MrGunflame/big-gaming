@@ -50,7 +50,7 @@ where
     F: Future<Output = T>,
 {
     unsafe fn read_output(ptr: NonNull<()>) -> *const () {
-        let this = ptr.cast::<Self>().as_ref();
+        let this = unsafe { ptr.cast::<Self>().as_ref() };
         this.output.as_ptr() as *const ()
     }
 
@@ -58,12 +58,16 @@ where
         // Header doesn't need Drop.
         assert!(!std::mem::needs_drop::<Header>());
 
-        let this = ptr.cast::<Self>().as_mut();
-        ManuallyDrop::drop(&mut this.waker);
-        ManuallyDrop::drop(&mut this.future);
+        let this = unsafe { ptr.cast::<Self>().as_mut() };
+        unsafe {
+            ManuallyDrop::drop(&mut this.waker);
+            ManuallyDrop::drop(&mut this.future);
+        }
 
         if *this.header.state.get_mut() == STATE_DONE {
-            this.output.assume_init_drop();
+            unsafe {
+                this.output.assume_init_drop();
+            }
         }
     }
 
@@ -75,8 +79,8 @@ where
         let future = unsafe { &mut *addr_of_mut!((*ptr.as_ptr()).future) };
         let output = unsafe { &mut *addr_of_mut!((*ptr.as_ptr()).output) };
 
-        let mut cx = Context::from_waker(&*waker);
-        let pin: Pin<&mut F> = Pin::new_unchecked(future);
+        let mut cx = Context::from_waker(unsafe { &*waker });
+        let pin: Pin<&mut F> = unsafe { Pin::new_unchecked(future) };
         match F::poll(pin, &mut cx) {
             Poll::Pending => Poll::Pending,
             Poll::Ready(val) => {

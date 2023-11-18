@@ -1,6 +1,4 @@
-use game_common::events::{ActionEvent, CollisionEvent, Event};
-use game_common::record::RecordReference;
-use game_common::world::entity::EntityBody;
+use game_common::events::{ActionEvent, Event};
 use game_tracing::trace_span;
 
 use crate::dependency::Dependencies;
@@ -19,7 +17,7 @@ impl ScriptExecutor {
         Self { server, targets }
     }
 
-    pub fn run(&self, mut ctx: Context<'_>) -> Effects {
+    pub fn run(&self, ctx: Context<'_>) -> Effects {
         let _span = trace_span!("ScriptExecutor::run").entered();
 
         let mut events = Vec::new();
@@ -47,7 +45,7 @@ impl ScriptExecutor {
             let mut instance = self
                 .server
                 .get(
-                    &event.handle,
+                    event.handle,
                     ctx.view,
                     ctx.physics_pipeline,
                     &mut effects,

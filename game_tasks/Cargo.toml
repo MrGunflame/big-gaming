@@ -5,6 +5,9 @@ edition = "2021"
 authors = ["MrGunflame <git@robbsrv.de>"]
 license = "GPL-3.0-or-later"
 
+[lints]
+workspace = true
+
 [dependencies]
 crossbeam = "0.8.2"
 futures = "0.3.28"

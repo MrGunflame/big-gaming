@@ -1,7 +1,5 @@
 //! Game (dynamic) scripting
 
-#![deny(unsafe_op_in_unsafe_fn)]
-
 use std::fmt::Debug;
 use std::path::Path;
 
@@ -77,6 +75,12 @@ impl ScriptServer {
             dependencies,
             records,
         ))
+    }
+}
+
+impl Default for ScriptServer {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
