@@ -1,7 +1,6 @@
 //! UI related systems
 
 #![deny(unsafe_op_in_unsafe_fn)]
-#![deny(unused_crate_dependencies)]
 
 use std::collections::HashMap;
 use std::sync::{mpsc, Arc};

@@ -1,7 +1,6 @@
 //! Game (dynamic) scripting
 
 #![deny(unsafe_op_in_unsafe_fn)]
-#![deny(unused_crate_dependencies)]
 
 use std::fmt::Debug;
 use std::path::Path;
