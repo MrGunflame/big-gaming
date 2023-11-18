@@ -14,6 +14,7 @@ use game_common::world::gen::Generator;
 use game_common::world::world::WorldState;
 use game_core::counter::{Interval, UpdateCounter};
 use game_core::modules::Modules;
+use game_script::executor::ScriptExecutor;
 use game_script::scripts::RecordTargets;
 use game_script::ScriptServer;
 use tracing::{span, Level};

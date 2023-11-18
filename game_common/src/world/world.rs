@@ -531,8 +531,6 @@ impl<'a> WorldViewMut<'a> {
         };
 
         stack.item.equipped = equipped;
-
-        let equipped = stack.item.equipped;
         let hidden = stack.item.hidden;
 
         self.new_deltas
