@@ -4,6 +4,7 @@ use game_common::entity::EntityId;
 use game_common::record::RecordReference;
 use game_tracing::trace_span;
 use game_wasm::raw::inventory::ItemStack;
+use game_wasm::raw::{RESULT_NO_ENTITY, RESULT_OK};
 use wasmtime::{Caller, Error, Result};
 
 use crate::abi::{FromAbi, ToAbi};
@@ -27,7 +28,7 @@ pub fn inventory_get(
     };
 
     caller.write(out, &stack.to_abi())?;
-    Ok(0)
+    Ok(RESULT_OK)
 }
 
 pub fn inventory_len(mut caller: Caller<'_, State<'_>>, entity_id: u64, out: u32) -> Result<u32> {
@@ -40,7 +41,7 @@ pub fn inventory_len(mut caller: Caller<'_, State<'_>>, entity_id: u64, out: u32
     };
 
     caller.write(out, &(inventory.len() as u32))?;
-    Ok(0)
+    Ok(RESULT_OK)
 }
 
 pub fn inventory_list(
@@ -63,7 +64,7 @@ pub fn inventory_list(
         caller.write(ptr, &id.into_raw())?;
     }
 
-    Ok(0)
+    Ok(RESULT_OK)
 }
 
 pub fn inventory_insert(
@@ -84,7 +85,7 @@ pub fn inventory_insert(
     let id = caller.data_mut().inventory_insert(entity_id, stack);
 
     caller.write(slot_id_ptr, &id)?;
-    Ok(0)
+    Ok(RESULT_OK)
 }
 
 pub fn inventory_remove(
@@ -105,7 +106,7 @@ pub fn inventory_remove(
         return Ok(1);
     }
 
-    Ok(0)
+    Ok(RESULT_OK)
 }
 
 pub fn inventory_component_len(
@@ -131,7 +132,7 @@ pub fn inventory_component_len(
 
     let len = component.len() as u32;
     caller.write(out, &len)?;
-    Ok(0)
+    Ok(RESULT_OK)
 }
 
 pub fn inventory_component_get(
@@ -165,7 +166,7 @@ pub fn inventory_component_get(
     let bytes = bytes.to_owned();
 
     caller.write_memory(out, &bytes)?;
-    Ok(0)
+    Ok(RESULT_OK)
 }
 
 pub fn inventory_component_insert(
@@ -193,7 +194,7 @@ pub fn inventory_component_insert(
         return Ok(1);
     };
 
-    Ok(0)
+    Ok(RESULT_OK)
 }
 
 pub fn inventory_component_remove(
@@ -215,7 +216,7 @@ pub fn inventory_component_remove(
         return Ok(1);
     };
 
-    Ok(0)
+    Ok(RESULT_OK)
 }
 
 pub fn inventory_equip(
@@ -233,7 +234,7 @@ pub fn inventory_equip(
         return Ok(1);
     }
 
-    Ok(0)
+    Ok(RESULT_OK)
 }
 
 // FIXME: It probably does make more sense to merge this into `inventory_equip` with
@@ -253,7 +254,7 @@ pub fn inventory_unequip(
         return Ok(1);
     }
 
-    Ok(0)
+    Ok(RESULT_OK)
 }
 
 pub fn inventory_clear(mut caller: Caller<'_, State<'_>>, entity_id: u64) -> Result<u32> {
@@ -262,8 +263,8 @@ pub fn inventory_clear(mut caller: Caller<'_, State<'_>>, entity_id: u64) -> Res
     let entity_id = EntityId::from_raw(entity_id);
 
     if !caller.data_mut().inventory_clear(entity_id) {
-        return Ok(1);
+        return Ok(RESULT_NO_ENTITY);
     };
 
-    Ok(0)
+    Ok(RESULT_OK)
 }
