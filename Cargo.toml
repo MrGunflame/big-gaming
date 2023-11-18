@@ -45,7 +45,6 @@ pointer-structual-match = "forbid"
 # Correctness warnings
 elided-lifetimes-in-paths = "warn"
 explicit-outlives-requirements = "warn"
-unnameable-types = "warn"
 
 # Style
 absolute-paths-not-starting-with-crate = "warn"
@@ -54,10 +53,6 @@ unused-lifetimes = "warn"
 unused-macro-rules = "warn"
 unused-qualifications = "warn"
 unused-tuple-struct-fields = "warn"
-
-# Comply with provenance.
-fuzzy-provenance-casts = "forbid"
-lossy-provenance-casts = "warn"
 
 # Maybe change in future.
 missing-debug-implementations = "allow"
