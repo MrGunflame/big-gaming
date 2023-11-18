@@ -117,14 +117,22 @@ pub struct Component {
 }
 
 impl Component {
+    #[inline]
+    pub(crate) const fn empty() -> Self {
+        Self { bytes: Vec::new() }
+    }
+
+    #[inline]
     pub(crate) fn new(bytes: Vec<u8>) -> Self {
         Self { bytes }
     }
 
+    #[inline]
     pub fn len(&self) -> usize {
         self.bytes.len()
     }
 
+    #[inline]
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }

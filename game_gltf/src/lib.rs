@@ -4,7 +4,6 @@
 //! - https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html
 
 #![deny(unsafe_op_in_unsafe_fn)]
-#![deny(unused_crate_dependencies)]
 
 mod accessor;
 mod material;

@@ -1,29 +1,30 @@
+#![no_std]
+
 use game_wasm::entity::EntityId;
 use game_wasm::events::on_action;
-use game_wasm::inventory::{Inventory, InventoryId};
+use game_wasm::inventory::Inventory;
 use shared::components::{AMMO, GUN_PROPERTIES};
-use shared::{Ammo, GunProperties};
+use shared::{panic_handler, Ammo, GunProperties};
+
+panic_handler!();
 
 #[on_action]
-fn on_action(entity: u64, invoker: u64) {
-    let inventory = Inventory::new(EntityId::from_raw(invoker));
+fn on_action(invoker: EntityId) {
+    let inventory = Inventory::new(invoker);
 
-    let properties = inventory
-        .component_get(InventoryId(entity), GUN_PROPERTIES)
-        .unwrap();
+    for stack in inventory
+        .iter()
+        .unwrap()
+        .filter(|stack| stack.item.equipped)
+    {
+        let Ok(properties) = stack.components().get(GUN_PROPERTIES) else {
+            continue;
+        };
+        let properties: GunProperties = properties.read();
 
-    let properties: GunProperties = properties.read();
+        let mut ammo = stack.components().entry(AMMO).or_default();
+        ammo.write(Ammo(properties.magazine_capacity));
 
-    let mut ammo = inventory.component_get(InventoryId(entity), AMMO).unwrap();
-
-    // Already all full capacity.
-    if ammo.read::<Ammo>().0 == properties.magazine_capacity {
-        return;
+        stack.components().insert(AMMO, &ammo).unwrap();
     }
-
-    ammo.write::<Ammo>(Ammo(properties.magazine_capacity));
-
-    inventory
-        .component_insert(InventoryId(entity), AMMO, &ammo)
-        .unwrap();
 }

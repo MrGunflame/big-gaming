@@ -1,32 +1,40 @@
+#![no_std]
+
 use game_wasm::entity::EntityId;
 use game_wasm::events::on_action;
-use game_wasm::inventory::{Inventory, InventoryId};
-use game_wasm::world::{Entity, EntityBuilder, Object, RecordReference};
+use game_wasm::inventory::Inventory;
+use game_wasm::world::{Entity, EntityBuilder, RecordReference};
 use shared::components::{AMMO, GUN_PROPERTIES};
-use shared::{Ammo, GunProperties};
+use shared::{panic_handler, Ammo, GunProperties};
+
+panic_handler!();
 
 #[on_action]
-fn on_action(entity: u64, invoker: u64) {
-    let inventory = Inventory::new(EntityId::from_raw(invoker));
+fn on_action(invoker: EntityId) {
+    let inventory = Inventory::new(invoker);
 
-    let properties = inventory
-        .component_get(InventoryId(entity), GUN_PROPERTIES)
-        .unwrap();
-    let mut ammo = inventory.component_get(InventoryId(entity), AMMO).unwrap();
+    for stack in inventory
+        .iter()
+        .unwrap()
+        .filter(|stack| stack.item.equipped)
+    {
+        let Ok(properties) = stack.components().get(GUN_PROPERTIES) else {
+            continue;
+        };
+        let properties: GunProperties = properties.read();
 
-    let has_ammo = ammo.update(|ammo: &mut Ammo| ammo.try_decrement());
+        let mut ammo = stack
+            .components()
+            .entry(AMMO)
+            .or_insert_with(|ammo| ammo.write(Ammo(properties.magazine_capacity)));
 
-    if !has_ammo {
-        return;
+        let has_ammo = ammo.update(|ammo: &mut Ammo| ammo.try_decrement());
+
+        if has_ammo {
+            stack.components().insert(AMMO, &ammo).unwrap();
+            build_projectile(invoker, properties.projectile);
+        }
     }
-
-    let properties: GunProperties = properties.read();
-
-    inventory
-        .component_insert(InventoryId(entity), AMMO, &ammo)
-        .unwrap();
-
-    build_projectile(EntityId::from_raw(invoker), properties.projectile);
 }
 
 fn build_projectile(invoker: EntityId, projectile: RecordReference) {

@@ -2,6 +2,7 @@ use game_common::record::RecordReference;
 use game_data::record::RecordKind;
 use game_tracing::trace_span;
 use game_wasm::raw::record::{Record, RecordKind as RawRecordKind};
+use game_wasm::raw::RESULT_OK;
 use wasmtime::{Caller, Result};
 
 use crate::builtin::CallerExt;

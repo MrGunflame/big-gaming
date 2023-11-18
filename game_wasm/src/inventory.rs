@@ -9,50 +9,76 @@ use crate::component::{Component, Components};
 use crate::entity::EntityId;
 use crate::raw::inventory::{
     inventory_clear, inventory_component_get, inventory_component_insert, inventory_component_len,
-    inventory_equip, inventory_get, inventory_insert, inventory_len, inventory_list,
-    inventory_remove, inventory_unequip, Item as RawItem, ItemStack as RawItemStack,
+    inventory_component_remove, inventory_equip, inventory_get, inventory_insert, inventory_len,
+    inventory_list, inventory_remove, inventory_unequip, Item as RawItem,
+    ItemStack as RawItemStack,
 };
+use crate::{unreachable_unchecked, Error, ErrorImpl};
 
-use crate::raw::{Ptr, PtrMut, Usize};
+use crate::raw::{
+    Ptr, PtrMut, Usize, RESULT_NO_COMPONENT, RESULT_NO_ENTITY, RESULT_NO_INVENTORY_SLOT, RESULT_OK,
+};
 use crate::record::{Record, RecordKind};
 use crate::world::RecordReference;
 
+/// A unique identifier to in [`ItemStack`] in an [`Inventory`].
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Zeroable, Pod)]
 #[repr(transparent)]
-pub struct InventoryId(pub u64);
+pub struct InventoryId(u64);
 
+impl InventoryId {
+    #[inline]
+    pub const fn from_raw(bits: u64) -> Self {
+        Self(bits)
+    }
+
+    #[inline]
+    pub const fn into_raw(self) -> u64 {
+        self.0
+    }
+}
+
+#[derive(Debug)]
 pub struct Inventory {
     entity: EntityId,
 }
 
 impl Inventory {
+    #[inline]
     pub fn new(entity: EntityId) -> Self {
         Self { entity }
     }
 
-    pub fn get(&self, id: InventoryId) -> Result<ItemStackRef, InventoryError> {
+    pub fn get(&self, id: InventoryId) -> Result<ItemStackRef, Error> {
         let mut stack = MaybeUninit::<RawItemStack>::uninit();
         let ptr = stack.as_mut_ptr() as Usize;
 
         let res = unsafe { inventory_get(self.entity.into_raw(), id.0, PtrMut::from_raw(ptr)) };
 
-        if res == 0 {
-            let stack = unsafe { stack.assume_init() };
-            Ok(ItemStackRef {
-                inner: ItemStack {
-                    item: Item { id: stack.item.id },
-                    quantity: stack.quantity,
-                },
-                slot_id: id,
-                entity_id: self.entity,
-            })
-        } else {
-            Err(InventoryError)
+        match res {
+            RESULT_OK => {
+                let stack = unsafe { stack.assume_init() };
+                Ok(ItemStackRef {
+                    inner: ItemStack {
+                        item: Item {
+                            id: stack.item.id,
+                            equipped: stack.item.equipped != 0,
+                            hidden: stack.item.hdden != 0,
+                        },
+                        quantity: stack.quantity,
+                    },
+                    slot_id: id,
+                    entity_id: self.entity,
+                })
+            }
+            RESULT_NO_ENTITY => Err(ErrorImpl::NoEntity(self.entity).into_error()),
+            RESULT_NO_INVENTORY_SLOT => Err(ErrorImpl::NoInventorySlot(id).into_error()),
+            _ => unsafe { unreachable_unchecked() },
         }
     }
 
     /// Returns the number of [`ItemStack`]s contained in this `Inventory`.
-    pub fn len(&self) -> Result<u32, InventoryError> {
+    pub fn len(&self) -> Result<u32, Error> {
         let mut len = MaybeUninit::uninit();
 
         let res = unsafe {
@@ -62,21 +88,27 @@ impl Inventory {
             )
         };
         match res {
-            0 => Ok(unsafe { len.assume_init() }),
-            _ => Err(InventoryError),
+            RESULT_OK => Ok(unsafe { len.assume_init() }),
+            RESULT_NO_ENTITY => Err(ErrorImpl::NoEntity(self.entity).into_error()),
+            _ => unsafe { unreachable_unchecked() },
         }
     }
 
-    pub fn insert<T>(&self, items: T) -> Result<InventoryId, InventoryError>
+    pub fn insert<T>(&self, items: T) -> Result<InventoryId, Error>
     where
         T: IntoItemStack,
     {
         self.insert_inner(items.into_item_stack())
     }
 
-    fn insert_inner(&self, items: ItemStack) -> Result<InventoryId, InventoryError> {
+    fn insert_inner(&self, items: ItemStack) -> Result<InventoryId, Error> {
         let raw_stack = RawItemStack {
-            item: RawItem { id: items.item.id },
+            item: RawItem {
+                id: items.item.id,
+                equipped: 0,
+                hdden: 0,
+                _pad0: 0,
+            },
             quantity: items.quantity,
         };
 
@@ -91,26 +123,30 @@ impl Inventory {
         };
 
         match res {
-            0 => {
+            RESULT_OK => {
                 let slot_id = unsafe { slot_id.assume_init() };
                 Ok(slot_id)
             }
-            _ => Err(InventoryError),
+            RESULT_NO_ENTITY => Err(ErrorImpl::NoEntity(self.entity).into_error()),
+            _ => unsafe { unreachable_unchecked() },
         }
     }
 
-    pub fn remove(&self, slot_id: InventoryId, quantity: u64) -> Result<(), InventoryError> {
+    pub fn remove(&self, slot_id: InventoryId, quantity: u64) -> Result<(), Error> {
         let res = unsafe { inventory_remove(self.entity.into_raw(), slot_id.0, quantity) };
         match res {
-            0 => Ok(()),
-            _ => Err(InventoryError),
+            RESULT_OK => Ok(()),
+            RESULT_NO_ENTITY => Err(ErrorImpl::NoEntity(self.entity).into_error()),
+            RESULT_NO_INVENTORY_SLOT => Err(ErrorImpl::NoInventorySlot(slot_id).into_error()),
+            _ => unsafe { unreachable_unchecked() },
         }
     }
 
-    pub fn clear(&mut self) -> Result<(), InventoryError> {
+    pub fn clear(&mut self) -> Result<(), Error> {
         match unsafe { inventory_clear(self.entity.into_raw()) } {
-            0 => Ok(()),
-            _ => Err(InventoryError),
+            RESULT_OK => Ok(()),
+            RESULT_NO_ENTITY => Err(ErrorImpl::NoEntity(self.entity).into_error()),
+            _ => unsafe { unreachable_unchecked() },
         }
     }
 
@@ -118,7 +154,7 @@ impl Inventory {
         &self,
         id: InventoryId,
         component_id: RecordReference,
-    ) -> Result<Component, InventoryError> {
+    ) -> Result<Component, Error> {
         let mut len: Usize = 0;
         let len_ptr = &mut len as *mut Usize as Usize;
 
@@ -131,8 +167,12 @@ impl Inventory {
             )
         };
 
-        if res != 0 {
-            return Err(InventoryError);
+        match res {
+            RESULT_OK => (),
+            RESULT_NO_ENTITY => return Err(ErrorImpl::NoEntity(self.entity).into_error()),
+            RESULT_NO_COMPONENT => return Err(ErrorImpl::NoComponent(component_id).into_error()),
+            RESULT_NO_INVENTORY_SLOT => return Err(ErrorImpl::NoInventorySlot(id).into_error()),
+            _ => unsafe { unreachable_unchecked() },
         }
 
         // No need to fetch any data if it is empty.
@@ -152,15 +192,14 @@ impl Inventory {
             )
         };
 
-        if res == 0 {
-            unsafe {
-                bytes.set_len(len as usize);
-            }
-
-            Ok(Component::new(bytes))
-        } else {
-            Err(InventoryError)
+        // The call to `inventory_component_get` should never fail since `inventory_component_len`
+        // was successful and the VM guarantees that we have "exclusive" access to the entity.
+        debug_assert!(res == RESULT_OK);
+        unsafe {
+            bytes.set_len(len as usize);
         }
+
+        Ok(Component::new(bytes))
     }
 
     pub fn component_insert(
@@ -168,7 +207,7 @@ impl Inventory {
         id: InventoryId,
         component_id: RecordReference,
         component: &Component,
-    ) -> Result<(), InventoryError> {
+    ) -> Result<(), Error> {
         let ptr = Ptr::from_raw(component.as_bytes().as_ptr() as Usize);
         let len = component.as_bytes().len() as Usize;
 
@@ -182,14 +221,33 @@ impl Inventory {
             )
         };
 
-        if res == 0 {
-            Ok(())
-        } else {
-            Err(InventoryError)
+        match res {
+            RESULT_OK => Ok(()),
+            RESULT_NO_ENTITY => Err(ErrorImpl::NoEntity(self.entity).into_error()),
+            RESULT_NO_INVENTORY_SLOT => Err(ErrorImpl::NoInventorySlot(id).into_error()),
+            _ => unsafe { unreachable_unchecked() },
         }
     }
 
-    pub fn keys(&self) -> Result<Keys, InventoryError> {
+    fn component_remove(
+        &self,
+        id: InventoryId,
+        component_id: RecordReference,
+    ) -> Result<(), Error> {
+        let res = unsafe {
+            inventory_component_remove(self.entity.into_raw(), id.0, Ptr::from_ptr(&component_id))
+        };
+
+        match res {
+            RESULT_OK => Ok(()),
+            RESULT_NO_ENTITY => Err(ErrorImpl::NoEntity(self.entity).into_error()),
+            RESULT_NO_COMPONENT => Err(ErrorImpl::NoComponent(component_id).into_error()),
+            RESULT_NO_INVENTORY_SLOT => Err(ErrorImpl::NoInventorySlot(id).into_error()),
+            _ => unsafe { unreachable_unchecked() },
+        }
+    }
+
+    pub fn keys(&self) -> Result<Keys, Error> {
         let len = self.len()?;
         let mut keys = Vec::with_capacity(len.try_into().unwrap());
 
@@ -201,14 +259,22 @@ impl Inventory {
             )
         };
         match res {
-            0 => {
+            RESULT_OK => {
                 unsafe { keys.set_len(len.try_into().unwrap()) };
                 Ok(Keys {
                     inner: keys.into_iter(),
                 })
             }
-            _ => Err(InventoryError),
+            RESULT_NO_ENTITY => Err(ErrorImpl::NoEntity(self.entity).into_error()),
+            _ => unsafe { unreachable_unchecked() },
         }
+    }
+
+    pub fn iter(&self) -> Result<Iter<'_>, Error> {
+        Ok(Iter {
+            keys: self.keys()?,
+            inventory: self,
+        })
     }
 }
 
@@ -226,7 +292,7 @@ pub struct ItemStackRef {
 }
 
 impl ItemStackRef {
-    pub fn equip(&mut self, equipped: bool) -> Result<(), InventoryError> {
+    pub fn equip(&mut self, equipped: bool) -> Result<(), Error> {
         let res = if equipped {
             unsafe { inventory_equip(self.entity_id.into_raw(), self.slot_id.0) }
         } else {
@@ -234,9 +300,16 @@ impl ItemStackRef {
         };
 
         match res {
-            0 => Ok(()),
-            _ => Err(InventoryError),
+            RESULT_OK => Ok(()),
+            RESULT_NO_ENTITY => Err(ErrorImpl::NoEntity(self.entity_id).into_error()),
+            RESULT_NO_INVENTORY_SLOT => Err(ErrorImpl::NoInventorySlot(self.slot_id).into_error()),
+            _ => unsafe { unreachable_unchecked() },
         }
+    }
+
+    #[inline]
+    pub fn components(&self) -> ItemComponents<'_> {
+        ItemComponents { parent: self }
     }
 }
 
@@ -256,13 +329,131 @@ impl AsRef<ItemStack> for ItemStackRef {
     }
 }
 
+#[derive(Debug)]
+pub struct ItemComponents<'a> {
+    parent: &'a ItemStackRef,
+}
+
+impl<'a> ItemComponents<'a> {
+    pub fn get(&self, id: RecordReference) -> Result<Component, Error> {
+        Inventory::new(self.parent.entity_id).component_get(self.parent.slot_id, id)
+    }
+
+    pub fn insert(&self, id: RecordReference, component: &Component) -> Result<(), Error> {
+        Inventory::new(self.parent.entity_id).component_insert(self.parent.slot_id, id, component)
+    }
+
+    pub fn remove(&self, id: RecordReference) -> Result<(), Error> {
+        Inventory::new(self.parent.entity_id).component_remove(self.parent.slot_id, id)
+    }
+
+    pub fn entry(&self, id: RecordReference) -> ComponentEntry<'_> {
+        match self.get(id) {
+            Ok(component) => ComponentEntry::Occupied(OccupiedComponentEntry {
+                components: self,
+                id,
+                component,
+            }),
+            Err(_) => ComponentEntry::Vacant(VacantComponentEntry {
+                components: self,
+                id,
+            }),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum ComponentEntry<'a> {
+    Occupied(OccupiedComponentEntry<'a>),
+    Vacant(VacantComponentEntry<'a>),
+}
+
+impl<'a> ComponentEntry<'a> {
+    pub fn or_default(self) -> Component {
+        match self {
+            Self::Occupied(entry) => entry.component,
+            Self::Vacant(_) => Component::empty(),
+        }
+    }
+
+    pub fn or_insert_with<F>(self, f: F) -> Component
+    where
+        F: FnOnce(&mut Component),
+    {
+        match self {
+            Self::Occupied(entry) => entry.component,
+            Self::Vacant(_) => {
+                let mut component = Component::empty();
+                f(&mut component);
+                component
+            }
+        }
+    }
+}
+
+impl<'a> ComponentEntry<'a> {
+    #[inline]
+    pub fn key(&self) -> RecordReference {
+        match self {
+            Self::Occupied(entry) => entry.key(),
+            Self::Vacant(entry) => entry.key(),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct OccupiedComponentEntry<'a> {
+    components: &'a ItemComponents<'a>,
+    id: RecordReference,
+    component: Component,
+}
+
+impl<'a> OccupiedComponentEntry<'a> {
+    #[inline]
+    pub fn key(&self) -> RecordReference {
+        self.id
+    }
+
+    #[inline]
+    pub fn get(&self) -> &Component {
+        &self.component
+    }
+
+    #[inline]
+    pub fn get_mut(&mut self) -> &mut Component {
+        &mut self.component
+    }
+
+    pub fn remove(self) -> Component {
+        self.components.remove(self.id).unwrap();
+        self.component
+    }
+}
+
+#[derive(Debug)]
+pub struct VacantComponentEntry<'a> {
+    components: &'a ItemComponents<'a>,
+    id: RecordReference,
+}
+
+impl<'a> VacantComponentEntry<'a> {
+    pub fn insert(self, value: Component) -> Component {
+        self.components.insert(self.id, &value).unwrap();
+        value
+    }
+
+    #[inline]
+    pub fn key(&self) -> RecordReference {
+        self.id
+    }
+}
+
 #[derive(Copy, Clone, Debug)]
 pub struct Item {
     pub id: RecordReference,
+    pub equipped: bool,
+    pub hidden: bool,
 }
-
-#[derive(Clone, Debug)]
-pub struct InventoryError;
 
 pub trait IntoItemStack: private::Sealed {}
 
@@ -324,6 +515,36 @@ impl ExactSizeIterator for Keys {
 impl FusedIterator for Keys {}
 
 #[derive(Clone, Debug)]
+pub struct Iter<'a> {
+    inventory: &'a Inventory,
+    keys: Keys,
+}
+
+impl<'a> Iterator for Iter<'a> {
+    type Item = ItemStackRef;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let key = self.keys.next()?;
+        let stack = self.inventory.get(key).unwrap();
+        Some(stack)
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.keys.size_hint()
+    }
+}
+
+impl<'a> ExactSizeIterator for Iter<'a> {
+    #[inline]
+    fn len(&self) -> usize {
+        self.keys.len()
+    }
+}
+
+impl<'a> FusedIterator for Iter<'a> {}
+
+#[derive(Clone, Debug)]
 pub struct ItemStackBuilder {
     id: RecordReference,
     components: Components,
@@ -351,7 +572,12 @@ impl ItemStackBuilder {
         let mut slot_id = MaybeUninit::uninit();
 
         let stack = RawItemStack {
-            item: RawItem { id: self.id },
+            item: RawItem {
+                id: self.id,
+                equipped: 0,
+                hdden: 0,
+                _pad0: 0,
+            },
             quantity: self.quantity,
         };
 

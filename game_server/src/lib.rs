@@ -1,5 +1,4 @@
 #![deny(unsafe_op_in_unsafe_fn)]
-#![deny(unused_crate_dependencies)]
 
 // Used by the binary target.
 use clap as _;
