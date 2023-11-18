@@ -10,7 +10,6 @@ use game_common::world::entity::Entity;
 use game_common::world::CellId;
 use game_tracing::trace_span;
 use glam::{Quat, Vec3};
-use tracing::span::Id;
 use wasmtime::{Engine, Instance, Linker, Module, Store};
 
 use crate::dependency::{Dependencies, Dependency};
@@ -40,11 +39,11 @@ impl<'a> ScriptInstance<'a> {
             State::new(world, physics_pipeline, effects, dependencies, records),
         );
 
-        let mut linker = Linker::<State>::new(&engine);
+        let mut linker = Linker::<State<'_>>::new(engine);
 
         crate::builtin::register_host_fns(&mut linker);
 
-        let instance = linker.instantiate(&mut store, &module).unwrap();
+        let instance = linker.instantiate(&mut store, module).unwrap();
 
         Self {
             store,
@@ -203,8 +202,7 @@ impl<'a> State<'a> {
             .push(Dependency::EntityComponent(entity_id, component));
 
         self.get_entity(entity_id)
-            .map(|entity| entity.components.get(component))
-            .flatten()
+            .and_then(|entity| entity.components.get(component))
     }
 
     pub fn insert_component(

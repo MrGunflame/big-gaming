@@ -93,6 +93,10 @@ impl Inventory {
     }
 
     /// Inserts a new [`Item`] or [`ItemStack`] into the `Inventory`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the `Inventory` is at maximum capacity.
     pub fn insert<T>(&mut self, items: T) -> Result<InventorySlotId, InsertionError<T>>
     where
         T: IntoItemStack,
@@ -106,6 +110,11 @@ impl Inventory {
         Ok(self.insert_stack_unchecked(items.into_item_stack()))
     }
 
+    /// Inserts an item into a slot.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the `Inventory` is at maximum capacity.
     pub fn insert_at_slot<T>(
         &mut self,
         slot: InventorySlotId,

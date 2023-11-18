@@ -134,7 +134,7 @@ impl ToAbi for HostItemStack {
     fn to_abi(&self) -> Self::Target {
         GuestItemStack {
             item: GuestItem {
-                id: bytemuck::cast(self.item.id.0),
+                id: cast(self.item.id.0),
                 equipped: self.item.equipped as u8,
                 hdden: self.item.hidden as u8,
                 _pad0: 0,
@@ -151,7 +151,7 @@ impl FromAbi for GuestItemStack {
     fn from_abi(&self) -> Result<Self::Target, Self::Error> {
         Ok(HostItemStack {
             item: HostItem {
-                id: ItemId(bytemuck::cast(self.item.id)),
+                id: ItemId(cast(self.item.id)),
                 mass: Mass::default(),
                 components: Components::new(),
                 equipped: false,

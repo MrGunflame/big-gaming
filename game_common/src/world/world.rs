@@ -1023,8 +1023,7 @@ impl Inventories {
     }
 
     pub fn get_mut_or_insert(&mut self, id: EntityId) -> &mut Inventory {
-        self.inventories.entry(id).or_insert_with(Inventory::new);
-
+        self.inventories.entry(id).or_default();
         self.get_mut(id).unwrap()
     }
 
@@ -1073,7 +1072,7 @@ impl<'a> AsView for WorldViewRef<'a> {
         }
     }
 
-    fn iter(&self) -> EntitiesIter {
+    fn iter(&self) -> EntitiesIter<'_> {
         EntitiesIter {
             inner: self.snapshot.entities.entities.values(),
         }
@@ -1141,15 +1140,6 @@ mod tests {
             assert!({
                 if let Some(v) = $world.get($in) {
                     v.control_frame() == $in
-                } else {
-                    false
-                }
-            })
-        };
-        ($world:expr, $in:expr, $out:expr) => {
-            assert!({
-                if let Some(v) = $world.get($in) {
-                    v.control_frame() == $out
                 } else {
                     false
                 }

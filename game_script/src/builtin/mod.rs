@@ -23,7 +23,7 @@ macro_rules! register_fns {
     };
 }
 
-pub fn register_host_fns(store: &mut Linker<State>) {
+pub fn register_host_fns(store: &mut Linker<State<'_>>) {
     use inventory::*;
     use log::*;
     use physics::*;
@@ -75,8 +75,6 @@ pub struct Abort;
 
 #[derive(Clone, Debug, Error)]
 pub enum Error {
-    #[error("invalid invariant")]
-    InvalidInvariant,
     #[error("no memory")]
     NoMemory,
     #[error("oob pointer")]
@@ -84,7 +82,7 @@ pub enum Error {
 }
 
 trait CallerExt {
-    fn read_memory<'s>(&'s mut self, ptr: u32, len: u32) -> wasmtime::Result<&'s [u8]>;
+    fn read_memory(&mut self, ptr: u32, len: u32) -> wasmtime::Result<&[u8]>;
 
     fn write_memory(&mut self, ptr: u32, buf: &[u8]) -> wasmtime::Result<()>;
 
@@ -106,11 +104,10 @@ trait CallerExt {
 }
 
 impl<'a, S> CallerExt for Caller<'a, S> {
-    fn read_memory<'s>(&'s mut self, ptr: u32, len: u32) -> wasmtime::Result<&'s [u8]> {
+    fn read_memory(&mut self, ptr: u32, len: u32) -> wasmtime::Result<&[u8]> {
         let memory = self
             .get_export("memory")
-            .map(|m| m.into_memory())
-            .flatten()
+            .and_then(|m| m.into_memory())
             .ok_or_else(|| wasmtime::Error::new(Error::NoMemory))?;
 
         let bytes = memory
@@ -124,8 +121,7 @@ impl<'a, S> CallerExt for Caller<'a, S> {
     fn write_memory(&mut self, ptr: u32, buf: &[u8]) -> wasmtime::Result<()> {
         let memory = self
             .get_export("memory")
-            .map(|m| m.into_memory())
-            .flatten()
+            .and_then(|m| m.into_memory())
             .ok_or_else(|| wasmtime::Error::new(Error::NoMemory))?;
 
         let bytes = memory

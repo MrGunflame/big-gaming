@@ -74,7 +74,7 @@ impl StreamingSources {
     }
 
     pub fn iter(&self) -> impl Iterator<Item = CellId> + '_ {
-        self.sources.keys().cloned()
+        self.sources.keys().copied()
     }
 
     pub fn clear(&mut self) {

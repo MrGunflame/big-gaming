@@ -23,7 +23,7 @@ use winit::window::{WindowBuilder, WindowId};
 #[derive(Debug)]
 pub struct WindowManager {
     state: WindowManagerState,
-    windows: windows::Windows,
+    windows: Windows,
     cursor: Arc<Cursor>,
 }
 
@@ -89,7 +89,7 @@ impl Default for WindowManager {
 #[derive(Debug)]
 struct WindowManagerState {
     event_loop: EventLoop<()>,
-    update_rx: mpsc::Receiver<windows::UpdateEvent>,
+    update_rx: mpsc::Receiver<UpdateEvent>,
     cursor: Arc<Cursor>,
 }
 
@@ -142,7 +142,7 @@ impl From<&EventLoop<()>> for Backend {
     }
 }
 
-fn main_loop<T>(state: WindowManagerState, mut windows: crate::windows::Windows, mut app: T) -> !
+fn main_loop<T>(state: WindowManagerState, mut windows: Windows, mut app: T) -> !
 where
     T: App,
 {
@@ -532,5 +532,5 @@ pub trait App: 'static {
 #[derive(Debug)]
 #[non_exhaustive]
 pub struct WindowManagerContext<'a> {
-    pub windows: &'a mut crate::windows::Windows,
+    pub windows: &'a mut Windows,
 }

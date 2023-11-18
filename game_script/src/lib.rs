@@ -78,6 +78,12 @@ impl ScriptServer {
     }
 }
 
+impl Default for ScriptServer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Handle {
     id: DefaultKey,

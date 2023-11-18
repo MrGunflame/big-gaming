@@ -141,6 +141,11 @@ impl WindowState {
         }
     }
 
+    /// Sets the position of the cursor within this `Window`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if setting the position fails.
     pub fn set_cursor_position(&self, position: Vec2) -> Result<(), ExternalError> {
         self.inner
             .set_cursor_position(Position::Logical(LogicalPosition {
@@ -153,6 +158,11 @@ impl WindowState {
         self.inner.set_cursor_visible(visible);
     }
 
+    /// Sets the [`CursorGrabMode`] of this `Window`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if setting the [`CursorGrabMode`] fails.
     pub fn set_cursor_grab(&self, mode: CursorGrabMode) -> Result<(), ExternalError> {
         let mode = match mode {
             CursorGrabMode::None => winit::window::CursorGrabMode::None,
@@ -167,10 +177,12 @@ impl WindowState {
         self.inner.set_cursor_grab(mode)
     }
 
+    /// Sets the title of the `Window`.
     pub fn set_title(&self, title: &str) {
         self.inner.set_title(title);
     }
 
+    /// Sets the [`CursorIcon`] of the `Window`.
     pub fn set_cursor_icon(&self, icon: CursorIcon) {
         self.inner.set_cursor_icon(icon)
     }

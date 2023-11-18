@@ -108,7 +108,7 @@ pub type OnInit = TypedFunc<(), ()>;
 /// ```ignore
 /// fn(invoker: EntityId);
 /// ```
-pub type OnAction = TypedFunc<(u64), ()>;
+pub type OnAction = TypedFunc<u64, ()>;
 
 ///
 /// ```ignore

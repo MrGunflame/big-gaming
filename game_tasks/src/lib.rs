@@ -16,7 +16,7 @@ use std::thread::JoinHandle;
 use crossbeam::deque::{Injector, Steal};
 use park::Parker;
 use parking_lot::Mutex;
-use task::{Header, RawTaskPtr, STATE_CLOSED, STATE_DONE, STATE_QUEUED, STATE_RUNNING, TASK_REF};
+use task::{Header, RawTaskPtr, STATE_CLOSED, STATE_DONE, TASK_REF};
 
 pub use task::Task;
 use waker::WakerData;
