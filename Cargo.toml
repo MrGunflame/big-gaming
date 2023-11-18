@@ -100,7 +100,6 @@ empty_line_after_outer_attr = "warn"
 empty_structs_with_brackets = "warn"
 equatable_if_let = "warn"
 ignored_unit_patterns = "warn"
-implicit_return = "warn"
 try_err = "warn"
 
 if_then_some_else_none = "warn"
