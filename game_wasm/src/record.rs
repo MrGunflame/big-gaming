@@ -1,4 +1,6 @@
+use core::fmt::{self, Display, Formatter};
 use core::mem::MaybeUninit;
+use core::str::FromStr;
 
 use alloc::vec::Vec;
 use bytemuck::{Pod, Zeroable};
@@ -9,6 +11,8 @@ use crate::raw::record::{
     get_record_len_component, RecordKind as RawRecordKind,
 };
 use crate::raw::{Ptr, PtrMut};
+
+const HEX_CHARS: &[u8; 16] = b"0123456789abcdef";
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Zeroable, Pod)]
 #[repr(C)]
@@ -24,10 +28,12 @@ pub struct ModuleId([u8; 16]);
 impl ModuleId {
     pub const CORE: Self = Self([0; 16]);
 
+    #[inline]
     pub const fn into_bytes(self) -> [u8; 16] {
         self.0
     }
 
+    #[inline]
     pub const fn from_bytes(bytes: [u8; 16]) -> Self {
         Self(bytes)
     }
@@ -74,6 +80,69 @@ impl ModuleId {
         }
 
         Self::from_bytes(bytes)
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum InvalidModuleId {
+    InvalidLength(usize),
+    InvalidByte { byte: u8, position: usize },
+}
+
+impl Display for InvalidModuleId {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::InvalidLength(len) => write!(f, "invalid length: {}", len),
+            Self::InvalidByte { byte, position } => {
+                write!(f, "invalid byte {} at position {}", byte, position)
+            }
+        }
+    }
+}
+
+impl FromStr for ModuleId {
+    type Err = InvalidModuleId;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if s.len() != 32 {
+            return Err(InvalidModuleId::InvalidLength(s.len()));
+        }
+
+        let mut bytes = [0; 16];
+
+        for (index, &byte) in s.as_bytes().iter().enumerate() {
+            let mut nibble = match byte {
+                b'0'..=b'9' => byte - b'0',
+                b'a'..=b'f' => 10 + byte - b'a',
+                b'A'..=b'F' => 10 + byte - b'A',
+                _ => {
+                    return Err(InvalidModuleId::InvalidByte {
+                        byte,
+                        position: index,
+                    })
+                }
+            };
+
+            if index % 2 == 0 {
+                nibble <<= 4;
+            }
+
+            bytes[index / 2] += nibble;
+        }
+
+        Ok(Self::from_bytes(bytes))
+    }
+}
+
+impl Display for ModuleId {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        for byte in self.into_bytes() {
+            let high = HEX_CHARS[((byte & 0xf0) >> 4) as usize];
+            let low = HEX_CHARS[(byte & 0x0f) as usize];
+            write!(f, "{}{}", high as char, low as char)?;
+        }
+
+        Ok(())
     }
 }
 
@@ -183,4 +252,22 @@ fn fetch_component(id: RecordReference, component: RecordReference) -> Component
     unsafe { bytes.set_len(len as usize) };
 
     Component::new(bytes)
+}
+
+#[cfg(test)]
+mod tests {
+    use alloc::string::ToString;
+
+    use super::ModuleId;
+
+    #[test]
+    fn module_id_parse_from_display() {
+        let id = ModuleId::from_bytes([
+            0xc6, 0x26, 0xb9, 0xb0, 0xab, 0x19, 0x40, 0xab, 0xa6, 0x93, 0x2e, 0xa7, 0x72, 0x6d,
+            0x01, 0x75,
+        ]);
+
+        let string = id.to_string();
+        assert_eq!(string.parse::<ModuleId>(), Ok(id));
+    }
 }
