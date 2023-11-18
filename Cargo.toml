@@ -33,3 +33,97 @@ members = [
 ]
 
 resolver = "2"
+
+[workspace.lints.rust]
+renamed_and_removed_lints = "forbid"
+unsafe_op_in_unsafe_fn = "forbid"
+ffi-unwind-calls = "forbid"
+missing-abi = "forbid"
+non-ascii-idents = "forbid"
+pointer-structual-match = "forbid"
+
+# Correctness warnings
+elided-lifetimes-in-paths = "warn"
+explicit-outlives-requirements = "warn"
+unnameable-types = "warn"
+
+# Style
+absolute-paths-not-starting-with-crate = "warn"
+unused-import-braces = "warn"
+unused-lifetimes = "warn"
+unused-macro-rules = "warn"
+unused-qualifications = "warn"
+unused-tuple-struct-fields = "warn"
+
+# Comply with provenance.
+fuzzy-provenance-casts = "forbid"
+lossy-provenance-casts = "warn"
+
+# Maybe change in future.
+missing-debug-implementations = "allow"
+missing-docs = "allow"
+unreachable-pub = "allow"
+
+[workspace.lints.clippy]
+disallowed_script_idents = "forbid"
+
+# Correctness warnings
+arithmetic_side_effects = "warn"
+borrow_as_ptr = "warn"
+cloned_instead_of_copied = "warn"
+copy_iterator = "warn"
+dbg_macro = "warn"
+# Can cause the literal patterns to silently become a wildcard pattern
+# if the enum is changed.
+enum_glob_use = "warn"
+fallible_impl_from = "warn"
+
+# Probably incorrect
+derive_partial_eq_without_eq = "warn"
+doc_link_with_quotes = "warn"
+empty_drop = "warn"
+filetype_is_file = "warn"
+fn_to_numeric_cast_any = "warn"
+large_stack_arrays = "warn"
+large_stack_frames = "warn"
+match_same_arms = "warn"
+no_effect_underscore_binding = "warn"
+no_mangle_with_rust_abi = "warn"
+redundant_clone = "warn"
+tests_outside_test_module = "warn"
+transmute_ptr_to_ptr = "warn"
+unused_async = "warn"
+
+# Style
+empty_line_after_doc_comments = "warn"
+empty_line_after_outer_attr = "warn"
+empty_structs_with_brackets = "warn"
+equatable_if_let = "warn"
+ignored_unit_patterns = "warn"
+implicit_return = "warn"
+try_err = "warn"
+
+if_then_some_else_none = "warn"
+
+# Pedantic warnings
+# Probably to restrictive most of the time.
+cast_possible_truncation = "warn"
+cast_possible_wrap = "warn"
+expect_used = "warn"
+get_unwrap = "warn"
+impl_trait_in_params = "warn"
+indexing_slicing = "warn"
+mem_forget = "warn"
+panic = "warn"
+print_stderr = "warn"
+print_stdout = "warn"
+todo = "warn"
+unimplemented = "warn"
+unreachable = "warn"
+unwrap_used = "warn"
+use_debug = "warn"
+
+# Docs
+missing_panics_doc = "warn"
+missing_errors_doc = "warn"
+missing_safety_doc = "warn"
