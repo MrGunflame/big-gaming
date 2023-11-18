@@ -10,6 +10,9 @@ default = ["tracing"]
 tracing = []
 log-peer-errors = []
 
+[lints]
+workspace = true
+
 [dependencies]
 game_macros = { version = "0.1.0", path = "../game_macros", features = ["net"] }
 game_common = { version = "0.1.0", path = "../game_common" }

@@ -5,6 +5,9 @@ edition = "2021"
 authors = ["MrGunflame <git@robbsrv.de>"]
 license = "GPL-3.0-or-later"
 
+[lints]
+workspace = true
+
 [dependencies]
 bytemuck = "1.13.1"
 game_common = { version = "0.1.0", path = "../game_common" }

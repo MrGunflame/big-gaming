@@ -12,6 +12,9 @@ default = ["debug_render"]
 # padding values.
 debug_render = []
 
+[lints]
+workspace = true
+
 [dependencies]
 game_input = { version = "0.1.0", path = "../game_input" }
 game_render = { version = "0.1.0", path = "../game_render" }

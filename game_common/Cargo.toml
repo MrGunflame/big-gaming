@@ -11,6 +11,9 @@ default = ["serde"]
 # Enable serde impls
 serde = ["dep:serde"]
 
+[lints]
+workspace = true
+
 [dependencies]
 ahash = "0.8.2"
 glam = "0.24.0"

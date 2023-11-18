@@ -12,6 +12,9 @@ default = ["physics"]
 # correctly without physics.
 physics = []
 
+[lints]
+workspace = true
+
 [dependencies]
 ahash = "0.8.3"
 bytes = "1.4.0"
