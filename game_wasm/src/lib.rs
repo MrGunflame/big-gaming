@@ -64,7 +64,7 @@ impl Display for ErrorImpl {
     }
 }
 
-#[cfg(feature = "global_alloc")]
+#[cfg(all(feature = "global_alloc", target_arch = "wasm32"))]
 #[global_allocator]
 static DLMALLOC: dlmalloc::GlobalDlmalloc = dlmalloc::GlobalDlmalloc;
 
