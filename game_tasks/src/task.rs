@@ -31,25 +31,31 @@ pub const STATE_CLOSED: usize = 1 << 5;
 const INITIAL_STATE: usize = STATE_QUEUED | REF_COUNT * 2;
 
 #[derive(Debug)]
-pub struct Vtable {
-    pub poll: unsafe fn(NonNull<()>, cx: *const Waker) -> Poll<()>,
-    pub drop: unsafe fn(NonNull<()>),
-    pub read_output: unsafe fn(NonNull<()>) -> *const (),
+struct Vtable {
+    poll: unsafe fn(NonNull<()>, *const Waker) -> Poll<()>,
+    drop: unsafe fn(NonNull<()>),
+    read_output: unsafe fn(NonNull<()>) -> *const (),
 }
 
 #[derive(Debug)]
 #[repr(C)]
-pub struct Header {
-    pub pointers: Pointers<Header>,
-    pub state: AtomicUsize,
-    pub layout: Layout,
-    pub vtable: &'static Vtable,
-    pub executor: Arc<Inner>,
+pub(crate) struct Header {
+    /// The pointers to adjacent task `Header`s.
+    // `Header` is `#[repr(C)]` and `Pointers` is at the top of the struct
+    // which means we can safely cast any `*const Header` to
+    // `*const Pointers`.
+    pointers: Pointers<Header>,
+    state: AtomicUsize,
+    layout: Layout,
+    vtable: &'static Vtable,
+    pub(crate) executor: Arc<Inner>,
 }
 
 unsafe impl Link for Header {
     #[inline]
     unsafe fn pointers(ptr: NonNull<Self>) -> NonNull<Pointers<Self>> {
+        // The `Pointers` for the `Header` struct are located at the top.
+        // See `Header::points` for more details.
         ptr.cast()
     }
 }
@@ -57,7 +63,7 @@ unsafe impl Link for Header {
 // Casting `RawTask` to `Header` requires the header to be at
 // the start of the allocation.
 #[repr(C)]
-pub struct RawTask<T, F>
+pub(crate) struct RawTask<T, F>
 where
     F: Future<Output = T>,
 {
@@ -198,6 +204,19 @@ impl RawTaskPtr {
             dealloc_task(self.ptr);
         }
     }
+
+    /// Polls the underlying task for any progress using the given `waker`.
+    ///
+    /// # Safety
+    ///
+    /// The task must not be done or dropped yet.
+    #[inline]
+    pub(crate) unsafe fn poll(self, waker: *const Waker) -> Poll<()> {
+        unsafe {
+            let poll_fn = self.header().as_ref().vtable.poll;
+            poll_fn(self.ptr, waker)
+        }
+    }
 }
 
 pub struct Task<T> {
@@ -214,7 +233,9 @@ impl<T> Task<T> {
         let layout = Layout::new::<RawTask<T, F>>();
 
         let ptr = unsafe { alloc::alloc::alloc(layout) as *mut RawTask<T, F> };
-        assert!(!ptr.is_null());
+        if ptr == core::ptr::null_mut() {
+            alloc::alloc::handle_alloc_error(layout);
+        }
 
         let task = RawTask {
             header: Header {
@@ -292,18 +313,41 @@ impl<T> Task<T> {
         }
     }
 
-    fn detach(&self) {
-        unsafe {
-            self.ptr.decrement_ref_count();
-        }
-    }
-
     pub fn get_output(&mut self) -> Option<T> {
         let waker = noop_waker();
         let mut cx = Context::from_waker(&waker);
         match self.poll_inner(&mut cx) {
             Poll::Pending => None,
             Poll::Ready(val) => Some(val),
+        }
+    }
+
+    /// Returns `true` if the `Task` is finished.
+    #[inline]
+    pub fn is_finished(&self) -> bool {
+        let state = unsafe { self.ptr.header().as_ref().state.load(Ordering::Acquire) };
+        state & (STATE_DONE | STATE_CLOSED) != 0
+    }
+
+    /// Detaches the `Task`, letting it continue in the background.
+    #[inline]
+    pub fn deatch(self) {
+        unsafe {
+            self.detach_inner();
+        }
+    }
+
+    /// Detaches the task.
+    ///
+    /// # Safety
+    ///
+    /// The task must not be accessed after this call.
+    #[inline]
+    unsafe fn detach_inner(&self) {
+        // SAFETY: We own one of the reference counts and the caller guarantees
+        // that this function is only called once.
+        unsafe {
+            self.ptr.decrement_ref_count();
         }
     }
 }
@@ -328,11 +372,13 @@ impl<T> FusedFuture for Task<T> {
 
 impl<T> Drop for Task<T> {
     fn drop(&mut self) {
-        self.detach();
+        unsafe {
+            self.detach_inner();
+        }
     }
 }
 
-pub(crate) unsafe fn dealloc_task(ptr: NonNull<()>) {
+unsafe fn dealloc_task(ptr: NonNull<()>) {
     let layout = unsafe { (*(ptr.as_ptr() as *const Header)).layout };
 
     unsafe { alloc::alloc::dealloc(ptr.as_ptr() as *mut u8, layout) };

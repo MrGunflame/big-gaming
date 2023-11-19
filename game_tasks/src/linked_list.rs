@@ -2,7 +2,26 @@ use std::cell::UnsafeCell;
 use std::marker::PhantomData;
 use std::ptr::NonNull;
 
+/// A type which can be used as an [`LinkedList`] element.
+///
+/// # Safety
+///
+/// The returned pointer to [`Pointers`] must be valid for the same duration as `ptr` under the
+/// assumption that `ptr` points to a valid `Self` instance.
+///
+/// A valid pointer has the following properties:
+/// - It is well-aligned
+/// - It can be dereferenceable
+/// - It points to an initialized `Self` value
 pub(crate) unsafe trait Link {
+    /// Returns the intrusive `Pointers` of the element.
+    ///
+    /// The [`Pointers`] returned by this function are valid for the same lifetime as `ptr`.
+    ///
+    /// # Safety
+    ///
+    /// While the [`Pointers`] returned by this function are dereferenced, the object must not
+    /// occur any mutation.
     unsafe fn pointers(ptr: NonNull<Self>) -> NonNull<Pointers<Self>>;
 }
 
@@ -44,6 +63,7 @@ where
     prev: Option<NonNull<T>>,
 }
 
+/// An instrusive linked.
 #[derive(Debug)]
 pub(crate) struct LinkedList<T> {
     head: Option<NonNull<T>>,
@@ -57,6 +77,7 @@ impl<T> LinkedList<T>
 where
     T: Link,
 {
+    /// Creates a new, empty `LinkedList`.
     pub const fn new() -> Self {
         Self {
             head: None,
@@ -67,6 +88,14 @@ where
         }
     }
 
+    /// Pushes a new element to the back of the `LinkedList`.
+    ///
+    /// # Safety
+    ///
+    /// The `NonNull<T>` pointer must be well-formed and point to an initialized `T`. The pushed
+    /// pointer must stay valid until it is removed with [`remove`].
+    ///
+    /// [`remove`]: Self::remove
     pub unsafe fn push_back(&mut self, ptr: NonNull<T>) {
         {
             let pointers = unsafe { &mut *T::pointers(ptr).as_ref().inner.get() };
@@ -93,6 +122,12 @@ where
         }
     }
 
+    /// Removes the element from the `LinkedList`.
+    ///
+    /// # Safety
+    ///
+    /// The `NonNull<T>` pointer must be well-formed and point to an initialized `T`. The pointer
+    /// must have been previously inserted into the `LinkedList`.
     pub unsafe fn remove(&mut self, ptr: NonNull<T>) {
         #[cfg(debug_assertions)]
         {
@@ -118,6 +153,8 @@ where
         }
     }
 
+    /// Returns the pointer to the head element of the `LinkedList`.
+    #[inline]
     pub fn head(&self) -> Option<NonNull<T>> {
         self.head
     }

@@ -1,10 +1,7 @@
 //! Thread-parking primitives
 //!
-//! The [`Parker`] and [`Unparker`] primitives can be used to efficiently put threads to sleep.
-//! A single [`Parker`]/[`Unparker`] instance can be used to put multiple threads to sleep.
-//!
-//! [`Unparker::unpark`] will always wake up a single thread, or if none is available queue the
-//! next parking thread to wake up immediately.
+//! The [`Parker`] primitive can be used to efficiently put threads to sleep. A single [`Parker`]
+//! instance can be used for multiple threads.
 
 use crate::loom::sync::atomic::{AtomicUsize, Ordering};
 use crate::loom::sync::{Condvar, Mutex};
@@ -18,7 +15,9 @@ pub struct Parker {
 }
 
 impl Parker {
+    /// Creates a new `Parker`.
     #[cfg(not(loom))]
+    #[inline]
     pub const fn new() -> Self {
         Self {
             state: AtomicUsize::new(0),
@@ -36,6 +35,10 @@ impl Parker {
         }
     }
 
+    /// Puts the calling thread to sleep until it is unparked.
+    ///
+    /// If a token is available `park` will return immediately. `park` will **not** spuriously
+    /// return before it is unparked.
     pub fn park(&self) {
         // To ensure any writes from the unpark operations are be observed we need to
         // perform a `Acquire` load the the unpark thread can synchronize with.
@@ -91,11 +94,17 @@ impl Parker {
         }
     }
 
+    /// Unparks a single parked thread.
+    ///
+    /// If no thread is parked a wakeup token is stored and the next parking thread will
+    /// wake up immediately.
+    ///
+    /// Note that storing more than [`usize::MAX`] tokens results in unspecified behavior.
     pub fn unpark(&self) {
         // In order for the parked thread to observe the write to `state` we need to
         // perform a `Release` operation that the parked thread can synchronize with.
         let state = self.state.fetch_add(1, Ordering::Release);
-        assert!(state < usize::MAX);
+        debug_assert!(state < usize::MAX);
 
         // There is a period between the parking thread checking `state` and going
         // to sleep. If we were to notify it during that time, it would go to sleep

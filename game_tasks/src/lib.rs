@@ -157,18 +157,19 @@ fn spawn_worker_thread(inner: Arc<Inner>) -> JoinHandle<()> {
             }
         };
 
-        let poll_fn = unsafe { task.as_ptr().cast::<Header>().as_ref().vtable.poll };
-
         let waker = unsafe { Waker::from_raw(waker_create(task.as_ptr())) };
-        match unsafe { poll_fn(task.as_ptr(), &waker as *const Waker) } {
+        match unsafe { task.poll(&waker) } {
             Poll::Pending => {}
             Poll::Ready(()) => {
                 // The `poll` function handles advancing the internal state
                 // when the future yields `Ready`.
 
                 unsafe {
+                    // Drop the lock as soon as possible. The task may need to be
+                    // deallocated, which is an expensive operation.
                     let mut tasks = inner.tasks.lock();
                     tasks.remove(task.header());
+                    drop(tasks);
 
                     task.decrement_ref_count();
                 }
