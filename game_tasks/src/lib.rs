@@ -2,6 +2,7 @@ extern crate alloc;
 
 pub mod park;
 
+mod linked_list;
 mod loom;
 mod task;
 mod waker;
@@ -14,12 +15,13 @@ use std::task::{Poll, RawWaker, RawWakerVTable, Waker};
 use std::thread::JoinHandle;
 
 use crossbeam::deque::{Injector, Steal};
+use linked_list::LinkedList;
 use park::Parker;
 use parking_lot::Mutex;
-use task::{Header, RawTaskPtr, STATE_CLOSED, STATE_DONE, TASK_REF};
+use task::{Header, RawTaskPtr};
 
 pub use task::Task;
-use waker::WakerData;
+use waker::waker_create;
 
 #[derive(Debug)]
 pub struct TaskPool {
@@ -29,10 +31,9 @@ pub struct TaskPool {
 
 #[derive(Debug)]
 struct Inner {
-    queue: Injector<RawTaskPtr>,
-    parker: Parker,
+    queue: InjectorQueue,
     shutdown: AtomicBool,
-    tasks: Mutex<Vec<RawTaskPtr>>,
+    tasks: Mutex<LinkedList<Header>>,
 }
 
 impl TaskPool {
@@ -40,10 +41,9 @@ impl TaskPool {
         assert_ne!(threads, 0);
 
         let inner = Arc::new(Inner {
-            queue: Injector::new(),
-            parker: Parker::new(),
+            queue: InjectorQueue::new(),
             shutdown: AtomicBool::new(false),
-            tasks: Mutex::new(vec![]),
+            tasks: Mutex::new(LinkedList::new()),
         });
 
         let mut vec = Vec::new();
@@ -58,16 +58,17 @@ impl TaskPool {
         }
     }
 
-    pub fn spawn<F>(&self, future: F) -> Task<F::Output>
+    pub fn spawn<T, F>(&self, future: F) -> Task<T>
     where
-        F: Future<Output = ()> + Send + 'static,
-        F::Output: Send,
+        F: Future<Output = T> + Send + 'static,
+        T: Send,
     {
-        let task = Task::alloc_new(future);
-        self.inner.tasks.lock().push(task);
+        let task = Task::alloc_new(future, self.inner.clone());
+        unsafe {
+            self.inner.tasks.lock().push_back(task.header());
+        }
 
         self.inner.queue.push(task);
-        self.inner.parker.unpark();
 
         Task {
             ptr: task,
@@ -75,26 +76,21 @@ impl TaskPool {
         }
     }
 
-    pub fn update(&self) {
+    /// Drops all tasks.
+    fn drop_tasks(&mut self) {
         let mut tasks = self.inner.tasks.lock();
 
-        let mut index = 0;
-        while index < tasks.len() {
-            let task = tasks[index];
-            let header = unsafe { &*task.header() };
-            let state = header.state.load(Ordering::Acquire);
+        while let Some(ptr) = tasks.head() {
+            unsafe {
+                tasks.remove(ptr);
 
-            // Task is done, but has no associated `Task` handle.
-            if state & TASK_REF == 0 && state & (STATE_DONE | STATE_CLOSED) != 0 {
-                let drop_fn = header.vtable.drop;
-                unsafe { drop_fn(task.as_ptr()) };
-                unsafe { task::dealloc_task(task.as_ptr()) };
-
-                tasks.remove(index);
-                continue;
+                // At this point it is possible that an `Task` handle still exists
+                // for this task. We cannot directly delete the task object from
+                // here. Instead we decrement the reference count which will cause
+                // the object to be deleted once the `Task` handle is dropped.
+                let task = RawTaskPtr::from_ptr(ptr.cast().as_ptr());
+                task.decrement_ref_count();
             }
-
-            index += 1;
         }
     }
 }
@@ -103,7 +99,7 @@ impl Drop for TaskPool {
     fn drop(&mut self) {
         self.inner.shutdown.store(true, Ordering::Release);
         for _ in 0..self.threads.as_ref().unwrap().len() {
-            self.inner.parker.unpark();
+            self.inner.queue.parker.unpark();
         }
 
         for handle in self.threads.take().unwrap() {
@@ -111,7 +107,7 @@ impl Drop for TaskPool {
         }
 
         // All running tasks are now complete.
-        self.update();
+        self.drop_tasks();
     }
 }
 
@@ -119,33 +115,67 @@ unsafe impl Send for Inner {}
 unsafe impl Sync for Inner {}
 
 fn spawn_worker_thread(inner: Arc<Inner>) -> JoinHandle<()> {
-    std::thread::spawn(move || 'out: loop {
+    std::thread::spawn(move || loop {
         if inner.shutdown.load(Ordering::Acquire) {
             return;
         }
 
-        let task = loop {
-            match inner.queue.steal() {
-                Steal::Success(task) => break task,
-                Steal::Empty => {
-                    inner.parker.park();
-                    continue 'out;
-                }
-                Steal::Retry => continue,
-            }
+        let Some(task) = inner.queue.pop() else {
+            inner.queue.parker.park();
+            continue;
         };
 
-        let poll_fn = unsafe { task.as_ptr().cast::<Header>().as_ref().vtable.poll };
-
-        let waker = WakerData::new(task, inner.clone());
-        match unsafe { poll_fn(task.as_ptr(), &waker as *const Waker) } {
+        let waker = unsafe { Waker::from_raw(waker_create(task)) };
+        match unsafe { task.poll(&waker) } {
             Poll::Pending => {}
             Poll::Ready(()) => {
                 // The `poll` function handles advancing the internal state
                 // when the future yields `Ready`.
+
+                unsafe {
+                    // Drop the lock as soon as possible. The task may need to be
+                    // deallocated, which is an expensive operation.
+                    let mut tasks = inner.tasks.lock();
+                    tasks.remove(task.header());
+                    drop(tasks);
+
+                    task.decrement_ref_count();
+                }
             }
         }
     })
+}
+
+#[derive(Debug)]
+struct InjectorQueue {
+    inner: Injector<RawTaskPtr>,
+    parker: Parker,
+}
+
+impl InjectorQueue {
+    fn new() -> Self {
+        Self {
+            inner: Injector::new(),
+            parker: Parker::new(),
+        }
+    }
+
+    fn push(&self, task: RawTaskPtr) {
+        // FIXME: Every unpark still requires a mutex lock which could
+        // cause unnecessary delay on high contention.
+        self.inner.push(task);
+        self.parker.unpark();
+    }
+
+    fn pop(&self) -> Option<RawTaskPtr> {
+        loop {
+            match self.inner.steal() {
+                Steal::Success(task) => return Some(task),
+                Steal::Empty => return None,
+                Steal::Retry => (),
+            }
+        }
+    }
 }
 
 fn noop_waker() -> Waker {
@@ -157,6 +187,7 @@ fn noop_waker() -> Waker {
 #[cfg(test)]
 mod tests {
     use std::future::Future;
+    use std::hint::black_box;
     use std::pin::Pin;
     use std::task::{Context, Poll};
 
@@ -255,5 +286,29 @@ mod tests {
         });
 
         futures::executor::block_on(task);
+    }
+
+    #[test]
+    fn spawn_then_drop() {
+        let executor = TaskPool::new(1);
+        let mut tasks = Vec::new();
+        for _ in 0..1024 {
+            let task = executor.spawn(poll_fn(|_| Poll::<()>::Pending));
+            tasks.push(task);
+        }
+
+        drop(executor);
+        drop(tasks);
+    }
+
+    #[test]
+    fn read_output() {
+        let executor = TaskPool::new(1);
+        let task = executor.spawn(async move {
+            let val = 1 + 1;
+            black_box(val)
+        });
+
+        assert_eq!(futures::executor::block_on(task), 2);
     }
 }
