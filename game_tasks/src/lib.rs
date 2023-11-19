@@ -165,6 +165,13 @@ fn spawn_worker_thread(inner: Arc<Inner>) -> JoinHandle<()> {
             Poll::Ready(()) => {
                 // The `poll` function handles advancing the internal state
                 // when the future yields `Ready`.
+
+                unsafe {
+                    let mut tasks = inner.tasks.lock();
+                    tasks.remove(task.header());
+
+                    task.decrement_ref_count();
+                }
             }
         }
     })
