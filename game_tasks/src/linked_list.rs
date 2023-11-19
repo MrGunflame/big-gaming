@@ -96,6 +96,7 @@ where
     /// pointer must stay valid until it is removed with [`remove`].
     ///
     /// [`remove`]: Self::remove
+    #[inline]
     pub unsafe fn push_back(&mut self, ptr: NonNull<T>) {
         {
             let pointers = unsafe { &mut *T::pointers(ptr).as_ref().inner.get() };
@@ -128,6 +129,7 @@ where
     ///
     /// The `NonNull<T>` pointer must be well-formed and point to an initialized `T`. The pointer
     /// must have been previously inserted into the `LinkedList`.
+    #[inline]
     pub unsafe fn remove(&mut self, ptr: NonNull<T>) {
         #[cfg(debug_assertions)]
         {

@@ -28,7 +28,6 @@ unsafe fn waker_wake_by_ref(waker: *const ()) {
         .executor
         .queue
         .push(unsafe { RawTaskPtr::from_ptr(waker) });
-    header.executor.parker.unpark();
 }
 
 unsafe fn waker_drop(waker: *const ()) {}

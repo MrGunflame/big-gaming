@@ -7,6 +7,7 @@ mod loom;
 mod task;
 mod waker;
 
+use std::alloc::Layout;
 use std::future::Future;
 use std::marker::PhantomData;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -31,8 +32,7 @@ pub struct TaskPool {
 
 #[derive(Debug)]
 struct Inner {
-    queue: Injector<RawTaskPtr>,
-    parker: Parker,
+    queue: InjectorQueue,
     shutdown: AtomicBool,
     tasks: Mutex<LinkedList<Header>>,
 }
@@ -42,8 +42,7 @@ impl TaskPool {
         assert_ne!(threads, 0);
 
         let inner = Arc::new(Inner {
-            queue: Injector::new(),
-            parker: Parker::new(),
+            queue: InjectorQueue::new(),
             shutdown: AtomicBool::new(false),
             tasks: Mutex::new(LinkedList::new()),
         });
@@ -71,7 +70,6 @@ impl TaskPool {
         }
 
         self.inner.queue.push(task);
-        self.inner.parker.unpark();
 
         Task {
             ptr: task,
@@ -125,7 +123,7 @@ impl Drop for TaskPool {
     fn drop(&mut self) {
         self.inner.shutdown.store(true, Ordering::Release);
         for _ in 0..self.threads.as_ref().unwrap().len() {
-            self.inner.parker.unpark();
+            self.inner.queue.parker.unpark();
         }
 
         for handle in self.threads.take().unwrap() {
@@ -141,20 +139,14 @@ unsafe impl Send for Inner {}
 unsafe impl Sync for Inner {}
 
 fn spawn_worker_thread(inner: Arc<Inner>) -> JoinHandle<()> {
-    std::thread::spawn(move || 'out: loop {
+    std::thread::spawn(move || loop {
         if inner.shutdown.load(Ordering::Acquire) {
             return;
         }
 
-        let task = loop {
-            match inner.queue.steal() {
-                Steal::Success(task) => break task,
-                Steal::Empty => {
-                    inner.parker.park();
-                    continue 'out;
-                }
-                Steal::Retry => continue,
-            }
+        let Some(task) = inner.queue.pop() else {
+            inner.queue.parker.park();
+            continue;
         };
 
         let waker = unsafe { Waker::from_raw(waker_create(task.as_ptr())) };
@@ -178,6 +170,38 @@ fn spawn_worker_thread(inner: Arc<Inner>) -> JoinHandle<()> {
     })
 }
 
+#[derive(Debug)]
+struct InjectorQueue {
+    inner: Injector<RawTaskPtr>,
+    parker: Parker,
+}
+
+impl InjectorQueue {
+    fn new() -> Self {
+        Self {
+            inner: Injector::new(),
+            parker: Parker::new(),
+        }
+    }
+
+    fn push(&self, task: RawTaskPtr) {
+        // FIXME: Every unpark still requires a mutex lock which could
+        // cause unnecessary delay on high contention.
+        self.inner.push(task);
+        self.parker.unpark();
+    }
+
+    fn pop(&self) -> Option<RawTaskPtr> {
+        loop {
+            match self.inner.steal() {
+                Steal::Success(task) => return Some(task),
+                Steal::Empty => return None,
+                Steal::Retry => (),
+            }
+        }
+    }
+}
+
 fn noop_waker() -> Waker {
     const VTABLE: RawWakerVTable = RawWakerVTable::new(|_| RAW, |_| {}, |_| {}, |_| {});
     const RAW: RawWaker = RawWaker::new(std::ptr::null(), &VTABLE);
@@ -187,10 +211,11 @@ fn noop_waker() -> Waker {
 #[cfg(test)]
 mod tests {
     use std::future::Future;
+    use std::hint::black_box;
     use std::pin::Pin;
     use std::task::{Context, Poll};
 
-    use futures::future::poll_fn;
+    use futures::future::{self, poll_fn};
 
     use crate::{noop_waker, TaskPool};
 
@@ -298,5 +323,16 @@ mod tests {
 
         drop(executor);
         drop(tasks);
+    }
+
+    #[test]
+    fn read_output() {
+        let executor = TaskPool::new(1);
+        let task = executor.spawn(async move {
+            let val = 1 + 1;
+            black_box(val)
+        });
+
+        assert_eq!(futures::executor::block_on(task), 2);
     }
 }

@@ -23,6 +23,7 @@ pub const STATE_QUEUED: usize = 1 << 2;
 pub const STATE_RUNNING: usize = 1 << 3;
 pub const STATE_DONE: usize = 1 << 4;
 pub const STATE_CLOSED: usize = 1 << 5;
+pub const STATE_MASK: usize = STATE_QUEUED | STATE_RUNNING | STATE_DONE | STATE_CLOSED;
 
 /// The initial state of a [`RawTask`].
 ///
@@ -217,6 +218,12 @@ impl RawTaskPtr {
             poll_fn(self.ptr, waker)
         }
     }
+
+    #[inline]
+    unsafe fn read_output<T>(self) -> T {
+        let ptr = unsafe { (self.header().as_ref().vtable.read_output)(self.ptr) };
+        unsafe { ptr.cast::<T>().read() }
+    }
 }
 
 pub struct Task<T> {
@@ -269,47 +276,45 @@ impl<T> Task<T> {
         // `will_wake`.
         waker.register(cx.waker());
 
-        unsafe {
-            let state = header.as_ref().state.load(Ordering::Acquire);
+        let state = unsafe { header.as_ref().state.load(Ordering::Acquire) };
+        let header = unsafe { header.as_ref() };
 
-            match state & (STATE_QUEUED | STATE_RUNNING | STATE_DONE | STATE_CLOSED) {
-                STATE_QUEUED | STATE_RUNNING => return Poll::Pending,
-                STATE_DONE => {
-                    loop {
-                        let old_state = header.as_ref().state.load(Ordering::Acquire);
-                        let mut new_state = old_state;
-                        new_state &= !STATE_DONE;
-                        new_state |= STATE_CLOSED;
+        match state & STATE_MASK {
+            STATE_QUEUED | STATE_RUNNING => return Poll::Pending,
+            // The future is done and we can read the final output value.
+            STATE_DONE => {
+                loop {
+                    let old_state = header.state.load(Ordering::Acquire);
+                    let mut new_state = old_state;
+                    new_state &= !STATE_DONE;
+                    new_state |= STATE_CLOSED;
 
-                        // Advance the state from `STATE_DONE` to `STATE_CLOSED`.
-                        // Only if the operation succeeds are we allowed to take
-                        // the output value.
-                        match header.as_ref().state.compare_exchange_weak(
-                            old_state,
-                            new_state,
-                            Ordering::SeqCst,
-                            Ordering::SeqCst,
-                        ) {
-                            Ok(_) => break,
-                            Err(state) => {
-                                // Task was already stolen by another thread.
-                                if (state & STATE_DONE) == 0 {
-                                    panic!()
-                                }
-                            }
+                    // Advance the state from `STATE_DONE` to `STATE_CLOSED`.
+                    // Only if the operation succeeds are we allowed to take
+                    // the output value.
+                    match header.state.compare_exchange_weak(
+                        old_state,
+                        new_state,
+                        Ordering::SeqCst,
+                        Ordering::SeqCst,
+                    ) {
+                        Ok(_) => break,
+                        Err(state) => {
+                            // We are the only `Task` handle that is allowed to
+                            // read the output value.
+                            debug_assert_ne!(state & STATE_DONE, 0);
                         }
                     }
+                }
 
-                    let output_ptr = (header.as_ref().vtable.read_output)(self.ptr.as_ptr());
-                    let output = std::ptr::read(output_ptr as *const T);
-                    return Poll::Ready(output);
-                }
-                STATE_CLOSED => {
-                    // Value already taken.
-                    panic!()
-                }
-                _ => unreachable!(),
+                let output: T = unsafe { self.ptr.read_output() };
+                return Poll::Ready(output);
             }
+            STATE_CLOSED => {
+                // Value already taken.
+                panic!()
+            }
+            _ => unreachable!(),
         }
     }
 
