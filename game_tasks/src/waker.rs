@@ -1,4 +1,3 @@
-use std::ptr::NonNull;
 use std::task::{RawWaker, RawWakerVTable};
 
 use crate::task::RawTaskPtr;
@@ -6,12 +5,20 @@ use crate::task::RawTaskPtr;
 const VTABLE: RawWakerVTable =
     RawWakerVTable::new(waker_clone, waker_wake, waker_wake_by_ref, waker_drop);
 
-pub(crate) fn waker_create(ptr: NonNull<()>) -> RawWaker {
-    RawWaker::new(ptr.as_ptr(), &VTABLE)
+pub(crate) unsafe fn waker_create(ptr: RawTaskPtr) -> RawWaker {
+    unsafe {
+        ptr.increment_ref_count();
+    }
+
+    RawWaker::new(ptr.as_ptr().as_ptr(), &VTABLE)
 }
 
 unsafe fn waker_clone(data: *const ()) -> RawWaker {
-    RawWaker::new(data, &VTABLE)
+    unsafe {
+        let task = RawTaskPtr::from_ptr(data);
+        task.increment_ref_count();
+        RawWaker::new(data, &VTABLE)
+    }
 }
 
 unsafe fn waker_wake(data: *const ()) {
@@ -28,4 +35,9 @@ unsafe fn waker_wake_by_ref(data: *const ()) {
     }
 }
 
-unsafe fn waker_drop(_data: *const ()) {}
+unsafe fn waker_drop(data: *const ()) {
+    unsafe {
+        let task = RawTaskPtr::from_ptr(data);
+        task.decrement_ref_count();
+    }
+}

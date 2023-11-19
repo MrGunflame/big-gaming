@@ -125,7 +125,7 @@ fn spawn_worker_thread(inner: Arc<Inner>) -> JoinHandle<()> {
             continue;
         };
 
-        let waker = unsafe { Waker::from_raw(waker_create(task.as_ptr())) };
+        let waker = unsafe { Waker::from_raw(waker_create(task)) };
         match unsafe { task.poll(&waker) } {
             Poll::Pending => {}
             Poll::Ready(()) => {

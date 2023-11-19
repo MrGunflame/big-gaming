@@ -15,15 +15,13 @@ use futures::task::AtomicWaker;
 use crate::linked_list::{Link, Pointers};
 use crate::{noop_waker, Inner};
 
-// The first two bits are used for reference counting. We need at most
-// 2 references to the task.
-pub const REF_COUNT: usize = 1;
-pub const REF_COUNT_MASK: usize = (1 << 2) - 1;
+pub const REF_COUNT: usize = 0b0001_0000;
+pub const REF_COUNT_MASK: usize = usize::MAX & !0b1111;
 
-pub const STATE_QUEUED: usize = 1 << 2;
-pub const STATE_RUNNING: usize = 1 << 3;
-pub const STATE_DONE: usize = 1 << 4;
-pub const STATE_CLOSED: usize = 1 << 5;
+pub const STATE_QUEUED: usize = 0b0001;
+pub const STATE_RUNNING: usize = 0b0010;
+pub const STATE_DONE: usize = 0b0011;
+pub const STATE_CLOSED: usize = 0b0100;
 pub const STATE_MASK: usize = STATE_QUEUED | STATE_RUNNING | STATE_DONE | STATE_CLOSED;
 
 /// The initial state of a [`RawTask`].
@@ -173,6 +171,16 @@ impl RawTaskPtr {
     pub unsafe fn from_ptr(ptr: *const ()) -> Self {
         Self {
             ptr: unsafe { NonNull::new_unchecked(ptr.cast_mut()) },
+        }
+    }
+
+    pub unsafe fn increment_ref_count(self) {
+        let header = unsafe { self.header().as_ref() };
+
+        let old_rc = header.state.fetch_add(REF_COUNT, Ordering::Relaxed);
+
+        if old_rc > isize::MAX as usize {
+            std::process::abort();
         }
     }
 
