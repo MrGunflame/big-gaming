@@ -4,7 +4,7 @@ use std::future::Future;
 use std::marker::PhantomData;
 use std::mem::ManuallyDrop;
 use std::pin::Pin;
-use std::ptr::{addr_of, NonNull};
+use std::ptr::NonNull;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::task::{Context, Poll, Waker};
@@ -36,7 +36,6 @@ const INITIAL_STATE: usize = STATE_QUEUED | REF_COUNT * 2;
 struct Vtable {
     poll: unsafe fn(NonNull<()>, *const Waker) -> Poll<()>,
     drop: unsafe fn(NonNull<()>),
-    read_output: unsafe fn(NonNull<()>) -> *const UnsafeCell<()>,
 }
 
 #[derive(Debug)]
@@ -65,10 +64,7 @@ unsafe impl Link for Header {
 // Casting `RawTask` to `Header` requires the header to be at
 // the start of the allocation.
 #[repr(C)]
-pub(crate) struct RawTask<T, F>
-where
-    F: Future<Output = T>,
-{
+pub(crate) struct RawTask<T, F> {
     header: Header,
     waker: ManuallyDrop<AtomicWaker>,
     stage: UnsafeCell<Stage<T, F>>,
@@ -78,10 +74,6 @@ impl<T, F> RawTask<T, F>
 where
     F: Future<Output = T>,
 {
-    unsafe fn read_output(ptr: NonNull<()>) -> *const UnsafeCell<()> {
-        addr_of!((*ptr.cast::<Self>().as_ptr()).stage).cast()
-    }
-
     unsafe fn drop(ptr: NonNull<()>) {
         let this = unsafe { ptr.cast::<Self>().as_mut() };
 
@@ -225,11 +217,26 @@ impl RawTaskPtr {
         }
     }
 
+    /// Reads the final output value.
+    ///
+    /// # Safety
+    ///
+    /// This function must only be called once the future has been completed, dropped and the
+    /// output value has been written. This is the case when [`poll`] returns `Poll::Ready(())`.
+    ///
+    /// The function must also not be used more than once.
+    ///
+    /// [`poll`]: Self::poll
     #[inline]
     unsafe fn read_output<T>(self) -> T {
-        let ptr = unsafe { (self.header().as_ref().vtable.read_output)(self.ptr) };
-        let cell: &UnsafeCell<T> = unsafe { &*ptr.cast::<UnsafeCell<T>>() };
-        unsafe { cell.get().read() }
+        unsafe {
+            // We don't care about the future type but when this function is called
+            // the future is already dropped. The dropped future and the output value
+            // share the same memory so casting from `RawTask<T, F>` to `RawTask<T, ()>`
+            // is possible.
+            let task = self.ptr.cast::<RawTask<T, ()>>().as_ref();
+            ManuallyDrop::take(&mut (*task.stage.get()).output)
+        }
     }
 }
 
@@ -257,7 +264,6 @@ impl<T> Task<T> {
                 vtable: &Vtable {
                     poll: RawTask::<T, F>::poll,
                     drop: RawTask::<T, F>::drop,
-                    read_output: RawTask::<T, F>::read_output,
                 },
                 layout,
                 pointers: Pointers::new(),
