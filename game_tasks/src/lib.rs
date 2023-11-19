@@ -15,6 +15,7 @@ use std::task::{Poll, RawWaker, RawWakerVTable, Waker};
 use std::thread::JoinHandle;
 
 use crossbeam::deque::{Injector, Steal};
+use linked_list::{HeaderPointers, LinkedList};
 use park::Parker;
 use parking_lot::Mutex;
 use task::{Header, RawTaskPtr, STATE_CLOSED, STATE_DONE, TASK_REF};
@@ -33,7 +34,7 @@ struct Inner {
     queue: Injector<RawTaskPtr>,
     parker: Parker,
     shutdown: AtomicBool,
-    tasks: Mutex<Vec<RawTaskPtr>>,
+    tasks: Mutex<LinkedList<Header>>,
 }
 
 impl TaskPool {
@@ -44,7 +45,7 @@ impl TaskPool {
             queue: Injector::new(),
             parker: Parker::new(),
             shutdown: AtomicBool::new(false),
-            tasks: Mutex::new(vec![]),
+            tasks: Mutex::new(LinkedList::new()),
         });
 
         let mut vec = Vec::new();
@@ -65,7 +66,9 @@ impl TaskPool {
         T: Send,
     {
         let task = Task::alloc_new(future);
-        self.inner.tasks.lock().push(task);
+        unsafe {
+            self.inner.tasks.lock().push_back(task.header());
+        }
 
         self.inner.queue.push(task);
         self.inner.parker.unpark();
@@ -77,25 +80,41 @@ impl TaskPool {
     }
 
     pub fn update(&self) {
+        // let mut tasks = self.inner.tasks.lock();
+
+        // let mut index = 0;
+        // while index < tasks.len() {
+        //     let task = tasks[index];
+        //     let header = unsafe { &*task.header() };
+        //     let state = header.state.load(Ordering::Acquire);
+
+        //     // Task is done, but has no associated `Task` handle.
+        //     if state & TASK_REF == 0 && state & (STATE_DONE | STATE_CLOSED) != 0 {
+        //         let drop_fn = header.vtable.drop;
+        //         unsafe { drop_fn(task.as_ptr()) };
+        //         unsafe { task::dealloc_task(task.as_ptr()) };
+
+        //         tasks.remove(index);
+        //         continue;
+        //     }
+
+        //     index += 1;
+        // }
+    }
+
+    /// Drops all tasks.
+    fn drop_tasks(&mut self) {
         let mut tasks = self.inner.tasks.lock();
 
-        let mut index = 0;
-        while index < tasks.len() {
-            let task = tasks[index];
-            let header = unsafe { &*task.header() };
-            let state = header.state.load(Ordering::Acquire);
+        while let Some(ptr) = tasks.head() {
+            let header = unsafe { ptr.as_ref() };
 
-            // Task is done, but has no associated `Task` handle.
-            if state & TASK_REF == 0 && state & (STATE_DONE | STATE_CLOSED) != 0 {
-                let drop_fn = header.vtable.drop;
-                unsafe { drop_fn(task.as_ptr()) };
-                unsafe { task::dealloc_task(task.as_ptr()) };
+            unsafe {
+                tasks.remove(ptr);
 
-                tasks.remove(index);
-                continue;
+                (header.vtable.drop)(ptr.cast());
+                task::dealloc_task(ptr.cast());
             }
-
-            index += 1;
         }
     }
 }
@@ -112,7 +131,7 @@ impl Drop for TaskPool {
         }
 
         // All running tasks are now complete.
-        self.update();
+        self.drop_tasks();
     }
 }
 

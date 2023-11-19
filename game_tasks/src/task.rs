@@ -10,6 +10,7 @@ use std::task::{Context, Poll, Waker};
 use futures::future::FusedFuture;
 use futures::task::AtomicWaker;
 
+use crate::linked_list::{Link, Pointers};
 use crate::noop_waker;
 
 pub const STATE_QUEUED: usize = 1;
@@ -20,16 +21,27 @@ pub const STATE_CLOSED: usize = 1 << 3;
 /// [`Task`] reference to this task exists.
 pub const TASK_REF: usize = 1 << 4;
 
+#[derive(Debug)]
 pub struct Vtable {
     pub poll: unsafe fn(NonNull<()>, cx: *const Waker) -> Poll<()>,
     pub drop: unsafe fn(NonNull<()>),
     pub read_output: unsafe fn(NonNull<()>) -> *const (),
 }
 
+#[derive(Debug)]
+#[repr(C)]
 pub struct Header {
+    pub pointers: Pointers<Header>,
     pub state: AtomicUsize,
     pub layout: Layout,
     pub vtable: &'static Vtable,
+}
+
+unsafe impl Link for Header {
+    #[inline]
+    unsafe fn pointers(ptr: NonNull<Self>) -> NonNull<Pointers<Self>> {
+        ptr.cast()
+    }
 }
 
 // Casting `RawTask` to `Header` requires the header to be at
@@ -128,8 +140,8 @@ pub(crate) struct RawTaskPtr {
 }
 
 impl RawTaskPtr {
-    pub(crate) fn header(self) -> *const Header {
-        self.ptr.as_ptr() as *const Header
+    pub(crate) fn header(self) -> NonNull<Header> {
+        self.ptr.cast()
     }
 
     pub(crate) fn as_ptr(self) -> NonNull<()> {
@@ -167,6 +179,7 @@ impl<T> Task<T> {
                     read_output: RawTask::<T, F>::read_output,
                 },
                 layout,
+                pointers: Pointers::new(),
             },
             waker: ManuallyDrop::new(AtomicWaker::new()),
             future: ManuallyDrop::new(future),
@@ -189,13 +202,13 @@ impl<T> Task<T> {
         waker.register(cx.waker());
 
         unsafe {
-            let state = (*header).state.load(Ordering::Acquire);
+            let state = header.as_ref().state.load(Ordering::Acquire);
 
             match state & (STATE_QUEUED | STATE_RUNNING | STATE_DONE | STATE_CLOSED) {
                 STATE_QUEUED | STATE_RUNNING => return Poll::Pending,
                 STATE_DONE => {
                     loop {
-                        let old_state = (*header).state.load(Ordering::Acquire);
+                        let old_state = header.as_ref().state.load(Ordering::Acquire);
                         let mut new_state = old_state;
                         new_state &= !STATE_DONE;
                         new_state |= STATE_CLOSED;
@@ -203,7 +216,7 @@ impl<T> Task<T> {
                         // Advance the state from `STATE_DONE` to `STATE_CLOSED`.
                         // Only if the operation succeeds are we allowed to take
                         // the output value.
-                        match (*header).state.compare_exchange_weak(
+                        match header.as_ref().state.compare_exchange_weak(
                             old_state,
                             new_state,
                             Ordering::SeqCst,
@@ -219,7 +232,7 @@ impl<T> Task<T> {
                         }
                     }
 
-                    let output_ptr = ((*header).vtable.read_output)(self.ptr.as_ptr());
+                    let output_ptr = (header.as_ref().vtable.read_output)(self.ptr.as_ptr());
                     let output = std::ptr::read(output_ptr as *const T);
                     return Poll::Ready(output);
                 }
@@ -233,7 +246,7 @@ impl<T> Task<T> {
     }
 
     fn detach(&self) {
-        let header = unsafe { &*self.ptr.header() };
+        let header = unsafe { self.ptr.header().as_ref() };
         let state = header.state.load(Ordering::Acquire);
 
         // Remove the `TASK_REF` flag.
@@ -268,7 +281,7 @@ impl<T> Future for Task<T> {
 impl<T> FusedFuture for Task<T> {
     fn is_terminated(&self) -> bool {
         let header = self.ptr.header();
-        let state = unsafe { (*header).state.load(Ordering::Acquire) };
+        let state = unsafe { header.as_ref().state.load(Ordering::Acquire) };
         state & STATE_CLOSED != 0
     }
 }
