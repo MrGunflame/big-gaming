@@ -2,6 +2,7 @@ extern crate alloc;
 
 pub mod park;
 
+mod linked_list;
 mod loom;
 mod task;
 mod waker;
@@ -58,10 +59,10 @@ impl TaskPool {
         }
     }
 
-    pub fn spawn<F>(&self, future: F) -> Task<F::Output>
+    pub fn spawn<T, F>(&self, future: F) -> Task<T>
     where
-        F: Future<Output = ()> + Send + 'static,
-        F::Output: Send,
+        F: Future<Output = T> + Send + 'static,
+        T: Send,
     {
         let task = Task::alloc_new(future);
         self.inner.tasks.lock().push(task);
