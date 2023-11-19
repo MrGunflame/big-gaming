@@ -1,9 +1,10 @@
 use std::alloc::Layout;
+use std::cell::UnsafeCell;
 use std::future::Future;
 use std::marker::PhantomData;
-use std::mem::{ManuallyDrop, MaybeUninit};
+use std::mem::ManuallyDrop;
 use std::pin::Pin;
-use std::ptr::{addr_of_mut, NonNull};
+use std::ptr::{addr_of, NonNull};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::task::{Context, Poll, Waker};
@@ -35,7 +36,7 @@ const INITIAL_STATE: usize = STATE_QUEUED | REF_COUNT * 2;
 struct Vtable {
     poll: unsafe fn(NonNull<()>, *const Waker) -> Poll<()>,
     drop: unsafe fn(NonNull<()>),
-    read_output: unsafe fn(NonNull<()>) -> *const (),
+    read_output: unsafe fn(NonNull<()>) -> *const UnsafeCell<()>,
 }
 
 #[derive(Debug)]
@@ -70,30 +71,31 @@ where
 {
     header: Header,
     waker: ManuallyDrop<AtomicWaker>,
-    future: ManuallyDrop<F>,
-    output: MaybeUninit<T>,
+    stage: UnsafeCell<Stage<T, F>>,
 }
 
 impl<T, F> RawTask<T, F>
 where
     F: Future<Output = T>,
 {
-    unsafe fn read_output(ptr: NonNull<()>) -> *const () {
-        let this = unsafe { ptr.cast::<Self>().as_ref() };
-        this.output.as_ptr() as *const ()
+    unsafe fn read_output(ptr: NonNull<()>) -> *const UnsafeCell<()> {
+        addr_of!((*ptr.cast::<Self>().as_ptr()).stage).cast()
     }
 
     unsafe fn drop(ptr: NonNull<()>) {
         let this = unsafe { ptr.cast::<Self>().as_mut() };
+
         unsafe {
             ManuallyDrop::drop(&mut this.waker);
-            ManuallyDrop::drop(&mut this.future);
         }
 
-        if *this.header.state.get_mut() == STATE_DONE {
-            unsafe {
-                this.output.assume_init_drop();
-            }
+        match *this.header.state.get_mut() & STATE_MASK {
+            STATE_QUEUED | STATE_RUNNING => unsafe {
+                ManuallyDrop::drop(&mut this.stage.get_mut().future);
+            },
+            STATE_DONE => unsafe { ManuallyDrop::drop(&mut this.stage.get_mut().output) },
+            STATE_CLOSED => (),
+            _ => unreachable!(),
         }
 
         // Drop the Header last.
@@ -103,20 +105,24 @@ where
     }
 
     unsafe fn poll(ptr: NonNull<()>, waker: *const Waker) -> Poll<()> {
-        let ptr = ptr.cast::<Self>();
+        let task = unsafe { ptr.cast::<Self>().as_ref() };
 
-        let header = unsafe { &*ptr.cast::<Header>().as_ptr() };
-        let task_waker = unsafe { &*addr_of_mut!((*ptr.as_ptr()).waker) };
-        let future = unsafe { &mut *addr_of_mut!((*ptr.as_ptr()).future) };
-        let output = unsafe { &mut *addr_of_mut!((*ptr.as_ptr()).output) };
+        let header = &task.header;
+        let stage = unsafe { &mut *task.stage.get() };
+        let task_waker = &task.waker;
+
+        let future = unsafe { &mut stage.future };
 
         let mut cx = Context::from_waker(unsafe { &*waker });
         let pin: Pin<&mut F> = unsafe { Pin::new_unchecked(future) };
         match F::poll(pin, &mut cx) {
             Poll::Pending => Poll::Pending,
             Poll::Ready(val) => {
-                // Write the final value **BEFORE** waking.
-                output.write(val);
+                unsafe {
+                    ManuallyDrop::drop(future);
+                    // Write the final value **BEFORE** waking.
+                    stage.output = ManuallyDrop::new(val);
+                }
 
                 // Set the `DONE` bit (and remove the `QUEUED | RUNNING` bits).
                 // This must happen after the output value has been written, but
@@ -124,12 +130,12 @@ where
                 // As soon as the `DONE` bit is set another thread is allowed to
                 // read the output value.
                 loop {
-                    let old_state = (*header).state.load(Ordering::Acquire);
+                    let old_state = header.state.load(Ordering::Acquire);
                     let mut new_state = old_state;
                     new_state &= !(STATE_QUEUED | STATE_RUNNING);
                     new_state |= STATE_DONE;
 
-                    if (*header)
+                    if header
                         .state
                         .compare_exchange_weak(
                             old_state,
@@ -222,7 +228,8 @@ impl RawTaskPtr {
     #[inline]
     unsafe fn read_output<T>(self) -> T {
         let ptr = unsafe { (self.header().as_ref().vtable.read_output)(self.ptr) };
-        unsafe { ptr.cast::<T>().read() }
+        let cell: &UnsafeCell<T> = unsafe { &*ptr.cast::<UnsafeCell<T>>() };
+        unsafe { cell.get().read() }
     }
 }
 
@@ -257,8 +264,9 @@ impl<T> Task<T> {
                 executor,
             },
             waker: ManuallyDrop::new(AtomicWaker::new()),
-            future: ManuallyDrop::new(future),
-            output: MaybeUninit::uninit(),
+            stage: UnsafeCell::new(Stage {
+                future: ManuallyDrop::new(future),
+            }),
         };
 
         unsafe { ptr.write(task) };
@@ -387,4 +395,12 @@ unsafe fn dealloc_task(ptr: NonNull<()>) {
     let layout = unsafe { (*(ptr.as_ptr() as *const Header)).layout };
 
     unsafe { alloc::alloc::dealloc(ptr.as_ptr() as *mut u8, layout) };
+}
+
+/// A union containing either the future or the output value of a [`RawTask`].
+union Stage<T, F> {
+    /// The output value of the future.
+    output: ManuallyDrop<T>,
+    /// The non-terminated future.
+    future: ManuallyDrop<F>,
 }
