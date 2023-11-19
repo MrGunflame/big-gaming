@@ -2,21 +2,6 @@ use std::cell::UnsafeCell;
 use std::marker::PhantomData;
 use std::ptr::NonNull;
 
-// repr(C) guarantees that the pointers are always at the top.
-// We can cast the pointer to the `Pointers`.`
-#[derive(Debug)]
-#[repr(C)]
-pub(crate) struct HeaderPointers<T> {
-    pub pointers: Pointers<T>,
-    pub value: T,
-}
-
-unsafe impl<T> Link for HeaderPointers<T> {
-    unsafe fn pointers(ptr: NonNull<Self>) -> NonNull<Pointers<Self>> {
-        ptr.cast()
-    }
-}
-
 pub(crate) unsafe trait Link {
     unsafe fn pointers(ptr: NonNull<Self>) -> NonNull<Pointers<Self>>;
 }

@@ -5,13 +5,14 @@ use std::mem::{ManuallyDrop, MaybeUninit};
 use std::pin::Pin;
 use std::ptr::{addr_of_mut, NonNull};
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 use std::task::{Context, Poll, Waker};
 
 use futures::future::FusedFuture;
 use futures::task::AtomicWaker;
 
 use crate::linked_list::{Link, Pointers};
-use crate::noop_waker;
+use crate::{noop_waker, Inner};
 
 pub const STATE_QUEUED: usize = 1;
 pub const STATE_RUNNING: usize = 1 << 1;
@@ -35,6 +36,7 @@ pub struct Header {
     pub state: AtomicUsize,
     pub layout: Layout,
     pub vtable: &'static Vtable,
+    pub executor: Arc<Inner>,
 }
 
 unsafe impl Link for Header {
@@ -67,9 +69,6 @@ where
     }
 
     unsafe fn drop(ptr: NonNull<()>) {
-        // Header doesn't need Drop.
-        assert!(!std::mem::needs_drop::<Header>());
-
         let this = unsafe { ptr.cast::<Self>().as_mut() };
         unsafe {
             ManuallyDrop::drop(&mut this.waker);
@@ -80,6 +79,11 @@ where
             unsafe {
                 this.output.assume_init_drop();
             }
+        }
+
+        // Drop the Header last.
+        unsafe {
+            core::ptr::drop_in_place(ptr.cast::<Header>().as_ptr());
         }
     }
 
@@ -152,6 +156,12 @@ impl RawTaskPtr {
         let offset = std::mem::size_of::<Header>();
         unsafe { self.ptr.as_ptr().cast::<u8>().add(offset) as *const AtomicWaker }
     }
+
+    pub unsafe fn from_ptr(ptr: *const ()) -> Self {
+        Self {
+            ptr: unsafe { NonNull::new_unchecked(ptr.cast_mut()) },
+        }
+    }
 }
 
 pub struct Task<T> {
@@ -161,7 +171,7 @@ pub struct Task<T> {
 }
 
 impl<T> Task<T> {
-    pub(crate) fn alloc_new<F>(future: F) -> RawTaskPtr
+    pub(crate) fn alloc_new<F>(future: F, executor: Arc<Inner>) -> RawTaskPtr
     where
         F: Future<Output = T>,
     {
@@ -180,6 +190,7 @@ impl<T> Task<T> {
                 },
                 layout,
                 pointers: Pointers::new(),
+                executor,
             },
             waker: ManuallyDrop::new(AtomicWaker::new()),
             future: ManuallyDrop::new(future),

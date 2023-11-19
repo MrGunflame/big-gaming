@@ -15,13 +15,13 @@ use std::task::{Poll, RawWaker, RawWakerVTable, Waker};
 use std::thread::JoinHandle;
 
 use crossbeam::deque::{Injector, Steal};
-use linked_list::{HeaderPointers, LinkedList};
+use linked_list::LinkedList;
 use park::Parker;
 use parking_lot::Mutex;
-use task::{Header, RawTaskPtr, STATE_CLOSED, STATE_DONE, TASK_REF};
+use task::{Header, RawTaskPtr};
 
 pub use task::Task;
-use waker::WakerData;
+use waker::waker_create;
 
 #[derive(Debug)]
 pub struct TaskPool {
@@ -65,7 +65,7 @@ impl TaskPool {
         F: Future<Output = T> + Send + 'static,
         T: Send,
     {
-        let task = Task::alloc_new(future);
+        let task = Task::alloc_new(future, self.inner.clone());
         unsafe {
             self.inner.tasks.lock().push_back(task.header());
         }
@@ -157,7 +157,7 @@ fn spawn_worker_thread(inner: Arc<Inner>) -> JoinHandle<()> {
 
         let poll_fn = unsafe { task.as_ptr().cast::<Header>().as_ref().vtable.poll };
 
-        let waker = WakerData::new(task, inner.clone());
+        let waker = unsafe { Waker::from_raw(waker_create(task.as_ptr())) };
         match unsafe { poll_fn(task.as_ptr(), &waker as *const Waker) } {
             Poll::Pending => {}
             Poll::Ready(()) => {
