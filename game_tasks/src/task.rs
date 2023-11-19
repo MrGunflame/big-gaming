@@ -30,7 +30,7 @@ pub const STATE_MASK: usize = STATE_QUEUED | STATE_RUNNING | STATE_DONE | STATE_
 ///
 /// In the initial state the task is `QUEUED` and two handles to it exist (one from the executor)
 /// and one from the task handle.
-const INITIAL_STATE: usize = STATE_QUEUED | REF_COUNT * 2;
+const INITIAL_STATE: usize = STATE_QUEUED | (REF_COUNT * 2);
 
 #[derive(Debug)]
 struct Vtable {
@@ -49,7 +49,7 @@ pub(crate) struct Header {
     state: AtomicUsize,
     layout: Layout,
     vtable: &'static Vtable,
-    pub(crate) executor: Arc<Inner>,
+    executor: Arc<Inner>,
 }
 
 unsafe impl Link for Header {
@@ -217,6 +217,12 @@ impl RawTaskPtr {
         }
     }
 
+    pub(crate) unsafe fn schedule(self) {
+        unsafe {
+            self.header().as_ref().executor.queue.push(self);
+        }
+    }
+
     /// Reads the final output value.
     ///
     /// # Safety
@@ -254,7 +260,7 @@ impl<T> Task<T> {
         let layout = Layout::new::<RawTask<T, F>>();
 
         let ptr = unsafe { alloc::alloc::alloc(layout) as *mut RawTask<T, F> };
-        if ptr == core::ptr::null_mut() {
+        if ptr.is_null() {
             alloc::alloc::handle_alloc_error(layout);
         }
 
@@ -294,7 +300,7 @@ impl<T> Task<T> {
         let header = unsafe { header.as_ref() };
 
         match state & STATE_MASK {
-            STATE_QUEUED | STATE_RUNNING => return Poll::Pending,
+            STATE_QUEUED | STATE_RUNNING => Poll::Pending,
             // The future is done and we can read the final output value.
             STATE_DONE => {
                 loop {
@@ -322,11 +328,16 @@ impl<T> Task<T> {
                 }
 
                 let output: T = unsafe { self.ptr.read_output() };
-                return Poll::Ready(output);
+                Poll::Ready(output)
             }
             STATE_CLOSED => {
-                // Value already taken.
-                panic!()
+                #[inline(never)]
+                #[cold]
+                fn panic_value_consumed() -> ! {
+                    panic!("`Task` was polled after the future completed");
+                }
+
+                panic_value_consumed();
             }
             _ => unreachable!(),
         }
@@ -376,12 +387,14 @@ impl<T> Unpin for Task<T> {}
 impl<T> Future for Task<T> {
     type Output = T;
 
+    #[inline]
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         self.poll_inner(cx)
     }
 }
 
 impl<T> FusedFuture for Task<T> {
+    #[inline]
     fn is_terminated(&self) -> bool {
         let header = self.ptr.header();
         let state = unsafe { header.as_ref().state.load(Ordering::Acquire) };

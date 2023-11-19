@@ -7,7 +7,6 @@ mod loom;
 mod task;
 mod waker;
 
-use std::alloc::Layout;
 use std::future::Future;
 use std::marker::PhantomData;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -215,7 +214,7 @@ mod tests {
     use std::pin::Pin;
     use std::task::{Context, Poll};
 
-    use futures::future::{self, poll_fn};
+    use futures::future::poll_fn;
 
     use crate::{noop_waker, TaskPool};
 
