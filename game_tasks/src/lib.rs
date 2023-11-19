@@ -76,29 +76,6 @@ impl TaskPool {
         }
     }
 
-    pub fn update(&self) {
-        // let mut tasks = self.inner.tasks.lock();
-
-        // let mut index = 0;
-        // while index < tasks.len() {
-        //     let task = tasks[index];
-        //     let header = unsafe { &*task.header() };
-        //     let state = header.state.load(Ordering::Acquire);
-
-        //     // Task is done, but has no associated `Task` handle.
-        //     if state & TASK_REF == 0 && state & (STATE_DONE | STATE_CLOSED) != 0 {
-        //         let drop_fn = header.vtable.drop;
-        //         unsafe { drop_fn(task.as_ptr()) };
-        //         unsafe { task::dealloc_task(task.as_ptr()) };
-
-        //         tasks.remove(index);
-        //         continue;
-        //     }
-
-        //     index += 1;
-        // }
-    }
-
     /// Drops all tasks.
     fn drop_tasks(&mut self) {
         let mut tasks = self.inner.tasks.lock();
