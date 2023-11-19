@@ -14,13 +14,21 @@ use futures::task::AtomicWaker;
 use crate::linked_list::{Link, Pointers};
 use crate::{noop_waker, Inner};
 
-pub const STATE_QUEUED: usize = 1;
-pub const STATE_RUNNING: usize = 1 << 1;
-pub const STATE_DONE: usize = 1 << 2;
-pub const STATE_CLOSED: usize = 1 << 3;
+// The first two bits are used for reference counting. We need at most
+// 2 references to the task.
+pub const REF_COUNT: usize = 1;
+pub const REF_COUNT_MASK: usize = (1 << 2) - 1;
 
-/// [`Task`] reference to this task exists.
-pub const TASK_REF: usize = 1 << 4;
+pub const STATE_QUEUED: usize = 1 << 2;
+pub const STATE_RUNNING: usize = 1 << 3;
+pub const STATE_DONE: usize = 1 << 4;
+pub const STATE_CLOSED: usize = 1 << 5;
+
+/// The initial state of a [`RawTask`].
+///
+/// In the initial state the task is `QUEUED` and two handles to it exist (one from the executor)
+/// and one from the task handle.
+const INITIAL_STATE: usize = STATE_QUEUED | REF_COUNT * 2;
 
 #[derive(Debug)]
 pub struct Vtable {
@@ -162,6 +170,34 @@ impl RawTaskPtr {
             ptr: unsafe { NonNull::new_unchecked(ptr.cast_mut()) },
         }
     }
+
+    /// Decrements the ref count. If the last ref count is dropped the task deallocated and this
+    /// `RawTaskPtr` becomes dangling.
+    pub unsafe fn decrement_ref_count(self) {
+        let header = unsafe { self.header().as_ref() };
+
+        // We need to synchronize with the other thread if we are going
+        // to deallocate the task.
+        // Note that masking for the reference count bits is necessary since
+        // state can still contain other flags.
+        if header.state.fetch_sub(REF_COUNT, Ordering::Release) & REF_COUNT_MASK != REF_COUNT {
+            return;
+        }
+
+        // This fence is required to prevent reordering of the use of the task
+        // (from another thread) and us deleting the task. Because the previous
+        // decrement of the reference count is using `Release` ordering, this
+        // `Acquire` will synchronize with with the store, causing any data
+        // access to happen before the deletion of the task.
+        header.state.load(Ordering::Acquire);
+
+        // We now have exclusive access to the data in the `RawTask` and
+        // can safely drop it and deallocate the memory.
+        unsafe {
+            (header.vtable.drop)(self.ptr);
+            dealloc_task(self.ptr);
+        }
+    }
 }
 
 pub struct Task<T> {
@@ -182,7 +218,7 @@ impl<T> Task<T> {
 
         let task = RawTask {
             header: Header {
-                state: AtomicUsize::new(STATE_QUEUED | TASK_REF),
+                state: AtomicUsize::new(INITIAL_STATE),
                 vtable: &Vtable {
                     poll: RawTask::<T, F>::poll,
                     drop: RawTask::<T, F>::drop,
@@ -257,16 +293,9 @@ impl<T> Task<T> {
     }
 
     fn detach(&self) {
-        let header = unsafe { self.ptr.header().as_ref() };
-        let state = header.state.load(Ordering::Acquire);
-
-        // Remove the `TASK_REF` flag.
-        debug_assert!(state & TASK_REF != 0);
-        while header
-            .state
-            .compare_exchange_weak(state, state & !TASK_REF, Ordering::SeqCst, Ordering::SeqCst)
-            .is_err()
-        {}
+        unsafe {
+            self.ptr.decrement_ref_count();
+        }
     }
 
     pub fn get_output(&mut self) -> Option<T> {

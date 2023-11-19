@@ -107,13 +107,15 @@ impl TaskPool {
         let mut tasks = self.inner.tasks.lock();
 
         while let Some(ptr) = tasks.head() {
-            let header = unsafe { ptr.as_ref() };
-
             unsafe {
                 tasks.remove(ptr);
 
-                (header.vtable.drop)(ptr.cast());
-                task::dealloc_task(ptr.cast());
+                // At this point it is possible that an `Task` handle still exists
+                // for this task. We cannot directly delete the task object from
+                // here. Instead we decrement the reference count which will cause
+                // the object to be deleted once the `Task` handle is dropped.
+                let task = RawTaskPtr::from_ptr(ptr.cast().as_ptr());
+                task.decrement_ref_count();
             }
         }
     }
@@ -275,5 +277,18 @@ mod tests {
         });
 
         futures::executor::block_on(task);
+    }
+
+    #[test]
+    fn spawn_then_drop() {
+        let executor = TaskPool::new(1);
+        let mut tasks = Vec::new();
+        for _ in 0..1024 {
+            let task = executor.spawn(poll_fn(|_| Poll::<()>::Pending));
+            tasks.push(task);
+        }
+
+        drop(executor);
+        drop(tasks);
     }
 }
