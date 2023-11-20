@@ -34,6 +34,7 @@ const INITIAL_STATE: usize = STATE_QUEUED | (REF_COUNT * 2);
 struct Vtable {
     poll: unsafe fn(NonNull<()>, *const Waker) -> Poll<()>,
     drop: unsafe fn(NonNull<()>),
+    layout: Layout,
 }
 
 #[derive(Debug)]
@@ -45,7 +46,6 @@ pub(crate) struct Header {
     // `*const Pointers`.
     pointers: Pointers<Header>,
     state: AtomicUsize,
-    layout: Layout,
     vtable: &'static Vtable,
     executor: Arc<Inner>,
 }
@@ -72,6 +72,8 @@ impl<T, F> RawTask<T, F>
 where
     F: Future<Output = T>,
 {
+    const LAYOUT: Layout = Layout::new::<Self>();
+
     unsafe fn drop(ptr: NonNull<()>) {
         let this = unsafe { ptr.cast::<Self>().as_mut() };
 
@@ -265,7 +267,7 @@ impl<T> Task<T> {
     where
         F: Future<Output = T>,
     {
-        let layout = Layout::new::<RawTask<T, F>>();
+        let layout = <RawTask<T, F>>::LAYOUT;
 
         let ptr = unsafe { alloc::alloc::alloc(layout) as *mut RawTask<T, F> };
         if ptr.is_null() {
@@ -278,8 +280,8 @@ impl<T> Task<T> {
                 vtable: &Vtable {
                     poll: RawTask::<T, F>::poll,
                     drop: RawTask::<T, F>::drop,
+                    layout: RawTask::<T, F>::LAYOUT,
                 },
-                layout,
                 pointers: Pointers::new(),
                 executor,
             },
@@ -419,7 +421,7 @@ impl<T> Drop for Task<T> {
 }
 
 unsafe fn dealloc_task(ptr: NonNull<()>) {
-    let layout = unsafe { (*(ptr.as_ptr() as *const Header)).layout };
+    let layout = unsafe { (*(ptr.as_ptr() as *const Header)).vtable.layout };
 
     unsafe { alloc::alloc::dealloc(ptr.as_ptr() as *mut u8, layout) };
 }
