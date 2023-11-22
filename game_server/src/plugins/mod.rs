@@ -9,7 +9,6 @@ use game_common::components::inventory::Inventory;
 use game_common::components::items::Item;
 use game_common::entity::EntityId;
 use game_common::events::{ActionEvent, Event, EventQueue};
-use game_common::net::ServerEntity;
 use game_common::units::Mass;
 use game_common::world::control_frame::ControlFrame;
 use game_common::world::entity::EntityBody;
@@ -18,7 +17,6 @@ use game_common::world::source::StreamingSource;
 use game_common::world::world::{AsView, WorldState, WorldViewMut, WorldViewRef};
 use game_common::world::CellId;
 use game_core::modules::Modules;
-use game_data::components::item;
 use game_net::message::{
     ControlMessage, DataMessage, DataMessageBody, EntityComponentAdd, EntityComponentRemove,
     EntityComponentUpdate, EntityCreate, EntityDestroy, EntityRotate, EntityTranslate,
@@ -31,7 +29,7 @@ use game_script::Context;
 use crate::conn::{Connection, Connections};
 use crate::net::state::{Cells, ConnectionState};
 use crate::world::player::spawn_player;
-use crate::{server, ServerState};
+use crate::ServerState;
 
 // All systems need to run sequentially.
 pub fn tick(state: &mut ServerState) {
@@ -120,7 +118,7 @@ fn apply_effects(effects: Effects, view: &mut WorldViewMut<'_>) {
                     .copied()
                     .unwrap_or(slot_id);
 
-                view.inventory_component_insert(id, slot_id, component, data);
+                view.inventory_component_insert(entity_id, slot_id, component, data);
             }
             Effect::InventoryComponentRemove(id, slot_id, component) => {
                 let entity_id = entity_id_remap.get(&id).copied().unwrap_or(id);
@@ -129,9 +127,29 @@ fn apply_effects(effects: Effects, view: &mut WorldViewMut<'_>) {
                     .copied()
                     .unwrap_or(slot_id);
 
-                view.inventory_component_remove(id, slot_id, component);
+                view.inventory_component_remove(entity_id, slot_id, component);
             }
-            _ => todo!(),
+            Effect::InventoryClear(entity_id) => {
+                let entity_id = entity_id_remap
+                    .get(&entity_id)
+                    .copied()
+                    .unwrap_or(entity_id);
+
+                view.inventories_mut().get_mut(entity_id).unwrap().clear();
+            }
+            Effect::EntityComponentInsert(entity_id, component, data) => {
+                let entity_id = entity_id_remap
+                    .get(&entity_id)
+                    .copied()
+                    .unwrap_or(entity_id);
+
+                view.get_mut(entity_id)
+                    .unwrap()
+                    .insert_component(component, Component { bytes: data });
+            }
+            Effect::EntityComponentRemove(entity_id, component) => {
+                view.get_mut(entity_id).unwrap().remove_component(component);
+            }
         }
     }
 }

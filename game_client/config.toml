@@ -1,5 +1,5 @@
 timestep = 60
 
 [network]
-interpolation_frames = 12
+interpolation_frames = 1
 prediction = true

@@ -334,6 +334,11 @@ impl EntityBuilder {
         self
     }
 
+    pub fn component(mut self, id: RecordReference, component: Component) -> Self {
+        self.components.insert(id, component);
+        self
+    }
+
     /// Spawns this entity.
     pub fn spawn(&self) -> Result<EntityId, Error> {
         let mut entity_id = MaybeUninit::uninit();
