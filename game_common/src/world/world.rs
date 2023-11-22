@@ -1191,6 +1191,8 @@ mod tests {
             }),
             components: Components::new(),
             is_host: false,
+            angvel: Vec3::ZERO,
+            linvel: Vec3::ZERO,
         });
 
         assert!(view.get(id).is_some());
@@ -1223,6 +1225,8 @@ mod tests {
             }),
             components: Components::new(),
             is_host: false,
+            angvel: Vec3::ZERO,
+            linvel: Vec3::ZERO,
         });
 
         drop(view);
@@ -1297,6 +1301,8 @@ mod tests {
             }),
             components: Components::new(),
             is_host: false,
+            angvel: Vec3::ZERO,
+            linvel: Vec3::ZERO,
         }
     }
 

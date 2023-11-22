@@ -283,6 +283,8 @@ pub struct EntityBuilder {
     kind: RawEntityKind,
     body: EntityBody,
     components: Components,
+    linvel: Vec3,
+    angvel: Vec3,
 }
 
 impl EntityBuilder {
@@ -302,6 +304,8 @@ impl EntityBuilder {
             components: record.components,
             kind,
             body,
+            linvel: Vec3::ZERO,
+            angvel: Vec3::ZERO,
         }
     }
 
@@ -316,6 +320,8 @@ impl EntityBuilder {
             kind: entity.kind(),
             body: entity.body(),
             components: Components::new(),
+            linvel: Vec3::ZERO,
+            angvel: Vec3::ZERO,
         }
     }
 
@@ -339,6 +345,16 @@ impl EntityBuilder {
         self
     }
 
+    pub fn linvel(mut self, linvel: Vec3) -> Self {
+        self.linvel = linvel;
+        self
+    }
+
+    pub fn angvel(mut self, angvel: Vec3) -> Self {
+        self.angvel = angvel;
+        self
+    }
+
     /// Spawns this entity.
     pub fn spawn(&self) -> Result<EntityId, Error> {
         let mut entity_id = MaybeUninit::uninit();
@@ -350,6 +366,8 @@ impl EntityBuilder {
             scale: self.scale.to_array(),
             kind: self.kind,
             body: self.body,
+            linvel: self.linvel.to_array(),
+            angvel: self.angvel.to_array(),
         };
 
         let res = unsafe {

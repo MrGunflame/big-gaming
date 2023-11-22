@@ -18,7 +18,7 @@ use game_net::message::{DataMessageBody, EntityAction, EntityRotate};
 use game_net::peer_error;
 use game_script::executor::ScriptExecutor;
 use game_tracing::trace_span;
-use glam::Quat;
+use glam::{Quat, Vec3};
 
 use crate::config::Config;
 use crate::net::world::{Command, CommandBuffer};
@@ -512,6 +512,8 @@ fn spawn_entity(id: RecordReference, transform: Transform, modules: &Modules) ->
         body,
         components,
         is_host: false,
+        linvel: Vec3::ZERO,
+        angvel: Vec3::ZERO,
     })
 }
 

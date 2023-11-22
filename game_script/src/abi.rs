@@ -3,7 +3,6 @@
 use std::convert::Infallible;
 
 use bytemuck::cast;
-use game_common::components::actions::Actions;
 use game_common::components::components::Components;
 use game_common::components::items::{Item as HostItem, ItemId, ItemStack as HostItemStack};
 use game_common::components::transform::Transform;
@@ -60,6 +59,8 @@ impl ToAbi for HostEntity {
                     item: cast(item.id.0),
                 },
             },
+            linvel: self.linvel.to_array(),
+            angvel: self.angvel.to_array(),
         }
     }
 }
@@ -124,6 +125,8 @@ impl FromAbi for GuestEntity {
             body,
             components: Components::new(),
             is_host: false,
+            angvel: Vec3::ZERO,
+            linvel: Vec3::ZERO,
         })
     }
 }

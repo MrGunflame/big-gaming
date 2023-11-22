@@ -67,6 +67,8 @@ pub struct Entity {
     pub translation: [f32; 3],
     pub rotation: [f32; 4],
     pub scale: [f32; 3],
+    pub linvel: [f32; 3],
+    pub angvel: [f32; 3],
     pub kind: EntityKind,
     pub body: EntityBody,
 }

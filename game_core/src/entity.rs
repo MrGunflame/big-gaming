@@ -7,6 +7,7 @@ use game_common::record::RecordReference;
 use game_common::world::entity::{Actor, Entity, EntityBody, Object};
 use game_common::world::world::WorldViewMut;
 use game_data::record::RecordBody;
+use glam::Vec3;
 
 use crate::modules::Modules;
 
@@ -55,6 +56,8 @@ impl SpawnEntity {
             body,
             is_host: self.is_host,
             components,
+            angvel: Vec3::ZERO,
+            linvel: Vec3::ZERO,
         }))
     }
 }

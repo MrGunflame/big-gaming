@@ -18,6 +18,8 @@ pub struct Entity {
     pub body: EntityBody,
     pub components: Components,
     pub is_host: bool,
+    pub angvel: Vec3,
+    pub linvel: Vec3,
 }
 
 impl Entity {
@@ -283,6 +285,8 @@ impl ObjectBuilder {
             body: EntityBody::Object(self.object),
             components: Components::new(),
             is_host: false,
+            angvel: Vec3::ZERO,
+            linvel: Vec3::ZERO,
         }
     }
 }
@@ -302,6 +306,8 @@ impl From<Terrain> for Entity {
             body: EntityBody::Terrain(value),
             components: Components::new(),
             is_host: false,
+            angvel: Vec3::ZERO,
+            linvel: Vec3::ZERO,
         }
     }
 }

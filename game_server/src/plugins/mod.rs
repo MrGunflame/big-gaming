@@ -991,6 +991,8 @@ mod tests {
             }),
             components: Default::default(),
             is_host: false,
+            linvel: Vec3::ZERO,
+            angvel: Vec3::ZERO,
         }
     }
 

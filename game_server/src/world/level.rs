@@ -10,6 +10,7 @@ use game_common::world::gen::{CellBuilder, EntityBuilder, Generator};
 use game_common::world::CellId;
 use game_core::modules::Modules;
 use game_data::record::RecordBody;
+use glam::Vec3;
 
 use crate::ServerState;
 
@@ -99,6 +100,8 @@ fn build_entity(modules: &Modules, cell: CellId, builder: EntityBuilder) -> Opti
             body: EntityBody::Terrain(terrain),
             components: Components::new(),
             is_host: false,
+            angvel: Vec3::ZERO,
+            linvel: Vec3::ZERO,
         });
     }
 
@@ -186,5 +189,7 @@ fn build_entity(modules: &Modules, cell: CellId, builder: EntityBuilder) -> Opti
         components,
         body,
         is_host: false,
+        angvel: builder.angvel,
+        linvel: builder.linvel,
     })
 }

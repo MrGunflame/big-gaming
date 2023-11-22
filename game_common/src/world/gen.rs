@@ -73,6 +73,8 @@ pub struct EntityBuilder {
     pub transform: Transform,
     pub components: Components,
     pub terrain: Option<Terrain>,
+    pub linvel: Vec3,
+    pub angvel: Vec3,
 }
 
 impl EntityBuilder {
@@ -82,6 +84,8 @@ impl EntityBuilder {
             transform: Transform::default(),
             components: Components::new(),
             terrain: None,
+            linvel: Vec3::ZERO,
+            angvel: Vec3::ZERO,
         }
     }
 
