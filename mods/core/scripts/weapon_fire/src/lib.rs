@@ -1,11 +1,12 @@
 #![no_std]
 
+use game_wasm::component::Component;
 use game_wasm::entity::EntityId;
 use game_wasm::events::on_action;
 use game_wasm::inventory::Inventory;
 use game_wasm::world::{Entity, EntityBuilder, RecordReference};
-use shared::components::{AMMO, GUN_PROPERTIES};
-use shared::{panic_handler, Ammo, GunProperties};
+use shared::components::{AMMO, GUN_PROPERTIES, PROJECTILE_PROPERTIES};
+use shared::{panic_handler, Ammo, GunProperties, ProjectileProperties};
 
 panic_handler!();
 
@@ -32,17 +33,21 @@ fn on_action(invoker: EntityId) {
 
         if has_ammo {
             stack.components().insert(AMMO, &ammo).unwrap();
-            build_projectile(invoker, properties.projectile);
+            build_projectile(invoker, properties.projectile, properties.damage);
         }
     }
 }
 
-fn build_projectile(invoker: EntityId, projectile: RecordReference) {
+fn build_projectile(invoker: EntityId, projectile: RecordReference, damage: f32) {
     let actor = Entity::get(invoker).unwrap();
+
+    let mut props = Component::default();
+    props.write(ProjectileProperties { damage });
 
     EntityBuilder::from_record(projectile)
         .translation(actor.translation())
         .rotation(actor.rotation())
+        .component(PROJECTILE_PROPERTIES, props)
         .spawn()
         .unwrap();
 }

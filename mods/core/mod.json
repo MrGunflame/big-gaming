@@ -80,6 +80,16 @@
                 "id": "0c",
                 "name": "Ammo",
                 "description": ""
+            },
+            {
+                "id": "13",
+                "name": "Health",
+                "description": ""
+            },
+            {
+                "id": "14",
+                "name": "Projectile Props",
+                "description": ""
             }
         ],
         "races": [

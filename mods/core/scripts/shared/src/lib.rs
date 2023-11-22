@@ -98,6 +98,16 @@ impl Ammo {
     }
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Zeroable, Pod)]
+#[repr(transparent)]
+pub struct Health(pub f32);
+
+#[derive(Copy, Clone, Debug, Zeroable, Pod)]
+#[repr(C)]
+pub struct ProjectileProperties {
+    pub damage: f32,
+}
+
 pub mod components {
     use game_wasm::record::{ModuleId, RecordId};
     use game_wasm::world::RecordReference;
@@ -117,6 +127,16 @@ pub mod components {
     pub const AMMO: RecordReference = RecordReference {
         module: MODULE,
         record: RecordId(0xc),
+    };
+
+    pub const HEALTH: RecordReference = RecordReference {
+        module: MODULE,
+        record: RecordId(0x13),
+    };
+
+    pub const PROJECTILE_PROPERTIES: RecordReference = RecordReference {
+        module: MODULE,
+        record: RecordId(0x14),
     };
 }
 
