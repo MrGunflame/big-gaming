@@ -86,8 +86,15 @@ pub struct GunProperties {
 pub struct Ammo(pub u32);
 
 impl Ammo {
+    #[inline]
     pub fn try_decrement(&mut self) -> bool {
-        self.0.checked_sub(1).is_some()
+        match self.0.checked_sub(1) {
+            Some(val) => {
+                self.0 = val;
+                true
+            }
+            None => false,
+        }
     }
 }
 

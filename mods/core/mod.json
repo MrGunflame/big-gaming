@@ -193,7 +193,7 @@
             {
                 "id": "12",
                 "name": "Projectile",
-                "model": "",
+                "model": "assets/wall.glb",
                 "description": ""
             }
         ]
