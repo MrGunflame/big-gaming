@@ -1,5 +1,6 @@
 mod loader;
 mod model;
+mod scene2;
 
 pub mod scene;
 
