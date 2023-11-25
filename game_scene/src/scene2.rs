@@ -45,6 +45,8 @@ impl SceneGraph {
     }
 
     pub fn append(&mut self, parent: Option<Key>, node: Node) -> Key {
+        let transform = node.transform;
+
         let key = Key(self.nodes.insert(node));
         self.added_nodes.push(key);
 
@@ -55,11 +57,14 @@ impl SceneGraph {
             self.children.entry(parent).or_default().push(key);
         }
 
+        self.global_transform.insert(key, transform);
+
         key
     }
 
     pub fn remove(&mut self, key: Key) {
         self.nodes.remove(key.0);
+        self.global_transform.remove(&key);
         self.removed_nodes.push(key);
 
         if let Some(parent) = self.parents.remove(key.0) {
