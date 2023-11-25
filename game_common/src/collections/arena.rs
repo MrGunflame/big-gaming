@@ -237,6 +237,13 @@ impl<'a, T> IntoIterator for &'a mut Arena<T> {
     }
 }
 
+impl<T> Default for Arena<T> {
+    #[inline]
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[derive(Clone, Debug)]
 enum Entry<T> {
     Occupied(OccupiedEntry<T>),

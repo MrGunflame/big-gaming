@@ -5,9 +5,11 @@ use game_render::color::Color;
 use game_render::entities::CameraId;
 use game_render::light::PointLight;
 use game_render::Renderer;
-use game_scene::Scenes;
+use game_scene::scene2::{Node, NodeBody};
 use game_window::windows::WindowId;
 use glam::Vec3;
+
+use crate::scene::SceneState;
 
 #[derive(Debug)]
 pub struct MainMenuState {
@@ -16,7 +18,7 @@ pub struct MainMenuState {
 
 impl MainMenuState {
     pub fn new(
-        scenes: &mut Scenes,
+        scenes: &mut SceneState,
         renderer: &mut Renderer,
         window_id: WindowId,
         hierarchy: &mut TransformHierarchy,
@@ -30,8 +32,14 @@ impl MainMenuState {
             target: RenderTarget::Window(window_id),
         });
 
-        let entity = hierarchy.append(None, Transform::default());
-        scenes.load(entity, "sponza.model");
+        let key = scenes.graph.append(
+            None,
+            Node {
+                transform: Transform::default(),
+                body: NodeBody::None,
+            },
+        );
+        scenes.spawner.spawn(key, "sponza.model");
 
         renderer.entities.point_lights.insert(PointLight {
             transform: Transform {
