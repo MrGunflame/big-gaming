@@ -97,17 +97,24 @@ struct WindowManagerState {
 pub(crate) enum Backend {
     #[default]
     Unknown,
+    #[cfg(target_family = "unix")]
     X11,
+    #[cfg(target_family = "unix")]
     Wayland,
-    #[cfg_attr(not(feature_family = "windows"), allow(dead_code))]
+    #[cfg(target_family = "windows")]
     Windows,
 }
 
 impl Backend {
     pub(crate) const fn supports_locked_cursor(self) -> bool {
         match self {
-            Self::Unknown | Self::Wayland => true,
-            Self::X11 | Self::Windows => false,
+            Self::Unknown => true,
+            #[cfg(target_family = "unix")]
+            Self::Wayland => true,
+            #[cfg(target_family = "unix")]
+            Self::X11 => false,
+            #[cfg(target_family = "windows")]
+            Self::Windows => false,
         }
     }
 }
