@@ -1,17 +1,16 @@
 use std::collections::HashMap;
 
 use game_common::components::transform::Transform;
-use game_core::hierarchy::{Entity, Hierarchy, TransformHierarchy};
+use game_core::hierarchy::Hierarchy;
 use game_render::color::Color;
 use game_render::entities::Object;
-use game_render::light::{DirectionalLight, PointLight, SpotLight};
 use game_render::mesh::Mesh;
 use game_render::pbr::{AlphaMode, PbrMaterial};
 use game_render::texture::Image;
 use game_render::{shape, Renderer};
 use game_tracing::trace_span;
 
-use super::Entities;
+use crate::scene2::{self, Key, MeshInstance, SceneGraph};
 
 #[derive(Clone, Debug, Default)]
 pub struct Scene {
@@ -31,9 +30,9 @@ pub struct Node {
 pub enum NodeBody {
     Empty,
     Object(ObjectNode),
-    DirectionalLight(DirectionalLightNode),
-    PointLight(PointLightNode),
-    SpotLight(SpotLightNode),
+    DirectionalLight(crate::scene2::DirectionalLight),
+    PointLight(crate::scene2::PointLight),
+    SpotLight(crate::scene2::SpotLight),
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -42,36 +41,8 @@ pub struct ObjectNode {
     pub material: usize,
 }
 
-#[derive(Copy, Clone, Debug)]
-pub struct DirectionalLightNode {
-    pub color: Color,
-    pub illuminance: f32,
-}
-
-#[derive(Copy, Clone, Debug)]
-pub struct PointLightNode {
-    pub color: Color,
-    pub intensity: f32,
-    pub radius: f32,
-}
-
-#[derive(Copy, Clone, Debug)]
-pub struct SpotLightNode {
-    pub color: Color,
-    pub intensity: f32,
-    pub radius: f32,
-    pub inner_cutoff: f32,
-    pub outer_cutoff: f32,
-}
-
 impl Scene {
-    pub(crate) fn spawn(
-        self,
-        renderer: &mut Renderer,
-        parent: Entity,
-        hierarchy: &mut TransformHierarchy,
-        entities: &mut Entities,
-    ) -> Vec<Entity> {
+    pub(crate) fn spawn(self, renderer: &mut Renderer, parent: Key, graph: &mut SceneGraph) {
         let _span = trace_span!("Scene::spawn").entered();
 
         let mut meshes = Vec::new();
@@ -112,61 +83,29 @@ impl Scene {
                 continue;
             }
 
-            let entity = hierarchy.append(Some(parent), node.transform);
+            let entity = graph.append(
+                Some(parent),
+                crate::scene2::Node {
+                    transform: node.transform,
+                    body: match node.body {
+                        NodeBody::Empty => scene2::NodeBody::None,
+                        NodeBody::Object(obj) => scene2::NodeBody::MeshInstance(MeshInstance {
+                            mesh: meshes[obj.mesh],
+                            material: materials[obj.material],
+                        }),
+                        NodeBody::DirectionalLight(light) => {
+                            scene2::NodeBody::DirectionalLight(light)
+                        }
+                        NodeBody::PointLight(light) => scene2::NodeBody::PointLight(light),
+                        NodeBody::SpotLight(light) => scene2::NodeBody::SpotLight(light),
+                    },
+                },
+            );
             if let Some(children) = self.nodes.children(key) {
                 for (child, _) in children {
                     parents.insert(child, entity);
                 }
             }
-
-            match node.body {
-                NodeBody::Object(object) => {
-                    let id = renderer.entities.objects.insert(Object {
-                        transform: node.transform,
-                        mesh: meshes[object.mesh],
-                        material: materials[object.material],
-                    });
-
-                    entities.objects.insert(entity, id);
-                }
-                NodeBody::DirectionalLight(light) => {
-                    let id = renderer
-                        .entities
-                        .directional_lights
-                        .insert(DirectionalLight {
-                            transform: node.transform,
-                            color: light.color,
-                            illuminance: light.illuminance,
-                        });
-
-                    entities.directional_lights.insert(entity, id);
-                }
-                NodeBody::PointLight(light) => {
-                    let id = renderer.entities.point_lights.insert(PointLight {
-                        transform: node.transform,
-                        color: light.color,
-                        intensity: light.intensity,
-                        radius: light.radius,
-                    });
-
-                    entities.point_lights.insert(entity, id);
-                }
-                NodeBody::SpotLight(light) => {
-                    let id = renderer.entities.spot_lights.insert(SpotLight {
-                        transform: node.transform,
-                        color: light.color,
-                        intensity: light.intensity,
-                        radius: light.radius,
-                        inner_cutoff: light.inner_cutoff,
-                        outer_cutoff: light.outer_cutoff,
-                    });
-
-                    entities.spot_lights.insert(entity, id);
-                }
-                NodeBody::Empty => (),
-            }
-
-            children.push(entity);
         }
 
         while !parents.is_empty() {
@@ -174,58 +113,28 @@ impl Scene {
                 let node = self.nodes.get(*child).unwrap();
                 parents.remove(child);
 
-                let entity = hierarchy.append(Some(*parent), node.transform);
+                let entity = graph.append(
+                    Some(*parent),
+                    crate::scene2::Node {
+                        transform: node.transform,
+                        body: match node.body {
+                            NodeBody::Empty => scene2::NodeBody::None,
+                            NodeBody::Object(obj) => scene2::NodeBody::MeshInstance(MeshInstance {
+                                mesh: meshes[obj.mesh],
+                                material: materials[obj.material],
+                            }),
+                            NodeBody::DirectionalLight(light) => {
+                                scene2::NodeBody::DirectionalLight(light)
+                            }
+                            NodeBody::PointLight(light) => scene2::NodeBody::PointLight(light),
+                            NodeBody::SpotLight(light) => scene2::NodeBody::SpotLight(light),
+                        },
+                    },
+                );
                 if let Some(children) = self.nodes.children(*child) {
                     for (child, _) in children {
                         parents.insert(child, entity);
                     }
-                }
-
-                match node.body {
-                    NodeBody::Object(object) => {
-                        let id = renderer.entities.objects.insert(Object {
-                            transform: node.transform,
-                            mesh: meshes[object.mesh],
-                            material: materials[object.material],
-                        });
-
-                        entities.objects.insert(entity, id);
-                    }
-                    NodeBody::DirectionalLight(light) => {
-                        let id = renderer
-                            .entities
-                            .directional_lights
-                            .insert(DirectionalLight {
-                                transform: node.transform,
-                                color: light.color,
-                                illuminance: light.illuminance,
-                            });
-
-                        entities.directional_lights.insert(entity, id);
-                    }
-                    NodeBody::PointLight(light) => {
-                        let id = renderer.entities.point_lights.insert(PointLight {
-                            transform: node.transform,
-                            color: light.color,
-                            intensity: light.intensity,
-                            radius: light.radius,
-                        });
-
-                        entities.point_lights.insert(entity, id);
-                    }
-                    NodeBody::SpotLight(light) => {
-                        let id = renderer.entities.spot_lights.insert(SpotLight {
-                            transform: node.transform,
-                            color: light.color,
-                            intensity: light.intensity,
-                            radius: light.radius,
-                            inner_cutoff: light.inner_cutoff,
-                            outer_cutoff: light.outer_cutoff,
-                        });
-
-                        entities.spot_lights.insert(entity, id);
-                    }
-                    NodeBody::Empty => (),
                 }
 
                 children.push(entity);
@@ -277,8 +186,6 @@ impl Scene {
                 }),
             });
         }
-
-        children
     }
 }
 

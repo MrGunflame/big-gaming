@@ -5,27 +5,22 @@ mod node;
 pub mod spawn_entity;
 
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::f32::consts::{E, PI};
 use std::sync::mpsc;
 
 use bitflags::bitflags;
 use game_common::components::transform::Transform;
 use game_common::record::RecordReference;
-use game_core::hierarchy::{Entity, Hierarchy, Key, TransformHierarchy};
+use game_core::hierarchy::{Hierarchy, Key};
 use game_data::record::Record;
 use game_input::keyboard::KeyCode;
 use game_input::mouse::{MouseButton, MouseMotion, MouseWheel};
 use game_input::ButtonState;
 use game_render::camera::{Camera, RenderTarget};
 use game_render::color::Color;
-use game_render::entities::{CameraId, DirectionalLightId};
-use game_render::light::{PointLight, SpotLight};
+use game_render::entities::CameraId;
 use game_render::{shape, Renderer};
-use game_scene::scene::{
-    DirectionalLightNode, Material, Node, NodeBody, ObjectNode, PointLightNode, Scene,
-    SpotLightNode,
-};
-use game_scene::Scenes;
+use game_scene::scene::{Material, Node, NodeBody, ObjectNode, Scene};
+use game_scene::scene2::{DirectionalLight, PointLight, SpotLight};
 use game_ui::reactive::{ReadSignal, Scope, WriteSignal};
 use game_ui::style::{
     Background, BorderRadius, Bounds, Direction, Growth, Justify, Size, SizeVec2, Style,
@@ -35,8 +30,8 @@ use game_window::events::WindowEvent;
 use game_window::windows::WindowId;
 use glam::{Quat, Vec2, Vec3};
 
+use crate::scene::SceneState;
 use crate::state::EditorState;
-use crate::widgets::area::Area;
 use crate::windows::world::node::NodeKind;
 use crate::world::selection;
 
@@ -53,10 +48,9 @@ pub struct WorldWindowState {
     // TODO: Use `Cursor` instead of adding our own thing.
     cursor: Vec2,
     state: State,
-    directional_lights: HashMap<Key, DirectionalLightId>,
     edit_op: EditOperation,
     /// Map nodes to rendered entities.
-    node_map: HashMap<Key, Entity>,
+    node_map: HashMap<Key, game_scene::scene2::Key>,
 }
 
 impl WorldWindowState {
@@ -64,8 +58,7 @@ impl WorldWindowState {
         state: State,
         renderer: &mut Renderer,
         window_id: WindowId,
-        scenes: &mut Scenes,
-        hierarchy: &mut TransformHierarchy,
+        scenes: &mut SceneState,
     ) -> Self {
         let camera = renderer.entities.cameras.insert(Camera {
             projection: Default::default(),
@@ -86,9 +79,11 @@ impl WorldWindowState {
         //     color: Color::WHITE,
         // });
 
-        let plane = hierarchy.append(None, Transform::default());
-
-        scenes.insert(
+        let plane = scenes.graph.append(
+            None,
+            game_scene::scene2::Node::from_transform(Transform::default()),
+        );
+        scenes.spawner.insert(
             plane,
             Scene {
                 nodes: Node {
@@ -119,8 +114,11 @@ impl WorldWindowState {
         let mut node_map = HashMap::new();
         node_map.insert(key, plane);
 
-        let s = hierarchy.append(None, Transform::default());
-        scenes.load(s, "../../bistro.glb");
+        let s = scenes.graph.append(
+            None,
+            game_scene::scene2::Node::from_transform(Transform::default()),
+        );
+        scenes.spawner.spawn(s, "../../bistro.glb");
 
         Self {
             camera,
@@ -128,7 +126,6 @@ impl WorldWindowState {
             cursor: Vec2::ZERO,
             edit_op: EditOperation::new(),
             state,
-            directional_lights: HashMap::new(),
             node_map,
         }
     }
@@ -136,10 +133,9 @@ impl WorldWindowState {
     pub fn handle_event(
         &mut self,
         renderer: &mut Renderer,
-        scenes: &mut Scenes,
+        scenes: &mut SceneState,
         event: WindowEvent,
         window: WindowId,
-        hierarchy: &mut TransformHierarchy,
     ) {
         let mut camera = renderer.entities.cameras.get_mut(self.camera).unwrap();
 
@@ -159,7 +155,7 @@ impl WorldWindowState {
 
                 let c = camera.clone();
                 drop(camera);
-                self.update_edit_op(renderer, scenes, window, c, hierarchy);
+                self.update_edit_op(renderer, scenes, window, c);
             }
             WindowEvent::KeyboardInput(event) => {
                 if event.key_code == Some(KeyCode::LShift) {
@@ -223,20 +219,20 @@ impl WorldWindowState {
                 if event.state.is_pressed() && !self.state.selection.with(|v| v.is_empty()) {
                     match event.key_code {
                         Some(KeyCode::Escape) => {
-                            self.reset_edit_op(renderer, scenes, hierarchy);
+                            self.reset_edit_op(renderer, scenes);
                             self.edit_op.set_mode(EditMode::None);
                         }
                         Some(KeyCode::G) => {
                             self.edit_op.set_mode(EditMode::Translate(None));
-                            self.create_edit_op(renderer, scenes, hierarchy, window);
+                            self.create_edit_op(renderer, scenes, window);
                         }
                         Some(KeyCode::R) => {
                             self.edit_op.set_mode(EditMode::Rotate(None));
-                            self.create_edit_op(renderer, scenes, hierarchy, window);
+                            self.create_edit_op(renderer, scenes, window);
                         }
                         Some(KeyCode::S) => {
                             self.edit_op.set_mode(EditMode::Scale(None));
-                            self.create_edit_op(renderer, scenes, hierarchy, window);
+                            self.create_edit_op(renderer, scenes, window);
                         }
                         Some(KeyCode::X) => {
                             let mode = match self.edit_op.mode() {
@@ -249,7 +245,7 @@ impl WorldWindowState {
 
                             if self.edit_op.mode() != EditMode::None {
                                 let camera = camera.clone();
-                                self.update_edit_op(renderer, scenes, window, camera, hierarchy);
+                                self.update_edit_op(renderer, scenes, window, camera);
                             }
                         }
                         Some(KeyCode::Y) => {
@@ -263,7 +259,7 @@ impl WorldWindowState {
 
                             if self.edit_op.mode() != EditMode::None {
                                 let camera = camera.clone();
-                                self.update_edit_op(renderer, scenes, window, camera, hierarchy);
+                                self.update_edit_op(renderer, scenes, window, camera);
                             }
                         }
                         Some(KeyCode::Z) => {
@@ -277,7 +273,7 @@ impl WorldWindowState {
 
                             if self.edit_op.mode() != EditMode::None {
                                 let camera = camera.clone();
-                                self.update_edit_op(renderer, scenes, window, camera, hierarchy);
+                                self.update_edit_op(renderer, scenes, window, camera);
                             }
                         }
                         _ => (),
@@ -300,7 +296,7 @@ impl WorldWindowState {
                 MouseButton::Right => {
                     if self.edit_op.mode() != EditMode::None {
                         drop(camera);
-                        self.reset_edit_op(renderer, scenes, hierarchy);
+                        self.reset_edit_op(renderer, scenes);
                         self.edit_op.set_mode(EditMode::None);
                     }
                 }
@@ -314,7 +310,7 @@ impl WorldWindowState {
         }
     }
 
-    fn update_selection(&mut self, renderer: &mut Renderer, scenes: &mut Scenes, id: WindowId) {
+    fn update_selection(&mut self, renderer: &mut Renderer, scenes: &mut SceneState, id: WindowId) {
         let camera = renderer
             .entities
             .cameras
@@ -324,7 +320,7 @@ impl WorldWindowState {
         let viewport_size = renderer.get_surface_size(id).unwrap().as_vec2();
 
         for (node, entity) in self.node_map.iter() {
-            let Some(object) = scenes.objects(*entity).unwrap().nth(0) else {
+            let Some(object) = scenes.entities.mesh_instance(*entity) else {
                 continue;
             };
             let object = renderer.entities.objects.get(object).unwrap();
@@ -341,13 +337,7 @@ impl WorldWindowState {
         }
     }
 
-    fn create_edit_op(
-        &mut self,
-        renderer: &mut Renderer,
-        scenes: &mut Scenes,
-        hierarchy: &mut TransformHierarchy,
-        id: WindowId,
-    ) {
+    fn create_edit_op(&mut self, renderer: &mut Renderer, scenes: &mut SceneState, id: WindowId) {
         let camera = renderer
             .entities
             .cameras
@@ -374,10 +364,9 @@ impl WorldWindowState {
     fn update_edit_op(
         &mut self,
         renderer: &mut Renderer,
-        scenes: &mut Scenes,
+        scenes: &mut SceneState,
         window: WindowId,
         camera: Camera,
-        hierarchy: &mut TransformHierarchy,
     ) {
         let viewport_size = renderer.get_surface_size(window).unwrap().as_vec2();
 
@@ -390,25 +379,20 @@ impl WorldWindowState {
             });
 
             let entity = self.node_map.get(&key).unwrap();
-            hierarchy.set(*entity, transform);
+            scenes.graph.get_mut(*entity).unwrap().transform = transform;
 
             self.state.props.update(|props| props.transform = transform);
         }
     }
 
-    fn reset_edit_op(
-        &mut self,
-        renderer: &mut Renderer,
-        scenes: &mut Scenes,
-        hierarchy: &mut TransformHierarchy,
-    ) {
+    fn reset_edit_op(&mut self, renderer: &mut Renderer, scenes: &mut SceneState) {
         for (key, transform) in self.edit_op.reset() {
             self.state.nodes.update(|nodes| {
                 nodes.get_mut(key).unwrap().transform = transform;
             });
 
             let entity = self.node_map.get(&key).unwrap();
-            hierarchy.set(*entity, transform);
+            scenes.graph.get_mut(*entity).unwrap().transform = transform;
 
             self.state.props.update(|props| props.transform = transform);
         }
@@ -419,12 +403,7 @@ impl WorldWindowState {
         self.edit_op.confirm();
     }
 
-    pub fn update(
-        &mut self,
-        renderer: &mut Renderer,
-        scenes: &mut Scenes,
-        hierarchy: &mut TransformHierarchy,
-    ) {
+    pub fn update(&mut self, renderer: &mut Renderer, scenes: &mut SceneState) {
         while let Ok(event) = self.state.rx.try_recv() {
             self.state.events.push_back(event);
         }
@@ -459,7 +438,7 @@ impl WorldWindowState {
                         .records
                         .get(record_ref.module, record_ref.record)
                     {
-                        self.spawn_entity(renderer, scenes, record, hierarchy);
+                        self.spawn_entity(renderer, scenes, record);
                     }
                 }
                 Event::SpawnDirectionalLight => {
@@ -477,13 +456,16 @@ impl WorldWindowState {
                         )
                     });
 
-                    let entity = hierarchy.append(None, Transform::default());
-                    scenes.insert(
+                    let entity = scenes.graph.append(
+                        None,
+                        game_scene::scene2::Node::from_transform(Transform::default()),
+                    );
+                    scenes.spawner.insert(
                         entity,
                         Scene {
                             nodes: Node {
                                 transform: Transform::default(),
-                                body: NodeBody::DirectionalLight(DirectionalLightNode {
+                                body: NodeBody::DirectionalLight(DirectionalLight {
                                     color: Color::WHITE,
                                     illuminance: 100_000.0,
                                 }),
@@ -513,13 +495,16 @@ impl WorldWindowState {
                         )
                     });
 
-                    let entity = hierarchy.append(None, Transform::default());
-                    scenes.insert(
+                    let entity = scenes.graph.append(
+                        None,
+                        game_scene::scene2::Node::from_transform(Transform::default()),
+                    );
+                    scenes.spawner.insert(
                         entity,
                         Scene {
                             nodes: Node {
                                 transform: Transform::default(),
-                                body: NodeBody::PointLight(PointLightNode {
+                                body: NodeBody::PointLight(PointLight {
                                     color: Color::WHITE,
                                     intensity: 100.0,
                                     radius: 100.0,
@@ -552,13 +537,16 @@ impl WorldWindowState {
                         )
                     });
 
-                    let entity = hierarchy.append(None, Transform::default());
-                    scenes.insert(
+                    let entity = scenes.graph.append(
+                        None,
+                        game_scene::scene2::Node::from_transform(Transform::default()),
+                    );
+                    scenes.spawner.insert(
                         entity,
                         Scene {
                             nodes: Node {
                                 transform: Transform::default(),
-                                body: NodeBody::SpotLight(SpotLightNode {
+                                body: NodeBody::SpotLight(SpotLight {
                                     color: Color::WHITE,
                                     intensity: 100.0,
                                     radius: 100.0,
@@ -583,7 +571,7 @@ impl WorldWindowState {
                     });
 
                     if let Some(entity) = self.node_map.remove(&node) {
-                        hierarchy.remove(entity);
+                        scenes.graph.remove(entity);
                     }
                 }
                 Event::UpdateTransform { transform } => {
@@ -596,7 +584,7 @@ impl WorldWindowState {
                         });
 
                         if let Some(entity) = self.node_map.get(&node) {
-                            hierarchy.set(*entity, transform);
+                            scenes.graph.get_mut(*entity).unwrap().transform = transform;
                         }
 
                         self.state.props.update(|props| {
@@ -608,13 +596,7 @@ impl WorldWindowState {
         }
     }
 
-    fn spawn_entity(
-        &mut self,
-        renderer: &mut Renderer,
-        scenes: &mut Scenes,
-        record: Record,
-        hierarchy: &mut TransformHierarchy,
-    ) {
+    fn spawn_entity(&mut self, renderer: &mut Renderer, scenes: &mut SceneState, record: Record) {
         // match record.body {
         //     RecordBody::Object(object) => {
         //         let entity = hierarchy.append(None, Transform::default());

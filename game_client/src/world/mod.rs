@@ -6,20 +6,18 @@ pub mod script;
 pub mod state;
 
 use std::net::ToSocketAddrs;
-use std::thread::panicking;
 use std::time::Duration;
 
 use ahash::HashMap;
 use game_common::components::actions::ActionId;
 use game_common::components::actor::ActorProperties;
-use game_common::components::items::{ItemId, ItemStack};
 use game_common::components::transform::Transform;
 use game_common::entity::EntityId;
 use game_common::module::ModuleId;
 use game_common::record::RecordReference;
 use game_common::world::entity::EntityBody;
 use game_core::counter::Interval;
-use game_core::hierarchy::{Entity, TransformHierarchy};
+use game_core::hierarchy::TransformHierarchy;
 use game_core::modules::Modules;
 use game_core::time::Time;
 use game_data::record::{Record, RecordBody};
@@ -31,14 +29,14 @@ use game_render::color::Color;
 use game_render::entities::CameraId;
 use game_render::light::DirectionalLight;
 use game_render::Renderer;
-use game_scene::Scenes;
+use game_scene::scene2::{self, Node};
 use game_script::executor::ScriptExecutor;
 use game_ui::reactive::NodeId;
 use game_ui::UiState;
 use game_window::cursor::Cursor;
 use game_window::events::WindowEvent;
 use game_window::windows::{WindowId, WindowState};
-use glam::{Quat, Vec3};
+use glam::Vec3;
 
 use crate::config::Config;
 use crate::entities::actor::SpawnActor;
@@ -47,6 +45,7 @@ use crate::entities::terrain::spawn_terrain;
 use crate::input::{InputKey, Inputs};
 use crate::net::world::{Command, CommandBuffer};
 use crate::net::ServerConnection;
+use crate::scene::SceneState;
 use crate::ui::inventory::InventoryProxy;
 use crate::ui::main_menu::MainMenu;
 use crate::utils::extract_actor_rotation;
@@ -62,7 +61,7 @@ pub struct GameWorldState {
     camera_controller: CameraController,
     is_init: bool,
     primary_camera: Option<CameraId>,
-    entities: HashMap<EntityId, Entity>,
+    entities: HashMap<EntityId, scene2::Key>,
     modules: Modules,
     actions: ActiveActions,
     inputs: Inputs,
@@ -112,7 +111,7 @@ impl GameWorldState {
     pub fn update(
         &mut self,
         renderer: &mut Renderer,
-        scenes: &mut Scenes,
+        scenes: &mut SceneState,
         window: WindowState,
         time: &Time,
         hierarchy: &mut TransformHierarchy,
@@ -158,34 +157,34 @@ impl GameWorldState {
                     }
                 }
                 Command::Despawn(id) => {
-                    let entity = self.entities.remove(&id).unwrap();
-                    hierarchy.remove(entity);
+                    let key = self.entities.remove(&id).unwrap();
+                    scenes.graph.remove(key);
                 }
                 Command::Translate { entity, dst } => {
-                    let id = self.entities.get(&entity).unwrap();
-                    let transform = hierarchy.get_mut(*id).unwrap();
+                    let key = self.entities.get(&entity).unwrap();
+                    let node = scenes.graph.get_mut(*key).unwrap();
 
                     tracing::trace!(
                         "translate entity {:?} from {:?} to {:?}",
                         entity,
-                        transform.translation,
+                        node.transform.translation,
                         dst
                     );
 
-                    transform.translation = dst;
+                    node.transform.translation = dst;
                 }
                 Command::Rotate { entity, dst } => {
-                    let id = self.entities.get(&entity).unwrap();
-                    let transform = hierarchy.get_mut(*id).unwrap();
+                    let key = self.entities.get(&entity).unwrap();
+                    let node = scenes.graph.get_mut(*key).unwrap();
 
                     tracing::trace!(
                         "rotate entity {:?} from {:?} to {:?}",
                         entity,
-                        transform.rotation,
+                        node.transform.rotation,
                         dst
                     );
 
-                    transform.rotation = dst;
+                    node.transform.rotation = dst;
                 }
                 Command::SpawnHost(id) => {
                     self.update_host(id);
@@ -546,13 +545,15 @@ impl GameWorldState {
 
 fn spawn_entity(
     renderer: &mut Renderer,
-    scenes: &mut Scenes,
+    scenes: &mut SceneState,
     entity: game_common::world::entity::Entity,
     modules: &Modules,
     hierarchy: &mut TransformHierarchy,
-) -> Option<Entity> {
+) -> Option<scene2::Key> {
     // TODO: Check if can spawn an entity before allocating one.
-    let root = hierarchy.append(None, entity.transform);
+    let root = scenes
+        .graph
+        .append(None, Node::from_transform(Transform::default()));
 
     match entity.body {
         EntityBody::Terrain(terrain) => {
@@ -560,13 +561,13 @@ fn spawn_entity(
         }
         EntityBody::Object(object) => SpawnObject {
             id: object.id,
-            entity: root,
+            key: root,
         }
         .spawn(scenes, modules),
         EntityBody::Actor(actor) => SpawnActor {
             race: actor.race,
             transform: entity.transform,
-            entity: root,
+            key: root,
         }
         .spawn(scenes, modules),
         EntityBody::Item(item) => todo!(),

@@ -2,13 +2,15 @@ use game_common::components::transform::Transform;
 use game_common::world::entity::Terrain;
 use game_common::world::terrain::{Projection, TerrainMesh};
 use game_common::world::CELL_SIZE_UINT;
-use game_core::hierarchy::{Entity, Hierarchy};
+use game_core::hierarchy::Hierarchy;
 use game_render::mesh::{Indices, Mesh};
 use game_render::Renderer;
 use game_scene::scene::{Material, Node, NodeBody, ObjectNode, Scene};
-use game_scene::Scenes;
+use game_scene::scene2::Key;
 use game_tracing::trace_span;
 use glam::{UVec2, Vec3};
+
+use crate::scene::SceneState;
 
 #[derive(Clone, Debug)]
 pub struct LoadTerrain {
@@ -16,10 +18,10 @@ pub struct LoadTerrain {
 }
 
 pub fn spawn_terrain(
-    scenes: &mut Scenes,
+    scenes: &mut SceneState,
     renderer: &mut Renderer,
     terrain: &TerrainMesh,
-    entity: Entity,
+    key: Key,
 ) {
     let _span = trace_span!("spawn_terrain").entered();
 
@@ -37,8 +39,8 @@ pub fn spawn_terrain(
         },
     );
 
-    scenes.insert(
-        entity,
+    scenes.spawner.insert(
+        key,
         Scene {
             nodes,
             meshes: vec![mesh],

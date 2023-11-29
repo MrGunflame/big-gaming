@@ -10,14 +10,13 @@ mod world;
 use std::sync::mpsc;
 
 use game_common::module::ModuleId;
-use game_core::hierarchy::TransformHierarchy;
 use game_data::record::{Record, RecordKind};
 use game_render::Renderer;
-use game_scene::Scenes;
 use game_ui::reactive::{Document, Runtime};
 use game_window::events::WindowEvent;
 use game_window::windows::WindowId;
 
+use crate::scene::SceneState;
 use crate::state::EditorState;
 use crate::windows::create_module::CreateModule;
 use crate::windows::error::Error;
@@ -47,25 +46,19 @@ impl Window {
     pub fn handle_event(
         &mut self,
         renderer: &mut Renderer,
-        scenes: &mut Scenes,
+        scenes: &mut SceneState,
         event: WindowEvent,
         id: WindowId,
-        hierarchy: &mut TransformHierarchy,
     ) {
         match self {
-            Self::View(_, window) => window.handle_event(renderer, scenes, event, id, hierarchy),
+            Self::View(_, window) => window.handle_event(renderer, scenes, event, id),
             _ => (),
         }
     }
 
-    pub fn update(
-        &mut self,
-        renderer: &mut Renderer,
-        scenes: &mut Scenes,
-        hierarchy: &mut TransformHierarchy,
-    ) {
+    pub fn update(&mut self, renderer: &mut Renderer, scenes: &mut SceneState) {
         match self {
-            Self::View(_, w) => w.update(renderer, scenes, hierarchy),
+            Self::View(_, w) => w.update(renderer, scenes),
             _ => (),
         }
     }
@@ -73,12 +66,11 @@ impl Window {
 
 pub fn spawn_window(
     renderer: &mut Renderer,
-    scenes: &mut Scenes,
+    scenes: &mut SceneState,
     state: EditorState,
     rt: Runtime,
     event: SpawnWindow,
     window_id: WindowId,
-    hierarchy: &mut TransformHierarchy,
 ) -> Window {
     let document = Document::new(rt);
 
@@ -124,8 +116,7 @@ pub fn spawn_window(
         SpawnWindow::View => {
             let state = world::build_ui(&cx, state);
 
-            let window =
-                world::WorldWindowState::new(state, renderer, window_id, scenes, hierarchy);
+            let window = world::WorldWindowState::new(state, renderer, window_id, scenes);
             return Window::View(document, window);
         }
         SpawnWindow::SpawnEntity(writer) => {

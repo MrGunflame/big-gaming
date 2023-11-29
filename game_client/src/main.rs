@@ -2,12 +2,12 @@ mod config;
 mod entities;
 mod input;
 mod net;
+mod scene;
 mod state;
 mod ui;
 mod utils;
 mod world;
 
-use std::f32::consts::E;
 use std::sync::Arc;
 
 use clap::Parser;
@@ -15,7 +15,8 @@ use config::Config;
 use game_core::hierarchy::TransformHierarchy;
 use game_core::time::Time;
 use game_render::Renderer;
-use game_scene::Scenes;
+use game_scene::scene2::SceneGraph;
+use game_scene::SceneSpawner;
 use game_script::executor::ScriptExecutor;
 use game_tasks::TaskPool;
 use game_ui::UiState;
@@ -25,6 +26,7 @@ use game_window::windows::{WindowBuilder, WindowId};
 use game_window::{WindowManager, WindowManagerContext};
 use glam::UVec2;
 use input::Inputs;
+use scene::{SceneEntities, SceneState};
 use state::main_menu::MainMenuState;
 use state::GameState;
 use world::GameWorldState;
@@ -81,12 +83,16 @@ fn main() {
         window_id,
         renderer,
         state,
-        scenes: Scenes::new(),
+        scene: SceneState {
+            spawner: SceneSpawner::default(),
+            graph: SceneGraph::new(),
+        },
         time: Time::new(),
-        cursor: cursor,
+        cursor,
         pool: TaskPool::new(8),
         hierarchy: TransformHierarchy::default(),
         ui_state,
+        entities: SceneEntities::default(),
     };
 
     wm.run(app);
@@ -97,12 +103,13 @@ pub struct App {
     /// Primary window
     window_id: WindowId,
     renderer: Renderer,
-    scenes: Scenes,
+    scene: SceneState,
     time: Time,
     cursor: Arc<Cursor>,
     pool: TaskPool,
     hierarchy: TransformHierarchy,
     ui_state: UiState,
+    entities: SceneEntities,
 }
 
 impl game_window::App for App {
@@ -114,7 +121,7 @@ impl game_window::App for App {
         match &mut self.state {
             GameState::Startup => {
                 self.state = GameState::MainMenu(MainMenuState::new(
-                    &mut self.scenes,
+                    &mut self.scene,
                     &mut self.renderer,
                     self.window_id,
                     &mut self.hierarchy,
@@ -126,7 +133,7 @@ impl game_window::App for App {
             GameState::GameWorld(state) => {
                 state.update(
                     &mut self.renderer,
-                    &mut self.scenes,
+                    &mut self.scene,
                     window,
                     &self.time,
                     &mut self.hierarchy,
@@ -136,9 +143,14 @@ impl game_window::App for App {
             _ => todo!(),
         }
 
-        self.hierarchy.compute_transform();
-        self.scenes
-            .update(&mut self.hierarchy, &mut self.renderer, &self.pool);
+        self.scene
+            .spawner
+            .update(&mut self.scene.graph, &self.pool, &mut self.renderer);
+        self.scene.graph.compute_transform();
+        self.entities
+            .update(&mut self.scene.graph, &mut self.renderer);
+        self.scene.graph.clear_trackers();
+
         self.renderer.render(&self.pool);
         self.ui_state.run(&self.renderer, &mut ctx.windows);
     }
