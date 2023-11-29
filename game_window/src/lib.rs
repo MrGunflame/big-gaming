@@ -341,11 +341,7 @@ where
                                 events::WindowEvent::MouseButtonInput(event),
                             );
                         }
-                        WindowEvent::RedrawRequested => {
-                            app.update(WindowManagerContext {
-                                windows: &mut windows,
-                            });
-                        }
+                        WindowEvent::RedrawRequested => {}
                         _ => (),
                     }
                 }
@@ -394,11 +390,9 @@ where
                     _ => (),
                 },
                 Event::AboutToWait => {
-                    for (_, window) in &windows.windows {
-                        if let Some(state) = &window.state {
-                            state.inner.request_redraw();
-                        }
-                    }
+                    app.update(WindowManagerContext {
+                        windows: &mut windows,
+                    });
                 }
                 _ => (),
             }

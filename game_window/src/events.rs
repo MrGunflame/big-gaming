@@ -140,6 +140,12 @@ pub(crate) fn convert_key_code(key: winit::keyboard::KeyCode) -> Option<KeyCode>
         winit::keyboard::KeyCode::NumpadSubtract => Some(KeyCode::NumpadSubtract),
         winit::keyboard::KeyCode::NumpadMultiply => Some(KeyCode::NumpadMultiply),
         winit::keyboard::KeyCode::NumpadEqual => Some(KeyCode::NumpadEquals),
+        winit::keyboard::KeyCode::ShiftLeft => Some(KeyCode::LShift),
+        winit::keyboard::KeyCode::ShiftRight => Some(KeyCode::RShift),
+        winit::keyboard::KeyCode::ControlLeft => Some(KeyCode::LControl),
+        winit::keyboard::KeyCode::ControlRight => Some(KeyCode::RControl),
+        winit::keyboard::KeyCode::AltLeft => Some(KeyCode::LAlt),
+        winit::keyboard::KeyCode::AltRight => Some(KeyCode::RAlt),
         _ => None,
     }
 }
