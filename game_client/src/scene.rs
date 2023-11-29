@@ -44,14 +44,16 @@ impl SceneEntities {
             let node = graph.get(key).unwrap();
             match node.body {
                 NodeBody::MeshInstance(instance) => {
-                    renderer.entities.objects.insert(Object {
+                    let id = renderer.entities.objects.insert(Object {
                         transform: node.transform,
                         mesh: instance.mesh,
                         material: instance.material,
                     });
+
+                    self.mesh_instances.insert(key, id);
                 }
                 NodeBody::DirectionalLight(light) => {
-                    renderer
+                    let id = renderer
                         .entities
                         .directional_lights
                         .insert(DirectionalLight {
@@ -59,17 +61,21 @@ impl SceneEntities {
                             color: light.color,
                             illuminance: light.illuminance,
                         });
+
+                    self.directional_lights.insert(key, id);
                 }
                 NodeBody::PointLight(light) => {
-                    renderer.entities.point_lights.insert(PointLight {
+                    let id = renderer.entities.point_lights.insert(PointLight {
                         transform: node.transform,
                         color: light.color,
                         intensity: light.intensity,
                         radius: light.radius,
                     });
+
+                    self.point_lights.insert(key, id);
                 }
                 NodeBody::SpotLight(light) => {
-                    renderer.entities.spot_lights.insert(SpotLight {
+                    let id = renderer.entities.spot_lights.insert(SpotLight {
                         transform: node.transform,
                         color: light.color,
                         intensity: light.intensity,
@@ -77,6 +83,8 @@ impl SceneEntities {
                         inner_cutoff: light.inner_cutoff,
                         outer_cutoff: light.outer_cutoff,
                     });
+
+                    self.spot_lights.insert(key, id);
                 }
                 NodeBody::None | NodeBody::Collider(_) => (),
             }
