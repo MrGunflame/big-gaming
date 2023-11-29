@@ -81,12 +81,6 @@ impl UiState {
             WindowEvent::MouseWheel(event) => {
                 events::dispatch_mouse_wheel_events(&self.command_tx, cursor, &self.events, event)
             }
-            WindowEvent::ReceivedCharacter(event) => events::dispatch_received_character_events(
-                &self.command_tx,
-                cursor,
-                &self.events,
-                event,
-            ),
             WindowEvent::KeyboardInput(event) => events::dispatch_keyboard_input_events(
                 &self.command_tx,
                 cursor,

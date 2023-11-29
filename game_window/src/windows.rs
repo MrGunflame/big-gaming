@@ -166,12 +166,15 @@ impl WindowState {
     pub fn set_cursor_grab(&self, mode: CursorGrabMode) -> Result<(), ExternalError> {
         let mode = match mode {
             CursorGrabMode::None => winit::window::CursorGrabMode::None,
-            CursorGrabMode::Locked => match self.backend {
-                Backend::Wayland | Backend::Unknown => winit::window::CursorGrabMode::Locked,
-                // X11 and Windows don't support `Locked`, we must set it to
+            CursorGrabMode::Locked => {
+                // Some backends on't support `Locked`, we must set it to
                 // `Confined` and constantly reset the cursor to the origin.
-                Backend::X11 | Backend::Windows => winit::window::CursorGrabMode::Confined,
-            },
+                if self.backend.supports_locked_cursor() {
+                    winit::window::CursorGrabMode::Locked
+                } else {
+                    winit::window::CursorGrabMode::Confined
+                }
+            }
         };
 
         self.inner.set_cursor_grab(mode)

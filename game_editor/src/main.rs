@@ -142,7 +142,7 @@ pub struct App {
 
 impl game_window::App for App {
     fn handle_event(&mut self, ctx: WindowManagerContext<'_>, event: WindowEvent) {
-        match event {
+        match event.clone() {
             WindowEvent::WindowCreated(event) => {
                 let window = ctx.windows.state(event.window).unwrap();
                 let size = window.inner_size();

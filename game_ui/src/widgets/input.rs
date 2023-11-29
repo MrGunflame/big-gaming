@@ -115,42 +115,36 @@ impl Widget for Input {
                                 }
                                 _ => (),
                             }
-                        }
-                    })),
-                    received_character: Some(Box::new({
-                        let focus = focus.clone();
 
-                        move |ctx| {
-                            if !focus.get_untracked() {
-                                return;
-                            }
-
-                            match ctx.event.char {
+                            match ctx.event.text.as_ref().map(|s| s.as_str()) {
                                 // Return creates a newline.
-                                '\r' => {
+                                Some("\r") => {
                                     set_buffer.update(|string| {
                                         string.push('\n');
                                         string.user_updated = true;
                                     });
                                 }
                                 // Backspace
-                                '\u{8}' => set_buffer.update(|string| {
+                                Some("\u{8}") => set_buffer.update(|string| {
                                     string.remove_prev();
                                     string.user_updated = true;
                                 }),
                                 // Delete
-                                '\u{7F}' => set_buffer.update(|string| {
+                                Some("\u{7F}") => set_buffer.update(|string| {
                                     string.remove_next();
                                     string.user_updated = true;
                                 }),
-                                char => {
-                                    if !char.is_control() {
-                                        set_buffer.update(|string| {
-                                            string.push(char);
-                                            string.user_updated = true;
-                                        });
+                                Some(text) => {
+                                    for char in text.chars() {
+                                        if !char.is_control() {
+                                            set_buffer.update(|string| {
+                                                string.push(char);
+                                                string.user_updated = true;
+                                            });
+                                        }
                                     }
                                 }
+                                None => (),
                             }
                         }
                     })),

@@ -1,11 +1,16 @@
 use std::str::FromStr;
 
+use game_common::collections::string::SmallStr;
+
 use crate::ButtonState;
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct KeyboardInput {
     pub scan_code: ScanCode,
     pub key_code: Option<KeyCode>,
+    // TODO: Maybe add a dedicated "NamedKey" type instead of
+    // raw text.
+    pub text: Option<SmallStr>,
     pub state: ButtonState,
 }
 

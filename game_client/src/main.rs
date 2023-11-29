@@ -156,7 +156,7 @@ impl game_window::App for App {
     }
 
     fn handle_event(&mut self, ctx: WindowManagerContext<'_>, event: WindowEvent) {
-        match event {
+        match event.clone() {
             WindowEvent::WindowCreated(event) => {
                 debug_assert_eq!(event.window, self.window_id);
 
@@ -188,7 +188,6 @@ impl game_window::App for App {
             WindowEvent::CursorMoved(event) => {}
             WindowEvent::CursorEntered(event) => {}
             WindowEvent::CursorLeft(event) => {}
-            WindowEvent::ReceivedCharacter(event) => {}
             WindowEvent::WindowCloseRequested(event) => {}
             WindowEvent::KeyboardInput(event) => {}
             WindowEvent::MouseWheel(event) => {}
@@ -197,9 +196,12 @@ impl game_window::App for App {
         }
 
         match &mut self.state {
-            GameState::GameWorld(state) => {
-                state.handle_event(event, &self.cursor, &mut self.ui_state, self.window_id)
-            }
+            GameState::GameWorld(state) => state.handle_event(
+                event.clone(),
+                &self.cursor,
+                &mut self.ui_state,
+                self.window_id,
+            ),
             _ => (),
         }
 
