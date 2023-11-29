@@ -2,9 +2,12 @@ pub mod cursor;
 pub mod events;
 pub mod windows;
 
+mod backend;
+
 use std::collections::{HashMap, VecDeque};
 use std::sync::{mpsc, Arc};
 
+use backend::Backend;
 use cursor::{Cursor, CursorGrabMode, WindowCompat};
 use events::{
     convert_key_code, CursorEntered, CursorLeft, CursorMoved, WindowCloseRequested, WindowCreated,
@@ -93,62 +96,6 @@ struct WindowManagerState {
     event_loop: EventLoop<()>,
     update_rx: mpsc::Receiver<UpdateEvent>,
     cursor: Arc<Cursor>,
-}
-
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
-pub(crate) enum Backend {
-    #[default]
-    Unknown,
-    #[cfg(target_family = "unix")]
-    X11,
-    #[cfg(target_family = "unix")]
-    Wayland,
-    #[cfg(target_family = "windows")]
-    Windows,
-}
-
-impl Backend {
-    pub(crate) const fn supports_locked_cursor(self) -> bool {
-        match self {
-            Self::Unknown => true,
-            #[cfg(target_family = "unix")]
-            Self::Wayland => true,
-            #[cfg(target_family = "unix")]
-            Self::X11 => false,
-            #[cfg(target_family = "windows")]
-            Self::Windows => false,
-        }
-    }
-}
-
-impl From<&EventLoop<()>> for Backend {
-    fn from(event_loop: &EventLoop<()>) -> Self {
-        #[cfg(target_family = "unix")]
-        {
-            {
-                use winit::platform::x11::EventLoopWindowTargetExtX11;
-
-                if event_loop.is_x11() {
-                    return Self::X11;
-                }
-            }
-
-            {
-                use winit::platform::wayland::EventLoopWindowTargetExtWayland;
-
-                if event_loop.is_wayland() {
-                    return Self::Wayland;
-                }
-            }
-        }
-
-        #[cfg(target_family = "windows")]
-        {
-            return Self::Windows;
-        }
-
-        Self::Unknown
-    }
 }
 
 fn main_loop<T>(state: WindowManagerState, mut windows: Windows, mut app: T) -> !
@@ -292,7 +239,7 @@ where
                             // Until then we have to manually capture MouseWheel events from the window
                             // and ignore `DeviceEvent::MouseWheel` (in case the behavoir changes in the
                             // future).
-                            if backend == Backend::Wayland {
+                            if backend.is_wayland() {
                                 let event = match delta {
                                     // Direction is inverted compared to X11.
                                     MouseScrollDelta::LineDelta(x, y) => MouseWheel {
@@ -361,11 +308,10 @@ where
                             events::WindowEvent::MouseMotion(event),
                         );
                     }
-                    DeviceEvent::MouseWheel { delta } => match backend {
+                    DeviceEvent::MouseWheel { delta } => {
                         // See comment at `WindowEvent::MouseWheel` for
                         // why this is necessary.
-                        Backend::Wayland => (),
-                        _ => {
+                        if !backend.is_wayland() {
                             let event = match delta {
                                 MouseScrollDelta::LineDelta(x, y) => MouseWheel {
                                     unit: MouseScrollUnit::Line,
@@ -386,7 +332,7 @@ where
                                 events::WindowEvent::MouseWheel(event),
                             );
                         }
-                    },
+                    }
                     _ => (),
                 },
                 Event::AboutToWait => {
