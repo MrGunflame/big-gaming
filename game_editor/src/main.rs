@@ -1,4 +1,5 @@
 mod backend;
+mod scene;
 mod state;
 mod widgets;
 mod windows;
@@ -9,9 +10,9 @@ use std::sync::{mpsc, Arc};
 
 use backend::{Backend, Handle, Response};
 
-use game_core::hierarchy::TransformHierarchy;
 use game_render::Renderer;
-use game_scene::Scenes;
+use game_scene::scene2::SceneGraph;
+use game_scene::SceneSpawner;
 use game_tasks::TaskPool;
 use game_ui::UiState;
 use game_window::cursor::Cursor;
@@ -19,6 +20,7 @@ use game_window::events::WindowEvent;
 use game_window::windows::{WindowBuilder, WindowId};
 use game_window::{WindowManager, WindowManagerContext};
 use glam::UVec2;
+use scene::{SceneEntities, SceneState};
 use state::module::Modules;
 use state::record::Records;
 use state::EditorState;
@@ -85,9 +87,12 @@ fn main() {
         cursor: state.window_manager.cursor().clone(),
         loading_windows: HashMap::new(),
         active_windows: HashMap::new(),
-        scenes: Scenes::new(),
+        scene: SceneState {
+            graph: SceneGraph::new(),
+            spawner: SceneSpawner::default(),
+            entities: SceneEntities::default(),
+        },
         pool: TaskPool::new(8),
-        hierarchy: TransformHierarchy::default(),
     };
 
     state.window_manager.run(app);
@@ -131,17 +136,12 @@ pub struct App {
     cursor: Arc<Cursor>,
     loading_windows: HashMap<WindowId, SpawnWindow>,
     active_windows: HashMap<WindowId, crate::windows::Window>,
-    scenes: Scenes,
+    scene: SceneState,
     pool: TaskPool,
-    hierarchy: TransformHierarchy,
 }
 
 impl game_window::App for App {
-    fn handle_event(
-        &mut self,
-        ctx: WindowManagerContext<'_>,
-        event: game_window::events::WindowEvent,
-    ) {
+    fn handle_event(&mut self, ctx: WindowManagerContext<'_>, event: WindowEvent) {
         match event {
             WindowEvent::WindowCreated(event) => {
                 let window = ctx.windows.state(event.window).unwrap();
@@ -153,12 +153,11 @@ impl game_window::App for App {
                 if let Some(spawn) = self.loading_windows.remove(&event.window) {
                     let window = crate::windows::spawn_window(
                         &mut self.renderer,
-                        &mut self.scenes,
+                        &mut self.scene,
                         self.state.clone(),
                         self.ui_state.runtime.clone(),
                         spawn,
                         event.window,
-                        &mut self.hierarchy,
                     );
 
                     if let Some(doc) = window.doc() {
@@ -190,10 +189,9 @@ impl game_window::App for App {
                     if let Some(window) = self.active_windows.get_mut(&window_id) {
                         window.handle_event(
                             &mut self.renderer,
-                            &mut self.scenes,
+                            &mut self.scene,
                             WindowEvent::MouseMotion(event),
                             window_id,
-                            &mut self.hierarchy,
                         );
                     }
                 }
@@ -203,10 +201,9 @@ impl game_window::App for App {
                     if let Some(window) = self.active_windows.get_mut(&window_id) {
                         window.handle_event(
                             &mut self.renderer,
-                            &mut self.scenes,
+                            &mut self.scene,
                             WindowEvent::KeyboardInput(event),
                             window_id,
-                            &mut self.hierarchy,
                         );
                     }
                 }
@@ -216,10 +213,9 @@ impl game_window::App for App {
                     if let Some(window) = self.active_windows.get_mut(&window_id) {
                         window.handle_event(
                             &mut self.renderer,
-                            &mut self.scenes,
+                            &mut self.scene,
                             WindowEvent::MouseWheel(event),
                             window_id,
-                            &mut self.hierarchy,
                         );
                     }
                 }
@@ -229,10 +225,9 @@ impl game_window::App for App {
                     if let Some(window) = self.active_windows.get_mut(&window_id) {
                         window.handle_event(
                             &mut self.renderer,
-                            &mut self.scenes,
+                            &mut self.scene,
                             WindowEvent::MouseButtonInput(event),
                             window_id,
-                            &mut self.hierarchy,
                         );
                     }
                 }
@@ -242,10 +237,9 @@ impl game_window::App for App {
                     if let Some(window) = self.active_windows.get_mut(&window_id) {
                         window.handle_event(
                             &mut self.renderer,
-                            &mut self.scenes,
+                            &mut self.scene,
                             WindowEvent::CursorMoved(event),
                             window_id,
-                            &mut self.hierarchy,
                         );
                     }
                 }
@@ -264,12 +258,17 @@ impl game_window::App for App {
         }
 
         for window in self.active_windows.values_mut() {
-            window.update(&mut self.renderer, &mut self.scenes, &mut self.hierarchy);
+            window.update(&mut self.renderer, &mut self.scene);
         }
 
-        self.hierarchy.compute_transform();
-        self.scenes
-            .update(&mut self.hierarchy, &mut self.renderer, &self.pool);
+        self.scene
+            .spawner
+            .update(&mut self.scene.graph, &self.pool, &mut self.renderer);
+        self.scene.graph.compute_transform();
+        self.scene
+            .entities
+            .update(&mut self.scene.graph, &mut self.renderer);
+        self.scene.graph.clear_trackers();
 
         self.renderer.render(&self.pool);
         self.ui_state.run(&self.renderer, &mut ctx.windows);
