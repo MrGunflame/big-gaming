@@ -6,7 +6,7 @@ use std::sync::{mpsc, Arc};
 use game_input::keyboard::KeyboardInput;
 use game_input::mouse::{MouseButtonInput, MouseWheel};
 use game_window::cursor::{Cursor, CursorIcon};
-use game_window::events::{CursorMoved, ReceivedCharacter};
+use game_window::events::CursorMoved;
 use game_window::windows::WindowId;
 use glam::{UVec2, Vec2};
 
@@ -79,7 +79,6 @@ pub struct EventHandlers {
     pub mouse_button_input: Option<Box<dyn Fn(Context<MouseButtonInput>) + Send + Sync + 'static>>,
     pub mouse_wheel: Option<Box<dyn Fn(Context<MouseWheel>) + Send + Sync + 'static>>,
     pub keyboard_input: Option<Box<dyn Fn(Context<KeyboardInput>) + Send + Sync + 'static>>,
-    pub received_character: Option<Box<dyn Fn(Context<ReceivedCharacter>) + Send + Sync + 'static>>,
 }
 
 impl Debug for EventHandlers {
@@ -95,7 +94,6 @@ impl Debug for EventHandlers {
             .field("mouse_button_input", &map_to_ptr(&self.mouse_button_input))
             .field("mouse_wheel", &map_to_ptr(&self.mouse_wheel))
             .field("keyboard_input", &map_to_ptr(&self.keyboard_input))
-            .field("received_character", &map_to_ptr(&self.received_character))
             .finish()
     }
 }
@@ -298,46 +296,6 @@ pub(crate) fn dispatch_mouse_wheel_events(
     }
 }
 
-pub(crate) fn dispatch_received_character_events(
-    tx: &mpsc::Sender<WindowCommand>,
-    cursor: &Arc<Cursor>,
-    windows: &HashMap<WindowId, Events>,
-    event: ReceivedCharacter,
-) {
-    let Some(window) = cursor.window() else {
-        return;
-    };
-
-    let Some(window) = windows.get(&window) else {
-        return;
-    };
-
-    for (key, rect) in &window.positions {
-        let Some(handlers) = window.events.get(key) else {
-            continue;
-        };
-
-        let ctx = Context {
-            cursor: cursor.clone(),
-            event,
-            window: WindowContext {
-                window: cursor.window().unwrap(),
-                tx: tx.clone(),
-            },
-        };
-
-        if let Some(f) = &handlers.global.received_character {
-            f(ctx.clone());
-        }
-
-        if hit_test(*rect, cursor.position()) {
-            if let Some(f) = &handlers.local.received_character {
-                f(ctx);
-            }
-        }
-    }
-}
-
 pub(crate) fn dispatch_keyboard_input_events(
     tx: &mpsc::Sender<WindowCommand>,
     cursor: &Arc<Cursor>,
@@ -359,7 +317,7 @@ pub(crate) fn dispatch_keyboard_input_events(
 
         let ctx = Context {
             cursor: cursor.clone(),
-            event,
+            event: event.clone(),
             window: WindowContext {
                 window: cursor.window().unwrap(),
                 tx: tx.clone(),

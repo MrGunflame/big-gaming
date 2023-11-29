@@ -21,6 +21,7 @@ impl KeyboardEmulator {
             scan_code: ScanCode(0),
             key_code: Some(key_code),
             state: ButtonState::Pressed,
+            text: None,
         });
     }
 
@@ -29,6 +30,7 @@ impl KeyboardEmulator {
             scan_code: ScanCode(0),
             key_code: Some(key_code),
             state: ButtonState::Released,
+            text: None,
         });
     }
 

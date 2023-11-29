@@ -1,3 +1,5 @@
+use core::fmt::{self, Display, Formatter};
+use core::hash::{Hash, Hasher};
 use core::ops::Deref;
 
 use std::mem::MaybeUninit;
@@ -101,6 +103,20 @@ impl PartialEq<&str> for SmallStr {
 }
 
 impl Eq for SmallStr {}
+
+impl Hash for SmallStr {
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.as_str().hash(state);
+    }
+}
+
+impl Display for SmallStr {
+    #[inline]
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        Display::fmt(self.as_str(), f)
+    }
+}
 
 #[cfg(test)]
 mod tests {
