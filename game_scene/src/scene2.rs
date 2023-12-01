@@ -183,7 +183,7 @@ impl SceneGraph {
 #[derive(Clone, Debug)]
 pub struct Node {
     pub transform: Transform,
-    pub body: NodeBody,
+    pub components: Vec<Component>,
 }
 
 impl Node {
@@ -192,14 +192,13 @@ impl Node {
     pub const fn from_transform(transform: Transform) -> Self {
         Self {
             transform,
-            body: NodeBody::None,
+            components: vec![],
         }
     }
 }
 
 #[derive(Clone, Debug)]
-pub enum NodeBody {
-    None,
+pub enum Component {
     MeshInstance(MeshInstance),
     DirectionalLight(DirectionalLight),
     PointLight(PointLight),

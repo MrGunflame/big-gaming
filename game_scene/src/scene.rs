@@ -10,7 +10,7 @@ use game_render::texture::Image;
 use game_render::{shape, Renderer};
 use game_tracing::trace_span;
 
-use crate::scene2::{self, Key, MeshInstance, SceneGraph};
+use crate::scene2::{Component, Key, MeshInstance, SceneGraph};
 
 #[derive(Clone, Debug, Default)]
 pub struct Scene {
@@ -87,17 +87,17 @@ impl Scene {
                 Some(parent),
                 crate::scene2::Node {
                     transform: node.transform,
-                    body: match node.body {
-                        NodeBody::Empty => scene2::NodeBody::None,
-                        NodeBody::Object(obj) => scene2::NodeBody::MeshInstance(MeshInstance {
+                    components: match node.body {
+                        NodeBody::Empty => vec![],
+                        NodeBody::Object(obj) => vec![Component::MeshInstance(MeshInstance {
                             mesh: meshes[obj.mesh],
                             material: materials[obj.material],
-                        }),
+                        })],
                         NodeBody::DirectionalLight(light) => {
-                            scene2::NodeBody::DirectionalLight(light)
+                            vec![Component::DirectionalLight(light)]
                         }
-                        NodeBody::PointLight(light) => scene2::NodeBody::PointLight(light),
-                        NodeBody::SpotLight(light) => scene2::NodeBody::SpotLight(light),
+                        NodeBody::PointLight(light) => vec![Component::PointLight(light)],
+                        NodeBody::SpotLight(light) => vec![Component::SpotLight(light)],
                     },
                 },
             );
@@ -117,17 +117,17 @@ impl Scene {
                     Some(*parent),
                     crate::scene2::Node {
                         transform: node.transform,
-                        body: match node.body {
-                            NodeBody::Empty => scene2::NodeBody::None,
-                            NodeBody::Object(obj) => scene2::NodeBody::MeshInstance(MeshInstance {
+                        components: match node.body {
+                            NodeBody::Empty => vec![],
+                            NodeBody::Object(obj) => vec![Component::MeshInstance(MeshInstance {
                                 mesh: meshes[obj.mesh],
                                 material: materials[obj.material],
-                            }),
+                            })],
                             NodeBody::DirectionalLight(light) => {
-                                scene2::NodeBody::DirectionalLight(light)
+                                vec![Component::DirectionalLight(light)]
                             }
-                            NodeBody::PointLight(light) => scene2::NodeBody::PointLight(light),
-                            NodeBody::SpotLight(light) => scene2::NodeBody::SpotLight(light),
+                            NodeBody::PointLight(light) => vec![Component::PointLight(light)],
+                            NodeBody::SpotLight(light) => vec![Component::SpotLight(light)],
                         },
                     },
                 );

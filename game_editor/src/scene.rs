@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use game_render::entities::{DirectionalLightId, Object, ObjectId, PointLightId, SpotLightId};
 use game_render::light::{DirectionalLight, PointLight, SpotLight};
 use game_render::Renderer;
-use game_scene::scene2::{Key, NodeBody, SceneGraph};
+use game_scene::scene2::{Component, Key, SceneGraph};
 use game_scene::SceneSpawner;
 
 pub struct SceneState {
@@ -44,51 +44,54 @@ impl SceneEntities {
 
         for key in graph.iter_added() {
             let node = graph.get(key).unwrap();
-            match node.body {
-                NodeBody::MeshInstance(instance) => {
-                    let id = renderer.entities.objects.insert(Object {
-                        transform: node.transform,
-                        mesh: instance.mesh,
-                        material: instance.material,
-                    });
 
-                    self.mesh_instances.insert(key, id);
-                }
-                NodeBody::DirectionalLight(light) => {
-                    let id = renderer
-                        .entities
-                        .directional_lights
-                        .insert(DirectionalLight {
+            for component in &node.components {
+                match component {
+                    Component::MeshInstance(instance) => {
+                        let id = renderer.entities.objects.insert(Object {
                             transform: node.transform,
-                            color: light.color,
-                            illuminance: light.illuminance,
+                            mesh: instance.mesh,
+                            material: instance.material,
                         });
 
-                    self.directional_lights.insert(key, id);
-                }
-                NodeBody::PointLight(light) => {
-                    let id = renderer.entities.point_lights.insert(PointLight {
-                        transform: node.transform,
-                        color: light.color,
-                        intensity: light.intensity,
-                        radius: light.radius,
-                    });
+                        self.mesh_instances.insert(key, id);
+                    }
+                    Component::DirectionalLight(light) => {
+                        let id = renderer
+                            .entities
+                            .directional_lights
+                            .insert(DirectionalLight {
+                                transform: node.transform,
+                                color: light.color,
+                                illuminance: light.illuminance,
+                            });
 
-                    self.point_lights.insert(key, id);
-                }
-                NodeBody::SpotLight(light) => {
-                    let id = renderer.entities.spot_lights.insert(SpotLight {
-                        transform: node.transform,
-                        color: light.color,
-                        intensity: light.intensity,
-                        radius: light.radius,
-                        inner_cutoff: light.inner_cutoff,
-                        outer_cutoff: light.outer_cutoff,
-                    });
+                        self.directional_lights.insert(key, id);
+                    }
+                    Component::PointLight(light) => {
+                        let id = renderer.entities.point_lights.insert(PointLight {
+                            transform: node.transform,
+                            color: light.color,
+                            intensity: light.intensity,
+                            radius: light.radius,
+                        });
 
-                    self.spot_lights.insert(key, id);
+                        self.point_lights.insert(key, id);
+                    }
+                    Component::SpotLight(light) => {
+                        let id = renderer.entities.spot_lights.insert(SpotLight {
+                            transform: node.transform,
+                            color: light.color,
+                            intensity: light.intensity,
+                            radius: light.radius,
+                            inner_cutoff: light.inner_cutoff,
+                            outer_cutoff: light.outer_cutoff,
+                        });
+
+                        self.spot_lights.insert(key, id);
+                    }
+                    Component::Collider(_) => (),
                 }
-                NodeBody::None | NodeBody::Collider(_) => (),
             }
         }
 
