@@ -1,3 +1,4 @@
+mod format;
 mod loader;
 mod model;
 pub mod scene2;
