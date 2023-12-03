@@ -5,7 +5,7 @@ use game_render::color::Color;
 use game_render::entities::CameraId;
 use game_render::light::PointLight;
 use game_render::Renderer;
-use game_scene::scene2::{Node, NodeBody};
+use game_scene::scene2::Node;
 use game_window::windows::WindowId;
 use glam::Vec3;
 
@@ -36,7 +36,7 @@ impl MainMenuState {
             None,
             Node {
                 transform: Transform::default(),
-                body: NodeBody::None,
+                components: vec![],
             },
         );
         scenes.spawner.spawn(key, "sponza.model");
