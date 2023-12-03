@@ -6,14 +6,14 @@ use game_render::Renderer;
 use game_tasks::TaskPool;
 use game_tracing::trace_span;
 
+use crate::format::SceneRoot;
 use crate::load_scene;
-use crate::scene::Scene;
 use crate::scene2::{Key, SceneGraph};
 
 #[derive(Debug, Default)]
 pub struct SceneSpawner {
     queue: VecDeque<(Key, PathBuf)>,
-    scenes_to_spawn: Arc<Mutex<VecDeque<(Key, Scene)>>>,
+    scenes_to_spawn: Arc<Mutex<VecDeque<(Key, SceneRoot)>>>,
 }
 
 impl SceneSpawner {
@@ -25,7 +25,7 @@ impl SceneSpawner {
             .push_back((parent, source.as_ref().to_path_buf()));
     }
 
-    pub fn insert(&mut self, parent: Key, scene: Scene) {
+    pub fn insert(&mut self, parent: Key, scene: SceneRoot) {
         self.scenes_to_spawn
             .lock()
             .unwrap()

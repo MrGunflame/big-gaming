@@ -11,12 +11,9 @@ pub use crate::spawner::SceneSpawner;
 #[cfg(feature = "gltf")]
 mod gltf;
 
+use format::SceneRoot;
 use game_gltf::uri::Uri;
-use game_gltf::GltfDecoder;
-use game_model::{Decode, Model};
 use game_tracing::trace_span;
-use loader::LoadScene;
-use scene::Scene;
 use slotmap::DefaultKey;
 
 use std::fs::File;
@@ -26,7 +23,7 @@ use std::path::PathBuf;
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct SceneId(DefaultKey);
 
-fn load_scene(path: PathBuf) -> Option<Scene> {
+fn load_scene(path: PathBuf) -> Option<SceneRoot> {
     let _span = trace_span!("load_scene").entered();
 
     let uri = Uri::from(path);
@@ -42,61 +39,7 @@ fn load_scene(path: PathBuf) -> Option<Scene> {
     let mut buf = Vec::new();
     file.read_to_end(&mut buf).unwrap();
 
-    let scene = match detect_format(&buf) {
-        Some(SceneFormat::Model) => {
-            let data = match Model::decode(&buf[..]) {
-                Ok(data) => data,
-                Err(err) => {
-                    tracing::error!("failed to load model: {:?}", err);
-                    return None;
-                }
-            };
-
-            data.load()
-        }
-        Some(SceneFormat::Gltf) => {
-            let mut gltf = match GltfDecoder::new(&buf) {
-                Ok(gltf) => gltf,
-                Err(err) => {
-                    tracing::error!("failed to load GLTF file: {}", err);
-                    return None;
-                }
-            };
-
-            while let Some(path) = gltf.pop_source() {
-                let mut uri = uri.clone();
-                uri.push(&path);
-                let mut file = match std::fs::File::open(uri.as_path()) {
-                    Ok(file) => file,
-                    Err(err) => {
-                        tracing::error!("failed to load file for GLTF: {}", err);
-                        return None;
-                    }
-                };
-
-                let mut buf = Vec::new();
-                if let Err(err) = file.read_to_end(&mut buf) {
-                    tracing::error!("failed to load file for GLTF: {}", err);
-                    return None;
-                }
-
-                gltf.push_source(path, buf);
-            }
-
-            match gltf.finish() {
-                Ok(gltf) => gltf.load(),
-                Err(err) => {
-                    tracing::error!("failed to load GLTF file: {}", err);
-                    return None;
-                }
-            }
-        }
-        None => {
-            tracing::error!("cannot detect scene format");
-            return None;
-        }
-    };
-
+    let scene = crate::format::from_slice(&buf).unwrap();
     Some(scene)
 }
 

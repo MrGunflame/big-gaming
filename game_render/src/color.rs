@@ -15,4 +15,14 @@ impl Color {
     pub(crate) fn as_rgb(self) -> [f32; 3] {
         [self.0[0], self.0[1], self.0[2]]
     }
+
+    #[inline]
+    pub const fn from_rgb(rgb: [f32; 3]) -> Self {
+        Self([rgb[0], rgb[1], rgb[2], 1.0])
+    }
+
+    #[inline]
+    pub const fn from_rgba(rgba: [f32; 4]) -> Self {
+        Self(rgba)
+    }
 }
