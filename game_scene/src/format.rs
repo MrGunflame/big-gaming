@@ -19,7 +19,7 @@ use crate::scene2::{Key, SceneGraph};
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct SceneRoot {
-    nodes: Vec<Node>,
+    pub nodes: Vec<Node>,
 }
 
 impl SceneRoot {
@@ -211,16 +211,16 @@ fn load_mesh_instance(path: &str, parent: Key, graph: &mut SceneGraph, renderer:
 }
 
 #[derive(Clone, Debug, Deserialize)]
-struct Node {
-    parent: Option<usize>,
-    translation: [f32; 3],
-    rotation: [f32; 4],
-    scale: [f32; 3],
-    components: Vec<Component>,
+pub struct Node {
+    pub parent: Option<usize>,
+    pub translation: [f32; 3],
+    pub rotation: [f32; 4],
+    pub scale: [f32; 3],
+    pub components: Vec<Component>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
-enum Component {
+pub enum Component {
     MeshInstance(MeshInstance),
     DirectionalLight(DirectionalLight),
     PointLight(PointLight),
@@ -228,30 +228,30 @@ enum Component {
 }
 
 #[derive(Clone, Debug, Deserialize)]
-struct MeshInstance {
-    path: String,
+pub struct MeshInstance {
+    pub path: String,
 }
 
 #[derive(Copy, Clone, Debug, Deserialize)]
-struct DirectionalLight {
-    color: [f32; 3],
-    illuminance: f32,
+pub struct DirectionalLight {
+    pub color: [f32; 3],
+    pub illuminance: f32,
 }
 
 #[derive(Copy, Clone, Debug, Deserialize)]
-struct PointLight {
-    color: [f32; 3],
-    intensity: f32,
-    radius: f32,
+pub struct PointLight {
+    pub color: [f32; 3],
+    pub intensity: f32,
+    pub radius: f32,
 }
 
 #[derive(Copy, Clone, Debug, Deserialize)]
-struct SpotLight {
-    color: [f32; 3],
-    intensity: f32,
-    radius: f32,
-    inner_cutoff: f32,
-    outer_cutoff: f32,
+pub struct SpotLight {
+    pub color: [f32; 3],
+    pub intensity: f32,
+    pub radius: f32,
+    pub inner_cutoff: f32,
+    pub outer_cutoff: f32,
 }
 
 pub fn from_slice(buf: &[u8]) -> Result<SceneRoot, Box<dyn std::error::Error>> {

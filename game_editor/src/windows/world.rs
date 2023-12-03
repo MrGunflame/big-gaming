@@ -19,6 +19,7 @@ use game_render::camera::{Camera, RenderTarget};
 use game_render::color::Color;
 use game_render::entities::CameraId;
 use game_render::{shape, Renderer};
+use game_scene::format::SceneRoot;
 use game_scene::scene::{Material, Node, NodeBody, ObjectNode, Scene};
 use game_scene::scene2::{DirectionalLight, PointLight, SpotLight};
 use game_ui::reactive::{ReadSignal, Scope, WriteSignal};
