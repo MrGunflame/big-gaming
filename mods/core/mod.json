@@ -111,7 +111,7 @@
                     "c626b9b0ab1940aba6932ea7726d0175:04",
                     "c626b9b0ab1940aba6932ea7726d0175:0f"
                 ],
-                "model": "assets/human.glb"
+                "model": "assets/human.json"
             }
         ],
         "items": [
@@ -196,7 +196,7 @@
             {
                 "id": "10",
                 "name": "Box",
-                "model": "assets/box.glb",
+                "model": "assets/box.json",
                 "description": "",
                 "components": []
             },

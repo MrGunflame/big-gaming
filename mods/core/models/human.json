@@ -1,0 +1,30 @@
+{
+    "nodes": [
+        {
+            "parent": null,
+            "translation": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "rotation": [
+                0.0,
+                0.0,
+                0.0,
+                1.0
+            ],
+            "scale": [
+                1.0,
+                1.0,
+                1.0
+            ],
+            "components": [
+                {
+                    "MeshInstance": {
+                        "path": "assets/human.glb"
+                    }
+                }
+            ]
+        }
+    ]
+}
