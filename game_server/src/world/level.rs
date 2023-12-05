@@ -14,65 +14,65 @@ use glam::Vec3;
 
 use crate::ServerState;
 
-pub fn update_level_cells(state: &mut ServerState) {
-    let Some(mut view) = state.world.back_mut() else {
-        return;
-    };
+// pub fn update_level_cells(state: &mut ServerState) {
+//     let Some(mut view) = state.world.back_mut() else {
+//         return;
+//     };
 
-    let mut cells = HashSet::default();
+//     let mut cells = HashSet::default();
 
-    for (id, source) in view.streaming_sources().iter() {
-        let entity = view.get(id).unwrap();
-        let cell = CellId::from(entity.transform.translation);
+//     for (id, source) in view.streaming_sources().iter() {
+//         let entity = view.get(id).unwrap();
+//         let cell = CellId::from(entity.transform.translation);
 
-        let area = square(cell, source.distance);
-        cells.extend(area);
-    }
+//         let area = square(cell, source.distance);
+//         cells.extend(area);
+//     }
 
-    for cell in &cells {
-        // If the cell is already loaded, don't update
-        // anything.
-        if state.level.loaded.contains(cell) {
-            state.level.loaded.remove(cell);
-            continue;
-        }
+//     for cell in &cells {
+//         // If the cell is already loaded, don't update
+//         // anything.
+//         if state.level.loaded.contains(cell) {
+//             state.level.loaded.remove(cell);
+//             continue;
+//         }
 
-        if !state.level.cells.contains_key(cell) {
-            let mut builder = CellBuilder::new(*cell);
-            state.level.generator.generate(&mut builder);
+//         if !state.level.cells.contains_key(cell) {
+//             let mut builder = CellBuilder::new(*cell);
+//             state.level.generator.generate(&mut builder);
 
-            let mut cell = Cell::new(*cell);
+//             let mut cell = Cell::new(*cell);
 
-            for entity in builder.into_entities() {
-                if let Some(entity) = build_entity(&state.modules, cell.id(), entity) {
-                    cell.spawn(entity);
-                }
-            }
+//             for entity in builder.into_entities() {
+//                 if let Some(entity) = build_entity(&state.modules, cell.id(), entity) {
+//                     cell.spawn(entity);
+//                 }
+//             }
 
-            state.level.cells.insert(cell.id(), cell);
-        }
+//             state.level.cells.insert(cell.id(), cell);
+//         }
 
-        tracing::info!("loading cell {:?}", cell);
+//         tracing::info!("loading cell {:?}", cell);
 
-        let cell = state.level.cells.get_mut(cell).unwrap();
-        cell.load(&mut view);
-        state
-            .event_queue
-            .push(Event::CellLoad(CellLoadEvent { cell: cell.id() }));
-    }
+//         let cell = state.level.cells.get_mut(cell).unwrap();
+//         cell.load(&mut view);
+//         state
+//             .event_queue
+//             .push(Event::CellLoad(CellLoadEvent { cell: cell.id() }));
+//     }
 
-    for cell in &state.level.loaded {
-        tracing::info!("unloading cell {:?}", cell);
+//     for cell in &state.level.loaded {
+//         tracing::info!("unloading cell {:?}", cell);
 
-        let cell = state.level.cells.get_mut(cell).unwrap();
-        cell.unload(&mut view);
-        state
-            .event_queue
-            .push(Event::CellUnload(CellUnloadEvent { cell: cell.id() }));
-    }
+//         let cell = state.level.cells.get_mut(cell).unwrap();
+//         cell.unload(&mut view);
+//         state
+//             .event_queue
+//             .push(Event::CellUnload(CellUnloadEvent { cell: cell.id() }));
+//     }
 
-    state.level.loaded = cells;
-}
+//     state.level.loaded = cells;
+// }
 
 pub struct Level {
     loaded: HashSet<CellId>,

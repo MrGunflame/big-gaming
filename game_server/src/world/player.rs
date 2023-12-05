@@ -3,27 +3,63 @@ use std::f32::consts::PI;
 use game_common::components::components::{Component, Components};
 use game_common::components::inventory::Inventory;
 use game_common::components::items::{Item, ItemId, ItemStack};
+use game_common::components::object::ObjectId;
+use game_common::components::race::RaceId;
 use game_common::components::transform::Transform;
 use game_common::entity::EntityId;
 use game_common::math::RotationExt;
-use game_common::units::Mass;
-use game_common::world::world::WorldViewMut;
-use game_core::entity::SpawnEntity;
+use game_common::record::RecordReference;
+use game_common::world::entity::{Actor, Entity, EntityBody, Object};
 use game_core::modules::Modules;
+use game_data::record::RecordBody;
 use glam::{Quat, Vec3};
 
-pub fn spawn_player(modules: &Modules, view: &mut WorldViewMut<'_>) -> SpawnPlayer {
-    let race = "c626b9b0ab1940aba6932ea7726d0175:06".parse().unwrap();
+use super::state::WorldState;
+
+pub fn spawn_player(modules: &Modules, world: &mut WorldState) -> Option<EntityId> {
+    let race_id: RecordReference = "c626b9b0ab1940aba6932ea7726d0175:06".parse().unwrap();
 
     let transform = Transform::from_translation(Vec3::new(0.0, 0.0, 0.0));
 
-    let id = SpawnEntity {
-        id: race,
-        transform,
-        is_host: false,
+    let Some(module) = modules.get(race_id.module) else {
+        return None;
+    };
+
+    let Some(record) = module.records.get(race_id.record) else {
+        return None;
+    };
+
+    let body = match &record.body {
+        RecordBody::Item(item) => todo!(),
+        RecordBody::Action(_) => return None,
+        RecordBody::Component(_) => return None,
+        RecordBody::Object(object) => EntityBody::Object(Object {
+            id: ObjectId(race_id),
+        }),
+        RecordBody::Race(race) => EntityBody::Actor(Actor {
+            race: RaceId(race_id),
+        }),
+    };
+
+    let mut components = Components::new();
+    for component in &record.components {
+        components.insert(
+            component.id,
+            Component {
+                bytes: component.bytes.clone(),
+            },
+        );
     }
-    .spawn(modules, view)
-    .unwrap();
+
+    let id = world.insert(Entity {
+        id: EntityId::dangling(),
+        transform,
+        body,
+        is_host: false,
+        components,
+        angvel: Vec3::ZERO,
+        linvel: Vec3::ZERO,
+    });
 
     let mut components = Components::new();
     components.insert(
@@ -50,29 +86,7 @@ pub fn spawn_player(modules: &Modules, view: &mut WorldViewMut<'_>) -> SpawnPlay
         })
         .unwrap();
 
-    // view.inventories_mut()
-    //     .get_mut_or_insert(id)
-    //     .insert(Item {
-    //         id: ItemId("ec7d043851c74c41a35de44befde13b5:06".parse().unwrap()),
-    //         mass: Mass::default(),
-    //         components: Components::default(),
-    //         equipped: false,
-    //         hidden: false,
-    //     })
-    //     .unwrap();
-
-    SpawnPlayer {
-        id,
-        transform,
-        inventory,
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct SpawnPlayer {
-    pub id: EntityId,
-    pub transform: Transform,
-    pub inventory: Inventory,
+    Some(id)
 }
 
 // pub fn move_player(event: PlayerMove, entity_id: EntityId, view: &mut WorldViewMut<'_>) {
