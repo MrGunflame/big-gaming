@@ -11,13 +11,13 @@ use std::time::{Duration, Instant};
 
 use game_common::events::EventQueue;
 use game_common::world::gen::Generator;
-use game_common::world::world::WorldState;
 use game_core::counter::{Interval, UpdateCounter};
 use game_core::modules::Modules;
 use game_script::executor::ScriptExecutor;
 use game_script::scripts::RecordTargets;
 use game_script::ScriptServer;
 use tracing::{span, Level};
+use world::state::WorldState;
 
 use crate::config::Config;
 use crate::plugins::tick;

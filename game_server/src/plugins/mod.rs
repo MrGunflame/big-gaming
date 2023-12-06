@@ -13,8 +13,6 @@ use game_common::units::Mass;
 use game_common::world::control_frame::ControlFrame;
 use game_common::world::entity::EntityBody;
 use game_common::world::snapshot::EntityChange;
-use game_common::world::source::StreamingSource;
-use game_common::world::world::{AsView, WorldState, WorldViewMut, WorldViewRef};
 use game_common::world::CellId;
 use game_core::modules::Modules;
 use game_net::message::{
@@ -24,11 +22,13 @@ use game_net::message::{
 };
 use game_net::peer_error;
 use game_script::effect::{Effect, Effects};
-use game_script::Context;
+use game_script::{Context, WorldProvider};
+use glam::Vec3;
 
 use crate::conn::{Connection, Connections};
 use crate::net::state::{Cells, ConnectionState};
 use crate::world::player::spawn_player;
+use crate::world::state::WorldState;
 use crate::ServerState;
 
 // All systems need to run sequentially.
@@ -36,15 +36,15 @@ pub fn tick(state: &mut ServerState) {
     update_client_heads(state);
     flush_command_queue(state);
 
-    crate::world::level::update_level_cells(state);
+    //crate::world::level::update_level_cells(state);
 
     let effects = state.script_executor.run(Context {
-        view: &state.world.back().unwrap(),
+        view: &state.world,
         physics_pipeline: &state.pipeline,
         events: &mut state.event_queue,
         records: &state.modules,
     });
-    apply_effects(effects, &mut state.world.back_mut().unwrap());
+    apply_effects(effects, &mut state.world);
 
     if cfg!(feature = "physics") {
         //step_physics(state);
@@ -55,7 +55,7 @@ pub fn tick(state: &mut ServerState) {
     update_snapshots(&state.state.conns, &state.world, cf);
 }
 
-fn apply_effects(effects: Effects, view: &mut WorldViewMut<'_>) {
+fn apply_effects(effects: Effects, world: &mut WorldState) {
     // Since the script executing uses its own temporary ID namespace
     // for newly created IDs we must remap all IDs into "real" IDs.
     // A temporary ID must **never** overlap with an existing ID.
@@ -68,29 +68,29 @@ fn apply_effects(effects: Effects, view: &mut WorldViewMut<'_>) {
         match effect {
             Effect::EntitySpawn(entity) => {
                 debug_assert!(entity_id_remap.get(&entity.id).is_none());
-                debug_assert!(view.get(entity.id).is_none());
+                debug_assert!(world.get(entity.id).is_none());
 
                 let temp_id = entity.id;
-                let real_id = view.spawn(entity);
+                let real_id = world.insert(entity);
                 entity_id_remap.insert(temp_id, real_id);
             }
             Effect::EntityDespawn(id) => {
                 let id = entity_id_remap.get(&id).copied().unwrap_or(id);
-                let entity = view.despawn(id);
+                let entity = world.remove(id);
                 debug_assert!(entity.is_some());
             }
             Effect::EntityTranslate(id, translation) => {
                 let id = entity_id_remap.get(&id).copied().unwrap_or(id);
-                view.get_mut(id).unwrap().set_translation(translation);
+                world.get_mut(id).unwrap().transform.translation = translation;
             }
             Effect::EntityRotate(id, rotation) => {
                 let id = entity_id_remap.get(&id).copied().unwrap_or(id);
-                view.get_mut(id).unwrap().set_rotation(rotation);
+                world.get_mut(id).unwrap().transform.rotation = rotation;
             }
             Effect::InventoryInsert(id, temp_slot_id, stack) => {
                 let entity_id = entity_id_remap.get(&id).copied().unwrap_or(id);
 
-                let real_id = view.inventory_insert_without_id(entity_id, stack);
+                let real_id = world.inventory_mut(entity_id).insert(stack);
                 inventory_slot_id_remap.insert(temp_slot_id, real_id);
             }
             Effect::InventoryRemove(id, slot_id, quantity) => {
@@ -100,7 +100,7 @@ fn apply_effects(effects: Effects, view: &mut WorldViewMut<'_>) {
                     .copied()
                     .unwrap_or(slot_id);
 
-                view.inventory_remove_items(entity_id, slot_id, quantity as u32);
+                world.inventory_mut(entity_id).remove(slot_id);
             }
             Effect::InventoryItemUpdateEquip(id, slot_id, equipped) => {
                 let entity_id = entity_id_remap.get(&id).copied().unwrap_or(id);
@@ -109,7 +109,10 @@ fn apply_effects(effects: Effects, view: &mut WorldViewMut<'_>) {
                     .copied()
                     .unwrap_or(slot_id);
 
-                view.inventory_set_equipped(entity_id, slot_id, equipped);
+                world
+                    .inventory_mut(entity_id)
+                    .get_mut(slot_id)
+                    .set_equipped(equipped);
             }
             Effect::InventoryComponentInsert(id, slot_id, component, data) => {
                 let entity_id = entity_id_remap.get(&id).copied().unwrap_or(id);
@@ -118,7 +121,10 @@ fn apply_effects(effects: Effects, view: &mut WorldViewMut<'_>) {
                     .copied()
                     .unwrap_or(slot_id);
 
-                view.inventory_component_insert(entity_id, slot_id, component, data);
+                world
+                    .inventory_mut(entity_id)
+                    .get_mut(slot_id)
+                    .component_insert(component, data);
             }
             Effect::InventoryComponentRemove(id, slot_id, component) => {
                 let entity_id = entity_id_remap.get(&id).copied().unwrap_or(id);
@@ -127,7 +133,10 @@ fn apply_effects(effects: Effects, view: &mut WorldViewMut<'_>) {
                     .copied()
                     .unwrap_or(slot_id);
 
-                view.inventory_component_remove(entity_id, slot_id, component);
+                world
+                    .inventory_mut(entity_id)
+                    .get_mut(slot_id)
+                    .component_remove(component);
             }
             Effect::InventoryClear(entity_id) => {
                 let entity_id = entity_id_remap
@@ -135,7 +144,7 @@ fn apply_effects(effects: Effects, view: &mut WorldViewMut<'_>) {
                     .copied()
                     .unwrap_or(entity_id);
 
-                view.inventories_mut().get_mut(entity_id).unwrap().clear();
+                world.inventory_mut(entity_id).clear();
             }
             Effect::EntityComponentInsert(entity_id, component, data) => {
                 let entity_id = entity_id_remap
@@ -143,33 +152,39 @@ fn apply_effects(effects: Effects, view: &mut WorldViewMut<'_>) {
                     .copied()
                     .unwrap_or(entity_id);
 
-                view.get_mut(entity_id)
+                world
+                    .get_mut(entity_id)
                     .unwrap()
-                    .insert_component(component, Component { bytes: data });
+                    .components
+                    .insert(component, Component { bytes: data });
             }
             Effect::EntityComponentRemove(entity_id, component) => {
-                view.get_mut(entity_id).unwrap().remove_component(component);
+                world
+                    .get_mut(entity_id)
+                    .unwrap()
+                    .components
+                    .remove(component);
             }
         }
     }
 }
 
 fn step_physics(state: &mut ServerState) {
-    let mut start = state.world.front().unwrap().control_frame();
-    let end = state.world.back().unwrap().control_frame();
-    start = end;
+    // let mut start = state.world.front().unwrap().control_frame();
+    // let end = state.world.back().unwrap().control_frame();
+    // start = end;
 
-    while start <= end {
-        let mut view = state.world.get_mut(start).unwrap();
-        state.pipeline.step(&mut view, &mut state.event_queue);
-        start += 1;
-    }
+    // while start <= end {
+    //     let mut view = state.world.get_mut(start).unwrap();
+    //     state.pipeline.step(&mut view, &mut state.event_queue);
+    //     start += 1;
+    // }
+
+    todo!();
 }
 
 fn update_client_heads(state: &mut ServerState) {
     let control_frame = state.state.control_frame.lock();
-
-    state.world.insert(*control_frame);
 
     for conn in state.state.conns.iter() {
         let mut state = conn.state().write();
@@ -178,10 +193,6 @@ fn update_client_heads(state: &mut ServerState) {
         let client_cf = *control_frame - state.peer_delay;
 
         state.client_cf = client_cf;
-    }
-
-    if state.world.len() > 120 {
-        state.world.pop();
     }
 }
 
@@ -197,53 +208,21 @@ fn flush_command_queue(srv_state: &mut ServerState) {
         let conn = srv_state.state.conns.get(id).unwrap();
         let client_cf = conn.state().read().client_cf;
 
-        // Fetch the world state at the client's computed render time.
-        // Note that the client may be too far in the past to go back.
-        // In that case we must chose the oldest snapshot.
-        let mut view;
-        {
-            let opt = srv_state.world.get_mut(client_cf);
-            if let Some(v) = opt {
-                view = v;
-            } else {
-                // Note that this `drop` is necessary as `Option<WorldViewMut>` has a `Drop`
-                // impl, even thought at this point it never actually needs to drop anything
-                // because it is `None`.
-                drop(opt);
-                match srv_state.world.front_mut() {
-                    Some(v) => view = v,
-                    None => {
-                        tracing::warn!("no snapshots");
-                        return;
-                    }
-                }
-            }
-        }
-
         let mut state = conn.state().write();
+
+        let world = &mut srv_state.world;
 
         match msg {
             Message::Control(ControlMessage::Connected()) => {
-                let res = spawn_player(&srv_state.modules, &mut view);
-
-                state.entities.insert(res.id);
-
-                view.insert_streaming_source(
-                    res.id,
-                    StreamingSource {
-                        distance: srv_state.state.config.player_streaming_source_distance,
-                    },
-                );
-
-                view.inventories_mut().insert(res.id, res.inventory);
+                let id = spawn_player(&srv_state.modules, world).unwrap();
 
                 // At the connection time the delay must be 0, meaning the player is spawned
                 // without delay.
                 debug_assert_eq!(state.peer_delay, ControlFrame(0));
 
-                state.host.entity = Some(res.id);
+                state.host.entity = Some(id);
                 state.peer_delay = ControlFrame(0);
-                state.cells = Cells::new(CellId::from(res.transform.translation));
+                state.cells = Cells::new(CellId::from(Vec3::ZERO));
             }
             Message::Control(ControlMessage::Disconnected) => {}
             Message::Control(ControlMessage::Acknowledge(_, _)) => {}
@@ -251,38 +230,25 @@ fn flush_command_queue(srv_state: &mut ServerState) {
                 conn.push_message_in_frame(msg.id);
 
                 match msg.body {
-                    DataMessageBody::EntityCreate(msg) => {}
+                    DataMessageBody::EntityCreate(msg) => {
+                        peer_error!("received server-only frame `EntityCreate` from peer")
+                    }
                     DataMessageBody::EntityDestroy(msg) => {
-                        if let Some(id) = state.host.entity {
-                            if view.despawn(id).is_none() {
-                                tracing::warn!("attempted to destroy an unknown entity {:?}", id);
-                            }
-                        }
-
-                        // Remove the player from the connections ref.
-                        srv_state.state.conns.remove(id);
+                        peer_error!("received server-only frame `EntityDestroy` from peer")
                     }
                     DataMessageBody::EntityTranslate(msg) => {
-                        let Some(id) = state.entities.get(msg.entity) else {
-                            continue;
-                        };
-
-                        let Some(mut entity) = view.get_mut(id) else {
-                            continue;
-                        };
-
-                        entity.set_translation(msg.translation);
+                        peer_error!("received server-only frame `EntityTranslate` from peer")
                     }
                     DataMessageBody::EntityRotate(msg) => {
                         let Some(id) = state.entities.get(msg.entity) else {
                             continue;
                         };
 
-                        let Some(mut entity) = view.get_mut(id) else {
+                        let Some(mut entity) = world.get_mut(id) else {
                             continue;
                         };
 
-                        entity.set_rotation(msg.rotation);
+                        entity.transform.rotation = msg.rotation;
                     }
                     DataMessageBody::EntityAction(msg) => {
                         let Some(entity) = state.entities.get(msg.entity) else {
@@ -295,7 +261,7 @@ fn flush_command_queue(srv_state: &mut ServerState) {
                         }
 
                         queue_action(
-                            &view,
+                            &world,
                             entity,
                             &srv_state.modules,
                             msg.action,
@@ -312,19 +278,17 @@ fn flush_command_queue(srv_state: &mut ServerState) {
                 }
             }
         }
-
-        drop(view);
     }
 }
 
 fn queue_action(
-    view: impl AsView,
+    world: &WorldState,
     entity_id: EntityId,
     modules: &Modules,
     action: ActionId,
     queue: &mut EventQueue,
 ) {
-    let Some(entity) = view.get(entity_id) else {
+    let Some(entity) = world.get(entity_id) else {
         return;
     };
 
@@ -376,7 +340,7 @@ fn queue_action(
         }
     }
 
-    let Some(inventory) = view.inventory(entity_id) else {
+    let Some(inventory) = world.inventory(entity_id) else {
         return;
     };
 
@@ -431,35 +395,21 @@ fn queue_action(
     tracing::trace!("action {:?} unavailable for entity {:?}", action, entity_id);
 }
 
-fn update_snapshots(
-    connections: &Connections,
-    // FIXME: Make dedicated type for all shared entities.
-    // mut entities: Query<(&mut Entity, &Transform)>,
-    world: &WorldState,
-    cf: ControlFrame,
-) {
-    let Some(view) = world.back() else {
-        return;
-    };
-
-    // tracing::info!("Sending snapshots for {:?}", view.control_frame());
-
+fn update_snapshots(connections: &Connections, world: &WorldState, cf: ControlFrame) {
     for conn in connections.iter() {
-        update_client(&conn, view, cf);
+        update_client(&conn, world, cf);
     }
 }
 
-fn update_client(conn: &Connection, view: WorldViewRef<'_>, cf: ControlFrame) {
+fn update_client(conn: &Connection, world: &WorldState, cf: ControlFrame) {
     let state = &mut *conn.state().write();
 
     let Some(host_id) = state.host.entity else {
         return;
     };
 
-    let host = view.get(host_id).unwrap();
+    let host = world.get(host_id).unwrap();
     let cell_id = CellId::from(host.transform.translation);
-
-    let streaming_source = view.streaming_sources().get(host_id).unwrap();
 
     // Send full state
     // The delta from the current frame is "included" in the full update.
@@ -476,16 +426,16 @@ fn update_client(conn: &Connection, view: WorldViewRef<'_>, cf: ControlFrame) {
         );
 
         for id in state.cells.cells() {
-            let cell = view.cell(*id);
+            let cell = world.cell(*id);
 
-            for entity in cell.iter() {
+            for (_, entity) in cell.entities() {
                 state.known_entities.insert(entity.clone());
 
                 let entity_id = state.entities.insert(entity.id);
 
                 conn.handle().send(DataMessage {
                     id: MessageId(0),
-                    control_frame: view.control_frame(),
+                    control_frame: cf,
                     body: DataMessageBody::EntityCreate(EntityCreate {
                         entity: entity_id,
                         translation: entity.transform.translation,
@@ -498,7 +448,7 @@ fn update_client(conn: &Connection, view: WorldViewRef<'_>, cf: ControlFrame) {
                 for (id, component) in entity.components.iter() {
                     conn.handle().send(DataMessage {
                         id: MessageId(0),
-                        control_frame: view.control_frame(),
+                        control_frame: cf,
                         body: DataMessageBody::EntityComponentAdd(EntityComponentAdd {
                             entity: entity_id,
                             component: id,
@@ -508,11 +458,11 @@ fn update_client(conn: &Connection, view: WorldViewRef<'_>, cf: ControlFrame) {
                 }
 
                 // Sync the entity inventory, if it has one.
-                if let Some(inventory) = view.inventories().get(entity.id) {
+                if let Some(inventory) = world.inventory(entity.id) {
                     for (id, stack) in inventory.iter() {
                         conn.handle().send(DataMessage {
                             id: MessageId(0),
-                            control_frame: view.control_frame(),
+                            control_frame: cf,
                             body: DataMessageBody::InventoryItemAdd(InventoryItemAdd {
                                 entity: entity_id,
                                 id,
@@ -532,7 +482,7 @@ fn update_client(conn: &Connection, view: WorldViewRef<'_>, cf: ControlFrame) {
         let id = state.entities.get(host_id).unwrap();
         conn.handle().send(DataMessage {
             id: MessageId(0),
-            control_frame: view.control_frame(),
+            control_frame: cf,
             body: DataMessageBody::SpawnHost(SpawnHost { entity: id }),
         });
 
@@ -544,10 +494,10 @@ fn update_client(conn: &Connection, view: WorldViewRef<'_>, cf: ControlFrame) {
     if state.cells.origin() != cell_id {
         tracing::info!("Moving host from {:?} to {:?}", state.cells, cell_id);
 
-        state.cells.set(cell_id, streaming_source.distance);
+        // state.cells.set(cell_id, streaming_source.distance);
     }
 
-    let events = update_player_cells(view, state);
+    let events = update_player_cells(world, state);
 
     // The host should never be destroyed.
     if cfg!(debug_assertions) {
@@ -569,11 +519,10 @@ fn update_client(conn: &Connection, view: WorldViewRef<'_>, cf: ControlFrame) {
         conn.handle().acknowledge(id, cf);
     }
 
-    let control_frame = view.control_frame();
     for body in update_client_entities(state, events) {
         let msg = DataMessage {
             id: MessageId(0),
-            control_frame,
+            control_frame: cf,
             body,
         };
         conn.handle().send(msg);
@@ -581,18 +530,15 @@ fn update_client(conn: &Connection, view: WorldViewRef<'_>, cf: ControlFrame) {
 }
 
 /// Update a player that hasn't moved cells.
-fn update_player_cells<V>(view: V, state: &ConnectionState) -> Vec<EntityChange>
-where
-    V: AsView,
-{
+fn update_player_cells(world: &WorldState, state: &ConnectionState) -> Vec<EntityChange> {
     let mut events = Vec::new();
 
     let mut stale_entities: HashSet<_> = state.known_entities.entities.keys().copied().collect();
 
     for id in state.cells.iter() {
-        let cell = view.cell(id);
+        let cell = world.cell(id);
 
-        for entity in cell.iter() {
+        for (_, entity) in cell.entities() {
             if !state.known_entities.contains(entity.id) {
                 events.push(EntityChange::Create {
                     entity: entity.clone(),
@@ -608,7 +554,7 @@ where
                 }
 
                 // Sync inventory.
-                if let Some(inventory) = view.inventory(entity.id) {
+                if let Some(inventory) = world.inventory(entity.id) {
                     for (id, stack) in inventory.iter() {
                         events.push(EntityChange::InventoryItemAdd(
                             game_common::world::snapshot::InventoryItemAdd {
@@ -649,7 +595,7 @@ where
 
             // Sync inventory
             match (
-                view.inventory(entity.id),
+                world.inventory(entity.id),
                 state.known_entities.inventories.get(&entity.id),
             ) {
                 (Some(server_inv), Some(client_inv)) => {
@@ -970,15 +916,14 @@ mod tests {
     use game_common::components::transform::Transform;
     use game_common::entity::EntityId;
     use game_common::record::RecordReference;
-    use game_common::world::control_frame::ControlFrame;
     use game_common::world::entity::{Entity, EntityBody, Object};
     use game_common::world::snapshot::EntityChange;
-    use game_common::world::world::WorldState;
     use game_common::world::CellId;
     use glam::{IVec3, Vec3};
 
     use crate::net::state::ConnectionState;
     use crate::plugins::update_client_entities;
+    use crate::world::state::WorldState;
 
     use super::update_player_cells;
 
@@ -999,14 +944,10 @@ mod tests {
     #[test]
     fn player_update_cells_spawn_entity() {
         let mut world = WorldState::new();
-        let cf = ControlFrame(0);
-        world.insert(cf);
-
-        let mut view = world.get_mut(cf).unwrap();
-        view.spawn(create_test_entity());
+        world.insert(create_test_entity());
 
         let mut state = ConnectionState::new();
-        let events = update_player_cells(&view, &state);
+        let events = update_player_cells(&world, &state);
         update_client_entities(&mut state, events.clone());
 
         assert_eq!(events.len(), 1);
@@ -1016,21 +957,16 @@ mod tests {
     #[test]
     fn player_update_cells_translate_entity() {
         let mut world = WorldState::new();
-        let cf = ControlFrame(0);
-        world.insert(cf);
-
-        let mut view = world.get_mut(cf).unwrap();
-        let entity_id = view.spawn(create_test_entity());
+        let entity_id = world.insert(create_test_entity());
 
         let mut state = ConnectionState::new();
-        let events = update_player_cells(&view, &state);
+        let events = update_player_cells(&world, &state);
         update_client_entities(&mut state, events);
 
-        let mut entity = view.get_mut(entity_id).unwrap();
-        entity.set_translation(Vec3::splat(1.0));
-        drop(entity);
+        let entity = world.get_mut(entity_id).unwrap();
+        entity.transform.translation = Vec3::splat(1.0);
 
-        let events = update_player_cells(&view, &mut state);
+        let events = update_player_cells(&world, &mut state);
 
         assert_eq!(events.len(), 1);
         assert!(matches!(
@@ -1045,19 +981,15 @@ mod tests {
     #[test]
     fn player_upate_cells_despawn_entity() {
         let mut world = WorldState::new();
-        let cf = ControlFrame(0);
-        world.insert(cf);
-
-        let mut view = world.get_mut(cf).unwrap();
-        let entity_id = view.spawn(create_test_entity());
+        let entity_id = world.insert(create_test_entity());
 
         let mut state = ConnectionState::new();
-        let events = update_player_cells(&view, &state);
+        let events = update_player_cells(&world, &state);
         update_client_entities(&mut state, events);
 
-        view.despawn(entity_id);
+        world.remove(entity_id);
 
-        let events = update_player_cells(&view, &mut state);
+        let events = update_player_cells(&world, &mut state);
 
         assert_eq!(events.len(), 1);
         assert!(matches!(events[0], EntityChange::Destroy { id: _ }));
@@ -1066,21 +998,16 @@ mod tests {
     #[test]
     fn player_update_cells_entity_leave_cells() {
         let mut world = WorldState::new();
-        let cf = ControlFrame(0);
-        world.insert(cf);
-
-        let mut view = world.get_mut(cf).unwrap();
-        let entity_id = view.spawn(create_test_entity());
+        let entity_id = world.insert(create_test_entity());
 
         let mut state = ConnectionState::new();
-        let events = update_player_cells(&view, &state);
+        let events = update_player_cells(&world, &state);
         update_client_entities(&mut state, events);
 
-        let mut entity = view.get_mut(entity_id).unwrap();
-        entity.set_translation(Vec3::splat(1024.0));
-        drop(entity);
+        let entity = world.get_mut(entity_id).unwrap();
+        entity.transform.translation = Vec3::splat(1024.0);
 
-        let events = update_player_cells(&view, &mut state);
+        let events = update_player_cells(&world, &mut state);
 
         assert_eq!(events.len(), 1);
         assert!(matches!(events[0], EntityChange::Destroy { id: _ }));
@@ -1091,25 +1018,20 @@ mod tests {
         let distance = 0;
 
         let mut world = WorldState::new();
-        let cf = ControlFrame(0);
-        world.insert(cf);
-
-        let mut view = world.get_mut(cf).unwrap();
-        let entity_id = view.spawn(create_test_entity());
+        let entity_id = world.insert(create_test_entity());
 
         let mut state = ConnectionState::new();
         state.cells.set(CellId::from_i32(IVec3::new(0, 0, 0)), 0);
-        let events = update_player_cells(&view, &mut state);
+        let events = update_player_cells(&world, &mut state);
         update_client_entities(&mut state, events);
 
         let new_cell = CellId::from_i32(IVec3::splat(1));
         state.cells.set(new_cell, distance);
 
-        let mut entity = view.get_mut(entity_id).unwrap();
-        entity.set_translation(new_cell.min());
-        drop(entity);
+        let entity = world.get_mut(entity_id).unwrap();
+        entity.transform.translation = new_cell.min();
 
-        let events = update_player_cells(&view, &mut state);
+        let events = update_player_cells(&world, &mut state);
 
         assert_eq!(events.len(), 1);
         assert!(matches!(
