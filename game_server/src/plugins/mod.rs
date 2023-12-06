@@ -7,15 +7,12 @@ use game_common::components::actions::ActionId;
 use game_common::components::components::{Component, Components};
 use game_common::components::inventory::Inventory;
 use game_common::components::items::Item;
-use game_common::components::transform::Transform;
 use game_common::entity::EntityId;
 use game_common::events::{ActionEvent, Event, EventQueue};
 use game_common::units::Mass;
 use game_common::world::control_frame::ControlFrame;
 use game_common::world::entity::EntityBody;
 use game_common::world::snapshot::EntityChange;
-use game_common::world::source::StreamingSource;
-use game_common::world::world::{AsView, WorldViewRef};
 use game_common::world::CellId;
 use game_core::modules::Modules;
 use game_net::message::{
@@ -919,7 +916,6 @@ mod tests {
     use game_common::components::transform::Transform;
     use game_common::entity::EntityId;
     use game_common::record::RecordReference;
-    use game_common::world::control_frame::ControlFrame;
     use game_common::world::entity::{Entity, EntityBody, Object};
     use game_common::world::snapshot::EntityChange;
     use game_common::world::CellId;
@@ -967,9 +963,8 @@ mod tests {
         let events = update_player_cells(&world, &state);
         update_client_entities(&mut state, events);
 
-        let mut entity = world.get_mut(entity_id).unwrap();
+        let entity = world.get_mut(entity_id).unwrap();
         entity.transform.translation = Vec3::splat(1.0);
-        drop(entity);
 
         let events = update_player_cells(&world, &mut state);
 
@@ -1009,9 +1004,8 @@ mod tests {
         let events = update_player_cells(&world, &state);
         update_client_entities(&mut state, events);
 
-        let mut entity = world.get_mut(entity_id).unwrap();
+        let entity = world.get_mut(entity_id).unwrap();
         entity.transform.translation = Vec3::splat(1024.0);
-        drop(entity);
 
         let events = update_player_cells(&world, &mut state);
 
@@ -1034,9 +1028,8 @@ mod tests {
         let new_cell = CellId::from_i32(IVec3::splat(1));
         state.cells.set(new_cell, distance);
 
-        let mut entity = world.get_mut(entity_id).unwrap();
+        let entity = world.get_mut(entity_id).unwrap();
         entity.transform.translation = new_cell.min();
-        drop(entity);
 
         let events = update_player_cells(&world, &mut state);
 
