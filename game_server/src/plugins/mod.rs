@@ -27,6 +27,7 @@ use glam::Vec3;
 
 use crate::conn::{Connection, Connections};
 use crate::net::state::{Cells, ConnectionState};
+use crate::world::level::Streamer;
 use crate::world::player::spawn_player;
 use crate::world::state::WorldState;
 use crate::ServerState;
@@ -36,7 +37,7 @@ pub fn tick(state: &mut ServerState) {
     update_client_heads(state);
     flush_command_queue(state);
 
-    //crate::world::level::update_level_cells(state);
+    crate::world::level::update_level_cells(state);
 
     let effects = state.script_executor.run(Context {
         view: &state.world,
@@ -223,6 +224,9 @@ fn flush_command_queue(srv_state: &mut ServerState) {
                 state.host.entity = Some(id);
                 state.peer_delay = ControlFrame(0);
                 state.cells = Cells::new(CellId::from(Vec3::ZERO));
+                srv_state
+                    .level
+                    .create_streamer(id, Streamer { distance: 2 });
             }
             Message::Control(ControlMessage::Disconnected) => {}
             Message::Control(ControlMessage::Acknowledge(_, _)) => {}
