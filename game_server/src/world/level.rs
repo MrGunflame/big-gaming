@@ -13,6 +13,7 @@ use game_data::record::RecordBody;
 use game_script::WorldProvider;
 use glam::Vec3;
 
+use crate::world::entity::spawn_entity;
 use crate::ServerState;
 
 #[derive(Copy, Clone, Debug)]
@@ -44,6 +45,13 @@ pub fn update_level_cells(state: &mut ServerState) {
 
             for entity in builder.into_entities() {
                 if let Some(entity) = build_entity(&state.modules, *cell, entity) {
+                    spawn_entity(
+                        entity.clone(),
+                        &mut state.world,
+                        &mut state.graph,
+                        &mut state.spawner,
+                        &state.modules,
+                    );
                     state.world.insert(entity);
                 }
             }

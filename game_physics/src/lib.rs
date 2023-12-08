@@ -1,18 +1,20 @@
+pub mod data;
+pub mod query;
+
 mod control;
 mod convert;
 mod handle;
 mod pipeline;
-pub mod query;
 
 use std::collections::HashMap;
 use std::fmt::Debug;
 
 use control::CharacterController;
 use convert::{point, quat, rotation, vec3, vector};
+use game_common::components::transform::Transform;
 use game_common::entity::EntityId;
-use game_common::events::{self, Event, EventQueue};
+use game_common::events::{self, Event};
 use game_common::world::entity::{Entity, EntityBody};
-use game_common::world::world::{AsView, WorldViewMut};
 use game_tracing::trace_span;
 use glam::{Quat, Vec3};
 use handle::HandleMap;
@@ -21,11 +23,12 @@ use parking_lot::Mutex;
 use rapier3d::prelude::{
     ActiveEvents, BroadPhase, CCDSolver, Collider, ColliderBuilder, ColliderHandle, ColliderSet,
     CollisionEvent, ContactPair, EventHandler, ImpulseJointSet, IntegrationParameters,
-    IslandManager, LockedAxes, MultibodyJointSet, NarrowPhase, PhysicsPipeline, QueryFilter,
-    QueryPipeline, Ray, RigidBodyBuilder, RigidBodyHandle, RigidBodySet, RigidBodyType, Vector,
+    IslandManager, MultibodyJointSet, NarrowPhase, PhysicsPipeline, QueryFilter, QueryPipeline,
+    Ray, RigidBodyBuilder, RigidBodyHandle, RigidBodySet, RigidBodyType, Vector,
 };
 
 pub struct Pipeline {
+    // Physics engine shit
     pipeline: PhysicsPipeline,
     gravity: Vector<f32>,
     integration_parameters: IntegrationParameters,
@@ -38,12 +41,13 @@ pub struct Pipeline {
     multibody_joints: MultibodyJointSet,
     ccd_solver: CCDSolver,
     query_pipeline: QueryPipeline,
+    // Our shit
+    /// Set of rigid bodies attached to entities.
     body_handles: HandleMap<RigidBodyHandle>,
+    /// Set of colliders attached to entities.
     // We need the collider for collision events.
     collider_handles: HandleMap<ColliderHandle>,
-
     event_handler: CollisionHandler,
-
     controllers: HashMap<RigidBodyHandle, CharacterController>,
 }
 
@@ -75,10 +79,13 @@ impl Pipeline {
         }
     }
 
-    pub fn step(&mut self, view: &mut WorldViewMut<'_>, events: &mut EventQueue) {
+    pub fn step<S>(&mut self, state: &mut S)
+    where
+        S: PhysicsStateProvider,
+    {
         let _span = trace_span!("Pipeline::step").entered();
 
-        self.read_snapshot(&*view);
+        self.update_state(state);
 
         self.pipeline.step(
             &self.gravity,
@@ -98,20 +105,21 @@ impl Pipeline {
 
         self.drive_controllers();
 
-        self.emit_events(events);
-
-        self.write_snapshot(view);
+        self.emit_events(state);
+        self.write_back(state);
     }
 
-    fn read_snapshot<V>(&mut self, view: V)
+    fn update_state<S>(&mut self, state: &S)
     where
-        V: AsView,
+        S: PhysicsStateProvider,
     {
         let mut handles = self.body_handles.clone();
 
-        for entity in view.iter() {
-            let Some(handle) = handles.remove(entity.id) else {
-                self.add_entity(entity);
+        for id in state.bodies() {
+            let entity = state.get(id).unwrap();
+
+            let Some(handle) = handles.remove(id) else {
+                self.add_entity(entity, state);
                 continue;
             };
 
@@ -150,116 +158,74 @@ impl Pipeline {
         }
     }
 
-    fn add_entity(&mut self, entity: &Entity) {
-        let (body, collider) = match &entity.body {
-            // Terrain can never move.
-            EntityBody::Terrain(terrain) => {
-                let body = RigidBodyBuilder::new(RigidBodyType::Fixed)
-                    .position(Isometry {
-                        translation: vector(terrain.mesh.cell.min()).into(),
-                        rotation: rotation(Quat::IDENTITY),
-                    })
-                    .ccd_enabled(true)
-                    .build();
+    fn add_entity<S>(&mut self, entity: &Entity, state: &S)
+    where
+        S: PhysicsStateProvider,
+    {
+        let colliders = state.colliders(entity.id);
 
-                let body_handle = self.bodies.insert(body);
-                self.body_handles.insert(entity.id, body_handle);
-
-                let (vertices, indices) = terrain.mesh.verts_indices();
-                let vertices = vertices.into_iter().map(|vert| point(vert)).collect();
-
-                let collider = ColliderBuilder::trimesh(vertices, indices)
-                    .active_events(ActiveEvents::COLLISION_EVENTS);
-                let col_handle =
-                    self.colliders
-                        .insert_with_parent(collider, body_handle, &mut self.bodies);
-
-                (body_handle, col_handle)
-            }
-            EntityBody::Object(object) => {
-                let body = RigidBodyBuilder::new(RigidBodyType::Fixed)
-                    .position(Isometry {
-                        translation: vector(entity.transform.translation).into(),
-                        rotation: rotation(entity.transform.rotation),
-                    })
-                    .ccd_enabled(true)
-                    .build();
-
-                let body_handle = self.bodies.insert(body);
-                let collider = ColliderBuilder::cuboid(1.0, 1.0, 1.0)
-                    .active_events(ActiveEvents::COLLISION_EVENTS);
-
-                let col_handle =
-                    self.colliders
-                        .insert_with_parent(collider, body_handle, &mut self.bodies);
-
-                (body_handle, col_handle)
-            }
-            EntityBody::Actor(actor) => {
-                let body = RigidBodyBuilder::new(RigidBodyType::KinematicVelocityBased)
-                    .position(Isometry {
-                        translation: vector(entity.transform.translation).into(),
-                        rotation: rotation(extract_actor_rotation(entity.transform.rotation)),
-                    })
-                    .ccd_enabled(true)
-                    .lock_rotations()
-                    .locked_axes(LockedAxes::ROTATION_LOCKED)
-                    .build();
-
-                let body_handle = self.bodies.insert(body);
-                let collider = ColliderBuilder::cuboid(1.0, 1.0, 1.0)
-                    .active_events(ActiveEvents::COLLISION_EVENTS);
-                let col_handle =
-                    self.colliders
-                        .insert_with_parent(collider, body_handle, &mut self.bodies);
-
-                self.controllers.insert(body_handle, CharacterController {});
-
-                (body_handle, col_handle)
-            }
-            EntityBody::Item(item) => {
-                let body = RigidBodyBuilder::new(RigidBodyType::Dynamic)
-                    .position(Isometry {
-                        translation: vector(entity.transform.translation).into(),
-                        rotation: rotation(entity.transform.rotation),
-                    })
-                    .ccd_enabled(true)
-                    .build();
-
-                let body_handle = self.bodies.insert(body);
-                let collider = ColliderBuilder::cuboid(1.0, 1.0, 1.0)
-                    .active_events(ActiveEvents::COLLISION_EVENTS);
-
-                let col_handle =
-                    self.colliders
-                        .insert_with_parent(collider, body_handle, &mut self.bodies);
-
-                (body_handle, col_handle)
-            }
+        let body_type = match entity.body {
+            EntityBody::Terrain(_) => RigidBodyType::Fixed,
+            EntityBody::Object(_) => RigidBodyType::Dynamic,
+            EntityBody::Actor(_) => RigidBodyType::Dynamic,
+            EntityBody::Item(_) => RigidBodyType::Dynamic,
         };
 
-        self.body_handles.insert(entity.id, body);
-        self.collider_handles.insert(entity.id, collider);
-    }
+        let body = RigidBodyBuilder::new(body_type)
+            .position(Isometry {
+                // TODO: Should use inferred cell for terrain entities.
+                translation: vector(entity.transform.translation).into(),
+                rotation: rotation(entity.transform.rotation),
+            })
+            .ccd_enabled(true)
+            .build();
 
-    fn write_snapshot(&mut self, view: &mut WorldViewMut<'_>) {
-        for (handle, body) in self.bodies.iter() {
-            let id = self.body_handles.get2(handle).unwrap();
-            if let Some(mut entity) = view.get_mut(id) {
-                entity.set_translation(vec3(*body.translation()));
-                entity.set_rotation(quat(*body.rotation()));
-            }
+        let body_handle = self.bodies.insert(body);
+        self.body_handles.insert(entity.id, body_handle);
+
+        for (transform, collider) in colliders {
+            let mut builder = match collider.shape {
+                crate::data::ColliderShape::Cuboid(cuboid) => {
+                    ColliderBuilder::cuboid(cuboid.hx, cuboid.hy, cuboid.hz)
+                }
+            };
+
+            builder = builder.position(Isometry {
+                translation: vector(transform.translation).into(),
+                rotation: rotation(transform.rotation),
+            });
+            builder = builder.active_events(ActiveEvents::COLLISION_EVENTS);
+
+            let collider_handle =
+                self.colliders
+                    .insert_with_parent(builder.build(), body_handle, &mut self.bodies);
+
+            self.collider_handles.insert(entity.id, collider_handle);
         }
     }
 
-    fn emit_events(&mut self, queue: &mut EventQueue) {
+    fn write_back<S>(&mut self, state: &mut S)
+    where
+        S: PhysicsStateProvider,
+    {
+        for (handle, body) in self.bodies.iter() {
+            let id = self.body_handles.get2(handle).unwrap();
+            state.set_translation(id, vec3(*body.translation()));
+            state.set_rotation(id, quat(*body.rotation()));
+        }
+    }
+
+    fn emit_events<S>(&mut self, state: &mut S)
+    where
+        S: PhysicsStateProvider,
+    {
         let events = self.event_handler.events.get_mut();
 
         for event in &*events {
             let lhs = self.collider_handles.get2(event.handles[0]).unwrap();
             let rhs = self.collider_handles.get2(event.handles[1]).unwrap();
 
-            queue.push(Event::Collision(events::CollisionEvent {
+            state.push_event(Event::Collision(events::CollisionEvent {
                 entity: lhs,
                 other: rhs,
             }));
@@ -392,4 +358,21 @@ impl Debug for Pipeline {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Pipeline").finish_non_exhaustive()
     }
+}
+
+pub trait PhysicsStateProvider {
+    type IterKeys: Iterator<Item = EntityId>;
+    // Collider with relative transform
+    type ColliderIter: Iterator<Item = (Transform, crate::data::Collider)>;
+
+    fn get(&self, entity: EntityId) -> Option<&Entity>;
+    /// Returns an iterator over all rigid bodies.
+    fn bodies(&self) -> Self::IterKeys;
+
+    fn colliders(&self, entity: EntityId) -> Self::ColliderIter;
+
+    fn push_event(&mut self, event: Event);
+
+    fn set_translation(&mut self, entity: EntityId, translation: Vec3);
+    fn set_rotation(&mut self, entity: EntityId, rotation: Quat);
 }

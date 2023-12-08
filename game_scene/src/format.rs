@@ -18,12 +18,13 @@ use serde::Deserialize;
 use crate::scene2::{Key, SceneGraph};
 
 #[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SceneRoot {
     pub nodes: Vec<Node>,
 }
 
 impl SceneRoot {
-    pub fn spawn(self, renderer: &mut Renderer, parent: Key, graph: &mut SceneGraph) {
+    pub fn spawn(self, renderer: &mut Option<&mut Renderer>, parent: Key, graph: &mut SceneGraph) {
         let mut parents = HashMap::new();
 
         for (index, node) in self.nodes.iter().enumerate() {
@@ -41,6 +42,7 @@ impl SceneRoot {
                 transform,
                 components: map_components(&node.components, parent, graph, renderer),
             };
+            dbg!(&node);
             graph.append(Some(parent), node);
         }
     }
@@ -50,11 +52,12 @@ fn map_components(
     components: &[Component],
     parent: Key,
     graph: &mut SceneGraph,
-    renderer: &mut Renderer,
+    renderer: &mut Option<&mut Renderer>,
 ) -> Vec<crate::scene2::Component> {
     let mut comps = Vec::new();
 
     for comp in components {
+        dbg!(&comp);
         match comp {
             Component::DirectionalLight(light) => {
                 let c =
@@ -86,7 +89,25 @@ fn map_components(
                 comps.push(c);
             }
             Component::MeshInstance(instance) => {
-                load_mesh_instance(&instance.path, parent, graph, renderer);
+                if let Some(renderer) = renderer {
+                    load_mesh_instance(&instance.path, parent, graph, renderer);
+                }
+            }
+            Component::Collider(collider) => {
+                let c = crate::scene2::Component::Collider(match collider.shape {
+                    ColliderShape::Cuboid(cuboid) => crate::scene2::Collider {
+                        mass: 1.0,
+                        friction: 1.0,
+                        restitution: 0.5,
+                        shape: crate::scene2::ColliderShape::Cuboid(crate::scene2::Cuboid {
+                            hx: cuboid.hx,
+                            hy: cuboid.hy,
+                            hz: cuboid.hz,
+                        }),
+                    },
+                });
+
+                comps.push(c);
             }
         }
     }
@@ -211,6 +232,7 @@ fn load_mesh_instance(path: &str, parent: Key, graph: &mut SceneGraph, renderer:
 }
 
 #[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Node {
     pub parent: Option<usize>,
     pub translation: [f32; 3],
@@ -220,25 +242,30 @@ pub struct Node {
 }
 
 #[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub enum Component {
     MeshInstance(MeshInstance),
     DirectionalLight(DirectionalLight),
     PointLight(PointLight),
     SpotLight(SpotLight),
+    Collider(Collider),
 }
 
 #[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct MeshInstance {
     pub path: String,
 }
 
 #[derive(Copy, Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct DirectionalLight {
     pub color: [f32; 3],
     pub illuminance: f32,
 }
 
 #[derive(Copy, Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct PointLight {
     pub color: [f32; 3],
     pub intensity: f32,
@@ -246,12 +273,33 @@ pub struct PointLight {
 }
 
 #[derive(Copy, Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SpotLight {
     pub color: [f32; 3],
     pub intensity: f32,
     pub radius: f32,
     pub inner_cutoff: f32,
     pub outer_cutoff: f32,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Collider {
+    pub shape: ColliderShape,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub enum ColliderShape {
+    Cuboid(Cuboid),
+}
+
+#[derive(Copy, Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Cuboid {
+    pub hx: f32,
+    pub hy: f32,
+    pub hz: f32,
 }
 
 pub fn from_slice(buf: &[u8]) -> Result<SceneRoot, Box<dyn std::error::Error>> {

@@ -23,6 +23,17 @@
                     "MeshInstance": {
                         "path": "assets/human.glb"
                     }
+                },
+                {
+                    "Collider": {
+                        "shape": {
+                            "Cuboid": {
+                                "hx": 1.0,
+                                "hy": 1.0,
+                                "hz": 1.0
+                            }
+                        }
+                    }
                 }
             ]
         }

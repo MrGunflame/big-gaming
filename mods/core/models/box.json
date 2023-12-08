@@ -23,6 +23,17 @@
                     "MeshInstance": {
                         "path": "assets/box.glb"
                     }
+                },
+                {
+                    "Collider": {
+                        "shape": {
+                            "Cuboid": {
+                                "hx": 50.0,
+                                "hy": 0.2,
+                                "hz": 50.0
+                            }
+                        }
+                    }
                 }
             ]
         }
