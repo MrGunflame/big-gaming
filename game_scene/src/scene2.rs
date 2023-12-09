@@ -110,9 +110,9 @@ impl SceneGraph {
         self.nodes.values()
     }
 
-    pub fn parent(&self, key: Key) -> Option<&Node> {
+    pub fn parent(&self, key: Key) -> Option<(Key, &Node)> {
         let parent = self.parents.get(key.0)?;
-        Some(self.nodes.get(*parent).unwrap())
+        Some((Key(*parent), self.nodes.get(*parent).unwrap()))
     }
 
     pub fn children(&self, parent: Key) -> Option<impl Iterator<Item = (Key, &Node)> + '_> {

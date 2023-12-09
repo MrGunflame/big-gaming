@@ -32,7 +32,12 @@ impl SceneSpawner {
             .push_back((parent, scene.into()));
     }
 
-    pub fn update(&mut self, graph: &mut SceneGraph, pool: &TaskPool, renderer: &mut Renderer) {
+    pub fn update(
+        &mut self,
+        graph: &mut SceneGraph,
+        pool: &TaskPool,
+        mut renderer: Option<&mut Renderer>,
+    ) {
         let _span = trace_span!("SceneSpaner::update").entered();
 
         while let Some((key, path)) = self.queue.pop_front() {
@@ -46,7 +51,7 @@ impl SceneSpawner {
 
         let mut queue = self.scenes_to_spawn.lock().unwrap();
         while let Some((parent, scene)) = queue.pop_front() {
-            scene.spawn(renderer, parent, graph);
+            scene.spawn(&mut renderer, parent, graph);
         }
     }
 }
@@ -58,7 +63,7 @@ pub enum EitherScene {
 }
 
 impl EitherScene {
-    fn spawn(self, renderer: &mut Renderer, parent: Key, graph: &mut SceneGraph) {
+    fn spawn(self, renderer: &mut Option<&mut Renderer>, parent: Key, graph: &mut SceneGraph) {
         match self {
             Self::A(s) => s.spawn(renderer, parent, graph),
             Self::B(s) => s.spawn(renderer, parent, graph),

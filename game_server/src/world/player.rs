@@ -14,12 +14,19 @@ use game_core::modules::Modules;
 use game_data::record::RecordBody;
 use glam::{Quat, Vec3};
 
+use crate::SceneState;
+
+use super::entity::spawn_entity;
 use super::state::WorldState;
 
-pub fn spawn_player(modules: &Modules, world: &mut WorldState) -> Option<EntityId> {
+pub fn spawn_player(
+    modules: &Modules,
+    world: &mut WorldState,
+    state: &mut SceneState,
+) -> Option<EntityId> {
     let race_id: RecordReference = "c626b9b0ab1940aba6932ea7726d0175:06".parse().unwrap();
 
-    let transform = Transform::from_translation(Vec3::new(0.0, 0.0, 0.0));
+    let transform = Transform::from_translation(Vec3::new(0.0, 40.0, 0.0));
 
     let Some(module) = modules.get(race_id.module) else {
         return None;
@@ -51,7 +58,7 @@ pub fn spawn_player(modules: &Modules, world: &mut WorldState) -> Option<EntityI
         );
     }
 
-    let id = world.insert(Entity {
+    let entity = Entity {
         id: EntityId::dangling(),
         transform,
         body,
@@ -59,7 +66,9 @@ pub fn spawn_player(modules: &Modules, world: &mut WorldState) -> Option<EntityI
         components,
         angvel: Vec3::ZERO,
         linvel: Vec3::ZERO,
-    });
+    };
+
+    let id = world.insert(entity.clone());
 
     let mut components = Components::new();
     components.insert(
@@ -85,6 +94,9 @@ pub fn spawn_player(modules: &Modules, world: &mut WorldState) -> Option<EntityI
             quantity: 1,
         })
         .unwrap();
+
+    let key = spawn_entity(entity, world, state, modules);
+    state.entities.insert(key, id);
 
     Some(id)
 }

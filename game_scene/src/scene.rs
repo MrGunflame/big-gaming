@@ -42,8 +42,17 @@ pub struct ObjectNode {
 }
 
 impl Scene {
-    pub(crate) fn spawn(self, renderer: &mut Renderer, parent: Key, graph: &mut SceneGraph) {
+    pub(crate) fn spawn(
+        self,
+        renderer: &mut Option<&mut Renderer>,
+        parent: Key,
+        graph: &mut SceneGraph,
+    ) {
         let _span = trace_span!("Scene::spawn").entered();
+
+        let Some(renderer) = renderer else {
+            return;
+        };
 
         let mut meshes = Vec::new();
         for mesh in self.meshes {

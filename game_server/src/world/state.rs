@@ -56,6 +56,12 @@ impl WorldState {
     pub fn cell(&self, id: CellId) -> Cell<'_> {
         Cell { world: self, id }
     }
+
+    pub fn keys(&self) -> Keys<'_> {
+        Keys {
+            iter: self.entities.keys(),
+        }
+    }
 }
 
 impl WorldProvider for WorldState {
@@ -141,5 +147,21 @@ impl<'a> Iterator for CellEntitiesIter<'a> {
                 _ => (),
             }
         }
+    }
+}
+
+pub struct Keys<'a> {
+    iter: std::collections::hash_map::Keys<'a, EntityId, Entity>,
+}
+
+impl<'a> Iterator for Keys<'a> {
+    type Item = EntityId;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next().copied()
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.iter.size_hint()
     }
 }
