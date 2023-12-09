@@ -61,7 +61,7 @@ pub fn tick(state: &mut ServerState) {
         .spawner
         .update(&mut state.scene.graph, &state.pool, None);
     state.scene.graph.compute_transform();
-    state.physics.update(&mut state.scene);
+    state.physics.update(&state.world, &mut state.scene);
     state.scene.graph.clear_trackers();
 }
 

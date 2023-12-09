@@ -20,7 +20,7 @@ pub struct PhysicsState {
 }
 
 impl PhysicsState {
-    pub fn update(&mut self, state: &mut SceneState) {
+    pub fn update(&mut self, world: &WorldState, state: &mut SceneState) {
         for mut key in state.graph.iter_added() {
             let node = state.graph.get(key).unwrap();
 
@@ -66,7 +66,16 @@ impl PhysicsState {
             }
         }
 
-        // TODO: Cleanup HEHE
+        // Remove all bodies/colliders for all entities
+        // that no longer exist.
+        self.bodies.retain(|id| {
+            if world.get(*id).is_none() {
+                self.colliders.remove(id);
+                false
+            } else {
+                true
+            }
+        });
     }
 }
 
