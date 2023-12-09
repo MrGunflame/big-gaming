@@ -28,6 +28,7 @@ use glam::Vec3;
 use crate::conn::{Connection, Connections};
 use crate::net::state::{Cells, ConnectionState};
 use crate::world::level::Streamer;
+use crate::world::physics::PhysicsContext;
 use crate::world::player::spawn_player;
 use crate::world::state::WorldState;
 use crate::ServerState;
@@ -55,8 +56,13 @@ pub fn tick(state: &mut ServerState) {
     let cf = *state.state.control_frame.lock();
     update_snapshots(&state.state.conns, &state.world, cf);
 
-    state.spawner.update(&mut state.graph, &state.pool, None);
-    state.graph.compute_transform();
+    state
+        .scene
+        .spawner
+        .update(&mut state.scene.graph, &state.pool, None);
+    state.scene.graph.compute_transform();
+    state.physics.update(&mut state.scene);
+    state.scene.graph.clear_trackers();
 }
 
 fn apply_effects(effects: Effects, world: &mut WorldState) {
@@ -173,20 +179,12 @@ fn apply_effects(effects: Effects, world: &mut WorldState) {
     }
 }
 
-fn step_physics(mut state: &mut ServerState) {
-    // let mut start = state.world.front().unwrap().control_frame();
-    // let end = state.world.back().unwrap().control_frame();
-    // start = end;
-
-    // while start <= end {
-    //     let mut view = state.world.get_mut(start).unwrap();
-    //     state.pipeline.step(&mut view, &mut state.event_queue);
-    //     start += 1;
-    // }
-
-    state.pipeline.step(&mut state);
-
-    todo!();
+fn step_physics(state: &mut ServerState) {
+    state.pipeline.step(&mut PhysicsContext {
+        world: &mut state.world,
+        event_queue: &mut state.event_queue,
+        state: &state.physics,
+    });
 }
 
 fn update_client_heads(state: &mut ServerState) {
@@ -220,13 +218,7 @@ fn flush_command_queue(srv_state: &mut ServerState) {
 
         match msg {
             Message::Control(ControlMessage::Connected()) => {
-                let id = spawn_player(
-                    &srv_state.modules,
-                    world,
-                    &mut srv_state.graph,
-                    &mut srv_state.spawner,
-                )
-                .unwrap();
+                let id = spawn_player(&srv_state.modules, world, &mut srv_state.scene).unwrap();
 
                 // At the connection time the delay must be 0, meaning the player is spawned
                 // without delay.

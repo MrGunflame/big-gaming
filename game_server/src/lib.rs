@@ -9,17 +9,20 @@ pub mod world;
 
 use std::time::{Duration, Instant};
 
+use ahash::HashMap;
+use game_common::entity::EntityId;
 use game_common::events::EventQueue;
 use game_common::world::gen::Generator;
 use game_core::counter::{Interval, UpdateCounter};
 use game_core::modules::Modules;
-use game_scene::scene2::SceneGraph;
+use game_scene::scene2::{Key, SceneGraph};
 use game_scene::SceneSpawner;
 use game_script::executor::ScriptExecutor;
 use game_script::scripts::RecordTargets;
 use game_script::ScriptServer;
 use game_tasks::TaskPool;
 use tracing::{span, Level};
+use world::physics::PhysicsState;
 use world::state::WorldState;
 
 use crate::config::Config;
@@ -77,9 +80,9 @@ pub struct ServerState {
     pub modules: Modules,
     pub state: State,
     pub script_executor: ScriptExecutor,
-    pub spawner: SceneSpawner,
-    pub graph: SceneGraph,
     pub pool: TaskPool,
+    pub physics: PhysicsState,
+    pub scene: SceneState,
 }
 
 impl ServerState {
@@ -98,9 +101,19 @@ impl ServerState {
             modules,
             state: State::new(config),
             script_executor: ScriptExecutor::new(server, record_targets),
-            spawner: SceneSpawner::default(),
-            graph: SceneGraph::new(),
             pool: TaskPool::new(8),
+            physics: PhysicsState::default(),
+            scene: SceneState {
+                spawner: SceneSpawner::default(),
+                graph: SceneGraph::new(),
+                entities: HashMap::default(),
+            },
         }
     }
+}
+
+pub struct SceneState {
+    spawner: SceneSpawner,
+    graph: SceneGraph,
+    entities: HashMap<Key, EntityId>,
 }

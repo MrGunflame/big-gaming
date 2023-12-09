@@ -116,9 +116,9 @@ impl Pipeline {
         let mut handles = self.body_handles.clone();
 
         for id in state.bodies() {
-            let entity = state.get(id).unwrap();
+            let entity = state.get(*id).unwrap();
 
-            let Some(handle) = handles.remove(id) else {
+            let Some(handle) = handles.remove(*id) else {
                 self.add_entity(entity, state);
                 continue;
             };
@@ -162,7 +162,7 @@ impl Pipeline {
     where
         S: PhysicsStateProvider,
     {
-        let colliders = state.colliders(entity.id);
+        let colliders = state.colliders(entity.id).unwrap();
 
         let body_type = match entity.body {
             EntityBody::Terrain(_) => RigidBodyType::Fixed,
@@ -361,15 +361,11 @@ impl Debug for Pipeline {
 }
 
 pub trait PhysicsStateProvider {
-    type IterKeys: Iterator<Item = EntityId>;
-    // Collider with relative transform
-    type ColliderIter: Iterator<Item = (Transform, crate::data::Collider)>;
-
     fn get(&self, entity: EntityId) -> Option<&Entity>;
-    /// Returns an iterator over all rigid bodies.
-    fn bodies(&self) -> Self::IterKeys;
+    /// Returns all rigid bodies.
+    fn bodies(&self) -> &[EntityId];
 
-    fn colliders(&self, entity: EntityId) -> Self::ColliderIter;
+    fn colliders(&self, entity: EntityId) -> Option<&[(Transform, crate::data::Collider)]>;
 
     fn push_event(&mut self, event: Event);
 

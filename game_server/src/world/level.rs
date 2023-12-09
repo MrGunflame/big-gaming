@@ -45,14 +45,15 @@ pub fn update_level_cells(state: &mut ServerState) {
 
             for entity in builder.into_entities() {
                 if let Some(entity) = build_entity(&state.modules, *cell, entity) {
-                    spawn_entity(
+                    let key = spawn_entity(
                         entity.clone(),
                         &mut state.world,
-                        &mut state.graph,
-                        &mut state.spawner,
+                        &mut state.scene,
                         &state.modules,
                     );
-                    state.world.insert(entity);
+                    let id = state.world.insert(entity);
+
+                    state.scene.entities.insert(key, id);
                 }
             }
 

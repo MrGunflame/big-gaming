@@ -12,9 +12,9 @@ use game_common::record::RecordReference;
 use game_common::world::entity::{Actor, Entity, EntityBody, Object};
 use game_core::modules::Modules;
 use game_data::record::RecordBody;
-use game_scene::scene2::SceneGraph;
-use game_scene::SceneSpawner;
 use glam::{Quat, Vec3};
+
+use crate::SceneState;
 
 use super::entity::spawn_entity;
 use super::state::WorldState;
@@ -22,8 +22,7 @@ use super::state::WorldState;
 pub fn spawn_player(
     modules: &Modules,
     world: &mut WorldState,
-    graph: &mut SceneGraph,
-    spawner: &mut SceneSpawner,
+    state: &mut SceneState,
 ) -> Option<EntityId> {
     let race_id: RecordReference = "c626b9b0ab1940aba6932ea7726d0175:06".parse().unwrap();
 
@@ -96,7 +95,8 @@ pub fn spawn_player(
         })
         .unwrap();
 
-    spawn_entity(entity, world, graph, spawner, modules);
+    let key = spawn_entity(entity, world, state, modules);
+    state.entities.insert(key, id);
 
     Some(id)
 }
