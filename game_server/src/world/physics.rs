@@ -60,6 +60,10 @@ impl PhysicsState {
                 .entry(*entity)
                 .or_default()
                 .push((node.transform, collider));
+
+            if !self.bodies.contains(entity) {
+                self.bodies.push(*entity);
+            }
         }
 
         // TODO: Cleanup HEHE

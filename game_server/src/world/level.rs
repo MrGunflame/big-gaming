@@ -99,6 +99,10 @@ impl Level {
     pub fn destroy_streamer(&mut self, id: EntityId) {
         self.streamers.remove(&id);
     }
+
+    pub fn get_streamer(&self, id: EntityId) -> Option<&Streamer> {
+        self.streamers.get(&id)
+    }
 }
 
 fn build_entity(modules: &Modules, cell: CellId, builder: EntityBuilder) -> Option<Entity> {

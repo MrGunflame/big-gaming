@@ -26,7 +26,7 @@ pub fn spawn_player(
 ) -> Option<EntityId> {
     let race_id: RecordReference = "c626b9b0ab1940aba6932ea7726d0175:06".parse().unwrap();
 
-    let transform = Transform::from_translation(Vec3::new(0.0, 0.0, 0.0));
+    let transform = Transform::from_translation(Vec3::new(0.0, 40.0, 0.0));
 
     let Some(module) = modules.get(race_id.module) else {
         return None;

@@ -166,7 +166,7 @@ impl Pipeline {
 
         let body_type = match entity.body {
             EntityBody::Terrain(_) => RigidBodyType::Fixed,
-            EntityBody::Object(_) => RigidBodyType::Dynamic,
+            EntityBody::Object(_) => RigidBodyType::Fixed,
             EntityBody::Actor(_) => RigidBodyType::Dynamic,
             EntityBody::Item(_) => RigidBodyType::Dynamic,
         };

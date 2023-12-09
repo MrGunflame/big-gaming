@@ -27,7 +27,7 @@ use glam::Vec3;
 
 use crate::conn::{Connection, Connections};
 use crate::net::state::{Cells, ConnectionState};
-use crate::world::level::Streamer;
+use crate::world::level::{Level, Streamer};
 use crate::world::physics::PhysicsContext;
 use crate::world::player::spawn_player;
 use crate::world::state::WorldState;
@@ -54,7 +54,7 @@ pub fn tick(state: &mut ServerState) {
 
     // Push snapshots last always
     let cf = *state.state.control_frame.lock();
-    update_snapshots(&state.state.conns, &state.world, cf);
+    update_snapshots(&state.state.conns, &state.world, &state.level, cf);
 
     state
         .scene
@@ -402,13 +402,18 @@ fn queue_action(
     tracing::trace!("action {:?} unavailable for entity {:?}", action, entity_id);
 }
 
-fn update_snapshots(connections: &Connections, world: &WorldState, cf: ControlFrame) {
+fn update_snapshots(
+    connections: &Connections,
+    world: &WorldState,
+    level: &Level,
+    cf: ControlFrame,
+) {
     for conn in connections.iter() {
-        update_client(&conn, world, cf);
+        update_client(&conn, world, level, cf);
     }
 }
 
-fn update_client(conn: &Connection, world: &WorldState, cf: ControlFrame) {
+fn update_client(conn: &Connection, world: &WorldState, level: &Level, cf: ControlFrame) {
     let state = &mut *conn.state().write();
 
     let Some(host_id) = state.host.entity else {
@@ -417,6 +422,8 @@ fn update_client(conn: &Connection, world: &WorldState, cf: ControlFrame) {
 
     let host = world.get(host_id).unwrap();
     let cell_id = CellId::from(host.transform.translation);
+
+    let streamer = level.get_streamer(host_id).unwrap();
 
     // Send full state
     // The delta from the current frame is "included" in the full update.
@@ -501,7 +508,7 @@ fn update_client(conn: &Connection, world: &WorldState, cf: ControlFrame) {
     if state.cells.origin() != cell_id {
         tracing::info!("Moving host from {:?} to {:?}", state.cells, cell_id);
 
-        // state.cells.set(cell_id, streaming_source.distance);
+        state.cells.set(cell_id, streamer.distance);
     }
 
     let events = update_player_cells(world, state);
