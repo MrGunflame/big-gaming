@@ -16,10 +16,11 @@ use events::{
 use game_input::keyboard::{KeyboardInput, ScanCode};
 use game_input::mouse::{MouseButton, MouseButtonInput, MouseMotion, MouseScrollUnit, MouseWheel};
 use game_input::ButtonState;
+use game_tracing::trace_span;
 use glam::Vec2;
 use windows::{UpdateEvent, WindowState, Windows};
 use winit::event::{DeviceEvent, ElementState, Event, MouseScrollDelta, WindowEvent};
-use winit::event_loop::EventLoop;
+use winit::event_loop::{ControlFlow, EventLoop};
 use winit::keyboard::PhysicalKey;
 use winit::platform::scancode::PhysicalKeyExtScancode;
 use winit::window::{WindowBuilder, WindowId};
@@ -112,6 +113,11 @@ where
 
     let mut compat = WindowCompat::new(backend);
     let mut is_locked = false;
+
+    // `ControlFlow::Poll` is required to constantly trigger `AboutToWait` events.
+    // By default the control flow is set to `Wait` which causes the game to stall
+    // whenever there are no OS events.
+    event_loop.set_control_flow(ControlFlow::Poll);
 
     event_loop
         .run(move |event, event_loop| {
@@ -336,6 +342,8 @@ where
                     _ => (),
                 },
                 Event::AboutToWait => {
+                    trace_span!("AboutToWait");
+
                     app.update(WindowManagerContext {
                         windows: &mut windows,
                     });
