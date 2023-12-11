@@ -11,6 +11,7 @@ workspace = true
 [dependencies]
 game_common = { version = "0.1.0", path = "../game_common" }
 game_input = { version = "0.1.0", path = "../game_input" }
+game_tracing = { version = "0.1.0", path = "../game_tracing" }
 
 glam = "0.24.0"
 # wgpu 0.18 still depends on raw-window-handle 0.5
