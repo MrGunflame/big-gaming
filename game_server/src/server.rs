@@ -16,6 +16,7 @@ use game_net::socket::Socket;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
+use crate::conn::ConnectionKey;
 use crate::state::State;
 
 pub struct Server {
@@ -94,8 +95,10 @@ impl Future for Worker {
 }
 
 async fn handle_packet(addr: SocketAddr, socket: Arc<Socket>, state: &State, packet: Packet) {
-    if let Some(handle) = state.pool.get(addr) {
-        handle.send(packet).await.unwrap();
+    let key = ConnectionKey { addr };
+
+    if let Some(conn) = state.conns.get(key) {
+        conn.tx().send(packet).await.unwrap();
         return;
     }
 
@@ -119,13 +122,12 @@ async fn handle_packet(addr: SocketAddr, socket: Arc<Socket>, state: &State, pac
                 tracing::warn!("Error serving connection: {}", err);
             }
 
-            state.pool.remove(addr);
+            state.conns.remove(key);
         });
     }
 
     tx.send(packet).await.unwrap();
 
     let handle = Arc::new(handle);
-    state.pool.insert(addr, tx);
-    state.conns.insert(handle);
+    state.conns.insert(key, tx, handle);
 }

@@ -204,7 +204,7 @@ fn flush_command_queue(srv_state: &mut ServerState) {
     let mut queue = VecDeque::new();
     for conn in srv_state.state.conns.iter() {
         while let Some(msg) = conn.handle().recv() {
-            queue.push_back((conn.id(), msg));
+            queue.push_back((conn.key(), msg));
         }
     }
 
