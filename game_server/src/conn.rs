@@ -1,56 +1,55 @@
 use std::borrow::Borrow;
 use std::iter::FusedIterator;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::net::SocketAddr;
 use std::sync::Arc;
 
 use ahash::HashMap;
 use game_net::conn::ConnectionHandle;
 use game_net::message::MessageId;
+use game_net::proto::Packet;
 use parking_lot::{Mutex, RwLock};
+use tokio::sync::mpsc;
 
 use crate::net::state::ConnectionState;
 
-static CONNECTION_ID: AtomicU32 = AtomicU32::new(0);
-
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct ConnectionId(u32);
-
-impl Default for ConnectionId {
-    fn default() -> Self {
-        let id = CONNECTION_ID.fetch_add(1, Ordering::Relaxed);
-        assert_ne!(id, u32::MAX);
-        Self(id)
-    }
+pub struct ConnectionKey {
+    pub addr: SocketAddr,
 }
 
 /// List of connections
 // FIXME: Maybe merge with ConnectionPool.
 #[derive(Clone, Debug, Default)]
 pub struct Connections {
-    connections: Arc<RwLock<HashMap<ConnectionId, Connection>>>,
+    connections: Arc<RwLock<HashMap<ConnectionKey, Connection>>>,
 }
 
 impl Connections {
-    pub fn insert(&self, handle: Arc<ConnectionHandle>) {
+    pub fn insert(
+        &self,
+        key: ConnectionKey,
+        tx: mpsc::Sender<Packet>,
+        handle: Arc<ConnectionHandle>,
+    ) {
         let mut inner = self.connections.write();
-        let id = ConnectionId::default();
 
         inner.insert(
-            id,
+            key,
             Connection {
                 inner: Arc::new(ConnectionInner {
-                    id,
+                    key,
                     state: RwLock::new(ConnectionState::new()),
                     handle,
                     messages_in_frame: Mutex::new(vec![]),
                 }),
+                tx,
             },
         );
     }
 
     pub fn get<T>(&self, id: T) -> Option<Connection>
     where
-        T: Borrow<ConnectionId>,
+        T: Borrow<ConnectionKey>,
     {
         let inner = self.connections.read();
         inner.get(id.borrow()).cloned()
@@ -67,7 +66,7 @@ impl Connections {
 
     pub fn remove<T>(&self, id: T)
     where
-        T: Borrow<ConnectionId>,
+        T: Borrow<ConnectionKey>,
     {
         let mut inner = self.connections.write();
         inner.remove(id.borrow());
@@ -86,7 +85,7 @@ impl<'a> IntoIterator for &'a Connections {
 #[derive(Debug)]
 pub struct Iter<'a> {
     inner: &'a Connections,
-    ids: std::vec::IntoIter<ConnectionId>,
+    ids: std::vec::IntoIter<ConnectionKey>,
 }
 
 impl<'a> Iterator for Iter<'a> {
@@ -114,15 +113,20 @@ impl<'a> FusedIterator for Iter<'a> {}
 #[derive(Clone, Debug)]
 pub struct Connection {
     inner: Arc<ConnectionInner>,
+    tx: mpsc::Sender<Packet>,
 }
 
 impl Connection {
-    pub fn id(&self) -> ConnectionId {
-        self.inner.id
+    pub fn key(&self) -> ConnectionKey {
+        self.inner.key
     }
 
     pub fn handle(&self) -> &ConnectionHandle {
         &self.inner.handle
+    }
+
+    pub fn tx(&self) -> &mpsc::Sender<Packet> {
+        &self.tx
     }
 
     pub fn state(&self) -> &RwLock<ConnectionState> {
@@ -140,7 +144,7 @@ impl Connection {
 
 #[derive(Debug)]
 struct ConnectionInner {
-    id: ConnectionId,
+    key: ConnectionKey,
     handle: Arc<ConnectionHandle>,
     state: RwLock<ConnectionState>,
     messages_in_frame: Mutex<Vec<MessageId>>,
