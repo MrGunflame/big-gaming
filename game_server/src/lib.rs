@@ -57,9 +57,8 @@ pub async fn run(mut state: ServerState) {
 
     let mut ups = UpdateCounter::new();
     loop {
-        while !interval.is_ready(Instant::now()) {
-            continue;
-        }
+        let now = Instant::now();
+        interval.wait(now).await;
 
         tick(&mut state);
 

@@ -71,6 +71,26 @@ impl Interval {
             false
         }
     }
+
+    /// Sleep until the next tick.
+    pub async fn wait(&mut self, now: Instant) {
+        // The timer may already be delayed which means we need
+        // to yield immediately.
+        let elapsed = now - self.last_update;
+        if elapsed >= self.timestep {
+            self.last_update += self.timestep;
+            return;
+        }
+
+        // FIXME: This will likely break terribly on windows for <15ms sleep
+        // times. We should probably timeBeginPeriod/timeBeginEndPeriod and spin
+        // with PAUSEs for small periods.
+        // Linux timers are accurate enough (~50us) that we don't really have to
+        // bother with it.
+        let duration = self.timestep - elapsed;
+        tokio::time::sleep(duration).await;
+        self.last_update += self.timestep;
+    }
 }
 
 impl IntervalImpl for Interval {
