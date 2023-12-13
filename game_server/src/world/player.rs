@@ -7,7 +7,6 @@ use game_common::components::object::ObjectId;
 use game_common::components::race::RaceId;
 use game_common::components::transform::Transform;
 use game_common::entity::EntityId;
-use game_common::math::RotationExt;
 use game_common::record::RecordReference;
 use game_common::world::entity::{Actor, Entity, EntityBody, Object};
 use game_core::modules::Modules;
@@ -125,7 +124,7 @@ pub fn spawn_player(
 // }
 
 pub fn extract_actor_rotation(rotation: Quat) -> Quat {
-    let mut pt = rotation.dir_vec();
+    let mut pt = rotation * -Vec3::Z;
 
     if pt.y == 1.0 {
         return rotation;

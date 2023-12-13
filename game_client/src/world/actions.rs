@@ -3,9 +3,9 @@ use game_common::components::actions::ActionId;
 use game_common::module::ModuleId;
 use game_common::record::RecordReference;
 use game_data::record::Record;
-use game_input::hotkeys::{Hotkey, HotkeyCode, HotkeyId, Hotkeys, Key, TriggerKind};
+use game_input::hotkeys::{Hotkey, HotkeyId, Hotkeys, Key};
 use game_input::keyboard::KeyboardInput;
-use game_input::mouse::{MouseButton, MouseButtonInput};
+use game_input::mouse::MouseButtonInput;
 use game_tracing::trace_span;
 
 #[derive(Debug)]

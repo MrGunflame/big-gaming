@@ -137,7 +137,6 @@ impl game_window::App for App {
                     window,
                     &self.time,
                     &mut self.hierarchy,
-                    &mut self.ui_state,
                 );
             }
             _ => todo!(),

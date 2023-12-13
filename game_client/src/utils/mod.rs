@@ -1,10 +1,9 @@
 use std::f32::consts::PI;
 
-use game_common::math::RotationExt;
 use glam::{Quat, Vec3};
 
 pub fn extract_actor_rotation(rotation: Quat) -> Quat {
-    let mut pt = rotation.dir_vec();
+    let mut pt = rotation * -Vec3::Z;
 
     if pt.y == 1.0 {
         return rotation;
