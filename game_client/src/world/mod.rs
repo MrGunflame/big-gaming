@@ -115,7 +115,6 @@ impl GameWorldState {
         window: WindowState,
         time: &Time,
         hierarchy: &mut TransformHierarchy,
-        ui_state: &mut UiState,
     ) {
         if !self.is_init {
             self.is_init = true;

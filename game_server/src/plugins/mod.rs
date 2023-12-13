@@ -1,5 +1,3 @@
-mod inventory;
-
 use std::collections::VecDeque;
 
 use ahash::{HashMap, HashSet};

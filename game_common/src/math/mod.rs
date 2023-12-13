@@ -1,7 +1,4 @@
-mod rotation;
-
 use glam::Vec3;
-pub use rotation::{Rotation, RotationExt};
 
 #[derive(Copy, Clone, Debug, Default, PartialEq)]
 pub struct Ray {

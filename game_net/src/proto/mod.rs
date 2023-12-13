@@ -35,7 +35,6 @@ pub mod shutdown;
 
 mod action;
 mod inventory;
-mod properties;
 mod quat;
 mod record;
 mod terrain;
