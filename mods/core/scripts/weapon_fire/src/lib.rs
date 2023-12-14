@@ -4,14 +4,16 @@ use game_wasm::component::Component;
 use game_wasm::entity::EntityId;
 use game_wasm::events::on_action;
 use game_wasm::inventory::Inventory;
+use game_wasm::math::Quat;
 use game_wasm::world::{Entity, EntityBuilder, RecordReference};
 use shared::components::{AMMO, GUN_PROPERTIES, PROJECTILE_PROPERTIES};
-use shared::{panic_handler, Ammo, GunProperties, ProjectileProperties};
+use shared::{panic_handler, Ammo, GunProperties, ProjectileProperties, Vec3};
 
 panic_handler!();
 
 #[on_action]
 fn on_action(invoker: EntityId) {
+    let actor = Entity::get(invoker).unwrap();
     let inventory = Inventory::new(invoker);
 
     for stack in inventory
@@ -33,20 +35,28 @@ fn on_action(invoker: EntityId) {
 
         if has_ammo {
             stack.components().insert(AMMO, &ammo).unwrap();
-            build_projectile(invoker, properties.projectile, properties.damage);
+
+            let translation =
+                actor.translation() + Vec3::from_array(properties.projectile.translation);
+            let rotation = actor.rotation() * Quat::from_array(properties.projectile.rotation);
+
+            build_projectile(
+                translation,
+                rotation,
+                properties.projectile.id,
+                properties.damage,
+            );
         }
     }
 }
 
-fn build_projectile(invoker: EntityId, projectile: RecordReference, damage: f32) {
-    let actor = Entity::get(invoker).unwrap();
-
+fn build_projectile(translation: Vec3, rotation: Quat, projectile: RecordReference, damage: f32) {
     let mut props = Component::default();
     props.write(ProjectileProperties { damage });
 
     EntityBuilder::from_record(projectile)
-        .translation(actor.translation())
-        .rotation(actor.rotation())
+        .translation(translation)
+        .rotation(rotation)
         .component(PROJECTILE_PROPERTIES, props)
         .spawn()
         .unwrap();

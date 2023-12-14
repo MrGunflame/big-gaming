@@ -203,7 +203,7 @@
             {
                 "id": "12",
                 "name": "Projectile",
-                "model": "assets/wall.glb",
+                "model": "assets/wall.json",
                 "description": ""
             }
         ]
