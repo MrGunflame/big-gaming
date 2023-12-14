@@ -94,6 +94,8 @@ pub fn spawn_player(
         })
         .unwrap();
 
+    world.insert_inventory(id, inventory);
+
     let key = spawn_entity(entity, world, state, modules);
     state.entities.insert(key, id);
 
