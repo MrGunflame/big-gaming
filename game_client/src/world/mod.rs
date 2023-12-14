@@ -552,7 +552,7 @@ fn spawn_entity(
     // TODO: Check if can spawn an entity before allocating one.
     let root = scenes
         .graph
-        .append(None, Node::from_transform(Transform::default()));
+        .append(None, Node::from_transform(entity.transform));
 
     match entity.body {
         EntityBody::Terrain(terrain) => {
