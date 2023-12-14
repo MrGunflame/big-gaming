@@ -156,7 +156,8 @@ macro_rules! panic_handler {
         #[cfg(all(not(test), target_family = "wasm"))]
         #[panic_handler]
         fn panic_handler(info: &core::panic::PanicInfo) -> ! {
-            loop {}
+            game_wasm::error!("{}", info);
+            core::arch::wasm32::unreachable()
         }
     };
 }
