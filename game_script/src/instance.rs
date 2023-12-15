@@ -1,15 +1,11 @@
-use std::collections::HashMap;
-
 use game_common::components::components::Component;
 use game_common::components::inventory::{Inventory, InventorySlotId};
 use game_common::components::items::ItemStack;
 use game_common::entity::EntityId;
 use game_common::events::Event;
 use game_common::record::RecordReference;
-use game_common::world::entity::Entity;
-use game_common::world::CellId;
+use game_common::world::{CellId, World};
 use game_tracing::trace_span;
-use glam::{Quat, Vec3};
 use wasmtime::{Engine, Instance, Linker, Module, Store};
 
 use crate::dependency::{Dependencies, Dependency};
@@ -106,10 +102,7 @@ pub struct State<'a> {
     dependencies: &'a mut Dependencies,
     next_entity_id: u64,
     next_inventory_id: u64,
-    /// Entities in its current state, if overwritten.
-    ///
-    /// `None` indicates that the entity was despawned.
-    entities: HashMap<EntityId, Option<Entity>>,
+    new_world: World,
 }
 
 impl<'a> State<'a> {
@@ -126,70 +119,26 @@ impl<'a> State<'a> {
             effects,
             next_entity_id: 0,
             next_inventory_id: 0,
-            entities: HashMap::with_capacity(16),
             dependencies,
             records,
+            new_world: world.world().clone(),
         }
     }
 }
 
 impl<'a> State<'a> {
-    pub fn spawn(&mut self, mut entity: Entity) -> EntityId {
+    pub fn spawn(&mut self) -> EntityId {
         let id = self.allocate_temporary_entity_id();
-        entity.id = id;
-
-        self.entities.insert(id, Some(entity.clone()));
-        self.effects.push(Effect::EntitySpawn(entity));
         id
     }
 
-    pub fn get(&mut self, id: EntityId) -> Option<&Entity> {
-        // We track the entity even if the entity does not exist.
-        self.dependencies.push(Dependency::Entity(id));
-        self.get_entity(id)
-    }
-
     pub fn despawn(&mut self, id: EntityId) -> bool {
-        if self.get_entity(id).is_none() {
+        if !self.new_world.contains(id) {
             return false;
         }
 
-        *self.entities.entry(id).or_insert(None) = None;
         self.effects.push(Effect::EntityDespawn(id));
-        true
-    }
-
-    pub fn set_translation(&mut self, id: EntityId, translation: Vec3) -> bool {
-        let Some(entity) = self.get_entity(id).cloned() else {
-            return false;
-        };
-
-        self.entities
-            .entry(id)
-            .or_insert_with(|| Some(entity))
-            .as_mut()
-            .unwrap()
-            .transform
-            .translation = translation;
-
-        self.effects.push(Effect::EntityTranslate(id, translation));
-        true
-    }
-
-    pub fn set_rotation(&mut self, id: EntityId, rotation: Quat) -> bool {
-        let Some(entity) = self.get_entity(id).cloned() else {
-            return false;
-        };
-
-        self.entities
-            .entry(id)
-            .or_insert_with(|| Some(entity))
-            .as_mut()
-            .unwrap()
-            .transform
-            .rotation = rotation;
-
-        self.effects.push(Effect::EntityRotate(id, rotation));
+        self.new_world.despawn(id);
         true
     }
 
@@ -200,9 +149,7 @@ impl<'a> State<'a> {
     ) -> Option<&Component> {
         self.dependencies
             .push(Dependency::EntityComponent(entity_id, component));
-
-        self.get_entity(entity_id)
-            .and_then(|entity| entity.components.get(component))
+        self.new_world.get(entity_id, component)
     }
 
     pub fn insert_component(
@@ -211,53 +158,29 @@ impl<'a> State<'a> {
         id: RecordReference,
         component: Component,
     ) {
-        let Some(entity) = self.get_entity(entity_id).cloned() else {
+        if !self.new_world.contains(entity_id) {
             return;
-        };
-
-        self.entities
-            .entry(entity_id)
-            .or_insert_with(|| Some(entity))
-            .as_mut()
-            .unwrap()
-            .components
-            .insert(id, component.clone());
+        }
 
         self.effects.push(Effect::EntityComponentInsert(
             entity_id,
             id,
-            component.bytes,
+            component.bytes.clone(),
         ));
+        self.new_world.insert(entity_id, id, component);
     }
 
     pub fn remove_component(&mut self, entity_id: EntityId, id: RecordReference) -> bool {
-        let Some(entity) = self.get_entity(entity_id).cloned() else {
+        if !self.new_world.contains(entity_id) {
             return false;
-        };
+        }
 
-        if self
-            .entities
-            .entry(entity_id)
-            .or_insert_with(|| Some(entity))
-            .as_mut()
-            .unwrap()
-            .components
-            .remove(id)
-            .is_some()
-        {
+        if self.new_world.remove(entity_id, id).is_some() {
             self.effects
                 .push(Effect::EntityComponentRemove(entity_id, id));
             true
         } else {
             false
-        }
-    }
-
-    fn get_entity(&self, id: EntityId) -> Option<&Entity> {
-        match self.entities.get(&id) {
-            Some(Some(entity)) => Some(entity),
-            Some(None) => None,
-            None => self.world.get(id),
         }
     }
 

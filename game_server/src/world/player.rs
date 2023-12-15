@@ -67,7 +67,8 @@ pub fn spawn_player(
         linvel: Vec3::ZERO,
     };
 
-    let id = world.insert(entity.clone());
+    let id = world.spawn();
+    world.insert(id, transform);
 
     let mut components = Components::new();
     components.insert(

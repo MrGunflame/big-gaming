@@ -64,7 +64,7 @@ impl ScriptExecutor {
 
     fn call_action_event(&self, ctx: &Context<'_>, event: &ActionEvent) -> &[Handle] {
         // The calling entity should exist.
-        debug_assert!(ctx.view.get(event.invoker).is_some());
+        //debug_assert!(ctx.view.get(event.invoker).is_some());
         self.targets.scripts.get(&event.action.0).unwrap()
     }
 }

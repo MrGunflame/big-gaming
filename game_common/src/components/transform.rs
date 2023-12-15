@@ -2,6 +2,8 @@ use std::ops::{Deref, DerefMut, Mul, MulAssign};
 
 use glam::{Mat3, Mat4, Quat, Vec3};
 
+use super::AsComponent;
+
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct Transform {
     pub translation: Vec3,
@@ -147,4 +149,33 @@ fn assert_transform(transform: Transform) {
         "invalid scale value: {:?}",
         transform.scale,
     );
+}
+
+impl AsComponent for Transform {
+    const ID: crate::record::RecordReference = super::TRANSFORM;
+
+    fn from_bytes(buf: &[u8]) -> Self {
+        let translation: [f32; 3] = bytemuck::pod_read_unaligned(&buf[0..3 * 4]);
+        let rotation: [f32; 4] = bytemuck::pod_read_unaligned(&buf[3 * 4..3 * 4 + 4 * 4]);
+        let scale: [f32; 3] =
+            bytemuck::pod_read_unaligned(&buf[3 * 4 + 4 * 4..3 * 4 + 4 * 4 + 3 * 4]);
+
+        Self {
+            translation: Vec3::from_array(translation),
+            rotation: Quat::from_array(rotation),
+            scale: Vec3::from_array(scale),
+        }
+    }
+
+    fn to_bytes(&self) -> Vec<u8> {
+        let translation = self.translation.to_array();
+        let rotation = self.rotation.to_array();
+        let scale = self.scale.to_array();
+
+        let mut bytes = Vec::new();
+        bytes.extend(bytemuck::bytes_of(&translation));
+        bytes.extend(bytemuck::bytes_of(&rotation));
+        bytes.extend(bytemuck::bytes_of(&scale));
+        bytes
+    }
 }

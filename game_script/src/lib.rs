@@ -9,8 +9,8 @@ use game_common::components::inventory::Inventory;
 use game_common::entity::EntityId;
 use game_common::events::EventQueue;
 use game_common::record::RecordReference;
-use game_common::world::entity::Entity;
 use game_common::world::world::{WorldViewMut, WorldViewRef};
+use game_common::world::World;
 use game_data::record::Record;
 use instance::ScriptInstance;
 use script::Script;
@@ -103,13 +103,13 @@ impl Debug for ScriptServer {
 }
 
 pub trait WorldProvider {
-    fn get(&self, id: EntityId) -> Option<&Entity>;
+    fn world(&self) -> &World;
     fn inventory(&self, id: EntityId) -> Option<&Inventory>;
 }
 
 impl WorldProvider for WorldViewRef<'_> {
-    fn get(&self, id: EntityId) -> Option<&Entity> {
-        self.get(id)
+    fn world(&self) -> &World {
+        todo!()
     }
 
     fn inventory(&self, id: EntityId) -> Option<&Inventory> {
@@ -118,8 +118,8 @@ impl WorldProvider for WorldViewRef<'_> {
 }
 
 impl WorldProvider for WorldViewMut<'_> {
-    fn get(&self, id: EntityId) -> Option<&Entity> {
-        self.get(id)
+    fn world(&self) -> &World {
+        todo!()
     }
 
     fn inventory(&self, id: EntityId) -> Option<&Inventory> {

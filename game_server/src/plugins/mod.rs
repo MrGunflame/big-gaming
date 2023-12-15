@@ -5,6 +5,7 @@ use game_common::components::actions::ActionId;
 use game_common::components::components::{Component, Components};
 use game_common::components::inventory::Inventory;
 use game_common::components::items::Item;
+use game_common::components::transform::Transform;
 use game_common::entity::EntityId;
 use game_common::events::{ActionEvent, Event, EventQueue};
 use game_common::units::Mass;
@@ -74,26 +75,17 @@ fn apply_effects(effects: Effects, world: &mut WorldState) {
 
     for effect in effects.into_iter() {
         match effect {
-            Effect::EntitySpawn(entity) => {
-                debug_assert!(entity_id_remap.get(&entity.id).is_none());
-                debug_assert!(world.get(entity.id).is_none());
+            Effect::EntitySpawn(id) => {
+                debug_assert!(entity_id_remap.get(&id).is_none());
+                debug_assert!(!world.world().contains(id));
 
-                let temp_id = entity.id;
-                let real_id = world.insert(entity);
+                let temp_id = id;
+                let real_id = world.spawn();
                 entity_id_remap.insert(temp_id, real_id);
             }
             Effect::EntityDespawn(id) => {
                 let id = entity_id_remap.get(&id).copied().unwrap_or(id);
                 let entity = world.remove(id);
-                debug_assert!(entity.is_some());
-            }
-            Effect::EntityTranslate(id, translation) => {
-                let id = entity_id_remap.get(&id).copied().unwrap_or(id);
-                world.get_mut(id).unwrap().transform.translation = translation;
-            }
-            Effect::EntityRotate(id, rotation) => {
-                let id = entity_id_remap.get(&id).copied().unwrap_or(id);
-                world.get_mut(id).unwrap().transform.rotation = rotation;
             }
             Effect::InventoryInsert(id, temp_slot_id, stack) => {
                 let entity_id = entity_id_remap.get(&id).copied().unwrap_or(id);
@@ -161,17 +153,11 @@ fn apply_effects(effects: Effects, world: &mut WorldState) {
                     .unwrap_or(entity_id);
 
                 world
-                    .get_mut(entity_id)
-                    .unwrap()
-                    .components
-                    .insert(component, Component { bytes: data });
+                    .world()
+                    .insert(entity_id, component, Component { bytes: data });
             }
             Effect::EntityComponentRemove(entity_id, component) => {
-                world
-                    .get_mut(entity_id)
-                    .unwrap()
-                    .components
-                    .remove(component);
+                world.world().remove(entity_id, component);
             }
         }
     }
@@ -249,11 +235,8 @@ fn flush_command_queue(srv_state: &mut ServerState) {
                             continue;
                         };
 
-                        let Some(mut entity) = world.get_mut(id) else {
-                            continue;
-                        };
-
-                        entity.transform.rotation = msg.rotation;
+                        let mut transform = world.get::<Transform>(id);
+                        transform.rotation = msg.rotation;
                     }
                     DataMessageBody::EntityAction(msg) => {
                         let Some(entity) = state.entities.get(msg.entity) else {
@@ -418,8 +401,8 @@ fn update_client(conn: &Connection, world: &WorldState, level: &Level, cf: Contr
         return;
     };
 
-    let host = world.get(host_id).unwrap();
-    let cell_id = CellId::from(host.transform.translation);
+    let transform = world.get::<Transform>(host_id);
+    let cell_id = CellId::from(transform.translation);
 
     let streamer = level.get_streamer(host_id).unwrap();
 
@@ -516,7 +499,7 @@ fn update_client(conn: &Connection, world: &WorldState, level: &Level, cf: Contr
         for event in &events {
             match event {
                 EntityChange::Destroy { id } => {
-                    assert_ne!(*id, host.id);
+                    assert_ne!(*id, host_id);
                 }
                 _ => (),
             }

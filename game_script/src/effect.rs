@@ -3,8 +3,6 @@ use game_common::components::inventory::InventorySlotId;
 use game_common::components::items::ItemStack;
 use game_common::entity::EntityId;
 use game_common::record::RecordReference;
-use game_common::world::entity::Entity;
-use glam::{Quat, Vec3};
 
 #[derive(Clone, Debug, Default)]
 pub struct Effects {
@@ -27,10 +25,8 @@ impl Effects {
 
 #[derive(Clone, Debug)]
 pub enum Effect {
-    EntitySpawn(Entity),
+    EntitySpawn(EntityId),
     EntityDespawn(EntityId),
-    EntityTranslate(EntityId, Vec3),
-    EntityRotate(EntityId, Quat),
     EntityComponentInsert(EntityId, RecordReference, Vec<u8>),
     EntityComponentRemove(EntityId, RecordReference),
     InventoryInsert(EntityId, InventorySlotId, ItemStack),
