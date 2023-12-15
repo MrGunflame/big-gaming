@@ -77,8 +77,18 @@ pub struct GunProperties {
     pub cooldown: f32,
     /// The maximum number of rounds in the magazine.
     pub magazine_capacity: u32,
+    pub projectile: Projectile,
+}
+
+#[derive(Copy, Clone, Debug, Zeroable, Pod)]
+#[repr(C)]
+pub struct Projectile {
     /// The object id of the projectile that is being fired.
-    pub projectile: RecordReference,
+    pub id: RecordReference,
+    // FIXME: This is an array so we don't have to bother with
+    // alignment.
+    pub translation: [f32; 3],
+    pub rotation: [f32; 4],
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Zeroable, Pod)]
@@ -146,7 +156,8 @@ macro_rules! panic_handler {
         #[cfg(all(not(test), target_family = "wasm"))]
         #[panic_handler]
         fn panic_handler(info: &core::panic::PanicInfo) -> ! {
-            loop {}
+            game_wasm::error!("{}", info);
+            core::arch::wasm32::unreachable()
         }
     };
 }

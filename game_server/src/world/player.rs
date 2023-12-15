@@ -75,7 +75,8 @@ pub fn spawn_player(
         Component {
             bytes: vec![
                 0, 0, 128, 63, 0, 0, 128, 63, 30, 0, 0, 0, 198, 38, 185, 176, 171, 25, 64, 171,
-                166, 147, 46, 167, 114, 109, 1, 117, 18, 0, 0, 0,
+                166, 147, 46, 167, 114, 109, 1, 117, 18, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 128, 63,
             ],
         },
     );
@@ -93,6 +94,8 @@ pub fn spawn_player(
             quantity: 1,
         })
         .unwrap();
+
+    world.insert_inventory(id, inventory);
 
     let key = spawn_entity(entity, world, state, modules);
     state.entities.insert(key, id);

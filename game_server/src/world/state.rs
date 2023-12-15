@@ -49,6 +49,10 @@ impl WorldState {
         InventoryMut { inventory }
     }
 
+    pub fn insert_inventory(&mut self, id: EntityId, inventory: Inventory) {
+        self.inventories.insert(id, inventory);
+    }
+
     pub fn get_mut(&mut self, id: EntityId) -> Option<&mut Entity> {
         self.entities.get_mut(&id)
     }
