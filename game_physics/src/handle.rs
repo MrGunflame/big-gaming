@@ -48,7 +48,7 @@ where
         Some(id)
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = T> + '_ {
-        self.handles.values().copied()
+    pub fn iter(&self) -> impl Iterator<Item = (EntityId, T)> + '_ {
+        self.handles.iter().map(|(a, b)| (*a, *b))
     }
 }
