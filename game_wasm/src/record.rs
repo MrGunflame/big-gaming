@@ -5,7 +5,7 @@ use core::str::FromStr;
 use alloc::vec::Vec;
 use bytemuck::{Pod, Zeroable};
 
-use crate::component::{Component, Components};
+use crate::components::{Component, Components};
 use crate::raw::record::{
     get_record, get_record_component_get, get_record_component_keys, get_record_component_len,
     get_record_len_component, RecordKind as RawRecordKind,

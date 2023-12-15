@@ -1,3 +1,5 @@
+pub mod builtin;
+
 use core::iter::FusedIterator;
 use core::mem;
 use core::ptr::NonNull;
@@ -38,6 +40,30 @@ impl Components {
 
     pub fn get(&self, id: RecordReference) -> Option<&Component> {
         self.get_index(id).map(|index| &self.components[index].1)
+    }
+
+    pub fn get_typed<T>(&self) -> Option<T>
+    where
+        T: AsComponent,
+    {
+        let component = self.get(T::ID)?;
+        Some(T::from_bytes(component.as_bytes()))
+    }
+
+    pub fn remove_typed<T>(&mut self) -> Option<T>
+    where
+        T: AsComponent,
+    {
+        let component = self.remove(T::ID)?;
+        Some(T::from_bytes(component.as_bytes()))
+    }
+
+    pub fn insert_typed<T>(&mut self, component: T)
+    where
+        T: AsComponent,
+    {
+        let data = component.to_bytes();
+        self.insert(T::ID, Component::new(data));
     }
 
     pub fn get_mut(&mut self, id: RecordReference) -> Option<&mut Component> {
@@ -260,6 +286,13 @@ impl AsRef<[u8]> for Component {
     fn as_ref(&self) -> &[u8] {
         &self.bytes
     }
+}
+
+pub trait AsComponent {
+    const ID: RecordReference;
+
+    fn from_bytes(buf: &[u8]) -> Self;
+    fn to_bytes(&self) -> Vec<u8>;
 }
 
 trait IsZst {
