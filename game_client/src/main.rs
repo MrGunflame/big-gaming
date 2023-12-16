@@ -12,11 +12,10 @@ use std::sync::Arc;
 
 use clap::Parser;
 use config::Config;
+use game_common::world::World;
 use game_core::hierarchy::TransformHierarchy;
 use game_core::time::Time;
 use game_render::Renderer;
-use game_scene::scene2::SceneGraph;
-use game_scene::SceneSpawner;
 use game_script::executor::ScriptExecutor;
 use game_tasks::TaskPool;
 use game_ui::UiState;
@@ -26,7 +25,7 @@ use game_window::windows::{WindowBuilder, WindowId};
 use game_window::{WindowManager, WindowManagerContext};
 use glam::UVec2;
 use input::Inputs;
-use scene::{SceneEntities, SceneState};
+use scene::SceneEntities;
 use state::main_menu::MainMenuState;
 use state::GameState;
 use world::GameWorldState;
@@ -83,16 +82,13 @@ fn main() {
         window_id,
         renderer,
         state,
-        scene: SceneState {
-            spawner: SceneSpawner::default(),
-            graph: SceneGraph::new(),
-        },
         time: Time::new(),
         cursor,
         pool: TaskPool::new(8),
         hierarchy: TransformHierarchy::default(),
         ui_state,
         entities: SceneEntities::default(),
+        world: World::new(),
     };
 
     wm.run(app);
@@ -103,13 +99,13 @@ pub struct App {
     /// Primary window
     window_id: WindowId,
     renderer: Renderer,
-    scene: SceneState,
     time: Time,
     cursor: Arc<Cursor>,
     pool: TaskPool,
     hierarchy: TransformHierarchy,
     ui_state: UiState,
     entities: SceneEntities,
+    world: World,
 }
 
 impl game_window::App for App {
@@ -121,10 +117,9 @@ impl game_window::App for App {
         match &mut self.state {
             GameState::Startup => {
                 self.state = GameState::MainMenu(MainMenuState::new(
-                    &mut self.scene,
                     &mut self.renderer,
                     self.window_id,
-                    &mut self.hierarchy,
+                    &mut self.world,
                 ));
             }
             GameState::MainMenu(state) => {
@@ -133,22 +128,17 @@ impl game_window::App for App {
             GameState::GameWorld(state) => {
                 state.update(
                     &mut self.renderer,
-                    &mut self.scene,
                     window,
                     &self.time,
                     &mut self.hierarchy,
+                    &mut self.world,
                 );
             }
             _ => todo!(),
         }
 
-        self.scene
-            .spawner
-            .update(&mut self.scene.graph, &self.pool, Some(&mut self.renderer));
-        self.scene.graph.compute_transform();
         self.entities
-            .update(&mut self.scene.graph, &mut self.renderer);
-        self.scene.graph.clear_trackers();
+            .update(&self.world, &self.pool, &mut self.renderer);
 
         self.renderer.render(&self.pool);
         self.ui_state.run(&self.renderer, &mut ctx.windows);

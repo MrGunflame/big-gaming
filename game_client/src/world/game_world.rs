@@ -41,7 +41,7 @@ pub struct GameWorld<I> {
     /// Newest fresh state from the server.
     newest_state: WorldState,
     /// The newest state from the server with locally predicted inputs applied.
-    predicted_state: WorldState,
+    pub predicted_state: WorldState,
 }
 
 impl<I> GameWorld<I>
@@ -117,6 +117,7 @@ where
         // but we still have to handle predicted inputs for this frame.
         if let Some(iter) = self.conn.backlog.drain(cf) {
             for msg in iter {
+                dbg!(&msg.body);
                 match msg.body {
                     DataMessageBody::EntityDestroy(msg) => {
                         let Some(id) = self.server_entities.get(msg.entity) else {
