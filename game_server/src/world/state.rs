@@ -2,6 +2,7 @@ use ahash::HashMap;
 use game_common::components::components::Component;
 use game_common::components::inventory::{Inventory, InventorySlotId};
 use game_common::components::items::ItemStack;
+use game_common::components::transform::Transform;
 use game_common::components::AsComponent;
 use game_common::entity::EntityId;
 use game_common::record::RecordReference;
@@ -132,6 +133,7 @@ pub struct Cell<'a> {
 impl<'a> Cell<'a> {
     pub fn entities(&self) -> CellEntitiesIter<'a> {
         CellEntitiesIter {
+            world: self.world,
             iter: self.world.world.iter(),
             cell: self.id,
         }
@@ -139,6 +141,7 @@ impl<'a> Cell<'a> {
 }
 
 pub struct CellEntitiesIter<'a> {
+    world: &'a WorldState,
     iter: game_common::world::Iter<'a>,
     cell: CellId,
 }
@@ -147,16 +150,13 @@ impl<'a> Iterator for CellEntitiesIter<'a> {
     type Item = EntityId;
 
     fn next(&mut self) -> Option<Self::Item> {
-        // loop {
-        //     match self.iter.next() {
-        //         Some(id) if CellId::from(entity.transform.translation) == self.cell => {
-        //             return Some((*id, entity));
-        //         }
-        //         None => return None,
-        //         _ => (),
-        //     }
-        // }
-        todo!()
+        loop {
+            let entity = self.iter.next()?;
+            let transform: Transform = self.world.world.get_typed(entity);
+            if CellId::from(transform.translation) == self.cell {
+                return Some(entity);
+            }
+        }
     }
 }
 

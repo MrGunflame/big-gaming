@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use game_common::collections::arena::{self, Arena};
 use game_common::collections::vec_map::VecMap;
+use game_common::components::rendering::Color;
 use game_common::components::transform::Transform;
-use game_render::color::Color;
 use game_render::pbr::material::MaterialId;
 use game_render::pbr::mesh::MeshId;
 use game_tracing::trace_span;

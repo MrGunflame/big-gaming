@@ -39,7 +39,6 @@ pub fn run_scripts(
         match effect {
             Effect::EntitySpawn(entity) => {
                 debug_assert!(entity_id_remap.get(&entity).is_none());
-                debug_assert!(world.entities.get(entity).is_none());
 
                 let temp_id = entity;
                 let real_id = world.world.spawn();
@@ -47,8 +46,8 @@ pub fn run_scripts(
             }
             Effect::EntityDespawn(id) => {
                 let id = entity_id_remap.get(&id).copied().unwrap_or(id);
-                world.entities.remove(id);
                 world.inventories.remove(id);
+                world.world.despawn(id);
             }
             Effect::InventoryInsert(id, temp_slot_id, stack) => {
                 let id = entity_id_remap.get(&id).copied().unwrap_or(id);

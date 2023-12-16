@@ -4,21 +4,24 @@ use crate::record::RecordReference;
 
 use super::AsComponent;
 
-#[derive(Copy, Clone, Debug, Zeroable, Pod)]
-#[repr(C)]
+#[derive(Clone, Debug)]
 pub struct MeshInstance {
-    pub id: RecordReference,
+    // TODO: Should probably not be a string.
+    pub path: String,
 }
 
 impl AsComponent for MeshInstance {
     const ID: RecordReference = super::MESH_INSTANCE;
 
     fn from_bytes(buf: &[u8]) -> Self {
-        bytemuck::pod_read_unaligned(buf)
+        let id = std::str::from_utf8(buf).unwrap();
+        Self {
+            path: id.to_string(),
+        }
     }
 
     fn to_bytes(&self) -> Vec<u8> {
-        bytemuck::bytes_of(self).to_vec()
+        self.path.as_bytes().to_vec()
     }
 }
 

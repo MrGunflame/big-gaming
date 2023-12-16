@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
+use game_common::components::rendering::Color;
 use game_common::components::transform::Transform;
 use game_core::hierarchy::Hierarchy;
-use game_render::color::Color;
 use game_render::entities::Object;
 use game_render::mesh::Mesh;
 use game_render::pbr::{AlphaMode, PbrMaterial};

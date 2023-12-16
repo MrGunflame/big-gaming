@@ -11,6 +11,7 @@ use std::time::Duration;
 use ahash::HashMap;
 use game_common::components::actions::ActionId;
 use game_common::components::actor::ActorProperties;
+use game_common::components::rendering::Color;
 use game_common::components::transform::Transform;
 use game_common::entity::EntityId;
 use game_common::module::ModuleId;
@@ -25,7 +26,6 @@ use game_input::hotkeys::{HotkeyCode, Key};
 use game_input::keyboard::{KeyCode, KeyboardInput};
 use game_input::mouse::MouseMotion;
 use game_render::camera::{Camera, Projection, RenderTarget};
-use game_render::color::Color;
 use game_render::entities::CameraId;
 use game_render::light::DirectionalLight;
 use game_render::Renderer;
@@ -206,14 +206,15 @@ impl GameWorldState {
         self.dispatch_actions();
 
         if self.camera_controller.mode != CameraMode::Detached {
-            if let Some(entity) = self.world.state().entities.get(self.host) {
+            if self.world.state().world.contains(self.host) {
+                let transform: Transform = self.world.state().world.get_typed(self.host);
+
                 let props = ActorProperties {
                     eyes: Vec3::new(0.0, 1.8, 0.0),
-                    rotation: extract_actor_rotation(entity.transform.rotation),
+                    rotation: extract_actor_rotation(transform.rotation),
                 };
 
-                self.camera_controller
-                    .sync_with_entity(entity.transform, props);
+                self.camera_controller.sync_with_entity(transform, props);
             }
         } else {
             // We are in detached mode and need to manually
@@ -292,15 +293,18 @@ impl GameWorldState {
             return;
         }
 
-        if let Some(host) = self.world.state().entities.get(self.host) {
-            let transform = update_rotation(host.transform, event);
-            let rotation = transform.rotation;
-
-            self.world.send(SendCommand::Rotate {
-                entity: self.host,
-                rotation,
-            });
+        if !self.world.state().world.contains(self.host) {
+            return;
         }
+
+        let mut transform = self.world.state().world.get_typed::<Transform>(self.host);
+        let transform = update_rotation(transform, event);
+        let rotation = transform.rotation;
+
+        self.world.send(SendCommand::Rotate {
+            entity: self.host,
+            rotation,
+        });
     }
 
     fn handle_keyboard_input(
@@ -405,7 +409,7 @@ impl GameWorldState {
     fn dispatch_actions(&mut self) {
         let actions = self.actions.take_events();
 
-        if self.world.state().entities.get(self.host).is_none() {
+        if !self.world.state().world.contains(self.host) {
             return;
         }
 
@@ -424,22 +428,8 @@ impl GameWorldState {
 
         self.host = id;
 
-        let entity = self.world.state().entities.get(id).unwrap();
-        let actor = entity.body.as_actor().unwrap();
-
-        let module = self.modules.get(actor.race.0.module).unwrap();
-        let record = module.records.get(actor.race.0.record).unwrap();
-        let race = record.body.as_race().unwrap();
-
-        for action in &race.actions {
-            let module = self.modules.get(action.module).unwrap();
-            let record = module.records.get(action.record).unwrap();
-
-            self.actions.register(
-                action.module,
-                record,
-                self.get_key_for_action(action.module, record),
-            );
+        for (id, _) in self.world.state().world.components(id).clone().iter() {
+            self.register_record_action(id);
         }
 
         // Register all actions from equipped items.
