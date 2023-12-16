@@ -3,13 +3,12 @@ use game_common::components::components::Component;
 use game_common::components::inventory::Inventory;
 use game_common::entity::EntityId;
 use game_common::events::EventQueue;
-use game_common::world::entity::Entity;
 use game_core::modules::Modules;
 use game_script::effect::Effect;
 use game_script::executor::ScriptExecutor;
 use game_script::{Context, WorldProvider};
 
-use crate::net::world::{Command, CommandBuffer};
+use crate::net::world::CommandBuffer;
 
 use super::state::WorldState;
 
@@ -39,37 +38,17 @@ pub fn run_scripts(
     for effect in effects.into_iter() {
         match effect {
             Effect::EntitySpawn(entity) => {
-                debug_assert!(entity_id_remap.get(&entity.id).is_none());
-                debug_assert!(world.entities.get(entity.id).is_none());
+                debug_assert!(entity_id_remap.get(&entity).is_none());
+                debug_assert!(world.entities.get(entity).is_none());
 
-                let temp_id = entity.id;
-                let real_id = world.entities.insert(entity);
+                let temp_id = entity;
+                let real_id = world.world.spawn();
                 entity_id_remap.insert(temp_id, real_id);
             }
             Effect::EntityDespawn(id) => {
                 let id = entity_id_remap.get(&id).copied().unwrap_or(id);
                 world.entities.remove(id);
                 world.inventories.remove(id);
-            }
-            Effect::EntityTranslate(id, translation) => {
-                let id = entity_id_remap.get(&id).copied().unwrap_or(id);
-
-                buffer.push(Command::Translate {
-                    entity: id,
-                    dst: translation,
-                });
-
-                world.entities.get_mut(id).unwrap().transform.translation = translation;
-            }
-            Effect::EntityRotate(id, rotation) => {
-                let id = entity_id_remap.get(&id).copied().unwrap_or(id);
-
-                buffer.push(Command::Rotate {
-                    entity: id,
-                    dst: rotation,
-                });
-
-                world.entities.get_mut(id).unwrap().transform.rotation = rotation;
             }
             Effect::InventoryInsert(id, temp_slot_id, stack) => {
                 let id = entity_id_remap.get(&id).copied().unwrap_or(id);
@@ -142,33 +121,23 @@ pub fn run_scripts(
             Effect::EntityComponentInsert(id, component, data) => {
                 let id = entity_id_remap.get(&id).copied().unwrap_or(id);
 
-                world
-                    .entities
-                    .get_mut(id)
-                    .unwrap()
-                    .components
-                    .insert(component, Component { bytes: data });
+                world.world.insert(id, component, Component { bytes: data });
             }
             Effect::EntityComponentRemove(id, component) => {
                 let id = entity_id_remap.get(&id).copied().unwrap_or(id);
 
-                world
-                    .entities
-                    .get_mut(id)
-                    .unwrap()
-                    .components
-                    .remove(component);
+                world.world.remove(id, component);
             }
         }
     }
 }
 
 impl WorldProvider for WorldState {
-    fn get(&self, id: EntityId) -> Option<&Entity> {
-        self.entities.get(id)
-    }
-
     fn inventory(&self, id: EntityId) -> Option<&Inventory> {
         self.inventories.get(id)
+    }
+
+    fn world(&self) -> &game_common::world::World {
+        &self.world
     }
 }

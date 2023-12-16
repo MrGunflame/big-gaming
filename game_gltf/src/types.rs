@@ -1,6 +1,6 @@
+use game_common::components::rendering::Color;
 use game_common::components::transform::Transform;
 use game_core::hierarchy::Hierarchy;
-use game_render::color::Color;
 use glam::{Vec2, Vec3, Vec4};
 use gltf::material::AlphaMode;
 

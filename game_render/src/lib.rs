@@ -1,7 +1,6 @@
 pub mod aabb;
 pub mod buffer;
 pub mod camera;
-pub mod color;
 pub mod entities;
 pub mod forward;
 pub mod graph;

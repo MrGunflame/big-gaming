@@ -1,4 +1,4 @@
-use game_render::color::Color;
+use game_common::components::rendering::Color;
 use game_render::pbr::AlphaMode;
 
 #[derive(Clone, Debug)]

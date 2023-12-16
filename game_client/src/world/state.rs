@@ -2,11 +2,13 @@ use ahash::HashMap;
 use game_common::components::inventory::Inventory;
 use game_common::entity::EntityId;
 use game_common::world::entity::Entity;
+use game_common::world::World;
 
 #[derive(Clone, Debug, Default)]
 pub struct WorldState {
     pub entities: Entities,
     pub inventories: Inventories,
+    pub world: World,
 }
 
 impl WorldState {
@@ -19,6 +21,7 @@ impl WorldState {
             inventories: Inventories {
                 inventories: HashMap::default(),
             },
+            world: World::new(),
         }
     }
 }

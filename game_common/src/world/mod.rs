@@ -40,7 +40,7 @@ use crate::components::AsComponent;
 use crate::entity::EntityId;
 use crate::record::RecordReference;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct World {
     entities: HashSet<EntityId>,
     next_id: u64,

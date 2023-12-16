@@ -1,8 +1,5 @@
 //! All components
 
-use crate::module::ModuleId;
-use crate::record::{RecordId, RecordReference};
-
 pub mod actions;
 pub mod actor;
 pub mod components;
@@ -12,8 +9,12 @@ pub mod items;
 pub mod object;
 pub mod physics;
 pub mod race;
+pub mod rendering;
 pub mod terrain;
 pub mod transform;
+
+use crate::module::ModuleId;
+use crate::record::{RecordId, RecordReference};
 
 macro_rules! define_id {
     ($($id:ident => $val:expr),*,) => {
