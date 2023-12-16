@@ -968,62 +968,8 @@ impl BitOrAssign for ItemFlags {
     }
 }
 
-#[derive(Copy, Clone, Debug, Encode, Decode)]
-pub struct PlayerMove {
-    pub entity: ServerEntity,
-    pub bits: MoveBits,
-}
-
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
-pub struct MoveBits {
-    pub forward: bool,
-    pub back: bool,
-    pub left: bool,
-    pub right: bool,
-}
-
-impl Encode for MoveBits {
-    type Error = <u8 as Encode>::Error;
-
-    fn encode<B>(&self, buf: B) -> Result<(), Self::Error>
-    where
-        B: BufMut,
-    {
-        let bits: u8 = (self.forward as u8)
-            + ((self.back as u8) << 1)
-            + ((self.left as u8) << 2)
-            + ((self.right as u8) << 3);
-
-        bits.encode(buf)
-    }
-}
-
-impl Decode for MoveBits {
-    type Error = <u8 as Decode>::Error;
-
-    fn decode<B>(buf: B) -> Result<Self, Self::Error>
-    where
-        B: Buf,
-    {
-        let bits = u8::decode(buf)?;
-
-        let forward = bits & 1 != 0;
-        let back = bits & (1 << 1) != 0;
-        let left = bits & (1 << 2) != 0;
-        let right = bits & (1 << 3) != 0;
-
-        Ok(Self {
-            forward,
-            back,
-            left,
-            right,
-        })
-    }
-}
-
 #[derive(Clone, Debug)]
 pub enum Frame {
-    EntityCreate(EntityCreate),
     EntityDestroy(EntityDestroy),
     EntityTranslate(EntityTranslate),
     EntityRotate(EntityRotate),
@@ -1036,17 +982,11 @@ pub enum Frame {
     InventoryItemAdd(InventoryItemAdd),
     InventoryItemRemove(InventoryItemRemove),
     InventoryItemUpdate(InventoryItemUpdate),
-    // FIXME: These should probably be merged into `EntityAction`s and handled by
-    // scripts, but for efficiency movement events are not encoded as regular
-    // repeated actions, but as a start then and end frame. Actions don't support
-    // such behavoir as of now.
-    PlayerMove(PlayerMove),
 }
 
 impl Frame {
     pub fn id(&self) -> ServerEntity {
         match self {
-            Self::EntityCreate(frame) => frame.entity,
             Self::EntityDestroy(frame) => frame.entity,
             Self::EntityTranslate(frame) => frame.entity,
             Self::EntityRotate(frame) => frame.entity,
@@ -1059,7 +999,6 @@ impl Frame {
             Self::InventoryItemAdd(frame) => frame.entity,
             Self::InventoryItemRemove(frame) => frame.entity,
             Self::InventoryItemUpdate(frame) => frame.entity,
-            Self::PlayerMove(frame) => frame.entity,
         }
     }
 }
@@ -1072,10 +1011,6 @@ impl Encode for Frame {
         B: BufMut,
     {
         match self {
-            Self::EntityCreate(frame) => {
-                FrameType::ENTITY_CREATE.encode(&mut buf)?;
-                frame.encode(buf)
-            }
             Self::EntityDestroy(frame) => {
                 FrameType::ENTITY_DESTROY.encode(&mut buf)?;
                 frame.encode(buf)
@@ -1124,10 +1059,6 @@ impl Encode for Frame {
                 FrameType::INVENTORY_ITEM_UPDATE.encode(&mut buf)?;
                 frame.encode(buf)
             }
-            Self::PlayerMove(frame) => {
-                FrameType::PLAYER_MOVE.encode(&mut buf)?;
-                frame.encode(buf)
-            }
         }
     }
 }
@@ -1142,10 +1073,6 @@ impl Decode for Frame {
         let typ = FrameType::decode(&mut buf)?;
 
         match typ {
-            FrameType::ENTITY_CREATE => {
-                let frame = EntityCreate::decode(buf)?;
-                Ok(Self::EntityCreate(frame))
-            }
             FrameType::ENTITY_DESTROY => {
                 let frame = EntityDestroy::decode(buf)?;
                 Ok(Self::EntityDestroy(frame))
@@ -1193,10 +1120,6 @@ impl Decode for Frame {
             FrameType::INVENTORY_ITEM_UPDATE => {
                 let frame = InventoryItemUpdate::decode(buf)?;
                 Ok(Self::InventoryItemUpdate(frame))
-            }
-            FrameType::PLAYER_MOVE => {
-                let frame = PlayerMove::decode(buf)?;
-                Ok(Self::PlayerMove(frame))
             }
             _ => unreachable!(),
         }

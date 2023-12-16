@@ -14,7 +14,7 @@ use game_script::WorldProvider;
 pub struct WorldState {
     next_id: u64,
     inventories: HashMap<EntityId, Inventory>,
-    world: World,
+    pub world: World,
 }
 
 impl WorldState {

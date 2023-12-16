@@ -2,6 +2,7 @@ use ahash::{HashMap, HashSet};
 use game_common::components::components::{Component, Components};
 use game_common::components::items::ItemId;
 use game_common::components::object::ObjectId;
+use game_common::components::transform::Transform;
 use game_common::entity::EntityId;
 use game_common::events::{CellLoadEvent, CellUnloadEvent, Event};
 use game_common::world::cell::square;
@@ -10,7 +11,6 @@ use game_common::world::gen::{CellBuilder, EntityBuilder, Generator};
 use game_common::world::CellId;
 use game_core::modules::Modules;
 use game_data::record::RecordBody;
-use game_script::WorldProvider;
 use glam::Vec3;
 
 use crate::world::entity::spawn_entity;
@@ -24,8 +24,8 @@ pub struct Streamer {
 pub fn update_level_cells(state: &mut ServerState) {
     let mut cells = HashSet::default();
     for (entity, streamer) in &state.level.streamers {
-        let entity = state.world.get(*entity).unwrap();
-        let cell = CellId::from(entity.transform.translation);
+        let transform = state.world.get::<Transform>(*entity);
+        let cell = CellId::from(transform.translation);
 
         let area = square(cell, streamer.distance);
         cells.extend(area);
@@ -51,7 +51,8 @@ pub fn update_level_cells(state: &mut ServerState) {
                         &mut state.scene,
                         &state.modules,
                     );
-                    let id = state.world.insert(entity);
+
+                    let id = state.world.spawn();
 
                     state.scene.entities.insert(key, id);
                 }

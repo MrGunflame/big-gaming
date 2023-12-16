@@ -42,7 +42,6 @@ impl SceneRoot {
                 transform,
                 components: map_components(&node.components, parent, graph, renderer),
             };
-            dbg!(&node);
             graph.append(Some(parent), node);
         }
     }
@@ -57,7 +56,6 @@ fn map_components(
     let mut comps = Vec::new();
 
     for comp in components {
-        dbg!(&comp);
         match comp {
             Component::DirectionalLight(light) => {
                 let c =

@@ -17,6 +17,7 @@ macro_rules! define_id {
     };
 }
 
+// Must be kept in sync with `game_common/src/components/mod.rs`.
 define_id! {
     TRANSFORM => 1,
 

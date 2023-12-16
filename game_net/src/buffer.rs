@@ -69,7 +69,6 @@ impl FrameBuffer {
             let req = &self.buffer[index];
 
             match &req.frame {
-                Frame::EntityCreate(_) => (),
                 Frame::EntityDestroy(frame) => {
                     let id = frame.entity;
 
@@ -84,18 +83,6 @@ impl FrameBuffer {
                     let mut index2 = 0;
                     while index2 < index {
                         let req2 = &self.buffer[index2];
-
-                        if let Frame::EntityCreate(frame2) = &req2.frame {
-                            if frame.entity == frame2.entity {
-                                // Also remove the `EntityDestroy` frame.
-                                index += 1;
-
-                                let rm = self.retain_range(index2..index, |f| f.id() != id);
-                                index -= rm.len();
-                                removed.extend(rm);
-                                continue 'out;
-                            }
-                        }
 
                         index2 += 1;
                     }
@@ -328,43 +315,43 @@ mod tests {
         }
     }
 
-    #[test]
-    fn frame_buffer_compact_create_destroy() {
-        let mut buffer = FrameBuffer::new();
+    // #[test]
+    // fn frame_buffer_compact_create_destroy() {
+    //     let mut buffer = FrameBuffer::new();
 
-        buffer.push(Request {
-            sequence: Sequence::new(0),
-            control_frame: ControlFrame(0),
-            frame: Frame::EntityCreate(EntityCreate {
-                entity: ServerEntity(1),
-                translation: Vec3::splat(0.0),
-                rotation: Quat::IDENTITY,
-                data: EntityBody::Object(Object {
-                    id: ObjectId(RecordReference::STUB),
-                }),
-            }),
-        });
-        buffer.push(Request {
-            sequence: Sequence::new(1),
-            control_frame: ControlFrame(0),
-            frame: Frame::EntityTranslate(EntityTranslate {
-                entity: ServerEntity(1),
-                translation: Vec3::splat(1.0),
-            }),
-        });
-        buffer.push(Request {
-            sequence: Sequence::new(2),
-            control_frame: ControlFrame(0),
-            frame: Frame::EntityDestroy(EntityDestroy {
-                entity: ServerEntity(1),
-            }),
-        });
+    //     buffer.push(Request {
+    //         sequence: Sequence::new(0),
+    //         control_frame: ControlFrame(0),
+    //         frame: Frame::EntityCreate(EntityCreate {
+    //             entity: ServerEntity(1),
+    //             translation: Vec3::splat(0.0),
+    //             rotation: Quat::IDENTITY,
+    //             data: EntityBody::Object(Object {
+    //                 id: ObjectId(RecordReference::STUB),
+    //             }),
+    //         }),
+    //     });
+    //     buffer.push(Request {
+    //         sequence: Sequence::new(1),
+    //         control_frame: ControlFrame(0),
+    //         frame: Frame::EntityTranslate(EntityTranslate {
+    //             entity: ServerEntity(1),
+    //             translation: Vec3::splat(1.0),
+    //         }),
+    //     });
+    //     buffer.push(Request {
+    //         sequence: Sequence::new(2),
+    //         control_frame: ControlFrame(0),
+    //         frame: Frame::EntityDestroy(EntityDestroy {
+    //             entity: ServerEntity(1),
+    //         }),
+    //     });
 
-        buffer.compact();
-        let mut iter = buffer.iter();
+    //     buffer.compact();
+    //     let mut iter = buffer.iter();
 
-        assert!(iter.next().is_none());
-    }
+    //     assert!(iter.next().is_none());
+    // }
 
     #[test]
     fn frame_buffer_remove() {

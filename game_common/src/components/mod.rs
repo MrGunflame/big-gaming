@@ -10,6 +10,7 @@ pub mod entity;
 pub mod inventory;
 pub mod items;
 pub mod object;
+pub mod physics;
 pub mod race;
 pub mod terrain;
 pub mod transform;

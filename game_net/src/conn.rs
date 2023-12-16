@@ -1310,14 +1310,15 @@ mod tests {
     fn create_terrain_frame(size: UVec2) -> Frame {
         let heightmap = Heightmap::from_u8(size, vec![0; size.x as usize * size.y as usize]);
 
-        Frame::EntityCreate(EntityCreate {
-            entity: ServerEntity(0),
-            translation: Vec3::ZERO,
-            rotation: Quat::IDENTITY,
-            data: EntityBody::Terrain(Terrain {
-                mesh: TerrainMesh::new(CellId::ZERO, heightmap),
-            }),
-        })
+        // Frame::EntityCreate(EntityCreate {
+        //     entity: ServerEntity(0),
+        //     translation: Vec3::ZERO,
+        //     rotation: Quat::IDENTITY,
+        //     data: EntityBody::Terrain(Terrain {
+        //         mesh: TerrainMesh::new(CellId::ZERO, heightmap),
+        //     }),
+        // })
+        todo!()
     }
 
     #[test]

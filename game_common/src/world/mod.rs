@@ -61,7 +61,13 @@ impl World {
         self.next_id += 1;
 
         self.entities.insert(id);
+        self.components.insert(id, Components::default());
         id
+    }
+
+    pub fn spawn_with_id(&mut self, id: EntityId) {
+        self.entities.insert(id);
+        self.components.insert(id, Components::default());
     }
 
     pub fn despawn(&mut self, id: EntityId) {
@@ -70,6 +76,7 @@ impl World {
     }
 
     pub fn insert(&mut self, id: EntityId, component_id: RecordReference, component: Component) {
+        assert!(self.entities.contains(&id));
         self.components
             .entry(id)
             .or_default()
@@ -98,17 +105,34 @@ impl World {
             .and_then(|components| components.remove(component_id))
     }
 
+    pub fn insert_typed<T: AsComponent>(&mut self, entity: EntityId, component: T) {
+        let component_id = T::ID;
+        let component = Component {
+            bytes: component.to_bytes(),
+        };
+
+        self.insert(entity, component_id, component);
+    }
+
+    pub fn get_typed<T: AsComponent>(&self, entity: EntityId) -> T {
+        T::from_bytes(self.get(entity, T::ID).unwrap().as_bytes())
+    }
+
     pub fn iter(&self) -> Iter<'_> {
         Iter {
             inner: self.entities.iter(),
         }
     }
 
+    pub fn components(&self, entity: EntityId) -> &Components {
+        self.components.get(&entity).unwrap()
+    }
+
     pub fn contains(&self, id: EntityId) -> bool {
         self.entities.contains(&id)
     }
 
-    pub fn query<Q>(&mut self) -> Query<'_, Q>
+    pub fn query<Q>(&self) -> Query<'_, Q>
     where
         Q: QueryParams,
     {
@@ -117,6 +141,11 @@ impl World {
             components: &self.components,
             _marker: PhantomData,
         }
+    }
+
+    pub fn clear(&mut self) {
+        self.entities.clear();
+        self.components.clear();
     }
 }
 
@@ -186,7 +215,7 @@ impl<'a, T> Iterator for Query<'a, T>
 where
     T: QueryParams,
 {
-    type Item = T;
+    type Item = (EntityId, T);
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
@@ -196,7 +225,7 @@ where
             };
 
             if let Some(query) = T::fetch(components) {
-                return Some(query);
+                return Some((*entity, query));
             };
         }
     }

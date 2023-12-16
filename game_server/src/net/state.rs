@@ -1,9 +1,10 @@
 use ahash::HashMap;
+use game_common::components::components::{Component, Components};
 use game_common::components::inventory::Inventory;
 use game_common::entity::EntityId;
+use game_common::record::RecordReference;
 use game_common::world::cell::square;
 use game_common::world::control_frame::ControlFrame;
-use game_common::world::entity::Entity;
 use game_common::world::CellId;
 
 use super::entities::Entities;
@@ -80,40 +81,53 @@ impl Cells {
 /// Entities that client is aware of.
 #[derive(Clone, Debug, Default)]
 pub struct KnownEntities {
-    pub entities: HashMap<EntityId, Entity>,
+    pub components: HashMap<EntityId, Components>,
     pub inventories: HashMap<EntityId, Inventory>,
 }
 
 impl KnownEntities {
     pub fn new() -> Self {
         Self {
-            entities: HashMap::default(),
+            components: HashMap::default(),
             inventories: HashMap::default(),
         }
     }
 
-    pub fn insert(&mut self, entity: Entity) {
-        self.entities.insert(entity.id, entity);
+    pub fn insert(
+        &mut self,
+        entity: EntityId,
+        component_id: RecordReference,
+        component: Component,
+    ) {
+        self.components
+            .entry(entity)
+            .or_default()
+            .insert(component_id, component);
     }
 
-    pub fn remove(&mut self, id: EntityId) {
-        self.entities.remove(&id);
+    pub fn remove(&mut self, entity: EntityId, component_id: RecordReference) {
+        self.components
+            .remove(&entity)
+            .unwrap()
+            .remove(component_id);
+    }
+
+    pub fn despawn(&mut self, entity: EntityId) {
+        self.components.remove(&entity);
     }
 
     pub fn contains(&self, id: EntityId) -> bool {
-        self.entities.contains_key(&id)
-    }
-
-    pub fn get_mut(&mut self, id: EntityId) -> Option<&mut Entity> {
-        self.entities.get_mut(&id)
-    }
-
-    pub fn get(&self, id: EntityId) -> Option<&Entity> {
-        self.entities.get(&id)
+        self.components.contains_key(&id)
     }
 
     pub fn clear(&mut self) {
-        self.entities.clear();
+        self.components.clear();
+        self.inventories.clear();
+    }
+
+    pub fn get(&self, entity: EntityId, component_id: RecordReference) -> Option<&Component> {
+        let components = self.components.get(&entity)?;
+        components.get(component_id)
     }
 }
 
