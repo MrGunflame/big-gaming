@@ -41,7 +41,7 @@ pub struct GameWorld<I> {
     /// Newest fresh state from the server.
     newest_state: WorldState,
     /// The newest state from the server with locally predicted inputs applied.
-    pub predicted_state: WorldState,
+    predicted_state: WorldState,
 }
 
 impl<I> GameWorld<I>
@@ -233,9 +233,13 @@ where
                         }
                     }
                     DataMessageBody::EntityComponentAdd(msg) => {
-                        let Some(id) = self.server_entities.get(msg.entity) else {
-                            peer_error!("invalid entity: {:?}", msg.entity);
-                            continue;
+                        let id = match self.server_entities.get(msg.entity) {
+                            Some(id) => id,
+                            None => {
+                                let entity = self.newest_state.world.spawn();
+                                self.server_entities.insert(entity, msg.entity);
+                                entity
+                            }
                         };
 
                         self.newest_state.world.insert(

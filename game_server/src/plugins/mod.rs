@@ -455,6 +455,11 @@ fn update_client(conn: &Connection, world: &WorldState, level: &Level, cf: Contr
                             }),
                         });
                     }
+
+                    state
+                        .known_entities
+                        .inventories
+                        .insert(entity, inventory.clone());
                 }
             }
         }
@@ -578,6 +583,15 @@ fn update_player_cells(world: &WorldState, state: &mut ConnectionState) -> Vec<D
                     }
                 }
                 (None, None) => (),
+            }
+
+            if let Some(inventory) = world.inventory(entity) {
+                state
+                    .known_entities
+                    .inventories
+                    .insert(entity, inventory.clone());
+            } else {
+                state.known_entities.inventories.remove(&entity);
             }
         }
     }

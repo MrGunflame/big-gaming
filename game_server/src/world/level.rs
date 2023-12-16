@@ -53,6 +53,7 @@ pub fn update_level_cells(state: &mut ServerState) {
                     );
 
                     let id = state.world.spawn();
+                    state.world.world.insert_typed(id, entity.transform);
 
                     state.scene.entities.insert(key, id);
                 }

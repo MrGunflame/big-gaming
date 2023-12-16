@@ -5,6 +5,7 @@ use game_common::components::inventory::Inventory;
 use game_common::components::items::{Item, ItemId, ItemStack};
 use game_common::components::object::ObjectId;
 use game_common::components::race::RaceId;
+use game_common::components::rendering::MeshInstance;
 use game_common::components::transform::Transform;
 use game_common::entity::EntityId;
 use game_common::record::RecordReference;
@@ -69,6 +70,12 @@ pub fn spawn_player(
 
     let id = world.spawn();
     world.insert(id, transform);
+    world.insert(
+        id,
+        MeshInstance {
+            path: "assets/box.json".to_owned(),
+        },
+    );
 
     let mut components = Components::new();
     components.insert(

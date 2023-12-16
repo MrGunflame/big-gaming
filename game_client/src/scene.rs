@@ -9,13 +9,13 @@ use game_common::world::World;
 use game_render::entities::{DirectionalLightId, ObjectId, PointLightId, SpotLightId};
 use game_render::light::{DirectionalLight, PointLight, SpotLight};
 use game_render::Renderer;
-use game_scene::scene2::{Node, SceneGraph};
+use game_scene::scene2::{Key, Node, SceneGraph};
 use game_scene::SceneSpawner;
 use game_tasks::TaskPool;
 
 #[derive(Debug, Default)]
 pub struct SceneEntities {
-    mesh_instances: HashMap<EntityId, ObjectId>,
+    mesh_instances: HashMap<EntityId, Key>,
     directional_lights: HashMap<EntityId, DirectionalLightId>,
     point_lights: HashMap<EntityId, PointLightId>,
     spot_lights: HashMap<EntityId, SpotLightId>,
@@ -38,15 +38,17 @@ impl SceneEntities {
             removed_mesh_instances.remove(&entity);
 
             match self.mesh_instances.get(&entity) {
-                Some(id) => {
-                    let mut instance = renderer.entities.objects.get_mut(*id).unwrap();
-                    instance.transform = transform;
+                Some(key) => {
+                    let node = self.graph.get_mut(*key).unwrap();
+                    node.transform = transform;
                 }
                 None => {
                     let key = self
                         .graph
                         .append(None, Node::from_transform(Transform::default()));
                     self.spawner.spawn(key, mesh_instance.path);
+
+                    self.mesh_instances.insert(entity, key);
                 }
             }
         }
@@ -127,6 +129,10 @@ impl SceneEntities {
                     self.spot_lights.insert(entity, id);
                 }
             }
+        }
+
+        for (_, key) in removed_mesh_instances {
+            self.graph.remove(key);
         }
 
         for (_, id) in removed_dir_lights {

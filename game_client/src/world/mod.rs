@@ -113,7 +113,6 @@ impl GameWorldState {
         renderer: &mut Renderer,
         window: WindowState,
         time: &Time,
-        hierarchy: &mut TransformHierarchy,
         world: &mut World,
     ) {
         if !self.is_init {
@@ -144,7 +143,7 @@ impl GameWorldState {
         let mut buf = CommandBuffer::new();
         self.world.update(time, &self.modules, &mut buf);
 
-        *world = self.world.predicted_state.world.clone();
+        *world = self.world.state().world.clone();
 
         while let Some(cmd) = buf.pop() {
             match cmd {
@@ -488,29 +487,29 @@ impl GameWorldState {
     }
 
     fn register_record_action(&mut self, id: RecordReference) {
-        let module = self.modules.get(id.module).unwrap();
-        let record = module.records.get(id.record).unwrap();
+        // let module = self.modules.get(id.module).unwrap();
+        // let record = module.records.get(id.record).unwrap();
 
-        let actions = match &record.body {
-            RecordBody::Action(_) => return,
-            RecordBody::Race(race) => &race.actions,
-            RecordBody::Component(component) => &component.actions,
-            RecordBody::Item(item) => &item.actions,
-            RecordBody::Object(_) => return,
-        };
+        // let actions = match &record.body {
+        //     RecordBody::Action(_) => return,
+        //     RecordBody::Race(race) => &race.actions,
+        //     RecordBody::Component(component) => &component.actions,
+        //     RecordBody::Item(item) => &item.actions,
+        //     RecordBody::Object(_) => return,
+        // };
 
-        for action in actions {
-            let module = self.modules.get(action.module).unwrap();
-            let record = module.records.get(action.record).unwrap();
+        // for action in actions {
+        //     let module = self.modules.get(action.module).unwrap();
+        //     let record = module.records.get(action.record).unwrap();
 
-            self.actions.register(
-                action.module,
-                record,
-                self.get_key_for_action(action.module, record),
-            );
+        //     self.actions.register(
+        //         action.module,
+        //         record,
+        //         self.get_key_for_action(action.module, record),
+        //     );
 
-            self.inventory_actions.push(ActionId(*action));
-        }
+        //     self.inventory_actions.push(ActionId(*action));
+        // }
     }
 
     fn get_key_for_action(&self, module: ModuleId, record: &Record) -> Key {

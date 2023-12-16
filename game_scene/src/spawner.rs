@@ -51,6 +51,7 @@ impl SceneSpawner {
 
         let mut queue = self.scenes_to_spawn.lock().unwrap();
         while let Some((parent, scene)) = queue.pop_front() {
+            dbg!(&scene);
             scene.spawn(&mut renderer, parent, graph);
         }
     }
