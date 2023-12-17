@@ -28,7 +28,7 @@ impl MainMenuState {
         world.insert_typed(
             obj,
             MeshInstance {
-                path: "sponza.model".into(),
+                path: "sponza.glb".into(),
             },
         );
 

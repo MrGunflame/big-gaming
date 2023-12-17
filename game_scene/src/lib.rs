@@ -6,24 +6,24 @@ mod spawner;
 
 pub mod scene;
 
-pub use crate::spawner::SceneSpawner;
+pub use crate::spawner::{SceneId, SceneSpawner};
 
 #[cfg(feature = "gltf")]
 mod gltf;
 
 use format::SceneRoot;
 use game_gltf::uri::Uri;
+use game_gltf::GltfDecoder;
 use game_tracing::trace_span;
+use loader::LoadScene;
+use scene::Scene;
 use slotmap::DefaultKey;
 
 use std::fs::File;
 use std::io::Read;
 use std::path::PathBuf;
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct SceneId(DefaultKey);
-
-fn load_scene(path: PathBuf) -> Option<SceneRoot> {
+fn load_scene(path: PathBuf) -> Option<Scene> {
     let _span = trace_span!("load_scene").entered();
 
     let uri = Uri::from(path);
@@ -39,8 +39,12 @@ fn load_scene(path: PathBuf) -> Option<SceneRoot> {
     let mut buf = Vec::new();
     file.read_to_end(&mut buf).unwrap();
 
-    let scene = crate::format::from_slice(&buf).unwrap();
-    Some(scene)
+    // let scene = crate::format::from_slice(&buf).unwrap();
+
+    let decoder = GltfDecoder::new(&buf).unwrap();
+    let data = decoder.finish().unwrap();
+
+    Some(data.load())
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]

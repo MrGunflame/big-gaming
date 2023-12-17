@@ -6,16 +6,18 @@ use game_common::components::rendering::{
 use game_common::components::transform::Transform;
 use game_common::entity::EntityId;
 use game_common::world::World;
+use game_core::hierarchy::Hierarchy;
 use game_render::entities::{DirectionalLightId, ObjectId, PointLightId, SpotLightId};
 use game_render::light::{DirectionalLight, PointLight, SpotLight};
 use game_render::Renderer;
+use game_scene::scene::NodeBody;
 use game_scene::scene2::{Key, Node, SceneGraph};
-use game_scene::SceneSpawner;
+use game_scene::{SceneId, SceneSpawner};
 use game_tasks::TaskPool;
 
 #[derive(Debug, Default)]
 pub struct SceneEntities {
-    mesh_instances: HashMap<EntityId, Key>,
+    mesh_instances: HashMap<EntityId, SceneId>,
     directional_lights: HashMap<EntityId, DirectionalLightId>,
     point_lights: HashMap<EntityId, PointLightId>,
     spot_lights: HashMap<EntityId, SpotLightId>,
@@ -25,7 +27,7 @@ pub struct SceneEntities {
 
 impl SceneEntities {
     pub fn update(&mut self, world: &World, pool: &TaskPool, renderer: &mut Renderer) {
-        self.spawner.update(&mut self.graph, pool, Some(renderer));
+        self.spawner.update(pool, renderer);
         self.graph.compute_transform();
         self.graph.clear_trackers();
 
@@ -38,17 +40,12 @@ impl SceneEntities {
             removed_mesh_instances.remove(&entity);
 
             match self.mesh_instances.get(&entity) {
-                Some(key) => {
-                    let node = self.graph.get_mut(*key).unwrap();
-                    node.transform = transform;
+                Some(id) => {
+                    self.spawner.set_transform(renderer, transform, *id);
                 }
                 None => {
-                    let key = self
-                        .graph
-                        .append(None, Node::from_transform(Transform::default()));
-                    self.spawner.spawn(key, mesh_instance.path);
-
-                    self.mesh_instances.insert(entity, key);
+                    let id = self.spawner.spawn(mesh_instance.path);
+                    self.mesh_instances.insert(entity, id);
                 }
             }
         }
@@ -65,7 +62,7 @@ impl SceneEntities {
                     dir_light.transform = transform;
                 }
                 None => {
-                    let mut dir_light = DirectionalLight {
+                    let dir_light = DirectionalLight {
                         color: light.color,
                         illuminance: light.illuminance,
                         transform,
@@ -89,7 +86,7 @@ impl SceneEntities {
                     point_light.transform = transform;
                 }
                 None => {
-                    let mut point_light = PointLight {
+                    let point_light = PointLight {
                         color: light.color,
                         intensity: light.intensity,
                         radius: light.radius,
@@ -116,7 +113,7 @@ impl SceneEntities {
                     spot_light.transform = transform;
                 }
                 None => {
-                    let mut spot_light = SpotLight {
+                    let spot_light = SpotLight {
                         color: light.color,
                         intensity: light.intensity,
                         radius: light.radius,
@@ -131,8 +128,8 @@ impl SceneEntities {
             }
         }
 
-        for (_, key) in removed_mesh_instances {
-            self.graph.remove(key);
+        for (_, id) in removed_mesh_instances {
+            self.spawner.despawn(renderer, id);
         }
 
         for (_, id) in removed_dir_lights {

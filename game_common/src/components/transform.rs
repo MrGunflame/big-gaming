@@ -179,3 +179,15 @@ impl AsComponent for Transform {
         bytes
     }
 }
+
+impl AsComponent for GlobalTransform {
+    const ID: crate::record::RecordReference = super::GLOBAL_TRANSFORM;
+
+    fn from_bytes(buf: &[u8]) -> Self {
+        Self(Transform::from_bytes(buf))
+    }
+
+    fn to_bytes(&self) -> Vec<u8> {
+        self.0.to_bytes()
+    }
+}

@@ -73,7 +73,7 @@ pub fn spawn_player(
     world.insert(
         id,
         MeshInstance {
-            path: "assets/box.json".to_owned(),
+            path: "assets/box.glb".to_owned(),
         },
     );
 
@@ -105,8 +105,8 @@ pub fn spawn_player(
 
     world.insert_inventory(id, inventory);
 
-    let key = spawn_entity(entity, world, state, modules);
-    state.entities.insert(key, id);
+    // let key = spawn_entity(entity, world, state, modules);
+    // state.entities.insert(key, id);
 
     Some(id)
 }

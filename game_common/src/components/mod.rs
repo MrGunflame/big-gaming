@@ -30,6 +30,7 @@ macro_rules! define_id {
 // Must be kept in sync with `game_wasm/src/components/builtin.rs`.
 define_id! {
     TRANSFORM => 1,
+    GLOBAL_TRANSFORM => 8,
 
     // Rendering
     MESH_INSTANCE => 2,

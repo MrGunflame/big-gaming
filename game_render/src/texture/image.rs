@@ -149,6 +149,10 @@ impl Images {
         ImageId(id)
     }
 
+    pub fn remove(&mut self, id: ImageId) {
+        self.images.remove(id.0);
+    }
+
     pub fn get(&self, id: ImageId) -> Option<&Image> {
         match self.images.get(id.0)? {
             Entry::Image(img) => Some(img),

@@ -42,7 +42,7 @@ impl SceneRoot {
                 transform,
                 components: map_components(&node.components, parent, graph, renderer),
             };
-            graph.append(Some(parent), node);
+            graph.append(Some(parent), todo!());
         }
     }
 }
@@ -165,23 +165,9 @@ fn load_mesh_instance(path: &str, parent: Key, graph: &mut SceneGraph, renderer:
                 let mesh = *meshes.get(&mesh).unwrap();
                 let material = *materials.get(&material).unwrap();
 
-                graph.append(
-                    Some(parent),
-                    crate::scene2::Node {
-                        transform: node.transform,
-                        components: vec![crate::scene2::Component::MeshInstance(
-                            crate::scene2::MeshInstance { mesh, material },
-                        )],
-                    },
-                )
+                graph.append(Some(parent), todo!())
             }
-            _ => graph.append(
-                Some(parent),
-                crate::scene2::Node {
-                    transform: node.transform,
-                    components: vec![],
-                },
-            ),
+            _ => graph.append(Some(parent), todo!()),
         };
 
         if let Some(children) = scene.nodes.children(key) {
@@ -201,23 +187,9 @@ fn load_mesh_instance(path: &str, parent: Key, graph: &mut SceneGraph, renderer:
                     let mesh = *meshes.get(&mesh).unwrap();
                     let material = *materials.get(&material).unwrap();
 
-                    graph.append(
-                        Some(*parent),
-                        crate::scene2::Node {
-                            transform: node.transform,
-                            components: vec![crate::scene2::Component::MeshInstance(
-                                crate::scene2::MeshInstance { mesh, material },
-                            )],
-                        },
-                    )
+                    graph.append(Some(*parent), todo!())
                 }
-                _ => graph.append(
-                    Some(*parent),
-                    crate::scene2::Node {
-                        transform: node.transform,
-                        components: vec![],
-                    },
-                ),
+                _ => graph.append(Some(*parent), todo!()),
             };
 
             if let Some(children) = scene.nodes.children(*child) {
