@@ -232,6 +232,7 @@ fn flush_command_queue(srv_state: &mut ServerState) {
 
                         let mut transform = world.get::<Transform>(id);
                         transform.rotation = msg.rotation;
+                        world.insert(id, transform);
                     }
                     DataMessageBody::EntityAction(msg) => {
                         let Some(entity) = state.entities.get(msg.entity) else {
@@ -547,11 +548,11 @@ fn update_player_cells(world: &WorldState, state: &mut ConnectionState) -> Vec<D
 
             let entity_id = state.entities.get(entity).unwrap();
 
-            update_components(
+            events.extend(update_components(
                 entity_id,
                 world.world().components(entity),
                 &state.known_entities.components.get(&entity).unwrap(),
-            );
+            ));
 
             // Sync inventory
             match (
