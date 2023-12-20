@@ -68,7 +68,7 @@ pub fn spawn_player(
     world.insert(
         id,
         MeshInstance {
-            path: "assets/box.glb".to_owned(),
+            path: "assets/human.glb".to_owned(),
         },
     );
 

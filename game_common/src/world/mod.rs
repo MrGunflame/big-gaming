@@ -56,6 +56,10 @@ impl World {
         }
     }
 
+    pub fn len(&self) -> usize {
+        self.entities.len()
+    }
+
     pub fn spawn(&mut self) -> EntityId {
         let id = EntityId::from_raw(self.next_id);
         self.next_id += 1;

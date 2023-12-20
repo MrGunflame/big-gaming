@@ -516,6 +516,10 @@ fn update_player_cells(world: &WorldState, state: &mut ConnectionState) -> Vec<D
         for entity in cell.entities() {
             if !state.known_entities.contains(entity) {
                 let entity_id = state.entities.insert(entity);
+                state
+                    .known_entities
+                    .components
+                    .insert(entity, Components::new());
 
                 // Sync components.
                 for (id, component) in world.world().components(entity).iter() {
@@ -524,6 +528,8 @@ fn update_player_cells(world: &WorldState, state: &mut ConnectionState) -> Vec<D
                         component: id,
                         bytes: component.as_bytes().to_vec(),
                     }));
+
+                    state.known_entities.insert(entity, id, component.clone());
                 }
 
                 // Sync inventory.
@@ -538,6 +544,11 @@ fn update_player_cells(world: &WorldState, state: &mut ConnectionState) -> Vec<D
                             equipped: stack.item.equipped,
                             hidden: stack.item.hidden,
                         }));
+
+                        state
+                            .known_entities
+                            .inventories
+                            .insert(entity, inventory.clone());
                     }
                 }
 
