@@ -165,7 +165,7 @@ impl<'a> State<'a> {
         self.effects.push(Effect::EntityComponentInsert(
             entity_id,
             id,
-            component.bytes.clone(),
+            component.as_bytes().to_vec(),
         ));
         self.new_world.insert(entity_id, id, component);
     }

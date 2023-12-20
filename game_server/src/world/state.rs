@@ -32,13 +32,8 @@ impl WorldState {
     }
 
     pub fn insert<T: AsComponent>(&mut self, id: EntityId, component: T) {
-        self.world.insert(
-            id,
-            T::ID,
-            Component {
-                bytes: component.to_bytes(),
-            },
-        );
+        self.world
+            .insert(id, T::ID, Component::new(component.to_bytes()));
     }
 
     pub fn remove(&mut self, id: EntityId) {

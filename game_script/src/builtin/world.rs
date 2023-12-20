@@ -116,7 +116,7 @@ pub fn world_entity_component_insert(
 
     caller
         .data_mut()
-        .insert_component(entity_id, component_id, Component { bytes });
+        .insert_component(entity_id, component_id, Component::new(bytes));
 
     Ok(RESULT_OK)
 }

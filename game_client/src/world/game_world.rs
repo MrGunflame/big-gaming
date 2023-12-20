@@ -245,7 +245,7 @@ where
                         self.newest_state.world.insert(
                             id,
                             msg.component,
-                            Component { bytes: msg.bytes },
+                            Component::new(msg.bytes),
                         );
 
                         cmd_buffer.push(Command::ComponentAdd {
@@ -275,7 +275,7 @@ where
                         self.newest_state.world.insert(
                             id,
                             msg.component,
-                            Component { bytes: msg.bytes },
+                            Component::new(msg.bytes),
                         );
                     }
                     DataMessageBody::EntityAction(msg) => todo!(),
@@ -447,12 +447,7 @@ fn spawn_entity(id: RecordReference, transform: Transform, modules: &Modules) ->
 
     let mut components = Components::new();
     for component in &record.components {
-        components.insert(
-            component.id,
-            Component {
-                bytes: component.bytes.clone(),
-            },
-        );
+        components.insert(component.id, Component::new(component.bytes.clone()));
     }
 
     Some(Entity {

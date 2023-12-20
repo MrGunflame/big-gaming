@@ -143,7 +143,7 @@ impl Decode for Components {
                 bytes.push(u8::decode(&mut buf)?);
             }
 
-            components.insert(id, Component { bytes });
+            components.insert(id, Component::new(bytes));
         }
 
         Ok(components)

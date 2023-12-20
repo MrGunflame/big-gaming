@@ -120,7 +120,7 @@ pub fn run_scripts(
             Effect::EntityComponentInsert(id, component, data) => {
                 let id = entity_id_remap.get(&id).copied().unwrap_or(id);
 
-                world.world.insert(id, component, Component { bytes: data });
+                world.world.insert(id, component, Component::new(data));
             }
             Effect::EntityComponentRemove(id, component) => {
                 let id = entity_id_remap.get(&id).copied().unwrap_or(id);

@@ -107,9 +107,7 @@ impl World {
 
     pub fn insert_typed<T: AsComponent>(&mut self, entity: EntityId, component: T) {
         let component_id = T::ID;
-        let component = Component {
-            bytes: component.to_bytes(),
-        };
+        let component = Component::new(component.to_bytes());
 
         self.insert(entity, component_id, component);
     }

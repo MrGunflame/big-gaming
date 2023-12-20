@@ -145,12 +145,7 @@ fn build_entity(modules: &Modules, cell: CellId, builder: EntityBuilder) -> Opti
     let body = match &record.body {
         RecordBody::Item(item) => {
             for component in &record.components {
-                components.insert(
-                    component.id,
-                    Component {
-                        bytes: component.bytes.clone(),
-                    },
-                );
+                components.insert(component.id, Component::new(component.bytes.clone()));
             }
 
             EntityBody::Item(Item {
@@ -177,12 +172,7 @@ fn build_entity(modules: &Modules, cell: CellId, builder: EntityBuilder) -> Opti
         }
         RecordBody::Object(object) => {
             for component in &object.components {
-                components.insert(
-                    component.record,
-                    Component {
-                        bytes: component.value.clone(),
-                    },
-                );
+                components.insert(component.record, Component::new(component.value.clone()));
             }
 
             EntityBody::Object(Object {

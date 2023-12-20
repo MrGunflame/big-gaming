@@ -154,7 +154,7 @@ fn apply_effects(effects: Effects, world: &mut WorldState) {
 
                 world
                     .world
-                    .insert(entity_id, component, Component { bytes: data });
+                    .insert(entity_id, component, Component::new(data));
             }
             Effect::EntityComponentRemove(entity_id, component) => {
                 world.world.remove(entity_id, component);
@@ -432,7 +432,7 @@ fn update_client(conn: &Connection, world: &WorldState, level: &Level, cf: Contr
                         body: DataMessageBody::EntityComponentAdd(EntityComponentAdd {
                             entity: entity_id,
                             component: id,
-                            bytes: component.bytes.clone(),
+                            bytes: component.as_bytes().to_vec(),
                         }),
                     });
 
@@ -522,7 +522,7 @@ fn update_player_cells(world: &WorldState, state: &mut ConnectionState) -> Vec<D
                     events.push(DataMessageBody::EntityComponentAdd(EntityComponentAdd {
                         entity: entity_id,
                         component: id,
-                        bytes: component.bytes.clone(),
+                        bytes: component.as_bytes().to_vec(),
                     }));
                 }
 
@@ -629,7 +629,7 @@ fn update_components(
             events.push(DataMessageBody::EntityComponentAdd(EntityComponentAdd {
                 entity,
                 component: id,
-                bytes: component.bytes.clone(),
+                bytes: component.as_bytes().to_vec(),
             }));
 
             known_state
@@ -649,7 +649,7 @@ fn update_components(
                 EntityComponentUpdate {
                     entity,
                     component: id,
-                    bytes: server_component.bytes.clone(),
+                    bytes: server_component.as_bytes().to_vec(),
                 },
             ));
 

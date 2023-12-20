@@ -189,7 +189,7 @@ pub fn inventory_component_insert(
         entity_id,
         slot_id,
         component_id,
-        Component { bytes },
+        Component::new(bytes),
     ) {
         return Ok(1);
     };

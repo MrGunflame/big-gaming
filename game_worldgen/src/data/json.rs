@@ -55,7 +55,7 @@ pub fn from_slice(slice: &[u8]) -> Result<super::Cells, Box<dyn std::error::Erro
             for (id, component) in entity.components.0 {
                 let id = id.0.parse().unwrap();
 
-                components.insert(id, Component { bytes: component });
+                components.insert(id, Component::new(component));
             }
 
             entities.push(Entity {

@@ -50,12 +50,7 @@ pub fn spawn_player(
 
     let mut components = Components::new();
     for component in &record.components {
-        components.insert(
-            component.id,
-            Component {
-                bytes: component.bytes.clone(),
-            },
-        );
+        components.insert(component.id, Component::new(component.bytes.clone()));
     }
 
     let entity = Entity {
@@ -80,13 +75,11 @@ pub fn spawn_player(
     let mut components = Components::new();
     components.insert(
         "c626b9b0ab1940aba6932ea7726d0175:0b".parse().unwrap(),
-        Component {
-            bytes: vec![
-                0, 0, 128, 63, 0, 0, 128, 63, 30, 0, 0, 0, 198, 38, 185, 176, 171, 25, 64, 171,
-                166, 147, 46, 167, 114, 109, 1, 117, 18, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 128, 63,
-            ],
-        },
+        Component::new(vec![
+            0, 0, 128, 63, 0, 0, 128, 63, 30, 0, 0, 0, 198, 38, 185, 176, 171, 25, 64, 171, 166,
+            147, 46, 167, 114, 109, 1, 117, 18, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 128, 63,
+        ]),
     );
 
     let mut inventory = Inventory::new();

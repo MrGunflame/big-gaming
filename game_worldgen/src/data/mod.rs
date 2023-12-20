@@ -121,7 +121,7 @@ impl Encode for Entity {
             id.encode(&mut buf);
 
             (comp.len() as u64).encode(&mut buf);
-            buf.put_slice(&comp.bytes);
+            buf.put_slice(comp.as_bytes());
         }
     }
 }
@@ -164,7 +164,7 @@ impl Decode for Entity {
                 bytes.push(u8::decode(&mut buf).unwrap());
             }
 
-            components.insert(id, Component { bytes });
+            components.insert(id, Component::new(bytes));
         }
 
         Ok(Self {
