@@ -27,7 +27,7 @@ use game_script::{Context, WorldProvider};
 use glam::Vec3;
 
 use crate::conn::{Connection, Connections};
-use crate::net::state::{Cells, ConnectionState};
+use crate::net::state::{Cells, ConnectionState, KnownEntities};
 use crate::world::level::{Level, Streamer};
 use crate::world::player::spawn_player;
 use crate::world::state::WorldState;
@@ -550,8 +550,15 @@ fn update_player_cells(world: &WorldState, state: &mut ConnectionState) -> Vec<D
 
             events.extend(update_components(
                 entity_id,
+                entity,
                 world.world().components(entity),
-                &state.known_entities.components.get(&entity).unwrap(),
+                &state
+                    .known_entities
+                    .components
+                    .get(&entity)
+                    .unwrap()
+                    .clone(),
+                &mut state.known_entities,
             ));
 
             // Sync inventory
@@ -610,8 +617,10 @@ fn update_player_cells(world: &WorldState, state: &mut ConnectionState) -> Vec<D
 
 fn update_components(
     entity: ServerEntity,
+    entity_id: EntityId,
     server_state: &Components,
     client_state: &Components,
+    known_state: &mut KnownEntities,
 ) -> Vec<DataMessageBody> {
     let mut events = Vec::new();
 
@@ -622,6 +631,12 @@ fn update_components(
                 component: id,
                 bytes: component.bytes.clone(),
             }));
+
+            known_state
+                .components
+                .entry(entity_id)
+                .or_default()
+                .insert(id, component.clone());
 
             continue;
         }
@@ -637,6 +652,12 @@ fn update_components(
                     bytes: server_component.bytes.clone(),
                 },
             ));
+
+            known_state
+                .components
+                .get_mut(&entity_id)
+                .unwrap()
+                .insert(id, component.clone());
         }
     }
 
@@ -650,6 +671,12 @@ fn update_components(
                 component: id,
             },
         ));
+
+        known_state
+            .components
+            .get_mut(&entity_id)
+            .unwrap()
+            .remove(id);
     }
 
     events
