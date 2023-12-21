@@ -1231,12 +1231,14 @@ impl Default for Rtt {
 #[cfg(test)]
 mod tests {
     use game_common::net::ServerEntity;
+    use game_common::record::RecordReference;
     use game_common::world::control_frame::ControlFrame;
     use game_common::world::entity::{EntityBody, Terrain};
     use game_common::world::terrain::{Heightmap, TerrainMesh};
     use game_common::world::CellId;
     use glam::{Quat, UVec2, Vec3};
 
+    use crate::proto::components::ComponentAdd;
     use crate::proto::sequence::Sequence;
     use crate::proto::{
         Encode, EntityCreate, Flags, Frame, Header, Packet, PacketBody, PacketPosition, PacketType,
@@ -1307,23 +1309,18 @@ mod tests {
         }
     }
 
-    fn create_terrain_frame(size: UVec2) -> Frame {
-        let heightmap = Heightmap::from_u8(size, vec![0; size.x as usize * size.y as usize]);
-
-        // Frame::EntityCreate(EntityCreate {
-        //     entity: ServerEntity(0),
-        //     translation: Vec3::ZERO,
-        //     rotation: Quat::IDENTITY,
-        //     data: EntityBody::Terrain(Terrain {
-        //         mesh: TerrainMesh::new(CellId::ZERO, heightmap),
-        //     }),
-        // })
-        todo!()
+    /// Returns a `Frame` of at least `len` bytes.
+    fn create_big_frame(len: usize) -> Frame {
+        Frame::EntityComponentAdd(ComponentAdd {
+            entity: ServerEntity(0),
+            component_id: RecordReference::STUB,
+            bytes: vec![0; len],
+        })
     }
 
     #[test]
     fn fragment_frame_single() {
-        let frame = create_terrain_frame(UVec2::new(1, 512));
+        let frame = create_big_frame(512);
         let mss = 1024;
         let mut sequence = Sequence::new(0);
 
@@ -1341,7 +1338,7 @@ mod tests {
 
     #[test]
     fn fragment_frame_big() {
-        let frame = create_terrain_frame(UVec2::new(1, 65536));
+        let frame = create_big_frame(u16::MAX as usize);
         let mss = 1024;
         let mut sequence = Sequence::new(0);
 
