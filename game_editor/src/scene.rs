@@ -22,6 +22,7 @@ pub struct SceneEntities {
 
 impl SceneEntities {
     pub fn update(&mut self, graph: &mut SceneGraph, renderer: &mut Renderer) {
+        todo!();
         // Remove removed node before adding new ones because they are
         // allowed to reuse the same keys.
         for key in graph.iter_removed() {
@@ -45,54 +46,54 @@ impl SceneEntities {
         for key in graph.iter_added() {
             let node = graph.get(key).unwrap();
 
-            for component in &node.components {
-                match component {
-                    Component::MeshInstance(instance) => {
-                        let id = renderer.entities.objects.insert(Object {
-                            transform: node.transform,
-                            mesh: instance.mesh,
-                            material: instance.material,
-                        });
+            // for component in &node.components {
+            //     match component {
+            //         Component::MeshInstance(instance) => {
+            //             let id = renderer.entities.objects.insert(Object {
+            //                 transform: node.transform,
+            //                 mesh: instance.mesh,
+            //                 material: instance.material,
+            //             });
 
-                        self.mesh_instances.insert(key, id);
-                    }
-                    Component::DirectionalLight(light) => {
-                        let id = renderer
-                            .entities
-                            .directional_lights
-                            .insert(DirectionalLight {
-                                transform: node.transform,
-                                color: light.color,
-                                illuminance: light.illuminance,
-                            });
+            //             self.mesh_instances.insert(key, id);
+            //         }
+            //         Component::DirectionalLight(light) => {
+            //             let id = renderer
+            //                 .entities
+            //                 .directional_lights
+            //                 .insert(DirectionalLight {
+            //                     transform: node.transform,
+            //                     color: light.color,
+            //                     illuminance: light.illuminance,
+            //                 });
 
-                        self.directional_lights.insert(key, id);
-                    }
-                    Component::PointLight(light) => {
-                        let id = renderer.entities.point_lights.insert(PointLight {
-                            transform: node.transform,
-                            color: light.color,
-                            intensity: light.intensity,
-                            radius: light.radius,
-                        });
+            //             self.directional_lights.insert(key, id);
+            //         }
+            //         Component::PointLight(light) => {
+            //             let id = renderer.entities.point_lights.insert(PointLight {
+            //                 transform: node.transform,
+            //                 color: light.color,
+            //                 intensity: light.intensity,
+            //                 radius: light.radius,
+            //             });
 
-                        self.point_lights.insert(key, id);
-                    }
-                    Component::SpotLight(light) => {
-                        let id = renderer.entities.spot_lights.insert(SpotLight {
-                            transform: node.transform,
-                            color: light.color,
-                            intensity: light.intensity,
-                            radius: light.radius,
-                            inner_cutoff: light.inner_cutoff,
-                            outer_cutoff: light.outer_cutoff,
-                        });
+            //             self.point_lights.insert(key, id);
+            //         }
+            //         Component::SpotLight(light) => {
+            //             let id = renderer.entities.spot_lights.insert(SpotLight {
+            //                 transform: node.transform,
+            //                 color: light.color,
+            //                 intensity: light.intensity,
+            //                 radius: light.radius,
+            //                 inner_cutoff: light.inner_cutoff,
+            //                 outer_cutoff: light.outer_cutoff,
+            //             });
 
-                        self.spot_lights.insert(key, id);
-                    }
-                    Component::Collider(_) => (),
-                }
-            }
+            //             self.spot_lights.insert(key, id);
+            //         }
+            //         Component::Collider(_) => (),
+            //     }
+            // }
         }
 
         for (key, transform) in graph.iter_changed_global_transform() {

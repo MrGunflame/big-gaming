@@ -261,9 +261,7 @@ impl game_window::App for App {
             window.update(&mut self.renderer, &mut self.scene);
         }
 
-        self.scene
-            .spawner
-            .update(&mut self.scene.graph, &self.pool, Some(&mut self.renderer));
+        self.scene.spawner.update(&self.pool, &mut self.renderer);
         self.scene.graph.compute_transform();
         self.scene
             .entities
