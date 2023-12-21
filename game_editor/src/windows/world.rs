@@ -8,6 +8,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::mpsc;
 
 use bitflags::bitflags;
+use game_common::components::rendering::Color;
 use game_common::components::transform::Transform;
 use game_common::record::RecordReference;
 use game_core::hierarchy::{Hierarchy, Key};
@@ -16,7 +17,6 @@ use game_input::keyboard::KeyCode;
 use game_input::mouse::{MouseButton, MouseMotion, MouseWheel};
 use game_input::ButtonState;
 use game_render::camera::{Camera, RenderTarget};
-use game_render::color::Color;
 use game_render::entities::CameraId;
 use game_render::{shape, Renderer};
 use game_scene::format::SceneRoot;
@@ -80,26 +80,26 @@ impl WorldWindowState {
         //     color: Color::WHITE,
         // });
 
-        let plane = scenes.graph.append(
-            None,
-            game_scene::scene2::Node::from_transform(Transform::default()),
-        );
-        scenes.spawner.insert(
-            plane,
-            Scene {
-                nodes: Node {
-                    transform: Transform::default(),
-                    body: NodeBody::Object(ObjectNode {
-                        mesh: 0,
-                        material: 0,
-                    }),
-                }
-                .into(),
-                meshes: vec![shape::Plane { size: 100.0 }.into()],
-                materials: vec![Material::default()],
-                images: vec![],
-            },
-        );
+        // let plane = scenes.graph.append(
+        //     None,
+        //     game_scene::scene2::Node::from_transform(Transform::default()),
+        // );
+        // scenes.spawner.insert(
+        //     plane,
+        //     Scene {
+        //         nodes: Node {
+        //             transform: Transform::default(),
+        //             body: NodeBody::Object(ObjectNode {
+        //                 mesh: 0,
+        //                 material: 0,
+        //             }),
+        //         }
+        //         .into(),
+        //         meshes: vec![shape::Plane { size: 100.0 }.into()],
+        //         materials: vec![Material::default()],
+        //         images: vec![],
+        //     },
+        // );
 
         let key = state.nodes.update(|nodes| {
             nodes.append(
@@ -113,13 +113,13 @@ impl WorldWindowState {
         });
 
         let mut node_map = HashMap::new();
-        node_map.insert(key, plane);
+        // node_map.insert(key, plane);
 
-        let s = scenes.graph.append(
-            None,
-            game_scene::scene2::Node::from_transform(Transform::default()),
-        );
-        scenes.spawner.spawn(s, "../../bistro.glb");
+        // let s = scenes.graph.append(
+        //     None,
+        //     game_scene::scene2::Node::from_transform(Transform::default()),
+        // );
+        // scenes.spawner.spawn(s, "../../bistro.glb");
 
         Self {
             camera,
@@ -457,28 +457,28 @@ impl WorldWindowState {
                         )
                     });
 
-                    let entity = scenes.graph.append(
-                        None,
-                        game_scene::scene2::Node::from_transform(Transform::default()),
-                    );
-                    scenes.spawner.insert(
-                        entity,
-                        Scene {
-                            nodes: Node {
-                                transform: Transform::default(),
-                                body: NodeBody::DirectionalLight(DirectionalLight {
-                                    color: Color::WHITE,
-                                    illuminance: 100_000.0,
-                                }),
-                            }
-                            .into(),
-                            materials: vec![],
-                            meshes: vec![],
-                            images: vec![],
-                        },
-                    );
+                    // let entity = scenes.graph.append(
+                    //     None,
+                    //     game_scene::scene2::Node::from_transform(Transform::default()),
+                    // );
+                    // scenes.spawner.insert(
+                    //     entity,
+                    //     Scene {
+                    //         nodes: Node {
+                    //             transform: Transform::default(),
+                    //             body: NodeBody::DirectionalLight(DirectionalLight {
+                    //                 color: Color::WHITE,
+                    //                 illuminance: 100_000.0,
+                    //             }),
+                    //         }
+                    //         .into(),
+                    //         materials: vec![],
+                    //         meshes: vec![],
+                    //         images: vec![],
+                    //     },
+                    // );
 
-                    self.node_map.insert(key, entity);
+                    // self.node_map.insert(key, entity);
                 }
                 Event::SpawnPointLight => {
                     let key = self.state.nodes.update(|hierarchy| {
@@ -496,29 +496,29 @@ impl WorldWindowState {
                         )
                     });
 
-                    let entity = scenes.graph.append(
-                        None,
-                        game_scene::scene2::Node::from_transform(Transform::default()),
-                    );
-                    scenes.spawner.insert(
-                        entity,
-                        Scene {
-                            nodes: Node {
-                                transform: Transform::default(),
-                                body: NodeBody::PointLight(PointLight {
-                                    color: Color::WHITE,
-                                    intensity: 100.0,
-                                    radius: 100.0,
-                                }),
-                            }
-                            .into(),
-                            materials: vec![],
-                            images: vec![],
-                            meshes: vec![],
-                        },
-                    );
+                    // let entity = scenes.graph.append(
+                    //     None,
+                    //     game_scene::scene2::Node::from_transform(Transform::default()),
+                    // );
+                    // scenes.spawner.insert(
+                    //     entity,
+                    //     Scene {
+                    //         nodes: Node {
+                    //             transform: Transform::default(),
+                    //             body: NodeBody::PointLight(PointLight {
+                    //                 color: Color::WHITE,
+                    //                 intensity: 100.0,
+                    //                 radius: 100.0,
+                    //             }),
+                    //         }
+                    //         .into(),
+                    //         materials: vec![],
+                    //         images: vec![],
+                    //         meshes: vec![],
+                    //     },
+                    // );
 
-                    self.node_map.insert(key, entity);
+                    // self.node_map.insert(key, entity);
                 }
                 Event::SpawnSpotLight => {
                     let key = self.state.nodes.update(|hierarchy| {
@@ -538,31 +538,31 @@ impl WorldWindowState {
                         )
                     });
 
-                    let entity = scenes.graph.append(
-                        None,
-                        game_scene::scene2::Node::from_transform(Transform::default()),
-                    );
-                    scenes.spawner.insert(
-                        entity,
-                        Scene {
-                            nodes: Node {
-                                transform: Transform::default(),
-                                body: NodeBody::SpotLight(SpotLight {
-                                    color: Color::WHITE,
-                                    intensity: 100.0,
-                                    radius: 100.0,
-                                    inner_cutoff: 45.0f32.to_radians(),
-                                    outer_cutoff: 60.0f32.to_radians(),
-                                }),
-                            }
-                            .into(),
-                            materials: vec![],
-                            images: vec![],
-                            meshes: vec![],
-                        },
-                    );
+                    // let entity = scenes.graph.append(
+                    //     None,
+                    //     game_scene::scene2::Node::from_transform(Transform::default()),
+                    // );
+                    // scenes.spawner.insert(
+                    //     entity,
+                    //     Scene {
+                    //         nodes: Node {
+                    //             transform: Transform::default(),
+                    //             body: NodeBody::SpotLight(SpotLight {
+                    //                 color: Color::WHITE,
+                    //                 intensity: 100.0,
+                    //                 radius: 100.0,
+                    //                 inner_cutoff: 45.0f32.to_radians(),
+                    //                 outer_cutoff: 60.0f32.to_radians(),
+                    //             }),
+                    //         }
+                    //         .into(),
+                    //         materials: vec![],
+                    //         images: vec![],
+                    //         meshes: vec![],
+                    //     },
+                    // );
 
-                    self.node_map.insert(key, entity);
+                    // self.node_map.insert(key, entity);
                 }
                 Event::Destroy { node } => {
                     // FIXME: Removing parent should remove all childrne.

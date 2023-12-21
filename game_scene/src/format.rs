@@ -5,9 +5,9 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
 
+use game_common::components::rendering::Color;
 use game_common::components::transform::Transform;
 use game_gltf::types::{GltfMaterial, GltfMesh, TextureIndex};
-use game_render::color::Color;
 use game_render::mesh::{Indices, Mesh};
 use game_render::pbr::{AlphaMode, PbrMaterial};
 use game_render::texture::ImageId;
@@ -42,8 +42,7 @@ impl SceneRoot {
                 transform,
                 components: map_components(&node.components, parent, graph, renderer),
             };
-            dbg!(&node);
-            graph.append(Some(parent), node);
+            graph.append(Some(parent), todo!());
         }
     }
 }
@@ -57,7 +56,6 @@ fn map_components(
     let mut comps = Vec::new();
 
     for comp in components {
-        dbg!(&comp);
         match comp {
             Component::DirectionalLight(light) => {
                 let c =
@@ -167,23 +165,9 @@ fn load_mesh_instance(path: &str, parent: Key, graph: &mut SceneGraph, renderer:
                 let mesh = *meshes.get(&mesh).unwrap();
                 let material = *materials.get(&material).unwrap();
 
-                graph.append(
-                    Some(parent),
-                    crate::scene2::Node {
-                        transform: node.transform,
-                        components: vec![crate::scene2::Component::MeshInstance(
-                            crate::scene2::MeshInstance { mesh, material },
-                        )],
-                    },
-                )
+                graph.append(Some(parent), todo!())
             }
-            _ => graph.append(
-                Some(parent),
-                crate::scene2::Node {
-                    transform: node.transform,
-                    components: vec![],
-                },
-            ),
+            _ => graph.append(Some(parent), todo!()),
         };
 
         if let Some(children) = scene.nodes.children(key) {
@@ -203,23 +187,9 @@ fn load_mesh_instance(path: &str, parent: Key, graph: &mut SceneGraph, renderer:
                     let mesh = *meshes.get(&mesh).unwrap();
                     let material = *materials.get(&material).unwrap();
 
-                    graph.append(
-                        Some(*parent),
-                        crate::scene2::Node {
-                            transform: node.transform,
-                            components: vec![crate::scene2::Component::MeshInstance(
-                                crate::scene2::MeshInstance { mesh, material },
-                            )],
-                        },
-                    )
+                    graph.append(Some(*parent), todo!())
                 }
-                _ => graph.append(
-                    Some(*parent),
-                    crate::scene2::Node {
-                        transform: node.transform,
-                        components: vec![],
-                    },
-                ),
+                _ => graph.append(Some(*parent), todo!()),
             };
 
             if let Some(children) = scene.nodes.children(*child) {

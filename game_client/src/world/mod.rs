@@ -11,11 +11,13 @@ use std::time::Duration;
 use ahash::HashMap;
 use game_common::components::actions::ActionId;
 use game_common::components::actor::ActorProperties;
+use game_common::components::rendering::Color;
 use game_common::components::transform::Transform;
 use game_common::entity::EntityId;
 use game_common::module::ModuleId;
 use game_common::record::RecordReference;
 use game_common::world::entity::EntityBody;
+use game_common::world::World;
 use game_core::counter::Interval;
 use game_core::hierarchy::TransformHierarchy;
 use game_core::modules::Modules;
@@ -25,7 +27,6 @@ use game_input::hotkeys::{HotkeyCode, Key};
 use game_input::keyboard::{KeyCode, KeyboardInput};
 use game_input::mouse::MouseMotion;
 use game_render::camera::{Camera, Projection, RenderTarget};
-use game_render::color::Color;
 use game_render::entities::CameraId;
 use game_render::light::DirectionalLight;
 use game_render::Renderer;
@@ -39,13 +40,12 @@ use game_window::windows::{WindowId, WindowState};
 use glam::Vec3;
 
 use crate::config::Config;
-use crate::entities::actor::SpawnActor;
-use crate::entities::object::SpawnObject;
-use crate::entities::terrain::spawn_terrain;
+// use crate::entities::actor::SpawnActor;
+// use crate::entities::object::SpawnObject;
+// use crate::entities::terrain::spawn_terrain;
 use crate::input::{InputKey, Inputs};
 use crate::net::world::{Command, CommandBuffer};
 use crate::net::ServerConnection;
-use crate::scene::SceneState;
 use crate::ui::inventory::InventoryProxy;
 use crate::ui::main_menu::MainMenu;
 use crate::utils::extract_actor_rotation;
@@ -111,10 +111,9 @@ impl GameWorldState {
     pub fn update(
         &mut self,
         renderer: &mut Renderer,
-        scenes: &mut SceneState,
         window: WindowState,
         time: &Time,
-        hierarchy: &mut TransformHierarchy,
+        world: &mut World,
     ) {
         if !self.is_init {
             self.is_init = true;
@@ -144,47 +143,49 @@ impl GameWorldState {
         let mut buf = CommandBuffer::new();
         self.world.update(time, &self.modules, &mut buf);
 
+        *world = self.world.state().world.clone();
+
         while let Some(cmd) = buf.pop() {
             match cmd {
-                Command::Spawn(entity) => {
-                    let eid = entity.id;
+                // Command::Spawn(entity) => {
+                //     let eid = entity.id;
 
-                    if let Some(id) =
-                        spawn_entity(renderer, scenes, entity, &self.modules, hierarchy)
-                    {
-                        self.entities.insert(eid, id);
-                    }
-                }
-                Command::Despawn(id) => {
-                    let key = self.entities.remove(&id).unwrap();
-                    scenes.graph.remove(key);
-                }
-                Command::Translate { entity, dst } => {
-                    let key = self.entities.get(&entity).unwrap();
-                    let node = scenes.graph.get_mut(*key).unwrap();
+                //     if let Some(id) =
+                //         spawn_entity(renderer, scenes, entity, &self.modules, hierarchy)
+                //     {
+                //         self.entities.insert(eid, id);
+                //     }
+                // }
+                // Command::Despawn(id) => {
+                //     let key = self.entities.remove(&id).unwrap();
+                //     scenes.graph.remove(key);
+                // }
+                // Command::Translate { entity, dst } => {
+                //     let key = self.entities.get(&entity).unwrap();
+                //     let node = scenes.graph.get_mut(*key).unwrap();
 
-                    tracing::trace!(
-                        "translate entity {:?} from {:?} to {:?}",
-                        entity,
-                        node.transform.translation,
-                        dst
-                    );
+                //     tracing::trace!(
+                //         "translate entity {:?} from {:?} to {:?}",
+                //         entity,
+                //         node.transform.translation,
+                //         dst
+                //     );
 
-                    node.transform.translation = dst;
-                }
-                Command::Rotate { entity, dst } => {
-                    let key = self.entities.get(&entity).unwrap();
-                    let node = scenes.graph.get_mut(*key).unwrap();
+                //     node.transform.translation = dst;
+                // }
+                // Command::Rotate { entity, dst } => {
+                //     let key = self.entities.get(&entity).unwrap();
+                //     let node = scenes.graph.get_mut(*key).unwrap();
 
-                    tracing::trace!(
-                        "rotate entity {:?} from {:?} to {:?}",
-                        entity,
-                        node.transform.rotation,
-                        dst
-                    );
+                //     tracing::trace!(
+                //         "rotate entity {:?} from {:?} to {:?}",
+                //         entity,
+                //         node.transform.rotation,
+                //         dst
+                //     );
 
-                    node.transform.rotation = dst;
-                }
+                //     node.transform.rotation = dst;
+                // }
                 Command::SpawnHost(id) => {
                     self.update_host(id);
                 }
@@ -200,20 +201,22 @@ impl GameWorldState {
                         self.update_inventory_actions();
                     }
                 }
+                _ => (),
             }
         }
 
         self.dispatch_actions();
 
         if self.camera_controller.mode != CameraMode::Detached {
-            if let Some(entity) = self.world.state().entities.get(self.host) {
+            if self.world.state().world.contains(self.host) {
+                let transform: Transform = self.world.state().world.get_typed(self.host);
+
                 let props = ActorProperties {
                     eyes: Vec3::new(0.0, 1.8, 0.0),
-                    rotation: extract_actor_rotation(entity.transform.rotation),
+                    rotation: extract_actor_rotation(transform.rotation),
                 };
 
-                self.camera_controller
-                    .sync_with_entity(entity.transform, props);
+                self.camera_controller.sync_with_entity(transform, props);
             }
         } else {
             // We are in detached mode and need to manually
@@ -292,15 +295,18 @@ impl GameWorldState {
             return;
         }
 
-        if let Some(host) = self.world.state().entities.get(self.host) {
-            let transform = update_rotation(host.transform, event);
-            let rotation = transform.rotation;
-
-            self.world.send(SendCommand::Rotate {
-                entity: self.host,
-                rotation,
-            });
+        if !self.world.state().world.contains(self.host) {
+            return;
         }
+
+        let mut transform = self.world.state().world.get_typed::<Transform>(self.host);
+        let transform = update_rotation(transform, event);
+        let rotation = transform.rotation;
+
+        self.world.send(SendCommand::Rotate {
+            entity: self.host,
+            rotation,
+        });
     }
 
     fn handle_keyboard_input(
@@ -405,7 +411,7 @@ impl GameWorldState {
     fn dispatch_actions(&mut self) {
         let actions = self.actions.take_events();
 
-        if self.world.state().entities.get(self.host).is_none() {
+        if !self.world.state().world.contains(self.host) {
             return;
         }
 
@@ -424,22 +430,8 @@ impl GameWorldState {
 
         self.host = id;
 
-        let entity = self.world.state().entities.get(id).unwrap();
-        let actor = entity.body.as_actor().unwrap();
-
-        let module = self.modules.get(actor.race.0.module).unwrap();
-        let record = module.records.get(actor.race.0.record).unwrap();
-        let race = record.body.as_race().unwrap();
-
-        for action in &race.actions {
-            let module = self.modules.get(action.module).unwrap();
-            let record = module.records.get(action.record).unwrap();
-
-            self.actions.register(
-                action.module,
-                record,
-                self.get_key_for_action(action.module, record),
-            );
+        for (id, _) in self.world.state().world.components(id).clone().iter() {
+            self.register_record_action(id);
         }
 
         // Register all actions from equipped items.
@@ -495,29 +487,29 @@ impl GameWorldState {
     }
 
     fn register_record_action(&mut self, id: RecordReference) {
-        let module = self.modules.get(id.module).unwrap();
-        let record = module.records.get(id.record).unwrap();
+        // let module = self.modules.get(id.module).unwrap();
+        // let record = module.records.get(id.record).unwrap();
 
-        let actions = match &record.body {
-            RecordBody::Action(_) => return,
-            RecordBody::Race(race) => &race.actions,
-            RecordBody::Component(component) => &component.actions,
-            RecordBody::Item(item) => &item.actions,
-            RecordBody::Object(_) => return,
-        };
+        // let actions = match &record.body {
+        //     RecordBody::Action(_) => return,
+        //     RecordBody::Race(race) => &race.actions,
+        //     RecordBody::Component(component) => &component.actions,
+        //     RecordBody::Item(item) => &item.actions,
+        //     RecordBody::Object(_) => return,
+        // };
 
-        for action in actions {
-            let module = self.modules.get(action.module).unwrap();
-            let record = module.records.get(action.record).unwrap();
+        // for action in actions {
+        //     let module = self.modules.get(action.module).unwrap();
+        //     let record = module.records.get(action.record).unwrap();
 
-            self.actions.register(
-                action.module,
-                record,
-                self.get_key_for_action(action.module, record),
-            );
+        //     self.actions.register(
+        //         action.module,
+        //         record,
+        //         self.get_key_for_action(action.module, record),
+        //     );
 
-            self.inventory_actions.push(ActionId(*action));
-        }
+        //     self.inventory_actions.push(ActionId(*action));
+        // }
     }
 
     fn get_key_for_action(&self, module: ModuleId, record: &Record) -> Key {
@@ -542,38 +534,38 @@ impl GameWorldState {
     }
 }
 
-fn spawn_entity(
-    renderer: &mut Renderer,
-    scenes: &mut SceneState,
-    entity: game_common::world::entity::Entity,
-    modules: &Modules,
-    hierarchy: &mut TransformHierarchy,
-) -> Option<scene2::Key> {
-    // TODO: Check if can spawn an entity before allocating one.
-    let root = scenes
-        .graph
-        .append(None, Node::from_transform(entity.transform));
+// fn spawn_entity(
+//     renderer: &mut Renderer,
+//     scenes: &mut SceneState,
+//     entity: game_common::world::entity::Entity,
+//     modules: &Modules,
+//     hierarchy: &mut TransformHierarchy,
+// ) -> Option<scene2::Key> {
+//     // TODO: Check if can spawn an entity before allocating one.
+//     let root = scenes
+//         .graph
+//         .append(None, Node::from_transform(entity.transform));
 
-    match entity.body {
-        EntityBody::Terrain(terrain) => {
-            spawn_terrain(scenes, renderer, &terrain.mesh, root);
-        }
-        EntityBody::Object(object) => SpawnObject {
-            id: object.id,
-            key: root,
-        }
-        .spawn(scenes, modules),
-        EntityBody::Actor(actor) => SpawnActor {
-            race: actor.race,
-            transform: entity.transform,
-            key: root,
-        }
-        .spawn(scenes, modules),
-        EntityBody::Item(item) => todo!(),
-    }
+//     match entity.body {
+//         EntityBody::Terrain(terrain) => {
+//             spawn_terrain(scenes, renderer, &terrain.mesh, root);
+//         }
+//         EntityBody::Object(object) => SpawnObject {
+//             id: object.id,
+//             key: root,
+//         }
+//         .spawn(scenes, modules),
+//         EntityBody::Actor(actor) => SpawnActor {
+//             race: actor.race,
+//             transform: entity.transform,
+//             key: root,
+//         }
+//         .spawn(scenes, modules),
+//         EntityBody::Item(item) => todo!(),
+//     }
 
-    Some(root)
-}
+//     Some(root)
+// }
 
 #[derive(Clone, Debug)]
 struct CursorPinState {

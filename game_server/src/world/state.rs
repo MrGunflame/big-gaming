@@ -2,40 +2,42 @@ use ahash::HashMap;
 use game_common::components::components::Component;
 use game_common::components::inventory::{Inventory, InventorySlotId};
 use game_common::components::items::ItemStack;
+use game_common::components::transform::Transform;
+use game_common::components::AsComponent;
 use game_common::entity::EntityId;
 use game_common::record::RecordReference;
 use game_common::world::entity::Entity;
-use game_common::world::CellId;
+use game_common::world::{CellId, World};
 use game_script::WorldProvider;
 
 // TODO: Implement Snapshot-based rollback system.
 #[derive(Clone, Debug)]
 pub struct WorldState {
     next_id: u64,
-    entities: HashMap<EntityId, Entity>,
     inventories: HashMap<EntityId, Inventory>,
+    pub world: World,
 }
 
 impl WorldState {
     pub fn new() -> Self {
         WorldState {
             next_id: 0,
-            entities: HashMap::default(),
             inventories: HashMap::default(),
+            world: World::new(),
         }
     }
 
-    pub fn insert(&mut self, mut entity: Entity) -> EntityId {
-        let id = EntityId::from_raw(self.next_id);
-        self.next_id += 1;
-
-        entity.id = id;
-        self.entities.insert(id, entity);
-        id
+    pub fn spawn(&mut self) -> EntityId {
+        self.world.spawn()
     }
 
-    pub fn remove(&mut self, id: EntityId) -> Option<Entity> {
-        self.entities.remove(&id)
+    pub fn insert<T: AsComponent>(&mut self, id: EntityId, component: T) {
+        self.world
+            .insert(id, T::ID, Component::new(component.to_bytes()));
+    }
+
+    pub fn remove(&mut self, id: EntityId) {
+        self.world.despawn(id);
     }
 
     pub fn inventory(&self, id: EntityId) -> Option<&Inventory> {
@@ -43,7 +45,7 @@ impl WorldState {
     }
 
     pub fn inventory_mut(&mut self, id: EntityId) -> InventoryMut<'_> {
-        debug_assert!(self.entities.contains_key(&id));
+        debug_assert!(self.world.contains(id));
 
         let inventory = self.inventories.entry(id).or_default();
         InventoryMut { inventory }
@@ -53,24 +55,23 @@ impl WorldState {
         self.inventories.insert(id, inventory);
     }
 
-    pub fn get_mut(&mut self, id: EntityId) -> Option<&mut Entity> {
-        self.entities.get_mut(&id)
+    pub fn get<T: AsComponent>(&self, id: EntityId) -> T {
+        let component = self.world.get(id, T::ID).unwrap();
+        T::from_bytes(component.as_bytes())
     }
 
     pub fn cell(&self, id: CellId) -> Cell<'_> {
         Cell { world: self, id }
     }
 
-    pub fn keys(&self) -> Keys<'_> {
-        Keys {
-            iter: self.entities.keys(),
-        }
+    pub fn keys(&self) -> impl Iterator<Item = EntityId> + '_ {
+        self.world.iter()
     }
 }
 
 impl WorldProvider for WorldState {
-    fn get(&self, id: EntityId) -> Option<&Entity> {
-        self.entities.get(&id)
+    fn world(&self) -> &World {
+        &self.world
     }
 
     fn inventory(&self, id: EntityId) -> Option<&Inventory> {
@@ -127,28 +128,28 @@ pub struct Cell<'a> {
 impl<'a> Cell<'a> {
     pub fn entities(&self) -> CellEntitiesIter<'a> {
         CellEntitiesIter {
-            iter: self.world.entities.iter(),
+            world: self.world,
+            iter: self.world.world.iter(),
             cell: self.id,
         }
     }
 }
 
 pub struct CellEntitiesIter<'a> {
-    iter: std::collections::hash_map::Iter<'a, EntityId, Entity>,
+    world: &'a WorldState,
+    iter: game_common::world::Iter<'a>,
     cell: CellId,
 }
 
 impl<'a> Iterator for CellEntitiesIter<'a> {
-    type Item = (EntityId, &'a Entity);
+    type Item = EntityId;
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            match self.iter.next() {
-                Some((id, entity)) if CellId::from(entity.transform.translation) == self.cell => {
-                    return Some((*id, entity));
-                }
-                None => return None,
-                _ => (),
+            let entity = self.iter.next()?;
+            let transform: Transform = self.world.world.get_typed(entity);
+            if CellId::from(transform.translation) == self.cell {
+                return Some(entity);
             }
         }
     }

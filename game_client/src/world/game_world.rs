@@ -117,78 +117,17 @@ where
         // but we still have to handle predicted inputs for this frame.
         if let Some(iter) = self.conn.backlog.drain(cf) {
             for msg in iter {
+                dbg!(&msg.body);
                 match msg.body {
-                    DataMessageBody::EntityCreate(msg) => {
-                        let id = match msg.data {
-                            EntityBody::Actor(actor) => actor.race.0,
-                            EntityBody::Object(object) => object.id.0,
-                            _ => todo!(),
-                        };
-
-                        let Some(mut entity) = spawn_entity(
-                            id,
-                            Transform {
-                                translation: msg.translation,
-                                rotation: msg.rotation,
-                                ..Default::default()
-                            },
-                            modules,
-                        ) else {
-                            continue;
-                        };
-
-                        let id = self.newest_state.entities.insert(entity.clone());
-                        entity.id = id;
-
-                        self.server_entities.insert(id, msg.entity);
-
-                        cmd_buffer.push(Command::Spawn(entity));
-                    }
                     DataMessageBody::EntityDestroy(msg) => {
                         let Some(id) = self.server_entities.get(msg.entity) else {
                             peer_error!("invalid entity: {:?}", msg.entity);
                             continue;
                         };
 
-                        self.newest_state.entities.remove(id);
+                        self.newest_state.world.despawn(id);
 
                         cmd_buffer.push(Command::Despawn(id));
-                    }
-                    DataMessageBody::EntityTranslate(msg) => {
-                        let Some(id) = self.server_entities.get(msg.entity) else {
-                            peer_error!("invalid entity: {:?}", msg.entity);
-                            continue;
-                        };
-
-                        self.newest_state
-                            .entities
-                            .get_mut(id)
-                            .unwrap()
-                            .transform
-                            .translation = msg.translation;
-
-                        cmd_buffer.push(Command::Translate {
-                            entity: id,
-                            dst: msg.translation,
-                        });
-                    }
-                    DataMessageBody::EntityRotate(msg) => {
-                        let Some(id) = self.server_entities.get(msg.entity) else {
-                            peer_error!("invalid entity: {:?}", msg.entity);
-                            continue;
-                        };
-
-                        self.newest_state
-                            .entities
-                            .get_mut(id)
-                            .unwrap()
-                            .transform
-                            .rotation = msg.rotation;
-
-                        cmd_buffer.push(Command::Rotate {
-                            entity: id,
-                            dst: msg.rotation,
-                        });
                     }
                     DataMessageBody::SpawnHost(msg) => {
                         let Some(id) = self.server_entities.get(msg.entity) else {
@@ -294,15 +233,20 @@ where
                         }
                     }
                     DataMessageBody::EntityComponentAdd(msg) => {
-                        let Some(id) = self.server_entities.get(msg.entity) else {
-                            peer_error!("invalid entity: {:?}", msg.entity);
-                            continue;
+                        let id = match self.server_entities.get(msg.entity) {
+                            Some(id) => id,
+                            None => {
+                                let entity = self.newest_state.world.spawn();
+                                self.server_entities.insert(entity, msg.entity);
+                                entity
+                            }
                         };
 
-                        let entity = self.newest_state.entities.get_mut(id).unwrap();
-                        entity
-                            .components
-                            .insert(msg.component, Component { bytes: msg.bytes });
+                        self.newest_state.world.insert(
+                            id,
+                            msg.component,
+                            Component::new(msg.bytes),
+                        );
 
                         cmd_buffer.push(Command::ComponentAdd {
                             entity: id,
@@ -315,8 +259,7 @@ where
                             continue;
                         };
 
-                        let entity = self.newest_state.entities.get_mut(id).unwrap();
-                        entity.components.remove(msg.component);
+                        self.newest_state.world.remove(id, msg.component);
 
                         cmd_buffer.push(Command::ComponentRemove {
                             entity: id,
@@ -329,12 +272,16 @@ where
                             continue;
                         };
 
-                        let entity = self.newest_state.entities.get_mut(id).unwrap();
-                        entity
-                            .components
-                            .insert(msg.component, Component { bytes: msg.bytes });
+                        self.newest_state.world.insert(
+                            id,
+                            msg.component,
+                            Component::new(msg.bytes),
+                        );
                     }
                     DataMessageBody::EntityAction(msg) => todo!(),
+                    DataMessageBody::EntityTranslate(_) | DataMessageBody::EntityRotate(_) => {
+                        todo!()
+                    }
                 }
             }
         }
@@ -382,13 +329,15 @@ where
             match msg.body {
                 DataMessageBody::EntityTranslate(msg) => {
                     let id = self.server_entities.get(msg.entity).unwrap();
-                    let entity = self.predicted_state.entities.get_mut(id).unwrap();
-                    entity.transform.translation = msg.translation;
+                    let mut transform: Transform = self.predicted_state.world.get_typed(id);
+                    transform.translation = msg.translation;
+                    self.predicted_state.world.insert_typed(id, transform);
                 }
                 DataMessageBody::EntityRotate(msg) => {
                     let id = self.server_entities.get(msg.entity).unwrap();
-                    let entity = self.predicted_state.entities.get_mut(id).unwrap();
-                    entity.transform.rotation = msg.rotation;
+                    let mut transform: Transform = self.predicted_state.world.get_typed(id);
+                    transform.rotation = msg.rotation;
+                    self.predicted_state.world.insert_typed(id, transform);
                 }
                 DataMessageBody::EntityAction(msg) => {
                     let id = self.server_entities.get(msg.entity).unwrap();
@@ -498,12 +447,7 @@ fn spawn_entity(id: RecordReference, transform: Transform, modules: &Modules) ->
 
     let mut components = Components::new();
     for component in &record.components {
-        components.insert(
-            component.id,
-            Component {
-                bytes: component.bytes.clone(),
-            },
-        );
+        components.insert(component.id, Component::new(component.bytes.clone()));
     }
 
     Some(Entity {

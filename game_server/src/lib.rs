@@ -22,7 +22,6 @@ use game_script::scripts::RecordTargets;
 use game_script::ScriptServer;
 use game_tasks::TaskPool;
 use tracing::{span, Level};
-use world::physics::PhysicsState;
 use world::state::WorldState;
 
 use crate::config::Config;
@@ -80,7 +79,6 @@ pub struct ServerState {
     pub state: State,
     pub script_executor: ScriptExecutor,
     pub pool: TaskPool,
-    pub physics: PhysicsState,
     pub scene: SceneState,
 }
 
@@ -101,7 +99,6 @@ impl ServerState {
             state: State::new(config),
             script_executor: ScriptExecutor::new(server, record_targets),
             pool: TaskPool::new(8),
-            physics: PhysicsState::default(),
             scene: SceneState {
                 spawner: SceneSpawner::default(),
                 graph: SceneGraph::new(),

@@ -1,8 +1,7 @@
 pub mod pipeline;
 
+use game_common::components::rendering::Color;
 use game_common::components::transform::Transform;
-
-use crate::color::Color;
 
 #[derive(Copy, Clone, Debug)]
 pub struct DirectionalLight {

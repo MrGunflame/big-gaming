@@ -1,15 +1,11 @@
+use game_common::components::rendering::{Color, MeshInstance, PointLight};
 use game_common::components::transform::Transform;
-use game_core::hierarchy::TransformHierarchy;
+use game_common::world::World;
 use game_render::camera::{Camera, Projection, RenderTarget};
-use game_render::color::Color;
 use game_render::entities::CameraId;
-use game_render::light::PointLight;
 use game_render::Renderer;
-use game_scene::scene2::Node;
 use game_window::windows::WindowId;
 use glam::Vec3;
-
-use crate::scene::SceneState;
 
 #[derive(Debug)]
 pub struct MainMenuState {
@@ -17,12 +13,7 @@ pub struct MainMenuState {
 }
 
 impl MainMenuState {
-    pub fn new(
-        scenes: &mut SceneState,
-        renderer: &mut Renderer,
-        window_id: WindowId,
-        hierarchy: &mut TransformHierarchy,
-    ) -> Self {
+    pub fn new(renderer: &mut Renderer, window_id: WindowId, world: &mut World) -> Self {
         let camera = renderer.entities.cameras.insert(Camera {
             transform: Transform {
                 translation: Vec3::new(10.0, 0.0, 0.0),
@@ -32,24 +23,31 @@ impl MainMenuState {
             target: RenderTarget::Window(window_id),
         });
 
-        let key = scenes.graph.append(
-            None,
-            Node {
-                transform: Transform::default(),
-                components: vec![],
+        let obj = world.spawn();
+        world.insert_typed(obj, Transform::default());
+        world.insert_typed(
+            obj,
+            MeshInstance {
+                path: "sponza.glb".into(),
             },
         );
-        scenes.spawner.spawn(key, "sponza.model");
 
-        renderer.entities.point_lights.insert(PointLight {
-            transform: Transform {
+        let light = world.spawn();
+        world.insert_typed(
+            light,
+            Transform {
                 translation: Vec3::new(0.0, 1.0, 0.0),
                 ..Default::default()
             },
-            color: Color::WHITE,
-            intensity: 70.0,
-            radius: 100.0,
-        });
+        );
+        world.insert_typed(
+            light,
+            PointLight {
+                color: Color::WHITE,
+                intensity: 70.0,
+                radius: 100.0,
+            },
+        );
 
         Self { camera }
     }

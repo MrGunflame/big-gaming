@@ -42,12 +42,7 @@ impl SpawnEntity {
 
         let mut components = Components::new();
         for component in &record.components {
-            components.insert(
-                component.id,
-                Component {
-                    bytes: component.bytes.clone(),
-                },
-            );
+            components.insert(component.id, Component::new(component.bytes.clone()));
         }
 
         Some(view.spawn(Entity {

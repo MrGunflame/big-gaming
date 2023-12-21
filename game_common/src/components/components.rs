@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use ahash::HashMap;
 
 use crate::record::RecordReference;
@@ -47,10 +49,19 @@ impl Components {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Component {
-    pub bytes: Vec<u8>,
+    bytes: Arc<[u8]>,
 }
 
 impl Component {
+    pub fn new<T>(bytes: T) -> Self
+    where
+        T: Into<Arc<[u8]>>,
+    {
+        Self {
+            bytes: bytes.into(),
+        }
+    }
+
     pub fn len(&self) -> usize {
         self.bytes.len()
     }

@@ -1,6 +1,6 @@
+use game_common::components::rendering::Color;
 use game_gltf::AlphaMode;
 use game_gltf::GltfData;
-use game_render::color::Color;
 use game_render::texture::Image;
 use game_render::texture::TextureFormat;
 use glam::UVec2;

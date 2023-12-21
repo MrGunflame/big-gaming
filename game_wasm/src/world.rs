@@ -1,473 +1,347 @@
-use core::mem::MaybeUninit;
-
 use alloc::vec::Vec;
-use glam::{Quat, Vec3};
 
-use crate::component::{Component, Components};
+use crate::components::AsComponent;
 use crate::entity::EntityId;
-use crate::raw::{Ptr, PtrMut, Usize, RESULT_NO_COMPONENT, RESULT_NO_ENTITY, RESULT_OK};
+use crate::raw::world::{
+    world_entity_component_get, world_entity_component_insert, world_entity_component_len,
+    world_entity_component_remove,
+};
+use crate::raw::{RESULT_NO_COMPONENT, RESULT_NO_ENTITY, RESULT_OK};
 pub use crate::record::RecordReference;
-use crate::record::{Record, RecordKind};
-use crate::{unreachable_unchecked, Error, ErrorImpl};
-
-use crate::raw::world::{self as raw, EntityBody, EntityKind as RawEntityKind};
+use crate::unreachable_unchecked;
 
 #[derive(Clone)]
-pub struct Entity(raw::Entity);
+pub struct Entity(EntityId);
 
 impl Entity {
-    /// Returns the `Entity` with the given `id`.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`NoEntity`] if the requested `id` does not currently exist.
-    pub fn get(id: EntityId) -> Result<Self, Error> {
-        let mut entity = MaybeUninit::<raw::Entity>::uninit();
-        let ptr = entity.as_mut_ptr() as Usize;
-
-        let res = unsafe { raw::world_entity_get(id.into_raw(), PtrMut::from_raw(ptr)) };
-
-        match res {
-            RESULT_OK => {
-                let entity = unsafe { entity.assume_init_read() };
-                Ok(Entity(entity))
-            }
-            RESULT_NO_ENTITY => Err(ErrorImpl::NoEntity(id).into_error()),
-            _ => unsafe { unreachable_unchecked() },
-        }
+    pub fn new(id: EntityId) -> Self {
+        Self(id)
     }
 
-    /// Spawns the entity.
-    pub fn spawn(&mut self) -> Result<(), Error> {
-        let mut id = self.0.id;
-        let out_ptr = &mut id as *mut u64 as Usize;
+    pub fn get<T>(&self) -> T
+    where
+        T: AsComponent,
+    {
+        let entity_id = self.0.into_raw();
+        let component_id = T::ID;
 
-        let ptr = &self.0 as *const raw::Entity as Usize;
-
-        let res = unsafe { raw::world_entity_spawn(Ptr::from_raw(ptr), PtrMut::from_raw(out_ptr)) };
-
-        match res {
-            RESULT_OK => {
-                self.0.id = id;
-                Ok(())
-            }
-            _ => unsafe { unreachable_unchecked() },
-        }
-    }
-
-    /// Despawns the `Entity`.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`NoEntity`] if the requested `id` does not currently exist.
-    pub fn despawn(&self) -> Result<(), Error> {
-        let res = unsafe { raw::world_entity_despawn(self.0.id) };
-        match res {
-            RESULT_OK => Ok(()),
-            RESULT_NO_ENTITY => {
-                Err(ErrorImpl::NoEntity(EntityId::from_raw(self.0.id)).into_error())
-            }
-            _ => unsafe { unreachable_unchecked() },
-        }
-    }
-
-    pub fn components(&self) -> EntityComponents {
-        EntityComponents { entity: self.0.id }
-    }
-
-    pub fn translation(&self) -> Vec3 {
-        Vec3::from_array(self.0.translation)
-    }
-
-    pub fn set_translation(&mut self, translation: Vec3) {
-        self.0.translation = translation.to_array();
-
-        let [x, y, z] = translation.to_array();
-        unsafe {
-            let _ = raw::world_entity_set_translation(self.0.id, x, y, z);
-        }
-    }
-
-    pub fn rotation(&self) -> Quat {
-        Quat::from_array(self.0.rotation)
-    }
-
-    pub fn set_rotation(&mut self, rotation: Quat) {
-        assert!(rotation.is_normalized());
-        self.0.rotation = rotation.to_array();
-
-        let [x, y, z, w] = rotation.to_array();
-        unsafe {
-            let _ = raw::world_entity_set_rotation(self.0.id, x, y, z, w);
-        }
-    }
-
-    pub fn scale(&self) -> Vec3 {
-        Vec3::from_array(self.0.scale)
-    }
-
-    pub fn kind(&self) -> EntityKind {
-        match self.0.kind {
-            RawEntityKind::TERRAIN => EntityKind::Terrain,
-            RawEntityKind::OBJECT => EntityKind::Object,
-            RawEntityKind::ACTOR => EntityKind::Actor,
-            RawEntityKind::ITEM => EntityKind::Item,
-            _ => unreachable!(),
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct EntityComponents {
-    entity: u64,
-}
-
-impl EntityComponents {
-    pub fn get(&self, id: RecordReference) -> Result<Component, Error> {
-        let mut len: Usize = 0;
-        let len_ptr = &mut len as *mut Usize as Usize;
-
-        let res = unsafe {
-            raw::world_entity_component_len(
-                self.entity,
-                Ptr::from_raw(&id as *const _ as Usize),
-                PtrMut::from_raw(len_ptr),
-            )
-        };
-
-        match res {
+        let mut len = 0;
+        match unsafe { world_entity_component_len(entity_id, &component_id, &mut len) } {
             RESULT_OK => (),
             RESULT_NO_ENTITY => {
-                return Err(ErrorImpl::NoEntity(EntityId::from_raw(self.entity)).into_error())
+                panic!("no entity: {:?}", self.0)
             }
-            RESULT_NO_COMPONENT => return Err(ErrorImpl::NoComponent(id).into_error()),
+            RESULT_NO_COMPONENT => {
+                panic!("no component: {:?}", component_id)
+            }
             _ => unsafe { unreachable_unchecked() },
-        }
-
-        // No need to fetch the component data when we know
-        // that it is empty.
-        if len == 0 {
-            return Ok(Component::new(Vec::new()));
         }
 
         let mut bytes = Vec::with_capacity(len as usize);
+        match unsafe {
+            world_entity_component_get(entity_id, &component_id, bytes.as_mut_ptr(), len)
+        } {
+            RESULT_OK => (),
+            RESULT_NO_ENTITY => {
+                panic!("no entity: {:?}", self.0);
+            }
+            RESULT_NO_COMPONENT => {
+                panic!("no component: {:?}", component_id);
+            }
+            _ => unsafe { unreachable_unchecked() },
+        }
 
-        let res = unsafe {
-            raw::world_entity_component_get(
-                self.entity,
-                Ptr::from_raw(&id as *const _ as Usize),
-                PtrMut::from_raw(bytes.as_mut_ptr() as Usize),
-                len,
-            )
-        };
-
-        // The call to `world_entity_component_get` should never fail as
-        // `world_entity_component_len` returned that the component exists and in between these
-        // two calls no code executed that could change that.
-        // The VM guarantees that we have "exclusive" access to the component.
-        debug_assert!(res == RESULT_OK);
         unsafe {
             bytes.set_len(len as usize);
         }
 
-        Ok(Component::new(bytes))
+        T::from_bytes(&bytes)
     }
 
-    pub fn insert(&self, id: RecordReference, component: &Component) -> Result<(), Error> {
-        let ptr = Ptr::from_raw(component.as_bytes().as_ptr() as Usize);
-        let len = component.as_bytes().len() as Usize;
-
-        let res = unsafe {
-            raw::world_entity_component_insert(
-                self.entity,
-                Ptr::from_raw(&id as *const _ as Usize),
-                ptr,
-                len,
-            )
-        };
-
-        match res {
-            RESULT_OK => Ok(()),
-            RESULT_NO_ENTITY => {
-                Err(ErrorImpl::NoEntity(EntityId::from_raw(self.entity)).into_error())
-            }
-            _ => unsafe { unreachable_unchecked() },
-        }
-    }
-
-    pub fn remove(&self, id: RecordReference) -> Result<(), Error> {
-        let id = &id as *const _ as Usize;
-
-        let res = unsafe { raw::world_entity_component_remove(self.entity, Ptr::from_raw(id)) };
-
-        match res {
-            RESULT_OK => Ok(()),
-            RESULT_NO_ENTITY => {
-                Err(ErrorImpl::NoEntity(EntityId::from_raw(self.entity)).into_error())
-            }
-            _ => unsafe { unreachable_unchecked() },
-        }
-    }
-
-    pub fn entry(&self, id: RecordReference) -> ComponentEntry<'_> {
-        match self.get(id) {
-            Ok(component) => ComponentEntry::Occupied(OccupiedComponentEntry {
-                components: self,
-                component,
-                id,
-            }),
-            Err(_) => ComponentEntry::Vacant(VacantComponentEntry {
-                components: self,
-                id,
-            }),
-        }
-    }
-}
-
-#[derive(Debug)]
-pub enum ComponentEntry<'a> {
-    Occupied(OccupiedComponentEntry<'a>),
-    Vacant(VacantComponentEntry<'a>),
-}
-
-#[derive(Debug)]
-pub struct OccupiedComponentEntry<'a> {
-    components: &'a EntityComponents,
-    id: RecordReference,
-    component: Component,
-}
-
-impl<'a> OccupiedComponentEntry<'a> {
-    #[inline]
-    pub fn key(&self) -> RecordReference {
-        self.id
-    }
-
-    pub fn get(&self) -> &Component {
-        &self.component
-    }
-
-    pub fn get_mut(&mut self) -> &mut Component {
-        &mut self.component
-    }
-
-    pub fn remove(self) -> Component {
-        self.components.remove(self.id).unwrap();
-        self.component
-    }
-}
-
-#[derive(Debug)]
-pub struct VacantComponentEntry<'a> {
-    components: &'a EntityComponents,
-    id: RecordReference,
-}
-
-impl<'a> VacantComponentEntry<'a> {
-    pub fn insert(self, value: Component) -> Component {
-        self.components.insert(self.id, &value).unwrap();
-        value
-    }
-
-    #[inline]
-    pub fn key(&self) -> RecordReference {
-        self.id
-    }
-}
-
-#[derive(Clone)]
-pub struct EntityBuilder {
-    translation: Vec3,
-    rotation: Quat,
-    scale: Vec3,
-    kind: RawEntityKind,
-    body: EntityBody,
-    components: Components,
-    linvel: Vec3,
-    angvel: Vec3,
-}
-
-impl EntityBuilder {
-    pub fn from_record(id: RecordReference) -> Self {
-        let record = Record::get(id);
-
-        let (kind, body) = match record.kind {
-            RecordKind::Item => (RawEntityKind::ITEM, EntityBody { item: id }),
-            RecordKind::Object => (RawEntityKind::OBJECT, EntityBody { object: id }),
-            RecordKind::Race => (RawEntityKind::ACTOR, EntityBody { actor: [0u8; 20] }),
-        };
-
-        Self {
-            translation: Vec3::ZERO,
-            rotation: Quat::IDENTITY,
-            scale: Vec3::splat(1.0),
-            components: record.components,
-            kind,
-            body,
-            linvel: Vec3::ZERO,
-            angvel: Vec3::ZERO,
-        }
-    }
-
-    pub fn new<T>(entity: T) -> Self
+    pub fn insert<T>(&self, component: T)
     where
-        T: IntoEntityBody,
+        T: AsComponent,
     {
-        Self {
-            translation: Vec3::ZERO,
-            rotation: Quat::IDENTITY,
-            scale: Vec3::splat(1.0),
-            kind: entity.kind(),
-            body: entity.body(),
-            components: Components::new(),
-            linvel: Vec3::ZERO,
-            angvel: Vec3::ZERO,
+        let entity_id = self.0.into_raw();
+        let component_id = T::ID;
+        let bytes = component.to_bytes();
+        let len = bytes.len() as u32;
+
+        match unsafe {
+            world_entity_component_insert(entity_id, &component_id, bytes.as_ptr(), len)
+        } {
+            RESULT_OK => {}
+            RESULT_NO_ENTITY => {
+                panic!("no entity: {:?}", self.0);
+            }
+            _ => unsafe { unreachable_unchecked() },
         }
     }
 
-    pub fn translation(mut self, translation: Vec3) -> Self {
-        self.translation = translation;
-        self
-    }
+    pub fn remove<T>(&self)
+    where
+        T: AsComponent,
+    {
+        let entity_id = self.0.into_raw();
+        let component_id = T::ID;
 
-    pub fn rotation(mut self, rotation: Quat) -> Self {
-        self.rotation = rotation;
-        self
-    }
-
-    pub fn scale(mut self, scale: Vec3) -> Self {
-        self.scale = scale;
-        self
-    }
-
-    pub fn component(mut self, id: RecordReference, component: Component) -> Self {
-        self.components.insert(id, component);
-        self
-    }
-
-    pub fn linvel(mut self, linvel: Vec3) -> Self {
-        self.linvel = linvel;
-        self
-    }
-
-    pub fn angvel(mut self, angvel: Vec3) -> Self {
-        self.angvel = angvel;
-        self
-    }
-
-    /// Spawns this entity.
-    pub fn spawn(&self) -> Result<EntityId, Error> {
-        let mut entity_id = MaybeUninit::uninit();
-
-        let entity = raw::Entity {
-            id: 0,
-            translation: self.translation.to_array(),
-            rotation: self.rotation.to_array(),
-            scale: self.scale.to_array(),
-            kind: self.kind,
-            body: self.body,
-            linvel: self.linvel.to_array(),
-            angvel: self.angvel.to_array(),
-        };
-
-        let res = unsafe {
-            raw::world_entity_spawn(
-                Ptr::from_ptr(&entity),
-                PtrMut::from_ptr(entity_id.as_mut_ptr()),
-            )
-        };
-        assert!(res == RESULT_OK);
-
-        let entity_id = unsafe { entity_id.assume_init() };
-
-        for (id, component) in &self.components {
-            let res = unsafe {
-                raw::world_entity_component_insert(
-                    entity_id,
-                    Ptr::from_ptr(&id),
-                    Ptr::from_ptr(component.as_ptr()),
-                    component.len() as u32,
-                )
-            };
-            debug_assert!(res == RESULT_OK);
+        match unsafe { world_entity_component_remove(entity_id, &component_id) } {
+            RESULT_OK => {}
+            RESULT_NO_ENTITY => {
+                panic!("no entity: {:?}", self.0);
+            }
+            RESULT_NO_COMPONENT => {
+                panic!("no component: {:?}", component_id);
+            }
+            _ => unsafe { unreachable_unchecked() },
         }
-
-        Ok(EntityId::from_raw(entity_id))
     }
 }
 
-#[derive(Copy, Clone, Debug)]
-pub struct Object {
-    pub id: RecordReference,
-}
+// #[derive(Debug)]
+// pub enum ComponentEntry<'a> {
+//     Occupied(OccupiedComponentEntry<'a>),
+//     Vacant(VacantComponentEntry<'a>),
+// }
 
-#[derive(Copy, Clone, Debug)]
-pub struct Item {
-    pub id: RecordReference,
-}
+// #[derive(Debug)]
+// pub struct OccupiedComponentEntry<'a> {
+//     components: &'a EntityComponents,
+//     id: RecordReference,
+//     component: Component,
+// }
 
-pub unsafe trait IntoEntityBody: private::Sealed {
-    #[doc(hidden)]
-    fn kind(&self) -> RawEntityKind;
+// impl<'a> OccupiedComponentEntry<'a> {
+//     #[inline]
+//     pub fn key(&self) -> RecordReference {
+//         self.id
+//     }
 
-    #[doc(hidden)]
-    fn body(&self) -> EntityBody;
-}
+//     pub fn get(&self) -> &Component {
+//         &self.component
+//     }
 
-unsafe impl IntoEntityBody for Object {
-    fn kind(&self) -> RawEntityKind {
-        RawEntityKind::OBJECT
-    }
+//     pub fn get_mut(&mut self) -> &mut Component {
+//         &mut self.component
+//     }
 
-    fn body(&self) -> EntityBody {
-        EntityBody { object: self.id }
-    }
-}
+//     pub fn remove(self) -> Component {
+//         self.components.remove(self.id).unwrap();
+//         self.component
+//     }
+// }
 
-impl private::Sealed for Object {}
+// #[derive(Debug)]
+// pub struct VacantComponentEntry<'a> {
+//     components: &'a EntityComponents,
+//     id: RecordReference,
+// }
 
-unsafe impl IntoEntityBody for Item {
-    fn kind(&self) -> RawEntityKind {
-        RawEntityKind::ITEM
-    }
+// impl<'a> VacantComponentEntry<'a> {
+//     pub fn insert(self, value: Component) -> Component {
+//         self.components.insert(self.id, &value).unwrap();
+//         value
+//     }
 
-    fn body(&self) -> EntityBody {
-        EntityBody { item: self.id }
-    }
-}
+//     #[inline]
+//     pub fn key(&self) -> RecordReference {
+//         self.id
+//     }
+// }
 
-impl private::Sealed for Item {}
+// #[derive(Clone)]
+// pub struct EntityBuilder {
+//     translation: Vec3,
+//     rotation: Quat,
+//     scale: Vec3,
+//     kind: RawEntityKind,
+//     body: EntityBody,
+//     components: Components,
+//     linvel: Vec3,
+//     angvel: Vec3,
+// }
 
-mod private {
-    pub trait Sealed {}
-}
+// impl EntityBuilder {
+//     pub fn from_record(id: RecordReference) -> Self {
+//         let record = Record::get(id);
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub enum EntityKind {
-    Terrain,
-    Object,
-    Actor,
-    Item,
-}
+//         let (kind, body) = match record.kind {
+//             RecordKind::Item => (RawEntityKind::ITEM, EntityBody { item: id }),
+//             RecordKind::Object => (RawEntityKind::OBJECT, EntityBody { object: id }),
+//             RecordKind::Race => (RawEntityKind::ACTOR, EntityBody { actor: [0u8; 20] }),
+//         };
 
-impl EntityKind {
-    #[inline]
-    pub const fn is_terrain(self) -> bool {
-        matches!(self, Self::Terrain)
-    }
+//         Self {
+//             translation: Vec3::ZERO,
+//             rotation: Quat::IDENTITY,
+//             scale: Vec3::splat(1.0),
+//             components: record.components,
+//             kind,
+//             body,
+//             linvel: Vec3::ZERO,
+//             angvel: Vec3::ZERO,
+//         }
+//     }
 
-    #[inline]
-    pub const fn is_object(self) -> bool {
-        matches!(self, Self::Object)
-    }
+//     pub fn new<T>(entity: T) -> Self
+//     where
+//         T: IntoEntityBody,
+//     {
+//         Self {
+//             translation: Vec3::ZERO,
+//             rotation: Quat::IDENTITY,
+//             scale: Vec3::splat(1.0),
+//             kind: entity.kind(),
+//             body: entity.body(),
+//             components: Components::new(),
+//             linvel: Vec3::ZERO,
+//             angvel: Vec3::ZERO,
+//         }
+//     }
 
-    #[inline]
-    pub const fn is_actor(self) -> bool {
-        matches!(self, Self::Actor)
-    }
+//     pub fn translation(mut self, translation: Vec3) -> Self {
+//         self.translation = translation;
+//         self
+//     }
 
-    #[inline]
-    pub const fn is_item(self) -> bool {
-        matches!(self, Self::Item)
-    }
-}
+//     pub fn rotation(mut self, rotation: Quat) -> Self {
+//         self.rotation = rotation;
+//         self
+//     }
+
+//     pub fn scale(mut self, scale: Vec3) -> Self {
+//         self.scale = scale;
+//         self
+//     }
+
+//     pub fn component(mut self, id: RecordReference, component: Component) -> Self {
+//         self.components.insert(id, component);
+//         self
+//     }
+
+//     pub fn linvel(mut self, linvel: Vec3) -> Self {
+//         self.linvel = linvel;
+//         self
+//     }
+
+//     pub fn angvel(mut self, angvel: Vec3) -> Self {
+//         self.angvel = angvel;
+//         self
+//     }
+
+//     /// Spawns this entity.
+//     pub fn spawn(&self) -> Result<EntityId, Error> {
+//         let mut entity_id = MaybeUninit::uninit();
+
+//         let entity = raw::Entity {
+//             id: 0,
+//             translation: self.translation.to_array(),
+//             rotation: self.rotation.to_array(),
+//             scale: self.scale.to_array(),
+//             kind: self.kind,
+//             body: self.body,
+//             linvel: self.linvel.to_array(),
+//             angvel: self.angvel.to_array(),
+//         };
+
+//         let res = unsafe {
+//             raw::world_entity_spawn(
+//                 Ptr::from_ptr(&entity),
+//                 PtrMut::from_ptr(entity_id.as_mut_ptr()),
+//             )
+//         };
+//         assert!(res == RESULT_OK);
+
+//         let entity_id = unsafe { entity_id.assume_init() };
+
+//         for (id, component) in &self.components {
+//             let res = unsafe {
+//                 raw::world_entity_component_insert(
+//                     entity_id,
+//                     Ptr::from_ptr(&id),
+//                     Ptr::from_ptr(component.as_ptr()),
+//                     component.len() as u32,
+//                 )
+//             };
+//             debug_assert!(res == RESULT_OK);
+//         }
+
+//         Ok(EntityId::from_raw(entity_id))
+//     }
+// }
+
+// #[derive(Copy, Clone, Debug)]
+// pub struct Object {
+//     pub id: RecordReference,
+// }
+
+// #[derive(Copy, Clone, Debug)]
+// pub struct Item {
+//     pub id: RecordReference,
+// }
+
+// pub unsafe trait IntoEntityBody: private::Sealed {
+//     #[doc(hidden)]
+//     fn kind(&self) -> RawEntityKind;
+
+//     #[doc(hidden)]
+//     fn body(&self) -> EntityBody;
+// }
+
+// unsafe impl IntoEntityBody for Object {
+//     fn kind(&self) -> RawEntityKind {
+//         RawEntityKind::OBJECT
+//     }
+
+//     fn body(&self) -> EntityBody {
+//         EntityBody { object: self.id }
+//     }
+// }
+
+// impl private::Sealed for Object {}
+
+// unsafe impl IntoEntityBody for Item {
+//     fn kind(&self) -> RawEntityKind {
+//         RawEntityKind::ITEM
+//     }
+
+//     fn body(&self) -> EntityBody {
+//         EntityBody { item: self.id }
+//     }
+// }
+
+// impl private::Sealed for Item {}
+
+// mod private {
+//     pub trait Sealed {}
+// }
+
+// #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+// pub enum EntityKind {
+//     Terrain,
+//     Object,
+//     Actor,
+//     Item,
+// }
+
+// impl EntityKind {
+//     #[inline]
+//     pub const fn is_terrain(self) -> bool {
+//         matches!(self, Self::Terrain)
+//     }
+
+//     #[inline]
+//     pub const fn is_object(self) -> bool {
+//         matches!(self, Self::Object)
+//     }
+
+//     #[inline]
+//     pub const fn is_actor(self) -> bool {
+//         matches!(self, Self::Actor)
+//     }
+
+//     #[inline]
+//     pub const fn is_item(self) -> bool {
+//         matches!(self, Self::Item)
+//     }
+// }

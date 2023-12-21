@@ -1,6 +1,6 @@
+use game_common::components::rendering::Color;
 use game_model::material::Material;
 use game_model::Model;
-use game_render::color::Color;
 use game_render::mesh::{Indices, Mesh};
 use game_render::pbr::AlphaMode;
 use game_render::texture::{Image, TextureFormat};

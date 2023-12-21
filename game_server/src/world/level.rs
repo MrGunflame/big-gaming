@@ -2,6 +2,7 @@ use ahash::{HashMap, HashSet};
 use game_common::components::components::{Component, Components};
 use game_common::components::items::ItemId;
 use game_common::components::object::ObjectId;
+use game_common::components::transform::Transform;
 use game_common::entity::EntityId;
 use game_common::events::{CellLoadEvent, CellUnloadEvent, Event};
 use game_common::world::cell::square;
@@ -10,7 +11,6 @@ use game_common::world::gen::{CellBuilder, EntityBuilder, Generator};
 use game_common::world::CellId;
 use game_core::modules::Modules;
 use game_data::record::RecordBody;
-use game_script::WorldProvider;
 use glam::Vec3;
 
 use crate::world::entity::spawn_entity;
@@ -24,8 +24,8 @@ pub struct Streamer {
 pub fn update_level_cells(state: &mut ServerState) {
     let mut cells = HashSet::default();
     for (entity, streamer) in &state.level.streamers {
-        let entity = state.world.get(*entity).unwrap();
-        let cell = CellId::from(entity.transform.translation);
+        let transform = state.world.get::<Transform>(*entity);
+        let cell = CellId::from(transform.translation);
 
         let area = square(cell, streamer.distance);
         cells.extend(area);
@@ -51,9 +51,11 @@ pub fn update_level_cells(state: &mut ServerState) {
                         &mut state.scene,
                         &state.modules,
                     );
-                    let id = state.world.insert(entity);
 
-                    state.scene.entities.insert(key, id);
+                    let id = state.world.spawn();
+                    state.world.world.insert_typed(id, entity.transform);
+
+                    // state.scene.entities.insert(key, id);
                 }
             }
 
@@ -143,12 +145,7 @@ fn build_entity(modules: &Modules, cell: CellId, builder: EntityBuilder) -> Opti
     let body = match &record.body {
         RecordBody::Item(item) => {
             for component in &record.components {
-                components.insert(
-                    component.id,
-                    Component {
-                        bytes: component.bytes.clone(),
-                    },
-                );
+                components.insert(component.id, Component::new(component.bytes.clone()));
             }
 
             EntityBody::Item(Item {
@@ -175,12 +172,7 @@ fn build_entity(modules: &Modules, cell: CellId, builder: EntityBuilder) -> Opti
         }
         RecordBody::Object(object) => {
             for component in &object.components {
-                components.insert(
-                    component.record,
-                    Component {
-                        bytes: component.value.clone(),
-                    },
-                );
+                components.insert(component.record, Component::new(component.value.clone()));
             }
 
             EntityBody::Object(Object {

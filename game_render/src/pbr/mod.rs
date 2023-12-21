@@ -1,6 +1,6 @@
 use game_asset::Asset;
+use game_common::components::rendering::Color;
 
-use crate::color::Color;
 use crate::texture::ImageId;
 
 pub mod material;

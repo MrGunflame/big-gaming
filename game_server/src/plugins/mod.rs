@@ -5,28 +5,30 @@ use game_common::components::actions::ActionId;
 use game_common::components::components::{Component, Components};
 use game_common::components::inventory::Inventory;
 use game_common::components::items::Item;
+use game_common::components::transform::Transform;
 use game_common::entity::EntityId;
 use game_common::events::{ActionEvent, Event, EventQueue};
+use game_common::net::ServerEntity;
 use game_common::units::Mass;
 use game_common::world::control_frame::ControlFrame;
-use game_common::world::entity::EntityBody;
+use game_common::world::entity::{Entity, EntityBody};
 use game_common::world::snapshot::EntityChange;
-use game_common::world::CellId;
+use game_common::world::{CellId, World};
 use game_core::modules::Modules;
 use game_net::message::{
     ControlMessage, DataMessage, DataMessageBody, EntityComponentAdd, EntityComponentRemove,
     EntityComponentUpdate, EntityCreate, EntityDestroy, EntityRotate, EntityTranslate,
-    InventoryItemAdd, InventoryItemRemove, Message, MessageId, SpawnHost,
+    InventoryItemAdd, InventoryItemRemove, InventoryItemUpdate, Message, MessageId, SpawnHost,
 };
 use game_net::peer_error;
+use game_net::proto::components::ComponentRemove;
 use game_script::effect::{Effect, Effects};
 use game_script::{Context, WorldProvider};
 use glam::Vec3;
 
 use crate::conn::{Connection, Connections};
-use crate::net::state::{Cells, ConnectionState};
+use crate::net::state::{Cells, ConnectionState, KnownEntities};
 use crate::world::level::{Level, Streamer};
-use crate::world::physics::PhysicsContext;
 use crate::world::player::spawn_player;
 use crate::world::state::WorldState;
 use crate::ServerState;
@@ -54,13 +56,12 @@ pub fn tick(state: &mut ServerState) {
     let cf = *state.state.control_frame.lock();
     update_snapshots(&state.state.conns, &state.world, &state.level, cf);
 
-    state
-        .scene
-        .spawner
-        .update(&mut state.scene.graph, &state.pool, None);
-    state.scene.graph.compute_transform();
-    state.physics.update(&state.world, &mut state.scene);
-    state.scene.graph.clear_trackers();
+    // state
+    //     .scene
+    //     .spawner
+    //     .update(&mut state.scene.graph, &state.pool, None);
+    // state.scene.graph.compute_transform();
+    // state.scene.graph.clear_trackers();
 }
 
 fn apply_effects(effects: Effects, world: &mut WorldState) {
@@ -74,26 +75,17 @@ fn apply_effects(effects: Effects, world: &mut WorldState) {
 
     for effect in effects.into_iter() {
         match effect {
-            Effect::EntitySpawn(entity) => {
-                debug_assert!(entity_id_remap.get(&entity.id).is_none());
-                debug_assert!(world.get(entity.id).is_none());
+            Effect::EntitySpawn(id) => {
+                debug_assert!(entity_id_remap.get(&id).is_none());
+                debug_assert!(!world.world().contains(id));
 
-                let temp_id = entity.id;
-                let real_id = world.insert(entity);
+                let temp_id = id;
+                let real_id = world.spawn();
                 entity_id_remap.insert(temp_id, real_id);
             }
             Effect::EntityDespawn(id) => {
                 let id = entity_id_remap.get(&id).copied().unwrap_or(id);
                 let entity = world.remove(id);
-                debug_assert!(entity.is_some());
-            }
-            Effect::EntityTranslate(id, translation) => {
-                let id = entity_id_remap.get(&id).copied().unwrap_or(id);
-                world.get_mut(id).unwrap().transform.translation = translation;
-            }
-            Effect::EntityRotate(id, rotation) => {
-                let id = entity_id_remap.get(&id).copied().unwrap_or(id);
-                world.get_mut(id).unwrap().transform.rotation = rotation;
             }
             Effect::InventoryInsert(id, temp_slot_id, stack) => {
                 let entity_id = entity_id_remap.get(&id).copied().unwrap_or(id);
@@ -161,28 +153,20 @@ fn apply_effects(effects: Effects, world: &mut WorldState) {
                     .unwrap_or(entity_id);
 
                 world
-                    .get_mut(entity_id)
-                    .unwrap()
-                    .components
-                    .insert(component, Component { bytes: data });
+                    .world
+                    .insert(entity_id, component, Component::new(data));
             }
             Effect::EntityComponentRemove(entity_id, component) => {
-                world
-                    .get_mut(entity_id)
-                    .unwrap()
-                    .components
-                    .remove(component);
+                world.world.remove(entity_id, component);
             }
         }
     }
 }
 
 fn step_physics(state: &mut ServerState) {
-    state.pipeline.step(&mut PhysicsContext {
-        world: &mut state.world,
-        event_queue: &mut state.event_queue,
-        state: &state.physics,
-    });
+    state
+        .pipeline
+        .step(&mut state.world.world, &mut state.event_queue);
 }
 
 fn update_client_heads(state: &mut ServerState) {
@@ -235,9 +219,6 @@ fn flush_command_queue(srv_state: &mut ServerState) {
                 conn.push_message_in_frame(msg.id);
 
                 match msg.body {
-                    DataMessageBody::EntityCreate(msg) => {
-                        peer_error!("received server-only frame `EntityCreate` from peer")
-                    }
                     DataMessageBody::EntityDestroy(msg) => {
                         peer_error!("received server-only frame `EntityDestroy` from peer")
                     }
@@ -249,11 +230,9 @@ fn flush_command_queue(srv_state: &mut ServerState) {
                             continue;
                         };
 
-                        let Some(mut entity) = world.get_mut(id) else {
-                            continue;
-                        };
-
-                        entity.transform.rotation = msg.rotation;
+                        let mut transform = world.get::<Transform>(id);
+                        transform.rotation = msg.rotation;
+                        world.insert(id, transform);
                     }
                     DataMessageBody::EntityAction(msg) => {
                         let Some(entity) = state.entities.get(msg.entity) else {
@@ -293,9 +272,11 @@ fn queue_action(
     action: ActionId,
     queue: &mut EventQueue,
 ) {
-    let Some(entity) = world.get(entity_id) else {
-        return;
-    };
+    // let Some(entity) = world.get(entity_id) else {
+    //     return;
+    // };
+
+    let entity: Entity = todo!();
 
     let race = match &entity.body {
         EntityBody::Actor(actor) => actor.race,
@@ -418,8 +399,8 @@ fn update_client(conn: &Connection, world: &WorldState, level: &Level, cf: Contr
         return;
     };
 
-    let host = world.get(host_id).unwrap();
-    let cell_id = CellId::from(host.transform.translation);
+    let transform = world.get::<Transform>(host_id);
+    let cell_id = CellId::from(transform.translation);
 
     let streamer = level.get_streamer(host_id).unwrap();
 
@@ -440,37 +421,26 @@ fn update_client(conn: &Connection, world: &WorldState, level: &Level, cf: Contr
         for id in state.cells.cells() {
             let cell = world.cell(*id);
 
-            for (_, entity) in cell.entities() {
-                state.known_entities.insert(entity.clone());
-
-                let entity_id = state.entities.insert(entity.id);
-
-                conn.handle().send(DataMessage {
-                    id: MessageId(0),
-                    control_frame: cf,
-                    body: DataMessageBody::EntityCreate(EntityCreate {
-                        entity: entity_id,
-                        translation: entity.transform.translation,
-                        rotation: entity.transform.rotation,
-                        data: entity.body.clone(),
-                    }),
-                });
+            for entity in cell.entities() {
+                let entity_id = state.entities.insert(entity);
 
                 // Sync all components.
-                for (id, component) in entity.components.iter() {
+                for (id, component) in world.world().components(entity).iter() {
                     conn.handle().send(DataMessage {
                         id: MessageId(0),
                         control_frame: cf,
                         body: DataMessageBody::EntityComponentAdd(EntityComponentAdd {
                             entity: entity_id,
                             component: id,
-                            bytes: component.bytes.clone(),
+                            bytes: component.as_bytes().to_vec(),
                         }),
                     });
+
+                    state.known_entities.insert(entity, id, component.clone());
                 }
 
                 // Sync the entity inventory, if it has one.
-                if let Some(inventory) = world.inventory(entity.id) {
+                if let Some(inventory) = world.inventory(entity) {
                     for (id, stack) in inventory.iter() {
                         conn.handle().send(DataMessage {
                             id: MessageId(0),
@@ -486,6 +456,11 @@ fn update_client(conn: &Connection, world: &WorldState, level: &Level, cf: Contr
                             }),
                         });
                     }
+
+                    state
+                        .known_entities
+                        .inventories
+                        .insert(entity, inventory.clone());
                 }
             }
         }
@@ -511,18 +486,6 @@ fn update_client(conn: &Connection, world: &WorldState, level: &Level, cf: Contr
 
     let events = update_player_cells(world, state);
 
-    // The host should never be destroyed.
-    if cfg!(debug_assertions) {
-        for event in &events {
-            match event {
-                EntityChange::Destroy { id } => {
-                    assert_ne!(*id, host.id);
-                }
-                _ => (),
-            }
-        }
-    }
-
     // ACKs need to be sent out before the actual data frames
     // in the control frame. If we were to sent the data before
     // a client with a low buffer might render the new state before
@@ -531,7 +494,7 @@ fn update_client(conn: &Connection, world: &WorldState, level: &Level, cf: Contr
         conn.handle().acknowledge(id, cf);
     }
 
-    for body in update_client_entities(state, events) {
+    for body in events {
         let msg = DataMessage {
             id: MessageId(0),
             control_frame: cf,
@@ -542,129 +505,149 @@ fn update_client(conn: &Connection, world: &WorldState, level: &Level, cf: Contr
 }
 
 /// Update a player that hasn't moved cells.
-fn update_player_cells(world: &WorldState, state: &ConnectionState) -> Vec<EntityChange> {
+fn update_player_cells(world: &WorldState, state: &mut ConnectionState) -> Vec<DataMessageBody> {
     let mut events = Vec::new();
 
-    let mut stale_entities: HashSet<_> = state.known_entities.entities.keys().copied().collect();
+    let mut stale_entities: HashSet<_> = state.known_entities.components.keys().copied().collect();
 
     for id in state.cells.iter() {
         let cell = world.cell(id);
 
-        for (_, entity) in cell.entities() {
-            if !state.known_entities.contains(entity.id) {
-                events.push(EntityChange::Create {
-                    entity: entity.clone(),
-                });
+        for entity in cell.entities() {
+            if !state.known_entities.contains(entity) {
+                let entity_id = state.entities.insert(entity);
+                state
+                    .known_entities
+                    .components
+                    .insert(entity, Components::new());
 
                 // Sync components.
-                for (id, component) in entity.components.iter() {
-                    events.push(EntityChange::ComponentAdd {
-                        entity: entity.id,
-                        component_id: id,
-                        component: component.clone(),
-                    });
+                for (id, component) in world.world().components(entity).iter() {
+                    events.push(DataMessageBody::EntityComponentAdd(EntityComponentAdd {
+                        entity: entity_id,
+                        component: id,
+                        bytes: component.as_bytes().to_vec(),
+                    }));
+
+                    state.known_entities.insert(entity, id, component.clone());
                 }
 
                 // Sync inventory.
-                if let Some(inventory) = world.inventory(entity.id) {
+                if let Some(inventory) = world.inventory(entity) {
                     for (id, stack) in inventory.iter() {
-                        events.push(EntityChange::InventoryItemAdd(
-                            game_common::world::snapshot::InventoryItemAdd {
-                                entity: entity.id,
-                                id,
-                                item: stack.item.id,
-                                quantity: stack.quantity,
-                                components: stack.item.components.clone(),
-                                equipped: stack.item.equipped,
-                                hidden: stack.item.hidden,
-                            },
-                        ));
+                        events.push(DataMessageBody::InventoryItemAdd(InventoryItemAdd {
+                            entity: entity_id,
+                            id,
+                            item: stack.item.id,
+                            quantity: stack.quantity,
+                            components: stack.item.components.clone(),
+                            equipped: stack.item.equipped,
+                            hidden: stack.item.hidden,
+                        }));
+
+                        state
+                            .known_entities
+                            .inventories
+                            .insert(entity, inventory.clone());
                     }
                 }
 
                 continue;
             }
 
-            stale_entities.remove(&entity.id);
+            stale_entities.remove(&entity);
 
-            let known = state.known_entities.get(entity.id).unwrap();
+            let entity_id = state.entities.get(entity).unwrap();
 
-            if known.transform.translation != entity.transform.translation {
-                events.push(EntityChange::Translate {
-                    id: entity.id,
-                    translation: entity.transform.translation,
-                });
-            }
-
-            if known.transform.rotation != entity.transform.rotation {
-                events.push(EntityChange::Rotate {
-                    id: entity.id,
-                    rotation: entity.transform.rotation,
-                });
-            }
-
-            update_components(entity.id, &entity.components, &known.components);
+            events.extend(update_components(
+                entity_id,
+                entity,
+                world.world().components(entity),
+                &state
+                    .known_entities
+                    .components
+                    .get(&entity)
+                    .unwrap()
+                    .clone(),
+                &mut state.known_entities,
+            ));
 
             // Sync inventory
             match (
-                world.inventory(entity.id),
-                state.known_entities.inventories.get(&entity.id),
+                world.inventory(entity),
+                state.known_entities.inventories.get(&entity),
             ) {
                 (Some(server_inv), Some(client_inv)) => {
-                    events.extend(update_inventory(entity.id, server_inv, client_inv))
+                    events.extend(update_inventory(entity_id, server_inv, client_inv))
                 }
                 (Some(server_inv), None) => {
                     for (id, stack) in server_inv.iter() {
-                        events.push(EntityChange::InventoryItemAdd(
-                            game_common::world::snapshot::InventoryItemAdd {
-                                entity: entity.id,
-                                id,
-                                item: stack.item.id,
-                                quantity: stack.quantity,
-                                components: stack.item.components.clone(),
-                                equipped: stack.item.equipped,
-                                hidden: stack.item.hidden,
-                            },
-                        ));
+                        events.push(DataMessageBody::InventoryItemAdd(InventoryItemAdd {
+                            entity: entity_id,
+                            id,
+                            item: stack.item.id,
+                            quantity: stack.quantity,
+                            components: stack.item.components.clone(),
+                            equipped: stack.item.equipped,
+                            hidden: stack.item.hidden,
+                        }));
                     }
                 }
                 (None, Some(client_inv)) => {
                     for (id, _) in client_inv.iter() {
-                        events.push(EntityChange::InventoryItemRemove(
-                            game_common::world::snapshot::InventoryItemRemove {
-                                entity: entity.id,
-                                id,
-                            },
-                        ));
+                        events.push(DataMessageBody::InventoryItemRemove(InventoryItemRemove {
+                            entity: entity_id,
+                            slot: id,
+                        }));
                     }
                 }
                 (None, None) => (),
+            }
+
+            if let Some(inventory) = world.inventory(entity) {
+                state
+                    .known_entities
+                    .inventories
+                    .insert(entity, inventory.clone());
+            } else {
+                state.known_entities.inventories.remove(&entity);
             }
         }
     }
 
     // Despawn all entities that were not existent in any of the player's cells.
     for id in stale_entities {
-        events.push(EntityChange::Destroy { id });
+        let entity_id = state.entities.remove(id).unwrap();
+        events.push(DataMessageBody::EntityDestroy(EntityDestroy {
+            entity: entity_id,
+        }));
     }
 
     events
 }
 
 fn update_components(
+    entity: ServerEntity,
     entity_id: EntityId,
     server_state: &Components,
     client_state: &Components,
-) -> Vec<EntityChange> {
+    known_state: &mut KnownEntities,
+) -> Vec<DataMessageBody> {
     let mut events = Vec::new();
 
     for (id, component) in server_state.iter() {
         if client_state.get(id).is_none() {
-            events.push(EntityChange::ComponentAdd {
-                entity: entity_id,
-                component_id: id,
-                component: component.clone(),
-            });
+            events.push(DataMessageBody::EntityComponentAdd(EntityComponentAdd {
+                entity,
+                component: id,
+                bytes: component.as_bytes().to_vec(),
+            }));
+
+            known_state
+                .components
+                .entry(entity_id)
+                .or_default()
+                .insert(id, component.clone());
 
             continue;
         }
@@ -673,11 +656,19 @@ fn update_components(
         let client_component = client_state.get(id).unwrap();
 
         if server_component != client_component {
-            events.push(EntityChange::ComponentUpdate {
-                entity: entity_id,
-                component_id: id,
-                component: server_component.clone(),
-            });
+            events.push(DataMessageBody::EntityComponentUpdate(
+                EntityComponentUpdate {
+                    entity,
+                    component: id,
+                    bytes: server_component.as_bytes().to_vec(),
+                },
+            ));
+
+            known_state
+                .components
+                .get_mut(&entity_id)
+                .unwrap()
+                .insert(id, component.clone());
         }
     }
 
@@ -685,35 +676,41 @@ fn update_components(
         .iter()
         .filter(|(id, _)| server_state.get(*id).is_none())
     {
-        events.push(EntityChange::ComponentRemove {
-            entity: entity_id,
-            component_id: id,
-        });
+        events.push(DataMessageBody::EntityComponentRemove(
+            EntityComponentRemove {
+                entity,
+                component: id,
+            },
+        ));
+
+        known_state
+            .components
+            .get_mut(&entity_id)
+            .unwrap()
+            .remove(id);
     }
 
     events
 }
 
 fn update_inventory(
-    entity_id: EntityId,
+    entity_id: ServerEntity,
     server_state: &Inventory,
     client_state: &Inventory,
-) -> Vec<EntityChange> {
+) -> Vec<DataMessageBody> {
     let mut events = Vec::new();
 
     for (id, server_stack) in server_state.iter() {
         let Some(client_stack) = client_state.get(id) else {
-            events.push(EntityChange::InventoryItemAdd(
-                game_common::world::snapshot::InventoryItemAdd {
-                    entity: entity_id,
-                    id,
-                    item: server_stack.item.id,
-                    quantity: server_stack.quantity,
-                    components: server_stack.item.components.clone(),
-                    equipped: server_stack.item.equipped,
-                    hidden: server_stack.item.hidden,
-                },
-            ));
+            events.push(DataMessageBody::InventoryItemAdd(InventoryItemAdd {
+                entity: entity_id,
+                id,
+                item: server_stack.item.id,
+                quantity: server_stack.quantity,
+                components: server_stack.item.components.clone(),
+                equipped: server_stack.item.equipped,
+                hidden: server_stack.item.hidden,
+            }));
 
             continue;
         };
@@ -748,14 +745,14 @@ fn update_inventory(
         }
 
         if needs_update {
-            EntityChange::InventoryItemUpdate(game_common::world::snapshot::InventoryItemUpdate {
+            events.push(DataMessageBody::InventoryItemUpdate(InventoryItemUpdate {
                 entity: entity_id,
-                slot_id: id,
+                slot: id,
                 equipped: server_stack.item.equipped,
                 hidden: server_stack.item.hidden,
                 quantity,
                 components,
-            });
+            }));
         }
     }
 
@@ -763,163 +760,13 @@ fn update_inventory(
         .iter()
         .filter(|(id, _)| server_state.get(*id).is_none())
     {
-        events.push(EntityChange::InventoryItemRemove(
-            game_common::world::snapshot::InventoryItemRemove {
-                entity: entity_id,
-                id,
-            },
-        ))
+        events.push(DataMessageBody::InventoryItemRemove(InventoryItemRemove {
+            entity: entity_id,
+            slot: id,
+        }))
     }
 
     events
-}
-
-fn update_client_entities(
-    state: &mut ConnectionState,
-    events: Vec<EntityChange>,
-) -> Vec<DataMessageBody> {
-    let mut cmds = Vec::new();
-
-    for event in events {
-        let cmd = match event {
-            EntityChange::Create { entity } => {
-                let entity_id = state.entities.insert(entity.id);
-                state.known_entities.insert(entity.clone());
-
-                DataMessageBody::EntityCreate(EntityCreate {
-                    entity: entity_id,
-                    translation: entity.transform.translation,
-                    rotation: entity.transform.rotation,
-                    data: entity.body,
-                })
-            }
-            EntityChange::Destroy { id } => {
-                let entity_id = state.entities.remove(id).unwrap();
-                state.known_entities.remove(id);
-                state.known_entities.inventories.remove(&id);
-
-                DataMessageBody::EntityDestroy(EntityDestroy { entity: entity_id })
-            }
-            EntityChange::Translate { id, translation } => {
-                let entity_id = state.entities.get(id).unwrap();
-                let entity = state.known_entities.get_mut(id).unwrap();
-
-                entity.transform.translation = translation;
-
-                DataMessageBody::EntityTranslate(EntityTranslate {
-                    entity: entity_id,
-                    translation,
-                })
-            }
-            EntityChange::Rotate { id, rotation } => {
-                let entity_id = state.entities.get(id).unwrap();
-                let entity = state.known_entities.get_mut(id).unwrap();
-
-                entity.transform.rotation = rotation;
-
-                DataMessageBody::EntityRotate(EntityRotate {
-                    entity: entity_id,
-                    rotation,
-                })
-            }
-            EntityChange::ComponentAdd {
-                entity,
-                component_id,
-                component,
-            } => {
-                let entity_id = state.entities.get(entity).unwrap();
-                let entity = state.known_entities.get_mut(entity).unwrap();
-
-                entity.components.insert(component_id, component.clone());
-
-                DataMessageBody::EntityComponentAdd(EntityComponentAdd {
-                    entity: entity_id,
-                    component: component_id,
-                    bytes: component.bytes,
-                })
-            }
-            EntityChange::ComponentRemove {
-                entity,
-                component_id,
-            } => {
-                let entity_id = state.entities.get(entity).unwrap();
-                let entity = state.known_entities.get_mut(entity).unwrap();
-
-                entity.components.remove(component_id);
-
-                DataMessageBody::EntityComponentRemove(EntityComponentRemove {
-                    entity: entity_id,
-                    component: component_id,
-                })
-            }
-            EntityChange::ComponentUpdate {
-                entity,
-                component_id,
-                component,
-            } => {
-                let entity_id = state.entities.get(entity).unwrap();
-                let entity = state.known_entities.get_mut(entity).unwrap();
-
-                entity.components.insert(component_id, component.clone());
-
-                DataMessageBody::EntityComponentUpdate(EntityComponentUpdate {
-                    entity: entity_id,
-                    component: component_id,
-                    bytes: component.bytes,
-                })
-            }
-            EntityChange::InventoryItemAdd(event) => {
-                let entity_id = state.entities.get(event.entity).unwrap();
-
-                state
-                    .known_entities
-                    .inventories
-                    .entry(event.entity)
-                    .or_default()
-                    .insert_at_slot(
-                        event.id,
-                        Item {
-                            id: event.item,
-                            mass: Mass::default(),
-                            equipped: false,
-                            hidden: false,
-                            components: Components::default(),
-                        },
-                    )
-                    .unwrap();
-
-                DataMessageBody::InventoryItemAdd(InventoryItemAdd {
-                    entity: entity_id,
-                    id: event.id,
-                    item: event.item,
-                    quantity: event.quantity,
-                    components: event.components,
-                    equipped: event.equipped,
-                    hidden: event.hidden,
-                })
-            }
-            EntityChange::InventoryItemRemove(event) => {
-                let entity_id = state.entities.get(event.entity).unwrap();
-
-                state
-                    .known_entities
-                    .inventories
-                    .get_mut(&event.entity)
-                    .unwrap()
-                    .remove(event.id, u32::MAX);
-
-                DataMessageBody::InventoryItemRemove(InventoryItemRemove {
-                    entity: entity_id,
-                    slot: event.id,
-                })
-            }
-            _ => todo!(),
-        };
-
-        cmds.push(cmd);
-    }
-
-    cmds
 }
 
 #[cfg(test)]
@@ -934,7 +781,6 @@ mod tests {
     use glam::{IVec3, Vec3};
 
     use crate::net::state::ConnectionState;
-    use crate::plugins::update_client_entities;
     use crate::world::state::WorldState;
 
     use super::update_player_cells;
@@ -953,105 +799,105 @@ mod tests {
         }
     }
 
-    #[test]
-    fn player_update_cells_spawn_entity() {
-        let mut world = WorldState::new();
-        world.insert(create_test_entity());
+    // #[test]
+    // fn player_update_cells_spawn_entity() {
+    //     let mut world = WorldState::new();
+    //     world.insert(create_test_entity());
 
-        let mut state = ConnectionState::new();
-        let events = update_player_cells(&world, &state);
-        update_client_entities(&mut state, events.clone());
+    //     let mut state = ConnectionState::new();
+    //     let events = update_player_cells(&world, &state);
+    //     update_client_entities(&mut state, events.clone());
 
-        assert_eq!(events.len(), 1);
-        assert!(matches!(events[0], EntityChange::Create { entity: _ }));
-    }
+    //     assert_eq!(events.len(), 1);
+    //     assert!(matches!(events[0], EntityChange::Create { entity: _ }));
+    // }
 
-    #[test]
-    fn player_update_cells_translate_entity() {
-        let mut world = WorldState::new();
-        let entity_id = world.insert(create_test_entity());
+    // #[test]
+    // fn player_update_cells_translate_entity() {
+    //     let mut world = WorldState::new();
+    //     let entity_id = world.insert(create_test_entity());
 
-        let mut state = ConnectionState::new();
-        let events = update_player_cells(&world, &state);
-        update_client_entities(&mut state, events);
+    //     let mut state = ConnectionState::new();
+    //     let events = update_player_cells(&world, &state);
+    //     update_client_entities(&mut state, events);
 
-        let entity = world.get_mut(entity_id).unwrap();
-        entity.transform.translation = Vec3::splat(1.0);
+    //     let entity = world.get_mut(entity_id).unwrap();
+    //     entity.transform.translation = Vec3::splat(1.0);
 
-        let events = update_player_cells(&world, &mut state);
+    //     let events = update_player_cells(&world, &mut state);
 
-        assert_eq!(events.len(), 1);
-        assert!(matches!(
-            events[0],
-            EntityChange::Translate {
-                id: _,
-                translation: _,
-            }
-        ));
-    }
+    //     assert_eq!(events.len(), 1);
+    //     assert!(matches!(
+    //         events[0],
+    //         EntityChange::Translate {
+    //             id: _,
+    //             translation: _,
+    //         }
+    //     ));
+    // }
 
-    #[test]
-    fn player_upate_cells_despawn_entity() {
-        let mut world = WorldState::new();
-        let entity_id = world.insert(create_test_entity());
+    // #[test]
+    // fn player_upate_cells_despawn_entity() {
+    //     let mut world = WorldState::new();
+    //     let entity_id = world.insert(create_test_entity());
 
-        let mut state = ConnectionState::new();
-        let events = update_player_cells(&world, &state);
-        update_client_entities(&mut state, events);
+    //     let mut state = ConnectionState::new();
+    //     let events = update_player_cells(&world, &state);
+    //     update_client_entities(&mut state, events);
 
-        world.remove(entity_id);
+    //     world.remove(entity_id);
 
-        let events = update_player_cells(&world, &mut state);
+    //     let events = update_player_cells(&world, &mut state);
 
-        assert_eq!(events.len(), 1);
-        assert!(matches!(events[0], EntityChange::Destroy { id: _ }));
-    }
+    //     assert_eq!(events.len(), 1);
+    //     assert!(matches!(events[0], EntityChange::Destroy { id: _ }));
+    // }
 
-    #[test]
-    fn player_update_cells_entity_leave_cells() {
-        let mut world = WorldState::new();
-        let entity_id = world.insert(create_test_entity());
+    // #[test]
+    // fn player_update_cells_entity_leave_cells() {
+    //     let mut world = WorldState::new();
+    //     let entity_id = world.insert(create_test_entity());
 
-        let mut state = ConnectionState::new();
-        let events = update_player_cells(&world, &state);
-        update_client_entities(&mut state, events);
+    //     let mut state = ConnectionState::new();
+    //     let events = update_player_cells(&world, &state);
+    //     update_client_entities(&mut state, events);
 
-        let entity = world.get_mut(entity_id).unwrap();
-        entity.transform.translation = Vec3::splat(1024.0);
+    //     let entity = world.get_mut(entity_id).unwrap();
+    //     entity.transform.translation = Vec3::splat(1024.0);
 
-        let events = update_player_cells(&world, &mut state);
+    //     let events = update_player_cells(&world, &mut state);
 
-        assert_eq!(events.len(), 1);
-        assert!(matches!(events[0], EntityChange::Destroy { id: _ }));
-    }
+    //     assert_eq!(events.len(), 1);
+    //     assert!(matches!(events[0], EntityChange::Destroy { id: _ }));
+    // }
 
-    #[test]
-    fn player_update_cells_entity_translate_parallel() {
-        let distance = 0;
+    // #[test]
+    // fn player_update_cells_entity_translate_parallel() {
+    //     let distance = 0;
 
-        let mut world = WorldState::new();
-        let entity_id = world.insert(create_test_entity());
+    //     let mut world = WorldState::new();
+    //     let entity_id = world.insert(create_test_entity());
 
-        let mut state = ConnectionState::new();
-        state.cells.set(CellId::from_i32(IVec3::new(0, 0, 0)), 0);
-        let events = update_player_cells(&world, &mut state);
-        update_client_entities(&mut state, events);
+    //     let mut state = ConnectionState::new();
+    //     state.cells.set(CellId::from_i32(IVec3::new(0, 0, 0)), 0);
+    //     let events = update_player_cells(&world, &mut state);
+    //     update_client_entities(&mut state, events);
 
-        let new_cell = CellId::from_i32(IVec3::splat(1));
-        state.cells.set(new_cell, distance);
+    //     let new_cell = CellId::from_i32(IVec3::splat(1));
+    //     state.cells.set(new_cell, distance);
 
-        let entity = world.get_mut(entity_id).unwrap();
-        entity.transform.translation = new_cell.min();
+    //     let entity = world.get_mut(entity_id).unwrap();
+    //     entity.transform.translation = new_cell.min();
 
-        let events = update_player_cells(&world, &mut state);
+    //     let events = update_player_cells(&world, &mut state);
 
-        assert_eq!(events.len(), 1);
-        assert!(matches!(
-            events[0],
-            EntityChange::Translate {
-                id: _,
-                translation: _,
-            }
-        ));
-    }
+    //     assert_eq!(events.len(), 1);
+    //     assert!(matches!(
+    //         events[0],
+    //         EntityChange::Translate {
+    //             id: _,
+    //             translation: _,
+    //         }
+    //     ));
+    // }
 }

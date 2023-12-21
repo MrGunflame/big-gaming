@@ -12,7 +12,7 @@ pub fn spawn_entity(
     world: &mut WorldState,
     state: &mut SceneState,
     modules: &Modules,
-) -> Key {
+) {
     let id = match entity.body {
         EntityBody::Object(id) => id.id.0,
         EntityBody::Actor(id) => id.race.0,
@@ -27,14 +27,14 @@ pub fn spawn_entity(
         _ => todo!(),
     };
 
-    let key = state.graph.append(
-        None,
-        Node {
-            transform: entity.transform,
-            components: vec![],
-        },
-    );
+    // let key = state.graph.append(
+    //     None,
+    //     Node {
+    //         transform: entity.transform,
+    //         components: vec![],
+    //     },
+    // );
 
-    state.spawner.spawn(key, obj);
-    key
+    // state.spawner.spawn(key, obj);
+    // key
 }

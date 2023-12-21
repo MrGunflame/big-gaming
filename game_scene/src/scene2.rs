@@ -2,21 +2,151 @@ use std::collections::HashMap;
 
 use game_common::collections::arena::{self, Arena};
 use game_common::collections::vec_map::VecMap;
+use game_common::components::rendering::Color;
 use game_common::components::transform::Transform;
-use game_render::color::Color;
+use game_render::entities::ObjectId;
 use game_render::pbr::material::MaterialId;
 use game_render::pbr::mesh::MeshId;
+use game_render::texture::ImageId;
+use game_render::Renderer;
 use game_tracing::trace_span;
 use glam::Vec3;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct Key(arena::Key);
+pub struct Key(pub(crate) arena::Key);
+
+#[derive(Debug)]
+pub struct SpawnedScene {
+    pub(crate) nodes: Arena<super::scene::Node>,
+    pub(crate) children: HashMap<Key, Vec<Key>>,
+    pub(crate) parents: VecMap<arena::Key, arena::Key>,
+    pub(crate) global_transform: HashMap<Key, Transform>,
+    pub(crate) meshes: Vec<MeshId>,
+    pub(crate) materials: Vec<MaterialId>,
+    pub(crate) images: Vec<ImageId>,
+    pub(crate) entities: HashMap<Key, ObjectId>,
+}
+
+impl SpawnedScene {
+    pub fn new() -> Self {
+        Self {
+            nodes: Arena::new(),
+            children: HashMap::new(),
+            parents: VecMap::new(),
+            global_transform: HashMap::new(),
+            materials: Vec::new(),
+            meshes: Vec::new(),
+            images: Vec::new(),
+            entities: HashMap::new(),
+        }
+    }
+
+    pub(crate) fn remove(&mut self, key: Key) {
+        self.nodes.remove(key.0);
+        self.global_transform.remove(&key);
+
+        if let Some(parent) = self.parents.remove(key.0) {
+            if let Some(children) = self.children.get_mut(&Key(parent)) {
+                children.retain(|id| *id != key);
+            }
+        }
+
+        if let Some(children) = self.children.remove(&key) {
+            for c in children {
+                self.remove(c);
+            }
+        }
+    }
+
+    pub(crate) fn append(&mut self, parent: Option<Key>, node: super::scene::Node) -> Key {
+        let transform = node.transform;
+
+        let key = Key(self.nodes.insert(node));
+
+        if let Some(parent) = parent {
+            debug_assert!(self.nodes.contains_key(parent.0));
+
+            self.parents.insert(key.0, parent.0);
+            self.children.entry(parent).or_default().push(key);
+        }
+
+        self.global_transform.insert(key, transform);
+
+        key
+    }
+
+    pub fn set_transform(&mut self, transform: Transform) {
+        // Find root elements, i.e. element without a parent.
+        // Note that it is possible that multiple root nodes
+        // exist.
+        for (key, _) in self.nodes.clone().iter() {
+            if self.parents.get(key).is_none() {
+                self.nodes.get_mut(key).unwrap().transform = transform;
+            }
+        }
+    }
+
+    pub fn compute_transform(&mut self) {
+        let _span = trace_span!("SceneGraph::compute_transform").entered();
+
+        // FIXME: This is a 1:1 copy from the old ECS implementation that is
+        // still extreamly inefficient.
+
+        let mut transforms = HashMap::new();
+        let mut parents = HashMap::new();
+
+        for (key, node) in &self.nodes {
+            if self.parents.get(key).is_none() {
+                transforms.insert(key, node.transform);
+            }
+
+            if let Some(children) = self.children.get(&Key(key)) {
+                for child in children {
+                    parents.insert(*child, key);
+                }
+            }
+        }
+
+        while !parents.is_empty() {
+            for (child, parent) in parents.clone().iter() {
+                if let Some(transform) = transforms.get(parent) {
+                    let local_transform = self.nodes.get(child.0).unwrap();
+                    parents.remove(child);
+
+                    transforms.insert(child.0, transform.mul_transform(local_transform.transform));
+                }
+            }
+        }
+
+        for (key, transform) in transforms.into_iter() {
+            *self.global_transform.get_mut(&Key(key)).unwrap() = transform;
+        }
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (Key, &super::scene::Node)> {
+        self.nodes.iter().map(|(k, v)| (Key(k), v))
+    }
+
+    pub fn destroy_resources(self, renderer: &mut Renderer) {
+        for id in self.meshes {
+            renderer.meshes.remove(id);
+        }
+
+        for id in self.materials {
+            renderer.materials.remove(id);
+        }
+
+        for id in self.images {
+            renderer.images.remove(id);
+        }
+    }
+}
 
 // Copied and adapted from`TransformHierarchy` because using it directly
 // causes too much trouble.
 #[derive(Clone, Debug, Default)]
 pub struct SceneGraph {
-    nodes: Arena<Node>,
+    nodes: Arena<super::scene::Node>,
     children: HashMap<Key, Vec<Key>>,
     parents: VecMap<arena::Key, arena::Key>,
     removed_nodes: Vec<Key>,
@@ -44,7 +174,7 @@ impl SceneGraph {
         self.len() == 0
     }
 
-    pub fn append(&mut self, parent: Option<Key>, node: Node) -> Key {
+    pub fn append(&mut self, parent: Option<Key>, node: super::scene::Node) -> Key {
         let transform = node.transform;
 
         let key = Key(self.nodes.insert(node));
@@ -81,11 +211,11 @@ impl SceneGraph {
         }
     }
 
-    pub fn get(&self, key: Key) -> Option<&Node> {
+    pub fn get(&self, key: Key) -> Option<&super::scene::Node> {
         self.nodes.get(key.0)
     }
 
-    pub fn get_mut(&mut self, key: Key) -> Option<&mut Node> {
+    pub fn get_mut(&mut self, key: Key) -> Option<&mut super::scene::Node> {
         self.nodes.get_mut(key.0)
     }
 
@@ -102,20 +232,23 @@ impl SceneGraph {
         self.nodes.contains_key(key.0)
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = (Key, &Node)> + '_ {
+    pub fn iter(&self) -> impl Iterator<Item = (Key, &super::scene::Node)> + '_ {
         self.nodes.iter().map(|(k, v)| (Key(k), v))
     }
 
-    pub fn values(&self) -> impl Iterator<Item = &Node> + '_ {
+    pub fn values(&self) -> impl Iterator<Item = &super::scene::Node> + '_ {
         self.nodes.values()
     }
 
-    pub fn parent(&self, key: Key) -> Option<(Key, &Node)> {
+    pub fn parent(&self, key: Key) -> Option<(Key, &super::scene::Node)> {
         let parent = self.parents.get(key.0)?;
         Some((Key(*parent), self.nodes.get(*parent).unwrap()))
     }
 
-    pub fn children(&self, parent: Key) -> Option<impl Iterator<Item = (Key, &Node)> + '_> {
+    pub fn children(
+        &self,
+        parent: Key,
+    ) -> Option<impl Iterator<Item = (Key, &super::scene::Node)> + '_> {
         let children = self.children.get(&parent)?;
         Some(children.iter().map(|key| {
             let node = self.nodes.get(key.0).unwrap();

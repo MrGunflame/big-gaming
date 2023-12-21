@@ -9,30 +9,30 @@ use shared::panic_handler;
 
 panic_handler!();
 
-#[on_action]
-fn on_action(invoker: EntityId) {
-    let entity = Entity::get(invoker).unwrap();
+// #[on_action]
+// fn on_action(invoker: EntityId) {
+//     let entity = Entity::get(invoker).unwrap();
 
-    let translation = entity.translation();
-    let direction = entity.rotation() * -Vec3::Z;
-    let ray = Ray {
-        origin: translation,
-        direction,
-    };
+//     let translation = entity.translation();
+//     let direction = entity.rotation() * -Vec3::Z;
+//     let ray = Ray {
+//         origin: translation,
+//         direction,
+//     };
 
-    let filter = QueryFilter {
-        exclude_entities: &[invoker],
-    };
+//     let filter = QueryFilter {
+//         exclude_entities: &[invoker],
+//     };
 
-    let target = match cast_ray(ray, 5.0, filter) {
-        Some(hit) => hit.entity,
-        None => return,
-    };
+//     let target = match cast_ray(ray, 5.0, filter) {
+//         Some(hit) => hit.entity,
+//         None => return,
+//     };
 
-    let entity = Entity::get(target).unwrap();
-    if !entity.kind().is_item() {
-        return;
-    }
+//     let entity = Entity::get(target).unwrap();
+//     if !entity.kind().is_item() {
+//         return;
+//     }
 
-    entity.despawn().unwrap();
-}
+//     entity.despawn().unwrap();
+// }

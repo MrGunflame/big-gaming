@@ -5,6 +5,7 @@ use game_common::components::inventory::Inventory;
 use game_common::components::items::{Item, ItemId, ItemStack};
 use game_common::components::object::ObjectId;
 use game_common::components::race::RaceId;
+use game_common::components::rendering::MeshInstance;
 use game_common::components::transform::Transform;
 use game_common::entity::EntityId;
 use game_common::record::RecordReference;
@@ -49,12 +50,7 @@ pub fn spawn_player(
 
     let mut components = Components::new();
     for component in &record.components {
-        components.insert(
-            component.id,
-            Component {
-                bytes: component.bytes.clone(),
-            },
-        );
+        components.insert(component.id, Component::new(component.bytes.clone()));
     }
 
     let entity = Entity {
@@ -67,18 +63,23 @@ pub fn spawn_player(
         linvel: Vec3::ZERO,
     };
 
-    let id = world.insert(entity.clone());
+    let id = world.spawn();
+    world.insert(id, transform);
+    world.insert(
+        id,
+        MeshInstance {
+            path: "assets/human.glb".to_owned(),
+        },
+    );
 
     let mut components = Components::new();
     components.insert(
         "c626b9b0ab1940aba6932ea7726d0175:0b".parse().unwrap(),
-        Component {
-            bytes: vec![
-                0, 0, 128, 63, 0, 0, 128, 63, 30, 0, 0, 0, 198, 38, 185, 176, 171, 25, 64, 171,
-                166, 147, 46, 167, 114, 109, 1, 117, 18, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 128, 63,
-            ],
-        },
+        Component::new(vec![
+            0, 0, 128, 63, 0, 0, 128, 63, 30, 0, 0, 0, 198, 38, 185, 176, 171, 25, 64, 171, 166,
+            147, 46, 167, 114, 109, 1, 117, 18, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 128, 63,
+        ]),
     );
 
     let mut inventory = Inventory::new();
@@ -97,8 +98,8 @@ pub fn spawn_player(
 
     world.insert_inventory(id, inventory);
 
-    let key = spawn_entity(entity, world, state, modules);
-    state.entities.insert(key, id);
+    // let key = spawn_entity(entity, world, state, modules);
+    // state.entities.insert(key, id);
 
     Some(id)
 }

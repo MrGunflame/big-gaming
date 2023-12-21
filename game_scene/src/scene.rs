@@ -1,16 +1,19 @@
 use std::collections::HashMap;
 
+use game_common::components::rendering::Color;
 use game_common::components::transform::Transform;
-use game_core::hierarchy::Hierarchy;
-use game_render::color::Color;
+use game_common::world::World;
+use game_core::hierarchy::{Hierarchy, TransformHierarchy};
 use game_render::entities::Object;
 use game_render::mesh::Mesh;
 use game_render::pbr::{AlphaMode, PbrMaterial};
 use game_render::texture::Image;
 use game_render::{shape, Renderer};
 use game_tracing::trace_span;
+use tracing::Instrument;
 
-use crate::scene2::{Component, Key, MeshInstance, SceneGraph};
+use crate::scene2::{Component, Key, MeshInstance, SceneGraph, SpawnedScene};
+use crate::spawner;
 
 #[derive(Clone, Debug, Default)]
 pub struct Scene {
@@ -42,45 +45,39 @@ pub struct ObjectNode {
 }
 
 impl Scene {
-    pub(crate) fn spawn(
-        self,
-        renderer: &mut Option<&mut Renderer>,
-        parent: Key,
-        graph: &mut SceneGraph,
-    ) {
+    pub(crate) fn spawn(self, renderer: &mut Renderer) -> SpawnedScene {
         let _span = trace_span!("Scene::spawn").entered();
 
-        let Some(renderer) = renderer else {
-            return;
-        };
+        let mut spawned_scene = SpawnedScene::new();
 
-        let mut meshes = Vec::new();
         for mesh in self.meshes {
             let id = renderer.meshes.insert(mesh);
-            meshes.push(id);
+            spawned_scene.meshes.push(id);
         }
 
-        let mut images = Vec::new();
         for image in self.images {
             let id = renderer.images.insert(image);
-            images.push(id);
+            spawned_scene.images.push(id);
         }
 
-        let mut materials = Vec::new();
         for material in self.materials {
             let id = renderer.materials.insert(PbrMaterial {
                 alpha_mode: material.alpha_mode,
                 base_color: material.base_color,
-                base_color_texture: material.base_color_texture.map(|index| images[index]),
-                normal_texture: material.normal_texture.map(|index| images[index]),
+                base_color_texture: material
+                    .base_color_texture
+                    .map(|index| spawned_scene.images[index]),
+                normal_texture: material
+                    .normal_texture
+                    .map(|index| spawned_scene.images[index]),
                 roughness: material.roughness,
                 metallic: material.metallic,
                 metallic_roughness_texture: material
                     .metallic_roughness_texture
-                    .map(|index| images[index]),
+                    .map(|index| spawned_scene.images[index]),
                 reflectance: material.reflectance,
             });
-            materials.push(id);
+            spawned_scene.materials.push(id);
         }
 
         let mut children = Vec::new();
@@ -92,24 +89,7 @@ impl Scene {
                 continue;
             }
 
-            let entity = graph.append(
-                Some(parent),
-                crate::scene2::Node {
-                    transform: node.transform,
-                    components: match node.body {
-                        NodeBody::Empty => vec![],
-                        NodeBody::Object(obj) => vec![Component::MeshInstance(MeshInstance {
-                            mesh: meshes[obj.mesh],
-                            material: materials[obj.material],
-                        })],
-                        NodeBody::DirectionalLight(light) => {
-                            vec![Component::DirectionalLight(light)]
-                        }
-                        NodeBody::PointLight(light) => vec![Component::PointLight(light)],
-                        NodeBody::SpotLight(light) => vec![Component::SpotLight(light)],
-                    },
-                },
-            );
+            let entity = spawned_scene.append(None, node.clone());
             if let Some(children) = self.nodes.children(key) {
                 for (child, _) in children {
                     parents.insert(child, entity);
@@ -122,24 +102,7 @@ impl Scene {
                 let node = self.nodes.get(*child).unwrap();
                 parents.remove(child);
 
-                let entity = graph.append(
-                    Some(*parent),
-                    crate::scene2::Node {
-                        transform: node.transform,
-                        components: match node.body {
-                            NodeBody::Empty => vec![],
-                            NodeBody::Object(obj) => vec![Component::MeshInstance(MeshInstance {
-                                mesh: meshes[obj.mesh],
-                                material: materials[obj.material],
-                            })],
-                            NodeBody::DirectionalLight(light) => {
-                                vec![Component::DirectionalLight(light)]
-                            }
-                            NodeBody::PointLight(light) => vec![Component::PointLight(light)],
-                            NodeBody::SpotLight(light) => vec![Component::SpotLight(light)],
-                        },
-                    },
-                );
+                let entity = spawned_scene.append(Some(*parent), node.clone());
                 if let Some(children) = self.nodes.children(*child) {
                     for (child, _) in children {
                         parents.insert(child, entity);
@@ -195,6 +158,30 @@ impl Scene {
                 }),
             });
         }
+
+        spawned_scene.compute_transform();
+
+        for (key, node) in spawned_scene.nodes.iter() {
+            match node.body {
+                NodeBody::Empty => {}
+                NodeBody::Object(object) => {
+                    let mesh = spawned_scene.meshes[object.mesh];
+                    let material = spawned_scene.materials[object.material];
+                    let transform = *spawned_scene.global_transform.get(&Key(key)).unwrap();
+
+                    let id = renderer.entities.objects.insert(Object {
+                        transform,
+                        mesh,
+                        material,
+                    });
+
+                    spawned_scene.entities.insert(Key(key), id);
+                }
+                _ => todo!(),
+            }
+        }
+
+        spawned_scene
     }
 }
 

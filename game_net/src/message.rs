@@ -38,7 +38,6 @@ pub struct DataMessage {
 
 #[derive(Clone, Debug)]
 pub enum DataMessageBody {
-    EntityCreate(EntityCreate),
     EntityDestroy(EntityDestroy),
     EntityTranslate(EntityTranslate),
     EntityRotate(EntityRotate),
@@ -138,12 +137,6 @@ pub struct InventoryItemUpdate {
 impl DataMessageBody {
     pub(crate) fn into_frame(self) -> Frame {
         match self {
-            DataMessageBody::EntityCreate(msg) => Frame::EntityCreate(proto::EntityCreate {
-                entity: msg.entity,
-                translation: msg.translation,
-                rotation: msg.rotation,
-                data: msg.data,
-            }),
             DataMessageBody::EntityDestroy(msg) => {
                 Frame::EntityDestroy(proto::EntityDestroy { entity: msg.entity })
             }
@@ -216,12 +209,6 @@ impl DataMessageBody {
 
     pub(crate) fn from_frame(frame: Frame) -> Self {
         match frame {
-            Frame::EntityCreate(frame) => Self::EntityCreate(EntityCreate {
-                entity: frame.entity,
-                translation: frame.translation,
-                rotation: frame.rotation,
-                data: frame.data,
-            }),
             Frame::EntityDestroy(frame) => Self::EntityDestroy(EntityDestroy {
                 entity: frame.entity,
             }),
