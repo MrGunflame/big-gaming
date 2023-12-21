@@ -80,7 +80,15 @@ impl Executor {
                 Event::Action(event) => {
                     self.fetch_components_scripts(event.entity, ctx.world.world())
                 }
-                _ => todo!(),
+                Event::Collision(event) => {
+                    self.fetch_components_scripts(event.entity, ctx.world.world())
+                }
+                Event::Equip(event) => {
+                    self.fetch_components_scripts(event.entity, ctx.world.world())
+                }
+                Event::Unequip(event) => {
+                    self.fetch_components_scripts(event.entity, ctx.world.world())
+                }
             };
 
             for handle in handles {
