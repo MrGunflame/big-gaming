@@ -13,7 +13,7 @@ use wasmtime::{Engine, Instance, Linker, Module, Store};
 use crate::builtin::register_host_fns;
 use crate::dependency::{Dependencies, Dependency};
 use crate::effect::{Effect, Effects};
-use crate::events::{OnAction, OnCellLoad, OnCellUnload, OnCollision, OnEquip, OnUnequip};
+use crate::events::{OnAction, OnCollision, OnEquip, OnUnequip};
 use crate::{Handle, RecordProvider, WorldProvider};
 
 #[derive(Debug)]
@@ -67,8 +67,6 @@ impl<'a> Runnable<'a> {
             Event::Collision(event) => self.on_collision(event.entity, event.other),
             Event::Equip(event) => self.on_equip(event.item, event.entity),
             Event::Unequip(event) => self.on_unequip(event.item, event.entity),
-            Event::CellLoad(event) => self.on_cell_load(event.cell),
-            Event::CellUnload(event) => self.on_cell_unload(event.cell),
         }
     }
 
@@ -94,20 +92,6 @@ impl<'a> Runnable<'a> {
             .instance
             .get_typed_func(&mut self.store, "on_unequip")?;
         func.call(&mut self.store, (item.into_raw(), entity.into_raw()))
-    }
-
-    fn on_cell_load(&mut self, id: CellId) -> wasmtime::Result<()> {
-        let func: OnCellLoad = self
-            .instance
-            .get_typed_func(&mut self.store, "on_cell_load")?;
-        func.call(&mut self.store, id.as_parts())
-    }
-
-    fn on_cell_unload(&mut self, id: CellId) -> wasmtime::Result<()> {
-        let func: OnCellUnload = self
-            .instance
-            .get_typed_func(&mut self.store, "on_cell_unload")?;
-        func.call(&mut self.store, id.as_parts())
     }
 }
 

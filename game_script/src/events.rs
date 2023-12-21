@@ -17,9 +17,6 @@ impl Events {
     pub const ACTION: Self = Self(1);
     pub const COLLISION: Self = Self(1 << 1);
 
-    pub const CELL_LOAD: Self = Self(1 << 2);
-    pub const CELL_UNLOAD: Self = Self(1 << 3);
-
     pub fn iter(&self) -> Iter<'_> {
         Iter {
             events: *self,
@@ -127,15 +124,3 @@ pub type OnEquip = TypedFunc<(u64, u64), ()>;
 /// fn(item: InventoryId, actor: EntityId);
 /// ```
 pub type OnUnequip = TypedFunc<(u64, u64), ()>;
-
-///
-/// ```ignore
-/// fn(x: u32, y: u32, z: u32);
-/// ```
-pub type OnCellLoad = TypedFunc<(u32, u32, u32), ()>;
-
-///
-/// ```ignore
-/// fn(x: u32, y: u32, z: u32);
-/// ```
-pub type OnCellUnload = TypedFunc<(u32, u32, u32), ()>;
