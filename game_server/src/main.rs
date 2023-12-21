@@ -35,8 +35,7 @@ fn main() {
         Generator::from(generator),
         res.modules,
         config,
-        res.server,
-        res.record_targets,
+        res.executor,
     );
 
     let rt = Builder::new_multi_thread()

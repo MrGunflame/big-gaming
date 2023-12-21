@@ -1,4 +1,4 @@
-use std::fmt::{Display, Write};
+use std::fmt::{self, Debug, Display, Formatter, Write};
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
@@ -87,6 +87,12 @@ impl Script {
         }
 
         Ok(Self { module, events })
+    }
+}
+
+impl Debug for Script {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Script").finish_non_exhaustive()
     }
 }
 

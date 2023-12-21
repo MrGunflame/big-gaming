@@ -5,8 +5,7 @@ use game_common::entity::EntityId;
 use game_common::events::EventQueue;
 use game_core::modules::Modules;
 use game_script::effect::Effect;
-use game_script::executor::ScriptExecutor;
-use game_script::{Context, WorldProvider};
+use game_script::{Context, Executor, WorldProvider};
 
 use crate::net::world::CommandBuffer;
 
@@ -15,14 +14,14 @@ use super::state::WorldState;
 pub fn run_scripts(
     world: &mut WorldState,
     physics_pipeline: &game_physics::Pipeline,
-    executor: &ScriptExecutor,
+    executor: &mut Executor,
     event_queue: &mut EventQueue,
     buffer: &mut CommandBuffer,
     modules: &Modules,
 ) {
-    let effects = executor.run(Context {
-        view: world,
-        physics_pipeline,
+    let effects = executor.update(Context {
+        world: world,
+        physics: physics_pipeline,
         events: event_queue,
         records: modules,
     });

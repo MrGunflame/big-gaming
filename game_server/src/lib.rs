@@ -17,9 +17,7 @@ use game_core::counter::{Interval, UpdateCounter};
 use game_core::modules::Modules;
 use game_scene::scene2::{Key, SceneGraph};
 use game_scene::SceneSpawner;
-use game_script::executor::ScriptExecutor;
-use game_script::scripts::RecordTargets;
-use game_script::ScriptServer;
+use game_script::Executor;
 use game_tasks::TaskPool;
 use tracing::{span, Level};
 use world::state::WorldState;
@@ -77,19 +75,13 @@ pub struct ServerState {
     pub event_queue: EventQueue,
     pub modules: Modules,
     pub state: State,
-    pub script_executor: ScriptExecutor,
+    pub script_executor: Executor,
     pub pool: TaskPool,
     pub scene: SceneState,
 }
 
 impl ServerState {
-    pub fn new(
-        generator: Generator,
-        modules: Modules,
-        config: Config,
-        server: ScriptServer,
-        record_targets: RecordTargets,
-    ) -> Self {
+    pub fn new(generator: Generator, modules: Modules, config: Config, executor: Executor) -> Self {
         Self {
             world: WorldState::new(),
             level: world::level::Level::new(generator),
@@ -97,7 +89,7 @@ impl ServerState {
             event_queue: EventQueue::new(),
             modules,
             state: State::new(config),
-            script_executor: ScriptExecutor::new(server, record_targets),
+            script_executor: executor,
             pool: TaskPool::new(8),
             scene: SceneState {
                 spawner: SceneSpawner::default(),

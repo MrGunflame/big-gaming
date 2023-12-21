@@ -31,7 +31,7 @@ use game_render::entities::CameraId;
 use game_render::light::DirectionalLight;
 use game_render::Renderer;
 use game_scene::scene2::{self, Node};
-use game_script::executor::ScriptExecutor;
+use game_script::Executor;
 use game_ui::reactive::NodeId;
 use game_ui::UiState;
 use game_window::cursor::Cursor;
@@ -78,7 +78,7 @@ impl GameWorldState {
         addr: impl ToSocketAddrs,
         modules: Modules,
         cursor: &Cursor,
-        executor: ScriptExecutor,
+        executor: Executor,
         inputs: Inputs,
     ) -> Self {
         let mut cursor_pinned = CursorPinState::new();
