@@ -65,7 +65,14 @@
             {
                 "id": "05",
                 "name": "Movement Speed in m/s",
-                "description": "Movement Speed"
+                "description": "Movement Speed",
+                "actions": [
+                    "c626b9b0ab1940aba6932ea7726d0175:01",
+                    "c626b9b0ab1940aba6932ea7726d0175:02",
+                    "c626b9b0ab1940aba6932ea7726d0175:03",
+                    "c626b9b0ab1940aba6932ea7726d0175:04",
+                    "c626b9b0ab1940aba6932ea7726d0175:0f"
+                ]
             },
             {
                 "id": "0b",

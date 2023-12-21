@@ -1,7 +1,11 @@
 #![no_std]
 
+extern crate alloc;
+
 use core::f32::consts::PI;
 
+use game_wasm::components::builtin::Transform;
+use game_wasm::components::AsComponent;
 use game_wasm::math::Real;
 pub use game_wasm::math::Vec3;
 
@@ -55,15 +59,32 @@ macro_rules! impl_movement {
 
 #[inline]
 pub fn on_action_impl(entity: EntityId, dir: Vec3) {
-    let mut entity = Entity::get(entity).unwrap();
+    let entity = Entity::new(entity);
 
-    let speed: f32 = entity.components().get(MOVEMENT_SPEED).unwrap().read();
+    let speed = entity.get::<MovementSpeed>();
+    let mut transform = entity.get::<Transform>();
 
-    let rotation = extract_actor_rotation(entity.rotation());
-    let mut translation = entity.translation();
+    let rotation = extract_actor_rotation(transform.rotation);
 
-    translation += rotation * dir * (speed / UPS);
-    entity.set_translation(translation);
+    transform.translation += rotation * dir * (speed.0 / UPS);
+
+    entity.insert(transform);
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Zeroable, Pod)]
+#[repr(transparent)]
+pub struct MovementSpeed(pub f32);
+
+impl AsComponent for MovementSpeed {
+    const ID: RecordReference = MOVEMENT_SPEED;
+
+    fn from_bytes(buf: &[u8]) -> Self {
+        bytemuck::pod_read_unaligned(buf)
+    }
+
+    fn to_bytes(&self) -> alloc::vec::Vec<u8> {
+        bytemuck::bytes_of(self).to_vec()
+    }
 }
 
 #[derive(Copy, Clone, Debug, Zeroable, Pod)]
