@@ -43,10 +43,10 @@ impl Executor {
         let engine = Engine::new(&config).unwrap();
 
         Self {
+            instances: InstancePool::new(&engine),
             engine,
             targets: HashMap::new(),
             scripts: Vec::new(),
-            instances: InstancePool::new(),
         }
     }
 
@@ -116,9 +116,7 @@ impl Executor {
             );
             let script = &self.scripts[invocation.script.0];
 
-            let mut runnable =
-                self.instances
-                    .get(&self.engine, invocation.script, &script.module, state);
+            let mut runnable = self.instances.get(&self.engine, &script.module, state);
 
             if let Err(err) = runnable.run(&invocation.event) {
                 tracing::error!("Error running script: {}", err);
