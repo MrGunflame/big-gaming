@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt::{self, Debug, Formatter};
 
 use game_common::components::components::Component;
 use game_common::components::inventory::{Inventory, InventorySlotId};
@@ -6,7 +7,7 @@ use game_common::components::items::ItemStack;
 use game_common::entity::EntityId;
 use game_common::events::Event;
 use game_common::record::RecordReference;
-use game_common::world::{CellId, World};
+use game_common::world::World;
 use game_tracing::trace_span;
 use wasmtime::{Engine, Instance, Linker, Module, Store};
 
@@ -16,15 +17,20 @@ use crate::effect::{Effect, Effects};
 use crate::events::{OnAction, OnCollision, OnEquip, OnUnequip};
 use crate::{Handle, RecordProvider, WorldProvider};
 
-#[derive(Debug)]
 pub(crate) struct InstancePool {
+    /// Linker for instantiating new instances.
+    linker: Linker<State<'static>>,
     instances: HashMap<Handle, Vec<Instance>>,
 }
 
 impl InstancePool {
-    pub(crate) fn new() -> Self {
+    pub(crate) fn new(engine: &Engine) -> Self {
+        let mut linker = Linker::<State<'_>>::new(engine);
+        register_host_fns(&mut linker);
+
         Self {
             instances: HashMap::new(),
+            linker,
         }
     }
 
@@ -40,16 +46,22 @@ impl InstancePool {
         // let entry = self.instances.entry(handle);
 
         // let instances = entry.or_insert_with(|| {
-        let mut linker = Linker::<State<'_>>::new(engine);
-        register_host_fns(&mut linker);
 
-        let instance = linker.instantiate(&mut store, module).unwrap();
+        let instance = self.linker.instantiate(&mut store, module).unwrap();
         //     vec![instance]
         // });
 
         // There is always at least one instance if the key is set.
         // let instance = instances.get(0).unwrap();
         Runnable { store, instance }
+    }
+}
+
+impl Debug for InstancePool {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.debug_struct("InstancePool")
+            .field("instances", &self.instances)
+            .finish_non_exhaustive()
     }
 }
 
