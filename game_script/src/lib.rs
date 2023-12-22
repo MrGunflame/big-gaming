@@ -77,9 +77,12 @@ impl Executor {
 
         while let Some(event) = ctx.events.pop() {
             let handles = match event {
-                Event::Action(event) => {
-                    self.fetch_components_scripts(event.entity, ctx.world.world())
-                }
+                // An action is a special case. The script is not registered on
+                // the component, but on the action record directly. We should only
+                // call script for the exact triggered action, not any other.
+                // FIXME: What if the action is not registered. Should we really
+                // handle that case?
+                Event::Action(event) => self.targets.get(&event.action.0).unwrap().clone(),
                 Event::Collision(event) => {
                     self.fetch_components_scripts(event.entity, ctx.world.world())
                 }

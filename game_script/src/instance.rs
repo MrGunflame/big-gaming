@@ -37,25 +37,25 @@ impl InstancePool {
     ) -> Runnable<'a> {
         let mut store = Store::new(engine, state);
 
-        let entry = self.instances.entry(handle);
+        // let entry = self.instances.entry(handle);
 
-        let instances = entry.or_insert_with(|| {
-            let mut linker = Linker::<State<'_>>::new(engine);
-            register_host_fns(&mut linker);
+        // let instances = entry.or_insert_with(|| {
+        let mut linker = Linker::<State<'_>>::new(engine);
+        register_host_fns(&mut linker);
 
-            let instance = linker.instantiate(&mut store, module).unwrap();
-            vec![instance]
-        });
+        let instance = linker.instantiate(&mut store, module).unwrap();
+        //     vec![instance]
+        // });
 
         // There is always at least one instance if the key is set.
-        let instance = instances.get(0).unwrap();
+        // let instance = instances.get(0).unwrap();
         Runnable { store, instance }
     }
 }
 
 pub struct Runnable<'a> {
     store: Store<State<'a>>,
-    instance: &'a Instance,
+    instance: Instance,
 }
 
 impl<'a> Runnable<'a> {

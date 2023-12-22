@@ -24,44 +24,7 @@ pub fn spawn_player(
     world: &mut WorldState,
     state: &mut SceneState,
 ) -> Option<EntityId> {
-    let race_id: RecordReference = "c626b9b0ab1940aba6932ea7726d0175:06".parse().unwrap();
-
     let transform = Transform::from_translation(Vec3::new(0.0, 40.0, 0.0));
-
-    let Some(module) = modules.get(race_id.module) else {
-        return None;
-    };
-
-    let Some(record) = module.records.get(race_id.record) else {
-        return None;
-    };
-
-    let body = match &record.body {
-        RecordBody::Item(item) => todo!(),
-        RecordBody::Action(_) => return None,
-        RecordBody::Component(_) => return None,
-        RecordBody::Object(object) => EntityBody::Object(Object {
-            id: ObjectId(race_id),
-        }),
-        RecordBody::Race(race) => EntityBody::Actor(Actor {
-            race: RaceId(race_id),
-        }),
-    };
-
-    let mut components = Components::new();
-    for component in &record.components {
-        components.insert(component.id, Component::new(component.bytes.clone()));
-    }
-
-    let entity = Entity {
-        id: EntityId::dangling(),
-        transform,
-        body,
-        is_host: false,
-        components,
-        angvel: Vec3::ZERO,
-        linvel: Vec3::ZERO,
-    };
 
     let id = world.spawn();
     world.insert(id, transform);
@@ -70,6 +33,17 @@ pub fn spawn_player(
         MeshInstance {
             path: "assets/human.glb".to_owned(),
         },
+    );
+    world.world.insert(
+        id,
+        "c626b9b0ab1940aba6932ea7726d0175:05".parse().unwrap(),
+        Component::new(vec![205, 204, 204, 61]),
+    );
+
+    world.world.insert(
+        id,
+        "c626b9b0ab1940aba6932ea7726d0175:06".parse().unwrap(),
+        Component::new(vec![]),
     );
 
     let mut components = Components::new();

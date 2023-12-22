@@ -97,28 +97,18 @@
                 "id": "14",
                 "name": "Projectile Props",
                 "description": ""
-            }
-        ],
-        "races": [
+            },
             {
                 "id": "06",
                 "name": "Humanoid",
-                "components": {
-                    "c626b9b0ab1940aba6932ea7726d0175:05": [
-                        205,
-                        204,
-                        204,
-                        61
-                    ]
-                },
+                "description": "",
                 "actions": [
                     "c626b9b0ab1940aba6932ea7726d0175:01",
                     "c626b9b0ab1940aba6932ea7726d0175:02",
                     "c626b9b0ab1940aba6932ea7726d0175:03",
                     "c626b9b0ab1940aba6932ea7726d0175:04",
                     "c626b9b0ab1940aba6932ea7726d0175:0f"
-                ],
-                "model": "assets/human.json"
+                ]
             }
         ],
         "items": [
