@@ -1,54 +1,66 @@
+use std::collections::HashMap;
+use std::fmt::{self, Debug, Formatter};
+
 use game_common::components::components::Component;
 use game_common::components::inventory::{Inventory, InventorySlotId};
 use game_common::components::items::ItemStack;
 use game_common::entity::EntityId;
 use game_common::events::Event;
 use game_common::record::RecordReference;
-use game_common::world::{CellId, World};
+use game_common::world::World;
 use game_tracing::trace_span;
 use wasmtime::{Engine, Instance, Linker, Module, Store};
 
+use crate::builtin::register_host_fns;
 use crate::dependency::{Dependencies, Dependency};
 use crate::effect::{Effect, Effects};
-use crate::events::{Events, OnAction, OnCellLoad, OnCellUnload, OnCollision, OnEquip, OnUnequip};
-use crate::{RecordProvider, WorldProvider};
+use crate::events::{OnAction, OnCollision, OnEquip, OnUnequip};
+use crate::{Handle, RecordProvider, WorldProvider};
 
-pub struct ScriptInstance<'a> {
-    store: Store<State<'a>>,
-    inner: Instance,
-    events: Events,
+pub(crate) struct InstancePool {
+    /// Linker for instantiating new instances.
+    linker: Linker<State<'static>>,
+    instances: HashMap<Handle, Vec<Instance>>,
 }
 
-impl<'a> ScriptInstance<'a> {
-    pub fn new(
-        engine: &Engine,
-        module: &Module,
-        events: Events,
-        world: &'a dyn WorldProvider,
-        physics_pipeline: &'a game_physics::Pipeline,
-        effects: &'a mut Effects,
-        dependencies: &'a mut Dependencies,
-        records: &'a dyn RecordProvider,
-    ) -> Self {
-        let mut store = Store::new(
-            engine,
-            State::new(world, physics_pipeline, effects, dependencies, records),
-        );
-
+impl InstancePool {
+    pub(crate) fn new(engine: &Engine) -> Self {
         let mut linker = Linker::<State<'_>>::new(engine);
-
-        crate::builtin::register_host_fns(&mut linker);
-
-        let instance = linker.instantiate(&mut store, module).unwrap();
+        register_host_fns(&mut linker);
 
         Self {
-            store,
-            inner: instance,
-            events,
+            instances: HashMap::new(),
+            linker,
         }
     }
 
-    pub fn run(&mut self, event: &Event) -> wasmtime::Result<()> {
+    pub fn get<'a>(
+        &'a mut self,
+        engine: &Engine,
+        module: &Module,
+        state: State<'a>,
+    ) -> Runnable<'a> {
+        let mut store = Store::new(engine, state);
+        let instance = self.linker.instantiate(&mut store, module).unwrap();
+        Runnable { store, instance }
+    }
+}
+
+impl Debug for InstancePool {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.debug_struct("InstancePool")
+            .field("instances", &self.instances)
+            .finish_non_exhaustive()
+    }
+}
+
+pub struct Runnable<'a> {
+    store: Store<State<'a>>,
+    instance: Instance,
+}
+
+impl<'a> Runnable<'a> {
+    pub(crate) fn run(&mut self, event: &Event) -> wasmtime::Result<()> {
         let _span = trace_span!("Instance::run").entered();
 
         match event {
@@ -56,41 +68,31 @@ impl<'a> ScriptInstance<'a> {
             Event::Collision(event) => self.on_collision(event.entity, event.other),
             Event::Equip(event) => self.on_equip(event.item, event.entity),
             Event::Unequip(event) => self.on_unequip(event.item, event.entity),
-            Event::CellLoad(event) => self.on_cell_load(event.cell),
-            Event::CellUnload(event) => self.on_cell_unload(event.cell),
         }
     }
 
-    pub fn on_action(&mut self, entity: EntityId, invoker: EntityId) -> wasmtime::Result<()> {
-        let func: OnAction = self.inner.get_typed_func(&mut self.store, "on_action")?;
+    fn on_action(&mut self, entity: EntityId, invoker: EntityId) -> wasmtime::Result<()> {
+        let func: OnAction = self.instance.get_typed_func(&mut self.store, "on_action")?;
         func.call(&mut self.store, invoker.into_raw())
     }
 
-    pub fn on_collision(&mut self, entity: EntityId, other: EntityId) -> wasmtime::Result<()> {
-        let func: OnCollision = self.inner.get_typed_func(&mut self.store, "on_collision")?;
+    fn on_collision(&mut self, entity: EntityId, other: EntityId) -> wasmtime::Result<()> {
+        let func: OnCollision = self
+            .instance
+            .get_typed_func(&mut self.store, "on_collision")?;
         func.call(&mut self.store, (entity.into_raw(), other.into_raw()))
     }
 
-    pub fn on_equip(&mut self, item: InventorySlotId, entity: EntityId) -> wasmtime::Result<()> {
-        let func: OnEquip = self.inner.get_typed_func(&mut self.store, "on_equip")?;
+    fn on_equip(&mut self, item: InventorySlotId, entity: EntityId) -> wasmtime::Result<()> {
+        let func: OnEquip = self.instance.get_typed_func(&mut self.store, "on_equip")?;
         func.call(&mut self.store, (item.into_raw(), entity.into_raw()))
     }
 
-    pub fn on_unequip(&mut self, item: InventorySlotId, entity: EntityId) -> wasmtime::Result<()> {
-        let func: OnUnequip = self.inner.get_typed_func(&mut self.store, "on_unequip")?;
+    fn on_unequip(&mut self, item: InventorySlotId, entity: EntityId) -> wasmtime::Result<()> {
+        let func: OnUnequip = self
+            .instance
+            .get_typed_func(&mut self.store, "on_unequip")?;
         func.call(&mut self.store, (item.into_raw(), entity.into_raw()))
-    }
-
-    pub fn on_cell_load(&mut self, id: CellId) -> wasmtime::Result<()> {
-        let func: OnCellLoad = self.inner.get_typed_func(&mut self.store, "on_cell_load")?;
-        func.call(&mut self.store, id.as_parts())
-    }
-
-    pub fn on_cell_unload(&mut self, id: CellId) -> wasmtime::Result<()> {
-        let func: OnCellUnload = self
-            .inner
-            .get_typed_func(&mut self.store, "on_cell_unload")?;
-        func.call(&mut self.store, id.as_parts())
     }
 }
 

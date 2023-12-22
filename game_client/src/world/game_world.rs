@@ -16,7 +16,7 @@ use game_core::time::Time;
 use game_data::record::RecordBody;
 use game_net::message::{DataMessageBody, EntityAction, EntityRotate};
 use game_net::peer_error;
-use game_script::executor::ScriptExecutor;
+use game_script::Executor;
 use game_tracing::trace_span;
 use glam::{Quat, Vec3};
 
@@ -35,7 +35,7 @@ pub struct GameWorld<I> {
     /// Server to local entity mapping.
     server_entities: Entities,
     physics_pipeline: game_physics::Pipeline,
-    executor: ScriptExecutor,
+    executor: Executor,
     event_queue: EventQueue,
 
     /// Newest fresh state from the server.
@@ -48,12 +48,7 @@ impl<I> GameWorld<I>
 where
     I: IntervalImpl,
 {
-    pub fn new(
-        conn: ServerConnection,
-        interval: I,
-        executor: ScriptExecutor,
-        config: &Config,
-    ) -> Self {
+    pub fn new(conn: ServerConnection, interval: I, executor: Executor, config: &Config) -> Self {
         let render_delay = ControlFrame(config.network.interpolation_frames);
 
         Self {
@@ -94,7 +89,7 @@ where
                 run_scripts(
                     &mut self.predicted_state,
                     &self.physics_pipeline,
-                    &self.executor,
+                    &mut self.executor,
                     &mut self.event_queue,
                     cmd_buffer,
                     &modules,

@@ -4,7 +4,6 @@ use game_common::components::items::ItemId;
 use game_common::components::object::ObjectId;
 use game_common::components::transform::Transform;
 use game_common::entity::EntityId;
-use game_common::events::{CellLoadEvent, CellUnloadEvent, Event};
 use game_common::world::cell::square;
 use game_common::world::entity::{Entity, EntityBody, Item, Object};
 use game_common::world::gen::{CellBuilder, EntityBuilder, Generator};
@@ -63,17 +62,10 @@ pub fn update_level_cells(state: &mut ServerState) {
         }
 
         tracing::info!("loading cell {:?}", cell);
-
-        state
-            .event_queue
-            .push(Event::CellLoad(CellLoadEvent { cell: *cell }));
     }
 
     for cell in &state.level.loaded {
         // TODO: Unload cell
-        state
-            .event_queue
-            .push(Event::CellUnload(CellUnloadEvent { cell: *cell }));
     }
 
     state.level.loaded = cells;

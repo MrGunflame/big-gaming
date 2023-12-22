@@ -40,9 +40,9 @@ pub fn tick(state: &mut ServerState) {
 
     crate::world::level::update_level_cells(state);
 
-    let effects = state.script_executor.run(Context {
-        view: &state.world,
-        physics_pipeline: &state.pipeline,
+    let effects = state.script_executor.update(Context {
+        world: &state.world,
+        physics: &state.pipeline,
         events: &mut state.event_queue,
         records: &state.modules,
     });
@@ -267,44 +267,14 @@ fn flush_command_queue(srv_state: &mut ServerState) {
 
 fn queue_action(
     world: &WorldState,
-    entity_id: EntityId,
+    entity: EntityId,
     modules: &Modules,
     action: ActionId,
     queue: &mut EventQueue,
 ) {
-    // let Some(entity) = world.get(entity_id) else {
-    //     return;
-    // };
+    let components = world.world.components(entity);
 
-    let entity: Entity = todo!();
-
-    let race = match &entity.body {
-        EntityBody::Actor(actor) => actor.race,
-        _ => return,
-    };
-
-    let Some(race) = modules
-        .get(race.0.module)
-        .map(|module| module.records.get(race.0.record))
-        .flatten()
-        .map(|record| record.body.as_race())
-        .flatten()
-    else {
-        return;
-    };
-
-    if race.actions.contains(&action.0) {
-        tracing::trace!("found action {:?} on race", action);
-
-        queue.push(Event::Action(ActionEvent {
-            entity: entity_id,
-            invoker: entity_id,
-            action,
-        }));
-        return;
-    }
-
-    for (id, _) in entity.components.iter() {
+    for (id, _) in components.iter() {
         let Some(component) = modules
             .get(id.module)
             .map(|module| module.records.get(id.record))
@@ -312,21 +282,21 @@ fn queue_action(
             .map(|record| record.body.as_component())
             .flatten()
         else {
-            return;
+            continue;
         };
 
         if component.actions.contains(&action.0) {
             tracing::trace!("found action {:?} on component", action);
 
             queue.push(Event::Action(ActionEvent {
-                entity: entity_id,
-                invoker: entity_id,
+                entity,
+                invoker: entity,
                 action,
             }));
         }
     }
 
-    let Some(inventory) = world.inventory(entity_id) else {
+    let Some(inventory) = world.inventory(entity) else {
         return;
     };
 
@@ -347,8 +317,8 @@ fn queue_action(
             tracing::trace!("found action {:?} on item", action);
 
             queue.push(Event::Action(ActionEvent {
-                entity: entity_id,
-                invoker: entity_id,
+                entity: entity,
+                invoker: entity,
                 action,
             }));
             return;
@@ -369,8 +339,8 @@ fn queue_action(
                 tracing::trace!("found action {:?} on item component", action);
 
                 queue.push(Event::Action(ActionEvent {
-                    entity: entity_id,
-                    invoker: entity_id,
+                    entity: entity,
+                    invoker: entity,
                     action,
                 }));
                 return;
@@ -378,7 +348,7 @@ fn queue_action(
         }
     }
 
-    tracing::trace!("action {:?} unavailable for entity {:?}", action, entity_id);
+    tracing::trace!("action {:?} unavailable for entity {:?}", action, entity);
 }
 
 fn update_snapshots(

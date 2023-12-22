@@ -42,8 +42,6 @@ pub enum Event {
     Collision(CollisionEvent),
     Equip(EquipEvent),
     Unequip(UnequipEvent),
-    CellLoad(CellLoadEvent),
-    CellUnload(CellUnloadEvent),
 }
 
 impl Event {
@@ -53,8 +51,6 @@ impl Event {
             Self::Collision(_) => EventKind::Collision,
             Self::Equip(_) => EventKind::Equip,
             Self::Unequip(_) => EventKind::Unequip,
-            Self::CellLoad(_) => EventKind::CellLoad,
-            Self::CellUnload(_) => EventKind::CellUnload,
         }
     }
 }
@@ -119,29 +115,5 @@ impl From<UnequipEvent> for Event {
     #[inline]
     fn from(event: UnequipEvent) -> Self {
         Self::Unequip(event)
-    }
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct CellLoadEvent {
-    pub cell: CellId,
-}
-
-impl From<CellLoadEvent> for Event {
-    #[inline]
-    fn from(event: CellLoadEvent) -> Self {
-        Self::CellLoad(event)
-    }
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct CellUnloadEvent {
-    pub cell: CellId,
-}
-
-impl From<CellUnloadEvent> for Event {
-    #[inline]
-    fn from(event: CellUnloadEvent) -> Self {
-        Self::CellUnload(event)
     }
 }

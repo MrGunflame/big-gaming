@@ -16,7 +16,7 @@ use game_common::world::World;
 use game_core::hierarchy::TransformHierarchy;
 use game_core::time::Time;
 use game_render::Renderer;
-use game_script::executor::ScriptExecutor;
+use game_script::Executor;
 use game_tasks::TaskPool;
 use game_ui::UiState;
 use game_window::cursor::Cursor;
@@ -61,7 +61,6 @@ fn main() {
 
     let cursor = wm.cursor().clone();
 
-    let executor = ScriptExecutor::new(res.server, res.record_targets);
     let inputs = Inputs::from_file("inputs");
 
     if let Some(addr) = args.connect {
@@ -70,7 +69,7 @@ fn main() {
             addr,
             res.modules,
             &cursor,
-            executor,
+            res.executor,
             inputs,
         ));
     }

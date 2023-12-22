@@ -1,25 +1,24 @@
 //! Game (dynamic) scripting
 
-use std::fmt::Debug;
+use std::collections::HashMap;
+use std::fmt::{self, Debug, Formatter};
 use std::path::Path;
 
 use dependency::Dependencies;
 use effect::Effects;
 use game_common::components::inventory::Inventory;
 use game_common::entity::EntityId;
-use game_common::events::EventQueue;
+use game_common::events::{Event, EventQueue};
 use game_common::record::RecordReference;
 use game_common::world::world::{WorldViewMut, WorldViewRef};
 use game_common::world::World;
 use game_data::record::Record;
-use instance::ScriptInstance;
+use game_tracing::trace_span;
+use instance::{InstancePool, State};
 use script::Script;
-use slotmap::{DefaultKey, SlotMap};
 use wasmtime::{Config, Engine, WasmBacktraceDetails};
 
 pub mod effect;
-pub mod executor;
-pub mod scripts;
 
 mod abi;
 mod builtin;
@@ -28,20 +27,26 @@ mod events;
 mod instance;
 mod script;
 
-pub struct ScriptServer {
-    scripts: SlotMap<DefaultKey, Script>,
+pub struct Executor {
     engine: Engine,
+    scripts: Vec<Script>,
+    /// Maps which components fire which scripts.
+    targets: HashMap<RecordReference, Vec<Handle>>,
+    instances: InstancePool,
 }
 
-impl ScriptServer {
+impl Executor {
     pub fn new() -> Self {
         let mut config = Config::new();
         config.wasm_backtrace(true);
         config.wasm_backtrace_details(WasmBacktraceDetails::Enable);
+        let engine = Engine::new(&config).unwrap();
 
         Self {
-            scripts: SlotMap::new(),
-            engine: Engine::new(&config).unwrap(),
+            instances: InstancePool::new(&engine),
+            engine,
+            targets: HashMap::new(),
+            scripts: Vec::new(),
         }
     }
 
@@ -50,56 +55,115 @@ impl ScriptServer {
         P: AsRef<Path>,
     {
         let script = Script::load(path.as_ref(), &self.engine)?;
-        let id = self.scripts.insert(script);
-        Ok(Handle { id })
+        let index = self.scripts.len();
+        self.scripts.push(script);
+        Ok(Handle(index))
     }
 
-    pub fn get<'a>(
-        &self,
-        handle: &Handle,
-        world: &'a dyn WorldProvider,
-        physics_pipeline: &'a game_physics::Pipeline,
-        effects: &'a mut Effects,
-        dependencies: &'a mut Dependencies,
-        records: &'a dyn RecordProvider,
-    ) -> Option<ScriptInstance<'a>> {
-        let script = self.scripts.get(handle.id)?;
+    pub fn register_script(&mut self, component: RecordReference, script: Handle) {
+        let entry = self.targets.entry(component).or_default();
 
-        Some(ScriptInstance::new(
-            &self.engine,
-            &script.module,
-            script.events,
-            world,
-            physics_pipeline,
-            effects,
-            dependencies,
-            records,
-        ))
+        // Registering a script on a component multiple times makes no
+        // difference in execution behavior and is likely a mistake.
+        debug_assert!(!entry.contains(&script));
+
+        entry.push(script);
+    }
+
+    pub fn update(&mut self, ctx: Context<'_>) -> Effects {
+        let _span = trace_span!("Executor::update").entered();
+
+        let mut invocations = Vec::new();
+
+        while let Some(event) = ctx.events.pop() {
+            let handles = match event {
+                // An action is a special case. The script is not registered on
+                // the component, but on the action record directly. We should only
+                // call script for the exact triggered action, not any other.
+                // FIXME: What if the action is not registered. Should we really
+                // handle that case?
+                Event::Action(event) => self.targets.get(&event.action.0).unwrap().clone(),
+                Event::Collision(event) => {
+                    self.fetch_components_scripts(event.entity, ctx.world.world())
+                }
+                Event::Equip(event) => {
+                    self.fetch_components_scripts(event.entity, ctx.world.world())
+                }
+                Event::Unequip(event) => {
+                    self.fetch_components_scripts(event.entity, ctx.world.world())
+                }
+            };
+
+            for handle in handles {
+                invocations.push(Invocation {
+                    event: event.clone(),
+                    script: handle,
+                });
+            }
+        }
+
+        let mut effects = Effects::default();
+
+        for invocation in invocations {
+            let mut dependencies = Dependencies::default();
+
+            let state = State::new(
+                ctx.world,
+                ctx.physics,
+                &mut effects,
+                &mut dependencies,
+                ctx.records,
+            );
+            let script = &self.scripts[invocation.script.0];
+
+            let mut runnable = self.instances.get(&self.engine, &script.module, state);
+
+            if let Err(err) = runnable.run(&invocation.event) {
+                tracing::error!("Error running script: {}", err);
+            }
+        }
+
+        effects
+    }
+
+    fn fetch_components_scripts(&self, entity: EntityId, world: &World) -> Vec<Handle> {
+        let components = world.components(entity);
+
+        let mut scripts = Vec::new();
+        for (id, _) in components.iter() {
+            if let Some(handles) = self.targets.get(&id) {
+                scripts.extend(handles);
+            }
+        }
+
+        scripts.dedup();
+        scripts
     }
 }
 
-impl Default for ScriptServer {
-    fn default() -> Self {
-        Self::new()
+impl Debug for Executor {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Executor")
+            .field("scripts", &self.scripts)
+            .field("targets", &self.targets)
+            .field("instances", &self.instances)
+            .finish_non_exhaustive()
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct Handle {
-    id: DefaultKey,
+struct Invocation {
+    event: Event,
+    script: Handle,
 }
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct Handle(usize);
 
 pub struct Context<'a> {
-    pub view: &'a dyn WorldProvider,
-    pub physics_pipeline: &'a game_physics::Pipeline,
+    pub world: &'a dyn WorldProvider,
+    pub physics: &'a game_physics::Pipeline,
     pub events: &'a mut EventQueue,
     pub records: &'a dyn RecordProvider,
-}
-
-impl Debug for ScriptServer {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ScriptServer").finish_non_exhaustive()
-    }
 }
 
 pub trait WorldProvider {

@@ -5,8 +5,7 @@ use game_common::record::{RecordId, RecordReference};
 use game_data::loader::FileLoader;
 use game_data::record::{Record, RecordBody, RecordKind};
 use game_data::DataBuffer;
-use game_script::scripts::RecordTargets;
-use game_script::{RecordProvider, ScriptServer};
+use game_script::{Executor, RecordProvider};
 use thiserror::Error;
 use tokio::runtime::Runtime;
 
@@ -73,14 +72,12 @@ pub struct ModuleData {
 
 pub struct LoadResult {
     pub modules: Modules,
-    pub server: ScriptServer,
-    pub record_targets: RecordTargets,
+    pub executor: Executor,
 }
 
 pub fn load_modules() -> LoadResult {
     let mut modules = Modules::new();
-    let mut server = ScriptServer::new();
-    let mut record_targets = RecordTargets::default();
+    let mut executor = Executor::new();
 
     let rt = Runtime::new().unwrap();
 
@@ -113,7 +110,7 @@ pub fn load_modules() -> LoadResult {
             match loader.load(data) {
                 Ok(mods) => {
                     for data in mods {
-                        load_module(data, &mut modules, &mut server, &mut record_targets);
+                        load_module(data, &mut modules, &mut executor);
                     }
                 }
                 Err(Error::Duplicate(id)) => {
@@ -135,19 +132,10 @@ pub fn load_modules() -> LoadResult {
 
     tracing::info!("loaded {} modules", modules.len());
 
-    LoadResult {
-        modules,
-        server,
-        record_targets,
-    }
+    LoadResult { modules, executor }
 }
 
-fn load_module(
-    data: DataBuffer,
-    modules: &mut Modules,
-    server: &mut ScriptServer,
-    record_targets: &mut RecordTargets,
-) {
+fn load_module(data: DataBuffer, modules: &mut Modules, executor: &mut Executor) {
     let mut records = Records::new();
     for record in &data.records {
         // In case a linked asset is not present we still want to load
@@ -155,7 +143,7 @@ fn load_module(
         records.insert(record.clone());
 
         for script in &record.scripts {
-            let handle = match server.load(script.as_ref()) {
+            let handle = match executor.load(script.as_ref()) {
                 Ok(script) => script,
                 Err(err) => {
                     tracing::error!(
@@ -169,7 +157,7 @@ fn load_module(
                 }
             };
 
-            record_targets.push(
+            executor.register_script(
                 RecordReference {
                     module: data.header.module.id,
                     record: record.id,
