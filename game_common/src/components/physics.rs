@@ -60,8 +60,7 @@ impl AsComponent for Collider {
     const ID: crate::record::RecordReference = super::COLLIDER;
 
     fn from_bytes(buf: &[u8]) -> Self {
-        let [friction, restitution, hx, hy, hz] =
-            bytemuck::pod_read_unaligned::<[f32; 5]>(&buf[0..4]);
+        let [friction, restitution, hx, hy, hz] = bytemuck::pod_read_unaligned::<[f32; 5]>(&buf);
 
         Self {
             friction,

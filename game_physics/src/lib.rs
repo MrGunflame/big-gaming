@@ -184,8 +184,12 @@ impl Pipeline {
                     rotation: rotation(transform.rotation),
                 });
 
-                let collider_handle = self.colliders.insert(builder);
-                self.collider_handles.insert(entity, collider_handle);
+                let handle = self.colliders.insert(builder);
+                self.collider_handles.insert(entity, handle);
+
+                let body = self.body_handles.get(entity).unwrap();
+                self.colliders
+                    .set_parent(handle, Some(body), &mut self.bodies);
 
                 continue;
             };
@@ -203,6 +207,10 @@ impl Pipeline {
             }
 
             // TODO: Handle updated collider parameters.
+
+            let body = self.body_handles.get(entity).unwrap();
+            self.colliders
+                .set_parent(handle, Some(body), &mut self.bodies);
 
             despawned_entities.remove(entity);
         }
@@ -364,5 +372,49 @@ fn extract_actor_rotation(input: Quat) -> Quat {
 impl Debug for Pipeline {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Pipeline").finish_non_exhaustive()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use game_common::components::physics::{
+        Collider, ColliderShape, Cuboid, RigidBody, RigidBodyKind,
+    };
+    use game_common::components::transform::Transform;
+    use game_common::events::EventQueue;
+    use game_common::world::World;
+
+    use crate::Pipeline;
+
+    #[test]
+    fn dynamic_rigid_body_with_collider() {
+        let mut world = World::new();
+        let entity = world.spawn();
+        world.insert_typed(
+            entity,
+            RigidBody {
+                kind: RigidBodyKind::Dynamic,
+            },
+        );
+        world.insert_typed(
+            entity,
+            Collider {
+                friction: 1.0,
+                restitution: 1.0,
+                shape: ColliderShape::Cuboid(Cuboid {
+                    hx: 1.0,
+                    hy: 1.0,
+                    hz: 1.0,
+                }),
+            },
+        );
+        world.insert_typed(entity, Transform::IDENTITY);
+
+        let mut events = EventQueue::new();
+        let mut pipeline = Pipeline::new();
+        pipeline.step(&mut world, &mut events);
+
+        let transform = world.get_typed::<Transform>(entity);
+        assert_ne!(transform, Transform::IDENTITY);
     }
 }
