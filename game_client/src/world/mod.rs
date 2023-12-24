@@ -67,7 +67,7 @@ pub struct GameWorldState {
     actions: ActiveActions,
     inputs: Inputs,
     inventory_proxy: Option<InventoryProxy>,
-    inventory_actions: Vec<ActionId>,
+    registered_actions: Vec<ActionId>,
     main_menu: Option<NodeId>,
     cursor_pinned: CursorPinState,
     host: EntityId,
@@ -102,7 +102,7 @@ impl GameWorldState {
             actions: ActiveActions::new(),
             inputs,
             inventory_proxy: None,
-            inventory_actions: vec![],
+            registered_actions: vec![],
             host: EntityId::dangling(),
             main_menu: None,
             cursor_pinned,
@@ -194,12 +194,12 @@ impl GameWorldState {
                 Command::ComponentRemove { entity, component } => {}
                 Command::InventoryItemEquip { entity, slot } => {
                     if entity == self.host {
-                        self.update_inventory_actions();
+                        self.update_host_actions();
                     }
                 }
                 Command::InventoryItemUnequip { entity, slot } => {
                     if entity == self.host {
-                        self.update_inventory_actions();
+                        self.update_host_actions();
                     }
                 }
                 _ => (),
@@ -433,11 +433,29 @@ impl GameWorldState {
 
         self.host = id;
 
-        for (id, _) in self.world.state().world.components(id).clone().iter() {
+        // Register all actions from equipped items.
+        self.update_host_actions();
+    }
+
+    fn update_host_actions(&mut self) {
+        // This is a quick-and-dirty implementation that throws out all previous
+        // actions and registers all equipped all items once again
+        // every time the inventory is updated.
+
+        // Unregister all actions.
+        self.actions.clear();
+
+        for (id, _) in self
+            .world
+            .state()
+            .world
+            .components(self.host)
+            .clone()
+            .iter()
+        {
             self.register_record_action(id);
         }
 
-        // Register all actions from equipped items.
         if let Some(inventory) = self.world.state().inventories.get(self.host) {
             for (_, stack) in inventory.iter() {
                 if !stack.item.equipped {
@@ -449,7 +467,6 @@ impl GameWorldState {
                 let item = record.body.clone().unwrap_item();
 
                 for action in item.actions {
-                    dbg!(action);
                     let module = self.modules.get(action.module).unwrap();
                     let record = module.records.get(action.record).unwrap();
 
@@ -458,6 +475,8 @@ impl GameWorldState {
                         record,
                         self.get_key_for_action(action.module, record),
                     );
+
+                    self.registered_actions.push(ActionId(action));
                 }
 
                 for (id, _) in stack.item.components.iter() {
@@ -474,34 +493,9 @@ impl GameWorldState {
                             record,
                             self.get_key_for_action(action.module, record),
                         );
+
+                        self.registered_actions.push(ActionId(action));
                     }
-                }
-            }
-        }
-    }
-
-    fn update_inventory_actions(&mut self) {
-        // This is a quick-and-dirty implementation that throws out all previous
-        // inventory item actions and registers all equipped all items once again
-        // every time the inventory is updated.
-
-        // Unregister all actions.
-        for id in self.inventory_actions.drain(..) {
-            let module = self.modules.get(id.0.module).unwrap();
-            let record = module.records.get(id.0.record).unwrap();
-            self.actions.unregister(id.0.module, record);
-        }
-
-        if let Some(inventory) = self.world.state().inventories.get(self.host) {
-            for (_, stack) in inventory.clone().iter() {
-                if !stack.item.equipped {
-                    continue;
-                }
-
-                self.register_record_action(stack.item.id.0);
-
-                for (id, _) in stack.item.components.iter() {
-                    self.register_record_action(id);
                 }
             }
         }
@@ -534,7 +528,7 @@ impl GameWorldState {
                 self.get_key_for_action(action.module, record),
             );
 
-            self.inventory_actions.push(ActionId(*action));
+            self.registered_actions.push(ActionId(*action));
         }
     }
 
