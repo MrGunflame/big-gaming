@@ -679,12 +679,6 @@ pub struct EntityRotate {
     pub rotation: Quat,
 }
 
-/// Updates the health of an entity.
-#[derive(Copy, Clone, Debug, Encode, Decode)]
-pub struct EntityHealth {
-    pub entity: ServerEntity,
-}
-
 #[derive(Copy, Clone, Debug, Encode, Decode)]
 pub struct EntityAction {
     pub entity: ServerEntity,
@@ -973,7 +967,6 @@ pub enum Frame {
     EntityDestroy(EntityDestroy),
     EntityTranslate(EntityTranslate),
     EntityRotate(EntityRotate),
-    EntityHealth(EntityHealth),
     EntityAction(EntityAction),
     EntityComponentAdd(ComponentAdd),
     EntityComponentRemove(ComponentRemove),
@@ -990,7 +983,6 @@ impl Frame {
             Self::EntityDestroy(frame) => frame.entity,
             Self::EntityTranslate(frame) => frame.entity,
             Self::EntityRotate(frame) => frame.entity,
-            Self::EntityHealth(frame) => frame.entity,
             Self::EntityAction(frame) => frame.entity,
             Self::EntityComponentAdd(frame) => frame.entity,
             Self::EntityComponentRemove(frame) => frame.entity,
@@ -1021,10 +1013,6 @@ impl Encode for Frame {
             }
             Self::EntityRotate(frame) => {
                 FrameType::ENTITY_ROTATE.encode(&mut buf)?;
-                frame.encode(buf)
-            }
-            Self::EntityHealth(frame) => {
-                FrameType::ENTITY_HEALTH.encode(&mut buf)?;
                 frame.encode(buf)
             }
             Self::EntityAction(frame) => {
@@ -1084,10 +1072,6 @@ impl Decode for Frame {
             FrameType::ENTITY_ROTATE => {
                 let frame = EntityRotate::decode(buf)?;
                 Ok(Self::EntityRotate(frame))
-            }
-            FrameType::ENTITY_HEALTH => {
-                let frame = EntityHealth::decode(buf)?;
-                Ok(Self::EntityHealth(frame))
             }
             FrameType::ENTITY_ACTION => {
                 let frame = EntityAction::decode(buf)?;
@@ -1300,9 +1284,6 @@ impl FrameType {
     pub const PLAYER_JOIN: Self = Self(6);
     pub const PLAYER_LEAVE: Self = Self(7);
 
-    /// The `FrameType` for the [`EntityHealth`] frame.
-    pub const ENTITY_HEALTH: Self = Self(0x10);
-
     pub const ENTITY_ACTION: Self = Self(0x11);
 
     pub const TRIGGER_ACTION: Self = Self(0x20);
@@ -1327,7 +1308,6 @@ impl TryFrom<u16> for FrameType {
             Self::ENTITY_DESTROY => Ok(Self::ENTITY_DESTROY),
             Self::ENTITY_TRANSLATE => Ok(Self::ENTITY_TRANSLATE),
             Self::ENTITY_ROTATE => Ok(Self::ENTITY_ROTATE),
-            Self::ENTITY_HEALTH => Ok(Self::ENTITY_HEALTH),
             Self::ENTITY_ACTION => Ok(Self::ENTITY_ACTION),
             Self::ENTITY_COMPONENT_ADD => Ok(Self::ENTITY_COMPONENT_ADD),
             Self::ENTITY_COMPONENT_REMOVE => Ok(Self::ENTITY_COMPONENT_REMOVE),
