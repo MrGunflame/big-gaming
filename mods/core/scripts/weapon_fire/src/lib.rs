@@ -3,7 +3,9 @@
 extern crate alloc;
 
 use alloc::string::ToString;
-use game_wasm::components::builtin::{MeshInstance, Transform};
+use game_wasm::components::builtin::{
+    Collider, ColliderShape, Cuboid, MeshInstance, RigidBody, RigidBodyKind, Transform,
+};
 use game_wasm::entity::EntityId;
 use game_wasm::events::on_action;
 use game_wasm::inventory::Inventory;
@@ -64,6 +66,18 @@ fn build_projectile(translation: Vec3, rotation: Quat, projectile: RecordReferen
     });
     entity.insert(ProjectileProperties { damage });
     entity.insert(MeshInstance {
-        path: "assets/box.glb".to_string(),
+        path: "assets/bullet.glb".to_string(),
+    });
+    entity.insert(RigidBody {
+        kind: RigidBodyKind::Dynamic,
+    });
+    entity.insert(Collider {
+        friction: 1.0,
+        restitution: 1.0,
+        shape: ColliderShape::Cuboid(Cuboid {
+            hx: 1.0,
+            hy: 1.0,
+            hz: 1.0,
+        }),
     });
 }

@@ -128,3 +128,87 @@ pub struct Color(pub [f32; 4]);
 impl Color {
     pub const WHITE: Self = Self([1.0, 1.0, 1.0, 1.0]);
 }
+
+pub struct RigidBody {
+    pub kind: RigidBodyKind,
+}
+
+impl AsComponent for RigidBody {
+    const ID: RecordReference = RIGID_BODY;
+
+    fn from_bytes(buf: &[u8]) -> Self {
+        let kind = match buf[0] {
+            0 => RigidBodyKind::Fixed,
+            1 => RigidBodyKind::Dynamic,
+            2 => RigidBodyKind::Kinematic,
+            _ => todo!(),
+        };
+
+        Self { kind }
+    }
+
+    fn to_bytes(&self) -> Vec<u8> {
+        let kind = match self.kind {
+            RigidBodyKind::Fixed => 0,
+            RigidBodyKind::Dynamic => 1,
+            RigidBodyKind::Kinematic => 2,
+        };
+
+        alloc::vec![kind]
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum RigidBodyKind {
+    Fixed,
+    Dynamic,
+    Kinematic,
+}
+
+#[derive(Clone, Debug)]
+pub struct Collider {
+    pub friction: f32,
+    pub restitution: f32,
+    pub shape: ColliderShape,
+}
+
+#[derive(Clone, Debug)]
+pub enum ColliderShape {
+    Cuboid(Cuboid),
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct Cuboid {
+    pub hx: f32,
+    pub hy: f32,
+    pub hz: f32,
+}
+
+impl AsComponent for Collider {
+    const ID: RecordReference = COLLIDER;
+
+    fn from_bytes(buf: &[u8]) -> Self {
+        let [friction, restitution, hx, hy, hz] = bytemuck::pod_read_unaligned::<[f32; 5]>(buf);
+        Self {
+            friction,
+            restitution,
+            shape: ColliderShape::Cuboid(Cuboid { hx, hy, hz }),
+        }
+    }
+
+    fn to_bytes(&self) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        bytes.extend(bytemuck::bytes_of(&self.friction));
+        bytes.extend(bytemuck::bytes_of(&self.restitution));
+
+        match self.shape {
+            ColliderShape::Cuboid(cuboid) => {
+                bytes.extend(bytemuck::bytes_of(&cuboid.hx));
+                bytes.extend(bytemuck::bytes_of(&cuboid.hy));
+                bytes.extend(bytemuck::bytes_of(&cuboid.hz));
+            }
+        }
+
+        bytes
+    }
+}
