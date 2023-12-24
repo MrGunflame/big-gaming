@@ -1,27 +1,18 @@
 use game_wasm::entity::EntityId;
 use game_wasm::events::on_collision;
 use game_wasm::world::Entity;
-use shared::components::{HEALTH, PROJECTILE_PROPERTIES};
 use shared::{Health, ProjectileProperties};
 
-// #[on_collision]
-// fn on_collision(entity: EntityId, other: EntityId) {
-//     let entity = Entity::get(entity).unwrap();
+#[on_collision]
+fn on_collision(entity: EntityId, other: EntityId) {
+    let entity = Entity::new(entity);
 
-//     let props = entity
-//         .components()
-//         .get(PROJECTILE_PROPERTIES)
-//         .unwrap()
-//         .read::<ProjectileProperties>();
-//     entity.despawn().unwrap();
+    let props = entity.get::<ProjectileProperties>();
+    entity.despawn();
 
-//     let target = Entity::get(other).unwrap();
+    let target = Entity::new(other);
 
-//     let Ok(mut health) = target.components().get(HEALTH) else {
-//         return;
-//     };
-
-//     health.update::<Health, _, _>(|health| health.0 -= props.damage);
-
-//     target.components().insert(HEALTH, &health).unwrap();
-// }
+    let mut health = target.get::<Health>();
+    health.0 -= props.damage;
+    target.insert(health);
+}

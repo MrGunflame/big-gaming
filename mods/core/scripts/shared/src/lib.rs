@@ -133,10 +133,36 @@ impl Ammo {
 #[repr(transparent)]
 pub struct Health(pub f32);
 
+impl AsComponent for Health {
+    const ID: RecordReference = components::HEALTH;
+
+    fn from_bytes(buf: &[u8]) -> Self {
+        let v = bytemuck::pod_read_unaligned(buf);
+        Self(v)
+    }
+
+    fn to_bytes(&self) -> alloc::vec::Vec<u8> {
+        bytemuck::bytes_of(self).to_vec()
+    }
+}
+
 #[derive(Copy, Clone, Debug, Zeroable, Pod)]
 #[repr(C)]
 pub struct ProjectileProperties {
     pub damage: f32,
+}
+
+impl AsComponent for ProjectileProperties {
+    const ID: RecordReference = components::PROJECTILE_PROPERTIES;
+
+    fn from_bytes(buf: &[u8]) -> Self {
+        let damage = bytemuck::pod_read_unaligned(buf);
+        Self { damage }
+    }
+
+    fn to_bytes(&self) -> alloc::vec::Vec<u8> {
+        bytemuck::bytes_of(self).to_vec()
+    }
 }
 
 pub mod components {

@@ -4,7 +4,7 @@ use crate::components::AsComponent;
 use crate::entity::EntityId;
 use crate::raw::world::{
     world_entity_component_get, world_entity_component_insert, world_entity_component_len,
-    world_entity_component_remove,
+    world_entity_component_remove, world_entity_despawn,
 };
 use crate::raw::{RESULT_NO_COMPONENT, RESULT_NO_ENTITY, RESULT_OK};
 pub use crate::record::RecordReference;
@@ -92,6 +92,17 @@ impl Entity {
             }
             RESULT_NO_COMPONENT => {
                 panic!("no component: {:?}", component_id);
+            }
+            _ => unsafe { unreachable_unchecked() },
+        }
+    }
+
+    pub fn despawn(self) {
+        let entity_id = self.0.into_raw();
+        match unsafe { world_entity_despawn(entity_id) } {
+            RESULT_OK => (),
+            RESULT_NO_ENTITY => {
+                panic!("no entity: {:?}", self.0);
             }
             _ => unsafe { unreachable_unchecked() },
         }

@@ -6,6 +6,7 @@ pub mod script;
 pub mod state;
 
 use std::net::ToSocketAddrs;
+use std::sync::Arc;
 use std::time::Duration;
 
 use ahash::HashMap;
@@ -448,6 +449,7 @@ impl GameWorldState {
                 let item = record.body.clone().unwrap_item();
 
                 for action in item.actions {
+                    dbg!(action);
                     let module = self.modules.get(action.module).unwrap();
                     let record = module.records.get(action.record).unwrap();
 
@@ -456,6 +458,23 @@ impl GameWorldState {
                         record,
                         self.get_key_for_action(action.module, record),
                     );
+                }
+
+                for (id, _) in stack.item.components.iter() {
+                    let module = self.modules.get(id.module).unwrap();
+                    let record = module.records.get(id.record).unwrap();
+                    let component = record.body.clone().unwrap_componen();
+
+                    for action in component.actions {
+                        let module = self.modules.get(action.module).unwrap();
+                        let record = module.records.get(action.record).unwrap();
+
+                        self.actions.register(
+                            action.module,
+                            record,
+                            self.get_key_for_action(action.module, record),
+                        );
+                    }
                 }
             }
         }
@@ -520,6 +539,7 @@ impl GameWorldState {
     }
 
     fn get_key_for_action(&self, module: ModuleId, record: &Record) -> Key {
+        dbg!(record);
         let input = self
             .inputs
             .inputs
