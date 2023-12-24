@@ -1,12 +1,15 @@
 #![no_std]
 
-use game_wasm::components::Component;
+extern crate alloc;
+
+use alloc::string::ToString;
+use game_wasm::components::builtin::{MeshInstance, Transform};
 use game_wasm::entity::EntityId;
 use game_wasm::events::on_action;
 use game_wasm::inventory::Inventory;
 use game_wasm::math::Quat;
 use game_wasm::world::{Entity, RecordReference};
-use shared::components::{AMMO, GUN_PROPERTIES, PROJECTILE_PROPERTIES};
+use shared::components::{AMMO, GUN_PROPERTIES};
 use shared::{panic_handler, Ammo, GunProperties, ProjectileProperties, Vec3};
 
 panic_handler!();
@@ -15,6 +18,8 @@ panic_handler!();
 fn on_action(invoker: EntityId) {
     let actor = Entity::new(invoker);
     let inventory = Inventory::new(invoker);
+
+    let transform = actor.get::<Transform>();
 
     for stack in inventory
         .iter()
@@ -36,28 +41,29 @@ fn on_action(invoker: EntityId) {
         if has_ammo {
             stack.components().insert(AMMO, &ammo).unwrap();
 
-            // let translation =
-            //     actor.translation() + Vec3::from_array(properties.projectile.translation);
-            // let rotation = actor.rotation() * Quat::from_array(properties.projectile.rotation);
+            let translation =
+                transform.translation + Vec3::from_array(properties.projectile.translation);
+            let rotation = transform.rotation * Quat::from_array(properties.projectile.rotation);
 
-            // build_projectile(
-            //     translation,
-            //     rotation,
-            //     properties.projectile.id,
-            //     properties.damage,
-            // );
+            build_projectile(
+                translation,
+                rotation,
+                properties.projectile.id,
+                properties.damage,
+            );
         }
     }
 }
 
-// fn build_projectile(translation: Vec3, rotation: Quat, projectile: RecordReference, damage: f32) {
-//     let mut props = Component::default();
-//     props.write(ProjectileProperties { damage });
-
-//     EntityBuilder::from_record(projectile)
-//         .translation(translation)
-//         .rotation(rotation)
-//         .component(PROJECTILE_PROPERTIES, props)
-//         .spawn()
-//         .unwrap();
-// }
+fn build_projectile(translation: Vec3, rotation: Quat, projectile: RecordReference, damage: f32) {
+    let entity = Entity::spawn();
+    entity.insert(Transform {
+        translation,
+        rotation,
+        scale: Vec3::splat(1.0),
+    });
+    entity.insert(ProjectileProperties { damage });
+    entity.insert(MeshInstance {
+        path: "assets/box.glb".to_string(),
+    });
+}

@@ -131,6 +131,9 @@ impl<'a> State<'a> {
 impl<'a> State<'a> {
     pub fn spawn(&mut self) -> EntityId {
         let id = self.allocate_temporary_entity_id();
+        self.new_world.spawn_with_id(id);
+
+        self.effects.push(Effect::EntitySpawn(id));
         id
     }
 

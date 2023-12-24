@@ -272,6 +272,8 @@ fn queue_action(
     action: ActionId,
     queue: &mut EventQueue,
 ) {
+    tracing::info!("{:?} wants to run action {:?}", entity, action);
+
     let components = world.world.components(entity);
 
     for (id, _) in components.iter() {

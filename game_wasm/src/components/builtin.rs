@@ -1,3 +1,5 @@
+use alloc::borrow::ToOwned;
+use alloc::string::String;
 use alloc::vec::Vec;
 use bytemuck::{Pod, Zeroable};
 use glam::{Quat, Vec3};
@@ -50,6 +52,24 @@ impl Transform {
 impl Default for Transform {
     fn default() -> Self {
         Self::IDENTITY
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct MeshInstance {
+    pub path: String,
+}
+
+impl AsComponent for MeshInstance {
+    const ID: RecordReference = MESH_INSTANCE;
+
+    fn from_bytes(buf: &[u8]) -> Self {
+        let s = core::str::from_utf8(buf).unwrap();
+        Self { path: s.to_owned() }
+    }
+
+    fn to_bytes(&self) -> Vec<u8> {
+        self.path.as_bytes().to_owned()
     }
 }
 
