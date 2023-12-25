@@ -1,12 +1,11 @@
-use proc_macro::{Punct, TokenStream};
+use proc_macro::TokenStream;
 use proc_macro2::{Ident, Span, TokenStream as TokenStream2};
 use quote::{quote, ToTokens};
 use syn::punctuated::Punctuated;
-use syn::token::{As, Colon, Const, Gt, Lt, PathSep};
+use syn::token::{Gt, Lt, PathSep};
 use syn::{
-    parse_macro_input, AngleBracketedGenericArguments, ConstParam, Data, DeriveInput, Field,
-    Fields, GenericParam, Generics, Index, Path, PathArguments, PathSegment, QSelf, Token,
-    TraitBound, TraitBoundModifier, Type, TypeParam, TypeParamBound, TypePath,
+    parse_macro_input, Data, DeriveInput, Field, Fields, GenericParam, Generics, Index, Path,
+    PathArguments, PathSegment, TraitBound, TraitBoundModifier, TypeParam, TypeParamBound,
 };
 
 pub fn encode(input: TokenStream) -> TokenStream {
@@ -257,7 +256,14 @@ fn expand_generic_idents(generics: &Generics) -> TokenStream2 {
                 default: None,
             }),
             GenericParam::Lifetime(_) => panic!("lifetimes are not supported"),
-            _ => todo!(),
+            GenericParam::Const(param) => GenericParam::Type(TypeParam {
+                attrs: Vec::new(),
+                ident: param.ident.clone(),
+                colon_token: None,
+                bounds: Punctuated::new(),
+                eq_token: None,
+                default: None,
+            }),
         })
         .collect();
 
