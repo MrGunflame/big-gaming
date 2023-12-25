@@ -1,5 +1,5 @@
-use game_common::components::rendering::{Color, MeshInstance, PointLight};
-use game_common::components::transform::Transform;
+use game_common::components::Transform;
+use game_common::components::{Color, MeshInstance, PointLight};
 use game_common::world::World;
 use game_render::camera::{Camera, Projection, RenderTarget};
 use game_render::entities::CameraId;

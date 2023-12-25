@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use game_common::collections::arena::{self, Arena};
-use game_common::components::transform::Transform;
+use game_common::components::Transform;
 use game_render::Renderer;
 use game_tasks::TaskPool;
 use game_tracing::trace_span;

@@ -1,4 +1,4 @@
-use game_common::components::transform::Transform;
+use game_common::components::Transform;
 use glam::Vec3;
 use rapier3d::prelude::{
     ColliderHandle, ColliderSet, QueryFilter, QueryPipeline, RigidBodyHandle, RigidBodySet,

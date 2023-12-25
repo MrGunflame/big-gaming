@@ -314,7 +314,7 @@ pub trait Encode {
 }
 
 pub trait Decode: Sized {
-    type Error;
+    type Error: core::fmt::Debug;
 
     fn decode<B>(buf: B) -> Result<Self, Self::Error>
     where

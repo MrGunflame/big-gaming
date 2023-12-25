@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use game_common::collections::arena::{self, Arena};
 use game_common::collections::vec_map::VecMap;
-use game_common::components::transform::Transform;
+use game_common::components::Transform;
 use tracing::trace_span;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -274,7 +274,7 @@ impl TransformHierarchy {
 
 #[cfg(test)]
 mod tests {
-    use game_common::components::transform::Transform;
+    use game_common::components::Transform;
     use glam::Vec3;
 
     use super::TransformHierarchy;

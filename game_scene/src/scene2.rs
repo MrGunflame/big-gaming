@@ -2,8 +2,7 @@ use std::collections::HashMap;
 
 use game_common::collections::arena::{self, Arena};
 use game_common::collections::vec_map::VecMap;
-use game_common::components::rendering::Color;
-use game_common::components::transform::Transform;
+use game_common::components::{Color, Transform};
 use game_render::entities::ObjectId;
 use game_render::pbr::material::MaterialId;
 use game_render::pbr::mesh::MeshId;

@@ -1,4 +1,4 @@
-use game_common::components::transform::Transform;
+use game_common::components::Transform;
 use game_input::mouse::MouseMotion;
 use glam::{Quat, Vec3};
 

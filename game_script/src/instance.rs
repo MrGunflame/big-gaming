@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::fmt::{self, Debug, Formatter};
 
-use game_common::components::components::Component;
+use game_common::components::components::RawComponent;
 use game_common::components::inventory::{Inventory, InventorySlotId};
 use game_common::components::items::ItemStack;
 use game_common::entity::EntityId;
@@ -162,7 +162,7 @@ impl<'a> State<'a> {
         &mut self,
         entity_id: EntityId,
         component: RecordReference,
-    ) -> Option<&Component> {
+    ) -> Option<&RawComponent> {
         self.dependencies
             .push(Dependency::EntityComponent(entity_id, component));
         self.new_world.get(entity_id, component)
@@ -172,7 +172,7 @@ impl<'a> State<'a> {
         &mut self,
         entity_id: EntityId,
         id: RecordReference,
-        component: Component,
+        component: RawComponent,
     ) {
         if !self.new_world.contains(entity_id) {
             return;
@@ -297,7 +297,7 @@ impl<'a> State<'a> {
         entity: EntityId,
         slot: InventorySlotId,
         component: RecordReference,
-    ) -> Option<Component> {
+    ) -> Option<RawComponent> {
         self.dependencies
             .push(Dependency::InventorySlotComponent(entity, slot, component));
 
@@ -310,7 +310,7 @@ impl<'a> State<'a> {
         entity: EntityId,
         slot: InventorySlotId,
         component_id: RecordReference,
-        component: Component,
+        component: RawComponent,
     ) -> bool {
         let Some(inventory) = self.reconstruct_inventory(entity) else {
             return false;

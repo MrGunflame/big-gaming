@@ -10,7 +10,7 @@ use glam::{Quat, Vec3};
 #[cfg(feature = "tracing")]
 use tracing::{event, span, Level, Span};
 
-use crate::components::components::Component;
+use crate::components::components::RawComponent;
 use crate::components::inventory::{Inventory, InventorySlotId};
 use crate::components::items::{Item, ItemStack};
 use crate::entity::EntityId;
@@ -549,7 +549,7 @@ impl<'a> WorldViewMut<'a> {
         id: EntityId,
         slot: InventorySlotId,
         component: RecordReference,
-        data: Component,
+        data: RawComponent,
     ) {
         let Some(inventory) = self.inventories_mut().get_mut(id) else {
             return;
@@ -741,7 +741,7 @@ impl<'a> EntityMut<'a> {
         });
     }
 
-    pub fn insert_component(&mut self, id: RecordReference, component: Component) {
+    pub fn insert_component(&mut self, id: RecordReference, component: RawComponent) {
         self.entity.components.insert(id, component.clone());
 
         self.deltas.push(EntityChange::ComponentAdd {
@@ -760,7 +760,7 @@ impl<'a> EntityMut<'a> {
         });
     }
 
-    pub fn update_component(&mut self, id: RecordReference, component: Component) {
+    pub fn update_component(&mut self, id: RecordReference, component: RawComponent) {
         self.entity.components.insert(id, component.clone());
 
         self.deltas.push(EntityChange::ComponentUpdate {
@@ -1129,7 +1129,7 @@ mod tests {
 
     use crate::components::components::Components;
     use crate::components::object::ObjectId;
-    use crate::components::transform::Transform;
+    use crate::components::Transform;
     use crate::record::RecordReference;
     use crate::world::entity::{EntityBody, Object};
 

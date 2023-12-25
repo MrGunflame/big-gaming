@@ -1,4 +1,4 @@
-use game_common::components::components::Component;
+use game_common::components::components::RawComponent;
 use game_common::components::inventory::InventorySlotId;
 use game_common::components::items::ItemStack;
 use game_common::entity::EntityId;
@@ -32,7 +32,7 @@ pub enum Effect {
     InventoryInsert(EntityId, InventorySlotId, ItemStack),
     InventoryRemove(EntityId, InventorySlotId, u64),
     InventoryClear(EntityId),
-    InventoryComponentInsert(EntityId, InventorySlotId, RecordReference, Component),
+    InventoryComponentInsert(EntityId, InventorySlotId, RecordReference, RawComponent),
     InventoryComponentRemove(EntityId, InventorySlotId, RecordReference),
     InventoryItemUpdateEquip(EntityId, InventorySlotId, bool),
 }

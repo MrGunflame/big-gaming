@@ -1,4 +1,4 @@
-use game_common::components::rendering::Color;
+use game_common::components::Color;
 use game_gltf::AlphaMode;
 use game_gltf::GltfData;
 use game_render::texture::Image;

@@ -5,8 +5,7 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
 
-use game_common::components::rendering::Color;
-use game_common::components::transform::Transform;
+use game_common::components::{Color, Transform};
 use game_gltf::types::{GltfMaterial, GltfMesh, TextureIndex};
 use game_render::mesh::{Indices, Mesh};
 use game_render::pbr::{AlphaMode, PbrMaterial};

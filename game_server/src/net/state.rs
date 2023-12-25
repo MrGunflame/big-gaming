@@ -1,5 +1,5 @@
 use ahash::HashMap;
-use game_common::components::components::{Component, Components};
+use game_common::components::components::{Components, RawComponent};
 use game_common::components::inventory::Inventory;
 use game_common::entity::EntityId;
 use game_common::record::RecordReference;
@@ -97,7 +97,7 @@ impl KnownEntities {
         &mut self,
         entity: EntityId,
         component_id: RecordReference,
-        component: Component,
+        component: RawComponent,
     ) {
         self.components
             .entry(entity)
@@ -125,7 +125,7 @@ impl KnownEntities {
         self.inventories.clear();
     }
 
-    pub fn get(&self, entity: EntityId, component_id: RecordReference) -> Option<&Component> {
+    pub fn get(&self, entity: EntityId, component_id: RecordReference) -> Option<&RawComponent> {
         let components = self.components.get(&entity)?;
         components.get(component_id)
     }

@@ -1,9 +1,9 @@
 use game_common::components::actions::ActionId;
-use game_common::components::components::{Component, Components};
+use game_common::components::components::{Components, RawComponent};
 use game_common::components::items::{Item, ItemStack};
 use game_common::components::object::ObjectId;
 use game_common::components::race::RaceId;
-use game_common::components::transform::Transform;
+use game_common::components::Transform;
 use game_common::entity::EntityId;
 use game_common::events::{ActionEvent, Event, EventQueue};
 use game_common::record::RecordReference;
@@ -239,7 +239,7 @@ where
                         self.newest_state.world.insert(
                             id,
                             msg.component,
-                            Component::new(msg.bytes),
+                            RawComponent::new(msg.bytes),
                         );
 
                         cmd_buffer.push(Command::ComponentAdd {
@@ -269,7 +269,7 @@ where
                         self.newest_state.world.insert(
                             id,
                             msg.component,
-                            Component::new(msg.bytes),
+                            RawComponent::new(msg.bytes),
                         );
                     }
                     DataMessageBody::EntityAction(msg) => todo!(),
@@ -441,7 +441,7 @@ fn spawn_entity(id: RecordReference, transform: Transform, modules: &Modules) ->
 
     let mut components = Components::new();
     for component in &record.components {
-        components.insert(component.id, Component::new(component.bytes.clone()));
+        components.insert(component.id, RawComponent::new(component.bytes.clone()));
     }
 
     Some(Entity {

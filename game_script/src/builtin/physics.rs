@@ -1,4 +1,4 @@
-use game_common::components::physics::{ColliderShape, Cuboid};
+use game_common::components::{ColliderShape, Cuboid};
 use game_common::entity::EntityId;
 use game_common::math::Ray;
 use game_physics::query::QueryFilter;

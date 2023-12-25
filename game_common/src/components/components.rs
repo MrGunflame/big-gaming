@@ -6,7 +6,7 @@ use crate::record::RecordReference;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Components {
-    components: HashMap<RecordReference, Component>,
+    components: HashMap<RecordReference, RawComponent>,
 }
 
 impl Components {
@@ -24,19 +24,19 @@ impl Components {
         self.len() == 0
     }
 
-    pub fn insert(&mut self, r: RecordReference, comp: Component) {
+    pub fn insert(&mut self, r: RecordReference, comp: RawComponent) {
         self.components.insert(r, comp);
     }
 
-    pub fn get(&self, r: RecordReference) -> Option<&Component> {
+    pub fn get(&self, r: RecordReference) -> Option<&RawComponent> {
         self.components.get(&r)
     }
 
-    pub fn get_mut(&mut self, r: RecordReference) -> Option<&mut Component> {
+    pub fn get_mut(&mut self, r: RecordReference) -> Option<&mut RawComponent> {
         self.components.get_mut(&r)
     }
 
-    pub fn remove(&mut self, r: RecordReference) -> Option<Component> {
+    pub fn remove(&mut self, r: RecordReference) -> Option<RawComponent> {
         self.components.remove(&r)
     }
 
@@ -48,11 +48,11 @@ impl Components {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Component {
+pub struct RawComponent {
     bytes: Arc<[u8]>,
 }
 
-impl Component {
+impl RawComponent {
     pub fn new<T>(bytes: T) -> Self
     where
         T: Into<Arc<[u8]>>,
@@ -80,11 +80,11 @@ impl Component {
 }
 
 pub struct Iter<'a> {
-    inner: std::collections::hash_map::Iter<'a, RecordReference, Component>,
+    inner: std::collections::hash_map::Iter<'a, RecordReference, RawComponent>,
 }
 
 impl<'a> Iterator for Iter<'a> {
-    type Item = (RecordReference, &'a Component);
+    type Item = (RecordReference, &'a RawComponent);
 
     fn next(&mut self) -> Option<Self::Item> {
         let (k, v) = self.inner.next()?;

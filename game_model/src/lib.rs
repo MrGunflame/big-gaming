@@ -10,7 +10,7 @@ pub mod textures;
 use buffer::Buffer;
 use bytes::{Buf, BufMut};
 use compression::CompressionScheme;
-use game_common::components::transform::Transform;
+use game_common::components::Transform;
 use glam::{Quat, Vec2, Vec3, Vec4};
 use material::Material;
 use mesh::Mesh;

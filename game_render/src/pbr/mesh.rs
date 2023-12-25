@@ -1,5 +1,5 @@
 use bytemuck::{Pod, Zeroable};
-use game_common::components::transform::Transform;
+use game_common::components::Transform;
 use glam::{Mat3, Mat4, Vec4};
 use slotmap::{DefaultKey, SlotMap};
 use wgpu::util::{BufferInitDescriptor, DeviceExt};

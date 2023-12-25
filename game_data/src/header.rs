@@ -190,11 +190,11 @@ mod tests {
     #[test]
     fn test_module_reflexive() {
         let module = Module {
-            id: ModuleId::random(),
+            id: ModuleId::CORE,
             name: String::from("test"),
             version: Version,
             dependencies: vec![Dependency {
-                id: ModuleId::random(),
+                id: ModuleId::CORE,
                 name: Some(String::from("dep")),
                 version: Version,
             }],
