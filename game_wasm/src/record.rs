@@ -5,7 +5,7 @@ use core::str::FromStr;
 use alloc::vec::Vec;
 use bytemuck::{Pod, Zeroable};
 
-use crate::components::{Components, RawComponent};
+use crate::components::{Components, Decode, Encode, RawComponent};
 use crate::raw::record::{
     get_record, get_record_component_get, get_record_component_keys, get_record_component_len,
     get_record_len_component, RecordKind as RawRecordKind,
@@ -14,14 +14,14 @@ use crate::raw::{Ptr, PtrMut};
 
 const HEX_CHARS: &[u8; 16] = b"0123456789abcdef";
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Zeroable, Pod)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Zeroable, Pod, Encode, Decode)]
 #[repr(C)]
 pub struct RecordReference {
     pub module: ModuleId,
     pub record: RecordId,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Zeroable, Pod)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Zeroable, Pod, Encode, Decode)]
 #[repr(transparent)]
 pub struct ModuleId([u8; 16]);
 
@@ -146,7 +146,7 @@ impl Display for ModuleId {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Zeroable, Pod)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Zeroable, Pod, Encode, Decode)]
 #[repr(transparent)]
 pub struct RecordId(pub u32);
 

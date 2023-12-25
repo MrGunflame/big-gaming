@@ -50,26 +50,27 @@ impl Components {
 
     pub fn get_typed<T>(&self) -> Option<T>
     where
-        T: AsComponent,
+        T: Component,
     {
         let component = self.get(T::ID)?;
-        Some(T::from_bytes(component.as_bytes()))
+        T::decode(component.as_bytes()).ok()
     }
 
     pub fn remove_typed<T>(&mut self) -> Option<T>
     where
-        T: AsComponent,
+        T: Component,
     {
         let component = self.remove(T::ID)?;
-        Some(T::from_bytes(component.as_bytes()))
+        T::decode(component.as_bytes()).ok()
     }
 
     pub fn insert_typed<T>(&mut self, component: T)
     where
-        T: AsComponent,
+        T: Component,
     {
-        let data = component.to_bytes();
-        self.insert(T::ID, RawComponent::new(data));
+        let mut buf = Vec::new();
+        component.encode(&mut buf);
+        self.insert(T::ID, RawComponent::new(buf));
     }
 
     pub fn get_mut(&mut self, id: RecordReference) -> Option<&mut RawComponent> {
@@ -292,13 +293,6 @@ impl AsRef<[u8]> for RawComponent {
     fn as_ref(&self) -> &[u8] {
         &self.bytes
     }
-}
-
-pub trait AsComponent {
-    const ID: RecordReference;
-
-    fn from_bytes(buf: &[u8]) -> Self;
-    fn to_bytes(&self) -> Vec<u8>;
 }
 
 trait IsZst {

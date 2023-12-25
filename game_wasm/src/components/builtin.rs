@@ -1,11 +1,10 @@
-use alloc::borrow::ToOwned;
 use alloc::string::String;
 use alloc::vec::Vec;
 use glam::{Quat, Vec3};
 
 use crate::record::{ModuleId, RecordId, RecordReference};
 
-use super::{AsComponent, Component, Decode, DecodeError, Encode};
+use super::{Component, Decode, DecodeError, Encode};
 
 macro_rules! define_id {
     ($($id:ident => $val:expr),*,) => {
@@ -63,17 +62,35 @@ pub struct MeshInstance {
     pub path: String,
 }
 
-impl AsComponent for MeshInstance {
+impl Encode for MeshInstance {
+    fn encode<B>(&self, mut buf: B)
+    where
+        B: bytes::BufMut,
+    {
+        buf.put_slice(self.path.as_bytes());
+    }
+}
+
+impl Decode for MeshInstance {
+    type Error = DecodeError;
+
+    fn decode<B>(mut buf: B) -> Result<Self, Self::Error>
+    where
+        B: bytes::Buf,
+    {
+        let mut bytes = Vec::new();
+        while buf.remaining() > 0 {
+            bytes.push(buf.get_u8());
+        }
+
+        String::from_utf8(bytes)
+            .map_err(|_| DecodeError)
+            .map(|path| Self { path })
+    }
+}
+
+impl Component for MeshInstance {
     const ID: RecordReference = MESH_INSTANCE;
-
-    fn from_bytes(buf: &[u8]) -> Self {
-        let s = core::str::from_utf8(buf).unwrap();
-        Self { path: s.to_owned() }
-    }
-
-    fn to_bytes(&self) -> Vec<u8> {
-        self.path.as_bytes().to_owned()
-    }
 }
 
 #[derive(Copy, Clone, Debug, Encode, Decode)]
