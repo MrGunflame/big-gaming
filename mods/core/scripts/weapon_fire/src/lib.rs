@@ -68,18 +68,4 @@ fn build_projectile(translation: Vec3, rotation: Quat, projectile: RecordReferen
     entity.insert(MeshInstance {
         path: "assets/bullet.glb".to_string(),
     });
-    entity.insert(RigidBody {
-        kind: RigidBodyKind::Dynamic,
-        linvel: Vec3::ZERO,
-        angvel: Vec3::ZERO,
-    });
-    entity.insert(Collider {
-        friction: 1.0,
-        restitution: 1.0,
-        shape: ColliderShape::Cuboid(Cuboid {
-            hx: 1.0,
-            hy: 1.0,
-            hz: 1.0,
-        }),
-    });
 }
