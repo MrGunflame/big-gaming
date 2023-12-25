@@ -1,7 +1,7 @@
 use std::convert::Infallible;
 
 use bytes::{Buf, BufMut};
-use game_common::components::components::{Component, Components};
+use game_common::components::components::{Components, RawComponent};
 use game_common::net::ServerEntity;
 use game_common::record::RecordReference;
 
@@ -143,7 +143,7 @@ impl Decode for Components {
                 bytes.push(u8::decode(&mut buf)?);
             }
 
-            components.insert(id, Component::new(bytes));
+            components.insert(id, RawComponent::new(bytes));
         }
 
         Ok(components)

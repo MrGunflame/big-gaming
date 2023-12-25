@@ -1,11 +1,11 @@
 use ahash::HashMap;
-use game_common::components::rendering::{
+use game_common::components::Transform;
+use game_common::components::{
     DirectionalLight as DirectionalLightComponent, MeshInstance, PointLight as PointLightComponent,
     SpotLight as SpotLightComponent,
 };
-use game_common::components::transform::Transform;
 use game_common::entity::EntityId;
-use game_common::world::World;
+use game_common::world::{QueryWrapper, World};
 use game_core::hierarchy::Hierarchy;
 use game_render::entities::{DirectionalLightId, ObjectId, PointLightId, SpotLightId};
 use game_render::light::{DirectionalLight, PointLight, SpotLight};
@@ -36,7 +36,9 @@ impl SceneEntities {
         let mut removed_point_lights = self.point_lights.clone();
         let mut removed_spot_lights = self.spot_lights.clone();
 
-        for (entity, (transform, mesh_instance)) in world.query::<(Transform, MeshInstance)>() {
+        for (entity, QueryWrapper((transform, mesh_instance))) in
+            world.query::<QueryWrapper<(Transform, MeshInstance)>>()
+        {
             removed_mesh_instances.remove(&entity);
 
             match self.mesh_instances.get(&entity) {
@@ -50,7 +52,8 @@ impl SceneEntities {
             }
         }
 
-        for (entity, (transform, light)) in world.query::<(Transform, DirectionalLightComponent)>()
+        for (entity, QueryWrapper((transform, light))) in
+            world.query::<QueryWrapper<(Transform, DirectionalLightComponent)>>()
         {
             removed_dir_lights.remove(&entity);
 
@@ -74,7 +77,9 @@ impl SceneEntities {
             }
         }
 
-        for (entity, (transform, light)) in world.query::<(Transform, PointLightComponent)>() {
+        for (entity, QueryWrapper((transform, light))) in
+            world.query::<QueryWrapper<(Transform, PointLightComponent)>>()
+        {
             removed_point_lights.remove(&entity);
 
             match self.point_lights.get(&entity) {
@@ -99,7 +104,9 @@ impl SceneEntities {
             }
         }
 
-        for (entity, (transform, light)) in world.query::<(Transform, SpotLightComponent)>() {
+        for (entity, QueryWrapper((transform, light))) in
+            world.query::<QueryWrapper<(Transform, SpotLightComponent)>>()
+        {
             removed_spot_lights.remove(&entity);
 
             match self.spot_lights.get(&entity) {

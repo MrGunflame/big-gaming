@@ -1,8 +1,8 @@
 use ahash::{HashMap, HashSet};
-use game_common::components::components::{Component, Components};
+use game_common::components::components::{Components, RawComponent};
 use game_common::components::items::ItemId;
 use game_common::components::object::ObjectId;
-use game_common::components::transform::Transform;
+use game_common::components::Transform;
 use game_common::entity::EntityId;
 use game_common::world::cell::square;
 use game_common::world::entity::{Entity, EntityBody, Item, Object};
@@ -137,7 +137,7 @@ fn build_entity(modules: &Modules, cell: CellId, builder: EntityBuilder) -> Opti
     let body = match &record.body {
         RecordBody::Item(item) => {
             for component in &record.components {
-                components.insert(component.id, Component::new(component.bytes.clone()));
+                components.insert(component.id, RawComponent::new(component.bytes.clone()));
             }
 
             EntityBody::Item(Item {
@@ -164,7 +164,7 @@ fn build_entity(modules: &Modules, cell: CellId, builder: EntityBuilder) -> Opti
         }
         RecordBody::Object(object) => {
             for component in &object.components {
-                components.insert(component.record, Component::new(component.value.clone()));
+                components.insert(component.record, RawComponent::new(component.value.clone()));
             }
 
             EntityBody::Object(Object {

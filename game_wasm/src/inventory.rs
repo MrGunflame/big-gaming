@@ -5,7 +5,7 @@ use core::ops::Deref;
 use alloc::vec::Vec;
 use bytemuck::{Pod, Zeroable};
 
-use crate::components::{Component, Components};
+use crate::components::{Components, RawComponent};
 use crate::entity::EntityId;
 use crate::raw::inventory::{
     inventory_clear, inventory_component_get, inventory_component_insert, inventory_component_len,
@@ -154,7 +154,7 @@ impl Inventory {
         &self,
         id: InventoryId,
         component_id: RecordReference,
-    ) -> Result<Component, Error> {
+    ) -> Result<RawComponent, Error> {
         let mut len: Usize = 0;
         let len_ptr = &mut len as *mut Usize as Usize;
 
@@ -177,7 +177,7 @@ impl Inventory {
 
         // No need to fetch any data if it is empty.
         if len == 0 {
-            return Ok(Component::new(Vec::new()));
+            return Ok(RawComponent::new(Vec::new()));
         }
 
         let mut bytes = Vec::with_capacity(len as usize);
@@ -199,14 +199,14 @@ impl Inventory {
             bytes.set_len(len as usize);
         }
 
-        Ok(Component::new(bytes))
+        Ok(RawComponent::new(bytes))
     }
 
     pub fn component_insert(
         &self,
         id: InventoryId,
         component_id: RecordReference,
-        component: &Component,
+        component: &RawComponent,
     ) -> Result<(), Error> {
         let ptr = Ptr::from_raw(component.as_bytes().as_ptr() as Usize);
         let len = component.as_bytes().len() as Usize;
@@ -335,11 +335,11 @@ pub struct ItemComponents<'a> {
 }
 
 impl<'a> ItemComponents<'a> {
-    pub fn get(&self, id: RecordReference) -> Result<Component, Error> {
+    pub fn get(&self, id: RecordReference) -> Result<RawComponent, Error> {
         Inventory::new(self.parent.entity_id).component_get(self.parent.slot_id, id)
     }
 
-    pub fn insert(&self, id: RecordReference, component: &Component) -> Result<(), Error> {
+    pub fn insert(&self, id: RecordReference, component: &RawComponent) -> Result<(), Error> {
         Inventory::new(self.parent.entity_id).component_insert(self.parent.slot_id, id, component)
     }
 
@@ -369,21 +369,21 @@ pub enum ComponentEntry<'a> {
 }
 
 impl<'a> ComponentEntry<'a> {
-    pub fn or_default(self) -> Component {
+    pub fn or_default(self) -> RawComponent {
         match self {
             Self::Occupied(entry) => entry.component,
-            Self::Vacant(_) => Component::empty(),
+            Self::Vacant(_) => RawComponent::empty(),
         }
     }
 
-    pub fn or_insert_with<F>(self, f: F) -> Component
+    pub fn or_insert_with<F>(self, f: F) -> RawComponent
     where
-        F: FnOnce(&mut Component),
+        F: FnOnce(&mut RawComponent),
     {
         match self {
             Self::Occupied(entry) => entry.component,
             Self::Vacant(_) => {
-                let mut component = Component::empty();
+                let mut component = RawComponent::empty();
                 f(&mut component);
                 component
             }
@@ -405,7 +405,7 @@ impl<'a> ComponentEntry<'a> {
 pub struct OccupiedComponentEntry<'a> {
     components: &'a ItemComponents<'a>,
     id: RecordReference,
-    component: Component,
+    component: RawComponent,
 }
 
 impl<'a> OccupiedComponentEntry<'a> {
@@ -415,16 +415,16 @@ impl<'a> OccupiedComponentEntry<'a> {
     }
 
     #[inline]
-    pub fn get(&self) -> &Component {
+    pub fn get(&self) -> &RawComponent {
         &self.component
     }
 
     #[inline]
-    pub fn get_mut(&mut self) -> &mut Component {
+    pub fn get_mut(&mut self) -> &mut RawComponent {
         &mut self.component
     }
 
-    pub fn remove(self) -> Component {
+    pub fn remove(self) -> RawComponent {
         self.components.remove(self.id).unwrap();
         self.component
     }
@@ -437,7 +437,7 @@ pub struct VacantComponentEntry<'a> {
 }
 
 impl<'a> VacantComponentEntry<'a> {
-    pub fn insert(self, value: Component) -> Component {
+    pub fn insert(self, value: RawComponent) -> RawComponent {
         self.components.insert(self.id, &value).unwrap();
         value
     }

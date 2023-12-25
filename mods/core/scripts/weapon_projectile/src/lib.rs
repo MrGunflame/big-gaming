@@ -7,12 +7,12 @@ use shared::{Health, ProjectileProperties};
 fn on_collision(entity: EntityId, other: EntityId) {
     let entity = Entity::new(entity);
 
-    let props = entity.get::<ProjectileProperties>();
+    let props = entity.get::<ProjectileProperties>().unwrap();
     entity.despawn();
 
     let target = Entity::new(other);
 
-    let mut health = target.get::<Health>();
+    let mut health = target.get::<Health>().unwrap();
     health.0 -= props.damage;
     target.insert(health);
 }

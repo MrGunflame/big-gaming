@@ -4,8 +4,8 @@
 
 use glam::{Quat, Vec3};
 
-use crate::components::components::{Component, Components};
-use crate::components::transform::Transform;
+use crate::components::components::{Components, RawComponent};
+use crate::components::Transform;
 use crate::record::RecordReference;
 
 use super::entity::Terrain;
@@ -104,7 +104,7 @@ impl EntityBuilder {
         self
     }
 
-    pub fn component(mut self, id: RecordReference, component: Component) -> Self {
+    pub fn component(mut self, id: RecordReference, component: RawComponent) -> Self {
         self.components.insert(id, component);
         self
     }

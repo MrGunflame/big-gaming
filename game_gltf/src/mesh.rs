@@ -1,4 +1,4 @@
-use game_common::components::transform::Transform;
+use game_common::components::Transform;
 use game_render::mesh::{Indices, Mesh};
 
 use crate::GltfMaterial;

@@ -3,8 +3,8 @@ use std::collections::HashMap;
 use base64::alphabet::STANDARD;
 use base64::engine::GeneralPurposeConfig;
 use base64::Engine;
-use game_common::components::components::{Component, Components};
-use game_common::components::transform::Transform;
+use game_common::components::components::{Components, RawComponent};
+use game_common::components::Transform;
 use game_common::record::RecordReference;
 use game_common::world::entity::EntityKind;
 use game_common::world::terrain::{Heightmap, TerrainMesh};
@@ -43,7 +43,7 @@ pub fn from_slice(slice: &[u8]) -> Result<super::Cells, Box<dyn std::error::Erro
                 continue;
             }
 
-            let id = entity.id.0.parse()?;
+            let id = entity.id.0.parse().unwrap();
 
             let transform = Transform {
                 translation: Vec3::from_array(entity.transform.translation.0),
@@ -55,7 +55,7 @@ pub fn from_slice(slice: &[u8]) -> Result<super::Cells, Box<dyn std::error::Erro
             for (id, component) in entity.components.0 {
                 let id = id.0.parse().unwrap();
 
-                components.insert(id, Component::new(component));
+                components.insert(id, RawComponent::new(component));
             }
 
             entities.push(Entity {

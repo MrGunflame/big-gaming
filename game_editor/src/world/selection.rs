@@ -1,4 +1,4 @@
-use game_common::components::transform::Transform;
+use game_common::components::Transform;
 use game_common::math::Ray;
 use game_input::keyboard::KeyboardInput;
 use game_input::mouse::{MouseButtonInput, MouseMotion};

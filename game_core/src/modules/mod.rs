@@ -414,7 +414,7 @@ pub enum Error {
 
 #[cfg(test)]
 mod tests {
-    use game_common::module::{Dependency, Module, ModuleId, Version};
+    use game_common::module::{Dependency, Module, ModuleId, ModuleIdExt, Version};
     use game_data::DataBuffer;
 
     use super::records::Records;

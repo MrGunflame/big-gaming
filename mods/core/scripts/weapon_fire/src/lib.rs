@@ -21,7 +21,7 @@ fn on_action(invoker: EntityId) {
     let actor = Entity::new(invoker);
     let inventory = Inventory::new(invoker);
 
-    let transform = actor.get::<Transform>();
+    let transform = actor.get::<Transform>().unwrap();
 
     for stack in inventory
         .iter()

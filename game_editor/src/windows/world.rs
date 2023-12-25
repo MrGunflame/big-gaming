@@ -8,8 +8,8 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::mpsc;
 
 use bitflags::bitflags;
-use game_common::components::rendering::Color;
-use game_common::components::transform::Transform;
+use game_common::components::Color;
+use game_common::components::Transform;
 use game_common::record::RecordReference;
 use game_core::hierarchy::{Hierarchy, Key};
 use game_data::record::Record;

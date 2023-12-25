@@ -2,10 +2,10 @@ use std::collections::VecDeque;
 
 use ahash::{HashMap, HashSet};
 use game_common::components::actions::ActionId;
-use game_common::components::components::{Component, Components};
+use game_common::components::components::{Components, RawComponent};
 use game_common::components::inventory::Inventory;
 use game_common::components::items::Item;
-use game_common::components::transform::Transform;
+use game_common::components::Transform;
 use game_common::entity::EntityId;
 use game_common::events::{ActionEvent, Event, EventQueue};
 use game_common::net::ServerEntity;
@@ -159,7 +159,7 @@ fn apply_effects(effects: Effects, world: &mut WorldState) {
 
                 world
                     .world
-                    .insert(entity_id, component, Component::new(data));
+                    .insert(entity_id, component, RawComponent::new(data));
             }
             Effect::EntityComponentRemove(entity_id, component) => {
                 world.world.remove(entity_id, component);
@@ -749,7 +749,7 @@ fn update_inventory(
 #[cfg(test)]
 mod tests {
     use game_common::components::object::ObjectId;
-    use game_common::components::transform::Transform;
+    use game_common::components::Transform;
     use game_common::entity::EntityId;
     use game_common::record::RecordReference;
     use game_common::world::entity::{Entity, EntityBody, Object};

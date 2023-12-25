@@ -4,7 +4,7 @@ use crate::components::components::Components;
 use crate::components::items::ItemId;
 use crate::components::object::ObjectId;
 use crate::components::race::RaceId;
-use crate::components::transform::Transform;
+use crate::components::Transform;
 use crate::entity::EntityId;
 
 use super::terrain::TerrainMesh;

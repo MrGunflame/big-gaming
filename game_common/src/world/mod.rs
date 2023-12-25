@@ -31,12 +31,13 @@ pub mod time;
 pub mod world;
 
 use std::marker::PhantomData;
+use std::ops::{Deref, DerefMut};
 
 use ahash::{HashMap, HashSet};
 pub use cell::{CellId, CELL_SIZE, CELL_SIZE_UINT};
+use game_wasm::components::Component;
 
-use crate::components::components::{Component, Components};
-use crate::components::AsComponent;
+use crate::components::components::{Components, RawComponent};
 use crate::entity::EntityId;
 use crate::record::RecordReference;
 
@@ -79,7 +80,7 @@ impl World {
         self.components.remove(&id);
     }
 
-    pub fn insert(&mut self, id: EntityId, component_id: RecordReference, component: Component) {
+    pub fn insert(&mut self, id: EntityId, component_id: RecordReference, component: RawComponent) {
         assert!(self.entities.contains(&id));
         self.components
             .entry(id)
@@ -87,7 +88,7 @@ impl World {
             .insert(component_id, component);
     }
 
-    pub fn get(&self, id: EntityId, component_id: RecordReference) -> Option<&Component> {
+    pub fn get(&self, id: EntityId, component_id: RecordReference) -> Option<&RawComponent> {
         self.components
             .get(&id)
             .and_then(|components| components.get(component_id))
@@ -97,27 +98,26 @@ impl World {
         &mut self,
         id: EntityId,
         component_id: RecordReference,
-    ) -> Option<&mut Component> {
+    ) -> Option<&mut RawComponent> {
         self.components
             .get_mut(&id)
             .and_then(|components| components.get_mut(component_id))
     }
 
-    pub fn remove(&mut self, id: EntityId, component_id: RecordReference) -> Option<Component> {
+    pub fn remove(&mut self, id: EntityId, component_id: RecordReference) -> Option<RawComponent> {
         self.components
             .get_mut(&id)
             .and_then(|components| components.remove(component_id))
     }
 
-    pub fn insert_typed<T: AsComponent>(&mut self, entity: EntityId, component: T) {
-        let component_id = T::ID;
-        let component = Component::new(component.to_bytes());
-
-        self.insert(entity, component_id, component);
+    pub fn insert_typed<T: Component>(&mut self, entity: EntityId, component: T) {
+        let mut buf = Vec::new();
+        component.encode(&mut buf);
+        self.insert(entity, T::ID, RawComponent::new(buf));
     }
 
-    pub fn get_typed<T: AsComponent>(&self, entity: EntityId) -> T {
-        T::from_bytes(self.get(entity, T::ID).unwrap().as_bytes())
+    pub fn get_typed<T: Component>(&self, entity: EntityId) -> T {
+        T::decode(self.get(entity, T::ID).unwrap().as_bytes()).unwrap()
     }
 
     pub fn iter(&self) -> Iter<'_> {
@@ -169,11 +169,11 @@ pub trait QueryParams: Sized {
 
 impl<T> QueryParams for T
 where
-    T: AsComponent,
+    T: Component,
 {
     fn fetch(components: &Components) -> Option<Self> {
         let component = components.get(T::ID)?;
-        Some(T::from_bytes(component.as_bytes()))
+        Some(T::decode(component.as_bytes()).unwrap())
     }
 }
 
@@ -183,33 +183,56 @@ pub struct Query<'a, T> {
     _marker: PhantomData<fn() -> T>,
 }
 
-impl<C0, C1> QueryParams for (C0, C1)
+// Transparent Wrapper around `T` to avoid implementing on foreign
+// types.
+#[derive(Copy, Clone, Debug)]
+#[repr(transparent)]
+pub struct QueryWrapper<T>(pub T);
+
+impl<T> Deref for QueryWrapper<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<T> DerefMut for QueryWrapper<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl<C0, C1> QueryParams for QueryWrapper<(C0, C1)>
 where
-    C0: AsComponent,
-    C1: AsComponent,
+    C0: Component,
+    C1: Component,
 {
     fn fetch(components: &Components) -> Option<Self> {
         let c0 = components.get(C0::ID)?;
         let c1 = components.get(C1::ID)?;
-        Some((C0::from_bytes(c0.as_bytes()), C1::from_bytes(c1.as_bytes())))
+        Some(QueryWrapper((
+            C0::decode(c0.as_bytes()).unwrap(),
+            C1::decode(c1.as_bytes()).unwrap(),
+        )))
     }
 }
 
-impl<C0, C1, C2> QueryParams for (C0, C1, C2)
+impl<C0, C1, C2> QueryParams for QueryWrapper<(C0, C1, C2)>
 where
-    C0: AsComponent,
-    C1: AsComponent,
-    C2: AsComponent,
+    C0: Component,
+    C1: Component,
+    C2: Component,
 {
     fn fetch(components: &Components) -> Option<Self> {
         let c0 = components.get(C0::ID)?;
         let c1 = components.get(C1::ID)?;
         let c2 = components.get(C2::ID)?;
-        Some((
-            C0::from_bytes(c0.as_bytes()),
-            C1::from_bytes(c1.as_bytes()),
-            C2::from_bytes(c2.as_bytes()),
-        ))
+        Some(QueryWrapper((
+            C0::decode(c0.as_bytes()).unwrap(),
+            C1::decode(c1.as_bytes()).unwrap(),
+            C2::decode(c2.as_bytes()).unwrap(),
+        )))
     }
 }
 

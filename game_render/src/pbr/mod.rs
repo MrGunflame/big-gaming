@@ -1,5 +1,5 @@
 use game_asset::Asset;
-use game_common::components::rendering::Color;
+use game_common::components::Color;
 
 use crate::texture::ImageId;
 
