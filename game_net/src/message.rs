@@ -258,7 +258,14 @@ impl DataMessageBody {
                 entity: frame.entity,
                 slot: frame.id,
             }),
-            _ => todo!(),
+            Frame::InventoryItemUpdate(frame) => Self::InventoryItemUpdate(InventoryItemUpdate {
+                entity: frame.entity,
+                slot: frame.id,
+                equipped: frame.equipped,
+                quantity: frame.quantity,
+                components: frame.components,
+                hidden: frame.hidden,
+            }),
         }
     }
 }

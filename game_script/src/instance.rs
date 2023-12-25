@@ -14,7 +14,7 @@ use wasmtime::{Engine, Instance, Linker, Module, Store};
 use crate::builtin::register_host_fns;
 use crate::dependency::{Dependencies, Dependency};
 use crate::effect::{Effect, Effects};
-use crate::events::{OnAction, OnCollision, OnEquip, OnUnequip};
+use crate::events::{OnAction, OnCollision, OnEquip, OnUnequip, OnUpdate};
 use crate::{Handle, RecordProvider, WorldProvider};
 
 pub(crate) struct InstancePool {
@@ -68,7 +68,13 @@ impl<'a> Runnable<'a> {
             Event::Collision(event) => self.on_collision(event.entity, event.other),
             Event::Equip(event) => self.on_equip(event.item, event.entity),
             Event::Unequip(event) => self.on_unequip(event.item, event.entity),
+            Event::Update(entity) => self.on_update(*entity),
         }
+    }
+
+    fn on_update(&mut self, entity: EntityId) -> wasmtime::Result<()> {
+        let func: OnUpdate = self.instance.get_typed_func(&mut self.store, "on_update")?;
+        func.call(&mut self.store, entity.into_raw())
     }
 
     fn on_action(&mut self, entity: EntityId, invoker: EntityId) -> wasmtime::Result<()> {
@@ -94,6 +100,10 @@ impl<'a> Runnable<'a> {
             .get_typed_func(&mut self.store, "on_unequip")?;
         func.call(&mut self.store, (item.into_raw(), entity.into_raw()))
     }
+
+    pub fn into_state(self) -> State<'a> {
+        self.store.into_data()
+    }
 }
 
 pub struct State<'a> {
@@ -104,7 +114,7 @@ pub struct State<'a> {
     dependencies: &'a mut Dependencies,
     next_entity_id: u64,
     next_inventory_id: u64,
-    new_world: World,
+    pub new_world: World,
 }
 
 impl<'a> State<'a> {
@@ -114,6 +124,7 @@ impl<'a> State<'a> {
         effects: &'a mut Effects,
         dependencies: &'a mut Dependencies,
         records: &'a dyn RecordProvider,
+        new_world: World,
     ) -> Self {
         Self {
             world,
@@ -123,7 +134,7 @@ impl<'a> State<'a> {
             next_inventory_id: 0,
             dependencies,
             records,
-            new_world: world.world().clone(),
+            new_world,
         }
     }
 }
@@ -131,6 +142,9 @@ impl<'a> State<'a> {
 impl<'a> State<'a> {
     pub fn spawn(&mut self) -> EntityId {
         let id = self.allocate_temporary_entity_id();
+        self.new_world.spawn_with_id(id);
+
+        self.effects.push(Effect::EntitySpawn(id));
         id
     }
 

@@ -54,6 +54,7 @@ pub fn register_host_fns(store: &mut Linker<State<'_>>) {
         inventory_len,
         inventory_list,
         physics_cast_ray,
+        physics_cast_shape,
         get_record,
         get_record_len_component,
         get_record_component_keys,

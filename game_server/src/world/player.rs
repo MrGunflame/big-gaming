@@ -4,6 +4,7 @@ use game_common::components::components::{Component, Components};
 use game_common::components::inventory::Inventory;
 use game_common::components::items::{Item, ItemId, ItemStack};
 use game_common::components::object::ObjectId;
+use game_common::components::physics::{Collider, Cuboid, RigidBody, RigidBodyKind};
 use game_common::components::race::RaceId;
 use game_common::components::rendering::MeshInstance;
 use game_common::components::transform::Transform;
@@ -26,12 +27,61 @@ pub fn spawn_player(
 ) -> Option<EntityId> {
     let transform = Transform::from_translation(Vec3::new(0.0, 40.0, 0.0));
 
+    let x = world.spawn();
+    world.insert(x, Transform::default());
+    world.insert(
+        x,
+        MeshInstance {
+            path: "sponza.glb".to_owned(),
+        },
+    );
+    world.insert(
+        x,
+        RigidBody {
+            kind: RigidBodyKind::Fixed,
+            linvel: Vec3::splat(0.0),
+            angvel: Vec3::splat(0.0),
+        },
+    );
+    world.insert(
+        x,
+        Collider {
+            friction: 1.0,
+            restitution: 1.0,
+            shape: game_common::components::physics::ColliderShape::Cuboid(Cuboid {
+                hx: 100.0,
+                hy: 1.0,
+                hz: 100.0,
+            }),
+        },
+    );
+
     let id = world.spawn();
     world.insert(id, transform);
     world.insert(
         id,
         MeshInstance {
             path: "assets/human.glb".to_owned(),
+        },
+    );
+    world.insert(
+        id,
+        RigidBody {
+            kind: RigidBodyKind::Fixed,
+            linvel: Vec3::splat(0.0),
+            angvel: Vec3::splat(0.0),
+        },
+    );
+    world.insert(
+        id,
+        Collider {
+            friction: 1.0,
+            restitution: 1.0,
+            shape: game_common::components::physics::ColliderShape::Cuboid(Cuboid {
+                hx: 1.0,
+                hy: 1.0,
+                hz: 1.0,
+            }),
         },
     );
     world.world.insert(
@@ -43,6 +93,11 @@ pub fn spawn_player(
     world.world.insert(
         id,
         "c626b9b0ab1940aba6932ea7726d0175:06".parse().unwrap(),
+        Component::new(vec![]),
+    );
+    world.world.insert(
+        id,
+        "c626b9b0ab1940aba6932ea7726d0175:15".parse().unwrap(),
         Component::new(vec![]),
     );
 

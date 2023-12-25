@@ -1,10 +1,12 @@
+use core::mem::MaybeUninit;
+
 use alloc::vec::Vec;
 
 use crate::components::AsComponent;
 use crate::entity::EntityId;
 use crate::raw::world::{
     world_entity_component_get, world_entity_component_insert, world_entity_component_len,
-    world_entity_component_remove,
+    world_entity_component_remove, world_entity_despawn, world_entity_spawn,
 };
 use crate::raw::{RESULT_NO_COMPONENT, RESULT_NO_ENTITY, RESULT_OK};
 pub use crate::record::RecordReference;
@@ -16,6 +18,16 @@ pub struct Entity(EntityId);
 impl Entity {
     pub fn new(id: EntityId) -> Self {
         Self(id)
+    }
+
+    pub fn spawn() -> Self {
+        let mut entity_id = MaybeUninit::uninit();
+        match unsafe { world_entity_spawn(entity_id.as_mut_ptr()) } {
+            RESULT_OK => (),
+            _ => unsafe { unreachable_unchecked() },
+        }
+
+        Self(EntityId::from_raw(unsafe { entity_id.assume_init() }))
     }
 
     pub fn get<T>(&self) -> T
@@ -95,6 +107,22 @@ impl Entity {
             }
             _ => unsafe { unreachable_unchecked() },
         }
+    }
+
+    pub fn despawn(self) {
+        let entity_id = self.0.into_raw();
+        match unsafe { world_entity_despawn(entity_id) } {
+            RESULT_OK => (),
+            RESULT_NO_ENTITY => {
+                panic!("no entity: {:?}", self.0);
+            }
+            _ => unsafe { unreachable_unchecked() },
+        }
+    }
+
+    #[inline]
+    pub fn id(&self) -> EntityId {
+        self.0
     }
 }
 

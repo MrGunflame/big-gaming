@@ -1,8 +1,12 @@
+use glam::Vec3;
+
 use super::AsComponent;
 
 #[derive(Copy, Clone, Debug)]
 pub struct RigidBody {
     pub kind: RigidBodyKind,
+    pub linvel: Vec3,
+    pub angvel: Vec3,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -23,7 +27,14 @@ impl AsComponent for RigidBody {
             _ => todo!(),
         };
 
-        Self { kind }
+        let linvel: [f32; 3] = bytemuck::pod_read_unaligned(&buf[1..1 + 4 * 3]);
+        let angvel: [f32; 3] = bytemuck::pod_read_unaligned(&buf[1 + 4 * 3..]);
+
+        Self {
+            kind,
+            linvel: Vec3::from_array(linvel),
+            angvel: Vec3::from_array(angvel),
+        }
     }
 
     fn to_bytes(&self) -> Vec<u8> {
@@ -33,7 +44,11 @@ impl AsComponent for RigidBody {
             RigidBodyKind::Kinematic => 2,
         };
 
-        vec![kind]
+        let mut bytes = vec![kind];
+
+        bytes.extend(bytemuck::bytes_of(&self.linvel));
+        bytes.extend(bytemuck::bytes_of(&self.angvel));
+        bytes
     }
 }
 
@@ -60,8 +75,7 @@ impl AsComponent for Collider {
     const ID: crate::record::RecordReference = super::COLLIDER;
 
     fn from_bytes(buf: &[u8]) -> Self {
-        let [friction, restitution, hx, hy, hz] =
-            bytemuck::pod_read_unaligned::<[f32; 5]>(&buf[0..4]);
+        let [friction, restitution, hx, hy, hz] = bytemuck::pod_read_unaligned::<[f32; 5]>(&buf);
 
         Self {
             friction,

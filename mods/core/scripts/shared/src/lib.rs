@@ -2,8 +2,11 @@
 
 extern crate alloc;
 
+pub mod controller;
+
 use core::f32::consts::PI;
 
+use game_wasm::components::builtin::Collider;
 use game_wasm::components::builtin::Transform;
 use game_wasm::components::AsComponent;
 use game_wasm::math::Real;
@@ -63,10 +66,13 @@ pub fn on_action_impl(entity: EntityId, dir: Vec3) {
 
     let speed = entity.get::<MovementSpeed>();
     let mut transform = entity.get::<Transform>();
+    let collider = entity.get::<Collider>();
 
     let rotation = extract_actor_rotation(transform.rotation);
 
-    transform.translation += rotation * dir * (speed.0 / UPS);
+    let direction = rotation * dir * (speed.0 / UPS);
+
+    controller::move_shape(entity.id(), &mut transform, direction, &collider.shape);
 
     entity.insert(transform);
 }
@@ -133,10 +139,36 @@ impl Ammo {
 #[repr(transparent)]
 pub struct Health(pub f32);
 
+impl AsComponent for Health {
+    const ID: RecordReference = components::HEALTH;
+
+    fn from_bytes(buf: &[u8]) -> Self {
+        let v = bytemuck::pod_read_unaligned(buf);
+        Self(v)
+    }
+
+    fn to_bytes(&self) -> alloc::vec::Vec<u8> {
+        bytemuck::bytes_of(self).to_vec()
+    }
+}
+
 #[derive(Copy, Clone, Debug, Zeroable, Pod)]
 #[repr(C)]
 pub struct ProjectileProperties {
     pub damage: f32,
+}
+
+impl AsComponent for ProjectileProperties {
+    const ID: RecordReference = components::PROJECTILE_PROPERTIES;
+
+    fn from_bytes(buf: &[u8]) -> Self {
+        let damage = bytemuck::pod_read_unaligned(buf);
+        Self { damage }
+    }
+
+    fn to_bytes(&self) -> alloc::vec::Vec<u8> {
+        bytemuck::bytes_of(self).to_vec()
+    }
 }
 
 pub mod components {
@@ -168,6 +200,11 @@ pub mod components {
     pub const PROJECTILE_PROPERTIES: RecordReference = RecordReference {
         module: MODULE,
         record: RecordId(0x14),
+    };
+
+    pub const CHARACTER_CONTROLLER: RecordReference = RecordReference {
+        module: MODULE,
+        record: RecordId(0x15),
     };
 }
 
