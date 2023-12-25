@@ -100,6 +100,10 @@ impl<'a> Runnable<'a> {
             .get_typed_func(&mut self.store, "on_unequip")?;
         func.call(&mut self.store, (item.into_raw(), entity.into_raw()))
     }
+
+    pub fn into_state(self) -> State<'a> {
+        self.store.into_data()
+    }
 }
 
 pub struct State<'a> {
@@ -110,7 +114,7 @@ pub struct State<'a> {
     dependencies: &'a mut Dependencies,
     next_entity_id: u64,
     next_inventory_id: u64,
-    new_world: World,
+    pub new_world: World,
 }
 
 impl<'a> State<'a> {
@@ -120,6 +124,7 @@ impl<'a> State<'a> {
         effects: &'a mut Effects,
         dependencies: &'a mut Dependencies,
         records: &'a dyn RecordProvider,
+        new_world: World,
     ) -> Self {
         Self {
             world,
@@ -129,7 +134,7 @@ impl<'a> State<'a> {
             next_inventory_id: 0,
             dependencies,
             records,
-            new_world: world.world().clone(),
+            new_world,
         }
     }
 }

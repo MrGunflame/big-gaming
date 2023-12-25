@@ -105,23 +105,33 @@ impl Executor {
 
         let mut effects = Effects::default();
 
-        for invocation in invocations {
-            let mut dependencies = Dependencies::default();
+        // Reuse the same world so that dependant scripts don't overwrite
+        // each other.
+        // TODO: Still need to figure out what happens if scripts access the
+        // same state.
+        let mut new_world = ctx.world.world().clone();
 
+        for invocation in invocations {
+            let script = &self.scripts[invocation.script.0];
+
+            let mut dependencies = Dependencies::default();
             let state = State::new(
                 ctx.world,
                 ctx.physics,
                 &mut effects,
                 &mut dependencies,
                 ctx.records,
+                new_world,
             );
-            let script = &self.scripts[invocation.script.0];
 
             let mut runnable = self.instances.get(&self.engine, &script.module, state);
 
             if let Err(err) = runnable.run(&invocation.event) {
                 tracing::error!("Error running script: {}", err);
             }
+
+            let state = runnable.into_state();
+            new_world = state.new_world;
         }
 
         effects
