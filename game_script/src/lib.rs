@@ -92,6 +92,7 @@ impl Executor {
                 Event::Unequip(event) => {
                     self.fetch_components_scripts(event.entity, ctx.world.world())
                 }
+                Event::Update(entity) => self.fetch_components_scripts(entity, ctx.world.world()),
             };
 
             for handle in handles {
@@ -151,6 +152,7 @@ impl Debug for Executor {
     }
 }
 
+#[derive(Clone, Debug)]
 struct Invocation {
     event: Event,
     script: Handle,

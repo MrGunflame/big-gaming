@@ -40,6 +40,11 @@ pub fn tick(state: &mut ServerState) {
 
     crate::world::level::update_level_cells(state);
 
+    // Send update event to every entity.
+    for entity in state.world.world.iter() {
+        state.event_queue.push(Event::Update(entity));
+    }
+
     let effects = state.script_executor.update(Context {
         world: &state.world,
         physics: &state.pipeline,

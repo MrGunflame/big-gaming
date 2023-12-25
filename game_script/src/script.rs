@@ -20,6 +20,12 @@ const EXPORT_FUNCTIONS: &[FunctionExport] = &[
         params: &[ValType::I64],
         results: &[],
     },
+    FunctionExport {
+        name: "on_update",
+        event: Events::UPDATE,
+        params: &[ValType::I64],
+        results: &[],
+    },
 ];
 
 #[derive(Copy, Clone, Debug)]

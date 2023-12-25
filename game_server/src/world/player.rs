@@ -65,7 +65,7 @@ pub fn spawn_player(
     world.insert(
         id,
         RigidBody {
-            kind: RigidBodyKind::Dynamic,
+            kind: RigidBodyKind::Fixed,
         },
     );
     world.insert(
@@ -89,6 +89,11 @@ pub fn spawn_player(
     world.world.insert(
         id,
         "c626b9b0ab1940aba6932ea7726d0175:06".parse().unwrap(),
+        Component::new(vec![]),
+    );
+    world.world.insert(
+        id,
+        "c626b9b0ab1940aba6932ea7726d0175:15".parse().unwrap(),
         Component::new(vec![]),
     );
 

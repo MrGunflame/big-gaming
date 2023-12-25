@@ -5,7 +5,6 @@ use std::collections::VecDeque;
 use crate::components::actions::ActionId;
 use crate::components::inventory::InventorySlotId;
 use crate::entity::EntityId;
-use crate::world::CellId;
 
 #[derive(Clone, Debug, Default)]
 pub struct EventQueue {
@@ -42,6 +41,7 @@ pub enum Event {
     Collision(CollisionEvent),
     Equip(EquipEvent),
     Unequip(UnequipEvent),
+    Update(EntityId),
 }
 
 impl Event {
@@ -51,6 +51,7 @@ impl Event {
             Self::Collision(_) => EventKind::Collision,
             Self::Equip(_) => EventKind::Equip,
             Self::Unequip(_) => EventKind::Unequip,
+            Self::Update(_) => EventKind::Update,
         }
     }
 }
@@ -61,8 +62,7 @@ pub enum EventKind {
     Collision,
     Equip,
     Unequip,
-    CellLoad,
-    CellUnload,
+    Update,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]

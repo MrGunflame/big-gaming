@@ -195,6 +195,11 @@ pub mod components {
         module: MODULE,
         record: RecordId(0x14),
     };
+
+    pub const CHARACTER_CONTROLLER: RecordReference = RecordReference {
+        module: MODULE,
+        record: RecordId(0x15),
+    };
 }
 
 #[macro_export]

@@ -16,6 +16,7 @@ impl Events {
 
     pub const ACTION: Self = Self(1);
     pub const COLLISION: Self = Self(1 << 1);
+    pub const UPDATE: Self = Self(1 << 2);
 
     pub fn iter(&self) -> Iter<'_> {
         Iter {
@@ -100,6 +101,11 @@ impl<'a> Iterator for Iter<'a> {
 /// fn();
 /// ```
 pub type OnInit = TypedFunc<(), ()>;
+
+/// ```ignore
+/// fn (entity: EntityId);
+/// ```
+pub type OnUpdate = TypedFunc<u64, ()>;
 
 ///
 /// ```ignore

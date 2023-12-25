@@ -34,6 +34,7 @@ define_action! {
     on_unequip => ["__self::inventory::InventoryId", "__self::entity::EntityId"],
     on_cell_load => ["u32", "u32", "u32"],
     on_cell_unload => ["u32", "u32", "u32"],
+    on_update => ["__self::entity::EntityId"],
 }
 
 fn expand_event_attr<T>(attr: TokenStream, input: TokenStream, inputs: T) -> TokenStream

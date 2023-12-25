@@ -109,6 +109,14 @@
                     "c626b9b0ab1940aba6932ea7726d0175:04",
                     "c626b9b0ab1940aba6932ea7726d0175:0f"
                 ]
+            },
+            {
+                "id": "15",
+                "name": "Character Controller",
+                "description": "",
+                "scripts": [
+                    "scripts/character_controller.wasm"
+                ]
             }
         ],
         "items": [

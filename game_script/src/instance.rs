@@ -14,7 +14,7 @@ use wasmtime::{Engine, Instance, Linker, Module, Store};
 use crate::builtin::register_host_fns;
 use crate::dependency::{Dependencies, Dependency};
 use crate::effect::{Effect, Effects};
-use crate::events::{OnAction, OnCollision, OnEquip, OnUnequip};
+use crate::events::{OnAction, OnCollision, OnEquip, OnUnequip, OnUpdate};
 use crate::{Handle, RecordProvider, WorldProvider};
 
 pub(crate) struct InstancePool {
@@ -68,7 +68,13 @@ impl<'a> Runnable<'a> {
             Event::Collision(event) => self.on_collision(event.entity, event.other),
             Event::Equip(event) => self.on_equip(event.item, event.entity),
             Event::Unequip(event) => self.on_unequip(event.item, event.entity),
+            Event::Update(entity) => self.on_update(*entity),
         }
+    }
+
+    fn on_update(&mut self, entity: EntityId) -> wasmtime::Result<()> {
+        let func: OnUpdate = self.instance.get_typed_func(&mut self.store, "on_update")?;
+        func.call(&mut self.store, entity.into_raw())
     }
 
     fn on_action(&mut self, entity: EntityId, invoker: EntityId) -> wasmtime::Result<()> {

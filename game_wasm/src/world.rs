@@ -119,6 +119,11 @@ impl Entity {
             _ => unsafe { unreachable_unchecked() },
         }
     }
+
+    #[inline]
+    pub fn id(&self) -> EntityId {
+        self.0
+    }
 }
 
 // #[derive(Debug)]

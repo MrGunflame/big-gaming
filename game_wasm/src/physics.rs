@@ -1,10 +1,13 @@
 use core::mem::MaybeUninit;
 
+use glam::{Quat, Vec3};
+
+use crate::components::builtin::ColliderShape;
 use crate::entity::EntityId;
 use crate::math::Ray;
-use crate::raw::physics::QueryFilter as RawQueryFilter;
-use crate::raw::physics::{physics_cast_ray, CastRayResult};
-use crate::raw::{Ptr, PtrMut, Usize};
+use crate::raw::physics::{physics_cast_ray, physics_cast_shape, CastRayResult};
+use crate::raw::physics::{QueryFilter as RawQueryFilter, Shape as RawShape};
+use crate::raw::{Ptr, PtrMut, Usize, RESULT_OK};
 
 pub fn cast_ray(ray: Ray, max_toi: f32, filter: QueryFilter<'_>) -> Option<RayHit> {
     let filter = build_raw_query_filter(filter);
@@ -28,6 +31,56 @@ pub fn cast_ray(ray: Ray, max_toi: f32, filter: QueryFilter<'_>) -> Option<RayHi
     };
 
     if res == 0 {
+        let res = unsafe { out.assume_init() };
+        Some(RayHit {
+            entity: EntityId::from_raw(res.entity_id),
+            toi: res.toi,
+        })
+    } else {
+        None
+    }
+}
+
+pub fn cast_shape(
+    translation: Vec3,
+    rotation: Quat,
+    direction: Vec3,
+    shape: &ColliderShape,
+    max_toi: f32,
+    filter: QueryFilter<'_>,
+) -> Option<RayHit> {
+    let filter = build_raw_query_filter(filter);
+
+    let shape = match shape {
+        ColliderShape::Cuboid(cuboid) => RawShape {
+            hx: cuboid.hx,
+            hy: cuboid.hy,
+            hz: cuboid.hz,
+        },
+    };
+
+    let mut out = MaybeUninit::uninit();
+
+    let res = unsafe {
+        physics_cast_shape(
+            translation.x,
+            translation.y,
+            translation.z,
+            rotation.x,
+            rotation.y,
+            rotation.z,
+            rotation.w,
+            direction.x,
+            direction.y,
+            direction.z,
+            &shape,
+            max_toi,
+            &filter,
+            out.as_mut_ptr(),
+        )
+    };
+
+    if res == RESULT_OK {
         let res = unsafe { out.assume_init() };
         Some(RayHit {
             entity: EntityId::from_raw(res.entity_id),

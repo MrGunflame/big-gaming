@@ -19,8 +19,9 @@ use game_common::world::World;
 use game_tracing::trace_span;
 use glam::{Quat, Vec3};
 use handle::HandleMap;
-use nalgebra::Isometry;
+use nalgebra::{Isometry, OPoint};
 use parking_lot::Mutex;
+use rapier3d::parry::shape::Cuboid;
 use rapier3d::prelude::{
     BroadPhase, CCDSolver, Collider, ColliderBuilder, ColliderHandle, ColliderSet, CollisionEvent,
     ContactPair, EventHandler, ImpulseJointSet, IntegrationParameters, IslandManager,
@@ -300,8 +301,57 @@ impl Pipeline {
         ) {
             Some((handle, toi)) => {
                 let entity = self.collider_handles.get2(handle).unwrap();
-                dbg!(entity, toi);
                 Some((entity, toi))
+            }
+            None => None,
+        }
+    }
+
+    pub fn cast_shape(
+        &self,
+        translation: Vec3,
+        rot: Quat,
+        direction: Vec3,
+        max_toi: f32,
+        shape: ColliderShape,
+        filter: query::QueryFilter,
+    ) -> Option<(EntityId, f32)> {
+        let shape_origin = Isometry {
+            rotation: rotation(rot),
+            translation: vector(translation).into(),
+        };
+        let shape_vel = vector(direction);
+
+        let pred = |handle, collider: &Collider| {
+            let entity = self.collider_handles.get2(handle).unwrap();
+            if filter.exclude_entities.contains(&entity) {
+                false
+            } else {
+                true
+            }
+        };
+        let filter = QueryFilter::new().predicate(&pred);
+
+        let shape = match shape {
+            ColliderShape::Cuboid(cuboid) => {
+                let half_extents = vector(Vec3::new(cuboid.hx, cuboid.hy, cuboid.hz));
+                Cuboid::new(half_extents)
+            }
+        };
+
+        match self.query_pipeline.cast_shape(
+            &self.bodies,
+            &self.colliders,
+            &shape_origin,
+            &shape_vel,
+            &shape,
+            max_toi,
+            true,
+            filter,
+        ) {
+            Some((handle, toi)) => {
+                let entity = self.collider_handles.get2(handle).unwrap();
+                Some((entity, toi.toi))
             }
             None => None,
         }
