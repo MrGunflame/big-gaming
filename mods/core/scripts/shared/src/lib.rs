@@ -6,17 +6,19 @@ pub mod controller;
 
 use core::f32::consts::PI;
 
+use bytemuck::Pod;
+use bytemuck::Zeroable;
 use game_wasm::components::builtin::Collider;
 use game_wasm::components::builtin::Transform;
-use game_wasm::components::AsComponent;
+use game_wasm::components::{Component, Decode, Encode};
 use game_wasm::math::Real;
 pub use game_wasm::math::Vec3;
 
-use bytemuck::{Pod, Zeroable};
 use components::MOVEMENT_SPEED;
 use game_wasm::entity::EntityId;
 use game_wasm::math::Quat;
 use game_wasm::world::Entity;
+
 use game_wasm::world::RecordReference;
 
 /// Updates per second.
@@ -64,9 +66,9 @@ macro_rules! impl_movement {
 pub fn on_action_impl(entity: EntityId, dir: Vec3) {
     let entity = Entity::new(entity);
 
-    let speed = entity.get::<MovementSpeed>();
-    let mut transform = entity.get::<Transform>();
-    let collider = entity.get::<Collider>();
+    let speed = entity.get::<MovementSpeed>().unwrap();
+    let mut transform = entity.get::<Transform>().unwrap();
+    let collider = entity.get::<Collider>().unwrap();
 
     let rotation = extract_actor_rotation(transform.rotation);
 
@@ -77,23 +79,14 @@ pub fn on_action_impl(entity: EntityId, dir: Vec3) {
     entity.insert(transform);
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Zeroable, Pod)]
-#[repr(transparent)]
+#[derive(Copy, Clone, Debug, PartialEq, Encode, Decode)]
 pub struct MovementSpeed(pub f32);
 
-impl AsComponent for MovementSpeed {
+impl Component for MovementSpeed {
     const ID: RecordReference = MOVEMENT_SPEED;
-
-    fn from_bytes(buf: &[u8]) -> Self {
-        bytemuck::pod_read_unaligned(buf)
-    }
-
-    fn to_bytes(&self) -> alloc::vec::Vec<u8> {
-        bytemuck::bytes_of(self).to_vec()
-    }
 }
 
-#[derive(Copy, Clone, Debug, Zeroable, Pod)]
+#[derive(Copy, Clone, Debug, Zeroable, Pod, Encode, Decode)]
 #[repr(C)]
 pub struct GunProperties {
     /// Damage multiplier.
@@ -107,7 +100,11 @@ pub struct GunProperties {
     pub projectile: Projectile,
 }
 
-#[derive(Copy, Clone, Debug, Zeroable, Pod)]
+impl Component for GunProperties {
+    const ID: RecordReference = components::GUN_PROPERTIES;
+}
+
+#[derive(Copy, Clone, Debug, Zeroable, Pod, Encode, Decode)]
 #[repr(C)]
 pub struct Projectile {
     /// The object id of the projectile that is being fired.
@@ -135,40 +132,20 @@ impl Ammo {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Zeroable, Pod)]
-#[repr(transparent)]
+#[derive(Copy, Clone, Debug, PartialEq, Encode, Decode)]
 pub struct Health(pub f32);
 
-impl AsComponent for Health {
+impl Component for Health {
     const ID: RecordReference = components::HEALTH;
-
-    fn from_bytes(buf: &[u8]) -> Self {
-        let v = bytemuck::pod_read_unaligned(buf);
-        Self(v)
-    }
-
-    fn to_bytes(&self) -> alloc::vec::Vec<u8> {
-        bytemuck::bytes_of(self).to_vec()
-    }
 }
 
-#[derive(Copy, Clone, Debug, Zeroable, Pod)]
-#[repr(C)]
+#[derive(Copy, Clone, Debug, Encode, Decode)]
 pub struct ProjectileProperties {
     pub damage: f32,
 }
 
-impl AsComponent for ProjectileProperties {
+impl Component for ProjectileProperties {
     const ID: RecordReference = components::PROJECTILE_PROPERTIES;
-
-    fn from_bytes(buf: &[u8]) -> Self {
-        let damage = bytemuck::pod_read_unaligned(buf);
-        Self { damage }
-    }
-
-    fn to_bytes(&self) -> alloc::vec::Vec<u8> {
-        bytemuck::bytes_of(self).to_vec()
-    }
 }
 
 pub mod components {

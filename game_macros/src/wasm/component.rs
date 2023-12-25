@@ -91,15 +91,19 @@ impl Input {
         let fields = self
             .fields
             .iter()
-            .map(|field| match &field.ident {
-                Some(ident) => {
-                    quote! {
-                        #ident: ::game_wasm::components::Decode::decode(&mut buf)?,
+            .map(|field| {
+                let ty = field.ty.clone();
+
+                match &field.ident {
+                    Some(ident) => {
+                        quote! {
+                            #ident: <#ty as ::game_wasm::components::Decode>::decode(&mut buf)?,
+                        }
                     }
-                }
-                None => {
-                    quote! {
-                        ::game_wasm::components::Decode::decode(&mut buf)?
+                    None => {
+                        quote! {
+                            <#ty as ::game_wasm::components::Decode>::decode(&mut buf)?
+                        }
                     }
                 }
             })
