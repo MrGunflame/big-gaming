@@ -39,6 +39,8 @@ pub fn spawn_player(
         x,
         RigidBody {
             kind: RigidBodyKind::Fixed,
+            linvel: Vec3::splat(0.0),
+            angvel: Vec3::splat(0.0),
         },
     );
     world.insert(
@@ -66,6 +68,8 @@ pub fn spawn_player(
         id,
         RigidBody {
             kind: RigidBodyKind::Fixed,
+            linvel: Vec3::splat(0.0),
+            angvel: Vec3::splat(0.0),
         },
     );
     world.insert(

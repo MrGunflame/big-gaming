@@ -433,6 +433,7 @@ mod tests {
     use game_common::components::transform::Transform;
     use game_common::events::EventQueue;
     use game_common::world::World;
+    use glam::Vec3;
 
     use crate::Pipeline;
 
@@ -444,6 +445,8 @@ mod tests {
             entity,
             RigidBody {
                 kind: RigidBodyKind::Dynamic,
+                linvel: Vec3::splat(0.0),
+                angvel: Vec3::splat(0.0),
             },
         );
         world.insert_typed(

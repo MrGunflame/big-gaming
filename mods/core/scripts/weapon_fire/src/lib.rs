@@ -70,6 +70,8 @@ fn build_projectile(translation: Vec3, rotation: Quat, projectile: RecordReferen
     });
     entity.insert(RigidBody {
         kind: RigidBodyKind::Dynamic,
+        linvel: Vec3::ZERO,
+        angvel: Vec3::ZERO,
     });
     entity.insert(Collider {
         friction: 1.0,

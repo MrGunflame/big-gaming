@@ -129,8 +129,11 @@ impl Color {
     pub const WHITE: Self = Self([1.0, 1.0, 1.0, 1.0]);
 }
 
+#[derive(Clone, Debug)]
 pub struct RigidBody {
     pub kind: RigidBodyKind,
+    pub linvel: Vec3,
+    pub angvel: Vec3,
 }
 
 impl AsComponent for RigidBody {
@@ -144,7 +147,14 @@ impl AsComponent for RigidBody {
             _ => todo!(),
         };
 
-        Self { kind }
+        let linvel: [f32; 3] = bytemuck::pod_read_unaligned(&buf[1..1 + 4 * 3]);
+        let angvel: [f32; 3] = bytemuck::pod_read_unaligned(&buf[1 + 4 * 3..]);
+
+        Self {
+            kind,
+            linvel: Vec3::from_array(linvel),
+            angvel: Vec3::from_array(angvel),
+        }
     }
 
     fn to_bytes(&self) -> Vec<u8> {
@@ -154,7 +164,11 @@ impl AsComponent for RigidBody {
             RigidBodyKind::Kinematic => 2,
         };
 
-        alloc::vec![kind]
+        let mut bytes = alloc::vec![kind];
+
+        bytes.extend(bytemuck::bytes_of(&self.linvel));
+        bytes.extend(bytemuck::bytes_of(&self.angvel));
+        bytes
     }
 }
 
