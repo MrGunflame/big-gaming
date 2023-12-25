@@ -9,6 +9,10 @@ use world::RecordReference;
 
 extern crate alloc;
 
+// Derive macro hackery, allowing us to derive in the crate
+// the types are defined in.
+extern crate self as game_wasm;
+
 #[cfg(test)]
 extern crate std;
 

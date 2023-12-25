@@ -5,7 +5,7 @@ use core::str::FromStr;
 use alloc::vec::Vec;
 use bytemuck::{Pod, Zeroable};
 
-use crate::components::{Component, Components};
+use crate::components::{Components, RawComponent};
 use crate::raw::record::{
     get_record, get_record_component_get, get_record_component_keys, get_record_component_len,
     get_record_len_component, RecordKind as RawRecordKind,
@@ -224,7 +224,7 @@ fn fetch_components(id: RecordReference) -> Components {
     components
 }
 
-fn fetch_component(id: RecordReference, component: RecordReference) -> Component {
+fn fetch_component(id: RecordReference, component: RecordReference) -> RawComponent {
     let mut len = MaybeUninit::uninit();
 
     let res = unsafe {
@@ -251,7 +251,7 @@ fn fetch_component(id: RecordReference, component: RecordReference) -> Component
 
     unsafe { bytes.set_len(len as usize) };
 
-    Component::new(bytes)
+    RawComponent::new(bytes)
 }
 
 #[cfg(test)]
