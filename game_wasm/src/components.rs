@@ -355,6 +355,8 @@ where
         struct DropGuard<'a, T>(&'a mut [MaybeUninit<T>]);
 
         impl<'a, T> Drop for DropGuard<'a, T> {
+            #[inline(never)]
+            #[cold]
             fn drop(&mut self) {
                 for elem in &mut *self.0 {
                     unsafe {
@@ -376,6 +378,31 @@ where
         let array = unsafe { core::mem::transmute_copy::<[MaybeUninit<T>; N], [T; N]>(&array) };
 
         Ok(array)
+    }
+}
+
+impl Encode for u8 {
+    #[inline]
+    fn encode<B>(&self, mut buf: B)
+    where
+        B: BufMut,
+    {
+        buf.put_u8(*self);
+    }
+}
+
+impl Decode for u8 {
+    type Error = DecodeError;
+
+    fn decode<B>(mut buf: B) -> Result<Self, Self::Error>
+    where
+        B: Buf,
+    {
+        if buf.remaining() > 0 {
+            Ok(buf.get_u8())
+        } else {
+            Err(DecodeError)
+        }
     }
 }
 
@@ -407,7 +434,7 @@ macro_rules! impl_primitive {
     };
 }
 
-impl_primitive! { u8, u16, u32, u64, i8, i16, i32, i64, f32, f64 }
+impl_primitive! { u16, u32, u64, i8, i16, i32, i64, f32, f64 }
 
 macro_rules! impl_as_array {
     ($($t:ty),*) => {
@@ -446,7 +473,7 @@ mod tests {
     use alloc::vec::Vec;
     use bytemuck::{Pod, Zeroable};
 
-    use super::RawComponent;
+    use super::{Decode, RawComponent};
 
     #[test]
     fn component_update_zst() {
@@ -537,5 +564,13 @@ mod tests {
 
             drop(unsafe { Vec::from_raw_parts(ptr.sub(1), len + 1, cap + 1) });
         };
+    }
+
+    #[test]
+    fn decode_array() {
+        let input: &[u8] = &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+
+        let output = <[u8; 10]>::decode(input).unwrap();
+        assert_eq!(output, input);
     }
 }
