@@ -2,8 +2,11 @@
 
 extern crate alloc;
 
+pub mod controller;
+
 use core::f32::consts::PI;
 
+use game_wasm::components::builtin::Collider;
 use game_wasm::components::builtin::Transform;
 use game_wasm::components::AsComponent;
 use game_wasm::math::Real;
@@ -63,10 +66,13 @@ pub fn on_action_impl(entity: EntityId, dir: Vec3) {
 
     let speed = entity.get::<MovementSpeed>();
     let mut transform = entity.get::<Transform>();
+    let collider = entity.get::<Collider>();
 
     let rotation = extract_actor_rotation(transform.rotation);
 
-    transform.translation += rotation * dir * (speed.0 / UPS);
+    let direction = rotation * dir * (speed.0 / UPS);
+
+    controller::move_shape(entity.id(), &mut transform, direction, &collider.shape);
 
     entity.insert(transform);
 }
