@@ -34,6 +34,11 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     color = tonemap(color);
     color = gamma_correct(color);
 
+    // Screen space dithering should happen after converting to gamma correction.
+    // The bound output texture is already linear, so the GPU will not do a convertion
+    // to sRGB.
+    color += screen_space_dither(in.clip_position.xy);
+
     return vec4(color, 1.0);
 }
 
@@ -66,4 +71,13 @@ fn srgb_to_linear(color: f32) -> f32 {
     } else {
         return pow((color + 0.055) / 1.055, 2.4);
     }
+}
+
+// Screen space dithering
+// https://github.com/bevyengine/bevy/blob/main/crates/bevy_core_pipeline/src/tonemapping/tonemapping_shared.wgsl
+// https://media.steampowered.com/apps/valve/2015/Alex_Vlachos_Advanced_VR_Rendering_GDC2015.pdf
+fn screen_space_dither(uv: vec2<f32>) -> vec3<f32> {
+    var dither = vec3<f32>(dot(vec2<f32>(171.0, 231.0), uv)).xxx;
+    dither = fract(dither.rgb / vec3<f32>(103.0, 71.0, 97.0));
+    return (dither - 0.5) / 255.0;
 }
