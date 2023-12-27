@@ -11,11 +11,10 @@ use std::fmt::Debug;
 
 use control::CharacterController;
 use convert::{point, quat, rotation, vec3, vector};
-use game_common::components::physics::{ColliderShape, RigidBody, RigidBodyKind};
-use game_common::components::transform::Transform;
+use game_common::components::{ColliderShape, RigidBody, RigidBodyKind, Transform};
 use game_common::entity::EntityId;
 use game_common::events::{self, Event, EventQueue};
-use game_common::world::World;
+use game_common::world::{QueryWrapper, World};
 use game_tracing::trace_span;
 use glam::{Quat, Vec3};
 use handle::HandleMap;
@@ -114,7 +113,9 @@ impl Pipeline {
 
         let mut despawned_entities = self.body_handles.clone();
 
-        for (entity, (transform, rigid_body)) in world.query::<(Transform, RigidBody)>() {
+        for (entity, QueryWrapper((transform, rigid_body))) in
+            world.query::<QueryWrapper<(Transform, RigidBody)>>()
+        {
             let Some(handle) = self.body_handles.get(entity) else {
                 let kind = match rigid_body.kind {
                     RigidBodyKind::Fixed => RigidBodyType::Fixed,
@@ -170,8 +171,8 @@ impl Pipeline {
 
         let mut despawned_entities = self.collider_handles.clone();
 
-        for (entity, (transform, collider)) in
-            world.query::<(Transform, game_common::components::physics::Collider)>()
+        for (entity, QueryWrapper((transform, collider))) in
+            world.query::<QueryWrapper<(Transform, game_common::components::Collider)>>()
         {
             let Some(handle) = self.collider_handles.get(entity) else {
                 let mut builder = match collider.shape {
@@ -427,10 +428,9 @@ impl Debug for Pipeline {
 
 #[cfg(test)]
 mod tests {
-    use game_common::components::physics::{
-        Collider, ColliderShape, Cuboid, RigidBody, RigidBodyKind,
+    use game_common::components::{
+        Collider, ColliderShape, Cuboid, RigidBody, RigidBodyKind, Transform,
     };
-    use game_common::components::transform::Transform;
     use game_common::events::EventQueue;
     use game_common::world::World;
     use glam::Vec3;

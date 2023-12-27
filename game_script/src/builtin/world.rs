@@ -1,4 +1,4 @@
-use game_common::components::components::Component;
+use game_common::components::components::RawComponent;
 use game_common::entity::EntityId;
 use game_common::record::RecordReference;
 use game_tracing::trace_span;
@@ -116,7 +116,7 @@ pub fn world_entity_component_insert(
 
     caller
         .data_mut()
-        .insert_component(entity_id, component_id, Component::new(bytes));
+        .insert_component(entity_id, component_id, RawComponent::new(bytes));
 
     Ok(RESULT_OK)
 }

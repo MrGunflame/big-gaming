@@ -12,9 +12,9 @@ const DT: f32 = 1.0 / 60.0;
 fn on_update(entity: EntityId) {
     let entity = Entity::new(entity);
 
-    let mut transform = entity.get::<Transform>();
-    let mut rigid_body = entity.get::<RigidBody>();
-    let collider = entity.get::<Collider>();
+    let mut transform = entity.get::<Transform>().unwrap();
+    let mut rigid_body = entity.get::<RigidBody>().unwrap();
+    let collider = entity.get::<Collider>().unwrap();
 
     apply_gravity(
         entity.id(),

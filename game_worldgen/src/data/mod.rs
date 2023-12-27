@@ -6,8 +6,8 @@ pub mod json;
 use std::collections::HashMap;
 
 use bytes::{Buf, BufMut};
-use game_common::components::components::{Component, Components};
-use game_common::components::transform::Transform;
+use game_common::components::components::{Components, RawComponent};
+use game_common::components::Transform;
 use game_common::module::ModuleId;
 use game_common::record::{RecordId, RecordReference};
 use game_common::world::entity::EntityKind;
@@ -164,7 +164,7 @@ impl Decode for Entity {
                 bytes.push(u8::decode(&mut buf).unwrap());
             }
 
-            components.insert(id, Component::new(bytes));
+            components.insert(id, RawComponent::new(bytes));
         }
 
         Ok(Self {

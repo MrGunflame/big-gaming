@@ -14,8 +14,8 @@ use shared::{Health, ProjectileProperties, Vec3};
 fn on_update(entity: EntityId) {
     let entity = Entity::new(entity);
 
-    let mut transform = entity.get::<Transform>();
-    let props = entity.get::<ProjectileProperties>();
+    let mut transform = entity.get::<Transform>().unwrap();
+    let props = entity.get::<ProjectileProperties>().unwrap();
 
     let max_toi = 10.0;
     let filter = QueryFilter {

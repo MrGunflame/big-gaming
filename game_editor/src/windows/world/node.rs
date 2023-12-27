@@ -1,5 +1,5 @@
-use game_common::components::rendering::Color;
-use game_common::components::transform::Transform;
+use game_common::components::Color;
+use game_common::components::Transform;
 
 #[derive(Clone, Debug)]
 pub struct Node {

@@ -1,5 +1,6 @@
 #![no_std]
 
+use game_wasm::components::Decode;
 use game_wasm::entity::EntityId;
 use game_wasm::events::on_action;
 use game_wasm::inventory::Inventory;
@@ -20,10 +21,10 @@ fn on_action(invoker: EntityId) {
         let Ok(properties) = stack.components().get(GUN_PROPERTIES) else {
             continue;
         };
-        let properties: GunProperties = properties.read();
+        let properties = GunProperties::decode(properties.as_bytes()).unwrap();
 
         let mut ammo = stack.components().entry(AMMO).or_default();
-        ammo.write(Ammo(properties.magazine_capacity));
+        // ammo.write(Ammo(properties.magazine_capacity));
 
         stack.components().insert(AMMO, &ammo).unwrap();
     }

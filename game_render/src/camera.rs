@@ -1,7 +1,7 @@
 use std::f32::consts::PI;
 
 use bytemuck::{Pod, Zeroable};
-use game_common::components::transform::Transform;
+use game_common::components::Transform;
 use game_common::math::Ray;
 use game_tracing::trace_span;
 use game_window::windows::WindowId;

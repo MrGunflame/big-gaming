@@ -1,13 +1,13 @@
 use std::f32::consts::PI;
 
-use game_common::components::components::{Component, Components};
+use game_common::components::components::{Components, RawComponent};
 use game_common::components::inventory::Inventory;
 use game_common::components::items::{Item, ItemId, ItemStack};
 use game_common::components::object::ObjectId;
-use game_common::components::physics::{Collider, Cuboid, RigidBody, RigidBodyKind};
 use game_common::components::race::RaceId;
-use game_common::components::rendering::MeshInstance;
-use game_common::components::transform::Transform;
+use game_common::components::MeshInstance;
+use game_common::components::Transform;
+use game_common::components::{Collider, Cuboid, RigidBody, RigidBodyKind};
 use game_common::entity::EntityId;
 use game_common::record::RecordReference;
 use game_common::world::entity::{Actor, Entity, EntityBody, Object};
@@ -48,7 +48,7 @@ pub fn spawn_player(
         Collider {
             friction: 1.0,
             restitution: 1.0,
-            shape: game_common::components::physics::ColliderShape::Cuboid(Cuboid {
+            shape: game_common::components::ColliderShape::Cuboid(Cuboid {
                 hx: 100.0,
                 hy: 1.0,
                 hz: 100.0,
@@ -77,7 +77,7 @@ pub fn spawn_player(
         Collider {
             friction: 1.0,
             restitution: 1.0,
-            shape: game_common::components::physics::ColliderShape::Cuboid(Cuboid {
+            shape: game_common::components::ColliderShape::Cuboid(Cuboid {
                 hx: 1.0,
                 hy: 1.0,
                 hz: 1.0,
@@ -87,24 +87,24 @@ pub fn spawn_player(
     world.world.insert(
         id,
         "c626b9b0ab1940aba6932ea7726d0175:05".parse().unwrap(),
-        Component::new(vec![205, 204, 204, 61]),
+        RawComponent::new(vec![205, 204, 204, 61]),
     );
 
     world.world.insert(
         id,
         "c626b9b0ab1940aba6932ea7726d0175:06".parse().unwrap(),
-        Component::new(vec![]),
+        RawComponent::new(vec![]),
     );
     world.world.insert(
         id,
         "c626b9b0ab1940aba6932ea7726d0175:15".parse().unwrap(),
-        Component::new(vec![]),
+        RawComponent::new(vec![]),
     );
 
     let mut components = Components::new();
     components.insert(
         "c626b9b0ab1940aba6932ea7726d0175:0b".parse().unwrap(),
-        Component::new(vec![
+        RawComponent::new(vec![
             0, 0, 128, 63, 0, 0, 128, 63, 30, 0, 0, 0, 198, 38, 185, 176, 171, 25, 64, 171, 166,
             147, 46, 167, 114, 109, 1, 117, 18, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 128, 63,

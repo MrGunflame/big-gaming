@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 
-use game_common::components::rendering::Color;
-use game_common::components::transform::Transform;
+use game_common::components::{Color, Transform};
 use game_common::world::World;
 use game_core::hierarchy::{Hierarchy, TransformHierarchy};
 use game_render::entities::Object;

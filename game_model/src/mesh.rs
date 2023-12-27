@@ -1,5 +1,5 @@
 use bytes::{Buf, BufMut};
-use game_common::components::transform::Transform;
+use game_common::components::Transform;
 use glam::{Quat, Vec3};
 
 use crate::{Decode, Encode};

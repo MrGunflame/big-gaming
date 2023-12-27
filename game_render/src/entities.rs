@@ -1,6 +1,6 @@
 use std::ops::{Deref, DerefMut};
 
-use game_common::components::transform::Transform;
+use game_common::components::Transform;
 use slotmap::{new_key_type, Key, SlotMap};
 
 use crate::camera::Camera;

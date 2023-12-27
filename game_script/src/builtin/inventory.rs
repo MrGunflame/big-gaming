@@ -1,4 +1,4 @@
-use game_common::components::components::Component;
+use game_common::components::components::RawComponent;
 use game_common::components::inventory::InventorySlotId;
 use game_common::entity::EntityId;
 use game_common::record::RecordReference;
@@ -189,7 +189,7 @@ pub fn inventory_component_insert(
         entity_id,
         slot_id,
         component_id,
-        Component::new(bytes),
+        RawComponent::new(bytes),
     ) {
         return Ok(1);
     };

@@ -1,9 +1,8 @@
 use ahash::HashMap;
-use game_common::components::components::Component;
+use game_common::components::components::RawComponent;
 use game_common::components::inventory::{Inventory, InventorySlotId};
 use game_common::components::items::ItemStack;
-use game_common::components::transform::Transform;
-use game_common::components::AsComponent;
+use game_common::components::{Component, Transform};
 use game_common::entity::EntityId;
 use game_common::record::RecordReference;
 use game_common::world::entity::Entity;
@@ -31,9 +30,10 @@ impl WorldState {
         self.world.spawn()
     }
 
-    pub fn insert<T: AsComponent>(&mut self, id: EntityId, component: T) {
-        self.world
-            .insert(id, T::ID, Component::new(component.to_bytes()));
+    pub fn insert<T: Component>(&mut self, id: EntityId, component: T) {
+        let mut buf = Vec::new();
+        component.encode(&mut buf);
+        self.world.insert(id, T::ID, RawComponent::new(buf));
     }
 
     pub fn remove(&mut self, id: EntityId) {
@@ -55,9 +55,9 @@ impl WorldState {
         self.inventories.insert(id, inventory);
     }
 
-    pub fn get<T: AsComponent>(&self, id: EntityId) -> T {
+    pub fn get<T: Component>(&self, id: EntityId) -> T {
         let component = self.world.get(id, T::ID).unwrap();
-        T::from_bytes(component.as_bytes())
+        T::decode(component.as_bytes()).unwrap()
     }
 
     pub fn cell(&self, id: CellId) -> Cell<'_> {
@@ -111,7 +111,7 @@ impl<'a> ItemStackMut<'a> {
         self.stack.item.equipped = equipped;
     }
 
-    pub fn component_insert(&mut self, id: RecordReference, component: Component) {
+    pub fn component_insert(&mut self, id: RecordReference, component: RawComponent) {
         self.stack.item.components.insert(id, component);
     }
 

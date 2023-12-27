@@ -1,7 +1,7 @@
 use glam::{Quat, Vec3};
 use std::ops::{Add, AddAssign, Sub, SubAssign};
 
-use crate::components::components::{Component, Components};
+use crate::components::components::{Components, RawComponent};
 use crate::components::inventory::InventorySlotId;
 use crate::components::items::ItemId;
 use crate::entity::EntityId;
@@ -84,7 +84,7 @@ pub enum EntityChange {
     ComponentAdd {
         entity: EntityId,
         component_id: RecordReference,
-        component: Component,
+        component: RawComponent,
     },
     ComponentRemove {
         entity: EntityId,
@@ -93,7 +93,7 @@ pub enum EntityChange {
     ComponentUpdate {
         entity: EntityId,
         component_id: RecordReference,
-        component: Component,
+        component: RawComponent,
     },
 }
 

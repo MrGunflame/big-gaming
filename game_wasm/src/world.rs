@@ -2,7 +2,7 @@ use core::mem::MaybeUninit;
 
 use alloc::vec::Vec;
 
-use crate::components::AsComponent;
+use crate::components::Component;
 use crate::entity::EntityId;
 use crate::raw::world::{
     world_entity_component_get, world_entity_component_insert, world_entity_component_len,
@@ -10,7 +10,7 @@ use crate::raw::world::{
 };
 use crate::raw::{RESULT_NO_COMPONENT, RESULT_NO_ENTITY, RESULT_OK};
 pub use crate::record::RecordReference;
-use crate::unreachable_unchecked;
+use crate::{unreachable_unchecked, Error, ErrorImpl};
 
 #[derive(Clone)]
 pub struct Entity(EntityId);
@@ -30,9 +30,9 @@ impl Entity {
         Self(EntityId::from_raw(unsafe { entity_id.assume_init() }))
     }
 
-    pub fn get<T>(&self) -> T
+    pub fn get<T>(&self) -> Result<T, Error>
     where
-        T: AsComponent,
+        T: Component,
     {
         let entity_id = self.0.into_raw();
         let component_id = T::ID;
@@ -67,21 +67,25 @@ impl Entity {
             bytes.set_len(len as usize);
         }
 
-        T::from_bytes(&bytes)
+        match T::decode(&bytes[..]) {
+            Ok(component) => Ok(component),
+            Err(_) => Err(Error(ErrorImpl::ComponentDecode)),
+        }
     }
 
     pub fn insert<T>(&self, component: T)
     where
-        T: AsComponent,
+        T: Component,
     {
+        let mut buf = Vec::new();
+        component.encode(&mut buf);
+
         let entity_id = self.0.into_raw();
         let component_id = T::ID;
-        let bytes = component.to_bytes();
-        let len = bytes.len() as u32;
+        let len = buf.len() as u32;
 
-        match unsafe {
-            world_entity_component_insert(entity_id, &component_id, bytes.as_ptr(), len)
-        } {
+        match unsafe { world_entity_component_insert(entity_id, &component_id, buf.as_ptr(), len) }
+        {
             RESULT_OK => {}
             RESULT_NO_ENTITY => {
                 panic!("no entity: {:?}", self.0);
@@ -92,7 +96,7 @@ impl Entity {
 
     pub fn remove<T>(&self)
     where
-        T: AsComponent,
+        T: Component,
     {
         let entity_id = self.0.into_raw();
         let component_id = T::ID;

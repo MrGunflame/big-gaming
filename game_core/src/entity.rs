@@ -1,7 +1,7 @@
-use game_common::components::components::{Component, Components};
+use game_common::components::components::{Components, RawComponent};
 use game_common::components::object::ObjectId;
 use game_common::components::race::RaceId;
-use game_common::components::transform::Transform;
+use game_common::components::Transform;
 use game_common::entity::EntityId;
 use game_common::record::RecordReference;
 use game_common::world::entity::{Actor, Entity, EntityBody, Object};
@@ -42,7 +42,7 @@ impl SpawnEntity {
 
         let mut components = Components::new();
         for component in &record.components {
-            components.insert(component.id, Component::new(component.bytes.clone()));
+            components.insert(component.id, RawComponent::new(component.bytes.clone()));
         }
 
         Some(view.spawn(Entity {

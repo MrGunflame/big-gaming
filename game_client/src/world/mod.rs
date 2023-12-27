@@ -12,8 +12,8 @@ use std::time::Duration;
 use ahash::HashMap;
 use game_common::components::actions::ActionId;
 use game_common::components::actor::ActorProperties;
-use game_common::components::rendering::Color;
-use game_common::components::transform::Transform;
+use game_common::components::Color;
+use game_common::components::Transform;
 use game_common::entity::EntityId;
 use game_common::module::ModuleId;
 use game_common::record::RecordReference;
@@ -462,8 +462,13 @@ impl GameWorldState {
                     continue;
                 }
 
-                let module = self.modules.get(stack.item.id.0.module).unwrap();
-                let record = module.records.get(stack.item.id.0.record).unwrap();
+                let Some(module) = self.modules.get(stack.item.id.0.module) else {
+                    continue;
+                };
+
+                let Some(record) = module.records.get(stack.item.id.0.record) else {
+                    continue;
+                };
                 let item = record.body.clone().unwrap_item();
 
                 for action in item.actions {
@@ -533,7 +538,6 @@ impl GameWorldState {
     }
 
     fn get_key_for_action(&self, module: ModuleId, record: &Record) -> Key {
-        dbg!(record);
         let input = self
             .inputs
             .inputs

@@ -1,4 +1,4 @@
-use game_common::module::{Dependency, Module, ModuleId, Version};
+use game_common::module::{Dependency, Module, ModuleId, ModuleIdExt, Version};
 use game_input::mouse::MouseButtonInput;
 use game_ui::events::Context;
 use game_ui::reactive::{ReadSignal, Scope};

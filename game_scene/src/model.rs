@@ -1,4 +1,4 @@
-use game_common::components::rendering::Color;
+use game_common::components::Color;
 use game_model::material::Material;
 use game_model::Model;
 use game_render::mesh::{Indices, Mesh};
