@@ -606,6 +606,7 @@ fn update_player_cells(world: &WorldState, state: &mut ConnectionState) -> Vec<D
 
     // Despawn all entities that were not existent in any of the player's cells.
     for id in stale_entities {
+        state.known_entities.despawn(id);
         let entity_id = state.entities.remove(id).unwrap();
         events.push(DataMessageBody::EntityDestroy(EntityDestroy {
             entity: entity_id,
