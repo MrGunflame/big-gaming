@@ -40,12 +40,8 @@ impl Entity {
         let mut len = 0;
         match unsafe { world_entity_component_len(entity_id, &component_id, &mut len) } {
             RESULT_OK => (),
-            RESULT_NO_ENTITY => {
-                panic!("no entity: {:?}", self.0)
-            }
-            RESULT_NO_COMPONENT => {
-                panic!("no component: {:?}", component_id)
-            }
+            RESULT_NO_ENTITY => return Err(Error(ErrorImpl::NoEntity(self.0))),
+            RESULT_NO_COMPONENT => return Err(Error(ErrorImpl::NoComponent(T::ID))),
             _ => unsafe { unreachable_unchecked() },
         }
 
@@ -54,12 +50,11 @@ impl Entity {
             world_entity_component_get(entity_id, &component_id, bytes.as_mut_ptr(), len)
         } {
             RESULT_OK => (),
-            RESULT_NO_ENTITY => {
-                panic!("no entity: {:?}", self.0);
-            }
-            RESULT_NO_COMPONENT => {
-                panic!("no component: {:?}", component_id);
-            }
+            // If our previous call to `world_entity_component_len` suceeds and does
+            // not return `RESULT_NO_ENTITY` or `RESULT_NO_COMPONENT` this call will
+            // also not return these results.
+            RESULT_NO_ENTITY => unsafe { unreachable_unchecked() },
+            RESULT_NO_COMPONENT => unsafe { unreachable_unchecked() },
             _ => unsafe { unreachable_unchecked() },
         }
 
