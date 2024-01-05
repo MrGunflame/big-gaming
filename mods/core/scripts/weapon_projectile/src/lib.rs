@@ -33,10 +33,11 @@ fn on_update(entity: EntityId) {
         Some(hit) => {
             entity.despawn();
 
-            // let target = Entity::new(hit.entity);
-            // let mut health = target.get::<Health>();
-            // health.0 -= props.damage;
-            // target.insert(health);
+            let target = Entity::new(hit.entity);
+            if let Ok(mut health) = target.get::<Health>() {
+                health.0 -= props.damage;
+                target.insert(health);
+            }
         }
         None => {
             transform.translation += transform.rotation * -Vec3::Z;
