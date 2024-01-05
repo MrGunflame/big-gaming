@@ -142,6 +142,7 @@ impl Component for Health {
 #[derive(Copy, Clone, Debug, Encode, Decode)]
 pub struct ProjectileProperties {
     pub damage: f32,
+    pub owner: EntityId,
 }
 
 impl Component for ProjectileProperties {

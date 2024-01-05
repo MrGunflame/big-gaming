@@ -30,7 +30,10 @@ fn on_update(entity: EntityId) {
         max_toi,
         filter,
     ) {
-        Some(hit) => {
+        // Ignore hitting the owner of the projectile which will usually
+        // always happen at TOI=0 when the projectile is spawned at the
+        // actor.
+        Some(hit) if hit.entity != props.owner => {
             entity.despawn();
 
             let target = Entity::new(hit.entity);
@@ -39,7 +42,7 @@ fn on_update(entity: EntityId) {
                 target.insert(health);
             }
         }
-        None => {
+        Some(_) | None => {
             transform.translation += transform.rotation * -Vec3::Z;
             entity.insert(transform);
         }

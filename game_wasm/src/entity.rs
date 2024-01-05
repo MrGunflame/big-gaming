@@ -1,9 +1,11 @@
 use bytemuck::{Pod, Zeroable};
 
+use crate::components::{Decode, Encode};
+
 /// A unique identifier for an [`Entity`].
 ///
 /// [`Entity`]: crate::world::Entity
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Zeroable, Pod)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Zeroable, Pod, Encode, Decode)]
 #[repr(transparent)]
 pub struct EntityId(u64);
 
