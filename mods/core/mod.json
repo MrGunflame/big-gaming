@@ -96,7 +96,10 @@
             {
                 "id": "14",
                 "name": "Projectile Props",
-                "description": ""
+                "description": "",
+                "scripts": [
+                    "scripts/weapon_projectile.wasm"
+                ]
             },
             {
                 "id": "06",

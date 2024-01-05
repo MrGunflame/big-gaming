@@ -48,6 +48,7 @@ fn on_action(invoker: EntityId) {
             let rotation = transform.rotation * Quat::from_array(properties.projectile.rotation);
 
             build_projectile(
+                actor.id(),
                 translation,
                 rotation,
                 properties.projectile.id,
@@ -57,29 +58,21 @@ fn on_action(invoker: EntityId) {
     }
 }
 
-fn build_projectile(translation: Vec3, rotation: Quat, projectile: RecordReference, damage: f32) {
+fn build_projectile(
+    owner: EntityId,
+    translation: Vec3,
+    rotation: Quat,
+    projectile: RecordReference,
+    damage: f32,
+) {
     let entity = Entity::spawn();
     entity.insert(Transform {
         translation,
         rotation,
         scale: Vec3::splat(1.0),
     });
-    entity.insert(ProjectileProperties { damage });
+    entity.insert(ProjectileProperties { damage, owner });
     entity.insert(MeshInstance {
         path: "assets/bullet.glb".to_string(),
-    });
-    entity.insert(RigidBody {
-        kind: RigidBodyKind::Dynamic,
-        linvel: Vec3::ZERO,
-        angvel: Vec3::ZERO,
-    });
-    entity.insert(Collider {
-        friction: 1.0,
-        restitution: 1.0,
-        shape: ColliderShape::Cuboid(Cuboid {
-            hx: 1.0,
-            hy: 1.0,
-            hz: 1.0,
-        }),
     });
 }

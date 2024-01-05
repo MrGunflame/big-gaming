@@ -135,20 +135,24 @@ impl SceneEntities {
             }
         }
 
-        for (_, id) in removed_mesh_instances {
+        for (entity, id) in removed_mesh_instances {
             self.spawner.despawn(renderer, id);
+            self.mesh_instances.remove(&entity);
         }
 
-        for (_, id) in removed_dir_lights {
+        for (entity, id) in removed_dir_lights {
             renderer.entities.directional_lights.remove(id);
+            self.directional_lights.remove(&entity);
         }
 
-        for (_, id) in removed_point_lights {
+        for (entity, id) in removed_point_lights {
             renderer.entities.point_lights.remove(id);
+            self.point_lights.remove(&entity);
         }
 
-        for (_, id) in removed_spot_lights {
+        for (entity, id) in removed_spot_lights {
             renderer.entities.spot_lights.remove(id);
+            self.spot_lights.remove(&entity);
         }
     }
 }
