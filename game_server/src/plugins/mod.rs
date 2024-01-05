@@ -370,7 +370,7 @@ fn update_snapshots(
 }
 
 fn update_client(conn: &Connection, world: &WorldState, level: &Level, cf: ControlFrame) {
-    let state = &mut *conn.state().write();
+    let mut state = conn.state().write();
 
     let Some(host_id) = state.host.entity else {
         return;
@@ -385,71 +385,8 @@ fn update_client(conn: &Connection, world: &WorldState, level: &Level, cf: Contr
     // The delta from the current frame is "included" in the full update.
     if state.full_update {
         state.full_update = false;
-
-        state.entities.clear();
-        state.known_entities.clear();
-
-        tracing::info!(
-            "sending full update to host in cell {:?} for cells: {:?}",
-            cell_id,
-            state.cells.cells(),
-        );
-
-        for id in state.cells.cells() {
-            let cell = world.cell(*id);
-
-            for entity in cell.entities() {
-                let entity_id = state.entities.insert(entity);
-
-                // Sync all components.
-                for (id, component) in world.world().components(entity).iter() {
-                    conn.handle().send(DataMessage {
-                        id: MessageId(0),
-                        control_frame: cf,
-                        body: DataMessageBody::EntityComponentAdd(EntityComponentAdd {
-                            entity: entity_id,
-                            component: id,
-                            bytes: component.as_bytes().to_vec(),
-                        }),
-                    });
-
-                    state.known_entities.insert(entity, id, component.clone());
-                }
-
-                // Sync the entity inventory, if it has one.
-                if let Some(inventory) = world.inventory(entity) {
-                    for (id, stack) in inventory.iter() {
-                        conn.handle().send(DataMessage {
-                            id: MessageId(0),
-                            control_frame: cf,
-                            body: DataMessageBody::InventoryItemAdd(InventoryItemAdd {
-                                entity: entity_id,
-                                id,
-                                quantity: stack.quantity,
-                                item: stack.item.id,
-                                components: stack.item.components.clone(),
-                                equipped: stack.item.equipped,
-                                hidden: stack.item.hidden,
-                            }),
-                        });
-                    }
-
-                    state
-                        .known_entities
-                        .inventories
-                        .insert(entity, inventory.clone());
-                }
-            }
-        }
-
-        // Also sent the host.
-        let id = state.entities.get(host_id).unwrap();
-        conn.handle().send(DataMessage {
-            id: MessageId(0),
-            control_frame: cf,
-            body: DataMessageBody::SpawnHost(SpawnHost { entity: id }),
-        });
-
+        drop(state);
+        send_full_update(conn, world, host_id, cf);
         return;
     }
 
@@ -461,7 +398,7 @@ fn update_client(conn: &Connection, world: &WorldState, level: &Level, cf: Contr
         state.cells.set(cell_id, streamer.distance);
     }
 
-    let events = update_player_cells(world, state);
+    let events = update_player_cells(world, &mut state);
 
     // ACKs need to be sent out before the actual data frames
     // in the control frame. If we were to sent the data before
@@ -479,6 +416,81 @@ fn update_client(conn: &Connection, world: &WorldState, level: &Level, cf: Contr
         };
         conn.handle().send(msg);
     }
+}
+
+fn send_full_update(conn: &Connection, world: &WorldState, host: EntityId, cf: ControlFrame) {
+    let state = &mut *conn.state().write();
+
+    let transform = world.get::<Transform>(host);
+    let cell_id = CellId::from(transform.translation);
+
+    state.entities.clear();
+    state.known_entities.clear();
+
+    tracing::info!(
+        "sending full update to host in cell {:?} for cells: {:?}",
+        cell_id,
+        state.cells.cells(),
+    );
+
+    for id in state.cells.cells() {
+        let cell = world.cell(*id);
+
+        for entity in cell.entities() {
+            let entity_id = state.entities.insert(entity);
+            state
+                .known_entities
+                .components
+                .insert(entity, Components::new());
+
+            // Sync all components.
+            for (id, component) in world.world().components(entity).iter() {
+                conn.handle().send(DataMessage {
+                    id: MessageId(0),
+                    control_frame: cf,
+                    body: DataMessageBody::EntityComponentAdd(EntityComponentAdd {
+                        entity: entity_id,
+                        component: id,
+                        bytes: component.as_bytes().to_vec(),
+                    }),
+                });
+
+                state.known_entities.insert(entity, id, component.clone());
+            }
+
+            // Sync the entity inventory, if it has one.
+            if let Some(inventory) = world.inventory(entity) {
+                for (id, stack) in inventory.iter() {
+                    conn.handle().send(DataMessage {
+                        id: MessageId(0),
+                        control_frame: cf,
+                        body: DataMessageBody::InventoryItemAdd(InventoryItemAdd {
+                            entity: entity_id,
+                            id,
+                            quantity: stack.quantity,
+                            item: stack.item.id,
+                            components: stack.item.components.clone(),
+                            equipped: stack.item.equipped,
+                            hidden: stack.item.hidden,
+                        }),
+                    });
+                }
+
+                state
+                    .known_entities
+                    .inventories
+                    .insert(entity, inventory.clone());
+            }
+        }
+    }
+
+    // Also sent the host.
+    let id = state.entities.get(host).unwrap();
+    conn.handle().send(DataMessage {
+        id: MessageId(0),
+        control_frame: cf,
+        body: DataMessageBody::SpawnHost(SpawnHost { entity: id }),
+    });
 }
 
 /// Update a player that hasn't moved cells.
