@@ -112,11 +112,21 @@ impl RenderState {
             Event::CreateCamera(id, camera) => {
                 self.cameras.insert(id, camera);
             }
-            Event::DestroyCamera(_id) => {}
+            Event::DestroyCamera(id) => {
+                self.cameras.remove(&id);
+            }
             Event::CreateObject(id, object) => {
                 self.objects.insert(id, object);
 
+                // FIXME: What should we if a object is missing the mesh/material/images?
+                // For now we panic because such a state would likely be invalid, but skipping
+                // or even destroying the entitiy might be a more robust solution.
+
                 if !self.meshes.contains_key(&object.mesh) {
+                    if !meshes.contains_key(object.mesh) {
+                        tracing::warn!("object {:?} missing mesh {:?}", id, object.mesh);
+                    }
+
                     let mesh = meshes.get(object.mesh).unwrap().clone();
                     self.meshes_queued.insert(object.mesh, mesh);
                 }
@@ -138,7 +148,9 @@ impl RenderState {
                     }
                 }
             }
-            Event::DestroyObject(_id) => {}
+            Event::DestroyObject(id) => {
+                self.objects.remove(&id);
+            }
             Event::CreateDirectionalLight(id, light) => {
                 self.directional_lights.insert(id, light);
             }

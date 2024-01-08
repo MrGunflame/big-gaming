@@ -53,25 +53,25 @@ impl SceneSpawner {
         let mut queue = self.scenes_to_spawn.lock().unwrap();
         while let Some((id, scene)) = queue.pop_front() {
             let spawned_scene = scene.spawn(renderer);
+            tracing::trace!("spawn scene {:?}", id);
             if let Some(scene) = self.scenes.get_mut(id.0) {
                 *scene = SceneState::Spawned(spawned_scene);
             } else {
                 // Already despawned.
-                spawned_scene.destroy_resources(renderer);
+                tracing::trace!("scene {:?} is already despawned", id);
+                spawned_scene.despawn(renderer);
             }
         }
     }
 
     pub fn despawn(&mut self, renderer: &mut Renderer, id: SceneId) {
+        tracing::trace!("despawn scene {:?}", id);
+
         let scene = self.scenes.remove(id.0).unwrap();
         match scene {
             SceneState::Loading => {}
             SceneState::Spawned(scene) => {
-                for (_, id) in &scene.entities {
-                    renderer.entities.objects.remove(*id);
-                }
-
-                scene.destroy_resources(renderer);
+                scene.despawn(renderer);
             }
         }
     }
