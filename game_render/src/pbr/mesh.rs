@@ -162,15 +162,22 @@ impl Meshes {
 
     pub fn insert(&mut self, mesh: Mesh) -> MeshId {
         let key = self.meshes.insert(mesh);
+        tracing::trace!("inserting mesh {:?}", key);
         MeshId(key)
     }
 
     pub fn remove(&mut self, id: MeshId) {
-        self.meshes.remove(id.0);
+        if self.meshes.remove(id.0).is_some() {
+            tracing::trace!("removing mesh {:?}", id);
+        }
     }
 
     pub fn get(&self, id: MeshId) -> Option<&Mesh> {
         self.meshes.get(id.0)
+    }
+
+    pub fn contains_key(&self, key: MeshId) -> bool {
+        self.meshes.contains_key(key.0)
     }
 }
 

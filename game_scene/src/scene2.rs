@@ -126,7 +126,11 @@ impl SpawnedScene {
         self.nodes.iter().map(|(k, v)| (Key(k), v))
     }
 
-    pub fn destroy_resources(self, renderer: &mut Renderer) {
+    pub(crate) fn despawn(self, renderer: &mut Renderer) {
+        for id in self.entities.values() {
+            renderer.entities.objects.remove(*id);
+        }
+
         for id in self.meshes {
             renderer.meshes.remove(id);
         }

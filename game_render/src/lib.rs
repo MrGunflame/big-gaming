@@ -169,16 +169,26 @@ impl Renderer {
 
         {
             let mut state = self.state.lock();
-            for iter in [
-                self.entities.cameras.events.drain(..),
-                self.entities.objects.events.drain(..),
-                self.entities.directional_lights.events.drain(..),
-                self.entities.point_lights.events.drain(..),
-                self.entities.spot_lights.events.drain(..),
-            ] {
-                for event in iter {
-                    state.update(event, &self.meshes, &self.materials, &self.images);
-                }
+
+            // FIXME: We should attempt to merge all event queues into a single one.
+            for event in self.entities.cameras.drain_events() {
+                state.update(event, &self.meshes, &self.materials, &self.images);
+            }
+
+            for event in self.entities.objects.drain_events() {
+                state.update(event, &self.meshes, &self.materials, &self.images);
+            }
+
+            for event in self.entities.directional_lights.drain_events() {
+                state.update(event, &self.meshes, &self.materials, &self.images);
+            }
+
+            for event in self.entities.point_lights.drain_events() {
+                state.update(event, &self.meshes, &self.materials, &self.images);
+            }
+
+            for event in self.entities.spot_lights.drain_events() {
+                state.update(event, &self.meshes, &self.materials, &self.images);
             }
         }
 

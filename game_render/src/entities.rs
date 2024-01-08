@@ -1,3 +1,6 @@
+use std::collections::hash_map::Entry;
+use std::collections::HashMap;
+use std::mem::ManuallyDrop;
 use std::ops::{Deref, DerefMut};
 
 use game_common::components::Transform;
@@ -12,14 +15,22 @@ use crate::state::Event;
 #[derive(Clone, Debug)]
 pub struct EntityManager<K: Key, V: WithEvent<K>> {
     entities: SlotMap<K, V>,
-    pub(crate) events: Vec<Event>,
+    // We only want to maintain the most recent event for every entity.
+    // This has the effect that later events overwrite earlier ones.
+    // This is important as the consumer of the renderer must only maintain
+    // the state of the current entity (the entity at the time the renderer
+    // is dispached) and the renderer MUST NEVER attempt to create an entity
+    // that is not current.
+    // FIXME: Since we control the keys and they are already linear we can
+    // use a Vec instead.
+    pub(crate) events: HashMap<K, Event>,
 }
 
 impl<K: Key, V: WithEvent<K> + Copy> EntityManager<K, V> {
     fn new() -> Self {
         Self {
             entities: SlotMap::default(),
-            events: vec![],
+            events: HashMap::new(),
         }
     }
 
@@ -33,7 +44,8 @@ impl<K: Key, V: WithEvent<K> + Copy> EntityManager<K, V> {
 
     pub fn insert(&mut self, entity: V) -> K {
         let id = self.entities.insert(entity);
-        self.events.push(V::create(id, entity));
+        self.events.insert(id, V::create(id, entity));
+        tracing::trace!("spawn entity {:?}", id);
         id
     }
 
@@ -43,16 +55,20 @@ impl<K: Key, V: WithEvent<K> + Copy> EntityManager<K, V> {
 
     pub fn get_mut(&mut self, id: K) -> Option<EntityMut<'_, K, V>> {
         let entity = self.entities.get_mut(id)?;
+
+        let event = self.events.entry(id);
         Some(EntityMut {
             id,
             entity,
-            events: &mut self.events,
+            event: ManuallyDrop::new(event),
         })
     }
 
     pub fn remove(&mut self, id: K) {
-        self.entities.remove(id);
-        self.events.push(V::destroy(id));
+        if self.entities.remove(id).is_some() {
+            self.events.insert(id, V::destroy(id));
+            tracing::trace!("despawn entity {:?}", id);
+        }
     }
 
     pub fn values(&self) -> impl Iterator<Item = &V> {
@@ -66,15 +82,21 @@ impl<K: Key, V: WithEvent<K> + Copy> EntityManager<K, V> {
         F: FnMut(K, EntityMut<'_, K, V>),
     {
         for (key, val) in self.entities.iter_mut() {
+            let event = self.events.entry(key);
+
             f(
                 key,
                 EntityMut {
                     id: key,
                     entity: val,
-                    events: &mut self.events,
+                    event: ManuallyDrop::new(event),
                 },
             );
         }
+    }
+
+    pub(crate) fn drain_events(&mut self) -> impl Iterator<Item = Event> + '_ {
+        self.events.drain().map(|(_, v)| v)
     }
 }
 
@@ -84,6 +106,7 @@ impl<K: Key, V: WithEvent<K> + Copy> Default for EntityManager<K, V> {
     }
 }
 
+#[derive(Debug)]
 pub struct EntityMut<'a, K, V>
 where
     K: Key + Copy,
@@ -91,7 +114,9 @@ where
 {
     id: K,
     entity: &'a mut V,
-    events: &'a mut Vec<Event>,
+    // Note that we use an `ManauallyDrop` here because we need to use the entry
+    // API in the `Drop` impl, which requires an owned instance.
+    event: ManuallyDrop<Entry<'a, K, Event>>,
 }
 
 impl<'a, K, V> Drop for EntityMut<'a, K, V>
@@ -100,7 +125,19 @@ where
     V: WithEvent<K> + Copy,
 {
     fn drop(&mut self) {
-        self.events.push(V::create(self.id, *self.entity));
+        let event = V::create(self.id, *self.entity);
+
+        // SAFETY: We only take out the value once in the destructor.
+        // See `EntityMut::event` why this is necessary here.
+        let slot = unsafe { ManuallyDrop::take(&mut self.event) };
+        match slot {
+            Entry::Occupied(mut slot) => {
+                slot.insert(event);
+            }
+            Entry::Vacant(slot) => {
+                slot.insert(event);
+            }
+        }
     }
 }
 
