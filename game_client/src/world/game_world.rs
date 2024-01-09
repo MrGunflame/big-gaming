@@ -100,6 +100,10 @@ where
         }
     }
 
+    pub fn ups(&self) -> f32 {
+        self.game_tick.counter.ups()
+    }
+
     fn process_frame(
         &mut self,
         cf: ControlFrame,
@@ -381,6 +385,10 @@ where
                 );
             }
         }
+    }
+
+    pub fn input_buffer_len(&self) -> usize {
+        self.conn.input_buffer.len()
     }
 }
 
