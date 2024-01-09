@@ -2,7 +2,7 @@ use ahash::{HashMap, HashSet};
 use game_common::components::components::{Components, RawComponent};
 use game_common::components::items::ItemId;
 use game_common::components::object::ObjectId;
-use game_common::components::Transform;
+use game_common::components::{Component, Decode, Transform};
 use game_common::entity::EntityId;
 use game_common::world::cell::square;
 use game_common::world::entity::{Entity, EntityBody, Item, Object};
@@ -22,6 +22,7 @@ pub struct Streamer {
 
 pub fn update_level_cells(state: &mut ServerState) {
     let mut cells = HashSet::default();
+
     for (entity, streamer) in &state.level.streamers {
         let transform = state.world.get::<Transform>(*entity);
         let cell = CellId::from(transform.translation);
@@ -69,6 +70,28 @@ pub fn update_level_cells(state: &mut ServerState) {
     }
 
     state.level.loaded = cells;
+
+    // TODO: We would like to delay entity despawning for a frame and signal
+    // the entity that it is being unloaded in the next frame to do any
+    // required cleanup.
+    let mut despawn_queue = Vec::new();
+    for id in state.world.keys() {
+        let Some(transform) = state.world.world.get(id, Transform::ID) else {
+            continue;
+        };
+        let transform = Transform::decode(transform.as_bytes()).unwrap();
+
+        let cell = CellId::from(transform.translation);
+        // Despawn all entities that have moved outside of any loaded cells.
+        if !state.level.loaded.contains(&cell) {
+            tracing::debug!("unloading entity {:?}", id);
+            despawn_queue.push(id);
+        }
+    }
+
+    for id in despawn_queue {
+        state.world.world.despawn(id);
+    }
 }
 
 pub struct Level {
