@@ -1,3 +1,4 @@
+mod components;
 mod config;
 mod entities;
 mod input;
@@ -125,7 +126,13 @@ impl game_window::App for App {
                 state.update(&mut self.renderer);
             }
             GameState::GameWorld(state) => {
-                state.update(&mut self.renderer, window, &self.time, &mut self.world);
+                state.update(
+                    &mut self.renderer,
+                    window,
+                    &self.time,
+                    &mut self.world,
+                    &mut self.ui_state,
+                );
             }
             _ => todo!(),
         }

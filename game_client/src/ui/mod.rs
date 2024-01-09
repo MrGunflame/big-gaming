@@ -1,2 +1,52 @@
+pub mod debug;
+pub mod health;
 pub mod inventory;
 pub mod main_menu;
+
+use game_ui::reactive::{NodeId, Scope};
+use game_ui::widgets::Widget;
+
+use crate::components::base::Health;
+
+use self::debug::{DebugUi, Statistics};
+use self::health::HealthUi;
+
+// TODO: Move ingame UI into scripts instead of hardcoding
+// them here.
+#[derive(Debug, Default)]
+pub struct UiElements {
+    health: Option<NodeId>,
+    debug_stats: Option<NodeId>,
+}
+
+impl UiElements {
+    /// Updates the health widget to the given value. Removes the widget if `None` is given.
+    pub fn update_health(&mut self, cx: &mut Scope, health: Option<Health>) {
+        if let Some(id) = self.health {
+            cx.remove(id);
+        }
+
+        if let Some(health) = health {
+            let id = HealthUi { health }.build(cx).id().unwrap();
+            self.health = Some(id);
+        }
+    }
+
+    /// Removes all widgets.
+    pub fn clear(&mut self, cx: &mut Scope) {
+        if let Some(id) = self.health {
+            cx.remove(id);
+        }
+    }
+
+    pub fn update_debug_state(&mut self, cx: &mut Scope, stats: Option<Statistics>) {
+        if let Some(id) = self.debug_stats {
+            cx.remove(id);
+        }
+
+        if let Some(stats) = stats {
+            let id = DebugUi { stats }.build(cx).id().unwrap();
+            self.debug_stats = Some(id);
+        }
+    }
+}

@@ -3,6 +3,7 @@ use game_wasm::entity::EntityId;
 use game_wasm::events::on_update;
 use game_wasm::math::Ray;
 use game_wasm::physics::{cast_ray, QueryFilter};
+use game_wasm::trace;
 use game_wasm::world::Entity;
 use shared::{Health, ProjectileProperties, Vec3};
 
@@ -38,7 +39,13 @@ fn on_update(entity: EntityId) {
 
             let target = Entity::new(hit.entity);
             if let Ok(mut health) = target.get::<Health>() {
-                health.0 -= props.damage;
+                trace!(
+                    "Hitting {:?} for {} damage",
+                    target.id(),
+                    props.damage as u32
+                );
+
+                health.value -= props.damage as u32;
                 target.insert(health);
             }
         }

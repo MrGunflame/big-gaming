@@ -32,7 +32,7 @@ pub fn spawn_player(
     world.insert(
         x,
         MeshInstance {
-            path: "sponza.glb".to_owned(),
+            path: "assets/floor.glb".to_owned(),
         },
     );
     world.insert(
@@ -99,6 +99,11 @@ pub fn spawn_player(
         id,
         "c626b9b0ab1940aba6932ea7726d0175:15".parse().unwrap(),
         RawComponent::new(vec![]),
+    );
+    world.world.insert(
+        id,
+        "c626b9b0ab1940aba6932ea7726d0175:13".parse().unwrap(),
+        RawComponent::new(vec![100, 0, 0, 0, 100, 0, 0, 0]),
     );
 
     let mut components = Components::new();

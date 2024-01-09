@@ -6,7 +6,6 @@ pub mod script;
 pub mod state;
 
 use std::net::ToSocketAddrs;
-use std::sync::Arc;
 use std::time::Duration;
 
 use ahash::HashMap;
@@ -17,10 +16,8 @@ use game_common::components::Transform;
 use game_common::entity::EntityId;
 use game_common::module::ModuleId;
 use game_common::record::RecordReference;
-use game_common::world::entity::EntityBody;
 use game_common::world::World;
 use game_core::counter::Interval;
-use game_core::hierarchy::TransformHierarchy;
 use game_core::modules::Modules;
 use game_core::time::Time;
 use game_data::record::{Record, RecordBody};
@@ -31,15 +28,18 @@ use game_render::camera::{Camera, Projection, RenderTarget};
 use game_render::entities::CameraId;
 use game_render::light::DirectionalLight;
 use game_render::Renderer;
-use game_scene::scene2::{self, Node};
+use game_scene::scene2::{self};
 use game_script::Executor;
 use game_ui::reactive::NodeId;
 use game_ui::UiState;
+use game_wasm::components::Component;
+use game_wasm::components::Decode;
 use game_window::cursor::Cursor;
 use game_window::events::WindowEvent;
 use game_window::windows::{WindowId, WindowState};
 use glam::Vec3;
 
+use crate::components::base::Health;
 use crate::config::Config;
 // use crate::entities::actor::SpawnActor;
 // use crate::entities::object::SpawnObject;
@@ -47,8 +47,10 @@ use crate::config::Config;
 use crate::input::{InputKey, Inputs};
 use crate::net::world::{Command, CommandBuffer};
 use crate::net::ServerConnection;
+use crate::ui::debug::Statistics;
 use crate::ui::inventory::InventoryProxy;
 use crate::ui::main_menu::MainMenu;
+use crate::ui::UiElements;
 use crate::utils::extract_actor_rotation;
 
 use self::actions::ActiveActions;
@@ -71,6 +73,7 @@ pub struct GameWorldState {
     main_menu: Option<NodeId>,
     cursor_pinned: CursorPinState,
     host: EntityId,
+    ui_elements: UiElements,
 }
 
 impl GameWorldState {
@@ -106,6 +109,7 @@ impl GameWorldState {
             host: EntityId::dangling(),
             main_menu: None,
             cursor_pinned,
+            ui_elements: UiElements::default(),
         }
     }
 
@@ -115,6 +119,7 @@ impl GameWorldState {
         window: WindowState,
         time: &Time,
         world: &mut World,
+        ui_state: &mut UiState,
     ) {
         if !self.is_init {
             self.is_init = true;
@@ -204,6 +209,27 @@ impl GameWorldState {
                 }
                 _ => (),
             }
+        }
+
+        let mut cx = ui_state.get_mut(window.id()).unwrap().root_scope();
+
+        // Debug stats
+        self.ui_elements.update_debug_state(
+            &mut cx,
+            Some(Statistics {
+                ups: self.world.ups(),
+                fps: self.world.ups(),
+                entities: world.len() as u64,
+                net_input_buffer_len: self.world.input_buffer_len() as u64,
+            }),
+        );
+
+        // Health
+        if let Some(health) = world.get(self.host, Health::ID) {
+            let health = Health::decode(health.as_bytes()).unwrap();
+            self.ui_elements.update_health(&mut cx, Some(health));
+        } else {
+            self.ui_elements.update_health(&mut cx, None);
         }
 
         self.dispatch_actions();

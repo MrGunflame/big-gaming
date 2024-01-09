@@ -133,7 +133,10 @@ impl Ammo {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Encode, Decode)]
-pub struct Health(pub f32);
+pub struct Health {
+    pub value: u32,
+    pub max: u32,
+}
 
 impl Component for Health {
     const ID: RecordReference = components::HEALTH;
