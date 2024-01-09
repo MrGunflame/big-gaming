@@ -90,7 +90,6 @@ impl Decode for CellId {
 
 #[derive(Clone, Debug)]
 pub struct Entity {
-    pub id: RecordReference,
     pub kind: EntityKind,
     pub transform: Transform,
     pub components: Components,
@@ -102,7 +101,6 @@ impl Encode for Entity {
     where
         B: BufMut,
     {
-        self.id.encode(&mut buf);
         self.kind.encode(&mut buf);
 
         self.transform.translation.x.encode(&mut buf);
@@ -133,7 +131,6 @@ impl Decode for Entity {
     where
         B: Buf,
     {
-        let id = RecordReference::decode(&mut buf).unwrap();
         let kind = EntityKind::decode(&mut buf).unwrap();
 
         let tx = f32::decode(&mut buf).unwrap();
@@ -168,7 +165,6 @@ impl Decode for Entity {
         }
 
         Ok(Self {
-            id,
             kind,
             transform,
             components,

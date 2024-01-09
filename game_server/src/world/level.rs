@@ -1,18 +1,10 @@
 use ahash::{HashMap, HashSet};
-use game_common::components::components::{Components, RawComponent};
-use game_common::components::items::ItemId;
-use game_common::components::object::ObjectId;
-use game_common::components::Transform;
+use game_common::components::{Component, Decode, Transform};
 use game_common::entity::EntityId;
 use game_common::world::cell::square;
-use game_common::world::entity::{Entity, EntityBody, Item, Object};
-use game_common::world::gen::{CellBuilder, EntityBuilder, Generator};
+use game_common::world::gen::{CellBuilder, Generator};
 use game_common::world::CellId;
-use game_core::modules::Modules;
-use game_data::record::RecordBody;
-use glam::Vec3;
 
-use crate::world::entity::spawn_entity;
 use crate::ServerState;
 
 #[derive(Copy, Clone, Debug)]
@@ -22,6 +14,7 @@ pub struct Streamer {
 
 pub fn update_level_cells(state: &mut ServerState) {
     let mut cells = HashSet::default();
+
     for (entity, streamer) in &state.level.streamers {
         let transform = state.world.get::<Transform>(*entity);
         let cell = CellId::from(transform.translation);
@@ -42,19 +35,13 @@ pub fn update_level_cells(state: &mut ServerState) {
             let mut builder = CellBuilder::new(*cell);
             state.level.generator.generate(&mut builder);
 
-            for entity in builder.into_entities() {
-                if let Some(entity) = build_entity(&state.modules, *cell, entity) {
-                    let key = spawn_entity(
-                        entity.clone(),
-                        &mut state.world,
-                        &mut state.scene,
-                        &state.modules,
-                    );
-
-                    let id = state.world.spawn();
-                    state.world.world.insert_typed(id, entity.transform);
-
-                    // state.scene.entities.insert(key, id);
+            for builder in builder.into_entities() {
+                let id = state.world.spawn();
+                for (component_id, component) in builder.components.iter() {
+                    state
+                        .world
+                        .world
+                        .insert(id, component_id, component.clone());
                 }
             }
 
@@ -69,6 +56,28 @@ pub fn update_level_cells(state: &mut ServerState) {
     }
 
     state.level.loaded = cells;
+
+    // TODO: We would like to delay entity despawning for a frame and signal
+    // the entity that it is being unloaded in the next frame to do any
+    // required cleanup.
+    let mut despawn_queue = Vec::new();
+    for id in state.world.keys() {
+        let Some(transform) = state.world.world.get(id, Transform::ID) else {
+            continue;
+        };
+        let transform = Transform::decode(transform.as_bytes()).unwrap();
+
+        let cell = CellId::from(transform.translation);
+        // Despawn all entities that have moved outside of any loaded cells.
+        if !state.level.loaded.contains(&cell) {
+            tracing::debug!("unloading entity {:?}", id);
+            despawn_queue.push(id);
+        }
+    }
+
+    for id in despawn_queue {
+        state.world.world.despawn(id);
+    }
 }
 
 pub struct Level {
@@ -97,98 +106,4 @@ impl Level {
     pub fn get_streamer(&self, id: EntityId) -> Option<&Streamer> {
         self.streamers.get(&id)
     }
-}
-
-fn build_entity(modules: &Modules, cell: CellId, builder: EntityBuilder) -> Option<Entity> {
-    debug_assert!(builder.transform.is_valid());
-
-    if let Some(terrain) = builder.terrain {
-        return Some(Entity {
-            id: EntityId::dangling(),
-            transform: builder.transform,
-            body: EntityBody::Terrain(terrain),
-            components: Components::new(),
-            is_host: false,
-            angvel: Vec3::ZERO,
-            linvel: Vec3::ZERO,
-        });
-    }
-
-    let Some(module) = modules.get(builder.id.module) else {
-        tracing::error!(
-            "load error: unknown module {} in {}",
-            builder.id.module,
-            builder.id
-        );
-        return None;
-    };
-
-    let Some(record) = module.records.get(builder.id.record) else {
-        tracing::error!(
-            "load error: unknown record {} in {}",
-            builder.id.record,
-            builder.id
-        );
-        return None;
-    };
-
-    let mut components = Components::new();
-
-    let body = match &record.body {
-        RecordBody::Item(item) => {
-            for component in &record.components {
-                components.insert(component.id, RawComponent::new(component.bytes.clone()));
-            }
-
-            EntityBody::Item(Item {
-                id: ItemId(builder.id),
-            })
-        }
-        RecordBody::Action(_) => {
-            tracing::error!(
-                "load error: attempted to load an action record {} ({:?})",
-                record.name,
-                record.id,
-            );
-
-            return None;
-        }
-        RecordBody::Component(_) => {
-            tracing::error!(
-                "load error: attempted to load an component record {} ({:?})",
-                record.name,
-                record.id
-            );
-
-            return None;
-        }
-        RecordBody::Object(object) => {
-            for component in &object.components {
-                components.insert(component.record, RawComponent::new(component.value.clone()));
-            }
-
-            EntityBody::Object(Object {
-                id: ObjectId(builder.id),
-            })
-        }
-        RecordBody::Race(_) => {
-            tracing::error!(
-                "load error: attempted to load a race record {} ({:?})",
-                record.name,
-                record.id
-            );
-
-            return None;
-        }
-    };
-
-    Some(Entity {
-        id: EntityId::dangling(),
-        transform: builder.transform,
-        components,
-        body,
-        is_host: false,
-        angvel: builder.angvel,
-        linvel: builder.linvel,
-    })
 }

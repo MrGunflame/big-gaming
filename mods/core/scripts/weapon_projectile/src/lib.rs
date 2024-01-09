@@ -45,7 +45,7 @@ fn on_update(entity: EntityId) {
                     props.damage as u32
                 );
 
-                health.value -= props.damage as u32;
+                health.value = health.value.saturating_sub(props.damage as u32);
                 target.insert(health);
             }
         }

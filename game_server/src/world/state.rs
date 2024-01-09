@@ -12,7 +12,6 @@ use game_script::WorldProvider;
 // TODO: Implement Snapshot-based rollback system.
 #[derive(Clone, Debug)]
 pub struct WorldState {
-    next_id: u64,
     inventories: HashMap<EntityId, Inventory>,
     pub world: World,
 }
@@ -20,7 +19,6 @@ pub struct WorldState {
 impl WorldState {
     pub fn new() -> Self {
         WorldState {
-            next_id: 0,
             inventories: HashMap::default(),
             world: World::new(),
         }

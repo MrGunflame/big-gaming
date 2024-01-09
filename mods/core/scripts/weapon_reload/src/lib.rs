@@ -24,7 +24,7 @@ fn on_action(invoker: EntityId) {
         let properties = GunProperties::decode(properties.as_bytes()).unwrap();
 
         let mut ammo = stack.components().entry(AMMO).or_default();
-        // ammo.write(Ammo(properties.magazine_capacity));
+        ammo.write(Ammo(properties.magazine_capacity));
 
         stack.components().insert(AMMO, &ammo).unwrap();
     }
