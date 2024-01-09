@@ -17,7 +17,6 @@ use glam::{Quat, Vec3};
 
 use crate::SceneState;
 
-use super::entity::spawn_entity;
 use super::state::WorldState;
 
 pub fn spawn_player(
@@ -27,34 +26,34 @@ pub fn spawn_player(
 ) -> Option<EntityId> {
     let transform = Transform::from_translation(Vec3::new(0.0, 40.0, 0.0));
 
-    let x = world.spawn();
-    world.insert(x, Transform::default());
-    world.insert(
-        x,
-        MeshInstance {
-            path: "assets/floor.glb".to_owned(),
-        },
-    );
-    world.insert(
-        x,
-        RigidBody {
-            kind: RigidBodyKind::Fixed,
-            linvel: Vec3::splat(0.0),
-            angvel: Vec3::splat(0.0),
-        },
-    );
-    world.insert(
-        x,
-        Collider {
-            friction: 1.0,
-            restitution: 1.0,
-            shape: game_common::components::ColliderShape::Cuboid(Cuboid {
-                hx: 100.0,
-                hy: 1.0,
-                hz: 100.0,
-            }),
-        },
-    );
+    // let x = world.spawn();
+    // world.insert(x, Transform::default());
+    // world.insert(
+    //     x,
+    //     MeshInstance {
+    //         path: "assets/floor.glb".to_owned(),
+    //     },
+    // );
+    // world.insert(
+    //     x,
+    //  RigidBody {
+    //kind: RigidBodyKind::Fixed,
+    //         linvel: Vec3::splat(0.0),
+    //         angvel: Vec3::splat(0.0),
+    //     },
+    // );
+    // world.insert(
+    //     x,
+    // Collider {
+    //         friction: 1.0,
+    //         restitution: 1.0,
+    //         shape: game_common::components::ColliderShape::Cuboid(Cuboid {
+    //             hx: 100.0,
+    //             hy: 1.0,
+    //             hz: 100.0,
+    //         }),
+    //     },
+    // );
 
     let id = world.spawn();
     world.insert(id, transform);

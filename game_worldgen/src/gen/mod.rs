@@ -14,16 +14,16 @@ impl Generate for StaticGenerator {
         };
 
         for entity in entities {
-            if let Some(terrain) = &entity.terrain {
-                let builder = EntityBuilder::default().terrain(Terrain {
-                    mesh: terrain.clone(),
-                });
+            // if let Some(terrain) = &entity.terrain {
+            //     let builder = EntityBuilder::default().terrain(Terrain {
+            //         mesh: terrain.clone(),
+            //     });
 
-                cell.spawn(builder);
-                continue;
-            }
+            //     cell.spawn(builder);
+            //     continue;
+            // }
 
-            let mut builder = EntityBuilder::new(entity.id).transform(entity.transform);
+            let mut builder = EntityBuilder::new().transform(entity.transform);
             for (id, component) in entity.components.iter() {
                 builder = builder.component(id, component.clone());
             }

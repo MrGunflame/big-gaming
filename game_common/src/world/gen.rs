@@ -2,13 +2,12 @@
 //!
 //!
 
-use glam::{Quat, Vec3};
+use game_wasm::components::{Component, Encode};
 
 use crate::components::components::{Components, RawComponent};
 use crate::components::Transform;
 use crate::record::RecordReference;
 
-use super::entity::Terrain;
 use super::CellId;
 pub mod flat;
 
@@ -69,38 +68,21 @@ impl CellBuilder {
 
 #[derive(Clone, Debug)]
 pub struct EntityBuilder {
-    pub id: RecordReference,
-    pub transform: Transform,
     pub components: Components,
-    pub terrain: Option<Terrain>,
-    pub linvel: Vec3,
-    pub angvel: Vec3,
 }
 
 impl EntityBuilder {
-    pub fn new(id: RecordReference) -> Self {
+    pub fn new() -> Self {
         Self {
-            id,
-            transform: Transform::default(),
             components: Components::new(),
-            terrain: None,
-            linvel: Vec3::ZERO,
-            angvel: Vec3::ZERO,
         }
     }
 
     pub fn transform(mut self, transform: Transform) -> Self {
-        self.transform = transform;
-        self
-    }
-
-    pub fn translation(mut self, translation: Vec3) -> Self {
-        self.transform.translation = translation;
-        self
-    }
-
-    pub fn rotation(mut self, rotation: Quat) -> Self {
-        self.transform.rotation = rotation;
+        let mut buf = Vec::new();
+        transform.encode(&mut buf);
+        self.components
+            .insert(Transform::ID, RawComponent::new(buf));
         self
     }
 
@@ -108,15 +90,10 @@ impl EntityBuilder {
         self.components.insert(id, component);
         self
     }
-
-    pub fn terrain(mut self, map: Terrain) -> Self {
-        self.terrain = Some(map);
-        self
-    }
 }
 
 impl Default for EntityBuilder {
     fn default() -> Self {
-        Self::new(RecordReference::STUB)
+        Self::new()
     }
 }

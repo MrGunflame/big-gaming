@@ -30,10 +30,10 @@ impl Generate for FlatGenerator {
         //     Heightmap::from_vec(UVec2::new(CELL_SIZE_UINT.x + 1, CELL_SIZE_UINT.z + 1), map),
         // ));
 
-        let mesh = Heightmap::from_vec(UVec2::new(2, 2), vec![0.0, 0.0, 0.0, 0.0]);
-        cell.spawn(EntityBuilder::new(RecordReference::STUB).terrain(Terrain {
-            mesh: TerrainMesh::new(cell.id(), mesh),
-        }));
+        // let mesh = Heightmap::from_vec(UVec2::new(2, 2), vec![0.0, 0.0, 0.0, 0.0]);
+        // cell.spawn(EntityBuilder::new(RecordReference::STUB).terrain(Terrain {
+        //     mesh: TerrainMesh::new(cell.id(), mesh),
+        // }));
 
         // cell.spawn(Item {
         //     id: ItemId(0.into()),

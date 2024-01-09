@@ -23,18 +23,12 @@ pub fn from_slice(slice: &[u8]) -> Result<super::Cells, Box<dyn std::error::Erro
 
         let mut entities = Vec::new();
         for entity in cell.entities {
-            let kind = match entity.kind {
-                JsonEntityKind::Terrain => EntityKind::Terrain,
-                JsonEntityKind::Actor => EntityKind::Actor,
-                JsonEntityKind::Item => EntityKind::Item,
-                JsonEntityKind::Object => EntityKind::Object,
-            };
+            let kind = EntityKind::Actor;
 
             if let Some(terrain) = entity.terrain {
                 let mesh = load_heightmap(id, &terrain.mesh);
 
                 entities.push(Entity {
-                    id: RecordReference::STUB,
                     kind,
                     transform: Transform::default(),
                     components: Components::default(),
@@ -42,8 +36,6 @@ pub fn from_slice(slice: &[u8]) -> Result<super::Cells, Box<dyn std::error::Erro
                 });
                 continue;
             }
-
-            let id = entity.id.0.parse().unwrap();
 
             let transform = Transform {
                 translation: Vec3::from_array(entity.transform.translation.0),
@@ -59,7 +51,6 @@ pub fn from_slice(slice: &[u8]) -> Result<super::Cells, Box<dyn std::error::Erro
             }
 
             entities.push(Entity {
-                id,
                 kind,
                 transform,
                 components,
@@ -142,12 +133,10 @@ pub struct JsonQuat(pub [f32; 4]);
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct JsonEntity {
-    pub id: JsonRecordReference,
     #[serde(default)]
     pub transform: JsonTransform,
     #[serde(default)]
     pub components: JsonComponents,
-    pub kind: JsonEntityKind,
     #[serde(default)]
     pub terrain: Option<JsonTerrain>,
 }
