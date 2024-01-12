@@ -6,9 +6,15 @@ pub mod controller;
 
 use core::f32::consts::PI;
 
+use alloc::borrow::ToOwned;
 use bytemuck::Pod;
 use bytemuck::Zeroable;
 use game_wasm::components::builtin::Collider;
+use game_wasm::components::builtin::ColliderShape;
+use game_wasm::components::builtin::Cuboid;
+use game_wasm::components::builtin::MeshInstance;
+use game_wasm::components::builtin::RigidBody;
+use game_wasm::components::builtin::RigidBodyKind;
 use game_wasm::components::builtin::Transform;
 use game_wasm::components::{Component, Decode, Encode};
 use game_wasm::math::Real;
@@ -161,46 +167,47 @@ impl Component for SpawnPoint {
     const ID: RecordReference = components::SPAWN_POINT;
 }
 
+#[derive(Copy, Clone, Debug, Encode, Decode)]
+pub struct Humanoid;
+
+impl Component for Humanoid {
+    const ID: RecordReference = components::HUMANOID;
+}
+
+#[derive(Copy, Clone, Debug, Encode, Decode)]
+pub struct CharacterController;
+
+impl Component for CharacterController {
+    const ID: RecordReference = components::CHARACTER_CONTROLLER;
+}
+
 pub mod components {
     use game_wasm::record::{ModuleId, RecordId};
     use game_wasm::world::RecordReference;
 
     const MODULE: ModuleId = ModuleId::from_str_const("c626b9b0ab1940aba6932ea7726d0175");
 
-    pub const MOVEMENT_SPEED: RecordReference = RecordReference {
-        module: MODULE,
-        record: RecordId(5),
-    };
+    macro_rules! define_id {
+        ($($id:ident => $record:expr),*$(,)?) => {
+            $(
+                pub const $id: RecordReference = RecordReference {
+                    module: MODULE,
+                    record: RecordId($record),
+                };
+            )*
+        };
+    }
 
-    pub const GUN_PROPERTIES: RecordReference = RecordReference {
-        module: MODULE,
-        record: RecordId(0xb),
-    };
-
-    pub const AMMO: RecordReference = RecordReference {
-        module: MODULE,
-        record: RecordId(0xc),
-    };
-
-    pub const HEALTH: RecordReference = RecordReference {
-        module: MODULE,
-        record: RecordId(0x13),
-    };
-
-    pub const PROJECTILE_PROPERTIES: RecordReference = RecordReference {
-        module: MODULE,
-        record: RecordId(0x14),
-    };
-
-    pub const CHARACTER_CONTROLLER: RecordReference = RecordReference {
-        module: MODULE,
-        record: RecordId(0x15),
-    };
-
-    pub const SPAWN_POINT: RecordReference = RecordReference {
-        module: MODULE,
-        record: RecordId(0x16),
-    };
+    define_id! {
+        HUMANOID => 0x06,
+        MOVEMENT_SPEED => 0x05,
+        GUN_PROPERTIES => 0x0b,
+        AMMO => 0x0c,
+        HEALTH => 0x13,
+        PROJECTILE_PROPERTIES => 0x14,
+        SPAWN_POINT => 0x16,
+        CHARACTER_CONTROLLER => 0x15,
+    }
 }
 
 #[macro_export]
@@ -232,5 +239,42 @@ pub fn apply_actor_damage(damage: u32, target: Entity) {
     };
 
     let transform = Transform::from_translation(spawn_point.translation);
-    target.insert(transform);
+
+    let entity = spawn_player(transform);
+    entity.insert(spawn_point);
+
+    if let Some(player) = target.player() {
+        player.set_active(entity.id());
+    }
+}
+
+fn spawn_player(transform: Transform) -> Entity {
+    let entity = Entity::spawn();
+    entity.insert(transform);
+    entity.insert(MeshInstance {
+        path: "assets/human.glb".to_owned(),
+    });
+    entity.insert(RigidBody {
+        kind: RigidBodyKind::Fixed,
+        linvel: Vec3::ZERO,
+        angvel: Vec3::ZERO,
+    });
+    entity.insert(Collider {
+        friction: 1.0,
+        restitution: 1.0,
+        shape: ColliderShape::Cuboid(Cuboid {
+            hx: 1.0,
+            hy: 1.0,
+            hz: 1.0,
+        }),
+    });
+    entity.insert(MovementSpeed(1.0));
+    entity.insert(Humanoid);
+    entity.insert(CharacterController);
+    entity.insert(Health {
+        value: 100,
+        max: 100,
+    });
+
+    entity
 }

@@ -4,6 +4,7 @@ use alloc::vec::Vec;
 
 use crate::components::Component;
 use crate::entity::EntityId;
+use crate::player::PlayerId;
 use crate::raw::world::{
     world_entity_component_get, world_entity_component_insert, world_entity_component_len,
     world_entity_component_remove, world_entity_despawn, world_entity_spawn,
@@ -122,6 +123,35 @@ impl Entity {
     #[inline]
     pub fn id(&self) -> EntityId {
         self.0
+    }
+
+    pub fn player(&self) -> Option<PlayerId> {
+        crate::player::player_lookup_safe(self.0)
+    }
+
+    /// Swaps the same component of two entities if both entities have the component.
+    pub fn swap<T>(&self, other: Entity)
+    where
+        T: Component,
+    {
+        let (Ok(lhs), Ok(rhs)) = (self.get::<T>(), other.get::<T>()) else {
+            return;
+        };
+
+        self.insert(rhs);
+        other.insert(lhs);
+    }
+
+    /// Copies a component from another entity.
+    pub fn copy_from<T>(&self, other: Entity)
+    where
+        T: Component,
+    {
+        let Ok(component) = other.get::<T>() else {
+            return;
+        };
+
+        self.insert(component);
     }
 }
 

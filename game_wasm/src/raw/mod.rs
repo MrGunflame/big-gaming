@@ -99,3 +99,9 @@ pub const RESULT_NO_INVENTORY_SLOT: u32 = 3;
 
 #[guest_only]
 pub fn log(level: u32, ptr: Usize, len: Usize);
+
+#[guest_only]
+pub fn player_lookup(entity_id: u64, player_id: *mut u64) -> u32;
+
+#[guest_only]
+pub fn player_set_active(player_id: u64, entity_id: u64) -> u32;
