@@ -152,6 +152,15 @@ impl Component for ProjectileProperties {
     const ID: RecordReference = components::PROJECTILE_PROPERTIES;
 }
 
+#[derive(Copy, Clone, Debug, Encode, Decode)]
+pub struct SpawnPoint {
+    pub translation: Vec3,
+}
+
+impl Component for SpawnPoint {
+    const ID: RecordReference = components::SPAWN_POINT;
+}
+
 pub mod components {
     use game_wasm::record::{ModuleId, RecordId};
     use game_wasm::world::RecordReference;
@@ -187,6 +196,11 @@ pub mod components {
         module: MODULE,
         record: RecordId(0x15),
     };
+
+    pub const SPAWN_POINT: RecordReference = RecordReference {
+        module: MODULE,
+        record: RecordId(0x16),
+    };
 }
 
 #[macro_export]
@@ -199,4 +213,24 @@ macro_rules! panic_handler {
             core::arch::wasm32::unreachable()
         }
     };
+}
+
+pub fn apply_actor_damage(damage: u32, target: Entity) {
+    let Ok(mut health) = target.get::<Health>() else {
+        return;
+    };
+
+    health.value = health.value.saturating_sub(damage);
+    target.insert(health);
+
+    if health.value != 0 {
+        return;
+    }
+
+    let Ok(spawn_point) = target.get::<SpawnPoint>() else {
+        return;
+    };
+
+    let transform = Transform::from_translation(spawn_point.translation);
+    target.insert(transform);
 }
