@@ -3,6 +3,7 @@ use game_common::components::inventory::InventorySlotId;
 use game_common::components::items::ItemStack;
 use game_common::entity::EntityId;
 use game_common::record::RecordReference;
+use game_wasm::player::PlayerId;
 
 #[derive(Clone, Debug, Default)]
 pub struct Effects {
@@ -35,4 +36,11 @@ pub enum Effect {
     InventoryComponentInsert(EntityId, InventorySlotId, RecordReference, RawComponent),
     InventoryComponentRemove(EntityId, InventorySlotId, RecordReference),
     InventoryItemUpdateEquip(EntityId, InventorySlotId, bool),
+    PlayerSetActive(PlayerSetActive),
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct PlayerSetActive {
+    pub player: PlayerId,
+    pub entity: EntityId,
 }

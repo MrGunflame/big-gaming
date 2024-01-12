@@ -7,6 +7,16 @@ use crate::raw::{player_lookup, player_set_active, RESULT_OK};
 pub struct PlayerId(u64);
 
 impl PlayerId {
+    #[inline]
+    pub const fn from_raw(bits: u64) -> Self {
+        Self(bits)
+    }
+
+    #[inline]
+    pub const fn to_bits(self) -> u64 {
+        self.0
+    }
+
     pub fn set_active(&self, entity: EntityId) {
         player_set_active_safe(*self, entity);
     }

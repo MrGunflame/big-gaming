@@ -9,11 +9,12 @@ use game_common::events::Event;
 use game_common::record::RecordReference;
 use game_common::world::World;
 use game_tracing::trace_span;
+use game_wasm::player::PlayerId;
 use wasmtime::{Engine, Instance, Linker, Module, Store};
 
 use crate::builtin::register_host_fns;
 use crate::dependency::{Dependencies, Dependency};
-use crate::effect::{Effect, Effects};
+use crate::effect::{Effect, Effects, PlayerSetActive};
 use crate::events::{OnAction, OnCollision, OnEquip, OnUnequip, OnUpdate};
 use crate::{Handle, RecordProvider, WorldProvider};
 
@@ -372,6 +373,20 @@ impl<'a> State<'a> {
                 .push(Effect::InventoryItemUpdateEquip(entity, slot, equipped));
             true
         }
+    }
+
+    pub fn player_lookup(&mut self, entity_id: EntityId) -> Option<PlayerId> {
+        self.world.player(entity_id)
+    }
+
+    pub fn player_set_active(&mut self, player: PlayerId, entity: EntityId) -> bool {
+        if !self.new_world.contains(entity) {
+            return false;
+        }
+
+        self.effects
+            .push(Effect::PlayerSetActive(PlayerSetActive { player, entity }));
+        true
     }
 
     /// Allocate a temporary [`EntityId`].

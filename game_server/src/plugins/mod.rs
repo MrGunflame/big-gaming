@@ -5,7 +5,7 @@ use game_common::components::actions::ActionId;
 use game_common::components::components::{Components, RawComponent};
 use game_common::components::inventory::Inventory;
 use game_common::components::items::Item;
-use game_common::components::Transform;
+use game_common::components::{PlayerId, Transform};
 use game_common::entity::EntityId;
 use game_common::events::{ActionEvent, Event, EventQueue};
 use game_common::net::ServerEntity;
@@ -20,8 +20,8 @@ use game_net::message::{
     EntityComponentUpdate, EntityCreate, EntityDestroy, EntityRotate, EntityTranslate,
     InventoryItemAdd, InventoryItemRemove, InventoryItemUpdate, Message, MessageId, SpawnHost,
 };
-use game_net::peer_error;
 use game_net::proto::components::ComponentRemove;
+use game_net::{conn, peer_error};
 use game_script::effect::{Effect, Effects};
 use game_script::{Context, WorldProvider};
 use glam::Vec3;
@@ -164,6 +164,10 @@ fn apply_effects(effects: Effects, world: &mut WorldState) {
             Effect::EntityComponentRemove(entity_id, component) => {
                 world.world.remove(entity_id, component);
             }
+            Effect::PlayerSetActive(effect) => {
+                // TODO: Remove old entity.
+                // world.players.insert(effect.entity, effect.player);
+            }
         }
     }
 }
@@ -206,12 +210,16 @@ fn flush_command_queue(srv_state: &mut ServerState) {
         match msg {
             Message::Control(ControlMessage::Connected()) => {
                 let id = spawn_player(&srv_state.modules, world, &mut srv_state.scene).unwrap();
+                let player = PlayerId::from_raw(srv_state.next_player);
+                srv_state.next_player += 1;
+                world.players.insert(id, player);
 
                 // At the connection time the delay must be 0, meaning the player is spawned
                 // without delay.
                 debug_assert_eq!(state.peer_delay, ControlFrame(0));
 
                 state.host.entity = Some(id);
+                state.host.player = Some(player);
                 state.peer_delay = ControlFrame(0);
                 state.cells = Cells::new(CellId::from(Vec3::ZERO));
                 srv_state

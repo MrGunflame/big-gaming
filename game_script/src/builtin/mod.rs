@@ -3,6 +3,7 @@
 mod inventory;
 mod log;
 mod physics;
+mod player;
 mod process;
 mod record;
 mod world;
@@ -27,6 +28,7 @@ pub fn register_host_fns(store: &mut Linker<State<'_>>) {
     use inventory::*;
     use log::*;
     use physics::*;
+    use player::*;
     use process::*;
     use record::*;
     use world::*;
@@ -60,6 +62,8 @@ pub fn register_host_fns(store: &mut Linker<State<'_>>) {
         get_record_component_keys,
         get_record_component_len,
         get_record_component_get,
+        player_lookup,
+        player_set_active,
     }
 }
 

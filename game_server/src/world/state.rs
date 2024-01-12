@@ -1,8 +1,9 @@
-use ahash::HashMap;
+use std::collections::HashMap;
+
 use game_common::components::components::RawComponent;
 use game_common::components::inventory::{Inventory, InventorySlotId};
 use game_common::components::items::ItemStack;
-use game_common::components::{Component, Transform};
+use game_common::components::{Component, PlayerId, Transform};
 use game_common::entity::EntityId;
 use game_common::record::RecordReference;
 use game_common::world::entity::Entity;
@@ -14,6 +15,7 @@ use game_script::WorldProvider;
 pub struct WorldState {
     inventories: HashMap<EntityId, Inventory>,
     pub world: World,
+    pub players: HashMap<EntityId, PlayerId>,
 }
 
 impl WorldState {
@@ -21,6 +23,7 @@ impl WorldState {
         WorldState {
             inventories: HashMap::default(),
             world: World::new(),
+            players: HashMap::new(),
         }
     }
 
@@ -74,6 +77,10 @@ impl WorldProvider for WorldState {
 
     fn inventory(&self, id: EntityId) -> Option<&Inventory> {
         self.inventories.get(&id)
+    }
+
+    fn player(&self, id: EntityId) -> Option<PlayerId> {
+        self.players.get(&id).copied()
     }
 }
 
