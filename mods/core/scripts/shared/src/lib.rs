@@ -228,11 +228,13 @@ pub fn apply_actor_damage(damage: u32, target: Entity) {
     };
 
     health.value = health.value.saturating_sub(damage);
-    target.insert(health);
 
     if health.value != 0 {
+        target.insert(health);
         return;
     }
+
+    target.remove::<Health>();
 
     let Ok(spawn_point) = target.get::<SpawnPoint>() else {
         return;

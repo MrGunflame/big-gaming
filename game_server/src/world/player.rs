@@ -102,7 +102,12 @@ pub fn spawn_player(
     world.world.insert(
         id,
         "c626b9b0ab1940aba6932ea7726d0175:13".parse().unwrap(),
-        RawComponent::new(vec![100, 0, 0, 0, 100, 0, 0, 0]),
+        RawComponent::new(vec![1, 0, 0, 0, 100, 0, 0, 0]),
+    );
+    world.world.insert(
+        id,
+        "c626b9b0ab1940aba6932ea7726d0175:16".parse().unwrap(),
+        RawComponent::new(vec![0; 16]),
     );
 
     let mut components = Components::new();

@@ -15,7 +15,7 @@ use game_script::WorldProvider;
 pub struct WorldState {
     inventories: HashMap<EntityId, Inventory>,
     pub world: World,
-    pub players: HashMap<EntityId, PlayerId>,
+    pub players: HashMap<PlayerId, EntityId>,
 }
 
 impl WorldState {
@@ -80,7 +80,10 @@ impl WorldProvider for WorldState {
     }
 
     fn player(&self, id: EntityId) -> Option<PlayerId> {
-        self.players.get(&id).copied()
+        self.players
+            .iter()
+            .find(|(player, entity)| **entity == id)
+            .map(|(player, _)| *player)
     }
 }
 
