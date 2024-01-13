@@ -14,6 +14,7 @@ use game_common::world::control_frame::ControlFrame;
 use parking_lot::Mutex;
 use thiserror::Error;
 use tokio::sync::mpsc;
+use tokio::sync::mpsc::error::TrySendError;
 use tokio::time::MissedTickBehavior;
 
 use crate::message::{ControlMessage, DataMessage, DataMessageBody, Message, MessageId};
@@ -849,8 +850,20 @@ pub struct ConnectionHandle {
 
 impl ConnectionHandle {
     /// Client must set id.
-    pub fn send(&self, msg: DataMessage) {
-        self.chan_out.try_send(Message::Data(msg)).unwrap();
+    pub fn send(&self, msg: DataMessage) -> Result<(), TrySendError<DataMessage>> {
+        match self.chan_out.try_send(Message::Data(msg)) {
+            Ok(()) => Ok(()),
+            Err(err) => match err {
+                TrySendError::Full(msg) => match msg {
+                    Message::Data(msg) => Err(TrySendError::Full(msg)),
+                    _ => unreachable!(),
+                },
+                TrySendError::Closed(msg) => match msg {
+                    Message::Data(msg) => Err(TrySendError::Closed(msg)),
+                    _ => unreachable!(),
+                },
+            },
+        }
     }
 
     /// Acknowledges the use of the message.

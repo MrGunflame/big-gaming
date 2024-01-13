@@ -6,12 +6,10 @@ use game_common::components::{
 };
 use game_common::entity::EntityId;
 use game_common::world::{QueryWrapper, World};
-use game_core::hierarchy::Hierarchy;
-use game_render::entities::{DirectionalLightId, ObjectId, PointLightId, SpotLightId};
+use game_render::entities::{DirectionalLightId, PointLightId, SpotLightId};
 use game_render::light::{DirectionalLight, PointLight, SpotLight};
 use game_render::Renderer;
-use game_scene::scene::NodeBody;
-use game_scene::scene2::{Key, Node, SceneGraph};
+use game_scene::scene2::SceneGraph;
 use game_scene::{SceneId, SceneSpawner};
 use game_tasks::TaskPool;
 

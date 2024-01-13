@@ -9,11 +9,13 @@ use game_net::proto::{Decode, Packet};
 use game_net::Socket;
 use tokio::runtime::{Builder, UnhandledPanic};
 
+use super::ConnectionError;
+
 pub fn spawn_conn(
     addr: SocketAddr,
     control_frame: ControlFrame,
     const_delay: ControlFrame,
-) -> Result<Arc<ConnectionHandle>, Box<dyn std::error::Error + Send + Sync + 'static>> {
+) -> Result<ConnectionHandle, ConnectionError> {
     let (tx, rx) = mpsc::channel();
 
     std::thread::spawn(move || {
@@ -27,7 +29,7 @@ pub fn spawn_conn(
             let socket = match Socket::connect(addr) {
                 Ok(s) => Arc::new(s),
                 Err(err) => {
-                    tx.send(Err(err.into())).unwrap();
+                    tx.send(Err(ConnectionError::Socket(err))).unwrap();
                     return;
                 }
             };
@@ -37,11 +39,9 @@ pub fn spawn_conn(
             let (mut conn, handle) =
                 Connection::<_, Connect>::new(stream, control_frame, const_delay);
 
-            tracing::info!("connected");
+            tracing::info!("connecting to {:?}", addr);
 
-            let handle = Arc::new(handle);
-
-            tx.send(Ok(handle.clone())).unwrap();
+            tx.send(Ok(handle)).unwrap();
 
             tokio::select! {
                 res = &mut conn => {

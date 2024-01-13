@@ -7,8 +7,6 @@ use game_core::modules::Modules;
 use game_script::effect::Effect;
 use game_script::{Context, Executor, WorldProvider};
 
-use crate::net::world::CommandBuffer;
-
 use super::state::WorldState;
 
 pub fn run_scripts(
@@ -16,11 +14,10 @@ pub fn run_scripts(
     physics_pipeline: &game_physics::Pipeline,
     executor: &mut Executor,
     event_queue: &mut EventQueue,
-    buffer: &mut CommandBuffer,
     modules: &Modules,
 ) {
     let effects = executor.update(Context {
-        world: world,
+        world,
         physics: physics_pipeline,
         events: event_queue,
         records: modules,

@@ -1,22 +1,21 @@
 use std::collections::VecDeque;
 use std::net::ToSocketAddrs;
-use std::sync::Arc;
 
 use game_common::world::control_frame::ControlFrame;
 use game_net::conn::ConnectionHandle;
-use game_net::message::{DataMessage, DataMessageBody, MessageId};
+use game_net::message::{ControlMessage, DataMessage, DataMessageBody, Message, MessageId};
+use tokio::sync::mpsc::error::TrySendError;
 
 use crate::net::socket::spawn_conn;
+use crate::net::ConnectionError;
 
-use super::flush_command_queue;
 use super::prediction::InputBuffer;
 use super::snapshot::MessageBacklog;
-//use super::prediction::ClientPredictions;
 
 #[derive(Debug)]
 pub struct ServerConnection {
     pub backlog: MessageBacklog,
-    pub handle: Option<Arc<ConnectionHandle>>,
+    handle: Option<ConnectionHandle>,
     pub(crate) input_buffer: InputBuffer,
     buffer: VecDeque<DataMessage>,
     next_message_id: u32,
@@ -28,38 +27,26 @@ impl ServerConnection {
             handle: None,
             buffer: VecDeque::new(),
             input_buffer: InputBuffer::new(),
-            next_message_id: 0,
             backlog: MessageBacklog::new(8192),
+            next_message_id: 0,
         }
     }
 
-    pub fn connect<T>(&mut self, addr: T)
+    pub fn connect<T>(&mut self, addr: T) -> Result<(), ConnectionError>
     where
         T: ToSocketAddrs,
     {
-        fn inner(
-            addr: impl ToSocketAddrs,
-            cf: ControlFrame,
-            const_delay: ControlFrame,
-        ) -> Result<Arc<ConnectionHandle>, Box<dyn std::error::Error + Send + Sync + 'static>>
-        {
-            // TODO: Use async API
-            let addr = match addr.to_socket_addrs()?.nth(0) {
-                Some(addr) => addr,
-                None => panic!("empty dns result"),
-            };
+        // TODO: Use async API
+        let addrs = addr
+            .to_socket_addrs()
+            .map_err(ConnectionError::BadSocketAddr)?;
 
-            spawn_conn(addr, cf, const_delay)
+        for addr in addrs {
+            let handle = spawn_conn(addr, ControlFrame(0), ControlFrame(0))?;
+            self.handle = Some(handle);
         }
 
-        match inner(addr, ControlFrame(0), ControlFrame(0)) {
-            Ok(handle) => {
-                self.handle = Some(handle);
-            }
-            Err(err) => {
-                tracing::error!("failed to connect: {}", err);
-            }
-        }
+        Err(ConnectionError::EmptyDns)
     }
 
     pub fn is_connected(&self) -> bool {
@@ -77,7 +64,7 @@ impl ServerConnection {
             control_frame,
             body,
         };
-        self.next_message_id += 1;
+        self.next_message_id = self.next_message_id.wrapping_add(1);
 
         self.input_buffer.push(msg.clone());
         self.buffer.push_back(msg);
@@ -90,26 +77,58 @@ impl ServerConnection {
         self.buffer.clear();
     }
 
-    fn flush_buffer(&mut self) {
+    pub fn update(&mut self) {
+        self.flush_outgoing_buffer();
+        self.queue_incoming_messages();
+    }
+
+    fn flush_outgoing_buffer(&mut self) {
         let Some(handle) = &self.handle else {
             tracing::error!("not connected");
             return;
         };
 
-        for msg in self.buffer.drain(..) {
-            handle.send(msg);
+        while let Some(msg) = self.buffer.pop_front() {
+            match handle.send(msg) {
+                Ok(()) => (),
+                Err(TrySendError::Full(msg)) => {
+                    self.buffer.push_front(msg);
+                    tracing::warn!("TX buffer is full, buffering until next tick");
+                    break;
+                }
+                // Receiver dropped, i.e. we are no longer connected.
+                Err(TrySendError::Closed(_)) => {
+                    self.shutdown();
+                    break;
+                }
+            }
         }
     }
 
-    pub fn update(&mut self) {
-        if !self.is_connected() {
+    fn queue_incoming_messages(&mut self) {
+        let Some(handle) = &self.handle else {
             tracing::warn!("not connected");
             return;
+        };
+
+        while let Some(msg) = handle.recv() {
+            let msg = match msg {
+                Message::Control(ControlMessage::Connected()) => {
+                    continue;
+                }
+                Message::Control(ControlMessage::Disconnected) => {
+                    self.shutdown();
+                    return;
+                }
+                Message::Control(ControlMessage::Acknowledge(id, cf)) => {
+                    self.input_buffer.remove(cf, id);
+                    continue;
+                }
+                Message::Data(msg) => msg,
+            };
+
+            self.backlog.insert(msg.control_frame, msg);
         }
-
-        self.flush_buffer();
-
-        flush_command_queue(self);
     }
 }
 
