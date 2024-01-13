@@ -41,7 +41,7 @@ impl Input {
                     fields.unnamed.iter().cloned().collect(),
                     InputKind::TupleStruct,
                 ),
-                Fields::Unit => (Vec::new(), InputKind::TupleStruct),
+                Fields::Unit => (Vec::new(), InputKind::Unit),
             },
             Data::Enum(_) | Data::Union(_) => todo!(),
         };
@@ -199,6 +199,9 @@ impl Input {
             InputKind::TupleStruct => quote! {
                 Ok(Self(#fields))
             },
+            InputKind::Unit => quote! {
+                Ok(Self)
+            },
         };
 
         quote! {
@@ -240,6 +243,7 @@ impl Input {
 enum InputKind {
     Struct,
     TupleStruct,
+    Unit,
 }
 
 fn expand_generic_idents(generics: &Generics) -> TokenStream2 {

@@ -120,6 +120,11 @@
                 "scripts": [
                     "scripts/character_controller.wasm"
                 ]
+            },
+            {
+                "id": "16",
+                "name": "Spawn Point",
+                "description": ""
             }
         ],
         "items": [

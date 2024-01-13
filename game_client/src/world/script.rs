@@ -126,6 +126,7 @@ pub fn run_scripts(
 
                 world.world.remove(id, component);
             }
+            Effect::PlayerSetActive(_) => (),
         }
     }
 }
@@ -137,5 +138,11 @@ impl WorldProvider for WorldState {
 
     fn world(&self) -> &game_common::world::World {
         &self.world
+    }
+
+    fn player(&self, id: EntityId) -> Option<game_wasm::player::PlayerId> {
+        // TODO: We only know about our own player id and should return
+        // it if appropriate.
+        None
     }
 }

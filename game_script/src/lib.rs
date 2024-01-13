@@ -14,6 +14,7 @@ use game_common::world::world::{WorldViewMut, WorldViewRef};
 use game_common::world::World;
 use game_data::record::Record;
 use game_tracing::trace_span;
+use game_wasm::player::PlayerId;
 use instance::{InstancePool, State};
 use script::Script;
 use wasmtime::{Config, Engine, WasmBacktraceDetails};
@@ -181,6 +182,7 @@ pub struct Context<'a> {
 pub trait WorldProvider {
     fn world(&self) -> &World;
     fn inventory(&self, id: EntityId) -> Option<&Inventory>;
+    fn player(&self, id: EntityId) -> Option<PlayerId>;
 }
 
 impl WorldProvider for WorldViewRef<'_> {
@@ -191,6 +193,10 @@ impl WorldProvider for WorldViewRef<'_> {
     fn inventory(&self, id: EntityId) -> Option<&Inventory> {
         self.inventories().get(id)
     }
+
+    fn player(&self, id: EntityId) -> Option<PlayerId> {
+        todo!()
+    }
 }
 
 impl WorldProvider for WorldViewMut<'_> {
@@ -200,6 +206,10 @@ impl WorldProvider for WorldViewMut<'_> {
 
     fn inventory(&self, id: EntityId) -> Option<&Inventory> {
         self.inventories().get(id)
+    }
+
+    fn player(&self, id: EntityId) -> Option<PlayerId> {
+        todo!()
     }
 }
 

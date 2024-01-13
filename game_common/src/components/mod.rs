@@ -13,3 +13,4 @@ pub mod transform;
 
 pub use game_wasm::components::builtin::*;
 pub use game_wasm::components::{Component, Decode, Encode};
+pub use game_wasm::player::PlayerId;

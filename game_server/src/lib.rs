@@ -78,6 +78,7 @@ pub struct ServerState {
     pub script_executor: Executor,
     pub pool: TaskPool,
     pub scene: SceneState,
+    pub next_player: u64,
 }
 
 impl ServerState {
@@ -96,6 +97,7 @@ impl ServerState {
                 graph: SceneGraph::new(),
                 entities: HashMap::default(),
             },
+            next_player: 0,
         }
     }
 }

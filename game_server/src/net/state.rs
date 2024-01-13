@@ -1,6 +1,7 @@
 use ahash::HashMap;
 use game_common::components::components::{Components, RawComponent};
 use game_common::components::inventory::Inventory;
+use game_common::components::PlayerId;
 use game_common::entity::EntityId;
 use game_common::record::RecordReference;
 use game_common::world::cell::square;
@@ -133,5 +134,7 @@ impl KnownEntities {
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 pub struct HostState {
+    // TODO: We only need the player id to resolve to an entity.
     pub entity: Option<EntityId>,
+    pub player: Option<PlayerId>,
 }

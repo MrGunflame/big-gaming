@@ -5,7 +5,7 @@ use game_common::components::actions::ActionId;
 use game_common::components::components::{Components, RawComponent};
 use game_common::components::inventory::Inventory;
 use game_common::components::items::Item;
-use game_common::components::Transform;
+use game_common::components::{PlayerId, Transform};
 use game_common::entity::EntityId;
 use game_common::events::{ActionEvent, Event, EventQueue};
 use game_common::net::ServerEntity;
@@ -20,8 +20,8 @@ use game_net::message::{
     EntityComponentUpdate, EntityCreate, EntityDestroy, EntityRotate, EntityTranslate,
     InventoryItemAdd, InventoryItemRemove, InventoryItemUpdate, Message, MessageId, SpawnHost,
 };
-use game_net::peer_error;
 use game_net::proto::components::ComponentRemove;
+use game_net::{conn, host, peer_error};
 use game_script::effect::{Effect, Effects};
 use game_script::{Context, WorldProvider};
 use glam::Vec3;
@@ -51,7 +51,7 @@ pub fn tick(state: &mut ServerState) {
         events: &mut state.event_queue,
         records: &state.modules,
     });
-    apply_effects(effects, &mut state.world);
+    apply_effects(effects, &mut state.world, &mut state.level);
 
     if cfg!(feature = "physics") {
         step_physics(state);
@@ -69,7 +69,7 @@ pub fn tick(state: &mut ServerState) {
     // state.scene.graph.clear_trackers();
 }
 
-fn apply_effects(effects: Effects, world: &mut WorldState) {
+fn apply_effects(effects: Effects, world: &mut WorldState, level: &mut Level) {
     // Since the script executing uses its own temporary ID namespace
     // for newly created IDs we must remap all IDs into "real" IDs.
     // A temporary ID must **never** overlap with an existing ID.
@@ -162,7 +162,24 @@ fn apply_effects(effects: Effects, world: &mut WorldState) {
                     .insert(entity_id, component, RawComponent::new(data));
             }
             Effect::EntityComponentRemove(entity_id, component) => {
-                world.world.remove(entity_id, component);
+                let entity = entity_id_remap
+                    .get(&entity_id)
+                    .copied()
+                    .unwrap_or(entity_id);
+
+                world.world.remove(entity, component);
+            }
+            Effect::PlayerSetActive(effect) => {
+                let entity = entity_id_remap
+                    .get(&effect.entity)
+                    .copied()
+                    .unwrap_or(effect.entity);
+
+                if let Some(old_entity) = world.players.insert(effect.player, entity) {
+                    level.destroy_streamer(old_entity);
+                }
+
+                level.create_streamer(entity, Streamer { distance: 2 });
             }
         }
     }
@@ -206,12 +223,16 @@ fn flush_command_queue(srv_state: &mut ServerState) {
         match msg {
             Message::Control(ControlMessage::Connected()) => {
                 let id = spawn_player(&srv_state.modules, world, &mut srv_state.scene).unwrap();
+                let player = PlayerId::from_raw(srv_state.next_player);
+                srv_state.next_player += 1;
+                world.players.insert(player, id);
 
                 // At the connection time the delay must be 0, meaning the player is spawned
                 // without delay.
                 debug_assert_eq!(state.peer_delay, ControlFrame(0));
 
                 state.host.entity = Some(id);
+                state.host.player = Some(player);
                 state.peer_delay = ControlFrame(0);
                 state.cells = Cells::new(CellId::from(Vec3::ZERO));
                 srv_state
@@ -372,9 +393,19 @@ fn update_snapshots(
 fn update_client(conn: &Connection, world: &WorldState, level: &Level, cf: ControlFrame) {
     let mut state = conn.state().write();
 
-    let Some(host_id) = state.host.entity else {
+    let Some(player_id) = state.host.player else {
         return;
     };
+
+    let Some(host_id) = world.players.get(&player_id).copied() else {
+        return;
+    };
+
+    let active_entity_changed = state.host.entity.unwrap() != host_id;
+
+    if active_entity_changed {
+        dbg!(host_id, world);
+    }
 
     let transform = world.get::<Transform>(host_id);
     let cell_id = CellId::from(transform.translation);
@@ -415,6 +446,16 @@ fn update_client(conn: &Connection, world: &WorldState, level: &Level, cf: Contr
             body,
         };
         conn.handle().send(msg);
+    }
+
+    if active_entity_changed {
+        state.host.entity = Some(host_id);
+        let id = state.entities.get(host_id).unwrap();
+        conn.handle().send(DataMessage {
+            id: MessageId(0),
+            control_frame: cf,
+            body: DataMessageBody::SpawnHost(SpawnHost { entity: id }),
+        });
     }
 }
 
