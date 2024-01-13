@@ -7,14 +7,11 @@ use crate::entity::EntityId;
 use crate::math::Ray;
 use crate::raw::physics::{physics_cast_ray, physics_cast_shape, CastRayResult};
 use crate::raw::physics::{QueryFilter as RawQueryFilter, Shape as RawShape};
-use crate::raw::{Ptr, PtrMut, Usize, RESULT_OK};
+use crate::raw::RESULT_OK;
 
 pub fn cast_ray(ray: Ray, max_toi: f32, filter: QueryFilter<'_>) -> Option<RayHit> {
     let filter = build_raw_query_filter(filter);
-    let filter_ptr = Ptr::from_raw(&filter as *const RawQueryFilter as Usize);
-
     let mut out = MaybeUninit::<CastRayResult>::uninit();
-    let ptr = PtrMut::from_raw(out.as_mut_ptr() as Usize);
 
     let res = unsafe {
         physics_cast_ray(
@@ -25,8 +22,8 @@ pub fn cast_ray(ray: Ray, max_toi: f32, filter: QueryFilter<'_>) -> Option<RayHi
             ray.direction.y,
             ray.direction.z,
             max_toi,
-            filter_ptr,
-            ptr,
+            &filter,
+            out.as_mut_ptr(),
         )
     };
 
@@ -103,11 +100,8 @@ pub struct QueryFilter<'a> {
 }
 
 fn build_raw_query_filter(filter: QueryFilter<'_>) -> RawQueryFilter {
-    let exclude_entities_ptr = filter.exclude_entities.as_ptr() as Usize;
-    let exclude_entities_len = filter.exclude_entities.len() as Usize;
-
     RawQueryFilter {
-        exclude_entities_ptr,
-        exclude_entities_len,
+        exclude_entities_ptr: filter.exclude_entities.as_ptr(),
+        exclude_entities_len: filter.exclude_entities.len(),
     }
 }

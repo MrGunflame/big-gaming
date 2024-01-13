@@ -1,20 +1,19 @@
 use bytemuck::{Pod, Zeroable};
 use game_macros::guest_only;
 
-use super::{Ptr, PtrMut, Usize};
 use crate::record::RecordReference;
 
 #[guest_only]
-pub fn inventory_list(entity_id: u64, out: PtrMut<u64>, len: Usize) -> u32;
+pub fn inventory_list(entity_id: u64, out: *mut u64, len: u32) -> u32;
 
 #[guest_only]
-pub fn inventory_len(entity_id: u64, out: PtrMut<u32>) -> u32;
+pub fn inventory_len(entity_id: u64, out: *mut u32) -> u32;
 
 #[guest_only]
-pub fn inventory_get(entity_id: u64, slot_id: u64, out: PtrMut<ItemStack>) -> u32;
+pub fn inventory_get(entity_id: u64, slot_id: u64, out: *mut ItemStack) -> u32;
 
 #[guest_only]
-pub fn inventory_insert(entity_id: u64, item_stack: Ptr<ItemStack>, slot_id: PtrMut<u64>) -> u32;
+pub fn inventory_insert(entity_id: u64, item_stack: *const ItemStack, slot_id: *mut u64) -> u32;
 
 #[guest_only]
 pub fn inventory_remove(entity_id: u64, id: u64, quantity: u64) -> u32;
@@ -26,33 +25,33 @@ pub fn inventory_clear(entity_id: u64) -> u32;
 pub fn inventory_component_len(
     entity_id: u64,
     slot_id: u64,
-    component_id: Ptr<RecordReference>,
-    out: PtrMut<Usize>,
+    component_id: *const RecordReference,
+    out: *mut usize,
 ) -> u32;
 
 #[guest_only]
 pub fn inventory_component_get(
     entity_id: u64,
     slot_id: u64,
-    component_id: Ptr<RecordReference>,
-    out: PtrMut<u8>,
-    len: Usize,
+    component_id: *const RecordReference,
+    out: *mut u8,
+    len: usize,
 ) -> u32;
 
 #[guest_only]
 pub fn inventory_component_insert(
     entity_id: u64,
     slot_id: u64,
-    component_id: Ptr<RecordReference>,
-    ptr: Ptr<u8>,
-    len: Usize,
+    component_id: *const RecordReference,
+    ptr: *const u8,
+    len: usize,
 ) -> u32;
 
 #[guest_only]
 pub fn inventory_component_remove(
     entity_id: u64,
     slot_id: u64,
-    component_id: Ptr<RecordReference>,
+    component_id: *const RecordReference,
 ) -> u32;
 
 #[guest_only]

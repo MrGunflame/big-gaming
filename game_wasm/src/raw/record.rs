@@ -3,34 +3,32 @@ use game_macros::guest_only;
 
 use crate::world::RecordReference;
 
-use super::{Ptr, PtrMut, Usize};
+#[guest_only]
+pub fn get_record(id: *const RecordReference, out: *mut Record) -> u32;
 
 #[guest_only]
-pub fn get_record(id: Ptr<RecordReference>, out: PtrMut<Record>) -> u32;
-
-#[guest_only]
-pub fn get_record_len_component(id: Ptr<RecordReference>, out: PtrMut<Usize>) -> u32;
+pub fn get_record_len_component(id: *const RecordReference, out: *mut usize) -> u32;
 
 #[guest_only]
 pub fn get_record_component_keys(
-    id: Ptr<RecordReference>,
-    out: PtrMut<RecordReference>,
-    len: Usize,
+    id: *const RecordReference,
+    out: *mut RecordReference,
+    len: usize,
 ) -> u32;
 
 #[guest_only]
 pub fn get_record_component_len(
-    id: Ptr<RecordReference>,
-    component_id: Ptr<RecordReference>,
-    out: PtrMut<Usize>,
+    id: *const RecordReference,
+    component_id: *const RecordReference,
+    out: *mut usize,
 ) -> u32;
 
 #[guest_only]
 pub fn get_record_component_get(
-    id: Ptr<RecordReference>,
-    component_id: Ptr<RecordReference>,
-    ptr: PtrMut<u8>,
-    len: Usize,
+    id: *const RecordReference,
+    component_id: *const RecordReference,
+    ptr: *mut u8,
+    len: usize,
 ) -> u32;
 
 #[derive(Copy, Clone, Debug, Zeroable, Pod)]
