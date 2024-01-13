@@ -69,6 +69,13 @@ impl Mesh {
     }
 
     pub fn compute_tangents(&mut self) {
+        // TODO: Checks and precomputes should move to gltf crate.
+        assert_eq!(self.positions.len(), self.normals.len());
+
+        if self.uvs.len() != self.positions.len() {
+            self.uvs.resize(self.positions.len(), [0.0; 2]);
+        }
+
         let mut triangles_included = vec![];
 
         self.tangents.clear();
@@ -93,8 +100,20 @@ impl Mesh {
             let delta_uv1 = uv1 - uv0;
             let delta_uv2 = uv2 - uv0;
 
-            let f = 1.0 / (delta_uv1.x * delta_uv2.y - delta_uv1.y * delta_uv2.x);
-            let tangent = (delta_pos1 * delta_uv2.y - delta_pos2 * delta_uv1.y) * f;
+            // If uv1 - uv0 == 0.0 && uv2 - uv0 == 0.0 our tangent calculation will yield
+            // in NaN, resulting in a black mesh. This check will always trigger if the
+            // the UVs were not provided, or if the user-provided mesh was invalid.
+            // Instead of failing to render the object we will generate "any" tangent
+            // instead.
+            let tangent = if !delta_uv1.is_finite() || !delta_uv2.is_finite() {
+                pos0.cross(pos1)
+            } else {
+                let f = 1.0 / (delta_uv1.x * delta_uv2.y - delta_uv1.y * delta_uv2.x);
+                let tangent = (delta_pos1 * delta_uv2.y - delta_pos2 * delta_uv1.y) * f;
+                tangent
+            };
+
+            debug_assert!(tangent.is_finite());
 
             // Note that the orientation is already set to 1.0 on every tangent, we don't
             // want to change that.
