@@ -84,14 +84,13 @@ where
             );
 
             if let Some(render_cf) = self.next_frame_counter.render_frame {
-                self.process_frame(render_cf, modules, cmd_buffer);
+                self.process_frame(render_cf, cmd_buffer);
 
                 run_scripts(
                     &mut self.predicted_state,
                     &self.physics_pipeline,
                     &mut self.executor,
                     &mut self.event_queue,
-                    cmd_buffer,
                     &modules,
                 );
             }
@@ -104,12 +103,7 @@ where
         self.game_tick.counter.ups()
     }
 
-    fn process_frame(
-        &mut self,
-        cf: ControlFrame,
-        modules: &Modules,
-        cmd_buffer: &mut CommandBuffer,
-    ) {
+    fn process_frame(&mut self, cf: ControlFrame, cmd_buffer: &mut CommandBuffer) {
         let _span = trace_span!("GameWorld::process_frame").entered();
 
         // If we didn't receive any messages in this CF this is `None`

@@ -14,10 +14,8 @@ use std::sync::Arc;
 use clap::Parser;
 use config::Config;
 use game_common::world::World;
-use game_core::hierarchy::TransformHierarchy;
 use game_core::time::Time;
 use game_render::Renderer;
-use game_script::Executor;
 use game_tasks::TaskPool;
 use game_ui::UiState;
 use game_window::cursor::Cursor;
@@ -85,7 +83,6 @@ fn main() {
         time: Time::new(),
         cursor,
         pool: TaskPool::new(8),
-        hierarchy: TransformHierarchy::default(),
         ui_state,
         entities: SceneEntities::default(),
         world: World::new(),
@@ -102,7 +99,6 @@ pub struct App {
     time: Time,
     cursor: Arc<Cursor>,
     pool: TaskPool,
-    hierarchy: TransformHierarchy,
     ui_state: UiState,
     entities: SceneEntities,
     world: World,
@@ -152,8 +148,6 @@ impl game_window::App for App {
                 let window = ctx.windows.state(event.window).unwrap();
                 self.ui_state.create(event.window, window.inner_size());
                 self.renderer.create(event.window, window);
-
-                let cx = self.ui_state.get_mut(event.window).unwrap().root_scope();
             }
             WindowEvent::WindowResized(event) => {
                 debug_assert_eq!(event.window, self.window_id);
