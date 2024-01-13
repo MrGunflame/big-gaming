@@ -1,4 +1,4 @@
-use crate::raw::{self, Usize};
+use crate::raw;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 #[repr(transparent)]
@@ -19,11 +19,8 @@ impl Level {
 }
 
 pub fn log(level: Level, content: &str) {
-    let ptr = content.as_ptr() as Usize;
-    let len = content.len() as Usize;
-
     unsafe {
-        raw::log(level.0, ptr, len);
+        raw::log(level.0, content.as_ptr(), content.len());
     }
 }
 

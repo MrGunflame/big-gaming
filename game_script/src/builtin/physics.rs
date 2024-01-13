@@ -1,9 +1,10 @@
+use bytemuck::{Pod, Zeroable};
 use game_common::components::{ColliderShape, Cuboid};
 use game_common::entity::EntityId;
 use game_common::math::Ray;
 use game_physics::query::QueryFilter;
 use game_tracing::trace_span;
-use game_wasm::raw::physics::{CastRayResult, QueryFilter as RawQueryFilter};
+use game_wasm::raw::physics::CastRayResult;
 use glam::{Quat, Vec3};
 use wasmtime::Caller;
 
@@ -123,4 +124,11 @@ fn read_query_filter(
     }
 
     Ok(QueryFilter { exclude_entities })
+}
+
+#[derive(Copy, Clone, Debug, Zeroable, Pod)]
+#[repr(C)]
+struct RawQueryFilter {
+    exclude_entities_ptr: u32,
+    exclude_entities_len: u32,
 }

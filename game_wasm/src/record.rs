@@ -11,7 +11,6 @@ use crate::raw::record::{
     get_record, get_record_component_get, get_record_component_keys, get_record_component_len,
     get_record_len_component, RecordKind as RawRecordKind,
 };
-use crate::raw::{Ptr, PtrMut};
 
 const HEX_CHARS: &[u8; 16] = b"0123456789abcdef";
 
@@ -268,7 +267,7 @@ impl Record {
     pub fn get(id: RecordReference) -> Self {
         let mut record = MaybeUninit::uninit();
 
-        let res = unsafe { get_record(Ptr::from_ptr(&id), PtrMut::from_ptr(record.as_mut_ptr())) };
+        let res = unsafe { get_record(&id, record.as_mut_ptr()) };
         assert!(res == 0);
 
         let record = unsafe { record.assume_init() };
@@ -310,16 +309,13 @@ impl RecordKind {
 fn fetch_components(id: RecordReference) -> Components {
     let mut len = MaybeUninit::uninit();
 
-    let res =
-        unsafe { get_record_len_component(Ptr::from_ptr(&id), PtrMut::from_ptr(len.as_mut_ptr())) };
+    let res = unsafe { get_record_len_component(&id, len.as_mut_ptr()) };
     assert!(res == 0);
 
     let len = unsafe { len.assume_init() };
 
     let mut keys = Vec::with_capacity(len as usize);
-    let res = unsafe {
-        get_record_component_keys(Ptr::from_ptr(&id), PtrMut::from_ptr(keys.as_mut_ptr()), len)
-    };
+    let res = unsafe { get_record_component_keys(&id, keys.as_mut_ptr(), len) };
     assert!(res == 0);
     unsafe { keys.set_len(len as usize) };
 
@@ -335,26 +331,13 @@ fn fetch_components(id: RecordReference) -> Components {
 fn fetch_component(id: RecordReference, component: RecordReference) -> RawComponent {
     let mut len = MaybeUninit::uninit();
 
-    let res = unsafe {
-        get_record_component_len(
-            Ptr::from_ptr(&id),
-            Ptr::from_ptr(&component),
-            PtrMut::from_ptr(len.as_mut_ptr()),
-        )
-    };
+    let res = unsafe { get_record_component_len(&id, &component, len.as_mut_ptr()) };
     assert!(res == 0);
 
     let len = unsafe { len.assume_init() };
     let mut bytes = Vec::with_capacity(len as usize);
 
-    let res = unsafe {
-        get_record_component_get(
-            Ptr::from_ptr(&id),
-            Ptr::from_ptr(&component),
-            PtrMut::from_ptr(bytes.as_mut_ptr()),
-            len,
-        )
-    };
+    let res = unsafe { get_record_component_get(&id, &component, bytes.as_mut_ptr(), len) };
     assert!(res == 0);
 
     unsafe { bytes.set_len(len as usize) };

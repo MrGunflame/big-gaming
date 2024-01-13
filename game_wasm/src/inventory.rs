@@ -15,9 +15,7 @@ use crate::raw::inventory::{
 };
 use crate::{unreachable_unchecked, Error, ErrorImpl};
 
-use crate::raw::{
-    Ptr, PtrMut, Usize, RESULT_NO_COMPONENT, RESULT_NO_ENTITY, RESULT_NO_INVENTORY_SLOT, RESULT_OK,
-};
+use crate::raw::{RESULT_NO_COMPONENT, RESULT_NO_ENTITY, RESULT_NO_INVENTORY_SLOT, RESULT_OK};
 use crate::record::{Record, RecordKind};
 use crate::world::RecordReference;
 
@@ -51,9 +49,8 @@ impl Inventory {
 
     pub fn get(&self, id: InventoryId) -> Result<ItemStackRef, Error> {
         let mut stack = MaybeUninit::<RawItemStack>::uninit();
-        let ptr = stack.as_mut_ptr() as Usize;
 
-        let res = unsafe { inventory_get(self.entity.into_raw(), id.0, PtrMut::from_raw(ptr)) };
+        let res = unsafe { inventory_get(self.entity.into_raw(), id.0, stack.as_mut_ptr()) };
 
         match res {
             RESULT_OK => {
@@ -81,12 +78,7 @@ impl Inventory {
     pub fn len(&self) -> Result<u32, Error> {
         let mut len = MaybeUninit::uninit();
 
-        let res = unsafe {
-            inventory_len(
-                self.entity.into_raw(),
-                PtrMut::from_raw(len.as_mut_ptr() as Usize),
-            )
-        };
+        let res = unsafe { inventory_len(self.entity.into_raw(), len.as_mut_ptr()) };
         match res {
             RESULT_OK => Ok(unsafe { len.assume_init() }),
             RESULT_NO_ENTITY => Err(ErrorImpl::NoEntity(self.entity).into_error()),
@@ -114,18 +106,13 @@ impl Inventory {
 
         let mut slot_id = MaybeUninit::uninit();
 
-        let res = unsafe {
-            inventory_insert(
-                self.entity.into_raw(),
-                Ptr::from_raw(&raw_stack as *const _ as Usize),
-                PtrMut::from_raw(slot_id.as_mut_ptr() as Usize),
-            )
-        };
+        let res =
+            unsafe { inventory_insert(self.entity.into_raw(), &raw_stack, slot_id.as_mut_ptr()) };
 
         match res {
             RESULT_OK => {
                 let slot_id = unsafe { slot_id.assume_init() };
-                Ok(slot_id)
+                Ok(InventoryId(slot_id))
             }
             RESULT_NO_ENTITY => Err(ErrorImpl::NoEntity(self.entity).into_error()),
             _ => unsafe { unreachable_unchecked() },
@@ -155,16 +142,10 @@ impl Inventory {
         id: InventoryId,
         component_id: RecordReference,
     ) -> Result<RawComponent, Error> {
-        let mut len: Usize = 0;
-        let len_ptr = &mut len as *mut Usize as Usize;
+        let mut len: usize = 0;
 
         let res = unsafe {
-            inventory_component_len(
-                self.entity.into_raw(),
-                id.0,
-                Ptr::from_raw(&component_id as *const _ as Usize),
-                PtrMut::from_raw(len_ptr),
-            )
+            inventory_component_len(self.entity.into_raw(), id.0, &component_id, &mut len)
         };
 
         match res {
@@ -186,8 +167,8 @@ impl Inventory {
             inventory_component_get(
                 self.entity.into_raw(),
                 id.0,
-                Ptr::from_raw(&component_id as *const _ as Usize),
-                PtrMut::from_raw(bytes.as_mut_ptr() as Usize),
+                &component_id,
+                bytes.as_mut_ptr(),
                 len,
             )
         };
@@ -208,16 +189,13 @@ impl Inventory {
         component_id: RecordReference,
         component: &RawComponent,
     ) -> Result<(), Error> {
-        let ptr = Ptr::from_raw(component.as_bytes().as_ptr() as Usize);
-        let len = component.as_bytes().len() as Usize;
-
         let res = unsafe {
             inventory_component_insert(
                 self.entity.into_raw(),
                 id.0,
-                Ptr::from_raw(&component_id as *const _ as Usize),
-                ptr,
-                len,
+                &component_id,
+                component.as_bytes().as_ptr(),
+                component.as_bytes().len(),
             )
         };
 
@@ -234,9 +212,8 @@ impl Inventory {
         id: InventoryId,
         component_id: RecordReference,
     ) -> Result<(), Error> {
-        let res = unsafe {
-            inventory_component_remove(self.entity.into_raw(), id.0, Ptr::from_ptr(&component_id))
-        };
+        let res =
+            unsafe { inventory_component_remove(self.entity.into_raw(), id.0, &component_id) };
 
         match res {
             RESULT_OK => Ok(()),
@@ -251,13 +228,7 @@ impl Inventory {
         let len = self.len()?;
         let mut keys = Vec::with_capacity(len.try_into().unwrap());
 
-        let res = unsafe {
-            inventory_list(
-                self.entity.into_raw(),
-                PtrMut::from_raw(keys.as_mut_ptr() as Usize),
-                len,
-            )
-        };
+        let res = unsafe { inventory_list(self.entity.into_raw(), keys.as_mut_ptr(), len) };
         match res {
             RESULT_OK => {
                 unsafe { keys.set_len(len.try_into().unwrap()) };
@@ -488,7 +459,7 @@ impl private::Sealed for Item {
 /// An `Iterator` over all the [`InventoryId`]s in an [`Inventory`].
 #[derive(Clone, Debug)]
 pub struct Keys {
-    inner: alloc::vec::IntoIter<InventoryId>,
+    inner: alloc::vec::IntoIter<u64>,
 }
 
 impl Iterator for Keys {
@@ -496,7 +467,7 @@ impl Iterator for Keys {
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        self.inner.next()
+        self.inner.next().map(InventoryId)
     }
 
     #[inline]
@@ -581,13 +552,8 @@ impl ItemStackBuilder {
             quantity: self.quantity,
         };
 
-        let res = unsafe {
-            inventory_insert(
-                inventory.entity.into_raw(),
-                Ptr::from_ptr(&stack),
-                PtrMut::from_ptr(slot_id.as_mut_ptr()),
-            )
-        };
+        let res =
+            unsafe { inventory_insert(inventory.entity.into_raw(), &stack, slot_id.as_mut_ptr()) };
         assert!(res == 0);
 
         let slot_id = unsafe { slot_id.assume_init() };
@@ -597,9 +563,9 @@ impl ItemStackBuilder {
                 inventory_component_insert(
                     inventory.entity.into_raw(),
                     slot_id,
-                    Ptr::from_ptr(&id),
-                    Ptr::from_ptr(component.as_ptr()),
-                    component.len() as u32,
+                    &id,
+                    component.as_ptr(),
+                    component.len(),
                 )
             };
             assert!(res == 0);

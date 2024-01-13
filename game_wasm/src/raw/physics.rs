@@ -1,7 +1,7 @@
 use bytemuck::{Pod, Zeroable};
 use game_macros::guest_only;
 
-use super::{Ptr, PtrMut, Usize};
+use crate::entity::EntityId;
 
 #[guest_only]
 pub fn physics_cast_ray(
@@ -12,8 +12,8 @@ pub fn physics_cast_ray(
     direction_y: f32,
     direction_z: f32,
     max_toi: f32,
-    filter_ptr: Ptr<QueryFilter>,
-    out: PtrMut<CastRayResult>,
+    filter_ptr: *const QueryFilter,
+    out: *mut CastRayResult,
 ) -> u32;
 
 #[guest_only]
@@ -42,12 +42,11 @@ pub struct CastRayResult {
     pub _pad0: u32,
 }
 
-#[derive(Copy, Clone, Debug, Zeroable, Pod)]
+#[derive(Copy, Clone, Debug)]
 #[repr(C)]
 pub struct QueryFilter {
-    // FIXME: Maybe change to `Ptr<EntityId>`.
-    pub exclude_entities_ptr: Usize,
-    pub exclude_entities_len: Usize,
+    pub exclude_entities_ptr: *const EntityId,
+    pub exclude_entities_len: usize,
 }
 
 #[derive(Copy, Clone, Debug, Zeroable, Pod)]
