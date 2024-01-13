@@ -69,19 +69,27 @@ pub struct SurfaceData {
     _window: WindowState,
 }
 
+#[derive(Clone, Debug)]
+enum SurfaceCreationError {
+    Wgpu(wgpu::CreateSurfaceError),
+    NoFormat,
+    NoPresentMode,
+    NoAlphaMode,
+}
+
 fn create_surface(
     window: WindowState,
     instance: &Instance,
     adapter: &Adapter,
     device: &Device,
-) -> Result<SurfaceData, ()> {
+) -> Result<SurfaceData, SurfaceCreationError> {
     let size = window.inner_size();
 
     let surface = match unsafe { instance.create_surface(&window) } {
         Ok(surface) => surface,
         Err(err) => {
             tracing::error!("failed to create surface: {}", err);
-            return Err(());
+            return Err(SurfaceCreationError::Wgpu(err));
         }
     };
 
@@ -89,17 +97,17 @@ fn create_surface(
 
     let Some(format) = get_surface_format(&caps.formats) else {
         tracing::error!("failed to select format for render suface");
-        return Err(());
+        return Err(SurfaceCreationError::NoFormat);
     };
 
     let Some(present_mode) = get_surface_present_mode(&caps.present_modes) else {
         tracing::error!("failed to select present mode for render surface");
-        return Err(());
+        return Err(SurfaceCreationError::NoPresentMode);
     };
 
     let Some(alpha_mode) = get_surface_alpha_mode(&caps.alpha_modes) else {
         tracing::error!("failed to select alpha mode for render surface");
-        return Err(());
+        return Err(SurfaceCreationError::NoAlphaMode);
     };
 
     let config = SurfaceConfiguration {

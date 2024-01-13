@@ -23,6 +23,8 @@ var<storage> normals: array<array<f32, 3>>;
 var<storage> tangents: array<array<f32, 4>>;
 @group(1) @binding(3)
 var<storage> uvs: array<array<f32, 2>>;
+@group(1) @binding(4)
+var<storage> materials: array<u32>;
 
 struct VertexInput {
     @builtin(vertex_index) vertex_index: u32,
@@ -34,6 +36,7 @@ struct VertexOutput {
     @location(1) world_normal: vec3<f32>,
     @location(2) uv: vec2<f32>,
     @location(3) world_tangent: vec4<f32>,
+    @location(4) @interpolate(flat) material: u32,
 }
 
 @vertex
@@ -44,6 +47,7 @@ fn vs_main(in: VertexInput) -> VertexOutput {
     let normal = fetch_normal(in.vertex_index);
     let uv = fetch_uv(in.vertex_index);
     let tangent = fetch_tangent(in.vertex_index);
+    let material = materials[in.vertex_index];
 
     out.clip_position = camera.view_proj * model.transform * vec4<f32>(position, 1.0);
     out.uv = uv;
@@ -51,6 +55,8 @@ fn vs_main(in: VertexInput) -> VertexOutput {
     out.world_position = (model.transform * vec4<f32>(position, 1.0)).xyz;
     out.world_normal = model.normal * normal;
     out.world_tangent = vec4((model.normal * tangent.xyz), tangent.w);
+
+    out.material = material;
 
     return out;
 }

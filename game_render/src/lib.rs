@@ -14,6 +14,7 @@ pub mod shape;
 pub mod surface;
 pub mod texture;
 
+mod allocator;
 mod depth_stencil;
 mod pipelined_rendering;
 mod post_process;
@@ -67,6 +68,13 @@ impl Renderer {
             dx12_shader_compiler: Default::default(),
         });
 
+        let features = Features::TEXTURE_BINDING_ARRAY
+            | Features::SAMPLED_TEXTURE_AND_STORAGE_BUFFER_ARRAY_NON_UNIFORM_INDEXING;
+        let limits = Limits {
+            max_sampled_textures_per_shader_stage: 1024,
+            ..Default::default()
+        };
+
         let adapter =
             futures_lite::future::block_on(instance.request_adapter(&RequestAdapterOptions {
                 power_preference: PowerPreference::HighPerformance,
@@ -77,8 +85,8 @@ impl Renderer {
 
         let (device, queue) = futures_lite::future::block_on(adapter.request_device(
             &DeviceDescriptor {
-                features: Features::default(),
-                limits: Limits::default(),
+                features,
+                limits,
                 label: None,
             },
             None,

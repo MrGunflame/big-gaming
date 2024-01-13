@@ -1,12 +1,5 @@
 const PI: f32 = 3.14159265358979323846264338327950288;
 
-struct MaterialConstants {
-    base_color: vec4<f32>,
-    metallic: f32,
-    roughness: f32,
-    reflectance: f32,
-}
-
 @group(0) @binding(0)
 var<uniform> camera: Camera;
 
@@ -16,14 +9,10 @@ struct Camera {
 }
 
 @group(2) @binding(0)
-var<uniform> constants: MaterialConstants;
+var<storage> materials: Materials;
 @group(2) @binding(1)
-var base_color_texture: texture_2d<f32>;
+var textures: binding_array<texture_2d<f32>>;
 @group(2) @binding(2)
-var normal_texture: texture_2d<f32>;
-@group(2) @binding(3)
-var metallic_roughness_texture: texture_2d<f32>;
-@group(2) @binding(4)
 var linear_sampler: sampler;
 
 @group(3) @binding(0)
@@ -33,17 +22,38 @@ var<storage> point_lights: PointLights;
 @group(3) @binding(2)
 var<storage> spot_lights: SpotLights;
 
+// FIXME: We don't need to know the count of the buffer, we already
+// know that the index is valid.
+struct Materials {
+    count: u32,
+    materials: array<Material>,
+}
+
+struct Material {
+    base_color: vec4<f32>,
+    metallic: f32,
+    roughness: f32,
+    reflectance: f32,
+    _pad0: u32,
+    albedo_texture: u32,
+    normal_texture: u32,
+    metallic_roughness_texture: u32,
+    _pad1: u32,
+}
+
 struct FragInput {
     @builtin(position) clip_position: vec4<f32>,
     @location(0) world_position: vec3<f32>,
     @location(1) world_normal: vec3<f32>,
     @location(2) uv: vec2<f32>,
     @location(3) world_tangent: vec4<f32>,
+    @location(4) @interpolate(flat) material: u32,
 }
 
 @fragment
 fn fs_main(in: FragInput) -> @location(0) vec4<f32> {
-    var color = constants.base_color * textureSample(base_color_texture, linear_sampler, in.uv);
+    let material = get_material(in);
+    let color = material.base_color * textureSample(textures[material.albedo_texture], linear_sampler, in.uv);
 
     var luminance: vec3<f32> = vec3(0.0, 0.0, 0.0);
 
@@ -200,8 +210,14 @@ struct SpotLight {
     outer_cutoff: f32,
 }
 
+fn get_material(in: FragInput) -> Material {
+   return materials.materials[in.material];
+}
+
 fn get_albedo(in: FragInput) -> vec3<f32> {
-    return constants.base_color.rgb * textureSample(base_color_texture, linear_sampler, in.uv).rgb;
+    let material = get_material(in);
+    let albedo_texture = textures[material.albedo_texture];
+    return material.base_color.rgb * textureSample(albedo_texture, linear_sampler, in.uv).rgb;
 }
 
 fn get_normal(in: FragInput) -> vec3<f32> {
@@ -209,6 +225,9 @@ fn get_normal(in: FragInput) -> vec3<f32> {
     let tangent_norm = normalize(in.world_tangent.xyz);
     let bitangent = cross(normal_norm, tangent_norm) * in.world_tangent.w;
     let tbn = mat3x3(tangent_norm, bitangent, normal_norm);
+
+    let material = get_material(in);
+    let normal_texture = textures[material.normal_texture];
 
     var normal = textureSample(normal_texture, linear_sampler, in.uv).rgb;
     normal = normalize(normal * 2.0 - 1.0);
@@ -218,11 +237,15 @@ fn get_normal(in: FragInput) -> vec3<f32> {
 }
 
 fn get_roughness(in: FragInput) -> f32 {
-    return constants.roughness * textureSample(metallic_roughness_texture, linear_sampler, in.uv).g;
+    let material = get_material(in);
+    let metallic_roughness_texture = textures[material.metallic_roughness_texture];
+    return material.roughness * textureSample(metallic_roughness_texture, linear_sampler, in.uv).g;
 }
 
 fn get_metallic(in: FragInput) -> f32 {
-    return constants.metallic * textureSample(metallic_roughness_texture, linear_sampler, in.uv).b;
+    let material = get_material(in);
+    let metallic_roughness_texture = textures[material.metallic_roughness_texture];
+    return material.metallic * textureSample(metallic_roughness_texture, linear_sampler, in.uv).b;
 }
 
 fn get_distance_attenuation(distance_square: f32, inv_range_squared: f32) -> f32 {
@@ -315,7 +338,7 @@ fn isotropic(in: FragInput, h: vec3<f32>, NoV: f32, NoL: f32, NoH: f32, LoH: f32
     let metallic = get_metallic(in);
 
     // Remap reflectance to f0 from `[0.0, 1.0]`.
-    let reflectance = constants.reflectance;
+    let reflectance = get_material(in).reflectance;
     let f0 = 0.16 * reflectance * (1.0 - metallic) + albedo.rgb * metallic;
 
     let d = distribution(roughness, NoH, h);

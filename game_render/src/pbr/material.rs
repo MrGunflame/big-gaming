@@ -9,8 +9,8 @@ use wgpu::util::{BufferInitDescriptor, DeviceExt};
 use wgpu::{
     BindGroup, BindGroupDescriptor, BindGroupEntry, BindingResource, BufferUsages,
     CommandEncoderDescriptor, Device, Extent3d, ImageCopyTexture, ImageDataLayout, Origin3d, Queue,
-    TextureAspect, TextureDescriptor, TextureDimension, TextureFormat, TextureUsages, TextureView,
-    TextureViewDescriptor,
+    Texture, TextureAspect, TextureDescriptor, TextureDimension, TextureFormat, TextureUsages,
+    TextureView, TextureViewDescriptor,
 };
 
 use crate::forward::ForwardPipeline;
@@ -63,104 +63,19 @@ impl DefaultTextures {
     }
 }
 
-pub fn update_material_bind_group(
-    device: &Device,
-    queue: &Queue,
-    images: &HashMap<ImageId, Image>,
-    pipeline: &ForwardPipeline,
-    material: &PbrMaterial,
-    mipmap_generator: &mut MipMapGenerator,
-) -> BindGroup {
-    let _span = trace_span!("update_material_bind_group").entered();
-
-    let default_textures = &pipeline.default_textures;
-
-    let constants = device.create_buffer_init(&BufferInitDescriptor {
-        label: Some("material_constants"),
-        contents: bytemuck::cast_slice(&[MaterialConstants {
-            base_color: material.base_color.0,
-            base_metallic: material.metallic,
-            base_roughness: material.roughness,
-            reflectance: material.reflectance,
-            _pad: [0; 1],
-        }]),
-        usage: BufferUsages::UNIFORM,
-    });
-
-    let base_color_texture = create_material_texture(
-        material
-            .base_color_texture
-            .unwrap_or(default_textures.default_base_color_texture),
-        images,
-        device,
-        queue,
-        mipmap_generator,
-    );
-
-    let normal_texture = create_material_texture(
-        material
-            .normal_texture
-            .unwrap_or(default_textures.default_normal_texture),
-        images,
-        device,
-        queue,
-        mipmap_generator,
-    );
-
-    let metallic_roughness_texture = create_material_texture(
-        material
-            .metallic_roughness_texture
-            .unwrap_or(default_textures.default_metallic_roughness_texture),
-        images,
-        device,
-        queue,
-        mipmap_generator,
-    );
-
-    device.create_bind_group(&BindGroupDescriptor {
-        label: Some("material_bind_group"),
-        layout: &pipeline.material_bind_group_layout,
-        entries: &[
-            BindGroupEntry {
-                binding: 0,
-                resource: constants.as_entire_binding(),
-            },
-            BindGroupEntry {
-                binding: 1,
-                resource: BindingResource::TextureView(&base_color_texture),
-            },
-            BindGroupEntry {
-                binding: 2,
-                resource: BindingResource::TextureView(&normal_texture),
-            },
-            BindGroupEntry {
-                binding: 3,
-                resource: BindingResource::TextureView(&metallic_roughness_texture),
-            },
-            BindGroupEntry {
-                binding: 4,
-                resource: BindingResource::Sampler(&pipeline.sampler),
-            },
-        ],
-    })
-}
-
-fn create_material_texture(
-    id: ImageId,
-    images: &HashMap<ImageId, Image>,
+pub(crate) fn create_texture(
+    image: &Image,
     device: &Device,
     queue: &Queue,
     mipmap_generator: &mut MipMapGenerator,
-) -> TextureView {
+) -> Texture {
     let _span = trace_span!("create_material_texture").entered();
 
     let mut encoder = device.create_command_encoder(&CommandEncoderDescriptor { label: None });
 
-    let data = images.get(&id).unwrap();
-
     let size = Extent3d {
-        width: data.width(),
-        height: data.height(),
+        width: image.width(),
+        height: image.height(),
         depth_or_array_layers: 1,
     };
 
@@ -170,7 +85,7 @@ fn create_material_texture(
         mip_level_count: size.max_mips(TextureDimension::D2),
         sample_count: 1,
         dimension: TextureDimension::D2,
-        format: data.format(),
+        format: image.format(),
         usage: TextureUsages::TEXTURE_BINDING
             | TextureUsages::COPY_DST
             | TextureUsages::RENDER_ATTACHMENT,
@@ -184,12 +99,12 @@ fn create_material_texture(
             origin: Origin3d::ZERO,
             aspect: TextureAspect::All,
         },
-        data.as_bytes(),
+        image.as_bytes(),
         ImageDataLayout {
             offset: 0,
             // TODO: Support for non-RGBA (non 4 px) textures.
-            bytes_per_row: Some(4 * data.width()),
-            rows_per_image: Some(data.height()),
+            bytes_per_row: Some(4 * image.width()),
+            rows_per_image: Some(image.height()),
         },
         size,
     );
@@ -198,7 +113,7 @@ fn create_material_texture(
 
     queue.submit(std::iter::once(encoder.finish()));
 
-    texture.create_view(&TextureViewDescriptor::default())
+    texture
 }
 
 #[derive(Copy, Clone, Debug, Zeroable, Pod)]

@@ -5,10 +5,10 @@ use game_tracing::trace_span;
 use parking_lot::Mutex;
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
 use wgpu::{
-    BindGroup, BindGroupDescriptor, BindGroupEntry, Buffer, BufferUsages, Color, Device, Extent3d,
-    LoadOp, Operations, RenderPassColorAttachment, RenderPassDepthStencilAttachment,
-    RenderPassDescriptor, TextureDescriptor, TextureDimension, TextureFormat, TextureUsages,
-    TextureViewDescriptor,
+    BindGroup, BindGroupDescriptor, BindGroupEntry, BindingResource, Buffer, BufferUsages, Color,
+    Device, Extent3d, LoadOp, Operations, RenderPassColorAttachment,
+    RenderPassDepthStencilAttachment, RenderPassDescriptor, TextureDescriptor, TextureDimension,
+    TextureFormat, TextureUsages, TextureViewDescriptor,
 };
 
 use crate::buffer::{DynamicBuffer, IndexBuffer};
@@ -128,6 +128,41 @@ impl RenderPass {
             })
             .collect::<Vec<_>>();
 
+        let mut textures = state
+            .images
+            .values()
+            .map(|texture| texture.create_view(&TextureViewDescriptor::default()))
+            .collect::<Vec<_>>();
+        while textures.len() < 128 {
+            let view = state
+                .placeholder_texture
+                .as_ref()
+                .unwrap()
+                .create_view(&TextureViewDescriptor::default());
+            textures.push(view);
+        }
+
+        let views = textures.iter().collect::<Vec<_>>();
+
+        let material_bind_group = device.create_bind_group(&BindGroupDescriptor {
+            label: None,
+            layout: &pipeline.material_bind_group_layout,
+            entries: &[
+                BindGroupEntry {
+                    binding: 0,
+                    resource: state.materials_buffer.as_entire_binding(),
+                },
+                BindGroupEntry {
+                    binding: 1,
+                    resource: BindingResource::TextureViewArray(&views),
+                },
+                BindGroupEntry {
+                    binding: 2,
+                    resource: BindingResource::Sampler(&pipeline.sampler),
+                },
+            ],
+        });
+
         let light_bind_group = device.create_bind_group(&BindGroupDescriptor {
             label: Some("light_bind_group"),
             layout: &pipeline.lights_bind_group_layout,
@@ -189,11 +224,10 @@ impl RenderPass {
         for (index, obj) in state.objects.values().enumerate() {
             let vs_bind_group = &bind_groups[index];
             let (mesh_bg, idx_buf) = state.meshes.get(&obj.mesh).unwrap();
-            let mat_bg = state.materials.get(&obj.material).unwrap();
 
             render_pass.set_bind_group(0, vs_bind_group, &[]);
             render_pass.set_bind_group(1, mesh_bg, &[]);
-            render_pass.set_bind_group(2, mat_bg, &[]);
+            render_pass.set_bind_group(2, &material_bind_group, &[]);
             render_pass.set_bind_group(3, &light_bind_group, &[]);
 
             render_pass.set_index_buffer(idx_buf.buffer.slice(..), idx_buf.format);

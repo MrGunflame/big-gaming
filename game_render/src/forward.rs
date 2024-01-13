@@ -1,3 +1,5 @@
+use std::num::NonZeroU32;
+
 use wgpu::{
     AddressMode, BindGroupLayout, BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindingType,
     BlendState, BufferBindingType, ColorTargetState, ColorWrites, CompareFunction, DepthBiasState,
@@ -101,6 +103,16 @@ impl ForwardPipeline {
                     },
                     count: None,
                 },
+                BindGroupLayoutEntry {
+                    binding: 4,
+                    visibility: ShaderStages::VERTEX,
+                    ty: BindingType::Buffer {
+                        ty: BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
             ],
         });
 
@@ -108,18 +120,17 @@ impl ForwardPipeline {
             device.create_bind_group_layout(&BindGroupLayoutDescriptor {
                 label: Some("material_bind_group_layout"),
                 entries: &[
-                    // MATERIAL CONSTANTS
                     BindGroupLayoutEntry {
                         binding: 0,
                         visibility: ShaderStages::FRAGMENT,
                         ty: BindingType::Buffer {
-                            ty: BufferBindingType::Uniform,
+                            ty: BufferBindingType::Storage { read_only: true },
                             has_dynamic_offset: false,
                             min_binding_size: None,
                         },
                         count: None,
                     },
-                    // ALBEDO
+                    // TEXTURES
                     BindGroupLayoutEntry {
                         binding: 1,
                         visibility: ShaderStages::FRAGMENT,
@@ -128,32 +139,10 @@ impl ForwardPipeline {
                             view_dimension: TextureViewDimension::D2,
                             multisampled: false,
                         },
-                        count: None,
+                        count: Some(NonZeroU32::new(128).unwrap()),
                     },
-                    // NORMAL
                     BindGroupLayoutEntry {
                         binding: 2,
-                        visibility: ShaderStages::FRAGMENT,
-                        ty: BindingType::Texture {
-                            sample_type: TextureSampleType::Float { filterable: true },
-                            view_dimension: TextureViewDimension::D2,
-                            multisampled: false,
-                        },
-                        count: None,
-                    },
-                    // METALLIC-ROUGHNESS
-                    BindGroupLayoutEntry {
-                        binding: 3,
-                        visibility: ShaderStages::FRAGMENT,
-                        ty: BindingType::Texture {
-                            sample_type: TextureSampleType::Float { filterable: true },
-                            view_dimension: TextureViewDimension::D2,
-                            multisampled: false,
-                        },
-                        count: None,
-                    },
-                    BindGroupLayoutEntry {
-                        binding: 4,
                         visibility: ShaderStages::FRAGMENT,
                         ty: BindingType::Sampler(SamplerBindingType::Filtering),
                         count: None,
