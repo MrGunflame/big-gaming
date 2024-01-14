@@ -32,6 +32,7 @@ pub mod physics;
 pub mod player;
 pub mod process;
 pub mod record;
+pub mod system;
 pub mod world;
 
 /// The error type returned by failed operations.
@@ -93,3 +94,6 @@ pub(crate) const unsafe fn unreachable_unchecked() -> ! {
         unsafe { core::hint::unreachable_unchecked() }
     }
 }
+
+#[no_mangle]
+extern "C" fn __wasm_cb_trampoline(ptr: *const fn(), len: usize) {}

@@ -7,6 +7,8 @@ pub mod world;
 
 use game_macros::guest_only;
 
+use crate::record::RecordReference;
+
 pub const RESULT_OK: u32 = 0;
 pub const RESULT_NO_ENTITY: u32 = 1;
 pub const RESULT_NO_COMPONENT: u32 = 2;
@@ -26,3 +28,9 @@ pub fn action_data_buffer_len() -> usize;
 
 #[guest_only]
 pub fn action_data_buffer_get(ptr: *mut u8);
+
+#[guest_only]
+pub fn event_dispatch(id: *const RecordReference, ptr: *const u8, len: usize);
+
+#[guest_only]
+pub fn register_event_handler(id: *const RecordReference, ptr: *const fn());
