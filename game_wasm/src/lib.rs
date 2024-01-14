@@ -1,6 +1,7 @@
 //! WASM host bindings
 #![no_std]
 
+use core::ffi::c_void;
 use core::fmt::{self, Display, Formatter};
 
 use entity::EntityId;
@@ -96,4 +97,10 @@ pub(crate) const unsafe fn unreachable_unchecked() -> ! {
 }
 
 #[no_mangle]
-extern "C" fn __wasm_cb_trampoline(ptr: *const fn(), len: usize) {}
+extern "C" fn __wasm_fn_trampoline(ptr: *const ()) {
+    unsafe {
+        let ptr = core::mem::transmute::<*const (), unsafe fn(c_void)>(ptr);
+        let vtable = system::SYSTEM_PTRS.get(ptr as usize);
+        (vtable.run)(ptr);
+    }
+}

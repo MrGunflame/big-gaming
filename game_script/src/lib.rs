@@ -15,7 +15,7 @@ use game_common::world::World;
 use game_data::record::Record;
 use game_tracing::trace_span;
 use game_wasm::player::PlayerId;
-use instance::{InstancePool, State};
+use instance::{InitState, InstancePool, RunState, State};
 use script::Script;
 use wasmtime::{Config, Engine, WasmBacktraceDetails};
 
@@ -34,6 +34,7 @@ pub struct Executor {
     /// Maps which components fire which scripts.
     targets: HashMap<RecordReference, Vec<Handle>>,
     instances: InstancePool,
+    systems: Vec<System>,
 }
 
 impl Executor {
@@ -48,6 +49,7 @@ impl Executor {
             engine,
             targets: HashMap::new(),
             scripts: Vec::new(),
+            systems: vec![],
         }
     }
 
@@ -56,9 +58,29 @@ impl Executor {
         P: AsRef<Path>,
     {
         let script = Script::load(path.as_ref(), &self.engine)?;
+
         let index = self.scripts.len();
+        let handle = Handle(index);
+
+        let mut instance = self.instances.get(
+            &self.engine,
+            &script.module,
+            State::Init(InitState {
+                script: handle,
+                systems: vec![],
+            }),
+        );
+        instance.init()?;
+
+        let state = match instance.into_state() {
+            State::Init(s) => s,
+            _ => unreachable!(),
+        };
+
+        self.systems.extend(state.systems);
+
         self.scripts.push(script);
-        Ok(Handle(index))
+        Ok(handle)
     }
 
     pub fn register_script(&mut self, component: RecordReference, script: Handle) {
@@ -132,7 +154,7 @@ impl Executor {
             let script = &self.scripts[invocation.script.0];
 
             let mut dependencies = Dependencies::default();
-            let state = State::new(
+            let state = RunState::new(
                 ctx.world,
                 ctx.physics,
                 &mut effects,
@@ -142,14 +164,19 @@ impl Executor {
                 invocation.action_buffer,
             );
 
-            let mut runnable = self.instances.get(&self.engine, &script.module, state);
+            let mut runnable = self
+                .instances
+                .get(&self.engine, &script.module, State::Run(state));
 
             if let Err(err) = runnable.run(&invocation.event) {
                 tracing::error!("Error running script: {}", err);
             }
 
             let state = runnable.into_state();
-            new_world = state.new_world;
+            new_world = match state {
+                State::Run(s) => s.new_world,
+                _ => unreachable!(),
+            };
         }
 
         effects
@@ -233,4 +260,16 @@ impl WorldProvider for WorldViewMut<'_> {
 
 pub trait RecordProvider {
     fn get(&self, id: RecordReference) -> Option<&Record>;
+}
+
+#[derive(Clone, Debug)]
+struct System {
+    script: Handle,
+    ptr: u32,
+    query: SystemQuery,
+}
+
+#[derive(Clone, Debug)]
+struct SystemQuery {
+    components: Vec<RecordReference>,
 }

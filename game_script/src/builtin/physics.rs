@@ -35,6 +35,7 @@ pub fn physics_cast_ray(
 
     let (entity_id, toi) = match caller
         .data()
+        .as_run()?
         .physics_pipeline
         .cast_ray(ray, max_toi, filter)
     {
@@ -85,7 +86,7 @@ pub fn physics_cast_shape(
     });
     let filter = read_query_filter(&mut caller, filter)?;
 
-    let (entity, toi) = match caller.data().physics_pipeline.cast_shape(
+    let (entity, toi) = match caller.data().as_run()?.physics_pipeline.cast_shape(
         translation,
         rotation,
         direction,

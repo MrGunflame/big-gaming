@@ -15,8 +15,8 @@ use wasmtime::{Engine, Instance, Linker, Module, Store};
 use crate::builtin::register_host_fns;
 use crate::dependency::{Dependencies, Dependency};
 use crate::effect::{Effect, Effects, PlayerSetActive};
-use crate::events::{OnAction, OnCollision, OnEquip, OnUnequip, OnUpdate};
-use crate::{Handle, RecordProvider, WorldProvider};
+use crate::events::{OnAction, OnCollision, OnEquip, OnInit, OnUnequip, OnUpdate};
+use crate::{Handle, RecordProvider, System, WorldProvider};
 
 pub(crate) struct InstancePool {
     /// Linker for instantiating new instances.
@@ -73,6 +73,11 @@ impl<'a> Runnable<'a> {
         }
     }
 
+    pub(crate) fn init(&mut self) -> wasmtime::Result<()> {
+        let func: OnInit = self.instance.get_typed_func(&mut self.store, "on_init")?;
+        func.call(&mut self.store, ())
+    }
+
     fn on_update(&mut self, entity: EntityId) -> wasmtime::Result<()> {
         let func: OnUpdate = self.instance.get_typed_func(&mut self.store, "on_update")?;
         func.call(&mut self.store, entity.into_raw())
@@ -107,7 +112,40 @@ impl<'a> Runnable<'a> {
     }
 }
 
-pub struct State<'a> {
+pub enum State<'a> {
+    Init(InitState),
+    Run(RunState<'a>),
+}
+
+impl<'a> State<'a> {
+    pub fn as_init(&mut self) -> wasmtime::Result<&mut InitState> {
+        match self {
+            Self::Init(state) => Ok(state),
+            Self::Run(_) => Err(wasmtime::Error::msg("not in init state")),
+        }
+    }
+
+    pub fn as_run(&self) -> wasmtime::Result<&RunState<'a>> {
+        match self {
+            Self::Init(_) => Err(wasmtime::Error::msg("not in run state")),
+            Self::Run(s) => Ok(s),
+        }
+    }
+
+    pub fn as_run_mut(&mut self) -> wasmtime::Result<&mut RunState<'a>> {
+        match self {
+            Self::Init(_) => Err(wasmtime::Error::msg("not in run state")),
+            Self::Run(s) => Ok(s),
+        }
+    }
+}
+
+pub struct InitState {
+    pub script: Handle,
+    pub systems: Vec<System>,
+}
+
+pub struct RunState<'a> {
     world: &'a dyn WorldProvider,
     pub records: &'a dyn RecordProvider,
     pub physics_pipeline: &'a game_physics::Pipeline,
@@ -119,7 +157,7 @@ pub struct State<'a> {
     pub action_buffer: Option<Vec<u8>>,
 }
 
-impl<'a> State<'a> {
+impl<'a> RunState<'a> {
     pub fn new(
         world: &'a dyn WorldProvider,
         physics_pipeline: &'a game_physics::Pipeline,
@@ -143,7 +181,7 @@ impl<'a> State<'a> {
     }
 }
 
-impl<'a> State<'a> {
+impl<'a> RunState<'a> {
     pub fn spawn(&mut self) -> EntityId {
         let id = self.allocate_temporary_entity_id();
         self.new_world.spawn_with_id(id);

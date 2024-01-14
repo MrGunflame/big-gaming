@@ -7,6 +7,7 @@ mod physics;
 mod player;
 mod process;
 mod record;
+mod system;
 mod world;
 
 use std::mem;
@@ -33,6 +34,7 @@ pub fn register_host_fns(store: &mut Linker<State<'_>>) {
     use player::*;
     use process::*;
     use record::*;
+    use system::*;
     use world::*;
 
     register_fns! {
@@ -68,6 +70,8 @@ pub fn register_host_fns(store: &mut Linker<State<'_>>) {
         player_set_active,
         action_data_buffer_len,
         action_data_buffer_get,
+        register_system,
+        register_event_handler,
     }
 }
 

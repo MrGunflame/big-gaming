@@ -23,7 +23,11 @@ pub fn inventory_get(
     let entity_id = EntityId::from_raw(entity_id);
     let slot_id = InventorySlotId::from_raw(slot_id);
 
-    let Some(stack) = caller.data_mut().inventory_get(entity_id, slot_id) else {
+    let Some(stack) = caller
+        .data_mut()
+        .as_run_mut()?
+        .inventory_get(entity_id, slot_id)
+    else {
         return Ok(1);
     };
 
@@ -36,7 +40,7 @@ pub fn inventory_len(mut caller: Caller<'_, State<'_>>, entity_id: u64, out: u32
 
     let entity_id = EntityId::from_raw(entity_id);
 
-    let Some(inventory) = caller.data_mut().inventory(entity_id) else {
+    let Some(inventory) = caller.data_mut().as_run_mut()?.inventory(entity_id) else {
         return Ok(1);
     };
 
@@ -54,7 +58,7 @@ pub fn inventory_list(
 
     let entity_id = EntityId::from_raw(entity_id);
 
-    let Some(inventory) = caller.data_mut().inventory(entity_id) else {
+    let Some(inventory) = caller.data_mut().as_run_mut()?.inventory(entity_id) else {
         return Ok(1);
     };
 
@@ -82,7 +86,10 @@ pub fn inventory_insert(
         Err(err) => return Err(Error::new(err)),
     };
 
-    let id = caller.data_mut().inventory_insert(entity_id, stack);
+    let id = caller
+        .data_mut()
+        .as_run_mut()?
+        .inventory_insert(entity_id, stack);
 
     caller.write(slot_id_ptr, &id)?;
     Ok(RESULT_OK)
@@ -101,6 +108,7 @@ pub fn inventory_remove(
 
     if !caller
         .data_mut()
+        .as_run_mut()?
         .inventory_remove(entity_id, slot_id, quantity)
     {
         return Ok(1);
@@ -125,6 +133,7 @@ pub fn inventory_component_len(
     let Some(component) =
         caller
             .data_mut()
+            .as_run_mut()?
             .inventory_component_get(entity_id, slot_id, component_id)
     else {
         return Ok(1);
@@ -152,6 +161,7 @@ pub fn inventory_component_get(
     let Some(component) =
         caller
             .data_mut()
+            .as_run_mut()?
             .inventory_component_get(entity_id, slot_id, component_id)
     else {
         return Ok(1);
@@ -185,7 +195,7 @@ pub fn inventory_component_insert(
 
     let bytes = caller.read_memory(ptr, len)?.to_owned();
 
-    if !caller.data_mut().inventory_component_insert(
+    if !caller.data_mut().as_run_mut()?.inventory_component_insert(
         entity_id,
         slot_id,
         component_id,
@@ -211,6 +221,7 @@ pub fn inventory_component_remove(
 
     if !caller
         .data_mut()
+        .as_run_mut()?
         .inventory_component_remove(entity_id, slot_id, component_id)
     {
         return Ok(1);
@@ -229,6 +240,7 @@ pub fn inventory_equip(
 
     if !caller
         .data_mut()
+        .as_run_mut()?
         .inventory_set_equipped(entity_id, slot_id, true)
     {
         return Ok(1);
@@ -249,6 +261,7 @@ pub fn inventory_unequip(
 
     if !caller
         .data_mut()
+        .as_run_mut()?
         .inventory_set_equipped(entity_id, slot_id, false)
     {
         return Ok(1);
@@ -262,7 +275,7 @@ pub fn inventory_clear(mut caller: Caller<'_, State<'_>>, entity_id: u64) -> Res
 
     let entity_id = EntityId::from_raw(entity_id);
 
-    if !caller.data_mut().inventory_clear(entity_id) {
+    if !caller.data_mut().as_run_mut()?.inventory_clear(entity_id) {
         return Ok(RESULT_NO_ENTITY);
     };
 

@@ -13,7 +13,7 @@ pub fn world_entity_spawn(mut caller: Caller<'_, State<'_>>, out: u32) -> Result
     let _span = trace_span!("world_entity_spawn").entered();
     tracing::trace!("world_entity_spawn(out = {})", out);
 
-    let id = caller.data_mut().spawn();
+    let id = caller.data_mut().as_run_mut()?.spawn();
     caller.write(out, &id)?;
 
     Ok(RESULT_OK)
@@ -25,7 +25,7 @@ pub fn world_entity_despawn(mut caller: Caller<'_, State<'_>>, id: u64) -> Resul
 
     let id = EntityId::from_raw(id);
 
-    if !caller.data_mut().despawn(id) {
+    if !caller.data_mut().as_run_mut()?.despawn(id) {
         Ok(RESULT_NO_ENTITY)
     } else {
         Ok(RESULT_OK)
@@ -49,7 +49,11 @@ pub fn world_entity_component_len(
     let entity_id = EntityId::from_raw(entity_id);
     let component_id: RecordReference = caller.read(component_id)?;
 
-    let Some(component) = caller.data_mut().get_component(entity_id, component_id) else {
+    let Some(component) = caller
+        .data_mut()
+        .as_run_mut()?
+        .get_component(entity_id, component_id)
+    else {
         return Ok(RESULT_NO_COMPONENT);
     };
 
@@ -78,7 +82,11 @@ pub fn world_entity_component_get(
     let entity_id = EntityId::from_raw(entity_id);
     let component_id: RecordReference = caller.read(component_id)?;
 
-    let Some(component) = caller.data_mut().get_component(entity_id, component_id) else {
+    let Some(component) = caller
+        .data_mut()
+        .as_run_mut()?
+        .get_component(entity_id, component_id)
+    else {
         return Ok(RESULT_NO_COMPONENT);
     };
 
@@ -114,9 +122,11 @@ pub fn world_entity_component_insert(
     let component_id: RecordReference = caller.read(component_id)?;
     let bytes = caller.read_memory(ptr, len)?.to_owned();
 
-    caller
-        .data_mut()
-        .insert_component(entity_id, component_id, RawComponent::new(bytes));
+    caller.data_mut().as_run_mut()?.insert_component(
+        entity_id,
+        component_id,
+        RawComponent::new(bytes),
+    );
 
     Ok(RESULT_OK)
 }
@@ -136,7 +146,11 @@ pub fn world_entity_component_remove(
     let entity_id = EntityId::from_raw(entity_id);
     let component_id: RecordReference = caller.read(component_id)?;
 
-    if !caller.data_mut().remove_component(entity_id, component_id) {
+    if !caller
+        .data_mut()
+        .as_run_mut()?
+        .remove_component(entity_id, component_id)
+    {
         Ok(RESULT_NO_COMPONENT)
     } else {
         Ok(RESULT_OK)

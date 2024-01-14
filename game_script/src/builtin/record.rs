@@ -12,7 +12,7 @@ pub fn get_record(mut caller: Caller<'_, State<'_>>, record_id: u32, out: u32) -
     tracing::trace!("get_record(record_id={}, out={}", record_id, out);
 
     let id: RecordReference = caller.read(record_id)?;
-    let Some(record) = caller.data().records.get(id) else {
+    let Some(record) = caller.data().as_run()?.records.get(id) else {
         return Ok(1);
     };
 
@@ -40,7 +40,7 @@ pub fn get_record_len_component(
     );
 
     let id: RecordReference = caller.read(record_id)?;
-    let Some(record) = caller.data().records.get(id) else {
+    let Some(record) = caller.data().as_run()?.records.get(id) else {
         return Ok(1);
     };
 
@@ -63,7 +63,7 @@ pub fn get_record_component_keys(
     );
 
     let id: RecordReference = caller.read(record_id)?;
-    let Some(record) = caller.data().records.get(id) else {
+    let Some(record) = caller.data().as_run()?.records.get(id) else {
         return Ok(1);
     };
 
@@ -91,7 +91,7 @@ pub fn get_record_component_len(
 
     let id: RecordReference = caller.read(record_id)?;
     let component_id: RecordReference = caller.read(component_id)?;
-    let Some(record) = caller.data().records.get(id) else {
+    let Some(record) = caller.data().as_run()?.records.get(id) else {
         return Ok(1);
     };
 
@@ -123,7 +123,7 @@ pub fn get_record_component_get(
 
     let id: RecordReference = caller.read(record_id)?;
     let component_id: RecordReference = caller.read(component_id)?;
-    let Some(record) = caller.data().records.get(id) else {
+    let Some(record) = caller.data().as_run()?.records.get(id) else {
         return Ok(1);
     };
 
