@@ -12,6 +12,7 @@ use game_ui::reactive::{Document, NodeId, Scope};
 use game_ui::style::{Bounds, Direction, Growth, Justify, Position, Size, SizeVec2, Style};
 use game_ui::widgets::{Button, Container, Text, Widget};
 use glam::UVec2;
+use tracing::Instrument;
 
 pub struct InventoryUi<'a> {
     inventory: &'a Inventory,
@@ -91,6 +92,8 @@ where
         let context_menu = Arc::new(Mutex::new(None));
 
         for (id, stack) in self.items {
+            let is_equipped = stack.item.equipped;
+
             let events = self.events.clone();
 
             let root2 = root.clone();
@@ -108,6 +111,7 @@ where
                         position: ctx.cursor.position().as_uvec2(),
                         id,
                         events,
+                        is_equipped,
                     }
                     .build(&root2)
                     .id();
@@ -129,6 +133,7 @@ struct ContextMenu {
     position: UVec2,
     id: InventorySlotId,
     events: mpsc::Sender<InventoryEvent>,
+    is_equipped: bool,
 }
 
 impl Widget for ContextMenu {
@@ -138,27 +143,41 @@ impl Widget for ContextMenu {
             ..Default::default()
         }));
 
-        let events = self.events.clone();
+        if self.is_equipped {
+            let events = self.events.clone();
+            let button = root.append(Button::new().on_click(move |ctx| {
+                events.send(InventoryEvent::Uneqip(self.id)).unwrap();
+            }));
+            button.append(Text::new().text("Unequip".to_string()));
+        } else {
+            let events = self.events.clone();
+            let button = root.append(Button::new().on_click(move |ctx| {
+                events.send(InventoryEvent::Equip(self.id)).unwrap();
+            }));
+            button.append(Text::new().text("Equip".to_string()));
+        }
 
-        let actions = [("Drop", move |ctx| {
-            events
-                .send(InventoryEvent::Drop(DropItemStack {
-                    id: self.id,
-                    quantity: 0,
-                }))
-                .unwrap();
-        })];
-
-        for (label, on_click) in actions {
-            let button = root.append(Button::new().on_click(on_click));
-            button.append(Text::new().text(label.to_string()));
+        {
+            let events = self.events.clone();
+            let button = root.append(Button::new().on_click(move |ctx| {
+                events
+                    .send(InventoryEvent::Drop(DropItemStack {
+                        id: self.id,
+                        quantity: 0,
+                    }))
+                    .unwrap();
+            }));
+            button.append(Text::new().text("Drop".to_string()));
         }
 
         root
     }
 }
 
+#[derive(Copy, Clone, Debug)]
 pub enum InventoryEvent {
+    Equip(InventorySlotId),
+    Uneqip(InventorySlotId),
     Drop(DropItemStack),
 }
 
