@@ -9,6 +9,7 @@ use core::f32::consts::PI;
 use alloc::borrow::ToOwned;
 use bytemuck::Pod;
 use bytemuck::Zeroable;
+use components::EQUIPPABLE;
 use game_wasm::components::builtin::Collider;
 use game_wasm::components::builtin::ColliderShape;
 use game_wasm::components::builtin::Cuboid;
@@ -207,6 +208,7 @@ pub mod components {
         PROJECTILE_PROPERTIES => 0x14,
         SPAWN_POINT => 0x16,
         CHARACTER_CONTROLLER => 0x15,
+        EQUIPPABLE => 0x20,
     }
 }
 
@@ -279,4 +281,14 @@ fn spawn_player(transform: Transform) -> Entity {
     });
 
     entity
+}
+
+#[derive(Clone, Debug, Encode, Decode)]
+pub struct Equippable {
+    pub on_equip: RecordReference,
+    pub on_uneqip: RecordReference,
+}
+
+impl Component for Equippable {
+    const ID: RecordReference = EQUIPPABLE;
 }
