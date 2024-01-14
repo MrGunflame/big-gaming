@@ -7,12 +7,12 @@ use game_common::components::inventory::{Inventory, InventorySlotId};
 use game_common::components::items::ItemStack;
 use game_core::modules::Modules;
 use game_input::mouse::MouseButtonInput;
+use game_net::message::DataMessage;
 use game_ui::events::Context;
 use game_ui::reactive::{Document, NodeId, Scope};
 use game_ui::style::{Bounds, Direction, Growth, Justify, Position, Size, SizeVec2, Style};
 use game_ui::widgets::{Button, Container, Text, Widget};
 use glam::UVec2;
-use tracing::Instrument;
 
 pub struct InventoryUi<'a> {
     inventory: &'a Inventory,

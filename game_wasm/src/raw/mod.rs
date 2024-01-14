@@ -20,3 +20,9 @@ pub fn player_lookup(entity_id: u64, player_id: *mut u64) -> u32;
 
 #[guest_only]
 pub fn player_set_active(player_id: u64, entity_id: u64) -> u32;
+
+#[guest_only]
+pub fn action_data_buffer_len() -> usize;
+
+#[guest_only]
+pub fn action_data_buffer_get(ptr: *mut u8);

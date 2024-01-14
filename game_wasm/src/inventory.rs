@@ -5,7 +5,7 @@ use core::ops::Deref;
 use alloc::vec::Vec;
 use bytemuck::{Pod, Zeroable};
 
-use crate::components::{Components, RawComponent};
+use crate::components::{Components, Decode, Encode, RawComponent};
 use crate::entity::EntityId;
 use crate::raw::inventory::{
     inventory_clear, inventory_component_get, inventory_component_insert, inventory_component_len,
@@ -20,7 +20,7 @@ use crate::record::{Record, RecordKind};
 use crate::world::RecordReference;
 
 /// A unique identifier to in [`ItemStack`] in an [`Inventory`].
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Zeroable, Pod)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Zeroable, Pod, Encode, Decode)]
 #[repr(transparent)]
 pub struct InventoryId(u64);
 

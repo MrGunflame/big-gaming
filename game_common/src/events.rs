@@ -65,11 +65,12 @@ pub enum EventKind {
     Update,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ActionEvent {
     pub entity: EntityId,
     pub invoker: EntityId,
     pub action: ActionId,
+    pub data: Vec<u8>,
 }
 
 impl From<ActionEvent> for Event {

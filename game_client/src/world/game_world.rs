@@ -285,7 +285,7 @@ where
         self.conn.input_buffer.clear(cf);
 
         for msg in self.conn.input_buffer.iter() {
-            match msg.body {
+            match &msg.body {
                 DataMessageBody::EntityTranslate(msg) => {
                     let id = self.server_entities.get(msg.entity).unwrap();
                     cmd_buffer.push(Command::Translate {
@@ -318,7 +318,7 @@ where
         self.predicted_state = self.newest_state.clone();
 
         for msg in self.conn.input_buffer.iter() {
-            match msg.body {
+            match &msg.body {
                 DataMessageBody::EntityTranslate(msg) => {
                     let id = self.server_entities.get(msg.entity).unwrap();
                     let mut transform: Transform = self.predicted_state.world.get_typed(id);
@@ -337,6 +337,7 @@ where
                         entity: id,
                         invoker: id,
                         action: msg.action,
+                        data: msg.bytes.clone(),
                     }));
                 }
                 _ => {
@@ -368,14 +369,22 @@ where
                     }),
                 );
             }
-            SendCommand::Action { entity, action } => {
+            SendCommand::Action {
+                entity,
+                action,
+                data,
+            } => {
                 let Some(id) = self.server_entities.get(entity) else {
                     return;
                 };
 
                 self.conn.send(
                     self.next_frame_counter.newest_frame,
-                    DataMessageBody::EntityAction(EntityAction { entity: id, action }),
+                    DataMessageBody::EntityAction(EntityAction {
+                        entity: id,
+                        action,
+                        bytes: data,
+                    }),
                 );
             }
         }
@@ -458,6 +467,13 @@ fn spawn_entity(id: RecordReference, transform: Transform, modules: &Modules) ->
 }
 
 pub enum SendCommand {
-    Rotate { entity: EntityId, rotation: Quat },
-    Action { entity: EntityId, action: ActionId },
+    Rotate {
+        entity: EntityId,
+        rotation: Quat,
+    },
+    Action {
+        entity: EntityId,
+        action: ActionId,
+        data: Vec<u8>,
+    },
 }

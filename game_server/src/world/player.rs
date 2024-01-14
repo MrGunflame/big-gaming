@@ -127,7 +127,7 @@ pub fn spawn_player(
                 id: ItemId("c626b9b0ab1940aba6932ea7726d0175:11".parse().unwrap()),
                 mass: Default::default(),
                 components,
-                equipped: true,
+                equipped: false,
                 hidden: false,
             },
             quantity: 1,

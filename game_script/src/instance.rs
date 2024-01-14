@@ -116,6 +116,7 @@ pub struct State<'a> {
     next_entity_id: u64,
     next_inventory_id: u64,
     pub new_world: World,
+    pub action_buffer: Option<Vec<u8>>,
 }
 
 impl<'a> State<'a> {
@@ -126,6 +127,7 @@ impl<'a> State<'a> {
         dependencies: &'a mut Dependencies,
         records: &'a dyn RecordProvider,
         new_world: World,
+        action_buffer: Option<Vec<u8>>,
     ) -> Self {
         Self {
             world,
@@ -136,6 +138,7 @@ impl<'a> State<'a> {
             dependencies,
             records,
             new_world,
+            action_buffer,
         }
     }
 }

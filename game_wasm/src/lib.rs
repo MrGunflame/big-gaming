@@ -21,6 +21,7 @@ pub mod raw;
 #[cfg(not(feature = "raw"))]
 mod raw;
 
+pub mod action;
 pub mod components;
 pub mod entity;
 pub mod events;

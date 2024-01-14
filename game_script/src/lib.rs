@@ -77,29 +77,45 @@ impl Executor {
         let mut invocations = Vec::new();
 
         while let Some(event) = ctx.events.pop() {
-            let handles = match event {
+            let (handles, action_buffer) = match &event {
                 // An action is a special case. The script is not registered on
                 // the component, but on the action record directly. We should only
                 // call script for the exact triggered action, not any other.
-                // FIXME: What if the action is not registered. Should we really
-                // handle that case?
-                Event::Action(event) => self.targets.get(&event.action.0).unwrap().clone(),
-                Event::Collision(event) => {
-                    self.fetch_components_scripts(event.entity, ctx.world.world())
-                }
-                Event::Equip(event) => {
-                    self.fetch_components_scripts(event.entity, ctx.world.world())
-                }
-                Event::Unequip(event) => {
-                    self.fetch_components_scripts(event.entity, ctx.world.world())
-                }
-                Event::Update(entity) => self.fetch_components_scripts(entity, ctx.world.world()),
+                Event::Action(event) => match self.targets.get(&event.action.0) {
+                    Some(handles) => (handles.clone(), Some(event.data.clone())),
+                    // There are no handlers registered for the action. We should
+                    // discard the action and pretend it was never called.
+                    None => {
+                        tracing::warn!(
+                            "action {:?} queued, but there are no handlers for it",
+                            event.action
+                        );
+                        continue;
+                    }
+                },
+                Event::Collision(event) => (
+                    self.fetch_components_scripts(event.entity, ctx.world.world()),
+                    None,
+                ),
+                Event::Equip(event) => (
+                    self.fetch_components_scripts(event.entity, ctx.world.world()),
+                    None,
+                ),
+                Event::Unequip(event) => (
+                    self.fetch_components_scripts(event.entity, ctx.world.world()),
+                    None,
+                ),
+                Event::Update(entity) => (
+                    self.fetch_components_scripts(*entity, ctx.world.world()),
+                    None,
+                ),
             };
 
             for handle in handles {
                 invocations.push(Invocation {
                     event: event.clone(),
                     script: handle,
+                    action_buffer: action_buffer.clone(),
                 });
             }
         }
@@ -123,6 +139,7 @@ impl Executor {
                 &mut dependencies,
                 ctx.records,
                 new_world,
+                invocation.action_buffer,
             );
 
             let mut runnable = self.instances.get(&self.engine, &script.module, state);
@@ -167,6 +184,7 @@ impl Debug for Executor {
 struct Invocation {
     event: Event,
     script: Handle,
+    action_buffer: Option<Vec<u8>>,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]

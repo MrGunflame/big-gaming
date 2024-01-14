@@ -1,5 +1,6 @@
 //! Builtin host functions
 
+mod action;
 mod inventory;
 mod log;
 mod physics;
@@ -25,6 +26,7 @@ macro_rules! register_fns {
 }
 
 pub fn register_host_fns(store: &mut Linker<State<'_>>) {
+    use action::*;
     use inventory::*;
     use log::*;
     use physics::*;
@@ -64,6 +66,8 @@ pub fn register_host_fns(store: &mut Linker<State<'_>>) {
         get_record_component_get,
         player_lookup,
         player_set_active,
+        action_data_buffer_len,
+        action_data_buffer_get,
     }
 }
 
