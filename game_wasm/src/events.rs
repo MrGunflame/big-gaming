@@ -1,6 +1,7 @@
 //! Events dispatched from the game, handled by a script
 //!
 
+use alloc::vec::Vec;
 /// A script initialization event.
 ///
 /// If present, the handler for this event will be called exactly before the script is being
@@ -113,3 +114,24 @@ pub use game_macros::wasm__event_on_cell_load as on_cell_load;
 pub use game_macros::wasm__event_on_cell_unload as on_cell_unload;
 
 pub use game_macros::wasm__event_on_update as on_update;
+
+use crate::components::Decode;
+use crate::components::Encode;
+use crate::raw::event_dispatch;
+use crate::record::RecordReference;
+
+pub trait Event: Encode + Decode {
+    const ID: RecordReference;
+}
+
+pub fn dispatch_event<T>(event: T)
+where
+    T: Event,
+{
+    let mut buf = Vec::new();
+    event.encode(&mut buf);
+
+    unsafe {
+        event_dispatch(&T::ID, buf.as_ptr(), buf.len());
+    }
+}
