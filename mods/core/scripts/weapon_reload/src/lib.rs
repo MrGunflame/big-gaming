@@ -7,7 +7,7 @@ use game_wasm::inventory::Inventory;
 use shared::components::{AMMO, GUN_PROPERTIES};
 use shared::{panic_handler, Ammo, GunProperties};
 
-panic_handler!();
+//panic_handler!();
 
 #[on_action]
 fn on_action(invoker: EntityId) {

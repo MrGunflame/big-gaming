@@ -1,6 +1,9 @@
+#![no_std]
+
 use game_wasm::components::builtin::{Collider, ColliderShape, RigidBody, Transform};
 use game_wasm::entity::EntityId;
 use game_wasm::events::on_update;
+use game_wasm::math::Real;
 use game_wasm::physics::{cast_shape, QueryFilter};
 use game_wasm::world::Entity;
 use shared::Vec3;

@@ -1,3 +1,5 @@
+#![no_std]
+
 use game_wasm::components::builtin::Transform;
 use game_wasm::entity::EntityId;
 use game_wasm::events::on_update;

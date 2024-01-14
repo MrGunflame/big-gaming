@@ -130,3 +130,5 @@ pub type OnEquip = TypedFunc<(u64, u64), ()>;
 /// fn(item: InventoryId, actor: EntityId);
 /// ```
 pub type OnUnequip = TypedFunc<(u64, u64), ()>;
+
+pub type WasmFnTrampoline = TypedFunc<u32, ()>;

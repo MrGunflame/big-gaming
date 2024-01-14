@@ -9,16 +9,14 @@ use super::CallerExt;
 pub fn register_system(mut caller: Caller<'_, State<'_>>, params: u32, fn_ptr: u32) -> Result<()> {
     let params: SystemParams = caller.read(params)?;
 
-    let mut query = Vec::new();
-    for index in 0..params.query_components_len {
-        let elem = caller.read(params.query_components_ptr.wrapping_add(index))?;
-        query.push(elem);
-    }
+    let query = caller
+        .read_slice(params.query_components_ptr, params.query_components_len)?
+        .to_vec();
 
     let state = caller.data_mut().as_init()?;
     state.systems.push(System {
         script: state.script,
-        ptr: fn_ptr,
+        ptr: crate::Pointer(fn_ptr),
         query: SystemQuery { components: query },
     });
 

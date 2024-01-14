@@ -8,7 +8,7 @@ use dependency::Dependencies;
 use effect::Effects;
 use game_common::components::inventory::Inventory;
 use game_common::entity::EntityId;
-use game_common::events::{Event, EventQueue};
+use game_common::events::EventQueue;
 use game_common::record::RecordReference;
 use game_common::world::world::{WorldViewMut, WorldViewRef};
 use game_common::world::World;
@@ -98,49 +98,70 @@ impl Executor {
 
         let mut invocations = Vec::new();
 
-        while let Some(event) = ctx.events.pop() {
-            let (handles, action_buffer) = match &event {
-                // An action is a special case. The script is not registered on
-                // the component, but on the action record directly. We should only
-                // call script for the exact triggered action, not any other.
-                Event::Action(event) => match self.targets.get(&event.action.0) {
-                    Some(handles) => (handles.clone(), Some(event.data.clone())),
-                    // There are no handlers registered for the action. We should
-                    // discard the action and pretend it was never called.
-                    None => {
-                        tracing::warn!(
-                            "action {:?} queued, but there are no handlers for it",
-                            event.action
-                        );
-                        continue;
-                    }
-                },
-                Event::Collision(event) => (
-                    self.fetch_components_scripts(event.entity, ctx.world.world()),
-                    None,
-                ),
-                Event::Equip(event) => (
-                    self.fetch_components_scripts(event.entity, ctx.world.world()),
-                    None,
-                ),
-                Event::Unequip(event) => (
-                    self.fetch_components_scripts(event.entity, ctx.world.world()),
-                    None,
-                ),
-                Event::Update(entity) => (
-                    self.fetch_components_scripts(*entity, ctx.world.world()),
-                    None,
-                ),
-            };
+        let world = ctx.world.world();
 
-            for handle in handles {
+        for system in &self.systems {
+            'entities: for entity in world.entities() {
+                let components = world.components(entity);
+
+                for component in &system.query.components {
+                    if components.get(*component).is_none() {
+                        continue 'entities;
+                    }
+                }
+
                 invocations.push(Invocation {
-                    event: event.clone(),
-                    script: handle,
-                    action_buffer: action_buffer.clone(),
+                    script: system.script,
+                    fn_ptr: system.ptr,
+                    action_buffer: None,
+                    entity,
                 });
             }
         }
+
+        // while let Some(event) = ctx.events.pop() {
+        //     let (handles, action_buffer) = match &event {
+        //         // An action is a special case. The script is not registered on
+        //         // the component, but on the action record directly. We should only
+        //         // call script for the exact triggered action, not any other.
+        //         Event::Action(event) => match self.targets.get(&event.action.0) {
+        //             Some(handles) => (handles.clone(), Some(event.data.clone())),
+        //             // There are no handlers registered for the action. We should
+        //             // discard the action and pretend it was never called.
+        //             None => {
+        //                 tracing::warn!(
+        //                     "action {:?} queued, but there are no handlers for it",
+        //                     event.action
+        //                 );
+        //                 continue;
+        //             }
+        //         },
+        //         Event::Collision(event) => (
+        //             self.fetch_components_scripts(event.entity, ctx.world.world()),
+        //             None,
+        //         ),
+        //         Event::Equip(event) => (
+        //             self.fetch_components_scripts(event.entity, ctx.world.world()),
+        //             None,
+        //         ),
+        //         Event::Unequip(event) => (
+        //             self.fetch_components_scripts(event.entity, ctx.world.world()),
+        //             None,
+        //         ),
+        //         Event::Update(entity) => (
+        //             self.fetch_components_scripts(*entity, ctx.world.world()),
+        //             None,
+        //         ),
+        //     };
+
+        //     for handle in handles {
+        //         invocations.push(Invocation {
+        //             event: event.clone(),
+        //             script: handle,
+        //             action_buffer: action_buffer.clone(),
+        //         });
+        //     }
+        // }
 
         let mut effects = Effects::default();
 
@@ -168,7 +189,7 @@ impl Executor {
                 .instances
                 .get(&self.engine, &script.module, State::Run(state));
 
-            if let Err(err) = runnable.run(&invocation.event) {
+            if let Err(err) = runnable.call(invocation.fn_ptr) {
                 tracing::error!("Error running script: {}", err);
             }
 
@@ -209,9 +230,10 @@ impl Debug for Executor {
 
 #[derive(Clone, Debug)]
 struct Invocation {
-    event: Event,
     script: Handle,
+    fn_ptr: Pointer,
     action_buffer: Option<Vec<u8>>,
+    entity: EntityId,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -265,7 +287,7 @@ pub trait RecordProvider {
 #[derive(Clone, Debug)]
 struct System {
     script: Handle,
-    ptr: u32,
+    ptr: Pointer,
     query: SystemQuery,
 }
 
@@ -273,3 +295,7 @@ struct System {
 struct SystemQuery {
     components: Vec<RecordReference>,
 }
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[repr(transparent)]
+struct Pointer(u32);

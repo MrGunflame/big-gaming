@@ -7,6 +7,7 @@ pub mod controller;
 use core::f32::consts::PI;
 
 use alloc::borrow::ToOwned;
+use alloc::vec;
 use bytemuck::Pod;
 use bytemuck::Zeroable;
 use components::EQUIPPABLE;
@@ -18,12 +19,14 @@ use game_wasm::components::builtin::RigidBody;
 use game_wasm::components::builtin::RigidBodyKind;
 use game_wasm::components::builtin::Transform;
 use game_wasm::components::{Component, Decode, Encode};
+use game_wasm::events::on_init;
 use game_wasm::math::Real;
 pub use game_wasm::math::Vec3;
 
 use components::MOVEMENT_SPEED;
 use game_wasm::entity::EntityId;
 use game_wasm::math::Quat;
+use game_wasm::system::register_system;
 use game_wasm::world::Entity;
 
 use game_wasm::world::RecordReference;
@@ -32,6 +35,16 @@ use game_wasm::world::RecordReference;
 // FIXME: Unhardcode this value, it should be provided by the runtime
 // to support running the game different update rates.
 const UPS: f32 = 60.0;
+
+#[on_init]
+pub fn on_init() {
+    register_system(
+        game_wasm::system::Query {
+            components: vec![Transform::ID, RigidBody::ID, Collider::ID],
+        },
+        controller::drive_character_controller,
+    );
+}
 
 pub fn extract_actor_rotation(rotation: Quat) -> Quat {
     let mut pt = rotation * -Vec3::Z;
@@ -60,7 +73,7 @@ pub fn extract_actor_rotation(rotation: Quat) -> Quat {
 #[macro_export]
 macro_rules! impl_movement {
     ($dir:expr) => {
-        $crate::panic_handler!();
+        //$crate::panic_handler!();
 
         #[game_wasm::events::on_action]
         fn on_action(invoker: game_wasm::entity::EntityId) {
@@ -292,3 +305,5 @@ pub struct Equippable {
 impl Component for Equippable {
     const ID: RecordReference = EQUIPPABLE;
 }
+
+panic_handler!();

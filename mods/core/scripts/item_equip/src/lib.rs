@@ -1,5 +1,8 @@
-use std::ptr::eq;
+#![no_std]
 
+extern crate alloc;
+
+use alloc::borrow::ToOwned;
 use game_wasm::action::ActionBuffer;
 use game_wasm::components::builtin::{MeshInstance, Transform};
 use game_wasm::components::Decode;

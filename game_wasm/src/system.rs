@@ -6,17 +6,20 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 use alloc::vec::Vec;
 
 use crate::action::ActionBuffer;
+use crate::entity::EntityId;
 use crate::events::Event;
 use crate::raw::Query as RawQuery;
 use crate::record::RecordReference;
 
 pub(crate) static SYSTEM_PTRS: SystemPointers = SystemPointers::new();
 
-pub fn register_system(query: Query, f: fn()) {
+pub fn register_system(query: Query, f: fn(EntityId)) {
     let fn_ptr = f as *const unsafe fn(c_void);
 
     unsafe fn run_impl(f: unsafe fn(c_void)) {
-        (unsafe { mem::transmute::<unsafe fn(c_void), fn()>(f) })();
+        let id: EntityId = ActionBuffer::load().get().unwrap();
+
+        (unsafe { mem::transmute::<unsafe fn(c_void), fn(EntityId)>(f) })(id);
     }
 
     let vtable = Vtable { run: run_impl };
@@ -32,6 +35,7 @@ pub fn register_system(query: Query, f: fn()) {
     }
 }
 
+#[derive(Debug)]
 pub struct Query {
     pub components: Vec<RecordReference>,
 }

@@ -14,7 +14,7 @@ use game_wasm::world::{Entity, RecordReference};
 use shared::components::{AMMO, GUN_PROPERTIES};
 use shared::{panic_handler, Ammo, GunProperties, ProjectileProperties, Vec3};
 
-panic_handler!();
+//panic_handler!();
 
 #[on_action]
 fn on_action(invoker: EntityId) {

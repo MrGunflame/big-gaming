@@ -111,6 +111,14 @@ trait CallerExt {
     {
         self.write_memory(ptr, bytemuck::bytes_of(value))
     }
+
+    fn read_slice<T>(&mut self, ptr: u32, len: u32) -> wasmtime::Result<&[T]>
+    where
+        T: Copy + AnyBitPattern,
+    {
+        let bytes = self.read_memory(ptr, len.wrapping_mul(mem::size_of::<T>() as u32))?;
+        Ok(bytemuck::cast_slice(bytes))
+    }
 }
 
 impl<'a, S> CallerExt for Caller<'a, S> {
