@@ -8,7 +8,7 @@ use dependency::Dependencies;
 use effect::Effects;
 use game_common::components::inventory::Inventory;
 use game_common::entity::EntityId;
-use game_common::events::EventQueue;
+use game_common::events::{Event, EventQueue};
 use game_common::record::RecordReference;
 use game_common::world::world::{WorldViewMut, WorldViewRef};
 use game_common::world::World;
@@ -35,6 +35,7 @@ pub struct Executor {
     targets: HashMap<RecordReference, Vec<Handle>>,
     instances: InstancePool,
     systems: Vec<System>,
+    action_handlers: HashMap<RecordReference, Vec<Entry>>,
 }
 
 impl Executor {
@@ -50,6 +51,7 @@ impl Executor {
             targets: HashMap::new(),
             scripts: Vec::new(),
             systems: vec![],
+            action_handlers: HashMap::new(),
         }
     }
 
@@ -68,6 +70,7 @@ impl Executor {
             State::Init(InitState {
                 script: handle,
                 systems: vec![],
+                actions: HashMap::new(),
             }),
         );
         instance.init()?;
@@ -78,6 +81,10 @@ impl Executor {
         };
 
         self.systems.extend(state.systems);
+
+        for (id, entries) in state.actions {
+            self.action_handlers.entry(id).or_default().extend(entries);
+        }
 
         self.scripts.push(script);
         Ok(handle)
@@ -114,6 +121,25 @@ impl Executor {
                     script: system.script,
                     fn_ptr: system.ptr,
                     action_buffer: None,
+                    entity,
+                });
+            }
+        }
+
+        while let Some(event) = ctx.events.pop() {
+            let (entries, action_buffer, entity) = match event {
+                Event::Action(event) => match self.action_handlers.get(&event.action.0) {
+                    Some(entries) => (entries, event.data, event.entity),
+                    None => continue,
+                },
+                _ => continue,
+            };
+
+            for entry in entries {
+                invocations.push(Invocation {
+                    script: entry.script,
+                    fn_ptr: entry.fn_ptr,
+                    action_buffer: Some(action_buffer.clone()),
                     entity,
                 });
             }
@@ -189,7 +215,7 @@ impl Executor {
                 .instances
                 .get(&self.engine, &script.module, State::Run(state));
 
-            if let Err(err) = runnable.call(invocation.fn_ptr) {
+            if let Err(err) = runnable.call(invocation.fn_ptr, invocation.entity) {
                 tracing::error!("Error running script: {}", err);
             }
 
@@ -285,6 +311,12 @@ pub trait RecordProvider {
 }
 
 #[derive(Clone, Debug)]
+struct Entry {
+    script: Handle,
+    fn_ptr: Pointer,
+}
+
+#[derive(Clone, Debug)]
 struct System {
     script: Handle,
     ptr: Pointer,
@@ -296,6 +328,13 @@ struct SystemQuery {
     components: Vec<RecordReference>,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash)]
 #[repr(transparent)]
 struct Pointer(u32);
+
+impl Debug for Pointer {
+    #[inline]
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        core::fmt::LowerHex::fmt(&self.0, f)
+    }
+}

@@ -72,6 +72,7 @@ pub fn register_host_fns(store: &mut Linker<State<'_>>) {
         action_data_buffer_get,
         register_system,
         register_event_handler,
+        register_action_handler,
     }
 }
 

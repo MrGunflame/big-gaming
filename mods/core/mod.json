@@ -9,7 +9,7 @@
                 "name": "Move Forward",
                 "description": "Move Forward",
                 "scripts": [
-                    "scripts/move_forward.wasm"
+                    "scripts/shared.wasm"
                 ]
             },
             {

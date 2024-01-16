@@ -2,6 +2,7 @@ use alloc::vec::Vec;
 
 use crate::components::Decode;
 use crate::raw::{action_data_buffer_get, action_data_buffer_len};
+use crate::record::RecordReference;
 
 pub(crate) fn action_buffer() -> Vec<u8> {
     unsafe {
@@ -30,4 +31,8 @@ impl ActionBuffer {
     {
         T::decode(&self.buf[..])
     }
+}
+
+pub trait Action: Decode {
+    const ID: RecordReference;
 }

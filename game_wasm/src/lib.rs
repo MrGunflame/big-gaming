@@ -97,10 +97,10 @@ pub(crate) const unsafe fn unreachable_unchecked() -> ! {
 }
 
 #[no_mangle]
-extern "C" fn __wasm_fn_trampoline(ptr: *const ()) {
+extern "C" fn __wasm_fn_trampoline(ptr: *const (), entity: u64) {
     unsafe {
-        let ptr = core::mem::transmute::<*const (), unsafe fn(c_void)>(ptr);
+        let ptr = core::mem::transmute::<*const (), unsafe fn(EntityId, c_void)>(ptr);
         let vtable = system::SYSTEM_PTRS.get(ptr as usize);
-        (vtable.run)(ptr);
+        (vtable.run)(EntityId::from_raw(entity), ptr);
     }
 }

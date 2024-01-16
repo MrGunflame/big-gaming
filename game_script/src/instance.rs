@@ -18,7 +18,7 @@ use crate::effect::{Effect, Effects, PlayerSetActive};
 use crate::events::{
     OnAction, OnCollision, OnEquip, OnInit, OnUnequip, OnUpdate, WasmFnTrampoline,
 };
-use crate::{Handle, Pointer, RecordProvider, System, WorldProvider};
+use crate::{Entry, Handle, Pointer, RecordProvider, System, WorldProvider};
 
 pub(crate) struct InstancePool {
     /// Linker for instantiating new instances.
@@ -45,7 +45,12 @@ impl InstancePool {
     ) -> Runnable<'a> {
         let mut store = Store::new(engine, state);
         let instance = self.linker.instantiate(&mut store, module).unwrap();
-        Runnable { store, instance }
+        let mut runnable = Runnable { store, instance };
+
+        // We must init before we can use the instance. Every invocation of init is
+        // guaranteed to yield to same instance state.
+        let _ = runnable.init();
+        runnable
     }
 }
 
@@ -81,11 +86,12 @@ impl<'a> Runnable<'a> {
     }
 
     /// Calls the guest function with the given pointer.
-    pub(crate) fn call(&mut self, ptr: Pointer) -> wasmtime::Result<()> {
+    pub(crate) fn call(&mut self, ptr: Pointer, entity: EntityId) -> wasmtime::Result<()> {
+        tracing::trace!("calling trampoline with addr {:?}", ptr);
         let func: WasmFnTrampoline = self
             .instance
             .get_typed_func(&mut self.store, "__wasm_fn_trampoline")?;
-        func.call(&mut self.store, ptr.0)
+        func.call(&mut self.store, (ptr.0, entity.into_raw()))
     }
 
     fn on_update(&mut self, entity: EntityId) -> wasmtime::Result<()> {
@@ -154,6 +160,7 @@ impl<'a> State<'a> {
 pub struct InitState {
     pub script: Handle,
     pub systems: Vec<System>,
+    pub actions: HashMap<RecordReference, Vec<Entry>>,
 }
 
 pub struct RunState<'a> {

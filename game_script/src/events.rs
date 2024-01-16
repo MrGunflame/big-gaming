@@ -131,4 +131,7 @@ pub type OnEquip = TypedFunc<(u64, u64), ()>;
 /// ```
 pub type OnUnequip = TypedFunc<(u64, u64), ()>;
 
-pub type WasmFnTrampoline = TypedFunc<u32, ()>;
+/// ```ignore
+/// fn(fn_ptr: *const unsafe fn(c_void), entity: EntityId);
+/// ```
+pub(crate) type WasmFnTrampoline = TypedFunc<(u32, u64), ()>;

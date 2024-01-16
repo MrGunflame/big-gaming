@@ -5,7 +5,7 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 
 use alloc::vec::Vec;
 
-use crate::action::ActionBuffer;
+use crate::action::{Action, ActionBuffer};
 use crate::entity::EntityId;
 use crate::events::Event;
 use crate::raw::Query as RawQuery;
@@ -16,10 +16,8 @@ pub(crate) static SYSTEM_PTRS: SystemPointers = SystemPointers::new();
 pub fn register_system(query: Query, f: fn(EntityId)) {
     let fn_ptr = f as *const unsafe fn(c_void);
 
-    unsafe fn run_impl(f: unsafe fn(c_void)) {
-        let id: EntityId = ActionBuffer::load().get().unwrap();
-
-        (unsafe { mem::transmute::<unsafe fn(c_void), fn(EntityId)>(f) })(id);
+    unsafe fn run_impl(entity: EntityId, f: unsafe fn(EntityId, c_void)) {
+        (unsafe { mem::transmute::<unsafe fn(EntityId, c_void), fn(EntityId)>(f) })(entity);
     }
 
     let vtable = Vtable { run: run_impl };
@@ -31,7 +29,7 @@ pub fn register_system(query: Query, f: fn(EntityId)) {
     };
 
     unsafe {
-        crate::raw::register_system(&raw_query, fn_ptr);
+        crate::raw::register_system(&raw_query, fn_ptr.cast());
     }
 }
 
@@ -40,18 +38,20 @@ pub struct Query {
     pub components: Vec<RecordReference>,
 }
 
-pub fn register_event_handler<T>(f: fn(event: T))
+pub fn register_event_handler<T>(f: fn(EntityId, T))
 where
     T: Event,
 {
     let fn_ptr = f as *const unsafe fn(c_void);
 
-    unsafe fn run_impl<T>(f: unsafe fn(c_void))
+    unsafe fn run_impl<T>(entity: EntityId, f: unsafe fn(EntityId, c_void))
     where
         T: Event,
     {
         if let Ok(event) = ActionBuffer::load().get() {
-            (unsafe { mem::transmute::<unsafe fn(c_void), fn(T)>(f) })(event);
+            (unsafe { mem::transmute::<unsafe fn(EntityId, c_void), fn(EntityId, T)>(f) })(
+                entity, event,
+            );
         }
     }
 
@@ -59,7 +59,32 @@ where
     SYSTEM_PTRS.insert(fn_ptr as usize, vtable);
 
     unsafe {
-        crate::raw::register_event_handler(&T::ID, fn_ptr);
+        crate::raw::register_event_handler(&T::ID, fn_ptr.cast());
+    }
+}
+
+pub fn register_action_handler<T>(f: fn(EntityId, T))
+where
+    T: Action,
+{
+    let fn_ptr = f as *const unsafe fn(EntityId, c_void);
+
+    unsafe fn run_impl<T>(entity: EntityId, f: unsafe fn(EntityId, c_void))
+    where
+        T: Action,
+    {
+        if let Ok(action) = ActionBuffer::load().get() {
+            (unsafe { mem::transmute::<unsafe fn(EntityId, c_void), fn(EntityId, T)>(f) })(
+                entity, action,
+            );
+        }
+    }
+
+    let vtable = Vtable { run: run_impl::<T> };
+    SYSTEM_PTRS.insert(fn_ptr as usize, vtable);
+
+    unsafe {
+        crate::raw::register_action_handler(&T::ID, fn_ptr.cast());
     }
 }
 
@@ -146,5 +171,5 @@ unsafe impl Sync for SystemPointers {}
 
 #[derive(Copy, Clone, Debug)]
 pub(crate) struct Vtable {
-    pub(crate) run: unsafe fn(f: unsafe fn(c_void)),
+    pub(crate) run: unsafe fn(EntityId, unsafe fn(EntityId, c_void)),
 }

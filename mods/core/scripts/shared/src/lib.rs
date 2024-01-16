@@ -45,7 +45,12 @@ const UPS: f32 = 60.0;
 pub fn on_init() {
     register_system(
         game_wasm::system::Query {
-            components: vec![Transform::ID, RigidBody::ID, Collider::ID],
+            components: vec![
+                Transform::ID,
+                RigidBody::ID,
+                Collider::ID,
+                CharacterController::ID,
+            ],
         },
         controller::drive_character_controller,
     );

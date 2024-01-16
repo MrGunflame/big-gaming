@@ -26,6 +26,12 @@ const EXPORT_FUNCTIONS: &[FunctionExport] = &[
         params: &[ValType::I64],
         results: &[],
     },
+    FunctionExport {
+        name: "__wasm_fn_trampoline",
+        event: Events::NONE,
+        params: &[ValType::I32, ValType::I64],
+        results: &[],
+    },
 ];
 
 #[derive(Copy, Clone, Debug)]
@@ -43,6 +49,8 @@ pub(crate) struct Script {
 
 impl Script {
     pub fn load(path: &Path, engine: &Engine) -> Result<Self, Box<dyn std::error::Error>> {
+        tracing::info!("loading script from {:?}", path);
+
         let mut file = File::open(path)?;
 
         let mut buf = Vec::new();

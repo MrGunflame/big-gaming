@@ -40,10 +40,13 @@ pub fn event_dispatch(
 );
 
 #[guest_only]
-pub fn register_system(query: *const Query, fn_ptr: *const unsafe fn(c_void));
+pub fn register_system(query: *const Query, fn_ptr: *const unsafe fn(u64, c_void));
 
 #[guest_only]
-pub fn register_event_handler(id: *const RecordReference, ptr: *const unsafe fn(c_void));
+pub fn register_event_handler(id: *const RecordReference, ptr: *const unsafe fn(u64, c_void));
+
+#[guest_only]
+pub fn register_action_handler(id: *const RecordReference, ptr: *const unsafe fn(u64, c_void));
 
 #[derive(Copy, Clone, Debug)]
 #[repr(C)]
