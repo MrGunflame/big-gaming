@@ -13,7 +13,7 @@ use crate::instance::State;
 use super::CallerExt;
 
 pub fn inventory_get(
-    mut caller: Caller<'_, State<'_>>,
+    mut caller: Caller<'_, State>,
     entity_id: u64,
     slot_id: u64,
     out: u32,
@@ -35,7 +35,7 @@ pub fn inventory_get(
     Ok(RESULT_OK)
 }
 
-pub fn inventory_len(mut caller: Caller<'_, State<'_>>, entity_id: u64, out: u32) -> Result<u32> {
+pub fn inventory_len(mut caller: Caller<'_, State>, entity_id: u64, out: u32) -> Result<u32> {
     let _span = trace_span!("inventory_len").entered();
 
     let entity_id = EntityId::from_raw(entity_id);
@@ -49,7 +49,7 @@ pub fn inventory_len(mut caller: Caller<'_, State<'_>>, entity_id: u64, out: u32
 }
 
 pub fn inventory_list(
-    mut caller: Caller<'_, State<'_>>,
+    mut caller: Caller<'_, State>,
     entity_id: u64,
     out: u32,
     len: u32,
@@ -72,7 +72,7 @@ pub fn inventory_list(
 }
 
 pub fn inventory_insert(
-    mut caller: Caller<'_, State<'_>>,
+    mut caller: Caller<'_, State>,
     entity_id: u64,
     item_stack_ptr: u32,
     slot_id_ptr: u32,
@@ -96,7 +96,7 @@ pub fn inventory_insert(
 }
 
 pub fn inventory_remove(
-    mut caller: Caller<'_, State<'_>>,
+    mut caller: Caller<'_, State>,
     entity_id: u64,
     slot_id: u64,
     quantity: u64,
@@ -118,7 +118,7 @@ pub fn inventory_remove(
 }
 
 pub fn inventory_component_len(
-    mut caller: Caller<'_, State<'_>>,
+    mut caller: Caller<'_, State>,
     entity_id: u64,
     slot_id: u64,
     component_id: u32,
@@ -145,7 +145,7 @@ pub fn inventory_component_len(
 }
 
 pub fn inventory_component_get(
-    mut caller: Caller<'_, State<'_>>,
+    mut caller: Caller<'_, State>,
     entity_id: u64,
     slot_id: u64,
     component_id: u32,
@@ -180,7 +180,7 @@ pub fn inventory_component_get(
 }
 
 pub fn inventory_component_insert(
-    mut caller: Caller<'_, State<'_>>,
+    mut caller: Caller<'_, State>,
     entity_id: u64,
     slot_id: u64,
     component_id: u32,
@@ -208,7 +208,7 @@ pub fn inventory_component_insert(
 }
 
 pub fn inventory_component_remove(
-    mut caller: Caller<'_, State<'_>>,
+    mut caller: Caller<'_, State>,
     entity_id: u64,
     slot_id: u64,
     component_id: u32,
@@ -230,11 +230,7 @@ pub fn inventory_component_remove(
     Ok(RESULT_OK)
 }
 
-pub fn inventory_equip(
-    mut caller: Caller<'_, State<'_>>,
-    entity_id: u64,
-    slot_id: u64,
-) -> Result<u32> {
+pub fn inventory_equip(mut caller: Caller<'_, State>, entity_id: u64, slot_id: u64) -> Result<u32> {
     let entity_id = EntityId::from_raw(entity_id);
     let slot_id = InventorySlotId::from_raw(slot_id);
 
@@ -252,7 +248,7 @@ pub fn inventory_equip(
 // FIXME: It probably does make more sense to merge this into `inventory_equip` with
 // a bool param.
 pub fn inventory_unequip(
-    mut caller: Caller<'_, State<'_>>,
+    mut caller: Caller<'_, State>,
     entity_id: u64,
     slot_id: u64,
 ) -> Result<u32> {
@@ -270,7 +266,7 @@ pub fn inventory_unequip(
     Ok(RESULT_OK)
 }
 
-pub fn inventory_clear(mut caller: Caller<'_, State<'_>>, entity_id: u64) -> Result<u32> {
+pub fn inventory_clear(mut caller: Caller<'_, State>, entity_id: u64) -> Result<u32> {
     let _span = trace_span!("inventory_clear").entered();
 
     let entity_id = EntityId::from_raw(entity_id);

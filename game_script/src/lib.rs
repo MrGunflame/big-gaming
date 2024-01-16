@@ -15,7 +15,7 @@ use game_common::world::World;
 use game_data::record::Record;
 use game_tracing::trace_span;
 use game_wasm::player::PlayerId;
-use instance::{InitState, InstancePool, RunState, State};
+use instance::{InstancePool, RunState, State};
 use script::Script;
 use wasmtime::{Config, Engine, WasmBacktraceDetails};
 
@@ -64,21 +64,7 @@ impl Executor {
         let index = self.scripts.len();
         let handle = Handle(index);
 
-        let mut instance = self.instances.get(
-            &self.engine,
-            &script.module,
-            State::Init(InitState {
-                script: handle,
-                systems: vec![],
-                actions: HashMap::new(),
-            }),
-        );
-        instance.init()?;
-
-        let state = match instance.into_state() {
-            State::Init(s) => s,
-            _ => unreachable!(),
-        };
+        let mut state = self.instances.init(&self.engine, &script.module, handle)?;
 
         self.systems.extend(state.systems);
 
@@ -202,28 +188,28 @@ impl Executor {
 
             let mut dependencies = Dependencies::default();
             let state = RunState::new(
-                ctx.world,
+                unsafe {
+                    core::mem::transmute::<&dyn WorldProvider, *const dyn WorldProvider>(ctx.world)
+                },
                 ctx.physics,
                 &mut effects,
                 &mut dependencies,
-                ctx.records,
+                unsafe {
+                    core::mem::transmute::<&dyn RecordProvider, *const dyn RecordProvider>(
+                        ctx.records,
+                    )
+                },
                 new_world,
                 invocation.action_buffer,
             );
 
-            let mut runnable = self
-                .instances
-                .get(&self.engine, &script.module, State::Run(state));
+            let runnable = self.instances.get(State::Run(state), invocation.script);
 
             if let Err(err) = runnable.call(invocation.fn_ptr, invocation.entity) {
                 tracing::error!("Error running script: {}", err);
             }
 
-            let state = runnable.into_state();
-            new_world = match state {
-                State::Run(s) => s.new_world,
-                _ => unreachable!(),
-            };
+            new_world = runnable.into_state().new_world;
         }
 
         effects

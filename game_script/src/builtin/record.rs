@@ -7,12 +7,12 @@ use wasmtime::{Caller, Result};
 use crate::builtin::CallerExt;
 use crate::instance::State;
 
-pub fn get_record(mut caller: Caller<'_, State<'_>>, record_id: u32, out: u32) -> Result<u32> {
+pub fn get_record(mut caller: Caller<'_, State>, record_id: u32, out: u32) -> Result<u32> {
     let _span = trace_span!("get_record").entered();
     tracing::trace!("get_record(record_id={}, out={}", record_id, out);
 
     let id: RecordReference = caller.read(record_id)?;
-    let Some(record) = caller.data().as_run()?.records.get(id) else {
+    let Some(record) = caller.data().as_run()?.records().get(id) else {
         return Ok(1);
     };
 
@@ -28,7 +28,7 @@ pub fn get_record(mut caller: Caller<'_, State<'_>>, record_id: u32, out: u32) -
 }
 
 pub fn get_record_len_component(
-    mut caller: Caller<'_, State<'_>>,
+    mut caller: Caller<'_, State>,
     record_id: u32,
     out: u32,
 ) -> Result<u32> {
@@ -40,7 +40,7 @@ pub fn get_record_len_component(
     );
 
     let id: RecordReference = caller.read(record_id)?;
-    let Some(record) = caller.data().as_run()?.records.get(id) else {
+    let Some(record) = caller.data().as_run()?.records().get(id) else {
         return Ok(1);
     };
 
@@ -49,7 +49,7 @@ pub fn get_record_len_component(
 }
 
 pub fn get_record_component_keys(
-    mut caller: Caller<'_, State<'_>>,
+    mut caller: Caller<'_, State>,
     record_id: u32,
     out: u32,
     len: u32,
@@ -63,11 +63,11 @@ pub fn get_record_component_keys(
     );
 
     let id: RecordReference = caller.read(record_id)?;
-    let Some(record) = caller.data().as_run()?.records.get(id) else {
+    let Some(record) = caller.data().as_run()?.records().get(id) else {
         return Ok(1);
     };
 
-    for (index, component) in record.components.iter().enumerate() {
+    for (index, component) in record.components.clone().iter().enumerate() {
         let ptr = out + (std::mem::size_of::<RecordReference>() * index) as u32;
         caller.write(ptr, &component.id)?;
     }
@@ -76,7 +76,7 @@ pub fn get_record_component_keys(
 }
 
 pub fn get_record_component_len(
-    mut caller: Caller<'_, State<'_>>,
+    mut caller: Caller<'_, State>,
     record_id: u32,
     component_id: u32,
     out: u32,
@@ -91,7 +91,7 @@ pub fn get_record_component_len(
 
     let id: RecordReference = caller.read(record_id)?;
     let component_id: RecordReference = caller.read(component_id)?;
-    let Some(record) = caller.data().as_run()?.records.get(id) else {
+    let Some(record) = caller.data().as_run()?.records().get(id) else {
         return Ok(1);
     };
 
@@ -106,7 +106,7 @@ pub fn get_record_component_len(
 }
 
 pub fn get_record_component_get(
-    mut caller: Caller<'_, State<'_>>,
+    mut caller: Caller<'_, State>,
     record_id: u32,
     component_id: u32,
     out: u32,
@@ -123,7 +123,7 @@ pub fn get_record_component_get(
 
     let id: RecordReference = caller.read(record_id)?;
     let component_id: RecordReference = caller.read(component_id)?;
-    let Some(record) = caller.data().as_run()?.records.get(id) else {
+    let Some(record) = caller.data().as_run()?.records().get(id).cloned() else {
         return Ok(1);
     };
 

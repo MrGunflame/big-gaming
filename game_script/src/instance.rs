@@ -22,13 +22,13 @@ use crate::{Entry, Handle, Pointer, RecordProvider, System, WorldProvider};
 
 pub(crate) struct InstancePool {
     /// Linker for instantiating new instances.
-    linker: Linker<State<'static>>,
-    instances: HashMap<Handle, Vec<Instance>>,
+    linker: Linker<State>,
+    instances: HashMap<Handle, Runnable>,
 }
 
 impl InstancePool {
     pub(crate) fn new(engine: &Engine) -> Self {
-        let mut linker = Linker::<State<'_>>::new(engine);
+        let mut linker = Linker::<State>::new(engine);
         register_host_fns(&mut linker);
 
         Self {
@@ -37,37 +37,53 @@ impl InstancePool {
         }
     }
 
-    pub fn get<'a>(
-        &'a mut self,
+    pub fn init(
+        &mut self,
         engine: &Engine,
         module: &Module,
-        state: State<'a>,
-    ) -> Runnable<'a> {
+        handle: Handle,
+    ) -> wasmtime::Result<InitState> {
+        let state = State::Init(InitState {
+            script: handle,
+            systems: vec![],
+            actions: HashMap::new(),
+        });
+
         let mut store = Store::new(engine, state);
         let instance = self.linker.instantiate(&mut store, module).unwrap();
         let mut runnable = Runnable { store, instance };
 
-        // We must init before we can use the instance. Every invocation of init is
-        // guaranteed to yield to same instance state.
-        let _ = runnable.init();
+        runnable.init()?;
+        let state = match runnable.store.data_mut() {
+            State::Init(state) => state.clone(),
+            State::Run(_) => unreachable!(),
+        };
+
+        debug_assert!(!self.instances.contains_key(&handle));
+        self.instances.insert(handle, runnable);
+
+        Ok(state)
+    }
+
+    pub fn get<'a>(&'a mut self, state: State, handle: Handle) -> &mut Runnable {
+        let runnable = self.instances.get_mut(&handle).unwrap();
+        *runnable.store.data_mut() = state;
         runnable
     }
 }
 
 impl Debug for InstancePool {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.debug_struct("InstancePool")
-            .field("instances", &self.instances)
-            .finish_non_exhaustive()
+        f.debug_struct("InstancePool").finish_non_exhaustive()
     }
 }
 
-pub struct Runnable<'a> {
-    store: Store<State<'a>>,
+pub struct Runnable {
+    store: Store<State>,
     instance: Instance,
 }
 
-impl<'a> Runnable<'a> {
+impl Runnable {
     pub(crate) fn run(&mut self, event: &Event) -> wasmtime::Result<()> {
         let _span = trace_span!("Instance::run").entered();
 
@@ -81,13 +97,16 @@ impl<'a> Runnable<'a> {
     }
 
     pub(crate) fn init(&mut self) -> wasmtime::Result<()> {
+        let _span = trace_span!("Runnable::init").entered();
+
         let func: OnInit = self.instance.get_typed_func(&mut self.store, "on_init")?;
         func.call(&mut self.store, ())
     }
 
     /// Calls the guest function with the given pointer.
     pub(crate) fn call(&mut self, ptr: Pointer, entity: EntityId) -> wasmtime::Result<()> {
-        tracing::trace!("calling trampoline with addr {:?}", ptr);
+        let _span = trace_span!("Runnable::call").entered();
+
         let func: WasmFnTrampoline = self
             .instance
             .get_typed_func(&mut self.store, "__wasm_fn_trampoline")?;
@@ -123,17 +142,29 @@ impl<'a> Runnable<'a> {
         func.call(&mut self.store, (item.into_raw(), entity.into_raw()))
     }
 
-    pub fn into_state(self) -> State<'a> {
-        self.store.into_data()
+    pub fn into_state(&mut self) -> RunState {
+        let state = core::mem::replace(
+            self.store.data_mut(),
+            State::Init(InitState {
+                script: Handle(0),
+                systems: vec![],
+                actions: HashMap::new(),
+            }),
+        );
+
+        match state {
+            State::Init(_) => unreachable!(),
+            State::Run(state) => state,
+        }
     }
 }
 
-pub enum State<'a> {
+pub enum State {
     Init(InitState),
-    Run(RunState<'a>),
+    Run(RunState),
 }
 
-impl<'a> State<'a> {
+impl State {
     pub fn as_init(&mut self) -> wasmtime::Result<&mut InitState> {
         match self {
             Self::Init(state) => Ok(state),
@@ -141,14 +172,14 @@ impl<'a> State<'a> {
         }
     }
 
-    pub fn as_run(&self) -> wasmtime::Result<&RunState<'a>> {
+    pub fn as_run(&self) -> wasmtime::Result<&RunState> {
         match self {
             Self::Init(_) => Err(wasmtime::Error::msg("not in run state")),
             Self::Run(s) => Ok(s),
         }
     }
 
-    pub fn as_run_mut(&mut self) -> wasmtime::Result<&mut RunState<'a>> {
+    pub fn as_run_mut(&mut self) -> wasmtime::Result<&mut RunState> {
         match self {
             Self::Init(_) => Err(wasmtime::Error::msg("not in run state")),
             Self::Run(s) => Ok(s),
@@ -156,32 +187,32 @@ impl<'a> State<'a> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct InitState {
     pub script: Handle,
     pub systems: Vec<System>,
     pub actions: HashMap<RecordReference, Vec<Entry>>,
 }
 
-pub struct RunState<'a> {
-    world: &'a dyn WorldProvider,
-    pub records: &'a dyn RecordProvider,
-    pub physics_pipeline: &'a game_physics::Pipeline,
-    effects: &'a mut Effects,
-    dependencies: &'a mut Dependencies,
+pub struct RunState {
+    world: *const dyn WorldProvider,
+    pub records: *const dyn RecordProvider,
+    pub physics_pipeline: *const game_physics::Pipeline,
+    effects: *mut Effects,
+    dependencies: *mut Dependencies,
     next_entity_id: u64,
     next_inventory_id: u64,
     pub new_world: World,
     pub action_buffer: Option<Vec<u8>>,
 }
 
-impl<'a> RunState<'a> {
+impl RunState {
     pub fn new(
-        world: &'a dyn WorldProvider,
-        physics_pipeline: &'a game_physics::Pipeline,
-        effects: &'a mut Effects,
-        dependencies: &'a mut Dependencies,
-        records: &'a dyn RecordProvider,
+        world: *const dyn WorldProvider,
+        physics_pipeline: *const game_physics::Pipeline,
+        effects: *mut Effects,
+        dependencies: *mut Dependencies,
+        records: *const dyn RecordProvider,
         new_world: World,
         action_buffer: Option<Vec<u8>>,
     ) -> Self {
@@ -199,13 +230,29 @@ impl<'a> RunState<'a> {
     }
 }
 
-impl<'a> RunState<'a> {
+impl RunState {
     pub fn spawn(&mut self) -> EntityId {
         let id = self.allocate_temporary_entity_id();
         self.new_world.spawn_with_id(id);
 
-        self.effects.push(Effect::EntitySpawn(id));
+        self.effects().push(Effect::EntitySpawn(id));
         id
+    }
+
+    fn effects(&mut self) -> &mut Effects {
+        unsafe { &mut *self.effects }
+    }
+
+    fn dependencies(&mut self) -> &mut Dependencies {
+        unsafe { &mut *self.dependencies }
+    }
+
+    pub fn physics_pipeline(&self) -> &game_physics::Pipeline {
+        unsafe { &*self.physics_pipeline }
+    }
+
+    pub fn records(&self) -> &dyn RecordProvider {
+        unsafe { &*self.records }
     }
 
     pub fn despawn(&mut self, id: EntityId) -> bool {
@@ -213,7 +260,7 @@ impl<'a> RunState<'a> {
             return false;
         }
 
-        self.effects.push(Effect::EntityDespawn(id));
+        self.effects().push(Effect::EntityDespawn(id));
         self.new_world.despawn(id);
         true
     }
@@ -223,7 +270,7 @@ impl<'a> RunState<'a> {
         entity_id: EntityId,
         component: RecordReference,
     ) -> Option<&RawComponent> {
-        self.dependencies
+        self.dependencies()
             .push(Dependency::EntityComponent(entity_id, component));
         self.new_world.get(entity_id, component)
     }
@@ -238,7 +285,7 @@ impl<'a> RunState<'a> {
             return;
         }
 
-        self.effects.push(Effect::EntityComponentInsert(
+        self.effects().push(Effect::EntityComponentInsert(
             entity_id,
             id,
             component.as_bytes().to_vec(),
@@ -252,7 +299,7 @@ impl<'a> RunState<'a> {
         }
 
         if self.new_world.remove(entity_id, id).is_some() {
-            self.effects
+            self.effects()
                 .push(Effect::EntityComponentRemove(entity_id, id));
             true
         } else {
@@ -261,9 +308,9 @@ impl<'a> RunState<'a> {
     }
 
     fn reconstruct_inventory(&self, id: EntityId) -> Option<Inventory> {
-        let mut inventory = self.world.inventory(id).cloned();
+        let mut inventory = unsafe { &*self.world }.inventory(id).cloned();
 
-        for effect in self.effects.iter() {
+        for effect in unsafe { &*self.effects }.iter() {
             match effect {
                 Effect::InventoryInsert(eid, slot_id, stack) if *eid == id => {
                     inventory.as_mut().unwrap().insert(stack.clone()).unwrap();
@@ -305,13 +352,13 @@ impl<'a> RunState<'a> {
     }
 
     pub fn inventory(&mut self, entity: EntityId) -> Option<Inventory> {
-        self.dependencies.push(Dependency::Inventory(entity));
+        self.dependencies().push(Dependency::Inventory(entity));
         self.reconstruct_inventory(entity)
     }
 
     pub fn inventory_get(&mut self, entity: EntityId, slot: InventorySlotId) -> Option<ItemStack> {
         // We track the slot even if it does not exist.
-        self.dependencies
+        self.dependencies()
             .push(Dependency::InventorySlot(entity, slot));
 
         self.reconstruct_inventory(entity)?.get(slot).cloned()
@@ -319,7 +366,7 @@ impl<'a> RunState<'a> {
 
     pub fn inventory_insert(&mut self, entity: EntityId, stack: ItemStack) -> InventorySlotId {
         let id = self.allocate_temporary_inventory_id();
-        self.effects
+        self.effects()
             .push(Effect::InventoryInsert(entity, id, stack));
         id
     }
@@ -330,12 +377,12 @@ impl<'a> RunState<'a> {
         slot: InventorySlotId,
         quantity: u64,
     ) -> bool {
-        let Some(inventory) = self.world.inventory(entity) else {
+        let Some(inventory) = unsafe { &*self.world }.inventory(entity) else {
             return false;
         };
 
         if inventory.clone().remove(slot, quantity as u32).is_some() {
-            self.effects
+            self.effects()
                 .push(Effect::InventoryRemove(entity, slot, quantity));
             true
         } else {
@@ -348,7 +395,7 @@ impl<'a> RunState<'a> {
             return false;
         };
 
-        self.effects.push(Effect::InventoryClear(entity));
+        self.effects().push(Effect::InventoryClear(entity));
         true
     }
 
@@ -358,7 +405,7 @@ impl<'a> RunState<'a> {
         slot: InventorySlotId,
         component: RecordReference,
     ) -> Option<RawComponent> {
-        self.dependencies
+        self.dependencies()
             .push(Dependency::InventorySlotComponent(entity, slot, component));
 
         let inventory = self.reconstruct_inventory(entity)?;
@@ -380,7 +427,7 @@ impl<'a> RunState<'a> {
             return false;
         };
 
-        self.effects.push(Effect::InventoryComponentInsert(
+        self.effects().push(Effect::InventoryComponentInsert(
             entity,
             slot,
             component_id,
@@ -395,7 +442,7 @@ impl<'a> RunState<'a> {
         slot: InventorySlotId,
         component_id: RecordReference,
     ) -> bool {
-        let Some(inventory) = self.world.inventory(entity) else {
+        let Some(inventory) = unsafe { &*self.world }.inventory(entity) else {
             return false;
         };
 
@@ -403,7 +450,7 @@ impl<'a> RunState<'a> {
             return false;
         };
 
-        self.effects
+        self.effects()
             .push(Effect::InventoryComponentRemove(entity, slot, component_id));
 
         true
@@ -415,7 +462,7 @@ impl<'a> RunState<'a> {
         slot: InventorySlotId,
         equipped: bool,
     ) -> bool {
-        let Some(inventory) = self.world.inventory(entity) else {
+        let Some(inventory) = unsafe { &*self.world }.inventory(entity) else {
             return false;
         };
 
@@ -428,14 +475,14 @@ impl<'a> RunState<'a> {
             // anything.
             false
         } else {
-            self.effects
+            self.effects()
                 .push(Effect::InventoryItemUpdateEquip(entity, slot, equipped));
             true
         }
     }
 
     pub fn player_lookup(&mut self, entity_id: EntityId) -> Option<PlayerId> {
-        self.world.player(entity_id)
+        unsafe { &*self.world }.player(entity_id)
     }
 
     pub fn player_set_active(&mut self, player: PlayerId, entity: EntityId) -> bool {
@@ -443,7 +490,7 @@ impl<'a> RunState<'a> {
             return false;
         }
 
-        self.effects
+        self.effects()
             .push(Effect::PlayerSetActive(PlayerSetActive { player, entity }));
         true
     }

@@ -1,4 +1,5 @@
 use bytemuck::{Pod, Zeroable};
+use game_tracing::trace_span;
 use game_wasm::world::RecordReference;
 use wasmtime::{Caller, Result};
 
@@ -7,7 +8,9 @@ use crate::{Entry, Pointer, System, SystemQuery};
 
 use super::CallerExt;
 
-pub fn register_system(mut caller: Caller<'_, State<'_>>, params: u32, fn_ptr: u32) -> Result<()> {
+pub fn register_system(mut caller: Caller<'_, State>, params: u32, fn_ptr: u32) -> Result<()> {
+    let _span = trace_span!("register_system").entered();
+
     let params: SystemParams = caller.read(params)?;
 
     let query = caller
@@ -24,15 +27,13 @@ pub fn register_system(mut caller: Caller<'_, State<'_>>, params: u32, fn_ptr: u
     Ok(())
 }
 
-pub fn register_event_handler(mut caller: Caller<'_, State<'_>>, fn_ptr: u32) -> Result<()> {
+pub fn register_event_handler(mut caller: Caller<'_, State>, fn_ptr: u32) -> Result<()> {
     todo!()
 }
 
-pub fn register_action_handler(
-    mut caller: Caller<'_, State<'_>>,
-    id: u32,
-    fn_ptr: u32,
-) -> Result<()> {
+pub fn register_action_handler(mut caller: Caller<'_, State>, id: u32, fn_ptr: u32) -> Result<()> {
+    let _span = trace_span!("register_action_handler").entered();
+
     let id: RecordReference = caller.read(id)?;
 
     let state = caller.data_mut().as_init()?;

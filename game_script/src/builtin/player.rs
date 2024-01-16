@@ -8,7 +8,7 @@ use crate::instance::State;
 use super::CallerExt;
 
 pub(super) fn player_lookup(
-    mut caller: Caller<'_, State<'_>>,
+    mut caller: Caller<'_, State>,
     entity_id: u64,
     out: u32,
 ) -> Result<u32> {
@@ -25,7 +25,7 @@ pub(super) fn player_lookup(
 }
 
 pub(super) fn player_set_active(
-    mut caller: Caller<'_, State<'_>>,
+    mut caller: Caller<'_, State>,
     player_id: u64,
     entity_id: u64,
 ) -> Result<u32> {

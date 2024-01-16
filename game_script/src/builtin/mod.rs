@@ -26,7 +26,7 @@ macro_rules! register_fns {
     };
 }
 
-pub fn register_host_fns(store: &mut Linker<State<'_>>) {
+pub fn register_host_fns(store: &mut Linker<State>) {
     use action::*;
     use inventory::*;
     use log::*;

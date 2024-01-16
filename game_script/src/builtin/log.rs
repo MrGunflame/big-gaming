@@ -5,12 +5,7 @@ use crate::instance::State;
 
 use super::{CallerExt, InvalidInvariant};
 
-pub fn log(
-    mut caller: Caller<'_, State<'_>>,
-    level: u32,
-    ptr: u32,
-    len: u32,
-) -> wasmtime::Result<()> {
+pub fn log(mut caller: Caller<'_, State>, level: u32, ptr: u32, len: u32) -> wasmtime::Result<()> {
     tracing::trace!("log(level = {}, ptr = {}, len = {})", level, ptr, len);
 
     let bytes = caller.read_memory(ptr, len)?;
