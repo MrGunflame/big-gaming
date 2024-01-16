@@ -21,4 +21,9 @@ impl EntityId {
     pub const fn into_raw(self) -> u64 {
         self.0
     }
+
+    #[inline]
+    pub(crate) fn as_raw(&self) -> &u64 {
+        &self.0
+    }
 }
