@@ -1,25 +1,25 @@
-#![no_std]
-
-extern crate alloc;
-
 use alloc::borrow::ToOwned;
-use game_wasm::action::ActionBuffer;
+use game_wasm::action::Action;
 use game_wasm::components::builtin::{MeshInstance, Transform};
-use game_wasm::components::Decode;
+use game_wasm::components::{Decode, Encode};
 use game_wasm::entity::EntityId;
-use game_wasm::events::on_action;
 use game_wasm::inventory::{Inventory, InventoryId};
-use game_wasm::world::Entity;
-use shared::components::EQUIPPABLE;
-use shared::Equippable;
+use game_wasm::world::{Entity, RecordReference};
 
-#[on_action]
-pub fn on_action(entity: EntityId) {
-    let slot_id: InventoryId = ActionBuffer::load().get().unwrap();
+use crate::components::{EQUIP, EQUIPPABLE};
+use crate::Equippable;
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Encode, Decode)]
+pub struct Equip(InventoryId);
+
+impl Action for Equip {
+    const ID: RecordReference = EQUIP;
+}
+
+pub fn on_equip(entity: EntityId, Equip(slot): Equip) {
     let inventory = Inventory::new(entity);
 
-    let Ok(mut stack) = inventory.get(slot_id) else {
+    let Ok(mut stack) = inventory.get(slot) else {
         return;
     };
 
@@ -33,6 +33,6 @@ pub fn on_action(entity: EntityId) {
     let item = Entity::spawn();
     item.insert(Transform::default());
     item.insert(MeshInstance {
-        path: "assets/AK.glb".to_owned(),
+        path: "assets/human.glb".to_owned(),
     });
 }
