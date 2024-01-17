@@ -5,7 +5,6 @@ use game_common::components::components::RawComponent;
 use game_common::components::inventory::{Inventory, InventorySlotId};
 use game_common::components::items::ItemStack;
 use game_common::entity::EntityId;
-use game_common::events::Event;
 use game_common::record::RecordReference;
 use game_common::world::World;
 use game_tracing::trace_span;
@@ -15,9 +14,7 @@ use wasmtime::{Engine, Instance, Linker, Module, Store};
 use crate::builtin::register_host_fns;
 use crate::dependency::{Dependencies, Dependency};
 use crate::effect::{Effect, Effects, PlayerSetActive};
-use crate::events::{
-    DispatchEvent, OnAction, OnCollision, OnEquip, OnInit, OnUnequip, OnUpdate, WasmFnTrampoline,
-};
+use crate::events::{DispatchEvent, OnInit, WasmFnTrampoline};
 use crate::{Entry, Handle, Pointer, RecordProvider, System, WorldProvider};
 
 pub(crate) struct InstancePool {
@@ -85,18 +82,6 @@ pub struct Runnable {
 }
 
 impl Runnable {
-    pub(crate) fn run(&mut self, event: &Event) -> wasmtime::Result<()> {
-        let _span = trace_span!("Instance::run").entered();
-
-        match event {
-            Event::Action(event) => self.on_action(event.entity, event.invoker),
-            Event::Collision(event) => self.on_collision(event.entity, event.other),
-            Event::Equip(event) => self.on_equip(event.item, event.entity),
-            Event::Unequip(event) => self.on_unequip(event.item, event.entity),
-            Event::Update(entity) => self.on_update(*entity),
-        }
-    }
-
     pub(crate) fn init(&mut self) -> wasmtime::Result<()> {
         let _span = trace_span!("Runnable::init").entered();
 
@@ -112,35 +97,6 @@ impl Runnable {
             .instance
             .get_typed_func(&mut self.store, "__wasm_fn_trampoline")?;
         func.call(&mut self.store, (ptr.0, entity.into_raw()))
-    }
-
-    fn on_update(&mut self, entity: EntityId) -> wasmtime::Result<()> {
-        let func: OnUpdate = self.instance.get_typed_func(&mut self.store, "on_update")?;
-        func.call(&mut self.store, entity.into_raw())
-    }
-
-    fn on_action(&mut self, entity: EntityId, invoker: EntityId) -> wasmtime::Result<()> {
-        let func: OnAction = self.instance.get_typed_func(&mut self.store, "on_action")?;
-        func.call(&mut self.store, invoker.into_raw())
-    }
-
-    fn on_collision(&mut self, entity: EntityId, other: EntityId) -> wasmtime::Result<()> {
-        let func: OnCollision = self
-            .instance
-            .get_typed_func(&mut self.store, "on_collision")?;
-        func.call(&mut self.store, (entity.into_raw(), other.into_raw()))
-    }
-
-    fn on_equip(&mut self, item: InventorySlotId, entity: EntityId) -> wasmtime::Result<()> {
-        let func: OnEquip = self.instance.get_typed_func(&mut self.store, "on_equip")?;
-        func.call(&mut self.store, (item.into_raw(), entity.into_raw()))
-    }
-
-    fn on_unequip(&mut self, item: InventorySlotId, entity: EntityId) -> wasmtime::Result<()> {
-        let func: OnUnequip = self
-            .instance
-            .get_typed_func(&mut self.store, "on_unequip")?;
-        func.call(&mut self.store, (item.into_raw(), entity.into_raw()))
     }
 
     pub fn into_state(&mut self) -> RunState {

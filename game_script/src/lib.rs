@@ -32,8 +32,6 @@ mod script;
 pub struct Executor {
     engine: Engine,
     scripts: Vec<Script>,
-    /// Maps which components fire which scripts.
-    targets: HashMap<RecordReference, Vec<Handle>>,
     instances: InstancePool,
     systems: Vec<System>,
     action_handlers: HashMap<RecordReference, Vec<Entry>>,
@@ -50,7 +48,6 @@ impl Executor {
         Self {
             instances: InstancePool::new(&engine),
             engine,
-            targets: HashMap::new(),
             scripts: Vec::new(),
             systems: vec![],
             action_handlers: HashMap::new(),
@@ -81,16 +78,6 @@ impl Executor {
 
         self.scripts.push(script);
         Ok(handle)
-    }
-
-    pub fn register_script(&mut self, component: RecordReference, script: Handle) {
-        let entry = self.targets.entry(component).or_default();
-
-        // Registering a script on a component multiple times makes no
-        // difference in execution behavior and is likely a mistake.
-        debug_assert!(!entry.contains(&script));
-
-        entry.push(script);
     }
 
     pub fn update(&mut self, ctx: Context<'_>) -> Effects {
@@ -137,50 +124,6 @@ impl Executor {
                 });
             }
         }
-
-        // while let Some(event) = ctx.events.pop() {
-        //     let (handles, action_buffer) = match &event {
-        //         // An action is a special case. The script is not registered on
-        //         // the component, but on the action record directly. We should only
-        //         // call script for the exact triggered action, not any other.
-        //         Event::Action(event) => match self.targets.get(&event.action.0) {
-        //             Some(handles) => (handles.clone(), Some(event.data.clone())),
-        //             // There are no handlers registered for the action. We should
-        //             // discard the action and pretend it was never called.
-        //             None => {
-        //                 tracing::warn!(
-        //                     "action {:?} queued, but there are no handlers for it",
-        //                     event.action
-        //                 );
-        //                 continue;
-        //             }
-        //         },
-        //         Event::Collision(event) => (
-        //             self.fetch_components_scripts(event.entity, ctx.world.world()),
-        //             None,
-        //         ),
-        //         Event::Equip(event) => (
-        //             self.fetch_components_scripts(event.entity, ctx.world.world()),
-        //             None,
-        //         ),
-        //         Event::Unequip(event) => (
-        //             self.fetch_components_scripts(event.entity, ctx.world.world()),
-        //             None,
-        //         ),
-        //         Event::Update(entity) => (
-        //             self.fetch_components_scripts(*entity, ctx.world.world()),
-        //             None,
-        //         ),
-        //     };
-
-        //     for handle in handles {
-        //         invocations.push(Invocation {
-        //             event: event.clone(),
-        //             script: handle,
-        //             action_buffer: action_buffer.clone(),
-        //         });
-        //     }
-        // }
 
         let mut effects = Effects::default();
 
@@ -262,28 +205,16 @@ impl Executor {
             }
         }
     }
-
-    fn fetch_components_scripts(&self, entity: EntityId, world: &World) -> Vec<Handle> {
-        let components = world.components(entity);
-
-        let mut scripts = Vec::new();
-        for (id, _) in components.iter() {
-            if let Some(handles) = self.targets.get(&id) {
-                scripts.extend(handles);
-            }
-        }
-
-        scripts.dedup();
-        scripts
-    }
 }
 
 impl Debug for Executor {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.debug_struct("Executor")
             .field("scripts", &self.scripts)
-            .field("targets", &self.targets)
             .field("instances", &self.instances)
+            .field("systems", &self.systems)
+            .field("action_handlers", &self.action_handlers)
+            .field("event_handlers", &self.event_handlers)
             .finish_non_exhaustive()
     }
 }
