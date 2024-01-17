@@ -1,6 +1,7 @@
 //! WASM host bindings
 #![no_std]
 
+use core::ffi::c_void;
 use core::fmt::{self, Display, Formatter};
 
 use entity::EntityId;
@@ -21,6 +22,7 @@ pub mod raw;
 #[cfg(not(feature = "raw"))]
 mod raw;
 
+pub mod action;
 pub mod components;
 pub mod entity;
 pub mod events;
@@ -31,6 +33,7 @@ pub mod physics;
 pub mod player;
 pub mod process;
 pub mod record;
+pub mod system;
 pub mod world;
 
 /// The error type returned by failed operations.
@@ -90,5 +93,14 @@ pub(crate) const unsafe fn unreachable_unchecked() -> ! {
     } else {
         // SAFETY: The caller guarantees that this call site is never reached.
         unsafe { core::hint::unreachable_unchecked() }
+    }
+}
+
+#[no_mangle]
+extern "C" fn __wasm_fn_trampoline(ptr: *const (), entity: u64) {
+    unsafe {
+        let ptr = core::mem::transmute::<*const (), unsafe fn(EntityId, c_void)>(ptr);
+        let vtable = system::SYSTEM_PTRS.get(ptr as usize);
+        (vtable.run)(EntityId::from_raw(entity), ptr);
     }
 }

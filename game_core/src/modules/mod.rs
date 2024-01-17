@@ -156,14 +156,6 @@ fn load_module(data: DataBuffer, modules: &mut Modules, executor: &mut Executor)
                     continue;
                 }
             };
-
-            executor.register_script(
-                RecordReference {
-                    module: data.header.module.id,
-                    record: record.id,
-                },
-                handle,
-            );
         }
     }
 

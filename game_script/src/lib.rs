@@ -1,11 +1,12 @@
 //! Game (dynamic) scripting
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::fmt::{self, Debug, Formatter};
 use std::path::Path;
 
 use dependency::Dependencies;
 use effect::Effects;
+use events::{DispatchEvent, Receiver};
 use game_common::components::inventory::Inventory;
 use game_common::entity::EntityId;
 use game_common::events::{Event, EventQueue};
@@ -15,7 +16,7 @@ use game_common::world::World;
 use game_data::record::Record;
 use game_tracing::trace_span;
 use game_wasm::player::PlayerId;
-use instance::{InstancePool, State};
+use instance::{InstancePool, RunState, State};
 use script::Script;
 use wasmtime::{Config, Engine, WasmBacktraceDetails};
 
@@ -31,9 +32,10 @@ mod script;
 pub struct Executor {
     engine: Engine,
     scripts: Vec<Script>,
-    /// Maps which components fire which scripts.
-    targets: HashMap<RecordReference, Vec<Handle>>,
     instances: InstancePool,
+    systems: Vec<System>,
+    action_handlers: HashMap<RecordReference, Vec<Entry>>,
+    event_handlers: HashMap<RecordReference, Vec<Entry>>,
 }
 
 impl Executor {
@@ -46,8 +48,10 @@ impl Executor {
         Self {
             instances: InstancePool::new(&engine),
             engine,
-            targets: HashMap::new(),
             scripts: Vec::new(),
+            systems: vec![],
+            action_handlers: HashMap::new(),
+            event_handlers: HashMap::new(),
         }
     }
 
@@ -56,50 +60,67 @@ impl Executor {
         P: AsRef<Path>,
     {
         let script = Script::load(path.as_ref(), &self.engine)?;
+
         let index = self.scripts.len();
+        let handle = Handle(index);
+
+        let state = self.instances.init(&self.engine, &script.module, handle)?;
+
+        self.systems.extend(state.systems);
+
+        for (id, entries) in state.actions {
+            self.action_handlers.entry(id).or_default().extend(entries);
+        }
+
+        for (id, entries) in state.event_handlers {
+            self.event_handlers.entry(id).or_default().extend(entries);
+        }
+
         self.scripts.push(script);
-        Ok(Handle(index))
-    }
-
-    pub fn register_script(&mut self, component: RecordReference, script: Handle) {
-        let entry = self.targets.entry(component).or_default();
-
-        // Registering a script on a component multiple times makes no
-        // difference in execution behavior and is likely a mistake.
-        debug_assert!(!entry.contains(&script));
-
-        entry.push(script);
+        Ok(handle)
     }
 
     pub fn update(&mut self, ctx: Context<'_>) -> Effects {
         let _span = trace_span!("Executor::update").entered();
 
-        let mut invocations = Vec::new();
+        let mut invocations = VecDeque::new();
+
+        let world = ctx.world.world();
+
+        for system in &self.systems {
+            'entities: for entity in world.entities() {
+                let components = world.components(entity);
+
+                for component in &system.query.components {
+                    if components.get(*component).is_none() {
+                        continue 'entities;
+                    }
+                }
+
+                invocations.push_back(Invocation {
+                    script: system.script,
+                    fn_ptr: system.ptr,
+                    action_buffer: None,
+                    entity,
+                });
+            }
+        }
 
         while let Some(event) = ctx.events.pop() {
-            let handles = match event {
-                // An action is a special case. The script is not registered on
-                // the component, but on the action record directly. We should only
-                // call script for the exact triggered action, not any other.
-                // FIXME: What if the action is not registered. Should we really
-                // handle that case?
-                Event::Action(event) => self.targets.get(&event.action.0).unwrap().clone(),
-                Event::Collision(event) => {
-                    self.fetch_components_scripts(event.entity, ctx.world.world())
-                }
-                Event::Equip(event) => {
-                    self.fetch_components_scripts(event.entity, ctx.world.world())
-                }
-                Event::Unequip(event) => {
-                    self.fetch_components_scripts(event.entity, ctx.world.world())
-                }
-                Event::Update(entity) => self.fetch_components_scripts(entity, ctx.world.world()),
+            let (entries, action_buffer, entity) = match event {
+                Event::Action(event) => match self.action_handlers.get(&event.action.0) {
+                    Some(entries) => (entries, event.data, event.entity),
+                    None => continue,
+                },
+                _ => continue,
             };
 
-            for handle in handles {
-                invocations.push(Invocation {
-                    event: event.clone(),
-                    script: handle,
+            for entry in entries {
+                invocations.push_back(Invocation {
+                    script: entry.script,
+                    fn_ptr: entry.fn_ptr,
+                    action_buffer: Some(action_buffer.clone()),
+                    entity,
                 });
             }
         }
@@ -112,44 +133,77 @@ impl Executor {
         // same state.
         let mut new_world = ctx.world.world().clone();
 
-        for invocation in invocations {
-            let script = &self.scripts[invocation.script.0];
+        // TODO: Right now if two event handlers call each other unconditionally we will
+        // never stop scheduling more invocations and deadlock. We should implement some
+        // sort of cycle checks and stop when an event schedules an event from which the
+        // the event was dispatched from.
 
+        while let Some(invocation) = invocations.pop_front() {
             let mut dependencies = Dependencies::default();
-            let state = State::new(
-                ctx.world,
+            let state = RunState::new(
+                unsafe {
+                    core::mem::transmute::<&dyn WorldProvider, *const dyn WorldProvider>(ctx.world)
+                },
                 ctx.physics,
                 &mut effects,
                 &mut dependencies,
-                ctx.records,
+                unsafe {
+                    core::mem::transmute::<&dyn RecordProvider, *const dyn RecordProvider>(
+                        ctx.records,
+                    )
+                },
                 new_world,
+                invocation.action_buffer,
             );
 
-            let mut runnable = self.instances.get(&self.engine, &script.module, state);
+            let runnable = self.instances.get(State::Run(state), invocation.script);
 
-            if let Err(err) = runnable.run(&invocation.event) {
+            if let Err(err) = runnable.call(invocation.fn_ptr, invocation.entity) {
                 tracing::error!("Error running script: {}", err);
             }
 
             let state = runnable.into_state();
             new_world = state.new_world;
+
+            for event in state.events {
+                self.schedule_event(&mut invocations, event, &new_world);
+            }
         }
 
         effects
     }
 
-    fn fetch_components_scripts(&self, entity: EntityId, world: &World) -> Vec<Handle> {
-        let components = world.components(entity);
+    fn schedule_event(
+        &self,
+        invocations: &mut VecDeque<Invocation>,
+        event: DispatchEvent,
+        world: &World,
+    ) {
+        let Some(handlers) = self.event_handlers.get(&event.id) else {
+            return;
+        };
 
-        let mut scripts = Vec::new();
-        for (id, _) in components.iter() {
-            if let Some(handles) = self.targets.get(&id) {
-                scripts.extend(handles);
+        let entities: Vec<_> = match event.receiver {
+            Receiver::All => world.entities().collect(),
+            // If the event was scheduled to entities that do not exist they
+            // need to be removed before being scheduled.
+            Receiver::Entities(entities) => entities
+                .iter()
+                .filter(|entity| world.contains(**entity))
+                .copied()
+                .collect(),
+        };
+
+        for handler in handlers {
+            for entity in &entities {
+                invocations.push_back(Invocation {
+                    script: handler.script,
+                    fn_ptr: handler.fn_ptr,
+                    action_buffer: Some(event.data.clone()),
+                    entity: *entity,
+                });
             }
         }
-
-        scripts.dedup();
-        scripts
     }
 }
 
@@ -157,16 +211,20 @@ impl Debug for Executor {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.debug_struct("Executor")
             .field("scripts", &self.scripts)
-            .field("targets", &self.targets)
             .field("instances", &self.instances)
+            .field("systems", &self.systems)
+            .field("action_handlers", &self.action_handlers)
+            .field("event_handlers", &self.event_handlers)
             .finish_non_exhaustive()
     }
 }
 
 #[derive(Clone, Debug)]
 struct Invocation {
-    event: Event,
     script: Handle,
+    fn_ptr: Pointer,
+    action_buffer: Option<Vec<u8>>,
+    entity: EntityId,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -215,4 +273,33 @@ impl WorldProvider for WorldViewMut<'_> {
 
 pub trait RecordProvider {
     fn get(&self, id: RecordReference) -> Option<&Record>;
+}
+
+#[derive(Clone, Debug)]
+struct Entry {
+    script: Handle,
+    fn_ptr: Pointer,
+}
+
+#[derive(Clone, Debug)]
+struct System {
+    script: Handle,
+    ptr: Pointer,
+    query: SystemQuery,
+}
+
+#[derive(Clone, Debug)]
+struct SystemQuery {
+    components: Vec<RecordReference>,
+}
+
+#[derive(Copy, Clone, PartialEq, Eq, Hash)]
+#[repr(transparent)]
+struct Pointer(u32);
+
+impl Debug for Pointer {
+    #[inline]
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        core::fmt::LowerHex::fmt(&self.0, f)
+    }
 }

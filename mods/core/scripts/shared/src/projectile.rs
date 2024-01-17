@@ -1,17 +1,16 @@
 use game_wasm::components::builtin::Transform;
 use game_wasm::entity::EntityId;
-use game_wasm::events::on_update;
-use game_wasm::math::Ray;
+use game_wasm::math::{Ray, Vec3};
 use game_wasm::physics::{cast_ray, QueryFilter};
 use game_wasm::world::Entity;
-use shared::{apply_actor_damage, ProjectileProperties, Vec3};
+
+use crate::{apply_actor_damage, ProjectileProperties};
 
 // Note that we manually drive the projectile and don't delegate that task
 // to the physics engine to prevent weird side-effects. Adding a collider to
 // the projectile would imply that it could get be deflected by other entities
 // while also being a "solid" object that would block movement.
-#[on_update]
-fn on_update(entity: EntityId) {
+pub fn drive_projectile(entity: EntityId) {
     let entity = Entity::new(entity);
 
     let mut transform = entity.get::<Transform>().unwrap();

@@ -1,11 +1,14 @@
 //! Builtin host functions
 
+mod action;
+mod events;
 mod inventory;
 mod log;
 mod physics;
 mod player;
 mod process;
 mod record;
+mod system;
 mod world;
 
 use std::mem;
@@ -24,13 +27,16 @@ macro_rules! register_fns {
     };
 }
 
-pub fn register_host_fns(store: &mut Linker<State<'_>>) {
+pub fn register_host_fns(store: &mut Linker<State>) {
+    use action::*;
+    use events::*;
     use inventory::*;
     use log::*;
     use physics::*;
     use player::*;
     use process::*;
     use record::*;
+    use system::*;
     use world::*;
 
     register_fns! {
@@ -64,6 +70,12 @@ pub fn register_host_fns(store: &mut Linker<State<'_>>) {
         get_record_component_get,
         player_lookup,
         player_set_active,
+        action_data_buffer_len,
+        action_data_buffer_get,
+        register_system,
+        register_event_handler,
+        register_action_handler,
+        event_dispatch,
     }
 }
 
@@ -102,6 +114,14 @@ trait CallerExt {
         T: Copy + NoUninit,
     {
         self.write_memory(ptr, bytemuck::bytes_of(value))
+    }
+
+    fn read_slice<T>(&mut self, ptr: u32, len: u32) -> wasmtime::Result<&[T]>
+    where
+        T: Copy + AnyBitPattern,
+    {
+        let bytes = self.read_memory(ptr, len.wrapping_mul(mem::size_of::<T>() as u32))?;
+        Ok(bytemuck::cast_slice(bytes))
     }
 }
 

@@ -2,13 +2,19 @@
 
 extern crate alloc;
 
-pub mod controller;
+mod controller;
+mod inventory;
+mod movement;
+mod projectile;
+mod weapon;
 
 use core::f32::consts::PI;
 
 use alloc::borrow::ToOwned;
+use alloc::vec;
 use bytemuck::Pod;
 use bytemuck::Zeroable;
+use components::EQUIPPABLE;
 use game_wasm::components::builtin::Collider;
 use game_wasm::components::builtin::ColliderShape;
 use game_wasm::components::builtin::Cuboid;
@@ -17,12 +23,15 @@ use game_wasm::components::builtin::RigidBody;
 use game_wasm::components::builtin::RigidBodyKind;
 use game_wasm::components::builtin::Transform;
 use game_wasm::components::{Component, Decode, Encode};
+use game_wasm::events::on_init;
 use game_wasm::math::Real;
 pub use game_wasm::math::Vec3;
 
 use components::MOVEMENT_SPEED;
 use game_wasm::entity::EntityId;
 use game_wasm::math::Quat;
+use game_wasm::system::register_action_handler;
+use game_wasm::system::register_system;
 use game_wasm::world::Entity;
 
 use game_wasm::world::RecordReference;
@@ -31,6 +40,37 @@ use game_wasm::world::RecordReference;
 // FIXME: Unhardcode this value, it should be provided by the runtime
 // to support running the game different update rates.
 const UPS: f32 = 60.0;
+
+#[on_init]
+pub fn on_init() {
+    register_system(
+        game_wasm::system::Query {
+            components: vec![
+                Transform::ID,
+                RigidBody::ID,
+                Collider::ID,
+                CharacterController::ID,
+            ],
+        },
+        controller::drive_character_controller,
+    );
+    register_system(
+        game_wasm::system::Query {
+            components: vec![Transform::ID, ProjectileProperties::ID],
+        },
+        projectile::drive_projectile,
+    );
+
+    register_action_handler(movement::move_forward);
+    register_action_handler(movement::move_back);
+    register_action_handler(movement::move_left);
+    register_action_handler(movement::move_right);
+
+    register_action_handler(weapon::weapon_attack);
+    register_action_handler(weapon::weapon_reload);
+
+    register_action_handler(inventory::on_equip);
+}
 
 pub fn extract_actor_rotation(rotation: Quat) -> Quat {
     let mut pt = rotation * -Vec3::Z;
@@ -54,35 +94,6 @@ pub fn extract_actor_rotation(rotation: Quat) -> Quat {
     let res = Quat::from_axis_angle(Vec3::Y, angle + PI);
     debug_assert!(!res.is_nan());
     res
-}
-
-#[macro_export]
-macro_rules! impl_movement {
-    ($dir:expr) => {
-        $crate::panic_handler!();
-
-        #[game_wasm::events::on_action]
-        fn on_action(invoker: game_wasm::entity::EntityId) {
-            $crate::on_action_impl(invoker, $dir);
-        }
-    };
-}
-
-#[inline]
-pub fn on_action_impl(entity: EntityId, dir: Vec3) {
-    let entity = Entity::new(entity);
-
-    let speed = entity.get::<MovementSpeed>().unwrap();
-    let mut transform = entity.get::<Transform>().unwrap();
-    let collider = entity.get::<Collider>().unwrap();
-
-    let rotation = extract_actor_rotation(transform.rotation);
-
-    let direction = rotation * dir * (speed.0 / UPS);
-
-    controller::move_shape(entity.id(), &mut transform, direction, &collider.shape);
-
-    entity.insert(transform);
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Encode, Decode)]
@@ -207,6 +218,19 @@ pub mod components {
         PROJECTILE_PROPERTIES => 0x14,
         SPAWN_POINT => 0x16,
         CHARACTER_CONTROLLER => 0x15,
+        EQUIPPABLE => 0x20,
+
+        MOVE_FORWARD => 0x01,
+        MOVE_BACK => 0x02,
+        MOVE_LEFT => 0x03,
+        MOVE_RIGHT => 0x04,
+
+        WEAPON_ATTACK => 0x0d,
+        WEAPON_RELOAD => 0x0e,
+
+        EQUIP => 0x17,
+        UNEQUIP => 0x18,
+        DROP => 0x19,
     }
 }
 
@@ -280,3 +304,15 @@ fn spawn_player(transform: Transform) -> Entity {
 
     entity
 }
+
+#[derive(Clone, Debug, Encode, Decode)]
+pub struct Equippable {
+    pub on_equip: RecordReference,
+    pub on_uneqip: RecordReference,
+}
+
+impl Component for Equippable {
+    const ID: RecordReference = EQUIPPABLE;
+}
+
+panic_handler!();

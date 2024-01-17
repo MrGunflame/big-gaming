@@ -1,25 +1,32 @@
-#![no_std]
-
-extern crate alloc;
-
 use alloc::string::ToString;
-use game_wasm::components::builtin::{
-    Collider, ColliderShape, Cuboid, MeshInstance, RigidBody, RigidBodyKind, Transform,
-};
+use game_wasm::action::Action;
+use game_wasm::components::builtin::{MeshInstance, Transform};
+use game_wasm::components::{Decode, Encode};
 use game_wasm::entity::EntityId;
-use game_wasm::events::on_action;
 use game_wasm::inventory::Inventory;
-use game_wasm::math::Quat;
+use game_wasm::math::{Quat, Vec3};
 use game_wasm::world::{Entity, RecordReference};
-use shared::components::{AMMO, GUN_PROPERTIES};
-use shared::{panic_handler, Ammo, GunProperties, ProjectileProperties, Vec3};
 
-panic_handler!();
+use crate::components::{AMMO, GUN_PROPERTIES, WEAPON_ATTACK, WEAPON_RELOAD};
+use crate::{Ammo, GunProperties, ProjectileProperties};
 
-#[on_action]
-fn on_action(invoker: EntityId) {
-    let actor = Entity::new(invoker);
-    let inventory = Inventory::new(invoker);
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Encode, Decode)]
+pub struct WeaponAttack;
+
+impl Action for WeaponAttack {
+    const ID: RecordReference = WEAPON_ATTACK;
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Encode, Decode)]
+pub struct WeaponReload;
+
+impl Action for WeaponReload {
+    const ID: RecordReference = WEAPON_RELOAD;
+}
+
+pub fn weapon_attack(entity: EntityId, WeaponAttack: WeaponAttack) {
+    let actor = Entity::new(entity);
+    let inventory = Inventory::new(entity);
 
     let transform = actor.get::<Transform>().unwrap();
 
@@ -75,4 +82,24 @@ fn build_projectile(
     entity.insert(MeshInstance {
         path: "assets/bullet.glb".to_string(),
     });
+}
+
+pub fn weapon_reload(entity: EntityId, WeaponReload: WeaponReload) {
+    let inventory = Inventory::new(entity);
+
+    for stack in inventory
+        .iter()
+        .unwrap()
+        .filter(|stack| stack.item.equipped)
+    {
+        let Ok(properties) = stack.components().get(GUN_PROPERTIES) else {
+            continue;
+        };
+        let properties = GunProperties::decode(properties.as_bytes()).unwrap();
+
+        let mut ammo = stack.components().entry(AMMO).or_default();
+        ammo.write(Ammo(properties.magazine_capacity));
+
+        stack.components().insert(AMMO, &ammo).unwrap();
+    }
 }

@@ -40,11 +40,6 @@ pub fn tick(state: &mut ServerState) {
 
     crate::world::level::update_level_cells(state);
 
-    // Send update event to every entity.
-    for entity in state.world.world.iter() {
-        state.event_queue.push(Event::Update(entity));
-    }
-
     let effects = state.script_executor.update(Context {
         world: &state.world,
         physics: &state.pipeline,
@@ -276,6 +271,7 @@ fn flush_command_queue(srv_state: &mut ServerState) {
                             &srv_state.modules,
                             msg.action,
                             &mut srv_state.event_queue,
+                            msg.bytes,
                         );
                     }
                     DataMessageBody::EntityComponentAdd(_) => (),
@@ -297,8 +293,14 @@ fn queue_action(
     modules: &Modules,
     action: ActionId,
     queue: &mut EventQueue,
+    data: Vec<u8>,
 ) {
-    tracing::info!("{:?} wants to run action {:?}", entity, action);
+    tracing::info!(
+        "{:?} wants to run action {:?} with params ({:?})",
+        entity,
+        action,
+        data,
+    );
 
     let components = world.world.components(entity);
 
@@ -320,6 +322,7 @@ fn queue_action(
                 entity,
                 invoker: entity,
                 action,
+                data: data.clone(),
             }));
         }
     }
@@ -348,6 +351,7 @@ fn queue_action(
                 entity: entity,
                 invoker: entity,
                 action,
+                data,
             }));
             return;
         }
@@ -370,6 +374,7 @@ fn queue_action(
                     entity: entity,
                     invoker: entity,
                     action,
+                    data,
                 }));
                 return;
             }

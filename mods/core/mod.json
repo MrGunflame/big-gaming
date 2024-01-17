@@ -9,7 +9,7 @@
                 "name": "Move Forward",
                 "description": "Move Forward",
                 "scripts": [
-                    "scripts/move_forward.wasm"
+                    "scripts/shared.wasm"
                 ]
             },
             {
@@ -59,6 +59,26 @@
                 "scripts": [
                     "scripts/pickup.wasm"
                 ]
+            },
+            {
+                "id": "17",
+                "name": "Equip item",
+                "description": "",
+                "scripts": [
+                    "scripts/item_equip.wasm"
+                ]
+            },
+            {
+                "id": "18",
+                "name": "Unequip",
+                "description": "",
+                "scripts": []
+            },
+            {
+                "id": "19",
+                "name": "Drop item",
+                "description": "",
+                "scripts": []
             }
         ],
         "components": [
@@ -110,7 +130,10 @@
                     "c626b9b0ab1940aba6932ea7726d0175:02",
                     "c626b9b0ab1940aba6932ea7726d0175:03",
                     "c626b9b0ab1940aba6932ea7726d0175:04",
-                    "c626b9b0ab1940aba6932ea7726d0175:0f"
+                    "c626b9b0ab1940aba6932ea7726d0175:0f",
+                    "c626b9b0ab1940aba6932ea7726d0175:17",
+                    "c626b9b0ab1940aba6932ea7726d0175:18",
+                    "c626b9b0ab1940aba6932ea7726d0175:19"
                 ]
             },
             {
@@ -124,6 +147,11 @@
             {
                 "id": "16",
                 "name": "Spawn Point",
+                "description": ""
+            },
+            {
+                "id": "20",
+                "name": "Equippable",
                 "description": ""
             }
         ],

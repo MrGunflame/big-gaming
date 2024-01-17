@@ -145,6 +145,10 @@ impl World {
         }
     }
 
+    pub fn entities(&self) -> impl Iterator<Item = EntityId> + '_ {
+        self.entities.iter().copied()
+    }
+
     pub fn clear(&mut self) {
         self.entities.clear();
         self.components.clear();

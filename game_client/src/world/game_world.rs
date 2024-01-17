@@ -27,6 +27,11 @@ use crate::world::script::run_scripts;
 
 use super::state::WorldState;
 
+// The maximum number of update cycles allowed per frame. This prevents situations
+// where the update takes longer than the frame and therefore causes the game loop
+// to fall even further behind and never return.
+const MAX_UPDATES_PER_FRAME: u32 = 10;
+
 #[derive(Debug)]
 pub struct GameWorld<I> {
     conn: ServerConnection,
@@ -71,7 +76,13 @@ where
     pub fn update(&mut self, time: &Time, modules: &Modules, cmd_buffer: &mut CommandBuffer) {
         let _span = trace_span!("GameWorld::update").entered();
 
-        while self.game_tick.interval.is_ready(time.last_update()) {
+        // Limit the amount of times we can update to prevent a further falling
+        // behind if the update itself takes longer than the frame.
+        for _ in 0..MAX_UPDATES_PER_FRAME {
+            if !self.game_tick.interval.is_ready(time.last_update()) {
+                break;
+            }
+
             self.conn.update();
 
             self.game_tick.current_control_frame += 1;
@@ -285,7 +296,7 @@ where
         self.conn.input_buffer.clear(cf);
 
         for msg in self.conn.input_buffer.iter() {
-            match msg.body {
+            match &msg.body {
                 DataMessageBody::EntityTranslate(msg) => {
                     let id = self.server_entities.get(msg.entity).unwrap();
                     cmd_buffer.push(Command::Translate {
@@ -318,7 +329,7 @@ where
         self.predicted_state = self.newest_state.clone();
 
         for msg in self.conn.input_buffer.iter() {
-            match msg.body {
+            match &msg.body {
                 DataMessageBody::EntityTranslate(msg) => {
                     let id = self.server_entities.get(msg.entity).unwrap();
                     let mut transform: Transform = self.predicted_state.world.get_typed(id);
@@ -337,6 +348,7 @@ where
                         entity: id,
                         invoker: id,
                         action: msg.action,
+                        data: msg.bytes.clone(),
                     }));
                 }
                 _ => {
@@ -368,14 +380,22 @@ where
                     }),
                 );
             }
-            SendCommand::Action { entity, action } => {
+            SendCommand::Action {
+                entity,
+                action,
+                data,
+            } => {
                 let Some(id) = self.server_entities.get(entity) else {
                     return;
                 };
 
                 self.conn.send(
                     self.next_frame_counter.newest_frame,
-                    DataMessageBody::EntityAction(EntityAction { entity: id, action }),
+                    DataMessageBody::EntityAction(EntityAction {
+                        entity: id,
+                        action,
+                        bytes: data,
+                    }),
                 );
             }
         }
@@ -458,6 +478,13 @@ fn spawn_entity(id: RecordReference, transform: Transform, modules: &Modules) ->
 }
 
 pub enum SendCommand {
-    Rotate { entity: EntityId, rotation: Quat },
-    Action { entity: EntityId, action: ActionId },
+    Rotate {
+        entity: EntityId,
+        rotation: Quat,
+    },
+    Action {
+        entity: EntityId,
+        action: ActionId,
+        data: Vec<u8>,
+    },
 }

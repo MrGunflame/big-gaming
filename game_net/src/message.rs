@@ -81,10 +81,11 @@ pub struct EntityRotate {
     pub rotation: Quat,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Clone, Debug)]
 pub struct EntityAction {
     pub entity: ServerEntity,
     pub action: ActionId,
+    pub bytes: Vec<u8>,
 }
 
 #[derive(Clone, Debug)]
@@ -156,6 +157,7 @@ impl DataMessageBody {
             DataMessageBody::EntityAction(msg) => Frame::EntityAction(proto::EntityAction {
                 entity: msg.entity,
                 action: msg.action,
+                bytes: msg.bytes,
             }),
             DataMessageBody::EntityComponentAdd(msg) => {
                 Frame::EntityComponentAdd(proto::components::ComponentAdd {
@@ -226,6 +228,7 @@ impl DataMessageBody {
             Frame::EntityAction(frame) => Self::EntityAction(EntityAction {
                 entity: frame.entity,
                 action: frame.action,
+                bytes: frame.bytes,
             }),
             Frame::EntityComponentAdd(frame) => Self::EntityComponentAdd(EntityComponentAdd {
                 entity: frame.entity,

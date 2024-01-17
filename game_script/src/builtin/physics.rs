@@ -12,7 +12,7 @@ use crate::builtin::CallerExt;
 use crate::instance::State;
 
 pub fn physics_cast_ray(
-    mut caller: Caller<'_, State<'_>>,
+    mut caller: Caller<'_, State>,
     origin_x: f32,
     origin_y: f32,
     origin_z: f32,
@@ -35,7 +35,8 @@ pub fn physics_cast_ray(
 
     let (entity_id, toi) = match caller
         .data()
-        .physics_pipeline
+        .as_run()?
+        .physics_pipeline()
         .cast_ray(ray, max_toi, filter)
     {
         Some((entity_id, toi)) => (entity_id, toi),
@@ -55,7 +56,7 @@ pub fn physics_cast_ray(
 }
 
 pub fn physics_cast_shape(
-    mut caller: Caller<'_, State<'_>>,
+    mut caller: Caller<'_, State>,
     translation_x: f32,
     translation_y: f32,
     translation_z: f32,
@@ -85,7 +86,7 @@ pub fn physics_cast_shape(
     });
     let filter = read_query_filter(&mut caller, filter)?;
 
-    let (entity, toi) = match caller.data().physics_pipeline.cast_shape(
+    let (entity, toi) = match caller.data().as_run()?.physics_pipeline().cast_shape(
         translation,
         rotation,
         direction,
@@ -109,10 +110,7 @@ pub fn physics_cast_shape(
     Ok(0)
 }
 
-fn read_query_filter(
-    caller: &mut Caller<'_, State<'_>>,
-    ptr: u32,
-) -> wasmtime::Result<QueryFilter> {
+fn read_query_filter(caller: &mut Caller<'_, State>, ptr: u32) -> wasmtime::Result<QueryFilter> {
     let filter: RawQueryFilter = caller.read(ptr)?;
 
     let mut exclude_entities = Vec::new();

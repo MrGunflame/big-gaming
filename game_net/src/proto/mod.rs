@@ -679,10 +679,50 @@ pub struct EntityRotate {
     pub rotation: Quat,
 }
 
-#[derive(Copy, Clone, Debug, Encode, Decode)]
+#[derive(Clone, Debug)]
 pub struct EntityAction {
     pub entity: ServerEntity,
     pub action: ActionId,
+    pub bytes: Vec<u8>,
+}
+
+impl Encode for EntityAction {
+    type Error = Infallible;
+
+    fn encode<B>(&self, mut buf: B) -> Result<(), Self::Error>
+    where
+        B: BufMut,
+    {
+        self.entity.encode(&mut buf)?;
+        self.action.encode(&mut buf)?;
+        (self.bytes.len() as u64).encode(&mut buf)?;
+        buf.put_slice(&self.bytes);
+        Ok(())
+    }
+}
+
+impl Decode for EntityAction {
+    type Error = Error;
+
+    fn decode<B>(mut buf: B) -> Result<Self, Self::Error>
+    where
+        B: Buf,
+    {
+        let entity = ServerEntity::decode(&mut buf)?;
+        let action = ActionId::decode(&mut buf)?;
+        let len = u64::decode(&mut buf)?;
+
+        let mut bytes = Vec::new();
+        for _ in 0..len {
+            bytes.push(u8::decode(&mut buf)?);
+        }
+
+        Ok(Self {
+            entity,
+            action,
+            bytes,
+        })
+    }
 }
 
 /// Sets the host actor host used by the client.

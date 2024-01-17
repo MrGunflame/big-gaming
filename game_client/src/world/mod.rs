@@ -48,6 +48,7 @@ use crate::input::{InputKey, Inputs};
 use crate::net::world::{Command, CommandBuffer};
 use crate::net::ServerConnection;
 use crate::ui::debug::Statistics;
+use crate::ui::inventory::InventoryEvent;
 use crate::ui::inventory::InventoryProxy;
 use crate::ui::main_menu::MainMenu;
 use crate::ui::UiElements;
@@ -448,7 +449,39 @@ impl GameWorldState {
             self.world.send(SendCommand::Action {
                 entity: self.host,
                 action,
+                data: vec![],
             });
+        }
+
+        // Inventory
+        if let Some(proxy) = &self.inventory_proxy {
+            while let Ok(event) = proxy.rx.try_recv() {
+                let (action, data) = match event {
+                    InventoryEvent::Equip(slot) => {
+                        let bits = slot.into_raw();
+                        let mut data = Vec::new();
+                        data.extend(bits.to_le_bytes());
+                        ("c626b9b0ab1940aba6932ea7726d0175:17".parse().unwrap(), data)
+                    }
+                    InventoryEvent::Uneqip(slot) => {
+                        let bits = slot.into_raw();
+                        let mut data = Vec::new();
+                        data.extend(bits.to_le_bytes());
+                        ("c626b9b0ab1940aba6932ea7726d0175:18".parse().unwrap(), data)
+                    }
+                    InventoryEvent::Drop(event) => {
+                        let mut data = Vec::new();
+                        data.extend(event.id.into_raw().to_le_bytes());
+                        ("c626b9b0ab1940aba6932ea7726d0175:19".parse().unwrap(), data)
+                    }
+                };
+
+                self.world.send(SendCommand::Action {
+                    entity: self.host,
+                    action: ActionId(action),
+                    data,
+                });
+            }
         }
     }
 
@@ -501,13 +534,10 @@ impl GameWorldState {
                     let module = self.modules.get(action.module).unwrap();
                     let record = module.records.get(action.record).unwrap();
 
-                    self.actions.register(
-                        action.module,
-                        record,
-                        self.get_key_for_action(action.module, record),
-                    );
-
-                    self.registered_actions.push(ActionId(action));
+                    if let Some(key) = self.get_key_for_action(action.module, record) {
+                        self.actions.register(action.module, record, key);
+                        self.registered_actions.push(ActionId(action));
+                    }
                 }
 
                 for (id, _) in stack.item.components.iter() {
@@ -519,13 +549,10 @@ impl GameWorldState {
                         let module = self.modules.get(action.module).unwrap();
                         let record = module.records.get(action.record).unwrap();
 
-                        self.actions.register(
-                            action.module,
-                            record,
-                            self.get_key_for_action(action.module, record),
-                        );
-
-                        self.registered_actions.push(ActionId(action));
+                        if let Some(key) = self.get_key_for_action(action.module, record) {
+                            self.actions.register(action.module, record, key);
+                            self.registered_actions.push(ActionId(action));
+                        }
                     }
                 }
             }
@@ -553,35 +580,28 @@ impl GameWorldState {
             let module = self.modules.get(action.module).unwrap();
             let record = module.records.get(action.record).unwrap();
 
-            self.actions.register(
-                action.module,
-                record,
-                self.get_key_for_action(action.module, record),
-            );
-
-            self.registered_actions.push(ActionId(*action));
+            if let Some(key) = self.get_key_for_action(action.module, record) {
+                self.actions.register(action.module, record, key);
+                self.registered_actions.push(ActionId(*action));
+            }
         }
     }
 
-    fn get_key_for_action(&self, module: ModuleId, record: &Record) -> Key {
-        let input = self
-            .inputs
-            .inputs
-            .get(&RecordReference {
-                module,
-                record: record.id,
-            })
-            .unwrap();
+    fn get_key_for_action(&self, module: ModuleId, record: &Record) -> Option<Key> {
+        let input = self.inputs.inputs.get(&RecordReference {
+            module,
+            record: record.id,
+        })?;
 
         let key = match input.input_keys[0] {
             InputKey::KeyCode(key) => HotkeyCode::KeyCode { key_code: key },
             InputKey::ScanCode(key) => HotkeyCode::ScanCode { scan_code: key },
         };
 
-        Key {
+        Some(Key {
             trigger: input.trigger,
             code: key,
-        }
+        })
     }
 }
 

@@ -3,7 +3,6 @@
 use std::collections::VecDeque;
 
 use crate::components::actions::ActionId;
-use crate::components::inventory::InventorySlotId;
 use crate::entity::EntityId;
 
 #[derive(Clone, Debug, Default)]
@@ -39,9 +38,6 @@ impl EventQueue {
 pub enum Event {
     Action(ActionEvent),
     Collision(CollisionEvent),
-    Equip(EquipEvent),
-    Unequip(UnequipEvent),
-    Update(EntityId),
 }
 
 impl Event {
@@ -49,9 +45,6 @@ impl Event {
         match self {
             Self::Action(_) => EventKind::Action,
             Self::Collision(_) => EventKind::Collision,
-            Self::Equip(_) => EventKind::Equip,
-            Self::Unequip(_) => EventKind::Unequip,
-            Self::Update(_) => EventKind::Update,
         }
     }
 }
@@ -60,16 +53,14 @@ impl Event {
 pub enum EventKind {
     Action,
     Collision,
-    Equip,
-    Unequip,
-    Update,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ActionEvent {
     pub entity: EntityId,
     pub invoker: EntityId,
     pub action: ActionId,
+    pub data: Vec<u8>,
 }
 
 impl From<ActionEvent> for Event {
@@ -89,31 +80,5 @@ impl From<CollisionEvent> for Event {
     #[inline]
     fn from(event: CollisionEvent) -> Self {
         Self::Collision(event)
-    }
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct EquipEvent {
-    pub entity: EntityId,
-    pub item: InventorySlotId,
-}
-
-impl From<EquipEvent> for Event {
-    #[inline]
-    fn from(event: EquipEvent) -> Self {
-        Self::Equip(event)
-    }
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct UnequipEvent {
-    pub entity: EntityId,
-    pub item: InventorySlotId,
-}
-
-impl From<UnequipEvent> for Event {
-    #[inline]
-    fn from(event: UnequipEvent) -> Self {
-        Self::Unequip(event)
     }
 }

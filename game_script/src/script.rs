@@ -5,32 +5,21 @@ use std::path::Path;
 
 use wasmtime::{Engine, ExternType, Module, ValType};
 
-use crate::events::Events;
-
 const EXPORT_FUNCTIONS: &[FunctionExport] = &[
     FunctionExport {
         name: "on_init",
-        event: Events::NONE,
         params: &[],
         results: &[],
     },
     FunctionExport {
-        name: "on_action",
-        event: Events::ACTION,
-        params: &[ValType::I64],
-        results: &[],
-    },
-    FunctionExport {
-        name: "on_update",
-        event: Events::UPDATE,
-        params: &[ValType::I64],
+        name: "__wasm_fn_trampoline",
+        params: &[ValType::I32, ValType::I64],
         results: &[],
     },
 ];
 
 #[derive(Copy, Clone, Debug)]
 struct FunctionExport {
-    event: Events,
     name: &'static str,
     params: &'static [ValType],
     results: &'static [ValType],
@@ -38,19 +27,18 @@ struct FunctionExport {
 
 pub(crate) struct Script {
     pub module: Module,
-    pub events: Events,
 }
 
 impl Script {
     pub fn load(path: &Path, engine: &Engine) -> Result<Self, Box<dyn std::error::Error>> {
+        tracing::info!("loading script from {:?}", path);
+
         let mut file = File::open(path)?;
 
         let mut buf = Vec::new();
         file.read_to_end(&mut buf)?;
 
         let module = Module::new(engine, buf)?;
-
-        let mut events = Events::NONE;
 
         for fn_sig in EXPORT_FUNCTIONS {
             let Some(export) = module.get_export(fn_sig.name) else {
@@ -74,8 +62,6 @@ impl Script {
                         );
                         continue;
                     }
-
-                    events |= fn_sig.event;
                 }
                 _ => {
                     tracing::warn!(
@@ -92,7 +78,7 @@ impl Script {
             }
         }
 
-        Ok(Self { module, events })
+        Ok(Self { module })
     }
 }
 
