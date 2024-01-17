@@ -1,6 +1,7 @@
 //! Builtin host functions
 
 mod action;
+mod events;
 mod inventory;
 mod log;
 mod physics;
@@ -28,6 +29,7 @@ macro_rules! register_fns {
 
 pub fn register_host_fns(store: &mut Linker<State>) {
     use action::*;
+    use events::*;
     use inventory::*;
     use log::*;
     use physics::*;
@@ -73,6 +75,7 @@ pub fn register_host_fns(store: &mut Linker<State>) {
         register_system,
         register_event_handler,
         register_action_handler,
+        event_dispatch,
     }
 }
 

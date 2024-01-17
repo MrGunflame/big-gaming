@@ -27,8 +27,18 @@ pub fn register_system(mut caller: Caller<'_, State>, params: u32, fn_ptr: u32) 
     Ok(())
 }
 
-pub fn register_event_handler(mut caller: Caller<'_, State>, fn_ptr: u32) -> Result<()> {
-    todo!()
+pub fn register_event_handler(mut caller: Caller<'_, State>, id: u32, fn_ptr: u32) -> Result<()> {
+    let _span = trace_span!("register_event_handler").entered();
+
+    let id: RecordReference = caller.read(id)?;
+
+    let state = caller.data_mut().as_init()?;
+    state.event_handlers.entry(id).or_default().push(Entry {
+        script: state.script,
+        fn_ptr: Pointer(fn_ptr),
+    });
+
+    Ok(())
 }
 
 pub fn register_action_handler(mut caller: Caller<'_, State>, id: u32, fn_ptr: u32) -> Result<()> {

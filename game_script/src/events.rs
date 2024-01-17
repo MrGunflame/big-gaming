@@ -1,7 +1,9 @@
 use std::marker::PhantomData;
 use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign};
 
+use game_common::entity::EntityId;
 use game_common::events::EventKind;
+use game_wasm::world::RecordReference;
 use wasmtime::TypedFunc;
 
 /// Events exposed by a script.
@@ -135,3 +137,16 @@ pub type OnUnequip = TypedFunc<(u64, u64), ()>;
 /// fn(fn_ptr: *const unsafe fn(c_void), entity: EntityId);
 /// ```
 pub(crate) type WasmFnTrampoline = TypedFunc<(u32, u64), ()>;
+
+#[derive(Clone, Debug)]
+pub struct DispatchEvent {
+    pub id: RecordReference,
+    pub receiver: Receiver,
+    pub data: Vec<u8>,
+}
+
+#[derive(Clone, Debug)]
+pub enum Receiver {
+    All,
+    Entities(Vec<EntityId>),
+}

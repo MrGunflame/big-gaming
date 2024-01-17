@@ -16,7 +16,7 @@ use crate::builtin::register_host_fns;
 use crate::dependency::{Dependencies, Dependency};
 use crate::effect::{Effect, Effects, PlayerSetActive};
 use crate::events::{
-    OnAction, OnCollision, OnEquip, OnInit, OnUnequip, OnUpdate, WasmFnTrampoline,
+    DispatchEvent, OnAction, OnCollision, OnEquip, OnInit, OnUnequip, OnUpdate, WasmFnTrampoline,
 };
 use crate::{Entry, Handle, Pointer, RecordProvider, System, WorldProvider};
 
@@ -47,6 +47,7 @@ impl InstancePool {
             script: handle,
             systems: vec![],
             actions: HashMap::new(),
+            event_handlers: HashMap::new(),
         });
 
         let mut store = Store::new(engine, state);
@@ -149,6 +150,7 @@ impl Runnable {
                 script: Handle(0),
                 systems: vec![],
                 actions: HashMap::new(),
+                event_handlers: HashMap::new(),
             }),
         );
 
@@ -192,6 +194,7 @@ pub struct InitState {
     pub script: Handle,
     pub systems: Vec<System>,
     pub actions: HashMap<RecordReference, Vec<Entry>>,
+    pub event_handlers: HashMap<RecordReference, Vec<Entry>>,
 }
 
 pub struct RunState {
@@ -204,6 +207,7 @@ pub struct RunState {
     next_inventory_id: u64,
     pub new_world: World,
     pub action_buffer: Option<Vec<u8>>,
+    pub events: Vec<DispatchEvent>,
 }
 
 impl RunState {
@@ -226,6 +230,7 @@ impl RunState {
             records,
             new_world,
             action_buffer,
+            events: Vec::new(),
         }
     }
 }

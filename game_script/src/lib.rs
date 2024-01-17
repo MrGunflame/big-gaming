@@ -1,11 +1,12 @@
 //! Game (dynamic) scripting
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::fmt::{self, Debug, Formatter};
 use std::path::Path;
 
 use dependency::Dependencies;
 use effect::Effects;
+use events::{DispatchEvent, Receiver};
 use game_common::components::inventory::Inventory;
 use game_common::entity::EntityId;
 use game_common::events::{Event, EventQueue};
@@ -36,6 +37,7 @@ pub struct Executor {
     instances: InstancePool,
     systems: Vec<System>,
     action_handlers: HashMap<RecordReference, Vec<Entry>>,
+    event_handlers: HashMap<RecordReference, Vec<Entry>>,
 }
 
 impl Executor {
@@ -52,6 +54,7 @@ impl Executor {
             scripts: Vec::new(),
             systems: vec![],
             action_handlers: HashMap::new(),
+            event_handlers: HashMap::new(),
         }
     }
 
@@ -64,12 +67,16 @@ impl Executor {
         let index = self.scripts.len();
         let handle = Handle(index);
 
-        let mut state = self.instances.init(&self.engine, &script.module, handle)?;
+        let state = self.instances.init(&self.engine, &script.module, handle)?;
 
         self.systems.extend(state.systems);
 
         for (id, entries) in state.actions {
             self.action_handlers.entry(id).or_default().extend(entries);
+        }
+
+        for (id, entries) in state.event_handlers {
+            self.event_handlers.entry(id).or_default().extend(entries);
         }
 
         self.scripts.push(script);
@@ -89,7 +96,7 @@ impl Executor {
     pub fn update(&mut self, ctx: Context<'_>) -> Effects {
         let _span = trace_span!("Executor::update").entered();
 
-        let mut invocations = Vec::new();
+        let mut invocations = VecDeque::new();
 
         let world = ctx.world.world();
 
@@ -103,7 +110,7 @@ impl Executor {
                     }
                 }
 
-                invocations.push(Invocation {
+                invocations.push_back(Invocation {
                     script: system.script,
                     fn_ptr: system.ptr,
                     action_buffer: None,
@@ -122,7 +129,7 @@ impl Executor {
             };
 
             for entry in entries {
-                invocations.push(Invocation {
+                invocations.push_back(Invocation {
                     script: entry.script,
                     fn_ptr: entry.fn_ptr,
                     action_buffer: Some(action_buffer.clone()),
@@ -183,9 +190,12 @@ impl Executor {
         // same state.
         let mut new_world = ctx.world.world().clone();
 
-        for invocation in invocations {
-            let script = &self.scripts[invocation.script.0];
+        // TODO: Right now if two event handlers call each other unconditionally we will
+        // never stop scheduling more invocations and deadlock. We should implement some
+        // sort of cycle checks and stop when an event schedules an event from which the
+        // the event was dispatched from.
 
+        while let Some(invocation) = invocations.pop_front() {
             let mut dependencies = Dependencies::default();
             let state = RunState::new(
                 unsafe {
@@ -209,10 +219,48 @@ impl Executor {
                 tracing::error!("Error running script: {}", err);
             }
 
-            new_world = runnable.into_state().new_world;
+            let state = runnable.into_state();
+            new_world = state.new_world;
+
+            for event in state.events {
+                self.schedule_event(&mut invocations, event, &new_world);
+            }
         }
 
         effects
+    }
+
+    fn schedule_event(
+        &self,
+        invocations: &mut VecDeque<Invocation>,
+        event: DispatchEvent,
+        world: &World,
+    ) {
+        let Some(handlers) = self.event_handlers.get(&event.id) else {
+            return;
+        };
+
+        let entities: Vec<_> = match event.receiver {
+            Receiver::All => world.entities().collect(),
+            // If the event was scheduled to entities that do not exist they
+            // need to be removed before being scheduled.
+            Receiver::Entities(entities) => entities
+                .iter()
+                .filter(|entity| world.contains(**entity))
+                .copied()
+                .collect(),
+        };
+
+        for handler in handlers {
+            for entity in &entities {
+                invocations.push_back(Invocation {
+                    script: handler.script,
+                    fn_ptr: handler.fn_ptr,
+                    action_buffer: Some(event.data.clone()),
+                    entity: *entity,
+                });
+            }
+        }
     }
 
     fn fetch_components_scripts(&self, entity: EntityId, world: &World) -> Vec<Handle> {
