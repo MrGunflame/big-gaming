@@ -2,12 +2,17 @@ use alloc::borrow::ToOwned;
 use game_wasm::components::builtin::{
     Collider, ColliderShape, Cuboid, MeshInstance, RigidBody, RigidBodyKind, Transform,
 };
+use game_wasm::components::RawComponent;
 use game_wasm::entity::EntityId;
 use game_wasm::events::PlayerConnect;
-use game_wasm::math::Vec3;
-use game_wasm::world::Entity;
+use game_wasm::inventory::{Inventory, Item, ItemStack};
+use game_wasm::math::{Quat, Vec3};
+use game_wasm::world::{Entity, RecordReference};
 
-use crate::{CharacterController, Health, Humanoid, MovementSpeed, SpawnPoint};
+use crate::components::{GUN_PROPERTIES, TEST_WEAPON};
+use crate::{
+    CharacterController, GunProperties, Health, Humanoid, MovementSpeed, Projectile, SpawnPoint,
+};
 
 pub fn spawn_player(_: EntityId, event: PlayerConnect) {
     let entity = Entity::spawn();
@@ -41,4 +46,32 @@ pub fn spawn_player(_: EntityId, event: PlayerConnect) {
     });
 
     event.player.set_active(entity.id());
+
+    let inventory = Inventory::new(entity.id());
+    let id = inventory
+        .insert(ItemStack {
+            item: Item {
+                id: TEST_WEAPON,
+                equipped: true,
+                hidden: false,
+            },
+            quantity: 1,
+        })
+        .unwrap();
+
+    let mut buf = RawComponent::default();
+    buf.write(GunProperties {
+        damage: 1.0,
+        cooldown: 1.0,
+        magazine_capacity: 30,
+        projectile: Projectile {
+            id: RecordReference::STUB,
+            translation: Vec3::ZERO.to_array(),
+            rotation: Quat::IDENTITY.to_array(),
+        },
+    });
+
+    inventory
+        .component_insert(id, GUN_PROPERTIES, &buf)
+        .unwrap();
 }

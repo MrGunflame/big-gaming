@@ -4,7 +4,7 @@ use game_common::entity::EntityId;
 use game_common::record::RecordReference;
 use game_tracing::trace_span;
 use game_wasm::raw::inventory::ItemStack;
-use game_wasm::raw::{RESULT_NO_ENTITY, RESULT_OK};
+use game_wasm::raw::RESULT_OK;
 use wasmtime::{Caller, Error, Result};
 
 use crate::abi::{FromAbi, ToAbi};
@@ -106,12 +106,12 @@ pub fn inventory_remove(
     let entity_id = EntityId::from_raw(entity_id);
     let slot_id = InventorySlotId::from_raw(slot_id);
 
-    if !caller
+    if let Err(err) = caller
         .data_mut()
         .as_run_mut()?
         .inventory_remove(entity_id, slot_id, quantity)
     {
-        return Ok(1);
+        return Ok(err.to_u32());
     }
 
     Ok(RESULT_OK)
@@ -195,13 +195,13 @@ pub fn inventory_component_insert(
 
     let bytes = caller.read_memory(ptr, len)?.to_owned();
 
-    if !caller.data_mut().as_run_mut()?.inventory_component_insert(
+    if let Err(err) = caller.data_mut().as_run_mut()?.inventory_component_insert(
         entity_id,
         slot_id,
         component_id,
         RawComponent::new(bytes),
     ) {
-        return Ok(1);
+        return Ok(err.to_u32());
     };
 
     Ok(RESULT_OK)
@@ -219,12 +219,13 @@ pub fn inventory_component_remove(
     let slot_id = InventorySlotId::from_raw(slot_id);
     let component_id: RecordReference = caller.read(component_id)?;
 
-    if !caller
-        .data_mut()
-        .as_run_mut()?
-        .inventory_component_remove(entity_id, slot_id, component_id)
+    if let Err(err) =
+        caller
+            .data_mut()
+            .as_run_mut()?
+            .inventory_component_remove(entity_id, slot_id, component_id)
     {
-        return Ok(1);
+        return Ok(err.to_u32());
     };
 
     Ok(RESULT_OK)
@@ -234,12 +235,12 @@ pub fn inventory_equip(mut caller: Caller<'_, State>, entity_id: u64, slot_id: u
     let entity_id = EntityId::from_raw(entity_id);
     let slot_id = InventorySlotId::from_raw(slot_id);
 
-    if !caller
+    if let Err(err) = caller
         .data_mut()
         .as_run_mut()?
         .inventory_set_equipped(entity_id, slot_id, true)
     {
-        return Ok(1);
+        return Ok(err.to_u32());
     }
 
     Ok(RESULT_OK)
@@ -255,12 +256,12 @@ pub fn inventory_unequip(
     let entity_id = EntityId::from_raw(entity_id);
     let slot_id = InventorySlotId::from_raw(slot_id);
 
-    if !caller
+    if let Err(err) = caller
         .data_mut()
         .as_run_mut()?
         .inventory_set_equipped(entity_id, slot_id, false)
     {
-        return Ok(1);
+        return Ok(err.to_u32());
     }
 
     Ok(RESULT_OK)
@@ -271,8 +272,8 @@ pub fn inventory_clear(mut caller: Caller<'_, State>, entity_id: u64) -> Result<
 
     let entity_id = EntityId::from_raw(entity_id);
 
-    if !caller.data_mut().as_run_mut()?.inventory_clear(entity_id) {
-        return Ok(RESULT_NO_ENTITY);
+    if let Err(err) = caller.data_mut().as_run_mut()?.inventory_clear(entity_id) {
+        return Ok(err.to_u32());
     };
 
     Ok(RESULT_OK)

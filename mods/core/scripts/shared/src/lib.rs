@@ -235,6 +235,8 @@ pub mod components {
         EQUIP => 0x17,
         UNEQUIP => 0x18,
         DROP => 0x19,
+
+        TEST_WEAPON => 0x11,
     }
 }
 

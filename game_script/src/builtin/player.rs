@@ -34,12 +34,12 @@ pub(super) fn player_set_active(
     let player = PlayerId::from_raw(player_id);
     let entity = EntityId::from_raw(entity_id);
 
-    if !caller
+    if let Err(err) = caller
         .data_mut()
         .as_run_mut()?
         .player_set_active(player, entity)
     {
-        return Ok(1);
+        return Ok(err.to_u32());
     }
 
     Ok(0)

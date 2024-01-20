@@ -9,6 +9,7 @@ use game_common::record::RecordReference;
 use game_common::world::World;
 use game_tracing::trace_span;
 use game_wasm::player::PlayerId;
+use game_wasm::raw::{RESULT_NO_COMPONENT, RESULT_NO_ENTITY, RESULT_NO_INVENTORY_SLOT};
 use wasmtime::{Engine, Instance, Linker, Module, Store};
 
 use crate::builtin::register_host_fns;
@@ -194,6 +195,23 @@ impl RunState {
     }
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[repr(transparent)]
+// TODO: Can be nonzero.
+pub struct ErrorCode(u32);
+
+impl ErrorCode {
+    pub const NO_ENTITY: Self = Self(RESULT_NO_ENTITY);
+    pub const NO_INVENTORY_SLOT: Self = Self(RESULT_NO_INVENTORY_SLOT);
+    pub const NO_COMPONENT: Self = Self(RESULT_NO_COMPONENT);
+}
+
+impl ErrorCode {
+    pub fn to_u32(self) -> u32 {
+        self.0
+    }
+}
+
 impl RunState {
     pub fn spawn(&mut self) -> EntityId {
         let id = self.allocate_temporary_entity_id();
@@ -272,26 +290,28 @@ impl RunState {
     }
 
     fn reconstruct_inventory(&self, id: EntityId) -> Option<Inventory> {
-        let mut inventory = unsafe { &*self.world }.inventory(id).cloned();
+        let mut inventory = unsafe { &*self.world }
+            .inventory(id)
+            .cloned()
+            .unwrap_or_default();
+
+        let mut is_some = unsafe { &*self.world }.inventory(id).is_some();
 
         for effect in unsafe { &*self.effects }.iter() {
+            is_some = true;
+
             match effect {
                 Effect::InventoryInsert(eid, slot_id, stack) if *eid == id => {
-                    inventory.as_mut().unwrap().insert(stack.clone()).unwrap();
+                    inventory.insert_at_slot(*slot_id, stack.clone()).unwrap();
                 }
                 Effect::InventoryRemove(eid, slot_id, quantity) if *eid == id => {
-                    inventory
-                        .as_mut()
-                        .unwrap()
-                        .remove(slot_id, *quantity as u32);
+                    inventory.remove(slot_id, *quantity as u32);
                 }
                 Effect::InventoryClear(eid) if *eid == id => {
-                    inventory.as_mut().unwrap().clear();
+                    inventory.clear();
                 }
                 Effect::InventoryComponentInsert(eid, slot_id, comp_id, comp) if *eid == id => {
                     inventory
-                        .as_mut()
-                        .unwrap()
                         .get_mut(slot_id)
                         .unwrap()
                         .item
@@ -300,8 +320,6 @@ impl RunState {
                 }
                 Effect::InventoryComponentRemove(eid, slot_id, comp_id) if *eid == id => {
                     inventory
-                        .as_mut()
-                        .unwrap()
                         .get_mut(slot_id)
                         .unwrap()
                         .item
@@ -312,7 +330,11 @@ impl RunState {
             }
         }
 
-        inventory
+        if is_some {
+            Some(inventory)
+        } else {
+            None
+        }
     }
 
     pub fn inventory(&mut self, entity: EntityId) -> Option<Inventory> {
@@ -340,27 +362,27 @@ impl RunState {
         entity: EntityId,
         slot: InventorySlotId,
         quantity: u64,
-    ) -> bool {
+    ) -> Result<(), ErrorCode> {
         let Some(inventory) = unsafe { &*self.world }.inventory(entity) else {
-            return false;
+            return Err(ErrorCode::NO_ENTITY);
         };
 
         if inventory.clone().remove(slot, quantity as u32).is_some() {
             self.effects()
                 .push(Effect::InventoryRemove(entity, slot, quantity));
-            true
+            Ok(())
         } else {
-            false
+            Err(ErrorCode::NO_INVENTORY_SLOT)
         }
     }
 
-    pub fn inventory_clear(&mut self, entity: EntityId) -> bool {
+    pub fn inventory_clear(&mut self, entity: EntityId) -> Result<(), ErrorCode> {
         if self.reconstruct_inventory(entity).is_none() {
-            return false;
+            return Err(ErrorCode::NO_ENTITY);
         };
 
         self.effects().push(Effect::InventoryClear(entity));
-        true
+        Ok(())
     }
 
     pub fn inventory_component_get(
@@ -382,13 +404,13 @@ impl RunState {
         slot: InventorySlotId,
         component_id: RecordReference,
         component: RawComponent,
-    ) -> bool {
+    ) -> Result<(), ErrorCode> {
         let Some(inventory) = self.reconstruct_inventory(entity) else {
-            return false;
+            return Err(ErrorCode::NO_ENTITY);
         };
 
         if inventory.get(slot).is_none() {
-            return false;
+            return Err(ErrorCode::NO_INVENTORY_SLOT);
         };
 
         self.effects().push(Effect::InventoryComponentInsert(
@@ -397,7 +419,7 @@ impl RunState {
             component_id,
             component,
         ));
-        true
+        Ok(())
     }
 
     pub fn inventory_component_remove(
@@ -405,19 +427,18 @@ impl RunState {
         entity: EntityId,
         slot: InventorySlotId,
         component_id: RecordReference,
-    ) -> bool {
+    ) -> Result<(), ErrorCode> {
         let Some(inventory) = unsafe { &*self.world }.inventory(entity) else {
-            return false;
+            return Err(ErrorCode::NO_ENTITY);
         };
 
         if inventory.get(slot).is_none() {
-            return false;
+            return Err(ErrorCode::NO_INVENTORY_SLOT);
         };
 
         self.effects()
             .push(Effect::InventoryComponentRemove(entity, slot, component_id));
-
-        true
+        Ok(())
     }
 
     pub fn inventory_set_equipped(
@@ -425,23 +446,23 @@ impl RunState {
         entity: EntityId,
         slot: InventorySlotId,
         equipped: bool,
-    ) -> bool {
+    ) -> Result<(), ErrorCode> {
         let Some(inventory) = unsafe { &*self.world }.inventory(entity) else {
-            return false;
+            return Err(ErrorCode::NO_ENTITY);
         };
 
         let Some(stack) = inventory.get(slot) else {
-            return false;
+            return Err(ErrorCode::NO_INVENTORY_SLOT);
         };
 
         if stack.item.equipped == equipped {
             // Item is already in desired state, don't update
-            // anything.
-            false
+            // anything but we still succeed the request.
+            Ok(())
         } else {
             self.effects()
                 .push(Effect::InventoryItemUpdateEquip(entity, slot, equipped));
-            true
+            Ok(())
         }
     }
 
@@ -449,14 +470,18 @@ impl RunState {
         unsafe { &*self.world }.player(entity_id)
     }
 
-    pub fn player_set_active(&mut self, player: PlayerId, entity: EntityId) -> bool {
+    pub fn player_set_active(
+        &mut self,
+        player: PlayerId,
+        entity: EntityId,
+    ) -> Result<(), ErrorCode> {
         if !self.new_world.contains(entity) {
-            return false;
+            return Err(ErrorCode::NO_ENTITY);
         }
 
         self.effects()
             .push(Effect::PlayerSetActive(PlayerSetActive { player, entity }));
-        true
+        Ok(())
     }
 
     /// Allocate a temporary [`EntityId`].
