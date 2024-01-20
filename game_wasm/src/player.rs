@@ -1,9 +1,10 @@
 use core::mem::MaybeUninit;
 
+use crate::components::{Decode, Encode};
 use crate::entity::EntityId;
 use crate::raw::{player_lookup, player_set_active, RESULT_OK};
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Encode, Decode)]
 pub struct PlayerId(u64);
 
 impl PlayerId {
