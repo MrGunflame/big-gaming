@@ -90,13 +90,16 @@ impl Runnable {
     }
 
     /// Calls the guest function with the given pointer.
-    pub(crate) fn call(&mut self, ptr: Pointer, entity: EntityId) -> wasmtime::Result<()> {
+    pub(crate) fn call(&mut self, ptr: Pointer, entity: Option<EntityId>) -> wasmtime::Result<()> {
         let _span = trace_span!("Runnable::call").entered();
 
         let func: WasmFnTrampoline = self
             .instance
             .get_typed_func(&mut self.store, "__wasm_fn_trampoline")?;
-        func.call(&mut self.store, (ptr.0, entity.into_raw()))
+        func.call(
+            &mut self.store,
+            (ptr.0, entity.map(|e| e.into_raw()).unwrap_or(0)),
+        )
     }
 
     pub fn into_state(&mut self) -> RunState {
