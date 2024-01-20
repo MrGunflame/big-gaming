@@ -4,24 +4,19 @@ use ahash::{HashMap, HashSet};
 use game_common::components::actions::ActionId;
 use game_common::components::components::{Components, RawComponent};
 use game_common::components::inventory::Inventory;
-use game_common::components::items::Item;
 use game_common::components::{PlayerId, Transform};
 use game_common::entity::EntityId;
 use game_common::events::{ActionEvent, Event, EventQueue};
 use game_common::net::ServerEntity;
-use game_common::units::Mass;
 use game_common::world::control_frame::ControlFrame;
-use game_common::world::entity::{Entity, EntityBody};
-use game_common::world::snapshot::EntityChange;
-use game_common::world::{CellId, World};
+use game_common::world::CellId;
 use game_core::modules::Modules;
 use game_net::message::{
     ControlMessage, DataMessage, DataMessageBody, EntityComponentAdd, EntityComponentRemove,
-    EntityComponentUpdate, EntityCreate, EntityDestroy, EntityRotate, EntityTranslate,
-    InventoryItemAdd, InventoryItemRemove, InventoryItemUpdate, Message, MessageId, SpawnHost,
+    EntityComponentUpdate, EntityDestroy, InventoryItemAdd, InventoryItemRemove,
+    InventoryItemUpdate, Message, MessageId, SpawnHost,
 };
-use game_net::proto::components::ComponentRemove;
-use game_net::{conn, host, peer_error};
+use game_net::peer_error;
 use game_script::effect::{Effect, Effects};
 use game_script::{Context, WorldProvider};
 use glam::Vec3;
@@ -29,7 +24,6 @@ use glam::Vec3;
 use crate::conn::{Connection, Connections};
 use crate::net::state::{Cells, ConnectionState, KnownEntities};
 use crate::world::level::{Level, Streamer};
-use crate::world::player::spawn_player;
 use crate::world::state::WorldState;
 use crate::ServerState;
 
@@ -217,24 +211,23 @@ fn flush_command_queue(srv_state: &mut ServerState) {
 
         match msg {
             Message::Control(ControlMessage::Connected()) => {
-                let id = spawn_player(&srv_state.modules, world, &mut srv_state.scene).unwrap();
                 let player = PlayerId::from_raw(srv_state.next_player);
                 srv_state.next_player += 1;
-                world.players.insert(player, id);
 
                 // At the connection time the delay must be 0, meaning the player is spawned
                 // without delay.
                 debug_assert_eq!(state.peer_delay, ControlFrame(0));
 
-                state.host.entity = Some(id);
                 state.host.player = Some(player);
                 state.peer_delay = ControlFrame(0);
                 state.cells = Cells::new(CellId::from(Vec3::ZERO));
-                srv_state
-                    .level
-                    .create_streamer(id, Streamer { distance: 2 });
+
+                srv_state.event_queue.push(Event::PlayerConnect(player));
             }
-            Message::Control(ControlMessage::Disconnected) => {}
+            Message::Control(ControlMessage::Disconnected) => {
+                let player = state.host.player.unwrap();
+                srv_state.event_queue.push(Event::PlayerDisconnect(player));
+            }
             Message::Control(ControlMessage::Acknowledge(_, _)) => {}
             Message::Data(msg) => {
                 conn.push_message_in_frame(msg.id);
@@ -406,11 +399,10 @@ fn update_client(conn: &Connection, world: &WorldState, level: &Level, cf: Contr
         return;
     };
 
-    let active_entity_changed = state.host.entity.unwrap() != host_id;
-
-    if active_entity_changed {
-        dbg!(host_id, world);
-    }
+    let active_entity_changed = match state.host.entity {
+        Some(entity) => entity != host_id,
+        None => true,
+    };
 
     let transform = world.get::<Transform>(host_id);
     let cell_id = CellId::from(transform.translation);

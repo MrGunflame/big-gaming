@@ -5,6 +5,7 @@ extern crate alloc;
 mod controller;
 mod inventory;
 mod movement;
+mod player;
 mod projectile;
 mod weapon;
 
@@ -31,6 +32,7 @@ use components::MOVEMENT_SPEED;
 use game_wasm::entity::EntityId;
 use game_wasm::math::Quat;
 use game_wasm::system::register_action_handler;
+use game_wasm::system::register_event_handler;
 use game_wasm::system::register_system;
 use game_wasm::world::Entity;
 
@@ -70,6 +72,8 @@ pub fn on_init() {
     register_action_handler(weapon::weapon_reload);
 
     register_action_handler(inventory::on_equip);
+
+    register_event_handler(player::spawn_player);
 }
 
 pub fn extract_actor_rotation(rotation: Quat) -> Quat {

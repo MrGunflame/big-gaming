@@ -6,7 +6,7 @@ use std::path::Path;
 
 use dependency::Dependencies;
 use effect::Effects;
-use events::{DispatchEvent, Receiver};
+use events::DispatchEvent;
 use game_common::components::inventory::Inventory;
 use game_common::entity::EntityId;
 use game_common::events::{Event, EventQueue};
@@ -15,6 +15,8 @@ use game_common::world::world::{WorldViewMut, WorldViewRef};
 use game_common::world::World;
 use game_data::record::Record;
 use game_tracing::trace_span;
+use game_wasm::components::Encode;
+use game_wasm::events::{PLAYER_CONNECT, PLAYER_DISCONNECT};
 use game_wasm::player::PlayerId;
 use instance::{InstancePool, RunState, State};
 use script::Script;
@@ -101,7 +103,7 @@ impl Executor {
                     script: system.script,
                     fn_ptr: system.ptr,
                     action_buffer: None,
-                    entity,
+                    entity: Some(entity),
                 });
             }
         }
@@ -112,6 +114,32 @@ impl Executor {
                     Some(entries) => (entries, event.data, event.entity),
                     None => continue,
                 },
+                Event::PlayerConnect(player) => {
+                    let mut buf = Vec::new();
+                    player.encode(&mut buf);
+
+                    self.schedule_event(
+                        &mut invocations,
+                        DispatchEvent {
+                            id: PLAYER_CONNECT,
+                            data: buf,
+                        },
+                    );
+                    continue;
+                }
+                Event::PlayerDisconnect(player) => {
+                    let mut buf = Vec::new();
+                    player.encode(&mut buf);
+
+                    self.schedule_event(
+                        &mut invocations,
+                        DispatchEvent {
+                            id: PLAYER_DISCONNECT,
+                            data: buf,
+                        },
+                    );
+                    continue;
+                }
                 _ => continue,
             };
 
@@ -120,7 +148,7 @@ impl Executor {
                     script: entry.script,
                     fn_ptr: entry.fn_ptr,
                     action_buffer: Some(action_buffer.clone()),
-                    entity,
+                    entity: Some(entity),
                 });
             }
         }
@@ -166,43 +194,25 @@ impl Executor {
             new_world = state.new_world;
 
             for event in state.events {
-                self.schedule_event(&mut invocations, event, &new_world);
+                self.schedule_event(&mut invocations, event);
             }
         }
 
         effects
     }
 
-    fn schedule_event(
-        &self,
-        invocations: &mut VecDeque<Invocation>,
-        event: DispatchEvent,
-        world: &World,
-    ) {
+    fn schedule_event(&self, invocations: &mut VecDeque<Invocation>, event: DispatchEvent) {
         let Some(handlers) = self.event_handlers.get(&event.id) else {
             return;
         };
 
-        let entities: Vec<_> = match event.receiver {
-            Receiver::All => world.entities().collect(),
-            // If the event was scheduled to entities that do not exist they
-            // need to be removed before being scheduled.
-            Receiver::Entities(entities) => entities
-                .iter()
-                .filter(|entity| world.contains(**entity))
-                .copied()
-                .collect(),
-        };
-
         for handler in handlers {
-            for entity in &entities {
-                invocations.push_back(Invocation {
-                    script: handler.script,
-                    fn_ptr: handler.fn_ptr,
-                    action_buffer: Some(event.data.clone()),
-                    entity: *entity,
-                });
-            }
+            invocations.push_back(Invocation {
+                script: handler.script,
+                fn_ptr: handler.fn_ptr,
+                action_buffer: Some(event.data.clone()),
+                entity: None,
+            });
         }
     }
 }
@@ -224,7 +234,7 @@ struct Invocation {
     script: Handle,
     fn_ptr: Pointer,
     action_buffer: Option<Vec<u8>>,
-    entity: EntityId,
+    entity: Option<EntityId>,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]

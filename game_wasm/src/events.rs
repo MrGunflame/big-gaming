@@ -2,6 +2,13 @@
 //!
 
 use alloc::vec::Vec;
+
+use crate::components::Decode;
+use crate::components::Encode;
+use crate::player::PlayerId;
+use crate::raw::event_dispatch;
+use crate::record::{ModuleId, RecordId, RecordReference};
+
 /// A script initialization event.
 ///
 /// If present, the handler for this event will be called exactly before the script is being
@@ -115,47 +122,54 @@ pub use game_macros::wasm__event_on_cell_unload as on_cell_unload;
 
 pub use game_macros::wasm__event_on_update as on_update;
 
-use crate::components::Decode;
-use crate::components::Encode;
-use crate::entity::EntityId;
-use crate::raw::event_dispatch;
-use crate::raw::EventReceiver;
-use crate::record::RecordReference;
-
 pub trait Event: Encode + Decode {
     const ID: RecordReference;
 }
 
-pub fn dispatch_event<T>(receiver: &Receiver, event: T)
+pub fn dispatch_event<T>(event: T)
 where
     T: Event,
 {
     let mut buf = Vec::new();
     event.encode(&mut buf);
 
-    let rx = match receiver {
-        Receiver::All => EventReceiver {
-            entities_ptr: core::ptr::null(),
-            entities_len: 0,
-        },
-        Receiver::Single(entity) => EventReceiver {
-            entities_ptr: entity.as_raw(),
-            entities_len: 1,
-        },
-        Receiver::Multiple(entities) => EventReceiver {
-            entities_ptr: entities.as_ptr().cast::<u64>(),
-            entities_len: entities.len(),
-        },
-    };
-
     unsafe {
-        event_dispatch(&T::ID, &rx, buf.as_ptr(), buf.len());
+        event_dispatch(&T::ID, buf.as_ptr(), buf.len());
     }
 }
 
-#[derive(Clone, Debug)]
-pub enum Receiver {
-    All,
-    Single(EntityId),
-    Multiple(Vec<EntityId>),
+macro_rules! define_id {
+    ($($id:ident => $val:expr),*,) => {
+        $(
+            pub const $id: RecordReference = RecordReference {
+                module: ModuleId::CORE,
+                record: RecordId($val),
+            };
+        )*
+    };
+}
+
+define_id! {
+    PLAYER_CONNECT => 0,
+    PLAYER_DISCONNECT => 1,
+}
+
+#[derive(Copy, Clone, Debug, Encode, Decode)]
+#[non_exhaustive]
+pub struct PlayerConnect {
+    pub player: PlayerId,
+}
+
+impl Event for PlayerConnect {
+    const ID: RecordReference = PLAYER_CONNECT;
+}
+
+#[derive(Copy, Clone, Debug, Encode, Decode)]
+#[non_exhaustive]
+pub struct PlayerDisconnect {
+    pub player: PlayerId,
+}
+
+impl Event for PlayerDisconnect {
+    const ID: RecordReference = PLAYER_DISCONNECT;
 }

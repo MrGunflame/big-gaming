@@ -2,6 +2,8 @@
 
 use std::collections::VecDeque;
 
+use game_wasm::player::PlayerId;
+
 use crate::components::actions::ActionId;
 use crate::entity::EntityId;
 
@@ -38,6 +40,8 @@ impl EventQueue {
 pub enum Event {
     Action(ActionEvent),
     Collision(CollisionEvent),
+    PlayerConnect(PlayerId),
+    PlayerDisconnect(PlayerId),
 }
 
 impl Event {
@@ -45,6 +49,8 @@ impl Event {
         match self {
             Self::Action(_) => EventKind::Action,
             Self::Collision(_) => EventKind::Collision,
+            Self::PlayerConnect(_) => EventKind::PlayerConnect,
+            Self::PlayerDisconnect(_) => EventKind::PlayerDisconnect,
         }
     }
 }
@@ -53,6 +59,8 @@ impl Event {
 pub enum EventKind {
     Action,
     Collision,
+    PlayerConnect,
+    PlayerDisconnect,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]

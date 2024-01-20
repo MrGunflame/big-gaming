@@ -134,7 +134,6 @@ impl KnownEntities {
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 pub struct HostState {
-    // TODO: We only need the player id to resolve to an entity.
     pub entity: Option<EntityId>,
     pub player: Option<PlayerId>,
 }

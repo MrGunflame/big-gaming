@@ -38,6 +38,7 @@ pub struct Query {
     pub components: Vec<RecordReference>,
 }
 
+// NOTE: The EntityId does nothing currently.
 pub fn register_event_handler<T>(f: fn(EntityId, T))
 where
     T: Event,
