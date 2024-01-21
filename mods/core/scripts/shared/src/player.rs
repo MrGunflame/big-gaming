@@ -9,9 +9,12 @@ use game_wasm::inventory::{Inventory, Item, ItemStack};
 use game_wasm::math::{Quat, Vec3};
 use game_wasm::world::{Entity, RecordReference};
 
-use crate::components::{GUN_PROPERTIES, TEST_WEAPON};
+use crate::components::{
+    EQUIPPABLE, EVENT_GUN_EQUIP, EVENT_GUN_UNEQUIP, GUN_PROPERTIES, TEST_WEAPON,
+};
 use crate::{
-    CharacterController, GunProperties, Health, Humanoid, MovementSpeed, Projectile, SpawnPoint,
+    CharacterController, Equippable, GunProperties, Health, Humanoid, MovementSpeed, Projectile,
+    SpawnPoint,
 };
 
 pub fn spawn_player(_: EntityId, event: PlayerConnect) {
@@ -74,4 +77,12 @@ pub fn spawn_player(_: EntityId, event: PlayerConnect) {
     inventory
         .component_insert(id, GUN_PROPERTIES, &buf)
         .unwrap();
+
+    let mut buf = RawComponent::default();
+    buf.write(Equippable {
+        on_equip: EVENT_GUN_EQUIP,
+        on_uneqip: EVENT_GUN_UNEQUIP,
+    });
+
+    inventory.component_insert(id, EQUIPPABLE, &buf).unwrap();
 }

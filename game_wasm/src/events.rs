@@ -130,11 +130,18 @@ pub fn dispatch_event<T>(event: T)
 where
     T: Event,
 {
+    dispatch_event_dynamic(T::ID, event);
+}
+
+pub fn dispatch_event_dynamic<T>(id: RecordReference, event: T)
+where
+    T: Encode,
+{
     let mut buf = Vec::new();
     event.encode(&mut buf);
 
     unsafe {
-        event_dispatch(&T::ID, buf.as_ptr(), buf.len());
+        event_dispatch(&id, buf.as_ptr(), buf.len());
     }
 }
 

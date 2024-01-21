@@ -72,8 +72,12 @@ pub fn on_init() {
     register_action_handler(weapon::weapon_reload);
 
     register_action_handler(inventory::on_equip);
+    register_action_handler(inventory::on_uneqip);
 
     register_event_handler(player::spawn_player);
+
+    register_event_handler(weapon::gun_equip);
+    register_event_handler(weapon::gun_unequip);
 }
 
 pub fn extract_actor_rotation(rotation: Quat) -> Quat {
@@ -237,6 +241,12 @@ pub mod components {
         DROP => 0x19,
 
         TEST_WEAPON => 0x11,
+
+        EQUIPPED_ITEM => 0x20,
+
+        // EVENTS
+        EVENT_GUN_EQUIP => 0x01,
+        EVENT_GUN_UNEQUIP => 0x02,
     }
 }
 
@@ -311,7 +321,8 @@ fn spawn_player(transform: Transform) -> Entity {
     entity
 }
 
-#[derive(Clone, Debug, Encode, Decode)]
+#[derive(Copy, Clone, Debug, Zeroable, Pod, Encode, Decode)]
+#[repr(C)]
 pub struct Equippable {
     pub on_equip: RecordReference,
     pub on_uneqip: RecordReference,
