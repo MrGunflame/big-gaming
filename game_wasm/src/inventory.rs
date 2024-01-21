@@ -5,7 +5,8 @@ use core::ops::Deref;
 use alloc::vec::Vec;
 use bytemuck::{Pod, Zeroable};
 
-use crate::components::{Components, Decode, Encode, RawComponent};
+use crate::components::{Components, RawComponent};
+use crate::encoding::{Decode, Encode};
 use crate::entity::EntityId;
 use crate::raw::inventory::{
     inventory_clear, inventory_component_get, inventory_component_insert, inventory_component_len,

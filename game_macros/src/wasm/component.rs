@@ -73,7 +73,7 @@ impl Input {
                             arguments: PathArguments::None,
                         },
                         PathSegment {
-                            ident: Ident::new("components", Span::call_site()),
+                            ident: Ident::new("encoding", Span::call_site()),
                             arguments: PathArguments::None,
                         },
                         PathSegment {
@@ -99,7 +99,7 @@ impl Input {
             .map(|(index, field)| match &field.ident {
                 Some(ident) => {
                     quote! {
-                        ::game_wasm::components::Encode::encode(&self.#ident, &mut buf);
+                        ::game_wasm::encoding::Encode::encode(&self.#ident, &mut writer);
                     }
                 }
                 None => {
@@ -109,20 +109,20 @@ impl Input {
                     };
 
                     quote! {
-                        ::game_wasm::components::Encode::encode(&self.#index, &mut buf);
+                        ::game_wasm::encoding::Encode::encode(&self.#index, &mut writer);
                     }
                 }
             })
             .collect::<TokenStream2>();
 
         quote! {
-            impl #generics ::game_wasm::components::Encode for #ident #generic_idents
+            impl #generics ::game_wasm::encoding::Encode for #ident #generic_idents
             where
                 #where_bounds
             {
-                fn encode<__B>(&self, mut buf: __B)
+                fn encode<__W>(&self, mut writer: __W)
                 where
-                    __B: ::game_wasm::components::BufMut,
+                    __W: ::game_wasm::encoding::Writer,
                 {
                     #fields
                 }
@@ -149,7 +149,7 @@ impl Input {
                             arguments: PathArguments::None,
                         },
                         PathSegment {
-                            ident: Ident::new("components", Span::call_site()),
+                            ident: Ident::new("encoding", Span::call_site()),
                             arguments: PathArguments::None,
                         },
                         PathSegment {
@@ -178,12 +178,12 @@ impl Input {
                 match &field.ident {
                     Some(ident) => {
                         quote! {
-                            #ident: <#ty as ::game_wasm::components::Decode>::decode(&mut buf)?,
+                            #ident: <#ty as ::game_wasm::encoding::Decode>::decode(&mut reader)?,
                         }
                     }
                     None => {
                         quote! {
-                            <#ty as ::game_wasm::components::Decode>::decode(&mut buf)?
+                            <#ty as ::game_wasm::encoding::Decode>::decode(&mut reader)?
                         }
                     }
                 }
@@ -205,16 +205,16 @@ impl Input {
         };
 
         quote! {
-            impl #generics ::game_wasm::components::Decode for #ident #generic_idents
+            impl #generics ::game_wasm::encoding::Decode for #ident #generic_idents
             where
                 #where_bounds
                 #error_bounds
             {
-                type Error = ::game_wasm::components::DecodeError;
+                type Error = ::game_wasm::encoding::DecodeError;
 
-                fn decode<__B>(mut buf: __B) -> ::core::result::Result<Self, Self::Error>
+                fn decode<__R>(mut reader: __R) -> ::core::result::Result<Self, Self::Error>
                 where
-                    __B: ::game_wasm::components::Buf,
+                    __R: ::game_wasm::encoding::Reader,
                 {
                     #decode_fn_body
                 }

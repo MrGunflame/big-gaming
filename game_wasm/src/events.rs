@@ -3,8 +3,7 @@
 
 use alloc::vec::Vec;
 
-use crate::components::Decode;
-use crate::components::Encode;
+use crate::encoding::{Decode, Encode};
 use crate::player::PlayerId;
 use crate::raw::event_dispatch;
 use crate::record::{ModuleId, RecordId, RecordReference};

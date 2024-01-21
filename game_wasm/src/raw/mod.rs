@@ -32,7 +32,13 @@ pub fn action_data_buffer_len() -> usize;
 pub fn action_data_buffer_get(ptr: *mut u8);
 
 #[guest_only]
-pub fn event_dispatch(id: *const RecordReference, ptr: *const u8, len: usize);
+pub fn event_dispatch(
+    id: *const RecordReference,
+    primitive_ptr: *const u8,
+    primitive_len: usize,
+    data_ptr: *const u8,
+    data_len: usize,
+);
 
 #[guest_only]
 pub fn register_system(query: *const Query, fn_ptr: *const unsafe fn(u64, c_void));

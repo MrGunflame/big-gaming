@@ -24,6 +24,7 @@ mod raw;
 
 pub mod action;
 pub mod components;
+pub mod encoding;
 pub mod entity;
 pub mod events;
 pub mod inventory;

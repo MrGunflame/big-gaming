@@ -1,11 +1,11 @@
 use bytemuck::{Pod, Zeroable};
 
-use crate::components::{Decode, Encode};
+use crate::encoding::{Decode, DecodeError, Encode, Primitive, Reader, Writer};
 
 /// A unique identifier for an [`Entity`].
 ///
 /// [`Entity`]: crate::world::Entity
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Zeroable, Pod, Encode, Decode)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Zeroable, Pod)]
 #[repr(transparent)]
 pub struct EntityId(u64);
 
@@ -25,5 +25,30 @@ impl EntityId {
     #[inline]
     pub(crate) fn as_raw(&self) -> &u64 {
         &self.0
+    }
+}
+
+impl Encode for EntityId {
+    fn encode<W>(&self, mut writer: W)
+    where
+        W: Writer,
+    {
+        writer.write(Primitive::EntityId, &self.0.to_le_bytes());
+    }
+}
+
+impl Decode for EntityId {
+    type Error = DecodeError;
+
+    fn decode<R>(mut reader: R) -> Result<Self, Self::Error>
+    where
+        R: Reader,
+    {
+        if reader.next() != Some(Primitive::EntityId) {
+            return Err(DecodeError);
+        }
+
+        let bytes: [u8; 8] = reader.chunk().try_into().map_err(|_| DecodeError)?;
+        Ok(Self(u64::from_be_bytes(bytes)))
     }
 }

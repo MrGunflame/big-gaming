@@ -6,7 +6,8 @@ use alloc::vec::Vec;
 use bytemuck::{Pod, Zeroable};
 use hex::FromHexError;
 
-use crate::components::{Components, Decode, Encode, RawComponent};
+use crate::components::{Components, RawComponent};
+use crate::encoding::{Decode, Encode};
 use crate::raw::record::{
     get_record, get_record_component_get, get_record_component_keys, get_record_component_len,
     get_record_len_component, RecordKind as RawRecordKind,

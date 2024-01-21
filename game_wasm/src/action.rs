@@ -1,6 +1,6 @@
 use alloc::vec::Vec;
 
-use crate::components::Decode;
+use crate::encoding::Decode;
 use crate::raw::{action_data_buffer_get, action_data_buffer_len};
 use crate::record::RecordReference;
 
