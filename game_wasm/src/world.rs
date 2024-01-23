@@ -3,6 +3,7 @@ use core::mem::MaybeUninit;
 use alloc::vec::Vec;
 
 use crate::components::Component;
+use crate::encoding::{decode_fields, encode_value, BinaryReader};
 use crate::entity::EntityId;
 use crate::player::PlayerId;
 use crate::raw::world::{
@@ -38,17 +39,27 @@ impl Entity {
         let entity_id = self.0.into_raw();
         let component_id = T::ID;
 
-        let mut len = 0;
-        match unsafe { world_entity_component_len(entity_id, &component_id, &mut len) } {
+        let mut data_len = 0;
+        let mut fields_len = 0;
+        match unsafe {
+            world_entity_component_len(entity_id, &component_id, &mut data_len, &mut fields_len)
+        } {
             RESULT_OK => (),
             RESULT_NO_ENTITY => return Err(Error(ErrorImpl::NoEntity(self.0))),
             RESULT_NO_COMPONENT => return Err(Error(ErrorImpl::NoComponent(T::ID))),
             _ => unsafe { unreachable_unchecked() },
         }
 
-        let mut bytes = Vec::with_capacity(len as usize);
+        let mut data = Vec::with_capacity(data_len);
+        let mut fields = Vec::with_capacity(fields_len);
+
         match unsafe {
-            world_entity_component_get(entity_id, &component_id, bytes.as_mut_ptr(), len)
+            world_entity_component_get(
+                entity_id,
+                &component_id,
+                data.as_mut_ptr(),
+                fields.as_mut_ptr(),
+            )
         } {
             RESULT_OK => (),
             // If our previous call to `world_entity_component_len` suceeds and does
@@ -60,10 +71,14 @@ impl Entity {
         }
 
         unsafe {
-            bytes.set_len(len as usize);
+            data.set_len(data_len);
+            fields.set_len(fields_len);
         }
 
-        match T::decode(&bytes[..]) {
+        let fields = decode_fields(&fields);
+        let reader = BinaryReader::new(data, fields.into());
+
+        match T::decode(reader) {
             Ok(component) => Ok(component),
             Err(_) => Err(Error(ErrorImpl::ComponentDecode)),
         }
@@ -73,15 +88,21 @@ impl Entity {
     where
         T: Component,
     {
-        let mut buf = Vec::new();
-        component.encode(&mut buf);
+        let (data, fields) = encode_value(&component);
 
         let entity_id = self.0.into_raw();
         let component_id = T::ID;
-        let len = buf.len() as u32;
 
-        match unsafe { world_entity_component_insert(entity_id, &component_id, buf.as_ptr(), len) }
-        {
+        match unsafe {
+            world_entity_component_insert(
+                entity_id,
+                &component_id,
+                data.as_ptr(),
+                data.len(),
+                fields.as_ptr(),
+                fields.len(),
+            )
+        } {
             RESULT_OK => {}
             RESULT_NO_ENTITY => {
                 panic!("no entity: {:?}", self.0);

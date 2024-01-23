@@ -2,6 +2,7 @@
 
 use std::collections::VecDeque;
 
+use game_wasm::encoding::{Encode, Primitive, Writer};
 use game_wasm::player::PlayerId;
 
 use crate::components::actions::ActionId;
@@ -40,8 +41,8 @@ impl EventQueue {
 pub enum Event {
     Action(ActionEvent),
     Collision(CollisionEvent),
-    PlayerConnect(PlayerId),
-    PlayerDisconnect(PlayerId),
+    PlayerConnect(PlayerConnect),
+    PlayerDisconnect(PlayerDisconnect),
 }
 
 impl Event {
@@ -88,5 +89,33 @@ impl From<CollisionEvent> for Event {
     #[inline]
     fn from(event: CollisionEvent) -> Self {
         Self::Collision(event)
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct PlayerConnect {
+    pub player: PlayerId,
+}
+
+impl Encode for PlayerConnect {
+    fn encode<W>(&self, mut writer: W)
+    where
+        W: Writer,
+    {
+        writer.write(Primitive::PlayerId, &self.player.to_bits().to_le_bytes());
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct PlayerDisconnect {
+    pub player: PlayerId,
+}
+
+impl Encode for PlayerDisconnect {
+    fn encode<W>(&self, mut writer: W)
+    where
+        W: Writer,
+    {
+        writer.write(Primitive::PlayerId, &self.player.to_bits().to_le_bytes());
     }
 }

@@ -1,3 +1,4 @@
+use bytes::Buf;
 pub use game_macros::{wasm__decode as Decode, wasm__encode as Encode};
 
 use core::mem::MaybeUninit;
@@ -12,6 +13,25 @@ pub enum Primitive {
     Bytes,
     EntityId,
     PlayerId,
+}
+
+impl Primitive {
+    pub(crate) fn from_u8(tag: u8) -> Option<Self> {
+        match tag {
+            0 => Some(Self::Bytes),
+            1 => Some(Self::EntityId),
+            2 => Some(Self::PlayerId),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn to_u8(self) -> u8 {
+        match self {
+            Self::Bytes => 0,
+            Self::EntityId => 1,
+            Self::PlayerId => 2,
+        }
+    }
 }
 
 pub trait Encode {
@@ -68,8 +88,8 @@ where
     }
 }
 
-pub(crate) struct BinaryWriter {
-    primitives: Vec<(Primitive, usize)>,
+pub struct BinaryWriter {
+    primitives: Vec<Field>,
     buffer: Vec<u8>,
 }
 
@@ -81,7 +101,7 @@ impl BinaryWriter {
         }
     }
 
-    pub fn encoded<T>(mut self, t: T) -> (Vec<(Primitive, usize)>, Vec<u8>)
+    pub fn encoded<T>(mut self, t: &T) -> (Vec<Field>, Vec<u8>)
     where
         T: Encode,
     {
@@ -93,24 +113,24 @@ impl BinaryWriter {
 impl Writer for BinaryWriter {
     fn write(&mut self, primitive: Primitive, data: &[u8]) {
         let offset = self.buffer.len();
-        self.primitives.push((primitive, offset));
+        self.primitives.push(Field { primitive, offset });
         self.buffer.extend(data);
     }
 }
 
 pub struct BinaryReader {
-    primitives: VecDeque<Primitive>,
-    bytes: Vec<u8>,
+    fields: VecDeque<Field>,
+    data: Vec<u8>,
     start: usize,
 }
 
 impl Reader for BinaryReader {
     fn next(&mut self) -> Option<Primitive> {
-        self.primitives.pop_front()
+        self.fields.pop_front().map(|f| f.primitive)
     }
 
     fn chunk(&self) -> &[u8] {
-        &self.bytes[self.start..]
+        &self.data[self.start..]
     }
 
     fn advance(&mut self, count: usize) {
@@ -119,10 +139,10 @@ impl Reader for BinaryReader {
 }
 
 impl BinaryReader {
-    pub fn new() -> Self {
+    pub fn new(data: Vec<u8>, fields: VecDeque<Field>) -> Self {
         Self {
-            primitives: VecDeque::new(),
-            bytes: Vec::new(),
+            fields,
+            data,
             start: 0,
         }
     }
@@ -272,3 +292,45 @@ macro_rules! impl_as_array {
 }
 
 impl_as_array! { Vec2, Vec3, Vec4, Quat }
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct Field {
+    pub primitive: Primitive,
+    pub offset: usize,
+}
+
+impl Field {
+    pub const ENCODED_SIZE: usize = 1 + 4;
+}
+
+/// Returns `(data, fields)`.
+pub fn encode_value<T>(value: &T) -> (Vec<u8>, Vec<u8>)
+where
+    T: Encode,
+{
+    let writer = BinaryWriter::new();
+    let (fields, data) = writer.encoded(value);
+
+    (data, encode_fields(&fields))
+}
+
+pub fn decode_fields(mut buf: &[u8]) -> Vec<Field> {
+    let mut fields = Vec::new();
+    while !buf.is_empty() {
+        let primitive = Primitive::from_u8(buf.get_u8()).unwrap();
+        // usize == u32 for wasm32 arch.
+        let offset = buf.get_u32_le() as usize;
+        fields.push(Field { primitive, offset });
+    }
+
+    fields
+}
+
+pub fn encode_fields(fields: &[Field]) -> Vec<u8> {
+    let mut fields_encoded = Vec::new();
+    for field in fields {
+        fields_encoded.push(field.primitive.to_u8());
+        fields_encoded.extend(field.offset.to_le_bytes());
+    }
+    fields_encoded
+}

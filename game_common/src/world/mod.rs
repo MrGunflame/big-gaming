@@ -36,6 +36,7 @@ use std::ops::{Deref, DerefMut};
 use ahash::{HashMap, HashSet};
 pub use cell::{CellId, CELL_SIZE, CELL_SIZE_UINT};
 use game_wasm::components::Component;
+use game_wasm::encoding::{BinaryReader, BinaryWriter};
 
 use crate::components::components::{Components, RawComponent};
 use crate::entity::EntityId;
@@ -111,13 +112,17 @@ impl World {
     }
 
     pub fn insert_typed<T: Component>(&mut self, entity: EntityId, component: T) {
-        let mut buf = Vec::new();
-        component.encode(&mut buf);
-        self.insert(entity, T::ID, RawComponent::new(buf));
+        let (fields, data) = BinaryWriter::new().encoded(&component);
+        self.insert(entity, T::ID, RawComponent::new(data, fields));
     }
 
     pub fn get_typed<T: Component>(&self, entity: EntityId) -> T {
-        T::decode(self.get(entity, T::ID).unwrap().as_bytes()).unwrap()
+        let component = self.get(entity, T::ID).unwrap();
+        let reader = BinaryReader::new(
+            component.as_bytes().to_vec(),
+            component.fields().to_vec().into(),
+        );
+        T::decode(reader).unwrap()
     }
 
     pub fn iter(&self) -> Iter<'_> {
@@ -177,7 +182,11 @@ where
 {
     fn fetch(components: &Components) -> Option<Self> {
         let component = components.get(T::ID)?;
-        Some(T::decode(component.as_bytes()).unwrap())
+        let reader = BinaryReader::new(
+            component.as_bytes().to_vec(),
+            component.fields().to_vec().into(),
+        );
+        Some(T::decode(reader).unwrap())
     }
 }
 
@@ -215,9 +224,11 @@ where
     fn fetch(components: &Components) -> Option<Self> {
         let c0 = components.get(C0::ID)?;
         let c1 = components.get(C1::ID)?;
+        let r0 = BinaryReader::new(c0.as_bytes().to_vec(), c0.fields().to_vec().into());
+        let r1 = BinaryReader::new(c1.as_bytes().to_vec(), c1.fields().to_vec().into());
         Some(QueryWrapper((
-            C0::decode(c0.as_bytes()).unwrap(),
-            C1::decode(c1.as_bytes()).unwrap(),
+            C0::decode(r0).unwrap(),
+            C1::decode(r1).unwrap(),
         )))
     }
 }
@@ -232,10 +243,13 @@ where
         let c0 = components.get(C0::ID)?;
         let c1 = components.get(C1::ID)?;
         let c2 = components.get(C2::ID)?;
+        let r0 = BinaryReader::new(c0.as_bytes().to_vec(), c0.fields().to_vec().into());
+        let r1 = BinaryReader::new(c1.as_bytes().to_vec(), c1.fields().to_vec().into());
+        let r2 = BinaryReader::new(c2.as_bytes().to_vec(), c2.fields().to_vec().into());
         Some(QueryWrapper((
-            C0::decode(c0.as_bytes()).unwrap(),
-            C1::decode(c1.as_bytes()).unwrap(),
-            C2::decode(c2.as_bytes()).unwrap(),
+            C0::decode(r0).unwrap(),
+            C1::decode(r1).unwrap(),
+            C2::decode(r2).unwrap(),
         )))
     }
 }

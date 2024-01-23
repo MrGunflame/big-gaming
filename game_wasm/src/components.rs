@@ -46,30 +46,30 @@ impl Components {
         self.get_index(id).map(|index| &self.components[index].1)
     }
 
-    pub fn get_typed<T>(&self) -> Option<T>
-    where
-        T: Component,
-    {
-        let component = self.get(T::ID)?;
-        T::decode(component.as_bytes()).ok()
-    }
+    // pub fn get_typed<T>(&self) -> Option<T>
+    // where
+    //     T: Component,
+    // {
+    //     let component = self.get(T::ID)?;
+    //     T::decode(component.as_bytes()).ok()
+    // }
 
-    pub fn remove_typed<T>(&mut self) -> Option<T>
-    where
-        T: Component,
-    {
-        let component = self.remove(T::ID)?;
-        T::decode(component.as_bytes()).ok()
-    }
+    // pub fn remove_typed<T>(&mut self) -> Option<T>
+    // where
+    //     T: Component,
+    // {
+    //     let component = self.remove(T::ID)?;
+    //     T::decode(component.as_bytes()).ok()
+    // }
 
-    pub fn insert_typed<T>(&mut self, component: T)
-    where
-        T: Component,
-    {
-        let mut buf = Vec::new();
-        component.encode(&mut buf);
-        self.insert(T::ID, RawComponent::new(buf));
-    }
+    // pub fn insert_typed<T>(&mut self, component: T)
+    // where
+    //     T: Component,
+    // {
+    //     let mut buf = Vec::new();
+    //     component.encode(&mut buf);
+    //     self.insert(T::ID, RawComponent::new(buf));
+    // }
 
     pub fn get_mut(&mut self, id: RecordReference) -> Option<&mut RawComponent> {
         self.get_index(id)

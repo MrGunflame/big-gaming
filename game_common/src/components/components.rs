@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use ahash::HashMap;
+use game_wasm::encoding::Field;
 
 use crate::record::RecordReference;
 
@@ -50,16 +51,22 @@ impl Components {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RawComponent {
     bytes: Arc<[u8]>,
+    fields: Vec<Field>,
 }
 
 impl RawComponent {
-    pub fn new<T>(bytes: T) -> Self
+    pub fn new<T>(bytes: T, fields: Vec<Field>) -> Self
     where
         T: Into<Arc<[u8]>>,
     {
         Self {
             bytes: bytes.into(),
+            fields,
         }
+    }
+
+    pub fn fields(&self) -> &[Field] {
+        &self.fields
     }
 
     pub fn len(&self) -> usize {

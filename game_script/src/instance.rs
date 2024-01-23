@@ -166,8 +166,8 @@ pub struct RunState {
     next_entity_id: u64,
     next_inventory_id: u64,
     pub new_world: World,
-    pub action_buffer: Option<Vec<u8>>,
     pub events: Vec<DispatchEvent>,
+    pub host_buffers: Vec<Vec<u8>>,
 }
 
 impl RunState {
@@ -189,8 +189,8 @@ impl RunState {
             dependencies,
             records,
             new_world,
-            action_buffer,
             events: Vec::new(),
+            host_buffers: Vec::new(),
         }
     }
 }

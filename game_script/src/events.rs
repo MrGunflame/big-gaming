@@ -16,4 +16,5 @@ pub(crate) type WasmFnTrampoline = TypedFunc<(u32, u64), ()>;
 pub struct DispatchEvent {
     pub id: RecordReference,
     pub data: Vec<u8>,
+    pub fields: Vec<u8>,
 }

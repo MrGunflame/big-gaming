@@ -1,35 +1,21 @@
-use alloc::vec::Vec;
-
-use crate::encoding::Decode;
-use crate::raw::{action_data_buffer_get, action_data_buffer_len};
+use crate::encoding::{BinaryReader, Decode};
+use crate::host_buffer::{host_buffer, DataBuffer, FieldBuffer};
 use crate::record::RecordReference;
 
-pub(crate) fn action_buffer() -> Vec<u8> {
-    unsafe {
-        let len = action_data_buffer_len();
-        let mut buf = Vec::new();
-        action_data_buffer_get(buf.as_mut_ptr());
-        buf.set_len(len);
-        buf
-    }
-}
-
 pub struct ActionBuffer {
-    buf: Vec<u8>,
+    _priv: (),
 }
 
 impl ActionBuffer {
-    pub fn load() -> Self {
-        Self {
-            buf: action_buffer(),
-        }
-    }
-
-    pub fn get<T>(&self) -> Result<T, T::Error>
+    pub fn get<T>() -> Result<T, T::Error>
     where
         T: Decode,
     {
-        T::decode(&self.buf[..])
+        let data = host_buffer::<DataBuffer>();
+        let fields = host_buffer::<FieldBuffer>();
+
+        let reader = BinaryReader::new(data, fields.into());
+        T::decode(reader)
     }
 }
 

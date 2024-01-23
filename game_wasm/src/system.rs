@@ -49,7 +49,7 @@ where
     where
         T: Event,
     {
-        if let Ok(event) = ActionBuffer::load().get() {
+        if let Ok(event) = ActionBuffer::get() {
             (unsafe { mem::transmute::<unsafe fn(EntityId, c_void), fn(EntityId, T)>(f) })(
                 entity, event,
             );
@@ -74,7 +74,7 @@ where
     where
         T: Action,
     {
-        if let Ok(action) = ActionBuffer::load().get() {
+        if let Ok(action) = ActionBuffer::get() {
             (unsafe { mem::transmute::<unsafe fn(EntityId, c_void), fn(EntityId, T)>(f) })(
                 entity, action,
             );

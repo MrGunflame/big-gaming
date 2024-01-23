@@ -22,6 +22,8 @@ pub mod raw;
 #[cfg(not(feature = "raw"))]
 mod raw;
 
+mod host_buffer;
+
 pub mod action;
 pub mod components;
 pub mod encoding;

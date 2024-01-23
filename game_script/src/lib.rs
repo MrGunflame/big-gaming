@@ -15,7 +15,7 @@ use game_common::world::world::{WorldViewMut, WorldViewRef};
 use game_common::world::World;
 use game_data::record::Record;
 use game_tracing::trace_span;
-use game_wasm::components::Encode;
+use game_wasm::encoding::{encode_fields, BinaryWriter};
 use game_wasm::events::{PLAYER_CONNECT, PLAYER_DISCONNECT};
 use game_wasm::player::PlayerId;
 use instance::{InstancePool, RunState, State};
@@ -114,28 +114,30 @@ impl Executor {
                     Some(entries) => (entries, event.data, event.entity),
                     None => continue,
                 },
-                Event::PlayerConnect(player) => {
-                    let mut buf = Vec::new();
-                    player.encode(&mut buf);
+                Event::PlayerConnect(event) => {
+                    let (fields, data) = BinaryWriter::new().encoded(&event);
+                    let fields = encode_fields(&fields);
 
                     self.schedule_event(
                         &mut invocations,
                         DispatchEvent {
                             id: PLAYER_CONNECT,
-                            data: buf,
+                            data,
+                            fields,
                         },
                     );
                     continue;
                 }
-                Event::PlayerDisconnect(player) => {
-                    let mut buf = Vec::new();
-                    player.encode(&mut buf);
+                Event::PlayerDisconnect(event) => {
+                    let (fields, data) = BinaryWriter::new().encoded(&event);
+                    let fields = encode_fields(&fields);
 
                     self.schedule_event(
                         &mut invocations,
                         DispatchEvent {
                             id: PLAYER_DISCONNECT,
-                            data: buf,
+                            data,
+                            fields,
                         },
                     );
                     continue;
