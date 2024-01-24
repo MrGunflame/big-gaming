@@ -102,7 +102,7 @@ impl Executor {
                 invocations.push_back(Invocation {
                     script: system.script,
                     fn_ptr: system.ptr,
-                    action_buffer: None,
+                    host_buffers: vec![],
                     entity: Some(entity),
                 });
             }
@@ -149,7 +149,7 @@ impl Executor {
                 invocations.push_back(Invocation {
                     script: entry.script,
                     fn_ptr: entry.fn_ptr,
-                    action_buffer: Some(action_buffer.clone()),
+                    host_buffers: vec![action_buffer.clone()],
                     entity: Some(entity),
                 });
             }
@@ -183,7 +183,7 @@ impl Executor {
                     )
                 },
                 new_world,
-                invocation.action_buffer,
+                invocation.host_buffers,
             );
 
             let runnable = self.instances.get(State::Run(state), invocation.script);
@@ -212,7 +212,7 @@ impl Executor {
             invocations.push_back(Invocation {
                 script: handler.script,
                 fn_ptr: handler.fn_ptr,
-                action_buffer: Some(event.data.clone()),
+                host_buffers: vec![event.data.clone(), event.fields.clone()],
                 entity: None,
             });
         }
@@ -235,7 +235,7 @@ impl Debug for Executor {
 struct Invocation {
     script: Handle,
     fn_ptr: Pointer,
-    action_buffer: Option<Vec<u8>>,
+    host_buffers: Vec<Vec<u8>>,
     entity: Option<EntityId>,
 }
 

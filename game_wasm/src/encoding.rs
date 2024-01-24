@@ -224,9 +224,9 @@ impl Decode for u8 {
     where
         R: Reader,
     {
-        if reader.next() != Some(Primitive::Bytes) {
-            return Err(DecodeError);
-        }
+        // if reader.next() != Some(Primitive::Bytes) {
+        //     return Err(DecodeError);
+        // }
 
         let byte = reader.chunk()[0];
         reader.advance(1);
@@ -330,7 +330,7 @@ pub fn encode_fields(fields: &[Field]) -> Vec<u8> {
     let mut fields_encoded = Vec::new();
     for field in fields {
         fields_encoded.push(field.primitive.to_u8());
-        fields_encoded.extend(field.offset.to_le_bytes());
+        fields_encoded.extend((field.offset as u32).to_le_bytes());
     }
     fields_encoded
 }

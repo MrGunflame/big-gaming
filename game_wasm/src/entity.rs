@@ -44,9 +44,9 @@ impl Decode for EntityId {
     where
         R: Reader,
     {
-        if reader.next() != Some(Primitive::EntityId) {
-            return Err(DecodeError);
-        }
+        // if reader.next() != Some(Primitive::EntityId) {
+        //     return Err(DecodeError);
+        // }
 
         let bytes: [u8; 8] = reader.chunk().try_into().map_err(|_| DecodeError)?;
         Ok(Self(u64::from_be_bytes(bytes)))

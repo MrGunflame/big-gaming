@@ -180,7 +180,7 @@ impl RunState {
         dependencies: *mut Dependencies,
         records: *const dyn RecordProvider,
         new_world: World,
-        action_buffer: Option<Vec<u8>>,
+        host_buffers: Vec<Vec<u8>>,
     ) -> Self {
         Self {
             world,
@@ -192,7 +192,7 @@ impl RunState {
             records,
             new_world,
             events: Vec::new(),
-            host_buffers: Vec::new(),
+            host_buffers,
         }
     }
 }

@@ -60,9 +60,9 @@ impl Decode for PlayerId {
     where
         R: Reader,
     {
-        if reader.next() != Some(Primitive::PlayerId) {
-            return Err(DecodeError);
-        }
+        // if reader.next() != Some(Primitive::PlayerId) {
+        //     return Err(DecodeError);
+        // }
 
         let bytes: [u8; 8] = reader.chunk().try_into().map_err(|_| DecodeError)?;
         Ok(PlayerId(u64::from_le_bytes(bytes)))
