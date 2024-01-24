@@ -149,7 +149,7 @@ impl Executor {
                 invocations.push_back(Invocation {
                     script: entry.script,
                     fn_ptr: entry.fn_ptr,
-                    host_buffers: vec![action_buffer.clone()],
+                    host_buffers: vec![action_buffer.clone(), Vec::new()],
                     entity: Some(entity),
                 });
             }
