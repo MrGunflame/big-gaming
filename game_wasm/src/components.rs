@@ -10,7 +10,7 @@ use core::ptr::NonNull;
 use alloc::vec::Vec;
 use bytemuck::{AnyBitPattern, NoUninit, Pod};
 
-use crate::encoding::{Decode, Encode};
+use crate::encoding::{BinaryReader, Decode, Encode, Field};
 use crate::world::RecordReference;
 
 #[derive(Clone, Debug, Default)]
@@ -145,17 +145,25 @@ impl<'a> FusedIterator for Iter<'a> {}
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct RawComponent {
     bytes: Vec<u8>,
+    fields: Vec<Field>,
 }
 
 impl RawComponent {
     #[inline]
     pub(crate) const fn empty() -> Self {
-        Self { bytes: Vec::new() }
+        Self {
+            bytes: Vec::new(),
+            fields: Vec::new(),
+        }
     }
 
     #[inline]
-    pub(crate) fn new(bytes: Vec<u8>) -> Self {
-        Self { bytes }
+    pub(crate) fn new(bytes: Vec<u8>, fields: Vec<Field>) -> Self {
+        Self { bytes, fields }
+    }
+
+    pub fn reader(self) -> BinaryReader {
+        BinaryReader::new(self.bytes, self.fields.into())
     }
 
     #[inline]
@@ -321,7 +329,7 @@ mod tests {
         #[repr(transparent)]
         struct Target;
 
-        let mut component = RawComponent { bytes: Vec::new() };
+        let mut component = RawComponent::empty();
         component.update::<Target, _, _>(|val| {
             *val = Target;
         });
@@ -335,7 +343,10 @@ mod tests {
         #[repr(C, align(1))]
         struct Target(u8);
 
-        let mut component = RawComponent { bytes: vec![0] };
+        let mut component = RawComponent {
+            bytes: vec![0],
+            fields: Vec::new(),
+        };
         assert!(
             component
                 .bytes
@@ -372,7 +383,10 @@ mod tests {
             buf = unsafe { Vec::from_raw_parts(ptr.add(1), len - 1, cap - 1) };
         }
 
-        let mut component = RawComponent { bytes: buf };
+        let mut component = RawComponent {
+            bytes: buf,
+            fields: Vec::new(),
+        };
         assert!(
             component
                 .bytes

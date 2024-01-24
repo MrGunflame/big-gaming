@@ -159,7 +159,7 @@ impl Inventory {
 
         // No need to fetch any data if it is empty.
         if len == 0 {
-            return Ok(RawComponent::new(Vec::new()));
+            return Ok(RawComponent::new(Vec::new(), Vec::new()));
         }
 
         let mut bytes = Vec::with_capacity(len as usize);
@@ -181,7 +181,7 @@ impl Inventory {
             bytes.set_len(len as usize);
         }
 
-        Ok(RawComponent::new(bytes))
+        Ok(RawComponent::new(bytes, Vec::new()))
     }
 
     pub fn component_insert(

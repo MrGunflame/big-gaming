@@ -2,7 +2,8 @@ use alloc::borrow::ToOwned;
 use alloc::string::ToString;
 use game_wasm::action::Action;
 use game_wasm::components::builtin::{MeshInstance, Transform};
-use game_wasm::components::{Component, Decode, Encode};
+use game_wasm::components::Component;
+use game_wasm::encoding::{Decode, Encode};
 use game_wasm::entity::EntityId;
 use game_wasm::events::Event;
 use game_wasm::inventory::Inventory;
@@ -101,7 +102,7 @@ pub fn weapon_reload(entity: EntityId, WeaponReload: WeaponReload) {
         let Ok(properties) = stack.components().get(GUN_PROPERTIES) else {
             continue;
         };
-        let properties = GunProperties::decode(properties.as_bytes()).unwrap();
+        let properties = GunProperties::decode(properties.reader()).unwrap();
 
         let mut ammo = stack.components().entry(AMMO).or_default();
         ammo.write(Ammo(properties.magazine_capacity));
@@ -128,7 +129,7 @@ pub fn gun_equip(_: EntityId, event: GunEquip) {
     let entity = Entity::spawn();
     entity.insert(Transform::default());
     entity.insert(MeshInstance {
-        path: "assets/human.glb".to_owned(),
+        path: "assets/tyre.glb".to_owned(),
     });
 
     let owner = Entity::new(event.0.entity);

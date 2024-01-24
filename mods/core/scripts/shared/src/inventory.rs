@@ -1,5 +1,5 @@
 use game_wasm::action::Action;
-use game_wasm::components::{Decode, Encode};
+use game_wasm::encoding::{Decode, Encode};
 use game_wasm::entity::EntityId;
 use game_wasm::events::dispatch_event_dynamic;
 use game_wasm::inventory::{Inventory, InventoryId};
@@ -25,11 +25,11 @@ pub fn on_equip(entity: EntityId, Equip(slot): Equip) {
     let Ok(equppable) = stack.components().get(EQUIPPABLE) else {
         return;
     };
-    let equippable = Equippable::decode(equppable.as_bytes()).unwrap();
+    let equippable = Equippable::decode(equppable.reader()).unwrap();
 
     stack.equip(true).unwrap();
 
-    dispatch_event_dynamic(equippable.on_equip, ItemEquip { entity, slot });
+    dispatch_event_dynamic(equippable.on_equip, &ItemEquip { entity, slot });
 }
 
 #[derive(Copy, Clone, Debug, Encode, Decode)]
@@ -49,10 +49,10 @@ pub fn on_uneqip(entity: EntityId, Unequip(slot): Unequip) {
     let Ok(equippable) = stack.components().get(EQUIPPABLE) else {
         return;
     };
-    let equippable = Equippable::decode(equippable.as_bytes()).unwrap();
+    let equippable = Equippable::decode(equippable.reader()).unwrap();
     stack.equip(false).unwrap();
 
-    dispatch_event_dynamic(equippable.on_uneqip, ItemUnequip { entity, slot });
+    dispatch_event_dynamic(equippable.on_uneqip, &ItemUnequip { entity, slot });
 }
 
 #[derive(Copy, Clone, Debug, Encode, Decode)]

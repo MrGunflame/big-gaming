@@ -343,7 +343,7 @@ fn fetch_component(id: RecordReference, component: RecordReference) -> RawCompon
 
     unsafe { bytes.set_len(len as usize) };
 
-    RawComponent::new(bytes)
+    RawComponent::new(bytes, Vec::new())
 }
 
 #[cfg(test)]
