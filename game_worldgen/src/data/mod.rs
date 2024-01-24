@@ -161,7 +161,7 @@ impl Decode for Entity {
                 bytes.push(u8::decode(&mut buf).unwrap());
             }
 
-            components.insert(id, RawComponent::new(bytes));
+            components.insert(id, RawComponent::new(bytes, vec![]));
         }
 
         Ok(Self {

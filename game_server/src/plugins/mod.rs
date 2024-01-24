@@ -2,11 +2,11 @@ use std::collections::VecDeque;
 
 use ahash::{HashMap, HashSet};
 use game_common::components::actions::ActionId;
-use game_common::components::components::{Components, RawComponent};
+use game_common::components::components::Components;
 use game_common::components::inventory::Inventory;
 use game_common::components::{PlayerId, Transform};
 use game_common::entity::EntityId;
-use game_common::events::{ActionEvent, Event, EventQueue};
+use game_common::events::{ActionEvent, Event, EventQueue, PlayerConnect, PlayerDisconnect};
 use game_common::net::ServerEntity;
 use game_common::world::control_frame::ControlFrame;
 use game_common::world::CellId;
@@ -140,23 +140,23 @@ fn apply_effects(effects: Effects, world: &mut WorldState, level: &mut Level) {
 
                 world.inventory_mut(entity_id).clear();
             }
-            Effect::EntityComponentInsert(entity_id, component, data) => {
-                let entity_id = entity_id_remap
-                    .get(&entity_id)
+            Effect::EntityComponentInsert(effect) => {
+                let entity = entity_id_remap
+                    .get(&effect.entity)
                     .copied()
-                    .unwrap_or(entity_id);
+                    .unwrap_or(effect.entity);
 
                 world
                     .world
-                    .insert(entity_id, component, RawComponent::new(data));
+                    .insert(entity, effect.component_id, effect.component);
             }
-            Effect::EntityComponentRemove(entity_id, component) => {
+            Effect::EntityComponentRemove(effect) => {
                 let entity = entity_id_remap
-                    .get(&entity_id)
+                    .get(&effect.entity)
                     .copied()
-                    .unwrap_or(entity_id);
+                    .unwrap_or(effect.entity);
 
-                world.world.remove(entity, component);
+                world.world.remove(entity, effect.component_id);
             }
             Effect::PlayerSetActive(effect) => {
                 let entity = entity_id_remap
@@ -222,11 +222,15 @@ fn flush_command_queue(srv_state: &mut ServerState) {
                 state.peer_delay = ControlFrame(0);
                 state.cells = Cells::new(CellId::from(Vec3::ZERO));
 
-                srv_state.event_queue.push(Event::PlayerConnect(player));
+                srv_state
+                    .event_queue
+                    .push(Event::PlayerConnect(PlayerConnect { player }));
             }
             Message::Control(ControlMessage::Disconnected) => {
                 let player = state.host.player.unwrap();
-                srv_state.event_queue.push(Event::PlayerDisconnect(player));
+                srv_state
+                    .event_queue
+                    .push(Event::PlayerDisconnect(PlayerDisconnect { player }));
             }
             Message::Control(ControlMessage::Acknowledge(_, _)) => {}
             Message::Data(msg) => {
@@ -488,8 +492,8 @@ fn send_full_update(conn: &Connection, world: &WorldState, host: EntityId, cf: C
                     control_frame: cf,
                     body: DataMessageBody::EntityComponentAdd(EntityComponentAdd {
                         entity: entity_id,
-                        component: id,
-                        bytes: component.as_bytes().to_vec(),
+                        component_id: id,
+                        component: component.clone(),
                     }),
                 });
 
@@ -552,8 +556,8 @@ fn update_player_cells(world: &WorldState, state: &mut ConnectionState) -> Vec<D
                 for (id, component) in world.world().components(entity).iter() {
                     events.push(DataMessageBody::EntityComponentAdd(EntityComponentAdd {
                         entity: entity_id,
-                        component: id,
-                        bytes: component.as_bytes().to_vec(),
+                        component_id: id,
+                        component: component.clone(),
                     }));
 
                     state.known_entities.insert(entity, id, component.clone());
@@ -667,8 +671,8 @@ fn update_components(
         if client_state.get(id).is_none() {
             events.push(DataMessageBody::EntityComponentAdd(EntityComponentAdd {
                 entity,
-                component: id,
-                bytes: component.as_bytes().to_vec(),
+                component_id: id,
+                component: component.clone(),
             }));
 
             known_state
@@ -687,8 +691,8 @@ fn update_components(
             events.push(DataMessageBody::EntityComponentUpdate(
                 EntityComponentUpdate {
                     entity,
-                    component: id,
-                    bytes: server_component.as_bytes().to_vec(),
+                    component_id: id,
+                    component: server_component.clone(),
                 },
             ));
 
@@ -804,14 +808,7 @@ mod tests {
     use game_common::entity::EntityId;
     use game_common::record::RecordReference;
     use game_common::world::entity::{Entity, EntityBody, Object};
-    use game_common::world::snapshot::EntityChange;
-    use game_common::world::CellId;
-    use glam::{IVec3, Vec3};
-
-    use crate::net::state::ConnectionState;
-    use crate::world::state::WorldState;
-
-    use super::update_player_cells;
+    use glam::Vec3;
 
     fn create_test_entity() -> Entity {
         Entity {

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use ahash::HashMap;
-use game_wasm::encoding::Field;
+use game_wasm::encoding::{BinaryReader, Field};
 
 use crate::record::RecordReference;
 
@@ -83,6 +83,10 @@ impl RawComponent {
 
     pub fn as_bytes(&self) -> &[u8] {
         &self.bytes
+    }
+
+    pub fn reader(&self) -> BinaryReader {
+        BinaryReader::new(self.bytes.to_vec(), self.fields.clone().into())
     }
 }
 

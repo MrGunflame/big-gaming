@@ -1,5 +1,4 @@
 use ahash::HashMap;
-use game_common::components::components::RawComponent;
 use game_common::components::inventory::Inventory;
 use game_common::entity::EntityId;
 use game_common::events::EventQueue;
@@ -113,15 +112,23 @@ pub fn run_scripts(
                 let inventory = world.inventories.get_mut(id).unwrap();
                 inventory.clear();
             }
-            Effect::EntityComponentInsert(id, component, data) => {
-                let id = entity_id_remap.get(&id).copied().unwrap_or(id);
+            Effect::EntityComponentInsert(effect) => {
+                let entity = entity_id_remap
+                    .get(&effect.entity)
+                    .copied()
+                    .unwrap_or(effect.entity);
 
-                world.world.insert(id, component, RawComponent::new(data));
+                world
+                    .world
+                    .insert(entity, effect.component_id, effect.component);
             }
-            Effect::EntityComponentRemove(id, component) => {
-                let id = entity_id_remap.get(&id).copied().unwrap_or(id);
+            Effect::EntityComponentRemove(effect) => {
+                let entity = entity_id_remap
+                    .get(&effect.entity)
+                    .copied()
+                    .unwrap_or(effect.entity);
 
-                world.world.remove(id, component);
+                world.world.remove(entity, effect.component_id);
             }
             Effect::PlayerSetActive(_) => (),
         }

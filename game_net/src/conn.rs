@@ -1243,18 +1243,15 @@ impl Default for Rtt {
 
 #[cfg(test)]
 mod tests {
+    use game_common::components::components::RawComponent;
     use game_common::net::ServerEntity;
     use game_common::record::RecordReference;
     use game_common::world::control_frame::ControlFrame;
-    use game_common::world::entity::{EntityBody, Terrain};
-    use game_common::world::terrain::{Heightmap, TerrainMesh};
-    use game_common::world::CellId;
-    use glam::{Quat, UVec2, Vec3};
 
     use crate::proto::components::ComponentAdd;
     use crate::proto::sequence::Sequence;
     use crate::proto::{
-        Encode, EntityCreate, Flags, Frame, Header, Packet, PacketBody, PacketPosition, PacketType,
+        Encode, Flags, Frame, Header, Packet, PacketBody, PacketPosition, PacketType,
     };
 
     use super::{fragment_frame, InflightPackets, LossList};
@@ -1327,7 +1324,7 @@ mod tests {
         Frame::EntityComponentAdd(ComponentAdd {
             entity: ServerEntity(0),
             component_id: RecordReference::STUB,
-            bytes: vec![0; len],
+            component: RawComponent::new(vec![0; len], vec![]),
         })
     }
 

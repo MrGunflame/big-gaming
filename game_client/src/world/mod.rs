@@ -33,7 +33,7 @@ use game_script::Executor;
 use game_ui::reactive::NodeId;
 use game_ui::UiState;
 use game_wasm::components::Component;
-use game_wasm::components::Decode;
+use game_wasm::encoding::Decode;
 use game_window::cursor::Cursor;
 use game_window::events::WindowEvent;
 use game_window::windows::{WindowId, WindowState};
@@ -227,7 +227,7 @@ impl GameWorldState {
 
         // Health
         if let Some(health) = world.get(self.host, Health::ID) {
-            let health = Health::decode(health.as_bytes()).unwrap();
+            let health = Health::decode(health.reader()).unwrap();
             self.ui_elements.update_health(&mut cx, Some(health));
         } else {
             self.ui_elements.update_health(&mut cx, None);

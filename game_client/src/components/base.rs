@@ -1,4 +1,5 @@
-use game_common::components::{Component, Decode, Encode};
+use game_common::components::{Decode, Encode};
+use game_wasm::components::Component;
 use game_wasm::record::{ModuleId, RecordId};
 use game_wasm::world::RecordReference;
 
