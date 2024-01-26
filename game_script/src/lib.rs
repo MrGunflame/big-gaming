@@ -155,13 +155,26 @@ impl Executor {
             }
         }
 
+        let mut dependencies = Dependencies::default();
         let mut effects = Effects::default();
 
         // Reuse the same world so that dependant scripts don't overwrite
         // each other.
         // TODO: Still need to figure out what happens if scripts access the
         // same state.
-        let mut new_world = ctx.world.world().clone();
+        let mut state = RunState::new(
+            unsafe {
+                core::mem::transmute::<&dyn WorldProvider, *const dyn WorldProvider>(ctx.world)
+            },
+            ctx.physics,
+            &mut effects,
+            &mut dependencies,
+            unsafe {
+                core::mem::transmute::<&dyn RecordProvider, *const dyn RecordProvider>(ctx.records)
+            },
+            ctx.world.world().clone(),
+            vec![],
+        );
 
         // TODO: Right now if two event handlers call each other unconditionally we will
         // never stop scheduling more invocations and deadlock. We should implement some
@@ -169,22 +182,7 @@ impl Executor {
         // the event was dispatched from.
 
         while let Some(invocation) = invocations.pop_front() {
-            let mut dependencies = Dependencies::default();
-            let state = RunState::new(
-                unsafe {
-                    core::mem::transmute::<&dyn WorldProvider, *const dyn WorldProvider>(ctx.world)
-                },
-                ctx.physics,
-                &mut effects,
-                &mut dependencies,
-                unsafe {
-                    core::mem::transmute::<&dyn RecordProvider, *const dyn RecordProvider>(
-                        ctx.records,
-                    )
-                },
-                new_world,
-                invocation.host_buffers,
-            );
+            state.host_buffers = invocation.host_buffers;
 
             let runnable = self.instances.get(State::Run(state), invocation.script);
 
@@ -192,10 +190,9 @@ impl Executor {
                 tracing::error!("Error running script: {}", err);
             }
 
-            let state = runnable.into_state();
-            new_world = state.new_world;
+            state = runnable.into_state();
 
-            for event in state.events {
+            for event in state.events.drain(..) {
                 self.schedule_event(&mut invocations, event);
             }
         }
@@ -204,11 +201,15 @@ impl Executor {
     }
 
     fn schedule_event(&self, invocations: &mut VecDeque<Invocation>, event: DispatchEvent) {
+        tracing::debug!("scheduling event {:?}", event);
+
         let Some(handlers) = self.event_handlers.get(&event.id) else {
             return;
         };
 
         for handler in handlers {
+            tracing::debug!("found handler for event {:?}: {:?}", event.id, handler);
+
             invocations.push_back(Invocation {
                 script: handler.script,
                 fn_ptr: handler.fn_ptr,
