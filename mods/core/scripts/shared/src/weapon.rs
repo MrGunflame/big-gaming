@@ -140,6 +140,8 @@ pub fn gun_equip(_: EntityId, event: GunEquip) {
 
 pub fn gun_unequip(_: EntityId, event: GunUnequip) {
     let entity = Entity::new(event.0.entity);
+    let equipped_item = entity.get::<EquippedItem>().unwrap();
+    Entity::new(equipped_item.entity).despawn();
     entity.remove::<EquippedItem>();
 }
 
