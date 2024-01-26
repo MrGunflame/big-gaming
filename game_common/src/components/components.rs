@@ -1,8 +1,10 @@
+use std::borrow::Cow;
 use std::sync::Arc;
 
 use ahash::HashMap;
-use game_wasm::encoding::{BinaryReader, Field};
+use game_wasm::encoding::{BinaryReader, Field, Primitive};
 
+use crate::entity::EntityId;
 use crate::record::RecordReference;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -87,6 +89,38 @@ impl RawComponent {
 
     pub fn reader(&self) -> BinaryReader {
         BinaryReader::new(self.bytes.to_vec(), self.fields.clone().into())
+    }
+
+    pub fn remap(self, entity_id_remap: &HashMap<EntityId, EntityId>) -> Option<RawComponent> {
+        let mut bytes = Cow::Borrowed(&self.bytes[..]);
+        for field in &self.fields {
+            match field.primitive {
+                Primitive::EntityId => {
+                    let Some(slice) = bytes.to_mut().get_mut(field.offset..field.offset + 8) else {
+                        return None;
+                    };
+
+                    let temp_entity =
+                        EntityId::from_raw(u64::from_le_bytes(slice.try_into().unwrap()));
+                    let Some(real_id) = entity_id_remap.get(&temp_entity) else {
+                        return None;
+                    };
+
+                    let src = real_id.into_raw().to_le_bytes();
+                    slice.copy_from_slice(&src);
+                }
+                Primitive::PlayerId => return None,
+                Primitive::Bytes => (),
+            }
+        }
+
+        match bytes {
+            Cow::Borrowed(_) => Some(self),
+            Cow::Owned(data) => Some(Self {
+                bytes: data.into(),
+                fields: self.fields,
+            }),
+        }
     }
 }
 

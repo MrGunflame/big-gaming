@@ -146,9 +146,11 @@ fn apply_effects(effects: Effects, world: &mut WorldState, level: &mut Level) {
                     .copied()
                     .unwrap_or(effect.entity);
 
-                world
-                    .world
-                    .insert(entity, effect.component_id, effect.component);
+                let Some(component) = effect.component.remap(&entity_id_remap) else {
+                    continue;
+                };
+
+                world.world.insert(entity, effect.component_id, component);
             }
             Effect::EntityComponentRemove(effect) => {
                 let entity = entity_id_remap

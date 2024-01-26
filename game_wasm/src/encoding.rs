@@ -8,7 +8,6 @@ use alloc::vec::Vec;
 use glam::{Quat, Vec2, Vec3, Vec4};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-#[non_exhaustive]
 pub enum Primitive {
     Bytes,
     EntityId,

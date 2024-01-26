@@ -53,3 +53,22 @@ impl Decode for EntityId {
         Ok(Self(u64::from_le_bytes(bytes)))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::encoding::{BinaryReader, BinaryWriter, Decode, Primitive};
+
+    use super::EntityId;
+
+    #[test]
+    fn entity_encode_and_decode() {
+        let entity = EntityId::from_raw(1288025431908348);
+
+        let (fields, data) = BinaryWriter::new().encoded(&entity);
+        assert_eq!(fields[0].primitive, Primitive::EntityId);
+
+        let reader = BinaryReader::new(data, fields.into());
+        let other = EntityId::decode(reader).unwrap();
+        assert_eq!(entity, other);
+    }
+}
