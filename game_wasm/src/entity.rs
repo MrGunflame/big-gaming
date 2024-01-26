@@ -33,14 +33,15 @@ impl Encode for EntityId {
     where
         W: Writer,
     {
-        writer.write(Primitive::EntityId, &self.0.to_le_bytes());
+        let bytes = self.0.to_le_bytes();
+        writer.write(Primitive::EntityId, &bytes);
     }
 }
 
 impl Decode for EntityId {
     type Error = DecodeError;
 
-    fn decode<R>(mut reader: R) -> Result<Self, Self::Error>
+    fn decode<R>(reader: R) -> Result<Self, Self::Error>
     where
         R: Reader,
     {
@@ -48,7 +49,7 @@ impl Decode for EntityId {
         //     return Err(DecodeError);
         // }
 
-        let bytes: [u8; 8] = reader.chunk().try_into().map_err(|_| DecodeError)?;
-        Ok(Self(u64::from_be_bytes(bytes)))
+        let bytes = <[u8; 8]>::decode(reader)?;
+        Ok(Self(u64::from_le_bytes(bytes)))
     }
 }

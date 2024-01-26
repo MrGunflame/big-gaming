@@ -7,6 +7,7 @@ use alloc::vec::Vec;
 
 use crate::action::{Action, ActionBuffer};
 use crate::entity::EntityId;
+use crate::error;
 use crate::events::Event;
 use crate::raw::Query as RawQuery;
 use crate::record::RecordReference;
@@ -49,10 +50,15 @@ where
     where
         T: Event,
     {
-        if let Ok(event) = ActionBuffer::get() {
-            (unsafe { mem::transmute::<unsafe fn(EntityId, c_void), fn(EntityId, T)>(f) })(
-                entity, event,
-            );
+        match ActionBuffer::get() {
+            Ok(event) => {
+                (unsafe { mem::transmute::<unsafe fn(EntityId, c_void), fn(EntityId, T)>(f) })(
+                    entity, event,
+                );
+            }
+            Err(err) => {
+                error!("decoding for event handler failed: {:?}", err);
+            }
         }
     }
 
@@ -74,10 +80,15 @@ where
     where
         T: Action,
     {
-        if let Ok(action) = ActionBuffer::get() {
-            (unsafe { mem::transmute::<unsafe fn(EntityId, c_void), fn(EntityId, T)>(f) })(
-                entity, action,
-            );
+        match ActionBuffer::get() {
+            Ok(action) => {
+                (unsafe { mem::transmute::<unsafe fn(EntityId, c_void), fn(EntityId, T)>(f) })(
+                    entity, action,
+                );
+            }
+            Err(err) => {
+                error!("decoding for action handler failed: {:?}", err);
+            }
         }
     }
 

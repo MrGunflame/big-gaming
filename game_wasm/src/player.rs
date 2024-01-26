@@ -49,22 +49,22 @@ impl Encode for PlayerId {
     where
         W: Writer,
     {
-        writer.write(Primitive::PlayerId, &self.0.to_le_bytes());
+        let bytes = self.0.to_le_bytes();
+        writer.write(Primitive::PlayerId, &bytes);
     }
 }
 
 impl Decode for PlayerId {
     type Error = DecodeError;
 
-    fn decode<R>(mut reader: R) -> Result<Self, Self::Error>
+    fn decode<R>(reader: R) -> Result<Self, Self::Error>
     where
         R: Reader,
     {
         // if reader.next() != Some(Primitive::PlayerId) {
         //     return Err(DecodeError);
         // }
-
-        let bytes: [u8; 8] = reader.chunk().try_into().map_err(|_| DecodeError)?;
+        let bytes = <[u8; 8]>::decode(reader)?;
         Ok(PlayerId(u64::from_le_bytes(bytes)))
     }
 }

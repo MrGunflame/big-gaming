@@ -7,7 +7,7 @@ use alloc::collections::VecDeque;
 use alloc::vec::Vec;
 use glam::{Quat, Vec2, Vec3, Vec4};
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum Primitive {
     Bytes,
@@ -162,8 +162,24 @@ where
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct DecodeError;
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum DecodeError {
+    Eof {
+        ident: &'static str,
+        expected: usize,
+        found: usize,
+    },
+    InvalidPrimitive {
+        ident: &'static str,
+        expected: Primitive,
+        found: Primitive,
+    },
+    InvalidVariant {
+        ident: &'static str,
+        value: u64,
+    },
+    InvalidString,
+}
 
 impl<T, const N: usize> Decode for [T; N]
 where
@@ -228,9 +244,16 @@ impl Decode for u8 {
         //     return Err(DecodeError);
         // }
 
-        let byte = reader.chunk()[0];
-        reader.advance(1);
-        Ok(byte)
+        if let Some(byte) = reader.chunk().get(0).copied() {
+            reader.advance(1);
+            Ok(byte)
+        } else {
+            Err(DecodeError::Eof {
+                ident: stringify!(u8),
+                expected: 1,
+                found: 0,
+            })
+        }
     }
 }
 

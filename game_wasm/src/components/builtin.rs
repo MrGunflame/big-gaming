@@ -65,7 +65,7 @@ impl Decode for MeshInstance {
         }
 
         String::from_utf8(bytes)
-            .map_err(|_| DecodeError)
+            .map_err(|_| DecodeError::InvalidString)
             .map(|path| Self { path })
     }
 }
@@ -155,7 +155,7 @@ pub enum RigidBodyKind {
 }
 
 impl Encode for RigidBodyKind {
-    fn encode<W>(&self, mut writer: W)
+    fn encode<W>(&self, writer: W)
     where
         W: Writer,
     {
@@ -181,7 +181,10 @@ impl Decode for RigidBodyKind {
             0 => Ok(Self::Fixed),
             1 => Ok(Self::Dynamic),
             2 => Ok(Self::Kinematic),
-            _ => Err(DecodeError),
+            _ => Err(DecodeError::InvalidVariant {
+                ident: stringify!(RigidBodyKind),
+                value: tag.into(),
+            }),
         }
     }
 }
@@ -227,7 +230,10 @@ impl Decode for ColliderShape {
 
         match tag {
             1 => Cuboid::decode(reader).map(Self::Cuboid),
-            _ => Err(DecodeError),
+            _ => Err(DecodeError::InvalidVariant {
+                ident: stringify!(ColliderShape),
+                value: tag.into(),
+            }),
         }
     }
 }
