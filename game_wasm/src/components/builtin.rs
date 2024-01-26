@@ -5,9 +5,9 @@ use alloc::vec::Vec;
 use bytemuck::{Pod, Zeroable};
 use glam::Vec3;
 
+use super::Component;
+use crate::encoding::{Decode, DecodeError, Encode, Primitive, Reader, Writer};
 use crate::record::{ModuleId, RecordId, RecordReference};
-
-use super::{Component, Decode, DecodeError, Encode};
 
 pub use transform::Transform;
 
@@ -43,28 +43,29 @@ pub struct MeshInstance {
 }
 
 impl Encode for MeshInstance {
-    fn encode<B>(&self, mut buf: B)
+    fn encode<W>(&self, mut writer: W)
     where
-        B: bytes::BufMut,
+        W: Writer,
     {
-        buf.put_slice(self.path.as_bytes());
+        writer.write(Primitive::Bytes, self.path.as_bytes());
     }
 }
 
 impl Decode for MeshInstance {
     type Error = DecodeError;
 
-    fn decode<B>(mut buf: B) -> Result<Self, Self::Error>
+    fn decode<R>(mut reader: R) -> Result<Self, Self::Error>
     where
-        B: bytes::Buf,
+        R: Reader,
     {
         let mut bytes = Vec::new();
-        while buf.remaining() > 0 {
-            bytes.push(buf.get_u8());
+        while reader.chunk().len() > 0 {
+            bytes.push(reader.chunk()[0]);
+            reader.advance(1);
         }
 
         String::from_utf8(bytes)
-            .map_err(|_| DecodeError)
+            .map_err(|_| DecodeError::InvalidString)
             .map(|path| Self { path })
     }
 }
@@ -154,33 +155,36 @@ pub enum RigidBodyKind {
 }
 
 impl Encode for RigidBodyKind {
-    fn encode<B>(&self, mut buf: B)
+    fn encode<W>(&self, writer: W)
     where
-        B: bytes::BufMut,
+        W: Writer,
     {
-        let tag = match self {
+        let tag: u8 = match self {
             Self::Fixed => 0,
             Self::Dynamic => 1,
             Self::Kinematic => 2,
         };
 
-        buf.put_u8(tag);
+        tag.encode(writer);
     }
 }
 
 impl Decode for RigidBodyKind {
     type Error = DecodeError;
 
-    fn decode<B>(buf: B) -> Result<Self, Self::Error>
+    fn decode<R>(reader: R) -> Result<Self, Self::Error>
     where
-        B: bytes::Buf,
+        R: Reader,
     {
-        let tag = u8::decode(buf)?;
+        let tag = u8::decode(reader)?;
         match tag {
             0 => Ok(Self::Fixed),
             1 => Ok(Self::Dynamic),
             2 => Ok(Self::Kinematic),
-            _ => Err(DecodeError),
+            _ => Err(DecodeError::InvalidVariant {
+                ident: stringify!(RigidBodyKind),
+                value: tag.into(),
+            }),
         }
     }
 }
@@ -202,14 +206,14 @@ pub enum ColliderShape {
 }
 
 impl Encode for ColliderShape {
-    fn encode<B>(&self, mut buf: B)
+    fn encode<W>(&self, mut writer: W)
     where
-        B: bytes::BufMut,
+        W: Writer,
     {
         match self {
             Self::Cuboid(cuboid) => {
-                buf.put_u8(1);
-                cuboid.encode(buf)
+                1u8.encode(&mut writer);
+                cuboid.encode(&mut writer);
             }
         };
     }
@@ -218,15 +222,18 @@ impl Encode for ColliderShape {
 impl Decode for ColliderShape {
     type Error = DecodeError;
 
-    fn decode<B>(mut buf: B) -> Result<Self, Self::Error>
+    fn decode<R>(mut reader: R) -> Result<Self, Self::Error>
     where
-        B: bytes::Buf,
+        R: Reader,
     {
-        let tag = u8::decode(&mut buf)?;
+        let tag = u8::decode(&mut reader)?;
 
         match tag {
-            1 => Cuboid::decode(buf).map(Self::Cuboid),
-            _ => Err(DecodeError),
+            1 => Cuboid::decode(reader).map(Self::Cuboid),
+            _ => Err(DecodeError::InvalidVariant {
+                ident: stringify!(ColliderShape),
+                value: tag.into(),
+            }),
         }
     }
 }

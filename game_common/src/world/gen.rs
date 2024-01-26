@@ -2,7 +2,8 @@
 //!
 //!
 
-use game_wasm::components::{Component, Encode};
+use game_wasm::components::Component;
+use game_wasm::encoding::BinaryWriter;
 
 use crate::components::components::{Components, RawComponent};
 use crate::components::Transform;
@@ -79,10 +80,9 @@ impl EntityBuilder {
     }
 
     pub fn transform(mut self, transform: Transform) -> Self {
-        let mut buf = Vec::new();
-        transform.encode(&mut buf);
+        let (fields, data) = BinaryWriter::new().encoded(&transform);
         self.components
-            .insert(Transform::ID, RawComponent::new(buf));
+            .insert(Transform::ID, RawComponent::new(data, fields));
         self
     }
 

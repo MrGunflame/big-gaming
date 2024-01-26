@@ -3,12 +3,14 @@ use std::collections::HashMap;
 use game_common::components::components::RawComponent;
 use game_common::components::inventory::{Inventory, InventorySlotId};
 use game_common::components::items::ItemStack;
-use game_common::components::{Component, PlayerId, Transform};
+use game_common::components::{PlayerId, Transform};
 use game_common::entity::EntityId;
 use game_common::record::RecordReference;
 use game_common::world::entity::Entity;
 use game_common::world::{CellId, World};
 use game_script::WorldProvider;
+use game_wasm::components::Component;
+use game_wasm::encoding::BinaryWriter;
 
 // TODO: Implement Snapshot-based rollback system.
 #[derive(Clone, Debug)]
@@ -32,9 +34,9 @@ impl WorldState {
     }
 
     pub fn insert<T: Component>(&mut self, id: EntityId, component: T) {
-        let mut buf = Vec::new();
-        component.encode(&mut buf);
-        self.world.insert(id, T::ID, RawComponent::new(buf));
+        let (fields, data) = BinaryWriter::new().encoded(&component);
+        self.world
+            .insert(id, T::ID, RawComponent::new(data, fields));
     }
 
     pub fn remove(&mut self, id: EntityId) {
@@ -58,7 +60,7 @@ impl WorldState {
 
     pub fn get<T: Component>(&self, id: EntityId) -> T {
         let component = self.world.get(id, T::ID).unwrap();
-        T::decode(component.as_bytes()).unwrap()
+        T::decode(component.reader()).unwrap()
     }
 
     pub fn cell(&self, id: CellId) -> Cell<'_> {

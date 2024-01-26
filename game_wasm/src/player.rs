@@ -1,10 +1,10 @@
 use core::mem::MaybeUninit;
 
-use crate::components::{Decode, Encode};
+use crate::encoding::{Decode, DecodeError, Encode, Primitive, Reader, Writer};
 use crate::entity::EntityId;
 use crate::raw::{player_lookup, player_set_active, RESULT_OK};
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Encode, Decode)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct PlayerId(u64);
 
 impl PlayerId {
@@ -41,5 +41,30 @@ pub(crate) fn player_set_active_safe(player: PlayerId, entity: EntityId) {
     match unsafe { player_set_active(player.0, entity.into_raw()) } {
         RESULT_OK => (),
         _ => unreachable!(),
+    }
+}
+
+impl Encode for PlayerId {
+    fn encode<W>(&self, mut writer: W)
+    where
+        W: Writer,
+    {
+        let bytes = self.0.to_le_bytes();
+        writer.write(Primitive::PlayerId, &bytes);
+    }
+}
+
+impl Decode for PlayerId {
+    type Error = DecodeError;
+
+    fn decode<R>(reader: R) -> Result<Self, Self::Error>
+    where
+        R: Reader,
+    {
+        // if reader.next() != Some(Primitive::PlayerId) {
+        //     return Err(DecodeError);
+        // }
+        let bytes = <[u8; 8]>::decode(reader)?;
+        Ok(PlayerId(u64::from_le_bytes(bytes)))
     }
 }

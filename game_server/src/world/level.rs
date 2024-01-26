@@ -1,9 +1,10 @@
 use ahash::{HashMap, HashSet};
-use game_common::components::{Component, Decode, Transform};
+use game_common::components::{Decode, Transform};
 use game_common::entity::EntityId;
 use game_common::world::cell::square;
 use game_common::world::gen::{CellBuilder, Generator};
 use game_common::world::CellId;
+use game_wasm::components::Component;
 
 use crate::ServerState;
 
@@ -65,7 +66,7 @@ pub fn update_level_cells(state: &mut ServerState) {
         let Some(transform) = state.world.world.get(id, Transform::ID) else {
             continue;
         };
-        let transform = Transform::decode(transform.as_bytes()).unwrap();
+        let transform = Transform::decode(transform.reader()).unwrap();
 
         let cell = CellId::from(transform.translation);
         // Despawn all entities that have moved outside of any loaded cells.

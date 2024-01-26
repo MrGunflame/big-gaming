@@ -28,8 +28,8 @@ impl Effects {
 pub enum Effect {
     EntitySpawn(EntityId),
     EntityDespawn(EntityId),
-    EntityComponentInsert(EntityId, RecordReference, Vec<u8>),
-    EntityComponentRemove(EntityId, RecordReference),
+    EntityComponentInsert(EntityComponentInsert),
+    EntityComponentRemove(EntityComponentRemove),
     InventoryInsert(EntityId, InventorySlotId, ItemStack),
     InventoryRemove(EntityId, InventorySlotId, u64),
     InventoryClear(EntityId),
@@ -43,4 +43,17 @@ pub enum Effect {
 pub struct PlayerSetActive {
     pub player: PlayerId,
     pub entity: EntityId,
+}
+
+#[derive(Clone, Debug)]
+pub struct EntityComponentInsert {
+    pub entity: EntityId,
+    pub component_id: RecordReference,
+    pub component: RawComponent,
+}
+
+#[derive(Clone, Debug)]
+pub struct EntityComponentRemove {
+    pub entity: EntityId,
+    pub component_id: RecordReference,
 }

@@ -1,5 +1,5 @@
 use game_common::components::actions::ActionId;
-use game_common::components::components::Components;
+use game_common::components::components::{Components, RawComponent};
 use game_common::components::inventory::InventorySlotId;
 use game_common::components::items::ItemId;
 use game_common::net::ServerEntity;
@@ -91,8 +91,8 @@ pub struct EntityAction {
 #[derive(Clone, Debug)]
 pub struct EntityComponentAdd {
     pub entity: ServerEntity,
-    pub component: RecordReference,
-    pub bytes: Vec<u8>,
+    pub component_id: RecordReference,
+    pub component: RawComponent,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -104,8 +104,8 @@ pub struct EntityComponentRemove {
 #[derive(Clone, Debug)]
 pub struct EntityComponentUpdate {
     pub entity: ServerEntity,
-    pub component: RecordReference,
-    pub bytes: Vec<u8>,
+    pub component_id: RecordReference,
+    pub component: RawComponent,
 }
 
 #[derive(Clone, Debug)]
@@ -162,8 +162,8 @@ impl DataMessageBody {
             DataMessageBody::EntityComponentAdd(msg) => {
                 Frame::EntityComponentAdd(proto::components::ComponentAdd {
                     entity: msg.entity,
-                    component_id: msg.component,
-                    bytes: msg.bytes,
+                    component_id: msg.component_id,
+                    component: msg.component,
                 })
             }
             DataMessageBody::EntityComponentRemove(msg) => {
@@ -175,8 +175,8 @@ impl DataMessageBody {
             DataMessageBody::EntityComponentUpdate(msg) => {
                 Frame::EntityComponentUpdate(proto::components::ComponentUpdate {
                     entity: msg.entity,
-                    component_id: msg.component,
-                    bytes: msg.bytes,
+                    component_id: msg.component_id,
+                    component: msg.component,
                 })
             }
             DataMessageBody::InventoryItemAdd(msg) => {
@@ -232,8 +232,8 @@ impl DataMessageBody {
             }),
             Frame::EntityComponentAdd(frame) => Self::EntityComponentAdd(EntityComponentAdd {
                 entity: frame.entity,
-                component: frame.component_id,
-                bytes: frame.bytes,
+                component_id: frame.component_id,
+                component: frame.component,
             }),
             Frame::EntityComponentRemove(frame) => {
                 Self::EntityComponentRemove(EntityComponentRemove {
@@ -244,8 +244,8 @@ impl DataMessageBody {
             Frame::EntityComponentUpdate(frame) => {
                 Self::EntityComponentUpdate(EntityComponentUpdate {
                     entity: frame.entity,
-                    component: frame.component_id,
-                    bytes: frame.bytes,
+                    component_id: frame.component_id,
+                    component: frame.component,
                 })
             }
             Frame::InventoryItemAdd(frame) => Self::InventoryItemAdd(InventoryItemAdd {

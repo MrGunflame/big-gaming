@@ -26,13 +26,19 @@ pub fn player_lookup(entity_id: u64, player_id: *mut u64) -> u32;
 pub fn player_set_active(player_id: u64, entity_id: u64) -> u32;
 
 #[guest_only]
-pub fn action_data_buffer_len() -> usize;
+pub fn host_buffer_len(index: u32) -> usize;
 
 #[guest_only]
-pub fn action_data_buffer_get(ptr: *mut u8);
+pub fn host_buffer_get(index: u32, ptr: *mut u8);
 
 #[guest_only]
-pub fn event_dispatch(id: *const RecordReference, ptr: *const u8, len: usize);
+pub fn event_dispatch(
+    id: *const RecordReference,
+    data_ptr: *const u8,
+    data_len: usize,
+    fields_ptr: *const u8,
+    fields_len: usize,
+);
 
 #[guest_only]
 pub fn register_system(query: *const Query, fn_ptr: *const unsafe fn(u64, c_void));

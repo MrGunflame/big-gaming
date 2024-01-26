@@ -1,5 +1,5 @@
 use game_common::components::actions::ActionId;
-use game_common::components::components::{Components, RawComponent};
+use game_common::components::components::Components;
 use game_common::components::items::{Item, ItemStack};
 use game_common::components::object::ObjectId;
 use game_common::components::race::RaceId;
@@ -245,15 +245,13 @@ where
                             }
                         };
 
-                        self.newest_state.world.insert(
-                            id,
-                            msg.component,
-                            RawComponent::new(msg.bytes),
-                        );
+                        self.newest_state
+                            .world
+                            .insert(id, msg.component_id, msg.component);
 
                         cmd_buffer.push(Command::ComponentAdd {
                             entity: id,
-                            component: msg.component,
+                            component: msg.component_id,
                         });
                     }
                     DataMessageBody::EntityComponentRemove(msg) => {
@@ -275,11 +273,9 @@ where
                             continue;
                         };
 
-                        self.newest_state.world.insert(
-                            id,
-                            msg.component,
-                            RawComponent::new(msg.bytes),
-                        );
+                        self.newest_state
+                            .world
+                            .insert(id, msg.component_id, msg.component);
                     }
                     DataMessageBody::EntityAction(msg) => todo!(),
                     DataMessageBody::EntityTranslate(_) | DataMessageBody::EntityRotate(_) => {
@@ -462,9 +458,9 @@ fn spawn_entity(id: RecordReference, transform: Transform, modules: &Modules) ->
     };
 
     let mut components = Components::new();
-    for component in &record.components {
-        components.insert(component.id, RawComponent::new(component.bytes.clone()));
-    }
+    // for component in &record.components {
+    //     components.insert(component.id, component.clone());
+    // }
 
     Some(Entity {
         id: EntityId::dangling(),

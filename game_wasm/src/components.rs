@@ -1,18 +1,16 @@
 pub mod builtin;
 
 pub use bytes::{Buf, BufMut};
-pub use game_macros::{
-    wasm__component as Component, wasm__decode as Decode, wasm__encode as Encode,
-};
+pub use game_macros::wasm__component as Component;
 
 use core::iter::FusedIterator;
-use core::mem::{self, MaybeUninit};
+use core::mem::{self};
 use core::ptr::NonNull;
 
 use alloc::vec::Vec;
 use bytemuck::{AnyBitPattern, NoUninit, Pod};
-use glam::{Quat, Vec2, Vec3, Vec4};
 
+use crate::encoding::{BinaryReader, Decode, Encode, Field};
 use crate::world::RecordReference;
 
 #[derive(Clone, Debug, Default)]
@@ -48,30 +46,30 @@ impl Components {
         self.get_index(id).map(|index| &self.components[index].1)
     }
 
-    pub fn get_typed<T>(&self) -> Option<T>
-    where
-        T: Component,
-    {
-        let component = self.get(T::ID)?;
-        T::decode(component.as_bytes()).ok()
-    }
+    // pub fn get_typed<T>(&self) -> Option<T>
+    // where
+    //     T: Component,
+    // {
+    //     let component = self.get(T::ID)?;
+    //     T::decode(component.as_bytes()).ok()
+    // }
 
-    pub fn remove_typed<T>(&mut self) -> Option<T>
-    where
-        T: Component,
-    {
-        let component = self.remove(T::ID)?;
-        T::decode(component.as_bytes()).ok()
-    }
+    // pub fn remove_typed<T>(&mut self) -> Option<T>
+    // where
+    //     T: Component,
+    // {
+    //     let component = self.remove(T::ID)?;
+    //     T::decode(component.as_bytes()).ok()
+    // }
 
-    pub fn insert_typed<T>(&mut self, component: T)
-    where
-        T: Component,
-    {
-        let mut buf = Vec::new();
-        component.encode(&mut buf);
-        self.insert(T::ID, RawComponent::new(buf));
-    }
+    // pub fn insert_typed<T>(&mut self, component: T)
+    // where
+    //     T: Component,
+    // {
+    //     let mut buf = Vec::new();
+    //     component.encode(&mut buf);
+    //     self.insert(T::ID, RawComponent::new(buf));
+    // }
 
     pub fn get_mut(&mut self, id: RecordReference) -> Option<&mut RawComponent> {
         self.get_index(id)
@@ -147,17 +145,25 @@ impl<'a> FusedIterator for Iter<'a> {}
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct RawComponent {
     bytes: Vec<u8>,
+    fields: Vec<Field>,
 }
 
 impl RawComponent {
     #[inline]
     pub(crate) const fn empty() -> Self {
-        Self { bytes: Vec::new() }
+        Self {
+            bytes: Vec::new(),
+            fields: Vec::new(),
+        }
     }
 
     #[inline]
-    pub(crate) fn new(bytes: Vec<u8>) -> Self {
-        Self { bytes }
+    pub(crate) fn new(bytes: Vec<u8>, fields: Vec<Field>) -> Self {
+        Self { bytes, fields }
+    }
+
+    pub fn reader(self) -> BinaryReader {
+        BinaryReader::new(self.bytes, self.fields.into())
     }
 
     #[inline]
@@ -307,164 +313,6 @@ pub trait Component: Encode + Decode {
     const ID: RecordReference;
 }
 
-pub trait Encode {
-    fn encode<B>(&self, buf: B)
-    where
-        B: BufMut;
-}
-
-pub trait Decode: Sized {
-    type Error: core::fmt::Debug;
-
-    fn decode<B>(buf: B) -> Result<Self, Self::Error>
-    where
-        B: Buf;
-}
-
-impl<T, const N: usize> Encode for [T; N]
-where
-    T: Encode,
-{
-    fn encode<B>(&self, mut buf: B)
-    where
-        B: BufMut,
-    {
-        for elem in self {
-            elem.encode(&mut buf);
-        }
-    }
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct DecodeError;
-
-impl<T, const N: usize> Decode for [T; N]
-where
-    T: Decode,
-    DecodeError: From<T::Error>,
-{
-    type Error = DecodeError;
-
-    fn decode<B>(mut buf: B) -> Result<Self, Self::Error>
-    where
-        B: Buf,
-    {
-        let mut array: [MaybeUninit<T>; N] = unsafe { MaybeUninit::uninit().assume_init() };
-        let mut len = 0;
-
-        struct DropGuard<'a, T>(&'a mut [MaybeUninit<T>]);
-
-        impl<'a, T> Drop for DropGuard<'a, T> {
-            #[inline(never)]
-            #[cold]
-            fn drop(&mut self) {
-                for elem in &mut *self.0 {
-                    unsafe {
-                        elem.assume_init_drop();
-                    }
-                }
-            }
-        }
-
-        for index in 0..N {
-            let guard = DropGuard(&mut array[..len]);
-            let elem = T::decode(&mut buf)?;
-            core::mem::forget(guard);
-
-            array[index].write(elem);
-            len += 1;
-        }
-
-        let array = unsafe { core::mem::transmute_copy::<[MaybeUninit<T>; N], [T; N]>(&array) };
-
-        Ok(array)
-    }
-}
-
-impl Encode for u8 {
-    #[inline]
-    fn encode<B>(&self, mut buf: B)
-    where
-        B: BufMut,
-    {
-        buf.put_u8(*self);
-    }
-}
-
-impl Decode for u8 {
-    type Error = DecodeError;
-
-    fn decode<B>(mut buf: B) -> Result<Self, Self::Error>
-    where
-        B: Buf,
-    {
-        if buf.remaining() > 0 {
-            Ok(buf.get_u8())
-        } else {
-            Err(DecodeError)
-        }
-    }
-}
-
-macro_rules! impl_primitive {
-    ($($t:ty),*) => {
-        $(
-            impl Encode for $t {
-                #[inline]
-                fn encode<B>(&self, buf: B)
-                where
-                    B: BufMut,
-                {
-                    self.to_le_bytes().encode(buf);
-                }
-            }
-
-            impl Decode for $t {
-                type Error = DecodeError;
-
-                #[inline]
-                fn decode<B>(buf: B) -> Result<Self, Self::Error>
-                where
-                    B: Buf,
-                {
-                    <[u8; core::mem::size_of::<Self>()]>::decode(buf).map(Self::from_le_bytes)
-                }
-            }
-        )*
-    };
-}
-
-impl_primitive! { u16, u32, u64, i8, i16, i32, i64, f32, f64 }
-
-macro_rules! impl_as_array {
-    ($($t:ty),*) => {
-        $(
-            impl Encode for $t {
-                #[inline]
-                fn encode<B>(&self, buf: B)
-                where
-                    B: BufMut,
-                {
-                    self.to_array().encode(buf);
-                }
-            }
-
-            impl Decode for $t {
-                type Error = DecodeError;
-
-                fn decode<B>(buf: B) -> Result<Self, Self::Error>
-                where
-                    B: Buf,
-                {
-                    Decode::decode(buf).map(Self::from_array)
-                }
-            }
-        )*
-    };
-}
-
-impl_as_array! { Vec2, Vec3, Vec4, Quat }
-
 #[cfg(test)]
 mod tests {
     use core::mem;
@@ -473,7 +321,7 @@ mod tests {
     use alloc::vec::Vec;
     use bytemuck::{Pod, Zeroable};
 
-    use super::{Decode, RawComponent};
+    use super::RawComponent;
 
     #[test]
     fn component_update_zst() {
@@ -481,7 +329,7 @@ mod tests {
         #[repr(transparent)]
         struct Target;
 
-        let mut component = RawComponent { bytes: Vec::new() };
+        let mut component = RawComponent::empty();
         component.update::<Target, _, _>(|val| {
             *val = Target;
         });
@@ -495,7 +343,10 @@ mod tests {
         #[repr(C, align(1))]
         struct Target(u8);
 
-        let mut component = RawComponent { bytes: vec![0] };
+        let mut component = RawComponent {
+            bytes: vec![0],
+            fields: Vec::new(),
+        };
         assert!(
             component
                 .bytes
@@ -532,7 +383,10 @@ mod tests {
             buf = unsafe { Vec::from_raw_parts(ptr.add(1), len - 1, cap - 1) };
         }
 
-        let mut component = RawComponent { bytes: buf };
+        let mut component = RawComponent {
+            bytes: buf,
+            fields: Vec::new(),
+        };
         assert!(
             component
                 .bytes
@@ -564,13 +418,5 @@ mod tests {
 
             drop(unsafe { Vec::from_raw_parts(ptr.sub(1), len + 1, cap + 1) });
         };
-    }
-
-    #[test]
-    fn decode_array() {
-        let input: &[u8] = &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
-
-        let output = <[u8; 10]>::decode(input).unwrap();
-        assert_eq!(output, input);
     }
 }

@@ -14,7 +14,9 @@ use wasmtime::{Engine, Instance, Linker, Module, Store};
 
 use crate::builtin::register_host_fns;
 use crate::dependency::{Dependencies, Dependency};
-use crate::effect::{Effect, Effects, PlayerSetActive};
+use crate::effect::{
+    Effect, Effects, EntityComponentInsert, EntityComponentRemove, PlayerSetActive,
+};
 use crate::events::{DispatchEvent, OnInit, WasmFnTrampoline};
 use crate::{Entry, Handle, Pointer, RecordProvider, System, WorldProvider};
 
@@ -166,8 +168,8 @@ pub struct RunState {
     next_entity_id: u64,
     next_inventory_id: u64,
     pub new_world: World,
-    pub action_buffer: Option<Vec<u8>>,
     pub events: Vec<DispatchEvent>,
+    pub host_buffers: Vec<Vec<u8>>,
 }
 
 impl RunState {
@@ -178,7 +180,7 @@ impl RunState {
         dependencies: *mut Dependencies,
         records: *const dyn RecordProvider,
         new_world: World,
-        action_buffer: Option<Vec<u8>>,
+        host_buffers: Vec<Vec<u8>>,
     ) -> Self {
         Self {
             world,
@@ -189,8 +191,8 @@ impl RunState {
             dependencies,
             records,
             new_world,
-            action_buffer,
             events: Vec::new(),
+            host_buffers,
         }
     }
 }
@@ -267,11 +269,12 @@ impl RunState {
             return;
         }
 
-        self.effects().push(Effect::EntityComponentInsert(
-            entity_id,
-            id,
-            component.as_bytes().to_vec(),
-        ));
+        self.effects()
+            .push(Effect::EntityComponentInsert(EntityComponentInsert {
+                entity: entity_id,
+                component_id: id,
+                component: component.clone(),
+            }));
         self.new_world.insert(entity_id, id, component);
     }
 
@@ -282,7 +285,10 @@ impl RunState {
 
         if self.new_world.remove(entity_id, id).is_some() {
             self.effects()
-                .push(Effect::EntityComponentRemove(entity_id, id));
+                .push(Effect::EntityComponentRemove(EntityComponentRemove {
+                    entity: entity_id,
+                    component_id: id,
+                }));
             true
         } else {
             false

@@ -1,10 +1,7 @@
 //! Events dispatched from the game, handled by a script
 //!
 
-use alloc::vec::Vec;
-
-use crate::components::Decode;
-use crate::components::Encode;
+use crate::encoding::{encode_value, Decode, Encode};
 use crate::player::PlayerId;
 use crate::raw::event_dispatch;
 use crate::record::{ModuleId, RecordId, RecordReference};
@@ -126,15 +123,27 @@ pub trait Event: Encode + Decode {
     const ID: RecordReference;
 }
 
-pub fn dispatch_event<T>(event: T)
+pub fn dispatch_event<T>(event: &T)
 where
     T: Event,
 {
-    let mut buf = Vec::new();
-    event.encode(&mut buf);
+    dispatch_event_dynamic(T::ID, event);
+}
+
+pub fn dispatch_event_dynamic<T>(id: RecordReference, event: &T)
+where
+    T: Encode,
+{
+    let (data, fields) = encode_value(event);
 
     unsafe {
-        event_dispatch(&T::ID, buf.as_ptr(), buf.len());
+        event_dispatch(
+            &id,
+            data.as_ptr(),
+            data.len(),
+            fields.as_ptr(),
+            fields.len(),
+        );
     }
 }
 

@@ -22,8 +22,11 @@ pub mod raw;
 #[cfg(not(feature = "raw"))]
 mod raw;
 
+mod host_buffer;
+
 pub mod action;
 pub mod components;
+pub mod encoding;
 pub mod entity;
 pub mod events;
 pub mod inventory;

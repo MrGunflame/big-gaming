@@ -2,7 +2,8 @@ use core::ops::{Mul, MulAssign};
 
 use glam::{Mat3, Mat4, Quat, Vec3};
 
-use crate::components::{Component, Decode, Encode};
+use crate::components::Component;
+use crate::encoding::{Decode, Encode};
 use crate::record::RecordReference;
 
 use super::TRANSFORM;

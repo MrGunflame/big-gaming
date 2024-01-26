@@ -199,7 +199,7 @@ pub fn inventory_component_insert(
         entity_id,
         slot_id,
         component_id,
-        RawComponent::new(bytes),
+        RawComponent::new(bytes, vec![]),
     ) {
         return Ok(err.to_u32());
     };

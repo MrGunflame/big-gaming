@@ -1,6 +1,6 @@
 use game_wasm::action::Action;
 use game_wasm::components::builtin::{Collider, Transform};
-use game_wasm::components::{Decode, Encode};
+use game_wasm::encoding::{Decode, Encode};
 use game_wasm::entity::EntityId;
 use game_wasm::math::Vec3;
 use game_wasm::world::{Entity, RecordReference};

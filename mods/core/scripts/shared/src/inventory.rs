@@ -1,15 +1,14 @@
-use alloc::borrow::ToOwned;
 use game_wasm::action::Action;
-use game_wasm::components::builtin::{MeshInstance, Transform};
-use game_wasm::components::{Decode, Encode};
+use game_wasm::encoding::{Decode, Encode};
 use game_wasm::entity::EntityId;
+use game_wasm::events::dispatch_event_dynamic;
 use game_wasm::inventory::{Inventory, InventoryId};
-use game_wasm::world::{Entity, RecordReference};
+use game_wasm::world::RecordReference;
 
-use crate::components::{EQUIP, EQUIPPABLE};
+use crate::components::{EQUIP, EQUIPPABLE, UNEQUIP};
 use crate::Equippable;
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Encode, Decode)]
+#[derive(Copy, Clone, Debug, Encode, Decode)]
 pub struct Equip(InventoryId);
 
 impl Action for Equip {
@@ -26,13 +25,44 @@ pub fn on_equip(entity: EntityId, Equip(slot): Equip) {
     let Ok(equppable) = stack.components().get(EQUIPPABLE) else {
         return;
     };
-    let equippable = Equippable::decode(equppable.as_bytes()).unwrap();
+    let equippable = Equippable::decode(equppable.reader()).unwrap();
 
     stack.equip(true).unwrap();
 
-    let item = Entity::spawn();
-    item.insert(Transform::default());
-    item.insert(MeshInstance {
-        path: "assets/human.glb".to_owned(),
-    });
+    dispatch_event_dynamic(equippable.on_equip, &ItemEquip { entity, slot });
+}
+
+#[derive(Copy, Clone, Debug, Encode, Decode)]
+pub struct Unequip(InventoryId);
+
+impl Action for Unequip {
+    const ID: RecordReference = UNEQUIP;
+}
+
+pub fn on_uneqip(entity: EntityId, Unequip(slot): Unequip) {
+    let inventory = Inventory::new(entity);
+
+    let Ok(mut stack) = inventory.get(slot) else {
+        return;
+    };
+
+    let Ok(equippable) = stack.components().get(EQUIPPABLE) else {
+        return;
+    };
+    let equippable = Equippable::decode(equippable.reader()).unwrap();
+    stack.equip(false).unwrap();
+
+    dispatch_event_dynamic(equippable.on_uneqip, &ItemUnequip { entity, slot });
+}
+
+#[derive(Copy, Clone, Debug, Encode, Decode)]
+pub struct ItemEquip {
+    pub entity: EntityId,
+    pub slot: InventoryId,
+}
+
+#[derive(Copy, Clone, Debug, Encode, Decode)]
+pub struct ItemUnequip {
+    pub entity: EntityId,
+    pub slot: InventoryId,
 }

@@ -20,23 +20,26 @@ pub fn world_entity_despawn(id: u64) -> u32;
 pub fn world_entity_component_len(
     entity_id: u64,
     component_id: *const RecordReference,
-    out: *mut u32,
+    data_out: *mut usize,
+    fields_out: *mut usize,
 ) -> u32;
 
 #[guest_only]
 pub fn world_entity_component_get(
     entity_id: u64,
     component_id: *const RecordReference,
-    out: *mut u8,
-    len: u32,
+    data_out: *mut u8,
+    fields_out: *mut u8,
 ) -> u32;
 
 #[guest_only]
 pub fn world_entity_component_insert(
     entity_id: u64,
     component_id: *const RecordReference,
-    ptr: *const u8,
-    len: u32,
+    data_ptr: *const u8,
+    data_len: usize,
+    fields_ptr: *const u8,
+    fields_len: usize,
 ) -> u32;
 
 #[guest_only]
