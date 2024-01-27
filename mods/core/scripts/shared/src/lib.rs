@@ -38,6 +38,7 @@ use game_wasm::system::register_system;
 use game_wasm::world::Entity;
 
 use game_wasm::world::RecordReference;
+use weapon::EquippedItem;
 
 #[on_init]
 pub fn on_init() {
@@ -74,6 +75,13 @@ pub fn on_init() {
 
     register_event_handler(weapon::gun_equip);
     register_event_handler(weapon::gun_unequip);
+
+    register_system(
+        game_wasm::system::Query {
+            components: vec![Transform::ID, EquippedItem::ID],
+        },
+        weapon::translate_equipped_items,
+    );
 }
 
 pub fn extract_actor_rotation(rotation: Quat) -> Quat {
