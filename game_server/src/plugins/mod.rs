@@ -146,8 +146,23 @@ fn apply_effects(effects: Effects, world: &mut WorldState, level: &mut Level) {
                     .copied()
                     .unwrap_or(effect.entity);
 
-                let Some(component) = effect.component.remap(&entity_id_remap) else {
-                    continue;
+                let component = match effect.component.remap(|entity| {
+                    match entity_id_remap.get(&entity).copied() {
+                        Some(entity) => Some(entity),
+                        None => {
+                            if world.world.contains(entity) {
+                                Some(entity)
+                            } else {
+                                None
+                            }
+                        }
+                    }
+                }) {
+                    Ok(component) => component,
+                    Err(err) => {
+                        tracing::warn!("discarding invalid component: {}", err);
+                        continue;
+                    }
                 };
 
                 world.world.insert(entity, effect.component_id, component);
