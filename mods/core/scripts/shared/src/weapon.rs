@@ -1,3 +1,5 @@
+use core::ptr::eq;
+
 use alloc::borrow::ToOwned;
 use alloc::string::ToString;
 use game_wasm::action::Action;
@@ -156,4 +158,16 @@ pub struct EquippedItem {
 
 impl Component for EquippedItem {
     const ID: RecordReference = EQUIPPED_ITEM;
+}
+
+pub fn translate_equipped_items(entity: EntityId) {
+    let entity = Entity::new(entity);
+
+    let transform = entity.get::<Transform>().unwrap();
+    let equipped = entity.get::<EquippedItem>().unwrap();
+
+    let item = Entity::new(equipped.entity);
+    let mut item_transform = item.get::<Transform>().unwrap();
+    item_transform = transform;
+    item.insert(item_transform);
 }
