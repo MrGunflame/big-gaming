@@ -85,7 +85,11 @@ fn build_projectile(
         rotation,
         scale: Vec3::splat(1.0),
     });
-    entity.insert(ProjectileProperties { damage, owner });
+    entity.insert(ProjectileProperties {
+        damage,
+        owner,
+        speed: 1.0,
+    });
     entity.insert(MeshInstance {
         path: "assets/bullet.glb".to_string(),
     });

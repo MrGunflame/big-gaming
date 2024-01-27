@@ -3,6 +3,7 @@ use game_wasm::entity::EntityId;
 use game_wasm::math::{Ray, Vec3};
 use game_wasm::physics::{cast_ray, QueryFilter};
 use game_wasm::world::Entity;
+use game_wasm::DT;
 
 use crate::{apply_actor_damage, ProjectileProperties};
 
@@ -21,10 +22,11 @@ pub fn drive_projectile(entity: EntityId) {
         exclude_entities: &[],
     };
 
+    let direction = transform.rotation * -Vec3::Z;
     match cast_ray(
         Ray {
             origin: transform.translation,
-            direction: transform.rotation * -Vec3::Z,
+            direction,
         },
         max_toi,
         filter,
@@ -39,7 +41,7 @@ pub fn drive_projectile(entity: EntityId) {
             apply_actor_damage(props.damage as u32, target);
         }
         Some(_) | None => {
-            transform.translation += transform.rotation * -Vec3::Z;
+            transform.translation += direction * props.speed * DT;
             entity.insert(transform);
         }
     }

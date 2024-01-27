@@ -4,9 +4,10 @@ use game_wasm::encoding::{Decode, Encode};
 use game_wasm::entity::EntityId;
 use game_wasm::math::Vec3;
 use game_wasm::world::{Entity, RecordReference};
+use game_wasm::DT;
 
 use crate::components::{MOVE_BACK, MOVE_FORWARD, MOVE_LEFT, MOVE_RIGHT};
-use crate::{controller, extract_actor_rotation, MovementSpeed, UPS};
+use crate::{controller, extract_actor_rotation, MovementSpeed};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Encode, Decode)]
 pub struct MoveForward;
@@ -61,7 +62,7 @@ fn move_direction(entity: EntityId, dir: Vec3) {
 
     let rotation = extract_actor_rotation(transform.rotation);
 
-    let direction = rotation * dir * (speed.0 / UPS);
+    let direction = rotation * dir * speed.0 * DT;
 
     controller::move_shape(entity.id(), &mut transform, direction, &collider.shape);
 

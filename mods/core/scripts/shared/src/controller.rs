@@ -40,9 +40,9 @@ pub fn move_shape(
 
 use game_wasm::components::builtin::{Collider, RigidBody};
 use game_wasm::world::Entity;
+use game_wasm::DT;
 
 const G: f32 = -9.81;
-const DT: f32 = 1.0 / 60.0;
 
 pub fn drive_character_controller(entity: EntityId) {
     let entity = Entity::new(entity);
