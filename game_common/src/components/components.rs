@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use ahash::HashMap;
 use game_wasm::encoding::{BinaryReader, Field, Primitive};
+use thiserror::Error;
 
 use crate::entity::EntityId;
 use crate::record::RecordReference;
@@ -91,32 +92,35 @@ impl RawComponent {
         BinaryReader::new(self.bytes.to_vec(), self.fields.clone().into())
     }
 
-    pub fn remap(self, entity_id_remap: &HashMap<EntityId, EntityId>) -> Option<RawComponent> {
+    pub fn remap(
+        self,
+        get_entity: impl Fn(EntityId) -> Option<EntityId>,
+    ) -> Result<RawComponent, RemapError> {
         let mut bytes = Cow::Borrowed(&self.bytes[..]);
         for field in &self.fields {
             match field.primitive {
                 Primitive::EntityId => {
                     let Some(slice) = bytes.to_mut().get_mut(field.offset..field.offset + 8) else {
-                        return None;
+                        return Err(RemapError::Eof);
                     };
 
                     let temp_entity =
                         EntityId::from_raw(u64::from_le_bytes(slice.try_into().unwrap()));
-                    let Some(real_id) = entity_id_remap.get(&temp_entity) else {
-                        return None;
+                    let Some(real_id) = get_entity(temp_entity) else {
+                        return Err(RemapError::InvalidEntity);
                     };
 
                     let src = real_id.into_raw().to_le_bytes();
                     slice.copy_from_slice(&src);
                 }
-                Primitive::PlayerId => return None,
+                Primitive::PlayerId => return Err(RemapError::Player),
                 Primitive::Bytes => (),
             }
         }
 
         match bytes {
-            Cow::Borrowed(_) => Some(self),
-            Cow::Owned(data) => Some(Self {
+            Cow::Borrowed(_) => Ok(self),
+            Cow::Owned(data) => Ok(Self {
                 bytes: data.into(),
                 fields: self.fields,
             }),
@@ -145,4 +149,14 @@ impl<'a> ExactSizeIterator for Iter<'a> {
     fn len(&self) -> usize {
         self.inner.len()
     }
+}
+
+#[derive(Copy, Clone, Debug, Error)]
+pub enum RemapError {
+    #[error("unexpected eof")]
+    Eof,
+    #[error("contains invalid entity reference")]
+    InvalidEntity,
+    #[error("player reference not allowed")]
+    Player,
 }

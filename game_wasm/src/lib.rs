@@ -39,6 +39,8 @@ pub mod record;
 pub mod system;
 pub mod world;
 
+pub static DT: f32 = 1.0 / 60.0;
+
 /// The error type returned by failed operations.
 #[derive(Clone, Debug)]
 pub struct Error(ErrorImpl);

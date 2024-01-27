@@ -39,11 +39,6 @@ use game_wasm::world::Entity;
 
 use game_wasm::world::RecordReference;
 
-/// Updates per second.
-// FIXME: Unhardcode this value, it should be provided by the runtime
-// to support running the game different update rates.
-const UPS: f32 = 60.0;
-
 #[on_init]
 pub fn on_init() {
     register_system(
@@ -171,6 +166,8 @@ impl Component for Health {
 #[derive(Copy, Clone, Debug, Encode, Decode)]
 pub struct ProjectileProperties {
     pub damage: f32,
+    /// Projectile speed in m/s.
+    pub speed: f32,
     pub owner: EntityId,
 }
 
