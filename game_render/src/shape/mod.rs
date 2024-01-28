@@ -1,4 +1,4 @@
-use glam::Vec2;
+use glam::{Vec2, Vec3};
 
 use crate::mesh::{Indices, Mesh};
 
@@ -16,101 +16,101 @@ impl From<Box> for Mesh {
     fn from(s: Box) -> Self {
         let positions = [
             // Front
-            [s.min_x, s.min_y, s.max_z],
-            [s.max_x, s.min_y, s.max_z],
-            [s.max_x, s.max_y, s.max_z],
-            [s.min_x, s.max_y, s.max_z],
+            Vec3::new(s.min_x, s.min_y, s.max_z),
+            Vec3::new(s.max_x, s.min_y, s.max_z),
+            Vec3::new(s.max_x, s.max_y, s.max_z),
+            Vec3::new(s.min_x, s.max_y, s.max_z),
             // Back
-            [s.min_x, s.max_y, s.min_z],
-            [s.max_x, s.max_y, s.min_z],
-            [s.max_x, s.min_y, s.min_z],
-            [s.min_x, s.min_y, s.min_z],
+            Vec3::new(s.min_x, s.max_y, s.min_z),
+            Vec3::new(s.max_x, s.max_y, s.min_z),
+            Vec3::new(s.max_x, s.min_y, s.min_z),
+            Vec3::new(s.min_x, s.min_y, s.min_z),
             // Right
-            [s.max_x, s.min_y, s.min_z],
-            [s.max_x, s.max_y, s.min_z],
-            [s.max_x, s.max_y, s.max_z],
-            [s.max_x, s.min_y, s.max_z],
+            Vec3::new(s.max_x, s.min_y, s.min_z),
+            Vec3::new(s.max_x, s.max_y, s.min_z),
+            Vec3::new(s.max_x, s.max_y, s.max_z),
+            Vec3::new(s.max_x, s.min_y, s.max_z),
             // Left
-            [s.min_x, s.min_y, s.max_z],
-            [s.min_x, s.max_y, s.max_z],
-            [s.min_x, s.max_y, s.min_z],
-            [s.min_x, s.min_y, s.min_z],
+            Vec3::new(s.min_x, s.min_y, s.max_z),
+            Vec3::new(s.min_x, s.max_y, s.max_z),
+            Vec3::new(s.min_x, s.max_y, s.min_z),
+            Vec3::new(s.min_x, s.min_y, s.min_z),
             // Top
-            [s.max_x, s.max_y, s.min_z],
-            [s.min_x, s.max_y, s.min_z],
-            [s.min_x, s.max_y, s.max_z],
-            [s.max_x, s.max_y, s.max_z],
+            Vec3::new(s.max_x, s.max_y, s.min_z),
+            Vec3::new(s.min_x, s.max_y, s.min_z),
+            Vec3::new(s.min_x, s.max_y, s.max_z),
+            Vec3::new(s.max_x, s.max_y, s.max_z),
             // Bottom
-            [s.max_x, s.min_y, s.max_z],
-            [s.min_x, s.min_y, s.max_z],
-            [s.min_x, s.min_y, s.min_z],
-            [s.max_x, s.min_y, s.min_z],
+            Vec3::new(s.max_x, s.min_y, s.max_z),
+            Vec3::new(s.min_x, s.min_y, s.max_z),
+            Vec3::new(s.min_x, s.min_y, s.min_z),
+            Vec3::new(s.max_x, s.min_y, s.min_z),
         ];
 
         let normals = [
             // Front
-            [0.0, 0.0, 1.0],
-            [0.0, 0.0, 1.0],
-            [0.0, 0.0, 1.0],
-            [0.0, 0.0, 1.0],
+            Vec3::new(0.0, 0.0, 1.0),
+            Vec3::new(0.0, 0.0, 1.0),
+            Vec3::new(0.0, 0.0, 1.0),
+            Vec3::new(0.0, 0.0, 1.0),
             // Back
-            [0.0, 0.0, -1.0],
-            [0.0, 0.0, -1.0],
-            [0.0, 0.0, -1.0],
-            [0.0, 0.0, -1.0],
+            Vec3::new(0.0, 0.0, -1.0),
+            Vec3::new(0.0, 0.0, -1.0),
+            Vec3::new(0.0, 0.0, -1.0),
+            Vec3::new(0.0, 0.0, -1.0),
             // Right
-            [1.0, 0.0, 0.0],
-            [1.0, 0.0, 0.0],
-            [1.0, 0.0, 0.0],
-            [1.0, 0.0, 0.0],
+            Vec3::new(1.0, 0.0, 0.0),
+            Vec3::new(1.0, 0.0, 0.0),
+            Vec3::new(1.0, 0.0, 0.0),
+            Vec3::new(1.0, 0.0, 0.0),
             // Left
-            [-1.0, 0.0, 0.0],
-            [-1.0, 0.0, 0.0],
-            [-1.0, 0.0, 0.0],
-            [-1.0, 0.0, 0.0],
+            Vec3::new(-1.0, 0.0, 0.0),
+            Vec3::new(-1.0, 0.0, 0.0),
+            Vec3::new(-1.0, 0.0, 0.0),
+            Vec3::new(-1.0, 0.0, 0.0),
             // Top
-            [0.0, 1.0, 0.0],
-            [0.0, 1.0, 0.0],
-            [0.0, 1.0, 0.0],
-            [0.0, 1.0, 0.0],
+            Vec3::new(0.0, 1.0, 0.0),
+            Vec3::new(0.0, 1.0, 0.0),
+            Vec3::new(0.0, 1.0, 0.0),
+            Vec3::new(0.0, 1.0, 0.0),
             // Bottom
-            [0.0, -1.0, 0.0],
-            [0.0, -1.0, 0.0],
-            [0.0, -1.0, 0.0],
-            [0.0, -1.0, 0.0],
+            Vec3::new(0.0, -1.0, 0.0),
+            Vec3::new(0.0, -1.0, 0.0),
+            Vec3::new(0.0, -1.0, 0.0),
+            Vec3::new(0.0, -1.0, 0.0),
         ];
 
         let uvs = [
             // Front
-            [0.0, 0.0],
-            [1.0, 0.0],
-            [1.0, 1.0],
-            [0.0, 1.0],
+            Vec2::new(0.0, 0.0),
+            Vec2::new(1.0, 0.0),
+            Vec2::new(1.0, 1.0),
+            Vec2::new(0.0, 1.0),
             // Back
-            [1.0, 0.0],
-            [0.0, 0.0],
-            [0.0, 1.0],
-            [1.0, 1.0],
+            Vec2::new(1.0, 0.0),
+            Vec2::new(0.0, 0.0),
+            Vec2::new(0.0, 1.0),
+            Vec2::new(1.0, 1.0),
             // Right
-            [0.0, 0.0],
-            [1.0, 0.0],
-            [1.0, 1.0],
-            [0.0, 1.0],
+            Vec2::new(0.0, 0.0),
+            Vec2::new(1.0, 0.0),
+            Vec2::new(1.0, 1.0),
+            Vec2::new(0.0, 1.0),
             // Left
-            [1.0, 0.0],
-            [0.0, 0.0],
-            [0.0, 1.0],
-            [1.0, 1.0],
+            Vec2::new(1.0, 0.0),
+            Vec2::new(0.0, 0.0),
+            Vec2::new(0.0, 1.0),
+            Vec2::new(1.0, 1.0),
             // Top
-            [1.0, 0.0],
-            [0.0, 0.0],
-            [0.0, 1.0],
-            [1.0, 1.0],
+            Vec2::new(1.0, 0.0),
+            Vec2::new(0.0, 0.0),
+            Vec2::new(0.0, 1.0),
+            Vec2::new(1.0, 1.0),
             // Bottom
-            [0.0, 0.0],
-            [1.0, 0.0],
-            [1.0, 1.0],
-            [0.0, 1.0],
+            Vec2::new(0.0, 0.0),
+            Vec2::new(1.0, 0.0),
+            Vec2::new(1.0, 1.0),
+            Vec2::new(0.0, 1.0),
         ];
 
         let indicies = vec![
@@ -142,20 +142,25 @@ impl From<Plane> for Mesh {
         let max = s.size / 2.0;
 
         let positions = [
-            [max, 0.0, min],
-            [min, 0.0, min],
-            [min, 0.0, max],
-            [max, 0.0, max],
+            Vec3::new(max, 0.0, min),
+            Vec3::new(min, 0.0, min),
+            Vec3::new(min, 0.0, max),
+            Vec3::new(max, 0.0, max),
         ];
 
         let normals = [
-            [0.0, 1.0, 0.0],
-            [0.0, 1.0, 0.0],
-            [0.0, 1.0, 0.0],
-            [0.0, 1.0, 0.0],
+            Vec3::new(0.0, 1.0, 0.0),
+            Vec3::new(0.0, 1.0, 0.0),
+            Vec3::new(0.0, 1.0, 0.0),
+            Vec3::new(0.0, 1.0, 0.0),
         ];
 
-        let uvs = [[0.0, 0.0], [1.0, 1.0], [0.0, 1.0], [1.0, 0.0]];
+        let uvs = [
+            Vec2::new(0.0, 0.0),
+            Vec2::new(1.0, 1.0),
+            Vec2::new(0.0, 1.0),
+            Vec2::new(1.0, 0.0),
+        ];
 
         let indicies = vec![0, 1, 2, 2, 3, 0];
 
@@ -213,18 +218,23 @@ impl From<Quad> for Mesh {
                 let max_y = s.size.y / 2.0;
 
                 positions = vec![
-                    [min_x, min_y, 0.0],
-                    [max_x, min_y, 0.0],
-                    [max_x, max_y, 0.0],
-                    [min_x, max_y, 0.0],
+                    Vec3::new(min_x, min_y, 0.0),
+                    Vec3::new(max_x, min_y, 0.0),
+                    Vec3::new(max_x, max_y, 0.0),
+                    Vec3::new(min_x, max_y, 0.0),
                 ];
                 normals = vec![
-                    [0.0, 0.0, 1.0],
-                    [0.0, 0.0, 1.0],
-                    [0.0, 0.0, 1.0],
-                    [0.0, 0.0, 1.0],
+                    Vec3::new(0.0, 0.0, 1.0),
+                    Vec3::new(0.0, 0.0, 1.0),
+                    Vec3::new(0.0, 0.0, 1.0),
+                    Vec3::new(0.0, 0.0, 1.0),
                 ];
-                uvs = vec![[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]];
+                uvs = vec![
+                    Vec2::new(0.0, 0.0),
+                    Vec2::new(1.0, 0.0),
+                    Vec2::new(1.0, 1.0),
+                    Vec2::new(0.0, 1.0),
+                ];
             }
             Face::Back => {
                 let min_x = -s.size.x / 2.0;
@@ -233,18 +243,23 @@ impl From<Quad> for Mesh {
                 let max_y = s.size.y / 2.0;
 
                 positions = vec![
-                    [min_x, max_y, 0.0],
-                    [max_x, max_y, 0.0],
-                    [max_x, min_y, 0.0],
-                    [min_x, min_y, 0.0],
+                    Vec3::new(min_x, max_y, 0.0),
+                    Vec3::new(max_x, max_y, 0.0),
+                    Vec3::new(max_x, min_y, 0.0),
+                    Vec3::new(min_x, min_y, 0.0),
                 ];
                 normals = vec![
-                    [0.0, 0.0, -1.0],
-                    [0.0, 0.0, -1.0],
-                    [0.0, 0.0, -1.0],
-                    [0.0, 0.0, -1.0],
+                    Vec3::new(0.0, 0.0, -1.0),
+                    Vec3::new(0.0, 0.0, -1.0),
+                    Vec3::new(0.0, 0.0, -1.0),
+                    Vec3::new(0.0, 0.0, -1.0),
                 ];
-                uvs = vec![[1.0, 0.0], [0.0, 0.0], [0.0, 1.0], [1.0, 1.0]];
+                uvs = vec![
+                    Vec2::new(1.0, 0.0),
+                    Vec2::new(0.0, 0.0),
+                    Vec2::new(0.0, 1.0),
+                    Vec2::new(1.0, 1.0),
+                ];
             }
             Face::Right => {
                 let min_y = -s.size.y / 2.0;
@@ -253,18 +268,23 @@ impl From<Quad> for Mesh {
                 let max_z = s.size.x / 2.0;
 
                 positions = vec![
-                    [0.0, min_y, min_z],
-                    [0.0, max_y, min_z],
-                    [0.0, max_y, max_z],
-                    [0.0, min_y, max_z],
+                    Vec3::new(0.0, min_y, min_z),
+                    Vec3::new(0.0, max_y, min_z),
+                    Vec3::new(0.0, max_y, max_z),
+                    Vec3::new(0.0, min_y, max_z),
                 ];
                 normals = vec![
-                    [1.0, 0.0, 0.0],
-                    [1.0, 0.0, 0.0],
-                    [1.0, 0.0, 0.0],
-                    [1.0, 0.0, 0.0],
+                    Vec3::new(1.0, 0.0, 0.0),
+                    Vec3::new(1.0, 0.0, 0.0),
+                    Vec3::new(1.0, 0.0, 0.0),
+                    Vec3::new(1.0, 0.0, 0.0),
                 ];
-                uvs = vec![[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]];
+                uvs = vec![
+                    Vec2::new(0.0, 0.0),
+                    Vec2::new(1.0, 0.0),
+                    Vec2::new(1.0, 1.0),
+                    Vec2::new(0.0, 1.0),
+                ];
             }
             Face::Left => {
                 let min_y = -s.size.y / 2.0;
@@ -273,18 +293,23 @@ impl From<Quad> for Mesh {
                 let max_z = s.size.x / 2.0;
 
                 positions = vec![
-                    [0.0, min_y, max_z],
-                    [0.0, max_y, max_z],
-                    [0.0, max_y, min_z],
-                    [0.0, min_y, min_z],
+                    Vec3::new(0.0, min_y, max_z),
+                    Vec3::new(0.0, max_y, max_z),
+                    Vec3::new(0.0, max_y, min_z),
+                    Vec3::new(0.0, min_y, min_z),
                 ];
                 normals = vec![
-                    [-1.0, 0.0, 0.0],
-                    [-1.0, 0.0, 0.0],
-                    [-1.0, 0.0, 0.0],
-                    [-1.0, 0.0, 0.0],
+                    Vec3::new(-1.0, 0.0, 0.0),
+                    Vec3::new(-1.0, 0.0, 0.0),
+                    Vec3::new(-1.0, 0.0, 0.0),
+                    Vec3::new(-1.0, 0.0, 0.0),
                 ];
-                uvs = vec![[1.0, 0.0], [0.0, 0.0], [0.0, 1.0], [1.0, 1.0]];
+                uvs = vec![
+                    Vec2::new(1.0, 0.0),
+                    Vec2::new(0.0, 0.0),
+                    Vec2::new(0.0, 1.0),
+                    Vec2::new(1.0, 1.0),
+                ];
             }
             Face::Top => {
                 let min_x = -s.size.x / 2.0;
@@ -293,18 +318,23 @@ impl From<Quad> for Mesh {
                 let max_z = s.size.y / 2.0;
 
                 positions = vec![
-                    [max_x, 0.0, min_z],
-                    [min_x, 0.0, min_z],
-                    [min_x, 0.0, max_z],
-                    [max_x, 0.0, max_z],
+                    Vec3::new(max_x, 0.0, min_z),
+                    Vec3::new(min_x, 0.0, min_z),
+                    Vec3::new(min_x, 0.0, max_z),
+                    Vec3::new(max_x, 0.0, max_z),
                 ];
                 normals = vec![
-                    [0.0, 1.0, 0.0],
-                    [0.0, 1.0, 0.0],
-                    [0.0, 1.0, 0.0],
-                    [0.0, 1.0, 0.0],
+                    Vec3::new(0.0, 1.0, 0.0),
+                    Vec3::new(0.0, 1.0, 0.0),
+                    Vec3::new(0.0, 1.0, 0.0),
+                    Vec3::new(0.0, 1.0, 0.0),
                 ];
-                uvs = vec![[1.0, 0.0], [0.0, 0.0], [0.0, 1.0], [1.0, 1.0]];
+                uvs = vec![
+                    Vec2::new(1.0, 0.0),
+                    Vec2::new(0.0, 0.0),
+                    Vec2::new(0.0, 1.0),
+                    Vec2::new(1.0, 1.0),
+                ];
             }
             Face::Bottom => {
                 let min_x = -s.size.x / 2.0;
@@ -313,18 +343,23 @@ impl From<Quad> for Mesh {
                 let max_z = s.size.y / 2.0;
 
                 positions = vec![
-                    [max_x, 0.0, max_z],
-                    [min_x, 0.0, max_z],
-                    [min_x, 0.0, min_z],
-                    [max_x, 0.0, min_z],
+                    Vec3::new(max_x, 0.0, max_z),
+                    Vec3::new(min_x, 0.0, max_z),
+                    Vec3::new(min_x, 0.0, min_z),
+                    Vec3::new(max_x, 0.0, min_z),
                 ];
                 normals = vec![
-                    [0.0, -1.0, 0.0],
-                    [0.0, -1.0, 0.0],
-                    [0.0, -1.0, 0.0],
-                    [0.0, -1.0, 0.0],
+                    Vec3::new(0.0, -1.0, 0.0),
+                    Vec3::new(0.0, -1.0, 0.0),
+                    Vec3::new(0.0, -1.0, 0.0),
+                    Vec3::new(0.0, -1.0, 0.0),
                 ];
-                uvs = vec![[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]];
+                uvs = vec![
+                    Vec2::new(0.0, 0.0),
+                    Vec2::new(1.0, 0.0),
+                    Vec2::new(1.0, 1.0),
+                    Vec2::new(0.0, 1.0),
+                ];
             }
         }
 

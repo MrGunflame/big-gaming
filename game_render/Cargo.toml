@@ -24,3 +24,4 @@ image = "0.24.6"
 parking_lot = "0.12.1"
 bitflags = { version = "2.3.3", features = ["bytemuck"] }
 slotmap = "1.0.6"
+mikktspace = "0.3.0"
