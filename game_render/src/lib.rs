@@ -19,7 +19,7 @@ mod pipelined_rendering;
 mod post_process;
 mod state;
 
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 
 use game_tasks::TaskPool;
@@ -99,6 +99,7 @@ impl Renderer {
                 state: state.clone(),
                 forward: forward.clone(),
                 post_process,
+                depth_stencils: Mutex::new(HashMap::new()),
             });
         }
 

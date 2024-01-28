@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::Arc;
@@ -5,11 +6,17 @@ use std::sync::Arc;
 use game_common::cell::UnsafeRefCell;
 use game_tasks::park::Parker;
 use game_tracing::trace_span;
-use wgpu::{Adapter, CommandEncoderDescriptor, Device, Instance, Queue, TextureViewDescriptor};
+use glam::UVec2;
+use wgpu::{
+    Adapter, CommandEncoderDescriptor, Device, Extent3d, Instance, Queue, Texture,
+    TextureDescriptor, TextureDimension, TextureFormat, TextureUsages, TextureViewDescriptor,
+};
 
+use crate::camera::RenderTarget;
 use crate::graph::{RenderContext, RenderGraph};
 use crate::mipmap::MipMapGenerator;
 use crate::surface::RenderSurfaces;
+use crate::texture::RenderImageId;
 
 const PIPELINE_STATE_RENDERING: u8 = 1;
 const PIPELINE_STATE_IDLE: u8 = 2;
@@ -20,6 +27,7 @@ pub struct SharedState {
     pub device: Device,
     pub queue: Queue,
     pub surfaces: UnsafeRefCell<RenderSurfaces>,
+    pub render_textures: UnsafeRefCell<HashMap<RenderImageId, RenderImageGpu>>,
     mipmap_generator: UnsafeRefCell<MipMapGenerator>,
     pub graph: UnsafeRefCell<RenderGraph>,
     state: AtomicU8,
@@ -53,6 +61,7 @@ impl Pipeline {
             state: AtomicU8::new(PIPELINE_STATE_IDLE),
             graph: UnsafeRefCell::new(RenderGraph::default()),
             main_unparker,
+            render_textures: UnsafeRefCell::new(HashMap::new()),
         });
 
         let render_unparker = start_render_thread(shared.clone());
@@ -145,12 +154,10 @@ unsafe fn execute_render(shared: &SharedState) {
             });
 
         let mut ctx = RenderContext {
-            window: *window,
+            render_target: RenderTarget::Window(*window),
             encoder: &mut encoder,
-            width: output.texture.width(),
-            height: output.texture.height(),
+            size: UVec2::new(surface.config.width, surface.config.height),
             target: &target,
-            surface,
             format: surface.config.format,
             device: &shared.device,
             queue: &shared.queue,
@@ -164,4 +171,54 @@ unsafe fn execute_render(shared: &SharedState) {
         shared.queue.submit(std::iter::once(encoder.finish()));
         output.present();
     }
+
+    let mut render_textures = unsafe { shared.render_textures.get_mut() };
+    for (id, render_texture) in render_textures.iter_mut() {
+        let texture = render_texture.texture.get_or_insert_with(|| {
+            let texture = shared.device.create_texture(&TextureDescriptor {
+                label: None,
+                size: Extent3d {
+                    width: render_texture.size.x,
+                    height: render_texture.size.y,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: TextureDimension::D2,
+                format: TextureFormat::Rgba8Unorm,
+                usage: TextureUsages::COPY_SRC | TextureUsages::RENDER_ATTACHMENT,
+                view_formats: &[],
+            });
+
+            texture
+        });
+
+        let target = texture.create_view(&TextureViewDescriptor::default());
+
+        let mut encoder = shared
+            .device
+            .create_command_encoder(&CommandEncoderDescriptor { label: None });
+
+        let mut ctx = RenderContext {
+            render_target: RenderTarget::Image(*id),
+            encoder: &mut encoder,
+            size: render_texture.size,
+            target: &target,
+            format: texture.format(),
+            device: &shared.device,
+            queue: &shared.queue,
+            mipmap: &mut mipmap,
+        };
+
+        for node in &graph.nodes {
+            node.render(&mut ctx);
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct RenderImageGpu {
+    size: UVec2,
+    /// Texture if initiliazed.
+    texture: Option<Texture>,
 }

@@ -7,8 +7,6 @@ use wgpu::{
     TextureFormat, TextureUsages,
 };
 
-use crate::depth_stencil::DepthData;
-
 #[derive(Debug, Default)]
 pub struct RenderSurfaces {
     windows: HashMap<WindowId, SurfaceData>,
@@ -62,7 +60,6 @@ impl RenderSurfaces {
 pub struct SurfaceData {
     pub surface: Surface,
     pub config: SurfaceConfiguration,
-    pub depth: DepthData,
     /// A handle to the window underlying the `surface`.
     ///
     /// NOTE: The surface MUST be dropped before the handle to the window is dropped.
@@ -118,7 +115,6 @@ fn create_surface(
         surface,
         config,
         _window: window,
-        depth: DepthData::new(device, size),
     })
 }
 
@@ -130,8 +126,6 @@ fn resize_surface(surface: &mut SurfaceData, device: &Device, size: UVec2) {
     surface.config.width = size.x;
     surface.config.height = size.y;
     surface.surface.configure(device, &surface.config);
-
-    surface.depth = DepthData::new(device, size);
 }
 
 fn get_surface_format(formats: &[TextureFormat]) -> Option<TextureFormat> {

@@ -1,8 +1,8 @@
-use game_window::windows::WindowId;
+use glam::UVec2;
 use wgpu::{CommandEncoder, Device, Queue, TextureFormat, TextureView};
 
+use crate::camera::RenderTarget;
 use crate::mipmap::MipMapGenerator;
-use crate::surface::SurfaceData;
 
 #[derive(Default)]
 pub struct RenderGraph {
@@ -20,14 +20,12 @@ pub trait Node: Send + Sync + 'static {
 }
 
 pub struct RenderContext<'a> {
-    pub window: WindowId,
+    pub render_target: RenderTarget,
     pub encoder: &'a mut CommandEncoder,
     pub target: &'a TextureView,
-    pub width: u32,
-    pub height: u32,
+    pub size: UVec2,
     pub format: TextureFormat,
     pub device: &'a Device,
-    pub surface: &'a SurfaceData,
     pub queue: &'a Queue,
     pub mipmap: &'a mut MipMapGenerator,
 }
