@@ -24,7 +24,7 @@ game_tracing = { version = "0.1.0", path = "../game_tracing" }
 glam = "0.24.0"
 ab_glyph = "0.2.21"
 image = "0.24.6"
-wgpu = "0.16.0"
+wgpu = "0.19.1"
 bytemuck = "1.13.1"
 parking_lot = "0.12.1"
 slotmap = "1.0.6"

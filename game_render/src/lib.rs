@@ -46,8 +46,8 @@ use texture::image::ImageLoader;
 use texture::{Images, RenderImageId, RenderTextureEvent, RenderTextures};
 use tokio::sync::oneshot;
 use wgpu::{
-    Backends, Device, DeviceDescriptor, Features, Instance, InstanceDescriptor, Limits,
-    PowerPreference, Queue, RequestAdapterOptions,
+    Backends, Device, DeviceDescriptor, Features, Gles3MinorVersion, Instance, InstanceDescriptor,
+    InstanceFlags, Limits, PowerPreference, Queue, RequestAdapterOptions,
 };
 
 pub struct Renderer {
@@ -72,6 +72,8 @@ impl Renderer {
         let instance = Instance::new(InstanceDescriptor {
             backends: Backends::VULKAN,
             dx12_shader_compiler: Default::default(),
+            flags: InstanceFlags::DEBUG | InstanceFlags::VALIDATION,
+            gles_minor_version: Gles3MinorVersion::Automatic,
         });
 
         let adapter =
@@ -84,8 +86,8 @@ impl Renderer {
 
         let (device, queue) = futures_lite::future::block_on(adapter.request_device(
             &DeviceDescriptor {
-                features: Features::default(),
-                limits: Limits::default(),
+                required_features: Features::default(),
+                required_limits: Limits::default(),
                 label: None,
             },
             None,

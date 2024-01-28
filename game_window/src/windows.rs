@@ -3,7 +3,7 @@ use std::sync::{mpsc, Arc};
 
 use glam::{UVec2, Vec2};
 use raw_window_handle::{
-    HasRawDisplayHandle, HasRawWindowHandle, RawDisplayHandle, RawWindowHandle,
+    DisplayHandle, HandleError, HasDisplayHandle, HasWindowHandle, WindowHandle,
 };
 use slotmap::{DefaultKey, SlotMap};
 use winit::dpi::{LogicalPosition, Position};
@@ -191,15 +191,17 @@ impl WindowState {
     }
 }
 
-unsafe impl HasRawDisplayHandle for WindowState {
-    fn raw_display_handle(&self) -> RawDisplayHandle {
-        self.inner.raw_display_handle()
+impl HasDisplayHandle for WindowState {
+    #[inline]
+    fn display_handle(&self) -> Result<DisplayHandle<'_>, HandleError> {
+        self.inner.display_handle()
     }
 }
 
-unsafe impl HasRawWindowHandle for WindowState {
-    fn raw_window_handle(&self) -> RawWindowHandle {
-        self.inner.raw_window_handle()
+impl HasWindowHandle for WindowState {
+    #[inline]
+    fn window_handle(&self) -> Result<WindowHandle<'_>, HandleError> {
+        self.inner.window_handle()
     }
 }
 
