@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use game_tracing::trace_span;
+use glam::UVec2;
 use parking_lot::Mutex;
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
 use wgpu::{
@@ -13,6 +14,7 @@ use wgpu::{
 
 use crate::buffer::{DynamicBuffer, IndexBuffer};
 use crate::camera::{CameraBuffer, RenderTarget};
+use crate::depth_stencil::DepthData;
 use crate::entities::{CameraId, ObjectId};
 use crate::forward::ForwardPipeline;
 use crate::graph::{Node, RenderContext};
@@ -72,6 +74,7 @@ pub(crate) struct RenderPass {
     pub state: Arc<Mutex<RenderState>>,
     pub forward: Arc<ForwardPipeline>,
     pub post_process: PostProcessPipeline,
+    pub depth_stencils: Mutex<HashMap<RenderTarget, DepthData>>,
 }
 
 impl Node for RenderPass {
@@ -81,7 +84,9 @@ impl Node for RenderPass {
         state.update_buffers(ctx.device, ctx.queue, &self.forward, ctx.mipmap);
 
         for cam in state.camera_buffers.values() {
-            if cam.target == RenderTarget::Window(ctx.window) {
+            if cam.target == ctx.render_target {
+                self.update_depth_stencil(ctx.render_target, ctx.size, ctx.device);
+
                 self.render_camera_target(&state, cam, ctx);
                 return;
             }
@@ -94,6 +99,19 @@ impl Node for RenderPass {
 }
 
 impl RenderPass {
+    fn update_depth_stencil(&self, target: RenderTarget, size: UVec2, device: &Device) {
+        let mut depth_stencils = self.depth_stencils.lock();
+
+        if let Some(data) = depth_stencils.get(&target) {
+            // Texture size unchanged.
+            if data.texture.width() == size.x && data.texture.height() == size.y {
+                return;
+            }
+        }
+
+        depth_stencils.insert(target, DepthData::new(device, size));
+    }
+
     fn render_camera_target(
         &self,
         state: &RenderState,
@@ -104,6 +122,7 @@ impl RenderPass {
 
         let device = ctx.device;
         let pipeline = &self.forward;
+        let depth_stencils = self.depth_stencils.lock();
 
         let bind_groups = state
             .objects
@@ -147,9 +166,11 @@ impl RenderPass {
             ],
         });
 
+        let depth_stencil = depth_stencils.get(&ctx.render_target).unwrap();
+
         let size = Extent3d {
-            width: ctx.width,
-            height: ctx.height,
+            width: ctx.size.x,
+            height: ctx.size.y,
             depth_or_array_layers: 1,
         };
         let render_target = device.create_texture(&TextureDescriptor {
@@ -175,7 +196,7 @@ impl RenderPass {
                 },
             })],
             depth_stencil_attachment: Some(RenderPassDepthStencilAttachment {
-                view: &ctx.surface.depth.view,
+                view: &depth_stencil.view,
                 depth_ops: Some(Operations {
                     load: LoadOp::Clear(1.0),
                     store: true,

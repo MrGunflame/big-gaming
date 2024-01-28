@@ -9,6 +9,7 @@ use std::sync::Arc;
 
 use ::image::{ImageBuffer, Rgba};
 use bytemuck::{Pod, Zeroable};
+use game_render::camera::RenderTarget;
 use game_render::graph::{Node, RenderContext};
 use game_render::Renderer;
 use game_tracing::trace_span;
@@ -440,7 +441,12 @@ impl Node for UiPass {
         let _span = trace_span!("UiPass::render").entered();
 
         let elems = self.elements.read();
-        let Some(elements) = elems.get(&ctx.window) else {
+        // TODO: Rendering to non-window targets.
+        let RenderTarget::Window(window) = ctx.render_target else {
+            return;
+        };
+
+        let Some(elements) = elems.get(&window) else {
             return;
         };
 

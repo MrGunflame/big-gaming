@@ -9,6 +9,8 @@ use glam::{Mat4, UVec2, Vec2, Vec3};
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
 use wgpu::{Buffer, BufferUsages, Device};
 
+use crate::texture::RenderImageId;
+
 #[derive(Copy, Clone, Debug)]
 pub struct Camera {
     pub transform: Transform,
@@ -44,11 +46,12 @@ impl Camera {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum RenderTarget {
     /// Render to a window surface.
     Window(WindowId),
-    // TODO: Add a render-to-texture target.
+    /// Render to a GPU internal texture.
+    Image(RenderImageId),
 }
 
 /// Perspective camera projection paramters
