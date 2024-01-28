@@ -20,8 +20,12 @@ mod post_process;
 mod state;
 
 use std::collections::{HashMap, VecDeque};
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::Arc;
+use std::task::{Context, Poll};
 
+use futures_lite::FutureExt;
 use game_tasks::TaskPool;
 use game_tracing::trace_span;
 
@@ -34,12 +38,13 @@ use graph::Node;
 use parking_lot::Mutex;
 use pbr::material::Materials;
 use pbr::mesh::Meshes;
-use pipelined_rendering::Pipeline;
+use pipelined_rendering::{Pipeline, RenderImageGpu};
 use post_process::PostProcessPipeline;
 use render_pass::RenderPass;
 use state::RenderState;
 use texture::image::ImageLoader;
-use texture::Images;
+use texture::{Images, RenderImageId, RenderTextureEvent, RenderTextures};
+use tokio::sync::oneshot;
 use wgpu::{
     Backends, Device, DeviceDescriptor, Features, Instance, InstanceDescriptor, Limits,
     PowerPreference, Queue, RequestAdapterOptions,
@@ -58,6 +63,8 @@ pub struct Renderer {
     pub materials: Materials,
 
     image_loader: ImageLoader,
+    pub render_textures: RenderTextures,
+    jobs: VecDeque<Job>,
 }
 
 impl Renderer {
@@ -112,7 +119,15 @@ impl Renderer {
             pipeline,
             state,
             image_loader: ImageLoader::default(),
+            render_textures: RenderTextures::new(),
+            jobs: VecDeque::new(),
         }
+    }
+
+    pub fn read_gpu_texture(&mut self, id: RenderImageId) -> ReadTexture {
+        let (tx, rx) = oneshot::channel();
+        self.jobs.push_back(Job::TextureToBuffer(id, tx));
+        ReadTexture { rx }
     }
 
     pub fn device(&self) -> &Device {
@@ -193,6 +208,32 @@ impl Renderer {
             }
         }
 
+        {
+            let mut render_textures = unsafe { self.pipeline.shared.render_textures.get_mut() };
+
+            for event in self.render_textures.events.drain(..) {
+                match event {
+                    RenderTextureEvent::Create(id, texture) => {
+                        render_textures.insert(
+                            id,
+                            RenderImageGpu {
+                                size: texture.size,
+                                texture: None,
+                            },
+                        );
+                    }
+                    RenderTextureEvent::Destroy(id) => {
+                        render_textures.remove(&id);
+                    }
+                }
+            }
+        }
+
+        {
+            let mut jobs = unsafe { self.pipeline.shared.jobs.get_mut() };
+            std::mem::swap(&mut self.jobs, &mut jobs);
+        }
+
         // SAFETY: We just waited for the renderer to be idle.
         unsafe {
             self.pipeline.render_unchecked();
@@ -235,4 +276,21 @@ enum SurfaceEvent {
     Create(WindowId, WindowState),
     Resize(WindowId, UVec2),
     Destroy(WindowId),
+}
+
+#[derive(Debug)]
+enum Job {
+    TextureToBuffer(RenderImageId, tokio::sync::oneshot::Sender<Vec<u8>>),
+}
+
+pub struct ReadTexture {
+    rx: oneshot::Receiver<Vec<u8>>,
+}
+
+impl Future for ReadTexture {
+    type Output = Vec<u8>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        self.get_mut().rx.poll(cx).map(|res| res.unwrap())
+    }
 }

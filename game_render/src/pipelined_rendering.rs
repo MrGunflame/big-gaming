@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::marker::PhantomData;
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::Arc;
@@ -8,8 +8,10 @@ use game_tasks::park::Parker;
 use game_tracing::trace_span;
 use glam::UVec2;
 use wgpu::{
-    Adapter, CommandEncoderDescriptor, Device, Extent3d, Instance, Queue, Texture,
-    TextureDescriptor, TextureDimension, TextureFormat, TextureUsages, TextureViewDescriptor,
+    Adapter, BufferAddress, BufferDescriptor, BufferUsages, CommandEncoderDescriptor, Device,
+    Extent3d, ImageCopyBuffer, ImageCopyTexture, ImageDataLayout, Instance, MapMode, Origin3d,
+    Queue, Texture, TextureAspect, TextureDescriptor, TextureDimension, TextureFormat,
+    TextureUsages, TextureViewDescriptor,
 };
 
 use crate::camera::RenderTarget;
@@ -17,6 +19,7 @@ use crate::graph::{RenderContext, RenderGraph};
 use crate::mipmap::MipMapGenerator;
 use crate::surface::RenderSurfaces;
 use crate::texture::RenderImageId;
+use crate::Job;
 
 const PIPELINE_STATE_RENDERING: u8 = 1;
 const PIPELINE_STATE_IDLE: u8 = 2;
@@ -33,6 +36,7 @@ pub struct SharedState {
     state: AtomicU8,
     /// Unparker for the calling thread.
     main_unparker: Arc<Parker>,
+    pub jobs: UnsafeRefCell<VecDeque<Job>>,
 }
 
 pub struct Pipeline {
@@ -62,6 +66,7 @@ impl Pipeline {
             graph: UnsafeRefCell::new(RenderGraph::default()),
             main_unparker,
             render_textures: UnsafeRefCell::new(HashMap::new()),
+            jobs: UnsafeRefCell::new(VecDeque::new()),
         });
 
         let render_unparker = start_render_thread(shared.clone());
@@ -132,6 +137,12 @@ unsafe fn execute_render(shared: &SharedState) {
     let graph = unsafe { shared.graph.get() };
     let mut mipmap = unsafe { shared.mipmap_generator.get_mut() };
 
+    let mut encoder = shared
+        .device
+        .create_command_encoder(&CommandEncoderDescriptor { label: None });
+
+    let mut outputs = Vec::new();
+
     for (window, surface) in surfaces.iter() {
         let output = match surface.surface.get_current_texture() {
             Ok(output) => output,
@@ -146,12 +157,6 @@ unsafe fn execute_render(shared: &SharedState) {
             format: Some(surface.config.format),
             ..Default::default()
         });
-
-        let mut encoder = shared
-            .device
-            .create_command_encoder(&CommandEncoderDescriptor {
-                label: Some("render_encoder"),
-            });
 
         let mut ctx = RenderContext {
             render_target: RenderTarget::Window(*window),
@@ -168,8 +173,7 @@ unsafe fn execute_render(shared: &SharedState) {
             node.render(&mut ctx);
         }
 
-        shared.queue.submit(std::iter::once(encoder.finish()));
-        output.present();
+        outputs.push(output);
     }
 
     let mut render_textures = unsafe { shared.render_textures.get_mut() };
@@ -195,10 +199,6 @@ unsafe fn execute_render(shared: &SharedState) {
 
         let target = texture.create_view(&TextureViewDescriptor::default());
 
-        let mut encoder = shared
-            .device
-            .create_command_encoder(&CommandEncoderDescriptor { label: None });
-
         let mut ctx = RenderContext {
             render_target: RenderTarget::Image(*id),
             encoder: &mut encoder,
@@ -214,11 +214,88 @@ unsafe fn execute_render(shared: &SharedState) {
             node.render(&mut ctx);
         }
     }
+
+    let mut mapping_buffers = Vec::new();
+
+    let mut jobs = unsafe { shared.jobs.get_mut() };
+    for job in jobs.drain(..) {
+        match job {
+            Job::TextureToBuffer(id, tx) => {
+                let texture = render_textures.get(&id).unwrap();
+                // 4 for RGBA8
+                let buffer_size = texture.size.x * texture.size.y * 4;
+
+                let buffer = shared.device.create_buffer(&BufferDescriptor {
+                    size: buffer_size as BufferAddress,
+                    usage: BufferUsages::COPY_DST | BufferUsages::MAP_READ,
+                    mapped_at_creation: false,
+                    label: None,
+                });
+
+                // Align bytes_per_row to 256 as required by wgpu.
+                let mut bytes_per_row = 4 * texture.size.x;
+                if bytes_per_row & 255 != 0 {
+                    bytes_per_row &= u32::MAX & !255;
+                    bytes_per_row += 256;
+                }
+
+                encoder.copy_texture_to_buffer(
+                    ImageCopyTexture {
+                        aspect: TextureAspect::All,
+                        mip_level: 0,
+                        origin: Origin3d::ZERO,
+                        texture: texture.texture.as_ref().unwrap(),
+                    },
+                    ImageCopyBuffer {
+                        buffer: &buffer,
+                        layout: ImageDataLayout {
+                            offset: 0,
+                            bytes_per_row: Some(bytes_per_row),
+                            rows_per_image: None,
+                        },
+                    },
+                    Extent3d {
+                        width: texture.size.x,
+                        height: texture.size.y,
+                        depth_or_array_layers: 1,
+                    },
+                );
+
+                mapping_buffers.push((buffer, tx));
+            }
+        }
+    }
+
+    shared.queue.submit(std::iter::once(encoder.finish()));
+
+    for output in outputs {
+        output.present();
+    }
+
+    for (buffer, tx) in mapping_buffers {
+        let slice = buffer.slice(..);
+
+        let (tx2, rx2) = std::sync::mpsc::channel();
+        slice.map_async(MapMode::Read, move |res| {
+            res.unwrap();
+            tx2.send(()).unwrap();
+        });
+        std::thread::spawn(move || {
+            rx2.recv().unwrap();
+            {
+                let slice = buffer.slice(..);
+                let data = slice.get_mapped_range();
+                let _ = tx.send(data.to_vec());
+            }
+
+            buffer.unmap();
+        });
+    }
 }
 
 #[derive(Debug)]
-pub struct RenderImageGpu {
-    size: UVec2,
+pub(crate) struct RenderImageGpu {
+    pub(crate) size: UVec2,
     /// Texture if initiliazed.
-    texture: Option<Texture>,
+    pub(crate) texture: Option<Texture>,
 }
