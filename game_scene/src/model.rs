@@ -24,10 +24,10 @@ impl LoadScene for Model {
             let indices = self.buffers[mesh.indices as usize].as_indices();
 
             let mut mesh = Mesh::new();
-            mesh.set_positions(positions.into_iter().map(|pos| pos.to_array()).collect());
-            mesh.set_normals(normals.into_iter().map(|norm| norm.to_array()).collect());
+            mesh.set_positions(positions.to_vec());
+            mesh.set_normals(normals.to_vec());
             mesh.set_tangents(tangents.to_vec());
-            mesh.set_uvs(uvs.into_iter().map(|uv| uv.to_array()).collect());
+            mesh.set_uvs(uvs.to_vec());
             mesh.set_indices(Indices::U32(indices.to_vec()));
 
             scene.meshes.push(mesh);

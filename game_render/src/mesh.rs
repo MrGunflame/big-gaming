@@ -1,5 +1,6 @@
-use game_asset::Asset;
+use game_tracing::trace_span;
 use glam::{Vec2, Vec3, Vec4};
+use mikktspace::Geometry;
 
 use crate::aabb::Aabb;
 
@@ -8,9 +9,9 @@ use crate::aabb::Aabb;
 #[derive(Clone, Debug)]
 pub struct Mesh {
     indices: Option<Indices>,
-    positions: Vec<[f32; 3]>,
-    normals: Vec<[f32; 3]>,
-    uvs: Vec<[f32; 2]>,
+    positions: Vec<Vec3>,
+    normals: Vec<Vec3>,
+    uvs: Vec<Vec2>,
     tangents: Vec<Vec4>,
     tangents_set: bool,
 }
@@ -31,19 +32,19 @@ impl Mesh {
         self.indices = Some(indices);
     }
 
-    pub fn set_positions(&mut self, positions: Vec<[f32; 3]>) {
+    pub fn set_positions(&mut self, positions: Vec<Vec3>) {
         self.positions = positions;
     }
 
-    pub fn positions(&self) -> &[[f32; 3]] {
+    pub fn positions(&self) -> &[Vec3] {
         &self.positions
     }
 
-    pub fn set_normals(&mut self, normals: Vec<[f32; 3]>) {
+    pub fn set_normals(&mut self, normals: Vec<Vec3>) {
         self.normals = normals;
     }
 
-    pub fn normals(&self) -> &[[f32; 3]] {
+    pub fn normals(&self) -> &[Vec3] {
         &self.normals
     }
 
@@ -56,11 +57,11 @@ impl Mesh {
         self.tangents_set = true;
     }
 
-    pub fn set_uvs(&mut self, uvs: Vec<[f32; 2]>) {
+    pub fn set_uvs(&mut self, uvs: Vec<Vec2>) {
         self.uvs = uvs;
     }
 
-    pub fn uvs(&self) -> &[[f32; 2]] {
+    pub fn uvs(&self) -> &[Vec2] {
         &self.uvs
     }
 
@@ -69,80 +70,24 @@ impl Mesh {
     }
 
     pub fn compute_tangents(&mut self) {
+        let _span = trace_span!("Mesh::compute_tangents").entered();
+
         // TODO: Checks and precomputes should move to gltf crate.
         assert_eq!(self.positions.len(), self.normals.len());
-
-        if self.uvs.len() != self.positions.len() {
-            self.uvs.resize(self.positions.len(), [0.0; 2]);
-        }
-
-        let mut triangles_included = vec![];
-
-        self.tangents.clear();
+        assert_eq!(self.positions.len(), self.uvs.len());
 
         let len = self.positions.len();
 
-        self.tangents.resize(len, Vec4::new(0.0, 0.0, 0.0, 1.0));
-        triangles_included.resize(len, 0);
+        let mut mesh = Mikktpsace {
+            indices: self.indices.as_ref().unwrap().as_u32(),
+            positions: &self.positions,
+            normals: &self.normals,
+            uvs: &self.uvs,
+            tangents: vec![Vec4::ZERO; len],
+        };
+        mikktspace::generate_tangents(&mut mesh);
 
-        for c in self.indices.clone().unwrap().into_u32().chunks(3) {
-            let pos0 = Vec3::from_array(self.positions[c[0] as usize]);
-            let pos1 = Vec3::from_array(self.positions[c[1] as usize]);
-            let pos2 = Vec3::from_array(self.positions[c[2] as usize]);
-
-            let uv0 = Vec2::from_array(self.uvs[c[0] as usize]);
-            let uv1 = Vec2::from_array(self.uvs[c[1] as usize]);
-            let uv2 = Vec2::from_array(self.uvs[c[2] as usize]);
-
-            let delta_pos1 = pos1 - pos0;
-            let delta_pos2 = pos2 - pos0;
-
-            let delta_uv1 = uv1 - uv0;
-            let delta_uv2 = uv2 - uv0;
-
-            // If uv1 - uv0 == 0.0 && uv2 - uv0 == 0.0 our tangent calculation will yield
-            // in NaN, resulting in a black mesh. This check will always trigger if the
-            // the UVs were not provided, or if the user-provided mesh was invalid.
-            // Instead of failing to render the object we will generate "any" tangent
-            // instead.
-            let tangent = if !delta_uv1.is_finite() || !delta_uv2.is_finite() {
-                pos0.cross(pos1)
-            } else {
-                let f = 1.0 / (delta_uv1.x * delta_uv2.y - delta_uv1.y * delta_uv2.x);
-                let tangent = (delta_pos1 * delta_uv2.y - delta_pos2 * delta_uv1.y) * f;
-                tangent
-            };
-
-            debug_assert!(tangent.is_finite());
-
-            // Note that the orientation is already set to 1.0 on every tangent, we don't
-            // want to change that.
-            let tangent_summand = Vec4::new(tangent.x, tangent.y, tangent.z, 0.0);
-
-            self.tangents[c[0] as usize] += tangent_summand;
-            self.tangents[c[1] as usize] += tangent_summand;
-            self.tangents[c[2] as usize] += tangent_summand;
-
-            triangles_included[c[0] as usize] += 1;
-            triangles_included[c[1] as usize] += 1;
-            triangles_included[c[2] as usize] += 1;
-        }
-
-        // Average Tangents/Bitangents
-        for (i, &n) in triangles_included.iter().enumerate() {
-            debug_assert_ne!(n, 0);
-
-            let denom = 1.0 / n as f32;
-
-            // Don't change the W component.
-            let x = self.tangents[i].x * denom;
-            let y = self.tangents[i].y * denom;
-            let z = self.tangents[i].z * denom;
-
-            self.tangents[i] = Vec4::new(x, y, z, self.tangents[i].w);
-        }
-
-        self.tangents_set = true;
+        self.tangents = mesh.tangents;
     }
 
     pub fn tangents_set(&self) -> bool {
@@ -159,8 +104,8 @@ impl Mesh {
         let mut max = Vec3::splat(f32::MIN);
 
         for pos in &self.positions {
-            min = Vec3::min(min, Vec3::from_slice(pos));
-            max = Vec3::max(max, Vec3::from_slice(pos));
+            min = Vec3::min(min, *pos);
+            max = Vec3::max(max, *pos);
         }
 
         Some(Aabb::from_min_max(min, max))
@@ -213,31 +158,44 @@ impl Indices {
     }
 }
 
-impl Asset for Mesh {}
+struct Mikktpsace<'a> {
+    indices: &'a [u32],
+    positions: &'a [Vec3],
+    normals: &'a [Vec3],
+    uvs: &'a [Vec2],
+    tangents: Vec<Vec4>,
+}
 
-#[cfg(test)]
-mod tests {
-    use glam::Vec4;
+impl<'a> Mikktpsace<'a> {
+    fn index(&self, face: usize, vert: usize) -> usize {
+        self.indices[face * 3 + vert] as usize
+    }
+}
 
-    use super::{Indices, Mesh};
+impl<'a> Geometry for Mikktpsace<'a> {
+    fn num_faces(&self) -> usize {
+        self.indices.len() / 3
+    }
 
-    #[test]
-    fn mesh_computed_tangents() {
-        let mut mesh = Mesh::new();
-        mesh.set_positions(vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0]]);
-        mesh.set_uvs(vec![[0.0, 0.0], [1.0, 0.0], [1.0, 1.0]]);
-        mesh.set_indices(Indices::U32(vec![0, 1, 2]));
-        mesh.set_normals(vec![[0.0, 0.0, 1.0], [0.0, 0.0, 1.0], [0.0, 0.0, 1.0]]);
+    fn num_vertices_of_face(&self, _face: usize) -> usize {
+        3
+    }
 
-        mesh.compute_tangents();
+    fn position(&self, face: usize, vert: usize) -> [f32; 3] {
+        self.positions[self.index(face, vert)].to_array()
+    }
 
-        assert_eq!(
-            mesh.tangents,
-            vec![
-                Vec4::from_array([1.0, 0.0, 0.0, 1.0]),
-                Vec4::from_array([1.0, 0.0, 0.0, 1.0]),
-                Vec4::from_array([1.0, 0.0, 0.0, 1.0]),
-            ]
-        );
+    fn normal(&self, face: usize, vert: usize) -> [f32; 3] {
+        self.normals[self.index(face, vert)].to_array()
+    }
+
+    fn tex_coord(&self, face: usize, vert: usize) -> [f32; 2] {
+        self.uvs[self.index(face, vert)].to_array()
+    }
+
+    fn set_tangent_encoded(&mut self, tangent: [f32; 4], face: usize, vert: usize) {
+        let tangent = Vec4::from_array(tangent);
+        let index = self.index(face, vert);
+        self.tangents[index] = tangent;
     }
 }

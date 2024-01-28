@@ -280,9 +280,9 @@ pub fn from_slice(buf: &[u8]) -> Result<SceneRoot, Box<dyn std::error::Error>> {
 fn convert_mesh(input: GltfMesh) -> Mesh {
     let mut mesh = Mesh::new();
 
-    mesh.set_positions(input.positions.iter().map(Vec3::to_array).collect());
-    mesh.set_normals(input.normals.iter().map(Vec3::to_array).collect());
-    mesh.set_uvs(input.uvs.iter().map(Vec2::to_array).collect());
+    mesh.set_positions(input.positions);
+    mesh.set_normals(input.normals);
+    mesh.set_uvs(input.uvs);
     mesh.set_indices(Indices::U32(input.indices));
 
     // FIXME: Still need to figure out where exactly we want to
