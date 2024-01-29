@@ -14,6 +14,7 @@ pub mod shape;
 pub mod surface;
 pub mod texture;
 
+mod debug;
 mod depth_stencil;
 mod pipelined_rendering;
 mod post_process;
@@ -69,10 +70,16 @@ pub struct Renderer {
 
 impl Renderer {
     pub fn new() -> Self {
+        let flags = if debug::debug_layers_enabled() {
+            InstanceFlags::DEBUG | InstanceFlags::VALIDATION
+        } else {
+            InstanceFlags::empty()
+        };
+
         let instance = Instance::new(InstanceDescriptor {
             backends: Backends::VULKAN,
             dx12_shader_compiler: Default::default(),
-            flags: InstanceFlags::DEBUG | InstanceFlags::VALIDATION,
+            flags,
             gles_minor_version: Gles3MinorVersion::Automatic,
         });
 

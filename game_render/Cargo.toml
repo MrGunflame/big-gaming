@@ -8,6 +8,10 @@ license = "GPL-3.0-or-later"
 [lints]
 workspace = true
 
+[features]
+default = ["debug-layers"]
+debug-layers = []
+
 [dependencies]
 game_window = { version = "0.1.0", path = "../game_window" }
 game_common = { version = "0.1.0", path = "../game_common" }

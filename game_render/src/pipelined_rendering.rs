@@ -7,7 +7,6 @@ use game_common::cell::UnsafeRefCell;
 use game_tasks::park::Parker;
 use game_tracing::trace_span;
 use glam::UVec2;
-use wgpu::hal::auxil::db;
 use wgpu::{
     Adapter, BufferAddress, BufferDescriptor, BufferUsages, CommandEncoderDescriptor, Device,
     Extent3d, ImageCopyBuffer, ImageCopyTexture, ImageDataLayout, Instance, MapMode, Origin3d,
