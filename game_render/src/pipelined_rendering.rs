@@ -7,11 +7,12 @@ use game_common::cell::UnsafeRefCell;
 use game_tasks::park::Parker;
 use game_tracing::trace_span;
 use glam::UVec2;
+use wgpu::hal::auxil::db;
 use wgpu::{
     Adapter, BufferAddress, BufferDescriptor, BufferUsages, CommandEncoderDescriptor, Device,
     Extent3d, ImageCopyBuffer, ImageCopyTexture, ImageDataLayout, Instance, MapMode, Origin3d,
     Queue, Texture, TextureAspect, TextureDescriptor, TextureDimension, TextureFormat,
-    TextureUsages, TextureViewDescriptor,
+    TextureUsages, TextureViewDescriptor, COPY_BYTES_PER_ROW_ALIGNMENT,
 };
 
 use crate::camera::RenderTarget;
@@ -222,8 +223,16 @@ unsafe fn execute_render(shared: &SharedState) {
         match job {
             Job::TextureToBuffer(id, tx) => {
                 let texture = render_textures.get(&id).unwrap();
+
+                // bytes_per_row must be aligned as required by wgpu.
                 // 4 for RGBA8
-                let buffer_size = texture.size.x * texture.size.y * 4;
+                let mut bytes_per_row = 4 * texture.size.x;
+                if bytes_per_row & COPY_BYTES_PER_ROW_ALIGNMENT != 0 {
+                    bytes_per_row &= u32::MAX & !COPY_BYTES_PER_ROW_ALIGNMENT;
+                    bytes_per_row += COPY_BYTES_PER_ROW_ALIGNMENT;
+                }
+
+                let buffer_size = bytes_per_row * texture.size.y;
 
                 let buffer = shared.device.create_buffer(&BufferDescriptor {
                     size: buffer_size as BufferAddress,
@@ -231,13 +240,6 @@ unsafe fn execute_render(shared: &SharedState) {
                     mapped_at_creation: false,
                     label: None,
                 });
-
-                // Align bytes_per_row to 256 as required by wgpu.
-                let mut bytes_per_row = 4 * texture.size.x;
-                if bytes_per_row & 255 != 0 {
-                    bytes_per_row &= u32::MAX & !255;
-                    bytes_per_row += 256;
-                }
 
                 encoder.copy_texture_to_buffer(
                     ImageCopyTexture {

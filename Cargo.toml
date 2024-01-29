@@ -29,7 +29,7 @@ members = [
     "mods/core/scripts/*",
     "tools/json2dat",
     "tools/gltf2model",
-    "tools/make",
+    "tools/make", "game_render_test",
 ]
 
 resolver = "2"
