@@ -4,8 +4,11 @@ use game_window::windows::{WindowId, WindowState};
 use glam::UVec2;
 use wgpu::{
     Adapter, CompositeAlphaMode, Device, Instance, PresentMode, Surface, SurfaceConfiguration,
-    TextureFormat, TextureUsages,
+    SurfaceTargetUnsafe, TextureFormat, TextureUsages,
 };
+
+#[allow(deprecated)]
+use wgpu::rwh::{HasRawDisplayHandle, HasRawWindowHandle};
 
 #[derive(Debug, Default)]
 pub struct RenderSurfaces {
@@ -58,7 +61,7 @@ impl RenderSurfaces {
 
 #[derive(Debug)]
 pub struct SurfaceData {
-    pub surface: Surface,
+    pub surface: Surface<'static>,
     pub config: SurfaceConfiguration,
     /// A handle to the window underlying the `surface`.
     ///
@@ -74,7 +77,14 @@ fn create_surface(
 ) -> Result<SurfaceData, ()> {
     let size = window.inner_size();
 
-    let surface = match unsafe { instance.create_surface(&window) } {
+    let surface: Surface<'static> = match unsafe {
+        instance.create_surface_unsafe(SurfaceTargetUnsafe::RawHandle {
+            #[allow(deprecated)]
+            raw_display_handle: window.raw_display_handle().unwrap(),
+            #[allow(deprecated)]
+            raw_window_handle: window.raw_window_handle().unwrap(),
+        })
+    } {
         Ok(surface) => surface,
         Err(err) => {
             tracing::error!("failed to create surface: {}", err);
@@ -107,6 +117,8 @@ fn create_surface(
         present_mode,
         alpha_mode,
         view_formats: vec![],
+        // Double buffering
+        desired_maximum_frame_latency: 2,
     };
 
     surface.configure(device, &config);

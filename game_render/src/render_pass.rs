@@ -8,8 +8,8 @@ use wgpu::util::{BufferInitDescriptor, DeviceExt};
 use wgpu::{
     BindGroup, BindGroupDescriptor, BindGroupEntry, Buffer, BufferUsages, Color, Device, Extent3d,
     LoadOp, Operations, RenderPassColorAttachment, RenderPassDepthStencilAttachment,
-    RenderPassDescriptor, TextureDescriptor, TextureDimension, TextureFormat, TextureUsages,
-    TextureViewDescriptor,
+    RenderPassDescriptor, StoreOp, TextureDescriptor, TextureDimension, TextureFormat,
+    TextureUsages, TextureViewDescriptor,
 };
 
 use crate::buffer::{DynamicBuffer, IndexBuffer};
@@ -192,17 +192,19 @@ impl RenderPass {
                 resolve_target: None,
                 ops: Operations {
                     load: LoadOp::Clear(Color::BLACK),
-                    store: true,
+                    store: StoreOp::Store,
                 },
             })],
             depth_stencil_attachment: Some(RenderPassDepthStencilAttachment {
                 view: &depth_stencil.view,
                 depth_ops: Some(Operations {
                     load: LoadOp::Clear(1.0),
-                    store: true,
+                    store: StoreOp::Store,
                 }),
                 stencil_ops: None,
             }),
+            timestamp_writes: None,
+            occlusion_query_set: None,
         });
 
         render_pass.set_pipeline(&pipeline.pipeline);
@@ -236,9 +238,11 @@ fn clear_pass(ctx: &mut RenderContext<'_>) {
             resolve_target: None,
             ops: Operations {
                 load: LoadOp::Clear(Color::BLACK),
-                store: true,
+                store: StoreOp::Store,
             },
         })],
         depth_stencil_attachment: None,
+        occlusion_query_set: None,
+        timestamp_writes: None,
     });
 }
