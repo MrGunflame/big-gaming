@@ -24,12 +24,13 @@ members = [
     "game_model",
     "game_tracing",
     "game_tasks",
+    "game_render_test",
     # TODO: Figure out how to move these to a separate
     # workspace.
     "mods/core/scripts/*",
     "tools/json2dat",
     "tools/gltf2model",
-    "tools/make", "game_render_test",
+    "tools/make",
 ]
 
 resolver = "2"
