@@ -35,6 +35,7 @@ var<storage> spot_lights: SpotLights;
 
 struct FragInput {
     @builtin(position) clip_position: vec4<f32>,
+    @builtin(front_facing) front_facing: bool,
     @location(0) world_position: vec3<f32>,
     @location(1) world_normal: vec3<f32>,
     @location(2) uv: vec2<f32>,
@@ -214,7 +215,14 @@ fn get_normal(in: FragInput) -> vec3<f32> {
     normal = normalize(normal * 2.0 - 1.0);
     normal = normalize(tbn * normal);
 
-    return normal;
+    // Invert the normal if the triangle is facing backwards.
+    // Without this step the lighting direction will be inversed
+    // for back-facing triangles.
+    if in.front_facing {
+        return normal;
+    } else {
+        return -normal;
+    }
 }
 
 fn get_roughness(in: FragInput) -> f32 {
