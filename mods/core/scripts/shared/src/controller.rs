@@ -1,5 +1,6 @@
 use game_wasm::components::builtin::{ColliderShape, Transform};
 use game_wasm::entity::EntityId;
+use game_wasm::events::dispatch_event;
 use game_wasm::math::Real;
 use game_wasm::math::Vec3;
 use game_wasm::physics::{cast_shape, QueryFilter};
@@ -42,6 +43,8 @@ use game_wasm::components::builtin::{Collider, RigidBody};
 use game_wasm::world::Entity;
 use game_wasm::DT;
 
+use crate::player::TransformChanged;
+
 const G: f32 = -9.81;
 
 pub fn drive_character_controller(entity: EntityId) {
@@ -50,6 +53,8 @@ pub fn drive_character_controller(entity: EntityId) {
     let mut transform = entity.get::<Transform>().unwrap();
     let mut rigid_body = entity.get::<RigidBody>().unwrap();
     let collider = entity.get::<Collider>().unwrap();
+
+    let prev_transform = transform;
 
     apply_gravity(
         entity.id(),
@@ -60,6 +65,12 @@ pub fn drive_character_controller(entity: EntityId) {
 
     entity.insert(transform);
     entity.insert(rigid_body);
+
+    if transform != prev_transform {
+        dispatch_event(&TransformChanged {
+            entity: entity.id(),
+        });
+    }
 }
 
 fn apply_gravity(

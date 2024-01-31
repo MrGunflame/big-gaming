@@ -2,12 +2,14 @@ use game_wasm::action::Action;
 use game_wasm::components::builtin::{Collider, Transform};
 use game_wasm::encoding::{Decode, Encode};
 use game_wasm::entity::EntityId;
+use game_wasm::events::dispatch_event;
 use game_wasm::math::Vec3;
 use game_wasm::world::{Entity, RecordReference};
 use game_wasm::DT;
 
 use crate::components::{MOVE_BACK, MOVE_FORWARD, MOVE_LEFT, MOVE_RIGHT};
-use crate::{controller, extract_actor_rotation, MovementSpeed};
+use crate::player::TransformChanged;
+use crate::{controller, extract_actor_rotation, Camera, MovementSpeed};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Encode, Decode)]
 pub struct MoveForward;
@@ -38,19 +40,35 @@ impl Action for MoveRight {
 }
 
 pub fn move_forward(entity: EntityId, MoveForward: MoveForward) {
-    move_direction(entity, -Vec3::Z);
+    let Ok(camera) = Entity::new(entity).get::<Camera>() else {
+        return;
+    };
+
+    move_direction(camera.parent, -Vec3::Z);
 }
 
 pub fn move_back(entity: EntityId, MoveBack: MoveBack) {
-    move_direction(entity, Vec3::Z);
+    let Ok(camera) = Entity::new(entity).get::<Camera>() else {
+        return;
+    };
+
+    move_direction(camera.parent, Vec3::Z);
 }
 
 pub fn move_left(entity: EntityId, MoveLeft: MoveLeft) {
-    move_direction(entity, -Vec3::X);
+    let Ok(camera) = Entity::new(entity).get::<Camera>() else {
+        return;
+    };
+
+    move_direction(camera.parent, -Vec3::X);
 }
 
 pub fn move_right(entity: EntityId, MoveRight: MoveRight) {
-    move_direction(entity, Vec3::X);
+    let Ok(camera) = Entity::new(entity).get::<Camera>() else {
+        return;
+    };
+
+    move_direction(camera.parent, Vec3::X);
 }
 
 fn move_direction(entity: EntityId, dir: Vec3) {
@@ -67,4 +85,8 @@ fn move_direction(entity: EntityId, dir: Vec3) {
     controller::move_shape(entity.id(), &mut transform, direction, &collider.shape);
 
     entity.insert(transform);
+
+    dispatch_event(&TransformChanged {
+        entity: entity.id(),
+    });
 }

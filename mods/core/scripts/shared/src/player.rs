@@ -3,18 +3,19 @@ use game_wasm::components::builtin::{
     Collider, ColliderShape, Cuboid, MeshInstance, RigidBody, RigidBodyKind, Transform,
 };
 use game_wasm::components::RawComponent;
+use game_wasm::encoding::{Decode, Encode};
 use game_wasm::entity::EntityId;
-use game_wasm::events::PlayerConnect;
+use game_wasm::events::{Event, PlayerConnect};
 use game_wasm::inventory::{Inventory, Item, ItemStack};
 use game_wasm::math::{Quat, Vec3};
 use game_wasm::world::{Entity, RecordReference};
 
 use crate::components::{
-    EQUIPPABLE, EVENT_GUN_EQUIP, EVENT_GUN_UNEQUIP, GUN_PROPERTIES, TEST_WEAPON,
+    EQUIPPABLE, EVENT_GUN_EQUIP, EVENT_GUN_UNEQUIP, GUN_PROPERTIES, TEST_WEAPON, TRANSFORM_CHANGED,
 };
 use crate::{
-    CharacterController, Equippable, GunProperties, Health, Humanoid, MovementSpeed, Projectile,
-    SpawnPoint,
+    Camera, CharacterController, Equippable, GunProperties, Health, Humanoid, MovementSpeed,
+    PlayerCamera, Projectile, SpawnPoint,
 };
 
 pub fn spawn_player(_: EntityId, event: PlayerConnect) {
@@ -45,10 +46,8 @@ pub fn spawn_player(_: EntityId, event: PlayerConnect) {
         translation: Vec3::ZERO,
     });
     entity.insert(MeshInstance {
-        path: "assets/human.glb".to_owned(),
+        path: "assets/person2.glb".to_owned(),
     });
-
-    event.player.set_active(entity.id());
 
     let inventory = Inventory::new(entity.id());
     let id = inventory
@@ -85,4 +84,43 @@ pub fn spawn_player(_: EntityId, event: PlayerConnect) {
     });
 
     inventory.component_insert(id, EQUIPPABLE, &buf).unwrap();
+
+    let camera = Entity::spawn();
+    camera.insert(Transform::default());
+    camera.insert(Camera {
+        parent: entity.id(),
+    });
+    // Apply actions to the player camera controller so we can forward them
+    // to the player actor.
+    camera.insert(Humanoid);
+
+    entity.insert(PlayerCamera {
+        camera: camera.id(),
+        offset: Vec3::new(0.0, 1.8, 0.0),
+    });
+
+    event.player.set_active(camera.id());
+}
+
+#[derive(Copy, Clone, Debug, Encode, Decode)]
+pub struct TransformChanged {
+    pub entity: EntityId,
+}
+
+impl Event for TransformChanged {
+    const ID: RecordReference = TRANSFORM_CHANGED;
+}
+
+pub fn update_camera_transform(_: EntityId, event: TransformChanged) {
+    let entity = Entity::new(event.entity);
+    let Ok(mut transform) = entity.get::<Transform>() else {
+        return;
+    };
+    let Ok(camera) = entity.get::<PlayerCamera>() else {
+        return;
+    };
+
+    transform.translation += camera.offset;
+    let camera = Entity::new(camera.camera);
+    camera.insert(transform);
 }
