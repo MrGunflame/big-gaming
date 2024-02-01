@@ -33,7 +33,9 @@ use game_script::Executor;
 use game_ui::reactive::NodeId;
 use game_ui::UiState;
 use game_wasm::components::Component;
+use game_wasm::encoding::BinaryWriter;
 use game_wasm::encoding::Decode;
+use game_wasm::encoding::Encode;
 use game_window::cursor::Cursor;
 use game_window::events::WindowEvent;
 use game_window::windows::{WindowId, WindowState};
@@ -238,13 +240,7 @@ impl GameWorldState {
         if self.camera_controller.mode != CameraMode::Detached {
             if self.world.state().world.contains(self.host) {
                 let transform: Transform = self.world.state().world.get_typed(self.host);
-
-                let props = ActorProperties {
-                    eyes: Vec3::new(0.0, 1.8, 0.0),
-                    rotation: extract_actor_rotation(transform.rotation),
-                };
-
-                self.camera_controller.sync_with_entity(transform, props);
+                self.camera_controller.transform = transform;
             }
         } else {
             // We are in detached mode and need to manually
@@ -329,11 +325,13 @@ impl GameWorldState {
 
         let mut transform = self.world.state().world.get_typed::<Transform>(self.host);
         let transform = update_rotation(transform, event);
-        let rotation = transform.rotation;
 
-        self.world.send(SendCommand::Rotate {
+        let (_, data) = BinaryWriter::new().encoded(&transform.rotation);
+
+        self.world.send(SendCommand::Action {
             entity: self.host,
-            rotation,
+            action: ActionId("c626b9b0ab1940aba6932ea7726d0175:23".parse().unwrap()),
+            data,
         });
     }
 

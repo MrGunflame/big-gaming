@@ -66,6 +66,7 @@ pub fn on_init() {
     register_action_handler(movement::move_back);
     register_action_handler(movement::move_left);
     register_action_handler(movement::move_right);
+    register_action_handler(movement::update_rotation);
 
     register_action_handler(weapon::weapon_attack);
     register_action_handler(weapon::weapon_reload);
@@ -243,6 +244,7 @@ pub mod components {
         MOVE_BACK => 0x02,
         MOVE_LEFT => 0x03,
         MOVE_RIGHT => 0x04,
+        ROTATE => 0x23,
 
         WEAPON_ATTACK => 0x0d,
         WEAPON_RELOAD => 0x0e,
@@ -359,6 +361,7 @@ impl Component for Camera {
 pub struct PlayerCamera {
     pub camera: EntityId,
     pub offset: Vec3,
+    pub rotation: Quat,
 }
 
 impl Component for PlayerCamera {

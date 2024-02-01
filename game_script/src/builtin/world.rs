@@ -52,19 +52,20 @@ pub fn world_entity_component_len(
     let entity_id = EntityId::from_raw(entity_id);
     let component_id: RecordReference = caller.read(component_id)?;
 
-    let Some(component) = caller
+    let component = match caller
         .data_mut()
         .as_run_mut()?
         .get_component(entity_id, component_id)
-    else {
-        return Ok(RESULT_NO_COMPONENT);
+    {
+        Ok(component) => component,
+        Err(err) => return Ok(err.to_u32()),
     };
 
     let data_len = component.as_bytes().len() as u32;
     let fields_len = component.fields().len() * Field::ENCODED_SIZE;
 
-    caller.write(data_len_out, &data_len);
-    caller.write(fields_len_out, &fields_len);
+    caller.write(data_len_out, &data_len)?;
+    caller.write(fields_len_out, &fields_len)?;
 
     Ok(RESULT_OK)
 }
@@ -88,12 +89,13 @@ pub fn world_entity_component_get(
     let entity_id = EntityId::from_raw(entity_id);
     let component_id: RecordReference = caller.read(component_id)?;
 
-    let Some(component) = caller
+    let component = match caller
         .data_mut()
         .as_run_mut()?
         .get_component(entity_id, component_id)
-    else {
-        return Ok(RESULT_NO_COMPONENT);
+    {
+        Ok(component) => component,
+        Err(err) => return Ok(err.to_u32()),
     };
 
     // Note that a null pointer indicates that the guest does not request that

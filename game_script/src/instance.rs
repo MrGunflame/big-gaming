@@ -252,11 +252,19 @@ impl RunState {
     pub fn get_component(
         &mut self,
         entity_id: EntityId,
-        component: RecordReference,
-    ) -> Option<&RawComponent> {
-        self.dependencies()
-            .push(Dependency::EntityComponent(entity_id, component));
-        self.new_world.get(entity_id, component)
+        component_id: RecordReference,
+    ) -> Result<&RawComponent, ErrorCode> {
+        if !self.new_world.contains(entity_id) {
+            return Err(ErrorCode::NO_ENTITY);
+        }
+
+        let Some(component) = self.new_world.get(entity_id, component_id) else {
+            return Err(ErrorCode::NO_COMPONENT);
+        };
+
+        unsafe { &mut *self.dependencies }
+            .push(Dependency::EntityComponent(entity_id, component_id));
+        Ok(component)
     }
 
     pub fn insert_component(

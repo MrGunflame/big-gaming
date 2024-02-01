@@ -97,6 +97,7 @@ pub fn spawn_player(_: EntityId, event: PlayerConnect) {
     entity.insert(PlayerCamera {
         camera: camera.id(),
         offset: Vec3::new(0.0, 1.8, 0.0),
+        rotation: Quat::IDENTITY,
     });
 
     event.player.set_active(camera.id());
@@ -121,6 +122,7 @@ pub fn update_camera_transform(_: EntityId, event: TransformChanged) {
     };
 
     transform.translation += camera.offset;
+    transform.rotation = camera.rotation;
     let camera = Entity::new(camera.camera);
     camera.insert(transform);
 }

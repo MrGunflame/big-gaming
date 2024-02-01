@@ -3,13 +3,13 @@ use game_wasm::components::builtin::{Collider, Transform};
 use game_wasm::encoding::{Decode, Encode};
 use game_wasm::entity::EntityId;
 use game_wasm::events::dispatch_event;
-use game_wasm::math::Vec3;
+use game_wasm::math::{Quat, Vec3};
 use game_wasm::world::{Entity, RecordReference};
 use game_wasm::DT;
 
-use crate::components::{MOVE_BACK, MOVE_FORWARD, MOVE_LEFT, MOVE_RIGHT};
+use crate::components::{MOVE_BACK, MOVE_FORWARD, MOVE_LEFT, MOVE_RIGHT, ROTATE};
 use crate::player::TransformChanged;
-use crate::{controller, extract_actor_rotation, Camera, MovementSpeed};
+use crate::{controller, extract_actor_rotation, Camera, MovementSpeed, PlayerCamera};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Encode, Decode)]
 pub struct MoveForward;
@@ -88,5 +88,31 @@ fn move_direction(entity: EntityId, dir: Vec3) {
 
     dispatch_event(&TransformChanged {
         entity: entity.id(),
+    });
+}
+
+/// New rotation is absolute.
+#[derive(Copy, Clone, Debug, Encode, Decode)]
+pub struct Rotate(Quat);
+
+impl Action for Rotate {
+    const ID: RecordReference = ROTATE;
+}
+
+pub fn update_rotation(entity: EntityId, Rotate(rotation): Rotate) {
+    let Ok(camera) = Entity::new(entity).get::<Camera>() else {
+        return;
+    };
+
+    let player = Entity::new(camera.parent);
+    let mut transform = player.get::<Transform>().unwrap();
+    let mut player_camera = player.get::<PlayerCamera>().unwrap();
+    player_camera.rotation = rotation;
+    player.insert(player_camera);
+    transform.rotation = extract_actor_rotation(rotation);
+    player.insert(transform);
+
+    dispatch_event(&TransformChanged {
+        entity: camera.parent,
     });
 }
