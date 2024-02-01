@@ -79,6 +79,12 @@
                 "name": "Drop item",
                 "description": "",
                 "scripts": []
+            },
+            {
+                "id": "23",
+                "name": "Rotate",
+                "description": "",
+                "scripts": []
             }
         ],
         "components": [
@@ -133,7 +139,8 @@
                     "c626b9b0ab1940aba6932ea7726d0175:0f",
                     "c626b9b0ab1940aba6932ea7726d0175:17",
                     "c626b9b0ab1940aba6932ea7726d0175:18",
-                    "c626b9b0ab1940aba6932ea7726d0175:19"
+                    "c626b9b0ab1940aba6932ea7726d0175:19",
+                    "c626b9b0ab1940aba6932ea7726d0175:23"
                 ]
             },
             {

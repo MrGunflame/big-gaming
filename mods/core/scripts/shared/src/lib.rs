@@ -15,7 +15,9 @@ use alloc::borrow::ToOwned;
 use alloc::vec;
 use bytemuck::Pod;
 use bytemuck::Zeroable;
+use components::CAMERA;
 use components::EQUIPPABLE;
+use components::PLAYER_CAMERA;
 use game_wasm::components::builtin::Collider;
 use game_wasm::components::builtin::ColliderShape;
 use game_wasm::components::builtin::Cuboid;
@@ -64,6 +66,7 @@ pub fn on_init() {
     register_action_handler(movement::move_back);
     register_action_handler(movement::move_left);
     register_action_handler(movement::move_right);
+    register_action_handler(movement::update_rotation);
 
     register_action_handler(weapon::weapon_attack);
     register_action_handler(weapon::weapon_reload);
@@ -72,6 +75,7 @@ pub fn on_init() {
     register_action_handler(inventory::on_uneqip);
 
     register_event_handler(player::spawn_player);
+    register_event_handler(player::update_camera_transform);
 
     register_event_handler(weapon::gun_equip);
     register_event_handler(weapon::gun_unequip);
@@ -233,11 +237,14 @@ pub mod components {
         SPAWN_POINT => 0x16,
         CHARACTER_CONTROLLER => 0x15,
         EQUIPPABLE => 0x20,
+        CAMERA => 0x21,
+        PLAYER_CAMERA => 0x22,
 
         MOVE_FORWARD => 0x01,
         MOVE_BACK => 0x02,
         MOVE_LEFT => 0x03,
         MOVE_RIGHT => 0x04,
+        ROTATE => 0x23,
 
         WEAPON_ATTACK => 0x0d,
         WEAPON_RELOAD => 0x0e,
@@ -253,6 +260,7 @@ pub mod components {
         // EVENTS
         EVENT_GUN_EQUIP => 0x01,
         EVENT_GUN_UNEQUIP => 0x02,
+        TRANSFORM_CHANGED => 0x03,
     }
 }
 
@@ -339,3 +347,23 @@ impl Component for Equippable {
 }
 
 panic_handler!();
+
+#[derive(Copy, Clone, Debug, Encode, Decode)]
+pub struct Camera {
+    pub parent: EntityId,
+}
+
+impl Component for Camera {
+    const ID: RecordReference = CAMERA;
+}
+
+#[derive(Copy, Clone, Debug, Encode, Decode)]
+pub struct PlayerCamera {
+    pub camera: EntityId,
+    pub offset: Vec3,
+    pub rotation: Quat,
+}
+
+impl Component for PlayerCamera {
+    const ID: RecordReference = PLAYER_CAMERA;
+}

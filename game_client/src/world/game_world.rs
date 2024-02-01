@@ -255,6 +255,7 @@ where
                         });
                     }
                     DataMessageBody::EntityComponentRemove(msg) => {
+                        dbg!(&msg);
                         let Some(id) = self.server_entities.get(msg.entity) else {
                             peer_error!("invalid entity: {:?}", msg.entity);
                             continue;
