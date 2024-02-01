@@ -239,14 +239,14 @@ impl RunState {
         unsafe { &*self.records }
     }
 
-    pub fn despawn(&mut self, id: EntityId) -> bool {
+    pub fn despawn(&mut self, id: EntityId) -> Result<(), ErrorCode> {
         if !self.new_world.contains(id) {
-            return false;
+            return Err(ErrorCode::NO_ENTITY);
         }
 
         self.effects().push(Effect::EntityDespawn(id));
         self.new_world.despawn(id);
-        true
+        Ok(())
     }
 
     pub fn get_component(
@@ -272,9 +272,9 @@ impl RunState {
         entity_id: EntityId,
         id: RecordReference,
         component: RawComponent,
-    ) {
+    ) -> Result<(), ErrorCode> {
         if !self.new_world.contains(entity_id) {
-            return;
+            return Err(ErrorCode::NO_ENTITY);
         }
 
         self.effects()
@@ -284,11 +284,16 @@ impl RunState {
                 component: component.clone(),
             }));
         self.new_world.insert(entity_id, id, component);
+        Ok(())
     }
 
-    pub fn remove_component(&mut self, entity_id: EntityId, id: RecordReference) -> bool {
+    pub fn remove_component(
+        &mut self,
+        entity_id: EntityId,
+        id: RecordReference,
+    ) -> Result<(), ErrorCode> {
         if !self.new_world.contains(entity_id) {
-            return false;
+            return Err(ErrorCode::NO_ENTITY);
         }
 
         if self.new_world.remove(entity_id, id).is_some() {
@@ -297,9 +302,9 @@ impl RunState {
                     entity: entity_id,
                     component_id: id,
                 }));
-            true
+            Ok(())
         } else {
-            false
+            Err(ErrorCode::NO_COMPONENT)
         }
     }
 

@@ -11,7 +11,6 @@ use game_common::components::inventory::Inventory;
 use game_common::entity::EntityId;
 use game_common::events::{Event, EventQueue};
 use game_common::record::RecordReference;
-use game_common::world::world::{WorldViewMut, WorldViewRef};
 use game_common::world::World;
 use game_data::record::Record;
 use game_tracing::trace_span;
@@ -163,15 +162,11 @@ impl Executor {
         // TODO: Still need to figure out what happens if scripts access the
         // same state.
         let mut state = RunState::new(
-            unsafe {
-                core::mem::transmute::<&dyn WorldProvider, *const dyn WorldProvider>(ctx.world)
-            },
+            ctx.world as *const dyn WorldProvider,
             ctx.physics,
             &mut effects,
             &mut dependencies,
-            unsafe {
-                core::mem::transmute::<&dyn RecordProvider, *const dyn RecordProvider>(ctx.records)
-            },
+            ctx.records as *const dyn RecordProvider,
             ctx.world.world().clone(),
             vec![],
         );
@@ -250,41 +245,13 @@ pub struct Context<'a> {
     pub records: &'a dyn RecordProvider,
 }
 
-pub trait WorldProvider {
+pub trait WorldProvider: 'static {
     fn world(&self) -> &World;
     fn inventory(&self, id: EntityId) -> Option<&Inventory>;
     fn player(&self, id: EntityId) -> Option<PlayerId>;
 }
 
-impl WorldProvider for WorldViewRef<'_> {
-    fn world(&self) -> &World {
-        todo!()
-    }
-
-    fn inventory(&self, id: EntityId) -> Option<&Inventory> {
-        self.inventories().get(id)
-    }
-
-    fn player(&self, id: EntityId) -> Option<PlayerId> {
-        todo!()
-    }
-}
-
-impl WorldProvider for WorldViewMut<'_> {
-    fn world(&self) -> &World {
-        todo!()
-    }
-
-    fn inventory(&self, id: EntityId) -> Option<&Inventory> {
-        self.inventories().get(id)
-    }
-
-    fn player(&self, id: EntityId) -> Option<PlayerId> {
-        todo!()
-    }
-}
-
-pub trait RecordProvider {
+pub trait RecordProvider: 'static {
     fn get(&self, id: RecordReference) -> Option<&Record>;
 }
 
