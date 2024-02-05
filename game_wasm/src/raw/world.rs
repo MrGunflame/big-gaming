@@ -44,12 +44,3 @@ pub fn world_entity_component_insert(
 
 #[guest_only]
 pub fn world_entity_component_remove(entity_id: u64, component_id: *const RecordReference) -> u32;
-
-#[guest_only]
-pub fn world_entity_children_len(entity_id: u64) -> u32;
-
-#[guest_only]
-pub fn world_entity_children_get(entity_id: u64, ptr: *mut u64) -> u32;
-
-#[guest_only]
-pub fn world_entity_parent(entity_id: u64, ptr: *mut u64) -> u32;

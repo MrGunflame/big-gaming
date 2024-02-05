@@ -1,4 +1,6 @@
 use std::collections::{HashMap, HashSet};
+use std::fs::File;
+use std::io::Read;
 
 use game_common::module::ModuleId;
 use game_common::record::{RecordId, RecordReference};
@@ -143,7 +145,27 @@ fn load_module(data: DataBuffer, modules: &mut Modules, executor: &mut Executor)
         records.insert(record.clone());
 
         for script in &record.scripts {
-            let handle = match executor.load(script.as_ref()) {
+            let buf = match (|| {
+                let mut file = File::open(script.as_ref())?;
+
+                let mut buf = Vec::new();
+                file.read_to_end(&mut buf)?;
+                Result::<_, std::io::Error>::Ok(buf)
+            })() {
+                Ok(buf) => buf,
+                Err(err) => {
+                    tracing::error!(
+                        "failed to load script for record {} from local path {:?}: {}",
+                        record.name,
+                        script.as_ref(),
+                        err,
+                    );
+
+                    continue;
+                }
+            };
+
+            let handle = match executor.load(&buf) {
                 Ok(script) => script,
                 Err(err) => {
                     tracing::error!(

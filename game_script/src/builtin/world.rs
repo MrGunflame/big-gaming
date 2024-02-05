@@ -3,7 +3,7 @@ use game_common::entity::EntityId;
 use game_common::record::RecordReference;
 use game_tracing::trace_span;
 use game_wasm::encoding::{decode_fields, encode_fields, Field};
-use game_wasm::raw::{RESULT_NO_COMPONENT, RESULT_NO_ENTITY, RESULT_OK};
+use game_wasm::raw::RESULT_OK;
 use wasmtime::{Caller, Result};
 
 use crate::instance::State;
@@ -26,10 +26,9 @@ pub fn world_entity_despawn(mut caller: Caller<'_, State>, id: u64) -> Result<u3
 
     let id = EntityId::from_raw(id);
 
-    if !caller.data_mut().as_run_mut()?.despawn(id) {
-        Ok(RESULT_NO_ENTITY)
-    } else {
-        Ok(RESULT_OK)
+    match caller.data_mut().as_run_mut()?.despawn(id) {
+        Ok(()) => Ok(RESULT_OK),
+        Err(err) => Ok(err.to_u32()),
     }
 }
 
@@ -145,12 +144,14 @@ pub fn world_entity_component_insert(
     let fields = decode_fields(fields);
 
     let component = RawComponent::new(data, fields);
-    caller
+    match caller
         .data_mut()
         .as_run_mut()?
-        .insert_component(entity_id, component_id, component);
-
-    Ok(RESULT_OK)
+        .insert_component(entity_id, component_id, component)
+    {
+        Ok(()) => Ok(RESULT_OK),
+        Err(err) => Ok(err.to_u32()),
+    }
 }
 
 pub fn world_entity_component_remove(
@@ -168,13 +169,12 @@ pub fn world_entity_component_remove(
     let entity_id = EntityId::from_raw(entity_id);
     let component_id: RecordReference = caller.read(component_id)?;
 
-    if !caller
+    match caller
         .data_mut()
         .as_run_mut()?
         .remove_component(entity_id, component_id)
     {
-        Ok(RESULT_NO_COMPONENT)
-    } else {
-        Ok(RESULT_OK)
+        Ok(()) => Ok(RESULT_OK),
+        Err(err) => Ok(err.to_u32()),
     }
 }
