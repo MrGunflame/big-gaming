@@ -2,7 +2,6 @@
 
 use std::collections::{HashMap, VecDeque};
 use std::fmt::{self, Debug, Formatter};
-use std::path::Path;
 
 use dependency::Dependencies;
 use effect::Effects;
@@ -18,7 +17,7 @@ use game_wasm::encoding::{encode_fields, BinaryWriter};
 use game_wasm::events::{PLAYER_CONNECT, PLAYER_DISCONNECT};
 use game_wasm::player::PlayerId;
 use instance::{InstancePool, RunState, State};
-use script::Script;
+use script::{Script, ScriptLoadError};
 use wasmtime::{Config, Engine, WasmBacktraceDetails};
 
 pub mod effect;
@@ -56,16 +55,16 @@ impl Executor {
         }
     }
 
-    pub fn load<P>(&mut self, path: P) -> Result<Handle, Box<dyn std::error::Error>>
-    where
-        P: AsRef<Path>,
-    {
-        let script = Script::load(path.as_ref(), &self.engine)?;
+    pub fn load(&mut self, bytes: &[u8]) -> Result<Handle, ScriptLoadError> {
+        let script = Script::new(bytes, &self.engine)?;
 
         let index = self.scripts.len();
         let handle = Handle(index);
 
-        let state = self.instances.init(&self.engine, &script.module, handle)?;
+        let state = self
+            .instances
+            .init(&self.engine, &script.module, handle)
+            .map_err(ScriptLoadError::Init)?;
 
         self.systems.extend(state.systems);
 

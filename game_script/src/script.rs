@@ -1,8 +1,6 @@
 use std::fmt::{self, Debug, Display, Formatter, Write};
-use std::fs::File;
-use std::io::Read;
-use std::path::Path;
 
+use thiserror::Error;
 use wasmtime::{Engine, ExternType, Module, ValType};
 
 const EXPORT_FUNCTIONS: &[FunctionExport] = &[
@@ -25,20 +23,21 @@ struct FunctionExport {
     results: &'static [ValType],
 }
 
+#[derive(Debug, Error)]
+pub enum ScriptLoadError {
+    #[error("module error: {0}")]
+    Module(wasmtime::Error),
+    #[error("instance init failed: {0}")]
+    Init(wasmtime::Error),
+}
+
 pub(crate) struct Script {
     pub module: Module,
 }
 
 impl Script {
-    pub fn load(path: &Path, engine: &Engine) -> Result<Self, Box<dyn std::error::Error>> {
-        tracing::info!("loading script from {:?}", path);
-
-        let mut file = File::open(path)?;
-
-        let mut buf = Vec::new();
-        file.read_to_end(&mut buf)?;
-
-        let module = Module::new(engine, buf)?;
+    pub fn new(bytes: &[u8], engine: &Engine) -> Result<Self, ScriptLoadError> {
+        let module = Module::new(engine, bytes).map_err(ScriptLoadError::Module)?;
 
         for fn_sig in EXPORT_FUNCTIONS {
             let Some(export) = module.get_export(fn_sig.name) else {

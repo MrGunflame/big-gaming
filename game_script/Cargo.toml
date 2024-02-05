@@ -16,7 +16,7 @@ game_data = { version = "0.1.0", path = "../game_data" }
 glam = "0.24.0"
 thiserror = "1.0.40"
 tracing = "0.1.37"
-wasmtime = "17.0.0"
+wasmtime = { version = "17.0.0", features = ["wmemcheck"] }
 game_physics = { version = "0.1.0", path = "../game_physics" }
 slotmap = "1.0.6"
 game_tracing = { version = "0.1.0", path = "../game_tracing" }
