@@ -118,13 +118,7 @@ impl game_window::App for App {
                 state.update(&mut self.world);
             }
             GameState::GameWorld(state) => {
-                state.update(
-                    &mut self.renderer,
-                    window,
-                    &self.time,
-                    &mut self.world,
-                    &mut self.ui_state,
-                );
+                state.update(window, &self.time, &mut self.world, &mut self.ui_state);
             }
             _ => todo!(),
         }

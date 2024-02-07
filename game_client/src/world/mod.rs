@@ -9,7 +9,7 @@ use std::net::ToSocketAddrs;
 use std::time::Duration;
 
 use game_common::components::actions::ActionId;
-use game_common::components::Transform;
+use game_common::components::{PrimaryCamera, Transform};
 use game_common::entity::EntityId;
 use game_common::module::ModuleId;
 use game_common::record::RecordReference;
@@ -21,9 +21,6 @@ use game_data::record::{Record, RecordBody};
 use game_input::hotkeys::{HotkeyCode, Key};
 use game_input::keyboard::{KeyCode, KeyboardInput};
 use game_input::mouse::MouseMotion;
-use game_render::camera::{Camera, Projection, RenderTarget};
-use game_render::entities::CameraId;
-use game_render::Renderer;
 use game_script::Executor;
 use game_ui::reactive::NodeId;
 use game_ui::UiState;
@@ -58,8 +55,7 @@ use self::movement::update_rotation;
 pub struct GameWorldState {
     pub world: GameWorld<Interval>,
     camera_controller: CameraController,
-    is_init: bool,
-    primary_camera: Option<CameraId>,
+    primary_camera: Option<EntityId>,
     modules: Modules,
     actions: ActiveActions,
     inputs: Inputs,
@@ -93,7 +89,6 @@ impl GameWorldState {
         Self {
             world: GameWorld::new(conn, interval, executor, config),
             camera_controller: CameraController::new(),
-            is_init: false,
             primary_camera: None,
             modules,
             actions: ActiveActions::new(),
@@ -109,28 +104,19 @@ impl GameWorldState {
 
     pub fn update(
         &mut self,
-        renderer: &mut Renderer,
         window: WindowState,
         time: &Time,
         world: &mut World,
         ui_state: &mut UiState,
     ) {
-        if !self.is_init {
-            self.is_init = true;
-
-            let camera = Camera {
-                transform: Transform::from_translation(Vec3::new(0.0, 1.0, 0.0)),
-                projection: Projection::default(),
-                target: RenderTarget::Window(window.id()),
-            };
-
-            self.primary_camera = Some(renderer.entities.cameras.insert(camera));
-        }
-
         let mut buf = CommandBuffer::new();
         self.world.update(time, &self.modules, &mut buf);
 
         *world = self.world.state().world.clone();
+
+        self.primary_camera = Some(world.spawn());
+        world.insert_typed(self.primary_camera.unwrap(), Transform::default());
+        world.insert_typed(self.primary_camera.unwrap(), PrimaryCamera);
 
         while let Some(cmd) = buf.pop() {
             match cmd {
@@ -247,8 +233,7 @@ impl GameWorldState {
         }
 
         if let Some(id) = self.primary_camera {
-            let mut camera = renderer.entities.cameras.get_mut(id).unwrap();
-            camera.transform = self.camera_controller.transform;
+            world.insert_typed(id, self.camera_controller.transform);
         }
     }
 
