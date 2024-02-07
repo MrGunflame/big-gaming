@@ -1,17 +1,20 @@
 use ahash::HashMap;
-use game_common::components::Transform;
 use game_common::components::{
     DirectionalLight as DirectionalLightComponent, MeshInstance, PointLight as PointLightComponent,
     SpotLight as SpotLightComponent,
 };
+use game_common::components::{PrimaryCamera, Transform};
 use game_common::entity::EntityId;
 use game_common::world::{QueryWrapper, World};
-use game_render::entities::{DirectionalLightId, PointLightId, SpotLightId};
+use game_render::camera::{Camera, Projection, RenderTarget};
+use game_render::entities::{CameraId, DirectionalLightId, PointLightId, SpotLightId};
 use game_render::light::{DirectionalLight, PointLight, SpotLight};
 use game_render::Renderer;
 use game_scene::scene2::SceneGraph;
 use game_scene::{SceneId, SceneSpawner};
 use game_tasks::TaskPool;
+use game_wasm::components::Component;
+use game_window::windows::WindowId;
 
 #[derive(Debug, Default)]
 pub struct SceneEntities {
@@ -19,12 +22,19 @@ pub struct SceneEntities {
     directional_lights: HashMap<EntityId, DirectionalLightId>,
     point_lights: HashMap<EntityId, PointLightId>,
     spot_lights: HashMap<EntityId, SpotLightId>,
+    primary_cameras: HashMap<EntityId, CameraId>,
     graph: SceneGraph,
     spawner: SceneSpawner,
 }
 
 impl SceneEntities {
-    pub fn update(&mut self, world: &World, pool: &TaskPool, renderer: &mut Renderer) {
+    pub fn update(
+        &mut self,
+        world: &World,
+        pool: &TaskPool,
+        renderer: &mut Renderer,
+        window: WindowId,
+    ) {
         self.spawner.update(pool, renderer);
         self.graph.compute_transform();
         self.graph.clear_trackers();
@@ -33,6 +43,7 @@ impl SceneEntities {
         let mut removed_dir_lights = self.directional_lights.clone();
         let mut removed_point_lights = self.point_lights.clone();
         let mut removed_spot_lights = self.spot_lights.clone();
+        let mut removed_primary_cameras = self.primary_cameras.clone();
 
         for (entity, QueryWrapper((transform, mesh_instance))) in
             world.query::<QueryWrapper<(Transform, MeshInstance)>>()
@@ -133,6 +144,29 @@ impl SceneEntities {
             }
         }
 
+        for (entity, QueryWrapper((transform, camera))) in
+            world.query::<QueryWrapper<(Transform, PrimaryCamera)>>()
+        {
+            removed_primary_cameras.remove(&entity);
+
+            match self.primary_cameras.get(&entity) {
+                Some(id) => {
+                    let mut camera = renderer.entities.cameras.get_mut(*id).unwrap();
+                    camera.transform = transform;
+                }
+                None => {
+                    let camera = Camera {
+                        transform,
+                        projection: Projection::default(),
+                        target: RenderTarget::Window(window),
+                    };
+
+                    let id = renderer.entities.cameras.insert(camera);
+                    self.primary_cameras.insert(entity, id);
+                }
+            }
+        }
+
         for (entity, id) in removed_mesh_instances {
             self.spawner.despawn(renderer, id);
             self.mesh_instances.remove(&entity);
@@ -151,6 +185,11 @@ impl SceneEntities {
         for (entity, id) in removed_spot_lights {
             renderer.entities.spot_lights.remove(id);
             self.spot_lights.remove(&entity);
+        }
+
+        for (entity, id) in removed_primary_cameras {
+            renderer.entities.cameras.remove(id);
+            self.primary_cameras.remove(&entity);
         }
     }
 }

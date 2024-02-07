@@ -31,6 +31,7 @@ define_id! {
     DIRECTIONAL_LIGHT => 3,
     POINT_LIGHT => 4,
     SPOT_LIGHT => 5,
+    PRIMARY_CAMERA => 8,
 
     // Physics
     RIGID_BODY => 6,
@@ -243,4 +244,11 @@ pub struct Cuboid {
     pub hx: f32,
     pub hy: f32,
     pub hz: f32,
+}
+
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash, Encode, Decode)]
+pub struct PrimaryCamera;
+
+impl Component for PrimaryCamera {
+    const ID: RecordReference = PRIMARY_CAMERA;
 }

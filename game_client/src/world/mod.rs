@@ -8,10 +8,7 @@ pub mod state;
 use std::net::ToSocketAddrs;
 use std::time::Duration;
 
-use ahash::HashMap;
 use game_common::components::actions::ActionId;
-use game_common::components::actor::ActorProperties;
-use game_common::components::Color;
 use game_common::components::Transform;
 use game_common::entity::EntityId;
 use game_common::module::ModuleId;
@@ -26,16 +23,13 @@ use game_input::keyboard::{KeyCode, KeyboardInput};
 use game_input::mouse::MouseMotion;
 use game_render::camera::{Camera, Projection, RenderTarget};
 use game_render::entities::CameraId;
-use game_render::light::DirectionalLight;
 use game_render::Renderer;
-use game_scene::scene2::{self};
 use game_script::Executor;
 use game_ui::reactive::NodeId;
 use game_ui::UiState;
 use game_wasm::components::Component;
 use game_wasm::encoding::BinaryWriter;
 use game_wasm::encoding::Decode;
-use game_wasm::encoding::Encode;
 use game_window::cursor::Cursor;
 use game_window::events::WindowEvent;
 use game_window::windows::{WindowId, WindowState};
@@ -54,7 +48,6 @@ use crate::ui::inventory::InventoryEvent;
 use crate::ui::inventory::InventoryProxy;
 use crate::ui::main_menu::MainMenu;
 use crate::ui::UiElements;
-use crate::utils::extract_actor_rotation;
 
 use self::actions::ActiveActions;
 use self::camera::{CameraController, CameraMode, DetachedState};
@@ -67,7 +60,6 @@ pub struct GameWorldState {
     camera_controller: CameraController,
     is_init: bool,
     primary_camera: Option<CameraId>,
-    entities: HashMap<EntityId, scene2::Key>,
     modules: Modules,
     actions: ActiveActions,
     inputs: Inputs,
@@ -103,7 +95,6 @@ impl GameWorldState {
             camera_controller: CameraController::new(),
             is_init: false,
             primary_camera: None,
-            entities: HashMap::default(),
             modules,
             actions: ActiveActions::new(),
             inputs,
@@ -134,19 +125,6 @@ impl GameWorldState {
             };
 
             self.primary_camera = Some(renderer.entities.cameras.insert(camera));
-
-            renderer
-                .entities
-                .directional_lights
-                .insert(DirectionalLight {
-                    transform: Transform {
-                        translation: Vec3::splat(100.0),
-                        ..Default::default()
-                    }
-                    .looking_at(Vec3::splat(0.0), Vec3::Y),
-                    color: Color::WHITE,
-                    illuminance: 100_000.0,
-                });
         }
 
         let mut buf = CommandBuffer::new();

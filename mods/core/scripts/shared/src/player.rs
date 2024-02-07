@@ -1,6 +1,7 @@
 use alloc::borrow::ToOwned;
 use game_wasm::components::builtin::{
-    Collider, ColliderShape, Cuboid, MeshInstance, RigidBody, RigidBodyKind, Transform,
+    Collider, ColliderShape, Color, Cuboid, DirectionalLight, MeshInstance, RigidBody,
+    RigidBodyKind, Transform,
 };
 use game_wasm::components::RawComponent;
 use game_wasm::encoding::{Decode, Encode};
@@ -101,6 +102,19 @@ pub fn spawn_player(_: EntityId, event: PlayerConnect) {
     });
 
     event.player.set_active(camera.id());
+
+    let dir_light = Entity::spawn();
+    dir_light.insert(
+        Transform {
+            translation: Vec3::splat(100.0),
+            ..Default::default()
+        }
+        .looking_at(Vec3::splat(0.0), Vec3::Y),
+    );
+    dir_light.insert(DirectionalLight {
+        color: Color::WHITE,
+        illuminance: 100_000.0,
+    });
 }
 
 #[derive(Copy, Clone, Debug, Encode, Decode)]

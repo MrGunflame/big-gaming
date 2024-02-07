@@ -112,14 +112,10 @@ impl game_window::App for App {
 
         match &mut self.state {
             GameState::Startup => {
-                self.state = GameState::MainMenu(MainMenuState::new(
-                    &mut self.renderer,
-                    self.window_id,
-                    &mut self.world,
-                ));
+                self.state = GameState::MainMenu(MainMenuState::new(&mut self.world));
             }
             GameState::MainMenu(state) => {
-                state.update(&mut self.renderer);
+                state.update(&mut self.world);
             }
             GameState::GameWorld(state) => {
                 state.update(
@@ -134,7 +130,7 @@ impl game_window::App for App {
         }
 
         self.entities
-            .update(&self.world, &self.pool, &mut self.renderer);
+            .update(&self.world, &self.pool, &mut self.renderer, self.window_id);
 
         self.renderer.render(&self.pool);
         self.ui_state.run(&self.renderer, &mut ctx.windows);
