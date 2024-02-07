@@ -9,6 +9,7 @@ mod ui;
 mod utils;
 mod world;
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
 use clap::Parser;
@@ -39,7 +40,7 @@ struct Args {
 }
 
 fn main() {
-    game_tracing::init();
+    // game_tracing::init();
 
     let args = Args::parse();
 
@@ -87,6 +88,7 @@ fn main() {
     let pool = TaskPool::new(8);
     let world = Mutex::new(World::new());
     let fps_counter = Mutex::new(UpdateCounter::new());
+    let shutdown = AtomicBool::new(false);
 
     let game_state = GameAppState {
         state,
@@ -96,6 +98,7 @@ fn main() {
         events: &events,
         cursor: cursor.clone(),
         fps_counter: &fps_counter,
+        shutdown: &shutdown,
     };
 
     let renderer_state = RendererAppState {
@@ -109,6 +112,7 @@ fn main() {
         cursor,
         events: &events,
         fps_counter: &fps_counter,
+        shutdown: &shutdown,
     };
 
     std::thread::scope(|scope| {
@@ -128,11 +132,12 @@ pub struct GameAppState<'a> {
     events: &'a Mutex<Vec<WindowEvent>>,
     cursor: Arc<Cursor>,
     fps_counter: &'a Mutex<UpdateCounter>,
+    shutdown: &'a AtomicBool,
 }
 
 impl<'a> GameAppState<'a> {
-    pub fn run(mut self) -> ! {
-        loop {
+    pub fn run(mut self) {
+        while !self.shutdown.load(Ordering::Relaxed) {
             self.update();
         }
     }
@@ -185,6 +190,7 @@ pub struct RendererAppState<'a> {
     cursor: Arc<Cursor>,
     events: &'a Mutex<Vec<WindowEvent>>,
     fps_counter: &'a Mutex<UpdateCounter>,
+    shutdown: &'a AtomicBool,
 }
 
 impl<'a> game_window::App for RendererAppState<'a> {
@@ -200,7 +206,7 @@ impl<'a> game_window::App for RendererAppState<'a> {
         self.fps_counter.lock().unwrap().update();
     }
 
-    fn handle_event(&mut self, ctx: WindowManagerContext<'_>, event: WindowEvent) {
+    fn handle_event(&mut self, mut ctx: WindowManagerContext<'_>, event: WindowEvent) {
         match event.clone() {
             WindowEvent::WindowCreated(event) => {
                 debug_assert_eq!(event.window, self.window_id);
@@ -233,8 +239,15 @@ impl<'a> game_window::App for RendererAppState<'a> {
                 self.renderer.destroy(event.window);
                 self.ui_state.destroy(event.window);
 
-                tracing::info!("primary window destroyed; exiting");
-                std::process::exit(0);
+                self.shutdown.store(true, Ordering::Relaxed);
+                ctx.exit();
+                return;
+            }
+            WindowEvent::WindowCloseRequested(event) => {
+                debug_assert_eq!(event.window, self.window_id);
+                ctx.windows.despawn(event.window);
+
+                return;
             }
             _ => (),
         }
