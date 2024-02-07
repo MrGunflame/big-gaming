@@ -14,6 +14,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 use clap::Parser;
 use config::Config;
 use game_common::world::World;
+use game_core::counter::UpdateCounter;
 use game_core::time::Time;
 use game_render::Renderer;
 use game_tasks::TaskPool;
@@ -85,6 +86,7 @@ fn main() {
 
     let pool = TaskPool::new(8);
     let world = Mutex::new(World::new());
+    let fps_counter = Mutex::new(UpdateCounter::new());
 
     let game_state = GameAppState {
         state,
@@ -93,6 +95,7 @@ fn main() {
         ui_doc: &ui_doc,
         events: &events,
         cursor: cursor.clone(),
+        fps_counter: &fps_counter,
     };
 
     let renderer_state = RendererAppState {
@@ -105,6 +108,7 @@ fn main() {
         ui_doc: &ui_doc,
         cursor,
         events: &events,
+        fps_counter: &fps_counter,
     };
 
     std::thread::scope(|scope| {
@@ -123,6 +127,7 @@ pub struct GameAppState<'a> {
     ui_doc: &'a OnceLock<Document>,
     events: &'a Mutex<Vec<WindowEvent>>,
     cursor: Arc<Cursor>,
+    fps_counter: &'a Mutex<UpdateCounter>,
 }
 
 impl<'a> GameAppState<'a> {
@@ -156,7 +161,12 @@ impl<'a> GameAppState<'a> {
             GameState::MainMenu(state) => {
                 state.update(&mut world);
             }
-            GameState::GameWorld(state) => state.update(&self.time, &mut world, &ui_doc),
+            GameState::GameWorld(state) => state.update(
+                &self.time,
+                &mut world,
+                &ui_doc,
+                self.fps_counter.lock().unwrap().clone(),
+            ),
             _ => todo!(),
         }
 
@@ -174,6 +184,7 @@ pub struct RendererAppState<'a> {
     ui_doc: &'a OnceLock<Document>,
     cursor: Arc<Cursor>,
     events: &'a Mutex<Vec<WindowEvent>>,
+    fps_counter: &'a Mutex<UpdateCounter>,
 }
 
 impl<'a> game_window::App for RendererAppState<'a> {
@@ -185,6 +196,8 @@ impl<'a> game_window::App for RendererAppState<'a> {
 
         self.renderer.render(&self.pool);
         self.ui_state.run(&self.renderer, &mut ctx.windows);
+
+        self.fps_counter.lock().unwrap().update();
     }
 
     fn handle_event(&mut self, ctx: WindowManagerContext<'_>, event: WindowEvent) {

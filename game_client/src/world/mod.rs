@@ -14,7 +14,7 @@ use game_common::entity::EntityId;
 use game_common::module::ModuleId;
 use game_common::record::RecordReference;
 use game_common::world::World;
-use game_core::counter::Interval;
+use game_core::counter::{Interval, UpdateCounter};
 use game_core::modules::Modules;
 use game_core::time::Time;
 use game_data::record::{Record, RecordBody};
@@ -100,7 +100,13 @@ impl GameWorldState {
         }
     }
 
-    pub fn update(&mut self, time: &Time, world: &mut World, ui_doc: &Document) {
+    pub fn update(
+        &mut self,
+        time: &Time,
+        world: &mut World,
+        ui_doc: &Document,
+        fps_counter: UpdateCounter,
+    ) {
         let mut buf = CommandBuffer::new();
         self.world.update(time, &self.modules, &mut buf);
 
@@ -177,7 +183,7 @@ impl GameWorldState {
             &mut cx,
             Some(Statistics {
                 ups: self.world.ups(),
-                fps: self.world.ups(),
+                fps: fps_counter.ups(),
                 entities: world.len() as u64,
                 net_input_buffer_len: self.world.input_buffer_len() as u64,
             }),
