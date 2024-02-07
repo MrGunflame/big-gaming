@@ -181,6 +181,12 @@ impl Renderer {
             .map(|s| UVec2::new(s.config.width, s.config.height))
     }
 
+    /// Waits until a new frame can be queued.
+    pub fn wait_until_ready(&mut self) {
+        let _span = trace_span!("Renderer::wait_until_ready").entered();
+        self.pipeline.wait_idle();
+    }
+
     pub fn render(&mut self, pool: &TaskPool) {
         let _span = trace_span!("Renderer::render").entered();
 

@@ -16,7 +16,6 @@ use events::{
 use game_input::keyboard::{KeyboardInput, ScanCode};
 use game_input::mouse::{MouseButton, MouseButtonInput, MouseMotion, MouseScrollUnit, MouseWheel};
 use game_input::ButtonState;
-use game_tracing::trace_span;
 use glam::Vec2;
 use windows::{UpdateEvent, WindowState, Windows};
 use winit::event::{DeviceEvent, ElementState, Event, MouseScrollDelta, WindowEvent};
@@ -355,7 +354,7 @@ where
                     _ => (),
                 },
                 Event::AboutToWait => {
-                    trace_span!("AboutToWait");
+                    tracing::trace!("AboutToWait");
 
                     app.update(WindowManagerContext {
                         windows: &mut windows,

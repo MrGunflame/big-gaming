@@ -11,11 +11,12 @@ mod world;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
+use std::time::Duration;
 
 use clap::Parser;
 use config::Config;
 use game_common::world::World;
-use game_core::counter::UpdateCounter;
+use game_core::counter::{Interval, UpdateCounter};
 use game_core::time::Time;
 use game_render::Renderer;
 use game_tasks::TaskPool;
@@ -40,7 +41,7 @@ struct Args {
 }
 
 fn main() {
-    // game_tracing::init();
+    game_tracing::init();
 
     let args = Args::parse();
 
@@ -99,6 +100,7 @@ fn main() {
         cursor: cursor.clone(),
         fps_counter: &fps_counter,
         shutdown: &shutdown,
+        interval: Interval::new(Duration::from_secs(1) / 60),
     };
 
     let renderer_state = RendererAppState {
@@ -133,11 +135,15 @@ pub struct GameAppState<'a> {
     cursor: Arc<Cursor>,
     fps_counter: &'a Mutex<UpdateCounter>,
     shutdown: &'a AtomicBool,
+    interval: Interval,
 }
 
 impl<'a> GameAppState<'a> {
     pub fn run(mut self) {
         while !self.shutdown.load(Ordering::Relaxed) {
+            self.time.update();
+            self.interval.wait_sync(self.time.last_update());
+
             self.update();
         }
     }
@@ -147,11 +153,13 @@ impl<'a> GameAppState<'a> {
             return;
         };
 
-        self.time.update();
-
         let mut world = self.world.lock().unwrap().clone();
 
-        let events = std::mem::take(&mut *self.events.lock().unwrap());
+        // If the renderer runs faster than the update we may have the same
+        // event multiple times, but we only want't to handle it once per
+        // update.
+        let mut events = std::mem::take(&mut *self.events.lock().unwrap());
+        events.dedup();
         for event in events {
             match &mut self.state {
                 GameState::GameWorld(state) => {
@@ -195,7 +203,12 @@ pub struct RendererAppState<'a> {
 
 impl<'a> game_window::App for RendererAppState<'a> {
     fn update(&mut self, mut ctx: WindowManagerContext<'_>) {
-        let world = self.world.lock().unwrap();
+        // Wait until the last vsync is done before we start preparing the next
+        // frame. This helps combat latency issues and will not cause stalls
+        // when using multiple buffers.
+        self.renderer.wait_until_ready();
+
+        let world = self.world.lock().unwrap().clone();
 
         self.entities
             .update(&world, &self.pool, &mut self.renderer, self.window_id);

@@ -91,6 +91,18 @@ impl Interval {
         tokio::time::sleep(duration).await;
         self.last_update += self.timestep;
     }
+
+    pub fn wait_sync(&mut self, now: Instant) {
+        let elapsed = now - self.last_update;
+        if elapsed >= self.timestep {
+            self.last_update += self.timestep;
+            return;
+        }
+
+        let duration = self.timestep - elapsed;
+        std::thread::sleep(duration);
+        self.last_update += self.timestep;
+    }
 }
 
 impl IntervalImpl for Interval {
