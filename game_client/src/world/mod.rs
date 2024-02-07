@@ -23,13 +23,11 @@ use game_input::keyboard::{KeyCode, KeyboardInput};
 use game_input::mouse::MouseMotion;
 use game_script::Executor;
 use game_ui::reactive::{Document, NodeId};
-use game_ui::UiState;
 use game_wasm::components::Component;
 use game_wasm::encoding::BinaryWriter;
 use game_wasm::encoding::Decode;
 use game_window::cursor::Cursor;
 use game_window::events::WindowEvent;
-use game_window::windows::WindowId;
 use glam::Vec3;
 
 use crate::components::base::Health;
@@ -231,19 +229,13 @@ impl GameWorldState {
         }
     }
 
-    pub fn handle_event(
-        &mut self,
-        event: WindowEvent,
-        cursor: &Cursor,
-        ui_state: &mut UiState,
-        window: WindowId,
-    ) {
+    pub fn handle_event(&mut self, event: WindowEvent, cursor: &Cursor, ui_doc: &Document) {
         match event {
             WindowEvent::MouseMotion(event) => {
                 self.handle_mouse_motion(event);
             }
             WindowEvent::KeyboardInput(event) => {
-                self.handle_keyboard_input(event, cursor, ui_state, window);
+                self.handle_keyboard_input(event, cursor, ui_doc);
             }
             WindowEvent::MouseButtonInput(event) => {
                 self.actions.send_mouse_event(event);
@@ -253,7 +245,7 @@ impl GameWorldState {
                     return;
                 }
 
-                let cx = ui_state.get_mut(window).unwrap().root_scope();
+                let cx = ui_doc.root_scope();
                 self.main_menu = Some(cx.append(MainMenu {}).id().unwrap());
                 self.cursor_pinned.unpin(cursor);
             }
@@ -292,23 +284,17 @@ impl GameWorldState {
         });
     }
 
-    fn handle_keyboard_input(
-        &mut self,
-        event: KeyboardInput,
-        cursor: &Cursor,
-        state: &mut UiState,
-        window: WindowId,
-    ) {
+    fn handle_keyboard_input(&mut self, event: KeyboardInput, cursor: &Cursor, ui_doc: &Document) {
         match event.key_code {
             Some(KeyCode::Escape) if event.state.is_pressed() => {
                 match self.main_menu {
                     Some(id) => {
-                        state.get_mut(window).unwrap().root_scope().remove(id);
+                        ui_doc.root_scope().remove(id);
                         self.main_menu = None;
                         self.cursor_pinned.pin(cursor);
                     }
                     None => {
-                        let cx = state.get_mut(window).unwrap().root_scope();
+                        let cx = ui_doc.root_scope();
                         self.main_menu = Some(cx.append(MainMenu {}).id().unwrap());
                         self.cursor_pinned.unpin(cursor);
                     }
@@ -361,20 +347,18 @@ impl GameWorldState {
             }
             Some(KeyCode::I) if event.state.is_pressed() => match &mut self.inventory_proxy {
                 Some(pxy) => {
-                    state.get_mut(window).unwrap().root_scope().remove(pxy.id);
+                    ui_doc.root_scope().remove(pxy.id);
                     self.inventory_proxy = None;
                     self.cursor_pinned.pin(cursor);
                 }
                 None => {
-                    let doc = state.get_mut(window).unwrap();
-
                     // Ignore if the current player entity has no inventory.
                     let Some(inventory) = self.world.state().inventories.get(self.host) else {
                         return;
                     };
 
                     self.inventory_proxy =
-                        Some(InventoryProxy::new(inventory, self.modules.clone(), doc));
+                        Some(InventoryProxy::new(inventory, self.modules.clone(), ui_doc));
                     self.cursor_pinned.unpin(cursor);
                 }
             },

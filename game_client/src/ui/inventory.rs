@@ -7,7 +7,6 @@ use game_common::components::inventory::{Inventory, InventorySlotId};
 use game_common::components::items::ItemStack;
 use game_core::modules::Modules;
 use game_input::mouse::MouseButtonInput;
-use game_net::message::DataMessage;
 use game_ui::events::Context;
 use game_ui::reactive::{Document, NodeId, Scope};
 use game_ui::style::{Bounds, Direction, Growth, Justify, Position, Size, SizeVec2, Style};
@@ -194,7 +193,7 @@ pub struct InventoryProxy {
 }
 
 impl InventoryProxy {
-    pub fn new(inventory: &Inventory, modules: Modules, doc: &mut Document) -> Self {
+    pub fn new(inventory: &Inventory, modules: Modules, doc: &Document) -> Self {
         let (tx, rx) = mpsc::channel();
 
         let cx = doc.root_scope();

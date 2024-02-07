@@ -76,6 +76,7 @@ fn main() {
 
     let renderer = Renderer::new();
     let ui_state = UiState::new(&renderer);
+    let events = Mutex::new(Vec::new());
 
     // Lazy initialize the main window document for the game thread. We cannot
     // create the document before the main window is created, which does not
@@ -90,6 +91,8 @@ fn main() {
         world: &world,
         time: Time::new(),
         ui_doc: &ui_doc,
+        events: &events,
+        cursor: cursor.clone(),
     };
 
     let renderer_state = RendererAppState {
@@ -100,6 +103,8 @@ fn main() {
         ui_state,
         window_id,
         ui_doc: &ui_doc,
+        cursor,
+        events: &events,
     };
 
     std::thread::scope(|scope| {
@@ -116,6 +121,8 @@ pub struct GameAppState<'a> {
     world: &'a Mutex<World>,
     time: Time,
     ui_doc: &'a OnceLock<Document>,
+    events: &'a Mutex<Vec<WindowEvent>>,
+    cursor: Arc<Cursor>,
 }
 
 impl<'a> GameAppState<'a> {
@@ -133,6 +140,16 @@ impl<'a> GameAppState<'a> {
         self.time.update();
 
         let mut world = self.world.lock().unwrap().clone();
+
+        let events = std::mem::take(&mut *self.events.lock().unwrap());
+        for event in events {
+            match &mut self.state {
+                GameState::GameWorld(state) => {
+                    state.handle_event(event, &self.cursor, ui_doc);
+                }
+                _ => (),
+            }
+        }
 
         match &mut self.state {
             GameState::Startup => self.state = GameState::MainMenu(MainMenuState::new(&mut world)),
@@ -155,6 +172,8 @@ pub struct RendererAppState<'a> {
     ui_state: UiState,
     window_id: WindowId,
     ui_doc: &'a OnceLock<Document>,
+    cursor: Arc<Cursor>,
+    events: &'a Mutex<Vec<WindowEvent>>,
 }
 
 impl<'a> game_window::App for RendererAppState<'a> {
@@ -182,6 +201,7 @@ impl<'a> game_window::App for RendererAppState<'a> {
                 }
 
                 self.renderer.create(event.window, window);
+                return;
             }
             WindowEvent::WindowResized(event) => {
                 debug_assert_eq!(event.window, self.window_id);
@@ -190,6 +210,7 @@ impl<'a> game_window::App for RendererAppState<'a> {
                     .resize(event.window, UVec2::new(event.width, event.height));
                 self.ui_state
                     .resize(event.window, UVec2::new(event.width, event.height));
+                return;
             }
             WindowEvent::WindowDestroyed(event) => {
                 // Note that this can only be the primary window as
@@ -202,26 +223,10 @@ impl<'a> game_window::App for RendererAppState<'a> {
                 tracing::info!("primary window destroyed; exiting");
                 std::process::exit(0);
             }
-            WindowEvent::CursorMoved(event) => {}
-            WindowEvent::CursorEntered(event) => {}
-            WindowEvent::CursorLeft(event) => {}
-            WindowEvent::WindowCloseRequested(event) => {}
-            WindowEvent::KeyboardInput(event) => {}
-            WindowEvent::MouseWheel(event) => {}
-            WindowEvent::MouseButtonInput(event) => {}
-            WindowEvent::MouseMotion(event) => {}
+            _ => (),
         }
 
-        // match &mut self.state {
-        //     GameState::GameWorld(state) => state.handle_event(
-        //         event.clone(),
-        //         &self.cursor,
-        //         &mut self.ui_state,
-        //         self.window_id,
-        //     ),
-        //     _ => (),
-        // }
-
-        // self.ui_state.send_event(&self.cursor, event);
+        self.events.lock().unwrap().push(event.clone());
+        self.ui_state.send_event(&self.cursor, event);
     }
 }
