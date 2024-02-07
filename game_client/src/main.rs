@@ -9,7 +9,7 @@ mod ui;
 mod utils;
 mod world;
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, OnceLock};
 
 use clap::Parser;
 use config::Config;
@@ -17,6 +17,7 @@ use game_common::world::World;
 use game_core::time::Time;
 use game_render::Renderer;
 use game_tasks::TaskPool;
+use game_ui::reactive::Document;
 use game_ui::UiState;
 use game_window::cursor::Cursor;
 use game_window::events::WindowEvent;
@@ -76,55 +77,92 @@ fn main() {
     let renderer = Renderer::new();
     let ui_state = UiState::new(&renderer);
 
-    let app = App {
-        window_id,
-        renderer,
+    // Lazy initialize the main window document for the game thread. We cannot
+    // create the document before the main window is created, which does not
+    // happen until we give control of the main thread to the windowing loop.
+    let ui_doc = OnceLock::new();
+
+    let pool = TaskPool::new(8);
+    let world = Mutex::new(World::new());
+
+    let game_state = GameAppState {
         state,
+        world: &world,
         time: Time::new(),
-        cursor,
-        pool: TaskPool::new(8),
-        ui_state,
-        entities: SceneEntities::default(),
-        world: World::new(),
+        ui_doc: &ui_doc,
     };
 
-    wm.run(app);
+    let renderer_state = RendererAppState {
+        renderer,
+        entities: SceneEntities::default(),
+        world: &world,
+        pool: &pool,
+        ui_state,
+        window_id,
+        ui_doc: &ui_doc,
+    };
+
+    std::thread::scope(|scope| {
+        scope.spawn(|| {
+            game_state.run();
+        });
+
+        wm.run(renderer_state);
+    });
 }
 
-pub struct App {
+pub struct GameAppState<'a> {
     state: GameState,
-    /// Primary window
-    window_id: WindowId,
-    renderer: Renderer,
+    world: &'a Mutex<World>,
     time: Time,
-    cursor: Arc<Cursor>,
-    pool: TaskPool,
-    ui_state: UiState,
-    entities: SceneEntities,
-    world: World,
+    ui_doc: &'a OnceLock<Document>,
 }
 
-impl game_window::App for App {
-    fn update(&mut self, mut ctx: WindowManagerContext<'_>) {
+impl<'a> GameAppState<'a> {
+    pub fn run(mut self) -> ! {
+        loop {
+            self.update();
+        }
+    }
+
+    pub fn update(&mut self) {
+        let Some(ui_doc) = self.ui_doc.get() else {
+            return;
+        };
+
         self.time.update();
 
-        let window = ctx.windows.state(self.window_id).unwrap();
+        let mut world = self.world.lock().unwrap().clone();
 
         match &mut self.state {
-            GameState::Startup => {
-                self.state = GameState::MainMenu(MainMenuState::new(&mut self.world));
-            }
+            GameState::Startup => self.state = GameState::MainMenu(MainMenuState::new(&mut world)),
             GameState::MainMenu(state) => {
-                state.update(&mut self.world);
+                state.update(&mut world);
             }
-            GameState::GameWorld(state) => {
-                state.update(window, &self.time, &mut self.world, &mut self.ui_state);
-            }
+            GameState::GameWorld(state) => state.update(&self.time, &mut world, &ui_doc),
             _ => todo!(),
         }
 
+        *self.world.lock().unwrap() = world;
+    }
+}
+
+pub struct RendererAppState<'a> {
+    renderer: Renderer,
+    entities: SceneEntities,
+    world: &'a Mutex<World>,
+    pool: &'a TaskPool,
+    ui_state: UiState,
+    window_id: WindowId,
+    ui_doc: &'a OnceLock<Document>,
+}
+
+impl<'a> game_window::App for RendererAppState<'a> {
+    fn update(&mut self, mut ctx: WindowManagerContext<'_>) {
+        let world = self.world.lock().unwrap();
+
         self.entities
-            .update(&self.world, &self.pool, &mut self.renderer, self.window_id);
+            .update(&world, &self.pool, &mut self.renderer, self.window_id);
 
         self.renderer.render(&self.pool);
         self.ui_state.run(&self.renderer, &mut ctx.windows);
@@ -137,6 +175,12 @@ impl game_window::App for App {
 
                 let window = ctx.windows.state(event.window).unwrap();
                 self.ui_state.create(event.window, window.inner_size());
+
+                if window.id() == self.window_id {
+                    let doc = self.ui_state.get_mut(self.window_id).unwrap().clone();
+                    let _ = self.ui_doc.set(doc);
+                }
+
                 self.renderer.create(event.window, window);
             }
             WindowEvent::WindowResized(event) => {
@@ -168,16 +212,16 @@ impl game_window::App for App {
             WindowEvent::MouseMotion(event) => {}
         }
 
-        match &mut self.state {
-            GameState::GameWorld(state) => state.handle_event(
-                event.clone(),
-                &self.cursor,
-                &mut self.ui_state,
-                self.window_id,
-            ),
-            _ => (),
-        }
+        // match &mut self.state {
+        //     GameState::GameWorld(state) => state.handle_event(
+        //         event.clone(),
+        //         &self.cursor,
+        //         &mut self.ui_state,
+        //         self.window_id,
+        //     ),
+        //     _ => (),
+        // }
 
-        self.ui_state.send_event(&self.cursor, event);
+        // self.ui_state.send_event(&self.cursor, event);
     }
 }

@@ -159,7 +159,7 @@ pub struct InitState {
     pub event_handlers: HashMap<RecordReference, Vec<Entry>>,
 }
 
-pub struct RunState {
+pub(crate) struct RunState {
     world: *const dyn WorldProvider,
     pub records: *const dyn RecordProvider,
     pub physics_pipeline: *const game_physics::Pipeline,
@@ -171,6 +171,12 @@ pub struct RunState {
     pub events: Vec<DispatchEvent>,
     pub host_buffers: Vec<Vec<u8>>,
 }
+
+// Make `RunState` `Send` + `Sync` to make `Executor` recursively `Send` + `Sync`.
+// This is safe because we guarantee that the stored raw pointers are only used
+// for the single invocation of `Executor::update`.
+unsafe impl Send for RunState {}
+unsafe impl Sync for RunState {}
 
 impl RunState {
     pub fn new(

@@ -22,14 +22,14 @@ use game_input::hotkeys::{HotkeyCode, Key};
 use game_input::keyboard::{KeyCode, KeyboardInput};
 use game_input::mouse::MouseMotion;
 use game_script::Executor;
-use game_ui::reactive::NodeId;
+use game_ui::reactive::{Document, NodeId};
 use game_ui::UiState;
 use game_wasm::components::Component;
 use game_wasm::encoding::BinaryWriter;
 use game_wasm::encoding::Decode;
 use game_window::cursor::Cursor;
 use game_window::events::WindowEvent;
-use game_window::windows::{WindowId, WindowState};
+use game_window::windows::WindowId;
 use glam::Vec3;
 
 use crate::components::base::Health;
@@ -102,13 +102,7 @@ impl GameWorldState {
         }
     }
 
-    pub fn update(
-        &mut self,
-        window: WindowState,
-        time: &Time,
-        world: &mut World,
-        ui_state: &mut UiState,
-    ) {
+    pub fn update(&mut self, time: &Time, world: &mut World, ui_doc: &Document) {
         let mut buf = CommandBuffer::new();
         self.world.update(time, &self.modules, &mut buf);
 
@@ -178,7 +172,7 @@ impl GameWorldState {
             }
         }
 
-        let mut cx = ui_state.get_mut(window.id()).unwrap().root_scope();
+        let mut cx = ui_doc.root_scope();
 
         // Debug stats
         self.ui_elements.update_debug_state(

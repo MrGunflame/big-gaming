@@ -466,7 +466,7 @@ struct WindowMap {
     windows: HashMap<WindowId, windows::WindowId>,
 }
 
-pub trait App: 'static {
+pub trait App {
     fn handle_event(&mut self, ctx: WindowManagerContext<'_>, event: events::WindowEvent);
 
     fn update(&mut self, ctx: WindowManagerContext<'_>);
