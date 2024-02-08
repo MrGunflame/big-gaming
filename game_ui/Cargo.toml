@@ -6,11 +6,7 @@ authors = ["MrGunflame <git@robbsrv.de>"]
 license = "GPL-3.0-or-later"
 
 [features]
-default = ["debug_render"]
-# Enables the debug renderer, drawing additional
-# debugging information like element borders and
-# padding values.
-debug_render = []
+default = []
 
 [lints]
 workspace = true

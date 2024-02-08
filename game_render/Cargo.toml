@@ -9,8 +9,7 @@ license = "GPL-3.0-or-later"
 workspace = true
 
 [features]
-default = ["debug-layers"]
-debug-layers = []
+default = []
 
 [dependencies]
 game_window = { version = "0.1.0", path = "../game_window" }
