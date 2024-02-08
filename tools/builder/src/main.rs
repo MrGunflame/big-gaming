@@ -35,10 +35,14 @@ fn project_root_path() -> PathBuf {
     let mut root = std::env::current_dir().unwrap();
     assert!(root.is_dir());
 
-    while root.pop() {
+    loop {
         let git_path = root.join(".git");
         if git_path.try_exists().unwrap() {
             return root;
+        }
+
+        if !root.pop() {
+            break;
         }
     }
 
@@ -70,8 +74,6 @@ fn build_cargo(path: impl AsRef<Path>) {
 
     let status = cmd.wait().unwrap();
     assert!(status.success());
-
-    println!("WE ARE DONE");
 }
 
 fn move_artifact(root: &Path, name: &str, dst: &Path) {
