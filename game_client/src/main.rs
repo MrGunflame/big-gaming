@@ -10,7 +10,7 @@ mod utils;
 mod world;
 
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 use clap::Parser;
@@ -20,6 +20,7 @@ use game_core::counter::{Interval, UpdateCounter};
 use game_core::time::Time;
 use game_render::Renderer;
 use game_tasks::TaskPool;
+use game_tracing::trace_span;
 use game_ui::reactive::Document;
 use game_ui::UiState;
 use game_window::cursor::Cursor;
@@ -28,6 +29,7 @@ use game_window::windows::{WindowBuilder, WindowId};
 use game_window::{WindowManager, WindowManagerContext};
 use glam::UVec2;
 use input::Inputs;
+use parking_lot::Mutex;
 use scene::SceneEntities;
 use state::main_menu::MainMenuState;
 use state::GameState;
@@ -149,16 +151,21 @@ impl<'a> GameAppState<'a> {
     }
 
     pub fn update(&mut self) {
+        let _span = trace_span!("GameAppState::update").entered();
+
         let Some(ui_doc) = self.ui_doc.get() else {
             return;
         };
 
-        let mut world = self.world.lock().unwrap().clone();
+        let mut world = { self.world.lock().clone() };
 
         // If the renderer runs faster than the update we may have the same
         // event multiple times, but we only want't to handle it once per
         // update.
-        let mut events = std::mem::take(&mut *self.events.lock().unwrap());
+        let mut events = {
+            let mut events = self.events.lock();
+            std::mem::take(&mut *events)
+        };
         events.dedup();
         for event in events {
             match &mut self.state {
@@ -169,21 +176,20 @@ impl<'a> GameAppState<'a> {
             }
         }
 
+        let fps_counter = { self.fps_counter.lock().clone() };
+
         match &mut self.state {
             GameState::Startup => self.state = GameState::MainMenu(MainMenuState::new(&mut world)),
             GameState::MainMenu(state) => {
                 state.update(&mut world);
             }
-            GameState::GameWorld(state) => state.update(
-                &self.time,
-                &mut world,
-                &ui_doc,
-                self.fps_counter.lock().unwrap().clone(),
-            ),
+            GameState::GameWorld(state) => {
+                state.update(&self.time, &mut world, &ui_doc, fps_counter)
+            }
             _ => todo!(),
         }
 
-        *self.world.lock().unwrap() = world;
+        *self.world.lock() = world;
     }
 }
 
@@ -203,12 +209,14 @@ pub struct RendererAppState<'a> {
 
 impl<'a> game_window::App for RendererAppState<'a> {
     fn update(&mut self, mut ctx: WindowManagerContext<'_>) {
+        let _span = trace_span!("RendererAppState::update").entered();
+
         // Wait until the last vsync is done before we start preparing the next
         // frame. This helps combat latency issues and will not cause stalls
         // when using multiple buffers.
         self.renderer.wait_until_ready();
 
-        let world = self.world.lock().unwrap().clone();
+        let world = { self.world.lock().clone() };
 
         self.entities
             .update(&world, &self.pool, &mut self.renderer, self.window_id);
@@ -216,7 +224,7 @@ impl<'a> game_window::App for RendererAppState<'a> {
         self.renderer.render(&self.pool);
         self.ui_state.run(&self.renderer, &mut ctx.windows);
 
-        self.fps_counter.lock().unwrap().update();
+        self.fps_counter.lock().update();
     }
 
     fn handle_event(&mut self, mut ctx: WindowManagerContext<'_>, event: WindowEvent) {
@@ -265,7 +273,7 @@ impl<'a> game_window::App for RendererAppState<'a> {
             _ => (),
         }
 
-        self.events.lock().unwrap().push(event.clone());
+        self.events.lock().push(event.clone());
         self.ui_state.send_event(&self.cursor, event);
     }
 }
