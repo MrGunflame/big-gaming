@@ -1,15 +1,25 @@
 use std::ops::{Deref, DerefMut};
-use std::sync::OnceLock;
 
 use game_tracing::trace_span;
 use image::{ImageBuffer, Pixel, Rgba};
 
 use crate::layout::computed_style::ComputedPadding;
 
-static DEBUG_RENDER_ENABLED: OnceLock<bool> = OnceLock::new();
-
+#[inline]
 pub fn is_debug_render_enabled() -> bool {
-    if cfg!(feature = "debug_render") {
+    // Disable debug renderer at compile time if the cfg is set.
+    #[cfg(ui_debug_render_disable)]
+    #[inline]
+    fn inner() -> bool {
+        false
+    }
+
+    #[cfg(not(ui_debug_render_disable))]
+    fn inner() -> bool {
+        use std::sync::OnceLock;
+
+        static DEBUG_RENDER_ENABLED: OnceLock<bool> = OnceLock::new();
+
         *DEBUG_RENDER_ENABLED.get_or_init(|| {
             if let Ok(val) = std::env::var("UI_DEBUG_RENDER") {
                 match val.as_str() {
@@ -24,9 +34,9 @@ pub fn is_debug_render_enabled() -> bool {
                 false
             }
         })
-    } else {
-        false
     }
+
+    inner()
 }
 
 /// Render a debugging border around the image.

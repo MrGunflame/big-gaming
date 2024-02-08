@@ -1,11 +1,18 @@
-use std::sync::OnceLock;
-
-static DEBUG_LAYERS_ENABLED: OnceLock<bool> = OnceLock::new();
-
+#[inline]
 pub fn debug_layers_enabled() -> bool {
-    // We enable debug layers if the `debug-layers` feature is enabled AND
-    // `RENDER_DEBUG_LAYERS` is not explicitly set to a falsy value.
-    if cfg!(feature = "debug-layers") {
+    // Disable debug layers at compile time if the cfg is set.
+    #[cfg(render_debug_layers_disable)]
+    #[inline]
+    fn inner() -> bool {
+        false
+    }
+
+    #[cfg(not(render_debug_layers_disable))]
+    fn inner() -> bool {
+        use std::sync::OnceLock;
+
+        static DEBUG_LAYERS_ENABLED: OnceLock<bool> = OnceLock::new();
+
         *DEBUG_LAYERS_ENABLED.get_or_init(|| {
             if let Ok(val) = std::env::var("RENDER_DEGUG_LAYERS") {
                 match val.as_str() {
@@ -20,7 +27,7 @@ pub fn debug_layers_enabled() -> bool {
                 true
             }
         })
-    } else {
-        false
     }
+
+    inner()
 }
