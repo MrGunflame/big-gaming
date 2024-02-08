@@ -2,6 +2,8 @@ use std::path::{Path, PathBuf};
 
 use clap::{Parser, Subcommand};
 
+const BUILD_OUTPUT: &str = "build";
+
 #[derive(Debug, Parser)]
 struct Args {
     #[command(subcommand)]
@@ -11,22 +13,36 @@ struct Args {
 #[derive(Copy, Clone, Debug, Subcommand)]
 enum Command {
     Build,
+    Clean,
 }
 
 fn main() {
     let args = Args::parse();
 
     let root = project_root_path();
+    let build_path = root.join(BUILD_OUTPUT);
 
     match args.cmd {
         Command::Build => {
             let client = root.join("game_client");
             build_cargo(client);
-            move_artifact(&root, "game_client", &root.join("build"));
+            move_artifact(&root, "game_client", &build_path);
 
-            //     let server = root.join("game_server");
-            //     build_cargo(server);
-            //     move_artifact(&root, "game_server", &root.join("build"));
+            let server = root.join("game_server");
+            build_cargo(server);
+            move_artifact(&root, "game_server", &build_path);
+        }
+        Command::Clean => {
+            let mut cmd = std::process::Command::new("cargo")
+                .arg("clean")
+                .current_dir(&root)
+                .spawn()
+                .unwrap();
+
+            let status = cmd.wait().unwrap();
+            assert!(status.success());
+
+            std::fs::remove_dir_all(build_path).unwrap();
         }
     }
 }
