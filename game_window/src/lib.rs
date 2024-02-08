@@ -16,7 +16,6 @@ use events::{
 use game_input::keyboard::{KeyboardInput, ScanCode};
 use game_input::mouse::{MouseButton, MouseButtonInput, MouseMotion, MouseScrollUnit, MouseWheel};
 use game_input::ButtonState;
-use game_tracing::trace_span;
 use glam::Vec2;
 use windows::{UpdateEvent, WindowState, Windows};
 use winit::event::{DeviceEvent, ElementState, Event, MouseScrollDelta, WindowEvent};
@@ -77,7 +76,7 @@ impl WindowManager {
     /// Starts the `WindowManager` using the given [`App`].
     ///
     /// Note that the call to `run` will never return.
-    pub fn run<T>(self, app: T) -> !
+    pub fn run<T>(self, app: T)
     where
         T: App,
     {
@@ -99,7 +98,7 @@ struct WindowManagerState {
     cursor: Arc<Cursor>,
 }
 
-fn main_loop<T>(state: WindowManagerState, mut windows: Windows, mut app: T) -> !
+fn main_loop<T>(state: WindowManagerState, mut windows: Windows, mut app: T)
 where
     T: App,
 {
@@ -121,6 +120,8 @@ where
 
     event_loop
         .run(move |event, event_loop| {
+            let mut exit = false;
+
             match event {
                 Event::NewEvents(_start) => {}
                 Event::WindowEvent { window_id, event } => {
@@ -136,6 +137,7 @@ where
                             app.handle_event(
                                 WindowManagerContext {
                                     windows: &mut windows,
+                                    exit: &mut exit,
                                 },
                                 event,
                             );
@@ -148,6 +150,7 @@ where
                             app.handle_event(
                                 WindowManagerContext {
                                     windows: &mut windows,
+                                    exit: &mut exit,
                                 },
                                 event,
                             );
@@ -160,6 +163,7 @@ where
                             app.handle_event(
                                 WindowManagerContext {
                                     windows: &mut windows,
+                                    exit: &mut exit,
                                 },
                                 event,
                             );
@@ -184,6 +188,7 @@ where
                             app.handle_event(
                                 WindowManagerContext {
                                     windows: &mut windows,
+                                    exit: &mut exit,
                                 },
                                 event,
                             );
@@ -200,6 +205,7 @@ where
                             app.handle_event(
                                 WindowManagerContext {
                                     windows: &mut windows,
+                                    exit: &mut exit,
                                 },
                                 event,
                             );
@@ -221,6 +227,7 @@ where
                             app.handle_event(
                                 WindowManagerContext {
                                     windows: &mut windows,
+                                    exit: &mut exit,
                                 },
                                 event,
                             );
@@ -230,6 +237,7 @@ where
                             app.handle_event(
                                 WindowManagerContext {
                                     windows: &mut windows,
+                                    exit: &mut exit,
                                 },
                                 event,
                             );
@@ -264,6 +272,7 @@ where
                                 app.handle_event(
                                     WindowManagerContext {
                                         windows: &mut windows,
+                                        exit: &mut exit,
                                     },
                                     event,
                                 );
@@ -290,6 +299,7 @@ where
                             app.handle_event(
                                 WindowManagerContext {
                                     windows: &mut windows,
+                                    exit: &mut exit,
                                 },
                                 events::WindowEvent::MouseButtonInput(event),
                             );
@@ -310,6 +320,7 @@ where
                         app.handle_event(
                             WindowManagerContext {
                                 windows: &mut windows,
+                                exit: &mut exit,
                             },
                             events::WindowEvent::MouseMotion(event),
                         );
@@ -334,6 +345,7 @@ where
                             app.handle_event(
                                 WindowManagerContext {
                                     windows: &mut windows,
+                                    exit: &mut exit,
                                 },
                                 events::WindowEvent::MouseWheel(event),
                             );
@@ -342,10 +354,11 @@ where
                     _ => (),
                 },
                 Event::AboutToWait => {
-                    trace_span!("AboutToWait");
+                    tracing::trace!("AboutToWait");
 
                     app.update(WindowManagerContext {
                         windows: &mut windows,
+                        exit: &mut exit,
                     });
                 }
                 _ => (),
@@ -383,6 +396,7 @@ where
                         app.handle_event(
                             WindowManagerContext {
                                 windows: &mut windows,
+                                exit: &mut exit,
                             },
                             events::WindowEvent::WindowCreated(WindowCreated { window: id }),
                         );
@@ -391,6 +405,7 @@ where
                         app.handle_event(
                             WindowManagerContext {
                                 windows: &mut windows,
+                                exit: &mut exit,
                             },
                             events::WindowEvent::WindowDestroyed(WindowDestroyed { window: id }),
                         );
@@ -455,10 +470,12 @@ where
                     }
                 }
             }
+
+            if exit {
+                event_loop.exit();
+            }
         })
         .unwrap();
-
-    std::process::exit(0);
 }
 
 #[derive(Clone, Debug, Default)]
@@ -466,7 +483,7 @@ struct WindowMap {
     windows: HashMap<WindowId, windows::WindowId>,
 }
 
-pub trait App: 'static {
+pub trait App {
     fn handle_event(&mut self, ctx: WindowManagerContext<'_>, event: events::WindowEvent);
 
     fn update(&mut self, ctx: WindowManagerContext<'_>);
@@ -476,4 +493,12 @@ pub trait App: 'static {
 #[non_exhaustive]
 pub struct WindowManagerContext<'a> {
     pub windows: &'a mut Windows,
+    exit: &'a mut bool,
+}
+
+impl<'a> WindowManagerContext<'a> {
+    #[inline]
+    pub fn exit(&mut self) {
+        *self.exit = true;
+    }
 }

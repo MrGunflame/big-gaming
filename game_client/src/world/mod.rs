@@ -8,37 +8,26 @@ pub mod state;
 use std::net::ToSocketAddrs;
 use std::time::Duration;
 
-use ahash::HashMap;
 use game_common::components::actions::ActionId;
-use game_common::components::actor::ActorProperties;
-use game_common::components::Color;
-use game_common::components::Transform;
+use game_common::components::{PrimaryCamera, Transform};
 use game_common::entity::EntityId;
 use game_common::module::ModuleId;
 use game_common::record::RecordReference;
 use game_common::world::World;
-use game_core::counter::Interval;
+use game_core::counter::{Interval, UpdateCounter};
 use game_core::modules::Modules;
 use game_core::time::Time;
 use game_data::record::{Record, RecordBody};
 use game_input::hotkeys::{HotkeyCode, Key};
 use game_input::keyboard::{KeyCode, KeyboardInput};
 use game_input::mouse::MouseMotion;
-use game_render::camera::{Camera, Projection, RenderTarget};
-use game_render::entities::CameraId;
-use game_render::light::DirectionalLight;
-use game_render::Renderer;
-use game_scene::scene2::{self};
 use game_script::Executor;
-use game_ui::reactive::NodeId;
-use game_ui::UiState;
+use game_ui::reactive::{Document, NodeId};
 use game_wasm::components::Component;
 use game_wasm::encoding::BinaryWriter;
 use game_wasm::encoding::Decode;
-use game_wasm::encoding::Encode;
 use game_window::cursor::Cursor;
 use game_window::events::WindowEvent;
-use game_window::windows::{WindowId, WindowState};
 use glam::Vec3;
 
 use crate::components::base::Health;
@@ -54,7 +43,6 @@ use crate::ui::inventory::InventoryEvent;
 use crate::ui::inventory::InventoryProxy;
 use crate::ui::main_menu::MainMenu;
 use crate::ui::UiElements;
-use crate::utils::extract_actor_rotation;
 
 use self::actions::ActiveActions;
 use self::camera::{CameraController, CameraMode, DetachedState};
@@ -65,9 +53,7 @@ use self::movement::update_rotation;
 pub struct GameWorldState {
     pub world: GameWorld<Interval>,
     camera_controller: CameraController,
-    is_init: bool,
-    primary_camera: Option<CameraId>,
-    entities: HashMap<EntityId, scene2::Key>,
+    primary_camera: Option<EntityId>,
     modules: Modules,
     actions: ActiveActions,
     inputs: Inputs,
@@ -101,9 +87,7 @@ impl GameWorldState {
         Self {
             world: GameWorld::new(conn, interval, executor, config),
             camera_controller: CameraController::new(),
-            is_init: false,
             primary_camera: None,
-            entities: HashMap::default(),
             modules,
             actions: ActiveActions::new(),
             inputs,
@@ -118,41 +102,19 @@ impl GameWorldState {
 
     pub fn update(
         &mut self,
-        renderer: &mut Renderer,
-        window: WindowState,
         time: &Time,
         world: &mut World,
-        ui_state: &mut UiState,
+        ui_doc: &Document,
+        fps_counter: UpdateCounter,
     ) {
-        if !self.is_init {
-            self.is_init = true;
-
-            let camera = Camera {
-                transform: Transform::from_translation(Vec3::new(0.0, 1.0, 0.0)),
-                projection: Projection::default(),
-                target: RenderTarget::Window(window.id()),
-            };
-
-            self.primary_camera = Some(renderer.entities.cameras.insert(camera));
-
-            renderer
-                .entities
-                .directional_lights
-                .insert(DirectionalLight {
-                    transform: Transform {
-                        translation: Vec3::splat(100.0),
-                        ..Default::default()
-                    }
-                    .looking_at(Vec3::splat(0.0), Vec3::Y),
-                    color: Color::WHITE,
-                    illuminance: 100_000.0,
-                });
-        }
-
         let mut buf = CommandBuffer::new();
         self.world.update(time, &self.modules, &mut buf);
 
         *world = self.world.state().world.clone();
+
+        self.primary_camera = Some(world.spawn());
+        world.insert_typed(self.primary_camera.unwrap(), Transform::default());
+        world.insert_typed(self.primary_camera.unwrap(), PrimaryCamera);
 
         while let Some(cmd) = buf.pop() {
             match cmd {
@@ -214,14 +176,14 @@ impl GameWorldState {
             }
         }
 
-        let mut cx = ui_state.get_mut(window.id()).unwrap().root_scope();
+        let mut cx = ui_doc.root_scope();
 
         // Debug stats
         self.ui_elements.update_debug_state(
             &mut cx,
             Some(Statistics {
                 ups: self.world.ups(),
-                fps: self.world.ups(),
+                fps: fps_counter.ups(),
                 entities: world.len() as u64,
                 net_input_buffer_len: self.world.input_buffer_len() as u64,
             }),
@@ -269,24 +231,17 @@ impl GameWorldState {
         }
 
         if let Some(id) = self.primary_camera {
-            let mut camera = renderer.entities.cameras.get_mut(id).unwrap();
-            camera.transform = self.camera_controller.transform;
+            world.insert_typed(id, self.camera_controller.transform);
         }
     }
 
-    pub fn handle_event(
-        &mut self,
-        event: WindowEvent,
-        cursor: &Cursor,
-        ui_state: &mut UiState,
-        window: WindowId,
-    ) {
+    pub fn handle_event(&mut self, event: WindowEvent, cursor: &Cursor, ui_doc: &Document) {
         match event {
             WindowEvent::MouseMotion(event) => {
                 self.handle_mouse_motion(event);
             }
             WindowEvent::KeyboardInput(event) => {
-                self.handle_keyboard_input(event, cursor, ui_state, window);
+                self.handle_keyboard_input(event, cursor, ui_doc);
             }
             WindowEvent::MouseButtonInput(event) => {
                 self.actions.send_mouse_event(event);
@@ -296,7 +251,7 @@ impl GameWorldState {
                     return;
                 }
 
-                let cx = ui_state.get_mut(window).unwrap().root_scope();
+                let cx = ui_doc.root_scope();
                 self.main_menu = Some(cx.append(MainMenu {}).id().unwrap());
                 self.cursor_pinned.unpin(cursor);
             }
@@ -335,23 +290,17 @@ impl GameWorldState {
         });
     }
 
-    fn handle_keyboard_input(
-        &mut self,
-        event: KeyboardInput,
-        cursor: &Cursor,
-        state: &mut UiState,
-        window: WindowId,
-    ) {
+    fn handle_keyboard_input(&mut self, event: KeyboardInput, cursor: &Cursor, ui_doc: &Document) {
         match event.key_code {
             Some(KeyCode::Escape) if event.state.is_pressed() => {
                 match self.main_menu {
                     Some(id) => {
-                        state.get_mut(window).unwrap().root_scope().remove(id);
+                        ui_doc.root_scope().remove(id);
                         self.main_menu = None;
                         self.cursor_pinned.pin(cursor);
                     }
                     None => {
-                        let cx = state.get_mut(window).unwrap().root_scope();
+                        let cx = ui_doc.root_scope();
                         self.main_menu = Some(cx.append(MainMenu {}).id().unwrap());
                         self.cursor_pinned.unpin(cursor);
                     }
@@ -404,20 +353,18 @@ impl GameWorldState {
             }
             Some(KeyCode::I) if event.state.is_pressed() => match &mut self.inventory_proxy {
                 Some(pxy) => {
-                    state.get_mut(window).unwrap().root_scope().remove(pxy.id);
+                    ui_doc.root_scope().remove(pxy.id);
                     self.inventory_proxy = None;
                     self.cursor_pinned.pin(cursor);
                 }
                 None => {
-                    let doc = state.get_mut(window).unwrap();
-
                     // Ignore if the current player entity has no inventory.
                     let Some(inventory) = self.world.state().inventories.get(self.host) else {
                         return;
                     };
 
                     self.inventory_proxy =
-                        Some(InventoryProxy::new(inventory, self.modules.clone(), doc));
+                        Some(InventoryProxy::new(inventory, self.modules.clone(), ui_doc));
                     self.cursor_pinned.unpin(cursor);
                 }
             },

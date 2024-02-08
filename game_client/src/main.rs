@@ -9,14 +9,19 @@ mod ui;
 mod utils;
 mod world;
 
-use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, OnceLock};
+use std::time::Duration;
 
 use clap::Parser;
 use config::Config;
 use game_common::world::World;
+use game_core::counter::{Interval, UpdateCounter};
 use game_core::time::Time;
 use game_render::Renderer;
 use game_tasks::TaskPool;
+use game_tracing::trace_span;
+use game_ui::reactive::Document;
 use game_ui::UiState;
 use game_window::cursor::Cursor;
 use game_window::events::WindowEvent;
@@ -24,6 +29,7 @@ use game_window::windows::{WindowBuilder, WindowId};
 use game_window::{WindowManager, WindowManagerContext};
 use glam::UVec2;
 use input::Inputs;
+use parking_lot::Mutex;
 use scene::SceneEntities;
 use state::main_menu::MainMenuState;
 use state::GameState;
@@ -75,79 +81,167 @@ fn main() {
 
     let renderer = Renderer::new();
     let ui_state = UiState::new(&renderer);
+    let events = Mutex::new(Vec::new());
 
-    let app = App {
-        window_id,
-        renderer,
+    // Lazy initialize the main window document for the game thread. We cannot
+    // create the document before the main window is created, which does not
+    // happen until we give control of the main thread to the windowing loop.
+    let ui_doc = OnceLock::new();
+
+    let pool = TaskPool::new(8);
+    let world = Mutex::new(World::new());
+    let fps_counter = Mutex::new(UpdateCounter::new());
+    let shutdown = AtomicBool::new(false);
+
+    let game_state = GameAppState {
         state,
+        world: &world,
         time: Time::new(),
-        cursor,
-        pool: TaskPool::new(8),
-        ui_state,
-        entities: SceneEntities::default(),
-        world: World::new(),
+        ui_doc: &ui_doc,
+        events: &events,
+        cursor: cursor.clone(),
+        fps_counter: &fps_counter,
+        shutdown: &shutdown,
+        interval: Interval::new(Duration::from_secs(1) / 60),
     };
 
-    wm.run(app);
+    let renderer_state = RendererAppState {
+        renderer,
+        entities: SceneEntities::default(),
+        world: &world,
+        pool: &pool,
+        ui_state,
+        window_id,
+        ui_doc: &ui_doc,
+        cursor,
+        events: &events,
+        fps_counter: &fps_counter,
+        shutdown: &shutdown,
+    };
+
+    std::thread::scope(|scope| {
+        scope.spawn(|| {
+            game_state.run();
+        });
+
+        wm.run(renderer_state);
+    });
 }
 
-pub struct App {
+pub struct GameAppState<'a> {
     state: GameState,
-    /// Primary window
-    window_id: WindowId,
-    renderer: Renderer,
+    world: &'a Mutex<World>,
     time: Time,
+    ui_doc: &'a OnceLock<Document>,
+    events: &'a Mutex<Vec<WindowEvent>>,
     cursor: Arc<Cursor>,
-    pool: TaskPool,
-    ui_state: UiState,
-    entities: SceneEntities,
-    world: World,
+    fps_counter: &'a Mutex<UpdateCounter>,
+    shutdown: &'a AtomicBool,
+    interval: Interval,
 }
 
-impl game_window::App for App {
-    fn update(&mut self, mut ctx: WindowManagerContext<'_>) {
-        self.time.update();
+impl<'a> GameAppState<'a> {
+    pub fn run(mut self) {
+        while !self.shutdown.load(Ordering::Relaxed) {
+            self.time.update();
+            self.interval.wait_sync(self.time.last_update());
 
-        let window = ctx.windows.state(self.window_id).unwrap();
+            self.update();
+        }
+    }
+
+    pub fn update(&mut self) {
+        let _span = trace_span!("GameAppState::update").entered();
+
+        let Some(ui_doc) = self.ui_doc.get() else {
+            return;
+        };
+
+        let mut world = { self.world.lock().clone() };
+
+        // If the renderer runs faster than the update we may have the same
+        // event multiple times, but we only want't to handle it once per
+        // update.
+        let mut events = {
+            let mut events = self.events.lock();
+            std::mem::take(&mut *events)
+        };
+        events.dedup();
+        for event in events {
+            match &mut self.state {
+                GameState::GameWorld(state) => {
+                    state.handle_event(event, &self.cursor, ui_doc);
+                }
+                _ => (),
+            }
+        }
+
+        let fps_counter = { self.fps_counter.lock().clone() };
 
         match &mut self.state {
-            GameState::Startup => {
-                self.state = GameState::MainMenu(MainMenuState::new(
-                    &mut self.renderer,
-                    self.window_id,
-                    &mut self.world,
-                ));
-            }
+            GameState::Startup => self.state = GameState::MainMenu(MainMenuState::new(&mut world)),
             GameState::MainMenu(state) => {
-                state.update(&mut self.renderer);
+                state.update(&mut world);
             }
             GameState::GameWorld(state) => {
-                state.update(
-                    &mut self.renderer,
-                    window,
-                    &self.time,
-                    &mut self.world,
-                    &mut self.ui_state,
-                );
+                state.update(&self.time, &mut world, &ui_doc, fps_counter)
             }
             _ => todo!(),
         }
 
+        *self.world.lock() = world;
+    }
+}
+
+pub struct RendererAppState<'a> {
+    renderer: Renderer,
+    entities: SceneEntities,
+    world: &'a Mutex<World>,
+    pool: &'a TaskPool,
+    ui_state: UiState,
+    window_id: WindowId,
+    ui_doc: &'a OnceLock<Document>,
+    cursor: Arc<Cursor>,
+    events: &'a Mutex<Vec<WindowEvent>>,
+    fps_counter: &'a Mutex<UpdateCounter>,
+    shutdown: &'a AtomicBool,
+}
+
+impl<'a> game_window::App for RendererAppState<'a> {
+    fn update(&mut self, mut ctx: WindowManagerContext<'_>) {
+        let _span = trace_span!("RendererAppState::update").entered();
+
+        // Wait until the last vsync is done before we start preparing the next
+        // frame. This helps combat latency issues and will not cause stalls
+        // when using multiple buffers.
+        self.renderer.wait_until_ready();
+
+        let world = { self.world.lock().clone() };
+
         self.entities
-            .update(&self.world, &self.pool, &mut self.renderer);
+            .update(&world, &self.pool, &mut self.renderer, self.window_id);
 
         self.renderer.render(&self.pool);
         self.ui_state.run(&self.renderer, &mut ctx.windows);
+
+        self.fps_counter.lock().update();
     }
 
-    fn handle_event(&mut self, ctx: WindowManagerContext<'_>, event: WindowEvent) {
+    fn handle_event(&mut self, mut ctx: WindowManagerContext<'_>, event: WindowEvent) {
         match event.clone() {
             WindowEvent::WindowCreated(event) => {
                 debug_assert_eq!(event.window, self.window_id);
 
                 let window = ctx.windows.state(event.window).unwrap();
                 self.ui_state.create(event.window, window.inner_size());
+
+                if window.id() == self.window_id {
+                    let doc = self.ui_state.get_mut(self.window_id).unwrap().clone();
+                    let _ = self.ui_doc.set(doc);
+                }
+
                 self.renderer.create(event.window, window);
+                return;
             }
             WindowEvent::WindowResized(event) => {
                 debug_assert_eq!(event.window, self.window_id);
@@ -156,6 +250,7 @@ impl game_window::App for App {
                     .resize(event.window, UVec2::new(event.width, event.height));
                 self.ui_state
                     .resize(event.window, UVec2::new(event.width, event.height));
+                return;
             }
             WindowEvent::WindowDestroyed(event) => {
                 // Note that this can only be the primary window as
@@ -165,29 +260,20 @@ impl game_window::App for App {
                 self.renderer.destroy(event.window);
                 self.ui_state.destroy(event.window);
 
-                tracing::info!("primary window destroyed; exiting");
-                std::process::exit(0);
+                self.shutdown.store(true, Ordering::Relaxed);
+                ctx.exit();
+                return;
             }
-            WindowEvent::CursorMoved(event) => {}
-            WindowEvent::CursorEntered(event) => {}
-            WindowEvent::CursorLeft(event) => {}
-            WindowEvent::WindowCloseRequested(event) => {}
-            WindowEvent::KeyboardInput(event) => {}
-            WindowEvent::MouseWheel(event) => {}
-            WindowEvent::MouseButtonInput(event) => {}
-            WindowEvent::MouseMotion(event) => {}
-        }
+            WindowEvent::WindowCloseRequested(event) => {
+                debug_assert_eq!(event.window, self.window_id);
+                ctx.windows.despawn(event.window);
 
-        match &mut self.state {
-            GameState::GameWorld(state) => state.handle_event(
-                event.clone(),
-                &self.cursor,
-                &mut self.ui_state,
-                self.window_id,
-            ),
+                return;
+            }
             _ => (),
         }
 
+        self.events.lock().push(event.clone());
         self.ui_state.send_event(&self.cursor, event);
     }
 }
