@@ -94,7 +94,7 @@ impl RawComponent {
 
     pub fn remap(
         self,
-        get_entity: impl Fn(EntityId) -> Option<EntityId>,
+        mut get_entity: impl FnMut(EntityId) -> Option<EntityId>,
     ) -> Result<RawComponent, RemapError> {
         let mut bytes = Cow::Borrowed(&self.bytes[..]);
         for field in &self.fields {
