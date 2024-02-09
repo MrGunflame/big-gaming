@@ -22,6 +22,7 @@ use game_script::{Context, WorldProvider};
 use glam::Vec3;
 
 use crate::conn::{Connection, Connections};
+use crate::net::entities::Entities;
 use crate::net::state::{Cells, ConnectionState, KnownEntities};
 use crate::world::level::{Level, Streamer};
 use crate::world::state::WorldState;
@@ -492,18 +493,38 @@ fn send_full_update(conn: &Connection, world: &WorldState, host: EntityId, cf: C
         state.cells.cells(),
     );
 
+    // Initialize entities before syncing components. Components
+    // may refer to entities that are not yet loaded.
     for id in state.cells.cells() {
         let cell = world.cell(*id);
 
         for entity in cell.entities() {
-            let entity_id = state.entities.insert(entity);
+            state.entities.insert(entity);
             state
                 .known_entities
                 .components
                 .insert(entity, Components::new());
+        }
+    }
+
+    for id in state.cells.cells() {
+        let cell = world.cell(*id);
+
+        for entity in cell.entities() {
+            let entity_id = state.entities.get(entity).unwrap();
 
             // Sync all components.
             for (id, component) in world.world().components(entity).iter() {
+                let component = component
+                    .clone()
+                    .remap(|entity| {
+                        state
+                            .entities
+                            .get(entity)
+                            .map(|id| EntityId::from_raw(id.0))
+                    })
+                    .unwrap();
+
                 conn.handle().send(DataMessage {
                     id: MessageId(0),
                     control_frame: cf,
@@ -571,6 +592,16 @@ fn update_player_cells(world: &WorldState, state: &mut ConnectionState) -> Vec<D
 
                 // Sync components.
                 for (id, component) in world.world().components(entity).iter() {
+                    let component = component
+                        .clone()
+                        .remap(|entity| {
+                            state
+                                .entities
+                                .get(entity)
+                                .map(|id| EntityId::from_raw(id.0))
+                        })
+                        .unwrap();
+
                     events.push(DataMessageBody::EntityComponentAdd(EntityComponentAdd {
                         entity: entity_id,
                         component_id: id,
@@ -618,6 +649,7 @@ fn update_player_cells(world: &WorldState, state: &mut ConnectionState) -> Vec<D
                     .unwrap()
                     .clone(),
                 &mut state.known_entities,
+                &state.entities,
             ));
 
             // Sync inventory
@@ -681,6 +713,7 @@ fn update_components(
     server_state: &Components,
     client_state: &Components,
     known_state: &mut KnownEntities,
+    entities: &Entities,
 ) -> Vec<DataMessageBody> {
     let mut events = Vec::new();
 
@@ -705,11 +738,16 @@ fn update_components(
         let client_component = client_state.get(id).unwrap();
 
         if server_component != client_component {
+            let component = server_component
+                .clone()
+                .remap(|entity| entities.get(entity).map(|id| EntityId::from_raw(id.0)))
+                .unwrap();
+
             events.push(DataMessageBody::EntityComponentUpdate(
                 EntityComponentUpdate {
                     entity,
                     component_id: id,
-                    component: server_component.clone(),
+                    component: component.clone(),
                 },
             ));
 

@@ -1,3 +1,5 @@
+use std::sync::atomic::compiler_fence;
+
 use game_common::components::actions::ActionId;
 use game_common::components::components::Components;
 use game_common::components::items::{Item, ItemStack};
@@ -6,6 +8,7 @@ use game_common::components::race::RaceId;
 use game_common::components::Transform;
 use game_common::entity::EntityId;
 use game_common::events::{ActionEvent, Event, EventQueue};
+use game_common::net::ServerEntity;
 use game_common::record::RecordReference;
 use game_common::units::Mass;
 use game_common::world::control_frame::ControlFrame;
@@ -245,9 +248,24 @@ where
                             }
                         };
 
+                        let component = msg
+                            .component
+                            .remap(|entity| {
+                                let server_entity = ServerEntity(entity.into_raw());
+                                match self.server_entities.get(server_entity) {
+                                    Some(id) => Some(id),
+                                    None => {
+                                        let entity = self.newest_state.world.spawn();
+                                        self.server_entities.insert(entity, server_entity);
+                                        Some(entity)
+                                    }
+                                }
+                            })
+                            .unwrap();
+
                         self.newest_state
                             .world
-                            .insert(id, msg.component_id, msg.component);
+                            .insert(id, msg.component_id, component);
 
                         cmd_buffer.push(Command::ComponentAdd {
                             entity: id,
@@ -273,9 +291,24 @@ where
                             continue;
                         };
 
+                        let component = msg
+                            .component
+                            .remap(|entity| {
+                                let server_entity = ServerEntity(entity.into_raw());
+                                match self.server_entities.get(server_entity) {
+                                    Some(id) => Some(id),
+                                    None => {
+                                        let entity = self.newest_state.world.spawn();
+                                        self.server_entities.insert(entity, server_entity);
+                                        Some(entity)
+                                    }
+                                }
+                            })
+                            .unwrap();
+
                         self.newest_state
                             .world
-                            .insert(id, msg.component_id, msg.component);
+                            .insert(id, msg.component_id, component);
                     }
                     DataMessageBody::EntityAction(msg) => todo!(),
                     DataMessageBody::EntityTranslate(_) | DataMessageBody::EntityRotate(_) => {
