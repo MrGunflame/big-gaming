@@ -10,6 +10,7 @@ use std::sync::{mpsc, Arc};
 
 use backend::{Backend, Handle, Response};
 
+use game_render::camera::RenderTarget;
 use game_render::Renderer;
 use game_scene::scene2::SceneGraph;
 use game_scene::SceneSpawner;
@@ -148,7 +149,8 @@ impl game_window::App for App {
                 let size = window.inner_size();
 
                 self.renderer.create(event.window, window);
-                self.ui_state.create(event.window, size);
+                self.ui_state
+                    .create(RenderTarget::Window(event.window), size);
 
                 if let Some(spawn) = self.loading_windows.remove(&event.window) {
                     let window = crate::windows::spawn_window(
@@ -161,7 +163,10 @@ impl game_window::App for App {
                     );
 
                     if let Some(doc) = window.doc() {
-                        *self.ui_state.get_mut(event.window).unwrap() = doc;
+                        *self
+                            .ui_state
+                            .get_mut(RenderTarget::Window(event.window))
+                            .unwrap() = doc;
                     }
 
                     self.active_windows.insert(event.window, window);
@@ -170,12 +175,14 @@ impl game_window::App for App {
             WindowEvent::WindowResized(event) => {
                 self.renderer
                     .resize(event.window, UVec2::new(event.width, event.height));
-                self.ui_state
-                    .resize(event.window, UVec2::new(event.width, event.height));
+                self.ui_state.resize(
+                    RenderTarget::Window(event.window),
+                    UVec2::new(event.width, event.height),
+                );
             }
             WindowEvent::WindowDestroyed(event) => {
                 self.renderer.destroy(event.window);
-                self.ui_state.destroy(event.window);
+                self.ui_state.destroy(RenderTarget::Window(event.window));
 
                 self.active_windows.remove(&event.window);
             }
@@ -268,7 +275,7 @@ impl game_window::App for App {
             .update(&mut self.scene.graph, &mut self.renderer);
         self.scene.graph.clear_trackers();
 
+        self.ui_state.run(&mut ctx.windows);
         self.renderer.render(&self.pool);
-        self.ui_state.run(&self.renderer, &mut ctx.windows);
     }
 }

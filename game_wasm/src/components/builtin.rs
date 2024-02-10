@@ -122,8 +122,14 @@ impl Color {
     pub const GREEN: Self = Self([0.0, 1.0, 0.0, 1.0]);
     pub const BLUE: Self = Self([0.0, 0.0, 1.0, 1.0]);
 
-    pub fn as_rgb(self) -> [f32; 3] {
+    #[inline]
+    pub const fn as_rgb(self) -> [f32; 3] {
         [self.0[0], self.0[1], self.0[2]]
+    }
+
+    #[inline]
+    pub const fn as_rgba(self) -> [f32; 4] {
+        self.0
     }
 
     #[inline]

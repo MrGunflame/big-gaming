@@ -1,5 +1,6 @@
 mod overlay;
 
+use game_common::components::Color;
 use game_tracing::trace_span;
 use glam::UVec2;
 use image::imageops::FilterType;
@@ -8,8 +9,7 @@ use image::{ImageBuffer, Rgba};
 use self::overlay::overlay_unchecked;
 
 use super::debug::{debug_border, debug_padding, is_debug_render_enabled};
-use super::remap::remap;
-use super::{BuildPrimitiveElement, PrimitiveElement, Rect};
+use super::{DrawCommand, DrawElement, Rect};
 use crate::layout::computed_style::{ComputedBorderRadius, ComputedBounds, ComputedStyle};
 use crate::style::Background;
 
@@ -32,19 +32,8 @@ impl Image {
     }
 }
 
-impl BuildPrimitiveElement for Image {
-    fn build(
-        &self,
-        style: &ComputedStyle,
-        position: Rect,
-        pipeline: &super::UiPipeline,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        size: UVec2,
-    ) -> Option<PrimitiveElement> {
-        let min = remap(position.min.as_vec2(), size.as_vec2());
-        let max = remap(position.max.as_vec2(), size.as_vec2());
-
+impl DrawElement for Image {
+    fn draw(&self, style: &ComputedStyle, position: Rect, size: UVec2) -> Option<DrawCommand> {
         let mut img = self.image.clone();
         apply_background(&mut img, style);
 
@@ -55,15 +44,11 @@ impl BuildPrimitiveElement for Image {
             debug_padding(&mut img, style.padding);
         }
 
-        Some(PrimitiveElement::new(
-            pipeline,
-            device,
-            queue,
-            min,
-            max,
-            &img,
-            style.style.color.to_f32(),
-        ))
+        Some(DrawCommand {
+            position,
+            color: Color::from_rgba(style.style.color.to_f32()),
+            image: img,
+        })
     }
 }
 

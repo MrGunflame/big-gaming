@@ -93,10 +93,7 @@ impl UiState {
         }
     }
 
-    pub fn run(&mut self, renderer: &Renderer, windows: &mut Windows) {
-        let device = renderer.device();
-        let queue = renderer.queue();
-
+    pub fn run(&mut self, windows: &mut Windows) {
         let _span = trace_span!("UiState::update");
 
         for (id, doc) in self.targets.iter_mut() {
@@ -108,7 +105,7 @@ impl UiState {
             doc.flush_node_queue(tree, events);
         }
 
-        self.renderer.update(device, queue);
+        self.renderer.update();
 
         while let Ok(cmd) = self.command_rx.try_recv() {
             match cmd {

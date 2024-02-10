@@ -18,6 +18,7 @@ use config::Config;
 use game_common::world::World;
 use game_core::counter::{Interval, UpdateCounter};
 use game_core::time::Time;
+use game_render::camera::RenderTarget;
 use game_render::Renderer;
 use game_tasks::TaskPool;
 use game_tracing::trace_span;
@@ -221,8 +222,8 @@ impl<'a> game_window::App for RendererAppState<'a> {
         self.entities
             .update(&world, &self.pool, &mut self.renderer, self.window_id);
 
+        self.ui_state.run(&mut ctx.windows);
         self.renderer.render(&self.pool);
-        self.ui_state.run(&self.renderer, &mut ctx.windows);
 
         self.fps_counter.lock().update();
     }
@@ -233,10 +234,15 @@ impl<'a> game_window::App for RendererAppState<'a> {
                 debug_assert_eq!(event.window, self.window_id);
 
                 let window = ctx.windows.state(event.window).unwrap();
-                self.ui_state.create(event.window, window.inner_size());
+                self.ui_state
+                    .create(RenderTarget::Window(event.window), window.inner_size());
 
                 if window.id() == self.window_id {
-                    let doc = self.ui_state.get_mut(self.window_id).unwrap().clone();
+                    let doc = self
+                        .ui_state
+                        .get_mut(RenderTarget::Window(self.window_id))
+                        .unwrap()
+                        .clone();
                     let _ = self.ui_doc.set(doc);
                 }
 
@@ -248,8 +254,10 @@ impl<'a> game_window::App for RendererAppState<'a> {
 
                 self.renderer
                     .resize(event.window, UVec2::new(event.width, event.height));
-                self.ui_state
-                    .resize(event.window, UVec2::new(event.width, event.height));
+                self.ui_state.resize(
+                    RenderTarget::Window(event.window),
+                    UVec2::new(event.width, event.height),
+                );
                 return;
             }
             WindowEvent::WindowDestroyed(event) => {
@@ -258,7 +266,7 @@ impl<'a> game_window::App for RendererAppState<'a> {
                 debug_assert_eq!(event.window, self.window_id);
 
                 self.renderer.destroy(event.window);
-                self.ui_state.destroy(event.window);
+                self.ui_state.destroy(RenderTarget::Window(event.window));
 
                 self.shutdown.store(true, Ordering::Relaxed);
                 ctx.exit();
