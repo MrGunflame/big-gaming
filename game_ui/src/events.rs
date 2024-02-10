@@ -5,6 +5,7 @@ use std::sync::{mpsc, Arc};
 
 use game_input::keyboard::KeyboardInput;
 use game_input::mouse::{MouseButtonInput, MouseWheel};
+use game_render::camera::RenderTarget;
 use game_window::cursor::{Cursor, CursorIcon};
 use game_window::events::CursorMoved;
 use game_window::windows::WindowId;
@@ -154,10 +155,10 @@ pub fn update_events_from_layout_tree(tree: &mut LayoutTree, events: &mut Events
 pub(crate) fn dispatch_cursor_moved_events(
     tx: &mpsc::Sender<WindowCommand>,
     cursor: &Arc<Cursor>,
-    windows: &mut HashMap<WindowId, Events>,
+    targets: &mut HashMap<RenderTarget, Events>,
     event: CursorMoved,
 ) {
-    let Some(window) = windows.get_mut(&event.window) else {
+    let Some(window) = targets.get_mut(&RenderTarget::Window(event.window)) else {
         return;
     };
 
@@ -219,14 +220,14 @@ pub(crate) fn dispatch_cursor_moved_events(
 pub(crate) fn dispatch_mouse_button_input_events(
     tx: &mpsc::Sender<WindowCommand>,
     cursor: &Arc<Cursor>,
-    windows: &HashMap<WindowId, Events>,
+    targets: &HashMap<RenderTarget, Events>,
     event: MouseButtonInput,
 ) {
     let Some(window) = cursor.window() else {
         return;
     };
 
-    let Some(window) = windows.get(&window) else {
+    let Some(window) = targets.get(&RenderTarget::Window(window)) else {
         return;
     };
 
@@ -259,14 +260,14 @@ pub(crate) fn dispatch_mouse_button_input_events(
 pub(crate) fn dispatch_mouse_wheel_events(
     tx: &mpsc::Sender<WindowCommand>,
     cursor: &Arc<Cursor>,
-    windows: &HashMap<WindowId, Events>,
+    targets: &HashMap<RenderTarget, Events>,
     event: MouseWheel,
 ) {
     let Some(window) = cursor.window() else {
         return;
     };
 
-    let Some(window) = windows.get(&window) else {
+    let Some(window) = targets.get(&RenderTarget::Window(window)) else {
         return;
     };
 
@@ -299,14 +300,14 @@ pub(crate) fn dispatch_mouse_wheel_events(
 pub(crate) fn dispatch_keyboard_input_events(
     tx: &mpsc::Sender<WindowCommand>,
     cursor: &Arc<Cursor>,
-    windows: &HashMap<WindowId, Events>,
+    targets: &HashMap<RenderTarget, Events>,
     event: KeyboardInput,
 ) {
     let Some(window) = cursor.window() else {
         return;
     };
 
-    let Some(window) = windows.get(&window) else {
+    let Some(window) = targets.get(&RenderTarget::Window(window)) else {
         return;
     };
 

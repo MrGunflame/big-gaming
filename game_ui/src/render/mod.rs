@@ -13,7 +13,6 @@ use game_render::camera::RenderTarget;
 use game_render::graph::{Node, RenderContext};
 use game_render::Renderer;
 use game_tracing::trace_span;
-use game_window::windows::WindowId;
 use glam::{UVec2, Vec2};
 use parking_lot::RwLock;
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
@@ -42,8 +41,8 @@ const UI_SHADER: &str = include_str!("../../shaders/ui.wgsl");
 
 pub struct UiRenderer {
     pipeline: Arc<UiPipeline>,
-    windows: HashMap<WindowId, LayoutTree>,
-    elements: Arc<RwLock<HashMap<WindowId, Vec<PrimitiveElement>>>>,
+    targets: HashMap<RenderTarget, LayoutTree>,
+    elements: Arc<RwLock<HashMap<RenderTarget, Vec<PrimitiveElement>>>>,
 }
 
 impl UiRenderer {
@@ -60,32 +59,32 @@ impl UiRenderer {
 
         Self {
             pipeline,
-            windows: HashMap::new(),
+            targets: HashMap::new(),
             elements,
         }
     }
 
-    pub fn insert(&mut self, id: WindowId, size: UVec2) {
-        self.windows.insert(id, LayoutTree::new());
-        self.resize(id, size);
+    pub fn insert(&mut self, target: RenderTarget, size: UVec2) {
+        self.targets.insert(target, LayoutTree::new());
+        self.resize(target, size);
 
         let mut elems = self.elements.write();
-        elems.insert(id, vec![]);
+        elems.insert(target, vec![]);
     }
 
-    pub fn get_mut(&mut self, id: WindowId) -> Option<&mut LayoutTree> {
-        self.windows.get_mut(&id)
+    pub fn get_mut(&mut self, target: RenderTarget) -> Option<&mut LayoutTree> {
+        self.targets.get_mut(&target)
     }
 
-    pub fn remove(&mut self, id: WindowId) {
-        self.windows.remove(&id);
+    pub fn remove(&mut self, target: RenderTarget) {
+        self.targets.remove(&target);
 
         let mut elems = self.elements.write();
-        elems.remove(&id);
+        elems.remove(&target);
     }
 
-    pub fn resize(&mut self, id: WindowId, size: UVec2) {
-        if let Some(tree) = self.windows.get_mut(&id) {
+    pub fn resize(&mut self, target: RenderTarget, size: UVec2) {
+        if let Some(tree) = self.targets.get_mut(&target) {
             tree.resize(size);
         }
     }
@@ -93,7 +92,7 @@ impl UiRenderer {
     pub fn update(&mut self, device: &Device, queue: &Queue) {
         let _span = trace_span!("UiRenderer::update").entered();
 
-        for (id, tree) in self.windows.iter_mut() {
+        for (id, tree) in self.targets.iter_mut() {
             if !tree.is_changed() {
                 continue;
             }
@@ -433,7 +432,7 @@ impl Rect {
 #[derive(Debug)]
 pub struct UiPass {
     pipeline: Arc<UiPipeline>,
-    elements: Arc<RwLock<HashMap<WindowId, Vec<PrimitiveElement>>>>,
+    elements: Arc<RwLock<HashMap<RenderTarget, Vec<PrimitiveElement>>>>,
 }
 
 impl Node for UiPass {
@@ -441,12 +440,7 @@ impl Node for UiPass {
         let _span = trace_span!("UiPass::render").entered();
 
         let elems = self.elements.read();
-        // TODO: Rendering to non-window targets.
-        let RenderTarget::Window(window) = ctx.render_target else {
-            return;
-        };
-
-        let Some(elements) = elems.get(&window) else {
+        let Some(elements) = elems.get(&ctx.render_target) else {
             return;
         };
 
