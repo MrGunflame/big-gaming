@@ -2,21 +2,13 @@ use glam::UVec2;
 use image::ImageBuffer;
 
 use super::debug::is_debug_render_enabled;
-use super::{BuildPrimitiveElement, Image};
+use super::{DrawCommand, DrawElement, Image};
 use crate::layout::computed_style::ComputedStyle;
 
 pub struct Container;
 
-impl BuildPrimitiveElement for Container {
-    fn build(
-        &self,
-        style: &ComputedStyle,
-        layout: super::Rect,
-        pipeline: &super::UiPipeline,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        size: UVec2,
-    ) -> Option<super::PrimitiveElement> {
+impl DrawElement for Container {
+    fn draw(&self, style: &ComputedStyle, layout: super::Rect, size: UVec2) -> Option<DrawCommand> {
         // Truncate the container at the viewport size. This prevents rendering
         // potentially massive textures that destroy performance.
         let width = u32::min(layout.max.x - layout.min.x, size.x);
@@ -26,7 +18,7 @@ impl BuildPrimitiveElement for Container {
             // `Image` will already render a debugging border around
             // the container.
             let image = ImageBuffer::new(width, height);
-            Image { image }.build(style, layout, pipeline, device, queue, size)
+            Image { image }.draw(style, layout, size)
         } else {
             None
         }

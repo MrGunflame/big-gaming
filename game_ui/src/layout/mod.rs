@@ -9,7 +9,7 @@ use self::computed_style::{ComputedBounds, ComputedStyle};
 use crate::render::container::Container;
 use crate::render::image::Image;
 use crate::render::text::Text;
-use crate::render::{BuildPrimitiveElement, PrimitiveElement, Rect, UiPipeline};
+use crate::render::{DrawCommand, DrawElement, Rect};
 use crate::style::{Direction, Justify, Position, Style};
 
 // Provide custom saturaing methods
@@ -34,20 +34,12 @@ pub struct Element {
     pub style: Style,
 }
 
-impl BuildPrimitiveElement for Element {
-    fn build(
-        &self,
-        style: &ComputedStyle,
-        layout: Rect,
-        pipeline: &UiPipeline,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        size: UVec2,
-    ) -> Option<PrimitiveElement> {
+impl DrawElement for Element {
+    fn draw(&self, style: &ComputedStyle, layout: Rect, size: UVec2) -> Option<DrawCommand> {
         match &self.body {
-            ElementBody::Container => Container.build(style, layout, pipeline, device, queue, size),
-            ElementBody::Image(elem) => elem.build(style, layout, pipeline, device, queue, size),
-            ElementBody::Text(elem) => elem.build(style, layout, pipeline, device, queue, size),
+            ElementBody::Container => Container.draw(style, layout, size),
+            ElementBody::Image(elem) => elem.draw(style, layout, size),
+            ElementBody::Text(elem) => elem.draw(style, layout, size),
         }
     }
 }
