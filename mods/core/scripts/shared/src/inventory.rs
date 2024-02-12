@@ -3,10 +3,10 @@ use game_wasm::encoding::{Decode, Encode};
 use game_wasm::entity::EntityId;
 use game_wasm::events::dispatch_event_dynamic;
 use game_wasm::inventory::{Inventory, InventoryId};
-use game_wasm::world::RecordReference;
+use game_wasm::world::{Entity, RecordReference};
 
 use crate::components::{EQUIP, EQUIPPABLE, UNEQUIP};
-use crate::Equippable;
+use crate::{Camera, Equippable};
 
 #[derive(Copy, Clone, Debug, Encode, Decode)]
 pub struct Equip(InventoryId);
@@ -16,7 +16,11 @@ impl Action for Equip {
 }
 
 pub fn on_equip(entity: EntityId, Equip(slot): Equip) {
-    let inventory = Inventory::new(entity);
+    let Ok(camera) = Entity::new(entity).get::<Camera>() else {
+        return;
+    };
+
+    let inventory = Inventory::new(camera.parent);
 
     let Ok(mut stack) = inventory.get(slot) else {
         return;
@@ -29,7 +33,13 @@ pub fn on_equip(entity: EntityId, Equip(slot): Equip) {
 
     stack.equip(true).unwrap();
 
-    dispatch_event_dynamic(equippable.on_equip, &ItemEquip { entity, slot });
+    dispatch_event_dynamic(
+        equippable.on_equip,
+        &ItemEquip {
+            entity: camera.parent,
+            slot,
+        },
+    );
 }
 
 #[derive(Copy, Clone, Debug, Encode, Decode)]
@@ -40,6 +50,10 @@ impl Action for Unequip {
 }
 
 pub fn on_uneqip(entity: EntityId, Unequip(slot): Unequip) {
+    let Ok(camera) = Entity::new(entity).get::<Camera>() else {
+        return;
+    };
+
     let inventory = Inventory::new(entity);
 
     let Ok(mut stack) = inventory.get(slot) else {
@@ -52,7 +66,13 @@ pub fn on_uneqip(entity: EntityId, Unequip(slot): Unequip) {
     let equippable = Equippable::decode(equippable.reader()).unwrap();
     stack.equip(false).unwrap();
 
-    dispatch_event_dynamic(equippable.on_uneqip, &ItemUnequip { entity, slot });
+    dispatch_event_dynamic(
+        equippable.on_uneqip,
+        &ItemUnequip {
+            entity: camera.parent,
+            slot,
+        },
+    );
 }
 
 #[derive(Copy, Clone, Debug, Encode, Decode)]

@@ -30,7 +30,7 @@ use game_window::cursor::Cursor;
 use game_window::events::WindowEvent;
 use glam::Vec3;
 
-use crate::components::base::Health;
+use crate::components::base::{Camera, Health};
 use crate::config::Config;
 // use crate::entities::actor::SpawnActor;
 // use crate::entities::object::SpawnObject;
@@ -358,8 +358,15 @@ impl GameWorldState {
                     self.cursor_pinned.pin(cursor);
                 }
                 None => {
+                    let camera: Camera = self.world.state().world.get_typed(self.host);
+
                     // Ignore if the current player entity has no inventory.
-                    let Some(inventory) = self.world.state().inventories.get(self.host) else {
+                    let Some(inventory) = self
+                        .world
+                        .state()
+                        .inventories
+                        .get(EntityId::from_raw(camera.parent.into_raw()))
+                    else {
                         return;
                     };
 
