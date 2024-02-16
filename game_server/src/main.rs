@@ -61,7 +61,5 @@ fn load_world() -> StaticGenerator {
     let mut buf = Vec::new();
     file.read_to_end(&mut buf).unwrap();
 
-    let cells = game_worldgen::data::json::from_slice(&buf).unwrap();
-
-    StaticGenerator { data: cells }
+    game_worldgen::from_slice(&buf).unwrap()
 }

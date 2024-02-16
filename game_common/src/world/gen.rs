@@ -79,10 +79,17 @@ impl EntityBuilder {
         }
     }
 
-    pub fn transform(mut self, transform: Transform) -> Self {
-        let (fields, data) = BinaryWriter::new().encoded(&transform);
+    pub fn transform(self, transform: Transform) -> Self {
+        self.component_typed(transform)
+    }
+
+    pub fn component_typed<T>(mut self, component: T) -> Self
+    where
+        T: Component,
+    {
+        let (fields, data) = BinaryWriter::new().encoded(&component);
         self.components
-            .insert(Transform::ID, RawComponent::new(data, fields));
+            .insert(T::ID, RawComponent::new(data, fields));
         self
     }
 
