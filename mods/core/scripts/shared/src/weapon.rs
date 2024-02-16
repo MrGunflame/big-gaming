@@ -1,4 +1,4 @@
-use core::ptr::eq;
+use core::f32::consts::PI;
 
 use alloc::borrow::ToOwned;
 use alloc::string::ToString;
@@ -17,7 +17,7 @@ use crate::components::{
     WEAPON_RELOAD,
 };
 use crate::inventory::{ItemEquip, ItemUnequip};
-use crate::{Ammo, GunProperties, ProjectileProperties};
+use crate::{Ammo, GunProperties, LookingDirection, ProjectileProperties};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Encode, Decode)]
 pub struct WeaponAttack;
@@ -135,12 +135,13 @@ pub fn gun_equip(_: EntityId, event: GunEquip) {
     let entity = Entity::spawn();
     entity.insert(Transform::default());
     entity.insert(MeshInstance {
-        path: "assets/tyre.glb".to_owned(),
+        path: "assets/pistol.glb".to_owned(),
     });
 
     let owner = Entity::new(event.0.entity);
     owner.insert(EquippedItem {
         entity: entity.id(),
+        offset: Vec3::new(0.2, 1.2, -0.5),
     });
 }
 
@@ -154,6 +155,7 @@ pub fn gun_unequip(_: EntityId, event: GunUnequip) {
 #[derive(Copy, Clone, Debug, Encode, Decode)]
 pub struct EquippedItem {
     pub entity: EntityId,
+    pub offset: Vec3,
 }
 
 impl Component for EquippedItem {
@@ -165,9 +167,15 @@ pub fn translate_equipped_items(entity: EntityId) {
 
     let transform = entity.get::<Transform>().unwrap();
     let equipped = entity.get::<EquippedItem>().unwrap();
+    let looking_dir = entity.get::<LookingDirection>().unwrap();
 
     let item = Entity::new(equipped.entity);
-    let mut item_transform = item.get::<Transform>().unwrap();
-    item_transform = transform;
+    let mut item_transform = transform;
+    item_transform.translation += item_transform.rotation * equipped.offset;
+    item.insert(item_transform);
+
+    // Yes somehow the default mesh is inverted around in the Y axis.
+    item_transform.rotation = looking_dir.rotation * Quat::from_axis_angle(Vec3::Y, PI);
+
     item.insert(item_transform);
 }

@@ -15,8 +15,8 @@ use crate::components::{
     EQUIPPABLE, EVENT_GUN_EQUIP, EVENT_GUN_UNEQUIP, GUN_PROPERTIES, TEST_WEAPON, TRANSFORM_CHANGED,
 };
 use crate::{
-    Camera, CharacterController, Equippable, GunProperties, Health, Humanoid, MovementSpeed,
-    PlayerCamera, Projectile, SpawnPoint,
+    Camera, CharacterController, Equippable, GunProperties, Health, Humanoid, LookingDirection,
+    MovementSpeed, PlayerCamera, Projectile, SpawnPoint,
 };
 
 pub fn spawn_player(_: EntityId, event: PlayerConnect) {
@@ -100,6 +100,7 @@ pub fn spawn_player(_: EntityId, event: PlayerConnect) {
         offset: Vec3::new(0.0, 1.8, 0.0),
         rotation: Quat::IDENTITY,
     });
+    entity.insert(LookingDirection::default());
 
     event.player.set_active(camera.id());
 
@@ -139,4 +140,9 @@ pub fn update_camera_transform(_: EntityId, event: TransformChanged) {
     transform.rotation = camera.rotation;
     let camera = Entity::new(camera.camera);
     camera.insert(transform);
+
+    entity.insert(LookingDirection {
+        translation: transform.translation,
+        rotation: transform.rotation,
+    });
 }

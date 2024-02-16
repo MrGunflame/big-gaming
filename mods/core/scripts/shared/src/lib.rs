@@ -17,6 +17,7 @@ use bytemuck::Pod;
 use bytemuck::Zeroable;
 use components::CAMERA;
 use components::EQUIPPABLE;
+use components::LOOKING_DIRECTION;
 use components::PLAYER_CAMERA;
 use game_wasm::components::builtin::Collider;
 use game_wasm::components::builtin::ColliderShape;
@@ -256,6 +257,7 @@ pub mod components {
         TEST_WEAPON => 0x11,
 
         EQUIPPED_ITEM => 0x20,
+        LOOKING_DIRECTION => 0x21,
 
         // EVENTS
         EVENT_GUN_EQUIP => 0x01,
@@ -366,4 +368,16 @@ pub struct PlayerCamera {
 
 impl Component for PlayerCamera {
     const ID: RecordReference = PLAYER_CAMERA;
+}
+
+#[derive(Copy, Clone, Debug, Default, Encode, Decode)]
+pub struct LookingDirection {
+    pub translation: Vec3,
+    pub rotation: Quat,
+}
+
+impl LookingDirection {}
+
+impl Component for LookingDirection {
+    const ID: RecordReference = LOOKING_DIRECTION;
 }
