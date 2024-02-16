@@ -141,7 +141,7 @@ pub fn gun_equip(_: EntityId, event: GunEquip) {
     let owner = Entity::new(event.0.entity);
     owner.insert(EquippedItem {
         entity: entity.id(),
-        offset: Vec3::new(0.2, 1.2, -0.5),
+        offset: Vec3::new(0.2, -0.2, -0.5),
     });
 }
 
@@ -174,6 +174,9 @@ pub fn translate_equipped_items(entity: EntityId) {
     item_transform.translation += item_transform.rotation * equipped.offset;
     item.insert(item_transform);
 
+    item_transform.translation = looking_dir.translation + looking_dir.rotation * equipped.offset;
+
+    //item_transform.translation = transform.translation + looking_dir.rotation * equipped.offset;
     // Yes somehow the default mesh is inverted around in the Y axis.
     item_transform.rotation = looking_dir.rotation * Quat::from_axis_angle(Vec3::Y, PI);
 
