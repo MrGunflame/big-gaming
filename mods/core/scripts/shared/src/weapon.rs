@@ -17,6 +17,7 @@ use crate::components::{
     WEAPON_RELOAD,
 };
 use crate::inventory::{ItemEquip, ItemUnequip};
+use crate::player::TransformChanged;
 use crate::{Ammo, GunProperties, LookingDirection, ProjectileProperties};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Encode, Decode)]
@@ -162,12 +163,18 @@ impl Component for EquippedItem {
     const ID: RecordReference = EQUIPPED_ITEM;
 }
 
-pub fn translate_equipped_items(entity: EntityId) {
-    let entity = Entity::new(entity);
+pub fn translate_equipped_items(_: EntityId, event: TransformChanged) {
+    let entity = Entity::new(event.entity);
 
-    let transform = entity.get::<Transform>().unwrap();
-    let equipped = entity.get::<EquippedItem>().unwrap();
-    let looking_dir = entity.get::<LookingDirection>().unwrap();
+    let Ok(transform) = entity.get::<Transform>() else {
+        return;
+    };
+    let Ok(equipped) = entity.get::<EquippedItem>() else {
+        return;
+    };
+    let Ok(looking_dir) = entity.get::<LookingDirection>() else {
+        return;
+    };
 
     let item = Entity::new(equipped.entity);
     let mut item_transform = transform;
