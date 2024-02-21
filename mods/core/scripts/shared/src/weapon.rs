@@ -9,7 +9,8 @@ use game_wasm::encoding::{Decode, Encode};
 use game_wasm::entity::EntityId;
 use game_wasm::events::Event;
 use game_wasm::inventory::Inventory;
-use game_wasm::math::{Quat, Vec3};
+use game_wasm::math::{Quat, Ray, Vec3};
+use game_wasm::physics::{cast_ray, QueryFilter};
 use game_wasm::world::{Entity, RecordReference};
 
 use crate::components::{
@@ -18,7 +19,7 @@ use crate::components::{
 };
 use crate::inventory::{ItemEquip, ItemUnequip};
 use crate::player::TransformChanged;
-use crate::{Ammo, GunProperties, LookingDirection, ProjectileProperties};
+use crate::{Ammo, Camera, GunProperties, LookingDirection, PlayerCamera, ProjectileProperties};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Encode, Decode)]
 pub struct WeaponAttack;
@@ -35,10 +36,22 @@ impl Action for WeaponReload {
 }
 
 pub fn weapon_attack(entity: EntityId, WeaponAttack: WeaponAttack) {
-    let actor = Entity::new(entity);
-    let inventory = Inventory::new(entity);
+    let Ok(camera) = Entity::new(entity).get::<Camera>() else {
+        return;
+    };
+
+    let actor = Entity::new(camera.parent);
+    let inventory = Inventory::new(camera.parent);
 
     let transform = actor.get::<Transform>().unwrap();
+    let Ok(looking_dir) = actor.get::<LookingDirection>() else {
+        return;
+    };
+    let Ok(equipped_item) = actor.get::<EquippedItem>() else {
+        return;
+    };
+
+    let projectile_transform = project_camera_transform(looking_dir, equipped_item.offset);
 
     for stack in inventory
         .iter()
@@ -60,14 +73,9 @@ pub fn weapon_attack(entity: EntityId, WeaponAttack: WeaponAttack) {
         if has_ammo {
             stack.components().insert(AMMO, &ammo).unwrap();
 
-            let translation =
-                transform.translation + Vec3::from_array(properties.projectile.translation);
-            let rotation = transform.rotation * Quat::from_array(properties.projectile.rotation);
-
             build_projectile(
                 actor.id(),
-                translation,
-                rotation,
+                projectile_transform,
                 properties.projectile.id,
                 properties.damage,
             );
@@ -75,19 +83,34 @@ pub fn weapon_attack(entity: EntityId, WeaponAttack: WeaponAttack) {
     }
 }
 
+fn project_camera_transform(camera: LookingDirection, item_offset: Vec3) -> Transform {
+    const MAX_TOI: f32 = 100.0;
+
+    let toi = match cast_ray(
+        Ray {
+            origin: camera.translation,
+            direction: camera.rotation * -Vec3::Z,
+        },
+        MAX_TOI,
+        QueryFilter::default(),
+    ) {
+        Some(hit) => hit.toi,
+        None => MAX_TOI,
+    };
+    Transform::from_translation(camera.translation + camera.rotation * item_offset).looking_at(
+        camera.translation + camera.rotation * Vec3::new(0.0, 0.0, -toi),
+        Vec3::Y,
+    )
+}
+
 fn build_projectile(
     owner: EntityId,
-    translation: Vec3,
-    rotation: Quat,
+    transform: Transform,
     projectile: RecordReference,
     damage: f32,
 ) {
     let entity = Entity::spawn();
-    entity.insert(Transform {
-        translation,
-        rotation,
-        scale: Vec3::splat(1.0),
-    });
+    entity.insert(transform);
     entity.insert(ProjectileProperties {
         damage,
         owner,
@@ -99,7 +122,11 @@ fn build_projectile(
 }
 
 pub fn weapon_reload(entity: EntityId, WeaponReload: WeaponReload) {
-    let inventory = Inventory::new(entity);
+    let Ok(camera) = Entity::new(entity).get::<Camera>() else {
+        return;
+    };
+
+    let inventory = Inventory::new(camera.parent);
 
     for stack in inventory
         .iter()
