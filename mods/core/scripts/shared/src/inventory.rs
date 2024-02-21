@@ -54,7 +54,7 @@ pub fn on_uneqip(entity: EntityId, Unequip(slot): Unequip) {
         return;
     };
 
-    let inventory = Inventory::new(entity);
+    let inventory = Inventory::new(camera.parent);
 
     let Ok(mut stack) = inventory.get(slot) else {
         return;
