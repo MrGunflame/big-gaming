@@ -22,7 +22,3 @@ image = "0.24.6"
 
 serde = { version = "1.0.167", features = ["derive"], optional = true }
 serde_json = { version = "1.0.100", optional = true }
-
-[[test]]
-name = "json"
-path = "tests/json/json.rs"
