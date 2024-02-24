@@ -105,6 +105,10 @@ impl<T> Queue<T> {
         head - tail
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     /// Returns the capacity of the `Queue`.
     pub fn capacity(&self) -> usize {
         self.buffer_capacity() - 1
@@ -148,6 +152,18 @@ impl<T> Sender<T> {
     pub fn push(&mut self, value: T) -> Result<(), T> {
         self.inner.push(value)
     }
+
+    pub fn capacity(&self) -> usize {
+        self.inner.capacity()
+    }
+
+    pub fn len(&self) -> usize {
+        self.inner.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
 }
 
 unsafe impl<T> Send for Sender<T> {}
@@ -159,6 +175,18 @@ pub struct Receiver<T> {
 impl<T> Receiver<T> {
     pub fn pop(&mut self) -> Option<T> {
         self.inner.pop()
+    }
+
+    pub fn capacity(&self) -> usize {
+        self.inner.capacity()
+    }
+
+    pub fn len(&self) -> usize {
+        self.inner.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 
     pub fn drain(&mut self) -> Drain<'_, T> {
