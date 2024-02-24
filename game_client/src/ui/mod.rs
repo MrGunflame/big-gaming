@@ -52,8 +52,8 @@ impl UiElements {
 
             let id = DebugUi {
                 stats,
-                ups: self.ups.points(),
-                fps: self.fps.points(),
+                ups: self.ups.clone(),
+                fps: self.fps.clone(),
             }
             .build(cx)
             .id()
