@@ -1,4 +1,4 @@
-use std::sync::mpsc;
+use std::fmt::{self, Debug, Formatter};
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{
@@ -24,71 +24,52 @@ pub enum Error {
     NoConfig,
 }
 
-#[derive(Debug)]
 pub struct CpalBackend {
-    tx: mpsc::Sender<Receiver>,
+    device: Device,
+    streams: Vec<cpal::Stream>,
+    config: StreamConfig,
 }
 
 impl CpalBackend {
     pub fn new() -> Result<Self, Error> {
-        let (resp_tx, resp_rx) = mpsc::channel::<Result<(), Error>>();
+        let sample_rate = SampleRate(48_000);
+        let channels = 2;
 
-        let (tx, rx) = mpsc::channel::<Receiver>();
+        let (device, config) = new_inner(sample_rate, channels)?;
 
-        std::thread::spawn(move || {
-            let sample_rate = SampleRate(48_000);
-            let channels = 2;
+        Ok(Self {
+            device,
+            streams: Vec::new(),
+            config,
+        })
+    }
+}
 
-            let (device, config) = match new_inner(sample_rate, channels) {
-                Ok(x) => {
-                    let _ = resp_tx.send(Ok(()));
-                    x
-                }
-                Err(err) => {
-                    let _ = resp_tx.send(Err(err));
-                    return;
-                }
-            };
-
-            let channels = config.channels as usize;
-
-            let mut streams = vec![];
-
-            while let Ok(mut buf) = rx.recv() {
-                let stream = device
-                    .build_output_stream(
-                        &config,
-                        move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
-                            write_data(data, channels, &mut buf);
-                        },
-                        |err| {
-                            panic!("{}", err);
-                        },
-                        None,
-                    )
-                    .unwrap();
-
-                stream.play().unwrap();
-
-                // Keep the stream alive until the backend itself is dropped.
-                streams.push(stream);
-            }
-
-            drop(streams);
-        });
-
-        let res = resp_rx.recv().expect("resp_tx dropped without response");
-
-        match res {
-            Ok(()) => Ok(Self { tx }),
-            Err(err) => Err(err),
-        }
+impl Debug for CpalBackend {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.debug_struct("CpalBackend").finish_non_exhaustive()
     }
 }
 
 impl Backend for CpalBackend {
-    fn create_output_stream(&mut self, rx: Receiver) {
-        let _ = self.tx.send(rx);
+    fn create_output_stream(&mut self, mut rx: Receiver) {
+        let channels = self.config.channels as usize;
+
+        let stream = self
+            .device
+            .build_output_stream(
+                &self.config,
+                move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
+                    write_data(data, channels, &mut rx)
+                },
+                |err| {
+                    panic!("output stream error: {}", err);
+                },
+                None,
+            )
+            .unwrap();
+        stream.play().unwrap();
+        self.streams.push(stream);
     }
 }
 
