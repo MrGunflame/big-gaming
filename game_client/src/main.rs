@@ -165,7 +165,7 @@ impl<'a> GameAppState<'a> {
         // If the renderer runs faster than the update we may have the same
         // event multiple times, but we only want't to handle it once per
         // update.
-        let mut events: Vec<_> = self.events.drain().collect();
+        let mut events: Vec<_> = self.events.drain().take(8192).collect();
         events.dedup();
         for event in events {
             match &mut self.state {
