@@ -5,6 +5,7 @@ use std::time::{Duration, Instant};
 pub struct UpdateCounter {
     last_update: Instant,
     frame_time: Duration,
+    last_frametime: Duration,
 }
 
 impl UpdateCounter {
@@ -14,6 +15,7 @@ impl UpdateCounter {
         Self {
             last_update: now,
             frame_time: Duration::ZERO,
+            last_frametime: Duration::ZERO,
         }
     }
 
@@ -22,11 +24,16 @@ impl UpdateCounter {
 
         let elapsed = now - self.last_update;
         self.last_update = now;
+        self.last_frametime = elapsed;
         self.frame_time = (self.frame_time.mul_f32(0.8)) + (elapsed.mul_f32(0.2));
     }
 
     pub fn ups(&self) -> f32 {
         Duration::from_secs(1).as_secs_f32() / self.frame_time.as_secs_f32()
+    }
+
+    pub fn last_frametime(&self) -> Duration {
+        self.last_frametime
     }
 }
 
