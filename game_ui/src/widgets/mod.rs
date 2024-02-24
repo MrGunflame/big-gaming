@@ -4,6 +4,7 @@ mod container;
 mod image;
 mod input;
 mod parse_input;
+mod plot;
 mod selection;
 mod text;
 
@@ -15,6 +16,7 @@ pub use checkbox::Checkbox;
 pub use container::Container;
 pub use input::Input;
 pub use parse_input::ParseInput;
+pub use plot::Plot;
 pub use selection::Selection;
 pub use text::Text;
 

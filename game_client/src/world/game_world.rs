@@ -1,27 +1,18 @@
-use std::sync::atomic::compiler_fence;
-
 use game_common::components::actions::ActionId;
-use game_common::components::components::Components;
 use game_common::components::items::{Item, ItemStack};
-use game_common::components::object::ObjectId;
-use game_common::components::race::RaceId;
 use game_common::components::Transform;
 use game_common::entity::EntityId;
 use game_common::events::{ActionEvent, Event, EventQueue};
 use game_common::net::ServerEntity;
-use game_common::record::RecordReference;
 use game_common::units::Mass;
 use game_common::world::control_frame::ControlFrame;
-use game_common::world::entity::{Actor, Entity, EntityBody, Object};
 use game_core::counter::{IntervalImpl, UpdateCounter};
 use game_core::modules::Modules;
 use game_core::time::Time;
-use game_data::record::RecordBody;
-use game_net::message::{DataMessageBody, EntityAction, EntityRotate};
+use game_net::message::{DataMessageBody, EntityAction};
 use game_net::peer_error;
 use game_script::Executor;
 use game_tracing::trace_span;
-use glam::{Quat, Vec3};
 
 use crate::config::Config;
 use crate::net::world::{Command, CommandBuffer};
@@ -113,8 +104,8 @@ where
         }
     }
 
-    pub fn ups(&self) -> f32 {
-        self.game_tick.counter.ups()
+    pub fn ups(&self) -> UpdateCounter {
+        self.game_tick.counter.clone()
     }
 
     fn process_frame(&mut self, cf: ControlFrame, cmd_buffer: &mut CommandBuffer) {
@@ -394,40 +385,19 @@ where
         &self.predicted_state
     }
 
-    pub fn send(&mut self, cmd: SendCommand) {
-        match cmd {
-            SendCommand::Rotate { entity, rotation } => {
-                let Some(id) = self.server_entities.get(entity) else {
-                    return;
-                };
+    pub fn send(&mut self, action: Action) {
+        let Some(id) = self.server_entities.get(action.entity) else {
+            return;
+        };
 
-                self.conn.send(
-                    self.next_frame_counter.newest_frame,
-                    DataMessageBody::EntityRotate(EntityRotate {
-                        entity: id,
-                        rotation,
-                    }),
-                );
-            }
-            SendCommand::Action {
-                entity,
-                action,
-                data,
-            } => {
-                let Some(id) = self.server_entities.get(entity) else {
-                    return;
-                };
-
-                self.conn.send(
-                    self.next_frame_counter.newest_frame,
-                    DataMessageBody::EntityAction(EntityAction {
-                        entity: id,
-                        action,
-                        bytes: data,
-                    }),
-                );
-            }
-        }
+        self.conn.send(
+            self.next_frame_counter.newest_frame,
+            DataMessageBody::EntityAction(EntityAction {
+                entity: id,
+                action: action.action,
+                bytes: action.data,
+            }),
+        );
     }
 
     pub fn input_buffer_len(&self) -> usize {
@@ -475,45 +445,9 @@ impl NextFrameCounter {
     }
 }
 
-fn spawn_entity(id: RecordReference, transform: Transform, modules: &Modules) -> Option<Entity> {
-    let Some(module) = modules.get(id.module) else {
-        return None;
-    };
-
-    let Some(record) = module.records.get(id.record) else {
-        return None;
-    };
-
-    let body = match &record.body {
-        RecordBody::Race(race) => EntityBody::Actor(Actor { race: RaceId(id) }),
-        RecordBody::Object(object) => EntityBody::Object(Object { id: ObjectId(id) }),
-        _ => todo!(),
-    };
-
-    let mut components = Components::new();
-    // for component in &record.components {
-    //     components.insert(component.id, component.clone());
-    // }
-
-    Some(Entity {
-        id: EntityId::dangling(),
-        transform,
-        body,
-        components,
-        is_host: false,
-        linvel: Vec3::ZERO,
-        angvel: Vec3::ZERO,
-    })
-}
-
-pub enum SendCommand {
-    Rotate {
-        entity: EntityId,
-        rotation: Quat,
-    },
-    Action {
-        entity: EntityId,
-        action: ActionId,
-        data: Vec<u8>,
-    },
+#[derive(Clone, Debug)]
+pub struct Action {
+    pub entity: EntityId,
+    pub action: ActionId,
+    pub data: Vec<u8>,
 }

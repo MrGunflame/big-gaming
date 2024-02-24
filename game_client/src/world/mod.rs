@@ -46,7 +46,7 @@ use crate::ui::UiElements;
 
 use self::actions::ActiveActions;
 use self::camera::{CameraController, CameraMode, DetachedState};
-use self::game_world::{GameWorld, SendCommand};
+use self::game_world::{Action, GameWorld};
 use self::movement::update_rotation;
 
 #[derive(Debug)]
@@ -183,7 +183,7 @@ impl GameWorldState {
             &mut cx,
             Some(Statistics {
                 ups: self.world.ups(),
-                fps: fps_counter.ups(),
+                fps: fps_counter,
                 entities: world.len() as u64,
                 net_input_buffer_len: self.world.input_buffer_len() as u64,
             }),
@@ -283,7 +283,7 @@ impl GameWorldState {
 
         let (_, data) = BinaryWriter::new().encoded(&transform.rotation);
 
-        self.world.send(SendCommand::Action {
+        self.world.send(Action {
             entity: self.host,
             action: ActionId("c626b9b0ab1940aba6932ea7726d0175:23".parse().unwrap()),
             data,
@@ -398,7 +398,7 @@ impl GameWorldState {
         for action in actions {
             tracing::debug!("emit action {:?}", action);
 
-            self.world.send(SendCommand::Action {
+            self.world.send(Action {
                 entity: self.host,
                 action,
                 data: vec![],
@@ -428,7 +428,7 @@ impl GameWorldState {
                     }
                 };
 
-                self.world.send(SendCommand::Action {
+                self.world.send(Action {
                     entity: self.host,
                     action: ActionId(action),
                     data,
