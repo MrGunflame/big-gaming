@@ -15,6 +15,7 @@ use std::time::Duration;
 
 use clap::Parser;
 use config::Config;
+use game_common::sync::spsc;
 use game_common::world::World;
 use game_core::counter::{Interval, UpdateCounter};
 use game_core::time::Time;
@@ -82,7 +83,8 @@ fn main() {
 
     let renderer = Renderer::new();
     let ui_state = UiState::new(&renderer);
-    let events = Mutex::new(Vec::new());
+    let events = spsc::Queue::new(8192);
+    let (events_tx, events_rx) = events.split();
 
     // Lazy initialize the main window document for the game thread. We cannot
     // create the document before the main window is created, which does not
@@ -99,7 +101,7 @@ fn main() {
         world: &world,
         time: Time::new(),
         ui_doc: &ui_doc,
-        events: &events,
+        events: events_rx,
         cursor: cursor.clone(),
         fps_counter: &fps_counter,
         shutdown: &shutdown,
@@ -115,7 +117,7 @@ fn main() {
         window_id,
         ui_doc: &ui_doc,
         cursor,
-        events: &events,
+        events: events_tx,
         fps_counter: &fps_counter,
         shutdown: &shutdown,
     };
@@ -134,7 +136,7 @@ pub struct GameAppState<'a> {
     world: &'a Mutex<World>,
     time: Time,
     ui_doc: &'a OnceLock<Document>,
-    events: &'a Mutex<Vec<WindowEvent>>,
+    events: spsc::Receiver<WindowEvent>,
     cursor: Arc<Cursor>,
     fps_counter: &'a Mutex<UpdateCounter>,
     shutdown: &'a AtomicBool,
@@ -163,10 +165,7 @@ impl<'a> GameAppState<'a> {
         // If the renderer runs faster than the update we may have the same
         // event multiple times, but we only want't to handle it once per
         // update.
-        let mut events = {
-            let mut events = self.events.lock();
-            std::mem::take(&mut *events)
-        };
+        let mut events: Vec<_> = self.events.drain().collect();
         events.dedup();
         for event in events {
             match &mut self.state {
@@ -203,7 +202,7 @@ pub struct RendererAppState<'a> {
     window_id: WindowId,
     ui_doc: &'a OnceLock<Document>,
     cursor: Arc<Cursor>,
-    events: &'a Mutex<Vec<WindowEvent>>,
+    events: spsc::Sender<WindowEvent>,
     fps_counter: &'a Mutex<UpdateCounter>,
     shutdown: &'a AtomicBool,
 }
@@ -281,7 +280,10 @@ impl<'a> game_window::App for RendererAppState<'a> {
             _ => (),
         }
 
-        self.events.lock().push(event.clone());
+        if let Err(_) = self.events.push(event.clone()) {
+            tracing::error!("cannot send input event, queue is full");
+        }
+
         self.ui_state.send_event(&self.cursor, event);
     }
 }
