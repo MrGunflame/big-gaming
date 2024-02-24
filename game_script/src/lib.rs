@@ -36,6 +36,8 @@ pub struct Executor {
     systems: Vec<System>,
     action_handlers: HashMap<RecordReference, Vec<Entry>>,
     event_handlers: HashMap<RecordReference, Vec<Entry>>,
+    // Reuse memory for invocations across `update` calls.
+    invocations: VecDeque<Invocation>,
 }
 
 impl Executor {
@@ -52,6 +54,7 @@ impl Executor {
             systems: vec![],
             action_handlers: HashMap::new(),
             event_handlers: HashMap::new(),
+            invocations: VecDeque::with_capacity(32),
         }
     }
 
@@ -83,8 +86,6 @@ impl Executor {
     pub fn update(&mut self, ctx: Context<'_>) -> Effects {
         let _span = trace_span!("Executor::update").entered();
 
-        let mut invocations = VecDeque::new();
-
         let world = ctx.world.world();
 
         for system in &self.systems {
@@ -97,7 +98,7 @@ impl Executor {
                     }
                 }
 
-                invocations.push_back(Invocation {
+                self.invocations.push_back(Invocation {
                     script: system.script,
                     fn_ptr: system.ptr,
                     host_buffers: vec![],
@@ -116,35 +117,29 @@ impl Executor {
                     let (fields, data) = BinaryWriter::new().encoded(&event);
                     let fields = encode_fields(&fields);
 
-                    self.schedule_event(
-                        &mut invocations,
-                        DispatchEvent {
-                            id: PLAYER_CONNECT,
-                            data,
-                            fields,
-                        },
-                    );
+                    self.schedule_event(DispatchEvent {
+                        id: PLAYER_CONNECT,
+                        data,
+                        fields,
+                    });
                     continue;
                 }
                 Event::PlayerDisconnect(event) => {
                     let (fields, data) = BinaryWriter::new().encoded(&event);
                     let fields = encode_fields(&fields);
 
-                    self.schedule_event(
-                        &mut invocations,
-                        DispatchEvent {
-                            id: PLAYER_DISCONNECT,
-                            data,
-                            fields,
-                        },
-                    );
+                    self.schedule_event(DispatchEvent {
+                        id: PLAYER_DISCONNECT,
+                        data,
+                        fields,
+                    });
                     continue;
                 }
                 _ => continue,
             };
 
             for entry in entries {
-                invocations.push_back(Invocation {
+                self.invocations.push_back(Invocation {
                     script: entry.script,
                     fn_ptr: entry.fn_ptr,
                     host_buffers: vec![action_buffer.clone(), Vec::new()],
@@ -175,7 +170,7 @@ impl Executor {
         // sort of cycle checks and stop when an event schedules an event from which the
         // the event was dispatched from.
 
-        while let Some(invocation) = invocations.pop_front() {
+        while let Some(invocation) = self.invocations.pop_front() {
             state.host_buffers = invocation.host_buffers;
 
             let runnable = self.instances.get(State::Run(state), invocation.script);
@@ -187,14 +182,14 @@ impl Executor {
             state = runnable.into_state();
 
             for event in state.events.drain(..) {
-                self.schedule_event(&mut invocations, event);
+                self.schedule_event(event);
             }
         }
 
         effects
     }
 
-    fn schedule_event(&self, invocations: &mut VecDeque<Invocation>, event: DispatchEvent) {
+    fn schedule_event(&mut self, event: DispatchEvent) {
         tracing::debug!("scheduling event {:?}", event);
 
         let Some(handlers) = self.event_handlers.get(&event.id) else {
@@ -204,7 +199,7 @@ impl Executor {
         for handler in handlers {
             tracing::debug!("found handler for event {:?}: {:?}", event.id, handler);
 
-            invocations.push_back(Invocation {
+            self.invocations.push_back(Invocation {
                 script: handler.script,
                 fn_ptr: handler.fn_ptr,
                 host_buffers: vec![event.data.clone(), event.fields.clone()],
