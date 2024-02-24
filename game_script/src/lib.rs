@@ -16,7 +16,7 @@ use game_tracing::trace_span;
 use game_wasm::encoding::{encode_fields, BinaryWriter};
 use game_wasm::events::{PLAYER_CONNECT, PLAYER_DISCONNECT};
 use game_wasm::player::PlayerId;
-use instance::{InstancePool, RunState, State};
+use instance::{HostBufferPool, InstancePool, RunState, State};
 use script::{Script, ScriptLoadError};
 use wasmtime::{Config, Engine, WasmBacktraceDetails};
 
@@ -38,6 +38,7 @@ pub struct Executor {
     event_handlers: HashMap<RecordReference, Vec<Entry>>,
     // Reuse memory for invocations across `update` calls.
     invocations: VecDeque<Invocation>,
+    host_buffer_pool: HostBufferPool,
 }
 
 impl Executor {
@@ -55,6 +56,7 @@ impl Executor {
             action_handlers: HashMap::new(),
             event_handlers: HashMap::new(),
             invocations: VecDeque::with_capacity(32),
+            host_buffer_pool: HostBufferPool::default(),
         }
     }
 
@@ -101,7 +103,7 @@ impl Executor {
                 self.invocations.push_back(Invocation {
                     script: system.script,
                     fn_ptr: system.ptr,
-                    host_buffers: vec![],
+                    host_buffers: Vec::new(),
                     entity: Some(entity),
                 });
             }
@@ -138,11 +140,14 @@ impl Executor {
                 _ => continue,
             };
 
+            let action_buffer = self.host_buffer_pool.insert(action_buffer);
+            let empty_buffer = self.host_buffer_pool.insert(vec![]);
+
             for entry in entries {
                 self.invocations.push_back(Invocation {
                     script: entry.script,
                     fn_ptr: entry.fn_ptr,
-                    host_buffers: vec![action_buffer.clone(), Vec::new()],
+                    host_buffers: vec![action_buffer, empty_buffer],
                     entity: Some(entity),
                 });
             }
@@ -163,6 +168,7 @@ impl Executor {
             ctx.records as *const dyn RecordProvider,
             ctx.world.world().clone(),
             vec![],
+            &self.host_buffer_pool,
         );
 
         // TODO: Right now if two event handlers call each other unconditionally we will
@@ -186,6 +192,8 @@ impl Executor {
             }
         }
 
+        self.host_buffer_pool.clear();
+
         effects
     }
 
@@ -196,13 +204,20 @@ impl Executor {
             return;
         };
 
+        if handlers.is_empty() {
+            return;
+        }
+
+        let data = self.host_buffer_pool.insert(event.data);
+        let fields = self.host_buffer_pool.insert(event.fields);
+
         for handler in handlers {
             tracing::debug!("found handler for event {:?}: {:?}", event.id, handler);
 
             self.invocations.push_back(Invocation {
                 script: handler.script,
                 fn_ptr: handler.fn_ptr,
-                host_buffers: vec![event.data.clone(), event.fields.clone()],
+                host_buffers: vec![data, fields],
                 entity: None,
             });
         }
@@ -225,7 +240,7 @@ impl Debug for Executor {
 struct Invocation {
     script: Handle,
     fn_ptr: Pointer,
-    host_buffers: Vec<Vec<u8>>,
+    host_buffers: Vec<usize>,
     entity: Option<EntityId>,
 }
 
