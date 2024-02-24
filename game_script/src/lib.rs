@@ -18,7 +18,7 @@ use game_wasm::events::{PLAYER_CONNECT, PLAYER_DISCONNECT};
 use game_wasm::player::PlayerId;
 use instance::{HostBufferPool, InstancePool, RunState, State};
 use script::{Script, ScriptLoadError};
-use wasmtime::{Config, Engine, WasmBacktraceDetails};
+use wasmtime::{Config, Engine, OptLevel, WasmBacktraceDetails};
 
 pub mod effect;
 
@@ -46,6 +46,7 @@ impl Executor {
         let mut config = Config::new();
         config.wasm_backtrace(true);
         config.wasm_backtrace_details(WasmBacktraceDetails::Enable);
+        config.cranelift_opt_level(OptLevel::SpeedAndSize);
         let engine = Engine::new(&config).unwrap();
 
         Self {
