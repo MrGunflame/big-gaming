@@ -279,7 +279,8 @@ impl GameWorldState {
         }
 
         let mut transform = self.world.state().world.get_typed::<Transform>(self.host);
-        let transform = update_rotation(transform, event);
+        transform = update_rotation(transform, event);
+        self.camera_controller.transform = transform;
 
         let (_, data) = BinaryWriter::new().encoded(&transform.rotation);
 

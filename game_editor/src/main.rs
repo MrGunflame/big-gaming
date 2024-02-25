@@ -275,7 +275,7 @@ impl game_window::App for App {
             .update(&mut self.scene.graph, &mut self.renderer);
         self.scene.graph.clear_trackers();
 
-        self.ui_state.run(&mut ctx.windows);
+        //self.ui_state.update(&mut ctx.windows);
         self.renderer.render(&self.pool);
     }
 }

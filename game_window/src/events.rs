@@ -1,6 +1,6 @@
 use game_input::keyboard::{KeyCode, KeyboardInput};
 use game_input::mouse::{MouseButtonInput, MouseMotion, MouseWheel};
-use glam::Vec2;
+use glam::{UVec2, Vec2};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum WindowEvent {
@@ -27,6 +27,12 @@ pub struct WindowResized {
     pub window: WindowId,
     pub width: u32,
     pub height: u32,
+}
+
+impl WindowResized {
+    pub const fn size(self) -> UVec2 {
+        UVec2::new(self.width, self.height)
+    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
