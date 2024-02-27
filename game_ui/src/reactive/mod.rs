@@ -240,8 +240,6 @@ impl Document {
         while let Some(event) = doc.events.pop_front() {
             match event {
                 Event::CreateNode(id, node) => {
-                    tracing::trace!("spawn node {:?} {:?}", id, node);
-
                     let parent = doc
                         .nodes
                         .parent(id)
@@ -253,8 +251,6 @@ impl Document {
                     events.insert(key, node.events);
                 }
                 Event::RemoveNode(id) => {
-                    tracing::trace!("despawn node {:?}", id);
-
                     // Reborrow fields so we can move it to closure partially.
                     let doc = &mut *doc;
                     let nodes = &mut doc.nodes;
@@ -282,8 +278,6 @@ impl Document {
                     });
                 }
                 Event::UpdateNode(id, node) => {
-                    tracing::trace!("updating node {:?}", id);
-
                     if let Some(key) = doc.nodes.get(id) {
                         tree.replace(key, node.element);
 
@@ -295,8 +289,6 @@ impl Document {
                     }
                 }
                 Event::UpdateStyle(id, style) => {
-                    tracing::trace!("update style {:?}", id);
-
                     if let Some(key) = doc.nodes.get(id) {
                         tree.get_mut(key).unwrap().style = style;
                     } else {
