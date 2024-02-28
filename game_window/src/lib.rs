@@ -387,6 +387,7 @@ where
 
                         map.windows.insert(window.id(), id);
 
+                        let size = window.inner_size();
                         windows.get_mut(id).unwrap().state = Some(WindowState {
                             id,
                             inner: Arc::new(window),
@@ -399,6 +400,19 @@ where
                                 exit: &mut exit,
                             },
                             events::WindowEvent::WindowCreated(WindowCreated { window: id }),
+                        );
+                        // FIXME: Fire a resized event to ensure the window has the correct
+                        // window size. This should be sent with the created event.
+                        app.handle_event(
+                            WindowManagerContext {
+                                windows: &mut windows,
+                                exit: &mut exit,
+                            },
+                            events::WindowEvent::WindowResized(WindowResized {
+                                window: id,
+                                width: size.width,
+                                height: size.height,
+                            }),
                         );
                     }
                     UpdateEvent::Destroy(id) => {

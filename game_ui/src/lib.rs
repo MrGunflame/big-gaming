@@ -16,7 +16,6 @@ use game_render::Renderer;
 use game_tracing::trace_span;
 use game_window::cursor::Cursor;
 use game_window::events::WindowEvent;
-use game_window::windows::Windows;
 use glam::UVec2;
 use reactive::{Document, Runtime};
 
@@ -93,7 +92,7 @@ impl UiState {
         }
     }
 
-    pub fn run(&mut self, windows: &mut Windows) {
+    pub fn update(&mut self, cmds: &mut Vec<WindowCommand>) {
         let _span = trace_span!("UiState::update");
 
         for (id, doc) in self.targets.iter_mut() {
@@ -108,21 +107,7 @@ impl UiState {
         self.renderer.update();
 
         while let Ok(cmd) = self.command_rx.try_recv() {
-            match cmd {
-                WindowCommand::Close(id) => {
-                    windows.despawn(id);
-                }
-                WindowCommand::SetCursorIcon(id, icon) => {
-                    if let Some(state) = windows.state(id) {
-                        state.set_cursor_icon(icon);
-                    }
-                }
-                WindowCommand::SetTitle(id, title) => {
-                    if let Some(state) = windows.state(id) {
-                        state.set_title(&title);
-                    }
-                }
-            }
+            cmds.push(cmd);
         }
     }
 }

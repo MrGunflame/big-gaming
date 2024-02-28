@@ -60,7 +60,7 @@ impl WindowContext {
 }
 
 #[derive(Clone, Debug)]
-pub(crate) enum WindowCommand {
+pub enum WindowCommand {
     Close(WindowId),
     SetTitle(WindowId, String),
     SetCursorIcon(WindowId, CursorIcon),

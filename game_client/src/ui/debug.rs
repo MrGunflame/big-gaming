@@ -93,7 +93,7 @@ impl FrametimeGraph {
 
         let mut values = 0;
         for sample in &self.samples {
-            values += (sample.as_nanos() - mean.as_nanos()).pow(2) as u64;
+            values += (sample.as_nanos().saturating_sub(mean.as_nanos())).pow(2) as u64;
         }
         let stddev =
             Duration::from_nanos(f64::sqrt((values / self.samples.len() as u64) as f64) as u64);
