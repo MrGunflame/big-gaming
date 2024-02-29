@@ -28,6 +28,7 @@ use game_wasm::encoding::BinaryWriter;
 use game_wasm::encoding::Decode;
 use game_window::cursor::Cursor;
 use game_window::events::WindowEvent;
+use tracing::Instrument;
 
 use crate::components::base::{Camera, Health};
 use crate::config::Config;
@@ -208,6 +209,12 @@ impl GameWorldState {
 
         let mut transform = self.world.state().world.get_typed::<Transform>(self.host);
         transform = update_rotation(transform, event);
+        // We must update the rotation, otherwise following mouse motion events
+        // will get overwritten by previous events in the same frame.
+        self.world
+            .state_mut()
+            .world
+            .insert_typed(self.host, transform);
         self.camera_controller.transform = transform;
 
         let (_, data) = BinaryWriter::new().encoded(&transform.rotation);
