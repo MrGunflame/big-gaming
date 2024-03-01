@@ -28,7 +28,6 @@ use game_wasm::encoding::BinaryWriter;
 use game_wasm::encoding::Decode;
 use game_window::cursor::Cursor;
 use game_window::events::WindowEvent;
-use tracing::Instrument;
 
 use crate::components::base::{Camera, Health};
 use crate::config::Config;
@@ -51,7 +50,7 @@ use self::movement::update_rotation;
 
 #[derive(Debug)]
 pub struct GameWorldState {
-    pub world: GameWorld<Interval>,
+    pub world: GameWorld,
     camera_controller: CameraController,
     primary_camera: Option<EntityId>,
     modules: Modules,
@@ -63,6 +62,7 @@ pub struct GameWorldState {
     cursor_pinned: CursorPinState,
     host: EntityId,
     ui_elements: UiElements,
+    interval: Interval,
 }
 
 impl GameWorldState {
@@ -85,7 +85,7 @@ impl GameWorldState {
         let interval = Interval::new(Duration::from_secs(1) / config.timestep);
 
         Self {
-            world: GameWorld::new(conn, interval, executor, config),
+            world: GameWorld::new(conn, executor, config),
             camera_controller: CameraController::new(),
             primary_camera: None,
             modules,
@@ -97,18 +97,21 @@ impl GameWorldState {
             main_menu: None,
             cursor_pinned,
             ui_elements: UiElements::default(),
+            interval,
         }
     }
 
-    pub fn update(
+    pub async fn update(
         &mut self,
         time: &Time,
         world: &mut World,
         ui_doc: &Document,
         fps_counter: UpdateCounter,
     ) {
+        self.interval.wait(time.last_update()).await;
+
         let mut buf = CommandBuffer::new();
-        self.world.update(time, &self.modules, &mut buf);
+        self.world.update(&self.modules, &mut buf);
 
         *world = self.world.state().world.clone();
 

@@ -221,7 +221,8 @@ impl<'a> GameAppState<'a> {
                     state.update(&mut world);
                 }
                 GameState::GameWorld(state) => {
-                    state.update(&self.time, &mut world, ui_doc, fps_counter)
+                    self.pool
+                        .block_on(state.update(&self.time, &mut world, ui_doc, fps_counter));
                 }
                 _ => todo!(),
             }

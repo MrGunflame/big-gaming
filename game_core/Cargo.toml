@@ -20,3 +20,4 @@ tokio = { version = "1.27.0", features = ["full"] }
 thiserror = "1.0.40"
 slotmap = "1.0.6"
 glam = "0.24"
+async-io = "2.3.1"

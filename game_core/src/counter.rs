@@ -1,5 +1,7 @@
 use std::time::{Duration, Instant};
 
+use async_io::Timer;
+
 /// Updates per second.
 #[derive(Clone, Debug)]
 pub struct UpdateCounter {
@@ -85,7 +87,7 @@ impl Interval {
         // Linux timers are accurate enough (~50us) that we don't really have to
         // bother with it.
         let duration = self.timestep - elapsed;
-        tokio::time::sleep(duration).await;
+        async_io::Timer::after(duration).await;
         self.last_update += self.timestep;
     }
 

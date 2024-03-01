@@ -63,6 +63,14 @@ impl TaskPool {
         F: Future<Output = T> + Send + 'static,
         T: Send,
     {
+        unsafe { self.spawn_unchecked(future) }
+    }
+
+    pub unsafe fn spawn_unchecked<'a, T, F>(&self, future: F) -> Task<T>
+    where
+        F: Future<Output = T> + Send + 'a,
+        T: Send,
+    {
         let task = Task::alloc_new(future, self.inner.clone());
         unsafe {
             self.inner.tasks.lock().push_back(task.header());
@@ -74,6 +82,13 @@ impl TaskPool {
             ptr: task,
             _marker: PhantomData,
         }
+    }
+
+    pub fn block_on<T, F>(&self, future: F) -> T
+    where
+        F: Future<Output = T>,
+    {
+        futures::executor::block_on(future)
     }
 
     /// Drops all tasks.
