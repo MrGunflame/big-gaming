@@ -2,6 +2,8 @@ use game_common::components::actor::ActorProperties;
 use game_common::components::Transform;
 use glam::Vec3;
 
+const SPEED_MULTIPLIER: f32 = 0.1;
+
 #[derive(Clone, Debug, Default)]
 pub struct CameraController {
     pub transform: Transform,
@@ -52,6 +54,28 @@ impl CameraController {
             }
             // Don't sync in detached mode.
             CameraMode::Detached => (),
+        }
+    }
+
+    pub fn update(&mut self) {
+        if self.mode != CameraMode::Detached {
+            return;
+        }
+
+        if self.detached_state.forward {
+            self.transform.translation += self.transform.rotation * -Vec3::Z * SPEED_MULTIPLIER;
+        }
+
+        if self.detached_state.back {
+            self.transform.translation += self.transform.rotation * Vec3::Z * SPEED_MULTIPLIER;
+        }
+
+        if self.detached_state.left {
+            self.transform.translation += self.transform.rotation * -Vec3::X * SPEED_MULTIPLIER;
+        }
+
+        if self.detached_state.right {
+            self.transform.translation += self.transform.rotation * Vec3::X * SPEED_MULTIPLIER;
         }
     }
 }

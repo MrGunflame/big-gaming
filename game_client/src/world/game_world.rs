@@ -29,7 +29,7 @@ const MAX_UPDATES_PER_FRAME: u32 = 10;
 #[derive(Debug)]
 pub struct GameWorld<I> {
     conn: ServerConnection,
-    game_tick: GameTick<I>,
+    pub(crate) game_tick: GameTick<I>,
     next_frame_counter: NextFrameCounter,
     /// Server to local entity mapping.
     server_entities: Entities,
@@ -383,6 +383,10 @@ where
 
     pub fn state(&self) -> &WorldState {
         &self.predicted_state
+    }
+
+    pub fn state_mut(&mut self) -> &mut WorldState {
+        &mut self.predicted_state
     }
 
     pub fn send(&mut self, action: Action) {

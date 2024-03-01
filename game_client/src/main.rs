@@ -111,6 +111,7 @@ fn main() {
         interval: Interval::new(Duration::from_secs(1) / 60),
         ui_state,
         window_commands: &window_commands,
+        pool: &pool,
     };
 
     let renderer_state = RendererAppState {
@@ -148,16 +149,15 @@ pub struct GameAppState<'a> {
     interval: Interval,
     ui_state: UiState,
     window_commands: &'a Mutex<Vec<WindowCommand>>,
+    pool: &'a TaskPool,
 }
 
 impl<'a> GameAppState<'a> {
     pub fn run(mut self) {
         while !self.shutdown.load(Ordering::Relaxed) {
             self.time.update();
-            // self.interval.wait_sync(self.time.last_update());
 
             self.update();
-            self.ui_state.update(&mut self.window_commands.lock());
         }
     }
 
@@ -228,6 +228,8 @@ impl<'a> GameAppState<'a> {
         }
 
         *self.world.lock() = world;
+
+        self.ui_state.update(&mut self.window_commands.lock());
     }
 }
 
