@@ -583,6 +583,12 @@ fn update_player_cells(world: &WorldState, state: &mut ConnectionState) -> Vec<D
         let cell = world.cell(id);
 
         for entity in cell.entities() {
+            if state.entities.get(entity).is_none() {
+                state.entities.insert(entity);
+            }
+        }
+
+        for entity in cell.entities() {
             if !state.known_entities.contains(entity) {
                 let entity_id = state.entities.insert(entity);
                 state
