@@ -190,7 +190,7 @@ impl Document {
                     data.first_run = true;
                 });
 
-                (effect.f)();
+                (effect.f.lock())();
 
                 let mut stack = ACTIVE_EFFECT.with(|cell| {
                     let mut data = cell.borrow_mut();
@@ -220,7 +220,7 @@ impl Document {
                     });
                 }
 
-                (effect.f)();
+                (effect.f.lock())();
 
                 rt = self.runtime.inner.lock();
             }

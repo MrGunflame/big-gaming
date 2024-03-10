@@ -1,5 +1,3 @@
-use parking_lot::Mutex;
-
 use crate::events::ElementEventHandlers;
 use crate::reactive::{Node, Scope};
 use crate::render::{Element, ElementBody};
@@ -35,17 +33,16 @@ impl Widget for Text {
             ValueProvider::Reader(reader) => {
                 let root = cx.append(Container::new());
 
-                let id = Mutex::new(None);
+                let mut id = None;
                 let root2 = root.clone();
                 cx.create_effect(move || {
                     let text = reader.get();
 
-                    let mut id = id.lock();
-                    if let Some(id) = *id {
+                    if let Some(id) = id {
                         root2.remove(id);
                     }
 
-                    *id = root2.push(build_node(text)).id();
+                    id = root2.push(build_node(text)).id();
                 });
 
                 root
