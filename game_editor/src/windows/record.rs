@@ -14,7 +14,6 @@ use game_ui::events::Context;
 use game_ui::reactive::{ReadSignal, Scope};
 use game_ui::style::{Background, Bounds, Direction, Justify, Padding, Size, SizeVec2, Style};
 use game_ui::widgets::{Button, Container, Input, ParseInput, Selection, Text, Widget};
-use parking_lot::Mutex;
 
 use crate::state::module::Modules;
 use crate::state::record::Records;
@@ -429,16 +428,15 @@ fn render_script_section(cx: &Scope) -> ReadSignal<Vec<String>> {
 
     {
         let scripts = scripts.clone();
-        let id = Mutex::new(None);
+        let mut id = None;
         let cx2 = cx.clone();
         cx.create_effect(move || {
-            let id = &mut *id.lock();
             if let Some(id) = id {
-                cx2.remove(*id);
+                cx2.remove(id);
             }
 
             let root = cx2.append(Container::new());
-            *id = root.id();
+            id = root.id();
 
             let scripts = scripts.get();
 

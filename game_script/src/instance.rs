@@ -169,7 +169,8 @@ pub(crate) struct RunState {
     next_inventory_id: u64,
     pub new_world: World,
     pub events: Vec<DispatchEvent>,
-    pub host_buffers: Vec<Vec<u8>>,
+    pub host_buffers: Vec<usize>,
+    host_buffer_pool: *const HostBufferPool,
 }
 
 // Make `RunState` `Send` + `Sync` to make `Executor` recursively `Send` + `Sync`.
@@ -186,7 +187,8 @@ impl RunState {
         dependencies: *mut Dependencies,
         records: *const dyn RecordProvider,
         new_world: World,
-        host_buffers: Vec<Vec<u8>>,
+        host_buffers: Vec<usize>,
+        host_buffer_pool: *const HostBufferPool,
     ) -> Self {
         Self {
             world,
@@ -199,6 +201,7 @@ impl RunState {
             new_world,
             events: Vec::new(),
             host_buffers,
+            host_buffer_pool,
         }
     }
 }
@@ -509,6 +512,11 @@ impl RunState {
         Ok(())
     }
 
+    pub fn get_host_buffer(&self, key: u32) -> Option<&[u8]> {
+        let index = *self.host_buffers.get(key as usize)?;
+        unsafe { &*self.host_buffer_pool }.get(index)
+    }
+
     /// Allocate a temporary [`EntityId`].
     // If a script spawns a new entity we need to acquire a temporary id, until
     // the game commits the effect. The id is only valid for this script local
@@ -533,5 +541,26 @@ impl RunState {
         let bits = self.next_inventory_id | (1 << 63);
         self.next_inventory_id += 1;
         InventorySlotId::from_raw(bits)
+    }
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct HostBufferPool {
+    buffers: Vec<Vec<u8>>,
+}
+
+impl HostBufferPool {
+    pub fn get(&self, index: usize) -> Option<&[u8]> {
+        self.buffers.get(index).map(Vec::as_slice)
+    }
+
+    pub fn insert(&mut self, buf: Vec<u8>) -> usize {
+        let index = self.buffers.len();
+        self.buffers.push(buf);
+        index
+    }
+
+    pub fn clear(&mut self) {
+        self.buffers.clear();
     }
 }

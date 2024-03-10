@@ -54,17 +54,17 @@ impl Components {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RawComponent {
     bytes: Arc<[u8]>,
-    fields: Vec<Field>,
+    fields: Arc<[Field]>,
 }
 
 impl RawComponent {
-    pub fn new<T>(bytes: T, fields: Vec<Field>) -> Self
+    pub fn new<T>(bytes: T, fields: impl Into<Arc<[Field]>>) -> Self
     where
         T: Into<Arc<[u8]>>,
     {
         Self {
             bytes: bytes.into(),
-            fields,
+            fields: fields.into(),
         }
     }
 
@@ -89,7 +89,7 @@ impl RawComponent {
     }
 
     pub fn reader(&self) -> BinaryReader {
-        BinaryReader::new(self.bytes.to_vec(), self.fields.clone().into())
+        BinaryReader::new(self.bytes.to_vec(), self.fields.to_vec().into())
     }
 
     pub fn remap(
@@ -97,7 +97,7 @@ impl RawComponent {
         mut get_entity: impl FnMut(EntityId) -> Option<EntityId>,
     ) -> Result<RawComponent, RemapError> {
         let mut bytes = Cow::Borrowed(&self.bytes[..]);
-        for field in &self.fields {
+        for field in self.fields.iter() {
             match field.primitive {
                 Primitive::EntityId => {
                     let Some(slice) = bytes.to_mut().get_mut(field.offset..field.offset + 8) else {

@@ -1,6 +1,7 @@
 use std::fmt::{self, Debug, Formatter};
 use std::sync::Arc;
 
+use parking_lot::Mutex;
 use slotmap::new_key_type;
 
 use super::Scope;
@@ -8,10 +9,10 @@ use super::Scope;
 impl Scope {
     pub fn create_effect<F>(&self, f: F)
     where
-        F: Fn() + Send + Sync + 'static,
+        F: FnMut() + Send + Sync + 'static,
     {
         let effect = Effect {
-            f: Arc::new(f),
+            f: Arc::new(Mutex::new(f)),
             first_run: true,
         };
 
@@ -30,7 +31,7 @@ impl Scope {
 
 #[derive(Clone)]
 pub(super) struct Effect {
-    pub f: Arc<dyn Fn() + Send + Sync + 'static>,
+    pub f: Arc<Mutex<dyn FnMut() + Send + Sync + 'static>>,
     pub first_run: bool,
 }
 

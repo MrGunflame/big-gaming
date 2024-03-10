@@ -155,11 +155,14 @@ impl SceneEntities {
                     camera.transform = transform;
                 }
                 None => {
-                    let camera = Camera {
+                    let size = renderer.get_surface_size(window).unwrap();
+
+                    let mut camera = Camera {
                         transform,
                         projection: Projection::default(),
                         target: RenderTarget::Window(window),
                     };
+                    camera.update_aspect_ratio(size);
 
                     let id = renderer.entities.cameras.insert(camera);
                     self.primary_cameras.insert(entity, id);

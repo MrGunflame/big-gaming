@@ -17,6 +17,7 @@ pub mod metrics;
 pub mod module;
 pub mod net;
 pub mod record;
+pub mod sync;
 pub mod units;
 pub mod utils;
 pub mod world;

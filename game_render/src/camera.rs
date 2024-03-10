@@ -41,7 +41,7 @@ impl Camera {
         }
     }
 
-    pub(crate) fn update_aspect_ratio(&mut self, size: UVec2) {
+    pub fn update_aspect_ratio(&mut self, size: UVec2) {
         self.projection.aspect_ratio = size.x as f32 / size.y as f32;
     }
 }

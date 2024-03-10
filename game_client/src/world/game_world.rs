@@ -1,27 +1,17 @@
-use std::sync::atomic::compiler_fence;
-
 use game_common::components::actions::ActionId;
-use game_common::components::components::Components;
 use game_common::components::items::{Item, ItemStack};
-use game_common::components::object::ObjectId;
-use game_common::components::race::RaceId;
 use game_common::components::Transform;
 use game_common::entity::EntityId;
 use game_common::events::{ActionEvent, Event, EventQueue};
 use game_common::net::ServerEntity;
-use game_common::record::RecordReference;
 use game_common::units::Mass;
 use game_common::world::control_frame::ControlFrame;
-use game_common::world::entity::{Actor, Entity, EntityBody, Object};
-use game_core::counter::{IntervalImpl, UpdateCounter};
+use game_core::counter::UpdateCounter;
 use game_core::modules::Modules;
-use game_core::time::Time;
-use game_data::record::RecordBody;
-use game_net::message::{DataMessageBody, EntityAction, EntityRotate};
+use game_net::message::{DataMessageBody, EntityAction};
 use game_net::peer_error;
 use game_script::Executor;
 use game_tracing::trace_span;
-use glam::{Quat, Vec3};
 
 use crate::config::Config;
 use crate::net::world::{Command, CommandBuffer};
@@ -36,9 +26,9 @@ use super::state::WorldState;
 const MAX_UPDATES_PER_FRAME: u32 = 10;
 
 #[derive(Debug)]
-pub struct GameWorld<I> {
+pub struct GameWorld {
     conn: ServerConnection,
-    game_tick: GameTick<I>,
+    pub(crate) game_tick: GameTick,
     next_frame_counter: NextFrameCounter,
     /// Server to local entity mapping.
     server_entities: Entities,
@@ -52,17 +42,13 @@ pub struct GameWorld<I> {
     predicted_state: WorldState,
 }
 
-impl<I> GameWorld<I>
-where
-    I: IntervalImpl,
-{
-    pub fn new(conn: ServerConnection, interval: I, executor: Executor, config: &Config) -> Self {
+impl GameWorld {
+    pub fn new(conn: ServerConnection, executor: Executor, config: &Config) -> Self {
         let render_delay = ControlFrame(config.network.interpolation_frames);
 
         Self {
             conn,
             game_tick: GameTick {
-                interval,
                 counter: UpdateCounter::new(),
                 current_control_frame: ControlFrame(0),
             },
@@ -76,45 +62,37 @@ where
         }
     }
 
-    pub fn update(&mut self, time: &Time, modules: &Modules, cmd_buffer: &mut CommandBuffer) {
+    pub fn update(&mut self, modules: &Modules, cmd_buffer: &mut CommandBuffer) {
         let _span = trace_span!("GameWorld::update").entered();
 
-        // Limit the amount of times we can update to prevent a further falling
-        // behind if the update itself takes longer than the frame.
-        for _ in 0..MAX_UPDATES_PER_FRAME {
-            if !self.game_tick.interval.is_ready(time.last_update()) {
-                break;
-            }
+        self.conn.update();
 
-            self.conn.update();
+        self.game_tick.current_control_frame += 1;
+        self.game_tick.counter.update();
 
-            self.game_tick.current_control_frame += 1;
-            self.game_tick.counter.update();
+        tracing::debug!(
+            "Stepping control frame to {:?} (UPS = {})",
+            self.game_tick.current_control_frame,
+            self.game_tick.counter.ups(),
+        );
 
-            tracing::debug!(
-                "Stepping control frame to {:?} (UPS = {})",
-                self.game_tick.current_control_frame,
-                self.game_tick.counter.ups(),
+        if let Some(render_cf) = self.next_frame_counter.render_frame {
+            self.process_frame(render_cf, cmd_buffer);
+
+            run_scripts(
+                &mut self.predicted_state,
+                &self.physics_pipeline,
+                &mut self.executor,
+                &mut self.event_queue,
+                &modules,
             );
-
-            if let Some(render_cf) = self.next_frame_counter.render_frame {
-                self.process_frame(render_cf, cmd_buffer);
-
-                run_scripts(
-                    &mut self.predicted_state,
-                    &self.physics_pipeline,
-                    &mut self.executor,
-                    &mut self.event_queue,
-                    &modules,
-                );
-            }
-
-            self.next_frame_counter.update();
         }
+
+        self.next_frame_counter.update();
     }
 
-    pub fn ups(&self) -> f32 {
-        self.game_tick.counter.ups()
+    pub fn ups(&self) -> UpdateCounter {
+        self.game_tick.counter.clone()
     }
 
     fn process_frame(&mut self, cf: ControlFrame, cmd_buffer: &mut CommandBuffer) {
@@ -394,40 +372,23 @@ where
         &self.predicted_state
     }
 
-    pub fn send(&mut self, cmd: SendCommand) {
-        match cmd {
-            SendCommand::Rotate { entity, rotation } => {
-                let Some(id) = self.server_entities.get(entity) else {
-                    return;
-                };
+    pub fn state_mut(&mut self) -> &mut WorldState {
+        &mut self.predicted_state
+    }
 
-                self.conn.send(
-                    self.next_frame_counter.newest_frame,
-                    DataMessageBody::EntityRotate(EntityRotate {
-                        entity: id,
-                        rotation,
-                    }),
-                );
-            }
-            SendCommand::Action {
-                entity,
-                action,
-                data,
-            } => {
-                let Some(id) = self.server_entities.get(entity) else {
-                    return;
-                };
+    pub fn send(&mut self, action: Action) {
+        let Some(id) = self.server_entities.get(action.entity) else {
+            return;
+        };
 
-                self.conn.send(
-                    self.next_frame_counter.newest_frame,
-                    DataMessageBody::EntityAction(EntityAction {
-                        entity: id,
-                        action,
-                        bytes: data,
-                    }),
-                );
-            }
-        }
+        self.conn.send(
+            self.next_frame_counter.newest_frame,
+            DataMessageBody::EntityAction(EntityAction {
+                entity: id,
+                action: action.action,
+                bytes: action.data,
+            }),
+        );
     }
 
     pub fn input_buffer_len(&self) -> usize {
@@ -436,8 +397,7 @@ where
 }
 
 #[derive(Debug)]
-pub struct GameTick<I> {
-    pub interval: I,
+pub struct GameTick {
     current_control_frame: ControlFrame,
     counter: UpdateCounter,
 }
@@ -475,45 +435,9 @@ impl NextFrameCounter {
     }
 }
 
-fn spawn_entity(id: RecordReference, transform: Transform, modules: &Modules) -> Option<Entity> {
-    let Some(module) = modules.get(id.module) else {
-        return None;
-    };
-
-    let Some(record) = module.records.get(id.record) else {
-        return None;
-    };
-
-    let body = match &record.body {
-        RecordBody::Race(race) => EntityBody::Actor(Actor { race: RaceId(id) }),
-        RecordBody::Object(object) => EntityBody::Object(Object { id: ObjectId(id) }),
-        _ => todo!(),
-    };
-
-    let mut components = Components::new();
-    // for component in &record.components {
-    //     components.insert(component.id, component.clone());
-    // }
-
-    Some(Entity {
-        id: EntityId::dangling(),
-        transform,
-        body,
-        components,
-        is_host: false,
-        linvel: Vec3::ZERO,
-        angvel: Vec3::ZERO,
-    })
-}
-
-pub enum SendCommand {
-    Rotate {
-        entity: EntityId,
-        rotation: Quat,
-    },
-    Action {
-        entity: EntityId,
-        action: ActionId,
-        data: Vec<u8>,
-    },
+#[derive(Clone, Debug)]
+pub struct Action {
+    pub entity: EntityId,
+    pub action: ActionId,
+    pub data: Vec<u8>,
 }

@@ -8,7 +8,7 @@ use game_ui::widgets::Widget;
 
 use crate::components::base::Health;
 
-use self::debug::{DebugUi, Statistics};
+use self::debug::{DebugUi, FrametimeGraph, Statistics};
 use self::health::HealthUi;
 
 // TODO: Move ingame UI into scripts instead of hardcoding
@@ -17,6 +17,8 @@ use self::health::HealthUi;
 pub struct UiElements {
     health: Option<NodeId>,
     debug_stats: Option<NodeId>,
+    ups: FrametimeGraph,
+    fps: FrametimeGraph,
 }
 
 impl UiElements {
@@ -45,7 +47,17 @@ impl UiElements {
         }
 
         if let Some(stats) = stats {
-            let id = DebugUi { stats }.build(cx).id().unwrap();
+            self.ups.push(stats.ups.last_frametime());
+            self.fps.push(stats.fps.last_frametime());
+
+            let id = DebugUi {
+                stats,
+                ups: self.ups.clone(),
+                fps: self.fps.clone(),
+            }
+            .build(cx)
+            .id()
+            .unwrap();
             self.debug_stats = Some(id);
         }
     }

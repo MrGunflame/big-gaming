@@ -16,9 +16,9 @@ use game_tracing::trace_span;
 use game_wasm::encoding::{encode_fields, BinaryWriter};
 use game_wasm::events::{PLAYER_CONNECT, PLAYER_DISCONNECT};
 use game_wasm::player::PlayerId;
-use instance::{InstancePool, RunState, State};
+use instance::{HostBufferPool, InstancePool, RunState, State};
 use script::{Script, ScriptLoadError};
-use wasmtime::{Config, Engine, WasmBacktraceDetails};
+use wasmtime::{Config, Engine, OptLevel, WasmBacktraceDetails};
 
 pub mod effect;
 
@@ -36,6 +36,9 @@ pub struct Executor {
     systems: Vec<System>,
     action_handlers: HashMap<RecordReference, Vec<Entry>>,
     event_handlers: HashMap<RecordReference, Vec<Entry>>,
+    // Reuse memory for invocations across `update` calls.
+    invocations: VecDeque<Invocation>,
+    host_buffer_pool: HostBufferPool,
 }
 
 impl Executor {
@@ -43,6 +46,7 @@ impl Executor {
         let mut config = Config::new();
         config.wasm_backtrace(true);
         config.wasm_backtrace_details(WasmBacktraceDetails::Enable);
+        config.cranelift_opt_level(OptLevel::SpeedAndSize);
         let engine = Engine::new(&config).unwrap();
 
         Self {
@@ -52,6 +56,8 @@ impl Executor {
             systems: vec![],
             action_handlers: HashMap::new(),
             event_handlers: HashMap::new(),
+            invocations: VecDeque::with_capacity(32),
+            host_buffer_pool: HostBufferPool::default(),
         }
     }
 
@@ -83,8 +89,6 @@ impl Executor {
     pub fn update(&mut self, ctx: Context<'_>) -> Effects {
         let _span = trace_span!("Executor::update").entered();
 
-        let mut invocations = VecDeque::new();
-
         let world = ctx.world.world();
 
         for system in &self.systems {
@@ -97,10 +101,10 @@ impl Executor {
                     }
                 }
 
-                invocations.push_back(Invocation {
+                self.invocations.push_back(Invocation {
                     script: system.script,
                     fn_ptr: system.ptr,
-                    host_buffers: vec![],
+                    host_buffers: Vec::new(),
                     entity: Some(entity),
                 });
             }
@@ -116,38 +120,35 @@ impl Executor {
                     let (fields, data) = BinaryWriter::new().encoded(&event);
                     let fields = encode_fields(&fields);
 
-                    self.schedule_event(
-                        &mut invocations,
-                        DispatchEvent {
-                            id: PLAYER_CONNECT,
-                            data,
-                            fields,
-                        },
-                    );
+                    self.schedule_event(DispatchEvent {
+                        id: PLAYER_CONNECT,
+                        data,
+                        fields,
+                    });
                     continue;
                 }
                 Event::PlayerDisconnect(event) => {
                     let (fields, data) = BinaryWriter::new().encoded(&event);
                     let fields = encode_fields(&fields);
 
-                    self.schedule_event(
-                        &mut invocations,
-                        DispatchEvent {
-                            id: PLAYER_DISCONNECT,
-                            data,
-                            fields,
-                        },
-                    );
+                    self.schedule_event(DispatchEvent {
+                        id: PLAYER_DISCONNECT,
+                        data,
+                        fields,
+                    });
                     continue;
                 }
                 _ => continue,
             };
 
+            let action_buffer = self.host_buffer_pool.insert(action_buffer);
+            let empty_buffer = self.host_buffer_pool.insert(vec![]);
+
             for entry in entries {
-                invocations.push_back(Invocation {
+                self.invocations.push_back(Invocation {
                     script: entry.script,
                     fn_ptr: entry.fn_ptr,
-                    host_buffers: vec![action_buffer.clone(), Vec::new()],
+                    host_buffers: vec![action_buffer, empty_buffer],
                     entity: Some(entity),
                 });
             }
@@ -168,6 +169,7 @@ impl Executor {
             ctx.records as *const dyn RecordProvider,
             ctx.world.world().clone(),
             vec![],
+            &self.host_buffer_pool,
         );
 
         // TODO: Right now if two event handlers call each other unconditionally we will
@@ -175,7 +177,7 @@ impl Executor {
         // sort of cycle checks and stop when an event schedules an event from which the
         // the event was dispatched from.
 
-        while let Some(invocation) = invocations.pop_front() {
+        while let Some(invocation) = self.invocations.pop_front() {
             state.host_buffers = invocation.host_buffers;
 
             let runnable = self.instances.get(State::Run(state), invocation.script);
@@ -187,27 +189,36 @@ impl Executor {
             state = runnable.into_state();
 
             for event in state.events.drain(..) {
-                self.schedule_event(&mut invocations, event);
+                self.schedule_event(event);
             }
         }
+
+        self.host_buffer_pool.clear();
 
         effects
     }
 
-    fn schedule_event(&self, invocations: &mut VecDeque<Invocation>, event: DispatchEvent) {
+    fn schedule_event(&mut self, event: DispatchEvent) {
         tracing::debug!("scheduling event {:?}", event);
 
         let Some(handlers) = self.event_handlers.get(&event.id) else {
             return;
         };
 
+        if handlers.is_empty() {
+            return;
+        }
+
+        let data = self.host_buffer_pool.insert(event.data);
+        let fields = self.host_buffer_pool.insert(event.fields);
+
         for handler in handlers {
             tracing::debug!("found handler for event {:?}: {:?}", event.id, handler);
 
-            invocations.push_back(Invocation {
+            self.invocations.push_back(Invocation {
                 script: handler.script,
                 fn_ptr: handler.fn_ptr,
-                host_buffers: vec![event.data.clone(), event.fields.clone()],
+                host_buffers: vec![data, fields],
                 entity: None,
             });
         }
@@ -230,7 +241,7 @@ impl Debug for Executor {
 struct Invocation {
     script: Handle,
     fn_ptr: Pointer,
-    host_buffers: Vec<Vec<u8>>,
+    host_buffers: Vec<usize>,
     entity: Option<EntityId>,
 }
 

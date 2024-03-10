@@ -2,7 +2,6 @@ use std::fmt::Display;
 use std::str::FromStr;
 
 use glam::UVec2;
-use parking_lot::Mutex;
 
 use crate::events::{ElementEventHandlers, EventHandlers};
 use crate::layout::{Element, ElementBody};
@@ -109,16 +108,14 @@ where
         });
 
         let text = root.append(Text::new());
-        let id = Mutex::new(text.id().unwrap());
+        let mut id = text.id().unwrap();
         let root2 = root.clone();
         cx.create_effect(move || {
             let value = value.get();
 
-            let mut id = id.lock();
-
-            text.remove(*id);
+            text.remove(id);
             let cx = root2.append(Text::new().text(value.to_string()));
-            *id = cx.id().unwrap();
+            id = cx.id().unwrap();
         });
 
         root

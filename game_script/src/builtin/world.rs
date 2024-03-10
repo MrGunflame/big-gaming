@@ -93,23 +93,20 @@ pub fn world_entity_component_get(
         .as_run_mut()?
         .get_component(entity_id, component_id)
     {
-        Ok(component) => component,
+        // FIXME: We shouldn't have to clone here.
+        Ok(component) => component.clone(),
         Err(err) => return Ok(err.to_u32()),
     };
 
     // Note that a null pointer indicates that the guest does not request that
     // information and we should skip writing to it.
-
-    // FIXME: We shouldn't have to clone here.
-    let bytes = component.as_bytes().to_vec();
-    let fields = component.fields();
-    let fields = encode_fields(fields);
-
     if data_out != 0 {
-        caller.write_memory(data_out, &bytes)?;
+        caller.write_memory(data_out, &component.as_bytes())?;
     }
 
     if fields_out != 0 {
+        let fields = component.fields();
+        let fields = encode_fields(fields);
         caller.write_memory(fields_out, &fields)?;
     }
 
@@ -139,7 +136,7 @@ pub fn world_entity_component_insert(
     let entity_id = EntityId::from_raw(entity_id);
     let component_id: RecordReference = caller.read(component_id)?;
 
-    let data = caller.read_memory(data_ptr, data_len)?.to_owned();
+    let data = caller.read_memory(data_ptr, data_len)?.to_vec();
     let fields = caller.read_memory(fields_ptr, fields_len)?;
     let fields = decode_fields(fields);
 
