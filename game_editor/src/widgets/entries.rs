@@ -1,10 +1,10 @@
 use game_input::mouse::MouseButtonInput;
 use game_ui::events::Context;
-use game_ui::reactive::Scope;
+use game_ui::reactive::{Scope, WriteSignal};
 use game_ui::style::{Background, Direction, Growth, Padding, Size, Style};
 use game_ui::widgets::{Button, Callback, Container, Text, Widget};
 
-use super::context_menu::ContextMenu;
+use super::context_menu::{ContextPanel, State as ContextMenuState};
 
 #[derive(Debug)]
 pub struct EntriesData {
@@ -37,19 +37,25 @@ impl Widget for Entries {
         };
 
         let root = cx.append(
-            ContextMenu::new()
+            ContextPanel::new()
                 .style(Style {
                     direction: Direction::Column,
                     growth: Growth::splat(1.0),
+                    padding: Padding::splat(Size::Pixels(5)),
                     ..Default::default()
                 })
-                .spawn_menu(spawn_root_menu(&callbacks)),
+                .spawn_menu(spawn_root_ctx_menu(&callbacks)),
         );
 
         let mut cols = Vec::with_capacity(self.data.keys.len());
 
+        let cell_style = Style {
+            padding: Padding::splat(Size::Pixels(5)),
+            ..Default::default()
+        };
+
         for key in &self.data.keys {
-            let col = root.append(Container::new());
+            let col = root.append(Container::new().style(cell_style.clone()));
             col.append(Text::new().text(key.to_owned()));
 
             cols.push(col);
@@ -70,7 +76,7 @@ impl Widget for Entries {
                     let cx = &cols[column_index];
 
                     let ctx_menu = cx.append(
-                        ContextMenu::new().spawn_menu(spawn_ctx_menu(&callbacks, row_index)),
+                        ContextPanel::new().spawn_menu(spawn_ctx_menu(&callbacks, row_index)),
                     );
                     ctx_menu.append(Text::new().text(column.to_owned()));
 
@@ -90,62 +96,86 @@ impl Widget for Entries {
     }
 }
 
-fn spawn_root_menu(callbacks: &ContextCallbacks) -> Callback<Scope> {
+fn spawn_root_ctx_menu(
+    callbacks: &ContextCallbacks,
+) -> Callback<(Scope, WriteSignal<ContextMenuState>)> {
     let add_entry = callbacks.add_entry.clone();
 
-    Callback::from(move |cx: Scope| {
-        let style = Style {
-            background: Background::BLACK,
-            padding: Padding::splat(Size::Pixels(2)),
-            ..Default::default()
-        };
+    Callback::from(
+        move |(cx, context_menu): (Scope, WriteSignal<ContextMenuState>)| {
+            let style = Style {
+                background: Background::BLACK,
+                padding: Padding::splat(Size::Pixels(2)),
+                ..Default::default()
+            };
 
-        let root = cx.append(Container::new().style(style));
+            let root = cx.append(Container::new().style(style));
 
-        if let Some(f) = &add_entry {
-            let button = root.append(Button::new().on_click(f.clone()));
-            button.append(Text::new().text("New".to_owned()));
-        }
-    })
+            if let Some(f) = &add_entry {
+                let f = f.clone();
+
+                let button = root.append(Button::new().on_click(move |event| {
+                    context_menu.update(|state| state.close());
+                    f(event);
+                }));
+                button.append(Text::new().text("New".to_owned()));
+            }
+        },
+    )
 }
 
-fn spawn_ctx_menu(callbacks: &ContextCallbacks, index: usize) -> Callback<Scope> {
+fn spawn_ctx_menu(
+    callbacks: &ContextCallbacks,
+    index: usize,
+) -> Callback<(Scope, WriteSignal<ContextMenuState>)> {
     let add_entry = callbacks.add_entry.clone();
     let edit_entry = callbacks.edit_entry.clone();
     let remove_entry = callbacks.remove_entry.clone();
 
-    Callback::from(move |cx: Scope| {
-        let style = Style {
-            background: Background::BLACK,
-            padding: Padding::splat(Size::Pixels(2)),
-            ..Default::default()
-        };
+    Callback::from(
+        move |(cx, context_menu): (Scope, WriteSignal<ContextMenuState>)| {
+            let style = Style {
+                background: Background::BLACK,
+                padding: Padding::splat(Size::Pixels(5)),
+                ..Default::default()
+            };
 
-        let root = cx.append(Container::new().style(style));
+            let root = cx.append(Container::new().style(style));
 
-        if let Some(f) = &add_entry {
-            let button = root.append(Button::new().on_click(f.clone()));
-            button.append(Text::new().text("New".to_owned()));
-        }
+            if let Some(f) = &add_entry {
+                let f = f.clone();
+                let context_menu = context_menu.clone();
 
-        if let Some(f) = &edit_entry {
-            let f = f.clone();
-            let edit_entry = Box::new(move |_| {
-                f(index);
-            });
+                let button = root.append(Button::new().on_click(move |event| {
+                    context_menu.update(|state| state.close());
+                    f(event);
+                }));
+                button.append(Text::new().text("New".to_owned()));
+            }
 
-            let button = root.append(Button::new().on_click(edit_entry));
-            button.append(Text::new().text("Edit".to_owned()));
-        }
+            if let Some(f) = &edit_entry {
+                let f = f.clone();
+                let context_menu = context_menu.clone();
 
-        if let Some(f) = &remove_entry {
-            let f = f.clone();
-            let remove_entry = Box::new(move |_| {
-                f(index);
-            });
+                let edit_entry = Box::new(move |_| {
+                    context_menu.update(|state| state.close());
+                    f(index);
+                });
 
-            let button = root.append(Button::new().on_click(remove_entry));
-            button.append(Text::new().text("Delete".to_owned()));
-        }
-    })
+                let button = root.append(Button::new().on_click(edit_entry));
+                button.append(Text::new().text("Edit".to_owned()));
+            }
+
+            if let Some(f) = &remove_entry {
+                let f = f.clone();
+                let remove_entry = Box::new(move |_| {
+                    context_menu.update(|state| state.close());
+                    f(index);
+                });
+
+                let button = root.append(Button::new().on_click(remove_entry));
+                button.append(Text::new().text("Delete".to_owned()));
+            }
+        },
+    )
 }

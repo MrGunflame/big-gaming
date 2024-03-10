@@ -2,20 +2,23 @@
 
 use game_input::keyboard::KeyCode;
 use game_ui::events::{ElementEventHandlers, EventHandlers};
-use game_ui::reactive::{Node, Scope};
+use game_ui::reactive::{Node, Scope, WriteSignal};
 
 use game_ui::render::{Element, ElementBody};
 use game_ui::style::{Position, Style};
 use game_ui::widgets::{Callback, Widget};
 use glam::UVec2;
 
+/// A transparent wrapper around a container that passes requests for context menus along.
+///
+/// `spawn_menu` is called when a right-click is issued (when the context menu is requested).
 #[derive(Debug)]
-pub struct ContextMenu {
-    spawn_menu: Callback<Scope>,
+pub struct ContextPanel {
+    spawn_menu: Callback<(Scope, WriteSignal<State>)>,
     style: Style,
 }
 
-impl ContextMenu {
+impl ContextPanel {
     pub fn new() -> Self {
         Self {
             spawn_menu: Callback::from(|_| {}),
@@ -30,14 +33,14 @@ impl ContextMenu {
 
     pub fn spawn_menu<F>(mut self, f: F) -> Self
     where
-        F: Into<Callback<Scope>>,
+        F: Into<Callback<(Scope, WriteSignal<State>)>>,
     {
         self.spawn_menu = f.into();
         self
     }
 }
 
-impl Widget for ContextMenu {
+impl Widget for ContextPanel {
     fn build(self, cx: &Scope) -> Scope {
         let (state, set_state) = cx.create_signal(State {
             is_active: false,
@@ -106,11 +109,15 @@ impl Widget for ContextMenu {
                                     mouse_button_input: Some(Box::new(move |ctx| {
                                         //set_state.update(|state| state.is_active = false);
                                     })),
-                                    keyboard_input: Some(Box::new(move |ctx| {
-                                        if ctx.event.state.is_pressed()
-                                            && ctx.event.key_code == Some(KeyCode::Escape)
-                                        {
-                                            set_state.update(|state| state.is_active = false);
+                                    keyboard_input: Some(Box::new({
+                                        let set_state = set_state.clone();
+
+                                        move |ctx| {
+                                            if ctx.event.state.is_pressed()
+                                                && ctx.event.key_code == Some(KeyCode::Escape)
+                                            {
+                                                set_state.update(|state| state.is_active = false);
+                                            }
                                         }
                                     })),
                                     ..Default::default()
@@ -120,7 +127,7 @@ impl Widget for ContextMenu {
 
                         state.menu_cx = Some(menu.clone());
 
-                        (self.spawn_menu)(menu);
+                        (self.spawn_menu)((menu, set_state));
                     }
                 }
             });
@@ -130,10 +137,17 @@ impl Widget for ContextMenu {
     }
 }
 
+/// State of the context menu.
 #[derive(Clone, Debug)]
-struct State {
+pub struct State {
     is_active: bool,
     position: UVec2,
     // Menu scope if displayed.
     menu_cx: Option<Scope>,
+}
+
+impl State {
+    pub fn close(&mut self) {
+        self.is_active = false;
+    }
 }
