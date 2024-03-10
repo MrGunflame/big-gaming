@@ -14,7 +14,6 @@ use game_ui::style::{Background, Direction, Growth, Justify, Padding, Size, Styl
 use game_ui::widgets::{Button, Callback, Container, Text, Widget};
 use game_window::windows::WindowId;
 use image::Rgba;
-use parking_lot::Mutex;
 
 const BACKGROUND_COLOR: &str = "353535";
 
@@ -67,7 +66,7 @@ impl Widget for Explorer {
             directory_up_sig: set_path.clone(),
         });
 
-        let id = Mutex::new(None);
+        let mut id = None;
         let cx = upper.clone();
         cx.clone().create_effect(move || {
             let path = path.get();
@@ -87,9 +86,8 @@ impl Widget for Explorer {
                 }
             };
 
-            let mut id = id.lock();
-            if let Some(id) = &*id {
-                cx.remove(*id);
+            if let Some(id) = id {
+                cx.remove(id);
             }
 
             let table = upper.append(Container::new().style(Style {
@@ -97,8 +95,7 @@ impl Widget for Explorer {
                 ..Default::default()
             }));
 
-            *id = Some(table.id().unwrap());
-            drop(id);
+            id = Some(table.id().unwrap());
 
             let name_col = table.append(Container::new());
             name_col.append(Text::new().text("Name".to_owned()));
@@ -399,14 +396,12 @@ impl Widget for Topbar {
         let path_box = root.append(Container::new());
         let text_cx = path_box.append(Text::new());
 
-        let id = Mutex::new(text_cx.id().unwrap());
+        let mut id = text_cx.id().unwrap();
         root.create_effect(move || {
             let text = self.path.get().to_string_lossy().to_string();
 
-            let mut id = id.lock();
-
-            path_box.remove(*id);
-            *id = path_box.append(Text::new().text(text)).id().unwrap();
+            path_box.remove(id);
+            id = path_box.append(Text::new().text(text)).id().unwrap();
         });
 
         root

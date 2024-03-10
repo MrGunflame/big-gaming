@@ -5,7 +5,6 @@ use game_ui::events::Context;
 use game_ui::reactive::Scope;
 use game_ui::style::{Growth, Style};
 use game_ui::widgets::{Button, Callback, Container, Text, Widget};
-use parking_lot::Mutex;
 
 use crate::backend::{Task, WriteModule};
 use crate::state::EditorState;
@@ -32,7 +31,7 @@ impl Widget for Modules {
             writer
         });
 
-        let id = Mutex::new(None);
+        let mut id = None;
         {
             let state = self.state.clone();
             cx.create_effect(move || {
@@ -54,17 +53,16 @@ impl Widget for Modules {
                     remove_entry: None,
                 };
 
-                let id = &mut *id.lock();
                 match id {
                     Some(id) => {
-                        mods.remove(*id);
+                        mods.remove(id);
                     }
                     None => {}
                 }
 
                 let cx = mods.append(Entries { data });
 
-                *id = Some(cx.id().unwrap());
+                id = Some(cx.id().unwrap());
             });
         }
 

@@ -1,5 +1,4 @@
 use image::{ImageBuffer, Rgba};
-use parking_lot::Mutex;
 
 use crate::events::{ElementEventHandlers, EventHandlers};
 use crate::reactive::{Node, Scope};
@@ -37,15 +36,13 @@ impl Widget for Checkbox {
             },
         });
 
-        let id = Mutex::new(None);
+        let mut id = None;
         let cx = root.clone();
         root.create_effect(move || {
             let state = state.get();
 
-            let mut id = id.lock();
-
-            if let Some(id) = &*id {
-                cx.remove(*id);
+            if let Some(id) = id {
+                cx.remove(id);
             }
 
             let image = if state {
@@ -69,7 +66,7 @@ impl Widget for Checkbox {
                 }
             }
 
-            *id = Some(checkbox.id().unwrap());
+            id = Some(checkbox.id().unwrap());
         });
 
         root

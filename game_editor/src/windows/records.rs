@@ -6,7 +6,6 @@ use game_ui::reactive::{ReadSignal, Scope, WriteSignal};
 use game_ui::style::{Background, Direction, Growth, Style};
 use game_ui::widgets::{Button, Callback, Container, Text, Widget};
 use image::Rgba;
-use parking_lot::Mutex;
 
 use crate::widgets::entries::*;
 
@@ -97,16 +96,14 @@ impl Widget for Records {
         });
 
         let cat_sig = cat;
-        let rows = Mutex::new(vec![]);
+        let mut rows = vec![];
         let state = self.state.clone();
         cx.create_effect(move || {
             let _ = reader.get();
 
             let cat = cat_sig.get();
 
-            let mut rows = rows.lock();
-
-            for id in &*rows {
+            for id in &rows {
                 main.remove(*id);
             }
             rows.clear();
