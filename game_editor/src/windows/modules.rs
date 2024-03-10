@@ -47,7 +47,7 @@ impl Widget for Modules {
                 }
 
                 let data = EntriesData {
-                    keys: vec!["ID".to_owned(), "Name".to_owned()],
+                    keys: vec!["ID".to_owned(), "Name".to_owned(), "Default".to_owned()],
                     entries,
                     add_entry: Some(on_create(state.clone())),
                     edit_entry: None,

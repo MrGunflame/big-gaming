@@ -22,7 +22,7 @@ pub struct SceneEntities {
 
 impl SceneEntities {
     pub fn update(&mut self, graph: &mut SceneGraph, renderer: &mut Renderer) {
-        todo!();
+        // todo!();
         // Remove removed node before adding new ones because they are
         // allowed to reuse the same keys.
         for key in graph.iter_removed() {
