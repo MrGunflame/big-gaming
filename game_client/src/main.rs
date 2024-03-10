@@ -237,6 +237,7 @@ impl<'a> GameAppState<'a> {
         *self.world.lock() = world;
 
         self.ui_state.update(&mut self.window_commands.lock());
+        self.gizmos.swap_buffers();
     }
 }
 
