@@ -5,6 +5,7 @@ use game_render::camera::{Camera, CameraUniform};
 use game_render::graph::{Node, RenderContext};
 use game_tracing::trace_span;
 use parking_lot::{Mutex, RwLock};
+use wgpu::hal::auxil::db;
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
 use wgpu::{
     BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
@@ -141,7 +142,7 @@ impl Node for GizmoPass {
                 camera.transform,
                 camera.projection,
             )]),
-            usage: BufferUsages::VERTEX | BufferUsages::UNIFORM,
+            usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
         });
 
         let bg = ctx.device.create_bind_group(&BindGroupDescriptor {

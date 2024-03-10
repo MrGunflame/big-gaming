@@ -2,7 +2,6 @@
 var<uniform> camera: Camera;
 
 struct VertexInput {
-    @builtin(vertex_index) vertex_index: u32,
     @location(0) pos: vec3<f32>,
     @location(1) color: vec4<f32>,
 }

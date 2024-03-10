@@ -155,6 +155,7 @@ impl SceneEntities {
                 Some(id) => {
                     let mut camera = renderer.entities.cameras.get_mut(*id).unwrap();
                     camera.transform = transform;
+                    gizmos.update_camera(*camera);
                 }
                 None => {
                     let size = renderer.get_surface_size(window).unwrap();
