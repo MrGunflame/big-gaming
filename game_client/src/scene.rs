@@ -6,6 +6,7 @@ use game_common::components::{
 use game_common::components::{PrimaryCamera, Transform};
 use game_common::entity::EntityId;
 use game_common::world::{QueryWrapper, World};
+use game_gizmos::Gizmos;
 use game_render::camera::{Camera, Projection, RenderTarget};
 use game_render::entities::{CameraId, DirectionalLightId, PointLightId, SpotLightId};
 use game_render::light::{DirectionalLight, PointLight, SpotLight};
@@ -34,6 +35,7 @@ impl SceneEntities {
         pool: &TaskPool,
         renderer: &mut Renderer,
         window: WindowId,
+        gizmos: &Gizmos,
     ) {
         self.spawner.update(pool, renderer);
         self.graph.compute_transform();
@@ -163,6 +165,8 @@ impl SceneEntities {
                         target: RenderTarget::Window(window),
                     };
                     camera.update_aspect_ratio(size);
+
+                    gizmos.update_camera(camera);
 
                     let id = renderer.entities.cameras.insert(camera);
                     self.primary_cameras.insert(entity, id);

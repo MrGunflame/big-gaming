@@ -4,7 +4,14 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-glam = "0.25.0"
+game_common = { version = "0.1.0", path = "../game_common" }
+game_render = { version = "0.1.0", path = "../game_render" }
+game_tracing = { version = "0.1.0", path = "../game_tracing" }
+glam = "0.24.0"
+wgpu = "0.19.1"
+bytemuck = "1.13.1"
+parking_lot = "0.12.1"
+tracing = "0.1.37"
 
 [lints]
 workspace = true
