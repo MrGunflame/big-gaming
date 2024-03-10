@@ -18,6 +18,7 @@ members = [
     "game_render",
     "game_window",
     "game_asset",
+    "game_gizmos",
     "game_gltf",
     "game_scene",
     "game_worldgen",

@@ -16,10 +16,12 @@ use std::time::Duration;
 
 use clap::Parser;
 use config::Config;
+use game_common::components::Color;
 use game_common::sync::spsc;
 use game_common::world::World;
 use game_core::counter::{Interval, UpdateCounter};
 use game_core::time::Time;
+use game_gizmos::Gizmos;
 use game_render::camera::RenderTarget;
 use game_render::Renderer;
 use game_tasks::TaskPool;
@@ -85,6 +87,7 @@ fn main() {
 
     let renderer = Renderer::new();
     let ui_state = UiState::new(&renderer);
+    let gizmos = Gizmos::new(&renderer);
     let events = spsc::Queue::new(8192);
     let (events_tx, events_rx) = events.split();
 
@@ -112,6 +115,7 @@ fn main() {
         ui_state,
         window_commands: &window_commands,
         pool: &pool,
+        gizmos: &gizmos,
     };
 
     let renderer_state = RendererAppState {
@@ -126,6 +130,7 @@ fn main() {
         fps_counter: &fps_counter,
         shutdown: &shutdown,
         window_commands: &window_commands,
+        gizmos: &gizmos,
     };
 
     std::thread::scope(|scope| {
@@ -148,6 +153,7 @@ pub struct GameAppState<'a> {
     shutdown: &'a AtomicBool,
     interval: Interval,
     ui_state: UiState,
+    gizmos: &'a Gizmos,
     window_commands: &'a Mutex<Vec<WindowCommand>>,
     pool: &'a TaskPool,
 }
@@ -231,6 +237,7 @@ impl<'a> GameAppState<'a> {
         *self.world.lock() = world;
 
         self.ui_state.update(&mut self.window_commands.lock());
+        self.gizmos.swap_buffers();
     }
 }
 
@@ -246,6 +253,7 @@ pub struct RendererAppState<'a> {
     fps_counter: &'a Mutex<UpdateCounter>,
     shutdown: &'a AtomicBool,
     window_commands: &'a Mutex<Vec<WindowCommand>>,
+    gizmos: &'a Gizmos,
 }
 
 impl<'a> game_window::App for RendererAppState<'a> {
@@ -278,8 +286,13 @@ impl<'a> game_window::App for RendererAppState<'a> {
 
         let world = { self.world.lock().clone() };
 
-        self.entities
-            .update(&world, &self.pool, &mut self.renderer, self.window_id);
+        self.entities.update(
+            &world,
+            &self.pool,
+            &mut self.renderer,
+            self.window_id,
+            &self.gizmos,
+        );
 
         self.renderer.render(&self.pool);
 
