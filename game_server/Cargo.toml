@@ -37,6 +37,7 @@ game_worldgen = { version = "0.1.0", path = "../game_worldgen" }
 game_scene = { version = "0.1.0", path = "../game_scene" }
 game_tasks = { version = "0.1.0", path = "../game_tasks" }
 game_wasm = { version = "0.1.0", path = "../game_wasm" }
+game_tracing = { version = "0.1.0", path = "../game_tracing" }
 
 [profile.dev]
 opt-level = 0

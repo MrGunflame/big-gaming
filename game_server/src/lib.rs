@@ -19,54 +19,13 @@ use game_scene::scene2::{Key, SceneGraph};
 use game_scene::SceneSpawner;
 use game_script::Executor;
 use game_tasks::TaskPool;
-use tracing::{span, Level};
+use game_tracing::trace_span;
 use world::state::WorldState;
 
 use crate::config::Config;
 use crate::plugins::tick;
 use crate::server::Server;
 use crate::state::State;
-
-pub async fn run(mut state: ServerState) {
-    let root = span!(Level::INFO, "Server");
-    let _guard = root.enter();
-
-    let timestep = Duration::from_secs(1) / state.state.config.timestep;
-
-    {
-        let state = state.state.clone();
-        tokio::task::spawn(async move {
-            let server = match Server::new(state.clone()) {
-                Ok(s) => s,
-                Err(err) => {
-                    tracing::error!("failed to run server: {}", err);
-                    return;
-                }
-            };
-
-            if let Err(err) = server.await {
-                tracing::error!("failed to run server: {}", err);
-            }
-        });
-    }
-
-    let mut interval = Interval::new(timestep);
-
-    let mut ups = UpdateCounter::new();
-    loop {
-        let now = Instant::now();
-        interval.wait(now).await;
-
-        tick(&mut state);
-
-        let mut cf = state.state.control_frame.lock();
-        *cf += 1;
-
-        ups.update();
-
-        tracing::debug!("Stepping Control frame to {:?} (UPS = {})", cf, ups.ups());
-    }
-}
 
 pub struct ServerState {
     pub world: WorldState,
@@ -98,6 +57,43 @@ impl ServerState {
                 entities: HashMap::default(),
             },
             next_player: 0,
+        }
+    }
+
+    pub async fn run(mut self) {
+        let _span = trace_span!("ServerState::run").entered();
+
+        let timestep = Duration::from_secs(1) / self.state.config.timestep;
+
+        let state = self.state.clone();
+        tokio::task::spawn(async move {
+            let server = match Server::new(state.clone()) {
+                Ok(s) => s,
+                Err(err) => {
+                    tracing::error!("failed to run server: {}", err);
+                    return;
+                }
+            };
+
+            if let Err(err) = server.await {
+                tracing::error!("failed to run server: {}", err);
+            }
+        });
+
+        let mut interval = Interval::new(timestep);
+
+        let mut ups = UpdateCounter::new();
+        loop {
+            let now = Instant::now();
+            interval.wait(now).await;
+            ups.update();
+
+            tick(&mut self);
+
+            let mut cf = self.state.control_frame.lock();
+            *cf += 1;
+
+            tracing::debug!("Stepping Control frame to {:?} (UPS = {})", cf, ups.ups());
         }
     }
 }

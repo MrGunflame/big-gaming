@@ -43,7 +43,7 @@ fn main() {
         .unhandled_panic(UnhandledPanic::ShutdownRuntime)
         .build()
         .unwrap();
-    rt.block_on(game_server::run(server_state));
+    rt.block_on(server_state.run());
 }
 
 #[macro_export]
