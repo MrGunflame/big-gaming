@@ -2,24 +2,40 @@ use tracing_subscriber::layer::SubscriberExt;
 
 pub mod world;
 
-pub const IS_ENABLED: bool = true;
+#[doc(hidden)]
+pub use tracing;
 
 pub fn init() {
-    if IS_ENABLED {
-        tracing::subscriber::set_global_default(
-            tracing_subscriber::registry().with(tracing_tracy::TracyLayer::new()),
-        )
-        .unwrap();
-    }
+    tracing::subscriber::set_global_default(
+        tracing_subscriber::registry().with(tracing_tracy::TracyLayer::new()),
+    )
+    .unwrap();
 }
 
 #[macro_export]
 macro_rules! trace_span {
     ($name:expr) => {{
-        if game_tracing::IS_ENABLED {
-            tracing::span!(tracing::Level::TRACE, $name)
-        } else {
-            tracing::Span::none()
+        $crate::Span {
+            inner: $crate::tracing::span!($crate::tracing::Level::TRACE, $name),
         }
     }};
+}
+
+#[derive(Clone, Debug)]
+pub struct Span {
+    #[doc(hidden)]
+    pub inner: tracing::span::Span,
+}
+
+impl Span {
+    pub fn entered(self) -> EnteredSpan {
+        EnteredSpan {
+            _inner: self.inner.entered(),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct EnteredSpan {
+    _inner: tracing::span::EnteredSpan,
 }
