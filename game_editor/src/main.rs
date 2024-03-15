@@ -10,10 +10,10 @@ use std::sync::{mpsc, Arc};
 
 use backend::{Backend, Handle, Response};
 
+use game_common::world::World;
+use game_gizmos::Gizmos;
 use game_render::camera::RenderTarget;
 use game_render::Renderer;
-use game_scene::scene2::SceneGraph;
-use game_scene::SceneSpawner;
 use game_tasks::TaskPool;
 use game_ui::UiState;
 use game_window::cursor::Cursor;
@@ -21,7 +21,7 @@ use game_window::events::WindowEvent;
 use game_window::windows::{WindowBuilder, WindowId};
 use game_window::{WindowManager, WindowManagerContext};
 use glam::UVec2;
-use scene::{SceneEntities, SceneState};
+use scene::SceneEntities;
 use state::module::Modules;
 use state::record::Records;
 use state::EditorState;
@@ -66,7 +66,7 @@ fn main() {
 
     let (backend, handle) = Backend::new();
 
-    let (state, rx) = State::new(handle);
+    let (mut state, rx) = State::new(handle);
 
     let mut editor_state = state.state.clone();
     std::thread::spawn(move || {
@@ -80,6 +80,8 @@ fn main() {
         .send(SpawnWindow::MainWindow)
         .unwrap();
 
+    let gizmos = Gizmos::new(&mut state.render_state);
+
     let app = App {
         renderer: state.render_state,
         ui_state: state.ui_state,
@@ -88,12 +90,10 @@ fn main() {
         cursor: state.window_manager.cursor().clone(),
         loading_windows: HashMap::new(),
         active_windows: HashMap::new(),
-        scene: SceneState {
-            graph: SceneGraph::new(),
-            spawner: SceneSpawner::default(),
-            entities: SceneEntities::default(),
-        },
+        scene: SceneEntities::default(),
         pool: TaskPool::new(8),
+        gizmos,
+        world: World::new(),
     };
 
     state.window_manager.run(app);
@@ -137,8 +137,10 @@ pub struct App {
     cursor: Arc<Cursor>,
     loading_windows: HashMap<WindowId, SpawnWindow>,
     active_windows: HashMap<WindowId, crate::windows::Window>,
-    scene: SceneState,
+    scene: SceneEntities,
     pool: TaskPool,
+    gizmos: Gizmos,
+    world: World,
 }
 
 impl game_window::App for App {
@@ -264,16 +266,17 @@ impl game_window::App for App {
             self.loading_windows.insert(id, event);
         }
 
-        for window in self.active_windows.values_mut() {
+        for (id, window) in self.active_windows.iter_mut() {
             window.update(&mut self.renderer, &mut self.scene);
-        }
 
-        self.scene.spawner.update(&self.pool, &mut self.renderer);
-        self.scene.graph.compute_transform();
-        self.scene
-            .entities
-            .update(&mut self.scene.graph, &mut self.renderer);
-        self.scene.graph.clear_trackers();
+            self.scene.update(
+                &self.world,
+                &self.pool,
+                &mut self.renderer,
+                *id,
+                &self.gizmos,
+            );
+        }
 
         let mut cmds = Vec::new();
         self.ui_state.update(&mut cmds);

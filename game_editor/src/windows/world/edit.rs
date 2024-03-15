@@ -2,8 +2,8 @@
 //!
 
 use game_common::components::Transform;
+use game_common::entity::EntityId;
 use game_common::math::Ray;
-use game_core::hierarchy::Key;
 use glam::{Quat, Vec2, Vec3};
 
 use super::Axis;
@@ -32,7 +32,7 @@ impl EditOperation {
         self.camera_ray = camera_ray;
     }
 
-    pub fn push(&mut self, id: Key, origin: Transform) {
+    pub fn push(&mut self, id: EntityId, origin: Transform) {
         self.nodes.push(EditNode {
             id,
             origin,
@@ -55,7 +55,7 @@ impl EditOperation {
         &mut self,
         ray: Ray,
         camera_rotation: Quat,
-    ) -> impl Iterator<Item = (Key, Transform)> + '_ {
+    ) -> impl Iterator<Item = (EntityId, Transform)> + '_ {
         match self.mode {
             EditMode::Translate(axis) => {
                 for node in &mut self.nodes {
@@ -156,7 +156,7 @@ impl EditOperation {
         self.mode = EditMode::None;
     }
 
-    pub fn reset(&mut self) -> impl Iterator<Item = (Key, Transform)> + '_ {
+    pub fn reset(&mut self) -> impl Iterator<Item = (EntityId, Transform)> + '_ {
         self.nodes.drain(..).map(|node| (node.id, node.origin))
     }
 
@@ -179,7 +179,7 @@ pub enum EditMode {
 /// A node being edited.
 #[derive(Copy, Clone, Debug)]
 struct EditNode {
-    id: Key,
+    id: EntityId,
     /// The origin of the node before the edit started.
     origin: Transform,
     /// The current transform.
