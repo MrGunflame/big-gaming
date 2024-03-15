@@ -8,8 +8,8 @@ use std::collections::{HashSet, VecDeque};
 use std::sync::mpsc;
 
 use bitflags::bitflags;
-use game_common::components::Transform;
-use game_common::components::{Color, PrimaryCamera};
+use game_common::components::{Color, PointLight, PrimaryCamera};
+use game_common::components::{MeshInstance, Transform};
 use game_common::entity::EntityId;
 use game_common::record::RecordReference;
 use game_common::world::World;
@@ -51,8 +51,31 @@ pub struct WorldWindowState {
 impl WorldWindowState {
     pub fn new(state: State, window_id: WindowId, world: &mut World) -> Self {
         let camera = world.spawn();
-        world.insert_typed(camera, Transform::default());
+        world.insert_typed(
+            camera,
+            Transform::from_translation(Vec3::new(0.0, 1.0, 0.0)),
+        );
         world.insert_typed(camera, PrimaryCamera);
+
+        let mut light = world.spawn();
+        world.insert_typed(light, Transform::from_translation(Vec3::new(0.0, 1.0, 0.0)));
+        world.insert_typed(
+            light,
+            PointLight {
+                color: Color::WHITE,
+                intensity: 100.0,
+                radius: 100.0,
+            },
+        );
+
+        let mut obj = world.spawn();
+        world.insert_typed(obj, Transform::default());
+        world.insert_typed(
+            obj,
+            MeshInstance {
+                path: "../game_client/sponza.glb".into(),
+            },
+        );
 
         Self {
             camera,
@@ -158,15 +181,15 @@ impl WorldWindowState {
                         }
                         Some(KeyCode::G) => {
                             self.edit_op.set_mode(EditMode::Translate(None));
-                            self.create_edit_op(world, camera, viewport_size.as_vec2());
+                            // self.create_edit_op(world, camera, viewport_size.as_vec2());
                         }
                         Some(KeyCode::R) => {
                             self.edit_op.set_mode(EditMode::Rotate(None));
-                            self.create_edit_op(world, camera, viewport_size.as_vec2());
+                            // self.create_edit_op(world, camera, viewport_size.as_vec2());
                         }
                         Some(KeyCode::S) => {
                             self.edit_op.set_mode(EditMode::Scale(None));
-                            self.create_edit_op(world, camera, viewport_size.as_vec2());
+                            // self.create_edit_op(world, camera, viewport_size.as_vec2());
                         }
                         Some(KeyCode::X) => {
                             let mode = match self.edit_op.mode() {
@@ -221,14 +244,13 @@ impl WorldWindowState {
                     }
 
                     if self.edit_op.mode() == EditMode::None {
-                        self.update_selection(renderer, scenes, window);
+                        // self.update_selection(renderer, scenes, window);
                     } else {
                         self.confirm_edit_op(renderer);
                     }
                 }
                 MouseButton::Right => {
                     if self.edit_op.mode() != EditMode::None {
-                        drop(camera);
                         self.reset_edit_op(world);
                         self.edit_op.set_mode(EditMode::None);
                     }
@@ -241,51 +263,53 @@ impl WorldWindowState {
             },
             _ => todo!(),
         }
+
+        world.insert_typed(self.camera, camera_transform);
     }
 
-    fn update_selection(&mut self, renderer: &mut Renderer, scenes: &mut SceneState, id: WindowId) {
-        let camera = renderer
-            .entities
-            .cameras
-            .get_mut(self.camera)
-            .unwrap()
-            .clone();
-        let viewport_size = renderer.get_surface_size(id).unwrap().as_vec2();
+    // fn update_selection(&mut self, renderer: &mut Renderer, scenes: &mut SceneState, id: WindowId) {
+    //     let camera = renderer
+    //         .entities
+    //         .cameras
+    //         .get_mut(self.camera)
+    //         .unwrap()
+    //         .clone();
+    //     let viewport_size = renderer.get_surface_size(id).unwrap().as_vec2();
 
-        for (node, entity) in self.node_map.iter() {
-            let Some(object) = scenes.entities.mesh_instance(*entity) else {
-                continue;
-            };
-            let object = renderer.entities.objects.get(object).unwrap();
+    //     for (node, entity) in self.node_map.iter() {
+    //         let Some(object) = scenes.entities.mesh_instance(*entity) else {
+    //             continue;
+    //         };
+    //         let object = renderer.entities.objects.get(object).unwrap();
 
-            let mesh = renderer.meshes.get(object.mesh).unwrap();
+    //         let mesh = renderer.meshes.get(object.mesh).unwrap();
 
-            if let Some(aabb) = mesh.compute_aabb() {
-                let ray = camera.viewport_to_world(camera.transform, viewport_size, self.cursor);
+    //         if let Some(aabb) = mesh.compute_aabb() {
+    //             let ray = camera.viewport_to_world(camera.transform, viewport_size, self.cursor);
 
-                if selection::hit_test(ray, aabb) {
-                    self.state.selection.update(|v| v.insert(*node));
-                }
-            }
-        }
-    }
+    //             if selection::hit_test(ray, aabb) {
+    //                 self.state.selection.update(|v| v.insert(*node));
+    //             }
+    //         }
+    //     }
+    // }
 
-    fn create_edit_op(&mut self, world: &mut World, camera: Camera, viewport_size: Vec2) {
-        let ray = camera.viewport_to_world(camera.transform, viewport_size, self.cursor);
+    // fn create_edit_op(&mut self, world: &mut World, camera: Camera, viewport_size: Vec2) {
+    //     let ray = camera.viewport_to_world(camera.transform, viewport_size, self.cursor);
 
-        self.edit_op.create(self.cursor, ray);
+    //     self.edit_op.create(self.cursor, ray);
 
-        self.state.selection.with(|selection| {
-            for id in selection {
-                let transform = self
-                    .state
-                    .nodes
-                    .with(|nodes| nodes.get(*id).unwrap().transform);
+    //     self.state.selection.with(|selection| {
+    //         for id in selection {
+    //             let transform = self
+    //                 .state
+    //                 .nodes
+    //                 .with(|nodes| nodes.get(*id).unwrap().transform);
 
-                self.edit_op.push(*id, transform);
-            }
-        });
-    }
+    //             self.edit_op.push(*id, transform);
+    //         }
+    //     });
+    // }
 
     fn update_edit_op(&mut self, world: &mut World, camera: Camera, viewport_size: Vec2) {
         let camera_rotation = camera.transform.rotation;

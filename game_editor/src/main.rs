@@ -156,8 +156,8 @@ impl game_window::App for App {
 
                 if let Some(spawn) = self.loading_windows.remove(&event.window) {
                     let window = crate::windows::spawn_window(
+                        &mut self.world,
                         &mut self.renderer,
-                        &mut self.scene,
                         self.state.clone(),
                         self.ui_state.runtime.clone(),
                         spawn,
@@ -197,8 +197,8 @@ impl game_window::App for App {
                 if let Some(window_id) = self.cursor.window() {
                     if let Some(window) = self.active_windows.get_mut(&window_id) {
                         window.handle_event(
+                            &mut self.world,
                             &mut self.renderer,
-                            &mut self.scene,
                             WindowEvent::MouseMotion(event),
                             window_id,
                         );
@@ -209,8 +209,8 @@ impl game_window::App for App {
                 if let Some(window_id) = self.cursor.window() {
                     if let Some(window) = self.active_windows.get_mut(&window_id) {
                         window.handle_event(
+                            &mut self.world,
                             &mut self.renderer,
-                            &mut self.scene,
                             WindowEvent::KeyboardInput(event),
                             window_id,
                         );
@@ -221,8 +221,8 @@ impl game_window::App for App {
                 if let Some(window_id) = self.cursor.window() {
                     if let Some(window) = self.active_windows.get_mut(&window_id) {
                         window.handle_event(
+                            &mut self.world,
                             &mut self.renderer,
-                            &mut self.scene,
                             WindowEvent::MouseWheel(event),
                             window_id,
                         );
@@ -233,8 +233,8 @@ impl game_window::App for App {
                 if let Some(window_id) = self.cursor.window() {
                     if let Some(window) = self.active_windows.get_mut(&window_id) {
                         window.handle_event(
+                            &mut self.world,
                             &mut self.renderer,
-                            &mut self.scene,
                             WindowEvent::MouseButtonInput(event),
                             window_id,
                         );
@@ -245,8 +245,8 @@ impl game_window::App for App {
                 if let Some(window_id) = self.cursor.window() {
                     if let Some(window) = self.active_windows.get_mut(&window_id) {
                         window.handle_event(
+                            &mut self.world,
                             &mut self.renderer,
-                            &mut self.scene,
                             WindowEvent::CursorMoved(event),
                             window_id,
                         );
@@ -267,15 +267,17 @@ impl game_window::App for App {
         }
 
         for (id, window) in self.active_windows.iter_mut() {
-            window.update(&mut self.renderer, &mut self.scene);
+            window.update(&mut self.world, &mut self.renderer);
 
-            self.scene.update(
-                &self.world,
-                &self.pool,
-                &mut self.renderer,
-                *id,
-                &self.gizmos,
-            );
+            if matches!(window, crate::windows::Window::View(_, _)) {
+                self.scene.update(
+                    &self.world,
+                    &self.pool,
+                    &mut self.renderer,
+                    *id,
+                    &self.gizmos,
+                );
+            }
         }
 
         let mut cmds = Vec::new();
