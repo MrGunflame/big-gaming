@@ -2,9 +2,9 @@
 mod edit;
 mod hierarchy;
 mod node;
+mod panel;
 pub mod spawn_entity;
 
-use std::collections::{HashSet, VecDeque};
 use std::sync::mpsc;
 
 use bitflags::bitflags;
@@ -13,27 +13,23 @@ use game_common::components::{MeshInstance, Transform};
 use game_common::entity::EntityId;
 use game_common::record::RecordReference;
 use game_common::world::World;
-use game_core::hierarchy::{Hierarchy, Key};
+use game_core::hierarchy::Key;
 use game_input::keyboard::KeyCode;
 use game_input::mouse::{MouseButton, MouseMotion, MouseWheel};
 use game_input::ButtonState;
 use game_render::camera::{Camera, Projection, RenderTarget};
 use game_render::Renderer;
 use game_ui::reactive::{ReadSignal, Scope, WriteSignal};
-use game_ui::style::{
-    Background, BorderRadius, Bounds, Direction, Growth, Justify, Size, SizeVec2, Style,
-};
+use game_ui::style::{BorderRadius, Direction, Growth, Justify, Size, Style};
 use game_ui::widgets::{Container, ParseInput, Text, ValueProvider};
 use game_window::events::WindowEvent;
 use game_window::windows::WindowId;
 use glam::{Quat, Vec2, Vec3};
 
 use crate::state::EditorState;
-use crate::windows::world::node::NodeKind;
-use crate::world::selection;
 
 use self::edit::{EditMode, EditOperation};
-use self::hierarchy::NodeHierarchy;
+use self::panel::{Entity, Panel};
 
 const ZOOM_DISTANCE_MIN: f32 = 0.2;
 const ZOOM_DISTANCE_MAX: f32 = 100.0;
@@ -76,6 +72,19 @@ impl WorldWindowState {
                 path: "../game_client/sponza.glb".into(),
             },
         );
+
+        state.entities.set(vec![
+            Entity {
+                id: light,
+                name: "Point Light".into(),
+                is_selected: false,
+            },
+            Entity {
+                id: obj,
+                name: "Obj".into(),
+                is_selected: false,
+            },
+        ]);
 
         Self {
             camera,
@@ -158,22 +167,24 @@ impl WorldWindowState {
                         camera.transform = camera.transform.looking_to(-Vec3::Y, Vec3::Z);
                     }
                     Some(KeyCode::Delete) => {
-                        let keys: Vec<_> = self
-                            .state
-                            .selection
-                            .update(|selection| selection.drain().collect());
+                        // let keys: Vec<_> = self
+                        //     .state
+                        //     .selection
+                        //     .update(|selection| selection.drain().collect());
 
-                        self.state.nodes.update(|nodes| {
-                            for key in keys {
-                                nodes.remove(key);
-                                self.state.events.push_back(Event::Destroy { node: key });
-                            }
-                        });
+                        // self.state.nodes.update(|nodes| {
+                        //     for key in keys {
+                        //         nodes.remove(key);
+                        //         self.state.events.push_back(Event::Destroy { node: key });
+                        //     }
+                        // });
                     }
                     _ => (),
                 }
 
-                if event.state.is_pressed() && !self.state.selection.with(|v| v.is_empty()) {
+                if event.state.is_pressed()
+                /*&& !self.state.selection.with(|v| v.is_empty())*/
+                {
                     match event.key_code {
                         Some(KeyCode::Escape) => {
                             self.reset_edit_op(world);
@@ -318,7 +329,7 @@ impl WorldWindowState {
         for (entity, transform) in self.edit_op.update(ray, camera_rotation) {
             world.insert_typed(entity, transform);
 
-            self.state.props.update(|props| props.transform = transform);
+            // self.state.props.update(|props| props.transform = transform);
         }
     }
 
@@ -326,7 +337,7 @@ impl WorldWindowState {
         for (entity, transform) in self.edit_op.reset() {
             world.insert_typed(entity, transform);
 
-            self.state.props.update(|props| props.transform = transform);
+            // self.state.props.update(|props| props.transform = transform);
         }
     }
 
@@ -336,171 +347,169 @@ impl WorldWindowState {
     }
 
     pub fn update(&mut self, world: &mut World) {
-        while let Ok(event) = self.state.rx.try_recv() {
-            self.state.events.push_back(event);
-        }
-
-        while let Some(event) = self.state.events.pop_front() {
-            match event {
-                Event::UpdateSelection { node, additive } => {
-                    self.state.selection.update(|selection| {
-                        if !additive {
-                            selection.clear();
-                        }
-
-                        selection.insert(node);
-                    });
-
-                    // FIXME: We select the most-recent node right now. Need to
-                    // figure out what to display when selecting multiple nodes.
-                    let transform = self
-                        .state
-                        .nodes
-                        .with(|hierarchy| hierarchy.get(node).unwrap().transform);
-                    self.state.props.update(|props| {
-                        props.transform = transform;
-                    });
-                }
-                Event::Spawn(record_ref) => {
-                    // It is possible the record is already deleted once we
-                    // receive this event.
-                    if let Some(record) = self
-                        .state
-                        .state
-                        .records
-                        .get(record_ref.module, record_ref.record)
-                    {
-                        // self.spawn_entity(renderer, scenes, record);
-                    }
-                }
-                Event::SpawnDirectionalLight => {
-                    let key = self.state.nodes.update(|hierarchy| {
-                        hierarchy.append(
-                            None,
-                            node::Node {
-                                transform: Transform::default(),
-                                name: NodeKind::DirectionalLight.default_name().into(),
-                                body: node::NodeBody::DirectionalLight(node::DirectionalLight {
-                                    color: Color::WHITE,
-                                    illuminance: 100_000.0,
-                                }),
-                            },
-                        )
-                    });
-
-                    // let entity = scenes.graph.append(
-                    //     None,
-                    //     game_scene::scene2::Node::from_transform(Transform::default()),
-                    // );
-                    // scenes.spawner.insert(
-                    //     entity,
-                    //     Scene {
-                    //         nodes: Node {
-                    //             transform: Transform::default(),
-                    //             body: NodeBody::DirectionalLight(DirectionalLight {
-                    //                 color: Color::WHITE,
-                    //                 illuminance: 100_000.0,
-                    //             }),
-                    //         }
-                    //         .into(),
-                    //         materials: vec![],
-                    //         meshes: vec![],
-                    //         images: vec![],
-                    //     },
-                    // );
-
-                    // self.node_map.insert(key, entity);
-                }
-                Event::SpawnPointLight => {
-                    let key = self.state.nodes.update(|hierarchy| {
-                        hierarchy.append(
-                            None,
-                            node::Node {
-                                transform: Transform::default(),
-                                name: NodeKind::PointLight.default_name().into(),
-                                body: node::NodeBody::PointLight(node::PointLight {
-                                    color: Color::WHITE,
-                                    intensity: 100.0,
-                                    radius: 100.0,
-                                }),
-                            },
-                        )
-                    });
-
-                    // let entity = scenes.graph.append(
-                    //     None,
-                    //     game_scene::scene2::Node::from_transform(Transform::default()),
-                    // );
-                    // scenes.spawner.insert(
-                    //     entity,
-                    //     Scene {
-                    //         nodes: Node {
-                    //             transform: Transform::default(),
-                    //             body: NodeBody::PointLight(PointLight {
-                    //                 color: Color::WHITE,
-                    //                 intensity: 100.0,
-                    //                 radius: 100.0,
-                    //             }),
-                    //         }
-                    //         .into(),
-                    //         materials: vec![],
-                    //         images: vec![],
-                    //         meshes: vec![],
-                    //     },
-                    // );
-
-                    // self.node_map.insert(key, entity);
-                }
-                Event::SpawnSpotLight => {
-                    let key = self.state.nodes.update(|hierarchy| {
-                        hierarchy.append(
-                            None,
-                            node::Node {
-                                transform: Transform::default(),
-                                name: NodeKind::SpotLight.default_name().into(),
-                                body: node::NodeBody::SpotLight(node::SpotLight {
-                                    color: Color::WHITE,
-                                    intensity: 100.0,
-                                    radius: 100.0,
-                                    inner_cutoff: 45.0,
-                                    outer_cutoff: 50.0,
-                                }),
-                            },
-                        )
-                    });
-                }
-                Event::Destroy { node } => {
-                    // FIXME: Removing parent should remove all childrne.
-
-                    self.state.nodes.update(|hierarchy| {
-                        hierarchy.remove(node);
-                    });
-
-                    // if let Some(entity) = self.node_map.remove(&node) {
-                    //     scenes.graph.remove(entity);
-                    // }
-                }
-                Event::UpdateTransform { transform } => {
-                    let nodes = self.state.selection.get();
-
-                    for node in nodes {
-                        self.state.nodes.update(|hierarchy| {
-                            let node = hierarchy.get_mut(node).unwrap();
-                            node.transform = transform;
-                        });
-
-                        // if let Some(entity) = self.node_map.get(&node) {
-                        //     scenes.graph.get_mut(*entity).unwrap().transform = transform;
-                        // }
-
-                        self.state.props.update(|props| {
-                            props.transform = transform;
-                        });
-                    }
-                }
-            }
-        }
+        // while let Ok(event) = self.state.rx.try_recv() {
+        //     self.state.events.push_back(event);
     }
+
+    // while let Some(event) = self.state.events.pop_front() {
+    //     match event {
+    //         Event::UpdateSelection { node, additive } => {
+    //             // self.state.selection.update(|selection| {
+    //             //     if !additive {
+    //             //         selection.clear();
+    //             //     }
+
+    //             //     selection.insert(node);
+    //             // });
+
+    //             // FIXME: We select the most-recent node right now. Need to
+    //             // figure out what to display when selecting multiple nodes.
+    //             // let transform = self
+    //             //     .state
+    //             //     .nodes
+    //             //     .with(|hierarchy| hierarchy.get(node).unwrap().transform);
+    //             // self.state.props.update(|props| {
+    //             //     props.transform = transform;
+    //             // });
+    //         }
+    //         Event::Spawn(record_ref) => {
+    //             // It is possible the record is already deleted once we
+    //             // receive this event.
+    //             // if let Some(record) = self
+    //             //     .state
+    //             //     .state
+    //             //     .records
+    //             //     .get(record_ref.module, record_ref.record)
+    //             // {
+    //             //     // self.spawn_entity(renderer, scenes, record);
+    //             // }
+    //         }
+    //         Event::SpawnDirectionalLight => {
+    //             // let key = self.state.nodes.update(|hierarchy| {
+    //             //     hierarchy.append(
+    //             //         None,
+    //             //         node::Node {
+    //             //             transform: Transform::default(),
+    //             //             name: NodeKind::DirectionalLight.default_name().into(),
+    //             //             body: node::NodeBody::DirectionalLight(node::DirectionalLight {
+    //             //                 color: Color::WHITE,
+    //             //                 illuminance: 100_000.0,
+    //             //             }),
+    //             //         },
+    //             //     )
+    //             // });
+
+    //             // let entity = scenes.graph.append(
+    //             //     None,
+    //             //     game_scene::scene2::Node::from_transform(Transform::default()),
+    //             // );
+    //             // scenes.spawner.insert(
+    //             //     entity,
+    //             //     Scene {
+    //             //         nodes: Node {
+    //             //             transform: Transform::default(),
+    //             //             body: NodeBody::DirectionalLight(DirectionalLight {
+    //             //                 color: Color::WHITE,
+    //             //                 illuminance: 100_000.0,
+    //             //             }),
+    //             //         }
+    //             //         .into(),
+    //             //         materials: vec![],
+    //             //         meshes: vec![],
+    //             //         images: vec![],
+    //             //     },
+    //             // );
+
+    //             // self.node_map.insert(key, entity);
+    //         }
+    //         Event::SpawnPointLight => {
+    //             // let key = self.state.nodes.update(|hierarchy| {
+    //             //     hierarchy.append(
+    //             //         None,
+    //             //         node::Node {
+    //             //             transform: Transform::default(),
+    //             //             name: NodeKind::PointLight.default_name().into(),
+    //             //             body: node::NodeBody::PointLight(node::PointLight {
+    //             //                 color: Color::WHITE,
+    //             //                 intensity: 100.0,
+    //             //                 radius: 100.0,
+    //             //             }),
+    //             //         },
+    //             //     )
+    //             // });
+
+    //             // let entity = scenes.graph.append(
+    //             //     None,
+    //             //     game_scene::scene2::Node::from_transform(Transform::default()),
+    //             // );
+    //             // scenes.spawner.insert(
+    //             //     entity,
+    //             //     Scene {
+    //             //         nodes: Node {
+    //             //             transform: Transform::default(),
+    //             //             body: NodeBody::PointLight(PointLight {
+    //             //                 color: Color::WHITE,
+    //             //                 intensity: 100.0,
+    //             //                 radius: 100.0,
+    //             //             }),
+    //             //         }
+    //             //         .into(),
+    //             //         materials: vec![],
+    //             //         images: vec![],
+    //             //         meshes: vec![],
+    //             //     },
+    //             // );
+
+    //             // self.node_map.insert(key, entity);
+    //         }
+    //         Event::SpawnSpotLight => {
+    //             // let key = self.state.nodes.update(|hierarchy| {
+    //             //     hierarchy.append(
+    //             //         None,
+    //             //         node::Node {
+    //             //             transform: Transform::default(),
+    //             //             name: NodeKind::SpotLight.default_name().into(),
+    //             //             body: node::NodeBody::SpotLight(node::SpotLight {
+    //             //                 color: Color::WHITE,
+    //             //                 intensity: 100.0,
+    //             //                 radius: 100.0,
+    //             //                 inner_cutoff: 45.0,
+    //             //                 outer_cutoff: 50.0,
+    //             //             }),
+    //             //         },
+    //             //     )
+    //             // });
+    //         }
+    //         Event::Destroy { node } => {
+    //             // FIXME: Removing parent should remove all childrne.
+
+    //             // self.state.nodes.update(|hierarchy| {
+    //             //     hierarchy.remove(node);
+    //             // });
+
+    //             // if let Some(entity) = self.node_map.remove(&node) {
+    //             //     scenes.graph.remove(entity);
+    //             // }
+    //         }
+    //         Event::UpdateTransform { transform } => {
+    //             // let nodes = self.state.selection.get();
+
+    //             // for node in nodes {
+    //             //     self.state.nodes.update(|hierarchy| {
+    //             //         let node = hierarchy.get_mut(node).unwrap();
+    //             //         node.transform = transform;
+    //             //     });
+
+    //             //     // if let Some(entity) = self.node_map.get(&node) {
+    //             //     //     scenes.graph.get_mut(*entity).unwrap().transform = transform;
+    //             //     // }
+
+    //             //     self.state.props.update(|props| {
+    //             //         props.transform = transform;
+    //             //     });
+    //             // }
+    //         }
+    //     }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -511,51 +520,18 @@ enum Axis {
 }
 
 pub struct State {
-    events: VecDeque<Event>,
-    rx: mpsc::Receiver<Event>,
-    nodes: WriteSignal<Hierarchy<node::Node>>,
-    selection: WriteSignal<HashSet<Key>>,
-    state: EditorState,
-    props: WriteSignal<NodeProperties>,
+    entities: WriteSignal<Vec<Entity>>,
 }
 
 pub fn build_ui(cx: &Scope, state: EditorState) -> State {
-    // let cx = cx.append(Area::new());
+    let root = cx.append(Container::new());
 
-    let (tx, rx) = mpsc::channel();
+    let (entities, set_entities) = root.create_signal(Vec::new());
 
-    let style = Style {
-        background: Background::GRAY,
-        growth: Growth::splat(1.0),
-        bounds: Bounds::exact(SizeVec2 {
-            x: Size::Pixels(300),
-            y: Size::Pixels(2000), // y: Size::INFINITY,
-        }),
-        ..Default::default()
-    };
-
-    let root = cx.append(Container::new().style(style));
-
-    let (nodes, set_nodes) = cx.create_signal(Hierarchy::new());
-    let (selection, set_selection) = cx.create_signal(HashSet::new());
-    let (props, set_props) = cx.create_signal(NodeProperties::default());
-
-    root.append(NodeHierarchy {
-        writer: tx.clone(),
-        nodes,
-        selection,
-        state: state.clone(),
-    });
-
-    build_object_transform(&root, props, tx);
+    cx.append(Panel { entities });
 
     State {
-        events: VecDeque::new(),
-        nodes: set_nodes,
-        selection: set_selection,
-        rx,
-        state,
-        props: set_props,
+        entities: set_entities,
     }
 }
 
