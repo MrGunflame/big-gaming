@@ -1,11 +1,16 @@
+use std::sync::mpsc;
+
 use game_common::collections::string::SmallStr;
 use game_common::entity::EntityId;
 use game_ui::reactive::{ReadSignal, Scope};
 use game_ui::style::{Background, Bounds, Growth, Size, SizeVec2, Style};
 use game_ui::widgets::{Button, Container, Text, Widget};
 
+use super::Event;
+
 pub struct Panel {
     pub entities: ReadSignal<Vec<Entity>>,
+    pub writer: mpsc::Sender<Event>,
 }
 
 impl Widget for Panel {
@@ -21,6 +26,13 @@ impl Widget for Panel {
         };
 
         let root = cx.append(Container::new().style(style));
+
+        let create_new_entity = move |ctx| {
+            self.writer.send(Event::Spawn);
+        };
+
+        let button = root.append(Button::new().on_click(create_new_entity));
+        button.append(Text::new().text("Create".to_owned()));
 
         root.append(EntityList {
             entities: self.entities,

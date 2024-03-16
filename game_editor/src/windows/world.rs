@@ -1,32 +1,26 @@
 //! An immutable view of a scene.
 mod edit;
-mod hierarchy;
 mod node;
 mod panel;
-pub mod spawn_entity;
 
 use std::sync::mpsc;
 
 use bitflags::bitflags;
+use game_common::collections::string::SmallStr;
 use game_common::components::{Color, PointLight, PrimaryCamera};
 use game_common::components::{MeshInstance, Transform};
 use game_common::entity::EntityId;
-use game_common::record::RecordReference;
 use game_common::world::World;
-use game_core::hierarchy::Key;
 use game_input::keyboard::KeyCode;
 use game_input::mouse::{MouseButton, MouseMotion, MouseWheel};
 use game_input::ButtonState;
 use game_render::camera::{Camera, Projection, RenderTarget};
 use game_render::Renderer;
-use game_ui::reactive::{ReadSignal, Scope, WriteSignal};
-use game_ui::style::{BorderRadius, Direction, Growth, Justify, Size, Style};
-use game_ui::widgets::{Container, ParseInput, Text, ValueProvider};
+use game_ui::reactive::{Scope, WriteSignal};
+use game_ui::widgets::Container;
 use game_window::events::WindowEvent;
 use game_window::windows::WindowId;
 use glam::{Quat, Vec2, Vec3};
-
-use crate::state::EditorState;
 
 use self::edit::{EditMode, EditOperation};
 use self::panel::{Entity, Panel};
@@ -42,10 +36,15 @@ pub struct WorldWindowState {
     cursor: Vec2,
     state: State,
     edit_op: EditOperation,
+    events: mpsc::Receiver<Event>,
 }
 
 impl WorldWindowState {
-    pub fn new(state: State, window_id: WindowId, world: &mut World) -> Self {
+    pub fn new(cx: &Scope, window_id: WindowId, world: &mut World) -> Self {
+        let (writer, reader) = mpsc::channel();
+
+        let st = build_ui(cx, writer);
+
         let camera = world.spawn();
         world.insert_typed(
             camera,
@@ -73,7 +72,7 @@ impl WorldWindowState {
             },
         );
 
-        state.entities.set(vec![
+        st.entities.set(vec![
             Entity {
                 id: light,
                 name: "Point Light".into(),
@@ -91,7 +90,8 @@ impl WorldWindowState {
             camera_controller: CameraController::default(),
             cursor: Vec2::ZERO,
             edit_op: EditOperation::new(),
-            state,
+            state: st,
+            events: reader,
         }
     }
 
@@ -309,7 +309,28 @@ impl WorldWindowState {
         self.edit_op.confirm();
     }
 
-    pub fn update(&mut self, world: &mut World) {}
+    pub fn update(&mut self, world: &mut World) {
+        while let Ok(event) = self.events.try_recv() {
+            match event {
+                Event::Spawn => {
+                    // Create new entities at the location the camera is looking at.
+                    let id = world.spawn();
+                    world.insert_typed(
+                        id,
+                        Transform::from_translation(self.camera_controller.origin),
+                    );
+
+                    self.state.entities.update(|entities| {
+                        entities.push(Entity {
+                            id,
+                            name: SmallStr::from_static("<entity>"),
+                            is_selected: false,
+                        });
+                    });
+                }
+            }
+        }
+    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -323,195 +344,21 @@ pub struct State {
     entities: WriteSignal<Vec<Entity>>,
 }
 
-pub fn build_ui(cx: &Scope, state: EditorState) -> State {
+fn build_ui(cx: &Scope, writer: mpsc::Sender<Event>) -> State {
     let root = cx.append(Container::new());
 
     let (entities, set_entities) = root.create_signal(Vec::new());
 
-    cx.append(Panel { entities });
+    cx.append(Panel { entities, writer });
 
     State {
         entities: set_entities,
     }
 }
 
-fn build_object_transform(cx: &Scope, props: ReadSignal<NodeProperties>, tx: mpsc::Sender<Event>) {
-    let root = cx.append(Container::new());
-
-    {
-        let translation_row = cx.append(Container::new().style(Style {
-            growth: Growth::x(1.0),
-            direction: Direction::Column,
-            justify: Justify::SpaceBetween,
-            border_radius: BorderRadius::splat(Size::Pixels(5)),
-            ..Default::default()
-        }));
-
-        let style = Style {
-            ..Default::default()
-        };
-
-        let set_x = {
-            let props = props.clone();
-            let tx = tx.clone();
-
-            move |val| {
-                let mut transform = props.with_untracked(|props| props.transform);
-                transform.translation.x = val;
-                tx.send(Event::UpdateTransform { transform });
-            }
-        };
-
-        let set_y = {
-            let props = props.clone();
-            let tx = tx.clone();
-
-            move |val| {
-                let mut transform = props.with_untracked(|props| props.transform);
-                transform.translation.y = val;
-                tx.send(Event::UpdateTransform { transform });
-            }
-        };
-
-        let set_z = {
-            let props = props.clone();
-            let tx = tx.clone();
-
-            move |val| {
-                let mut transform = props.with_untracked(|props| props.transform);
-                transform.translation.z = val;
-                tx.send(Event::UpdateTransform { transform });
-            }
-        };
-
-        let wrapper_style = Style {
-            growth: Growth::x(1.0),
-            direction: Direction::Column,
-            ..Default::default()
-        };
-
-        let (translation_x, set_translation_x) = cx.create_signal(0.0);
-        let (translation_y, set_translation_y) = cx.create_signal(0.0);
-        let (translation_z, set_translation_z) = cx.create_signal(0.0);
-
-        {
-            let props = props.clone();
-            cx.create_effect(move || {
-                let translation = props.with(|props| props.transform.translation);
-                set_translation_x.set(translation.x);
-                set_translation_y.set(translation.y);
-                set_translation_z.set(translation.z);
-            });
-        }
-
-        let x = translation_row.append(Container::new().style(wrapper_style.clone()));
-        x.append(Text::new().text("X".to_owned()));
-        x.append(
-            ParseInput::new(ValueProvider::Reader(translation_x))
-                .style(style.clone())
-                .on_change(set_x),
-        );
-
-        let y = translation_row.append(Container::new().style(wrapper_style.clone()));
-        y.append(Text::new().text("Y".to_owned()));
-        y.append(
-            ParseInput::new(ValueProvider::Reader(translation_y))
-                .style(style.clone())
-                .on_change(set_y),
-        );
-
-        let z = translation_row.append(Container::new().style(wrapper_style));
-        z.append(Text::new().text("Z".to_owned()));
-        z.append(
-            ParseInput::new(ValueProvider::Reader(translation_z))
-                .style(style)
-                .on_change(set_z),
-        );
-    }
-
-    {
-        let row = cx.append(Container::new().style(Style {
-            growth: Growth::x(1.0),
-            direction: Direction::Column,
-            justify: Justify::SpaceBetween,
-            border_radius: BorderRadius::splat(Size::Pixels(5)),
-            ..Default::default()
-        }));
-
-        let wrapper_style = Style {
-            growth: Growth::x(1.0),
-            direction: Direction::Column,
-            ..Default::default()
-        };
-
-        let set_x = {
-            let props = props.clone();
-            let tx = tx.clone();
-
-            move |val| {
-                let mut transform = props.with_untracked(|props| props.transform);
-                transform.rotation.x = val;
-                tx.send(Event::UpdateTransform { transform });
-            }
-        };
-
-        let set_y = {
-            let props = props.clone();
-            let tx = tx.clone();
-
-            move |val| {
-                let mut transform = props.with_untracked(|props| props.transform);
-                transform.rotation.y = val;
-                tx.send(Event::UpdateTransform { transform });
-            }
-        };
-
-        let set_z = {
-            let props = props.clone();
-            let tx = tx.clone();
-
-            move |val| {
-                let mut transform = props.with_untracked(|props| props.transform);
-                transform.rotation.z = val;
-                tx.send(Event::UpdateTransform { transform });
-            }
-        };
-
-        let set_w = {
-            move |val| {
-                let mut transform = props.with_untracked(|props| props.transform);
-                transform.rotation.w = val;
-                tx.send(Event::UpdateTransform { transform });
-            }
-        };
-
-        let x = row.append(Container::new().style(wrapper_style.clone()));
-        x.append(Text::new().text("X".to_owned()));
-        x.append(ParseInput::new(0.0).on_change(set_x));
-
-        let y = row.append(Container::new().style(wrapper_style.clone()));
-        y.append(Text::new().text("Y".to_owned()));
-        y.append(ParseInput::new(0.0).on_change(set_y));
-
-        let z = row.append(Container::new().style(wrapper_style.clone()));
-        z.append(Text::new().text("Z".to_owned()));
-        z.append(ParseInput::new(0.0).on_change(set_z));
-
-        let w = row.append(Container::new().style(wrapper_style));
-        w.append(Text::new().text("W".to_owned()));
-        w.append(ParseInput::new(1.0).on_change(set_w));
-    }
-}
-
 #[derive(Copy, Clone, Debug)]
-pub enum Event {
-    UpdateSelection { node: Key, additive: bool },
-    Spawn(RecordReference),
-    Destroy { node: Key },
-    SpawnDirectionalLight,
-    SpawnPointLight,
-    SpawnSpotLight,
-    UpdateTransform { transform: Transform },
+enum Event {
+    Spawn,
 }
 
 #[derive(Clone, Debug, Default)]

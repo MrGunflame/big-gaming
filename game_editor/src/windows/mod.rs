@@ -7,8 +7,6 @@ mod record;
 mod records;
 mod world;
 
-use std::sync::mpsc;
-
 use game_common::module::ModuleId;
 use game_common::world::World;
 use game_data::record::{Record, RecordKind};
@@ -27,7 +25,6 @@ use self::main_window::MainWindow;
 use self::modules::Modules;
 use self::open_module::OpenModule;
 use self::record::CreateRecord;
-use self::world::spawn_entity::SpawnEntity;
 use self::world::WorldWindowState;
 
 pub enum Window {
@@ -114,13 +111,8 @@ pub fn spawn_window(
             });
         }
         SpawnWindow::View => {
-            let state = world::build_ui(&cx, state);
-
-            let window = world::WorldWindowState::new(state, window_id, world);
+            let window = world::WorldWindowState::new(&cx, window_id, world);
             return Window::View(document, window);
-        }
-        SpawnWindow::SpawnEntity(writer) => {
-            cx.append(SpawnEntity { state, writer });
         }
     }
 
@@ -138,5 +130,4 @@ pub enum SpawnWindow {
     Error(String),
     CreateRecord(RecordKind),
     EditRecord(ModuleId, Record),
-    SpawnEntity(mpsc::Sender<world::Event>),
 }
