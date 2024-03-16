@@ -33,7 +33,7 @@ use self::panel::{Entity, Panel};
 
 const ZOOM_DISTANCE_MIN: f32 = 0.2;
 const ZOOM_DISTANCE_MAX: f32 = 100.0;
-const ZOOM_FACTOR: f32 = 0.15 / 120.0;
+const ZOOM_FACTOR: f32 = 0.15 / 120.0 * 120.0;
 
 pub struct WorldWindowState {
     camera: EntityId,
@@ -104,7 +104,7 @@ impl WorldWindowState {
     ) {
         let viewport_size = renderer.get_surface_size(window).unwrap();
 
-        let mut camera_transform = world.get_typed::<Transform>(self.camera);
+        let camera_transform = world.get_typed::<Transform>(self.camera);
         let mut camera = Camera {
             transform: camera_transform,
             projection: Projection::default(),
@@ -114,10 +114,10 @@ impl WorldWindowState {
 
         match event {
             WindowEvent::MouseMotion(event) => {
-                self.camera_controller.update(&mut camera_transform, event);
+                self.camera_controller.update(&mut camera.transform, event);
             }
             WindowEvent::MouseWheel(event) => {
-                self.camera_controller.zoom(&mut camera_transform, event);
+                self.camera_controller.zoom(&mut camera.transform, event);
             }
             WindowEvent::CursorLeft(_) => {
                 // Reset the mode when the cursor leaves the window.
@@ -167,40 +167,42 @@ impl WorldWindowState {
                         camera.transform = camera.transform.looking_to(-Vec3::Y, Vec3::Z);
                     }
                     Some(KeyCode::Delete) => {
-                        // let keys: Vec<_> = self
-                        //     .state
-                        //     .selection
-                        //     .update(|selection| selection.drain().collect());
+                        let selected: Vec<_> = self.state.entities.with(|entities| {
+                            entities
+                                .iter()
+                                .filter_map(|entity| entity.is_selected.then_some(entity.id))
+                                .collect()
+                        });
 
-                        // self.state.nodes.update(|nodes| {
-                        //     for key in keys {
-                        //         nodes.remove(key);
-                        //         self.state.events.push_back(Event::Destroy { node: key });
-                        //     }
-                        // });
+                        for entity in selected {
+                            world.despawn(entity);
+                        }
                     }
                     _ => (),
                 }
 
                 if event.state.is_pressed()
-                /*&& !self.state.selection.with(|v| v.is_empty())*/
+                    && self
+                        .state
+                        .entities
+                        .with(|entities| entities.iter().any(|e| e.is_selected))
                 {
                     match event.key_code {
                         Some(KeyCode::Escape) => {
-                            self.reset_edit_op(world);
+                            self.cancel_edit_op(world);
                             self.edit_op.set_mode(EditMode::None);
                         }
                         Some(KeyCode::G) => {
                             self.edit_op.set_mode(EditMode::Translate(None));
-                            // self.create_edit_op(world, camera, viewport_size.as_vec2());
+                            self.start_edit_op(world, camera, viewport_size.as_vec2());
                         }
                         Some(KeyCode::R) => {
                             self.edit_op.set_mode(EditMode::Rotate(None));
-                            // self.create_edit_op(world, camera, viewport_size.as_vec2());
+                            self.start_edit_op(world, camera, viewport_size.as_vec2());
                         }
                         Some(KeyCode::S) => {
                             self.edit_op.set_mode(EditMode::Scale(None));
-                            // self.create_edit_op(world, camera, viewport_size.as_vec2());
+                            self.start_edit_op(world, camera, viewport_size.as_vec2());
                         }
                         Some(KeyCode::X) => {
                             let mode = match self.edit_op.mode() {
@@ -249,11 +251,7 @@ impl WorldWindowState {
                 }
             }
             WindowEvent::MouseButtonInput(event) => match event.button {
-                MouseButton::Left => {
-                    if !event.state.is_pressed() {
-                        return;
-                    }
-
+                MouseButton::Left if event.state.is_pressed() => {
                     if self.edit_op.mode() == EditMode::None {
                         // self.update_selection(renderer, scenes, window);
                     } else {
@@ -262,7 +260,7 @@ impl WorldWindowState {
                 }
                 MouseButton::Right => {
                     if self.edit_op.mode() != EditMode::None {
-                        self.reset_edit_op(world);
+                        self.cancel_edit_op(world);
                         self.edit_op.set_mode(EditMode::None);
                     }
                 }
@@ -275,52 +273,21 @@ impl WorldWindowState {
             _ => todo!(),
         }
 
-        world.insert_typed(self.camera, camera_transform);
+        world.insert_typed(self.camera, camera.transform);
     }
 
-    // fn update_selection(&mut self, renderer: &mut Renderer, scenes: &mut SceneState, id: WindowId) {
-    //     let camera = renderer
-    //         .entities
-    //         .cameras
-    //         .get_mut(self.camera)
-    //         .unwrap()
-    //         .clone();
-    //     let viewport_size = renderer.get_surface_size(id).unwrap().as_vec2();
+    fn start_edit_op(&mut self, world: &mut World, camera: Camera, viewport_size: Vec2) {
+        let ray = camera.viewport_to_world(camera.transform, viewport_size, self.cursor);
 
-    //     for (node, entity) in self.node_map.iter() {
-    //         let Some(object) = scenes.entities.mesh_instance(*entity) else {
-    //             continue;
-    //         };
-    //         let object = renderer.entities.objects.get(object).unwrap();
+        self.edit_op.create(self.cursor, ray);
 
-    //         let mesh = renderer.meshes.get(object.mesh).unwrap();
-
-    //         if let Some(aabb) = mesh.compute_aabb() {
-    //             let ray = camera.viewport_to_world(camera.transform, viewport_size, self.cursor);
-
-    //             if selection::hit_test(ray, aabb) {
-    //                 self.state.selection.update(|v| v.insert(*node));
-    //             }
-    //         }
-    //     }
-    // }
-
-    // fn create_edit_op(&mut self, world: &mut World, camera: Camera, viewport_size: Vec2) {
-    //     let ray = camera.viewport_to_world(camera.transform, viewport_size, self.cursor);
-
-    //     self.edit_op.create(self.cursor, ray);
-
-    //     self.state.selection.with(|selection| {
-    //         for id in selection {
-    //             let transform = self
-    //                 .state
-    //                 .nodes
-    //                 .with(|nodes| nodes.get(*id).unwrap().transform);
-
-    //             self.edit_op.push(*id, transform);
-    //         }
-    //     });
-    // }
+        self.state.entities.with(|entities| {
+            for entity in entities.iter().filter(|e| e.is_selected) {
+                let transform = world.get_typed(entity.id);
+                self.edit_op.push(entity.id, transform);
+            }
+        });
+    }
 
     fn update_edit_op(&mut self, world: &mut World, camera: Camera, viewport_size: Vec2) {
         let camera_rotation = camera.transform.rotation;
@@ -328,16 +295,12 @@ impl WorldWindowState {
 
         for (entity, transform) in self.edit_op.update(ray, camera_rotation) {
             world.insert_typed(entity, transform);
-
-            // self.state.props.update(|props| props.transform = transform);
         }
     }
 
-    fn reset_edit_op(&mut self, world: &mut World) {
+    fn cancel_edit_op(&mut self, world: &mut World) {
         for (entity, transform) in self.edit_op.reset() {
             world.insert_typed(entity, transform);
-
-            // self.state.props.update(|props| props.transform = transform);
         }
     }
 
@@ -346,170 +309,7 @@ impl WorldWindowState {
         self.edit_op.confirm();
     }
 
-    pub fn update(&mut self, world: &mut World) {
-        // while let Ok(event) = self.state.rx.try_recv() {
-        //     self.state.events.push_back(event);
-    }
-
-    // while let Some(event) = self.state.events.pop_front() {
-    //     match event {
-    //         Event::UpdateSelection { node, additive } => {
-    //             // self.state.selection.update(|selection| {
-    //             //     if !additive {
-    //             //         selection.clear();
-    //             //     }
-
-    //             //     selection.insert(node);
-    //             // });
-
-    //             // FIXME: We select the most-recent node right now. Need to
-    //             // figure out what to display when selecting multiple nodes.
-    //             // let transform = self
-    //             //     .state
-    //             //     .nodes
-    //             //     .with(|hierarchy| hierarchy.get(node).unwrap().transform);
-    //             // self.state.props.update(|props| {
-    //             //     props.transform = transform;
-    //             // });
-    //         }
-    //         Event::Spawn(record_ref) => {
-    //             // It is possible the record is already deleted once we
-    //             // receive this event.
-    //             // if let Some(record) = self
-    //             //     .state
-    //             //     .state
-    //             //     .records
-    //             //     .get(record_ref.module, record_ref.record)
-    //             // {
-    //             //     // self.spawn_entity(renderer, scenes, record);
-    //             // }
-    //         }
-    //         Event::SpawnDirectionalLight => {
-    //             // let key = self.state.nodes.update(|hierarchy| {
-    //             //     hierarchy.append(
-    //             //         None,
-    //             //         node::Node {
-    //             //             transform: Transform::default(),
-    //             //             name: NodeKind::DirectionalLight.default_name().into(),
-    //             //             body: node::NodeBody::DirectionalLight(node::DirectionalLight {
-    //             //                 color: Color::WHITE,
-    //             //                 illuminance: 100_000.0,
-    //             //             }),
-    //             //         },
-    //             //     )
-    //             // });
-
-    //             // let entity = scenes.graph.append(
-    //             //     None,
-    //             //     game_scene::scene2::Node::from_transform(Transform::default()),
-    //             // );
-    //             // scenes.spawner.insert(
-    //             //     entity,
-    //             //     Scene {
-    //             //         nodes: Node {
-    //             //             transform: Transform::default(),
-    //             //             body: NodeBody::DirectionalLight(DirectionalLight {
-    //             //                 color: Color::WHITE,
-    //             //                 illuminance: 100_000.0,
-    //             //             }),
-    //             //         }
-    //             //         .into(),
-    //             //         materials: vec![],
-    //             //         meshes: vec![],
-    //             //         images: vec![],
-    //             //     },
-    //             // );
-
-    //             // self.node_map.insert(key, entity);
-    //         }
-    //         Event::SpawnPointLight => {
-    //             // let key = self.state.nodes.update(|hierarchy| {
-    //             //     hierarchy.append(
-    //             //         None,
-    //             //         node::Node {
-    //             //             transform: Transform::default(),
-    //             //             name: NodeKind::PointLight.default_name().into(),
-    //             //             body: node::NodeBody::PointLight(node::PointLight {
-    //             //                 color: Color::WHITE,
-    //             //                 intensity: 100.0,
-    //             //                 radius: 100.0,
-    //             //             }),
-    //             //         },
-    //             //     )
-    //             // });
-
-    //             // let entity = scenes.graph.append(
-    //             //     None,
-    //             //     game_scene::scene2::Node::from_transform(Transform::default()),
-    //             // );
-    //             // scenes.spawner.insert(
-    //             //     entity,
-    //             //     Scene {
-    //             //         nodes: Node {
-    //             //             transform: Transform::default(),
-    //             //             body: NodeBody::PointLight(PointLight {
-    //             //                 color: Color::WHITE,
-    //             //                 intensity: 100.0,
-    //             //                 radius: 100.0,
-    //             //             }),
-    //             //         }
-    //             //         .into(),
-    //             //         materials: vec![],
-    //             //         images: vec![],
-    //             //         meshes: vec![],
-    //             //     },
-    //             // );
-
-    //             // self.node_map.insert(key, entity);
-    //         }
-    //         Event::SpawnSpotLight => {
-    //             // let key = self.state.nodes.update(|hierarchy| {
-    //             //     hierarchy.append(
-    //             //         None,
-    //             //         node::Node {
-    //             //             transform: Transform::default(),
-    //             //             name: NodeKind::SpotLight.default_name().into(),
-    //             //             body: node::NodeBody::SpotLight(node::SpotLight {
-    //             //                 color: Color::WHITE,
-    //             //                 intensity: 100.0,
-    //             //                 radius: 100.0,
-    //             //                 inner_cutoff: 45.0,
-    //             //                 outer_cutoff: 50.0,
-    //             //             }),
-    //             //         },
-    //             //     )
-    //             // });
-    //         }
-    //         Event::Destroy { node } => {
-    //             // FIXME: Removing parent should remove all childrne.
-
-    //             // self.state.nodes.update(|hierarchy| {
-    //             //     hierarchy.remove(node);
-    //             // });
-
-    //             // if let Some(entity) = self.node_map.remove(&node) {
-    //             //     scenes.graph.remove(entity);
-    //             // }
-    //         }
-    //         Event::UpdateTransform { transform } => {
-    //             // let nodes = self.state.selection.get();
-
-    //             // for node in nodes {
-    //             //     self.state.nodes.update(|hierarchy| {
-    //             //         let node = hierarchy.get_mut(node).unwrap();
-    //             //         node.transform = transform;
-    //             //     });
-
-    //             //     // if let Some(entity) = self.node_map.get(&node) {
-    //             //     //     scenes.graph.get_mut(*entity).unwrap().transform = transform;
-    //             //     // }
-
-    //             //     self.state.props.update(|props| {
-    //             //         props.transform = transform;
-    //             //     });
-    //             // }
-    //         }
-    //     }
+    pub fn update(&mut self, world: &mut World) {}
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]

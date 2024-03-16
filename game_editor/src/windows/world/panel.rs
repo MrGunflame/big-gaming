@@ -48,7 +48,7 @@ impl Widget for EntityList {
 
             let entities = self.entities.get();
 
-            for entity in entities {
+            for (index, entity) in entities.iter().enumerate() {
                 let style = Style {
                     background: if entity.is_selected {
                         Background::YELLOW
@@ -58,7 +58,12 @@ impl Widget for EntityList {
                     ..Default::default()
                 };
 
-                let on_click = move |ctx| {};
+                let writer = self.entities.writer();
+                let on_click = move |_| {
+                    writer.update(|entities| {
+                        entities[index].is_selected ^= true;
+                    });
+                };
 
                 let button = list.append(Button::new().style(style).on_click(on_click));
                 button.append(Text::new().text(entity.name.to_string()));

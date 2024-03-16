@@ -103,6 +103,14 @@ where
             }
         });
     }
+
+    pub fn writer(&self) -> WriteSignal<T> {
+        WriteSignal {
+            cx: self.cx.clone(),
+            id: self.id,
+            value: self.value.clone(),
+        }
+    }
 }
 
 impl<T> Clone for ReadSignal<T>
