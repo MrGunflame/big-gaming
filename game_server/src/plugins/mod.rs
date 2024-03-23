@@ -1,20 +1,15 @@
 use std::collections::VecDeque;
 
-use ahash::{HashMap, HashSet};
+use ahash::HashMap;
 use game_common::components::actions::ActionId;
-use game_common::components::components::Components;
-use game_common::components::inventory::Inventory;
 use game_common::components::{PlayerId, Transform};
 use game_common::entity::EntityId;
 use game_common::events::{ActionEvent, Event, EventQueue, PlayerConnect, PlayerDisconnect};
-use game_common::net::ServerEntity;
 use game_common::world::control_frame::ControlFrame;
 use game_common::world::CellId;
 use game_core::modules::Modules;
 use game_net::message::{
-    ControlMessage, DataMessage, DataMessageBody, EntityComponentAdd, EntityComponentRemove,
-    EntityComponentUpdate, EntityDestroy, InventoryItemAdd, InventoryItemRemove,
-    InventoryItemUpdate, Message, MessageId, SpawnHost,
+    ControlMessage, DataMessage, DataMessageBody, Message, MessageId, SpawnHost,
 };
 use game_net::peer_error;
 use game_script::effect::{Effect, Effects};
@@ -22,8 +17,7 @@ use game_script::{Context, WorldProvider};
 use glam::Vec3;
 
 use crate::conn::{Connection, Connections};
-use crate::net::entities::Entities;
-use crate::net::state::{Cells, ConnectionState, KnownEntities};
+use crate::net::state::Cells;
 use crate::world::level::{Level, Streamer};
 use crate::world::state::WorldState;
 use crate::ServerState;
@@ -421,7 +415,7 @@ fn update_client(conn: &Connection, world: &WorldState, level: &Level, cf: Contr
         return;
     };
 
-    let active_entity_changed = match state.host.entity {
+    let mut active_entity_changed = match state.host.entity {
         Some(entity) => entity != host_id,
         None => true,
     };
@@ -431,24 +425,33 @@ fn update_client(conn: &Connection, world: &WorldState, level: &Level, cf: Contr
 
     let streamer = level.get_streamer(host_id).unwrap();
 
-    // Send full state
-    // The delta from the current frame is "included" in the full update.
+    // If the client requested a full update we must send him the entire
+    // state in the current frame.
     if state.full_update {
+        // We send a full update to the client by "forgetting" all of our
+        // state of the client.
+        // TODO: We can make this more efficient, because we only have to
+        // spawn new entities and don't need to update/despawn any entities.
+        state.entities.clear();
+        state.known_entities.clear();
+        active_entity_changed = true;
+
         state.full_update = false;
-        drop(state);
-        send_full_update(conn, world, host_id, cf);
-        return;
     }
 
-    // `Cells::set` may allocate so avoid calling it unless
-    // necessary.
     if state.cells.origin() != cell_id {
         tracing::info!("Moving host from {:?} to {:?}", state.cells, cell_id);
 
         state.cells.set(cell_id, streamer.distance);
     }
 
-    let events = crate::net::sync_player(world, &mut state);
+    let mut events = crate::net::sync_player(world, &mut state);
+
+    if active_entity_changed {
+        state.host.entity = Some(host_id);
+        let id = state.entities.get(host_id).unwrap();
+        events.push(DataMessageBody::SpawnHost(SpawnHost { entity: id }));
+    }
 
     // ACKs need to be sent out before the actual data frames
     // in the control frame. If we were to sent the data before
@@ -459,242 +462,11 @@ fn update_client(conn: &Connection, world: &WorldState, level: &Level, cf: Contr
     }
 
     for body in events {
-        let msg = DataMessage {
+        // FIXME: What to do if the send buffer is full?
+        let _ = conn.handle().send(DataMessage {
             id: MessageId(0),
             control_frame: cf,
             body,
-        };
-        conn.handle().send(msg);
-    }
-
-    if active_entity_changed {
-        state.host.entity = Some(host_id);
-        let id = state.entities.get(host_id).unwrap();
-        conn.handle().send(DataMessage {
-            id: MessageId(0),
-            control_frame: cf,
-            body: DataMessageBody::SpawnHost(SpawnHost { entity: id }),
         });
     }
-}
-
-fn send_full_update(conn: &Connection, world: &WorldState, host: EntityId, cf: ControlFrame) {
-    let state = &mut *conn.state().write();
-
-    let transform = world.get::<Transform>(host);
-    let cell_id = CellId::from(transform.translation);
-
-    state.entities.clear();
-    state.known_entities.clear();
-
-    tracing::info!(
-        "sending full update to host in cell {:?} for cells: {:?}",
-        cell_id,
-        state.cells.cells(),
-    );
-
-    // Initialize entities before syncing components. Components
-    // may refer to entities that are not yet loaded.
-    for id in state.cells.cells() {
-        let cell = world.cell(*id);
-
-        for entity in cell.entities() {
-            state.entities.insert(entity);
-            state
-                .known_entities
-                .components
-                .insert(entity, Components::new());
-        }
-    }
-
-    for id in state.cells.cells() {
-        let cell = world.cell(*id);
-
-        for entity in cell.entities() {
-            let entity_id = state.entities.get(entity).unwrap();
-
-            // Sync all components.
-            for (id, component) in world.world().components(entity).iter() {
-                let component = component
-                    .clone()
-                    .remap(|entity| {
-                        state
-                            .entities
-                            .get(entity)
-                            .map(|id| EntityId::from_raw(id.0))
-                    })
-                    .unwrap();
-
-                conn.handle().send(DataMessage {
-                    id: MessageId(0),
-                    control_frame: cf,
-                    body: DataMessageBody::EntityComponentAdd(EntityComponentAdd {
-                        entity: entity_id,
-                        component_id: id,
-                        component: component.clone(),
-                    }),
-                });
-
-                state.known_entities.insert(entity, id, component.clone());
-            }
-
-            // Sync the entity inventory, if it has one.
-            if let Some(inventory) = world.inventory(entity) {
-                for (id, stack) in inventory.iter() {
-                    conn.handle().send(DataMessage {
-                        id: MessageId(0),
-                        control_frame: cf,
-                        body: DataMessageBody::InventoryItemAdd(InventoryItemAdd {
-                            entity: entity_id,
-                            id,
-                            quantity: stack.quantity,
-                            item: stack.item.id,
-                            components: stack.item.components.clone(),
-                            equipped: stack.item.equipped,
-                            hidden: stack.item.hidden,
-                        }),
-                    });
-                }
-
-                state
-                    .known_entities
-                    .inventories
-                    .insert(entity, inventory.clone());
-            }
-        }
-    }
-
-    // Also sent the host.
-    let id = state.entities.get(host).unwrap();
-    conn.handle().send(DataMessage {
-        id: MessageId(0),
-        control_frame: cf,
-        body: DataMessageBody::SpawnHost(SpawnHost { entity: id }),
-    });
-}
-
-#[cfg(test)]
-mod tests {
-    use game_common::components::object::ObjectId;
-    use game_common::components::Transform;
-    use game_common::entity::EntityId;
-    use game_common::record::RecordReference;
-    use game_common::world::entity::{Entity, EntityBody, Object};
-    use glam::Vec3;
-
-    fn create_test_entity() -> Entity {
-        Entity {
-            id: EntityId::dangling(),
-            transform: Transform::default(),
-            body: EntityBody::Object(Object {
-                id: ObjectId(RecordReference::STUB),
-            }),
-            components: Default::default(),
-            is_host: false,
-            linvel: Vec3::ZERO,
-            angvel: Vec3::ZERO,
-        }
-    }
-
-    // #[test]
-    // fn player_update_cells_spawn_entity() {
-    //     let mut world = WorldState::new();
-    //     world.insert(create_test_entity());
-
-    //     let mut state = ConnectionState::new();
-    //     let events = update_player_cells(&world, &state);
-    //     update_client_entities(&mut state, events.clone());
-
-    //     assert_eq!(events.len(), 1);
-    //     assert!(matches!(events[0], EntityChange::Create { entity: _ }));
-    // }
-
-    // #[test]
-    // fn player_update_cells_translate_entity() {
-    //     let mut world = WorldState::new();
-    //     let entity_id = world.insert(create_test_entity());
-
-    //     let mut state = ConnectionState::new();
-    //     let events = update_player_cells(&world, &state);
-    //     update_client_entities(&mut state, events);
-
-    //     let entity = world.get_mut(entity_id).unwrap();
-    //     entity.transform.translation = Vec3::splat(1.0);
-
-    //     let events = update_player_cells(&world, &mut state);
-
-    //     assert_eq!(events.len(), 1);
-    //     assert!(matches!(
-    //         events[0],
-    //         EntityChange::Translate {
-    //             id: _,
-    //             translation: _,
-    //         }
-    //     ));
-    // }
-
-    // #[test]
-    // fn player_upate_cells_despawn_entity() {
-    //     let mut world = WorldState::new();
-    //     let entity_id = world.insert(create_test_entity());
-
-    //     let mut state = ConnectionState::new();
-    //     let events = update_player_cells(&world, &state);
-    //     update_client_entities(&mut state, events);
-
-    //     world.remove(entity_id);
-
-    //     let events = update_player_cells(&world, &mut state);
-
-    //     assert_eq!(events.len(), 1);
-    //     assert!(matches!(events[0], EntityChange::Destroy { id: _ }));
-    // }
-
-    // #[test]
-    // fn player_update_cells_entity_leave_cells() {
-    //     let mut world = WorldState::new();
-    //     let entity_id = world.insert(create_test_entity());
-
-    //     let mut state = ConnectionState::new();
-    //     let events = update_player_cells(&world, &state);
-    //     update_client_entities(&mut state, events);
-
-    //     let entity = world.get_mut(entity_id).unwrap();
-    //     entity.transform.translation = Vec3::splat(1024.0);
-
-    //     let events = update_player_cells(&world, &mut state);
-
-    //     assert_eq!(events.len(), 1);
-    //     assert!(matches!(events[0], EntityChange::Destroy { id: _ }));
-    // }
-
-    // #[test]
-    // fn player_update_cells_entity_translate_parallel() {
-    //     let distance = 0;
-
-    //     let mut world = WorldState::new();
-    //     let entity_id = world.insert(create_test_entity());
-
-    //     let mut state = ConnectionState::new();
-    //     state.cells.set(CellId::from_i32(IVec3::new(0, 0, 0)), 0);
-    //     let events = update_player_cells(&world, &mut state);
-    //     update_client_entities(&mut state, events);
-
-    //     let new_cell = CellId::from_i32(IVec3::splat(1));
-    //     state.cells.set(new_cell, distance);
-
-    //     let entity = world.get_mut(entity_id).unwrap();
-    //     entity.transform.translation = new_cell.min();
-
-    //     let events = update_player_cells(&world, &mut state);
-
-    //     assert_eq!(events.len(), 1);
-    //     assert!(matches!(
-    //         events[0],
-    //         EntityChange::Translate {
-    //             id: _,
-    //             translation: _,
-    //         }
-    //     ));
-    // }
 }

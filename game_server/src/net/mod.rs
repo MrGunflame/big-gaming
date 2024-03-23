@@ -4,6 +4,7 @@ use game_common::entity::EntityId;
 use game_common::net::ServerEntity;
 use game_net::message::{
     DataMessageBody, EntityComponentAdd, EntityComponentRemove, EntityComponentUpdate,
+    EntityDestroy,
 };
 use tracing::trace_span;
 
@@ -52,6 +53,15 @@ pub fn sync_player(world: &WorldState, state: &mut ConnectionState) -> Vec<DataM
                 &state.entities,
             ));
         }
+    }
+
+    for entity in prev_entities {
+        state.known_entities.despawn(entity);
+        let server_entity = state.entities.remove(entity).unwrap();
+
+        events.push(DataMessageBody::EntityDestroy(EntityDestroy {
+            entity: server_entity,
+        }));
     }
 
     events
