@@ -49,6 +49,13 @@ impl Components {
             inner: self.components.iter(),
         }
     }
+
+    pub fn retain<F>(&mut self, mut f: F)
+    where
+        F: FnMut(RecordReference, &mut RawComponent) -> bool,
+    {
+        self.components.retain(|k, v| f(*k, v));
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
