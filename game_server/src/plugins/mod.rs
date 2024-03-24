@@ -1,20 +1,15 @@
 use std::collections::VecDeque;
 
-use ahash::{HashMap, HashSet};
+use ahash::HashMap;
 use game_common::components::actions::ActionId;
-use game_common::components::components::Components;
-use game_common::components::inventory::Inventory;
 use game_common::components::{PlayerId, Transform};
 use game_common::entity::EntityId;
 use game_common::events::{ActionEvent, Event, EventQueue, PlayerConnect, PlayerDisconnect};
-use game_common::net::ServerEntity;
 use game_common::world::control_frame::ControlFrame;
 use game_common::world::CellId;
 use game_core::modules::Modules;
 use game_net::message::{
-    ControlMessage, DataMessage, DataMessageBody, EntityComponentAdd, EntityComponentRemove,
-    EntityComponentUpdate, EntityDestroy, InventoryItemAdd, InventoryItemRemove,
-    InventoryItemUpdate, Message, MessageId, SpawnHost,
+    ControlMessage, DataMessage, DataMessageBody, Message, MessageId, SpawnHost,
 };
 use game_net::peer_error;
 use game_script::effect::{Effect, Effects};
@@ -22,8 +17,7 @@ use game_script::{Context, WorldProvider};
 use glam::Vec3;
 
 use crate::conn::{Connection, Connections};
-use crate::net::entities::Entities;
-use crate::net::state::{Cells, ConnectionState, KnownEntities};
+use crate::net::state::Cells;
 use crate::world::level::{Level, Streamer};
 use crate::world::state::WorldState;
 use crate::ServerState;
@@ -421,7 +415,7 @@ fn update_client(conn: &Connection, world: &WorldState, level: &Level, cf: Contr
         return;
     };
 
-    let active_entity_changed = match state.host.entity {
+    let mut active_entity_changed = match state.host.entity {
         Some(entity) => entity != host_id,
         None => true,
     };
@@ -431,24 +425,33 @@ fn update_client(conn: &Connection, world: &WorldState, level: &Level, cf: Contr
 
     let streamer = level.get_streamer(host_id).unwrap();
 
-    // Send full state
-    // The delta from the current frame is "included" in the full update.
+    // If the client requested a full update we must send him the entire
+    // state in the current frame.
     if state.full_update {
+        // We send a full update to the client by "forgetting" all of our
+        // state of the client.
+        // TODO: We can make this more efficient, because we only have to
+        // spawn new entities and don't need to update/despawn any entities.
+        state.entities.clear();
+        state.known_entities.clear();
+        active_entity_changed = true;
+
         state.full_update = false;
-        drop(state);
-        send_full_update(conn, world, host_id, cf);
-        return;
     }
 
-    // `Cells::set` may allocate so avoid calling it unless
-    // necessary.
     if state.cells.origin() != cell_id {
         tracing::info!("Moving host from {:?} to {:?}", state.cells, cell_id);
 
         state.cells.set(cell_id, streamer.distance);
     }
 
-    let events = update_player_cells(world, &mut state);
+    let mut events = crate::net::sync_player(world, &mut state);
+
+    if active_entity_changed {
+        state.host.entity = Some(host_id);
+        let id = state.entities.get(host_id).unwrap();
+        events.push(DataMessageBody::SpawnHost(SpawnHost { entity: id }));
+    }
 
     // ACKs need to be sent out before the actual data frames
     // in the control frame. If we were to sent the data before
@@ -459,531 +462,11 @@ fn update_client(conn: &Connection, world: &WorldState, level: &Level, cf: Contr
     }
 
     for body in events {
-        let msg = DataMessage {
+        // FIXME: What to do if the send buffer is full?
+        let _ = conn.handle().send(DataMessage {
             id: MessageId(0),
             control_frame: cf,
             body,
-        };
-        conn.handle().send(msg);
-    }
-
-    if active_entity_changed {
-        state.host.entity = Some(host_id);
-        let id = state.entities.get(host_id).unwrap();
-        conn.handle().send(DataMessage {
-            id: MessageId(0),
-            control_frame: cf,
-            body: DataMessageBody::SpawnHost(SpawnHost { entity: id }),
         });
     }
-}
-
-fn send_full_update(conn: &Connection, world: &WorldState, host: EntityId, cf: ControlFrame) {
-    let state = &mut *conn.state().write();
-
-    let transform = world.get::<Transform>(host);
-    let cell_id = CellId::from(transform.translation);
-
-    state.entities.clear();
-    state.known_entities.clear();
-
-    tracing::info!(
-        "sending full update to host in cell {:?} for cells: {:?}",
-        cell_id,
-        state.cells.cells(),
-    );
-
-    // Initialize entities before syncing components. Components
-    // may refer to entities that are not yet loaded.
-    for id in state.cells.cells() {
-        let cell = world.cell(*id);
-
-        for entity in cell.entities() {
-            state.entities.insert(entity);
-            state
-                .known_entities
-                .components
-                .insert(entity, Components::new());
-        }
-    }
-
-    for id in state.cells.cells() {
-        let cell = world.cell(*id);
-
-        for entity in cell.entities() {
-            let entity_id = state.entities.get(entity).unwrap();
-
-            // Sync all components.
-            for (id, component) in world.world().components(entity).iter() {
-                let component = component
-                    .clone()
-                    .remap(|entity| {
-                        state
-                            .entities
-                            .get(entity)
-                            .map(|id| EntityId::from_raw(id.0))
-                    })
-                    .unwrap();
-
-                conn.handle().send(DataMessage {
-                    id: MessageId(0),
-                    control_frame: cf,
-                    body: DataMessageBody::EntityComponentAdd(EntityComponentAdd {
-                        entity: entity_id,
-                        component_id: id,
-                        component: component.clone(),
-                    }),
-                });
-
-                state.known_entities.insert(entity, id, component.clone());
-            }
-
-            // Sync the entity inventory, if it has one.
-            if let Some(inventory) = world.inventory(entity) {
-                for (id, stack) in inventory.iter() {
-                    conn.handle().send(DataMessage {
-                        id: MessageId(0),
-                        control_frame: cf,
-                        body: DataMessageBody::InventoryItemAdd(InventoryItemAdd {
-                            entity: entity_id,
-                            id,
-                            quantity: stack.quantity,
-                            item: stack.item.id,
-                            components: stack.item.components.clone(),
-                            equipped: stack.item.equipped,
-                            hidden: stack.item.hidden,
-                        }),
-                    });
-                }
-
-                state
-                    .known_entities
-                    .inventories
-                    .insert(entity, inventory.clone());
-            }
-        }
-    }
-
-    // Also sent the host.
-    let id = state.entities.get(host).unwrap();
-    conn.handle().send(DataMessage {
-        id: MessageId(0),
-        control_frame: cf,
-        body: DataMessageBody::SpawnHost(SpawnHost { entity: id }),
-    });
-}
-
-/// Update a player that hasn't moved cells.
-fn update_player_cells(world: &WorldState, state: &mut ConnectionState) -> Vec<DataMessageBody> {
-    let mut events = Vec::new();
-
-    let mut stale_entities: HashSet<_> = state.known_entities.components.keys().copied().collect();
-
-    for id in state.cells.iter() {
-        let cell = world.cell(id);
-
-        for entity in cell.entities() {
-            if state.entities.get(entity).is_none() {
-                state.entities.insert(entity);
-            }
-        }
-
-        for entity in cell.entities() {
-            if !state.known_entities.contains(entity) {
-                let entity_id = state.entities.insert(entity);
-                state
-                    .known_entities
-                    .components
-                    .insert(entity, Components::new());
-
-                // Sync components.
-                for (id, component) in world.world().components(entity).iter() {
-                    let component = component
-                        .clone()
-                        .remap(|entity| {
-                            state
-                                .entities
-                                .get(entity)
-                                .map(|id| EntityId::from_raw(id.0))
-                        })
-                        .unwrap();
-
-                    events.push(DataMessageBody::EntityComponentAdd(EntityComponentAdd {
-                        entity: entity_id,
-                        component_id: id,
-                        component: component.clone(),
-                    }));
-
-                    state.known_entities.insert(entity, id, component.clone());
-                }
-
-                // Sync inventory.
-                if let Some(inventory) = world.inventory(entity) {
-                    for (id, stack) in inventory.iter() {
-                        events.push(DataMessageBody::InventoryItemAdd(InventoryItemAdd {
-                            entity: entity_id,
-                            id,
-                            item: stack.item.id,
-                            quantity: stack.quantity,
-                            components: stack.item.components.clone(),
-                            equipped: stack.item.equipped,
-                            hidden: stack.item.hidden,
-                        }));
-
-                        state
-                            .known_entities
-                            .inventories
-                            .insert(entity, inventory.clone());
-                    }
-                }
-
-                continue;
-            }
-
-            stale_entities.remove(&entity);
-
-            let entity_id = state.entities.get(entity).unwrap();
-
-            events.extend(update_components(
-                entity_id,
-                entity,
-                world.world().components(entity),
-                &state
-                    .known_entities
-                    .components
-                    .get(&entity)
-                    .unwrap()
-                    .clone(),
-                &mut state.known_entities,
-                &state.entities,
-            ));
-
-            // Sync inventory
-            match (
-                world.inventory(entity),
-                state.known_entities.inventories.get(&entity),
-            ) {
-                (Some(server_inv), Some(client_inv)) => {
-                    events.extend(update_inventory(entity_id, server_inv, client_inv))
-                }
-                (Some(server_inv), None) => {
-                    for (id, stack) in server_inv.iter() {
-                        events.push(DataMessageBody::InventoryItemAdd(InventoryItemAdd {
-                            entity: entity_id,
-                            id,
-                            item: stack.item.id,
-                            quantity: stack.quantity,
-                            components: stack.item.components.clone(),
-                            equipped: stack.item.equipped,
-                            hidden: stack.item.hidden,
-                        }));
-                    }
-                }
-                (None, Some(client_inv)) => {
-                    for (id, _) in client_inv.iter() {
-                        events.push(DataMessageBody::InventoryItemRemove(InventoryItemRemove {
-                            entity: entity_id,
-                            slot: id,
-                        }));
-                    }
-                }
-                (None, None) => (),
-            }
-
-            if let Some(inventory) = world.inventory(entity) {
-                state
-                    .known_entities
-                    .inventories
-                    .insert(entity, inventory.clone());
-            } else {
-                state.known_entities.inventories.remove(&entity);
-            }
-        }
-    }
-
-    // Despawn all entities that were not existent in any of the player's cells.
-    for id in stale_entities {
-        state.known_entities.despawn(id);
-        let entity_id = state.entities.remove(id).unwrap();
-        events.push(DataMessageBody::EntityDestroy(EntityDestroy {
-            entity: entity_id,
-        }));
-    }
-
-    events
-}
-
-fn update_components(
-    entity: ServerEntity,
-    entity_id: EntityId,
-    server_state: &Components,
-    client_state: &Components,
-    known_state: &mut KnownEntities,
-    entities: &Entities,
-) -> Vec<DataMessageBody> {
-    let mut events = Vec::new();
-
-    for (id, component) in server_state.iter() {
-        if client_state.get(id).is_none() {
-            events.push(DataMessageBody::EntityComponentAdd(EntityComponentAdd {
-                entity,
-                component_id: id,
-                component: component.clone(),
-            }));
-
-            known_state
-                .components
-                .entry(entity_id)
-                .or_default()
-                .insert(id, component.clone());
-
-            continue;
-        }
-
-        let server_component = component;
-        let client_component = client_state.get(id).unwrap();
-
-        if server_component != client_component {
-            let component = server_component
-                .clone()
-                .remap(|entity| entities.get(entity).map(|id| EntityId::from_raw(id.0)))
-                .unwrap();
-
-            events.push(DataMessageBody::EntityComponentUpdate(
-                EntityComponentUpdate {
-                    entity,
-                    component_id: id,
-                    component: component.clone(),
-                },
-            ));
-
-            known_state
-                .components
-                .get_mut(&entity_id)
-                .unwrap()
-                .insert(id, component.clone());
-        }
-    }
-
-    for (id, _) in client_state
-        .iter()
-        .filter(|(id, _)| server_state.get(*id).is_none())
-    {
-        events.push(DataMessageBody::EntityComponentRemove(
-            EntityComponentRemove {
-                entity,
-                component: id,
-            },
-        ));
-
-        known_state
-            .components
-            .get_mut(&entity_id)
-            .unwrap()
-            .remove(id);
-    }
-
-    events
-}
-
-fn update_inventory(
-    entity_id: ServerEntity,
-    server_state: &Inventory,
-    client_state: &Inventory,
-) -> Vec<DataMessageBody> {
-    let mut events = Vec::new();
-
-    for (id, server_stack) in server_state.iter() {
-        let Some(client_stack) = client_state.get(id) else {
-            events.push(DataMessageBody::InventoryItemAdd(InventoryItemAdd {
-                entity: entity_id,
-                id,
-                item: server_stack.item.id,
-                quantity: server_stack.quantity,
-                components: server_stack.item.components.clone(),
-                equipped: server_stack.item.equipped,
-                hidden: server_stack.item.hidden,
-            }));
-
-            continue;
-        };
-
-        // This should never actually happen since we don't allow modification
-        // of the item id once inserted. This is only available via removal and
-        // re-insertion.
-        if server_stack.item.id != client_stack.item.id {
-            panic!("Server-side state inventory state missmatch");
-        }
-
-        // We need to send an update if the equipped/hidden state or the stack
-        // quantity changed.
-        let mut needs_update = false;
-
-        if server_stack.item.equipped != client_stack.item.equipped
-            || server_stack.item.hidden != client_stack.item.hidden
-        {
-            needs_update = true;
-        }
-
-        let mut quantity = None;
-        if server_stack.quantity != client_stack.quantity {
-            needs_update = true;
-            quantity = Some(server_stack.quantity);
-        }
-
-        let mut components = None;
-        if server_stack.item.components != client_stack.item.components {
-            needs_update = true;
-            components = Some(server_stack.item.components.clone());
-        }
-
-        if needs_update {
-            events.push(DataMessageBody::InventoryItemUpdate(InventoryItemUpdate {
-                entity: entity_id,
-                slot: id,
-                equipped: server_stack.item.equipped,
-                hidden: server_stack.item.hidden,
-                quantity,
-                components,
-            }));
-        }
-    }
-
-    for (id, _) in client_state
-        .iter()
-        .filter(|(id, _)| server_state.get(*id).is_none())
-    {
-        events.push(DataMessageBody::InventoryItemRemove(InventoryItemRemove {
-            entity: entity_id,
-            slot: id,
-        }))
-    }
-
-    events
-}
-
-#[cfg(test)]
-mod tests {
-    use game_common::components::object::ObjectId;
-    use game_common::components::Transform;
-    use game_common::entity::EntityId;
-    use game_common::record::RecordReference;
-    use game_common::world::entity::{Entity, EntityBody, Object};
-    use glam::Vec3;
-
-    fn create_test_entity() -> Entity {
-        Entity {
-            id: EntityId::dangling(),
-            transform: Transform::default(),
-            body: EntityBody::Object(Object {
-                id: ObjectId(RecordReference::STUB),
-            }),
-            components: Default::default(),
-            is_host: false,
-            linvel: Vec3::ZERO,
-            angvel: Vec3::ZERO,
-        }
-    }
-
-    // #[test]
-    // fn player_update_cells_spawn_entity() {
-    //     let mut world = WorldState::new();
-    //     world.insert(create_test_entity());
-
-    //     let mut state = ConnectionState::new();
-    //     let events = update_player_cells(&world, &state);
-    //     update_client_entities(&mut state, events.clone());
-
-    //     assert_eq!(events.len(), 1);
-    //     assert!(matches!(events[0], EntityChange::Create { entity: _ }));
-    // }
-
-    // #[test]
-    // fn player_update_cells_translate_entity() {
-    //     let mut world = WorldState::new();
-    //     let entity_id = world.insert(create_test_entity());
-
-    //     let mut state = ConnectionState::new();
-    //     let events = update_player_cells(&world, &state);
-    //     update_client_entities(&mut state, events);
-
-    //     let entity = world.get_mut(entity_id).unwrap();
-    //     entity.transform.translation = Vec3::splat(1.0);
-
-    //     let events = update_player_cells(&world, &mut state);
-
-    //     assert_eq!(events.len(), 1);
-    //     assert!(matches!(
-    //         events[0],
-    //         EntityChange::Translate {
-    //             id: _,
-    //             translation: _,
-    //         }
-    //     ));
-    // }
-
-    // #[test]
-    // fn player_upate_cells_despawn_entity() {
-    //     let mut world = WorldState::new();
-    //     let entity_id = world.insert(create_test_entity());
-
-    //     let mut state = ConnectionState::new();
-    //     let events = update_player_cells(&world, &state);
-    //     update_client_entities(&mut state, events);
-
-    //     world.remove(entity_id);
-
-    //     let events = update_player_cells(&world, &mut state);
-
-    //     assert_eq!(events.len(), 1);
-    //     assert!(matches!(events[0], EntityChange::Destroy { id: _ }));
-    // }
-
-    // #[test]
-    // fn player_update_cells_entity_leave_cells() {
-    //     let mut world = WorldState::new();
-    //     let entity_id = world.insert(create_test_entity());
-
-    //     let mut state = ConnectionState::new();
-    //     let events = update_player_cells(&world, &state);
-    //     update_client_entities(&mut state, events);
-
-    //     let entity = world.get_mut(entity_id).unwrap();
-    //     entity.transform.translation = Vec3::splat(1024.0);
-
-    //     let events = update_player_cells(&world, &mut state);
-
-    //     assert_eq!(events.len(), 1);
-    //     assert!(matches!(events[0], EntityChange::Destroy { id: _ }));
-    // }
-
-    // #[test]
-    // fn player_update_cells_entity_translate_parallel() {
-    //     let distance = 0;
-
-    //     let mut world = WorldState::new();
-    //     let entity_id = world.insert(create_test_entity());
-
-    //     let mut state = ConnectionState::new();
-    //     state.cells.set(CellId::from_i32(IVec3::new(0, 0, 0)), 0);
-    //     let events = update_player_cells(&world, &mut state);
-    //     update_client_entities(&mut state, events);
-
-    //     let new_cell = CellId::from_i32(IVec3::splat(1));
-    //     state.cells.set(new_cell, distance);
-
-    //     let entity = world.get_mut(entity_id).unwrap();
-    //     entity.transform.translation = new_cell.min();
-
-    //     let events = update_player_cells(&world, &mut state);
-
-    //     assert_eq!(events.len(), 1);
-    //     assert!(matches!(
-    //         events[0],
-    //         EntityChange::Translate {
-    //             id: _,
-    //             translation: _,
-    //         }
-    //     ));
-    // }
 }

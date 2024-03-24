@@ -4,16 +4,16 @@ use game_common::net::ServerEntity;
 
 #[derive(Clone, Debug, Default)]
 pub struct Entities {
-    host: HashMap<EntityId, ServerEntity>,
-    remote: HashMap<ServerEntity, EntityId>,
+    server: HashMap<EntityId, ServerEntity>,
+    client: HashMap<ServerEntity, EntityId>,
     next_id: u64,
 }
 
 impl Entities {
     pub fn new() -> Self {
         Self {
-            host: HashMap::default(),
-            remote: HashMap::default(),
+            server: HashMap::default(),
+            client: HashMap::default(),
             next_id: 0,
         }
     }
@@ -33,8 +33,8 @@ impl Entities {
     }
 
     pub fn len(&self) -> usize {
-        debug_assert_eq!(self.host.len(), self.remote.len());
-        self.host.len()
+        debug_assert_eq!(self.server.len(), self.client.len());
+        self.server.len()
     }
 
     pub fn is_empty(&self) -> bool {
@@ -45,14 +45,14 @@ impl Entities {
         let id = ServerEntity(self.next_id);
         self.next_id += 1;
 
-        self.host.insert(local, id);
-        self.remote.insert(id, local);
+        self.server.insert(local, id);
+        self.client.insert(id, local);
         id
     }
 
     pub fn clear(&mut self) {
-        self.host.clear();
-        self.remote.clear();
+        self.server.clear();
+        self.client.clear();
     }
 }
 
@@ -69,13 +69,13 @@ impl ServerEntityTranslation for EntityId {
 
     #[inline]
     fn get(self, entities: &Entities) -> Option<Self::Target> {
-        entities.host.get(&self).copied()
+        entities.server.get(&self).copied()
     }
 
     #[inline]
     fn remove(self, entities: &mut Entities) -> Option<Self::Target> {
-        let id = entities.host.remove(&self)?;
-        entities.remote.remove(&id);
+        let id = entities.server.remove(&self)?;
+        entities.client.remove(&id);
         Some(id)
     }
 }
@@ -85,13 +85,13 @@ impl ServerEntityTranslation for ServerEntity {
 
     #[inline]
     fn get(self, entities: &Entities) -> Option<Self::Target> {
-        entities.remote.get(&self).copied()
+        entities.client.get(&self).copied()
     }
 
     #[inline]
     fn remove(self, entities: &mut Entities) -> Option<Self::Target> {
-        let id = entities.remote.remove(&self)?;
-        entities.host.remove(&id);
+        let id = entities.client.remove(&self)?;
+        entities.server.remove(&id);
         Some(id)
     }
 }

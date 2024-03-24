@@ -101,9 +101,13 @@ impl KnownEntities {
         component: RawComponent,
     ) {
         self.components
-            .entry(entity)
-            .or_default()
+            .get_mut(&entity)
+            .unwrap()
             .insert(component_id, component);
+    }
+
+    pub fn spawn(&mut self, entity: EntityId) {
+        self.components.insert(entity, Components::default());
     }
 
     pub fn remove(&mut self, entity: EntityId, component_id: RecordReference) {
