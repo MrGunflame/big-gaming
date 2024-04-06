@@ -14,12 +14,11 @@ use game_wasm::physics::{cast_ray, QueryFilter};
 use game_wasm::world::{Entity, RecordReference};
 
 use crate::components::{
-    AMMO, EQUIPPED_ITEM, EVENT_GUN_EQUIP, EVENT_GUN_UNEQUIP, GUN_PROPERTIES, WEAPON_ATTACK,
-    WEAPON_RELOAD,
+    EQUIPPED_ITEM, EVENT_GUN_EQUIP, EVENT_GUN_UNEQUIP, WEAPON_ATTACK, WEAPON_RELOAD,
 };
 use crate::inventory::{ItemEquip, ItemUnequip};
 use crate::player::TransformChanged;
-use crate::{Ammo, Camera, GunProperties, LookingDirection, PlayerCamera, ProjectileProperties};
+use crate::{Ammo, Camera, GunProperties, LookingDirection, ProjectileProperties};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Encode, Decode)]
 pub struct WeaponAttack;
@@ -41,7 +40,9 @@ pub fn weapon_attack(entity: EntityId, WeaponAttack: WeaponAttack) {
     };
 
     let actor = Entity::new(camera.parent);
-    let inventory = Inventory::new(camera.parent);
+    let Ok(mut inventory) = actor.get::<Inventory>() else {
+        return;
+    };
 
     let transform = actor.get::<Transform>().unwrap();
     let Ok(looking_dir) = actor.get::<LookingDirection>() else {
@@ -53,25 +54,20 @@ pub fn weapon_attack(entity: EntityId, WeaponAttack: WeaponAttack) {
 
     let projectile_transform = project_camera_transform(looking_dir, equipped_item.offset);
 
-    for stack in inventory
-        .iter()
-        .unwrap()
-        .filter(|stack| stack.item.equipped)
-    {
-        let Ok(properties) = stack.components().get(GUN_PROPERTIES) else {
+    for stack in inventory.iter_mut().filter(|stack| stack.equipped) {
+        let Ok(properties) = stack.components.get::<GunProperties>() else {
             continue;
         };
-        let properties: GunProperties = properties.read();
 
         let mut ammo = stack
-            .components()
-            .entry(AMMO)
-            .or_insert_with(|ammo| ammo.write(Ammo(properties.magazine_capacity)));
+            .components
+            .get::<Ammo>()
+            .unwrap_or(Ammo(properties.magazine_capacity));
 
-        let has_ammo = ammo.update(|ammo: &mut Ammo| ammo.try_decrement());
+        let has_ammo = ammo.try_decrement();
 
         if has_ammo {
-            stack.components().insert(AMMO, &ammo).unwrap();
+            stack.components.insert(ammo);
 
             build_projectile(
                 actor.id(),
@@ -126,23 +122,22 @@ pub fn weapon_reload(entity: EntityId, WeaponReload: WeaponReload) {
         return;
     };
 
-    let inventory = Inventory::new(camera.parent);
+    let actor = Entity::new(camera.parent);
 
-    for stack in inventory
-        .iter()
-        .unwrap()
-        .filter(|stack| stack.item.equipped)
-    {
-        let Ok(properties) = stack.components().get(GUN_PROPERTIES) else {
+    let Ok(mut inventory) = actor.get::<Inventory>() else {
+        return;
+    };
+
+    for stack in inventory.iter_mut().filter(|stack| stack.equipped) {
+        let Ok(properties) = stack.components.get::<GunProperties>() else {
             continue;
         };
-        let properties = GunProperties::decode(properties.reader()).unwrap();
 
-        let mut ammo = stack.components().entry(AMMO).or_default();
-        ammo.write(Ammo(properties.magazine_capacity));
-
-        stack.components().insert(AMMO, &ammo).unwrap();
+        let ammo = Ammo(properties.magazine_capacity);
+        stack.components.insert(ammo);
     }
+
+    actor.insert(inventory);
 }
 
 #[derive(Copy, Clone, Debug, Encode, Decode)]

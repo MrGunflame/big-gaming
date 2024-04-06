@@ -37,8 +37,10 @@ pub fn drive_projectile(entity: EntityId) {
         Some(hit) if hit.entity != props.owner => {
             entity.despawn();
 
+            game_wasm::error!("{:?}", (props, hit));
+
             let target = Entity::new(hit.entity);
-            apply_actor_damage(props.damage as u32, target);
+            apply_actor_damage(props.damage as u32 * 30, target);
         }
         Some(_) | None => {
             transform.translation += direction * props.speed * DT;

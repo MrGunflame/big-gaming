@@ -10,8 +10,11 @@ use core::ptr::NonNull;
 use alloc::vec::Vec;
 use bytemuck::{AnyBitPattern, NoUninit, Pod};
 
-use crate::encoding::{BinaryReader, Decode, Encode, Field};
+use crate::encoding::{
+    decode_fields, encode_value, BinaryReader, Decode, DecodeError, Encode, Field, Writer,
+};
 use crate::world::RecordReference;
+use crate::{Error, ErrorImpl};
 
 #[derive(Clone, Debug, Default)]
 pub struct Components {
@@ -26,50 +29,47 @@ impl Components {
         }
     }
 
-    pub fn insert(&mut self, id: RecordReference, component: RawComponent) {
-        if let Some(index) = self.get_index(id) {
-            self.components.get_mut(index).unwrap().1 = component;
-        } else {
-            self.components.push((id, component));
-        }
+    pub fn insert<T>(&mut self, component: T)
+    where
+        T: Component,
+    {
+        self.components.retain(|(id, _)| *id != T::ID);
+
+        let (data, fields) = encode_value(&component);
+        let fields = decode_fields(&fields);
+
+        self.components.push((
+            T::ID,
+            RawComponent {
+                bytes: data,
+                fields,
+            },
+        ));
     }
 
-    pub fn remove(&mut self, id: RecordReference) -> Option<RawComponent> {
-        if let Some(index) = self.get_index(id) {
-            Some(self.components.remove(index).1)
-        } else {
-            None
-        }
+    pub fn remove<T>(&mut self)
+    where
+        T: Component,
+    {
+        self.components.retain(|(id, _)| *id != T::ID);
     }
 
-    pub fn get(&self, id: RecordReference) -> Option<&RawComponent> {
-        self.get_index(id).map(|index| &self.components[index].1)
+    pub fn get<T>(&self) -> Result<T, Error>
+    where
+        T: Component,
+    {
+        let (_, component) = self
+            .components
+            .iter()
+            .find(|(id, _)| *id == T::ID)
+            .ok_or(Error(ErrorImpl::NoComponent(T::ID)))?;
+
+        let reader = BinaryReader::new(
+            component.bytes.clone().into(),
+            component.fields.clone().into(),
+        );
+        T::decode(reader).map_err(|_| Error(ErrorImpl::ComponentDecode))
     }
-
-    // pub fn get_typed<T>(&self) -> Option<T>
-    // where
-    //     T: Component,
-    // {
-    //     let component = self.get(T::ID)?;
-    //     T::decode(component.as_bytes()).ok()
-    // }
-
-    // pub fn remove_typed<T>(&mut self) -> Option<T>
-    // where
-    //     T: Component,
-    // {
-    //     let component = self.remove(T::ID)?;
-    //     T::decode(component.as_bytes()).ok()
-    // }
-
-    // pub fn insert_typed<T>(&mut self, component: T)
-    // where
-    //     T: Component,
-    // {
-    //     let mut buf = Vec::new();
-    //     component.encode(&mut buf);
-    //     self.insert(T::ID, RawComponent::new(buf));
-    // }
 
     pub fn get_mut(&mut self, id: RecordReference) -> Option<&mut RawComponent> {
         self.get_index(id)
@@ -135,6 +135,57 @@ impl<'a> ExactSizeIterator for Iter<'a> {
 }
 
 impl<'a> FusedIterator for Iter<'a> {}
+
+impl Encode for Components {
+    fn encode<W>(&self, mut writer: W)
+    where
+        W: Writer,
+    {
+        (self.components.len() as u64).encode(&mut writer);
+
+        for (id, component) in &self.components {
+            id.encode(&mut writer);
+
+            (component.bytes.len() as u64).encode(&mut writer);
+            (component.fields.len() as u64).encode(&mut writer);
+
+            component.encode(&mut writer);
+        }
+    }
+}
+
+impl Decode for Components {
+    type Error = DecodeError;
+
+    fn decode<R>(mut reader: R) -> Result<Self, Self::Error>
+    where
+        R: crate::encoding::Reader,
+    {
+        let len = u64::decode(&mut reader)?;
+
+        let mut components = Components::new();
+        for _ in 0..len {
+            let id = RecordReference::decode(&mut reader)?;
+
+            let num_bytes = u64::decode(&mut reader)?;
+            let num_fields = u64::decode(&mut reader)?;
+
+            let mut bytes = Vec::new();
+            let mut fields = Vec::new();
+
+            bytes.extend(&reader.chunk()[..num_bytes as usize]);
+            for _ in 0..num_fields {
+                fields.push(reader.next_field().unwrap());
+            }
+
+            let mut component_reader = BinaryReader::new(bytes.into(), fields.into());
+            let component = RawComponent::decode(&mut component_reader)?;
+            components.components.push((id, component));
+        }
+
+        Ok(components)
+    }
+}
 
 /// A byte buffer containing component data.
 ///
@@ -298,6 +349,41 @@ impl AsRef<[u8]> for RawComponent {
     #[inline]
     fn as_ref(&self) -> &[u8] {
         &self.bytes
+    }
+}
+
+impl Encode for RawComponent {
+    fn encode<W>(&self, mut writer: W)
+    where
+        W: Writer,
+    {
+        for (index, field) in self.fields.iter().enumerate() {
+            let start = field.offset;
+            let end = self
+                .fields
+                .get(index + 1)
+                .map(|f| f.offset)
+                .unwrap_or(self.bytes.len());
+
+            writer.write(field.primitive, &self.bytes[start..end]);
+        }
+    }
+}
+
+impl Decode for RawComponent {
+    type Error = DecodeError;
+
+    fn decode<R>(mut reader: R) -> Result<Self, Self::Error>
+    where
+        R: crate::encoding::Reader,
+    {
+        let bytes = reader.chunk().to_vec();
+        let mut fields: Vec<Field> = Vec::new();
+        while let Some(field) = reader.next_field() {
+            fields.push(field);
+        }
+
+        Ok(Self { bytes, fields })
     }
 }
 

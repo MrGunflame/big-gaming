@@ -320,13 +320,14 @@ fn fetch_components(id: RecordReference) -> Components {
     assert!(res == 0);
     unsafe { keys.set_len(len as usize) };
 
-    let mut components = Components::new();
-    for key in keys.into_iter() {
-        let comp = fetch_component(id, key);
-        components.insert(key, comp);
-    }
+    // let mut components = Components::new();
+    // for key in keys.into_iter() {
+    //     let comp = fetch_component(id, key);
+    //     components.insert(key, comp);
+    // }
+    todo!();
 
-    components
+    // components
 }
 
 fn fetch_component(id: RecordReference, component: RecordReference) -> RawComponent {

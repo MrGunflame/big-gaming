@@ -65,6 +65,10 @@ pub trait Reader {
     fn next(&mut self) -> Option<Primitive>;
     fn chunk(&self) -> &[u8];
     fn advance(&mut self, count: usize);
+
+    fn peek(&self) -> Option<Primitive>;
+
+    fn next_field(&mut self) -> Option<Field>;
 }
 
 impl<R> Reader for &mut R
@@ -84,6 +88,16 @@ where
     #[inline]
     fn advance(&mut self, count: usize) {
         R::advance(self, count)
+    }
+
+    #[inline]
+    fn peek(&self) -> Option<Primitive> {
+        R::peek(&self)
+    }
+
+    #[inline]
+    fn next_field(&mut self) -> Option<Field> {
+        R::next_field(self)
     }
 }
 
@@ -134,6 +148,14 @@ impl Reader for BinaryReader {
 
     fn advance(&mut self, count: usize) {
         self.start += count;
+    }
+
+    fn peek(&self) -> Option<Primitive> {
+        self.fields.front().map(|f| f.primitive)
+    }
+
+    fn next_field(&mut self) -> Option<Field> {
+        self.fields.pop_front()
     }
 }
 
@@ -314,6 +336,26 @@ macro_rules! impl_as_array {
 }
 
 impl_as_array! { Vec2, Vec3, Vec4, Quat }
+
+impl Encode for bool {
+    fn encode<W>(&self, writer: W)
+    where
+        W: Writer,
+    {
+        (*self as u8).encode(writer);
+    }
+}
+
+impl Decode for bool {
+    type Error = <u8 as Decode>::Error;
+
+    fn decode<R>(reader: R) -> Result<Self, Self::Error>
+    where
+        R: Reader,
+    {
+        u8::decode(reader).map(|b| b != 0)
+    }
+}
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct Field {

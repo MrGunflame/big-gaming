@@ -15,6 +15,7 @@ use alloc::borrow::ToOwned;
 use alloc::vec;
 use bytemuck::Pod;
 use bytemuck::Zeroable;
+use components::AMMO;
 use components::CAMERA;
 use components::EQUIPPABLE;
 use components::LOOKING_DIRECTION;
@@ -41,7 +42,6 @@ use game_wasm::system::register_system;
 use game_wasm::world::Entity;
 
 use game_wasm::world::RecordReference;
-use weapon::EquippedItem;
 
 #[on_init]
 pub fn on_init() {
@@ -144,7 +144,7 @@ pub struct Projectile {
     pub rotation: [f32; 4],
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Zeroable, Pod)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Encode, Decode)]
 #[repr(transparent)]
 pub struct Ammo(pub u32);
 
@@ -159,6 +159,10 @@ impl Ammo {
             None => false,
         }
     }
+}
+
+impl Component for Ammo {
+    const ID: RecordReference = AMMO;
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Encode, Decode)]
@@ -286,6 +290,8 @@ pub fn apply_actor_damage(damage: u32, target: Entity) {
     }
 
     target.remove::<Health>();
+    target.despawn();
+    return;
 
     let Ok(spawn_point) = target.get::<SpawnPoint>() else {
         return;

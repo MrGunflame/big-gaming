@@ -14,7 +14,7 @@ pub use transform::Transform;
 macro_rules! define_id {
     ($($id:ident => $val:expr),*,) => {
         $(
-            const $id: RecordReference = RecordReference {
+            pub(crate) const $id: RecordReference = RecordReference {
                 module: ModuleId::CORE,
                 record: RecordId($val),
             };
@@ -36,6 +36,9 @@ define_id! {
     // Physics
     RIGID_BODY => 6,
     COLLIDER => 7,
+
+    // Game
+    INVENTORY => 9,
 }
 
 #[derive(Clone, Debug)]
