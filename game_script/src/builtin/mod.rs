@@ -2,7 +2,6 @@
 
 mod events;
 mod host_buffer;
-mod inventory;
 mod log;
 mod physics;
 mod player;
@@ -30,7 +29,6 @@ macro_rules! register_fns {
 pub fn register_host_fns(store: &mut Linker<State>) {
     use events::*;
     use host_buffer::*;
-    use inventory::*;
     use log::*;
     use physics::*;
     use player::*;
@@ -49,18 +47,6 @@ pub fn register_host_fns(store: &mut Linker<State>) {
         world_entity_component_get,
         world_entity_component_insert,
         world_entity_component_remove,
-        inventory_get,
-        inventory_insert,
-        inventory_remove,
-        inventory_component_len,
-        inventory_component_get,
-        inventory_component_insert,
-        inventory_component_remove,
-        inventory_equip,
-        inventory_unequip,
-        inventory_clear,
-        inventory_len,
-        inventory_list,
         physics_cast_ray,
         physics_cast_shape,
         get_record,

@@ -5,7 +5,6 @@ use core::ffi::c_void;
 use core::fmt::{self, Display, Formatter};
 
 use entity::EntityId;
-use inventory::InventoryId;
 use world::RecordReference;
 
 extern crate alloc;
@@ -56,7 +55,6 @@ impl Display for Error {
 pub(crate) enum ErrorImpl {
     NoEntity(EntityId),
     NoComponent(RecordReference),
-    NoInventorySlot(InventoryId),
     ComponentDecode,
 }
 
@@ -72,7 +70,6 @@ impl Display for ErrorImpl {
         match self {
             Self::NoEntity(id) => write!(f, "no such entity: {:?}", id),
             Self::NoComponent(id) => write!(f, "no component: {:?}", id),
-            Self::NoInventorySlot(id) => write!(f, "no inventory slot id: {:?}", id),
             Self::ComponentDecode => write!(f, "component decode failed"),
         }
     }

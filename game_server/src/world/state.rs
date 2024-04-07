@@ -1,11 +1,8 @@
 use std::collections::HashMap;
 
 use game_common::components::components::RawComponent;
-use game_common::components::inventory::{Inventory, InventorySlotId};
-use game_common::components::items::ItemStack;
 use game_common::components::{PlayerId, Transform};
 use game_common::entity::EntityId;
-use game_common::record::RecordReference;
 use game_common::world::entity::Entity;
 use game_common::world::{CellId, World};
 use game_script::WorldProvider;
@@ -15,7 +12,6 @@ use game_wasm::encoding::BinaryWriter;
 // TODO: Implement Snapshot-based rollback system.
 #[derive(Clone, Debug)]
 pub struct WorldState {
-    inventories: HashMap<EntityId, Inventory>,
     pub world: World,
     pub players: HashMap<PlayerId, EntityId>,
 }
@@ -23,7 +19,6 @@ pub struct WorldState {
 impl WorldState {
     pub fn new() -> Self {
         WorldState {
-            inventories: HashMap::default(),
             world: World::new(),
             players: HashMap::new(),
         }
@@ -41,21 +36,6 @@ impl WorldState {
 
     pub fn remove(&mut self, id: EntityId) {
         self.world.despawn(id);
-    }
-
-    pub fn inventory(&self, id: EntityId) -> Option<&Inventory> {
-        self.inventories.get(&id)
-    }
-
-    pub fn inventory_mut(&mut self, id: EntityId) -> InventoryMut<'_> {
-        debug_assert!(self.world.contains(id));
-
-        let inventory = self.inventories.entry(id).or_default();
-        InventoryMut { inventory }
-    }
-
-    pub fn insert_inventory(&mut self, id: EntityId, inventory: Inventory) {
-        self.inventories.insert(id, inventory);
     }
 
     pub fn get<T: Component>(&self, id: EntityId) -> T {
@@ -77,56 +57,11 @@ impl WorldProvider for WorldState {
         &self.world
     }
 
-    fn inventory(&self, id: EntityId) -> Option<&Inventory> {
-        self.inventories.get(&id)
-    }
-
     fn player(&self, id: EntityId) -> Option<PlayerId> {
         self.players
             .iter()
             .find(|(player, entity)| **entity == id)
             .map(|(player, _)| *player)
-    }
-}
-
-pub struct InventoryMut<'a> {
-    inventory: &'a mut Inventory,
-}
-
-impl<'a> InventoryMut<'a> {
-    pub fn insert(&mut self, stack: ItemStack) -> InventorySlotId {
-        self.inventory.insert(stack).unwrap()
-    }
-
-    pub fn remove(&mut self, id: InventorySlotId) {
-        self.inventory.remove(id, u32::MAX);
-    }
-
-    pub fn get_mut(&mut self, id: InventorySlotId) -> ItemStackMut<'_> {
-        let stack = self.inventory.get_mut(id).unwrap();
-        ItemStackMut { stack }
-    }
-
-    pub fn clear(&mut self) {
-        self.inventory.clear();
-    }
-}
-
-pub struct ItemStackMut<'a> {
-    stack: &'a mut ItemStack,
-}
-
-impl<'a> ItemStackMut<'a> {
-    pub fn set_equipped(&mut self, equipped: bool) {
-        self.stack.item.equipped = equipped;
-    }
-
-    pub fn component_insert(&mut self, id: RecordReference, component: RawComponent) {
-        self.stack.item.components.insert(id, component);
-    }
-
-    pub fn component_remove(&mut self, id: RecordReference) {
-        self.stack.item.components.remove(id);
     }
 }
 

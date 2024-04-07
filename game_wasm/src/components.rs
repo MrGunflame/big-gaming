@@ -10,10 +10,13 @@ use core::ptr::NonNull;
 use alloc::vec::Vec;
 use bytemuck::{AnyBitPattern, NoUninit, Pod};
 
-use crate::encoding::{BinaryReader, Decode, Encode, Field};
+use crate::encoding::{
+    decode_fields, encode_value, BinaryReader, Decode, DecodeError, Encode, Field, Writer,
+};
 use crate::world::RecordReference;
+use crate::{Error, ErrorImpl};
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Components {
     // FIXME: We don't have access to HashMap in no_std.
     components: Vec<(RecordReference, RawComponent)>,
@@ -26,50 +29,47 @@ impl Components {
         }
     }
 
-    pub fn insert(&mut self, id: RecordReference, component: RawComponent) {
-        if let Some(index) = self.get_index(id) {
-            self.components.get_mut(index).unwrap().1 = component;
-        } else {
-            self.components.push((id, component));
-        }
+    pub fn insert<T>(&mut self, component: T)
+    where
+        T: Component,
+    {
+        self.components.retain(|(id, _)| *id != T::ID);
+
+        let (data, fields) = encode_value(&component);
+        let fields = decode_fields(&fields);
+
+        self.components.push((
+            T::ID,
+            RawComponent {
+                bytes: data,
+                fields,
+            },
+        ));
     }
 
-    pub fn remove(&mut self, id: RecordReference) -> Option<RawComponent> {
-        if let Some(index) = self.get_index(id) {
-            Some(self.components.remove(index).1)
-        } else {
-            None
-        }
+    pub fn remove<T>(&mut self)
+    where
+        T: Component,
+    {
+        self.components.retain(|(id, _)| *id != T::ID);
     }
 
-    pub fn get(&self, id: RecordReference) -> Option<&RawComponent> {
-        self.get_index(id).map(|index| &self.components[index].1)
+    pub fn get<T>(&self) -> Result<T, Error>
+    where
+        T: Component,
+    {
+        let (_, component) = self
+            .components
+            .iter()
+            .find(|(id, _)| *id == T::ID)
+            .ok_or(Error(ErrorImpl::NoComponent(T::ID)))?;
+
+        let reader = BinaryReader::new(
+            component.bytes.clone().into(),
+            component.fields.clone().into(),
+        );
+        T::decode(reader).map_err(|_| Error(ErrorImpl::ComponentDecode))
     }
-
-    // pub fn get_typed<T>(&self) -> Option<T>
-    // where
-    //     T: Component,
-    // {
-    //     let component = self.get(T::ID)?;
-    //     T::decode(component.as_bytes()).ok()
-    // }
-
-    // pub fn remove_typed<T>(&mut self) -> Option<T>
-    // where
-    //     T: Component,
-    // {
-    //     let component = self.remove(T::ID)?;
-    //     T::decode(component.as_bytes()).ok()
-    // }
-
-    // pub fn insert_typed<T>(&mut self, component: T)
-    // where
-    //     T: Component,
-    // {
-    //     let mut buf = Vec::new();
-    //     component.encode(&mut buf);
-    //     self.insert(T::ID, RawComponent::new(buf));
-    // }
 
     pub fn get_mut(&mut self, id: RecordReference) -> Option<&mut RawComponent> {
         self.get_index(id)
@@ -135,6 +135,66 @@ impl<'a> ExactSizeIterator for Iter<'a> {
 }
 
 impl<'a> FusedIterator for Iter<'a> {}
+
+impl Encode for Components {
+    fn encode<W>(&self, mut writer: W)
+    where
+        W: Writer,
+    {
+        (self.components.len() as u64).encode(&mut writer);
+
+        for (id, component) in &self.components {
+            id.encode(&mut writer);
+
+            (component.bytes.len() as u64).encode(&mut writer);
+            (component.fields.len() as u64).encode(&mut writer);
+
+            component.encode(&mut writer);
+        }
+    }
+}
+
+impl Decode for Components {
+    type Error = DecodeError;
+
+    fn decode<R>(mut reader: R) -> Result<Self, Self::Error>
+    where
+        R: crate::encoding::Reader,
+    {
+        let len = u64::decode(&mut reader)?;
+
+        let mut components = Components::new();
+        for _ in 0..len {
+            let id = RecordReference::decode(&mut reader)?;
+
+            let num_bytes = u64::decode(&mut reader)?;
+            let num_fields = u64::decode(&mut reader)?;
+
+            let mut bytes = Vec::new();
+            let mut fields = Vec::new();
+
+            bytes.extend(&reader.chunk()[..num_bytes as usize]);
+            reader.advance(num_bytes as usize);
+
+            let mut starting_offset = None;
+            for _ in 0..num_fields {
+                let field = reader.next_field().unwrap();
+                let starting_offset = starting_offset.get_or_insert(field.offset);
+
+                fields.push(Field {
+                    primitive: field.primitive,
+                    offset: field.offset - *starting_offset,
+                });
+            }
+
+            let mut component_reader = BinaryReader::new(bytes.into(), fields.into());
+            let component = RawComponent::decode(&mut component_reader)?;
+            components.components.push((id, component));
+        }
+
+        Ok(components)
+    }
+}
 
 /// A byte buffer containing component data.
 ///
@@ -301,6 +361,41 @@ impl AsRef<[u8]> for RawComponent {
     }
 }
 
+impl Encode for RawComponent {
+    fn encode<W>(&self, mut writer: W)
+    where
+        W: Writer,
+    {
+        for (index, field) in self.fields.iter().enumerate() {
+            let start = field.offset;
+            let end = self
+                .fields
+                .get(index + 1)
+                .map(|f| f.offset)
+                .unwrap_or(self.bytes.len());
+
+            writer.write(field.primitive, &self.bytes[start..end]);
+        }
+    }
+}
+
+impl Decode for RawComponent {
+    type Error = DecodeError;
+
+    fn decode<R>(mut reader: R) -> Result<Self, Self::Error>
+    where
+        R: crate::encoding::Reader,
+    {
+        let bytes = reader.chunk().to_vec();
+        let mut fields: Vec<Field> = Vec::new();
+        while let Some(field) = reader.next_field() {
+            fields.push(field);
+        }
+
+        Ok(Self { bytes, fields })
+    }
+}
+
 trait IsZst {
     const IS_ZST: bool;
 }
@@ -321,7 +416,11 @@ mod tests {
     use alloc::vec::Vec;
     use bytemuck::{Pod, Zeroable};
 
-    use super::RawComponent;
+    use crate::encoding::{BinaryReader, BinaryWriter, Decode, Encode};
+    use crate::entity::EntityId;
+    use crate::record::{ModuleId, RecordId, RecordReference};
+
+    use super::{Component, Components, RawComponent};
 
     #[test]
     fn component_update_zst() {
@@ -418,5 +517,86 @@ mod tests {
 
             drop(unsafe { Vec::from_raw_parts(ptr.sub(1), len + 1, cap + 1) });
         };
+    }
+
+    #[derive(Copy, Clone, Debug, Encode, Decode)]
+    struct TestComponent {
+        a: u8,
+        b: u16,
+        c: i32,
+        d: EntityId,
+    }
+
+    impl Component for TestComponent {
+        const ID: RecordReference = RecordReference {
+            module: ModuleId::CORE,
+            record: RecordId(1),
+        };
+    }
+
+    #[derive(Copy, Clone, Debug, Encode, Decode)]
+    struct TestComponent2 {
+        a: EntityId,
+        b: i32,
+        c: u16,
+        d: u8,
+    }
+
+    impl Component for TestComponent2 {
+        const ID: RecordReference = RecordReference {
+            module: ModuleId::CORE,
+            record: RecordId(2),
+        };
+    }
+
+    #[test]
+    fn raw_component_encode_decode() {
+        let component = TestComponent {
+            a: 12,
+            b: 23456,
+            c: -3553512,
+            d: EntityId::from_raw(12345),
+        };
+
+        let (fields, bytes) = BinaryWriter::new().encoded(&component);
+
+        let raw = RawComponent {
+            bytes: bytes.clone(),
+            fields: fields.clone(),
+        };
+
+        let (raw_fields, raw_bytes) = BinaryWriter::new().encoded(&raw);
+
+        assert_eq!(fields, raw_fields);
+        assert_eq!(bytes, raw_bytes);
+
+        let reader = BinaryReader::new(bytes.into(), fields.into());
+        let output = RawComponent::decode(reader).unwrap();
+
+        assert_eq!(raw, output);
+    }
+
+    #[test]
+    fn components_encode_decode() {
+        let mut components = Components::new();
+        components.insert(TestComponent {
+            a: 12,
+            b: 23456,
+            c: -3553512,
+            d: EntityId::from_raw(12345),
+        });
+        components.insert(TestComponent2 {
+            a: EntityId::from_raw(12345),
+            b: -3553512,
+            c: 23456,
+            d: 12,
+        });
+
+        let (fields, bytes) = BinaryWriter::new().encoded(&components);
+
+        let reader = BinaryReader::new(bytes.into(), fields.into());
+        let output = Components::decode(reader).unwrap();
+
+        assert_eq!(components, output);
     }
 }

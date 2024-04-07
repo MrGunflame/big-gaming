@@ -60,7 +60,6 @@ fn apply_effects(effects: Effects, world: &mut WorldState, level: &mut Level) {
     // FIXME: We should use a linear IDs here so we can avoid
     // the need for hasing and just use array indexing.
     let mut entity_id_remap = HashMap::default();
-    let mut inventory_slot_id_remap = HashMap::default();
 
     for effect in effects.into_iter() {
         match effect {
@@ -75,65 +74,6 @@ fn apply_effects(effects: Effects, world: &mut WorldState, level: &mut Level) {
             Effect::EntityDespawn(id) => {
                 let id = entity_id_remap.get(&id).copied().unwrap_or(id);
                 let entity = world.remove(id);
-            }
-            Effect::InventoryInsert(id, temp_slot_id, stack) => {
-                let entity_id = entity_id_remap.get(&id).copied().unwrap_or(id);
-
-                let real_id = world.inventory_mut(entity_id).insert(stack);
-                inventory_slot_id_remap.insert(temp_slot_id, real_id);
-            }
-            Effect::InventoryRemove(id, slot_id, quantity) => {
-                let entity_id = entity_id_remap.get(&id).copied().unwrap_or(id);
-                let slot_id = inventory_slot_id_remap
-                    .get(&slot_id)
-                    .copied()
-                    .unwrap_or(slot_id);
-
-                world.inventory_mut(entity_id).remove(slot_id);
-            }
-            Effect::InventoryItemUpdateEquip(id, slot_id, equipped) => {
-                let entity_id = entity_id_remap.get(&id).copied().unwrap_or(id);
-                let slot_id = inventory_slot_id_remap
-                    .get(&slot_id)
-                    .copied()
-                    .unwrap_or(slot_id);
-
-                world
-                    .inventory_mut(entity_id)
-                    .get_mut(slot_id)
-                    .set_equipped(equipped);
-            }
-            Effect::InventoryComponentInsert(id, slot_id, component, data) => {
-                let entity_id = entity_id_remap.get(&id).copied().unwrap_or(id);
-                let slot_id = inventory_slot_id_remap
-                    .get(&slot_id)
-                    .copied()
-                    .unwrap_or(slot_id);
-
-                world
-                    .inventory_mut(entity_id)
-                    .get_mut(slot_id)
-                    .component_insert(component, data);
-            }
-            Effect::InventoryComponentRemove(id, slot_id, component) => {
-                let entity_id = entity_id_remap.get(&id).copied().unwrap_or(id);
-                let slot_id = inventory_slot_id_remap
-                    .get(&slot_id)
-                    .copied()
-                    .unwrap_or(slot_id);
-
-                world
-                    .inventory_mut(entity_id)
-                    .get_mut(slot_id)
-                    .component_remove(component);
-            }
-            Effect::InventoryClear(entity_id) => {
-                let entity_id = entity_id_remap
-                    .get(&entity_id)
-                    .copied()
-                    .unwrap_or(entity_id);
-
-                world.inventory_mut(entity_id).clear();
             }
             Effect::EntityComponentInsert(effect) => {
                 let entity = entity_id_remap
@@ -287,9 +227,6 @@ fn flush_command_queue(srv_state: &mut ServerState) {
                     DataMessageBody::EntityComponentRemove(_) => (),
                     DataMessageBody::EntityComponentUpdate(_) => (),
                     DataMessageBody::SpawnHost(_) => (),
-                    DataMessageBody::InventoryItemAdd(_) => (),
-                    DataMessageBody::InventoryItemRemove(_) => (),
-                    DataMessageBody::InventoryItemUpdate(_) => (),
                 }
             }
         }
@@ -333,60 +270,6 @@ fn queue_action(
                 action,
                 data: data.clone(),
             }));
-        }
-    }
-
-    let Some(inventory) = world.inventory(entity) else {
-        return;
-    };
-
-    for (_, stack) in inventory.iter().filter(|(_, stack)| stack.item.equipped) {
-        let item_id = stack.item.id;
-
-        let Some(item) = modules
-            .get(item_id.0.module)
-            .map(|module| module.records.get(item_id.0.record))
-            .flatten()
-            .map(|record| record.body.as_item())
-            .flatten()
-        else {
-            return;
-        };
-
-        if item.actions.contains(&action.0) {
-            tracing::trace!("found action {:?} on item", action);
-
-            queue.push(Event::Action(ActionEvent {
-                entity: entity,
-                invoker: entity,
-                action,
-                data,
-            }));
-            return;
-        }
-
-        for (id, _) in stack.item.components.iter() {
-            let Some(component) = modules
-                .get(id.module)
-                .map(|module| module.records.get(id.record))
-                .flatten()
-                .map(|record| record.body.as_component())
-                .flatten()
-            else {
-                return;
-            };
-
-            if component.actions.contains(&action.0) {
-                tracing::trace!("found action {:?} on item component", action);
-
-                queue.push(Event::Action(ActionEvent {
-                    entity: entity,
-                    invoker: entity,
-                    action,
-                    data,
-                }));
-                return;
-            }
         }
     }
 

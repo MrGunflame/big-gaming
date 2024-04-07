@@ -1,7 +1,5 @@
 use game_common::components::actions::ActionId;
-use game_common::components::components::{Components, RawComponent};
-use game_common::components::inventory::InventorySlotId;
-use game_common::components::items::ItemId;
+use game_common::components::components::RawComponent;
 use game_common::net::ServerEntity;
 use game_common::record::RecordReference;
 use game_common::world::control_frame::ControlFrame;
@@ -46,9 +44,6 @@ pub enum DataMessageBody {
     EntityComponentRemove(EntityComponentRemove),
     EntityComponentUpdate(EntityComponentUpdate),
     SpawnHost(SpawnHost),
-    InventoryItemAdd(InventoryItemAdd),
-    InventoryItemRemove(InventoryItemRemove),
-    InventoryItemUpdate(InventoryItemUpdate),
 }
 
 #[derive(Clone, Debug)]
@@ -108,33 +103,6 @@ pub struct EntityComponentUpdate {
     pub component: RawComponent,
 }
 
-#[derive(Clone, Debug)]
-pub struct InventoryItemAdd {
-    pub entity: ServerEntity,
-    pub id: InventorySlotId,
-    pub item: ItemId,
-    pub quantity: u32,
-    pub components: Components,
-    pub equipped: bool,
-    pub hidden: bool,
-}
-
-#[derive(Copy, Clone, Debug)]
-pub struct InventoryItemRemove {
-    pub entity: ServerEntity,
-    pub slot: InventorySlotId,
-}
-
-#[derive(Clone, Debug)]
-pub struct InventoryItemUpdate {
-    pub entity: ServerEntity,
-    pub slot: InventorySlotId,
-    pub quantity: Option<u32>,
-    pub hidden: bool,
-    pub equipped: bool,
-    pub components: Option<Components>,
-}
-
 impl DataMessageBody {
     pub(crate) fn into_frame(self) -> Frame {
         match self {
@@ -179,33 +147,6 @@ impl DataMessageBody {
                     component: msg.component,
                 })
             }
-            DataMessageBody::InventoryItemAdd(msg) => {
-                Frame::InventoryItemAdd(proto::InventoryItemAdd {
-                    entity: msg.entity,
-                    id: msg.id,
-                    item: msg.item,
-                    quantity: msg.quantity,
-                    components: msg.components,
-                    equipped: msg.equipped,
-                    hidden: msg.hidden,
-                })
-            }
-            DataMessageBody::InventoryItemRemove(msg) => {
-                Frame::InventoryItemRemove(proto::InventoryItemRemove {
-                    entity: msg.entity,
-                    id: msg.slot,
-                })
-            }
-            DataMessageBody::InventoryItemUpdate(msg) => {
-                Frame::InventoryItemUpdate(proto::InventoryItemUpdate {
-                    entity: msg.entity,
-                    id: msg.slot,
-                    equipped: msg.equipped,
-                    hidden: msg.hidden,
-                    quantity: msg.quantity,
-                    components: msg.components,
-                })
-            }
         }
     }
 
@@ -248,27 +189,6 @@ impl DataMessageBody {
                     component: frame.component,
                 })
             }
-            Frame::InventoryItemAdd(frame) => Self::InventoryItemAdd(InventoryItemAdd {
-                entity: frame.entity,
-                id: frame.id,
-                item: frame.item,
-                quantity: frame.quantity,
-                components: frame.components,
-                equipped: frame.equipped,
-                hidden: frame.hidden,
-            }),
-            Frame::InventoryItemRemove(frame) => Self::InventoryItemRemove(InventoryItemRemove {
-                entity: frame.entity,
-                slot: frame.id,
-            }),
-            Frame::InventoryItemUpdate(frame) => Self::InventoryItemUpdate(InventoryItemUpdate {
-                entity: frame.entity,
-                slot: frame.id,
-                equipped: frame.equipped,
-                quantity: frame.quantity,
-                components: frame.components,
-                hidden: frame.hidden,
-            }),
         }
     }
 }

@@ -1,10 +1,8 @@
 use game_common::components::actions::ActionId;
-use game_common::components::items::{Item, ItemStack};
 use game_common::components::Transform;
 use game_common::entity::EntityId;
 use game_common::events::{ActionEvent, Event, EventQueue};
 use game_common::net::ServerEntity;
-use game_common::units::Mass;
 use game_common::world::control_frame::ControlFrame;
 use game_core::counter::UpdateCounter;
 use game_core::modules::Modules;
@@ -120,101 +118,6 @@ impl GameWorld {
                         };
 
                         cmd_buffer.push(Command::SpawnHost(id));
-                    }
-                    DataMessageBody::InventoryItemAdd(msg) => {
-                        let Some(id) = self.server_entities.get(msg.entity) else {
-                            peer_error!("invalid entity: {:?}", msg.entity);
-                            continue;
-                        };
-
-                        if self.newest_state.inventories.get(id).is_none() {
-                            self.newest_state.inventories.insert(id);
-                        }
-
-                        let inventory = self.newest_state.inventories.get_mut(id).unwrap();
-                        inventory
-                            .insert_at_slot(
-                                msg.id,
-                                ItemStack {
-                                    item: Item {
-                                        id: msg.item,
-                                        mass: Mass::default(),
-                                        components: msg.components,
-                                        equipped: msg.equipped,
-                                        hidden: msg.hidden,
-                                    },
-                                    quantity: msg.quantity,
-                                },
-                            )
-                            .unwrap();
-
-                        if msg.equipped {
-                            cmd_buffer.push(Command::InventoryItemEquip {
-                                entity: id,
-                                slot: msg.id,
-                            });
-                        }
-                    }
-                    DataMessageBody::InventoryItemRemove(msg) => {
-                        let Some(id) = self.server_entities.get(msg.entity) else {
-                            peer_error!("invalid entity: {:?}", msg.entity);
-                            continue;
-                        };
-
-                        let inventory = self.newest_state.inventories.get_mut(id).unwrap();
-                        if let Some(item) = inventory.remove(msg.slot, u32::MAX) {
-                            if item.equipped {
-                                cmd_buffer.push(Command::InventoryItemUnequip {
-                                    entity: id,
-                                    slot: msg.slot,
-                                });
-                            }
-                        }
-                    }
-                    DataMessageBody::InventoryItemUpdate(msg) => {
-                        let Some(id) = self.server_entities.get(msg.entity) else {
-                            peer_error!("invalid entity: {:?}", msg.entity);
-                            continue;
-                        };
-
-                        let inventory = self.newest_state.inventories.get_mut(id).unwrap();
-                        let Some(stack) = inventory.get_mut(msg.slot) else {
-                            peer_error!("invalid inventory slot: {:?}", msg.slot);
-                            continue;
-                        };
-
-                        // Check whether if the actions of the stack may have changed.
-                        // This happens when the items component changes and the item
-                        // is equipped.
-                        match (stack.item.equipped, msg.equipped, &msg.components) {
-                            // 1. The item is not equipped, or component haven't changed.
-                            (true, true, None) | (false, false, _) => (),
-                            // 2. The item was equipped or the components have changed.
-                            (true, true, Some(_)) | (false, true, _) => {
-                                cmd_buffer.push(Command::InventoryItemEquip {
-                                    entity: id,
-                                    slot: msg.slot,
-                                });
-                            }
-                            // 3. The item was uneqipped.
-                            (true, false, _) => {
-                                cmd_buffer.push(Command::InventoryItemUnequip {
-                                    entity: id,
-                                    slot: msg.slot,
-                                });
-                            }
-                        }
-
-                        stack.item.hidden = msg.hidden;
-                        stack.item.equipped = msg.equipped;
-
-                        if let Some(quantity) = msg.quantity {
-                            stack.quantity = quantity;
-                        }
-
-                        if let Some(components) = msg.components {
-                            stack.item.components = components;
-                        }
                     }
                     DataMessageBody::EntityComponentAdd(msg) => {
                         let id = match self.server_entities.get(msg.entity) {
