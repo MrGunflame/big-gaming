@@ -61,58 +61,6 @@ pub use game_macros::wasm__event_on_action as on_action;
 /// [`InventoryId`]: crate::inventory::InventoryId
 pub use game_macros::wasm__event_on_collision as on_collision;
 
-/// A item equip event.
-///
-/// A equip event is fired when the actor equippes an item.
-///
-/// # Event signature
-///
-/// `fn(item: `[`InventoryId`]`, actor: `[`EntityId`]`)`
-///
-/// # Examples
-///
-/// ```
-/// use game_wasm::info;
-/// use game_wasm::entity::EntityId;
-/// use game_wasm::events::on_equip;
-/// use game_wasm::inventory::InventoryId;
-///
-/// #[on_equip]
-/// fn on_equip(item: InventoryId, actor: EntityId) {
-///     info!("{:?} equipped {:?}!", actor, item);
-/// }
-/// ```
-///
-/// [`EntityId`]: crate::entity::EntityId
-/// [`InventoryId`]: crate::inventory::InventoryId
-pub use game_macros::wasm__event_on_equip as on_equip;
-
-/// A item unequip event.
-///
-/// A unequip event is fired when the actor unequippes an item.
-///
-/// # Event signature
-///
-/// `fn(item: `[`InventoryId`]`, actor: `[`EntityId`]`)`
-///
-/// # Examples
-///
-/// ```
-/// use game_wasm::info;
-/// use game_wasm::entity::EntityId;
-/// use game_wasm::events::on_unequip;
-/// use game_wasm::inventory::InventoryId;
-///
-/// #[on_unequip]
-/// fn on_unequip(item: InventoryId, actor: EntityId) {
-///     info!("{:?} unequipped {:?}!", actor, item);
-/// }
-/// ```
-///
-/// [`EntityId`]: crate::entity::EntityId
-/// [`InventoryId`]: crate::inventory::InventoryId
-pub use game_macros::wasm__event_on_unequip as on_unequip;
-
 pub use game_macros::wasm__event_on_cell_load as on_cell_load;
 
 pub use game_macros::wasm__event_on_cell_unload as on_cell_unload;
