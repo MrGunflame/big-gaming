@@ -300,17 +300,22 @@ impl GameWorldState {
                     let camera: Camera = self.world.state().world.get_typed(self.host);
 
                     // Ignore if the current player entity has no inventory.
-                    let Some(inventory) = self
+                    let inventory = self
                         .world
                         .state()
-                        .inventories
-                        .get(EntityId::from_raw(camera.parent.into_raw()))
+                        .world
+                        .get_typed::<game_wasm::inventory::Inventory>(EntityId::from_raw(
+                            camera.parent.into_raw(),
+                        ))
                     else {
                         return;
                     };
 
-                    self.inventory_proxy =
-                        Some(InventoryProxy::new(inventory, self.modules.clone(), ui_doc));
+                    self.inventory_proxy = Some(InventoryProxy::new(
+                        &inventory,
+                        self.modules.clone(),
+                        ui_doc,
+                    ));
                     self.cursor_pinned.unpin(cursor);
                 }
             },

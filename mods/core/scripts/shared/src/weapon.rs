@@ -54,7 +54,11 @@ pub fn weapon_attack(entity: EntityId, WeaponAttack: WeaponAttack) {
 
     let projectile_transform = project_camera_transform(looking_dir, equipped_item.offset);
 
-    for stack in inventory.iter_mut().filter(|stack| stack.equipped) {
+    for stack in inventory
+        .iter_mut()
+        .map(|(_, stack)| stack)
+        .filter(|stack| stack.equipped)
+    {
         let Ok(properties) = stack.components.get::<GunProperties>() else {
             continue;
         };
@@ -128,7 +132,11 @@ pub fn weapon_reload(entity: EntityId, WeaponReload: WeaponReload) {
         return;
     };
 
-    for stack in inventory.iter_mut().filter(|stack| stack.equipped) {
+    for stack in inventory
+        .iter_mut()
+        .map(|(_, stack)| stack)
+        .filter(|stack| stack.equipped)
+    {
         let Ok(properties) = stack.components.get::<GunProperties>() else {
             continue;
         };

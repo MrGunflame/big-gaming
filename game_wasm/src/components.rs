@@ -16,7 +16,7 @@ use crate::encoding::{
 use crate::world::RecordReference;
 use crate::{Error, ErrorImpl};
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Components {
     // FIXME: We don't have access to HashMap in no_std.
     components: Vec<(RecordReference, RawComponent)>,
@@ -174,8 +174,17 @@ impl Decode for Components {
             let mut fields = Vec::new();
 
             bytes.extend(&reader.chunk()[..num_bytes as usize]);
+            reader.advance(num_bytes as usize);
+
+            let mut starting_offset = None;
             for _ in 0..num_fields {
-                fields.push(reader.next_field().unwrap());
+                let field = reader.next_field().unwrap();
+                let starting_offset = starting_offset.get_or_insert(field.offset);
+
+                fields.push(Field {
+                    primitive: field.primitive,
+                    offset: field.offset - *starting_offset,
+                });
             }
 
             let mut component_reader = BinaryReader::new(bytes.into(), fields.into());
@@ -407,7 +416,11 @@ mod tests {
     use alloc::vec::Vec;
     use bytemuck::{Pod, Zeroable};
 
-    use super::RawComponent;
+    use crate::encoding::{BinaryReader, BinaryWriter, Decode, Encode};
+    use crate::entity::EntityId;
+    use crate::record::{ModuleId, RecordId, RecordReference};
+
+    use super::{Component, Components, RawComponent};
 
     #[test]
     fn component_update_zst() {
@@ -504,5 +517,86 @@ mod tests {
 
             drop(unsafe { Vec::from_raw_parts(ptr.sub(1), len + 1, cap + 1) });
         };
+    }
+
+    #[derive(Copy, Clone, Debug, Encode, Decode)]
+    struct TestComponent {
+        a: u8,
+        b: u16,
+        c: i32,
+        d: EntityId,
+    }
+
+    impl Component for TestComponent {
+        const ID: RecordReference = RecordReference {
+            module: ModuleId::CORE,
+            record: RecordId(1),
+        };
+    }
+
+    #[derive(Copy, Clone, Debug, Encode, Decode)]
+    struct TestComponent2 {
+        a: EntityId,
+        b: i32,
+        c: u16,
+        d: u8,
+    }
+
+    impl Component for TestComponent2 {
+        const ID: RecordReference = RecordReference {
+            module: ModuleId::CORE,
+            record: RecordId(2),
+        };
+    }
+
+    #[test]
+    fn raw_component_encode_decode() {
+        let component = TestComponent {
+            a: 12,
+            b: 23456,
+            c: -3553512,
+            d: EntityId::from_raw(12345),
+        };
+
+        let (fields, bytes) = BinaryWriter::new().encoded(&component);
+
+        let raw = RawComponent {
+            bytes: bytes.clone(),
+            fields: fields.clone(),
+        };
+
+        let (raw_fields, raw_bytes) = BinaryWriter::new().encoded(&raw);
+
+        assert_eq!(fields, raw_fields);
+        assert_eq!(bytes, raw_bytes);
+
+        let reader = BinaryReader::new(bytes.into(), fields.into());
+        let output = RawComponent::decode(reader).unwrap();
+
+        assert_eq!(raw, output);
+    }
+
+    #[test]
+    fn components_encode_decode() {
+        let mut components = Components::new();
+        components.insert(TestComponent {
+            a: 12,
+            b: 23456,
+            c: -3553512,
+            d: EntityId::from_raw(12345),
+        });
+        components.insert(TestComponent2 {
+            a: EntityId::from_raw(12345),
+            b: -3553512,
+            c: 23456,
+            d: 12,
+        });
+
+        let (fields, bytes) = BinaryWriter::new().encoded(&components);
+
+        let reader = BinaryReader::new(bytes.into(), fields.into());
+        let output = Components::decode(reader).unwrap();
+
+        assert_eq!(components, output);
     }
 }

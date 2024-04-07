@@ -61,7 +61,7 @@ where
     }
 }
 
-pub trait Reader {
+pub trait Reader: core::fmt::Debug {
     fn next(&mut self) -> Option<Primitive>;
     fn chunk(&self) -> &[u8];
     fn advance(&mut self, count: usize);
@@ -131,6 +131,7 @@ impl Writer for BinaryWriter {
     }
 }
 
+#[derive(Debug)]
 pub struct BinaryReader {
     fields: VecDeque<Field>,
     data: Vec<u8>,
@@ -261,6 +262,7 @@ impl Decode for u8 {
     where
         R: Reader,
     {
+        reader.next();
         // if reader.next() != Some(Primitive::Bytes) {
         //     return Err(DecodeError);
         // }

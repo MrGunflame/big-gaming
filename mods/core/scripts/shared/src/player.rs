@@ -98,6 +98,8 @@ pub fn spawn_player(_: EntityId, event: PlayerConnect) {
     // to the player actor.
     camera.insert(Humanoid);
 
+    entity.insert(inventory);
+
     entity.insert(PlayerCamera {
         camera: camera.id(),
         offset: Vec3::new(0.0, 1.8, 0.0),

@@ -3,14 +3,13 @@
 use std::marker::PhantomData;
 use std::sync::{mpsc, Arc, Mutex};
 
-use game_common::components::inventory::{Inventory, InventorySlotId};
-use game_common::components::items::ItemStack;
 use game_core::modules::Modules;
 use game_input::mouse::MouseButtonInput;
 use game_ui::events::Context;
 use game_ui::reactive::{Document, NodeId, Scope};
 use game_ui::style::{Bounds, Direction, Growth, Justify, Position, Size, SizeVec2, Style};
 use game_ui::widgets::{Button, Container, Text, Widget};
+use game_wasm::inventory::{Inventory, InventorySlotId, ItemStack};
 use glam::UVec2;
 
 pub struct InventoryUi<'a> {
@@ -91,7 +90,7 @@ where
         let context_menu = Arc::new(Mutex::new(None));
 
         for (id, stack) in self.items {
-            let is_equipped = stack.item.equipped;
+            let is_equipped = stack.equipped;
 
             let events = self.events.clone();
 
@@ -117,8 +116,8 @@ where
                 },
             ));
 
-            let module = self.modules.get(stack.item.id.0.module).unwrap();
-            let record = module.records.get(stack.item.id.0.record).unwrap();
+            let module = self.modules.get(stack.item.module).unwrap();
+            let record = module.records.get(stack.item.record).unwrap();
 
             let label = format!("{} ({})", record.name, stack.quantity);
             wrapper.append(Text::new().text(label));

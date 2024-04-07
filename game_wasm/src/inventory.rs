@@ -12,6 +12,18 @@ use crate::world::RecordReference;
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Encode, Decode)]
 pub struct InventorySlotId(u64);
 
+impl InventorySlotId {
+    #[inline]
+    pub const fn from_raw(bits: u64) -> Self {
+        Self(bits)
+    }
+
+    #[inline]
+    pub const fn into_raw(self) -> u64 {
+        self.0
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Inventory {
     items: Vec<ItemStack>,
@@ -36,12 +48,16 @@ impl Inventory {
     }
 
     pub fn iter(&self) -> Iter<'_> {
-        Iter { items: &self.items }
+        Iter {
+            items: &self.items,
+            index: 0,
+        }
     }
 
     pub fn iter_mut(&mut self) -> IterMut<'_> {
         IterMut {
             inner: self.items.iter_mut(),
+            index: 0,
         }
     }
 
@@ -122,7 +138,7 @@ pub struct ItemStack {
 }
 
 impl<'a> IntoIterator for &'a Inventory {
-    type Item = &'a ItemStack;
+    type Item = (InventorySlotId, &'a ItemStack);
     type IntoIter = Iter<'a>;
 
     #[inline]
@@ -139,15 +155,18 @@ impl<'a> IntoIterator for &'a Inventory {
 #[derive(Clone, Debug)]
 pub struct Iter<'a> {
     items: &'a [ItemStack],
+    index: u64,
 }
 
 impl<'a> Iterator for Iter<'a> {
-    type Item = &'a ItemStack;
+    type Item = (InventorySlotId, &'a ItemStack);
 
     fn next(&mut self) -> Option<Self::Item> {
         let (lhs, rhs) = self.items.split_first()?;
+        let index = self.index;
         self.items = rhs;
-        Some(lhs)
+        self.index += 1;
+        Some((InventorySlotId(index), lhs))
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -165,12 +184,16 @@ impl<'a> FusedIterator for Iter<'a> {}
 
 pub struct IterMut<'a> {
     inner: core::slice::IterMut<'a, ItemStack>,
+    index: u64,
 }
 
 impl<'a> Iterator for IterMut<'a> {
-    type Item = &'a mut ItemStack;
+    type Item = (InventorySlotId, &'a mut ItemStack);
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.inner.next()
+        let stack = self.inner.next()?;
+        let index = self.index;
+        self.index += 1;
+        Some((InventorySlotId(index), stack))
     }
 }
