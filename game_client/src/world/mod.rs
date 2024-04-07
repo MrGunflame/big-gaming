@@ -410,49 +410,6 @@ impl GameWorldState {
         {
             self.register_record_action(id);
         }
-
-        if let Some(inventory) = self.world.state().inventories.get(self.host) {
-            for (_, stack) in inventory.iter() {
-                if !stack.item.equipped {
-                    continue;
-                }
-
-                let Some(module) = self.modules.get(stack.item.id.0.module) else {
-                    continue;
-                };
-
-                let Some(record) = module.records.get(stack.item.id.0.record) else {
-                    continue;
-                };
-                let item = record.body.clone().unwrap_item();
-
-                for action in item.actions {
-                    let module = self.modules.get(action.module).unwrap();
-                    let record = module.records.get(action.record).unwrap();
-
-                    if let Some(key) = self.get_key_for_action(action.module, record) {
-                        self.actions.register(action.module, record, key);
-                        self.registered_actions.push(ActionId(action));
-                    }
-                }
-
-                for (id, _) in stack.item.components.iter() {
-                    let module = self.modules.get(id.module).unwrap();
-                    let record = module.records.get(id.record).unwrap();
-                    let component = record.body.clone().unwrap_componen();
-
-                    for action in component.actions {
-                        let module = self.modules.get(action.module).unwrap();
-                        let record = module.records.get(action.record).unwrap();
-
-                        if let Some(key) = self.get_key_for_action(action.module, record) {
-                            self.actions.register(action.module, record, key);
-                            self.registered_actions.push(ActionId(action));
-                        }
-                    }
-                }
-            }
-        }
     }
 
     fn register_record_action(&mut self, id: RecordReference) {

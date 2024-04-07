@@ -1,6 +1,5 @@
 use std::collections::VecDeque;
 
-use game_common::components::inventory::InventorySlotId;
 use game_common::entity::EntityId;
 use game_common::record::RecordReference;
 use game_common::world::entity::Entity;
@@ -55,13 +54,5 @@ pub enum Command {
     ComponentRemove {
         entity: EntityId,
         component: RecordReference,
-    },
-    InventoryItemEquip {
-        entity: EntityId,
-        slot: InventorySlotId,
-    },
-    InventoryItemUnequip {
-        entity: EntityId,
-        slot: InventorySlotId,
     },
 }

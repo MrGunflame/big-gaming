@@ -1,6 +1,5 @@
 use ahash::HashMap;
 use game_common::components::components::{Components, RawComponent};
-use game_common::components::inventory::Inventory;
 use game_common::components::PlayerId;
 use game_common::entity::EntityId;
 use game_common::record::RecordReference;
@@ -83,14 +82,12 @@ impl Cells {
 #[derive(Clone, Debug, Default)]
 pub struct KnownEntities {
     pub components: HashMap<EntityId, Components>,
-    pub inventories: HashMap<EntityId, Inventory>,
 }
 
 impl KnownEntities {
     pub fn new() -> Self {
         Self {
             components: HashMap::default(),
-            inventories: HashMap::default(),
         }
     }
 
@@ -127,7 +124,6 @@ impl KnownEntities {
 
     pub fn clear(&mut self) {
         self.components.clear();
-        self.inventories.clear();
     }
 
     pub fn get(&self, entity: EntityId, component_id: RecordReference) -> Option<&RawComponent> {

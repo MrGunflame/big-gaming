@@ -1,7 +1,6 @@
 use glam::{Quat, Vec3};
 
 use crate::components::components::Components;
-use crate::components::items::ItemId;
 use crate::components::object::ObjectId;
 use crate::components::race::RaceId;
 use crate::components::Transform;
@@ -36,7 +35,6 @@ pub enum EntityBody {
     Terrain(Terrain),
     Object(Object),
     Actor(Actor),
-    Item(Item),
 }
 
 impl EntityBody {
@@ -45,7 +43,6 @@ impl EntityBody {
             Self::Terrain(_) => EntityKind::Terrain,
             Self::Object(_) => EntityKind::Object,
             Self::Actor(_) => EntityKind::Actor,
-            Self::Item(_) => EntityKind::Item,
         }
     }
 
@@ -69,14 +66,6 @@ impl EntityBody {
     pub const fn as_actor(&self) -> Option<&Actor> {
         match self {
             Self::Actor(actor) => Some(actor),
-            _ => None,
-        }
-    }
-
-    #[inline]
-    pub const fn as_item(&self) -> Option<&Item> {
-        match self {
-            Self::Item(item) => Some(item),
             _ => None,
         }
     }
@@ -133,11 +122,6 @@ pub struct Actor {
     pub race: RaceId,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Item {
-    pub id: ItemId,
-}
-
 impl From<Terrain> for EntityBody {
     fn from(value: Terrain) -> Self {
         Self::Terrain(value)
@@ -147,12 +131,6 @@ impl From<Terrain> for EntityBody {
 impl From<Object> for EntityBody {
     fn from(value: Object) -> Self {
         Self::Object(value)
-    }
-}
-
-impl From<Item> for EntityBody {
-    fn from(value: Item) -> Self {
-        Self::Item(value)
     }
 }
 

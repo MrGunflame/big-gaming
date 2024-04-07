@@ -1,9 +1,7 @@
 use glam::{Quat, Vec3};
 use std::ops::{Add, AddAssign, Sub, SubAssign};
 
-use crate::components::components::{Components, RawComponent};
-use crate::components::inventory::InventorySlotId;
-use crate::components::items::ItemId;
+use crate::components::components::RawComponent;
 use crate::entity::EntityId;
 use crate::record::RecordReference;
 
@@ -70,10 +68,6 @@ pub enum EntityChange {
     DestroyHost {
         id: EntityId,
     },
-    InventoryItemAdd(InventoryItemAdd),
-    InventoryItemRemove(InventoryItemRemove),
-    InventoryDestroy(InventoryDestroy),
-    InventoryItemUpdate(InventoryItemUpdate),
     CreateStreamingSource {
         id: EntityId,
         source: StreamingSource,
@@ -106,9 +100,6 @@ impl EntityChange {
             Self::Rotate { id, rotation: _ } => *id,
             Self::CreateHost { id } => *id,
             Self::DestroyHost { id } => *id,
-            Self::InventoryItemAdd(event) => event.entity,
-            Self::InventoryItemRemove(event) => event.entity,
-            Self::InventoryDestroy(event) => event.entity,
             Self::CreateStreamingSource { id, source: _ } => *id,
             Self::RemoveStreamingSource { id } => *id,
             Self::ComponentAdd {
@@ -125,39 +116,6 @@ impl EntityChange {
                 component_id: _,
                 component: _,
             } => *entity,
-            Self::InventoryItemUpdate(event) => event.entity,
         }
     }
-}
-
-#[derive(Clone, Debug)]
-pub struct InventoryItemAdd {
-    pub entity: EntityId,
-    pub id: InventorySlotId,
-    pub item: ItemId,
-    pub quantity: u32,
-    pub components: Components,
-    pub equipped: bool,
-    pub hidden: bool,
-}
-
-#[derive(Copy, Clone, Debug)]
-pub struct InventoryItemRemove {
-    pub entity: EntityId,
-    pub id: InventorySlotId,
-}
-
-#[derive(Copy, Clone, Debug)]
-pub struct InventoryDestroy {
-    pub entity: EntityId,
-}
-
-#[derive(Clone, Debug)]
-pub struct InventoryItemUpdate {
-    pub entity: EntityId,
-    pub slot_id: InventorySlotId,
-    pub equipped: bool,
-    pub hidden: bool,
-    pub quantity: Option<u32>,
-    pub components: Option<Components>,
 }

@@ -6,7 +6,6 @@ use std::fmt::{self, Debug, Formatter};
 use dependency::Dependencies;
 use effect::Effects;
 use events::DispatchEvent;
-use game_common::components::inventory::Inventory;
 use game_common::entity::EntityId;
 use game_common::events::{Event, EventQueue};
 use game_common::record::RecordReference;
@@ -22,7 +21,6 @@ use wasmtime::{Config, Engine, OptLevel, WasmBacktraceDetails};
 
 pub mod effect;
 
-mod abi;
 mod builtin;
 mod dependency;
 mod events;
@@ -257,7 +255,6 @@ pub struct Context<'a> {
 
 pub trait WorldProvider: 'static {
     fn world(&self) -> &World;
-    fn inventory(&self, id: EntityId) -> Option<&Inventory>;
     fn player(&self, id: EntityId) -> Option<PlayerId>;
 }
 

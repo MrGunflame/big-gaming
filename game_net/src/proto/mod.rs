@@ -34,26 +34,21 @@ pub mod sequence;
 pub mod shutdown;
 
 mod action;
-mod inventory;
 mod quat;
 mod record;
 mod terrain;
 mod varint;
 
 use game_common::components::actions::ActionId;
-use game_common::components::components::Components;
-use game_common::components::inventory::InventorySlotId;
-use game_common::components::items::ItemId;
 use game_common::components::object::ObjectId;
 use game_common::components::race::RaceId;
 use game_common::record::RecordReference;
 use game_common::world::control_frame::ControlFrame;
-use game_common::world::entity::{Actor, EntityBody, Item, Object, Terrain};
+use game_common::world::entity::{Actor, EntityBody, Object, Terrain};
 use game_common::world::CellId;
 pub use game_macros::{net__decode as Decode, net__encode as Encode};
 
 use std::convert::Infallible;
-use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign};
 
 use bytes::{Buf, BufMut};
 use game_common::net::ServerEntity;
@@ -569,10 +564,6 @@ impl Encode for EntityBody {
                 2u8.encode(&mut buf)?;
                 actor.race.encode(&mut buf)?;
             }
-            Self::Item(item) => {
-                3u8.encode(&mut buf)?;
-                item.id.encode(&mut buf)?;
-            }
         }
 
         Ok(())
@@ -602,10 +593,6 @@ impl Decode for EntityBody {
                 let race = RaceId::decode(&mut buf)?;
 
                 Ok(Self::Actor(Actor { race }))
-            }
-            3u8 => {
-                let id = ItemId::decode(&mut buf)?;
-                Ok(Self::Item(Item { id }))
             }
             _ => Err(InvalidEntityKind(typ).into()),
         }
@@ -733,275 +720,6 @@ pub struct SpawnHost {
     pub entity: ServerEntity,
 }
 
-/// Inserts a new item into an inventory.
-#[derive(Clone, Debug)]
-pub struct InventoryItemAdd {
-    pub entity: ServerEntity,
-    pub id: InventorySlotId,
-    pub item: ItemId,
-    pub quantity: u32,
-    pub equipped: bool,
-    pub hidden: bool,
-    pub components: Components,
-}
-
-impl Encode for InventoryItemAdd {
-    type Error = Infallible;
-
-    fn encode<B>(&self, mut buf: B) -> Result<(), Self::Error>
-    where
-        B: BufMut,
-    {
-        self.entity.encode(&mut buf)?;
-        self.id.encode(&mut buf)?;
-        self.item.encode(&mut buf)?;
-        VarInt::<u64>(self.quantity as u64).encode(&mut buf)?;
-
-        let mut flags = ItemFlags::new();
-        if self.equipped {
-            flags |= ItemFlags::EQUIPPED;
-        }
-
-        if self.hidden {
-            flags |= ItemFlags::HIDDEN;
-        }
-
-        if !self.components.is_empty() {
-            flags |= ItemFlags::COMPONENTS;
-        }
-
-        flags.encode(&mut buf)?;
-
-        if !self.components.is_empty() {
-            self.components.encode(&mut buf)?;
-        }
-
-        Ok(())
-    }
-}
-
-impl Decode for InventoryItemAdd {
-    type Error = EofError;
-
-    fn decode<B>(mut buf: B) -> Result<Self, Self::Error>
-    where
-        B: Buf,
-    {
-        let entity = ServerEntity::decode(&mut buf)?;
-        let id = InventorySlotId::decode(&mut buf)?;
-        let item = ItemId::decode(&mut buf)?;
-        let quantity = VarInt::<u64>::decode(&mut buf)?.0;
-        let flags = ItemFlags::decode(&mut buf)?;
-
-        let equipped = flags.is_equipped();
-        let hidden = flags.is_hidden();
-
-        let mut components = Components::new();
-        if flags.components() {
-            components = Components::decode(&mut buf)?;
-        }
-
-        Ok(Self {
-            entity,
-            id,
-            item,
-            quantity: quantity as u32,
-            equipped,
-            hidden,
-            components,
-        })
-    }
-}
-
-#[derive(Copy, Clone, Debug, Encode, Decode)]
-pub struct InventoryItemRemove {
-    pub entity: ServerEntity,
-    pub id: InventorySlotId,
-}
-
-#[derive(Clone, Debug)]
-pub struct InventoryItemUpdate {
-    pub entity: ServerEntity,
-    pub id: InventorySlotId,
-    pub equipped: bool,
-    pub hidden: bool,
-    pub quantity: Option<u32>,
-    // TODO: Send a diff for changed components instead of sending
-    // all components every time.
-    pub components: Option<Components>,
-}
-
-impl Encode for InventoryItemUpdate {
-    type Error = Infallible;
-
-    fn encode<B>(&self, mut buf: B) -> Result<(), Self::Error>
-    where
-        B: BufMut,
-    {
-        self.entity.encode(&mut buf)?;
-        self.id.encode(&mut buf)?;
-
-        let mut flags = ItemFlags::new();
-        if self.equipped {
-            flags |= ItemFlags::EQUIPPED;
-        }
-
-        if self.hidden {
-            flags |= ItemFlags::HIDDEN;
-        }
-
-        if self.quantity.is_some() {
-            flags |= ItemFlags::QUANTITY;
-        }
-
-        if self.components.is_some() {
-            flags |= ItemFlags::COMPONENTS;
-        }
-
-        flags.encode(&mut buf)?;
-
-        if let Some(quantity) = self.quantity {
-            VarInt::<u32>(quantity).encode(&mut buf)?;
-        }
-
-        if let Some(components) = &self.components {
-            components.encode(&mut buf)?;
-        }
-
-        Ok(())
-    }
-}
-
-impl Decode for InventoryItemUpdate {
-    type Error = EofError;
-
-    fn decode<B>(mut buf: B) -> Result<Self, Self::Error>
-    where
-        B: Buf,
-    {
-        let entity = ServerEntity::decode(&mut buf)?;
-        let id = InventorySlotId::decode(&mut buf)?;
-        let flags = ItemFlags::decode(&mut buf)?;
-
-        let equipped = flags.is_equipped();
-        let hidden = flags.is_hidden();
-
-        let quantity = if flags.quantity() {
-            Some(VarInt::<u32>::decode(&mut buf)?.0)
-        } else {
-            None
-        };
-
-        let components = if flags.components() {
-            Some(Components::decode(&mut buf)?)
-        } else {
-            None
-        };
-
-        Ok(Self {
-            entity,
-            id,
-            equipped,
-            hidden,
-            quantity,
-            components,
-        })
-    }
-}
-
-#[derive(Copy, Clone, Debug, Default, PartialEq, Hash)]
-#[repr(transparent)]
-pub struct ItemFlags(u8);
-
-impl ItemFlags {
-    #[inline]
-    pub const fn new() -> Self {
-        Self(0)
-    }
-
-    /// Set if the item is equipped.
-    pub const EQUIPPED: Self = Self(1 << 1);
-
-    /// Set if the item is hidden.
-    pub const HIDDEN: Self = Self(1 << 2);
-
-    /// Set if the quantity follows.
-    pub const QUANTITY: Self = Self(1 << 3);
-
-    /// Set if a set of components follows.
-    pub const COMPONENTS: Self = Self(1 << 4);
-
-    #[inline]
-    pub const fn is_equipped(self) -> bool {
-        self.0 & Self::EQUIPPED.0 != 0
-    }
-
-    #[inline]
-    pub const fn is_hidden(self) -> bool {
-        self.0 & Self::HIDDEN.0 != 0
-    }
-
-    #[inline]
-    pub const fn quantity(self) -> bool {
-        self.0 & Self::QUANTITY.0 != 0
-    }
-
-    #[inline]
-    pub const fn components(self) -> bool {
-        self.0 & Self::COMPONENTS.0 != 0
-    }
-}
-
-impl Encode for ItemFlags {
-    type Error = <u8 as Encode>::Error;
-
-    fn encode<B>(&self, buf: B) -> Result<(), Self::Error>
-    where
-        B: BufMut,
-    {
-        self.0.encode(buf)
-    }
-}
-
-impl Decode for ItemFlags {
-    type Error = <u8 as Decode>::Error;
-
-    fn decode<B>(buf: B) -> Result<Self, Self::Error>
-    where
-        B: Buf,
-    {
-        u8::decode(buf).map(Self)
-    }
-}
-
-impl BitAnd for ItemFlags {
-    type Output = Self;
-
-    fn bitand(self, rhs: Self) -> Self::Output {
-        Self(self.0 & rhs.0)
-    }
-}
-
-impl BitAndAssign for ItemFlags {
-    fn bitand_assign(&mut self, rhs: Self) {
-        *self = *self & rhs;
-    }
-}
-
-impl BitOr for ItemFlags {
-    type Output = Self;
-
-    fn bitor(self, rhs: Self) -> Self::Output {
-        Self(self.0 | rhs.0)
-    }
-}
-
-impl BitOrAssign for ItemFlags {
-    fn bitor_assign(&mut self, rhs: Self) {
-        *self = *self | rhs;
-    }
-}
-
 #[derive(Clone, Debug)]
 pub enum Frame {
     EntityDestroy(EntityDestroy),
@@ -1012,9 +730,6 @@ pub enum Frame {
     EntityComponentRemove(ComponentRemove),
     EntityComponentUpdate(ComponentUpdate),
     SpawnHost(SpawnHost),
-    InventoryItemAdd(InventoryItemAdd),
-    InventoryItemRemove(InventoryItemRemove),
-    InventoryItemUpdate(InventoryItemUpdate),
 }
 
 impl Frame {
@@ -1028,9 +743,6 @@ impl Frame {
             Self::EntityComponentRemove(frame) => frame.entity,
             Self::EntityComponentUpdate(frame) => frame.entity,
             Self::SpawnHost(frame) => frame.entity,
-            Self::InventoryItemAdd(frame) => frame.entity,
-            Self::InventoryItemRemove(frame) => frame.entity,
-            Self::InventoryItemUpdate(frame) => frame.entity,
         }
     }
 }
@@ -1073,18 +785,6 @@ impl Encode for Frame {
             }
             Self::SpawnHost(frame) => {
                 FrameType::SPAWN_HOST.encode(&mut buf)?;
-                frame.encode(buf)
-            }
-            Self::InventoryItemAdd(frame) => {
-                FrameType::INVENTORY_ITEM_ADD.encode(&mut buf)?;
-                frame.encode(buf)
-            }
-            Self::InventoryItemRemove(frame) => {
-                FrameType::INVENTORY_ITEM_REMOVE.encode(&mut buf)?;
-                frame.encode(buf)
-            }
-            Self::InventoryItemUpdate(frame) => {
-                FrameType::INVENTORY_ITEM_UPDATE.encode(&mut buf)?;
                 frame.encode(buf)
             }
         }
@@ -1132,18 +832,6 @@ impl Decode for Frame {
             FrameType::SPAWN_HOST => {
                 let frame = SpawnHost::decode(buf)?;
                 Ok(Self::SpawnHost(frame))
-            }
-            FrameType::INVENTORY_ITEM_ADD => {
-                let frame = InventoryItemAdd::decode(buf)?;
-                Ok(Self::InventoryItemAdd(frame))
-            }
-            FrameType::INVENTORY_ITEM_REMOVE => {
-                let frame = InventoryItemRemove::decode(buf)?;
-                Ok(Self::InventoryItemRemove(frame))
-            }
-            FrameType::INVENTORY_ITEM_UPDATE => {
-                let frame = InventoryItemUpdate::decode(buf)?;
-                Ok(Self::InventoryItemUpdate(frame))
             }
             _ => unreachable!(),
         }
@@ -1328,10 +1016,6 @@ impl FrameType {
 
     pub const TRIGGER_ACTION: Self = Self(0x20);
 
-    pub const INVENTORY_ITEM_ADD: Self = Self(0x30);
-    pub const INVENTORY_ITEM_REMOVE: Self = Self(0x31);
-    pub const INVENTORY_ITEM_UPDATE: Self = Self(0x32);
-
     pub const PLAYER_MOVE: Self = Self(0x41);
 
     pub const ENTITY_COMPONENT_ADD: Self = Self(0x50);
@@ -1355,9 +1039,6 @@ impl TryFrom<u16> for FrameType {
             Self::SPAWN_HOST => Ok(Self::SPAWN_HOST),
             Self::PLAYER_JOIN => Ok(Self::PLAYER_JOIN),
             Self::PLAYER_LEAVE => Ok(Self::PLAYER_LEAVE),
-            Self::INVENTORY_ITEM_ADD => Ok(Self::INVENTORY_ITEM_ADD),
-            Self::INVENTORY_ITEM_REMOVE => Ok(Self::INVENTORY_ITEM_REMOVE),
-            Self::INVENTORY_ITEM_UPDATE => Ok(Self::INVENTORY_ITEM_UPDATE),
             Self::PLAYER_MOVE => Ok(Self::PLAYER_MOVE),
             _ => Err(InvalidFrameType(value)),
         }
@@ -1433,28 +1114,6 @@ impl Decode for ObjectId {
         B: Buf,
     {
         RecordReference::decode(buf).map(Self)
-    }
-}
-
-impl Encode for InventorySlotId {
-    type Error = <u64 as Encode>::Error;
-
-    fn encode<B>(&self, buf: B) -> Result<(), Self::Error>
-    where
-        B: BufMut,
-    {
-        VarInt(self.into_raw()).encode(buf)
-    }
-}
-
-impl Decode for InventorySlotId {
-    type Error = <u64 as Decode>::Error;
-
-    fn decode<B>(buf: B) -> Result<Self, Self::Error>
-    where
-        B: Buf,
-    {
-        VarInt::<u64>::decode(buf).map(|val| Self::from_raw(val.0))
     }
 }
 

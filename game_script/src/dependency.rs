@@ -1,4 +1,3 @@
-use game_common::components::inventory::InventorySlotId;
 use game_common::entity::EntityId;
 use game_common::record::RecordReference;
 
@@ -19,14 +18,6 @@ impl Dependencies {
                 Dependency::EntityComponent(entity0, component0),
                 Dependency::EntityComponent(entity1, component1),
             ) => entity0 == entity1 && component0 == component1,
-            (
-                Dependency::InventorySlot(entity0, slot0),
-                Dependency::InventorySlot(entity1, slot1),
-            ) => entity0 == entity1 && slot0 == slot1,
-            (
-                Dependency::InventorySlotComponent(entity0, slot0, component0),
-                Dependency::InventorySlotComponent(entity1, slot1, component1),
-            ) => entity0 == entity1 && slot0 == slot1 && component0 == component1,
             _ => false,
         });
     }
@@ -36,8 +27,4 @@ impl Dependencies {
 pub enum Dependency {
     Entity(EntityId),
     EntityComponent(EntityId, RecordReference),
-    /// Inventory metadata, i.e. len/list of keys.
-    Inventory(EntityId),
-    InventorySlot(EntityId, InventorySlotId),
-    InventorySlotComponent(EntityId, InventorySlotId, RecordReference),
 }

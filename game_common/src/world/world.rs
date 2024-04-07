@@ -11,8 +11,6 @@ use glam::{Quat, Vec3};
 use tracing::{event, span, Level, Span};
 
 use crate::components::components::RawComponent;
-use crate::components::inventory::{Inventory, InventorySlotId};
-use crate::components::items::{Item, ItemStack};
 use crate::entity::EntityId;
 use crate::record::RecordReference;
 use crate::world::snapshot::EntityChange;
@@ -21,7 +19,6 @@ pub use metrics::WorldMetrics;
 
 use super::control_frame::ControlFrame;
 use super::entity::Entity;
-use super::snapshot::{InventoryItemAdd, InventoryItemRemove, InventoryItemUpdate};
 use super::source::StreamingSource;
 
 /// The world state at constant time intervals.
@@ -134,7 +131,6 @@ impl WorldState {
                 entities: Entities::default(),
                 deltas: vec![],
                 streaming_sources: StreamingSources::new(),
-                inventories: Inventories::new(),
             },
         };
 
@@ -279,10 +275,6 @@ impl<'a> WorldViewRef<'a> {
 
     pub fn streaming_sources(&self) -> &StreamingSources {
         &self.snapshot.streaming_sources
-    }
-
-    pub fn inventories(&self) -> &Inventories {
-        &self.snapshot.inventories
     }
 
     /// Returns a view into a cell in the world.
@@ -448,162 +440,6 @@ impl<'a> WorldViewMut<'a> {
 
     pub fn control_frame(&self) -> ControlFrame {
         self.snapshot_ref().control_frame
-    }
-
-    pub fn inventories(&self) -> &Inventories {
-        &self.snapshot_ref().inventories
-    }
-
-    pub fn inventories_mut(&mut self) -> &mut Inventories {
-        &mut self.snapshot().inventories
-    }
-
-    // FIXME: Rework inventory API.
-    pub fn inventory_insert_items(
-        &mut self,
-        id: EntityId,
-        slot: InventorySlotId,
-        items: ItemStack,
-    ) {
-        let item_id = items.item.id;
-        let quantity = items.quantity;
-
-        let inventory = self.inventories_mut().get_mut_or_insert(id);
-        inventory.insert_at_slot(slot, items.clone()).unwrap();
-
-        self.new_deltas
-            .push(EntityChange::InventoryItemAdd(InventoryItemAdd {
-                entity: id,
-                id: slot,
-                item: item_id,
-                quantity,
-                components: items.item.components,
-                equipped: items.item.equipped,
-                hidden: items.item.hidden,
-            }));
-    }
-
-    pub fn inventory_insert_without_id(
-        &mut self,
-        id: EntityId,
-        items: ItemStack,
-    ) -> InventorySlotId {
-        let item_id = items.item.id;
-        let quantity = items.quantity;
-
-        let inventory = self.inventories_mut().get_mut_or_insert(id);
-        let slot = inventory.insert(items.clone()).unwrap();
-
-        self.new_deltas
-            .push(EntityChange::InventoryItemAdd(InventoryItemAdd {
-                entity: id,
-                id: slot,
-                item: item_id,
-                quantity,
-                components: items.item.components,
-                equipped: items.item.equipped,
-                hidden: items.item.hidden,
-            }));
-        slot
-    }
-
-    pub fn inventory_remove_items(&mut self, id: EntityId, slot: InventorySlotId, quantity: u32) {
-        let Some(inventory) = self.inventories_mut().get_mut(id) else {
-            return;
-        };
-
-        inventory.remove(slot, quantity);
-
-        self.new_deltas
-            .push(EntityChange::InventoryItemRemove(InventoryItemRemove {
-                entity: id,
-                id: slot,
-            }));
-    }
-
-    pub fn inventory_set_equipped(&mut self, id: EntityId, slot: InventorySlotId, equipped: bool) {
-        let Some(inventory) = self.inventories_mut().get_mut(id) else {
-            return;
-        };
-
-        let Some(stack) = inventory.get_mut(slot) else {
-            return;
-        };
-
-        stack.item.equipped = equipped;
-        let hidden = stack.item.hidden;
-
-        self.new_deltas
-            .push(EntityChange::InventoryItemUpdate(InventoryItemUpdate {
-                entity: id,
-                slot_id: slot,
-                equipped,
-                hidden,
-                quantity: None,
-                components: None,
-            }));
-    }
-
-    pub fn inventory_component_insert(
-        &mut self,
-        id: EntityId,
-        slot: InventorySlotId,
-        component: RecordReference,
-        data: RawComponent,
-    ) {
-        let Some(inventory) = self.inventories_mut().get_mut(id) else {
-            return;
-        };
-
-        let Some(stack) = inventory.get_mut(slot) else {
-            return;
-        };
-
-        stack.item.components.insert(component, data);
-
-        let equipped = stack.item.equipped;
-        let hidden = stack.item.hidden;
-        let components = stack.item.components.clone();
-
-        self.new_deltas
-            .push(EntityChange::InventoryItemUpdate(InventoryItemUpdate {
-                entity: id,
-                slot_id: slot,
-                equipped,
-                hidden,
-                quantity: None,
-                components: Some(components),
-            }));
-    }
-
-    pub fn inventory_component_remove(
-        &mut self,
-        id: EntityId,
-        slot: InventorySlotId,
-        component: RecordReference,
-    ) {
-        let Some(inventory) = self.inventories_mut().get_mut(id) else {
-            return;
-        };
-
-        let Some(stack) = inventory.get_mut(slot) else {
-            return;
-        };
-
-        stack.item.components.remove(component);
-        let equipped = stack.item.equipped;
-        let hidden = stack.item.hidden;
-        let components = stack.item.components.clone();
-
-        self.new_deltas
-            .push(EntityChange::InventoryItemUpdate(InventoryItemUpdate {
-                entity: id,
-                slot_id: slot,
-                equipped,
-                quantity: None,
-                components: Some(components),
-                hidden,
-            }));
     }
 
     pub fn streaming_sources(&self) -> &StreamingSources {
@@ -813,7 +649,6 @@ pub struct Snapshot {
     pub entities: Entities,
     streaming_sources: StreamingSources,
     pub deltas: Vec<EntityChange>,
-    pub inventories: Inventories,
 }
 
 /// Entities that keep chunks loaded.
@@ -887,28 +722,6 @@ impl Snapshot {
                     entity.is_host = false;
                 }
             }
-            EntityChange::InventoryItemAdd(event) => {
-                let inventory = self.inventories.get_mut_or_insert(event.entity);
-
-                let item = Item {
-                    id: event.item,
-                    components: Default::default(),
-                    mass: Default::default(),
-                    equipped: false,
-                    hidden: false,
-                };
-
-                // FIXME: Don't panic
-                inventory.insert(item).unwrap();
-            }
-            EntityChange::InventoryItemRemove(event) => {
-                if let Some(inventory) = self.inventories.get_mut(event.entity) {
-                    inventory.remove(event.id, 1);
-                }
-            }
-            EntityChange::InventoryDestroy(event) => {
-                self.inventories.remove(event.entity);
-            }
             EntityChange::CreateStreamingSource { id, source } => {
                 self.streaming_sources.insert(id, source);
             }
@@ -945,20 +758,6 @@ impl Snapshot {
                     entity.components.insert(component_id, component);
                 } else {
                     tracing::warn!("no such entity: {:?}", entity);
-                }
-            }
-            EntityChange::InventoryItemUpdate(event) => {
-                if let Some(inventory) = self.inventories.get_mut(event.entity) {
-                    if let Some(stack) = inventory.get_mut(event.slot_id) {
-                        stack.item.equipped = event.equipped;
-                        stack.item.hidden = event.hidden;
-
-                        if let Some(quantity) = event.quantity {
-                            stack.quantity = quantity;
-                        }
-                    }
-                } else {
-                    tracing::warn!("no such entity: {:?}", event.entity);
                 }
             }
         }
@@ -1002,44 +801,6 @@ impl<'a> CellViewRef<'a> {
     }
 }
 
-#[derive(Clone, Debug, Default)]
-pub struct Inventories {
-    inventories: HashMap<EntityId, Inventory>,
-}
-
-impl Inventories {
-    fn new() -> Self {
-        Self {
-            inventories: HashMap::new(),
-        }
-    }
-
-    pub fn get(&self, id: EntityId) -> Option<&Inventory> {
-        self.inventories.get(&id)
-    }
-
-    pub fn get_mut(&mut self, id: EntityId) -> Option<&mut Inventory> {
-        self.inventories.get_mut(&id)
-    }
-
-    pub fn get_mut_or_insert(&mut self, id: EntityId) -> &mut Inventory {
-        self.inventories.entry(id).or_default();
-        self.get_mut(id).unwrap()
-    }
-
-    pub fn insert(&mut self, id: EntityId, inventory: Inventory) {
-        self.inventories.insert(id, inventory);
-    }
-
-    pub fn remove(&mut self, id: EntityId) {
-        self.inventories.remove(&id);
-    }
-
-    pub fn iter(&self) -> impl Iterator<Item = (EntityId, &Inventory)> {
-        self.inventories.iter().map(|(k, v)| (*k, v))
-    }
-}
-
 pub trait AsView {
     fn len(&self) -> usize;
 
@@ -1052,8 +813,6 @@ pub trait AsView {
     fn cell(&self, id: CellId) -> CellViewRef<'_>;
 
     fn iter(&self) -> EntitiesIter<'_>;
-
-    fn inventory(&self, id: EntityId) -> Option<&Inventory>;
 }
 
 impl<'a> AsView for WorldViewRef<'a> {
@@ -1077,10 +836,6 @@ impl<'a> AsView for WorldViewRef<'a> {
             inner: self.snapshot.entities.entities.values(),
         }
     }
-
-    fn inventory(&self, id: EntityId) -> Option<&Inventory> {
-        self.inventories().get(id)
-    }
 }
 
 impl<'a> AsView for &'a WorldViewMut<'a> {
@@ -1103,10 +858,6 @@ impl<'a> AsView for &'a WorldViewMut<'a> {
         EntitiesIter {
             inner: self.snapshot_ref().entities.entities.values(),
         }
-    }
-
-    fn inventory(&self, id: EntityId) -> Option<&Inventory> {
-        self.inventories().get(id)
     }
 }
 
