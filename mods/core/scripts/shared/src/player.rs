@@ -53,7 +53,7 @@ pub fn spawn_player(_: EntityId, event: PlayerConnect) {
     {
         let id = inventory.insert(ItemStack {
             item: TEST_WEAPON,
-            equipped: true,
+            equipped: false,
             hidden: false,
             quantity: 1,
             components: Components::default(),
