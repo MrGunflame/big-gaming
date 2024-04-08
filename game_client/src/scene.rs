@@ -210,9 +210,14 @@ impl SceneEntities {
 fn draw_collider_lines(world: &World, gizmos: &Gizmos) {
     let _span = trace_span!("draw_collider_lines").entered();
 
-    for (_, QueryWrapper((transform, collider))) in
+    for (_, QueryWrapper((mut transform, collider))) in
         world.query::<QueryWrapper<(Transform, Collider)>>()
     {
+        // Colliders don't use scale and always use the default scale
+        // value of 1. (The physics engine cannot efficiently support
+        // certain transformations like shearing.)
+        transform.scale = Vec3::ONE;
+
         match collider.shape {
             ColliderShape::Cuboid(cuboid) => {
                 let min_x = -cuboid.hx;
