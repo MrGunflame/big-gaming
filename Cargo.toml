@@ -122,3 +122,17 @@ use_debug = "allow"
 missing_panics_doc = "allow"
 missing_errors_doc = "warn"
 missing_safety_doc = "warn"
+
+[profile.dev]
+opt-level = 0
+lto = "off"
+debug-assertions = true
+overflow-checks = true
+
+[profile.release]
+debug-assertions = false
+overflow-checks = false
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
