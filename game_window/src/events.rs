@@ -138,7 +138,7 @@ pub(crate) fn convert_key_code(key: winit::keyboard::KeyCode) -> Option<KeyCode>
         winit::keyboard::KeyCode::Numpad7 => Some(KeyCode::Numpad7),
         winit::keyboard::KeyCode::Numpad8 => Some(KeyCode::Numpad8),
         winit::keyboard::KeyCode::Numpad9 => Some(KeyCode::Numpad9),
-        winit::keyboard::KeyCode::NumpadAdd => Some(KeyCode::Numpad9),
+        winit::keyboard::KeyCode::NumpadAdd => Some(KeyCode::NumpadAdd),
         winit::keyboard::KeyCode::NumpadDivide => Some(KeyCode::NumpadDivide),
         winit::keyboard::KeyCode::NumpadComma => Some(KeyCode::NumpadComma),
         winit::keyboard::KeyCode::NumpadDecimal => Some(KeyCode::NumpadDecimal),
@@ -167,6 +167,12 @@ pub(crate) fn convert_key_code(key: winit::keyboard::KeyCode) -> Option<KeyCode>
         winit::keyboard::KeyCode::ArrowRight => Some(KeyCode::Right),
         winit::keyboard::KeyCode::ArrowDown => Some(KeyCode::Down),
         winit::keyboard::KeyCode::ArrowUp => Some(KeyCode::Up),
+        winit::keyboard::KeyCode::Delete => Some(KeyCode::Delete),
+        winit::keyboard::KeyCode::Paste => Some(KeyCode::Paste),
+        winit::keyboard::KeyCode::Home => Some(KeyCode::Home),
+        winit::keyboard::KeyCode::End => Some(KeyCode::End),
+        winit::keyboard::KeyCode::PageUp => Some(KeyCode::PageUp),
+        winit::keyboard::KeyCode::PageDown => Some(KeyCode::PageDown),
         _ => None,
     }
 }
