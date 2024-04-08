@@ -1,4 +1,5 @@
 //! An immutable view of a scene.
+mod components;
 mod edit;
 mod node;
 mod panel;
@@ -7,6 +8,7 @@ use std::sync::mpsc;
 
 use bitflags::bitflags;
 use game_common::collections::string::SmallStr;
+use game_common::components::components::Components;
 use game_common::components::{Color, PointLight, PrimaryCamera};
 use game_common::components::{MeshInstance, Transform};
 use game_common::entity::EntityId;
@@ -17,11 +19,13 @@ use game_input::ButtonState;
 use game_render::camera::{Camera, Projection, RenderTarget};
 use game_render::Renderer;
 use game_ui::reactive::{Scope, WriteSignal};
+use game_ui::style::{Direction, Justify, Style};
 use game_ui::widgets::Container;
 use game_window::events::WindowEvent;
 use game_window::windows::WindowId;
 use glam::{Quat, Vec2, Vec3};
 
+use self::components::ComponentsPanel;
 use self::edit::{EditMode, EditOperation};
 use self::panel::{Entity, Panel};
 
@@ -310,6 +314,8 @@ impl WorldWindowState {
     }
 
     pub fn update(&mut self, world: &mut World) {
+        let mut update_components_panel = false;
+
         while let Ok(event) = self.events.try_recv() {
             match event {
                 Event::Spawn => {
@@ -328,7 +334,42 @@ impl WorldWindowState {
                         });
                     });
                 }
+                Event::SelectEntity(entity) => {
+                    self.state.entities.update(|entities| {
+                        for ent in entities.iter_mut() {
+                            if ent.id == entity {
+                                ent.is_selected ^= true;
+
+                                // If the entity changed we may need to update the
+                                // components panel, but we don't need to do this
+                                // if the entity has not changed.
+                                update_components_panel = true;
+
+                                break;
+                            }
+                        }
+                    });
+                }
             }
+        }
+
+        if update_components_panel {
+            let selected_entities = self.state.entities.get();
+
+            let components = if selected_entities.is_empty() {
+                Components::new()
+            } else {
+                let mut components = world.components(selected_entities[0].id).clone();
+
+                for entity in selected_entities.iter().skip(1) {
+                    let other = world.components(entity.id);
+                    components = components.intersection(other);
+                }
+
+                components
+            };
+
+            self.state.components.set(components);
         }
     }
 }
@@ -342,28 +383,40 @@ enum Axis {
 
 pub struct State {
     entities: WriteSignal<Vec<Entity>>,
+    components: WriteSignal<Components>,
 }
 
 fn build_ui(cx: &Scope, writer: mpsc::Sender<Event>) -> State {
     let root = cx.append(Container::new());
 
     let (entities, set_entities) = root.create_signal(Vec::new());
+    let (components, set_components) = root.create_signal(Components::default());
 
-    cx.append(Panel { entities, writer });
+    let style = Style {
+        direction: Direction::Column,
+        justify: Justify::SpaceBetween,
+        ..Default::default()
+    };
+
+    let root = cx.append(Container::new().style(style));
+
+    root.append(Panel {
+        entities,
+        writer: writer.clone(),
+    });
+    root.append(ComponentsPanel { components, writer });
 
     State {
         entities: set_entities,
+        components: set_components,
     }
 }
 
 #[derive(Copy, Clone, Debug)]
 enum Event {
     Spawn,
-}
-
-#[derive(Clone, Debug, Default)]
-pub struct NodeProperties {
-    transform: Transform,
+    /// Select or unselect entity.
+    SelectEntity(EntityId),
 }
 
 #[derive(Clone, Debug, Default)]

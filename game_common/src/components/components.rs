@@ -56,6 +56,21 @@ impl Components {
     {
         self.components.retain(|k, v| f(*k, v));
     }
+
+    /// Returns the `Components` intersecting with both `self` and `other`, i.e. the `Components`
+    /// that are contained in both `self` and `other`. If a component exists the component from
+    /// `self` is chosen.
+    pub fn intersection(&self, other: &Self) -> Components {
+        let mut components = self.components.clone();
+
+        for id in self.components.keys() {
+            if !other.components.contains_key(id) {
+                components.remove(id);
+            }
+        }
+
+        Self { components }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

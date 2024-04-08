@@ -27,8 +27,9 @@ impl Widget for Panel {
 
         let root = cx.append(Container::new().style(style));
 
+        let writer = self.writer.clone();
         let create_new_entity = move |ctx| {
-            self.writer.send(Event::Spawn);
+            writer.send(Event::Spawn);
         };
 
         let button = root.append(Button::new().on_click(create_new_entity));
@@ -36,6 +37,7 @@ impl Widget for Panel {
 
         root.append(EntityList {
             entities: self.entities,
+            writer: self.writer,
         });
 
         root
@@ -44,6 +46,7 @@ impl Widget for Panel {
 
 struct EntityList {
     entities: ReadSignal<Vec<Entity>>,
+    writer: mpsc::Sender<Event>,
 }
 
 impl Widget for EntityList {
@@ -70,11 +73,10 @@ impl Widget for EntityList {
                     ..Default::default()
                 };
 
-                let writer = self.entities.writer();
+                let writer = self.writer.clone();
+                let entity_id = entities[index].id;
                 let on_click = move |_| {
-                    writer.update(|entities| {
-                        entities[index].is_selected ^= true;
-                    });
+                    writer.send(Event::SelectEntity(entity_id)).unwrap();
                 };
 
                 let button = list.append(Button::new().style(style).on_click(on_click));

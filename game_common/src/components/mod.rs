@@ -6,6 +6,7 @@ pub mod components;
 pub mod entity;
 pub mod object;
 pub mod race;
+pub mod reflect;
 pub mod terrain;
 pub mod transform;
 
