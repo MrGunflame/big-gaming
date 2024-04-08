@@ -1,7 +1,7 @@
 use ahash::HashMap;
 use game_common::components::{
-    DirectionalLight as DirectionalLightComponent, MeshInstance, PointLight as PointLightComponent,
-    SpotLight as SpotLightComponent,
+    Collider, ColliderShape, Color, DirectionalLight as DirectionalLightComponent, MeshInstance,
+    PointLight as PointLightComponent, SpotLight as SpotLightComponent,
 };
 use game_common::components::{PrimaryCamera, Transform};
 use game_common::entity::EntityId;
@@ -14,8 +14,10 @@ use game_render::Renderer;
 use game_scene::scene2::SceneGraph;
 use game_scene::{SceneId, SceneSpawner};
 use game_tasks::TaskPool;
+use game_tracing::trace_span;
 use game_wasm::components::Component;
 use game_window::windows::WindowId;
+use glam::Vec3;
 
 #[derive(Debug, Default)]
 pub struct SceneEntities {
@@ -198,6 +200,90 @@ impl SceneEntities {
         for (entity, id) in removed_primary_cameras {
             renderer.entities.cameras.remove(id);
             self.primary_cameras.remove(&entity);
+        }
+
+        draw_collider_lines(world, gizmos);
+    }
+}
+
+/// Draw debugging lines for all colliders.
+fn draw_collider_lines(world: &World, gizmos: &Gizmos) {
+    let _span = trace_span!("draw_collider_lines").entered();
+
+    for (_, QueryWrapper((transform, collider))) in
+        world.query::<QueryWrapper<(Transform, Collider)>>()
+    {
+        match collider.shape {
+            ColliderShape::Cuboid(cuboid) => {
+                let min_x = -cuboid.hx;
+                let max_x = cuboid.hx;
+                let min_y = -cuboid.hy;
+                let max_y = cuboid.hy;
+                let min_z = -cuboid.hz;
+                let max_z = cuboid.hz;
+
+                let lines = [
+                    // Front-Back
+                    [
+                        Vec3::new(min_x, min_y, min_z),
+                        Vec3::new(min_x, min_y, max_z),
+                    ],
+                    [
+                        Vec3::new(min_x, max_y, min_z),
+                        Vec3::new(min_x, max_y, max_z),
+                    ],
+                    [
+                        Vec3::new(max_x, min_y, min_z),
+                        Vec3::new(max_x, min_y, max_z),
+                    ],
+                    [
+                        Vec3::new(max_x, max_y, min_z),
+                        Vec3::new(max_x, max_y, max_z),
+                    ],
+                    // Bottom-Top
+                    [
+                        Vec3::new(min_x, min_y, min_z),
+                        Vec3::new(min_x, max_y, min_z),
+                    ],
+                    [
+                        Vec3::new(min_x, min_y, max_z),
+                        Vec3::new(min_x, max_y, max_z),
+                    ],
+                    [
+                        Vec3::new(max_x, min_y, min_z),
+                        Vec3::new(max_x, max_y, min_z),
+                    ],
+                    [
+                        Vec3::new(max_x, min_y, max_z),
+                        Vec3::new(max_x, max_y, max_z),
+                    ],
+                    // Left-Right
+                    [
+                        Vec3::new(min_x, min_y, min_z),
+                        Vec3::new(max_x, min_y, min_z),
+                    ],
+                    [
+                        Vec3::new(min_x, min_y, max_z),
+                        Vec3::new(max_x, min_y, max_z),
+                    ],
+                    [
+                        Vec3::new(min_x, max_y, min_z),
+                        Vec3::new(max_x, max_y, min_z),
+                    ],
+                    [
+                        Vec3::new(min_x, max_y, max_z),
+                        Vec3::new(max_x, max_y, max_z),
+                    ],
+                ];
+
+                for [start, end] in lines {
+                    gizmos.line(
+                        transform.transform_point(start),
+                        transform.transform_point(end),
+                        Color::RED,
+                    );
+                }
+            }
         }
     }
 }
