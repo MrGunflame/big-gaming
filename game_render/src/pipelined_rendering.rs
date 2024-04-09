@@ -274,23 +274,25 @@ unsafe fn execute_render(shared: &SharedState) {
     }
 
     for (buffer, tx) in mapping_buffers {
-        let slice = buffer.slice(..);
+        // Unfortunately we need to wrap `Buffer` in `Arc` to be able
+        // to call `map_async` on the same value that takes a closure
+        // that also moves the value.
+        let buffer = Arc::new(buffer);
 
-        let (tx2, rx2) = std::sync::mpsc::channel();
-        slice.map_async(MapMode::Read, move |res| {
-            res.unwrap();
-            tx2.send(()).unwrap();
-        });
-        std::thread::spawn(move || {
-            rx2.recv().unwrap();
-            {
-                let slice = buffer.slice(..);
-                let data = slice.get_mapped_range();
-                let _ = tx.send(data.to_vec());
-            }
+        buffer
+            .clone()
+            .slice(..)
+            .map_async(MapMode::Read, move |res| {
+                res.unwrap();
 
-            buffer.unmap();
-        });
+                {
+                    let slice = buffer.slice(..);
+                    let data = slice.get_mapped_range();
+                    let _ = tx.send(data.to_vec());
+                }
+
+                buffer.unmap();
+            });
     }
 }
 
