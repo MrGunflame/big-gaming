@@ -213,6 +213,8 @@ impl Component for Collider {
 #[derive(Clone, Debug)]
 pub enum ColliderShape {
     Cuboid(Cuboid),
+    Ball(Ball),
+    Capsule(Capsule),
 }
 
 impl Encode for ColliderShape {
@@ -224,6 +226,14 @@ impl Encode for ColliderShape {
             Self::Cuboid(cuboid) => {
                 1u8.encode(&mut writer);
                 cuboid.encode(&mut writer);
+            }
+            Self::Ball(ball) => {
+                2u8.encode(&mut writer);
+                ball.encode(&mut writer);
+            }
+            Self::Capsule(capsule) => {
+                3u8.encode(&mut writer);
+                capsule.encode(&mut writer);
             }
         };
     }
@@ -240,6 +250,8 @@ impl Decode for ColliderShape {
 
         match tag {
             1 => Cuboid::decode(reader).map(Self::Cuboid),
+            2 => Ball::decode(reader).map(Self::Ball),
+            3 => Capsule::decode(reader).map(Self::Capsule),
             _ => Err(DecodeError::InvalidVariant {
                 ident: stringify!(ColliderShape),
                 value: tag.into(),
@@ -260,4 +272,58 @@ pub struct PrimaryCamera;
 
 impl Component for PrimaryCamera {
     const ID: RecordReference = PRIMARY_CAMERA;
+}
+
+#[derive(Copy, Clone, Debug, Encode, Decode)]
+pub struct Ball {
+    pub radius: f32,
+}
+
+#[derive(Copy, Clone, Debug, Encode, Decode)]
+pub struct Capsule {
+    pub axis: Axis,
+    pub half_height: f32,
+    pub radius: f32,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum Axis {
+    X,
+    Y,
+    Z,
+}
+
+impl Encode for Axis {
+    fn encode<W>(&self, writer: W)
+    where
+        W: Writer,
+    {
+        let tag: u8 = match self {
+            Self::X => 0,
+            Self::Y => 1,
+            Self::Z => 2,
+        };
+
+        tag.encode(writer);
+    }
+}
+
+impl Decode for Axis {
+    type Error = DecodeError;
+
+    fn decode<R>(reader: R) -> Result<Self, Self::Error>
+    where
+        R: Reader,
+    {
+        let tag = u8::decode(reader)?;
+        match tag {
+            0 => Ok(Self::X),
+            1 => Ok(Self::Y),
+            2 => Ok(Self::Z),
+            _ => Err(DecodeError::InvalidVariant {
+                ident: "Axis",
+                value: tag as u64,
+            }),
+        }
+    }
 }

@@ -28,6 +28,7 @@ pub fn physics_cast_shape(
     direction_x: f32,
     direction_y: f32,
     direction_z: f32,
+    shape_type: u32,
     shape: *const Shape,
     max_toi: f32,
     filter: *const QueryFilter,
@@ -49,10 +50,35 @@ pub struct QueryFilter {
     pub exclude_entities_len: usize,
 }
 
+#[repr(C)]
+pub union Shape {
+    pub cuboid: Cuboid,
+    pub ball: Ball,
+    pub capsule: Capsule,
+}
+
 #[derive(Copy, Clone, Debug, Zeroable, Pod)]
 #[repr(C)]
-pub struct Shape {
+pub struct Cuboid {
     pub hx: f32,
     pub hy: f32,
     pub hz: f32,
 }
+
+#[derive(Copy, Clone, Debug, Zeroable, Pod)]
+#[repr(C)]
+pub struct Ball {
+    pub radius: f32,
+}
+
+#[derive(Copy, Clone, Debug, Zeroable, Pod)]
+#[repr(C)]
+pub struct Capsule {
+    pub axis: u32,
+    pub half_height: f32,
+    pub radius: f32,
+}
+
+pub const SHAPE_TYPE_CUBOID: u32 = 1;
+pub const SHAPE_TYPE_BALL: u32 = 2;
+pub const SHAPE_TYPE_CAPSULE: u32 = 3;

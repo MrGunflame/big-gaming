@@ -1,10 +1,10 @@
 use bytemuck::{Pod, Zeroable};
-use game_common::components::{ColliderShape, Cuboid};
+use game_common::components::{Ball, ColliderShape, Cuboid};
 use game_common::entity::EntityId;
 use game_common::math::Ray;
 use game_physics::query::QueryFilter;
 use game_tracing::trace_span;
-use game_wasm::raw::physics::CastRayResult;
+use game_wasm::raw::physics::{CastRayResult, SHAPE_TYPE_BALL, SHAPE_TYPE_CUBOID};
 use glam::{Quat, Vec3};
 use wasmtime::Caller;
 
@@ -67,6 +67,7 @@ pub fn physics_cast_shape(
     direction_x: f32,
     direction_y: f32,
     direction_z: f32,
+    shape_type: u32,
     shape: u32,
     max_toi: f32,
     filter: u32,
@@ -78,12 +79,24 @@ pub fn physics_cast_shape(
     let rotation = Quat::from_xyzw(rotation_x, rotation_y, rotation_z, rotation_w);
     let direction = Vec3::new(direction_x, direction_y, direction_z);
 
-    let shape = caller.read::<game_wasm::raw::physics::Shape>(shape)?;
-    let shape = ColliderShape::Cuboid(Cuboid {
-        hx: shape.hx,
-        hy: shape.hy,
-        hz: shape.hz,
-    });
+    let shape = match shape_type {
+        SHAPE_TYPE_CUBOID => {
+            let shape = caller.read::<game_wasm::raw::physics::Cuboid>(shape)?;
+            ColliderShape::Cuboid(Cuboid {
+                hx: shape.hx,
+                hy: shape.hy,
+                hz: shape.hz,
+            })
+        }
+        SHAPE_TYPE_BALL => {
+            let shape = caller.read::<game_wasm::raw::physics::Ball>(shape)?;
+            ColliderShape::Ball(Ball {
+                radius: shape.radius,
+            })
+        }
+        _ => return Err(wasmtime::Error::msg("invalid SHAPE_TYPE")),
+    };
+
     let filter = read_query_filter(&mut caller, filter)?;
 
     let (entity, toi) = match caller.data().as_run()?.physics_pipeline().cast_shape(
