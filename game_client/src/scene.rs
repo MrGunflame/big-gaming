@@ -289,6 +289,10 @@ fn draw_collider_lines(world: &World, gizmos: &Gizmos) {
                     );
                 }
             }
+            ColliderShape::Ball(ball) => {
+                gizmos.sphere(transform.translation, ball.radius, Color::RED);
+            }
+            ColliderShape::Capsule(capsule) => {}
         }
     }
 }
