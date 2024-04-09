@@ -293,6 +293,18 @@ pub enum Axis {
     Z,
 }
 
+impl Axis {
+    /// Returns a unit vector representing the axis.
+    #[inline]
+    pub const fn to_vec3(self) -> Vec3 {
+        match self {
+            Self::X => Vec3::X,
+            Self::Y => Vec3::Y,
+            Self::Z => Vec3::Z,
+        }
+    }
+}
+
 impl Encode for Axis {
     fn encode<W>(&self, writer: W)
     where

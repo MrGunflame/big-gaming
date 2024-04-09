@@ -80,6 +80,35 @@ impl Gizmos {
         }
     }
 
+    /// Draws a circular arc, i.e. part of an circumference of a circle.
+    ///
+    /// The arc will be drawn around `center`, with a distance of `radius`. The starting point for
+    /// a unit circle is `Vec3::X`. `angle` defines how much of the circle circumference is passed
+    /// (e.g. PI is half a circle, 2PI is a full circle).
+    ///
+    /// The starting point is `Vec3::X` and the arc is drawn on the XZ plane (normal = `Vec3::Y`)
+    /// and can be rotated using `rotation`.
+    pub fn arc(&self, center: Vec3, rotation: Quat, angle: f32, radius: f32, color: Color) {
+        const SEGMENTS: u32 = 12;
+
+        let step_angle = angle / SEGMENTS as f32;
+
+        let forward = rotation * Vec3::new(radius, 0.0, 0.0);
+        let normal = rotation * Vec3::Y;
+
+        // The iterations are fast enough that we can keep the lock
+        // for the full duration of the loop.
+        let mut cmds = self.next.lock();
+
+        for index in 0..SEGMENTS {
+            let start = center + Quat::from_axis_angle(normal, step_angle * index as f32) * forward;
+            let end =
+                center + Quat::from_axis_angle(normal, step_angle * (index + 1) as f32) * forward;
+
+            cmds.push(DrawCommand { start, end, color });
+        }
+    }
+
     /// Update the camera position from which the gizmo renderer draws 3D objects.
     pub fn update_camera(&self, camera: Camera) {
         *self.camera.lock() = Some(camera);

@@ -1,7 +1,9 @@
+use std::f32::consts::PI;
+
 use ahash::HashMap;
 use game_common::components::{
-    Collider, ColliderShape, Color, DirectionalLight as DirectionalLightComponent, MeshInstance,
-    PointLight as PointLightComponent, SpotLight as SpotLightComponent,
+    Axis, Collider, ColliderShape, Color, DirectionalLight as DirectionalLightComponent,
+    MeshInstance, PointLight as PointLightComponent, SpotLight as SpotLightComponent,
 };
 use game_common::components::{PrimaryCamera, Transform};
 use game_common::entity::EntityId;
@@ -17,7 +19,7 @@ use game_tasks::TaskPool;
 use game_tracing::trace_span;
 use game_wasm::components::Component;
 use game_window::windows::WindowId;
-use glam::Vec3;
+use glam::{Quat, Vec3};
 
 #[derive(Debug, Default)]
 pub struct SceneEntities {
@@ -292,7 +294,79 @@ fn draw_collider_lines(world: &World, gizmos: &Gizmos) {
             ColliderShape::Ball(ball) => {
                 gizmos.sphere(transform.translation, ball.radius, Color::RED);
             }
-            ColliderShape::Capsule(capsule) => {}
+            ColliderShape::Capsule(capsule) => {
+                // Top "circle" section of the capsule.
+                for rotation in [
+                    Quat::from_axis_angle(Vec3::X, PI / 2.0),
+                    Quat::from_axis_angle(Vec3::X, PI / 2.0)
+                        * Quat::from_axis_angle(Vec3::Z, PI / 2.0),
+                ] {
+                    gizmos.arc(
+                        transform.translation + capsule.axis.to_vec3() * capsule.half_height,
+                        rotation,
+                        PI,
+                        capsule.radius,
+                        Color::RED,
+                    );
+                }
+
+                // Bottom "circle" section of the capsule.
+                for rotation in [
+                    Quat::from_axis_angle(Vec3::X, -PI / 2.0),
+                    Quat::from_axis_angle(Vec3::X, -PI / 2.0)
+                        * Quat::from_axis_angle(Vec3::Z, -PI / 2.0),
+                ] {
+                    gizmos.arc(
+                        transform.translation - capsule.axis.to_vec3() * capsule.half_height,
+                        rotation,
+                        PI,
+                        capsule.radius,
+                        Color::RED,
+                    );
+                }
+
+                for translation in [
+                    transform.translation + capsule.axis.to_vec3() * capsule.half_height,
+                    transform.translation,
+                    transform.translation - capsule.axis.to_vec3() * capsule.half_height,
+                ] {
+                    gizmos.circle(
+                        translation,
+                        capsule.axis.to_vec3(),
+                        capsule.radius,
+                        Color::RED,
+                    );
+                }
+
+                let center_points = match capsule.axis {
+                    Axis::X => [
+                        transform.translation + Vec3::Y * capsule.radius,
+                        transform.translation - Vec3::Y * capsule.radius,
+                        transform.translation + Vec3::Z * capsule.radius,
+                        transform.translation - Vec3::Z * capsule.radius,
+                    ],
+                    Axis::Y => [
+                        transform.translation + Vec3::X * capsule.radius,
+                        transform.translation - Vec3::X * capsule.radius,
+                        transform.translation + Vec3::Z * capsule.radius,
+                        transform.translation - Vec3::Z * capsule.radius,
+                    ],
+                    Axis::Z => [
+                        transform.translation + Vec3::X * capsule.radius,
+                        transform.translation - Vec3::X * capsule.radius,
+                        transform.translation + Vec3::Y * capsule.radius,
+                        transform.translation - Vec3::Y * capsule.radius,
+                    ],
+                };
+
+                for point in center_points {
+                    gizmos.line(
+                        point + capsule.axis.to_vec3() * capsule.half_height,
+                        point - capsule.axis.to_vec3() * capsule.half_height,
+                        Color::RED,
+                    );
+                }
+            }
         }
     }
 }

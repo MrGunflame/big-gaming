@@ -1,10 +1,12 @@
 use bytemuck::{Pod, Zeroable};
-use game_common::components::{Ball, ColliderShape, Cuboid};
+use game_common::components::{Axis, Ball, Capsule, ColliderShape, Cuboid};
 use game_common::entity::EntityId;
 use game_common::math::Ray;
 use game_physics::query::QueryFilter;
 use game_tracing::trace_span;
-use game_wasm::raw::physics::{CastRayResult, SHAPE_TYPE_BALL, SHAPE_TYPE_CUBOID};
+use game_wasm::raw::physics::{
+    CastRayResult, SHAPE_TYPE_BALL, SHAPE_TYPE_CAPSULE, SHAPE_TYPE_CUBOID,
+};
 use glam::{Quat, Vec3};
 use wasmtime::Caller;
 
@@ -91,6 +93,19 @@ pub fn physics_cast_shape(
         SHAPE_TYPE_BALL => {
             let shape = caller.read::<game_wasm::raw::physics::Ball>(shape)?;
             ColliderShape::Ball(Ball {
+                radius: shape.radius,
+            })
+        }
+        SHAPE_TYPE_CAPSULE => {
+            let shape = caller.read::<game_wasm::raw::physics::Capsule>(shape)?;
+            ColliderShape::Capsule(Capsule {
+                axis: match shape.axis {
+                    0 => Axis::X,
+                    1 => Axis::Y,
+                    2 => Axis::Z,
+                    _ => return Err(wasmtime::Error::msg("invalid axis")),
+                },
+                half_height: shape.half_height,
                 radius: shape.radius,
             })
         }
