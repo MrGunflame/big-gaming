@@ -2,10 +2,13 @@ use core::mem::MaybeUninit;
 
 use glam::{Quat, Vec3};
 
-use crate::components::builtin::ColliderShape;
+use crate::components::builtin::{Axis, ColliderShape};
 use crate::entity::EntityId;
 use crate::math::Ray;
-use crate::raw::physics::{physics_cast_ray, physics_cast_shape, CastRayResult};
+use crate::raw::physics::{
+    physics_cast_ray, physics_cast_shape, Ball, Capsule, CastRayResult, Cuboid, SHAPE_TYPE_BALL,
+    SHAPE_TYPE_CAPSULE, SHAPE_TYPE_CUBOID,
+};
 use crate::raw::physics::{QueryFilter as RawQueryFilter, Shape as RawShape};
 use crate::raw::RESULT_OK;
 
@@ -48,12 +51,39 @@ pub fn cast_shape(
 ) -> Option<RayHit> {
     let filter = build_raw_query_filter(filter);
 
-    let shape = match shape {
-        ColliderShape::Cuboid(cuboid) => RawShape {
-            hx: cuboid.hx,
-            hy: cuboid.hy,
-            hz: cuboid.hz,
-        },
+    let (shape_type, shape) = match shape {
+        ColliderShape::Cuboid(cuboid) => (
+            SHAPE_TYPE_CUBOID,
+            RawShape {
+                cuboid: Cuboid {
+                    hx: cuboid.hx,
+                    hy: cuboid.hy,
+                    hz: cuboid.hz,
+                },
+            },
+        ),
+        ColliderShape::Ball(ball) => (
+            SHAPE_TYPE_BALL,
+            RawShape {
+                ball: Ball {
+                    radius: ball.radius,
+                },
+            },
+        ),
+        ColliderShape::Capsule(capsule) => (
+            SHAPE_TYPE_CAPSULE,
+            RawShape {
+                capsule: Capsule {
+                    axis: match capsule.axis {
+                        Axis::X => 0,
+                        Axis::Y => 1,
+                        Axis::Z => 2,
+                    },
+                    half_height: capsule.half_height,
+                    radius: capsule.radius,
+                },
+            },
+        ),
     };
 
     let mut out = MaybeUninit::uninit();
@@ -70,6 +100,7 @@ pub fn cast_shape(
             direction.x,
             direction.y,
             direction.z,
+            shape_type,
             &shape,
             max_toi,
             &filter,

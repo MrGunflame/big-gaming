@@ -11,16 +11,16 @@ use std::fmt::Debug;
 
 use control::CharacterController;
 use convert::{point, quat, rotation, vec3, vector};
-use game_common::components::{ColliderShape, RigidBody, RigidBodyKind, Transform};
+use game_common::components::{Axis, ColliderShape, RigidBody, RigidBodyKind, Transform};
 use game_common::entity::EntityId;
 use game_common::events::{self, Event, EventQueue};
 use game_common::world::{QueryWrapper, World};
 use game_tracing::trace_span;
 use glam::{Quat, Vec3};
 use handle::HandleMap;
-use nalgebra::{Isometry, OPoint};
+use nalgebra::Isometry;
 use parking_lot::Mutex;
-use rapier3d::parry::shape::Cuboid;
+use rapier3d::parry::shape::{Ball, Capsule, Cuboid};
 use rapier3d::prelude::{
     BroadPhase, CCDSolver, Collider, ColliderBuilder, ColliderHandle, ColliderSet, CollisionEvent,
     ContactPair, EventHandler, ImpulseJointSet, IntegrationParameters, IslandManager,
@@ -179,6 +179,12 @@ impl Pipeline {
                     ColliderShape::Cuboid(cuboid) => {
                         ColliderBuilder::cuboid(cuboid.hx, cuboid.hy, cuboid.hz)
                     }
+                    ColliderShape::Ball(ball) => ColliderBuilder::ball(ball.radius),
+                    ColliderShape::Capsule(capsule) => match capsule.axis {
+                        Axis::X => ColliderBuilder::capsule_x(capsule.half_height, capsule.radius),
+                        Axis::Y => ColliderBuilder::capsule_y(capsule.half_height, capsule.radius),
+                        Axis::Z => ColliderBuilder::capsule_z(capsule.half_height, capsule.radius),
+                    },
                 };
 
                 builder = builder.position(Isometry {
@@ -333,28 +339,72 @@ impl Pipeline {
         };
         let filter = QueryFilter::new().predicate(&pred);
 
-        let shape = match shape {
+        match shape {
             ColliderShape::Cuboid(cuboid) => {
                 let half_extents = vector(Vec3::new(cuboid.hx, cuboid.hy, cuboid.hz));
-                Cuboid::new(half_extents)
-            }
-        };
+                let shape = Cuboid::new(half_extents);
 
-        match self.query_pipeline.cast_shape(
-            &self.bodies,
-            &self.colliders,
-            &shape_origin,
-            &shape_vel,
-            &shape,
-            max_toi,
-            true,
-            filter,
-        ) {
-            Some((handle, toi)) => {
-                let entity = self.collider_handles.get2(handle).unwrap();
-                Some((entity, toi.toi))
+                match self.query_pipeline.cast_shape(
+                    &self.bodies,
+                    &self.colliders,
+                    &shape_origin,
+                    &shape_vel,
+                    &shape,
+                    max_toi,
+                    true,
+                    filter,
+                ) {
+                    Some((handle, toi)) => {
+                        let entity = self.collider_handles.get2(handle).unwrap();
+                        Some((entity, toi.toi))
+                    }
+                    None => None,
+                }
             }
-            None => None,
+            ColliderShape::Ball(ball) => {
+                let shape = Ball::new(ball.radius);
+
+                match self.query_pipeline.cast_shape(
+                    &self.bodies,
+                    &self.colliders,
+                    &shape_origin,
+                    &shape_vel,
+                    &shape,
+                    max_toi,
+                    true,
+                    filter,
+                ) {
+                    Some((handle, toi)) => {
+                        let entity = self.collider_handles.get2(handle).unwrap();
+                        Some((entity, toi.toi))
+                    }
+                    None => None,
+                }
+            }
+            ColliderShape::Capsule(capsule) => {
+                let shape = match capsule.axis {
+                    Axis::X => Capsule::new_x(capsule.half_height, capsule.radius),
+                    Axis::Y => Capsule::new_y(capsule.half_height, capsule.radius),
+                    Axis::Z => Capsule::new_z(capsule.half_height, capsule.radius),
+                };
+
+                match self.query_pipeline.cast_shape(
+                    &self.bodies,
+                    &self.colliders,
+                    &shape_origin,
+                    &shape_vel,
+                    &shape,
+                    max_toi,
+                    true,
+                    filter,
+                ) {
+                    Some((handle, toi)) => {
+                        let entity = self.collider_handles.get2(handle).unwrap();
+                        Some((entity, toi.toi))
+                    }
+                    None => None,
+                }
+            }
         }
     }
 }
