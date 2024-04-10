@@ -20,10 +20,14 @@ pub struct SpawnedScene {
     pub(crate) children: HashMap<Key, Vec<Key>>,
     pub(crate) parents: VecMap<arena::Key, arena::Key>,
     pub(crate) global_transform: HashMap<Key, Transform>,
+    pub(crate) entities: HashMap<Key, ObjectId>,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct SceneResources {
     pub(crate) meshes: Vec<MeshId>,
     pub(crate) materials: Vec<MaterialId>,
     pub(crate) images: Vec<ImageId>,
-    pub(crate) entities: HashMap<Key, ObjectId>,
 }
 
 impl SpawnedScene {
@@ -33,9 +37,6 @@ impl SpawnedScene {
             children: HashMap::new(),
             parents: VecMap::new(),
             global_transform: HashMap::new(),
-            materials: Vec::new(),
-            meshes: Vec::new(),
-            images: Vec::new(),
             entities: HashMap::new(),
         }
     }
@@ -129,18 +130,6 @@ impl SpawnedScene {
     pub(crate) fn despawn(self, renderer: &mut Renderer) {
         for id in self.entities.values() {
             renderer.entities.objects.remove(*id);
-        }
-
-        for id in self.meshes {
-            renderer.meshes.remove(id);
-        }
-
-        for id in self.materials {
-            renderer.materials.remove(id);
-        }
-
-        for id in self.images {
-            renderer.images.remove(id);
         }
     }
 }
