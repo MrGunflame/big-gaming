@@ -104,7 +104,7 @@ impl WorldWindowState {
     ) {
         let viewport_size = renderer.get_surface_size(window).unwrap();
 
-        let camera_transform = world.get_typed::<Transform>(self.camera);
+        let camera_transform = world.get_typed::<Transform>(self.camera).unwrap();
         let mut camera = Camera {
             transform: camera_transform,
             projection: Projection::default(),
@@ -283,7 +283,7 @@ impl WorldWindowState {
 
         self.state.entities.with(|entities| {
             for entity in entities.iter().filter(|e| e.is_selected) {
-                let transform = world.get_typed(entity.id);
+                let transform = world.get_typed(entity.id).unwrap();
                 self.edit_op.push(entity.id, transform);
             }
         });
