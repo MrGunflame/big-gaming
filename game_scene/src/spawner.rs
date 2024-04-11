@@ -1,25 +1,24 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
 
 use game_common::collections::arena::{self, Arena};
 use game_common::components::Transform;
 use game_render::Renderer;
-use game_tasks::TaskPool;
+use game_tasks::{Task, TaskPool};
 use game_tracing::trace_span;
 
-use crate::format::SceneRoot;
 use crate::load_scene;
-use crate::scene2::{Key, SpawnedScene};
+use crate::scene::Scene;
+use crate::scene2::{SceneResources, SpawnedScene};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct SceneId(arena::Key);
 
 #[derive(Debug, Default)]
 pub struct SceneSpawner {
-    queue: VecDeque<(SceneId, PathBuf)>,
-    scenes_to_spawn: Arc<Mutex<VecDeque<(SceneId, crate::scene::Scene)>>>,
-    scenes: Arena<SceneState>,
+    instances: Arena<Instance>,
+    queued_instances: Vec<SceneId>,
+    scenes: HashMap<PathBuf, SceneData>,
 }
 
 impl SceneSpawner {
@@ -27,62 +26,90 @@ impl SceneSpawner {
     where
         S: AsRef<Path>,
     {
-        let id = SceneId(self.scenes.insert(SceneState::Loading));
-        self.queue.push_back((id, source.as_ref().to_path_buf()));
-        id
-    }
+        let id = SceneId(self.instances.insert(Instance {
+            path: source.as_ref().to_owned(),
+            state: InstanceState::Loading,
+        }));
+        self.queued_instances.push(id);
 
-    pub fn insert(&mut self, scene: crate::scene::Scene) -> SceneId {
-        let id = SceneId(self.scenes.insert(SceneState::Loading));
-        self.scenes_to_spawn.lock().unwrap().push_back((id, scene));
+        self.scenes
+            .entry(source.as_ref().to_owned())
+            .or_insert_with(|| SceneData {
+                count: 1,
+                state: SceneDataState::Queued,
+            });
         id
     }
 
     pub fn update(&mut self, pool: &TaskPool, renderer: &mut Renderer) {
         let _span = trace_span!("SceneSpaner::update").entered();
 
-        while let Some((id, path)) = self.queue.pop_front() {
-            let queue = self.scenes_to_spawn.clone();
-            pool.spawn(async move {
-                if let Some(scene) = load_scene(path) {
-                    queue.lock().unwrap().push_back((id, scene));
-                }
-            });
-        }
+        self.queued_instances.retain(|id| {
+            let instance = self.instances.get_mut(id.0).unwrap();
+            let scene = self.scenes.get_mut(&instance.path).unwrap();
 
-        let mut queue = self.scenes_to_spawn.lock().unwrap();
-        while let Some((id, scene)) = queue.pop_front() {
-            let spawned_scene = scene.spawn(renderer);
-            tracing::trace!("spawn scene {:?}", id);
-            if let Some(scene) = self.scenes.get_mut(id.0) {
-                *scene = SceneState::Spawned(spawned_scene);
-            } else {
-                // Already despawned.
-                tracing::trace!("scene {:?} is already despawned", id);
-                spawned_scene.despawn(renderer);
+            match &mut scene.state {
+                SceneDataState::Loaded(scene, res) => {
+                    let spawned_scene = scene.instantiate(res, renderer);
+                    instance.state = InstanceState::Spawned(spawned_scene);
+
+                    false
+                }
+                SceneDataState::Loading(task) => {
+                    // FIXME: We're actually checking for every instance, which means
+                    // it is possible for the same task handle to be checked polled
+                    // multiple times without effect.
+                    if let Some(output) = task.get_output() {
+                        match output {
+                            Some(mut output) => {
+                                let res = output.setup_materials(renderer);
+                                scene.state = SceneDataState::Loaded(output, res);
+                            }
+                            None => scene.state = SceneDataState::LoadingFailed,
+                        }
+
+                        false
+                    } else {
+                        true
+                    }
+                }
+                SceneDataState::LoadingFailed => false,
+                SceneDataState::Queued => {
+                    let path = instance.path.clone();
+                    let task = pool.spawn(async move { load_scene(path) });
+                    scene.state = SceneDataState::Loading(task);
+
+                    true
+                }
             }
-        }
+        });
     }
 
     pub fn despawn(&mut self, renderer: &mut Renderer, id: SceneId) {
         tracing::trace!("despawn scene {:?}", id);
 
-        let scene = self.scenes.remove(id.0).unwrap();
-        match scene {
-            SceneState::Loading => {}
-            SceneState::Spawned(scene) => {
-                scene.despawn(renderer);
+        if let Some(instance) = self.instances.remove(id.0) {
+            if let InstanceState::Spawned(spawned_scene) = instance.state {
+                spawned_scene.despawn(renderer);
+            }
+
+            if let Some(scene) = self.scenes.get_mut(&instance.path) {
+                scene.count -= 1;
+
+                if scene.count == 0 {
+                    self.scenes.remove(&instance.path);
+                }
             }
         }
     }
 
     pub fn set_transform(&mut self, renderer: &mut Renderer, transform: Transform, id: SceneId) {
-        let scene = self.scenes.get_mut(id.0).unwrap();
-        match scene {
-            SceneState::Loading => {
+        let instance = self.instances.get_mut(id.0).unwrap();
+        match &mut instance.state {
+            InstanceState::Loading => {
                 // What to do if scene is not yet loaded?
             }
-            SceneState::Spawned(scene) => {
+            InstanceState::Spawned(scene) => {
                 scene.set_transform(transform);
                 scene.compute_transform();
 
@@ -98,7 +125,27 @@ impl SceneSpawner {
 }
 
 #[derive(Debug)]
-enum SceneState {
+struct Instance {
+    path: PathBuf,
+    state: InstanceState,
+}
+
+#[derive(Debug)]
+enum InstanceState {
     Spawned(SpawnedScene),
     Loading,
+}
+
+#[derive(Debug)]
+struct SceneData {
+    count: usize,
+    state: SceneDataState,
+}
+
+#[derive(Debug)]
+enum SceneDataState {
+    Loaded(Scene, SceneResources),
+    Loading(Task<Option<Scene>>),
+    LoadingFailed,
+    Queued,
 }

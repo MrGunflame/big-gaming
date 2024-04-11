@@ -1,5 +1,6 @@
 use std::alloc::Layout;
 use std::cell::UnsafeCell;
+use std::fmt::{self, Debug, Formatter};
 use std::future::Future;
 use std::marker::PhantomData;
 use std::mem::ManuallyDrop;
@@ -417,6 +418,14 @@ impl<T> Drop for Task<T> {
         unsafe {
             self.detach_inner();
         }
+    }
+}
+
+impl<T> Debug for Task<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Task")
+            .field("ptr", &self.ptr)
+            .finish_non_exhaustive()
     }
 }
 
