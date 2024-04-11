@@ -92,7 +92,7 @@ impl<'a> Iterator for CellEntitiesIter<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             let entity = self.iter.next()?;
-            let transform: Transform = self.world.world.get_typed(entity);
+            let transform: Transform = self.world.world.get_typed(entity).unwrap();
             if CellId::from(transform.translation) == self.cell {
                 return Some(entity);
             }

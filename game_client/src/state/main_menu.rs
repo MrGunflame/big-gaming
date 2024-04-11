@@ -51,7 +51,7 @@ impl MainMenuState {
     }
 
     pub fn update(&mut self, world: &mut World) {
-        let mut transform = world.get_typed::<Transform>(self.camera);
+        let mut transform = world.get_typed::<Transform>(self.camera).unwrap();
 
         //camera.transform.translation.x = 10.0;
         //camera.transform.translation.z = 1.0;

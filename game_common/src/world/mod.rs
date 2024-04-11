@@ -30,17 +30,56 @@ pub mod terrain;
 pub mod time;
 pub mod world;
 
+use std::fmt::{self, Debug, Formatter};
 use std::marker::PhantomData;
 use std::ops::{Deref, DerefMut};
 
 use ahash::{HashMap, HashSet};
 pub use cell::{CellId, CELL_SIZE, CELL_SIZE_UINT};
 use game_wasm::components::Component;
-use game_wasm::encoding::{BinaryReader, BinaryWriter};
+use game_wasm::encoding::{BinaryReader, BinaryWriter, Decode};
 
 use crate::components::components::{Components, RawComponent};
 use crate::entity::EntityId;
 use crate::record::RecordReference;
+
+pub enum Error<T>
+where
+    T: Component,
+{
+    NoComponent,
+    Decode(<T as Decode>::Error),
+}
+
+impl<T> Clone for Error<T>
+where
+    T: Component,
+    T::Error: Clone,
+{
+    fn clone(&self) -> Self {
+        match self {
+            Self::NoComponent => Self::NoComponent,
+            Self::Decode(err) => Self::Decode(err.clone()),
+        }
+    }
+}
+
+impl<T> Debug for Error<T>
+where
+    T: Component,
+    T::Error: Debug,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NoComponent => {
+                write!(f, "NoComponent")
+            }
+            Self::Decode(err) => {
+                write!(f, "Decode({:?})", err)
+            }
+        }
+    }
+}
 
 #[derive(Clone, Debug, Default)]
 pub struct World {
@@ -116,13 +155,13 @@ impl World {
         self.insert(entity, T::ID, RawComponent::new(data, fields));
     }
 
-    pub fn get_typed<T: Component>(&self, entity: EntityId) -> T {
-        let component = self.get(entity, T::ID).unwrap();
+    pub fn get_typed<T: Component>(&self, entity: EntityId) -> Result<T, Error<T>> {
+        let component = self.get(entity, T::ID).ok_or(Error::NoComponent)?;
         let reader = BinaryReader::new(
             component.as_bytes().to_vec(),
             component.fields().to_vec().into(),
         );
-        T::decode(reader).unwrap()
+        T::decode(reader).map_err(Error::Decode)
     }
 
     pub fn iter(&self) -> Iter<'_> {
@@ -186,7 +225,7 @@ where
             component.as_bytes().to_vec(),
             component.fields().to_vec().into(),
         );
-        Some(T::decode(reader).unwrap())
+        T::decode(reader).ok()
     }
 }
 
@@ -226,10 +265,7 @@ where
         let c1 = components.get(C1::ID)?;
         let r0 = BinaryReader::new(c0.as_bytes().to_vec(), c0.fields().to_vec().into());
         let r1 = BinaryReader::new(c1.as_bytes().to_vec(), c1.fields().to_vec().into());
-        Some(QueryWrapper((
-            C0::decode(r0).unwrap(),
-            C1::decode(r1).unwrap(),
-        )))
+        Some(QueryWrapper((C0::decode(r0).ok()?, C1::decode(r1).ok()?)))
     }
 }
 
@@ -247,9 +283,9 @@ where
         let r1 = BinaryReader::new(c1.as_bytes().to_vec(), c1.fields().to_vec().into());
         let r2 = BinaryReader::new(c2.as_bytes().to_vec(), c2.fields().to_vec().into());
         Some(QueryWrapper((
-            C0::decode(r0).unwrap(),
-            C1::decode(r1).unwrap(),
-            C2::decode(r2).unwrap(),
+            C0::decode(r0).ok()?,
+            C1::decode(r1).ok()?,
+            C2::decode(r2).ok()?,
         )))
     }
 }

@@ -153,7 +153,7 @@ impl GameWorldState {
 
         if self.camera_controller.mode != CameraMode::Detached {
             if self.world.state().world.contains(self.host) {
-                let transform: Transform = self.world.state().world.get_typed(self.host);
+                let transform: Transform = self.world.state().world.get_typed(self.host).unwrap();
                 self.camera_controller.transform = transform;
             }
         } else {
@@ -210,7 +210,12 @@ impl GameWorldState {
             return;
         }
 
-        let mut transform = self.world.state().world.get_typed::<Transform>(self.host);
+        let mut transform = self
+            .world
+            .state()
+            .world
+            .get_typed::<Transform>(self.host)
+            .unwrap();
         transform = update_rotation(transform, event);
         // We must update the rotation, otherwise following mouse motion events
         // will get overwritten by previous events in the same frame.
@@ -297,10 +302,10 @@ impl GameWorldState {
                     self.cursor_pinned.pin(cursor);
                 }
                 None => {
-                    let camera: Camera = self.world.state().world.get_typed(self.host);
+                    let camera: Camera = self.world.state().world.get_typed(self.host).unwrap();
 
                     // Ignore if the current player entity has no inventory.
-                    let inventory = self
+                    let Ok(inventory) = self
                         .world
                         .state()
                         .world
