@@ -9,7 +9,7 @@ use std::net::ToSocketAddrs;
 use std::time::Duration;
 
 use game_common::components::actions::ActionId;
-use game_common::components::{PrimaryCamera, Transform};
+use game_common::components::{GlobalTransform, PrimaryCamera, Transform};
 use game_common::entity::EntityId;
 use game_common::module::ModuleId;
 use game_common::record::RecordReference;
@@ -116,7 +116,7 @@ impl GameWorldState {
         *world = self.world.state().world.clone();
 
         self.primary_camera = Some(world.spawn());
-        world.insert_typed(self.primary_camera.unwrap(), Transform::default());
+        world.insert_typed(self.primary_camera.unwrap(), GlobalTransform::default());
         world.insert_typed(self.primary_camera.unwrap(), PrimaryCamera);
 
         while let Some(cmd) = buf.pop() {
@@ -163,7 +163,7 @@ impl GameWorldState {
         }
 
         if let Some(id) = self.primary_camera {
-            world.insert_typed(id, self.camera_controller.transform);
+            world.insert_typed(id, GlobalTransform(self.camera_controller.transform));
         }
     }
 
