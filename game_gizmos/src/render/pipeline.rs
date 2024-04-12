@@ -131,12 +131,14 @@ impl GizmoPass {
 
         for cmd in &*cmds {
             vertex_buffer.push(Vertex {
-                position: cmd.start.extend(0.0).to_array(),
+                position: cmd.start.to_array(),
                 color: cmd.color.as_rgba(),
+                _pad0: 0,
             });
             vertex_buffer.push(Vertex {
-                position: cmd.end.extend(0.0).to_array(),
+                position: cmd.end.to_array(),
                 color: cmd.color.as_rgba(),
+                _pad0: 0,
             });
         }
     }
@@ -226,6 +228,7 @@ impl Node for GizmoPass {
 #[derive(Copy, Clone, Debug, Zeroable, Pod)]
 #[repr(C)]
 struct Vertex {
-    position: [f32; 4],
+    position: [f32; 3],
+    _pad0: u32,
     color: [f32; 4],
 }
