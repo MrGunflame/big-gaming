@@ -23,6 +23,7 @@ pub mod control_frame;
 pub mod delta_queue;
 pub mod entity;
 pub mod gen;
+pub mod hierarchy;
 pub mod interaction;
 pub mod snapshot;
 pub mod source;

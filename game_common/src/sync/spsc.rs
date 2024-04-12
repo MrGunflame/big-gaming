@@ -102,7 +102,7 @@ impl<T> Queue<T> {
     pub fn len(&self) -> usize {
         let head = self.head.load(Ordering::Relaxed);
         let tail = self.tail.load(Ordering::Relaxed);
-        head - tail
+        head.saturating_sub(tail)
     }
 
     pub fn is_empty(&self) -> bool {
