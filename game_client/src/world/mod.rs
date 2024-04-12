@@ -13,6 +13,7 @@ use game_common::components::{GlobalTransform, PrimaryCamera, Transform};
 use game_common::entity::EntityId;
 use game_common::module::ModuleId;
 use game_common::record::RecordReference;
+use game_common::world::hierarchy::update_global_transform;
 use game_common::world::World;
 use game_core::counter::{Interval, UpdateCounter};
 use game_core::modules::Modules;
