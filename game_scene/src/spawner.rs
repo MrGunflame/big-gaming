@@ -32,12 +32,15 @@ impl SceneSpawner {
         }));
         self.queued_instances.push(id);
 
-        self.scenes
+        let scene = self
+            .scenes
             .entry(source.as_ref().to_owned())
             .or_insert_with(|| SceneData {
-                count: 1,
+                count: 0,
                 state: SceneDataState::Queued,
             });
+        scene.count += 1;
+
         id
     }
 
@@ -63,6 +66,13 @@ impl SceneSpawner {
                         match output {
                             Some(mut output) => {
                                 let res = output.setup_materials(renderer);
+
+                                // Instantiate the instance has caused the initial load of the
+                                // asset. This allows us to skip delaying the creation of the
+                                // instance until the next update.
+                                let spawned_scene = output.instantiate(&res, renderer);
+                                instance.state = InstanceState::Spawned(spawned_scene);
+
                                 scene.state = SceneDataState::Loaded(output, res);
                             }
                             None => scene.state = SceneDataState::LoadingFailed,
@@ -138,6 +148,7 @@ enum InstanceState {
 
 #[derive(Debug)]
 struct SceneData {
+    /// Number of instances referencing the scene data.
     count: usize,
     state: SceneDataState,
 }
