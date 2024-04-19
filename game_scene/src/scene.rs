@@ -1,18 +1,15 @@
 use std::collections::HashMap;
 
 use game_common::components::{Color, Transform};
-use game_common::world::World;
-use game_core::hierarchy::{Hierarchy, TransformHierarchy};
+use game_core::hierarchy::Hierarchy;
 use game_render::entities::Object;
 use game_render::mesh::Mesh;
 use game_render::pbr::{AlphaMode, PbrMaterial};
 use game_render::texture::Image;
 use game_render::{shape, Renderer};
 use game_tracing::trace_span;
-use tracing::Instrument;
 
-use crate::scene2::{Component, Key, MeshInstance, SceneGraph, SpawnedScene};
-use crate::spawner;
+use crate::scene2::{Key, SceneResources, SpawnedScene};
 
 #[derive(Clone, Debug, Default)]
 pub struct Scene {
@@ -44,40 +41,55 @@ pub struct ObjectNode {
 }
 
 impl Scene {
-    pub(crate) fn spawn(self, renderer: &mut Renderer) -> SpawnedScene {
-        let _span = trace_span!("Scene::spawn").entered();
+    pub(crate) fn setup_materials(&mut self, renderer: &mut Renderer) -> SceneResources {
+        let meshes = self
+            .meshes
+            .drain(..)
+            .map(|mesh| renderer.meshes.insert(mesh))
+            .collect();
+
+        let images = self
+            .images
+            .drain(..)
+            .map(|image| renderer.images.insert(image))
+            .collect::<Vec<_>>();
+
+        let materials = self
+            .materials
+            .drain(..)
+            .map(|material| {
+                renderer.materials.insert({
+                    PbrMaterial {
+                        alpha_mode: material.alpha_mode,
+                        base_color: material.base_color,
+                        base_color_texture: material.base_color_texture.map(|index| images[index]),
+                        normal_texture: material.normal_texture.map(|index| images[index]),
+                        roughness: material.roughness,
+                        metallic: material.metallic,
+                        metallic_roughness_texture: material
+                            .metallic_roughness_texture
+                            .map(|index| images[index]),
+                        reflectance: material.reflectance,
+                    }
+                })
+            })
+            .collect();
+
+        SceneResources {
+            meshes,
+            materials,
+            images,
+        }
+    }
+
+    pub(crate) fn instantiate(
+        &self,
+        res: &SceneResources,
+        renderer: &mut Renderer,
+    ) -> SpawnedScene {
+        let _span = trace_span!("Scene::instantiate").entered();
 
         let mut spawned_scene = SpawnedScene::new();
-
-        for mesh in self.meshes {
-            let id = renderer.meshes.insert(mesh);
-            spawned_scene.meshes.push(id);
-        }
-
-        for image in self.images {
-            let id = renderer.images.insert(image);
-            spawned_scene.images.push(id);
-        }
-
-        for material in self.materials {
-            let id = renderer.materials.insert(PbrMaterial {
-                alpha_mode: material.alpha_mode,
-                base_color: material.base_color,
-                base_color_texture: material
-                    .base_color_texture
-                    .map(|index| spawned_scene.images[index]),
-                normal_texture: material
-                    .normal_texture
-                    .map(|index| spawned_scene.images[index]),
-                roughness: material.roughness,
-                metallic: material.metallic,
-                metallic_roughness_texture: material
-                    .metallic_roughness_texture
-                    .map(|index| spawned_scene.images[index]),
-                reflectance: material.reflectance,
-            });
-            spawned_scene.materials.push(id);
-        }
 
         let mut children = Vec::new();
 
@@ -164,8 +176,8 @@ impl Scene {
             match node.body {
                 NodeBody::Empty => {}
                 NodeBody::Object(object) => {
-                    let mesh = spawned_scene.meshes[object.mesh];
-                    let material = spawned_scene.materials[object.material];
+                    let mesh = res.meshes[object.mesh];
+                    let material = res.materials[object.material];
                     let transform = *spawned_scene.global_transform.get(&Key(key)).unwrap();
 
                     let id = renderer.entities.objects.insert(Object {
