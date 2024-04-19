@@ -14,6 +14,7 @@ pub mod shape;
 pub mod surface;
 pub mod texture;
 
+mod allocator;
 mod debug;
 mod depth_stencil;
 mod pipelined_rendering;
@@ -91,9 +92,11 @@ impl Renderer {
             }))
             .unwrap();
 
+        let features = Features::PUSH_CONSTANTS;
+
         let (device, queue) = futures_lite::future::block_on(adapter.request_device(
             &DeviceDescriptor {
-                required_features: Features::default(),
+                required_features: features,
                 required_limits: Limits::default(),
                 label: None,
             },

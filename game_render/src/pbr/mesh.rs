@@ -11,99 +11,6 @@ use crate::buffer::IndexBuffer;
 use crate::forward::ForwardPipeline;
 use crate::mesh::{Indices, Mesh};
 
-pub fn update_mesh_bind_group(
-    device: &Device,
-    pipeline: &ForwardPipeline,
-    mesh: &Mesh,
-) -> (BindGroup, IndexBuffer) {
-    // FIXME: Since meshes are user controlled, we might not catch invalid
-    // meshes with a panic and simply ignore them.
-    assert!(!mesh.positions().is_empty());
-    assert!(!mesh.normals().is_empty());
-    assert!(!mesh.tangents().is_empty());
-    assert!(!mesh.uvs().is_empty());
-    assert!(!mesh.indicies().as_ref().unwrap().is_empty());
-
-    let indices = match mesh.indicies() {
-        Some(Indices::U32(indices)) => {
-            let buffer = device.create_buffer_init(&BufferInitDescriptor {
-                label: Some("mesh_index_buffer"),
-                contents: bytemuck::cast_slice(&indices),
-                usage: BufferUsages::INDEX,
-            });
-
-            IndexBuffer {
-                buffer,
-                format: IndexFormat::Uint32,
-                len: indices.len() as u32,
-            }
-        }
-        Some(Indices::U16(indices)) => {
-            let buffer = device.create_buffer_init(&BufferInitDescriptor {
-                label: Some("mesh_index_buffer"),
-                contents: bytemuck::cast_slice(&indices),
-                usage: BufferUsages::INDEX,
-            });
-
-            IndexBuffer {
-                buffer,
-                format: IndexFormat::Uint16,
-                len: indices.len() as u32,
-            }
-        }
-        None => todo!(),
-    };
-
-    let positions = device.create_buffer_init(&BufferInitDescriptor {
-        label: Some("mesh_vertex_positions"),
-        contents: bytemuck::cast_slice(mesh.positions()),
-        usage: BufferUsages::STORAGE,
-    });
-
-    let normals = device.create_buffer_init(&BufferInitDescriptor {
-        label: Some("mesh_vertex_normals"),
-        contents: bytemuck::cast_slice(mesh.normals()),
-        usage: BufferUsages::STORAGE,
-    });
-
-    let tangents = device.create_buffer_init(&BufferInitDescriptor {
-        label: Some("mesh_vertex_tangents"),
-        contents: bytemuck::cast_slice(mesh.tangents()),
-        usage: BufferUsages::STORAGE,
-    });
-
-    let uvs = device.create_buffer_init(&BufferInitDescriptor {
-        label: Some("mesh_vertex_uvs"),
-        contents: bytemuck::cast_slice(mesh.uvs()),
-        usage: BufferUsages::STORAGE,
-    });
-
-    let mesh_bind_group = device.create_bind_group(&BindGroupDescriptor {
-        label: Some("mesh_bind_group"),
-        layout: &pipeline.mesh_bind_group_layout,
-        entries: &[
-            BindGroupEntry {
-                binding: 0,
-                resource: positions.as_entire_binding(),
-            },
-            BindGroupEntry {
-                binding: 1,
-                resource: normals.as_entire_binding(),
-            },
-            BindGroupEntry {
-                binding: 2,
-                resource: tangents.as_entire_binding(),
-            },
-            BindGroupEntry {
-                binding: 3,
-                resource: uvs.as_entire_binding(),
-            },
-        ],
-    });
-
-    (mesh_bind_group, indices)
-}
-
 pub fn update_transform_buffer(transform: Transform, device: &Device) -> Buffer {
     device.create_buffer_init(&BufferInitDescriptor {
         label: Some("transform_buffer"),
@@ -119,7 +26,7 @@ pub struct TransformUniform {
     // rotation matrix for normals/tangents
     // Note that we can't use the transform matrix for non-uniform
     // scaling values.
-    normal: [[f32; 4]; 3],
+    normal: [[f32; 4]; 4],
 }
 
 impl From<Transform> for TransformUniform {
@@ -140,6 +47,7 @@ impl From<Transform> for TransformUniform {
                 normal_x.to_array(),
                 normal_y.to_array(),
                 normal_z.to_array(),
+                [0.0, 0.0, 0.0, 0.0],
             ],
         }
     }

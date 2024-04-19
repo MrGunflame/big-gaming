@@ -3,29 +3,25 @@ struct Camera {
     view_proj: mat4x4<f32>,
 }
 
-struct Model {
+struct DrawData {
     transform: mat4x4<f32>,
     normal: mat3x3<f32>,
+
+    position_offset: u32,
+    normal_offset: u32,
+    tangent_offset: u32,
 }
 
 @group(0) @binding(0)
 var<uniform> camera: Camera;
 @group(0) @binding(1)
-var<uniform> model: Model;
-
-// Note that the storage buffers are dense, hence they are
-// array<T, N>, not vecN<T>, so they are aligned to T.
-@group(1) @binding(0)
-var<storage> positions: array<array<f32, 3>>;
-@group(1) @binding(1)
-var<storage> normals: array<array<f32, 3>>;
-@group(1) @binding(2)
-var<storage> tangents: array<array<f32, 4>>;
-@group(1) @binding(3)
-var<storage> uvs: array<array<f32, 2>>;
+var<storage> model: array<DrawData>;
+@group(0) @binding(2)
+var<storage> buffers: array<f32>;
 
 struct VertexInput {
     @builtin(vertex_index) vertex_index: u32,
+    @builtin(instance_index) instance_index: u32,
 }
 
 struct VertexOutput {
@@ -56,15 +52,15 @@ fn vs_main(in: VertexInput) -> VertexOutput {
 }
 
 fn fetch_position(vertex_index: u32) -> vec3<f32> {
-   let x = positions[vertex_index][0];
-   let y = positions[vertex_index][1];
-   let z = positions[vertex_index][2];
+   let x = buffers[vertex_index][0];
+   let y = buffers[vertex_index][1];
+   let z = buffers[vertex_index][2];
 
    return vec3<f32>(x, y, z);
 }
 
 fn fetch_normal(vertex_index: u32) -> vec3<f32> {
-    let x = normals[vertex_index][0];
+    let x = buffers[vertex_index][0];
     let y = normals[vertex_index][1];
     let z = normals[vertex_index][2];
 

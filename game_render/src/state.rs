@@ -1,13 +1,15 @@
+use std::alloc::Layout;
 use std::collections::HashMap;
 
 use game_tracing::trace_span;
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
 use wgpu::{BindGroup, Buffer, BufferUsages, Device, Queue};
 
-use crate::buffer::{DynamicBuffer, IndexBuffer};
+use crate::allocator::{Allocation, Allocator};
+use crate::buffer::DynamicBuffer;
 use crate::camera::{Camera, CameraBuffer};
 use crate::entities::{CameraId, DirectionalLightId, Object, ObjectId, PointLightId, SpotLightId};
-use crate::forward::ForwardPipeline;
+use crate::forward::{DrawData, ForwardPipeline, IndexData};
 use crate::light::pipeline::{
     update_directional_lights, update_point_lights, update_spot_lights, DirectionalLightUniform,
     PointLightUniform, SpotLightUniform,
@@ -16,7 +18,7 @@ use crate::light::{DirectionalLight, PointLight, SpotLight};
 use crate::mesh::Mesh;
 use crate::mipmap::MipMapGenerator;
 use crate::pbr::material::{update_material_bind_group, MaterialId, Materials};
-use crate::pbr::mesh::{update_mesh_bind_group, update_transform_buffer, MeshId, Meshes};
+use crate::pbr::mesh::{update_transform_buffer, MeshId, Meshes, TransformUniform};
 use crate::pbr::PbrMaterial;
 use crate::texture::{Image, ImageId, Images};
 
@@ -24,8 +26,6 @@ pub(crate) struct RenderState {
     pub cameras: HashMap<CameraId, Camera>,
     pub camera_buffers: HashMap<CameraId, CameraBuffer>,
     pub objects: HashMap<ObjectId, Object>,
-    /// object transform buffers
-    pub object_buffers: HashMap<ObjectId, Buffer>,
 
     pub directional_lights: HashMap<DirectionalLightId, DirectionalLight>,
     pub point_lights: HashMap<PointLightId, PointLight>,
@@ -36,12 +36,21 @@ pub(crate) struct RenderState {
 
     pub events: Vec<Event>,
 
-    pub meshes: HashMap<MeshId, (BindGroup, IndexBuffer)>,
+    pub meshes: HashMap<MeshId, MeshData>,
     pub materials: HashMap<MaterialId, BindGroup>,
 
     pub meshes_queued: HashMap<MeshId, Mesh>,
     pub materials_queued: HashMap<MaterialId, PbrMaterial>,
     pub images: HashMap<ImageId, Image>,
+
+    pub vertex_allocator: Allocator,
+    pub index_allocator: Allocator,
+
+    // TODO: Move completely to GPU device local memory.
+    pub vertex_buffer: Vec<u8>,
+    pub index_buffer: Vec<u8>,
+
+    pub draw_data: HashMap<ObjectId, (DrawData, IndexData)>,
 }
 
 impl RenderState {
@@ -90,10 +99,14 @@ impl RenderState {
             images: imgs,
             meshes_queued: HashMap::new(),
             camera_buffers: HashMap::new(),
-            object_buffers: HashMap::new(),
             directional_lights: HashMap::new(),
             point_lights: HashMap::new(),
             spot_lights: HashMap::new(),
+            vertex_allocator: Allocator::new(0),
+            index_allocator: Allocator::new(0),
+            vertex_buffer: Vec::new(),
+            index_buffer: Vec::new(),
+            draw_data: HashMap::new(),
         }
     }
 
@@ -182,8 +195,76 @@ impl RenderState {
         let _span = trace_span!("RenderState::update_buffers").entered();
 
         for (id, mesh) in self.meshes_queued.drain() {
-            let (bg, buf) = update_mesh_bind_group(device, pipeline, &mesh);
-            self.meshes.insert(id, (bg, buf));
+            let num_positions = mesh.positions().len() * 3;
+            let num_normals = mesh.normals().len() * 3;
+            let num_uvs = mesh.uvs().len() * 2;
+            let num_tangents = mesh.tangents().len() * 4;
+
+            let required_size = (num_positions + num_normals + num_uvs + num_tangents)
+                * core::mem::size_of::<f32>();
+
+            if self.vertex_allocator.free_size() < required_size {
+                self.vertex_buffer
+                    .resize(self.vertex_allocator.max_size() + required_size, 0);
+
+                self.vertex_allocator
+                    .grow(self.vertex_allocator.max_size() + required_size);
+            }
+
+            let required_index_size =
+                mesh.indicies().unwrap().as_u32().len() * core::mem::size_of::<u32>();
+            if self.index_allocator.free_size() < required_index_size {
+                self.index_buffer
+                    .resize(self.index_allocator.max_size() + required_index_size, 0);
+
+                self.index_allocator
+                    .grow(self.index_allocator.max_size() + required_size);
+            }
+
+            let positions = self
+                .vertex_allocator
+                .alloc(Layout::array::<f32>(mesh.positions().len() * 3).unwrap())
+                .unwrap();
+            let normals = self
+                .vertex_allocator
+                .alloc(Layout::array::<f32>(mesh.normals().len() * 3).unwrap())
+                .unwrap();
+            let tangents = self
+                .vertex_allocator
+                .alloc(Layout::array::<f32>(mesh.tangents().len() * 4).unwrap())
+                .unwrap();
+            let uvs = self
+                .vertex_allocator
+                .alloc(Layout::array::<f32>(mesh.uvs().len() * 2).unwrap())
+                .unwrap();
+
+            self.vertex_buffer[positions.ptr()..positions.ptr() + positions.size()]
+                .copy_from_slice(bytemuck::cast_slice(mesh.positions()));
+            self.vertex_buffer[normals.ptr()..normals.ptr() + normals.size()]
+                .copy_from_slice(bytemuck::cast_slice(mesh.normals()));
+            self.vertex_buffer[tangents.ptr()..tangents.ptr() + tangents.size()]
+                .copy_from_slice(bytemuck::cast_slice(mesh.tangents()));
+            self.vertex_buffer[uvs.ptr()..uvs.ptr() + uvs.size()]
+                .copy_from_slice(bytemuck::cast_slice(mesh.uvs()));
+
+            let indices = self
+                .index_allocator
+                .alloc(Layout::array::<u32>(mesh.indicies().unwrap().as_u32().len()).unwrap())
+                .unwrap();
+
+            self.index_buffer[indices.ptr()..indices.ptr() + indices.size()]
+                .copy_from_slice(bytemuck::cast_slice(mesh.indicies().unwrap().as_u32()));
+
+            self.meshes.insert(
+                id,
+                MeshData {
+                    positions,
+                    normals,
+                    tangents,
+                    uvs,
+                    indices,
+                },
+            );
         }
 
         for (id, material) in self.materials_queued.drain() {
@@ -220,12 +301,28 @@ impl RenderState {
                     self.camera_buffers.remove(&id);
                 }
                 Event::CreateObject(id, object) => {
-                    let buffer = update_transform_buffer(object.transform, device);
-                    self.object_buffers.insert(id, buffer);
+                    let mesh = self.meshes.get(&object.mesh).unwrap();
+
+                    self.draw_data.insert(
+                        id,
+                        (
+                            DrawData {
+                                transform: object.transform.into(),
+                                vertex_index: mesh.positions.ptr() as u32,
+                                normal_index: mesh.normals.ptr() as u32,
+                                tangent_index: mesh.tangents.ptr() as u32,
+                                uv_index: mesh.uvs.ptr() as u32,
+                            },
+                            IndexData {
+                                index_offset: mesh.indices.ptr() as u32,
+                                index_length: mesh.indices.size() as u32 / 4,
+                            },
+                        ),
+                    );
                 }
                 Event::DestroyObject(id) => {
                     self.objects.remove(&id);
-                    self.object_buffers.remove(&id);
+                    self.draw_data.remove(&id);
                 }
                 Event::CreateDirectionalLight(_, _) | Event::DestroyDirectionalLight(_) => {
                     rebuild_dir_lights = true;
@@ -268,4 +365,13 @@ pub enum Event {
     DestroyPointLight(PointLightId),
     CreateSpotLight(SpotLightId, SpotLight),
     DestroySpotLight(SpotLightId),
+}
+
+#[derive(Debug)]
+struct MeshData {
+    positions: Allocation,
+    normals: Allocation,
+    tangents: Allocation,
+    uvs: Allocation,
+    indices: Allocation,
 }

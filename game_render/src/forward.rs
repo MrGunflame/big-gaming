@@ -1,7 +1,8 @@
+use bytemuck::{Pod, Zeroable};
 use wgpu::{
     AddressMode, BindGroupLayout, BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindingType,
     BlendState, BufferBindingType, ColorTargetState, ColorWrites, CompareFunction, DepthBiasState,
-    DepthStencilState, Device, Face, FilterMode, FragmentState, FrontFace, MultisampleState,
+    DepthStencilState, Device, FilterMode, FragmentState, FrontFace, MultisampleState,
     PipelineLayoutDescriptor, PolygonMode, PrimitiveState, PrimitiveTopology, RenderPipeline,
     RenderPipelineDescriptor, Sampler, SamplerBindingType, SamplerDescriptor,
     ShaderModuleDescriptor, ShaderSource, ShaderStages, StencilState, TextureFormat,
@@ -10,14 +11,13 @@ use wgpu::{
 
 use crate::depth_stencil::DEPTH_TEXTURE_FORMAT;
 use crate::pbr::material::DefaultTextures;
+use crate::pbr::mesh::TransformUniform;
 use crate::texture::Images;
 
 #[derive(Debug)]
 pub struct ForwardPipeline {
     pub pipeline: RenderPipeline,
     pub vs_bind_group_layout: BindGroupLayout,
-    pub fs_bind_group_layout: BindGroupLayout,
-    pub mesh_bind_group_layout: BindGroupLayout,
     pub material_bind_group_layout: BindGroupLayout,
     pub lights_bind_group_layout: BindGroupLayout,
     pub sampler: Sampler,
@@ -27,9 +27,8 @@ pub struct ForwardPipeline {
 impl ForwardPipeline {
     pub fn new(device: &Device, images: &mut Images) -> Self {
         let vs_bind_group_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
-            label: Some("vs_bind_group_layout"),
+            label: None,
             entries: &[
-                // CAMERA
                 BindGroupLayoutEntry {
                     binding: 0,
                     visibility: ShaderStages::VERTEX | ShaderStages::FRAGMENT,
@@ -40,35 +39,6 @@ impl ForwardPipeline {
                     },
                     count: None,
                 },
-                // MODEL
-                BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: ShaderStages::VERTEX,
-                    ty: BindingType::Buffer {
-                        ty: BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                },
-            ],
-        });
-
-        let mesh_bind_group_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
-            label: Some("mesh_bind_group_layout"),
-            entries: &[
-                // POSITIONS
-                BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: ShaderStages::VERTEX,
-                    ty: BindingType::Buffer {
-                        ty: BufferBindingType::Storage { read_only: true },
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                },
-                // NORMALS
                 BindGroupLayoutEntry {
                     binding: 1,
                     visibility: ShaderStages::VERTEX,
@@ -79,20 +49,8 @@ impl ForwardPipeline {
                     },
                     count: None,
                 },
-                // TANGENTS
                 BindGroupLayoutEntry {
                     binding: 2,
-                    visibility: ShaderStages::VERTEX,
-                    ty: BindingType::Buffer {
-                        ty: BufferBindingType::Storage { read_only: true },
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                },
-                // UVS
-                BindGroupLayoutEntry {
-                    binding: 3,
                     visibility: ShaderStages::VERTEX,
                     ty: BindingType::Buffer {
                         ty: BufferBindingType::Storage { read_only: true },
@@ -119,6 +77,16 @@ impl ForwardPipeline {
                         },
                         count: None,
                     },
+                    // BindGroupLayoutEntry {
+                    //     binding: 1,
+                    //     visibility: ShaderStages::FRAGMENT,
+                    //     ty: BindingType::Texture {
+                    //         sample_type: TextureSampleType::Float { filterable: true },
+                    //         view_dimension: TextureViewDimension::D2,
+                    //         multisampled: false,
+                    //     },
+                    //     count: None,
+                    // },
                     // ALBEDO
                     BindGroupLayoutEntry {
                         binding: 1,
@@ -171,11 +139,6 @@ impl ForwardPipeline {
             source: ShaderSource::Wgsl(include_str!("../shaders/forward_fs.wgsl").into()),
         });
 
-        let fs_bind_group_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
-            label: Some("fs_bind_group_layout"),
-            entries: &[],
-        });
-
         let lights_bind_group_layout =
             device.create_bind_group_layout(&BindGroupLayoutDescriptor {
                 label: Some("lights_bind_group_layout"),
@@ -220,7 +183,6 @@ impl ForwardPipeline {
             label: Some("foward_pipeline_layout"),
             bind_group_layouts: &[
                 &vs_bind_group_layout,
-                &mesh_bind_group_layout,
                 &material_bind_group_layout,
                 &lights_bind_group_layout,
             ],
@@ -284,12 +246,26 @@ impl ForwardPipeline {
         Self {
             pipeline,
             vs_bind_group_layout,
-            fs_bind_group_layout,
-            mesh_bind_group_layout,
             material_bind_group_layout,
             lights_bind_group_layout,
             sampler,
             default_textures: DefaultTextures::new(images),
         }
     }
+}
+
+#[derive(Copy, Clone, Debug, Zeroable, Pod)]
+#[repr(C)]
+pub struct DrawData {
+    pub transform: TransformUniform,
+    pub vertex_index: u32,
+    pub normal_index: u32,
+    pub tangent_index: u32,
+    pub uv_index: u32,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct IndexData {
+    pub index_offset: u32,
+    pub index_length: u32,
 }

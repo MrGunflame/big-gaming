@@ -4,10 +4,11 @@ use std::sync::Arc;
 use game_tracing::trace_span;
 use glam::UVec2;
 use parking_lot::Mutex;
-use wgpu::util::{BufferInitDescriptor, DeviceExt};
+use wgpu::naga::proc::index;
+use wgpu::util::{BufferInitDescriptor, DeviceExt, DrawIndexedIndirectArgs};
 use wgpu::{
     BindGroup, BindGroupDescriptor, BindGroupEntry, Buffer, BufferUsages, Color, Device, Extent3d,
-    LoadOp, Operations, RenderPassColorAttachment, RenderPassDepthStencilAttachment,
+    IndexFormat, LoadOp, Operations, RenderPassColorAttachment, RenderPassDepthStencilAttachment,
     RenderPassDescriptor, StoreOp, TextureDescriptor, TextureDimension, TextureFormat,
     TextureUsages, TextureViewDescriptor,
 };
@@ -16,9 +17,10 @@ use crate::buffer::{DynamicBuffer, IndexBuffer};
 use crate::camera::{CameraBuffer, RenderTarget};
 use crate::depth_stencil::DepthData;
 use crate::entities::{CameraId, ObjectId};
-use crate::forward::ForwardPipeline;
+use crate::forward::{DrawData, ForwardPipeline};
 use crate::graph::{Node, RenderContext};
 use crate::light::pipeline::{DirectionalLightUniform, PointLightUniform, SpotLightUniform};
+use crate::pbr::mesh::TransformUniform;
 use crate::post_process::PostProcessPipeline;
 use crate::state::RenderState;
 
@@ -124,28 +126,56 @@ impl RenderPass {
         let pipeline = &self.forward;
         let depth_stencils = self.depth_stencils.lock();
 
-        let bind_groups = state
-            .objects
-            .keys()
-            .map(|&id| {
-                let transform = state.object_buffers.get(&id).unwrap();
+        let mut draw_data = Vec::new();
+        let mut draw_calls = Vec::new();
 
-                device.create_bind_group(&BindGroupDescriptor {
-                    label: Some("vs_bind_group"),
-                    layout: &pipeline.vs_bind_group_layout,
-                    entries: &[
-                        BindGroupEntry {
-                            binding: 0,
-                            resource: camera.buffer.as_entire_binding(),
-                        },
-                        BindGroupEntry {
-                            binding: 1,
-                            resource: transform.as_entire_binding(),
-                        },
-                    ],
-                })
-            })
-            .collect::<Vec<_>>();
+        for (vertex_data, index_data) in state.draw_data.values() {
+            draw_data.push(*vertex_data);
+
+            draw_calls.extend(
+                DrawIndexedIndirectArgs {
+                    index_count: index_data.index_length,
+                    first_index: index_data.index_offset,
+                    instance_count: 1,
+                    first_instance: 0,
+                    base_vertex: index_data.index_offset as i32,
+                }
+                .as_bytes(),
+            );
+        }
+
+        let transforms = device.create_buffer_init(&BufferInitDescriptor {
+            label: None,
+            contents: bytemuck::cast_slice(&draw_data),
+            usage: BufferUsages::STORAGE,
+        });
+
+        let vertex_buffer = device.create_buffer_init(&BufferInitDescriptor {
+            label: None,
+            contents: &state.vertex_buffer,
+            usage: BufferUsages::STORAGE,
+        });
+
+        let index_buffer = device.create_buffer_init(&BufferInitDescriptor {
+            label: None,
+            contents: &state.index_buffer,
+            usage: BufferUsages::INDEX,
+        });
+
+        let vs_bind_group = device.create_bind_group(&BindGroupDescriptor {
+            label: None,
+            layout: &pipeline.vs_bind_group_layout,
+            entries: &[
+                BindGroupEntry {
+                    binding: 0,
+                    resource: camera.buffer.as_entire_binding(),
+                },
+                BindGroupEntry {
+                    binding: 1,
+                    resource: transforms.as_entire_binding(),
+                },
+            ],
+        });
 
         let light_bind_group = device.create_bind_group(&BindGroupDescriptor {
             label: Some("light_bind_group"),
@@ -164,6 +194,12 @@ impl RenderPass {
                     resource: state.spot_lights_buffer.as_entire_binding(),
                 },
             ],
+        });
+
+        let indirect_buffer = device.create_buffer_init(&BufferInitDescriptor {
+            label: None,
+            contents: &draw_calls,
+            usage: BufferUsages::INDIRECT,
         });
 
         let depth_stencil = depth_stencils.get(&ctx.render_target).unwrap();
@@ -209,19 +245,12 @@ impl RenderPass {
 
         render_pass.set_pipeline(&pipeline.pipeline);
 
-        for (index, obj) in state.objects.values().enumerate() {
-            let vs_bind_group = &bind_groups[index];
-            let (mesh_bg, idx_buf) = state.meshes.get(&obj.mesh).unwrap();
-            let mat_bg = state.materials.get(&obj.material).unwrap();
+        render_pass.set_bind_group(0, &vs_bind_group, &[]);
+        render_pass.set_bind_group(3, &light_bind_group, &[]);
 
-            render_pass.set_bind_group(0, vs_bind_group, &[]);
-            render_pass.set_bind_group(1, mesh_bg, &[]);
-            render_pass.set_bind_group(2, mat_bg, &[]);
-            render_pass.set_bind_group(3, &light_bind_group, &[]);
+        render_pass.set_index_buffer(index_buffer.slice(..), IndexFormat::Uint32);
 
-            render_pass.set_index_buffer(idx_buf.buffer.slice(..), idx_buf.format);
-            render_pass.draw_indexed(0..idx_buf.len, 0, 0..1);
-        }
+        render_pass.multi_draw_indexed_indirect(&indirect_buffer, 0, draw_data.len() as u32);
 
         drop(render_pass);
 
