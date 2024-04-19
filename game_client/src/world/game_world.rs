@@ -4,6 +4,7 @@ use game_common::entity::EntityId;
 use game_common::events::{ActionEvent, Event, EventQueue};
 use game_common::net::ServerEntity;
 use game_common::world::control_frame::ControlFrame;
+use game_common::world::hierarchy::update_global_transform;
 use game_core::counter::UpdateCounter;
 use game_core::modules::Modules;
 use game_net::message::{DataMessageBody, EntityAction};
@@ -84,6 +85,8 @@ impl GameWorld {
                 &mut self.event_queue,
                 &modules,
             );
+
+            update_global_transform(&mut self.predicted_state.world);
         }
 
         self.next_frame_counter.update();
@@ -242,13 +245,15 @@ impl GameWorld {
             match &msg.body {
                 DataMessageBody::EntityTranslate(msg) => {
                     let id = self.server_entities.get(msg.entity).unwrap();
-                    let mut transform: Transform = self.predicted_state.world.get_typed(id);
+                    let mut transform: Transform =
+                        self.predicted_state.world.get_typed(id).unwrap();
                     transform.translation = msg.translation;
                     self.predicted_state.world.insert_typed(id, transform);
                 }
                 DataMessageBody::EntityRotate(msg) => {
                     let id = self.server_entities.get(msg.entity).unwrap();
-                    let mut transform: Transform = self.predicted_state.world.get_typed(id);
+                    let mut transform: Transform =
+                        self.predicted_state.world.get_typed(id).unwrap();
                     transform.rotation = msg.rotation;
                     self.predicted_state.world.insert_typed(id, transform);
                 }

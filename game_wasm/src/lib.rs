@@ -28,6 +28,7 @@ pub mod components;
 pub mod encoding;
 pub mod entity;
 pub mod events;
+pub mod hierarchy;
 pub mod inventory;
 pub mod log;
 pub mod math;

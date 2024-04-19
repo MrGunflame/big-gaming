@@ -6,6 +6,7 @@ use game_common::components::{PlayerId, Transform};
 use game_common::entity::EntityId;
 use game_common::events::{ActionEvent, Event, EventQueue, PlayerConnect, PlayerDisconnect};
 use game_common::world::control_frame::ControlFrame;
+use game_common::world::hierarchy::update_global_transform;
 use game_common::world::CellId;
 use game_core::modules::Modules;
 use game_net::message::{
@@ -36,6 +37,8 @@ pub fn tick(state: &mut ServerState) {
         records: &state.modules,
     });
     apply_effects(effects, &mut state.world, &mut state.level);
+
+    update_global_transform(&mut state.world.world);
 
     if cfg!(feature = "physics") {
         step_physics(state);

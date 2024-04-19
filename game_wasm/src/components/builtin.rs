@@ -25,6 +25,7 @@ macro_rules! define_id {
 // Must be kept in sync with `game_common/src/components/mod.rs`.
 define_id! {
     TRANSFORM => 1,
+    GLOBAL_TRANSFORM => 11,
 
     // Rendering
     MESH_INSTANCE => 2,
@@ -39,6 +40,7 @@ define_id! {
 
     // Game
     INVENTORY => 9,
+    CHILDREN => 10,
 }
 
 #[derive(Clone, Debug)]
@@ -338,4 +340,11 @@ impl Decode for Axis {
             }),
         }
     }
+}
+
+#[derive(Copy, Clone, Debug, Default, PartialEq, Encode, Decode)]
+pub struct GlobalTransform(pub Transform);
+
+impl Component for GlobalTransform {
+    const ID: RecordReference = GLOBAL_TRANSFORM;
 }

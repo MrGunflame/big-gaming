@@ -234,7 +234,7 @@ impl Pipeline {
         for (handle, body) in self.bodies.iter() {
             let entity = self.body_handles.get2(handle).unwrap();
 
-            let mut transform = world.get_typed::<Transform>(entity);
+            let mut transform = world.get_typed::<Transform>(entity).unwrap();
             transform.translation = vec3(*body.translation());
             transform.rotation = quat(*body.rotation());
             world.insert_typed(entity, transform);
@@ -517,7 +517,7 @@ mod tests {
         let mut pipeline = Pipeline::new();
         pipeline.step(&mut world, &mut events);
 
-        let transform = world.get_typed::<Transform>(entity);
+        let transform = world.get_typed::<Transform>(entity).unwrap();
         assert_ne!(transform, Transform::IDENTITY);
     }
 }

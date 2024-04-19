@@ -1,9 +1,17 @@
 @group(0) @binding(0)
 var<uniform> camera: Camera;
 
+@group(0) @binding(1)
+var<storage> lines: array<Vertex>;
+
+struct Vertex {
+    position: vec3<f32>,
+    color: vec4<f32>,
+}
+
 struct VertexInput {
-    @location(0) pos: vec3<f32>,
-    @location(1) color: vec4<f32>,
+    @builtin(vertex_index) vertex_index: u32,
+    @builtin(instance_index) instance_index: u32,
 }
 
 struct VertexOutput {
@@ -18,10 +26,11 @@ struct Camera {
 
 @vertex
 fn vs_main(in: VertexInput) -> VertexOutput {
-    var out: VertexOutput;
+    let vertex = lines[in.instance_index * 2u + in.vertex_index];
 
-    out.clip_position = camera.view_proj * vec4<f32>(in.pos, 1.0);
-    out.color = in.color;
+    var out: VertexOutput;
+    out.clip_position = camera.view_proj * vec4<f32>(vertex.position, 1.0);
+    out.color = vertex.color;
 
     return out;
 }

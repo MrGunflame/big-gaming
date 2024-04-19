@@ -9,10 +9,11 @@ use std::net::ToSocketAddrs;
 use std::time::Duration;
 
 use game_common::components::actions::ActionId;
-use game_common::components::{PrimaryCamera, Transform};
+use game_common::components::{GlobalTransform, PrimaryCamera, Transform};
 use game_common::entity::EntityId;
 use game_common::module::ModuleId;
 use game_common::record::RecordReference;
+use game_common::world::hierarchy::update_global_transform;
 use game_common::world::World;
 use game_core::counter::{Interval, UpdateCounter};
 use game_core::modules::Modules;
@@ -116,7 +117,7 @@ impl GameWorldState {
         *world = self.world.state().world.clone();
 
         self.primary_camera = Some(world.spawn());
-        world.insert_typed(self.primary_camera.unwrap(), Transform::default());
+        world.insert_typed(self.primary_camera.unwrap(), GlobalTransform::default());
         world.insert_typed(self.primary_camera.unwrap(), PrimaryCamera);
 
         while let Some(cmd) = buf.pop() {
@@ -153,7 +154,7 @@ impl GameWorldState {
 
         if self.camera_controller.mode != CameraMode::Detached {
             if self.world.state().world.contains(self.host) {
-                let transform: Transform = self.world.state().world.get_typed(self.host);
+                let transform: Transform = self.world.state().world.get_typed(self.host).unwrap();
                 self.camera_controller.transform = transform;
             }
         } else {
@@ -163,7 +164,7 @@ impl GameWorldState {
         }
 
         if let Some(id) = self.primary_camera {
-            world.insert_typed(id, self.camera_controller.transform);
+            world.insert_typed(id, GlobalTransform(self.camera_controller.transform));
         }
     }
 
@@ -210,7 +211,12 @@ impl GameWorldState {
             return;
         }
 
-        let mut transform = self.world.state().world.get_typed::<Transform>(self.host);
+        let mut transform = self
+            .world
+            .state()
+            .world
+            .get_typed::<Transform>(self.host)
+            .unwrap();
         transform = update_rotation(transform, event);
         // We must update the rotation, otherwise following mouse motion events
         // will get overwritten by previous events in the same frame.
@@ -297,10 +303,10 @@ impl GameWorldState {
                     self.cursor_pinned.pin(cursor);
                 }
                 None => {
-                    let camera: Camera = self.world.state().world.get_typed(self.host);
+                    let camera: Camera = self.world.state().world.get_typed(self.host).unwrap();
 
                     // Ignore if the current player entity has no inventory.
-                    let inventory = self
+                    let Ok(inventory) = self
                         .world
                         .state()
                         .world
