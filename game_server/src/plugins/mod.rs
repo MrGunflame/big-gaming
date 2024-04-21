@@ -47,13 +47,6 @@ pub fn tick(state: &mut ServerState) {
     // Push snapshots last always
     let cf = *state.state.control_frame.lock();
     update_snapshots(&state.state.conns, &state.world, &state.level, cf);
-
-    // state
-    //     .scene
-    //     .spawner
-    //     .update(&mut state.scene.graph, &state.pool, None);
-    // state.scene.graph.compute_transform();
-    // state.scene.graph.clear_trackers();
 }
 
 fn apply_effects(effects: Effects, world: &mut WorldState, level: &mut Level) {

@@ -34,6 +34,5 @@ serde = { version = "1.0.160", features = ["derive"] }
 glam = "0.24.0"
 game_data = { version = "0.1.0", path = "../game_data" }
 game_worldgen = { version = "0.1.0", path = "../game_worldgen" }
-game_scene = { version = "0.1.0", path = "../game_scene" }
 game_tasks = { version = "0.1.0", path = "../game_tasks" }
 game_wasm = { version = "0.1.0", path = "../game_wasm" }
