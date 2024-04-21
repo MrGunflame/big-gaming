@@ -1,7 +1,6 @@
 pub mod data;
 pub mod query;
 
-mod control;
 mod convert;
 mod handle;
 mod pipeline;
@@ -9,9 +8,8 @@ mod pipeline;
 use std::collections::HashMap;
 use std::fmt::Debug;
 
-use control::CharacterController;
 use convert::{point, quat, rotation, vec3, vector};
-use game_common::components::{Axis, ColliderShape, RigidBody, RigidBodyKind, Transform};
+use game_common::components::{Axis, Children, ColliderShape, RigidBody, RigidBodyKind, Transform};
 use game_common::entity::EntityId;
 use game_common::events::{self, Event, EventQueue};
 use game_common::world::{QueryWrapper, World};
@@ -45,11 +43,13 @@ pub struct Pipeline {
     // Our shit
     /// Set of rigid bodies attached to entities.
     body_handles: HandleMap<RigidBodyHandle>,
+    /// Child => Parent
+    body_parents: HashMap<EntityId, EntityId>,
+    body_children: HashMap<EntityId, Vec<EntityId>>,
     /// Set of colliders attached to entities.
     // We need the collider for collision events.
     collider_handles: HandleMap<ColliderHandle>,
     event_handler: CollisionHandler,
-    controllers: HashMap<RigidBodyHandle, CharacterController>,
 }
 
 impl Pipeline {
@@ -75,8 +75,9 @@ impl Pipeline {
             body_handles: HandleMap::new(),
             event_handler: CollisionHandler::new(),
             collider_handles: HandleMap::new(),
-            controllers: HashMap::new(),
             query_pipeline: QueryPipeline::new(),
+            body_parents: HashMap::new(),
+            body_children: HashMap::new(),
         }
     }
 
@@ -102,7 +103,7 @@ impl Pipeline {
             &self.event_handler,
         );
 
-        self.drive_controllers();
+        self.query_pipeline.update(&self.bodies, &self.colliders);
 
         self.emit_events(events);
         self.write_back(world);
@@ -116,6 +117,8 @@ impl Pipeline {
         for (entity, QueryWrapper((transform, rigid_body))) in
             world.query::<QueryWrapper<(Transform, RigidBody)>>()
         {
+            let children: Children = world.get_typed(entity).unwrap_or_default();
+
             let Some(handle) = self.body_handles.get(entity) else {
                 let kind = match rigid_body.kind {
                     RigidBodyKind::Fixed => RigidBodyType::Fixed,
@@ -148,10 +151,36 @@ impl Pipeline {
 
             // FIXME: Handle updated rigid body parameters.
 
+            // Remove previous children before updating.
+            if let Some(children) = self.body_children.remove(&entity) {
+                for children in children {
+                    self.body_parents.remove(&children);
+                }
+            }
+
+            self.body_children.insert(
+                entity,
+                children
+                    .get()
+                    .iter()
+                    .map(|v| EntityId::from_raw(v.into_raw()))
+                    .collect(),
+            );
+            for children in children.get() {
+                self.body_parents
+                    .insert(EntityId::from_raw(children.into_raw()), entity);
+            }
+
             despawned_entities.remove(entity);
         }
 
         for (entity, handle) in despawned_entities.iter() {
+            if let Some(children) = self.body_children.remove(&entity) {
+                for children in children {
+                    self.body_parents.remove(&children);
+                }
+            }
+
             self.body_handles.remove(entity);
             self.bodies.remove(
                 handle,
@@ -175,6 +204,11 @@ impl Pipeline {
             world.query::<QueryWrapper<(Transform, game_common::components::Collider)>>()
         {
             let Some(handle) = self.collider_handles.get(entity) else {
+                let Some(body) = self.get_collider_parent(entity) else {
+                    tracing::warn!("collider for entity {:?} is missing rigid body", entity);
+                    continue;
+                };
+
                 let mut builder = match collider.shape {
                     ColliderShape::Cuboid(cuboid) => {
                         ColliderBuilder::cuboid(cuboid.hx, cuboid.hy, cuboid.hz)
@@ -195,7 +229,6 @@ impl Pipeline {
                 let handle = self.colliders.insert(builder);
                 self.collider_handles.insert(entity, handle);
 
-                let body = self.body_handles.get(entity).unwrap();
                 self.colliders
                     .set_parent(handle, Some(body), &mut self.bodies);
 
@@ -214,9 +247,21 @@ impl Pipeline {
                 state.set_rotation(rotation);
             }
 
-            // TODO: Handle updated collider parameters.
+            if state.friction() != collider.friction {
+                state.set_friction(collider.friction);
+            }
 
-            let body = self.body_handles.get(entity).unwrap();
+            if state.restitution() != collider.restitution {
+                state.set_restitution(collider.restitution);
+            }
+
+            // TODO: Handle updated collider shape.
+
+            let Some(body) = self.get_collider_parent(entity) else {
+                tracing::warn!("collider for entity {:?} is missing rigid body", entity);
+                continue;
+            };
+
             self.colliders
                 .set_parent(handle, Some(body), &mut self.bodies);
 
@@ -257,23 +302,16 @@ impl Pipeline {
         events.clear();
     }
 
-    fn drive_controllers(&mut self) {
-        self.query_pipeline.update(&self.bodies, &self.colliders);
-
-        for (handle, controller) in &self.controllers {
-            let collider = self.bodies.get(*handle).unwrap().colliders()[0];
-
-            controller.apply_gravity(
-                self.integration_parameters.dt,
-                &mut self.bodies,
-                &self.colliders,
-                *handle,
-                collider,
-                &self.query_pipeline,
-            );
-
-            // Gravity may move an entity, so we need to rebuild the pipeline.
-            self.query_pipeline.update(&self.bodies, &self.colliders);
+    fn get_collider_parent(&self, entity: EntityId) -> Option<RigidBodyHandle> {
+        // Select a rigid body for the collider. If the entity has a rigid body
+        // it is preferred, otherwise we select the rigid body from the parent
+        // entity.
+        match self.body_handles.get(entity) {
+            Some(handle) => Some(handle),
+            None => match self.body_parents.get(&entity) {
+                Some(parent) => Some(self.body_handles.get(*parent).unwrap()),
+                None => None,
+            },
         }
     }
 
