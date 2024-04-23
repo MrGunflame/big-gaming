@@ -8,7 +8,7 @@ use std::sync::mpsc;
 
 use bitflags::bitflags;
 use game_common::collections::string::SmallStr;
-use game_common::components::components::Components;
+use game_common::components::components::{Components, RawComponent};
 use game_common::components::{Color, PointLight, PrimaryCamera};
 use game_common::components::{MeshInstance, Transform};
 use game_common::entity::EntityId;
@@ -21,6 +21,7 @@ use game_render::Renderer;
 use game_ui::reactive::{Scope, WriteSignal};
 use game_ui::style::{Direction, Justify, Style};
 use game_ui::widgets::Container;
+use game_wasm::world::RecordReference;
 use game_window::events::WindowEvent;
 use game_window::windows::WindowId;
 use glam::{Quat, Vec2, Vec3};
@@ -350,11 +351,26 @@ impl WorldWindowState {
                         }
                     });
                 }
+                Event::UpdateComponent(id, component) => {
+                    self.state.entities.with(|entities| {
+                        for entity in entities.iter().filter(|e| e.is_selected) {
+                            world.insert(entity.id, id, component.clone());
+                        }
+                    });
+
+                    update_components_panel = true;
+                }
             }
         }
 
         if update_components_panel {
-            let selected_entities = self.state.entities.get();
+            let selected_entities = self
+                .state
+                .entities
+                .get()
+                .into_iter()
+                .filter(|v| v.is_selected)
+                .collect::<Vec<_>>();
 
             let components = if selected_entities.is_empty() {
                 Components::new()
@@ -412,11 +428,13 @@ fn build_ui(cx: &Scope, writer: mpsc::Sender<Event>) -> State {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Clone, Debug)]
 enum Event {
     Spawn,
     /// Select or unselect entity.
     SelectEntity(EntityId),
+    /// Update component on selected entities.
+    UpdateComponent(RecordReference, RawComponent),
 }
 
 #[derive(Clone, Debug, Default)]

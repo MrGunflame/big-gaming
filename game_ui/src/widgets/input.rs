@@ -66,7 +66,6 @@ impl Widget for Input {
                 cx.create_effect(move || {
                     let value = reader.get();
 
-                    set_value.update(|val| *val = value.clone());
                     set_buffer.update(|buf| {
                         buf.string = value;
                         // We don't know if the new string has the same
@@ -178,9 +177,10 @@ impl Widget for Input {
         });
 
         {
-            let value = buffer.clone();
+            let buffer = buffer.clone();
             cx.create_effect(move || {
-                let buffer = value.get();
+                let buffer = buffer.get();
+                set_value.set(buffer.string.clone());
 
                 // Only update if the user has caused the change. This is
                 // important because we don't want to call `on_change` if
