@@ -2,11 +2,12 @@ use std::ops::Deref;
 
 use game_input::keyboard::KeyCode;
 use game_window::cursor::CursorIcon;
+use image::Rgba;
 
 use crate::events::{ElementEventHandlers, EventHandlers};
 use crate::reactive::{Node, Scope};
 use crate::render::{Element, ElementBody};
-use crate::style::Style;
+use crate::style::{Background, BorderRadius, Padding, Size, Style};
 
 use super::text::Text;
 use super::{Callback, ValueProvider, Widget};
@@ -19,9 +20,16 @@ pub struct Input {
 
 impl Input {
     pub fn new() -> Self {
+        let default_style = Style {
+            background: Background::Color(Rgba([0x2c, 0x2a, 0x35, 0xff])),
+            padding: Padding::splat(Size::Pixels(5)),
+            border_radius: BorderRadius::splat(Size::Pixels(2)),
+            ..Default::default()
+        };
+
         Self {
             value: ValueProvider::Static(String::new()),
-            style: Style::default(),
+            style: default_style,
             on_change: None,
         }
     }

@@ -1,13 +1,14 @@
+use std::fmt::Display;
+use std::str::FromStr;
 use std::sync::mpsc;
 
 use game_common::components::components::{Components, RawComponent};
 use game_common::components::{Decode, DirectionalLight, MeshInstance, Transform};
 use game_ui::reactive::{ReadSignal, Scope};
-use game_ui::style::{Background, Bounds, Growth, Padding, Size, SizeVec2, Style};
-use game_ui::widgets::{Button, Container, Input, Text, Widget};
+use game_ui::style::{Background, Bounds, Color, Direction, Growth, Size, SizeVec2, Style};
+use game_ui::widgets::{Button, Callback, Container, Input, Text, Widget};
 use game_wasm::components::Component;
 use game_wasm::encoding::BinaryWriter;
-use image::Rgba;
 
 use super::Event;
 
@@ -50,51 +51,112 @@ impl Widget for ComponentsPanel {
                         let reader = component.reader();
                         let transform = Transform::decode(reader).unwrap();
 
-                        let style = Style {
-                            padding: Padding::splat(Size::Pixels(2)),
-                            background: Background::RED,
-                            ..Default::default()
-                        };
+                        let translation_row =
+                            component_container.append(Container::new().style(Style {
+                                direction: Direction::Column,
+                                ..Default::default()
+                            }));
 
                         for (index, val) in transform.translation.to_array().into_iter().enumerate()
                         {
                             let writer = self.writer.clone();
 
-                            root.append(
-                                Input::new()
-                                    .value(val.to_string())
-                                    .style(style.clone())
-                                    .on_change(move |value: String| {
-                                        let mut transform = transform;
+                            let (color, label) = match index {
+                                0 => (COLOR_X, "X"),
+                                1 => (COLOR_Y, "Y"),
+                                2 => (COLOR_Z, "Z"),
+                                _ => unreachable!(),
+                            };
 
-                                        if let Ok(value) = value.parse::<f32>() {
-                                            match index {
-                                                0 => transform.translation.x = value,
-                                                1 => transform.translation.y = value,
-                                                2 => transform.translation.z = value,
-                                                _ => unreachable!(),
-                                            }
+                            display_value(&translation_row, color, label, val, move |value| {
+                                let mut transform = transform;
 
-                                            let (fields, data) =
-                                                BinaryWriter::new().encoded(&transform);
-                                            let component = RawComponent::new(data, fields);
+                                match index {
+                                    0 => transform.translation.x = value,
+                                    1 => transform.translation.y = value,
+                                    2 => transform.translation.z = value,
+                                    _ => unreachable!(),
+                                }
 
-                                            writer
-                                                .send(Event::UpdateComponent(
-                                                    Transform::ID,
-                                                    component,
-                                                ))
-                                                .unwrap();
-                                        }
-                                    }),
-                            );
+                                let (fields, data) = BinaryWriter::new().encoded(&transform);
+                                let component = RawComponent::new(data, fields);
+
+                                writer
+                                    .send(Event::UpdateComponent(Transform::ID, component))
+                                    .unwrap();
+                            });
                         }
 
-                        root.append(Input::new().value(transform.translation.x.to_string()));
-                        root.append(Input::new().value(transform.translation.y.to_string()));
-                        root.append(Input::new().value(transform.translation.z.to_string()));
+                        let rotation_row =
+                            component_container.append(Container::new().style(Style {
+                                direction: Direction::Column,
+                                ..Default::default()
+                            }));
 
-                        root.append(Input::new().value(transform.rotation.x.to_string()));
+                        for (index, val) in transform.rotation.to_array().into_iter().enumerate() {
+                            let writer = self.writer.clone();
+
+                            let (color, label) = match index {
+                                0 => (COLOR_X, "X"),
+                                1 => (COLOR_Y, "Y"),
+                                2 => (COLOR_Z, "Z"),
+                                3 => (COLOR_W, "W"),
+                                _ => unreachable!(),
+                            };
+
+                            display_value(&rotation_row, color, label, val, move |value| {
+                                let mut transform = transform;
+
+                                match index {
+                                    0 => transform.rotation.x = value,
+                                    1 => transform.rotation.y = value,
+                                    2 => transform.rotation.z = value,
+                                    3 => transform.rotation.w = value,
+                                    _ => unreachable!(),
+                                }
+
+                                let (fields, data) = BinaryWriter::new().encoded(&transform);
+                                let component = RawComponent::new(data, fields);
+
+                                writer
+                                    .send(Event::UpdateComponent(Transform::ID, component))
+                                    .unwrap();
+                            });
+                        }
+
+                        let scale_row = component_container.append(Container::new().style(Style {
+                            direction: Direction::Column,
+                            ..Default::default()
+                        }));
+
+                        for (index, val) in transform.scale.to_array().into_iter().enumerate() {
+                            let writer = self.writer.clone();
+
+                            let (color, label) = match index {
+                                0 => (COLOR_X, "X"),
+                                1 => (COLOR_Y, "Y"),
+                                2 => (COLOR_Z, "Z"),
+                                _ => unreachable!(),
+                            };
+
+                            display_value(&scale_row, color, label, val, move |value| {
+                                let mut transform = transform;
+
+                                match index {
+                                    0 => transform.scale.x = value,
+                                    1 => transform.scale.y = value,
+                                    2 => transform.scale.z = value,
+                                    _ => unreachable!(),
+                                }
+
+                                let (fields, data) = BinaryWriter::new().encoded(&transform);
+                                let component = RawComponent::new(data, fields);
+
+                                writer
+                                    .send(Event::UpdateComponent(Transform::ID, component))
+                                    .unwrap();
+                            });
+                        }
                     }
                     MeshInstance::ID => {
                         component_container.append(Text::new().text("Mesh Instance".to_string()));
@@ -125,4 +187,52 @@ impl Widget for ComponentsPanel {
 
         cx.clone()
     }
+}
+
+macro_rules! define_color {
+    ($($id:ident = $val:expr),*$(,)?) => {
+        $(
+            const $id: Color = match Color::from_hex($val) {
+                Ok(v) => v,
+                Err(_) => panic!("invalid hex"),
+            };
+        )*
+    };
+}
+
+define_color! {
+    COLOR_X = "d12e19",
+    COLOR_Y = "26cc29",
+    COLOR_Z = "2692cc",
+    COLOR_W = "7b24c1",
+}
+
+fn display_value<T, F>(cx: &Scope, color: Color, label: &str, value: T, on_change: F)
+where
+    T: Display + FromStr + 'static,
+    F: Into<Callback<T>>,
+{
+    let on_change = on_change.into();
+
+    let root = cx.append(Container::new().style(Style {
+        direction: Direction::Column,
+        ..Default::default()
+    }));
+
+    let color_box = root.append(Container::new().style(Style {
+        background: Background::Color(color.0),
+        growth: Growth::y(1.0),
+        ..Default::default()
+    }));
+    color_box.append(Text::new().text(label.to_string()));
+
+    root.append(
+        Input::new()
+            .value(value.to_string())
+            .on_change(move |value: String| {
+                if let Ok(value) = value.parse::<T>() {
+                    on_change(value);
+                }
+            }),
+    );
 }
