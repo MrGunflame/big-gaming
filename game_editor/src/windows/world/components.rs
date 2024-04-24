@@ -1,9 +1,12 @@
+use std::f32::consts::E;
 use std::fmt::Display;
 use std::str::FromStr;
 use std::sync::mpsc;
 
 use game_common::components::components::{Components, RawComponent};
-use game_common::components::{Decode, DirectionalLight, MeshInstance, Transform};
+use game_common::components::{
+    Collider, Decode, DirectionalLight, MeshInstance, PointLight, Transform,
+};
 use game_ui::reactive::{ReadSignal, Scope};
 use game_ui::style::{Background, Bounds, Color, Direction, Growth, Size, SizeVec2, Style};
 use game_ui::widgets::{Button, Callback, Container, Input, Text, Widget};
@@ -164,7 +167,21 @@ impl Widget for ComponentsPanel {
                         let reader = component.reader();
                         let instance = MeshInstance::decode(reader).unwrap();
 
-                        root.append(Input::new().value(instance.path.clone()));
+                        let writer = self.writer.clone();
+
+                        root.append(Input::new().value(instance.path.clone()).on_change(
+                            move |value: String| {
+                                let mut instance = instance.clone();
+                                instance.path = value;
+
+                                let (fields, data) = BinaryWriter::new().encoded(&instance);
+                                let component = RawComponent::new(data, fields);
+
+                                writer
+                                    .send(Event::UpdateComponent(MeshInstance::ID, component))
+                                    .unwrap();
+                            },
+                        ));
                     }
                     DirectionalLight::ID => {
                         component_container
@@ -176,6 +193,48 @@ impl Widget for ComponentsPanel {
                         //COLOR
                         // root.append();
                         root.append(Input::new().value(light.illuminance.to_string()));
+                    }
+                    PointLight::ID => {
+                        component_container.append(Text::new().text("Point Light".to_string()));
+
+                        let reader = component.reader();
+                        let light = PointLight::decode(reader).unwrap();
+
+                        let writer = self.writer.clone();
+                        root.append(Input::new().value(light.intensity.to_string()).on_change(
+                            move |value: String| {
+                                let mut light = light;
+
+                                if let Ok(value) = value.parse() {
+                                    light.intensity = value;
+
+                                    let (fields, data) = BinaryWriter::new().encoded(&light);
+                                    let component = RawComponent::new(data, fields);
+
+                                    writer
+                                        .send(Event::UpdateComponent(PointLight::ID, component))
+                                        .unwrap();
+                                }
+                            },
+                        ));
+
+                        let writer = self.writer.clone();
+                        root.append(Input::new().value(light.radius.to_string()).on_change(
+                            move |value: String| {
+                                let mut light = light;
+
+                                if let Ok(value) = value.parse() {
+                                    light.radius = value;
+
+                                    let (fields, data) = BinaryWriter::new().encoded(&light);
+                                    let component = RawComponent::new(data, fields);
+
+                                    writer
+                                        .send(Event::UpdateComponent(PointLight::ID, component))
+                                        .unwrap();
+                                }
+                            },
+                        ));
                     }
                     _ => (),
                 }
