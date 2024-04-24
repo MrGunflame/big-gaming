@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::num::NonZeroU32;
 use std::sync::Arc;
 
 use bytemuck::{Pod, Zeroable};
@@ -7,19 +8,18 @@ use game_render::graph::{Node, RenderContext};
 use game_tracing::trace_span;
 use glam::UVec2;
 use parking_lot::{Mutex, RwLock};
-use wgpu::util::{BufferInitDescriptor, DeviceExt};
+use wgpu::util::{BufferInitDescriptor, DeviceExt, DrawIndexedIndirectArgs};
 use wgpu::{
-    AddressMode, BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout,
-    BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindingResource, BindingType, BlendState,
-    Buffer, BufferAddress, BufferUsages, ColorTargetState, ColorWrites, Device, Extent3d, Face,
-    FilterMode, FragmentState, FrontFace, ImageCopyTexture, ImageDataLayout, IndexFormat, LoadOp,
-    MultisampleState, Operations, Origin3d, PipelineLayoutDescriptor, PolygonMode, PrimitiveState,
-    PrimitiveTopology, Queue, RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline,
+    AddressMode, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
+    BindGroupLayoutEntry, BindingResource, BindingType, BlendState, Buffer, BufferBindingType,
+    BufferUsages, ColorTargetState, ColorWrites, Device, Extent3d, Face, FilterMode, FragmentState,
+    FrontFace, ImageCopyTexture, ImageDataLayout, IndexFormat, LoadOp, MultisampleState,
+    Operations, Origin3d, PipelineLayoutDescriptor, PolygonMode, PrimitiveState, PrimitiveTopology,
+    Queue, RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline,
     RenderPipelineDescriptor, Sampler, SamplerBindingType, SamplerDescriptor,
     ShaderModuleDescriptor, ShaderSource, ShaderStages, StoreOp, TextureAspect, TextureDescriptor,
-    TextureDimension, TextureFormat, TextureSampleType, TextureUsages, TextureViewDescriptor,
-    TextureViewDimension, VertexAttribute, VertexBufferLayout, VertexFormat, VertexState,
-    VertexStepMode,
+    TextureDimension, TextureFormat, TextureSampleType, TextureUsages, TextureView,
+    TextureViewDescriptor, TextureViewDimension, VertexState,
 };
 
 use super::remap::remap;
@@ -27,30 +27,51 @@ use super::DrawCommand;
 
 const UI_SHADER: &str = include_str!("../../shaders/ui.wgsl");
 
+/// The default texture array capacity.
+const DEFAULT_TEXTURE_CAPACITY: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(8) };
+
+/// The factor at which the texture array capacity grows. Must be > 1.
+const CAPACITY_GROWTH_FACTOR: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(2) };
+
 #[derive(Debug)]
 struct UiPipeline {
     bind_group_layout: BindGroupLayout,
     pipeline: RenderPipeline,
     sampler: Sampler,
+    capacity: NonZeroU32,
 }
 
 impl UiPipeline {
     pub fn new(device: &Device) -> Self {
+        Self::new_with_capacity(device, DEFAULT_TEXTURE_CAPACITY)
+    }
+
+    fn new_with_capacity(device: &Device, capacity: NonZeroU32) -> Self {
         let bind_group_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
             label: Some("ui_layout"),
             entries: &[
                 BindGroupLayoutEntry {
                     binding: 0,
+                    visibility: ShaderStages::VERTEX,
+                    ty: BindingType::Buffer {
+                        ty: BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                BindGroupLayoutEntry {
+                    binding: 1,
                     visibility: ShaderStages::FRAGMENT,
                     ty: BindingType::Texture {
                         sample_type: TextureSampleType::Float { filterable: true },
                         view_dimension: TextureViewDimension::D2,
                         multisampled: false,
                     },
-                    count: None,
+                    count: Some(capacity),
                 },
                 BindGroupLayoutEntry {
-                    binding: 1,
+                    binding: 2,
                     visibility: ShaderStages::FRAGMENT,
                     ty: BindingType::Sampler(SamplerBindingType::Filtering),
                     count: None,
@@ -75,7 +96,7 @@ impl UiPipeline {
             vertex: VertexState {
                 module: &shader,
                 entry_point: "vs_main",
-                buffers: &[Vertex::layout()],
+                buffers: &[],
             },
             fragment: Some(FragmentState {
                 module: &shader,
@@ -117,6 +138,7 @@ impl UiPipeline {
             bind_group_layout,
             pipeline,
             sampler,
+            capacity,
         }
     }
 }
@@ -125,43 +147,21 @@ impl UiPipeline {
 #[derive(Copy, Clone, Debug, Zeroable, Pod)]
 #[repr(C)]
 struct Vertex {
-    position: [f32; 3],
-    uv: [f32; 2],
     color: [f32; 4],
-}
-
-impl Vertex {
-    fn layout<'a>() -> VertexBufferLayout<'a> {
-        VertexBufferLayout {
-            array_stride: std::mem::size_of::<Self>() as BufferAddress,
-            step_mode: VertexStepMode::Vertex,
-            attributes: &[
-                VertexAttribute {
-                    offset: 0,
-                    shader_location: 0,
-                    format: VertexFormat::Float32x3,
-                },
-                VertexAttribute {
-                    offset: std::mem::size_of::<[f32; 3]>() as BufferAddress,
-                    shader_location: 1,
-                    format: VertexFormat::Float32x2,
-                },
-                VertexAttribute {
-                    offset: (std::mem::size_of::<[f32; 3]>() + std::mem::size_of::<[f32; 2]>())
-                        as BufferAddress,
-                    shader_location: 2,
-                    format: VertexFormat::Float32x4,
-                },
-            ],
-        }
-    }
+    position: [f32; 3],
+    texture_index: u32,
+    uv: [f32; 2],
+    _pad0: [u32; 2],
 }
 
 #[derive(Debug)]
 pub struct UiPass {
-    pipeline: UiPipeline,
+    pipeline: Mutex<UiPipeline>,
     elements: Arc<RwLock<HashMap<RenderTarget, Vec<DrawCommand>>>>,
-    gpu_elements: Mutex<HashMap<RenderTarget, Vec<GpuElement>>>,
+    vertex_buffer: Mutex<Vec<u8>>,
+    texture_buffer: Mutex<Vec<TextureView>>,
+    instance_count: Mutex<u32>,
+    index_buffer: Buffer,
 }
 
 impl UiPass {
@@ -169,10 +169,19 @@ impl UiPass {
         device: &Device,
         elems: Arc<RwLock<HashMap<RenderTarget, Vec<DrawCommand>>>>,
     ) -> Self {
+        let index_buffer = device.create_buffer_init(&BufferInitDescriptor {
+            label: None,
+            contents: bytemuck::cast_slice(INDICES),
+            usage: BufferUsages::INDEX,
+        });
+
         Self {
-            pipeline: UiPipeline::new(device),
+            pipeline: Mutex::new(UiPipeline::new(device)),
             elements: elems,
-            gpu_elements: Mutex::new(HashMap::new()),
+            vertex_buffer: Mutex::new(Vec::new()),
+            texture_buffer: Mutex::new(Vec::new()),
+            instance_count: Mutex::new(0),
+            index_buffer,
         }
     }
 
@@ -183,22 +192,30 @@ impl UiPass {
         queue: &Queue,
         viewport_size: UVec2,
     ) {
-        let mut gpu_elements = self.gpu_elements.lock();
-        gpu_elements.clear();
+        let mut vertex_buffer = self.vertex_buffer.lock();
+        let mut texture_buffer = self.texture_buffer.lock();
+        let mut instance_count = self.instance_count.lock();
+
+        vertex_buffer.clear();
+        texture_buffer.clear();
+        *instance_count = 0;
 
         let draw_cmds = self.elements.read();
         let Some(cmds) = draw_cmds.get(&target) else {
-            gpu_elements.insert(target, Vec::new());
             return;
         };
 
-        let mut elems = Vec::new();
         for cmd in cmds {
-            let elem = GpuElement::new(device, queue, &self.pipeline, cmd, viewport_size);
-            elems.push(elem);
+            create_element(
+                cmd,
+                viewport_size,
+                &mut vertex_buffer,
+                &mut texture_buffer,
+                device,
+                queue,
+            );
+            *instance_count += 1;
         }
-
-        gpu_elements.insert(target, elems);
     }
 }
 
@@ -207,8 +224,80 @@ impl Node for UiPass {
         let _span = trace_span!("UiPass::render").entered();
 
         self.update_buffers(ctx.render_target, ctx.device, ctx.queue, ctx.size);
-        let elements = self.gpu_elements.lock();
-        let elements = elements.get(&ctx.render_target).unwrap();
+
+        let mut pipeline = self.pipeline.lock();
+        let vertex_buffer = self.vertex_buffer.lock();
+        let texture_buffer = self.texture_buffer.lock();
+        let instance_count = *self.instance_count.lock();
+
+        if instance_count == 0 {
+            return;
+        }
+
+        // We have to recreate the pipeline with increased capacity if we have
+        // more textures than we can store with the current pipeline layout.
+        if texture_buffer.len() as u32 > pipeline.capacity.get() {
+            let mut new_capacity = pipeline.capacity;
+            while new_capacity.get() < texture_buffer.len() as u32 {
+                new_capacity = match new_capacity.checked_mul(CAPACITY_GROWTH_FACTOR) {
+                    Some(v) => v,
+                    None => {
+                        // FIXME: This case is pretty much unreachable because we will
+                        // probably run out of VRAM before we reach u32::MAX, but we
+                        // should handle this properly anyways.
+                        // We can, for example split the render pass into multiple passes
+                        // that render u32::MAX instances each.
+                        panic!("UI texture limit reached");
+                    }
+                };
+            }
+
+            tracing::debug!("recreating UiPipeline with capacity {}", new_capacity);
+            *pipeline = UiPipeline::new_with_capacity(&ctx.device, new_capacity);
+        }
+
+        let vertex_buffer = ctx.device.create_buffer_init(&BufferInitDescriptor {
+            label: None,
+            contents: &vertex_buffer,
+            usage: BufferUsages::STORAGE,
+        });
+
+        let mut texture_views: Vec<&TextureView> = texture_buffer.iter().collect();
+        while texture_views.len() as u32 != pipeline.capacity.get() {
+            texture_views.push(&texture_buffer[0]);
+        }
+
+        let bind_group = ctx.device.create_bind_group(&BindGroupDescriptor {
+            label: None,
+            layout: &pipeline.bind_group_layout,
+            entries: &[
+                BindGroupEntry {
+                    binding: 0,
+                    resource: vertex_buffer.as_entire_binding(),
+                },
+                BindGroupEntry {
+                    binding: 1,
+                    resource: BindingResource::TextureViewArray(&texture_views),
+                },
+                BindGroupEntry {
+                    binding: 2,
+                    resource: BindingResource::Sampler(&pipeline.sampler),
+                },
+            ],
+        });
+
+        let indirect_buffer = ctx.device.create_buffer_init(&BufferInitDescriptor {
+            label: None,
+            contents: DrawIndexedIndirectArgs {
+                index_count: INDICES.len() as u32,
+                instance_count,
+                first_index: 0,
+                base_vertex: 0,
+                first_instance: 0,
+            }
+            .as_bytes(),
+            usage: BufferUsages::INDIRECT,
+        });
 
         let mut render_pass = ctx.encoder.begin_render_pass(&RenderPassDescriptor {
             label: Some("ui_pass"),
@@ -225,142 +314,105 @@ impl Node for UiPass {
             timestamp_writes: None,
         });
 
-        render_pass.set_pipeline(&self.pipeline.pipeline);
-
-        for elem in elements {
-            render_pass.set_bind_group(0, &elem.bind_group, &[]);
-            render_pass.set_vertex_buffer(0, elem.vertices.slice(..));
-            render_pass.set_index_buffer(elem.indices.slice(..), IndexFormat::Uint32);
-
-            render_pass.draw_indexed(0..elem.num_vertices, 0, 0..1);
-        }
+        render_pass.set_pipeline(&pipeline.pipeline);
+        render_pass.set_index_buffer(self.index_buffer.slice(..), IndexFormat::Uint16);
+        render_pass.set_bind_group(0, &bind_group, &[]);
+        render_pass.draw_indexed_indirect(&indirect_buffer, 0);
     }
 }
 
-#[derive(Debug)]
-struct GpuElement {
-    vertices: Buffer,
-    indices: Buffer,
-    num_vertices: u32,
-    bind_group: BindGroup,
-}
+const INDICES: &[u16] = &[0, 1, 2, 3, 0, 2];
 
-impl GpuElement {
-    fn new(
-        device: &Device,
-        queue: &Queue,
-        pipeline: &UiPipeline,
-        cmd: &DrawCommand,
-        viewport_size: UVec2,
-    ) -> Self {
-        let _span = trace_span!("GpuElement::new").entered();
+fn create_element(
+    cmd: &DrawCommand,
+    viewport_size: UVec2,
+    vertex_buffer: &mut Vec<u8>,
+    texture_buffer: &mut Vec<TextureView>,
+    device: &Device,
+    queue: &Queue,
+) {
+    let _span = trace_span!("create_element").entered();
 
-        if cfg!(debug_assertions) && (cmd.image.height() == 0 || cmd.image.width() == 0) {
-            panic!(
-                "attempted to render a image with zero dimension x={}, y={}",
-                cmd.image.width(),
-                cmd.image.height()
-            );
-        }
-
-        let min = remap(cmd.position.min.as_vec2(), viewport_size.as_vec2());
-        let max = remap(cmd.position.max.as_vec2(), viewport_size.as_vec2());
-
-        let vertices = [
-            Vertex {
-                position: [min.x, min.y, 0.0],
-                uv: [0.0, 0.0],
-                color: cmd.color.as_rgba(),
-            },
-            Vertex {
-                position: [min.x, max.y, 0.0],
-                uv: [0.0, 1.0],
-                color: cmd.color.as_rgba(),
-            },
-            Vertex {
-                position: [max.x, max.y, 0.0],
-                uv: [1.0, 1.0],
-                color: cmd.color.as_rgba(),
-            },
-            Vertex {
-                position: [max.x, min.y, 0.0],
-                uv: [1.0, 0.0],
-                color: cmd.color.as_rgba(),
-            },
-        ];
-        let indices: [u32; 6] = [0, 1, 2, 3, 0, 2];
-
-        let num_vertices = indices.len() as u32;
-
-        let vertices = device.create_buffer_init(&BufferInitDescriptor {
-            label: Some("primitive_element_vertex_buffer"),
-            contents: bytemuck::cast_slice(&vertices),
-            usage: BufferUsages::VERTEX,
-        });
-
-        let indices = device.create_buffer_init(&BufferInitDescriptor {
-            label: Some("primitive_element_index_buffer"),
-            contents: bytemuck::cast_slice(&indices),
-            usage: BufferUsages::INDEX,
-        });
-
-        let texture = device.create_texture(&TextureDescriptor {
-            label: Some("primitive_element_texture"),
-            size: Extent3d {
-                width: cmd.image.width(),
-                height: cmd.image.height(),
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: TextureDimension::D2,
-            format: TextureFormat::Rgba8UnormSrgb,
-            usage: TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST,
-            view_formats: &[],
-        });
-
-        queue.write_texture(
-            ImageCopyTexture {
-                texture: &texture,
-                mip_level: 0,
-                origin: Origin3d::ZERO,
-                aspect: TextureAspect::All,
-            },
-            &cmd.image,
-            ImageDataLayout {
-                offset: 0,
-                bytes_per_row: Some(4 * cmd.image.width()),
-                rows_per_image: Some(cmd.image.height()),
-            },
-            Extent3d {
-                width: cmd.image.width(),
-                height: cmd.image.height(),
-                depth_or_array_layers: 1,
-            },
+    if cfg!(debug_assertions) && (cmd.image.height() == 0 || cmd.image.width() == 0) {
+        panic!(
+            "attempted to render a image with zero dimension x={}, y={}",
+            cmd.image.width(),
+            cmd.image.height()
         );
-
-        let texture_view = texture.create_view(&TextureViewDescriptor::default());
-
-        let bind_group = device.create_bind_group(&BindGroupDescriptor {
-            label: Some("primitive_element_bind_group"),
-            layout: &pipeline.bind_group_layout,
-            entries: &[
-                BindGroupEntry {
-                    binding: 0,
-                    resource: BindingResource::TextureView(&texture_view),
-                },
-                BindGroupEntry {
-                    binding: 1,
-                    resource: BindingResource::Sampler(&pipeline.sampler),
-                },
-            ],
-        });
-
-        Self {
-            vertices,
-            indices,
-            num_vertices,
-            bind_group,
-        }
     }
+
+    let texture = device.create_texture(&TextureDescriptor {
+        label: None,
+        size: Extent3d {
+            width: cmd.image.width(),
+            height: cmd.image.height(),
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: TextureDimension::D2,
+        format: TextureFormat::Rgba8UnormSrgb,
+        usage: TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST,
+        view_formats: &[],
+    });
+
+    queue.write_texture(
+        ImageCopyTexture {
+            texture: &texture,
+            mip_level: 0,
+            origin: Origin3d::ZERO,
+            aspect: TextureAspect::All,
+        },
+        &cmd.image,
+        ImageDataLayout {
+            offset: 0,
+            bytes_per_row: Some(4 * cmd.image.width()),
+            rows_per_image: Some(cmd.image.height()),
+        },
+        Extent3d {
+            width: cmd.image.width(),
+            height: cmd.image.height(),
+            depth_or_array_layers: 1,
+        },
+    );
+
+    let texture_view = texture.create_view(&TextureViewDescriptor::default());
+    let texture_index = texture_buffer.len() as u32;
+    texture_buffer.push(texture_view);
+
+    let min = remap(cmd.position.min.as_vec2(), viewport_size.as_vec2());
+    let max = remap(cmd.position.max.as_vec2(), viewport_size.as_vec2());
+
+    let vertices = [
+        Vertex {
+            position: [min.x, min.y, 0.0],
+            uv: [0.0, 0.0],
+            color: cmd.color.as_rgba(),
+            _pad0: [0; 2],
+            texture_index,
+        },
+        Vertex {
+            position: [min.x, max.y, 0.0],
+            uv: [0.0, 1.0],
+            color: cmd.color.as_rgba(),
+            _pad0: [0; 2],
+            texture_index,
+        },
+        Vertex {
+            position: [max.x, max.y, 0.0],
+            uv: [1.0, 1.0],
+            color: cmd.color.as_rgba(),
+            _pad0: [0; 2],
+            texture_index,
+        },
+        Vertex {
+            position: [max.x, min.y, 0.0],
+            uv: [1.0, 0.0],
+            color: cmd.color.as_rgba(),
+            _pad0: [0; 2],
+            texture_index,
+        },
+    ];
+
+    vertex_buffer.extend(bytemuck::cast_slice(&vertices));
 }
