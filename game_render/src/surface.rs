@@ -154,7 +154,7 @@ fn get_surface_present_mode(modes: &[PresentMode]) -> Option<PresentMode> {
     // TODO: FIFO is always supported, but
     // support other (better) modes is beneficial.
     for mode in modes {
-        if *mode == PresentMode::Fifo {
+        if *mode == PresentMode::Immediate {
             return Some(*mode);
         }
     }

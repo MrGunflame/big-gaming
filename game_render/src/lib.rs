@@ -91,9 +91,12 @@ impl Renderer {
             }))
             .unwrap();
 
+        let features = Features::TEXTURE_BINDING_ARRAY
+            | Features::SAMPLED_TEXTURE_AND_STORAGE_BUFFER_ARRAY_NON_UNIFORM_INDEXING;
+
         let (device, queue) = futures_lite::future::block_on(adapter.request_device(
             &DeviceDescriptor {
-                required_features: Features::default(),
+                required_features: features,
                 required_limits: Limits::default(),
                 label: None,
             },
