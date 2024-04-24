@@ -2,11 +2,12 @@ use std::ops::Deref;
 
 use game_input::keyboard::KeyCode;
 use game_window::cursor::CursorIcon;
+use image::Rgba;
 
 use crate::events::{ElementEventHandlers, EventHandlers};
 use crate::reactive::{Node, Scope};
 use crate::render::{Element, ElementBody};
-use crate::style::Style;
+use crate::style::{Background, BorderRadius, Padding, Size, Style};
 
 use super::text::Text;
 use super::{Callback, ValueProvider, Widget};
@@ -19,9 +20,16 @@ pub struct Input {
 
 impl Input {
     pub fn new() -> Self {
+        let default_style = Style {
+            background: Background::Color(Rgba([0x2c, 0x2a, 0x35, 0xff])),
+            padding: Padding::splat(Size::Pixels(5)),
+            border_radius: BorderRadius::splat(Size::Pixels(2)),
+            ..Default::default()
+        };
+
         Self {
             value: ValueProvider::Static(String::new()),
-            style: Style::default(),
+            style: default_style,
             on_change: None,
         }
     }
@@ -66,7 +74,6 @@ impl Widget for Input {
                 cx.create_effect(move || {
                     let value = reader.get();
 
-                    set_value.update(|val| *val = value.clone());
                     set_buffer.update(|buf| {
                         buf.string = value;
                         // We don't know if the new string has the same
@@ -178,9 +185,10 @@ impl Widget for Input {
         });
 
         {
-            let value = buffer.clone();
+            let buffer = buffer.clone();
             cx.create_effect(move || {
-                let buffer = value.get();
+                let buffer = buffer.get();
+                set_value.set(buffer.string.clone());
 
                 // Only update if the user has caused the change. This is
                 // important because we don't want to call `on_change` if

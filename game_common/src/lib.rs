@@ -12,6 +12,7 @@ pub mod collections;
 pub mod components;
 pub mod entity;
 pub mod events;
+pub mod hex;
 pub mod math;
 pub mod metrics;
 pub mod module;

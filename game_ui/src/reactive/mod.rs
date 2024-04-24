@@ -362,7 +362,9 @@ impl NodeHierarchy {
     }
 
     pub fn set(&mut self, id: NodeId, key: Key) {
-        *self.nodes.get_mut(id).unwrap() = Some(key);
+        if let Some(node) = self.nodes.get_mut(id) {
+            *node = Some(key);
+        }
     }
 
     pub fn parent(&self, key: NodeId) -> Option<NodeId> {
