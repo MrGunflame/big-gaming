@@ -9,6 +9,7 @@ extern crate self as game_common;
 
 pub mod cell;
 pub mod collections;
+pub mod color;
 pub mod components;
 pub mod entity;
 pub mod events;
