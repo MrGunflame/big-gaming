@@ -92,7 +92,8 @@ impl Renderer {
             .unwrap();
 
         let features = Features::TEXTURE_BINDING_ARRAY
-            | Features::SAMPLED_TEXTURE_AND_STORAGE_BUFFER_ARRAY_NON_UNIFORM_INDEXING;
+            | Features::SAMPLED_TEXTURE_AND_STORAGE_BUFFER_ARRAY_NON_UNIFORM_INDEXING
+            | Features::PARTIALLY_BOUND_BINDING_ARRAY;
 
         let (device, queue) = futures_lite::future::block_on(adapter.request_device(
             &DeviceDescriptor {

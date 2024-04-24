@@ -262,10 +262,7 @@ impl Node for UiPass {
             usage: BufferUsages::STORAGE,
         });
 
-        let mut texture_views: Vec<&TextureView> = texture_buffer.iter().collect();
-        while texture_views.len() as u32 != pipeline.capacity.get() {
-            texture_views.push(&texture_buffer[0]);
-        }
+        let texture_views: Vec<&TextureView> = texture_buffer.iter().collect();
 
         let bind_group = ctx.device.create_bind_group(&BindGroupDescriptor {
             label: None,
