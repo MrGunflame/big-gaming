@@ -141,7 +141,7 @@ impl<T> Drop for Queue<T> {
     }
 }
 
-unsafe impl<T> Send for Queue<T> {}
+unsafe impl<T> Send for Queue<T> where T: Send {}
 
 #[derive(Debug)]
 pub struct Sender<T> {
@@ -166,7 +166,7 @@ impl<T> Sender<T> {
     }
 }
 
-unsafe impl<T> Send for Sender<T> {}
+unsafe impl<T> Send for Sender<T> where T: Send {}
 
 pub struct Receiver<T> {
     inner: Arc<Queue<T>>,
@@ -194,7 +194,7 @@ impl<T> Receiver<T> {
     }
 }
 
-unsafe impl<T> Send for Receiver<T> {}
+unsafe impl<T> Send for Receiver<T> where T: Send {}
 
 #[derive(Debug)]
 pub struct Drain<'a, T> {
