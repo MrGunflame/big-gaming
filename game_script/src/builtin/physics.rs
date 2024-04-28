@@ -10,7 +10,7 @@ use game_wasm::raw::physics::{
 use glam::{Quat, Vec3};
 use wasmtime::Caller;
 
-use crate::builtin::CallerExt;
+use crate::builtin::{assert_caller_precondition, log_fn_invocation, CallerExt};
 use crate::instance::State;
 
 pub fn physics_cast_ray(
@@ -81,6 +81,9 @@ pub fn physics_cast_shape(
     let rotation = Quat::from_xyzw(rotation_x, rotation_y, rotation_z, rotation_w);
     let direction = Vec3::new(direction_x, direction_y, direction_z);
 
+    assert_caller_precondition!(stringify!(physics_cast_shape), rotation.is_normalized());
+    assert_caller_precondition!(stringify!(physics_cast_shape), direction.is_normalized());
+
     let shape = match shape_type {
         SHAPE_TYPE_CUBOID => {
             let shape = caller.read::<game_wasm::raw::physics::Cuboid>(shape)?;
@@ -114,28 +117,47 @@ pub fn physics_cast_shape(
 
     let filter = read_query_filter(&mut caller, filter)?;
 
-    let (entity, toi) = match caller.data().as_run()?.physics_pipeline().cast_shape(
+    let res = caller.data().as_run()?.physics_pipeline().cast_shape(
         translation,
         rotation,
         direction,
         max_toi,
+        &shape,
+        &filter,
+    );
+
+    log_fn_invocation!(
+        "physics_cast_shape",
+        translation_x,
+        translation_y,
+        translation_z,
+        rotation_x,
+        rotation_y,
+        rotation_z,
+        rotation_w,
+        direction_x,
+        direction_y,
+        direction_z,
         shape,
-        filter,
-    ) {
-        Some((entity, toi)) => (entity, toi),
-        None => return Ok(1),
-    };
+        max_toi,
+        filter => res
+    );
 
-    caller.write(
-        out,
-        &CastRayResult {
-            entity_id: entity.into_raw(),
-            toi,
-            _pad0: 0,
-        },
-    )?;
+    match res {
+        Some((entity, toi)) => {
+            caller.write(
+                out,
+                &CastRayResult {
+                    entity_id: entity.into_raw(),
+                    toi,
+                    _pad0: 0,
+                },
+            )?;
 
-    Ok(0)
+            Ok(0)
+        }
+        None => Ok(1),
+    }
 }
 
 fn read_query_filter(caller: &mut Caller<'_, State>, ptr: u32) -> wasmtime::Result<QueryFilter> {
