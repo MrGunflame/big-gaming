@@ -319,7 +319,7 @@ impl Pipeline {
         &self,
         ray: game_common::math::Ray,
         max_toi: f32,
-        filter: query::QueryFilter,
+        filter: &query::QueryFilter,
     ) -> Option<(EntityId, f32)> {
         let ray = Ray {
             origin: point(ray.origin),

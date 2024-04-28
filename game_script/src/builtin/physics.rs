@@ -26,35 +26,49 @@ pub fn physics_cast_ray(
     out: u32,
 ) -> wasmtime::Result<u32> {
     let _span = trace_span!("physics_cast_ray").entered();
-    tracing::trace!("physics_cast_ray(origin_x = {}, origin_y = {}, origin_z = {}, direction_x = {}, direction_y = {}, direction_z = {}, max_toi = {})", origin_x, origin_y, origin_z, direction_x, direction_y, direction_z, max_toi);
 
     let ray = Ray {
         origin: Vec3::new(origin_x, origin_y, origin_z),
         direction: Vec3::new(direction_x, direction_y, direction_z),
     };
 
+    assert_caller_precondition!(stringify!(physics_cast_ray), ray.direction.is_normalized());
+
     let filter = read_query_filter(&mut caller, filter_ptr)?;
 
-    let (entity_id, toi) = match caller
+    let res = caller
         .data()
         .as_run()?
         .physics_pipeline()
-        .cast_ray(ray, max_toi, filter)
-    {
-        Some((entity_id, toi)) => (entity_id, toi),
-        None => return Ok(1),
-    };
+        .cast_ray(ray, max_toi, &filter);
 
-    caller.write(
-        out,
-        &CastRayResult {
-            entity_id: entity_id.into_raw(),
-            toi,
-            _pad0: 0,
-        },
-    )?;
+    log_fn_invocation! {
+        stringify!(physics_cast_ray),
+        origin_x,
+        origin_y,
+        origin_z,
+        direction_x,
+        direction_y,
+        direction_z,
+        max_toi,
+        filter => res
+    }
 
-    Ok(0)
+    match res {
+        Some((entity_id, toi)) => {
+            caller.write(
+                out,
+                &CastRayResult {
+                    entity_id: entity_id.into_raw(),
+                    toi,
+                    _pad0: 0,
+                },
+            )?;
+
+            Ok(0)
+        }
+        None => Ok(1),
+    }
 }
 
 pub fn physics_cast_shape(
