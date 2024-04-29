@@ -141,3 +141,50 @@ impl<'a, S> CallerExt for Caller<'a, S> {
         Ok(())
     }
 }
+
+macro_rules! log_fn_invocation {
+    ($name:expr, $($input:expr),* $(,)? $(=> $output:expr)?) => {{
+        use core::fmt::Write as _;
+
+        let mut _buffer = std::string::String::from($name);
+
+        {
+            _buffer.push('(');
+            let mut _count = 0;
+            $(
+                let _ = core::write!(_buffer, "{} = {:?},", stringify!($input), $input);
+                _count += 1;
+            )*
+
+            // Strip trailing comma
+            if _count != 0 {
+                _buffer.truncate(_buffer.len() - 1);
+            }
+            _buffer.push(')');
+        }
+
+        {
+            $(
+                let _ = core::write!(_buffer, " = {:?}", $output);
+            )*
+        }
+
+        tracing::trace!("{}", _buffer);
+    }};
+}
+
+/// Emits a warning if the precondition is not satisfied.
+macro_rules! assert_caller_precondition {
+    ($name:expr, $precondition:expr) => {
+        // TODO: Add cfg to disable precondition checks.
+        if !$precondition {
+            tracing::warn!(
+                "{} precondition violated: {}",
+                $name,
+                stringify!($precondition)
+            );
+        }
+    };
+}
+
+pub(crate) use {assert_caller_precondition, log_fn_invocation};

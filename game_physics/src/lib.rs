@@ -319,7 +319,7 @@ impl Pipeline {
         &self,
         ray: game_common::math::Ray,
         max_toi: f32,
-        filter: query::QueryFilter,
+        filter: &query::QueryFilter,
     ) -> Option<(EntityId, f32)> {
         let ray = Ray {
             origin: point(ray.origin),
@@ -358,8 +358,8 @@ impl Pipeline {
         rot: Quat,
         direction: Vec3,
         max_toi: f32,
-        shape: ColliderShape,
-        filter: query::QueryFilter,
+        shape: &ColliderShape,
+        filter: &query::QueryFilter,
     ) -> Option<(EntityId, f32)> {
         let shape_origin = Isometry {
             rotation: rotation(rot),
@@ -521,8 +521,9 @@ mod tests {
     };
     use game_common::events::EventQueue;
     use game_common::world::World;
-    use glam::Vec3;
+    use glam::{Quat, Vec3};
 
+    use crate::query::QueryFilter;
     use crate::Pipeline;
 
     #[test]
@@ -557,5 +558,54 @@ mod tests {
 
         let transform = world.get_typed::<Transform>(entity).unwrap();
         assert_ne!(transform, Transform::IDENTITY);
+    }
+
+    #[test]
+    fn pipeline_cast_shape_cuboid() {
+        let mut world = World::new();
+        let entity = world.spawn();
+        world.insert_typed(
+            entity,
+            RigidBody {
+                kind: RigidBodyKind::Fixed,
+                linvel: Vec3::ZERO,
+                angvel: Vec3::ZERO,
+            },
+        );
+        world.insert_typed(
+            entity,
+            Collider {
+                friction: 1.0,
+                restitution: 1.0,
+                shape: ColliderShape::Cuboid(Cuboid {
+                    hx: 1.0,
+                    hy: 1.0,
+                    hz: 1.0,
+                }),
+            },
+        );
+        world.insert_typed(entity, Transform::IDENTITY);
+
+        let mut events = EventQueue::new();
+        let mut pipeline = Pipeline::new();
+        pipeline.step(&mut world, &mut events);
+
+        let res = pipeline
+            .cast_shape(
+                Vec3::new(5.0, 0.0, 0.0),
+                Quat::IDENTITY,
+                Vec3::new(-1.0, 0.0, 0.0),
+                6.0,
+                &ColliderShape::Cuboid(Cuboid {
+                    hx: 1.0,
+                    hy: 1.0,
+                    hz: 1.0,
+                }),
+                &QueryFilter::default(),
+            )
+            .unwrap();
+
+        assert_eq!(res.0, entity);
+        assert_eq!(res.1, 3.0);
     }
 }

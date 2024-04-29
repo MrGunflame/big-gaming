@@ -12,9 +12,14 @@ use crate::raw::physics::{
 use crate::raw::physics::{QueryFilter as RawQueryFilter, Shape as RawShape};
 use crate::raw::RESULT_OK;
 
-pub fn cast_ray(ray: Ray, max_toi: f32, filter: QueryFilter<'_>) -> Option<RayHit> {
+pub fn cast_ray(mut ray: Ray, max_toi: f32, filter: QueryFilter<'_>) -> Option<RayHit> {
     let filter = build_raw_query_filter(filter);
     let mut out = MaybeUninit::<CastRayResult>::uninit();
+
+    // This is a precondition for physics_cast_shape,
+    // but should we always normalize here or require
+    // the caller to guarantee it?
+    ray.direction = ray.direction.normalize_or_zero();
 
     let res = unsafe {
         physics_cast_ray(
@@ -43,13 +48,19 @@ pub fn cast_ray(ray: Ray, max_toi: f32, filter: QueryFilter<'_>) -> Option<RayHi
 
 pub fn cast_shape(
     translation: Vec3,
-    rotation: Quat,
-    direction: Vec3,
+    mut rotation: Quat,
+    mut direction: Vec3,
     shape: &ColliderShape,
     max_toi: f32,
     filter: QueryFilter<'_>,
 ) -> Option<RayHit> {
     let filter = build_raw_query_filter(filter);
+
+    // This is a precondition for physics_cast_shape,
+    // but should we always normalize here or require
+    // the caller to guarantee it?
+    direction = direction.normalize_or_zero();
+    rotation = rotation.normalize();
 
     let (shape_type, shape) = match shape {
         ColliderShape::Cuboid(cuboid) => (
