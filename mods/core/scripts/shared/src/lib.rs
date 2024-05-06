@@ -2,6 +2,7 @@
 
 extern crate alloc;
 
+mod actor;
 mod controller;
 mod inventory;
 mod movement;

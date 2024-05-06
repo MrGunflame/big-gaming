@@ -1,7 +1,7 @@
 use alloc::borrow::ToOwned;
 use game_wasm::components::builtin::{
-    Collider, ColliderShape, Color, Cuboid, DirectionalLight, MeshInstance, RigidBody,
-    RigidBodyKind, Transform,
+    Axis, Capsule, Collider, ColliderShape, Color, Cuboid, DirectionalLight, MeshInstance,
+    RigidBody, RigidBodyKind, Transform,
 };
 use game_wasm::components::{Components, RawComponent};
 use game_wasm::encoding::{Decode, Encode};
@@ -11,6 +11,7 @@ use game_wasm::inventory::{Inventory, ItemStack};
 use game_wasm::math::{Quat, Vec3};
 use game_wasm::world::{Entity, RecordReference};
 
+use crate::actor::{spawn_actor, SpawnActor};
 use crate::components::{EVENT_GUN_EQUIP, EVENT_GUN_UNEQUIP, TEST_WEAPON, TRANSFORM_CHANGED};
 use crate::{
     Camera, CharacterController, Equippable, GunProperties, Health, Humanoid, LookingDirection,
@@ -18,24 +19,25 @@ use crate::{
 };
 
 pub fn spawn_player(_: EntityId, event: PlayerConnect) {
-    let entity = Entity::spawn();
+    let entity = spawn_actor(SpawnActor {
+        mesh: MeshInstance {
+            path: "assets/person2.glb".to_owned(),
+        },
+        collider: Collider {
+            friction: 1.0,
+            restitution: 1.0,
+            shape: ColliderShape::Capsule(Capsule {
+                axis: Axis::Y,
+                half_height: 0.5,
+                radius: 0.5,
+            }),
+        },
+        mesh_offset: Transform::from_translation(Vec3::new(0.0, -1.0, 0.0)),
+    });
+
     entity.insert(Transform {
         translation: Vec3::new(0.0, 10.0, 0.0),
         ..Default::default()
-    });
-    entity.insert(RigidBody {
-        kind: RigidBodyKind::Fixed,
-        linvel: Vec3::ZERO,
-        angvel: Vec3::ZERO,
-    });
-    entity.insert(Collider {
-        friction: 1.0,
-        restitution: 1.0,
-        shape: ColliderShape::Cuboid(Cuboid {
-            hx: 1.0,
-            hy: 1.0,
-            hz: 1.0,
-        }),
     });
     entity.insert(MovementSpeed(1.0));
     entity.insert(Humanoid);
@@ -43,9 +45,6 @@ pub fn spawn_player(_: EntityId, event: PlayerConnect) {
     entity.insert(Health { value: 1, max: 100 });
     entity.insert(SpawnPoint {
         translation: Vec3::ZERO,
-    });
-    entity.insert(MeshInstance {
-        path: "assets/person2.glb".to_owned(),
     });
 
     let mut inventory = Inventory::new();
@@ -102,7 +101,7 @@ pub fn spawn_player(_: EntityId, event: PlayerConnect) {
 
     entity.insert(PlayerCamera {
         camera: camera.id(),
-        offset: Vec3::new(0.0, 1.8, 0.0),
+        offset: Vec3::new(0.0, 0.8, 0.0),
         rotation: Quat::IDENTITY,
     });
     entity.insert(LookingDirection::default());
@@ -123,7 +122,7 @@ pub fn spawn_player(_: EntityId, event: PlayerConnect) {
     });
 
     let pawn = Entity::spawn();
-    pawn.insert(Transform::from_translation(Vec3::splat(5.0)));
+    pawn.insert(Transform::from_translation(Vec3::splat(10.0)));
     pawn.insert(MeshInstance {
         path: "assets/person2.glb".to_owned(),
     });
