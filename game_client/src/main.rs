@@ -9,14 +9,12 @@ mod ui;
 mod utils;
 mod world;
 
-use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 use clap::Parser;
 use config::Config;
-use game_common::components::Color;
 use game_common::sync::spsc;
 use game_common::world::World;
 use game_core::counter::{Interval, UpdateCounter};
@@ -30,7 +28,7 @@ use game_ui::events::WindowCommand;
 use game_ui::reactive::Document;
 use game_ui::UiState;
 use game_window::cursor::Cursor;
-use game_window::events::{WindowCloseRequested, WindowEvent};
+use game_window::events::WindowEvent;
 use game_window::windows::{WindowBuilder, WindowId};
 use game_window::{WindowManager, WindowManagerContext};
 use glam::UVec2;
@@ -85,7 +83,14 @@ fn main() {
         ));
     }
 
-    let renderer = Renderer::new();
+    let renderer = match Renderer::new() {
+        Ok(renderer) => renderer,
+        Err(err) => {
+            tracing::error!("cannot create renderer: {}", err);
+            return;
+        }
+    };
+
     let ui_state = UiState::new(&renderer);
     let gizmos = Gizmos::new(&renderer);
     let events = spsc::Queue::new(8192);
