@@ -38,7 +38,7 @@ struct State {
 
 impl State {
     fn new(handle: Handle) -> (Self, mpsc::Receiver<SpawnWindow>) {
-        let mut render_state = Renderer::new();
+        let mut render_state = Renderer::new().unwrap();
 
         let (tx, rx) = mpsc::channel();
 

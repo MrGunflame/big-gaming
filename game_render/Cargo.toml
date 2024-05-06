@@ -29,3 +29,4 @@ bitflags = { version = "2.3.3", features = ["bytemuck"] }
 slotmap = "1.0.6"
 mikktspace = "0.3.0"
 tokio = { version = "1.35.1", default-features = false, features = ["sync"] }
+thiserror = "1.0.59"
