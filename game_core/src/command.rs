@@ -1,8 +1,28 @@
 //! Command format
 
-pub struct Command {}
+pub enum GameCommands {}
 
-pub fn tokenize<'a>(input: &'a str) -> Result<Vec<Token<'a>>, Error> {
+#[derive(Clone, Debug)]
+pub enum ServerCommand {
+    Uptime,
+    Clients,
+}
+
+impl ServerCommand {
+    pub fn parse(tokens: &[Token<'_>]) -> Result<Self, ParseError> {
+        match tokens.first() {
+            Some(Token::Ident("uptime")) => Ok(Self::Uptime),
+            Some(Token::Ident("clients")) => Ok(Self::Clients),
+            _ => Err(ParseError::Empty),
+        }
+    }
+}
+
+pub enum ParseError {
+    Empty,
+}
+
+pub fn tokenize<'a>(input: &'a str) -> Result<Vec<Token<'a>>, TokenizeError> {
     let mut tokens = Vec::new();
 
     let mut cursor = 0;
@@ -24,6 +44,8 @@ pub fn tokenize<'a>(input: &'a str) -> Result<Vec<Token<'a>>, Error> {
             '%' => Token::Percent,
             '&' => Token::And,
             '|' => Token::Or,
+            '.' => Token::Dot,
+            ',' => Token::Comma,
             '"' => {
                 loop {
                     match chars.peek().copied() {
@@ -36,7 +58,7 @@ pub fn tokenize<'a>(input: &'a str) -> Result<Vec<Token<'a>>, Error> {
                             }
                         }
                         // EOF before closing '"' tag.
-                        None => return Err(Error::MissingTerminator(cursor, '"')),
+                        None => return Err(TokenizeError::MissingTerminator(cursor, '"')),
                     }
                 }
 
@@ -89,6 +111,10 @@ pub enum Token<'a> {
     And,
     /// `|`
     Or,
+    /// `.`
+    Dot,
+    /// `,`
+    Comma,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -107,7 +133,7 @@ fn is_valid_ident(c: char) -> bool {
 }
 
 #[derive(Clone, Debug)]
-pub enum Error {
+pub enum TokenizeError {
     MissingTerminator(usize, char),
 }
 

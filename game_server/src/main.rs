@@ -1,14 +1,17 @@
 use std::fs::File;
-use std::io::Read;
+use std::io::{stdin, Read, Stdin};
 
 use clap::Parser;
 
 use game_common::world::gen::Generator;
+use game_core::command::tokenize;
 use game_core::modules;
+use game_server::command::Command;
 use game_server::config::Config;
 use game_server::ServerState;
 use game_worldgen::gen::StaticGenerator;
-use tokio::runtime::{Builder, UnhandledPanic};
+use tokio::runtime::Builder;
+use tokio::sync::{mpsc, oneshot};
 
 #[derive(Debug, Parser)]
 #[command(author, version, about, long_about = None)]
@@ -31,18 +34,39 @@ fn main() {
 
     let generator = load_world();
 
+    let (cmd_tx, cmd_rx) = mpsc::channel(8);
+
     let server_state = ServerState::new(
+        cmd_rx,
         Generator::from(generator),
         res.modules,
         config,
         res.executor,
     );
 
-    let rt = Builder::new_multi_thread()
-        .enable_all()
-        .unhandled_panic(UnhandledPanic::ShutdownRuntime)
-        .build()
-        .unwrap();
+    std::thread::spawn(move || {
+        let stdin = stdin();
+        loop {
+            let mut buf = String::new();
+            stdin.read_line(&mut buf).unwrap();
+            let tokens = tokenize(&buf).unwrap();
+
+            let cmd = match Command::parse(&tokens) {
+                Ok(cmd) => cmd,
+                Err(_) => {
+                    println!("unknown command");
+                    continue;
+                }
+            };
+
+            let (tx, rx) = oneshot::channel();
+            cmd_tx.blocking_send((cmd, tx)).unwrap();
+            let resp = rx.blocking_recv().unwrap();
+            println!("{}", resp);
+        }
+    });
+
+    let rt = Builder::new_multi_thread().enable_all().build().unwrap();
     rt.block_on(game_server::run(server_state));
 }
 
