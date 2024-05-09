@@ -50,6 +50,9 @@ fn main() {
             let mut buf = String::new();
             stdin.read_line(&mut buf).unwrap();
             let tokens = tokenize(&buf).unwrap();
+            if tokens.is_empty() {
+                continue;
+            }
 
             let cmd = match Command::parse(&tokens) {
                 Ok(cmd) => cmd,

@@ -8,6 +8,7 @@ pub mod snapshot;
 pub mod state;
 pub mod world;
 
+use std::fmt::Write;
 use std::time::{Duration, Instant};
 
 use ahash::HashMap;
@@ -15,7 +16,7 @@ use command::Command;
 use game_common::entity::EntityId;
 use game_common::events::EventQueue;
 use game_common::world::gen::Generator;
-use game_core::command::ServerCommand;
+use game_core::command::{GameCommand, ServerCommand};
 use game_core::counter::{Interval, UpdateCounter};
 use game_core::modules::Modules;
 use game_scene::scene2::{Key, SceneGraph};
@@ -148,6 +149,27 @@ fn process_commands(state: &mut ServerState) {
                 };
 
                 tx.send(resp).unwrap();
+            }
+            Command::Game(GameCommand::Get(entity)) => {
+                if !state.world.world.contains(entity) {
+                    tx.send("invalid entity".to_owned()).unwrap();
+                } else {
+                    let mut resp = format!("Entity({})\n", entity.into_raw());
+
+                    for (id, _) in state.world.world.components(entity).iter() {
+                        let mut name = "Unknown";
+
+                        if let Some(module) = state.modules.get(id.module) {
+                            if let Some(record) = module.records.get(id.record) {
+                                name = &record.name;
+                            }
+                        }
+
+                        writeln!(resp, "{} ({})", name, id).unwrap();
+                    }
+
+                    tx.send(resp).unwrap();
+                }
             }
         }
     }
