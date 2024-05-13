@@ -1,3 +1,4 @@
+pub mod command;
 pub mod config;
 pub mod conn;
 pub mod net;
@@ -7,17 +8,21 @@ pub mod snapshot;
 pub mod state;
 pub mod world;
 
+use std::fmt::Write;
 use std::time::{Duration, Instant};
 
 use ahash::HashMap;
+use command::Command;
 use game_common::entity::EntityId;
 use game_common::events::EventQueue;
 use game_common::world::gen::Generator;
+use game_core::command::{GameCommand, ServerCommand};
 use game_core::counter::{Interval, UpdateCounter};
 use game_core::modules::Modules;
 use game_script::Executor;
 use game_tasks::TaskPool;
-use tracing::{span, Level};
+use tokio::sync::{mpsc, oneshot};
+use tracing::{span, trace_span, Level};
 use world::state::WorldState;
 
 use crate::config::Config;
@@ -55,6 +60,7 @@ pub async fn run(mut state: ServerState) {
         let now = Instant::now();
         interval.wait(now).await;
 
+        process_commands(&mut state);
         tick(&mut state);
 
         let mut cf = state.state.control_frame.lock();
@@ -67,6 +73,9 @@ pub async fn run(mut state: ServerState) {
 }
 
 pub struct ServerState {
+    /// Start time of the server.
+    pub start: Instant,
+    pub command_queue: mpsc::Receiver<(Command, oneshot::Sender<String>)>,
     pub world: WorldState,
     pub level: world::level::Level,
     pub pipeline: game_physics::Pipeline,
@@ -79,8 +88,16 @@ pub struct ServerState {
 }
 
 impl ServerState {
-    pub fn new(generator: Generator, modules: Modules, config: Config, executor: Executor) -> Self {
+    pub fn new(
+        command_handler: mpsc::Receiver<(Command, oneshot::Sender<String>)>,
+        generator: Generator,
+        modules: Modules,
+        config: Config,
+        executor: Executor,
+    ) -> Self {
         Self {
+            start: Instant::now(),
+            command_queue: command_handler,
             world: WorldState::new(),
             level: world::level::Level::new(generator),
             pipeline: game_physics::Pipeline::new(),
@@ -90,6 +107,56 @@ impl ServerState {
             script_executor: executor,
             pool: TaskPool::new(8),
             next_player: 0,
+        }
+    }
+}
+
+fn process_commands(state: &mut ServerState) {
+    let _span = trace_span!("process_commands").entered();
+
+    while let Ok((cmd, tx)) = state.command_queue.try_recv() {
+        match cmd {
+            Command::Server(ServerCommand::Uptime) => {
+                let elapsed = state.start.elapsed();
+                tx.send(format!("Uptime: {:?}", elapsed)).unwrap();
+            }
+            Command::Server(ServerCommand::Clients) => {
+                let clients = state
+                    .state
+                    .conns
+                    .iter()
+                    .map(|conn| conn.key().addr.to_string())
+                    .collect::<Vec<String>>();
+
+                let resp = if clients.is_empty() {
+                    "No clients".to_owned()
+                } else {
+                    clients.join("\n")
+                };
+
+                tx.send(resp).unwrap();
+            }
+            Command::Game(GameCommand::Get(entity)) => {
+                if !state.world.world.contains(entity) {
+                    tx.send("invalid entity".to_owned()).unwrap();
+                } else {
+                    let mut resp = format!("Entity({})\n", entity.into_raw());
+
+                    for (id, _) in state.world.world.components(entity).iter() {
+                        let mut name = "Unknown";
+
+                        if let Some(module) = state.modules.get(id.module) {
+                            if let Some(record) = module.records.get(id.record) {
+                                name = &record.name;
+                            }
+                        }
+
+                        writeln!(resp, "{} ({})", name, id).unwrap();
+                    }
+
+                    tx.send(resp).unwrap();
+                }
+            }
         }
     }
 }
