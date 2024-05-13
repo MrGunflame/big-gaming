@@ -11,4 +11,5 @@ pub mod transform;
 
 pub use game_wasm::components::builtin::*;
 pub use game_wasm::encoding::{Decode, Encode};
+pub use game_wasm::hierarchy::Children;
 pub use game_wasm::player::PlayerId;

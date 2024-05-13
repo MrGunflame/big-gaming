@@ -19,8 +19,6 @@ use game_common::world::gen::Generator;
 use game_core::command::{GameCommand, ServerCommand};
 use game_core::counter::{Interval, UpdateCounter};
 use game_core::modules::Modules;
-use game_scene::scene2::{Key, SceneGraph};
-use game_scene::SceneSpawner;
 use game_script::Executor;
 use game_tasks::TaskPool;
 use tokio::sync::{mpsc, oneshot};
@@ -86,7 +84,6 @@ pub struct ServerState {
     pub state: State,
     pub script_executor: Executor,
     pub pool: TaskPool,
-    pub scene: SceneState,
     pub next_player: u64,
 }
 
@@ -109,20 +106,9 @@ impl ServerState {
             state: State::new(config),
             script_executor: executor,
             pool: TaskPool::new(8),
-            scene: SceneState {
-                spawner: SceneSpawner::default(),
-                graph: SceneGraph::new(),
-                entities: HashMap::default(),
-            },
             next_player: 0,
         }
     }
-}
-
-pub struct SceneState {
-    spawner: SceneSpawner,
-    graph: SceneGraph,
-    entities: HashMap<Key, EntityId>,
 }
 
 fn process_commands(state: &mut ServerState) {

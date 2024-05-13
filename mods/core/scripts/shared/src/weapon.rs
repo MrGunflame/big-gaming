@@ -2,12 +2,14 @@ use core::f32::consts::PI;
 
 use alloc::borrow::ToOwned;
 use alloc::string::ToString;
+use alloc::vec::Vec;
 use game_wasm::action::Action;
 use game_wasm::components::builtin::{MeshInstance, Transform};
 use game_wasm::components::Component;
 use game_wasm::encoding::{Decode, Encode};
 use game_wasm::entity::EntityId;
 use game_wasm::events::Event;
+use game_wasm::hierarchy::Children;
 use game_wasm::inventory::Inventory;
 use game_wasm::math::{Quat, Ray, Vec3};
 use game_wasm::physics::{cast_ray, QueryFilter};
@@ -44,15 +46,20 @@ pub fn weapon_attack(entity: EntityId, WeaponAttack: WeaponAttack) {
         return;
     };
 
-    let transform = actor.get::<Transform>().unwrap();
     let Ok(looking_dir) = actor.get::<LookingDirection>() else {
         return;
     };
     let Ok(equipped_item) = actor.get::<EquippedItem>() else {
         return;
     };
+    let mut exclude_entities = actor
+        .get::<Children>()
+        .map(|children| children.get().iter().copied().collect::<Vec<_>>())
+        .unwrap_or_default();
+    exclude_entities.push(actor.id());
 
-    let projectile_transform = project_camera_transform(looking_dir, equipped_item.offset);
+    let projectile_transform =
+        project_camera_transform(looking_dir, equipped_item.offset, &exclude_entities);
 
     for stack in inventory
         .iter_mut()
@@ -83,7 +90,11 @@ pub fn weapon_attack(entity: EntityId, WeaponAttack: WeaponAttack) {
     }
 }
 
-fn project_camera_transform(camera: LookingDirection, item_offset: Vec3) -> Transform {
+fn project_camera_transform(
+    camera: LookingDirection,
+    item_offset: Vec3,
+    exclude_entities: &[EntityId],
+) -> Transform {
     const MAX_TOI: f32 = 100.0;
 
     let toi = match cast_ray(
@@ -92,7 +103,7 @@ fn project_camera_transform(camera: LookingDirection, item_offset: Vec3) -> Tran
             direction: camera.rotation * -Vec3::Z,
         },
         MAX_TOI,
-        QueryFilter::default(),
+        QueryFilter { exclude_entities },
     ) {
         Some(hit) => hit.toi,
         None => MAX_TOI,

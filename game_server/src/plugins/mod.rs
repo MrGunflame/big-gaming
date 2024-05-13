@@ -6,6 +6,7 @@ use game_common::components::{PlayerId, Transform};
 use game_common::entity::EntityId;
 use game_common::events::{ActionEvent, Event, EventQueue, PlayerConnect, PlayerDisconnect};
 use game_common::world::control_frame::ControlFrame;
+use game_common::world::hierarchy::update_global_transform;
 use game_common::world::CellId;
 use game_core::modules::Modules;
 use game_net::message::{
@@ -37,6 +38,8 @@ pub fn tick(state: &mut ServerState) {
     });
     apply_effects(effects, &mut state.world, &mut state.level);
 
+    update_global_transform(&mut state.world.world);
+
     if cfg!(feature = "physics") {
         step_physics(state);
     }
@@ -44,13 +47,6 @@ pub fn tick(state: &mut ServerState) {
     // Push snapshots last always
     let cf = *state.state.control_frame.lock();
     update_snapshots(&state.state.conns, &state.world, &state.level, cf);
-
-    // state
-    //     .scene
-    //     .spawner
-    //     .update(&mut state.scene.graph, &state.pool, None);
-    // state.scene.graph.compute_transform();
-    // state.scene.graph.clear_trackers();
 }
 
 fn apply_effects(effects: Effects, world: &mut WorldState, level: &mut Level) {

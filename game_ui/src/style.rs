@@ -1,6 +1,6 @@
+use game_common::hex::{self, FromHexError};
 use glam::UVec2;
 use image::ImageBuffer;
-use thiserror::Error;
 
 pub use image::Rgba;
 
@@ -250,24 +250,12 @@ impl Color {
         [r, g, b, a]
     }
 
-    pub fn from_hex(s: &str) -> Result<Self, FromHexError> {
-        let bytes = hex::decode(s)?;
-
-        let r = *bytes.first().ok_or(FromHexError::InvalidLength)?;
-        let g = *bytes.get(1).ok_or(FromHexError::InvalidLength)?;
-        let b = *bytes.get(2).ok_or(FromHexError::InvalidLength)?;
-        let a = 255;
-
-        Ok(Self(Rgba([r, g, b, a])))
+    pub const fn from_hex(s: &str) -> Result<Self, FromHexError> {
+        match hex::decode_to_array(s) {
+            Ok([r, g, b]) => Ok(Self(Rgba([r, g, b, 255]))),
+            Err(err) => Err(err),
+        }
     }
-}
-
-#[derive(Clone, Debug, Error)]
-pub enum FromHexError {
-    #[error(transparent)]
-    Hex(#[from] hex::FromHexError),
-    #[error("invalid length")]
-    InvalidLength,
 }
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]

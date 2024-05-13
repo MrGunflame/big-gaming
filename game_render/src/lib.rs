@@ -45,11 +45,20 @@ use render_pass::RenderPass;
 use state::RenderState;
 use texture::image::ImageLoader;
 use texture::{Images, RenderImageId, RenderTextureEvent, RenderTextures};
+use thiserror::Error;
 use tokio::sync::oneshot;
 use wgpu::{
     Backends, Device, DeviceDescriptor, Features, Gles3MinorVersion, Instance, InstanceDescriptor,
-    InstanceFlags, Limits, PowerPreference, Queue, RequestAdapterOptions,
+    InstanceFlags, Limits, PowerPreference, Queue, RequestAdapterOptions, RequestDeviceError,
 };
+
+#[derive(Debug, Error)]
+pub enum Error {
+    #[error("no adapter")]
+    NoAdapter,
+    #[error("failed to request device: {}", 0)]
+    NoDevice(RequestDeviceError),
+}
 
 pub struct Renderer {
     pipeline: Pipeline,
@@ -69,7 +78,7 @@ pub struct Renderer {
 }
 
 impl Renderer {
-    pub fn new() -> Self {
+    pub fn new() -> Result<Self, Error> {
         let flags = if debug::debug_layers_enabled() {
             InstanceFlags::DEBUG | InstanceFlags::VALIDATION
         } else {
@@ -89,17 +98,24 @@ impl Renderer {
                 compatible_surface: None,
                 force_fallback_adapter: false,
             }))
-            .unwrap();
+            .ok_or(Error::NoAdapter)?;
+
+        let features = Features::TEXTURE_BINDING_ARRAY
+            | Features::SAMPLED_TEXTURE_AND_STORAGE_BUFFER_ARRAY_NON_UNIFORM_INDEXING
+            | Features::PARTIALLY_BOUND_BINDING_ARRAY;
+
+        let mut limits = Limits::default();
+        limits.max_sampled_textures_per_shader_stage = 2048;
 
         let (device, queue) = futures_lite::future::block_on(adapter.request_device(
             &DeviceDescriptor {
-                required_features: Features::default(),
-                required_limits: Limits::default(),
+                required_features: features,
+                required_limits: limits,
                 label: None,
             },
             None,
         ))
-        .unwrap();
+        .map_err(Error::NoDevice)?;
 
         let mut images = Images::new();
         let forward = Arc::new(ForwardPipeline::new(&device, &mut images));
@@ -119,7 +135,7 @@ impl Renderer {
             });
         }
 
-        Self {
+        Ok(Self {
             entities: SceneEntities::new(),
             images,
             materials: Materials::new(),
@@ -130,7 +146,7 @@ impl Renderer {
             image_loader: ImageLoader::default(),
             render_textures: RenderTextures::new(),
             jobs: VecDeque::new(),
-        }
+        })
     }
 
     pub fn read_gpu_texture(&mut self, id: RenderImageId) -> ReadTexture {
@@ -277,12 +293,6 @@ impl Renderer {
                 }
             }
         }
-    }
-}
-
-impl Default for Renderer {
-    fn default() -> Self {
-        Self::new()
     }
 }
 

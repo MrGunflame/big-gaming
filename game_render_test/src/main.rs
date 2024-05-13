@@ -61,7 +61,7 @@ impl Harness {
 
     fn run(&mut self, size: UVec2) -> ImageBuffer<Rgba<u8>, Vec<u8>> {
         let pool = TaskPool::new(1);
-        let mut renderer = Renderer::new();
+        let mut renderer = Renderer::new().unwrap();
 
         let id = renderer.render_textures.insert(RenderTexture { size });
 

@@ -5,6 +5,8 @@ use game_wasm::math::Real;
 use game_wasm::math::Vec3;
 use game_wasm::physics::{cast_shape, QueryFilter};
 
+const OFFSET: f32 = 0.1;
+
 pub fn move_shape(
     entity: EntityId,
     transform: &mut Transform,
@@ -16,25 +18,27 @@ pub fn move_shape(
         exclude_entities: &[entity],
     };
 
-    // Small offset that prevents the character getting stuck on the
-    // ground if the collider "glitches" into the ground.
-    let offset = Vec3::new(0.0, 0.1, 0.0);
+    let max_distance = max_toi;
 
     let distance = match cast_shape(
-        transform.translation + offset,
+        transform.translation,
         transform.rotation,
         direction,
         shape,
-        max_toi,
+        max_toi + OFFSET,
         filter,
     ) {
-        Some(hit) => hit.toi,
-        None => max_toi,
+        Some(hit) => {
+            game_wasm::error!("{:?} {:?}", max_distance, hit);
+            let allowed_distance = f32::max(hit.toi.abs() - OFFSET, 0.0);
+            allowed_distance
+        }
+        None => max_distance,
     };
 
     // We wanted to move up to `max_toi` but can only move
     // `distance`.
-    let factor = distance / max_toi;
+    let factor = distance / (max_distance);
 
     transform.translation += direction * factor;
 }
@@ -83,6 +87,7 @@ fn apply_gravity(
     let v0 = linvel.y;
 
     let max_toi = v0 * DT + 0.5 * G * DT * DT;
+    let max_distance = max_toi.abs();
 
     let filter = QueryFilter {
         exclude_entities: &[entity],
@@ -97,14 +102,18 @@ fn apply_gravity(
         // but `gravity` is already negative and `max_toi` must not be negative
         // for the shape cast to return useful results.
         // This also means that the returned `toi` and hit must be negated.
-        max_toi.abs(),
+        max_toi.abs() + OFFSET,
         filter,
     ) {
-        Some(hit) => (-hit.toi, true),
-        None => (max_toi, false),
+        Some(hit) => {
+            let allowed_distance = f32::max(hit.toi.abs() - OFFSET, 0.0);
+
+            (allowed_distance, true)
+        }
+        None => (max_distance, false),
     };
 
-    transform.translation.y += distance;
+    transform.translation.y -= distance;
     if hit {
         linvel.y = 0.0;
     } else {

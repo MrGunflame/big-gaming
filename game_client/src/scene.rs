@@ -3,7 +3,8 @@ use std::f32::consts::PI;
 use ahash::HashMap;
 use game_common::components::{
     Axis, Collider, ColliderShape, Color, DirectionalLight as DirectionalLightComponent,
-    MeshInstance, PointLight as PointLightComponent, SpotLight as SpotLightComponent,
+    GlobalTransform, MeshInstance, PointLight as PointLightComponent,
+    SpotLight as SpotLightComponent,
 };
 use game_common::components::{PrimaryCamera, Transform};
 use game_common::entity::EntityId;
@@ -17,7 +18,6 @@ use game_scene::scene2::SceneGraph;
 use game_scene::{SceneId, SceneSpawner};
 use game_tasks::TaskPool;
 use game_tracing::trace_span;
-use game_wasm::components::Component;
 use game_window::windows::WindowId;
 use glam::{Quat, Vec3};
 
@@ -51,8 +51,8 @@ impl SceneEntities {
         let mut removed_spot_lights = self.spot_lights.clone();
         let mut removed_primary_cameras = self.primary_cameras.clone();
 
-        for (entity, QueryWrapper((transform, mesh_instance))) in
-            world.query::<QueryWrapper<(Transform, MeshInstance)>>()
+        for (entity, QueryWrapper((GlobalTransform(transform), mesh_instance))) in
+            world.query::<QueryWrapper<(GlobalTransform, MeshInstance)>>()
         {
             removed_mesh_instances.remove(&entity);
 
@@ -67,8 +67,8 @@ impl SceneEntities {
             }
         }
 
-        for (entity, QueryWrapper((transform, light))) in
-            world.query::<QueryWrapper<(Transform, DirectionalLightComponent)>>()
+        for (entity, QueryWrapper((GlobalTransform(transform), light))) in
+            world.query::<QueryWrapper<(GlobalTransform, DirectionalLightComponent)>>()
         {
             removed_dir_lights.remove(&entity);
 
@@ -92,8 +92,8 @@ impl SceneEntities {
             }
         }
 
-        for (entity, QueryWrapper((transform, light))) in
-            world.query::<QueryWrapper<(Transform, PointLightComponent)>>()
+        for (entity, QueryWrapper((GlobalTransform(transform), light))) in
+            world.query::<QueryWrapper<(GlobalTransform, PointLightComponent)>>()
         {
             removed_point_lights.remove(&entity);
 
@@ -119,8 +119,8 @@ impl SceneEntities {
             }
         }
 
-        for (entity, QueryWrapper((transform, light))) in
-            world.query::<QueryWrapper<(Transform, SpotLightComponent)>>()
+        for (entity, QueryWrapper((GlobalTransform(transform), light))) in
+            world.query::<QueryWrapper<(GlobalTransform, SpotLightComponent)>>()
         {
             removed_spot_lights.remove(&entity);
 
@@ -150,8 +150,8 @@ impl SceneEntities {
             }
         }
 
-        for (entity, QueryWrapper((transform, camera))) in
-            world.query::<QueryWrapper<(Transform, PrimaryCamera)>>()
+        for (entity, QueryWrapper((GlobalTransform(transform), camera))) in
+            world.query::<QueryWrapper<(GlobalTransform, PrimaryCamera)>>()
         {
             removed_primary_cameras.remove(&entity);
 
@@ -162,7 +162,11 @@ impl SceneEntities {
                     gizmos.update_camera(*camera);
                 }
                 None => {
-                    let size = renderer.get_surface_size(window).unwrap();
+                    // Surface might not yet be ready, defer creation until
+                    // next frame.
+                    let Some(size) = renderer.get_surface_size(window) else {
+                        continue;
+                    };
 
                     let mut camera = Camera {
                         transform,
