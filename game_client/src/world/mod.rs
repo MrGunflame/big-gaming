@@ -430,7 +430,7 @@ impl GameWorldState {
         let actions = match &record.body {
             RecordBody::Action(_) => return,
             RecordBody::Race(race) => &race.actions,
-            RecordBody::Component(component) => &component.actions,
+            RecordBody::Component(component) => return,
             RecordBody::Item(item) => &item.actions,
             RecordBody::Object(_) => return,
         };

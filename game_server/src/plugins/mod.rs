@@ -244,32 +244,12 @@ fn queue_action(
         data,
     );
 
-    let components = world.world.components(entity);
-
-    for (id, _) in components.iter() {
-        let Some(component) = modules
-            .get(id.module)
-            .map(|module| module.records.get(id.record))
-            .flatten()
-            .map(|record| record.body.as_component())
-            .flatten()
-        else {
-            continue;
-        };
-
-        if component.actions.contains(&action.0) {
-            tracing::trace!("found action {:?} on component", action);
-
-            queue.push(Event::Action(ActionEvent {
-                entity,
-                invoker: entity,
-                action,
-                data: data.clone(),
-            }));
-        }
-    }
-
-    tracing::trace!("action {:?} unavailable for entity {:?}", action, entity);
+    queue.push(Event::Action(ActionEvent {
+        entity,
+        invoker: entity,
+        action,
+        data: data.clone(),
+    }));
 }
 
 fn update_snapshots(
