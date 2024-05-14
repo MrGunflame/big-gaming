@@ -11,8 +11,11 @@ use game_script::{Executor, RecordProvider};
 use thiserror::Error;
 use tokio::runtime::Runtime;
 
+use crate::modules::core::load_core;
+
 use self::records::Records;
 
+mod core;
 pub mod records;
 
 #[derive(Clone, Debug)]
@@ -80,6 +83,9 @@ pub struct LoadResult {
 pub fn load_modules() -> LoadResult {
     let mut modules = Modules::new();
     let mut executor = Executor::new();
+
+    // Load the builtin core module.
+    modules.insert(load_core());
 
     let rt = Runtime::new().unwrap();
 
