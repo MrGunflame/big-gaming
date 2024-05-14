@@ -50,6 +50,15 @@ impl ComponentDescriptor {
     }
 }
 
+impl Default for ComponentDescriptor {
+    fn default() -> Self {
+        Self {
+            fields: Box::new([]),
+            root: Box::new([]),
+        }
+    }
+}
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct FieldIndex(u16);
 
