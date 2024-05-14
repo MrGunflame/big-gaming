@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use game_common::module::{Dependency, Module, Version};
+use game_common::reflection::ComponentDescriptor;
 use game_common::units::Mass;
 use game_data::components::actions::ActionRecord;
 use game_data::components::components::{ComponentRecord, ComponentValue};
@@ -82,7 +83,7 @@ pub fn encode(root: Root) -> Vec<u8> {
                 .collect(),
             body: RecordBody::Component(ComponentRecord {
                 description: component.description,
-                actions: component.actions.into_iter().map(|a| a.0).collect(),
+                descriptor: ComponentDescriptor::default(),
             }),
             components: vec![],
         };

@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use game_common::module::ModuleId;
 use game_common::record::RecordId;
+use game_common::reflection::ComponentDescriptor;
 use game_common::units::Mass;
 use game_data::components::actions::ActionRecord;
 use game_data::components::components::ComponentRecord;
@@ -220,7 +221,7 @@ fn create_record(
             }),
             RecordBodyFields::Component => RecordBody::Component(ComponentRecord {
                 description: String::new(),
-                actions: vec![],
+                descriptor: ComponentDescriptor::default(),
             }),
             RecordBodyFields::Object(object) => {
                 let model = object.model.get_untracked();

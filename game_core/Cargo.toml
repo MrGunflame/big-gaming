@@ -12,6 +12,7 @@ workspace = true
 game_common = { version = "0.1.0", path = "../game_common" }
 game_data = { version = "0.1.0", path = "../game_data" }
 game_script = { version = "0.1.0", path = "../game_script" }
+game_wasm = { version = "0.1.0", path = "../game_wasm" }
 
 tracing = "0.1.37"
 chrono = "0.4.24"
