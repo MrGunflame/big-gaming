@@ -38,11 +38,7 @@ fn main() {
         res.executor,
     );
 
-    let rt = Builder::new_multi_thread()
-        .enable_all()
-        .unhandled_panic(UnhandledPanic::ShutdownRuntime)
-        .build()
-        .unwrap();
+    let rt = Builder::new_multi_thread().enable_all().build().unwrap();
     rt.block_on(game_server::run(server_state));
 }
 
