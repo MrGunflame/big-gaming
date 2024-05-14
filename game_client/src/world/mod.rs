@@ -85,7 +85,7 @@ impl GameWorldState {
 
         let interval = Interval::new(Duration::from_secs(1) / config.timestep);
 
-        Self {
+        let mut this = Self {
             world: GameWorld::new(conn, executor, config),
             camera_controller: CameraController::new(),
             primary_camera: None,
@@ -99,7 +99,9 @@ impl GameWorldState {
             cursor_pinned,
             ui_elements: UiElements::default(),
             interval,
-        }
+        };
+        this.register_actions();
+        this
     }
 
     pub async fn update(
@@ -388,60 +390,23 @@ impl GameWorldState {
     }
 
     fn update_host(&mut self, id: EntityId) {
-        // Remove all registered actions from the previous host.
-        // If this is the first host this is a noop.
-        self.actions.clear();
-
         self.host = id;
-
-        // Register all actions from equipped items.
-        self.update_host_actions();
     }
 
-    fn update_host_actions(&mut self) {
-        // This is a quick-and-dirty implementation that throws out all previous
-        // actions and registers all equipped all items once again
-        // every time the inventory is updated.
+    fn register_actions(&mut self) {
+        for module in self.modules.iter() {
+            for record in module.records.iter() {
+                let Some(action) = record.body.as_action() else {
+                    continue;
+                };
 
-        // Unregister all actions.
-        self.actions.clear();
-
-        for (id, _) in self
-            .world
-            .state()
-            .world
-            .components(self.host)
-            .clone()
-            .iter()
-        {
-            self.register_record_action(id);
-        }
-    }
-
-    fn register_record_action(&mut self, id: RecordReference) {
-        let Some(module) = self.modules.get(id.module) else {
-            return;
-        };
-
-        let Some(record) = module.records.get(id.record) else {
-            return;
-        };
-
-        let actions = match &record.body {
-            RecordBody::Action(_) => return,
-            RecordBody::Race(race) => &race.actions,
-            RecordBody::Component(component) => return,
-            RecordBody::Item(item) => &item.actions,
-            RecordBody::Object(_) => return,
-        };
-
-        for action in actions {
-            let module = self.modules.get(action.module).unwrap();
-            let record = module.records.get(action.record).unwrap();
-
-            if let Some(key) = self.get_key_for_action(action.module, record) {
-                self.actions.register(action.module, record, key);
-                self.registered_actions.push(ActionId(*action));
+                if let Some(key) = self.get_key_for_action(module.id, record) {
+                    self.actions.register(module.id, record, key);
+                    self.registered_actions.push(ActionId(RecordReference {
+                        module: module.id,
+                        record: record.id,
+                    }));
+                }
             }
         }
     }
