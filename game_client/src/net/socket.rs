@@ -7,7 +7,7 @@ use game_net::conn::socket::UdpSocketStream;
 use game_net::conn::{Connect, Connection, ConnectionHandle};
 use game_net::proto::{Decode, Packet};
 use game_net::Socket;
-use tokio::runtime::{Builder, UnhandledPanic};
+use tokio::runtime::Builder;
 
 use super::ConnectionError;
 
@@ -19,11 +19,7 @@ pub fn spawn_conn(
     let (tx, rx) = mpsc::channel();
 
     std::thread::spawn(move || {
-        let rt = Builder::new_current_thread()
-            .enable_all()
-            .unhandled_panic(UnhandledPanic::ShutdownRuntime)
-            .build()
-            .unwrap();
+        let rt = Builder::new_current_thread().enable_all().build().unwrap();
 
         rt.block_on(async move {
             let socket = match Socket::connect(addr) {
