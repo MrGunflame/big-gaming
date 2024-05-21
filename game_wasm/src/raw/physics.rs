@@ -1,4 +1,4 @@
-use bytemuck::{Pod, Zeroable};
+use bytemuck::{AnyBitPattern, Pod, Zeroable};
 use game_macros::guest_only;
 
 use crate::entity::EntityId;
@@ -55,6 +55,7 @@ pub union Shape {
     pub cuboid: Cuboid,
     pub ball: Ball,
     pub capsule: Capsule,
+    pub trimesh: TriMesh,
 }
 
 #[derive(Copy, Clone, Debug, Zeroable, Pod)]
@@ -79,6 +80,16 @@ pub struct Capsule {
     pub radius: f32,
 }
 
+#[derive(Copy, Clone, Debug)]
+#[repr(C)]
+pub struct TriMesh {
+    pub vertices_ptr: *const [f32; 3],
+    pub vertices_len: usize,
+    pub indices_ptr: *const u32,
+    pub indices_len: usize,
+}
+
 pub const SHAPE_TYPE_CUBOID: u32 = 1;
 pub const SHAPE_TYPE_BALL: u32 = 2;
 pub const SHAPE_TYPE_CAPSULE: u32 = 3;
+pub const SHAPE_TYPE_TRIMESH: u32 = 4;
