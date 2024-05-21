@@ -6,8 +6,8 @@ use crate::components::builtin::{Axis, ColliderShape};
 use crate::entity::EntityId;
 use crate::math::Ray;
 use crate::raw::physics::{
-    physics_cast_ray, physics_cast_shape, Ball, Capsule, CastRayResult, Cuboid, SHAPE_TYPE_BALL,
-    SHAPE_TYPE_CAPSULE, SHAPE_TYPE_CUBOID,
+    physics_cast_ray, physics_cast_shape, Ball, Capsule, CastRayResult, Cuboid, TriMesh,
+    SHAPE_TYPE_BALL, SHAPE_TYPE_CAPSULE, SHAPE_TYPE_CUBOID, SHAPE_TYPE_TRIMESH,
 };
 use crate::raw::physics::{QueryFilter as RawQueryFilter, Shape as RawShape};
 use crate::raw::RESULT_OK;
@@ -92,6 +92,17 @@ pub fn cast_shape(
                     },
                     half_height: capsule.half_height,
                     radius: capsule.radius,
+                },
+            },
+        ),
+        ColliderShape::TriMesh(mesh) => (
+            SHAPE_TYPE_TRIMESH,
+            RawShape {
+                trimesh: TriMesh {
+                    vertices_ptr: mesh.vertices().as_ptr().cast(),
+                    vertices_len: mesh.vertices().len(),
+                    indices_ptr: mesh.indices().as_ptr(),
+                    indices_len: mesh.indices().len(),
                 },
             },
         ),

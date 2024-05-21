@@ -217,6 +217,7 @@ pub enum ColliderShape {
     Cuboid(Cuboid),
     Ball(Ball),
     Capsule(Capsule),
+    TriMesh(TriMesh),
 }
 
 impl Encode for ColliderShape {
@@ -237,6 +238,10 @@ impl Encode for ColliderShape {
                 3u8.encode(&mut writer);
                 capsule.encode(&mut writer);
             }
+            Self::TriMesh(mesh) => {
+                4u8.encode(&mut writer);
+                mesh.encode(&mut writer);
+            }
         };
     }
 }
@@ -254,6 +259,7 @@ impl Decode for ColliderShape {
             1 => Cuboid::decode(reader).map(Self::Cuboid),
             2 => Ball::decode(reader).map(Self::Ball),
             3 => Capsule::decode(reader).map(Self::Capsule),
+            4 => TriMesh::decode(reader).map(Self::TriMesh),
             _ => Err(DecodeError::InvalidVariant {
                 ident: stringify!(ColliderShape),
                 value: tag.into(),
@@ -347,4 +353,69 @@ pub struct GlobalTransform(pub Transform);
 
 impl Component for GlobalTransform {
     const ID: RecordReference = GLOBAL_TRANSFORM;
+}
+
+#[derive(Clone, Debug)]
+pub struct TriMesh {
+    vertices: Vec<Vec3>,
+    indices: Vec<u32>,
+}
+
+impl TriMesh {
+    pub fn new(vertices: Vec<Vec3>, indices: Vec<u32>) -> Self {
+        assert!(indices.len() % 3 == 0);
+        Self { vertices, indices }
+    }
+
+    pub fn vertices(&self) -> &[Vec3] {
+        &self.vertices
+    }
+
+    pub fn indices(&self) -> &[u32] {
+        &self.indices
+    }
+}
+
+impl Encode for TriMesh {
+    fn encode<W>(&self, mut writer: W)
+    where
+        W: Writer,
+    {
+        (self.vertices.len() as u32).encode(&mut writer);
+        (self.indices.len() as u32).encode(&mut writer);
+
+        for vertex in &self.vertices {
+            vertex.encode(&mut writer);
+        }
+
+        for index in &self.indices {
+            index.encode(&mut writer);
+        }
+    }
+}
+
+impl Decode for TriMesh {
+    type Error = DecodeError;
+
+    fn decode<R>(mut reader: R) -> Result<Self, Self::Error>
+    where
+        R: Reader,
+    {
+        let num_vertices = u32::decode(&mut reader)?;
+        let num_indices = u32::decode(&mut reader)?;
+
+        let mut vertices = Vec::new();
+        for _ in 0..num_vertices {
+            let vertex = Vec3::decode(&mut reader)?;
+            vertices.push(vertex);
+        }
+
+        let mut indices = Vec::new();
+        for _ in 0..num_indices {
+            let index = u32::decode(&mut reader)?;
+            indices.push(index);
+        }
+
+        Ok(Self::new(vertices, indices))
+    }
 }

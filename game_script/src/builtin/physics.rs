@@ -1,11 +1,11 @@
 use bytemuck::{Pod, Zeroable};
-use game_common::components::{Axis, Ball, Capsule, ColliderShape, Cuboid};
+use game_common::components::{Axis, Ball, Capsule, ColliderShape, Cuboid, TriMesh};
 use game_common::entity::EntityId;
 use game_common::math::Ray;
 use game_physics::query::QueryFilter;
 use game_tracing::trace_span;
 use game_wasm::raw::physics::{
-    CastRayResult, SHAPE_TYPE_BALL, SHAPE_TYPE_CAPSULE, SHAPE_TYPE_CUBOID,
+    CastRayResult, SHAPE_TYPE_BALL, SHAPE_TYPE_CAPSULE, SHAPE_TYPE_CUBOID, SHAPE_TYPE_TRIMESH,
 };
 use glam::{Quat, Vec3};
 use wasmtime::Caller;
@@ -126,6 +126,23 @@ pub fn physics_cast_shape(
                 radius: shape.radius,
             })
         }
+        SHAPE_TYPE_TRIMESH => {
+            let shape = caller.read::<RawTriMesh>(shape)?;
+            let vertices = caller
+                .read_slice::<[f32; 3]>(shape.vertices_ptr, shape.vertices_len)?
+                .iter()
+                .map(|[x, y, z]| Vec3::new(*x, *y, *z))
+                .collect();
+            let indices: Vec<u32> = caller
+                .read_slice(shape.indices_ptr, shape.indices_len)?
+                .iter()
+                .copied()
+                .collect();
+
+            assert_caller_precondition!(stringify!(physics_cast_shape), indices.len() % 3 == 0);
+
+            ColliderShape::TriMesh(TriMesh::new(vertices, indices))
+        }
         _ => return Err(wasmtime::Error::msg("invalid SHAPE_TYPE")),
     };
 
@@ -193,4 +210,13 @@ fn read_query_filter(caller: &mut Caller<'_, State>, ptr: u32) -> wasmtime::Resu
 struct RawQueryFilter {
     exclude_entities_ptr: u32,
     exclude_entities_len: u32,
+}
+
+#[derive(Copy, Clone, Debug, Zeroable, Pod)]
+#[repr(C)]
+struct RawTriMesh {
+    vertices_ptr: u32,
+    vertices_len: u32,
+    indices_ptr: u32,
+    indices_len: u32,
 }

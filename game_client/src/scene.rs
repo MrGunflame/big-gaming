@@ -371,6 +371,17 @@ fn draw_collider_lines(world: &World, gizmos: &Gizmos) {
                     );
                 }
             }
+            ColliderShape::TriMesh(mesh) => {
+                for indices in mesh.indices().windows(3) {
+                    let a = mesh.vertices()[indices[0] as usize];
+                    let b = mesh.vertices()[indices[1] as usize];
+                    let c = mesh.vertices()[indices[2] as usize];
+
+                    gizmos.line(a, b, Color::RED);
+                    gizmos.line(b, c, Color::RED);
+                    gizmos.line(c, a, Color::RED);
+                }
+            }
         }
     }
 }

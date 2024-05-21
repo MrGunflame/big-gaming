@@ -16,8 +16,9 @@ use game_common::world::{QueryWrapper, World};
 use game_tracing::trace_span;
 use glam::{Quat, Vec3};
 use handle::HandleMap;
-use nalgebra::Isometry;
+use nalgebra::{Const, Isometry, OPoint};
 use parking_lot::Mutex;
+use rapier3d::geometry::TriMesh;
 use rapier3d::parry::shape::{Ball, Capsule, Cuboid};
 use rapier3d::prelude::{
     BroadPhase, CCDSolver, Collider, ColliderBuilder, ColliderHandle, ColliderSet, CollisionEvent,
@@ -219,6 +220,22 @@ impl Pipeline {
                         Axis::Y => ColliderBuilder::capsule_y(capsule.half_height, capsule.radius),
                         Axis::Z => ColliderBuilder::capsule_z(capsule.half_height, capsule.radius),
                     },
+                    ColliderShape::TriMesh(mesh) => {
+                        let vertices = mesh
+                            .vertices()
+                            .iter()
+                            .map(|vertex| {
+                                OPoint::<f32, Const<3>>::new(vertex.x, vertex.y, vertex.z)
+                            })
+                            .collect();
+                        let indices = mesh
+                            .indices()
+                            .windows(3)
+                            .map(|indices| indices.try_into().unwrap())
+                            .collect();
+
+                        ColliderBuilder::trimesh(vertices, indices)
+                    }
                 };
 
                 builder = builder.position(Isometry {
@@ -425,6 +442,37 @@ impl Pipeline {
                     Axis::Y => Capsule::new_y(capsule.half_height, capsule.radius),
                     Axis::Z => Capsule::new_z(capsule.half_height, capsule.radius),
                 };
+
+                match self.query_pipeline.cast_shape(
+                    &self.bodies,
+                    &self.colliders,
+                    &shape_origin,
+                    &shape_vel,
+                    &shape,
+                    max_toi,
+                    true,
+                    filter,
+                ) {
+                    Some((handle, toi)) => {
+                        let entity = self.collider_handles.get2(handle).unwrap();
+                        Some((entity, toi.toi))
+                    }
+                    None => None,
+                }
+            }
+            ColliderShape::TriMesh(mesh) => {
+                let vertices = mesh
+                    .vertices()
+                    .iter()
+                    .map(|vertex| OPoint::<f32, Const<3>>::new(vertex.x, vertex.y, vertex.z))
+                    .collect();
+                let indices = mesh
+                    .indices()
+                    .windows(3)
+                    .map(|indices| indices.try_into().unwrap())
+                    .collect();
+
+                let shape = TriMesh::new(vertices, indices);
 
                 match self.query_pipeline.cast_shape(
                     &self.bodies,
