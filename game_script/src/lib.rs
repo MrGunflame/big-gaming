@@ -13,7 +13,7 @@ use game_common::world::World;
 use game_data::record::Record;
 use game_tracing::trace_span;
 use game_wasm::encoding::{encode_fields, BinaryWriter};
-use game_wasm::events::{PLAYER_CONNECT, PLAYER_DISCONNECT};
+use game_wasm::events::{CELL_LOAD, CELL_UNLOAD, PLAYER_CONNECT, PLAYER_DISCONNECT};
 use game_wasm::player::PlayerId;
 use instance::{HostBufferPool, InstancePool, RunState, State};
 use script::{Script, ScriptLoadError};
@@ -131,6 +131,28 @@ impl Executor {
 
                     self.schedule_event(DispatchEvent {
                         id: PLAYER_DISCONNECT,
+                        data,
+                        fields,
+                    });
+                    continue;
+                }
+                Event::CellLoad(event) => {
+                    let (fields, data) = BinaryWriter::new().encoded(&event);
+                    let fields = encode_fields(&fields);
+
+                    self.schedule_event(DispatchEvent {
+                        id: CELL_LOAD,
+                        data,
+                        fields,
+                    });
+                    continue;
+                }
+                Event::CellUnload(event) => {
+                    let (fields, data) = BinaryWriter::new().encoded(&event);
+                    let fields = encode_fields(&fields);
+
+                    self.schedule_event(DispatchEvent {
+                        id: CELL_UNLOAD,
                         data,
                         fields,
                     });

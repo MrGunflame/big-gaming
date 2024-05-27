@@ -1,7 +1,8 @@
 use alloc::borrow::ToOwned;
+use alloc::vec;
 use game_wasm::components::builtin::{
     Axis, Capsule, Collider, ColliderShape, Color, Cuboid, DirectionalLight, MeshInstance,
-    RigidBody, RigidBodyKind, Transform,
+    RigidBody, RigidBodyKind, Transform, TriMesh,
 };
 use game_wasm::components::{Components, RawComponent};
 use game_wasm::encoding::{Decode, Encode};
@@ -144,6 +145,26 @@ pub fn spawn_player(_: EntityId, event: PlayerConnect) {
     pawn.insert(Health {
         value: 100,
         max: 100,
+    });
+
+    let floor = Entity::spawn();
+    floor.insert(Transform::from_translation(Vec3::splat(0.0)));
+    floor.insert(RigidBody {
+        kind: RigidBodyKind::Fixed,
+        linvel: Vec3::ZERO,
+        angvel: Vec3::ZERO,
+    });
+    floor.insert(Collider {
+        friction: 1.0,
+        restitution: 1.0,
+        shape: ColliderShape::TriMesh(TriMesh::new(
+            vec![
+                Vec3::new(0.0, 0.0, 0.0),
+                Vec3::new(0.0, 1.0, 0.0),
+                Vec3::new(1.0, 0.0, 0.0),
+            ],
+            vec![0, 1, 2],
+        )),
     });
 }
 

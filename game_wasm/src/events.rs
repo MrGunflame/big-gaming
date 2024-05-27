@@ -1,6 +1,7 @@
 //! Events dispatched from the game, handled by a script
 //!
 
+use crate::cell::CellId;
 use crate::encoding::{encode_value, Decode, Encode};
 use crate::player::PlayerId;
 use crate::raw::event_dispatch;
@@ -109,6 +110,8 @@ macro_rules! define_id {
 define_id! {
     PLAYER_CONNECT => 0,
     PLAYER_DISCONNECT => 1,
+    CELL_LOAD => 2,
+    CELL_UNLOAD => 3,
 }
 
 #[derive(Copy, Clone, Debug, Encode, Decode)]
@@ -129,4 +132,22 @@ pub struct PlayerDisconnect {
 
 impl Event for PlayerDisconnect {
     const ID: RecordReference = PLAYER_DISCONNECT;
+}
+
+#[derive(Copy, Clone, Debug, Encode, Decode)]
+pub struct CellLoad {
+    pub cell: CellId,
+}
+
+impl Event for CellLoad {
+    const ID: RecordReference = CELL_LOAD;
+}
+
+#[derive(Copy, Clone, Debug, Encode, Decode)]
+pub struct CellUnload {
+    pub cell: CellId,
+}
+
+impl Event for CellUnload {
+    const ID: RecordReference = CELL_UNLOAD;
 }

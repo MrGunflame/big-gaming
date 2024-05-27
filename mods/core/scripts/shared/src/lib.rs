@@ -9,6 +9,7 @@ mod movement;
 mod player;
 mod projectile;
 mod weapon;
+mod world;
 
 use core::f32::consts::PI;
 
@@ -83,6 +84,7 @@ pub fn on_init() {
     register_event_handler(weapon::gun_unequip);
 
     register_event_handler(weapon::translate_equipped_items);
+    register_event_handler(world::cell_load);
 }
 
 pub fn extract_actor_rotation(rotation: Quat) -> Quat {

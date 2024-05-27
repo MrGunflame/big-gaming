@@ -7,6 +7,7 @@ use game_wasm::player::PlayerId;
 
 use crate::components::actions::ActionId;
 use crate::entity::EntityId;
+use crate::world::CellId;
 
 #[derive(Clone, Debug, Default)]
 pub struct EventQueue {
@@ -43,6 +44,8 @@ pub enum Event {
     Collision(CollisionEvent),
     PlayerConnect(PlayerConnect),
     PlayerDisconnect(PlayerDisconnect),
+    CellLoad(CellLoad),
+    CellUnload(CellUnload),
 }
 
 impl Event {
@@ -52,6 +55,8 @@ impl Event {
             Self::Collision(_) => EventKind::Collision,
             Self::PlayerConnect(_) => EventKind::PlayerConnect,
             Self::PlayerDisconnect(_) => EventKind::PlayerDisconnect,
+            Self::CellLoad(_) => EventKind::CellLoad,
+            Self::CellUnload(_) => EventKind::CellUnload,
         }
     }
 }
@@ -62,6 +67,8 @@ pub enum EventKind {
     Collision,
     PlayerConnect,
     PlayerDisconnect,
+    CellLoad,
+    CellUnload,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -117,5 +124,39 @@ impl Encode for PlayerDisconnect {
         W: Writer,
     {
         writer.write(Primitive::PlayerId, &self.player.to_bits().to_le_bytes());
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct CellLoad {
+    pub id: CellId,
+}
+
+impl Encode for CellLoad {
+    fn encode<W>(&self, mut writer: W)
+    where
+        W: Writer,
+    {
+        let (x, y, z) = self.id.as_parts();
+        writer.write(Primitive::Bytes, &x.to_le_bytes());
+        writer.write(Primitive::Bytes, &y.to_le_bytes());
+        writer.write(Primitive::Bytes, &z.to_le_bytes());
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct CellUnload {
+    pub id: CellId,
+}
+
+impl Encode for CellUnload {
+    fn encode<W>(&self, mut writer: W)
+    where
+        W: Writer,
+    {
+        let (x, y, z) = self.id.as_parts();
+        writer.write(Primitive::Bytes, &x.to_le_bytes());
+        writer.write(Primitive::Bytes, &y.to_le_bytes());
+        writer.write(Primitive::Bytes, &z.to_le_bytes());
     }
 }
