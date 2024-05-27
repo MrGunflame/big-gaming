@@ -1,6 +1,7 @@
 //! Events dispatched from the game, handled by a script
 //!
 
+use crate::cell::CellId;
 use crate::encoding::{encode_value, Decode, Encode};
 use crate::player::PlayerId;
 use crate::raw::event_dispatch;
@@ -135,7 +136,7 @@ impl Event for PlayerDisconnect {
 
 #[derive(Copy, Clone, Debug, Encode, Decode)]
 pub struct CellLoad {
-    pub cell: [u32; 3],
+    pub cell: CellId,
 }
 
 impl Event for CellLoad {
@@ -144,7 +145,7 @@ impl Event for CellLoad {
 
 #[derive(Copy, Clone, Debug, Encode, Decode)]
 pub struct CellUnload {
-    pub cell: [u32; 3],
+    pub cell: CellId,
 }
 
 impl Event for CellUnload {

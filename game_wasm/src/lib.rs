@@ -24,6 +24,7 @@ mod raw;
 mod host_buffer;
 
 pub mod action;
+pub mod cell;
 pub mod components;
 pub mod encoding;
 pub mod entity;
