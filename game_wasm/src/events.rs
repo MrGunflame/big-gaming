@@ -109,6 +109,8 @@ macro_rules! define_id {
 define_id! {
     PLAYER_CONNECT => 0,
     PLAYER_DISCONNECT => 1,
+    CELL_LOAD => 2,
+    CELL_UNLOAD => 3,
 }
 
 #[derive(Copy, Clone, Debug, Encode, Decode)]
@@ -129,4 +131,22 @@ pub struct PlayerDisconnect {
 
 impl Event for PlayerDisconnect {
     const ID: RecordReference = PLAYER_DISCONNECT;
+}
+
+#[derive(Copy, Clone, Debug, Encode, Decode)]
+pub struct CellLoad {
+    pub cell: [u32; 3],
+}
+
+impl Event for CellLoad {
+    const ID: RecordReference = CELL_LOAD;
+}
+
+#[derive(Copy, Clone, Debug, Encode, Decode)]
+pub struct CellUnload {
+    pub cell: [u32; 3],
+}
+
+impl Event for CellUnload {
+    const ID: RecordReference = CELL_UNLOAD;
 }

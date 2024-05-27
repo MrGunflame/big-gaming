@@ -1,6 +1,7 @@
 use ahash::{HashMap, HashSet};
 use game_common::components::{Decode, Transform};
 use game_common::entity::EntityId;
+use game_common::events::{CellLoad, Event};
 use game_common::world::cell::square;
 use game_common::world::gen::{CellBuilder, Generator};
 use game_common::world::CellId;
@@ -47,6 +48,9 @@ pub fn update_level_cells(state: &mut ServerState) {
             }
 
             state.level.loaded.insert(*cell);
+            state
+                .event_queue
+                .push(Event::CellLoad(CellLoad { id: *cell }));
         }
 
         tracing::info!("loading cell {:?}", cell);
