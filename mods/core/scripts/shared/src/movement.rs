@@ -9,7 +9,7 @@ use game_wasm::DT;
 
 use crate::components::{MOVE_BACK, MOVE_FORWARD, MOVE_LEFT, MOVE_RIGHT, ROTATE};
 use crate::player::TransformChanged;
-use crate::{controller, extract_actor_rotation, Camera, MovementSpeed, PlayerCamera};
+use crate::{controller, extract_actor_rotation, Camera, Health, MovementSpeed, PlayerCamera};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Encode, Decode)]
 pub struct MoveForward;
@@ -74,9 +74,19 @@ pub fn move_right(entity: EntityId, MoveRight: MoveRight) {
 fn move_direction(entity: EntityId, dir: Vec3) {
     let entity = Entity::new(entity);
 
-    let speed = entity.get::<MovementSpeed>().unwrap();
-    let mut transform = entity.get::<Transform>().unwrap();
-    let collider = entity.get::<Collider>().unwrap();
+    if entity.get::<Health>().is_err() {
+        return;
+    }
+
+    let Ok(speed) = entity.get::<MovementSpeed>() else {
+        return;
+    };
+    let Ok(mut transform) = entity.get::<Transform>() else {
+        return;
+    };
+    let Ok(collider) = entity.get::<Collider>() else {
+        return;
+    };
 
     let rotation = extract_actor_rotation(transform.rotation);
 
@@ -105,6 +115,10 @@ pub fn update_rotation(entity: EntityId, Rotate(rotation): Rotate) {
     };
 
     let player = Entity::new(camera.parent);
+    if player.get::<Health>().is_err() {
+        return;
+    }
+
     let mut transform = player.get::<Transform>().unwrap();
     let mut player_camera = player.get::<PlayerCamera>().unwrap();
     player_camera.rotation = rotation;
