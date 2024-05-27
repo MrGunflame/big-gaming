@@ -48,7 +48,10 @@ impl SceneSpawner {
         let _span = trace_span!("SceneSpaner::update").entered();
 
         self.queued_instances.retain(|id| {
-            let instance = self.instances.get_mut(id.0).unwrap();
+            let Some(instance) = self.instances.get_mut(id.0) else {
+                // Instance does not exist if it was already despawned.
+                return false;
+            };
             let scene = self.scenes.get_mut(&instance.path).unwrap();
 
             match &mut scene.state {
