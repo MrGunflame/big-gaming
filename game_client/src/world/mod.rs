@@ -6,6 +6,7 @@ pub mod script;
 pub mod state;
 
 use std::net::ToSocketAddrs;
+use std::sync::mpsc;
 use std::time::Duration;
 
 use game_common::components::actions::ActionId;
@@ -39,10 +40,9 @@ use crate::input::{InputKey, Inputs};
 use crate::net::world::{Command, CommandBuffer};
 use crate::net::ServerConnection;
 use crate::ui::debug::Statistics;
-use crate::ui::inventory::InventoryEvent;
 use crate::ui::inventory::InventoryProxy;
 use crate::ui::main_menu::MainMenu;
-use crate::ui::UiElements;
+use crate::ui::{UiElements, UiEvent};
 
 use self::actions::ActiveActions;
 use self::camera::{CameraController, CameraMode, DetachedState};
@@ -64,6 +64,10 @@ pub struct GameWorldState {
     host: EntityId,
     ui_elements: UiElements,
     interval: Interval,
+    ui_events_rx: mpsc::Receiver<UiEvent>,
+    // Keep the sender around so we can clone
+    // and send it to the UI elements for callbacks.
+    ui_events_tx: mpsc::Sender<UiEvent>,
 }
 
 impl GameWorldState {
@@ -85,6 +89,8 @@ impl GameWorldState {
 
         let interval = Interval::new(Duration::from_secs(1) / config.timestep);
 
+        let (ui_events_tx, ui_events_rx) = mpsc::channel();
+
         let mut this = Self {
             world: GameWorld::new(conn, executor, config),
             camera_controller: CameraController::new(),
@@ -99,6 +105,8 @@ impl GameWorldState {
             cursor_pinned,
             ui_elements: UiElements::default(),
             interval,
+            ui_events_rx,
+            ui_events_tx,
         };
         this.register_actions();
         this
@@ -323,6 +331,7 @@ impl GameWorldState {
                         &inventory,
                         self.modules.clone(),
                         ui_doc,
+                        self.ui_events_tx.clone(),
                     ));
                     self.cursor_pinned.unpin(cursor);
                 }
@@ -357,35 +366,12 @@ impl GameWorldState {
             });
         }
 
-        // Inventory
-        if let Some(proxy) = &self.inventory_proxy {
-            while let Ok(event) = proxy.rx.try_recv() {
-                let (action, data) = match event {
-                    InventoryEvent::Equip(slot) => {
-                        let bits = slot.into_raw();
-                        let mut data = Vec::new();
-                        data.extend(bits.to_le_bytes());
-                        ("c626b9b0ab1940aba6932ea7726d0175:17".parse().unwrap(), data)
-                    }
-                    InventoryEvent::Uneqip(slot) => {
-                        let bits = slot.into_raw();
-                        let mut data = Vec::new();
-                        data.extend(bits.to_le_bytes());
-                        ("c626b9b0ab1940aba6932ea7726d0175:18".parse().unwrap(), data)
-                    }
-                    InventoryEvent::Drop(event) => {
-                        let mut data = Vec::new();
-                        data.extend(event.id.into_raw().to_le_bytes());
-                        ("c626b9b0ab1940aba6932ea7726d0175:19".parse().unwrap(), data)
-                    }
-                };
-
-                self.world.send(Action {
-                    entity: self.host,
-                    action: ActionId(action),
-                    data,
-                });
-            }
+        while let Ok(event) = self.ui_events_rx.try_recv() {
+            self.world.send(Action {
+                entity: self.host,
+                action: ActionId(event.id),
+                data: event.data,
+            });
         }
     }
 

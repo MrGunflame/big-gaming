@@ -1,3 +1,4 @@
+pub mod death;
 pub mod debug;
 pub mod health;
 pub mod inventory;
@@ -5,9 +6,11 @@ pub mod main_menu;
 
 use game_ui::reactive::{NodeId, Scope};
 use game_ui::widgets::Widget;
+use game_wasm::world::RecordReference;
 
 use crate::components::base::Health;
 
+use self::death::DealthUi;
 use self::debug::{DebugUi, FrametimeGraph, Statistics};
 use self::health::HealthUi;
 
@@ -17,6 +20,7 @@ use self::health::HealthUi;
 pub struct UiElements {
     health: Option<NodeId>,
     debug_stats: Option<NodeId>,
+    death: Option<NodeId>,
     ups: FrametimeGraph,
     fps: FrametimeGraph,
 }
@@ -31,6 +35,13 @@ impl UiElements {
         if let Some(health) = health {
             let id = HealthUi { health }.build(cx).id().unwrap();
             self.health = Some(id);
+
+            // if let Some(id) = self.death {
+            //     cx.remove(id);
+            // }
+        } else {
+            // let id = DealthUi {}.build(cx).id().unwrap();
+            // self.death = Some(id);
         }
     }
 
@@ -61,4 +72,11 @@ impl UiElements {
             self.debug_stats = Some(id);
         }
     }
+}
+
+/// Event sent from a UI.
+#[derive(Clone, Debug)]
+pub struct UiEvent {
+    pub id: RecordReference,
+    pub data: Vec<u8>,
 }
