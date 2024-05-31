@@ -14,12 +14,11 @@ use game_common::components::{GlobalTransform, PrimaryCamera, Transform};
 use game_common::entity::EntityId;
 use game_common::module::ModuleId;
 use game_common::record::RecordReference;
-use game_common::world::hierarchy::update_global_transform;
 use game_common::world::World;
 use game_core::counter::{Interval, UpdateCounter};
 use game_core::modules::Modules;
 use game_core::time::Time;
-use game_data::record::{Record, RecordBody};
+use game_data::record::Record;
 use game_input::hotkeys::{HotkeyCode, Key};
 use game_input::keyboard::{KeyCode, KeyboardInput};
 use game_input::mouse::MouseMotion;
@@ -155,9 +154,11 @@ impl GameWorldState {
         // Health
         if let Some(health) = world.get(self.host, Health::ID) {
             let health = Health::decode(health.reader()).unwrap();
-            self.ui_elements.update_health(&mut cx, Some(health));
+            self.ui_elements
+                .update_health(&mut cx, Some(health), &self.ui_events_tx);
         } else {
-            self.ui_elements.update_health(&mut cx, None);
+            self.ui_elements
+                .update_health(&mut cx, None, &self.ui_events_tx);
         }
 
         self.dispatch_actions();

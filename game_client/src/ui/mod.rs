@@ -4,6 +4,8 @@ pub mod health;
 pub mod inventory;
 pub mod main_menu;
 
+use std::sync::mpsc;
+
 use game_ui::reactive::{NodeId, Scope};
 use game_ui::widgets::Widget;
 use game_wasm::world::RecordReference;
@@ -27,7 +29,12 @@ pub struct UiElements {
 
 impl UiElements {
     /// Updates the health widget to the given value. Removes the widget if `None` is given.
-    pub fn update_health(&mut self, cx: &mut Scope, health: Option<Health>) {
+    pub fn update_health(
+        &mut self,
+        cx: &mut Scope,
+        health: Option<Health>,
+        tx: &mpsc::Sender<UiEvent>,
+    ) {
         if let Some(id) = self.health {
             cx.remove(id);
         }
@@ -36,12 +43,14 @@ impl UiElements {
             let id = HealthUi { health }.build(cx).id().unwrap();
             self.health = Some(id);
 
-            // if let Some(id) = self.death {
-            //     cx.remove(id);
-            // }
+            if let Some(id) = self.death {
+                cx.remove(id);
+            }
         } else {
-            // let id = DealthUi {}.build(cx).id().unwrap();
-            // self.death = Some(id);
+            if self.death.is_none() {
+                let id = DealthUi { tx: tx.clone() }.build(cx).id().unwrap();
+                self.death = Some(id);
+            }
         }
     }
 

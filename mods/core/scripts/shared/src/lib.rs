@@ -79,6 +79,8 @@ pub fn on_init() {
     register_action_handler(inventory::on_equip);
     register_action_handler(inventory::on_uneqip);
 
+    register_action_handler(player::respawn_player);
+
     register_event_handler(player::spawn_player);
     register_event_handler(player::update_camera_transform);
 
@@ -249,16 +251,19 @@ pub mod components {
         EQUIP => 0x17,
         UNEQUIP => 0x18,
         DROP => 0x19,
+        PLAYER_RESPAWN => 0x1a,
 
         TEST_WEAPON => 0x11,
 
         EQUIPPED_ITEM => 0x20,
         LOOKING_DIRECTION => 0x21,
+        RESPAWN_POINT => 0x23,
 
         // EVENTS
         EVENT_GUN_EQUIP => 0x01,
         EVENT_GUN_UNEQUIP => 0x02,
         TRANSFORM_CHANGED => 0x03,
+
     }
 }
 

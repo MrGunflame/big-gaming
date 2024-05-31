@@ -1,10 +1,11 @@
 use alloc::borrow::ToOwned;
 use alloc::vec;
+use game_wasm::action::Action;
 use game_wasm::components::builtin::{
     Axis, Capsule, Collider, ColliderShape, Color, Cuboid, DirectionalLight, MeshInstance,
     RigidBody, RigidBodyKind, Transform, TriMesh,
 };
-use game_wasm::components::{Components, RawComponent};
+use game_wasm::components::{Component, Components, RawComponent};
 use game_wasm::encoding::{Decode, Encode};
 use game_wasm::entity::EntityId;
 use game_wasm::events::{Event, PlayerConnect};
@@ -13,7 +14,10 @@ use game_wasm::math::{Quat, Vec3};
 use game_wasm::world::{Entity, RecordReference};
 
 use crate::actor::{spawn_actor, SpawnActor};
-use crate::components::{EVENT_GUN_EQUIP, EVENT_GUN_UNEQUIP, TEST_WEAPON, TRANSFORM_CHANGED};
+use crate::components::{
+    EVENT_GUN_EQUIP, EVENT_GUN_UNEQUIP, PLAYER_RESPAWN, RESPAWN_POINT, TEST_WEAPON,
+    TRANSFORM_CHANGED,
+};
 use crate::{
     Camera, CharacterController, Equippable, GunProperties, Health, Humanoid, LookingDirection,
     MovementSpeed, PlayerCamera, Projectile, SpawnPoint,
@@ -195,4 +199,38 @@ pub fn update_camera_transform(_: EntityId, event: TransformChanged) {
         translation: transform.translation,
         rotation: transform.rotation,
     });
+}
+
+#[derive(Copy, Clone, Debug, Encode, Decode)]
+pub struct RespawnPlayer {}
+
+impl Action for RespawnPlayer {
+    const ID: RecordReference = PLAYER_RESPAWN;
+}
+
+pub fn respawn_player(entity: EntityId, event: RespawnPlayer) {
+    let Ok(camera) = Entity::new(entity).get::<Camera>() else {
+        return;
+    };
+
+    let actor = Entity::new(camera.parent);
+
+    let Ok(respawn_point) = actor.get::<RespawnPoint>() else {
+        return;
+    };
+    let Ok(mut transform) = actor.get::<Transform>() else {
+        return;
+    };
+
+    transform.translation = respawn_point.position;
+    actor.insert(transform);
+}
+
+#[derive(Clone, Debug, Encode, Decode)]
+pub struct RespawnPoint {
+    pub position: Vec3,
+}
+
+impl Component for RespawnPoint {
+    const ID: RecordReference = RESPAWN_POINT;
 }
