@@ -47,7 +47,10 @@ pub fn spawn_player(_: EntityId, event: PlayerConnect) {
     entity.insert(MovementSpeed(1.0));
     entity.insert(Humanoid);
     entity.insert(CharacterController);
-    entity.insert(Health { value: 1, max: 100 });
+    entity.insert(Health {
+        value: 10,
+        max: 100,
+    });
     entity.insert(SpawnPoint {
         translation: Vec3::ZERO,
     });
@@ -110,6 +113,10 @@ pub fn spawn_player(_: EntityId, event: PlayerConnect) {
         rotation: Quat::IDENTITY,
     });
     entity.insert(LookingDirection::default());
+
+    entity.insert(RespawnPoint {
+        position: Vec3::new(0.0, 10.0, 0.0),
+    });
 
     event.player.set_active(camera.id());
 

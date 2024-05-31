@@ -24,9 +24,7 @@ use game_input::keyboard::{KeyCode, KeyboardInput};
 use game_input::mouse::MouseMotion;
 use game_script::Executor;
 use game_ui::reactive::{Document, NodeId};
-use game_wasm::components::Component;
 use game_wasm::encoding::BinaryWriter;
-use game_wasm::encoding::Decode;
 use game_window::cursor::Cursor;
 use game_window::events::WindowEvent;
 
@@ -152,13 +150,14 @@ impl GameWorldState {
         );
 
         // Health
-        if let Some(health) = world.get(self.host, Health::ID) {
-            let health = Health::decode(health.reader()).unwrap();
-            self.ui_elements
-                .update_health(&mut cx, Some(health), &self.ui_events_tx);
-        } else {
-            self.ui_elements
-                .update_health(&mut cx, None, &self.ui_events_tx);
+        if let Ok(camera) = world.get_typed::<Camera>(self.host) {
+            if let Ok(health) = world.get_typed::<Health>(camera.parent.into()) {
+                self.ui_elements
+                    .update_health(&mut cx, Some(health), &self.ui_events_tx);
+            } else {
+                self.ui_elements
+                    .update_health(&mut cx, None, &self.ui_events_tx);
+            }
         }
 
         self.dispatch_actions();

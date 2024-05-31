@@ -39,7 +39,7 @@ pub fn drive_projectile(entity: EntityId) {
             entity.despawn();
 
             let target = Entity::new(hit.entity);
-            apply_actor_damage(props.damage as u32 * 30, target);
+            apply_actor_damage(props.damage as u32, target);
         }
         Some(_) | None => {
             transform.translation += direction * props.speed * DT;
