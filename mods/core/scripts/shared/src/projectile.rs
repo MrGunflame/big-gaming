@@ -5,7 +5,8 @@ use game_wasm::physics::{cast_ray, QueryFilter};
 use game_wasm::world::Entity;
 use game_wasm::DT;
 
-use crate::{apply_actor_damage, ProjectileProperties};
+use crate::health::apply_actor_damage;
+use crate::ProjectileProperties;
 
 // Note that we manually drive the projectile and don't delegate that task
 // to the physics engine to prevent weird side-effects. Adding a collider to
@@ -38,7 +39,7 @@ pub fn drive_projectile(entity: EntityId) {
             entity.despawn();
 
             let target = Entity::new(hit.entity);
-            apply_actor_damage(props.damage as u32 * 30, target);
+            apply_actor_damage(props.damage as u32, target);
         }
         Some(_) | None => {
             transform.translation += direction * props.speed * DT;

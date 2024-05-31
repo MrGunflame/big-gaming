@@ -10,12 +10,15 @@ use game_ui::reactive::{Document, NodeId, Scope};
 use game_ui::style::{Bounds, Direction, Growth, Justify, Position, Size, SizeVec2, Style};
 use game_ui::widgets::{Button, Container, Text, Widget};
 use game_wasm::inventory::{Inventory, InventorySlotId, ItemStack};
+use game_wasm::world::RecordReference;
 use glam::UVec2;
+
+use super::UiEvent;
 
 pub struct InventoryUi<'a> {
     inventory: &'a Inventory,
     modules: Modules,
-    events: mpsc::Sender<InventoryEvent>,
+    events: mpsc::Sender<UiEvent>,
 }
 
 impl<'a> Widget for InventoryUi<'a> {
@@ -40,7 +43,7 @@ impl<'a> Widget for InventoryUi<'a> {
 struct InventoryBox<'a> {
     inventory: &'a Inventory,
     modules: Modules,
-    events: mpsc::Sender<InventoryEvent>,
+    events: mpsc::Sender<UiEvent>,
 }
 
 impl<'a> Widget for InventoryBox<'a> {
@@ -75,7 +78,7 @@ impl<'a> Widget for InventoryBox<'a> {
 struct ItemList<'a, I> {
     items: I,
     modules: Modules,
-    events: mpsc::Sender<InventoryEvent>,
+    events: mpsc::Sender<UiEvent>,
     // FIXME: Can we get rid of this marker?
     _marker: PhantomData<&'a ()>,
 }
@@ -130,7 +133,7 @@ where
 struct ContextMenu {
     position: UVec2,
     id: InventorySlotId,
-    events: mpsc::Sender<InventoryEvent>,
+    events: mpsc::Sender<UiEvent>,
     is_equipped: bool,
 }
 
@@ -143,27 +146,22 @@ impl Widget for ContextMenu {
 
         if self.is_equipped {
             let events = self.events.clone();
-            let button = root.append(Button::new().on_click(move |ctx| {
-                events.send(InventoryEvent::Uneqip(self.id)).unwrap();
+            let button = root.append(Button::new().on_click(move |_ctx| {
+                events.send(unequip_event(self.id)).unwrap();
             }));
             button.append(Text::new().text("Unequip".to_string()));
         } else {
             let events = self.events.clone();
-            let button = root.append(Button::new().on_click(move |ctx| {
-                events.send(InventoryEvent::Equip(self.id)).unwrap();
+            let button = root.append(Button::new().on_click(move |_ctx| {
+                events.send(equip_event(self.id)).unwrap();
             }));
             button.append(Text::new().text("Equip".to_string()));
         }
 
         {
             let events = self.events.clone();
-            let button = root.append(Button::new().on_click(move |ctx| {
-                events
-                    .send(InventoryEvent::Drop(DropItemStack {
-                        id: self.id,
-                        quantity: 0,
-                    }))
-                    .unwrap();
+            let button = root.append(Button::new().on_click(move |_ctx| {
+                events.send(drop_event(self.id)).unwrap();
             }));
             button.append(Text::new().text("Drop".to_string()));
         }
@@ -172,29 +170,18 @@ impl Widget for ContextMenu {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
-pub enum InventoryEvent {
-    Equip(InventorySlotId),
-    Uneqip(InventorySlotId),
-    Drop(DropItemStack),
-}
-
-#[derive(Copy, Clone, Debug)]
-pub struct DropItemStack {
-    pub id: InventorySlotId,
-    pub quantity: u32,
-}
-
 #[derive(Debug)]
 pub struct InventoryProxy {
-    pub rx: mpsc::Receiver<InventoryEvent>,
     pub id: NodeId,
 }
 
 impl InventoryProxy {
-    pub fn new(inventory: &Inventory, modules: Modules, doc: &Document) -> Self {
-        let (tx, rx) = mpsc::channel();
-
+    pub fn new(
+        inventory: &Inventory,
+        modules: Modules,
+        doc: &Document,
+        tx: mpsc::Sender<UiEvent>,
+    ) -> Self {
         let cx = doc.root_scope();
 
         let root = cx.append(InventoryUi {
@@ -204,8 +191,37 @@ impl InventoryProxy {
         });
 
         Self {
-            rx,
             id: root.id().unwrap(),
         }
     }
+}
+
+fn equip_event(slot: InventorySlotId) -> UiEvent {
+    const ID: RecordReference =
+        RecordReference::from_str_const("c626b9b0ab1940aba6932ea7726d0175:17");
+
+    let mut data = Vec::new();
+    data.extend(slot.into_raw().to_le_bytes());
+
+    UiEvent { id: ID, data }
+}
+
+fn unequip_event(slot: InventorySlotId) -> UiEvent {
+    const ID: RecordReference =
+        RecordReference::from_str_const("c626b9b0ab1940aba6932ea7726d0175:18");
+
+    let mut data = Vec::new();
+    data.extend(slot.into_raw().to_le_bytes());
+
+    UiEvent { id: ID, data }
+}
+
+fn drop_event(slot: InventorySlotId) -> UiEvent {
+    const ID: RecordReference =
+        RecordReference::from_str_const("c626b9b0ab1940aba6932ea7726d0175:19");
+
+    let mut data = Vec::new();
+    data.extend(slot.into_raw().to_le_bytes());
+
+    UiEvent { id: ID, data }
 }

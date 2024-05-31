@@ -4,6 +4,7 @@ extern crate alloc;
 
 mod actor;
 mod controller;
+mod health;
 mod inventory;
 mod movement;
 mod player;
@@ -44,6 +45,7 @@ use game_wasm::system::register_system;
 use game_wasm::world::Entity;
 
 use game_wasm::world::RecordReference;
+use health::Health;
 
 #[on_init]
 pub fn on_init() {
@@ -77,6 +79,8 @@ pub fn on_init() {
     register_action_handler(inventory::on_equip);
     register_action_handler(inventory::on_uneqip);
 
+    register_action_handler(player::respawn_player);
+
     register_event_handler(player::spawn_player);
     register_event_handler(player::update_camera_transform);
 
@@ -88,6 +92,8 @@ pub fn on_init() {
 }
 
 pub fn extract_actor_rotation(rotation: Quat) -> Quat {
+    debug_assert!(!rotation.is_nan());
+
     let mut pt = rotation * -Vec3::Z;
 
     if pt.y == 1.0 {
@@ -168,16 +174,6 @@ impl Component for Ammo {
     const ID: RecordReference = AMMO;
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Encode, Decode)]
-pub struct Health {
-    pub value: u32,
-    pub max: u32,
-}
-
-impl Component for Health {
-    const ID: RecordReference = components::HEALTH;
-}
-
 #[derive(Copy, Clone, Debug, Encode, Decode)]
 pub struct ProjectileProperties {
     pub damage: f32,
@@ -255,58 +251,19 @@ pub mod components {
         EQUIP => 0x17,
         UNEQUIP => 0x18,
         DROP => 0x19,
+        PLAYER_RESPAWN => 0x1a,
 
         TEST_WEAPON => 0x11,
 
         EQUIPPED_ITEM => 0x20,
         LOOKING_DIRECTION => 0x21,
+        RESPAWN_POINT => 0x23,
 
         // EVENTS
         EVENT_GUN_EQUIP => 0x01,
         EVENT_GUN_UNEQUIP => 0x02,
         TRANSFORM_CHANGED => 0x03,
-    }
-}
 
-#[macro_export]
-macro_rules! panic_handler {
-    () => {
-        #[cfg(all(not(test), target_family = "wasm"))]
-        #[panic_handler]
-        fn panic_handler(info: &core::panic::PanicInfo) -> ! {
-            game_wasm::error!("{}", info);
-            core::arch::wasm32::unreachable()
-        }
-    };
-}
-
-pub fn apply_actor_damage(damage: u32, target: Entity) {
-    let Ok(mut health) = target.get::<Health>() else {
-        return;
-    };
-
-    health.value = health.value.saturating_sub(damage);
-
-    if health.value != 0 {
-        target.insert(health);
-        return;
-    }
-
-    target.remove::<Health>();
-    target.despawn();
-    return;
-
-    let Ok(spawn_point) = target.get::<SpawnPoint>() else {
-        return;
-    };
-
-    let transform = Transform::from_translation(spawn_point.translation);
-
-    let entity = spawn_player(transform);
-    entity.insert(spawn_point);
-
-    if let Some(player) = target.player() {
-        player.set_active(entity.id());
     }
 }
 
@@ -352,8 +309,6 @@ impl Component for Equippable {
     const ID: RecordReference = EQUIPPABLE;
 }
 
-panic_handler!();
-
 #[derive(Copy, Clone, Debug, Encode, Decode)]
 pub struct Camera {
     pub parent: EntityId,
@@ -384,4 +339,11 @@ impl LookingDirection {}
 
 impl Component for LookingDirection {
     const ID: RecordReference = LOOKING_DIRECTION;
+}
+
+#[cfg(all(not(test), target_family = "wasm"))]
+#[panic_handler]
+fn panic_handler(info: &core::panic::PanicInfo) -> ! {
+    game_wasm::error!("{}", info);
+    core::arch::wasm32::unreachable()
 }

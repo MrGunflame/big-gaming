@@ -6,6 +6,7 @@ pub mod script;
 pub mod state;
 
 use std::net::ToSocketAddrs;
+use std::sync::mpsc;
 use std::time::Duration;
 
 use game_common::components::actions::ActionId;
@@ -13,20 +14,17 @@ use game_common::components::{GlobalTransform, PrimaryCamera, Transform};
 use game_common::entity::EntityId;
 use game_common::module::ModuleId;
 use game_common::record::RecordReference;
-use game_common::world::hierarchy::update_global_transform;
 use game_common::world::World;
 use game_core::counter::{Interval, UpdateCounter};
 use game_core::modules::Modules;
 use game_core::time::Time;
-use game_data::record::{Record, RecordBody};
+use game_data::record::Record;
 use game_input::hotkeys::{HotkeyCode, Key};
 use game_input::keyboard::{KeyCode, KeyboardInput};
 use game_input::mouse::MouseMotion;
 use game_script::Executor;
 use game_ui::reactive::{Document, NodeId};
-use game_wasm::components::Component;
 use game_wasm::encoding::BinaryWriter;
-use game_wasm::encoding::Decode;
 use game_window::cursor::Cursor;
 use game_window::events::WindowEvent;
 
@@ -39,10 +37,9 @@ use crate::input::{InputKey, Inputs};
 use crate::net::world::{Command, CommandBuffer};
 use crate::net::ServerConnection;
 use crate::ui::debug::Statistics;
-use crate::ui::inventory::InventoryEvent;
 use crate::ui::inventory::InventoryProxy;
 use crate::ui::main_menu::MainMenu;
-use crate::ui::UiElements;
+use crate::ui::{UiElements, UiEvent};
 
 use self::actions::ActiveActions;
 use self::camera::{CameraController, CameraMode, DetachedState};
@@ -64,6 +61,10 @@ pub struct GameWorldState {
     host: EntityId,
     ui_elements: UiElements,
     interval: Interval,
+    ui_events_rx: mpsc::Receiver<UiEvent>,
+    // Keep the sender around so we can clone
+    // and send it to the UI elements for callbacks.
+    ui_events_tx: mpsc::Sender<UiEvent>,
 }
 
 impl GameWorldState {
@@ -85,6 +86,8 @@ impl GameWorldState {
 
         let interval = Interval::new(Duration::from_secs(1) / config.timestep);
 
+        let (ui_events_tx, ui_events_rx) = mpsc::channel();
+
         let mut this = Self {
             world: GameWorld::new(conn, executor, config),
             camera_controller: CameraController::new(),
@@ -99,6 +102,8 @@ impl GameWorldState {
             cursor_pinned,
             ui_elements: UiElements::default(),
             interval,
+            ui_events_rx,
+            ui_events_tx,
         };
         this.register_actions();
         this
@@ -145,11 +150,14 @@ impl GameWorldState {
         );
 
         // Health
-        if let Some(health) = world.get(self.host, Health::ID) {
-            let health = Health::decode(health.reader()).unwrap();
-            self.ui_elements.update_health(&mut cx, Some(health));
-        } else {
-            self.ui_elements.update_health(&mut cx, None);
+        if let Ok(camera) = world.get_typed::<Camera>(self.host) {
+            if let Ok(health) = world.get_typed::<Health>(camera.parent.into()) {
+                self.ui_elements
+                    .update_health(&mut cx, Some(health), &self.ui_events_tx);
+            } else {
+                self.ui_elements
+                    .update_health(&mut cx, None, &self.ui_events_tx);
+            }
         }
 
         self.dispatch_actions();
@@ -323,6 +331,7 @@ impl GameWorldState {
                         &inventory,
                         self.modules.clone(),
                         ui_doc,
+                        self.ui_events_tx.clone(),
                     ));
                     self.cursor_pinned.unpin(cursor);
                 }
@@ -357,35 +366,12 @@ impl GameWorldState {
             });
         }
 
-        // Inventory
-        if let Some(proxy) = &self.inventory_proxy {
-            while let Ok(event) = proxy.rx.try_recv() {
-                let (action, data) = match event {
-                    InventoryEvent::Equip(slot) => {
-                        let bits = slot.into_raw();
-                        let mut data = Vec::new();
-                        data.extend(bits.to_le_bytes());
-                        ("c626b9b0ab1940aba6932ea7726d0175:17".parse().unwrap(), data)
-                    }
-                    InventoryEvent::Uneqip(slot) => {
-                        let bits = slot.into_raw();
-                        let mut data = Vec::new();
-                        data.extend(bits.to_le_bytes());
-                        ("c626b9b0ab1940aba6932ea7726d0175:18".parse().unwrap(), data)
-                    }
-                    InventoryEvent::Drop(event) => {
-                        let mut data = Vec::new();
-                        data.extend(event.id.into_raw().to_le_bytes());
-                        ("c626b9b0ab1940aba6932ea7726d0175:19".parse().unwrap(), data)
-                    }
-                };
-
-                self.world.send(Action {
-                    entity: self.host,
-                    action: ActionId(action),
-                    data,
-                });
-            }
+        while let Ok(event) = self.ui_events_rx.try_recv() {
+            self.world.send(Action {
+                entity: self.host,
+                action: ActionId(event.id),
+                data: event.data,
+            });
         }
     }
 

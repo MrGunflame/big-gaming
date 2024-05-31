@@ -24,3 +24,15 @@ impl EntityId {
         Self::from_raw(u64::MAX)
     }
 }
+
+impl From<EntityId> for game_wasm::entity::EntityId {
+    fn from(value: EntityId) -> Self {
+        Self::from_raw(value.into_raw())
+    }
+}
+
+impl From<game_wasm::entity::EntityId> for EntityId {
+    fn from(value: game_wasm::entity::EntityId) -> Self {
+        Self::from_raw(value.into_raw())
+    }
+}
