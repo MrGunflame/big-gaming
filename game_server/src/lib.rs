@@ -109,6 +109,34 @@ impl ServerState {
             next_player: 0,
         }
     }
+
+    pub fn connections(&self) -> ConnectionPool {
+        ConnectionPool::new(self.state.clone())
+    }
+
+    /// Starts the server systems.
+    ///
+    /// Note that this function never returns but it is safe to interrupt at yield points.
+    pub async fn run(mut self) -> ! {
+        let timestep = Duration::from_secs(1) / self.state.config.timestep;
+        let mut interval = Interval::new(timestep);
+
+        let mut ups = UpdateCounter::new();
+        loop {
+            let now = Instant::now();
+            interval.wait(now).await;
+
+            process_commands(&mut self);
+            tick(&mut self);
+
+            self.state.control_frame.inc();
+            let cf = self.state.control_frame.get();
+
+            ups.update();
+
+            tracing::debug!("Stepping Control frame to {:?} (UPS = {})", cf, ups.ups());
+        }
+    }
 }
 
 fn process_commands(state: &mut ServerState) {

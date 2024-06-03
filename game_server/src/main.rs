@@ -1,5 +1,6 @@
 use std::fs::File;
-use std::io::{stdin, Read, Stdin};
+use std::io::{stdin, Read};
+use std::process::ExitCode;
 
 use clap::Parser;
 
@@ -8,6 +9,7 @@ use game_core::command::tokenize;
 use game_core::modules;
 use game_server::command::Command;
 use game_server::config::Config;
+use game_server::server::Server;
 use game_server::ServerState;
 use game_worldgen::gen::StaticGenerator;
 use tokio::runtime::Builder;
@@ -17,7 +19,7 @@ use tokio::sync::{mpsc, oneshot};
 #[command(author, version, about, long_about = None)]
 struct Args {}
 
-fn main() {
+fn main() -> ExitCode {
     game_core::logger::init();
 
     let mut config_path = std::env::current_dir().unwrap();
@@ -70,7 +72,24 @@ fn main() {
     });
 
     let rt = Builder::new_multi_thread().enable_all().build().unwrap();
-    rt.block_on(game_server::run(server_state));
+    rt.block_on(async move {
+        let conns = server_state.connections();
+        let server = match Server::new(conns) {
+            Ok(server) => server,
+            Err(err) => {
+                tracing::error!("failed to bind server: {}", err);
+                return ExitCode::FAILURE;
+            }
+        };
+
+        tokio::task::spawn(async move {
+            if let Err(err) = server.await {
+                tracing::error!("failed to run server: {}", err);
+            }
+        });
+
+        server_state.run().await
+    })
 }
 
 #[macro_export]
