@@ -6,9 +6,7 @@ use std::sync::Arc;
 use ahash::HashMap;
 use game_net::conn::ConnectionHandle;
 use game_net::message::MessageId;
-use game_net::proto::Packet;
 use parking_lot::{Mutex, RwLock};
-use tokio::sync::mpsc;
 
 use crate::net::state::ConnectionState;
 
@@ -25,12 +23,7 @@ pub struct Connections {
 }
 
 impl Connections {
-    pub fn insert(
-        &self,
-        key: ConnectionKey,
-        tx: mpsc::Sender<Packet>,
-        handle: Arc<ConnectionHandle>,
-    ) {
+    pub fn insert(&self, key: ConnectionKey, handle: Arc<ConnectionHandle>) {
         let mut inner = self.connections.write();
 
         inner.insert(
@@ -42,7 +35,6 @@ impl Connections {
                     handle,
                     messages_in_frame: Mutex::new(vec![]),
                 }),
-                tx,
             },
         );
     }
@@ -113,7 +105,6 @@ impl<'a> FusedIterator for Iter<'a> {}
 #[derive(Clone, Debug)]
 pub struct Connection {
     inner: Arc<ConnectionInner>,
-    tx: mpsc::Sender<Packet>,
 }
 
 impl Connection {
@@ -123,10 +114,6 @@ impl Connection {
 
     pub fn handle(&self) -> &ConnectionHandle {
         &self.inner.handle
-    }
-
-    pub fn tx(&self) -> &mpsc::Sender<Packet> {
-        &self.tx
     }
 
     pub fn state(&self) -> &RwLock<ConnectionState> {

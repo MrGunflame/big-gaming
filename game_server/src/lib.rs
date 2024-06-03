@@ -19,6 +19,7 @@ use game_core::counter::{Interval, UpdateCounter};
 use game_core::modules::Modules;
 use game_script::Executor;
 use game_tasks::TaskPool;
+use server::ConnectionPool;
 use tokio::sync::{mpsc, oneshot};
 use tracing::{span, trace_span, Level};
 use world::state::WorldState;
@@ -36,8 +37,9 @@ pub async fn run(mut state: ServerState) {
 
     {
         let state = state.state.clone();
+        let conns = ConnectionPool::new(state);
         tokio::task::spawn(async move {
-            let server = match Server::new(state.clone()) {
+            let server = match Server::new(conns) {
                 Ok(s) => s,
                 Err(err) => {
                     tracing::error!("failed to run server: {}", err);

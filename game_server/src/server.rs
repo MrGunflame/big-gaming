@@ -5,33 +5,46 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 
+use ahash::HashMap;
 use bytes::BytesMut;
 use futures::stream::FuturesUnordered;
 use futures::{FutureExt, StreamExt};
 use game_common::world::control_frame::ControlFrame;
 use game_net::conn::socket::UdpSocketStream;
-use game_net::conn::{Connection, Listen};
+use game_net::conn::{Connection, ConnectionStream, Listen};
 use game_net::proto::{Decode, Error, Packet};
 use game_net::socket::Socket;
+use parking_lot::RwLock;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
 use crate::conn::ConnectionKey;
 use crate::state::State;
 
+struct ServerState {
+    socket: Arc<Socket>,
+    conns: RwLock<HashMap<SocketAddr, mpsc::Sender<Packet>>>,
+    pool: ConnectionPool,
+}
+
 pub struct Server {
     workers: FuturesUnordered<Worker>,
 }
 
 impl Server {
-    pub fn new(state: State) -> Result<Self, io::Error> {
+    pub fn new(pool: ConnectionPool) -> Result<Self, io::Error> {
         let socket = Arc::new(Socket::bind("0.0.0.0:6942")?);
 
         tracing::info!("listening on {}", "0.0.0.0:6942");
 
+        let state = Arc::new(ServerState {
+            socket,
+            conns: RwLock::default(),
+            pool,
+        });
         let workers = FuturesUnordered::new();
         for id in 0..1 {
-            let worker = Worker::new(id, socket.clone(), state.clone());
+            let worker = Worker::new(id, state.clone());
             workers.push(worker);
         }
 
@@ -59,13 +72,13 @@ struct Worker {
 }
 
 impl Worker {
-    pub fn new(id: usize, socket: Arc<Socket>, state: State) -> Self {
+    pub fn new(id: usize, state: Arc<ServerState>) -> Self {
         let handle = tokio::task::spawn(async move {
             tracing::info!("spawned worker thread {}", id);
 
             loop {
                 let mut buf = BytesMut::zeroed(1500);
-                let (len, addr) = socket.recv_from(&mut buf).await.unwrap();
+                let (len, addr) = state.socket.recv_from(&mut buf).await.unwrap();
                 buf.truncate(len);
 
                 tracing::trace!("got {} bytes from {}", len, addr);
@@ -78,7 +91,7 @@ impl Worker {
                     }
                 };
 
-                handle_packet(addr, socket.clone(), &state, packet).await;
+                handle_packet(addr, &state, packet).await;
             }
         });
 
@@ -94,11 +107,21 @@ impl Future for Worker {
     }
 }
 
-async fn handle_packet(addr: SocketAddr, socket: Arc<Socket>, state: &State, packet: Packet) {
+async fn handle_packet(addr: SocketAddr, state: &ServerState, packet: Packet) {
     let key = ConnectionKey { addr };
 
-    if let Some(conn) = state.conns.get(key) {
-        conn.tx().send(packet).await.unwrap();
+    // Clone the sender and don't borrow it over the
+    // await point.
+    let tx = {
+        if let Some(tx) = state.conns.read().get(&addr) {
+            Some(tx.clone())
+        } else {
+            None
+        }
+    };
+
+    if let Some(tx) = tx {
+        tx.send(packet).await.unwrap();
         return;
     }
 
@@ -108,15 +131,33 @@ async fn handle_packet(addr: SocketAddr, socket: Arc<Socket>, state: &State, pac
     //     return;
     // }
 
-    let control_frame = state.control_frame.get();
-
     let (tx, rx) = mpsc::channel(4096);
-    let stream = UdpSocketStream::new(rx, socket, addr);
+    let stream = UdpSocketStream::new(rx, state.socket.clone(), addr);
+    state.pool.spawn(key, stream);
 
-    let (conn, handle) = Connection::<_, Listen>::new(stream, control_frame, ControlFrame(0));
+    tx.send(packet).await.unwrap();
+    state.conns.write().insert(addr, tx);
+}
 
+#[derive(Debug)]
+pub struct ConnectionPool {
+    state: State,
+}
+
+impl ConnectionPool {
+    pub fn new(state: State) -> Self {
+        Self { state }
+    }
+
+    pub fn spawn<S>(&self, key: ConnectionKey, stream: S)
+    where
+        S: ConnectionStream + Send + 'static,
+        S::Error: std::error::Error,
     {
-        let state = state.clone();
+        let (conn, handle) =
+            Connection::<_, Listen>::new(stream, self.state.control_frame.get(), ControlFrame(0));
+
+        let state = self.state.clone();
         tokio::task::spawn(async move {
             if let Err(err) = conn.await {
                 tracing::warn!("Error serving connection: {}", err);
@@ -124,14 +165,8 @@ async fn handle_packet(addr: SocketAddr, socket: Arc<Socket>, state: &State, pac
 
             state.conns.remove(key);
         });
+
+        let handle = Arc::new(handle);
+        self.state.conns.insert(key, handle);
     }
-
-    tx.send(packet).await.unwrap();
-
-    let handle = Arc::new(handle);
-    state.conns.insert(key, tx, handle);
-}
-
-pub trait NewConn {
-    fn recv(&mut self);
 }
