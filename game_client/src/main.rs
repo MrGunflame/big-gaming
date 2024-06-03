@@ -229,7 +229,7 @@ impl<'a> GameAppState<'a> {
                     self.state = GameState::MainMenu(MainMenuState::new(&mut world))
                 }
                 GameState::MainMenu(state) => {
-                    state.update(&mut world);
+                    state.update(&mut self.time, &mut world);
                 }
                 GameState::GameWorld(state) => {
                     self.pool
