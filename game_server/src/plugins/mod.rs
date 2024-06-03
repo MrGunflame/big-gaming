@@ -45,7 +45,7 @@ pub fn tick(state: &mut ServerState) {
     }
 
     // Push snapshots last always
-    let cf = *state.state.control_frame.lock();
+    let cf = state.state.control_frame.get();
     update_snapshots(&state.state.conns, &state.world, &state.level, cf);
 }
 
@@ -129,13 +129,13 @@ fn step_physics(state: &mut ServerState) {
 }
 
 fn update_client_heads(state: &mut ServerState) {
-    let control_frame = state.state.control_frame.lock();
+    let control_frame = state.state.control_frame.get();
 
     for conn in state.state.conns.iter() {
         let mut state = conn.state().write();
 
         // The const client interpolation delay.
-        let client_cf = *control_frame - state.peer_delay;
+        let client_cf = control_frame - state.peer_delay;
 
         state.client_cf = client_cf;
     }

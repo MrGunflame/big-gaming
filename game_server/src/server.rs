@@ -108,7 +108,7 @@ async fn handle_packet(addr: SocketAddr, socket: Arc<Socket>, state: &State, pac
     //     return;
     // }
 
-    let control_frame = *state.control_frame.lock();
+    let control_frame = state.control_frame.get();
 
     let (tx, rx) = mpsc::channel(4096);
     let stream = UdpSocketStream::new(rx, socket, addr);
@@ -130,4 +130,8 @@ async fn handle_packet(addr: SocketAddr, socket: Arc<Socket>, state: &State, pac
 
     let handle = Arc::new(handle);
     state.conns.insert(key, tx, handle);
+}
+
+pub trait NewConn {
+    fn recv(&mut self);
 }

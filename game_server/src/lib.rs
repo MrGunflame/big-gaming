@@ -11,9 +11,7 @@ pub mod world;
 use std::fmt::Write;
 use std::time::{Duration, Instant};
 
-use ahash::HashMap;
 use command::Command;
-use game_common::entity::EntityId;
 use game_common::events::EventQueue;
 use game_common::world::gen::Generator;
 use game_core::command::{GameCommand, ServerCommand};
@@ -63,8 +61,8 @@ pub async fn run(mut state: ServerState) {
         process_commands(&mut state);
         tick(&mut state);
 
-        let mut cf = state.state.control_frame.lock();
-        *cf += 1;
+        state.state.control_frame.inc();
+        let cf = state.state.control_frame.get();
 
         ups.update();
 
