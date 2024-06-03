@@ -89,7 +89,15 @@ impl SceneSpawner {
                 SceneDataState::LoadingFailed => false,
                 SceneDataState::Queued => {
                     let path = instance.path.clone();
-                    let task = pool.spawn(async move { load_scene(path) });
+                    let task = pool.spawn(async move {
+                        match load_scene(&path) {
+                            Ok(scene) => Some(scene),
+                            Err(err) => {
+                                tracing::error!("failed to load scene from {:?}: {}", path, err);
+                                None
+                            }
+                        }
+                    });
                     scene.state = SceneDataState::Loading(task);
 
                     true
