@@ -232,8 +232,15 @@ impl<'a> GameAppState<'a> {
                     state.update(&mut self.time, &mut world);
                 }
                 GameState::GameWorld(state) => {
-                    self.pool
-                        .block_on(state.update(&self.time, &mut world, ui_doc, fps_counter));
+                    match self.pool.block_on(state.update(
+                        &self.time,
+                        &mut world,
+                        ui_doc,
+                        fps_counter,
+                    )) {
+                        Ok(()) => (),
+                        Err(err) => panic!("disconnected"),
+                    }
                 }
                 _ => todo!(),
             }

@@ -21,3 +21,5 @@ pub enum ConnectionError {
     #[error("bad socket addr")]
     BadSocketAddr(io::Error),
 }
+
+pub use socket::connect_udp;

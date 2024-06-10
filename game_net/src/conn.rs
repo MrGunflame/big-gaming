@@ -877,6 +877,10 @@ impl ConnectionHandle {
         let mut r = self.rx.lock();
         r.try_recv().ok()
     }
+
+    pub fn is_connected(&self) -> bool {
+        !self.rx.lock().is_closed()
+    }
 }
 
 pub struct ConnectionKey {}
