@@ -1,5 +1,5 @@
 use std::future::Future;
-use std::net::SocketAddr;
+use std::net::ToSocketAddrs;
 use std::sync::{mpsc, Arc};
 
 use game_common::world::control_frame::ControlFrame;
@@ -11,12 +11,13 @@ use tokio::runtime::Builder;
 
 use super::ConnectionError;
 
-pub fn spawn_conn(
-    addr: SocketAddr,
-    control_frame: ControlFrame,
-    const_delay: ControlFrame,
-) -> Result<ConnectionHandle, ConnectionError> {
+pub fn connect_udp<A>(addr: A) -> Result<ConnectionHandle, ConnectionError>
+where
+    A: ToSocketAddrs,
+{
     let (tx, rx) = mpsc::channel();
+
+    let addr = addr.to_socket_addrs().unwrap().next().unwrap();
 
     std::thread::spawn(move || {
         let rt = Builder::new_current_thread().enable_all().build().unwrap();
@@ -33,7 +34,7 @@ pub fn spawn_conn(
             let (stream_tx, stream_rx) = tokio::sync::mpsc::channel(4096);
             let stream = UdpSocketStream::new(stream_rx, socket.clone(), addr);
             let (mut conn, handle) =
-                Connection::<_, Connect>::new(stream, control_frame, const_delay);
+                Connection::<_, Connect>::new(stream, ControlFrame(0), ControlFrame(0));
 
             tracing::info!("connecting to {:?}", addr);
 

@@ -1,14 +1,9 @@
 use std::collections::VecDeque;
-use std::net::ToSocketAddrs;
 
 use game_common::world::control_frame::ControlFrame;
 use game_net::conn::ConnectionHandle;
 use game_net::message::{ControlMessage, DataMessage, DataMessageBody, Message, MessageId};
 use tokio::sync::mpsc::error::TrySendError;
-
-use crate::net::socket::spawn_conn;
-use crate::net::ConnectionError;
-use crate::world::game_world::Action;
 
 use super::prediction::InputBuffer;
 use super::snapshot::MessageBacklog;
@@ -16,16 +11,16 @@ use super::snapshot::MessageBacklog;
 #[derive(Debug)]
 pub struct ServerConnection {
     pub backlog: MessageBacklog,
-    handle: Option<ConnectionHandle>,
+    handle: ConnectionHandle,
     pub(crate) input_buffer: InputBuffer,
     buffer: VecDeque<DataMessage>,
     next_message_id: u32,
 }
 
 impl ServerConnection {
-    pub fn new() -> Self {
+    pub fn new(handle: ConnectionHandle) -> Self {
         Self {
-            handle: None,
+            handle: handle,
             buffer: VecDeque::new(),
             input_buffer: InputBuffer::new(),
             backlog: MessageBacklog::new(8192),
@@ -33,25 +28,8 @@ impl ServerConnection {
         }
     }
 
-    pub fn connect<T>(&mut self, addr: T) -> Result<(), ConnectionError>
-    where
-        T: ToSocketAddrs,
-    {
-        // TODO: Use async API
-        let addrs = addr
-            .to_socket_addrs()
-            .map_err(ConnectionError::BadSocketAddr)?;
-
-        for addr in addrs {
-            let handle = spawn_conn(addr, ControlFrame(0), ControlFrame(0))?;
-            self.handle = Some(handle);
-        }
-
-        Err(ConnectionError::EmptyDns)
-    }
-
     pub fn is_connected(&self) -> bool {
-        self.handle.is_some()
+        self.handle.is_connected()
     }
 
     pub fn send(&mut self, control_frame: ControlFrame, body: DataMessageBody) {
@@ -74,7 +52,6 @@ impl ServerConnection {
     pub fn shutdown(&mut self) {
         // The connection will automatically shut down after the last
         // handle was dropped.
-        self.handle = None;
         self.buffer.clear();
     }
 
@@ -84,13 +61,8 @@ impl ServerConnection {
     }
 
     fn flush_outgoing_buffer(&mut self) {
-        let Some(handle) = &self.handle else {
-            tracing::error!("not connected");
-            return;
-        };
-
         while let Some(msg) = self.buffer.pop_front() {
-            match handle.send(msg) {
+            match self.handle.send(msg) {
                 Ok(()) => (),
                 Err(TrySendError::Full(msg)) => {
                     self.buffer.push_front(msg);
@@ -107,12 +79,7 @@ impl ServerConnection {
     }
 
     fn queue_incoming_messages(&mut self) {
-        let Some(handle) = &self.handle else {
-            tracing::warn!("not connected");
-            return;
-        };
-
-        while let Some(msg) = handle.recv() {
+        while let Some(msg) = self.handle.recv() {
             let msg = match msg {
                 Message::Control(ControlMessage::Connected()) => {
                     continue;

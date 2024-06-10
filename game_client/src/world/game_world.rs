@@ -18,6 +18,7 @@ use crate::net::{Entities, ServerConnection};
 use crate::world::script::run_scripts;
 
 use super::state::WorldState;
+use super::RemoteError;
 
 // The maximum number of update cycles allowed per frame. This prevents situations
 // where the update takes longer than the frame and therefore causes the game loop
@@ -61,7 +62,15 @@ impl GameWorld {
         }
     }
 
-    pub fn update(&mut self, modules: &Modules, cmd_buffer: &mut CommandBuffer) {
+    pub fn update(
+        &mut self,
+        modules: &Modules,
+        cmd_buffer: &mut CommandBuffer,
+    ) -> Result<(), RemoteError> {
+        if !self.conn.is_connected() {
+            return Err(RemoteError::Disconnected);
+        }
+
         let _span = trace_span!("GameWorld::update").entered();
 
         self.conn.update();
@@ -90,6 +99,8 @@ impl GameWorld {
         }
 
         self.next_frame_counter.update();
+
+        Ok(())
     }
 
     pub fn ups(&self) -> UpdateCounter {

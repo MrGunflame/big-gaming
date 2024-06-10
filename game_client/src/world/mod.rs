@@ -35,7 +35,7 @@ use crate::config::Config;
 // use crate::entities::terrain::spawn_terrain;
 use crate::input::{InputKey, Inputs};
 use crate::net::world::{Command, CommandBuffer};
-use crate::net::ServerConnection;
+use crate::net::{connect_udp, ServerConnection};
 use crate::ui::debug::Statistics;
 use crate::ui::inventory::InventoryProxy;
 use crate::ui::main_menu::MainMenu;
@@ -45,6 +45,11 @@ use self::actions::ActiveActions;
 use self::camera::{CameraController, CameraMode, DetachedState};
 use self::game_world::{Action, GameWorld};
 use self::movement::update_rotation;
+
+#[derive(Clone, Debug)]
+pub enum RemoteError {
+    Disconnected,
+}
 
 #[derive(Debug)]
 pub struct GameWorldState {
@@ -81,8 +86,8 @@ impl GameWorldState {
             cursor_pinned.pin(cursor);
         }
 
-        let mut conn = ServerConnection::new();
-        conn.connect(addr);
+        let handle = connect_udp(addr).unwrap();
+        let conn = ServerConnection::new(handle);
 
         let interval = Interval::new(Duration::from_secs(1) / config.timestep);
 
@@ -115,11 +120,11 @@ impl GameWorldState {
         world: &mut World,
         ui_doc: &Document,
         fps_counter: UpdateCounter,
-    ) {
+    ) -> Result<(), RemoteError> {
         self.interval.wait(time.last_update()).await;
 
         let mut buf = CommandBuffer::new();
-        self.world.update(&self.modules, &mut buf);
+        self.world.update(&self.modules, &mut buf)?;
 
         *world = self.world.state().world.clone();
 
@@ -176,6 +181,8 @@ impl GameWorldState {
         if let Some(id) = self.primary_camera {
             world.insert_typed(id, GlobalTransform(self.camera_controller.transform));
         }
+
+        Ok(())
     }
 
     pub fn handle_event(&mut self, event: WindowEvent, cursor: &Cursor, ui_doc: &Document) {
