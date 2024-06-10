@@ -1,9 +1,6 @@
 use std::collections::VecDeque;
 
 use game_common::entity::EntityId;
-use game_common::record::RecordReference;
-use game_common::world::entity::Entity;
-use glam::{Quat, Vec3};
 
 #[derive(Clone, Debug, Default)]
 pub struct CommandBuffer {
@@ -36,23 +33,5 @@ impl CommandBuffer {
 
 #[derive(Clone, Debug)]
 pub enum Command {
-    Spawn(Entity),
-    Despawn(EntityId),
-    Translate {
-        entity: EntityId,
-        dst: Vec3,
-    },
-    Rotate {
-        entity: EntityId,
-        dst: Quat,
-    },
     SpawnHost(EntityId),
-    ComponentAdd {
-        entity: EntityId,
-        component: RecordReference,
-    },
-    ComponentRemove {
-        entity: EntityId,
-        component: RecordReference,
-    },
 }
