@@ -111,8 +111,6 @@ impl GameWorld {
                         };
 
                         self.newest_state.world.despawn(id);
-
-                        cmd_buffer.push(Command::Despawn(id));
                     }
                     DataMessageBody::SpawnHost(msg) => {
                         let Some(id) = self.server_entities.get(msg.entity) else {
@@ -150,11 +148,6 @@ impl GameWorld {
                         self.newest_state
                             .world
                             .insert(id, msg.component_id, component);
-
-                        cmd_buffer.push(Command::ComponentAdd {
-                            entity: id,
-                            component: msg.component_id,
-                        });
                     }
                     DataMessageBody::EntityComponentRemove(msg) => {
                         let Some(id) = self.server_entities.get(msg.entity) else {
@@ -163,11 +156,6 @@ impl GameWorld {
                         };
 
                         self.newest_state.world.remove(id, msg.component);
-
-                        cmd_buffer.push(Command::ComponentRemove {
-                            entity: id,
-                            component: msg.component,
-                        });
                     }
                     DataMessageBody::EntityComponentUpdate(msg) => {
                         let Some(id) = self.server_entities.get(msg.entity) else {
@@ -207,35 +195,6 @@ impl GameWorld {
         // Remove all inputs that were acknowledged for this frame
         // BEFORE we apply them.
         self.conn.input_buffer.clear(cf);
-
-        for msg in self.conn.input_buffer.iter() {
-            match &msg.body {
-                DataMessageBody::EntityTranslate(msg) => {
-                    let id = self.server_entities.get(msg.entity).unwrap();
-                    cmd_buffer.push(Command::Translate {
-                        entity: id,
-                        dst: msg.translation,
-                    });
-                }
-                DataMessageBody::EntityRotate(msg) => {
-                    let id = self.server_entities.get(msg.entity).unwrap();
-                    cmd_buffer.push(Command::Rotate {
-                        entity: id,
-                        dst: msg.rotation,
-                    });
-                }
-                DataMessageBody::EntityAction(msg) => {
-                    // We don't directly handle actions here.
-                    // Actions are queued and handled at a later stage.
-                }
-                _ => {
-                    // Should never be sent from the client.
-                    if cfg!(debug_assertions) {
-                        unreachable!();
-                    }
-                }
-            }
-        }
 
         // We need to replicate the world snapshot as the client
         // predicted it.

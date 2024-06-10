@@ -132,7 +132,6 @@ impl GameWorldState {
                 Command::SpawnHost(id) => {
                     self.update_host(id);
                 }
-                _ => (),
             }
         }
 
