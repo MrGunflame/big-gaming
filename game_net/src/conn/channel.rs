@@ -24,6 +24,13 @@ impl ChannelStream {
             future: None,
         }
     }
+
+    /// Returns two `ChannelStream`s connected to each other.
+    pub fn pair() -> (Self, Self) {
+        let (tx0, rx0) = mpsc::channel(4096);
+        let (tx1, rx1) = mpsc::channel(4096);
+        (Self::new(tx0, rx1), Self::new(tx1, rx0))
+    }
 }
 
 impl ConnectionStream for ChannelStream {

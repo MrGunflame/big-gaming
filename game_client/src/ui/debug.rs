@@ -11,6 +11,7 @@ pub struct DebugUi {
     pub stats: Statistics,
     pub(super) ups: FrametimeGraph,
     pub(super) fps: FrametimeGraph,
+    pub(super) rtt: FrametimeGraph,
 }
 
 impl Widget for DebugUi {
@@ -52,6 +53,19 @@ impl Widget for DebugUi {
             points: self.fps.points(),
         });
 
+        let rtt = self.rtt.stats();
+        list.append(Text::new().text(format!(
+            "RTT (min={} max={} mean={} stddev={})",
+            DurationFormat(rtt.min),
+            DurationFormat(rtt.max),
+            DurationFormat(rtt.mean),
+            DurationFormat(rtt.stddev),
+        )));
+        list.append(Plot {
+            size: UVec2::new(256, 128),
+            points: self.rtt.points(),
+        });
+
         list
     }
 }
@@ -62,6 +76,7 @@ pub struct Statistics {
     pub fps: UpdateCounter,
     pub entities: u64,
     pub net_input_buffer_len: u64,
+    pub rtt: Duration,
 }
 
 #[derive(Clone, Debug, Default)]
