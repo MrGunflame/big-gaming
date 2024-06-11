@@ -150,6 +150,7 @@ impl GameWorldState {
                 fps: fps_counter,
                 entities: world.len() as u64,
                 net_input_buffer_len: self.world.input_buffer_len() as u64,
+                rtt: self.world.rtt(),
             }),
         );
 

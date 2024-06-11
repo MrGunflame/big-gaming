@@ -5,6 +5,7 @@ use std::collections::{HashMap, VecDeque};
 use std::future::Future;
 use std::marker::PhantomData;
 use std::pin::Pin;
+use std::sync::Arc;
 use std::task::{ready, Context, Poll};
 use std::time::{Duration, Instant};
 
@@ -88,7 +89,7 @@ where
 
     reassembly_buffer: ReassemblyBuffer,
     ack_time_list: AckTimeList,
-    rtt: Rtt,
+    rtt: Arc<Mutex<Rtt>>,
     /// Last Processed control frame
     last_cf: ControlFrame,
     message_out: HashMap<Sequence, MessageId>,
@@ -111,6 +112,8 @@ where
     ) -> (Self, ConnectionHandle) {
         let (out_tx, out_rx) = mpsc::channel(4096);
         let (writer, reader) = mpsc::channel(4096);
+
+        let rtt = Arc::new(Mutex::new(Rtt::new()));
 
         let mut conn = Self {
             stream,
@@ -140,7 +143,7 @@ where
             debug_validator: crate::validator::DebugValidator::new(),
 
             ack_time_list: AckTimeList::new(),
-            rtt: Rtt::new(),
+            rtt: rtt.clone(),
             last_cf: ControlFrame(0),
             message_out: HashMap::new(),
             messages_in: HashMap::new(),
@@ -157,6 +160,7 @@ where
             ConnectionHandle {
                 chan_out: out_tx,
                 rx: Mutex::new(reader),
+                rtt,
             },
         )
     }
@@ -600,7 +604,7 @@ where
         body: AckAck,
     ) -> Poll<Result<(), Error<S::Error>>> {
         if let Some(ts) = self.ack_time_list.remove(body.ack_sequence) {
-            self.rtt.update(ts.elapsed().as_micros() as u32);
+            self.rtt.lock().update(ts.elapsed().as_micros() as u32);
         }
 
         Poll::Pending
@@ -846,6 +850,7 @@ enum HandshakeState {
 pub struct ConnectionHandle {
     chan_out: mpsc::Sender<Message>,
     rx: Mutex<mpsc::Receiver<Message>>,
+    rtt: Arc<Mutex<Rtt>>,
 }
 
 impl ConnectionHandle {
@@ -880,6 +885,10 @@ impl ConnectionHandle {
 
     pub fn is_connected(&self) -> bool {
         !self.rx.lock().is_closed()
+    }
+
+    pub fn rtt(&self) -> Duration {
+        Duration::from_micros(self.rtt.lock().rtt.into())
     }
 }
 

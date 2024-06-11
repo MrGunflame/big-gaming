@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use game_common::components::actions::ActionId;
 use game_common::components::Transform;
 use game_common::entity::EntityId;
@@ -60,6 +62,10 @@ impl GameWorld {
             event_queue: EventQueue::new(),
             predicted_state: WorldState::new(),
         }
+    }
+
+    pub fn rtt(&self) -> Duration {
+        self.conn.rtt()
     }
 
     pub fn update(

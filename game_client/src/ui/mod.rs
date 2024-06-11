@@ -25,6 +25,7 @@ pub struct UiElements {
     death: Option<NodeId>,
     ups: FrametimeGraph,
     fps: FrametimeGraph,
+    rtt: FrametimeGraph,
 }
 
 impl UiElements {
@@ -69,11 +70,13 @@ impl UiElements {
         if let Some(stats) = stats {
             self.ups.push(stats.ups.last_frametime());
             self.fps.push(stats.fps.last_frametime());
+            self.rtt.push(stats.rtt);
 
             let id = DebugUi {
                 stats,
                 ups: self.ups.clone(),
                 fps: self.fps.clone(),
+                rtt: self.rtt.clone(),
             }
             .build(cx)
             .id()

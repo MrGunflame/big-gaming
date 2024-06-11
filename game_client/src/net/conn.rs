@@ -1,4 +1,5 @@
 use std::collections::VecDeque;
+use std::time::Duration;
 
 use game_common::world::control_frame::ControlFrame;
 use game_net::conn::ConnectionHandle;
@@ -47,6 +48,10 @@ impl ServerConnection {
 
         self.input_buffer.push(msg.clone());
         self.buffer.push_back(msg);
+    }
+
+    pub fn rtt(&self) -> Duration {
+        self.handle.rtt()
     }
 
     pub fn shutdown(&mut self) {
