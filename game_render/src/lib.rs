@@ -16,6 +16,7 @@ pub mod texture;
 
 mod debug;
 mod depth_stencil;
+mod pipeline;
 mod pipelined_rendering;
 mod post_process;
 mod state;
