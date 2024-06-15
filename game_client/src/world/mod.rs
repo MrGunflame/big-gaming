@@ -12,13 +12,10 @@ use std::time::Duration;
 use game_common::components::actions::ActionId;
 use game_common::components::{GlobalTransform, PrimaryCamera, Transform};
 use game_common::entity::EntityId;
-use game_common::module::ModuleId;
-use game_common::record::RecordReference;
 use game_common::world::World;
 use game_core::counter::{Interval, UpdateCounter};
 use game_core::modules::Modules;
 use game_core::time::Time;
-use game_data::record::Record;
 use game_input::hotkeys::{HotkeyCode, Key};
 use game_input::keyboard::{KeyCode, KeyboardInput};
 use game_input::mouse::MouseMotion;
@@ -60,7 +57,6 @@ pub struct GameWorldState {
     actions: ActiveActions,
     inputs: Inputs,
     inventory_proxy: Option<InventoryProxy>,
-    registered_actions: Vec<ActionId>,
     main_menu: Option<NodeId>,
     cursor_pinned: CursorPinState,
     host: EntityId,
@@ -101,7 +97,6 @@ impl GameWorldState {
             actions: ActiveActions::new(),
             inputs,
             inventory_proxy: None,
-            registered_actions: vec![],
             host: EntityId::dangling(),
             main_menu: None,
             cursor_pinned,
@@ -387,38 +382,21 @@ impl GameWorldState {
     }
 
     fn register_actions(&mut self) {
-        for module in self.modules.iter() {
-            for record in module.records.iter() {
-                let Some(action) = record.body.as_action() else {
-                    continue;
-                };
+        for (id, input) in &self.inputs.inputs {
+            let key = match input.input_keys[0] {
+                InputKey::KeyCode(key) => HotkeyCode::KeyCode { key_code: key },
+                InputKey::ScanCode(key) => HotkeyCode::ScanCode { scan_code: key },
+            };
 
-                if let Some(key) = self.get_key_for_action(module.id, record) {
-                    self.actions.register(module.id, record, key);
-                    self.registered_actions.push(ActionId(RecordReference {
-                        module: module.id,
-                        record: record.id,
-                    }));
-                }
-            }
+            self.actions.register(
+                id.module,
+                id.record,
+                Key {
+                    trigger: input.trigger,
+                    code: key,
+                },
+            );
         }
-    }
-
-    fn get_key_for_action(&self, module: ModuleId, record: &Record) -> Option<Key> {
-        let input = self.inputs.inputs.get(&RecordReference {
-            module,
-            record: record.id,
-        })?;
-
-        let key = match input.input_keys[0] {
-            InputKey::KeyCode(key) => HotkeyCode::KeyCode { key_code: key },
-            InputKey::ScanCode(key) => HotkeyCode::ScanCode { scan_code: key },
-        };
-
-        Some(Key {
-            trigger: input.trigger,
-            code: key,
-        })
     }
 }
 
