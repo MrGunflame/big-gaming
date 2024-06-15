@@ -207,8 +207,10 @@ impl GameWorld {
             }
         }
 
-        // Apply predicted inputs.
+        self.apply_predicted_inputs(cf);
+    }
 
+    fn apply_predicted_inputs(&mut self, cf: ControlFrame) {
         // Remove all inputs that were acknowledged for this frame
         // BEFORE we apply them.
         self.conn.input_buffer.clear(cf);

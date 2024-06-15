@@ -14,21 +14,20 @@ pub struct Root {
     #[serde(default)]
     pub dependencies: Vec<JsonDependency>,
     #[serde(default)]
-    pub records: Records,
+    pub records: Vec<JsonRecord>,
+    #[serde(default)]
+    pub scripts: Vec<String>,
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
-pub struct Records {
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct JsonRecord {
+    pub id: JsonRecordId,
+    pub kind: JsonRecordReference,
+    pub name: String,
     #[serde(default)]
-    pub actions: Vec<Action>,
+    pub description: String,
     #[serde(default)]
-    pub races: Vec<Race>,
-    #[serde(default)]
-    pub components: Vec<Component>,
-    #[serde(default)]
-    pub objects: Vec<Object>,
-    #[serde(default)]
-    pub items: Vec<Item>,
+    pub data: Vec<u8>,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -54,7 +53,7 @@ impl<'de> Deserialize<'de> for JsonModuleId {
         impl<'de> Visitor<'de> for Vis {
             type Value = JsonModuleId;
 
-            fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+            fn expecting(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
                 formatter.write_str("a hex-encoded module id")
             }
 
@@ -96,7 +95,7 @@ impl<'de> Deserialize<'de> for JsonRecordId {
         impl<'de> Visitor<'de> for Vis {
             type Value = JsonRecordId;
 
-            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            fn expecting(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
                 formatter.write_str("a hex-encoded record id")
             }
 
@@ -138,7 +137,7 @@ impl<'de> Deserialize<'de> for JsonRecordReference {
         impl<'de> Visitor<'de> for Vis {
             type Value = JsonRecordReference;
 
-            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            fn expecting(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
                 formatter.write_str("a record reference")
             }
 

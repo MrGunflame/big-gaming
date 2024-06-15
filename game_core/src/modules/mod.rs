@@ -5,7 +5,7 @@ use std::io::Read;
 use game_common::module::ModuleId;
 use game_common::record::{RecordId, RecordReference};
 use game_data::loader::FileLoader;
-use game_data::record::{Record, RecordBody, RecordKind};
+use game_data::record::{Record, RecordKind};
 use game_data::DataBuffer;
 use game_script::{Executor, RecordProvider};
 use thiserror::Error;
@@ -144,58 +144,45 @@ pub fn load_modules() -> LoadResult {
 }
 
 fn load_module(data: DataBuffer, modules: &mut Modules, executor: &mut Executor) {
+    for script in &data.scripts {
+        let buf = match (|| {
+            let mut file = File::open(&script)?;
+
+            let mut buf = Vec::new();
+            file.read_to_end(&mut buf)?;
+            Result::<_, std::io::Error>::Ok(buf)
+        })() {
+            Ok(buf) => buf,
+            Err(err) => {
+                tracing::error!(
+                    "failed to load script from local path {:?}: {}",
+                    script,
+                    err,
+                );
+
+                continue;
+            }
+        };
+
+        let handle = match executor.load(&buf) {
+            Ok(script) => script,
+            Err(err) => {
+                tracing::error!(
+                    "failed to load script from local path {:?}: {}",
+                    script,
+                    err,
+                );
+
+                continue;
+            }
+        };
+    }
+
     let mut records = Records::new();
     for record in &data.records {
         // In case a linked asset is not present we still want to load
         // the record to not break linked records.
         records.insert(record.clone());
-
-        for script in &record.scripts {
-            let buf = match (|| {
-                let mut file = File::open(script.as_ref())?;
-
-                let mut buf = Vec::new();
-                file.read_to_end(&mut buf)?;
-                Result::<_, std::io::Error>::Ok(buf)
-            })() {
-                Ok(buf) => buf,
-                Err(err) => {
-                    tracing::error!(
-                        "failed to load script for record {} from local path {:?}: {}",
-                        record.name,
-                        script.as_ref(),
-                        err,
-                    );
-
-                    continue;
-                }
-            };
-
-            let handle = match executor.load(&buf) {
-                Ok(script) => script,
-                Err(err) => {
-                    tracing::error!(
-                        "failed to load script for record {} from local path {:?}: {}",
-                        record.name,
-                        script.as_ref(),
-                        err,
-                    );
-
-                    continue;
-                }
-            };
-        }
-    }
-
-    if let Err(err) = validate_module(modules, &data) {
-        tracing::error!(
-            "failed to load module {} ({}): {}",
-            data.header.module.name,
-            data.header.module.id,
-            err,
-        );
-
-        return;
     }
 
     modules.insert(ModuleData {
@@ -230,58 +217,6 @@ pub enum ValidationErrorKind {
         found: RecordKind,
         expected: RecordKind,
     },
-}
-
-fn validate_module(modules: &Modules, module: &DataBuffer) -> Result<(), ValidationError> {
-    for record in &module.records {
-        for component in &record.components {
-            let module_id = component.id.module;
-
-            if module_id != module.header.module.id
-                && !module
-                    .header
-                    .module
-                    .dependencies
-                    .iter()
-                    .any(|dep| dep.id == component.id.module)
-            {
-                return Err(ValidationError {
-                    record: record.id,
-                    kind: ValidationErrorKind::UnknownDependency(module_id),
-                });
-            }
-
-            match fetch_record(modules, module, component.id) {
-                Ok(rec) => {
-                    if !rec.body.kind().is_component() {
-                        return Err(ValidationError {
-                            record: record.id,
-                            kind: ValidationErrorKind::InvalidKind {
-                                found: rec.body.kind(),
-                                expected: RecordKind::Component,
-                            },
-                        });
-                    }
-                }
-                Err(err) => {
-                    return Err(ValidationError {
-                        record: record.id,
-                        kind: err,
-                    });
-                }
-            }
-        }
-
-        match &record.body {
-            RecordBody::Action(_) => {}
-            RecordBody::Component(_) => {}
-            RecordBody::Item(item) => {}
-            RecordBody::Object(object) => {}
-            RecordBody::Race(race) => {}
-        }
-    }
-
-    Ok(())
 }
 
 /// Fetch a record from either the module itself, or any dependant modules.

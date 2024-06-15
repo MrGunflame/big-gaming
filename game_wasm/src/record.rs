@@ -1,17 +1,14 @@
 use core::fmt::{self, Display, Formatter, LowerHex};
-use core::mem::MaybeUninit;
 use core::str::FromStr;
 
 use alloc::vec::Vec;
 use bytemuck::{Pod, Zeroable};
 use hex::FromHexError;
 
-use crate::components::{Components, RawComponent};
 use crate::encoding::{Decode, Encode};
-use crate::raw::record::{
-    get_record, get_record_component_get, get_record_component_keys, get_record_component_len,
-    get_record_len_component, RecordKind as RawRecordKind,
-};
+use crate::raw::record::{record_data_copy, record_data_len};
+use crate::raw::{RESULT_NO_RECORD, RESULT_OK};
+use crate::{unreachable_unchecked, Error, ErrorImpl};
 
 const HEX_CHARS: &[u8; 16] = b"0123456789abcdef";
 
@@ -318,93 +315,56 @@ impl Display for ModuleId {
     }
 }
 
+/// A record, exported by a module.
 #[derive(Clone, Debug)]
 pub struct Record {
-    pub(crate) kind: RecordKind,
-    pub(crate) components: Components,
+    data: Vec<u8>,
 }
 
 impl Record {
-    pub fn get(id: RecordReference) -> Self {
-        let mut record = MaybeUninit::uninit();
-
-        let res = unsafe { get_record(&id, record.as_mut_ptr()) };
-        assert!(res == 0);
-
-        let record = unsafe { record.assume_init() };
-        Self {
-            kind: RecordKind::from_raw(record.kind),
-            components: fetch_components(id),
-        }
+    /// Returns the `Record` with the given `id`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an [`Error`] if no `Record` with the given `id` exists.
+    pub fn get(id: RecordReference) -> Result<Self, Error> {
+        let data = get_record_data_safe(id)?;
+        Ok(Self { data })
     }
 
+    /// Returns a reference to the data of the `Record`.
     #[inline]
-    pub const fn kind(&self) -> RecordKind {
-        self.kind
-    }
-
-    #[inline]
-    pub const fn components(&self) -> &Components {
-        &self.components
+    pub fn data(&self) -> &[u8] {
+        &self.data
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub enum RecordKind {
-    Object,
-    Item,
-    Race,
-}
+fn get_record_data_safe(id: RecordReference) -> Result<Vec<u8>, Error> {
+    let mut len = 0;
 
-impl RecordKind {
-    fn from_raw(kind: RawRecordKind) -> Self {
-        match kind {
-            RawRecordKind::ITEM => Self::Item,
-            RawRecordKind::OBJECT => Self::Object,
-            RawRecordKind::RACE => Self::Race,
-            _ => unreachable!(),
-        }
+    match unsafe { record_data_len(&id, &mut len) } {
+        RESULT_OK => (),
+        RESULT_NO_RECORD => return Err(Error(ErrorImpl::NoRecord(id))),
+        _ => unreachable!(),
     }
-}
 
-fn fetch_components(id: RecordReference) -> Components {
-    let mut len = MaybeUninit::uninit();
+    let mut data = Vec::with_capacity(len);
 
-    let res = unsafe { get_record_len_component(&id, len.as_mut_ptr()) };
-    assert!(res == 0);
+    match unsafe { record_data_copy(&id, data.as_mut_ptr(), len) } {
+        // This operation will always suceed as the only failure
+        // condition is that the record does not exist. We have
+        // already checked for that previously. Since records are
+        // immutable checking whether the record exists only means
+        // that it will always exist.
+        RESULT_OK => (),
+        _ => unsafe { unreachable_unchecked() },
+    }
 
-    let len = unsafe { len.assume_init() };
+    unsafe {
+        data.set_len(len);
+    }
 
-    let mut keys = Vec::with_capacity(len as usize);
-    let res = unsafe { get_record_component_keys(&id, keys.as_mut_ptr(), len) };
-    assert!(res == 0);
-    unsafe { keys.set_len(len as usize) };
-
-    // let mut components = Components::new();
-    // for key in keys.into_iter() {
-    //     let comp = fetch_component(id, key);
-    //     components.insert(key, comp);
-    // }
-    todo!();
-
-    // components
-}
-
-fn fetch_component(id: RecordReference, component: RecordReference) -> RawComponent {
-    let mut len = MaybeUninit::uninit();
-
-    let res = unsafe { get_record_component_len(&id, &component, len.as_mut_ptr()) };
-    assert!(res == 0);
-
-    let len = unsafe { len.assume_init() };
-    let mut bytes = Vec::with_capacity(len as usize);
-
-    let res = unsafe { get_record_component_get(&id, &component, bytes.as_mut_ptr(), len) };
-    assert!(res == 0);
-
-    unsafe { bytes.set_len(len as usize) };
-
-    RawComponent::new(bytes, Vec::new())
+    Ok(data)
 }
 
 #[cfg(test)]

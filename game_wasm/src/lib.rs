@@ -58,6 +58,7 @@ pub(crate) enum ErrorImpl {
     NoEntity(EntityId),
     NoComponent(RecordReference),
     ComponentDecode,
+    NoRecord(RecordReference),
 }
 
 impl ErrorImpl {
@@ -73,6 +74,7 @@ impl Display for ErrorImpl {
             Self::NoEntity(id) => write!(f, "no such entity: {:?}", id),
             Self::NoComponent(id) => write!(f, "no component: {:?}", id),
             Self::ComponentDecode => write!(f, "component decode failed"),
+            Self::NoRecord(id) => write!(f, "no record: {:?}", id),
         }
     }
 }

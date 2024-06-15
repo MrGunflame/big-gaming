@@ -5,8 +5,7 @@ use game_common::components::{
 };
 use game_common::record::ModuleId;
 use game_common::reflection::{ComponentDescriptor, Field, FieldIndex, FieldKind, FloatField};
-use game_data::components::components::ComponentRecord;
-use game_data::record::{Record, RecordBody};
+use game_data::record::{Record, RecordKind};
 use game_wasm::components::Component;
 
 use super::records::Records;
@@ -24,12 +23,9 @@ macro_rules! load_components {
                 data.records.insert(Record {
                     id: <$t as Component>::ID.record,
                     name: stringify!($t).to_owned(),
-                    components: Vec::new(),
-                    scripts: Vec::new(),
-                    body: RecordBody::Component(ComponentRecord {
-                        description: "".to_owned(),
-                        descriptor: <$t as Descriptor>::descriptor(),
-                    })
+                    kind: RecordKind::COMPONENT,
+                    description: String::new(),
+                    data: <$t as Descriptor>::descriptor().to_bytes(),
                 });
             )*
 

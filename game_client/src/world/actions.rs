@@ -7,6 +7,7 @@ use game_input::hotkeys::{Hotkey, HotkeyId, Hotkeys, Key};
 use game_input::keyboard::KeyboardInput;
 use game_input::mouse::MouseButtonInput;
 use game_tracing::trace_span;
+use game_wasm::record::RecordId;
 
 #[derive(Debug)]
 pub struct ActiveActions {
@@ -24,56 +25,36 @@ impl ActiveActions {
         }
     }
 
-    pub fn register(&mut self, module: ModuleId, record: &Record, key: Key) {
+    pub fn register(&mut self, module: ModuleId, record: RecordId, key: Key) {
         let _span = trace_span!("ActiveActions::register").entered();
         tracing::info!("registered action for {:?}", record);
 
-        assert!(record.body.as_action().is_some());
-
         let id = self.hotkeys.register(Hotkey {
             id: HotkeyId(0),
-            name: record.name.to_owned().into(),
+            name: Default::default(),
             default: key,
         });
 
         self.inputs
             .entry(id)
             .or_default()
-            .push(ActionId(RecordReference {
-                module,
-                record: record.id,
-            }));
+            .push(ActionId(RecordReference { module, record }));
 
-        self.actions.insert(
-            ActionId(RecordReference {
-                module,
-                record: record.id,
-            }),
-            id,
-        );
+        self.actions
+            .insert(ActionId(RecordReference { module, record }), id);
     }
 
-    pub fn unregister(&mut self, module: ModuleId, record: &Record) {
+    pub fn unregister(&mut self, module: ModuleId, record: RecordId) {
         let _span = trace_span!("ActiveActions::unregister").entered();
         tracing::info!("unregistered action for {:?}", record);
 
-        assert!(record.body.as_action().is_some());
-
         let hotkey = self
             .actions
-            .remove(&ActionId(RecordReference {
-                module,
-                record: record.id,
-            }))
+            .remove(&ActionId(RecordReference { module, record }))
             .unwrap();
 
         let actions = self.inputs.get_mut(&hotkey).unwrap();
-        actions.retain(|id| {
-            *id != ActionId(RecordReference {
-                module,
-                record: record.id,
-            })
-        });
+        actions.retain(|id| *id != ActionId(RecordReference { module, record }));
 
         if actions.is_empty() {
             self.inputs.remove(&hotkey);
