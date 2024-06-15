@@ -1,9 +1,7 @@
 //! Types and (de)serializiers for data files.
 
-pub mod components;
 pub mod header;
 pub mod loader;
-pub mod patch;
 pub mod record;
 pub mod uri;
 pub mod varint;
