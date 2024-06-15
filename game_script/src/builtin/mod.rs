@@ -49,11 +49,6 @@ pub fn register_host_fns(store: &mut Linker<State>) {
         world_entity_component_remove,
         physics_cast_ray,
         physics_cast_shape,
-        get_record,
-        get_record_len_component,
-        get_record_component_keys,
-        get_record_component_len,
-        get_record_component_get,
         player_lookup,
         player_set_active,
         register_system,
@@ -62,6 +57,8 @@ pub fn register_host_fns(store: &mut Linker<State>) {
         event_dispatch,
         host_buffer_len,
         host_buffer_get,
+        record_data_len,
+        record_data_copy,
     }
 }
 
