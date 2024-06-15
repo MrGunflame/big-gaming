@@ -7,6 +7,7 @@ use crate::builtin::CallerExt;
 use crate::instance::State;
 
 /// ```no_run
+/// # use game_common::record::RecordReference;
 /// # extern "C" {
 /// fn record_data_len(id: *const RecordReference, out: *mut usize) -> u32;
 /// # }
@@ -25,6 +26,7 @@ pub fn record_data_len(mut caller: Caller<'_, State>, id: u32, out: u32) -> Resu
 }
 
 ///```no_run
+/// # use game_common::record::RecordReference;
 /// # extern "C" {
 /// fn record_data_copy(id: *const RecordReference, dst: *mut u8, len: usize) -> u32;
 /// }
