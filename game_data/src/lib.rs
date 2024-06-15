@@ -42,6 +42,8 @@ pub enum Error {
     Record(#[from] RecordError),
     #[error(transparent)]
     Header(#[from] HeaderError),
+    #[error(transparent)]
+    Scripts(#[from] <Vec<String> as Decode>::Error),
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Error)]
@@ -300,6 +302,7 @@ where
 pub struct DataBuffer {
     pub header: Header,
     pub records: Vec<Record>,
+    pub scripts: Vec<String>,
 }
 
 impl DataBuffer {
@@ -312,6 +315,7 @@ impl DataBuffer {
                 patches: 0,
             },
             records: Vec::new(),
+            scripts: Vec::new(),
         }
     }
 }
@@ -326,6 +330,10 @@ impl Encode for DataBuffer {
         self.header.encode(&mut buf);
         for item in &self.records {
             item.encode(&mut buf);
+        }
+
+        for script in &self.scripts {
+            script.encode(&mut buf);
         }
     }
 }
@@ -345,7 +353,13 @@ impl Decode for DataBuffer {
             records.push(record);
         }
 
-        Ok(Self { header, records })
+        let scripts = Vec::decode(&mut buf)?;
+
+        Ok(Self {
+            header,
+            records,
+            scripts,
+        })
     }
 }
 

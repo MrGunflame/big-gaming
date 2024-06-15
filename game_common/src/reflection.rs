@@ -1,6 +1,8 @@
 use core::fmt::{self, Display, Formatter};
 
-#[derive(Clone, Debug)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ComponentDescriptor {
     fields: Box<[Field]>,
     root: Box<[FieldIndex]>,
@@ -48,6 +50,14 @@ impl ComponentDescriptor {
     pub fn get(&self, index: FieldIndex) -> Option<&Field> {
         self.fields.get(usize::from(index.0))
     }
+
+    pub fn to_bytes(&self) -> Vec<u8> {
+        bincode::serialize(self).unwrap()
+    }
+
+    pub fn from_bytes(bytes: &[u8]) -> Self {
+        bincode::deserialize(bytes).unwrap()
+    }
 }
 
 impl Default for ComponentDescriptor {
@@ -59,7 +69,7 @@ impl Default for ComponentDescriptor {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct FieldIndex(u16);
 
 impl FieldIndex {
@@ -93,20 +103,20 @@ impl Display for Error {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Field {
     pub name: String,
     pub kind: FieldKind,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum FieldKind {
     Int(IntegerField),
     Float(FloatField),
     Struct(Vec<FieldIndex>),
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
 pub struct IntegerField {
     pub bits: u8,
     pub is_signed: bool,
@@ -114,7 +124,7 @@ pub struct IntegerField {
     pub max: Option<u64>,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
 pub struct FloatField {
     /// 32 or 64
     pub bits: u8,
