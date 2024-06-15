@@ -2,9 +2,14 @@ use std::borrow::Cow;
 use std::fs::File;
 use std::io::Read;
 use std::num::NonZeroU32;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 use naga::front::wgsl::ParseError;
 use naga::valid::{Capabilities, ValidationFlags, Validator};
+use notify::{Config, EventKind, RecursiveMode, Watcher};
+use parking_lot::Mutex;
 use wgpu::hal::{DebugSource, Device as _, NagaShader};
 use wgpu::{
     ColorTargetState, DepthStencilState, Device, MultisampleState, PipelineLayout, PrimitiveState,
@@ -16,8 +21,9 @@ pub struct Pipeline<T>
 where
     T: PipelineObject,
 {
-    pipeline: Option<T>,
+    pipeline: Mutex<Arc<T>>,
     descriptor: T::Descriptor,
+    reload_shader: Arc<AtomicBool>,
 }
 
 impl<T> Pipeline<T>
@@ -27,14 +33,55 @@ where
     pub fn new(device: &Device, descriptor: T::Descriptor) -> Self {
         let pipeline = T::build(&descriptor, device);
 
+        let vs_shader = T::vs_shader(&descriptor);
+        let fs_shader = T::fs_shader(&descriptor);
+
+        let reload_shader = Arc::new(AtomicBool::new(false));
+
+        {
+            let reload_shader = reload_shader.clone();
+            // std::thread::spawn(move || {
+            let mut watcher =
+                notify::recommended_watcher(move |res: Result<notify::Event, notify::Error>| {
+                    match res {
+                        Ok(event) => match event.kind {
+                            EventKind::Any | EventKind::Modify(_) => {
+                                tracing::info!("{:?} changed", event.paths);
+                                reload_shader.store(true, Ordering::Release);
+                            }
+                            _ => (),
+                        },
+                        Err(_) => (),
+                    }
+                })
+                .unwrap();
+
+            if let Some(vs_shader) = vs_shader {
+                let path = PathBuf::from(vs_shader);
+                watcher.watch(&path, RecursiveMode::NonRecursive).unwrap();
+            }
+
+            if let Some(fs_shader) = fs_shader {
+                let path = PathBuf::from(fs_shader);
+                watcher.watch(&path, RecursiveMode::NonRecursive).unwrap();
+            }
+            // });
+        }
+
         Self {
-            pipeline: Some(pipeline),
+            pipeline: Mutex::new(Arc::new(pipeline)),
             descriptor,
+            reload_shader,
         }
     }
 
-    pub fn get(&self) -> &T {
-        self.pipeline.as_ref().unwrap()
+    pub fn get(&self, device: &Device) -> Arc<T> {
+        if self.reload_shader.swap(false, Ordering::Acquire) {
+            let pipeline = T::build(&self.descriptor, device);
+            *self.pipeline.lock() = Arc::new(pipeline);
+        }
+
+        self.pipeline.lock().clone()
     }
 }
 
@@ -42,6 +89,9 @@ pub trait PipelineObject {
     type Descriptor;
 
     fn build(descriptor: &Self::Descriptor, device: &Device) -> Self;
+
+    fn vs_shader(descriptor: &Self::Descriptor) -> Option<&'static str>;
+    fn fs_shader(descriptor: &Self::Descriptor) -> Option<&'static str>;
 }
 
 impl PipelineObject for RenderPipeline {
@@ -79,6 +129,14 @@ impl PipelineObject for RenderPipeline {
             multisample: descriptor.multisample,
             multiview: descriptor.multiview,
         })
+    }
+
+    fn vs_shader(descriptor: &Self::Descriptor) -> Option<&'static str> {
+        Some(descriptor.vertex.module.path)
+    }
+
+    fn fs_shader(descriptor: &Self::Descriptor) -> Option<&'static str> {
+        descriptor.fragment.as_ref().map(|s| s.module.path)
     }
 }
 

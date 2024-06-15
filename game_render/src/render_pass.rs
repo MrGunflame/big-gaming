@@ -185,6 +185,8 @@ impl RenderPass {
         });
         let target_view = render_target.create_view(&TextureViewDescriptor::default());
 
+        let forward_pl = pipeline.pipeline.get(device);
+
         let mut render_pass = ctx.encoder.begin_render_pass(&RenderPassDescriptor {
             label: Some("render_pass"),
             color_attachments: &[Some(RenderPassColorAttachment {
@@ -207,7 +209,7 @@ impl RenderPass {
             occlusion_query_set: None,
         });
 
-        render_pass.set_pipeline(&pipeline.pipeline);
+        render_pass.set_pipeline(&forward_pl);
 
         for (index, obj) in state.objects.values().enumerate() {
             let vs_bind_group = &bind_groups[index];

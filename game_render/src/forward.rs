@@ -1,20 +1,23 @@
 use wgpu::{
     AddressMode, BindGroupLayout, BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindingType,
     BlendState, BufferBindingType, ColorTargetState, ColorWrites, CompareFunction, DepthBiasState,
-    DepthStencilState, Device, Face, FilterMode, FragmentState, FrontFace, MultisampleState,
-    PipelineLayoutDescriptor, PolygonMode, PrimitiveState, PrimitiveTopology, RenderPipeline,
-    RenderPipelineDescriptor, Sampler, SamplerBindingType, SamplerDescriptor,
-    ShaderModuleDescriptor, ShaderSource, ShaderStages, StencilState, TextureFormat,
-    TextureSampleType, TextureViewDimension, VertexState,
+    DepthStencilState, Device, FilterMode, FrontFace, MultisampleState, PipelineLayoutDescriptor,
+    PolygonMode, PrimitiveState, PrimitiveTopology, RenderPipeline, Sampler, SamplerBindingType,
+    SamplerDescriptor, ShaderStages, StencilState, TextureFormat, TextureSampleType,
+    TextureViewDimension,
 };
 
 use crate::depth_stencil::DEPTH_TEXTURE_FORMAT;
 use crate::pbr::material::DefaultTextures;
+use crate::pipeline::{FragmentState, Pipeline, RenderPipelineDescriptor, Shader, VertexState};
 use crate::texture::Images;
+
+const FORWARD_VS: &str = "../game_render/shaders/forward_vs.wgsl";
+const FORWARD_FS: &str = "../game_render/shaders/forward_fs.wgsl";
 
 #[derive(Debug)]
 pub struct ForwardPipeline {
-    pub pipeline: RenderPipeline,
+    pub pipeline: Pipeline<RenderPipeline>,
     pub vs_bind_group_layout: BindGroupLayout,
     pub fs_bind_group_layout: BindGroupLayout,
     pub mesh_bind_group_layout: BindGroupLayout,
@@ -161,16 +164,6 @@ impl ForwardPipeline {
                 ],
             });
 
-        let vs_shader = device.create_shader_module(ShaderModuleDescriptor {
-            label: Some("forward_vs"),
-            source: ShaderSource::Wgsl(include_str!("../shaders/forward_vs.wgsl").into()),
-        });
-
-        let fs_shader = device.create_shader_module(ShaderModuleDescriptor {
-            label: Some("forward_fs"),
-            source: ShaderSource::Wgsl(include_str!("../shaders/forward_fs.wgsl").into()),
-        });
-
         let fs_bind_group_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
             label: Some("fs_bind_group_layout"),
             entries: &[],
@@ -227,46 +220,48 @@ impl ForwardPipeline {
             push_constant_ranges: &[],
         });
 
-        let pipeline = device.create_render_pipeline(&RenderPipelineDescriptor {
-            label: Some("forward_pipeline"),
-            layout: Some(&pipeline_layout),
-            vertex: VertexState {
-                module: &vs_shader,
-                entry_point: "vs_main",
-                buffers: &[],
+        let pipeline = Pipeline::new(
+            device,
+            RenderPipelineDescriptor {
+                layout: pipeline_layout,
+                vertex: VertexState {
+                    module: Shader::from_file(FORWARD_VS),
+                    entry_point: "vs_main",
+                    buffers: &[],
+                },
+                fragment: Some(FragmentState {
+                    module: Shader::from_file(FORWARD_FS),
+                    entry_point: "fs_main",
+                    targets: &[Some(ColorTargetState {
+                        format: TextureFormat::Rgba16Float,
+                        blend: Some(BlendState::ALPHA_BLENDING),
+                        write_mask: ColorWrites::ALL,
+                    })],
+                }),
+                primitive: PrimitiveState {
+                    topology: PrimitiveTopology::TriangleList,
+                    strip_index_format: None,
+                    front_face: FrontFace::Ccw,
+                    cull_mode: None,
+                    polygon_mode: PolygonMode::Fill,
+                    unclipped_depth: false,
+                    conservative: false,
+                },
+                depth_stencil: Some(DepthStencilState {
+                    format: DEPTH_TEXTURE_FORMAT,
+                    depth_write_enabled: true,
+                    depth_compare: CompareFunction::Less,
+                    stencil: StencilState::default(),
+                    bias: DepthBiasState::default(),
+                }),
+                multisample: MultisampleState {
+                    count: 1,
+                    mask: !0,
+                    alpha_to_coverage_enabled: false,
+                },
+                multiview: None,
             },
-            fragment: Some(FragmentState {
-                module: &fs_shader,
-                entry_point: "fs_main",
-                targets: &[Some(ColorTargetState {
-                    format: TextureFormat::Rgba16Float,
-                    blend: Some(BlendState::ALPHA_BLENDING),
-                    write_mask: ColorWrites::ALL,
-                })],
-            }),
-            primitive: PrimitiveState {
-                topology: PrimitiveTopology::TriangleList,
-                strip_index_format: None,
-                front_face: FrontFace::Ccw,
-                cull_mode: None,
-                polygon_mode: PolygonMode::Fill,
-                unclipped_depth: false,
-                conservative: false,
-            },
-            depth_stencil: Some(DepthStencilState {
-                format: DEPTH_TEXTURE_FORMAT,
-                depth_write_enabled: true,
-                depth_compare: CompareFunction::Less,
-                stencil: StencilState::default(),
-                bias: DepthBiasState::default(),
-            }),
-            multisample: MultisampleState {
-                count: 1,
-                mask: !0,
-                alpha_to_coverage_enabled: false,
-            },
-            multiview: None,
-        });
+        );
 
         let sampler = device.create_sampler(&SamplerDescriptor {
             label: Some("default_sampler"),
