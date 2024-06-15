@@ -21,7 +21,7 @@ pub fn record_data_len(mut caller: Caller<'_, State>, id: u32, out: u32) -> Resu
         return Ok(RESULT_NO_RECORD);
     };
 
-    caller.write::<u32>(out, &(record.data.len() as u32));
+    caller.write::<u32>(out, &(record.data.len() as u32))?;
     Ok(RESULT_OK)
 }
 
