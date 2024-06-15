@@ -1,6 +1,14 @@
 //! Command format
 
+use std::fmt::{self, Display, Formatter};
+
 use game_common::entity::EntityId;
+
+#[derive(Copy, Clone, Debug)]
+pub struct CommandDescriptor {
+    pub name: &'static str,
+    pub description: &'static str,
+}
 
 #[derive(Clone, Debug)]
 pub enum ServerCommand {
@@ -15,6 +23,19 @@ impl ServerCommand {
             Some(Token::Ident("clients")) => Ok(Self::Clients),
             _ => Err(ParseError::Empty),
         }
+    }
+
+    pub fn list() -> &'static [CommandDescriptor] {
+        &[
+            CommandDescriptor {
+                name: "uptime",
+                description: "Show the uptime of the server",
+            },
+            CommandDescriptor {
+                name: "clients",
+                description: "List all clients currently connected to the server",
+            },
+        ]
     }
 }
 
@@ -45,6 +66,13 @@ impl GameCommand {
             _ => Err(ParseError::Empty),
         }
     }
+
+    pub fn list() -> &'static [CommandDescriptor] {
+        &[CommandDescriptor {
+            name: "get",
+            description: "Select an entity",
+        }]
+    }
 }
 
 fn parse_parens<'a>(tokens: &mut &'a [Token<'a>]) -> Result<&'a [Token<'a>], ParseError> {
@@ -69,6 +97,7 @@ fn parse_parens<'a>(tokens: &mut &'a [Token<'a>]) -> Result<&'a [Token<'a>], Par
 
 pub enum ParseError {
     Empty,
+    Msg(String),
 }
 
 pub fn tokenize<'a>(input: &'a str) -> Result<Vec<Token<'a>>, TokenizeError> {
@@ -189,6 +218,66 @@ pub enum Token<'a> {
     OpenParen,
     /// `)`
     CloseParen,
+}
+
+impl<'a> Token<'a> {
+    pub const fn kind(&self) -> TokenKind {
+        match self {
+            Self::Ident(_) => TokenKind::Ident,
+            Self::Literal(_) => TokenKind::Literal,
+            Self::Plus => TokenKind::Plus,
+            Self::Minus => TokenKind::Minus,
+            Self::Star => TokenKind::Star,
+            Self::Slash => TokenKind::Slash,
+            Self::Caret => TokenKind::Caret,
+            Self::Percent => TokenKind::Percent,
+            Self::And => TokenKind::And,
+            Self::Or => TokenKind::Or,
+            Self::Dot => TokenKind::Dot,
+            Self::Comma => TokenKind::Comma,
+            Self::OpenParen => TokenKind::OpenParen,
+            Self::CloseParen => TokenKind::CloseParen,
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum TokenKind {
+    Ident,
+    Literal,
+    Plus,
+    Minus,
+    Star,
+    Slash,
+    Caret,
+    Percent,
+    And,
+    Or,
+    Dot,
+    Comma,
+    OpenParen,
+    CloseParen,
+}
+
+impl Display for TokenKind {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Ident => "identifier",
+            Self::Literal => "literal",
+            Self::Plus => "+",
+            Self::Minus => "-",
+            Self::Star => "*",
+            Self::Slash => "/",
+            Self::Caret => "^",
+            Self::Percent => "%",
+            Self::And => "&",
+            Self::Or => "|",
+            Self::Dot => ".",
+            Self::Comma => ",",
+            Self::OpenParen => "(",
+            Self::CloseParen => ")",
+        })
+    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]

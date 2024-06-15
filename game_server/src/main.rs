@@ -5,7 +5,7 @@ use std::process::ExitCode;
 use clap::Parser;
 
 use game_common::world::gen::Generator;
-use game_core::command::tokenize;
+use game_core::command::{tokenize, ParseError};
 use game_core::modules;
 use game_server::command::Command;
 use game_server::config::Config;
@@ -58,8 +58,12 @@ fn main() -> ExitCode {
 
             let cmd = match Command::parse(&tokens) {
                 Ok(cmd) => cmd,
-                Err(_) => {
+                Err(ParseError::Empty) => {
                     println!("unknown command");
+                    continue;
+                }
+                Err(ParseError::Msg(msg)) => {
+                    println!("{}", msg);
                     continue;
                 }
             };

@@ -185,6 +185,7 @@ fn process_commands(state: &mut ServerState) {
                     tx.send(resp).unwrap();
                 }
             }
+            Command::Empty => {}
         }
     }
 }
