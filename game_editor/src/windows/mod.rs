@@ -3,8 +3,8 @@ mod error;
 pub mod main_window;
 pub mod modules;
 mod open_module;
-mod record;
-mod records;
+// mod record;
+// mod records;
 mod world;
 
 use game_common::module::ModuleId;
@@ -18,13 +18,13 @@ use game_window::windows::WindowId;
 use crate::state::EditorState;
 use crate::windows::create_module::CreateModule;
 use crate::windows::error::Error;
-use crate::windows::record::EditRecord;
-use crate::windows::records::Records;
+// use crate::windows::record::EditRecord;
+// use crate::windows::records::Records;
 
 use self::main_window::MainWindow;
 use self::modules::Modules;
 use self::open_module::OpenModule;
-use self::record::CreateRecord;
+// use self::record::CreateRecord;
 use self::world::WorldWindowState;
 
 pub enum Window {
@@ -93,22 +93,22 @@ pub fn spawn_window(
             cx.append(Error { message: msg });
         }
         SpawnWindow::Records => {
-            cx.append(Records { state });
+            // cx.append(Records { state });
         }
         SpawnWindow::CreateRecord(kind) => {
-            cx.append(CreateRecord {
-                kind,
-                records: state.records,
-                modules: state.modules,
-            });
+            // cx.append(CreateRecord {
+            //     kind,
+            //     records: state.records,
+            //     modules: state.modules,
+            // });
         }
         SpawnWindow::EditRecord(module_id, record) => {
-            cx.append(EditRecord {
-                record,
-                module_id,
-                records: state.records,
-                modules: state.modules,
-            });
+            // cx.append(EditRecord {
+            //     record,
+            //     module_id,
+            //     records: state.records,
+            //     modules: state.modules,
+            // });
         }
         SpawnWindow::View => {
             let window = world::WorldWindowState::new(&cx, window_id, world);
