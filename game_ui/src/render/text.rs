@@ -1,13 +1,22 @@
+use std::sync::OnceLock;
+
 use ab_glyph::{point, Font, FontRef, Glyph, PxScale, ScaleFont};
+use game_common::collections::lru::LruCache;
 use game_tracing::trace_span;
 use glam::UVec2;
 use image::{ImageBuffer, Rgba, RgbaImage};
+use parking_lot::Mutex;
 
 use super::image::Image;
 use super::{DrawCommand, DrawElement};
 use crate::layout::computed_style::{ComputedBounds, ComputedStyle};
 
 const DEFAULT_FONT: &[u8] = include_bytes!("../../../assets/fonts/OpenSans/OpenSans-Regular.ttf");
+
+const TEXT_CACHE_CAP: usize = 1024;
+
+static TEXT_CACHE: OnceLock<Mutex<LruCache<String, ImageBuffer<Rgba<u8>, Vec<u8>>>>> =
+    OnceLock::new();
 
 #[derive(Clone, Debug)]
 pub struct Text {
@@ -42,6 +51,14 @@ impl DrawElement for Text {
 }
 
 fn render_to_texture(text: &str, size: f32, max: UVec2) -> ImageBuffer<Rgba<u8>, Vec<u8>> {
+    if let Some(res) = TEXT_CACHE
+        .get_or_init(|| Mutex::new(LruCache::new(TEXT_CACHE_CAP)))
+        .lock()
+        .get(text)
+    {
+        return res.clone();
+    }
+
     let _span = trace_span!("text::render_to_texture").entered();
 
     let font = FontRef::try_from_slice(DEFAULT_FONT).unwrap();
@@ -73,6 +90,11 @@ fn render_to_texture(text: &str, size: f32, max: UVec2) -> ImageBuffer<Rgba<u8>,
         }
     }
 
+    TEXT_CACHE
+        .get()
+        .unwrap()
+        .lock()
+        .insert(text.to_owned(), image.clone());
     image
 }
 
