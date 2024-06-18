@@ -14,9 +14,9 @@ use wgpu::{
     BindGroupLayoutEntry, BindingResource, BindingType, BlendState, Buffer, BufferBindingType,
     BufferUsages, ColorTargetState, ColorWrites, Device, Extent3d, Face, FilterMode, FragmentState,
     FrontFace, ImageCopyTexture, ImageDataLayout, IndexFormat, LoadOp, MultisampleState,
-    Operations, Origin3d, PipelineLayoutDescriptor, PolygonMode, PrimitiveState, PrimitiveTopology,
-    Queue, RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline,
-    RenderPipelineDescriptor, Sampler, SamplerBindingType, SamplerDescriptor,
+    Operations, Origin3d, PipelineLayout, PipelineLayoutDescriptor, PolygonMode, PrimitiveState,
+    PrimitiveTopology, Queue, RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline,
+    RenderPipelineDescriptor, Sampler, SamplerBindingType, SamplerDescriptor, ShaderModule,
     ShaderModuleDescriptor, ShaderSource, ShaderStages, StoreOp, TextureAspect, TextureDescriptor,
     TextureDimension, TextureFormat, TextureSampleType, TextureUsages, TextureView,
     TextureViewDescriptor, TextureViewDimension, VertexState,
@@ -36,9 +36,11 @@ const CAPACITY_GROWTH_FACTOR: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(2)
 #[derive(Debug)]
 struct UiPipeline {
     bind_group_layout: BindGroupLayout,
-    pipeline: RenderPipeline,
     sampler: Sampler,
     capacity: NonZeroU32,
+    pipeline_layout: PipelineLayout,
+    pipelines: HashMap<TextureFormat, RenderPipeline>,
+    shader: ShaderModule,
 }
 
 impl UiPipeline {
@@ -90,19 +92,39 @@ impl UiPipeline {
             source: ShaderSource::Wgsl(UI_SHADER.into()),
         });
 
-        let pipeline = device.create_render_pipeline(&RenderPipelineDescriptor {
+        let sampler = device.create_sampler(&SamplerDescriptor {
+            address_mode_u: AddressMode::ClampToEdge,
+            address_mode_v: AddressMode::ClampToEdge,
+            address_mode_w: AddressMode::ClampToEdge,
+            mag_filter: FilterMode::Linear,
+            min_filter: FilterMode::Nearest,
+            ..Default::default()
+        });
+
+        Self {
+            bind_group_layout,
+            pipeline_layout,
+            pipelines: HashMap::new(),
+            sampler,
+            capacity,
+            shader,
+        }
+    }
+
+    fn build_pipeline(&self, format: TextureFormat, device: &Device) -> RenderPipeline {
+        device.create_render_pipeline(&RenderPipelineDescriptor {
             label: Some("ui_pipeline"),
-            layout: Some(&pipeline_layout),
+            layout: Some(&self.pipeline_layout),
             vertex: VertexState {
-                module: &shader,
+                module: &self.shader,
                 entry_point: "vs_main",
                 buffers: &[],
             },
             fragment: Some(FragmentState {
-                module: &shader,
+                module: &self.shader,
                 entry_point: "fs_main",
                 targets: &[Some(ColorTargetState {
-                    format: TextureFormat::Bgra8Unorm,
+                    format,
                     blend: Some(BlendState::ALPHA_BLENDING),
                     write_mask: ColorWrites::ALL,
                 })],
@@ -123,23 +145,7 @@ impl UiPipeline {
                 alpha_to_coverage_enabled: false,
             },
             multiview: None,
-        });
-
-        let sampler = device.create_sampler(&SamplerDescriptor {
-            address_mode_u: AddressMode::ClampToEdge,
-            address_mode_v: AddressMode::ClampToEdge,
-            address_mode_w: AddressMode::ClampToEdge,
-            mag_filter: FilterMode::Linear,
-            min_filter: FilterMode::Nearest,
-            ..Default::default()
-        });
-
-        Self {
-            bind_group_layout,
-            pipeline,
-            sampler,
-            capacity,
-        }
+        })
     }
 }
 
@@ -296,6 +302,15 @@ impl Node for UiPass {
             usage: BufferUsages::INDIRECT,
         });
 
+        let render_pipeline = match pipeline.pipelines.get(&ctx.format) {
+            Some(pl) => pl,
+            None => {
+                let pl = pipeline.build_pipeline(ctx.format, ctx.device);
+                pipeline.pipelines.insert(ctx.format, pl);
+                pipeline.pipelines.get(&ctx.format).unwrap()
+            }
+        };
+
         let mut render_pass = ctx.encoder.begin_render_pass(&RenderPassDescriptor {
             label: Some("ui_pass"),
             color_attachments: &[Some(RenderPassColorAttachment {
@@ -311,7 +326,7 @@ impl Node for UiPass {
             timestamp_writes: None,
         });
 
-        render_pass.set_pipeline(&pipeline.pipeline);
+        render_pass.set_pipeline(&render_pipeline);
         render_pass.set_index_buffer(self.index_buffer.slice(..), IndexFormat::Uint16);
         render_pass.set_bind_group(0, &bind_group, &[]);
         render_pass.draw_indexed_indirect(&indirect_buffer, 0);
