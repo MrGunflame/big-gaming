@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use bytemuck::{Pod, Zeroable};
@@ -10,10 +11,10 @@ use wgpu::{
     BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
     BindGroupLayoutEntry, BindingType, BlendState, BufferBindingType, BufferUsages,
     ColorTargetState, ColorWrites, Device, Face, FragmentState, FrontFace, LoadOp,
-    MultisampleState, Operations, PipelineLayoutDescriptor, PolygonMode, PrimitiveState,
-    PrimitiveTopology, RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline,
-    RenderPipelineDescriptor, ShaderModuleDescriptor, ShaderSource, ShaderStages, StoreOp,
-    TextureFormat, VertexState,
+    MultisampleState, Operations, PipelineLayout, PipelineLayoutDescriptor, PolygonMode,
+    PrimitiveState, PrimitiveTopology, RenderPassColorAttachment, RenderPassDescriptor,
+    RenderPipeline, RenderPipelineDescriptor, ShaderModule, ShaderModuleDescriptor, ShaderSource,
+    ShaderStages, StoreOp, TextureFormat, VertexState,
 };
 
 use super::DrawCommand;
@@ -21,8 +22,10 @@ use super::DrawCommand;
 const SHADER: &str = include_str!("../../shaders/line.wgsl");
 
 pub struct GizmoPipeline {
-    pipeline: RenderPipeline,
     bind_group_layout: BindGroupLayout,
+    pipeline_layout: PipelineLayout,
+    pipelines: Mutex<HashMap<TextureFormat, RenderPipeline>>,
+    shader: ShaderModule,
 }
 
 impl GizmoPipeline {
@@ -64,19 +67,28 @@ impl GizmoPipeline {
             source: ShaderSource::Wgsl(SHADER.into()),
         });
 
-        let pipeline = device.create_render_pipeline(&RenderPipelineDescriptor {
+        Self {
+            bind_group_layout,
+            pipeline_layout,
+            pipelines: Mutex::new(HashMap::new()),
+            shader,
+        }
+    }
+
+    fn build_pipeline(&self, format: TextureFormat, device: &Device) -> RenderPipeline {
+        device.create_render_pipeline(&RenderPipelineDescriptor {
             label: Some("gizmo_pipeline"),
-            layout: Some(&pipeline_layout),
+            layout: Some(&self.pipeline_layout),
             vertex: VertexState {
-                module: &shader,
+                module: &self.shader,
                 entry_point: "vs_main",
                 buffers: &[],
             },
             fragment: Some(FragmentState {
-                module: &shader,
+                module: &self.shader,
                 entry_point: "fs_main",
                 targets: &[Some(ColorTargetState {
-                    format: TextureFormat::Bgra8Unorm,
+                    format,
                     blend: Some(BlendState::ALPHA_BLENDING),
                     write_mask: ColorWrites::ALL,
                 })],
@@ -93,12 +105,7 @@ impl GizmoPipeline {
             depth_stencil: None,
             multisample: MultisampleState::default(),
             multiview: None,
-        });
-
-        Self {
-            bind_group_layout,
-            pipeline,
-        }
+        })
     }
 }
 
@@ -203,6 +210,16 @@ impl Node for GizmoPass {
             usage: BufferUsages::INDIRECT,
         });
 
+        let mut pipelines = self.pipeline.pipelines.lock();
+        let render_pipeline = match pipelines.get(&ctx.format) {
+            Some(pl) => pl,
+            None => {
+                let pl = self.pipeline.build_pipeline(ctx.format, &ctx.device);
+                pipelines.insert(ctx.format, pl);
+                pipelines.get(&ctx.format).unwrap()
+            }
+        };
+
         let mut render_pass = ctx.encoder.begin_render_pass(&RenderPassDescriptor {
             label: Some("gizmo_pass"),
             color_attachments: &[Some(RenderPassColorAttachment {
@@ -218,7 +235,7 @@ impl Node for GizmoPass {
             timestamp_writes: None,
         });
 
-        render_pass.set_pipeline(&self.pipeline.pipeline);
+        render_pass.set_pipeline(&render_pipeline);
 
         render_pass.set_bind_group(0, &bg, &[]);
         render_pass.draw_indirect(&indirect_buffer, 0);
