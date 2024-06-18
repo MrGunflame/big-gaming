@@ -1,17 +1,19 @@
-use std::f32::consts::E;
+use std::collections::VecDeque;
 use std::fmt::Display;
 use std::str::FromStr;
 use std::sync::mpsc;
 
 use game_common::components::components::{Components, RawComponent};
-use game_common::components::{
-    Collider, Decode, DirectionalLight, MeshInstance, PointLight, Transform,
-};
+use game_common::components::{Decode, DirectionalLight, MeshInstance, PointLight, Transform};
+use game_common::reflection::{ComponentDescriptor, FieldKind};
+use game_core::modules::Modules;
+use game_data::record::RecordKind;
 use game_ui::reactive::{ReadSignal, Scope};
 use game_ui::style::{Background, Bounds, Color, Direction, Growth, Size, SizeVec2, Style};
 use game_ui::widgets::{Button, Callback, Container, Input, Text, Widget};
 use game_wasm::components::Component;
 use game_wasm::encoding::BinaryWriter;
+use game_wasm::world::RecordReference;
 
 use super::Event;
 
@@ -19,6 +21,7 @@ use super::Event;
 pub struct ComponentsPanel {
     pub components: ReadSignal<Components>,
     pub writer: mpsc::Sender<Event>,
+    pub modules: Modules,
 }
 
 impl Widget for ComponentsPanel {
@@ -47,197 +50,19 @@ impl Widget for ComponentsPanel {
             for (id, component) in components.iter() {
                 let component_container = root.append(Container::new());
 
-                match id {
-                    Transform::ID => {
-                        component_container.append(Text::new().text("Transform".to_string()));
+                let Some((descriptor, name)) = get_component_descriptor_and_name(&self.modules, id)
+                else {
+                    continue;
+                };
 
-                        let reader = component.reader();
-                        let transform = Transform::decode(reader).unwrap();
-
-                        let translation_row =
-                            component_container.append(Container::new().style(Style {
-                                direction: Direction::Column,
-                                ..Default::default()
-                            }));
-
-                        for (index, val) in transform.translation.to_array().into_iter().enumerate()
-                        {
-                            let writer = self.writer.clone();
-
-                            let (color, label) = match index {
-                                0 => (COLOR_X, "X"),
-                                1 => (COLOR_Y, "Y"),
-                                2 => (COLOR_Z, "Z"),
-                                _ => unreachable!(),
-                            };
-
-                            display_value(&translation_row, color, label, val, move |value| {
-                                let mut transform = transform;
-
-                                match index {
-                                    0 => transform.translation.x = value,
-                                    1 => transform.translation.y = value,
-                                    2 => transform.translation.z = value,
-                                    _ => unreachable!(),
-                                }
-
-                                let (fields, data) = BinaryWriter::new().encoded(&transform);
-                                let component = RawComponent::new(data, fields);
-
-                                writer
-                                    .send(Event::UpdateComponent(Transform::ID, component))
-                                    .unwrap();
-                            });
-                        }
-
-                        let rotation_row =
-                            component_container.append(Container::new().style(Style {
-                                direction: Direction::Column,
-                                ..Default::default()
-                            }));
-
-                        for (index, val) in transform.rotation.to_array().into_iter().enumerate() {
-                            let writer = self.writer.clone();
-
-                            let (color, label) = match index {
-                                0 => (COLOR_X, "X"),
-                                1 => (COLOR_Y, "Y"),
-                                2 => (COLOR_Z, "Z"),
-                                3 => (COLOR_W, "W"),
-                                _ => unreachable!(),
-                            };
-
-                            display_value(&rotation_row, color, label, val, move |value| {
-                                let mut transform = transform;
-
-                                match index {
-                                    0 => transform.rotation.x = value,
-                                    1 => transform.rotation.y = value,
-                                    2 => transform.rotation.z = value,
-                                    3 => transform.rotation.w = value,
-                                    _ => unreachable!(),
-                                }
-
-                                let (fields, data) = BinaryWriter::new().encoded(&transform);
-                                let component = RawComponent::new(data, fields);
-
-                                writer
-                                    .send(Event::UpdateComponent(Transform::ID, component))
-                                    .unwrap();
-                            });
-                        }
-
-                        let scale_row = component_container.append(Container::new().style(Style {
-                            direction: Direction::Column,
-                            ..Default::default()
-                        }));
-
-                        for (index, val) in transform.scale.to_array().into_iter().enumerate() {
-                            let writer = self.writer.clone();
-
-                            let (color, label) = match index {
-                                0 => (COLOR_X, "X"),
-                                1 => (COLOR_Y, "Y"),
-                                2 => (COLOR_Z, "Z"),
-                                _ => unreachable!(),
-                            };
-
-                            display_value(&scale_row, color, label, val, move |value| {
-                                let mut transform = transform;
-
-                                match index {
-                                    0 => transform.scale.x = value,
-                                    1 => transform.scale.y = value,
-                                    2 => transform.scale.z = value,
-                                    _ => unreachable!(),
-                                }
-
-                                let (fields, data) = BinaryWriter::new().encoded(&transform);
-                                let component = RawComponent::new(data, fields);
-
-                                writer
-                                    .send(Event::UpdateComponent(Transform::ID, component))
-                                    .unwrap();
-                            });
-                        }
-                    }
-                    MeshInstance::ID => {
-                        component_container.append(Text::new().text("Mesh Instance".to_string()));
-
-                        let reader = component.reader();
-                        let instance = MeshInstance::decode(reader).unwrap();
-
-                        let writer = self.writer.clone();
-
-                        root.append(Input::new().value(instance.path.clone()).on_change(
-                            move |value: String| {
-                                let mut instance = instance.clone();
-                                instance.path = value;
-
-                                let (fields, data) = BinaryWriter::new().encoded(&instance);
-                                let component = RawComponent::new(data, fields);
-
-                                writer
-                                    .send(Event::UpdateComponent(MeshInstance::ID, component))
-                                    .unwrap();
-                            },
-                        ));
-                    }
-                    DirectionalLight::ID => {
-                        component_container
-                            .append(Text::new().text("Directional Light".to_string()));
-
-                        let reader = component.reader();
-                        let light = DirectionalLight::decode(reader).unwrap();
-
-                        //COLOR
-                        // root.append();
-                        root.append(Input::new().value(light.illuminance.to_string()));
-                    }
-                    PointLight::ID => {
-                        component_container.append(Text::new().text("Point Light".to_string()));
-
-                        let reader = component.reader();
-                        let light = PointLight::decode(reader).unwrap();
-
-                        let writer = self.writer.clone();
-                        root.append(Input::new().value(light.intensity.to_string()).on_change(
-                            move |value: String| {
-                                let mut light = light;
-
-                                if let Ok(value) = value.parse() {
-                                    light.intensity = value;
-
-                                    let (fields, data) = BinaryWriter::new().encoded(&light);
-                                    let component = RawComponent::new(data, fields);
-
-                                    writer
-                                        .send(Event::UpdateComponent(PointLight::ID, component))
-                                        .unwrap();
-                                }
-                            },
-                        ));
-
-                        let writer = self.writer.clone();
-                        root.append(Input::new().value(light.radius.to_string()).on_change(
-                            move |value: String| {
-                                let mut light = light;
-
-                                if let Ok(value) = value.parse() {
-                                    light.radius = value;
-
-                                    let (fields, data) = BinaryWriter::new().encoded(&light);
-                                    let component = RawComponent::new(data, fields);
-
-                                    writer
-                                        .send(Event::UpdateComponent(PointLight::ID, component))
-                                        .unwrap();
-                                }
-                            },
-                        ));
-                    }
-                    _ => (),
-                }
+                render_component(
+                    &component_container,
+                    id,
+                    name,
+                    descriptor,
+                    self.writer.clone(),
+                    component,
+                );
             }
 
             let button = root.append(Button::new());
@@ -294,4 +119,139 @@ where
                 }
             }),
     );
+}
+
+fn get_component_descriptor_and_name(
+    modules: &Modules,
+    id: RecordReference,
+) -> Option<(ComponentDescriptor, &str)> {
+    let record = modules.get(id.module)?.records.get(id.record)?;
+    if record.kind != RecordKind::COMPONENT {
+        None
+    } else {
+        Some((ComponentDescriptor::from_bytes(&record.data), &record.name))
+    }
+}
+
+fn render_component(
+    cx: &Scope,
+    id: RecordReference,
+    name: &str,
+    descriptor: ComponentDescriptor,
+    writer: mpsc::Sender<Event>,
+    component: &RawComponent,
+) {
+    cx.append(Text::new().text(name.to_string()));
+
+    let mut offset = 0;
+
+    let mut queue = VecDeque::new();
+
+    for index in descriptor.root() {
+        let field = descriptor.get(*index).unwrap();
+        queue.push_back((cx.clone(), field));
+    }
+
+    while let Some((parent, field)) = queue.pop_front() {
+        match &field.kind {
+            FieldKind::Int(val) => {
+                let field_len = usize::from(val.bits) / 8;
+                let bits = val.bits;
+                let is_signed = val.is_signed;
+
+                let bytes = &component.as_bytes()[offset..offset + field_len];
+                let value = match (bits, is_signed) {
+                    (8, false) => u8::from_le_bytes(bytes.try_into().unwrap()) as i64,
+                    (8, true) => i8::from_le_bytes(bytes.try_into().unwrap()) as i64,
+                    (16, false) => u16::from_le_bytes(bytes.try_into().unwrap()) as i64,
+                    (16, true) => u16::from_le_bytes(bytes.try_into().unwrap()) as i64,
+                    (32, false) => u32::from_le_bytes(bytes.try_into().unwrap()) as i64,
+                    (32, true) => i32::from_le_bytes(bytes.try_into().unwrap()) as i64,
+                    (64, false) => u64::from_le_bytes(bytes.try_into().unwrap()) as i64,
+                    (64, true) => i64::from_le_bytes(bytes.try_into().unwrap()),
+                    _ => todo!(),
+                };
+
+                let component = component.clone();
+                let writer = writer.clone();
+                display_value(cx, COLOR_X, &field.name, value, move |mut value: i64| {
+                    let mut bytes = component.as_bytes().to_vec();
+                    let fields = component.fields().to_vec();
+
+                    if !is_signed {
+                        value = value.abs();
+                    }
+
+                    match bits {
+                        8 => {
+                            bytes[offset..offset + field_len]
+                                .copy_from_slice(&(value as u8).to_le_bytes());
+                        }
+                        16 => {
+                            bytes[offset..offset + field_len]
+                                .copy_from_slice(&(value as u16).to_le_bytes());
+                        }
+                        32 => {
+                            bytes[offset..offset + field_len]
+                                .copy_from_slice(&(value as u32).to_le_bytes());
+                        }
+                        64 => {
+                            bytes[offset..offset + field_len]
+                                .copy_from_slice(&(value as u64).to_le_bytes());
+                        }
+                        _ => todo!(),
+                    }
+
+                    writer
+                        .send(Event::UpdateComponent(id, RawComponent::new(bytes, fields)))
+                        .unwrap();
+                });
+
+                offset += field_len;
+            }
+            FieldKind::Float(val) => {
+                let field_len = usize::from(val.bits) / 8;
+                let bits = val.bits;
+
+                let bytes = &component.as_bytes()[offset..offset + field_len];
+                let value = match bits {
+                    32 => f32::from_le_bytes(bytes.try_into().unwrap()) as f64,
+                    64 => f64::from_le_bytes(bytes.try_into().unwrap()),
+                    _ => todo!(),
+                };
+
+                let component = component.clone();
+                let writer = writer.clone();
+                display_value(cx, COLOR_X, &field.name, value, move |value: f64| {
+                    let mut bytes = component.as_bytes().to_vec();
+                    let fields = component.fields().to_vec();
+
+                    match bits {
+                        32 => {
+                            bytes[offset..offset + field_len]
+                                .copy_from_slice(&(value as f32).to_le_bytes());
+                        }
+                        64 => {
+                            bytes[offset..offset + field_len].copy_from_slice(&value.to_le_bytes());
+                        }
+                        _ => todo!(),
+                    }
+
+                    writer
+                        .send(Event::UpdateComponent(id, RawComponent::new(bytes, fields)))
+                        .unwrap();
+                });
+
+                offset += field_len;
+            }
+            FieldKind::Struct(val) => {
+                let root = parent.append(Text::new().text(field.name.to_string()));
+
+                for index in val.iter().rev() {
+                    let field = descriptor.get(*index).unwrap();
+                    queue.push_front((root.clone(), field));
+                }
+            }
+        }
+    }
 }

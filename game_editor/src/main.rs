@@ -74,6 +74,8 @@ fn main() {
         rt.block_on(backend.run(&mut editor_state));
     });
 
+    let res = game_core::modules::load_modules();
+
     state
         .state
         .spawn_windows
@@ -94,6 +96,7 @@ fn main() {
         pool: TaskPool::new(8),
         gizmos,
         world: World::new(),
+        modules: res.modules,
     };
 
     state.window_manager.run(app);
@@ -141,6 +144,7 @@ pub struct App {
     pool: TaskPool,
     gizmos: Gizmos,
     world: World,
+    modules: game_core::modules::Modules,
 }
 
 impl game_window::App for App {
@@ -162,6 +166,7 @@ impl game_window::App for App {
                         self.ui_state.runtime.clone(),
                         spawn,
                         event.window,
+                        self.modules.clone(),
                     );
 
                     if let Some(doc) = window.doc() {

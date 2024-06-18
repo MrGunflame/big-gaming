@@ -68,6 +68,7 @@ pub fn spawn_window(
     rt: Runtime,
     event: SpawnWindow,
     window_id: WindowId,
+    modules: game_core::modules::Modules,
 ) -> Window {
     let document = Document::new(rt);
 
@@ -111,7 +112,7 @@ pub fn spawn_window(
             // });
         }
         SpawnWindow::View => {
-            let window = world::WorldWindowState::new(&cx, window_id, world);
+            let window = world::WorldWindowState::new(&cx, window_id, world, modules);
             return Window::View(document, window);
         }
     }
