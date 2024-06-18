@@ -13,6 +13,7 @@ use game_common::components::{Color, PointLight, PrimaryCamera};
 use game_common::components::{MeshInstance, Transform};
 use game_common::entity::EntityId;
 use game_common::world::World;
+use game_core::modules::Modules;
 use game_input::keyboard::KeyCode;
 use game_input::mouse::{MouseButton, MouseMotion, MouseWheel};
 use game_input::ButtonState;
@@ -45,10 +46,10 @@ pub struct WorldWindowState {
 }
 
 impl WorldWindowState {
-    pub fn new(cx: &Scope, window_id: WindowId, world: &mut World) -> Self {
+    pub fn new(cx: &Scope, window_id: WindowId, world: &mut World, modules: Modules) -> Self {
         let (writer, reader) = mpsc::channel();
 
-        let st = build_ui(cx, writer);
+        let st = build_ui(cx, writer, modules);
 
         let camera = world.spawn();
         world.insert_typed(
@@ -402,7 +403,7 @@ pub struct State {
     components: WriteSignal<Components>,
 }
 
-fn build_ui(cx: &Scope, writer: mpsc::Sender<Event>) -> State {
+fn build_ui(cx: &Scope, writer: mpsc::Sender<Event>, modules: Modules) -> State {
     let root = cx.append(Container::new());
 
     let (entities, set_entities) = root.create_signal(Vec::new());
@@ -420,7 +421,11 @@ fn build_ui(cx: &Scope, writer: mpsc::Sender<Event>) -> State {
         entities,
         writer: writer.clone(),
     });
-    root.append(ComponentsPanel { components, writer });
+    root.append(ComponentsPanel {
+        components,
+        writer,
+        modules,
+    });
 
     State {
         entities: set_entities,
