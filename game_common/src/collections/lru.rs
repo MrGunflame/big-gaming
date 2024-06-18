@@ -73,7 +73,7 @@ impl<K, V> LruCache<K, V> {
     where
         K: Eq + Hash,
     {
-        if self.map.len() == self.map.capacity() {
+        if self.is_full() {
             self.pop();
         }
 
@@ -82,21 +82,12 @@ impl<K, V> LruCache<K, V> {
             key,
             pointers: UnsafeRefCell::new(Pointers {
                 prev: None,
-                next: self.head,
+                next: None,
             }),
         })))
         .unwrap();
 
-        if let Some(head) = self.head {
-            unsafe {
-                head.as_ref().pointers.get_mut().prev = Some(bucket);
-            }
-        }
-
-        self.head = Some(bucket);
-        if self.tail.is_none() {
-            self.tail = Some(bucket);
-        }
+        self.insert_bucket(bucket);
 
         self.map
             .insert(KeyPtr::from_bucket(bucket.as_ptr().cast_const()), bucket);
@@ -126,10 +117,22 @@ impl<K, V> LruCache<K, V> {
         let key_ref: &KeyRef<Q> = KeyRef::from_ref(key);
         let mut ptr = *self.map.get(key_ref)?;
 
+        debug_assert!(self.head.is_some());
+        debug_assert!(self.tail.is_some());
+
         // Promote the bucket by placing it at `self.head`.
         unsafe {
             let bucket = ptr.as_mut();
-            let mut pointers = bucket.pointers.get_mut();
+            let pointers = bucket.pointers.get();
+
+            if cfg!(debug_assertions) {
+                if let (Some(next), Some(prev)) = (pointers.next, pointers.prev) {
+                    assert_ne!(ptr, next);
+                    assert_ne!(next, prev);
+                }
+            }
+
+            // Remove the entry from the linked list.
 
             match pointers.next {
                 Some(next) => next.as_ref().pointers.get_mut().prev = pointers.prev,
@@ -141,12 +144,25 @@ impl<K, V> LruCache<K, V> {
                 None => self.head = pointers.next,
             }
 
-            pointers.prev = None;
-            pointers.next = self.head;
-            self.head = Some(ptr);
+            drop(pointers);
+            self.insert_bucket(ptr);
 
             Some(&mut bucket.value)
         }
+    }
+
+    fn insert_bucket(&mut self, bucket: NonNull<Bucket<K, V>>) {
+        unsafe {
+            bucket.as_ref().pointers.get_mut().prev = None;
+            bucket.as_ref().pointers.get_mut().next = self.head;
+        }
+
+        match self.head {
+            Some(head) => unsafe { head.as_ref().pointers.get_mut().prev = Some(bucket) },
+            None => self.tail = Some(bucket),
+        }
+
+        self.head = Some(bucket);
     }
 
     /// Removes the least recently used entry from the `LruCache`.
