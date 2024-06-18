@@ -43,6 +43,7 @@ pub struct WorldWindowState {
     state: State,
     edit_op: EditOperation,
     events: mpsc::Receiver<Event>,
+    update_components_panel: bool,
 }
 
 impl WorldWindowState {
@@ -98,6 +99,7 @@ impl WorldWindowState {
             edit_op: EditOperation::new(),
             state: st,
             events: reader,
+            update_components_panel: false,
         }
     }
 
@@ -132,7 +134,9 @@ impl WorldWindowState {
             WindowEvent::CursorMoved(event) => {
                 self.cursor = event.position;
 
-                self.update_edit_op(world, camera, viewport_size.as_vec2());
+                if self.edit_op.mode() != EditMode::None {
+                    self.update_edit_op(world, camera, viewport_size.as_vec2());
+                }
             }
             WindowEvent::KeyboardInput(event) => {
                 if event.key_code == Some(KeyCode::LShift) {
@@ -296,18 +300,26 @@ impl WorldWindowState {
     }
 
     fn update_edit_op(&mut self, world: &mut World, camera: Camera, viewport_size: Vec2) {
+        debug_assert!(self.edit_op.mode() != EditMode::None);
+
         let camera_rotation = camera.transform.rotation;
         let ray = camera.viewport_to_world(camera.transform, viewport_size, self.cursor);
 
         for (entity, transform) in self.edit_op.update(ray, camera_rotation) {
             world.insert_typed(entity, transform);
         }
+
+        self.update_components_panel = true;
     }
 
     fn cancel_edit_op(&mut self, world: &mut World) {
+        debug_assert!(self.edit_op.mode() != EditMode::None);
+
         for (entity, transform) in self.edit_op.reset() {
             world.insert_typed(entity, transform);
         }
+
+        self.update_components_panel = true;
     }
 
     fn confirm_edit_op(&mut self, renderer: &mut Renderer) {
@@ -316,8 +328,6 @@ impl WorldWindowState {
     }
 
     pub fn update(&mut self, world: &mut World) {
-        let mut update_components_panel = false;
-
         while let Ok(event) = self.events.try_recv() {
             match event {
                 Event::Spawn => {
@@ -345,7 +355,7 @@ impl WorldWindowState {
                                 // If the entity changed we may need to update the
                                 // components panel, but we don't need to do this
                                 // if the entity has not changed.
-                                update_components_panel = true;
+                                self.update_components_panel = true;
 
                                 break;
                             }
@@ -359,12 +369,12 @@ impl WorldWindowState {
                         }
                     });
 
-                    update_components_panel = true;
+                    self.update_components_panel = true;
                 }
             }
         }
 
-        if update_components_panel {
+        if self.update_components_panel {
             let selected_entities = self
                 .state
                 .entities
@@ -387,6 +397,7 @@ impl WorldWindowState {
             };
 
             self.state.components.set(components);
+            self.update_components_panel = false;
         }
     }
 }
