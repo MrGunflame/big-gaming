@@ -106,10 +106,10 @@ impl<K, V> LruCache<K, V> {
     ///
     /// If the value for the given `key` exists the entry is promoted to the most recently used
     /// entry.
-    pub fn get<Q>(&mut self, key: Q) -> Option<&V>
+    pub fn get<Q>(&mut self, key: &Q) -> Option<&V>
     where
-        Q: Borrow<K>,
-        K: Eq + Hash,
+        K: Borrow<Q> + Eq + Hash,
+        Q: Hash + Eq + ?Sized,
     {
         self.get_mut(key).map(|v| &*v)
     }
@@ -118,12 +118,13 @@ impl<K, V> LruCache<K, V> {
     ///
     /// If the value for the given `key` exists the entry is promoted to the most recently used
     /// entry.
-    pub fn get_mut<Q>(&mut self, key: Q) -> Option<&mut V>
+    pub fn get_mut<Q>(&mut self, key: &Q) -> Option<&mut V>
     where
-        Q: Borrow<K>,
-        K: Eq + Hash,
+        K: Borrow<Q> + Hash + Eq,
+        Q: Hash + Eq + ?Sized,
     {
-        let mut ptr = *self.map.get(&KeyPtr::from_key(key.borrow()))?;
+        let key_ref: &KeyRef<Q> = KeyRef::from_ref(key);
+        let mut ptr = *self.map.get(key_ref)?;
 
         // Promote the bucket by placing it at `self.head`.
         unsafe {
@@ -186,18 +187,26 @@ impl<K, V> Drop for LruCache<K, V> {
     }
 }
 
+unsafe impl<K, V> Sync for LruCache<K, V>
+where
+    K: Sync,
+    V: Sync,
+{
+}
+
+unsafe impl<K, V> Send for LruCache<K, V>
+where
+    K: Send,
+    V: Send,
+{
+}
+
 #[derive(Debug)]
 struct KeyPtr<K> {
     ptr: *const K,
 }
 
 impl<K> KeyPtr<K> {
-    fn from_key(key: &K) -> Self {
-        Self {
-            ptr: key as *const K,
-        }
-    }
-
     fn from_bucket<V>(bucket: *const Bucket<K, V>) -> Self {
         let offset = core::mem::offset_of!(Bucket<K, V>, key);
 
@@ -231,6 +240,50 @@ where
 
 impl<K> Eq for KeyPtr<K> where K: Eq {}
 
+#[repr(transparent)]
+struct KeyRef<K>(K)
+where
+    K: ?Sized;
+
+impl<K> KeyRef<K>
+where
+    K: ?Sized,
+{
+    fn from_ref(key: &K) -> &Self {
+        unsafe { core::mem::transmute(key) }
+    }
+}
+
+impl<K> Hash for KeyRef<K>
+where
+    K: ?Sized + Hash,
+{
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.0.hash(state);
+    }
+}
+
+impl<K> PartialEq for KeyRef<K>
+where
+    K: ?Sized + PartialEq,
+{
+    fn eq(&self, other: &Self) -> bool {
+        self.0.eq(&other.0)
+    }
+}
+
+impl<K> Eq for KeyRef<K> where K: ?Sized + Eq {}
+
+impl<K, Q> Borrow<KeyRef<Q>> for KeyPtr<K>
+where
+    K: Borrow<Q>,
+    Q: ?Sized,
+{
+    fn borrow(&self) -> &KeyRef<Q> {
+        KeyRef::from_ref(self.as_ref().borrow())
+    }
+}
+
 struct Bucket<K, V> {
     pointers: UnsafeRefCell<Pointers<K, V>>,
     key: K,
@@ -253,12 +306,12 @@ mod tests {
         cache.insert(1, 1);
         cache.insert(2, 2);
 
-        assert_eq!(cache.get(2), Some(&2));
-        assert_eq!(cache.get(1), Some(&1));
-        assert_eq!(cache.get(0), Some(&0));
+        assert_eq!(cache.get(&2), Some(&2));
+        assert_eq!(cache.get(&1), Some(&1));
+        assert_eq!(cache.get(&0), Some(&0));
 
         cache.insert(3, 3);
-        assert_eq!(cache.get(3), Some(&3));
+        assert_eq!(cache.get(&3), Some(&3));
     }
 
     #[test]
@@ -269,10 +322,10 @@ mod tests {
         cache.insert(2, 2);
         cache.insert(3, 3);
 
-        assert_eq!(cache.get(0), None);
-        assert_eq!(cache.get(1), Some(&1));
-        assert_eq!(cache.get(2), Some(&2));
-        assert_eq!(cache.get(3), Some(&3));
+        assert_eq!(cache.get(&0), None);
+        assert_eq!(cache.get(&1), Some(&1));
+        assert_eq!(cache.get(&2), Some(&2));
+        assert_eq!(cache.get(&3), Some(&3));
     }
 
     #[test]
