@@ -73,7 +73,7 @@ impl<K, V> LruCache<K, V> {
     where
         K: Eq + Hash,
     {
-        if self.map.len() == self.map.capacity() {
+        if self.is_full() {
             self.pop();
         }
 
@@ -82,21 +82,12 @@ impl<K, V> LruCache<K, V> {
             key,
             pointers: UnsafeRefCell::new(Pointers {
                 prev: None,
-                next: self.head,
+                next: None,
             }),
         })))
         .unwrap();
 
-        if let Some(head) = self.head {
-            unsafe {
-                head.as_ref().pointers.get_mut().prev = Some(bucket);
-            }
-        }
-
-        self.head = Some(bucket);
-        if self.tail.is_none() {
-            self.tail = Some(bucket);
-        }
+        self.insert_bucket(bucket);
 
         self.map
             .insert(KeyPtr::from_bucket(bucket.as_ptr().cast_const()), bucket);
@@ -106,10 +97,10 @@ impl<K, V> LruCache<K, V> {
     ///
     /// If the value for the given `key` exists the entry is promoted to the most recently used
     /// entry.
-    pub fn get<Q>(&mut self, key: Q) -> Option<&V>
+    pub fn get<Q>(&mut self, key: &Q) -> Option<&V>
     where
-        Q: Borrow<K>,
-        K: Eq + Hash,
+        K: Borrow<Q> + Eq + Hash,
+        Q: Hash + Eq + ?Sized,
     {
         self.get_mut(key).map(|v| &*v)
     }
@@ -118,17 +109,30 @@ impl<K, V> LruCache<K, V> {
     ///
     /// If the value for the given `key` exists the entry is promoted to the most recently used
     /// entry.
-    pub fn get_mut<Q>(&mut self, key: Q) -> Option<&mut V>
+    pub fn get_mut<Q>(&mut self, key: &Q) -> Option<&mut V>
     where
-        Q: Borrow<K>,
-        K: Eq + Hash,
+        K: Borrow<Q> + Hash + Eq,
+        Q: Hash + Eq + ?Sized,
     {
-        let mut ptr = *self.map.get(&KeyPtr::from_key(key.borrow()))?;
+        let key_ref: &KeyRef<Q> = KeyRef::from_ref(key);
+        let mut ptr = *self.map.get(key_ref)?;
+
+        debug_assert!(self.head.is_some());
+        debug_assert!(self.tail.is_some());
 
         // Promote the bucket by placing it at `self.head`.
         unsafe {
             let bucket = ptr.as_mut();
-            let mut pointers = bucket.pointers.get_mut();
+            let pointers = bucket.pointers.get();
+
+            if cfg!(debug_assertions) {
+                if let (Some(next), Some(prev)) = (pointers.next, pointers.prev) {
+                    assert_ne!(ptr, next);
+                    assert_ne!(next, prev);
+                }
+            }
+
+            // Remove the entry from the linked list.
 
             match pointers.next {
                 Some(next) => next.as_ref().pointers.get_mut().prev = pointers.prev,
@@ -140,12 +144,25 @@ impl<K, V> LruCache<K, V> {
                 None => self.head = pointers.next,
             }
 
-            pointers.prev = None;
-            pointers.next = self.head;
-            self.head = Some(ptr);
+            drop(pointers);
+            self.insert_bucket(ptr);
 
             Some(&mut bucket.value)
         }
+    }
+
+    fn insert_bucket(&mut self, bucket: NonNull<Bucket<K, V>>) {
+        unsafe {
+            bucket.as_ref().pointers.get_mut().prev = None;
+            bucket.as_ref().pointers.get_mut().next = self.head;
+        }
+
+        match self.head {
+            Some(head) => unsafe { head.as_ref().pointers.get_mut().prev = Some(bucket) },
+            None => self.tail = Some(bucket),
+        }
+
+        self.head = Some(bucket);
     }
 
     /// Removes the least recently used entry from the `LruCache`.
@@ -186,18 +203,26 @@ impl<K, V> Drop for LruCache<K, V> {
     }
 }
 
+unsafe impl<K, V> Sync for LruCache<K, V>
+where
+    K: Sync,
+    V: Sync,
+{
+}
+
+unsafe impl<K, V> Send for LruCache<K, V>
+where
+    K: Send,
+    V: Send,
+{
+}
+
 #[derive(Debug)]
 struct KeyPtr<K> {
     ptr: *const K,
 }
 
 impl<K> KeyPtr<K> {
-    fn from_key(key: &K) -> Self {
-        Self {
-            ptr: key as *const K,
-        }
-    }
-
     fn from_bucket<V>(bucket: *const Bucket<K, V>) -> Self {
         let offset = core::mem::offset_of!(Bucket<K, V>, key);
 
@@ -231,6 +256,50 @@ where
 
 impl<K> Eq for KeyPtr<K> where K: Eq {}
 
+#[repr(transparent)]
+struct KeyRef<K>(K)
+where
+    K: ?Sized;
+
+impl<K> KeyRef<K>
+where
+    K: ?Sized,
+{
+    fn from_ref(key: &K) -> &Self {
+        unsafe { core::mem::transmute(key) }
+    }
+}
+
+impl<K> Hash for KeyRef<K>
+where
+    K: ?Sized + Hash,
+{
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.0.hash(state);
+    }
+}
+
+impl<K> PartialEq for KeyRef<K>
+where
+    K: ?Sized + PartialEq,
+{
+    fn eq(&self, other: &Self) -> bool {
+        self.0.eq(&other.0)
+    }
+}
+
+impl<K> Eq for KeyRef<K> where K: ?Sized + Eq {}
+
+impl<K, Q> Borrow<KeyRef<Q>> for KeyPtr<K>
+where
+    K: Borrow<Q>,
+    Q: ?Sized,
+{
+    fn borrow(&self) -> &KeyRef<Q> {
+        KeyRef::from_ref(self.as_ref().borrow())
+    }
+}
+
 struct Bucket<K, V> {
     pointers: UnsafeRefCell<Pointers<K, V>>,
     key: K,
@@ -253,12 +322,12 @@ mod tests {
         cache.insert(1, 1);
         cache.insert(2, 2);
 
-        assert_eq!(cache.get(2), Some(&2));
-        assert_eq!(cache.get(1), Some(&1));
-        assert_eq!(cache.get(0), Some(&0));
+        assert_eq!(cache.get(&2), Some(&2));
+        assert_eq!(cache.get(&1), Some(&1));
+        assert_eq!(cache.get(&0), Some(&0));
 
         cache.insert(3, 3);
-        assert_eq!(cache.get(3), Some(&3));
+        assert_eq!(cache.get(&3), Some(&3));
     }
 
     #[test]
@@ -269,10 +338,10 @@ mod tests {
         cache.insert(2, 2);
         cache.insert(3, 3);
 
-        assert_eq!(cache.get(0), None);
-        assert_eq!(cache.get(1), Some(&1));
-        assert_eq!(cache.get(2), Some(&2));
-        assert_eq!(cache.get(3), Some(&3));
+        assert_eq!(cache.get(&0), None);
+        assert_eq!(cache.get(&1), Some(&1));
+        assert_eq!(cache.get(&2), Some(&2));
+        assert_eq!(cache.get(&3), Some(&3));
     }
 
     #[test]
