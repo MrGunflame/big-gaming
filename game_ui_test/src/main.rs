@@ -1,14 +1,19 @@
+mod tests;
+
+use std::sync::Arc;
+
 use game_render::camera::RenderTarget;
 use game_render::Renderer;
 use game_tasks::TaskPool;
-use game_ui::primitive::Primitive;
-use game_ui::reactive::{DocumentId, Node};
-use game_ui::render::Text;
-use game_ui::style::Style;
+use game_ui::reactive::DocumentId;
+use game_ui::widgets::{Text, Widget};
 use game_ui::UiState;
+use game_window::cursor::Cursor;
 use game_window::events::WindowEvent;
-use game_window::windows::{WindowBuilder, WindowId, WindowState};
+use game_window::windows::{WindowBuilder, WindowId};
 use game_window::WindowManager;
+use tests::hello_world::hello_world;
+use tests::input::input;
 
 fn main() {
     game_tracing::init();
@@ -19,6 +24,7 @@ fn main() {
 
     let mut wm = WindowManager::new();
     let window_id = wm.windows_mut().spawn(WindowBuilder::new());
+    let cursor = wm.cursor().clone();
 
     let app = App {
         renderer,
@@ -26,6 +32,7 @@ fn main() {
         pool,
         window_id,
         document_id: None,
+        cursor,
     };
 
     wm.run(app);
@@ -37,10 +44,13 @@ struct App {
     pool: TaskPool,
     window_id: WindowId,
     document_id: Option<DocumentId>,
+    cursor: Arc<Cursor>,
 }
 
 impl game_window::App for App {
     fn handle_event(&mut self, ctx: game_window::WindowManagerContext<'_>, event: WindowEvent) {
+        self.ui_state.send_event(&self.cursor, event.clone());
+
         match event {
             WindowEvent::WindowCreated(event) => {
                 let window = ctx.windows.state(event.window).unwrap();
@@ -56,18 +66,9 @@ impl game_window::App for App {
                 self.document_id = Some(doc);
 
                 let rt = self.ui_state.runtime();
-                rt.append(
-                    doc,
-                    None,
-                    Node::new(Primitive {
-                        style: Style::default(),
-                        image: None,
-                        text: Some(Text {
-                            text: "Hello World!".to_owned(),
-                            size: 32.0,
-                        }),
-                    }),
-                );
+                let ctx = rt.root_context(doc);
+
+                input(ctx);
             }
             WindowEvent::WindowDestroyed(event) => {
                 todo!()
@@ -82,7 +83,7 @@ impl game_window::App for App {
     }
 
     fn update(&mut self, ctx: game_window::WindowManagerContext<'_>) {
-        self.ui_state.update(&mut Vec::new());
+        self.ui_state.update();
         self.renderer.render(&self.pool);
     }
 }

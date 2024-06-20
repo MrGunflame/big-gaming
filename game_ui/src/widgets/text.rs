@@ -1,62 +1,41 @@
-use crate::events::ElementEventHandlers;
-use crate::reactive::{Node, Scope};
-use crate::render::{Element, ElementBody};
+use crate::primitive::Primitive;
+use crate::reactive::{Context, Node};
 use crate::style::Style;
 
-use super::{Container, ValueProvider, Widget};
+use super::Widget;
 
 #[derive(Clone, Debug)]
 pub struct Text {
-    text: ValueProvider<String>,
+    pub text: String,
+    pub size: f32,
 }
 
 impl Text {
-    pub const fn new() -> Self {
+    pub fn new<T>(text: T) -> Self
+    where
+        T: ToString,
+    {
         Self {
-            text: ValueProvider::Static(String::new()),
+            text: text.to_string(),
+            size: 16.0,
         }
     }
 
-    pub fn text<T>(mut self, text: T) -> Self
-    where
-        T: Into<ValueProvider<String>>,
-    {
-        self.text = text.into();
+    pub fn size(mut self, size: f32) -> Self {
+        self.size = size;
         self
     }
 }
 
 impl Widget for Text {
-    fn build(self, cx: &Scope) -> Scope {
-        match self.text {
-            ValueProvider::Static(text) => cx.push(build_node(text)),
-            ValueProvider::Reader(reader) => {
-                let root = cx.append(Container::new());
-
-                let mut id = None;
-                let root2 = root.clone();
-                cx.create_effect(move || {
-                    let text = reader.get();
-
-                    if let Some(id) = id {
-                        root2.remove(id);
-                    }
-
-                    id = root2.push(build_node(text)).id();
-                });
-
-                root
-            }
-        }
-    }
-}
-
-fn build_node(text: String) -> Node {
-    Node {
-        element: Element {
-            body: ElementBody::Text(crate::render::Text { text, size: 24.0 }),
+    fn mount<T>(self, parent: &Context<T>) {
+        parent.append(Node::new(Primitive {
             style: Style::default(),
-        },
-        events: ElementEventHandlers::default(),
+            image: None,
+            text: Some(crate::render::Text {
+                text: self.text,
+                size: self.size,
+            }),
+        }));
     }
 }

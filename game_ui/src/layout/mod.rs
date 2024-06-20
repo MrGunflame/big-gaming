@@ -195,15 +195,16 @@ impl LayoutTree {
         *self.elems.get_mut(&key).unwrap() = elem;
     }
 
-    pub fn unchanged(&mut self) {
-        self.changed = false;
-    }
-
     pub fn is_changed(&self) -> bool {
         self.changed
     }
 
     pub fn compute_layout(&mut self) {
+        if !self.changed {
+            return;
+        }
+        self.changed = false;
+
         self.computed_sizes();
 
         // Root behaves like an element with default styles,

@@ -1,13 +1,13 @@
 use std::alloc::Layout;
 use std::any::TypeId;
 use std::collections::HashMap;
+use std::marker::PhantomData;
 use std::mem::{ManuallyDrop, MaybeUninit};
 use std::ptr::NonNull;
 use std::sync::Arc;
 
 use game_common::collections::arena::{self, Arena};
 use game_render::camera::RenderTarget;
-use game_window::windows::WindowId;
 use glam::UVec2;
 use parking_lot::Mutex;
 
@@ -35,8 +35,10 @@ impl Runtime {
         &self,
         document: DocumentId,
         parent: Option<NodeId>,
-        node: Node,
+        mut node: Node,
     ) -> Option<NodeId> {
+        let document_id = document;
+
         let rt = &mut *self.inner.lock();
         let document = rt.documents.get_mut(document.0)?;
 
@@ -51,6 +53,7 @@ impl Runtime {
             document.layout.push(None, node.primitive.clone().into())
         };
 
+        node.document = Some(document_id);
         let id = NodeId(rt.nodes.insert(node));
 
         if let Some(parent) = parent {
@@ -59,6 +62,7 @@ impl Runtime {
         }
 
         document.layout_node_map.insert(id, node_key);
+        document.layout_node_map2.insert(node_key, id);
 
         Some(id)
     }
@@ -68,16 +72,58 @@ impl Runtime {
         let window = rt.windows.get_mut(&window)?;
 
         let doc = DocumentId(rt.documents.insert(Document {
-            root: Vec::new(),
             layout: LayoutTree::new(),
             layout_node_map: HashMap::new(),
+            layout_node_map2: HashMap::new(),
         }));
 
         window.documents.push(doc);
         Some(doc)
     }
 
-    pub fn remove(&self, node: NodeId) {}
+    pub fn clear_children(&self, node: NodeId) {
+        let children = {
+            let rt = &mut *self.inner.lock();
+
+            let Some(children) = rt.hierarchy.children.get(&node) else {
+                return;
+            };
+
+            children.to_vec()
+        };
+
+        for child in children {
+            self.remove(child);
+        }
+    }
+
+    pub fn remove(&self, node: NodeId) {
+        let rt = &mut *self.inner.lock();
+
+        let mut children = vec![node];
+        while let Some(node_id) = children.pop() {
+            let Some(node) = rt.nodes.remove(node_id.0) else {
+                continue;
+            };
+
+            if let Some(parent) = rt.hierarchy.parents.remove(&node_id) {
+                rt.hierarchy
+                    .children
+                    .get_mut(&parent)
+                    .unwrap()
+                    .retain(|child| *child != node_id);
+            }
+
+            if let Some(c) = rt.hierarchy.children.remove(&node_id) {
+                children.extend(c);
+            }
+
+            let doc = rt.documents.get_mut(node.document.unwrap().0).unwrap();
+            let key = doc.layout_node_map.remove(&node_id).unwrap();
+            doc.layout_node_map2.remove(&key).unwrap();
+            doc.layout.remove(key);
+        }
+    }
 
     pub(crate) fn create_window(&self, id: RenderTarget, size: UVec2) {
         let mut rt = self.inner.lock();
@@ -90,9 +136,28 @@ impl Runtime {
         );
     }
 
+    pub(crate) fn resize_window(&self, id: RenderTarget, size: UVec2) {
+        let rt = &mut *self.inner.lock();
+        let window = rt.windows.get_mut(&id).unwrap();
+        window.size = size;
+
+        for doc in &window.documents {
+            rt.documents.get_mut(doc.0).unwrap().layout.resize(size);
+        }
+    }
+
     pub(crate) fn destroy_window(&self, id: RenderTarget) {
         let mut rt = self.inner.lock();
         rt.windows.remove(&id);
+    }
+
+    pub fn root_context(&self, document: DocumentId) -> Context<()> {
+        Context {
+            event: (),
+            node: None,
+            document,
+            runtime: self.clone(),
+        }
     }
 }
 
@@ -100,7 +165,7 @@ impl Runtime {
 pub(crate) struct RuntimeInner {
     pub(crate) windows: HashMap<RenderTarget, Window>,
     pub(crate) documents: Arena<Document>,
-    nodes: Arena<Node>,
+    pub(crate) nodes: Arena<Node>,
     hierarchy: NodeHierarchy,
 }
 
@@ -115,15 +180,16 @@ pub struct Window {
 
 #[derive(Debug)]
 pub struct Document {
-    root: Vec<NodeId>,
     pub(crate) layout: LayoutTree,
-    layout_node_map: HashMap<NodeId, layout::Key>,
+    pub(crate) layout_node_map: HashMap<NodeId, layout::Key>,
+    pub(crate) layout_node_map2: HashMap<layout::Key, NodeId>,
 }
 
 #[derive(Debug)]
 pub struct Node {
     primitive: Primitive,
     event_handlers: EventHandlers,
+    document: Option<DocumentId>,
 }
 
 impl Node {
@@ -131,15 +197,30 @@ impl Node {
         Self {
             primitive,
             event_handlers: EventHandlers::default(),
+            document: None,
         }
     }
 
     pub fn register<E, F>(&mut self, handler: F)
     where
-        F: FnMut(E) + Send + Sync + 'static,
-        E: Event2,
+        F: FnMut(Context<E>) + Send + Sync + 'static,
+        E: Event,
     {
         self.event_handlers.register(handler);
+    }
+
+    // pub fn send<E>(&mut self, event: E)
+    // where
+    //     E: Event,
+    // {
+    //     self.event_handlers.call(event);
+    // }
+
+    pub(crate) fn get<E>(&self) -> Option<EventHandler<E>>
+    where
+        E: Event,
+    {
+        self.event_handlers.get()
     }
 }
 
@@ -152,7 +233,7 @@ struct Header {
 #[repr(C)]
 struct RawEventHandler<E> {
     header: Header,
-    handler: ManuallyDrop<Box<dyn FnMut(E) + Send + Sync + 'static>>,
+    handler: ManuallyDrop<Box<dyn FnMut(Context<E>) + Send + Sync + 'static>>,
 }
 
 impl<E> RawEventHandler<E> {
@@ -161,7 +242,7 @@ impl<E> RawEventHandler<E> {
     unsafe fn call(ptr: NonNull<()>, event: *const ()) {
         unsafe {
             let this = ptr.cast::<Self>().as_mut();
-            let event = event.cast::<E>().read();
+            let event = event.cast::<Context<E>>().read();
 
             (this.handler)(event);
         }
@@ -183,7 +264,7 @@ struct EventHandlerPtr {
 impl EventHandlerPtr {
     fn new<E, F>(f: F) -> Self
     where
-        F: FnMut(E) + Send + Sync + 'static,
+        F: FnMut(Context<E>) + Send + Sync + 'static,
     {
         let layout = RawEventHandler::<E>::LAYOUT;
         let ptr = unsafe {
@@ -208,7 +289,10 @@ impl EventHandlerPtr {
         Self { ptr }
     }
 
-    unsafe fn call<E>(&mut self, event: E) {
+    unsafe fn call<E>(&mut self, event: Context<E>)
+    where
+        E: Event,
+    {
         let event = MaybeUninit::new(event);
 
         unsafe {
@@ -230,52 +314,80 @@ impl Drop for EventHandlerPtr {
     }
 }
 
+pub(crate) struct EventHandler<E> {
+    ptr: Arc<Mutex<EventHandlerPtr>>,
+    _marker: PhantomData<fn(E)>,
+}
+
+impl<E> EventHandler<E>
+where
+    E: Event,
+{
+    pub fn call(&self, event: Context<E>) {
+        unsafe {
+            self.ptr.lock().call(event);
+        }
+    }
+}
+
 #[derive(Debug, Default)]
 struct EventHandlers {
     // TypeId::of<E> -> Box<dyn FnMut(E)>
-    map: HashMap<TypeId, EventHandlerPtr>,
+    map: HashMap<TypeId, Arc<Mutex<EventHandlerPtr>>>,
 }
 
 impl EventHandlers {
-    fn call<E>(&mut self, event: E)
+    fn get<E>(&self) -> Option<EventHandler<E>>
     where
-        E: Event2,
+        E: Event,
     {
-        if let Some(handler) = self.map.get_mut(&TypeId::of::<E>()) {
-            unsafe {
-                handler.call(event);
-            }
-        }
+        self.map.get(&TypeId::of::<E>()).map(|ptr| EventHandler {
+            ptr: ptr.clone(),
+            _marker: PhantomData,
+        })
     }
 
     fn register<E, F>(&mut self, handler: F)
     where
-        F: FnMut(E) + Send + Sync + 'static,
-        E: Event2,
+        F: FnMut(Context<E>) + Send + Sync + 'static,
+        E: Event,
     {
-        self.map
-            .insert(TypeId::of::<E>(), EventHandlerPtr::new(handler));
+        self.map.insert(
+            TypeId::of::<E>(),
+            Arc::new(Mutex::new(EventHandlerPtr::new(handler))),
+        );
     }
 }
 
-pub trait Event2: Sized + Send + Sync + 'static {}
+pub trait Event: Sized + Send + Sync + 'static {}
 
 pub struct Context<E> {
     pub event: E,
-    parent: Option<NodeId>,
-    window: WindowId,
-    document: DocumentId,
-    runtime: Runtime,
+    pub(crate) node: Option<NodeId>,
+    pub(crate) document: DocumentId,
+    pub(crate) runtime: Runtime,
 }
 
 impl<E> Context<E> {
-    pub fn parent(&self) -> Option<NodeId> {
-        self.parent
+    pub fn append(&self, node: Node) -> Context<()> {
+        let node = self.runtime.append(self.document, self.node, node).unwrap();
+        Context {
+            event: (),
+            node: Some(node),
+            document: self.document,
+            runtime: self.runtime.clone(),
+        }
+    }
+
+    pub fn clear_children(&self) {
+        if let Some(node) = self.node {
+            self.runtime.clear_children(node);
+        }
     }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct NodeId(arena::Key);
+pub struct NodeId(pub(crate) arena::Key);
 
 #[derive(Clone, Debug, Default)]
 struct NodeHierarchy {

@@ -15,6 +15,7 @@ use game_render::Renderer;
 use game_tracing::trace_span;
 use glam::UVec2;
 use parking_lot::RwLock;
+use wgpu::hal::auxil::db;
 
 use crate::layout::computed_style::ComputedStyle;
 use crate::layout::LayoutTree;
@@ -72,13 +73,9 @@ impl UiRenderer {
         let _span = trace_span!("UiRenderer::update").entered();
 
         for (id, tree) in self.targets.iter_mut() {
-            if !tree.is_changed() {
-                continue;
-            }
+            tree.compute_layout();
 
             let size = tree.size();
-
-            tree.compute_layout();
 
             let mut cmds = vec![];
             for (elem, layout) in tree.elements().zip(tree.layouts()) {
@@ -103,8 +100,6 @@ impl UiRenderer {
                     cmds.push(cmd);
                 }
             }
-
-            tree.unchanged();
 
             *self.elements.write().get_mut(id).unwrap() = cmds;
         }
