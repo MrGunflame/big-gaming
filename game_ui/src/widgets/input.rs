@@ -46,7 +46,7 @@ impl Input {
 }
 
 impl Widget for Input {
-    fn mount<T>(self, parent: &Context<T>) {
+    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
         let mut node = Node::new(Primitive {
             style: self.style,
             image: None,
@@ -86,6 +86,8 @@ impl Widget for Input {
 
         let text = Text::new(self.value).size(32.0);
         text.clone().mount(&node_ctx);
+
+        node_ctx
     }
 }
 

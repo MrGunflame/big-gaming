@@ -17,7 +17,7 @@ impl Text {
     {
         Self {
             text: text.to_string(),
-            size: 16.0,
+            size: 24.0,
         }
     }
 
@@ -28,7 +28,7 @@ impl Text {
 }
 
 impl Widget for Text {
-    fn mount<T>(self, parent: &Context<T>) {
+    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
         parent.append(Node::new(Primitive {
             style: Style::default(),
             image: None,
@@ -36,6 +36,6 @@ impl Widget for Text {
                 text: self.text,
                 size: self.size,
             }),
-        }));
+        }))
     }
 }

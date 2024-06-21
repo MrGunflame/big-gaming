@@ -14,6 +14,7 @@ use game_window::windows::{WindowBuilder, WindowId};
 use game_window::WindowManager;
 use tests::hello_world::hello_world;
 use tests::input::input;
+use tests::table::table;
 
 fn main() {
     game_tracing::init();
@@ -68,7 +69,7 @@ impl game_window::App for App {
                 let rt = self.ui_state.runtime();
                 let ctx = rt.root_context(doc);
 
-                input(ctx);
+                table(ctx);
             }
             WindowEvent::WindowDestroyed(event) => {
                 todo!()
