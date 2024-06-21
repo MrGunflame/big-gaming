@@ -73,8 +73,11 @@ impl Widget for Input {
                         return;
                     }
 
+                    let mut string = buffer.string.clone();
+                    string.insert(buffer.cursor, '|');
+
                     node_ctx.clear_children();
-                    let text = Text::new(buffer.string.clone()).size(32.0);
+                    let text = Text::new(string).size(32.0);
                     text.mount(&node_ctx);
 
                     self.on_change.call(buffer.string.clone());
