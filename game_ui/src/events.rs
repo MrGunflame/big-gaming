@@ -66,7 +66,6 @@ where
                 node,
                 document,
                 runtime: runtime.clone(),
-                cursor: Some(cursor.clone()),
             });
         }
     }

@@ -19,6 +19,7 @@ use crate::render::Rect;
 #[derive(Clone, Debug)]
 pub struct Runtime {
     pub(crate) inner: Arc<Mutex<RuntimeInner>>,
+    pub(crate) cursor: Arc<Mutex<Option<Arc<Cursor>>>>,
 }
 
 impl Runtime {
@@ -30,6 +31,7 @@ impl Runtime {
                 nodes: Arena::new(),
                 hierarchy: NodeHierarchy::default(),
             })),
+            cursor: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -158,7 +160,6 @@ impl Runtime {
             node: None,
             document,
             runtime: self.clone(),
-            cursor: None,
         }
     }
 }
@@ -396,7 +397,6 @@ pub struct Context<E> {
     pub(crate) node: Option<NodeId>,
     pub(crate) document: DocumentId,
     pub(crate) runtime: Runtime,
-    pub(crate) cursor: Option<Arc<Cursor>>,
 }
 
 impl<E> Context<E> {
@@ -407,7 +407,6 @@ impl<E> Context<E> {
             node: Some(node),
             document: self.document,
             runtime: self.runtime.clone(),
-            cursor: self.cursor.clone(),
         }
     }
 
@@ -429,7 +428,7 @@ impl<E> Context<E> {
     }
 
     pub fn cursor(&self) -> Vec2 {
-        match self.cursor.as_ref() {
+        match self.runtime.cursor.lock().as_ref() {
             Some(cursor) => cursor.position(),
             None => Vec2::ZERO,
         }

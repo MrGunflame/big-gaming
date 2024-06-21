@@ -1,7 +1,7 @@
 mod button;
 // mod checkbox;
 mod container;
-// mod image;
+mod image;
 mod input;
 // mod parse_input;
 // mod plot;
@@ -11,7 +11,7 @@ mod text;
 
 // pub mod value_slider;
 
-// pub use self::image::Image;
+pub use self::image::Image;
 pub use button::Button;
 // pub use checkbox::Checkbox;
 pub use container::Container;
@@ -24,7 +24,6 @@ pub use table::Table;
 pub use text::Text;
 
 use std::fmt::{self, Debug, Formatter};
-use std::ops::Deref;
 use std::sync::Arc;
 
 use crate::reactive::Context;
@@ -61,5 +60,13 @@ where
 impl<T> Clone for Callback<T> {
     fn clone(&self) -> Self {
         Self(self.0.clone())
+    }
+}
+
+impl<T> Debug for Callback<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Callback")
+            .field("ptr", &self.0.as_ref().map(|arc| Arc::as_ptr(&arc)))
+            .finish()
     }
 }

@@ -58,6 +58,7 @@ impl UiState {
         let Some(window) = cursor.window() else {
             return;
         };
+        *self.runtime.cursor.lock() = Some(cursor.clone());
 
         match event {
             WindowEvent::CursorMoved(event) => {

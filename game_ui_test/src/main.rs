@@ -70,6 +70,7 @@ impl game_window::App for App {
                 let rt = self.ui_state.runtime();
                 let ctx = rt.root_context(doc);
 
+                // hello_world(ctx.clone());
                 selection(ctx);
             }
             WindowEvent::WindowDestroyed(event) => {

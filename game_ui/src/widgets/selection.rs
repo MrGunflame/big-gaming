@@ -18,6 +18,8 @@ impl Widget for Selection {
     fn mount<T>(self, parent: &Context<T>) -> Context<()> {
         let wrapper = Container::new().mount(parent);
 
+        // I heared you like mutexes.
+
         let options_wrapper = Container::new().mount(&wrapper);
         let options_wrapper = Arc::new(Mutex::new(options_wrapper));
 
@@ -47,13 +49,14 @@ impl Widget for Selection {
                         *filter.lock() = value;
 
                         mount_selector(
-                            &mut options_wrapper.lock(),
-                            &input_wrapper.lock(),
-                            &wrapper_mux.lock(),
+                            &options_wrapper,
+                            &input_wrapper,
+                            &wrapper_mux,
                             &input,
                             &filter,
                             &options,
                             &on_change,
+                            false,
                         );
                     }
                 })
@@ -68,13 +71,14 @@ impl Widget for Selection {
                 .document()
                 .register(move |_ctx: Context<MouseButtonInput>| {
                     mount_selector(
-                        &mut options_wrapper.lock(),
-                        &input_wrapper.lock(),
-                        &wrapper_mux.lock(),
+                        &options_wrapper,
+                        &input_wrapper,
+                        &wrapper_mux,
                         &input,
                         &filter,
                         &options,
                         &on_change,
+                        true,
                     )
                 });
         }
@@ -84,14 +88,18 @@ impl Widget for Selection {
 }
 
 fn mount_selector(
-    options_wrapper: &mut Context<()>,
-    input_wrapper: &Context<()>,
-    wrapper: &Context<()>,
+    options_wrapper_mux: &Arc<Mutex<Context<()>>>,
+    input_wrapper: &Arc<Mutex<Context<()>>>,
+    wrapper_mux: &Arc<Mutex<Context<()>>>,
     input: &Arc<Mutex<Option<Context<()>>>>,
     filter: &Arc<Mutex<String>>,
-    options: &[String],
+    options: &Arc<Vec<String>>,
     on_change: &Callback<usize>,
+    check_position: bool,
 ) {
+    let mut options_wrapper = options_wrapper_mux.lock();
+    let wrapper = wrapper_mux.lock();
+
     let input_id = {
         let Some(input_ctx) = &*input.lock() else {
             return;
@@ -102,7 +110,7 @@ fn mount_selector(
     let layout = wrapper.layout(input_id).unwrap();
 
     options_wrapper.remove(options_wrapper.node.unwrap());
-    if !layout.contains(wrapper.cursor().as_uvec2()) {
+    if check_position && !layout.contains(wrapper.cursor().as_uvec2()) {
         return;
     }
 
@@ -122,19 +130,43 @@ fn mount_selector(
         let input = input.clone();
         let on_change = on_change.clone();
         let option2 = option.to_owned();
+        let wrapper_mux = wrapper_mux.clone();
+        let options_wrapper_mux = options_wrapper_mux.clone();
+        let options = options.clone();
         let button = Button::new()
             .on_click(move |()| {
-                input_wrapper.clear_children();
+                input_wrapper.lock().clear_children();
                 let filter = filter.clone();
                 on_change.call(index);
                 let option2 = option2.clone();
 
                 let c = Input::new()
                     .value(option2)
-                    .on_change(move |value| {
-                        *filter.lock() = value;
+                    .on_change({
+                        let input_wrapper = input_wrapper.clone();
+                        let filter = filter.clone();
+                        let input = input.clone();
+                        let on_change = on_change.clone();
+                        let wrapper_mux = wrapper_mux.clone();
+                        let options_wrapper_mux = options_wrapper_mux.clone();
+                        let options = options.clone();
+
+                        move |value| {
+                            *filter.lock() = value;
+
+                            mount_selector(
+                                &options_wrapper_mux,
+                                &input_wrapper,
+                                &wrapper_mux,
+                                &input,
+                                &filter,
+                                &options,
+                                &on_change,
+                                false,
+                            )
+                        }
                     })
-                    .mount(&input_wrapper);
+                    .mount(&input_wrapper.lock());
                 *input.lock() = Some(c);
             })
             .mount(&options_wrapper);
