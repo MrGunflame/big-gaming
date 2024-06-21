@@ -9,11 +9,11 @@ use crate::primitive::Primitive;
 use crate::reactive::{Context, Node};
 use crate::style::{Bounds, Size, SizeVec2, Style};
 
-use super::{Text, Widget};
+use super::{Callback, Text, Widget};
 
 pub struct Input {
     pub value: String,
-    pub on_change: (),
+    pub on_change: Callback<String>,
     pub style: Style,
 }
 
@@ -21,7 +21,7 @@ impl Input {
     pub fn new() -> Self {
         Self {
             value: String::new(),
-            on_change: (),
+            on_change: Callback::default(),
             style: Style {
                 // Minimum size to prevent the input widget to
                 // completely disappear.
@@ -36,6 +36,14 @@ impl Input {
         T: ToString,
     {
         self.value = value.to_string();
+        self
+    }
+
+    pub fn on_change<T>(mut self, on_change: T) -> Self
+    where
+        T: Into<Callback<String>>,
+    {
+        self.on_change = on_change.into();
         self
     }
 
@@ -81,6 +89,8 @@ impl Widget for Input {
                     node_ctx.clear_children();
                     let text = Text::new(buffer.string.clone()).size(32.0);
                     text.mount(&node_ctx);
+
+                    self.on_change.call(buffer.string.clone());
                 });
         }
 
