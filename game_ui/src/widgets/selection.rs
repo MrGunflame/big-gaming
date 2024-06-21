@@ -1,236 +1,144 @@
-use game_input::keyboard::KeyCode;
+use std::sync::Arc;
+
+use game_input::mouse::MouseButtonInput;
+use glam::UVec2;
 use parking_lot::Mutex;
 
-use crate::events::{ElementEventHandlers, EventHandlers};
-use crate::reactive::{Node, NodeId, Scope, WriteSignal};
-use crate::render::{Element, ElementBody, Text};
-use crate::style::{Background, Bounds, Size, SizeVec2, Style};
+use crate::reactive::Context;
+use crate::style::{Position, Style};
 
-use super::{Callback, Input, Widget};
+use super::{Button, Callback, Container, Input, Text, Widget};
 
 pub struct Selection {
-    options: Vec<String>,
-    value: Option<usize>,
-    on_change: Option<Callback<usize>>,
-}
-
-impl Selection {
-    pub fn new() -> Self {
-        Self {
-            options: Vec::new(),
-            value: None,
-            on_change: None,
-        }
-    }
-
-    pub fn options(mut self, options: Vec<String>) -> Self {
-        self.options = options;
-        self
-    }
-
-    pub fn value(mut self, value: Option<usize>) -> Self {
-        self.value = value;
-        self
-    }
-
-    pub fn on_change<F>(mut self, on_change: F) -> Self
-    where
-        F: Into<Callback<usize>>,
-    {
-        self.on_change = Some(on_change.into());
-        self
-    }
-}
-
-impl Default for Selection {
-    fn default() -> Self {
-        Self::new()
-    }
+    pub options: Vec<String>,
+    pub on_change: Callback<usize>,
 }
 
 impl Widget for Selection {
-    fn build(self, cx: &Scope) -> Scope {
-        let num_options = self.options.len();
+    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+        let wrapper = Container::new().mount(parent);
 
-        let (state, set_state) = cx.create_signal(false);
-        let (value, set_value) = cx.create_signal(Value::default());
+        let options_wrapper = Container::new().mount(&wrapper);
+        let options_wrapper = Arc::new(Mutex::new(options_wrapper));
 
-        let root = cx.push(Node {
-            element: Element {
-                body: ElementBody::Container,
-                style: Style::default(),
-            },
-            events: ElementEventHandlers {
-                global: EventHandlers {
-                    keyboard_input: {
-                        let set_state = set_state.clone();
-                        Some(Box::new(move |ctx| {
-                            if ctx.event.key_code == Some(KeyCode::Escape) {
-                                set_state.update(|state| *state = false);
-                            }
-                        }))
-                    },
-                    ..Default::default()
-                },
-                local: EventHandlers {
-                    mouse_button_input: {
-                        let set_state = set_state.clone();
-                        Some(Box::new(move |_ctx| {
-                            set_state.update(|state| *state = true);
-                        }))
-                    },
-                    ..Default::default()
-                },
-            },
-        });
+        let filter = Arc::new(Mutex::new(String::new()));
 
-        let input = root.append(
-            Input::new()
-                .value(match self.value {
-                    Some(index) => self.options[index].clone(),
-                    None => String::new(),
-                })
-                .on_change({
-                    let set_value = set_value.clone();
-                    move |val| set_value.set(Value::Search(val))
-                }),
-        );
+        let input_wrapper = Container::new().mount(&wrapper);
+        let input_wrapper = Arc::new(Mutex::new(input_wrapper));
+
+        let input = Arc::new(Mutex::new(None));
+        let wrapper_mux = Arc::new(Mutex::new(wrapper.clone()));
+
+        let options = Arc::new(self.options);
+        let on_change = self.on_change.clone();
 
         {
-            let value = value.clone();
-            root.create_effect(move || {
-                let value = value.get();
+            let input_ctx = Input::new()
+                .on_change({
+                    let options = options.clone();
+                    let on_change = on_change.clone();
+                    let filter = filter.clone();
+                    let options_wrapper = options_wrapper.clone();
+                    let wrapper_mux = wrapper_mux.clone();
+                    let input = input.clone();
+                    let input_wrapper = input_wrapper.clone();
 
-                match value {
-                    Value::Option(_) => {
-                        let style = Style {
-                            bounds: Bounds {
-                                min: SizeVec2 {
-                                    x: Size::Pixels(50),
-                                    y: Size::Pixels(20),
-                                },
-                                max: SizeVec2 {
-                                    x: Size::INFINITY,
-                                    y: Size::INFINITY,
-                                },
-                            },
-                            background: Background::GRAY,
-                            ..Default::default()
-                        };
+                    move |value| {
+                        *filter.lock() = value;
 
-                        input.set_style(input.id().unwrap(), style);
+                        mount_selector(
+                            &mut options_wrapper.lock(),
+                            &input_wrapper.lock(),
+                            &wrapper_mux.lock(),
+                            &input,
+                            &filter,
+                            &options,
+                            &on_change,
+                        );
                     }
-                    Value::Search(_) => {
-                        let style = Style {
-                            bounds: Bounds {
-                                min: SizeVec2 {
-                                    x: Size::Pixels(50),
-                                    y: Size::Pixels(20),
-                                },
-                                max: SizeVec2 {
-                                    x: Size::INFINITY,
-                                    y: Size::INFINITY,
-                                },
-                            },
-                            background: Background::RED,
-                            ..Default::default()
-                        };
+                })
+                .mount(&input_wrapper.lock());
 
-                        input.set_style(input.id().unwrap(), style);
-                    }
-                }
-            });
+            *input.lock() = Some(input_ctx);
         }
 
-        let ids: Mutex<Vec<NodeId>> = Mutex::new(vec![]);
-        let cx = root.clone();
-        root.create_effect(move || {
-            let state = state.get();
-
-            let mut ids = ids.lock();
-            for id in &*ids {
-                cx.remove(*id);
-            }
-            ids.clear();
-
-            if state {
-                for (index, opt) in self.options.iter().enumerate() {
-                    let node = cx.push(Node {
-                        element: Element {
-                            body: ElementBody::Text(Text {
-                                text: opt.clone(),
-                                size: 15.0,
-                            }),
-                            style: Style::default(),
-                        },
-                        events: ElementEventHandlers {
-                            local: EventHandlers {
-                                mouse_button_input: {
-                                    let set_state = set_state.clone();
-                                    let set_value = set_value.clone();
-
-                                    Some(Box::new(move |_ctx| {
-                                        set_state.update(|state| *state = false);
-                                        set_value.update(|val| *val = Value::Option(index));
-                                    }))
-                                },
-                                ..Default::default()
-                            },
-                            ..Default::default()
-                        },
-                    });
-
-                    ids.push(node.id().unwrap());
-                }
-            }
-        });
-
-        if let Some(cb) = self.on_change {
-            root.create_effect(move || {
-                let value = value.get();
-
-                if let Value::Option(index) = value {
-                    // The index must be valid for `self.options`.
-                    debug_assert!(index <= num_options);
-
-                    (cb)(index);
-                }
-            });
+        {
+            let wrapper_mux = wrapper_mux.clone();
+            parent
+                .document()
+                .register(move |_ctx: Context<MouseButtonInput>| {
+                    mount_selector(
+                        &mut options_wrapper.lock(),
+                        &input_wrapper.lock(),
+                        &wrapper_mux.lock(),
+                        &input,
+                        &filter,
+                        &options,
+                        &on_change,
+                    )
+                });
         }
 
-        root
+        wrapper
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-enum Value {
-    /// Option `n` is selected (valid).
-    Option(usize),
-    /// Search string (invalid).
-    Search(String),
-}
+fn mount_selector(
+    options_wrapper: &mut Context<()>,
+    input_wrapper: &Context<()>,
+    wrapper: &Context<()>,
+    input: &Arc<Mutex<Option<Context<()>>>>,
+    filter: &Arc<Mutex<String>>,
+    options: &[String],
+    on_change: &Callback<usize>,
+) {
+    let input_id = {
+        let Some(input_ctx) = &*input.lock() else {
+            return;
+        };
+        input_ctx.node().unwrap()
+    };
 
-impl Default for Value {
-    fn default() -> Self {
-        Self::Search(String::new())
+    let layout = wrapper.layout(input_id).unwrap();
+
+    options_wrapper.remove(options_wrapper.node.unwrap());
+    if !layout.contains(wrapper.cursor().as_uvec2()) {
+        return;
     }
-}
 
-pub struct SelectionChangeHandler(Box<dyn Fn(usize) + Send + Sync + 'static>);
+    let style = Style {
+        position: Position::Absolute(UVec2::new(layout.min.x, layout.max.y)),
+        ..Default::default()
+    };
+    *options_wrapper = Container::new().style(style).mount(&wrapper);
+    let filter_string = filter.lock().to_lowercase();
+    for (index, option) in options.iter().enumerate() {
+        if !option.to_lowercase().contains(&filter_string) {
+            continue;
+        }
 
-impl<F> From<F> for SelectionChangeHandler
-where
-    F: Fn(usize) + Send + Sync + 'static,
-{
-    fn from(value: F) -> Self {
-        Self(Box::new(value))
-    }
-}
+        let input_wrapper = input_wrapper.clone();
+        let filter = filter.clone();
+        let input = input.clone();
+        let on_change = on_change.clone();
+        let option2 = option.to_owned();
+        let button = Button::new()
+            .on_click(move |()| {
+                input_wrapper.clear_children();
+                let filter = filter.clone();
+                on_change.call(index);
+                let option2 = option2.clone();
 
-impl From<WriteSignal<usize>> for SelectionChangeHandler {
-    fn from(writer: WriteSignal<usize>) -> Self {
-        Self(Box::new(move |index| {
-            writer.update(|val| *val = index);
-        }))
+                let c = Input::new()
+                    .value(option2)
+                    .on_change(move |value| {
+                        *filter.lock() = value;
+                    })
+                    .mount(&input_wrapper);
+                *input.lock() = Some(c);
+            })
+            .mount(&options_wrapper);
+
+        Text::new(option).mount(&button);
     }
 }

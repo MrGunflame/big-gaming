@@ -1,61 +1,46 @@
 use game_input::mouse::MouseButtonInput;
 
-use crate::events::{Context, ElementEventHandlers, EventHandlers};
-use crate::reactive::{Node, Scope};
-use crate::render::{Element, ElementBody};
+use crate::primitive::Primitive;
+use crate::reactive::{Context, Node};
 use crate::style::Style;
 
 use super::{Callback, Widget};
 
-#[derive(Debug, Default)]
 pub struct Button {
-    style: Style,
-    on_click: Option<Callback<Context<MouseButtonInput>>>,
+    pub style: Style,
+    pub on_click: Callback<()>,
 }
 
 impl Button {
     pub fn new() -> Self {
-        Self::default()
-    }
-
-    pub fn style(mut self, style: Style) -> Self {
-        self.style = style;
-        self
+        Self {
+            style: Style::default(),
+            on_click: Callback::default(),
+        }
     }
 
     pub fn on_click<T>(mut self, on_click: T) -> Self
     where
-        T: Into<Callback<Context<MouseButtonInput>>>,
+        T: Into<Callback<()>>,
     {
-        self.on_click = Some(on_click.into());
+        self.on_click = on_click.into();
         self
     }
 }
 
 impl Widget for Button {
-    fn build(self, cx: &Scope) -> Scope {
-        cx.push(Node {
-            element: Element {
-                body: ElementBody::Container,
-                style: self.style,
-            },
-            events: ElementEventHandlers {
-                local: EventHandlers {
-                    mouse_button_input: self.on_click.map(input_handler),
-                    ..Default::default()
-                },
-                ..Default::default()
-            },
-        })
-    }
-}
+    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+        let mut node = Node::new(Primitive {
+            style: self.style,
+            image: None,
+            text: None,
+        });
+        node.register(move |ctx: Context<MouseButtonInput>| {
+            if ctx.event.button.is_left() && ctx.event.state.is_pressed() {
+                self.on_click.call(());
+            }
+        });
 
-fn input_handler(
-    on_click: Callback<Context<MouseButtonInput>>,
-) -> Box<dyn Fn(Context<MouseButtonInput>) + Send + Sync + 'static> {
-    Box::new(move |ctx| {
-        if ctx.event.button.is_left() && ctx.event.state.is_pressed() {
-            on_click(ctx);
-        }
-    })
+        parent.append(node)
+    }
 }

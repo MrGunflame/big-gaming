@@ -110,11 +110,9 @@ impl Runtime {
             };
 
             if let Some(parent) = rt.hierarchy.parents.remove(&node_id) {
-                rt.hierarchy
-                    .children
-                    .get_mut(&parent)
-                    .unwrap()
-                    .retain(|child| *child != node_id);
+                if let Some(children) = rt.hierarchy.children.get_mut(&parent) {
+                    children.retain(|child| *child != node_id);
+                }
             }
 
             if let Some(c) = rt.hierarchy.children.remove(&node_id) {
@@ -199,7 +197,7 @@ impl Document {
         self.event_handlers.register(handler);
     }
 
-    pub(crate) fn get<E>(&self) -> Option<EventHandler<E>>
+    pub(crate) fn get<E>(&self) -> Option<Vec<EventHandler<E>>>
     where
         E: Event,
     {
@@ -238,7 +236,7 @@ impl Node {
     //     self.event_handlers.call(event);
     // }
 
-    pub(crate) fn get<E>(&self) -> Option<EventHandler<E>>
+    pub(crate) fn get<E>(&self) -> Option<Vec<EventHandler<E>>>
     where
         E: Event,
     {
@@ -355,18 +353,24 @@ where
 #[derive(Debug, Default)]
 struct EventHandlers {
     // TypeId::of<E> -> Box<dyn FnMut(E)>
-    map: HashMap<TypeId, Arc<Mutex<EventHandlerPtr>>>,
+    map: HashMap<TypeId, Vec<Arc<Mutex<EventHandlerPtr>>>>,
 }
 
 impl EventHandlers {
-    fn get<E>(&self) -> Option<EventHandler<E>>
+    fn get<E>(&self) -> Option<Vec<EventHandler<E>>>
     where
         E: Event,
     {
-        self.map.get(&TypeId::of::<E>()).map(|ptr| EventHandler {
-            ptr: ptr.clone(),
-            _marker: PhantomData,
-        })
+        Some(
+            self.map
+                .get(&TypeId::of::<E>())?
+                .iter()
+                .map(|ptr| EventHandler {
+                    ptr: ptr.clone(),
+                    _marker: PhantomData,
+                })
+                .collect(),
+        )
     }
 
     fn register<E, F>(&mut self, handler: F)
@@ -374,10 +378,10 @@ impl EventHandlers {
         F: FnMut(Context<E>) + Send + Sync + 'static,
         E: Event,
     {
-        self.map.insert(
-            TypeId::of::<E>(),
-            Arc::new(Mutex::new(EventHandlerPtr::new(handler))),
-        );
+        self.map
+            .entry(TypeId::of::<E>())
+            .or_default()
+            .push(Arc::new(Mutex::new(EventHandlerPtr::new(handler))));
     }
 }
 
@@ -407,6 +411,10 @@ impl<E> Context<E> {
         }
     }
 
+    pub fn remove(&self, node: NodeId) {
+        self.runtime.remove(node);
+    }
+
     pub fn clear_children(&self) {
         if let Some(node) = self.node {
             self.runtime.clear_children(node);
@@ -421,7 +429,10 @@ impl<E> Context<E> {
     }
 
     pub fn cursor(&self) -> Vec2 {
-        self.cursor.as_ref().unwrap().position()
+        match self.cursor.as_ref() {
+            Some(cursor) => cursor.position(),
+            None => Vec2::ZERO,
+        }
     }
 
     pub fn node(&self) -> Option<NodeId> {

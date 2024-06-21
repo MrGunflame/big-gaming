@@ -59,14 +59,16 @@ where
         }
     }
 
-    for (document, node, handler) in handlers {
-        handler.call(Context {
-            event: event.clone(),
-            node,
-            document,
-            runtime: runtime.clone(),
-            cursor: Some(cursor.clone()),
-        });
+    for (document, node, handlers) in handlers {
+        for handler in handlers {
+            handler.call(Context {
+                event: event.clone(),
+                node,
+                document,
+                runtime: runtime.clone(),
+                cursor: Some(cursor.clone()),
+            });
+        }
     }
 }
 

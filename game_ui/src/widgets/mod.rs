@@ -1,25 +1,25 @@
-// mod button;
+mod button;
 // mod checkbox;
 mod container;
 // mod image;
 mod input;
 // mod parse_input;
 // mod plot;
-// mod selection;
+mod selection;
 mod table;
 mod text;
 
 // pub mod value_slider;
 
 // pub use self::image::Image;
-// pub use button::Button;
+pub use button::Button;
 // pub use checkbox::Checkbox;
 pub use container::Container;
 pub use input::Input;
 use parking_lot::Mutex;
 // pub use parse_input::ParseInput;
 // pub use plot::Plot;
-// pub use selection::Selection;
+pub use selection::Selection;
 pub use table::Table;
 pub use text::Text;
 
@@ -55,5 +55,11 @@ where
 {
     fn from(value: F) -> Self {
         Self(Some(Arc::new(Mutex::new(value))))
+    }
+}
+
+impl<T> Clone for Callback<T> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
     }
 }

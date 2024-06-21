@@ -14,6 +14,7 @@ use game_window::windows::{WindowBuilder, WindowId};
 use game_window::WindowManager;
 use tests::hello_world::hello_world;
 use tests::input::input;
+use tests::selection::selection;
 use tests::table::table;
 
 fn main() {
@@ -69,7 +70,7 @@ impl game_window::App for App {
                 let rt = self.ui_state.runtime();
                 let ctx = rt.root_context(doc);
 
-                table(ctx);
+                selection(ctx);
             }
             WindowEvent::WindowDestroyed(event) => {
                 todo!()
