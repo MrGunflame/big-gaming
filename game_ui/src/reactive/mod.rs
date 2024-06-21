@@ -8,11 +8,13 @@ use std::sync::Arc;
 
 use game_common::collections::arena::{self, Arena};
 use game_render::camera::RenderTarget;
-use glam::UVec2;
+use game_window::cursor::Cursor;
+use glam::{UVec2, Vec2};
 use parking_lot::Mutex;
 
 use crate::layout::{self, LayoutTree};
 use crate::primitive::Primitive;
+use crate::render::Rect;
 
 #[derive(Clone, Debug)]
 pub struct Runtime {
@@ -158,6 +160,7 @@ impl Runtime {
             node: None,
             document,
             runtime: self.clone(),
+            cursor: None,
         }
     }
 }
@@ -389,6 +392,7 @@ pub struct Context<E> {
     pub(crate) node: Option<NodeId>,
     pub(crate) document: DocumentId,
     pub(crate) runtime: Runtime,
+    pub(crate) cursor: Option<Arc<Cursor>>,
 }
 
 impl<E> Context<E> {
@@ -399,6 +403,7 @@ impl<E> Context<E> {
             node: Some(node),
             document: self.document,
             runtime: self.runtime.clone(),
+            cursor: self.cursor.clone(),
         }
     }
 
@@ -413,6 +418,30 @@ impl<E> Context<E> {
             rt: &self.runtime,
             id: self.document,
         }
+    }
+
+    pub fn cursor(&self) -> Vec2 {
+        self.cursor.as_ref().unwrap().position()
+    }
+
+    pub fn node(&self) -> Option<NodeId> {
+        self.node
+    }
+
+    pub fn layout(&self, node: NodeId) -> Option<Rect> {
+        let mut rt = self.runtime.inner.lock();
+        let doc = rt.documents.get_mut(self.document.0)?;
+        doc.layout.compute_layout();
+
+        let key = doc.layout_node_map.get(&node)?;
+        let layout = doc.layout.layout(*key).unwrap();
+        Some(Rect {
+            min: layout.position,
+            max: UVec2 {
+                x: layout.position.x + layout.width,
+                y: layout.position.y + layout.height,
+            },
+        })
     }
 }
 

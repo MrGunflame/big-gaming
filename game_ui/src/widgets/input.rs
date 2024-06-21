@@ -9,7 +9,7 @@ use crate::primitive::Primitive;
 use crate::reactive::{Context, Node};
 use crate::style::{Bounds, Size, SizeVec2, Style};
 
-use super::{Callback, Text, Widget};
+use super::{Callback, Container, Text, Widget};
 
 pub struct Input {
     pub value: String,
@@ -55,28 +55,15 @@ impl Input {
 
 impl Widget for Input {
     fn mount<T>(self, parent: &Context<T>) -> Context<()> {
-        let mut node = Node::new(Primitive {
-            style: self.style,
-            image: None,
-            text: None,
-        });
-
         let mut buffer = Buffer::new(self.value.clone());
         let is_selected = Arc::new(AtomicBool::new(false));
 
-        {
-            let is_selected = is_selected.clone();
-            node.register(move |ctx: Context<MouseButtonInput>| {
-                if ctx.event.state.is_pressed() && ctx.event.button.is_left() {
-                    is_selected.store(true, Ordering::Release);
-                }
-            });
-        }
-
-        let node_ctx = parent.append(node);
+        let node_ctx = Container::new().style(self.style).mount(parent);
+        let node_id = node_ctx.node().unwrap();
 
         {
             let node_ctx = node_ctx.clone();
+            let is_selected = is_selected.clone();
             parent
                 .document()
                 .register(move |ctx: Context<KeyboardInput>| {
@@ -93,6 +80,18 @@ impl Widget for Input {
                     self.on_change.call(buffer.string.clone());
                 });
         }
+
+        parent
+            .document()
+            .register(move |ctx: Context<MouseButtonInput>| {
+                if let Some(node) = ctx.layout(node_id) {
+                    if node.contains(ctx.cursor().as_uvec2()) {
+                        is_selected.store(true, Ordering::Release);
+                    } else {
+                        is_selected.store(false, Ordering::Release);
+                    }
+                }
+            });
 
         let text = Text::new(self.value).size(32.0);
         text.clone().mount(&node_ctx);

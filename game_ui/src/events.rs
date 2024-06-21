@@ -1,18 +1,14 @@
-use std::collections::{HashMap, HashSet};
-use std::fmt::{self, Debug, Formatter};
-use std::ptr::NonNull;
-use std::sync::{mpsc, Arc};
+use std::sync::Arc;
 
 use game_input::keyboard::KeyboardInput;
 use game_input::mouse::{MouseButtonInput, MouseWheel};
 use game_render::camera::RenderTarget;
-use game_window::cursor::{Cursor, CursorIcon};
+use game_window::cursor::Cursor;
 use game_window::events::CursorMoved;
 use game_window::windows::WindowId;
 use glam::{UVec2, Vec2};
 
-use crate::layout::{Key, LayoutTree};
-use crate::reactive::{Context, Event, NodeId, Runtime};
+use crate::reactive::{Context, Event, Runtime};
 use crate::render::Rect;
 
 impl Event for KeyboardInput {}
@@ -20,7 +16,7 @@ impl Event for MouseButtonInput {}
 impl Event for MouseWheel {}
 impl Event for CursorMoved {}
 
-pub(crate) fn call_events<E>(window: WindowId, runtime: &Runtime, cursor: &Cursor, event: E)
+pub(crate) fn call_events<E>(window: WindowId, runtime: &Runtime, cursor: &Arc<Cursor>, event: E)
 where
     E: Event + Clone,
 {
@@ -69,6 +65,7 @@ where
             node,
             document,
             runtime: runtime.clone(),
+            cursor: Some(cursor.clone()),
         });
     }
 }
