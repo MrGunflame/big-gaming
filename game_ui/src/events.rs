@@ -36,6 +36,10 @@ where
         for doc_id in &window.documents {
             let doc = rt.documents.get(doc_id.0).unwrap();
 
+            if let Some(handler) = doc.get::<E>() {
+                handlers.push((*doc_id, None, handler));
+            }
+
             for (key, layout) in doc.layout.keys().zip(doc.layout.layouts()) {
                 let aabb = Rect {
                     min: layout.position,
@@ -53,7 +57,7 @@ where
                 let node = rt.nodes.get_mut(node_id.0).unwrap();
 
                 if let Some(handler) = node.get() {
-                    handlers.push((*doc_id, node_id, handler));
+                    handlers.push((*doc_id, Some(node_id), handler));
                 }
             }
         }
@@ -62,7 +66,7 @@ where
     for (document, node, handler) in handlers {
         handler.call(Context {
             event: event.clone(),
-            node: Some(node),
+            node,
             document,
             runtime: runtime.clone(),
         });

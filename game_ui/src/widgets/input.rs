@@ -1,16 +1,20 @@
 use std::ops::Deref;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 use game_input::keyboard::{KeyCode, KeyboardInput};
+use game_input::mouse::MouseButtonInput;
 
 use crate::primitive::Primitive;
 use crate::reactive::{Context, Node};
-use crate::style::Style;
+use crate::style::{Bounds, Size, SizeVec2, Style};
 
 use super::{Text, Widget};
 
 pub struct Input {
     pub value: String,
     pub on_change: (),
+    pub style: Style,
 }
 
 impl Input {
@@ -18,6 +22,12 @@ impl Input {
         Self {
             value: String::new(),
             on_change: (),
+            style: Style {
+                // Minimum size to prevent the input widget to
+                // completely disappear.
+                bounds: Bounds::from_min(SizeVec2::splat(Size::Pixels(10))),
+                ..Default::default()
+            },
         }
     }
 
@@ -28,35 +38,54 @@ impl Input {
         self.value = value.to_string();
         self
     }
+
+    pub fn style(mut self, style: Style) -> Self {
+        self.style = style;
+        self
+    }
 }
 
 impl Widget for Input {
     fn mount<T>(self, parent: &Context<T>) {
         let mut node = Node::new(Primitive {
-            style: Style::default(),
+            style: self.style,
             image: None,
             text: None,
         });
 
         let mut buffer = Buffer::new(self.value.clone());
+        let is_selected = Arc::new(AtomicBool::new(false));
 
-        node.register(move |ctx: Context<KeyboardInput>| {
-            if !update_buffer(&mut buffer, &ctx.event) {
-                return;
-            }
+        {
+            let is_selected = is_selected.clone();
+            node.register(move |ctx: Context<MouseButtonInput>| {
+                if ctx.event.state.is_pressed() && ctx.event.button.is_left() {
+                    is_selected.store(true, Ordering::Release);
+                }
+            });
+        }
 
-            dbg!(&ctx.event);
+        let node_ctx = parent.append(node);
 
-            ctx.clear_children();
-            let text = Text::new(buffer.string.clone()).size(32.0);
-            text.mount(&ctx);
-        });
+        {
+            let node_ctx = node_ctx.clone();
+            parent
+                .document()
+                .register(move |ctx: Context<KeyboardInput>| {
+                    if !is_selected.load(Ordering::Acquire)
+                        || !update_buffer(&mut buffer, &ctx.event)
+                    {
+                        return;
+                    }
 
-        let ctx = parent.append(node);
+                    node_ctx.clear_children();
+                    let text = Text::new(buffer.string.clone()).size(32.0);
+                    text.mount(&node_ctx);
+                });
+        }
 
         let text = Text::new(self.value).size(32.0);
-        text.clone().mount(&ctx);
-        // text.mount(&parent);
+        text.clone().mount(&node_ctx);
     }
 }
 

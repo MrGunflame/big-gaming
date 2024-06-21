@@ -75,6 +75,7 @@ impl Runtime {
             layout: LayoutTree::new(),
             layout_node_map: HashMap::new(),
             layout_node_map2: HashMap::new(),
+            event_handlers: EventHandlers::default(),
         }));
 
         window.documents.push(doc);
@@ -180,9 +181,27 @@ pub struct Window {
 
 #[derive(Debug)]
 pub struct Document {
+    event_handlers: EventHandlers,
     pub(crate) layout: LayoutTree,
     pub(crate) layout_node_map: HashMap<NodeId, layout::Key>,
     pub(crate) layout_node_map2: HashMap<layout::Key, NodeId>,
+}
+
+impl Document {
+    pub fn register<E, F>(&mut self, handler: F)
+    where
+        F: FnMut(Context<E>) + Send + Sync + 'static,
+        E: Event,
+    {
+        self.event_handlers.register(handler);
+    }
+
+    pub(crate) fn get<E>(&self) -> Option<EventHandler<E>>
+    where
+        E: Event,
+    {
+        self.event_handlers.get()
+    }
 }
 
 #[derive(Debug)]
@@ -359,8 +378,12 @@ impl EventHandlers {
     }
 }
 
+unsafe impl Send for EventHandlers {}
+unsafe impl Sync for EventHandlers {}
+
 pub trait Event: Sized + Send + Sync + 'static {}
 
+#[derive(Clone, Debug)]
 pub struct Context<E> {
     pub event: E,
     pub(crate) node: Option<NodeId>,
@@ -383,6 +406,29 @@ impl<E> Context<E> {
         if let Some(node) = self.node {
             self.runtime.clear_children(node);
         }
+    }
+
+    pub fn document(&self) -> DocumentRef<'_> {
+        DocumentRef {
+            rt: &self.runtime,
+            id: self.document,
+        }
+    }
+}
+
+pub struct DocumentRef<'a> {
+    rt: &'a Runtime,
+    id: DocumentId,
+}
+
+impl<'a> DocumentRef<'a> {
+    pub fn register<E, F>(&self, handler: F)
+    where
+        F: FnMut(Context<E>) + Send + Sync + 'static,
+        E: Event,
+    {
+        let mut rt = self.rt.inner.lock();
+        rt.documents.get_mut(self.id.0).unwrap().register(handler);
     }
 }
 
