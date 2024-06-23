@@ -1,20 +1,21 @@
-use std::sync::mpsc;
+use std::sync::{mpsc, Arc};
 
 use game_common::collections::string::SmallStr;
 use game_common::entity::EntityId;
-use game_ui::reactive::{ReadSignal, Scope};
+use game_ui::reactive::Context;
 use game_ui::style::{Background, Bounds, Growth, Size, SizeVec2, Style};
-use game_ui::widgets::{Button, Container, Text, Widget};
+use game_ui::widgets::{Button, Callback, Container, Text, Widget};
+use parking_lot::Mutex;
 
-use super::Event;
+use super::{Event, SceneState};
 
 pub struct Panel {
-    pub entities: ReadSignal<Vec<Entity>>,
+    pub state: Arc<Mutex<SceneState>>,
     pub writer: mpsc::Sender<Event>,
 }
 
 impl Widget for Panel {
-    fn build(self, cx: &Scope) -> Scope {
+    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
         let style = Style {
             background: Background::GRAY,
             growth: Growth::splat(1.0),
@@ -25,66 +26,47 @@ impl Widget for Panel {
             ..Default::default()
         };
 
-        let root = cx.append(Container::new().style(style));
+        let root = Container::new().style(style).mount(parent);
 
         let writer = self.writer.clone();
         let create_new_entity = move |ctx| {
             writer.send(Event::Spawn);
         };
 
-        let button = root.append(Button::new().on_click(create_new_entity));
-        button.append(Text::new().text("Create".to_owned()));
+        let button = Button::new().on_click(create_new_entity).mount(&root);
+        Text::new("Create").mount(&button);
 
-        root.append(EntityList {
-            entities: self.entities,
+        EntityList {
+            state: self.state,
             writer: self.writer,
-        });
+        }
+        .mount(&root);
 
         root
     }
 }
 
 struct EntityList {
-    entities: ReadSignal<Vec<Entity>>,
+    state: Arc<Mutex<SceneState>>,
     writer: mpsc::Sender<Event>,
 }
 
 impl Widget for EntityList {
-    fn build(self, cx: &Scope) -> Scope {
-        let root = cx.append(Container::new());
+    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+        let root = Container::new().mount(parent);
 
-        let list = cx.append(Container::new());
+        let parent_ctx = Arc::new(Mutex::new(root.clone()));
 
-        let mut list_items = Vec::new();
-        root.create_effect(move || {
-            for id in list_items.drain(..) {
-                list.remove(id);
-            }
+        {
+            let parent_ctx = parent_ctx.clone();
+            let state = self.state.clone();
+            let writer = self.writer.clone();
+            self.state.lock().entities_changed = Callback::from(move |()| {
+                mount_entity_list(&parent_ctx, &state, &writer);
+            });
+        }
 
-            let entities = self.entities.get();
-
-            for (index, entity) in entities.iter().enumerate() {
-                let style = Style {
-                    background: if entity.is_selected {
-                        Background::YELLOW
-                    } else {
-                        Background::None
-                    },
-                    ..Default::default()
-                };
-
-                let writer = self.writer.clone();
-                let entity_id = entities[index].id;
-                let on_click = move |_| {
-                    writer.send(Event::SelectEntity(entity_id)).unwrap();
-                };
-
-                let button = list.append(Button::new().style(style).on_click(on_click));
-                button.append(Text::new().text(entity.name.to_string()));
-
-                list_items.push(button.id().unwrap());
-            }
-        });
+        mount_entity_list(&parent_ctx, &self.state, &self.writer);
 
         root
     }
@@ -95,4 +77,37 @@ pub struct Entity {
     pub id: EntityId,
     pub name: SmallStr,
     pub is_selected: bool,
+}
+
+fn mount_entity_list(
+    parent: &Arc<Mutex<Context<()>>>,
+    state_mux: &Arc<Mutex<SceneState>>,
+    writer: &mpsc::Sender<Event>,
+) {
+    let parent_ctx = parent.lock();
+    parent_ctx.clear_children();
+    let state = state_mux.lock();
+
+    for (index, entity) in state.entities.iter().enumerate() {
+        let style = Style {
+            background: if entity.is_selected {
+                Background::YELLOW
+            } else {
+                Background::None
+            },
+            ..Default::default()
+        };
+
+        let id = entity.id;
+        let writer = writer.clone();
+        let on_click = move |()| {
+            writer.send(Event::SelectEntity(id));
+        };
+
+        let button = Button::new()
+            .style(style)
+            .on_click(on_click)
+            .mount(&parent_ctx);
+        Text::new(entity.name.clone()).mount(&button);
+    }
 }

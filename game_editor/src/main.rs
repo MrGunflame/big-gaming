@@ -267,15 +267,15 @@ impl game_window::App for App {
         for (id, window) in self.active_windows.iter_mut() {
             window.update(&mut self.world, &mut self.renderer);
 
-            // if matches!(window, crate::windows::Window::View(_, _)) {
-            //     self.scene.update(
-            //         &self.world,
-            //         &self.pool,
-            //         &mut self.renderer,
-            //         *id,
-            //         &self.gizmos,
-            //     );
-            // }
+            if matches!(window, crate::windows::Window::View(_, _)) {
+                self.scene.update(
+                    &self.world,
+                    &self.pool,
+                    &mut self.renderer,
+                    *id,
+                    &self.gizmos,
+                );
+            }
         }
 
         self.ui_state.update();

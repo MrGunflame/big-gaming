@@ -4,8 +4,8 @@ pub mod main_window;
 pub mod modules;
 mod open_module;
 // // mod record;
-// // mod records;
-// mod world;
+// mod records;
+mod world;
 
 use game_common::module::ModuleId;
 use game_common::world::World;
@@ -29,10 +29,10 @@ use self::main_window::MainWindow;
 // use self::modules::Modules;
 use self::open_module::OpenModule;
 // // use self::record::CreateRecord;
-// use self::world::WorldWindowState;
+use self::world::WorldWindowState;
 
 pub enum Window {
-    // View(Document, WorldWindowState),
+    View(DocumentId, WorldWindowState),
     Other(DocumentId),
 }
 
@@ -52,14 +52,14 @@ impl Window {
         id: WindowId,
     ) {
         match self {
-            // Self::View(_, window) => window.handle_event(world, event, id, renderer),
+            Self::View(_, window) => window.handle_event(world, event, id, renderer),
             _ => (),
         }
     }
 
     pub fn update(&mut self, world: &mut World, renderer: &mut Renderer) {
         match self {
-            // Self::View(_, w) => w.update(world),
+            Self::View(_, w) => w.update(world),
             _ => (),
         }
     }
@@ -103,10 +103,14 @@ pub fn spawn_window(
             }
             .mount(&ctx);
         }
+        SpawnWindow::Records => {
+            // cx.append(Records { state });
+        }
+        SpawnWindow::View => {
+            let window = world::WorldWindowState::new(&ctx, window_id, world, modules);
+            return Window::View(document, window);
+        }
         _ => todo!(),
-        // SpawnWindow::Records => {
-        //     // cx.append(Records { state });
-        // }
         // SpawnWindow::CreateRecord(kind) => {
         //     // cx.append(CreateRecord {
         //     //     kind,
@@ -121,10 +125,6 @@ pub fn spawn_window(
         //     //     records: state.records,
         //     //     modules: state.modules,
         //     // });
-        // }
-        // SpawnWindow::View => {
-        //     let window = world::WorldWindowState::new(&cx, window_id, world, modules);
-        //     return Window::View(document, window);
         // }
     }
 

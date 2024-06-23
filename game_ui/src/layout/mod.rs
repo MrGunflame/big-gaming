@@ -466,12 +466,16 @@ impl LayoutTree {
                         }
 
                         let pad_zone = match elem.style.direction {
-                            Direction::Row => {
-                                content.height().saturating_sub(offset) / (num_children - 1)
-                            }
-                            Direction::Column => {
-                                content.width().saturating_sub(offset) / (num_children - 1)
-                            }
+                            Direction::Row => content
+                                .height()
+                                .saturating_sub(offset)
+                                .checked_div(num_children - 1)
+                                .unwrap_or(content.height().saturating_sub(offset)),
+                            Direction::Column => content
+                                .width()
+                                .saturating_sub(offset)
+                                .checked_div(num_children - 1)
+                                .unwrap_or(content.height().saturating_sub(offset)),
                         };
 
                         let mut next_position = content.min;

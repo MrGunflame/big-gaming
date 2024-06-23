@@ -1,10 +1,9 @@
-//! An immutable view of a scene.
 mod components;
 mod edit;
 mod node;
 mod panel;
 
-use std::sync::mpsc;
+use std::sync::{mpsc, Arc};
 
 use bitflags::bitflags;
 use game_common::collections::string::SmallStr;
@@ -19,13 +18,15 @@ use game_input::mouse::{MouseButton, MouseMotion, MouseWheel};
 use game_input::ButtonState;
 use game_render::camera::{Camera, Projection, RenderTarget};
 use game_render::Renderer;
-use game_ui::reactive::{Scope, WriteSignal};
+use game_ui::reactive::Context;
 use game_ui::style::{Direction, Justify, Style};
-use game_ui::widgets::Container;
+use game_ui::widgets::{Callback, Container, Widget};
+use game_wasm::components::BufMut;
 use game_wasm::world::RecordReference;
 use game_window::events::WindowEvent;
 use game_window::windows::WindowId;
 use glam::{Quat, Vec2, Vec3};
+use parking_lot::Mutex;
 
 use self::components::ComponentsPanel;
 use self::edit::{EditMode, EditOperation};
@@ -40,17 +41,22 @@ pub struct WorldWindowState {
     camera_controller: CameraController,
     // TODO: Use `Cursor` instead of adding our own thing.
     cursor: Vec2,
-    state: State,
+    state: Arc<Mutex<SceneState>>,
     edit_op: EditOperation,
     events: mpsc::Receiver<Event>,
     update_components_panel: bool,
 }
 
 impl WorldWindowState {
-    pub fn new(cx: &Scope, window_id: WindowId, world: &mut World, modules: Modules) -> Self {
+    pub fn new(
+        ctx: &Context<()>,
+        window_id: WindowId,
+        world: &mut World,
+        modules: Modules,
+    ) -> Self {
         let (writer, reader) = mpsc::channel();
 
-        let st = build_ui(cx, writer, modules);
+        let state = build_ui(ctx, writer, modules);
 
         let camera = world.spawn();
         world.insert_typed(
@@ -79,25 +85,29 @@ impl WorldWindowState {
             },
         );
 
-        st.entities.set(vec![
-            Entity {
-                id: light,
-                name: "Point Light".into(),
-                is_selected: false,
-            },
-            Entity {
-                id: obj,
-                name: "Obj".into(),
-                is_selected: false,
-            },
-        ]);
+        {
+            state.lock().entities = vec![
+                Entity {
+                    id: light,
+                    name: "Point Light".into(),
+                    is_selected: false,
+                },
+                Entity {
+                    id: obj,
+                    name: "Obj".into(),
+                    is_selected: false,
+                },
+            ];
+        }
+        let cb = { state.lock().entities_changed.clone() };
+        cb.call(());
 
         Self {
             camera,
             camera_controller: CameraController::default(),
             cursor: Vec2::ZERO,
             edit_op: EditOperation::new(),
-            state: st,
+            state,
             events: reader,
             update_components_panel: false,
         }
@@ -177,12 +187,13 @@ impl WorldWindowState {
                         camera.transform = camera.transform.looking_to(-Vec3::Y, Vec3::Z);
                     }
                     Some(KeyCode::Delete) => {
-                        let selected: Vec<_> = self.state.entities.with(|entities| {
-                            entities
-                                .iter()
-                                .filter_map(|entity| entity.is_selected.then_some(entity.id))
-                                .collect()
-                        });
+                        let selected: Vec<_> = self
+                            .state
+                            .lock()
+                            .entities
+                            .iter()
+                            .filter_map(|entity| entity.is_selected.then_some(entity.id))
+                            .collect();
 
                         for entity in selected {
                             world.despawn(entity);
@@ -192,10 +203,7 @@ impl WorldWindowState {
                 }
 
                 if event.state.is_pressed()
-                    && self
-                        .state
-                        .entities
-                        .with(|entities| entities.iter().any(|e| e.is_selected))
+                    && self.state.lock().entities.iter().any(|e| e.is_selected)
                 {
                     match event.key_code {
                         Some(KeyCode::Escape) => {
@@ -291,12 +299,10 @@ impl WorldWindowState {
 
         self.edit_op.create(self.cursor, ray);
 
-        self.state.entities.with(|entities| {
-            for entity in entities.iter().filter(|e| e.is_selected) {
-                let transform = world.get_typed(entity.id).unwrap();
-                self.edit_op.push(entity.id, transform);
-            }
-        });
+        for entity in self.state.lock().entities.iter().filter(|e| e.is_selected) {
+            let transform = world.get_typed(entity.id).unwrap();
+            self.edit_op.push(entity.id, transform);
+        }
     }
 
     fn update_edit_op(&mut self, world: &mut World, camera: Camera, viewport_size: Vec2) {
@@ -338,17 +344,20 @@ impl WorldWindowState {
                         Transform::from_translation(self.camera_controller.origin),
                     );
 
-                    self.state.entities.update(|entities| {
-                        entities.push(Entity {
+                    {
+                        self.state.lock().entities.push(Entity {
                             id,
                             name: SmallStr::from_static("<entity>"),
                             is_selected: false,
                         });
-                    });
+                    }
+
+                    let cb = { self.state.lock().entities_changed.clone() };
+                    cb.call(());
                 }
                 Event::SelectEntity(entity) => {
-                    self.state.entities.update(|entities| {
-                        for ent in entities.iter_mut() {
+                    {
+                        for ent in self.state.lock().entities.iter_mut() {
                             if ent.id == entity {
                                 ent.is_selected ^= true;
 
@@ -360,14 +369,15 @@ impl WorldWindowState {
                                 break;
                             }
                         }
-                    });
+                    }
+
+                    let cb = { self.state.lock().entities_changed.clone() };
+                    cb.call(());
                 }
                 Event::UpdateComponent(id, component) => {
-                    self.state.entities.with(|entities| {
-                        for entity in entities.iter().filter(|e| e.is_selected) {
-                            world.insert(entity.id, id, component.clone());
-                        }
-                    });
+                    for entity in self.state.lock().entities.iter().filter(|e| e.is_selected) {
+                        world.insert(entity.id, id, component.clone());
+                    }
 
                     self.update_components_panel = true;
                 }
@@ -375,28 +385,35 @@ impl WorldWindowState {
         }
 
         if self.update_components_panel {
-            let selected_entities = self
-                .state
-                .entities
-                .get()
-                .into_iter()
-                .filter(|v| v.is_selected)
-                .collect::<Vec<_>>();
+            {
+                let selected_entities = self
+                    .state
+                    .lock()
+                    .entities
+                    .iter()
+                    .filter(|v| v.is_selected)
+                    .cloned()
+                    .collect::<Vec<_>>();
 
-            let components = if selected_entities.is_empty() {
-                Components::new()
-            } else {
-                let mut components = world.components(selected_entities[0].id).clone();
+                let components = if selected_entities.is_empty() {
+                    Components::new()
+                } else {
+                    let mut components = world.components(selected_entities[0].id).clone();
 
-                for entity in selected_entities.iter().skip(1) {
-                    let other = world.components(entity.id);
-                    components = components.intersection(other);
-                }
+                    for entity in selected_entities.iter().skip(1) {
+                        let other = world.components(entity.id);
+                        components = components.intersection(other);
+                    }
 
-                components
-            };
+                    components
+                };
 
-            self.state.components.set(components);
+                self.state.lock().components = components;
+            }
+
+            let cb = { self.state.lock().components_changed.clone() };
+            cb.call(());
+
             self.update_components_panel = false;
         }
     }
@@ -409,39 +426,47 @@ enum Axis {
     Z,
 }
 
-pub struct State {
-    entities: WriteSignal<Vec<Entity>>,
-    components: WriteSignal<Components>,
+#[derive(Debug)]
+struct SceneState {
+    entities: Vec<Entity>,
+    entities_changed: Callback<()>,
+    components: Components,
+    components_changed: Callback<()>,
 }
 
-fn build_ui(cx: &Scope, writer: mpsc::Sender<Event>, modules: Modules) -> State {
-    let root = cx.append(Container::new());
-
-    let (entities, set_entities) = root.create_signal(Vec::new());
-    let (components, set_components) = root.create_signal(Components::default());
-
+fn build_ui(
+    ctx: &Context<()>,
+    writer: mpsc::Sender<Event>,
+    modules: Modules,
+) -> Arc<Mutex<SceneState>> {
     let style = Style {
         direction: Direction::Column,
         justify: Justify::SpaceBetween,
         ..Default::default()
     };
 
-    let root = cx.append(Container::new().style(style));
+    let root = Container::new().style(style).mount(ctx);
 
-    root.append(Panel {
-        entities,
+    let state = Arc::new(Mutex::new(SceneState {
+        entities: Vec::new(),
+        components: Components::default(),
+        entities_changed: Callback::default(),
+        components_changed: Callback::default(),
+    }));
+
+    Panel {
+        state: state.clone(),
         writer: writer.clone(),
-    });
-    root.append(ComponentsPanel {
-        components,
+    }
+    .mount(&root);
+    ComponentsPanel {
+        state: state.clone(),
         writer,
         modules,
-    });
-
-    State {
-        entities: set_entities,
-        components: set_components,
     }
+    .mount(&root);
+
+    state
 }
 
 #[derive(Clone, Debug)]

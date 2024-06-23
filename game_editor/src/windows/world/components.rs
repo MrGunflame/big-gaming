@@ -1,31 +1,29 @@
 use std::collections::VecDeque;
 use std::fmt::Display;
 use std::str::FromStr;
-use std::sync::mpsc;
+use std::sync::{mpsc, Arc};
 
-use game_common::components::components::{Components, RawComponent};
-use game_common::components::{Decode, DirectionalLight, MeshInstance, PointLight, Transform};
+use game_common::components::components::RawComponent;
 use game_common::reflection::{ComponentDescriptor, FieldKind};
 use game_core::modules::Modules;
 use game_data::record::RecordKind;
-use game_ui::reactive::{ReadSignal, Scope};
+use game_ui::reactive::Context;
 use game_ui::style::{Background, Bounds, Color, Direction, Growth, Size, SizeVec2, Style};
 use game_ui::widgets::{Button, Callback, Container, Input, Text, Widget};
-use game_wasm::components::Component;
-use game_wasm::encoding::BinaryWriter;
 use game_wasm::world::RecordReference;
+use parking_lot::Mutex;
 
-use super::Event;
+use super::{Event, SceneState};
 
 #[derive(Clone, Debug)]
 pub struct ComponentsPanel {
-    pub components: ReadSignal<Components>,
+    pub state: Arc<Mutex<SceneState>>,
     pub writer: mpsc::Sender<Event>,
     pub modules: Modules,
 }
 
 impl Widget for ComponentsPanel {
-    fn build(self, cx: &Scope) -> Scope {
+    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
         let style = Style {
             background: Background::GRAY,
             growth: Growth::splat(1.0),
@@ -36,41 +34,57 @@ impl Widget for ComponentsPanel {
             ..Default::default()
         };
 
-        let root_cx = cx.clone();
-        let root = root_cx.append(Container::new().style(style.clone()));
-        let mut id = root.id().unwrap();
+        let root = Container::new().style(style.clone()).mount(parent);
 
-        cx.create_effect(move || {
-            root_cx.remove(id);
-            let root = root_cx.append(Container::new().style(style.clone()));
-            id = root.id().unwrap();
+        let root_ctx = Arc::new(Mutex::new(root.clone()));
+        {
+            let root_ctx = root_ctx.clone();
+            let state = self.state.clone();
+            let modules = self.modules.clone();
+            let writer = self.writer.clone();
+            self.state.lock().components_changed = Callback::from(move |()| {
+                mount_component_panel(&root_ctx, &state, &modules, &writer);
+            });
+        }
 
-            let components = self.components.get();
+        mount_component_panel(&root_ctx, &self.state, &self.modules, &self.writer);
 
-            for (id, component) in components.iter() {
-                let component_container = root.append(Container::new());
-
-                let Some((descriptor, name)) = get_component_descriptor_and_name(&self.modules, id)
-                else {
-                    continue;
-                };
-
-                render_component(
-                    &component_container,
-                    id,
-                    name,
-                    descriptor,
-                    self.writer.clone(),
-                    component,
-                );
-            }
-
-            let button = root.append(Button::new());
-            button.append(Text::new().text("Add Component".to_string()));
-        });
-
-        cx.clone()
+        root
     }
+}
+
+fn mount_component_panel(
+    parent: &Arc<Mutex<Context<()>>>,
+    state: &Arc<Mutex<SceneState>>,
+    modules: &Modules,
+    writer: &mpsc::Sender<Event>,
+) {
+    let parent_ctx = parent.lock();
+    let state = state.lock();
+
+    parent_ctx.clear_children();
+
+    let root = Container::new().mount(&parent_ctx);
+
+    for (id, component) in state.components.iter() {
+        let component_container = Container::new().mount(&root);
+
+        let Some((descriptor, name)) = get_component_descriptor_and_name(modules, id) else {
+            continue;
+        };
+
+        render_component(
+            &component_container,
+            id,
+            name,
+            descriptor,
+            writer.clone(),
+            component,
+        );
+    }
+
+    let button = Button::new().mount(&root);
+    Text::new("Add Component").mount(&button);
 }
 
 macro_rules! define_color {
@@ -91,34 +105,37 @@ define_color! {
     COLOR_W = "7b24c1",
 }
 
-fn display_value<T, F>(cx: &Scope, color: Color, label: &str, value: T, on_change: F)
+fn display_value<T, F>(ctx: &Context<()>, color: Color, label: &str, value: T, on_change: F)
 where
     T: Display + FromStr + 'static,
     F: Into<Callback<T>>,
 {
     let on_change = on_change.into();
 
-    let root = cx.append(Container::new().style(Style {
-        direction: Direction::Column,
-        ..Default::default()
-    }));
+    let root = Container::new()
+        .style(Style {
+            direction: Direction::Column,
+            ..Default::default()
+        })
+        .mount(ctx);
 
-    let color_box = root.append(Container::new().style(Style {
-        background: Background::Color(color.0),
-        growth: Growth::y(1.0),
-        ..Default::default()
-    }));
-    color_box.append(Text::new().text(label.to_string()));
+    let color_box = Container::new()
+        .style(Style {
+            background: Background::Color(color.0),
+            growth: Growth::y(1.0),
+            ..Default::default()
+        })
+        .mount(&root);
+    Text::new(label).mount(&color_box);
 
-    root.append(
-        Input::new()
-            .value(value.to_string())
-            .on_change(move |value: String| {
-                if let Ok(value) = value.parse::<T>() {
-                    on_change(value);
-                }
-            }),
-    );
+    Input::new()
+        .value(value.to_string())
+        .on_change(move |value: String| {
+            if let Ok(value) = value.parse::<T>() {
+                on_change.call(value);
+            }
+        })
+        .mount(&root);
 }
 
 fn get_component_descriptor_and_name(
@@ -134,14 +151,14 @@ fn get_component_descriptor_and_name(
 }
 
 fn render_component(
-    cx: &Scope,
+    ctx: &Context<()>,
     id: RecordReference,
     name: &str,
     descriptor: ComponentDescriptor,
     writer: mpsc::Sender<Event>,
     component: &RawComponent,
 ) {
-    cx.append(Text::new().text(name.to_string()));
+    Text::new(name).mount(ctx);
 
     let mut offset = 0;
 
@@ -149,7 +166,7 @@ fn render_component(
 
     for index in descriptor.root() {
         let field = descriptor.get(*index).unwrap();
-        queue.push_back((cx.clone(), field));
+        queue.push_back((ctx.clone(), field));
     }
 
     while let Some((parent, field)) = queue.pop_front() {
@@ -174,7 +191,7 @@ fn render_component(
 
                 let component = component.clone();
                 let writer = writer.clone();
-                display_value(cx, COLOR_X, &field.name, value, move |mut value: i64| {
+                display_value(ctx, COLOR_X, &field.name, value, move |mut value: i64| {
                     let mut bytes = component.as_bytes().to_vec();
                     let fields = component.fields().to_vec();
 
@@ -222,7 +239,7 @@ fn render_component(
 
                 let component = component.clone();
                 let writer = writer.clone();
-                display_value(cx, COLOR_X, &field.name, value, move |value: f64| {
+                display_value(ctx, COLOR_X, &field.name, value, move |value: f64| {
                     let mut bytes = component.as_bytes().to_vec();
                     let fields = component.fields().to_vec();
 
@@ -245,7 +262,7 @@ fn render_component(
                 offset += field_len;
             }
             FieldKind::Struct(val) => {
-                let root = parent.append(Text::new().text(field.name.to_string()));
+                let root = Text::new(field.name.clone()).mount(&parent);
 
                 for index in val.iter().rev() {
                     let field = descriptor.get(*index).unwrap();
