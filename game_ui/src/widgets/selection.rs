@@ -67,9 +67,9 @@ impl Widget for Selection {
 
         {
             let wrapper_mux = wrapper_mux.clone();
-            parent
-                .document()
-                .register(move |_ctx: Context<MouseButtonInput>| {
+            parent.document().register_with_parent(
+                wrapper.node().unwrap(),
+                move |_ctx: Context<MouseButtonInput>| {
                     mount_selector(
                         &options_wrapper,
                         &input_wrapper,
@@ -80,7 +80,8 @@ impl Widget for Selection {
                         &on_change,
                         true,
                     )
-                });
+                },
+            );
         }
 
         wrapper

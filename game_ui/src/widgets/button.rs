@@ -1,10 +1,9 @@
 use game_input::mouse::MouseButtonInput;
 
-use crate::primitive::Primitive;
-use crate::reactive::{Context, Node};
+use crate::reactive::Context;
 use crate::style::Style;
 
-use super::{Callback, Widget};
+use super::{Callback, Container, Widget};
 
 pub struct Button {
     pub style: Style,
@@ -35,17 +34,23 @@ impl Button {
 
 impl Widget for Button {
     fn mount<T>(self, parent: &Context<T>) -> Context<()> {
-        let mut node = Node::new(Primitive {
-            style: self.style,
-            image: None,
-            text: None,
-        });
-        node.register(move |ctx: Context<MouseButtonInput>| {
-            if ctx.event.button.is_left() && ctx.event.state.is_pressed() {
-                self.on_click.call(());
-            }
-        });
+        let wrapper = Container::new().style(self.style).mount(parent);
 
-        parent.append(node)
+        parent.document().register_with_parent(
+            wrapper.node.unwrap(),
+            move |ctx: Context<MouseButtonInput>| {
+                if !ctx.event.button.is_left() || !ctx.event.state.is_pressed() {
+                    return;
+                }
+
+                if let Some(layout) = ctx.layout(wrapper.node.unwrap()) {
+                    if layout.contains(ctx.cursor().as_uvec2()) {
+                        self.on_click.call(());
+                    }
+                }
+            },
+        );
+
+        wrapper
     }
 }

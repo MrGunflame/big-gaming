@@ -48,9 +48,9 @@ impl Widget for ContextPanel {
 
         {
             let wrapper = wrapper.clone();
-            parent
-                .document()
-                .register(move |ctx: Context<MouseButtonInput>| {
+            parent.document().register_with_parent(
+                wrapper.node().unwrap(),
+                move |ctx: Context<MouseButtonInput>| {
                     let cursor = ctx.cursor().as_uvec2();
 
                     if let Some(node) = *context_menu.lock() {
@@ -92,7 +92,8 @@ impl Widget for ContextPanel {
                             closer: ContextMenuCloser { closer },
                         });
                     }
-                });
+                },
+            );
         }
 
         wrapper

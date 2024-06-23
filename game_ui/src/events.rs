@@ -28,46 +28,50 @@ where
     {
         let rt = &mut *runtime.inner.lock();
 
-        let window = rt.windows.get(&RenderTarget::Window(window)).unwrap();
+        let Some(window) = rt.windows.get(&RenderTarget::Window(window)) else {
+            return;
+        };
+
         for doc_id in &window.documents {
             let doc = rt.documents.get(doc_id.0).unwrap();
 
-            if let Some(handler) = doc.get::<E>() {
-                handlers.push((*doc_id, None, handler));
-            }
-
-            for (key, layout) in doc.layout.keys().zip(doc.layout.layouts()) {
-                let aabb = Rect {
-                    min: layout.position,
-                    max: UVec2 {
-                        x: layout.position.x + layout.width,
-                        y: layout.position.y + layout.height,
-                    },
-                };
-
-                if !hit_test(aabb, cursor.position()) {
-                    continue;
-                }
-
-                let node_id = *doc.layout_node_map2.get(&key).unwrap();
-                let node = rt.nodes.get_mut(node_id.0).unwrap();
-
-                if let Some(handler) = node.get() {
-                    handlers.push((*doc_id, Some(node_id), handler));
+            if let Some(ids) = doc.event_handlers.get::<E>() {
+                for id in ids {
+                    let handler = rt.get_event_handler(*id);
+                    handlers.push((*doc_id, None, handler));
                 }
             }
+
+            // for (key, layout) in doc.layout.keys().zip(doc.layout.layouts()) {
+            //     let aabb = Rect {
+            //         min: layout.position,
+            //         max: UVec2 {
+            //             x: layout.position.x + layout.width,
+            //             y: layout.position.y + layout.height,
+            //         },
+            //     };
+
+            //     if !hit_test(aabb, cursor.position()) {
+            //         continue;
+            //     }
+
+            //     let node_id = *doc.layout_node_map2.get(&key).unwrap();
+            //     let node = rt.nodes.get_mut(node_id.0).unwrap();
+
+            //     if let Some(handler) = node.get() {
+            //         handlers.push((*doc_id, Some(node_id), handler));
+            //     }
+            // }
         }
     }
 
-    for (document, node, handlers) in handlers {
-        for handler in handlers {
-            handler.call(Context {
-                event: event.clone(),
-                node,
-                document,
-                runtime: runtime.clone(),
-            });
-        }
+    for (document, node, handler) in handlers {
+        handler.call(Context {
+            event: event.clone(),
+            node,
+            document,
+            runtime: runtime.clone(),
+        });
     }
 }
 

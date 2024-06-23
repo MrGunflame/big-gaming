@@ -30,6 +30,8 @@ impl Runtime {
                 documents: Arena::new(),
                 nodes: Arena::new(),
                 hierarchy: NodeHierarchy::default(),
+                event_handlers: Arena::new(),
+                event_handler_parents: HashMap::new(),
             })),
             cursor: Arc::new(Mutex::new(None)),
         }
@@ -113,8 +115,13 @@ impl Runtime {
     pub fn remove(&self, node: NodeId) {
         let rt = &mut *self.inner.lock();
 
+        let mut event_handlers_to_destroy = Vec::new();
         let mut children = vec![node];
         while let Some(node_id) = children.pop() {
+            if let Some(handlers) = rt.event_handler_parents.remove(&node_id) {
+                event_handlers_to_destroy.extend(handlers);
+            }
+
             let Some(node) = rt.nodes.remove(node_id.0) else {
                 continue;
             };
@@ -133,6 +140,10 @@ impl Runtime {
             let key = doc.layout_node_map.remove(&node_id).unwrap();
             doc.layout_node_map2.remove(&key).unwrap();
             doc.layout.remove(key);
+        }
+
+        for handler in event_handlers_to_destroy {
+            rt.unregister(handler);
         }
     }
 
@@ -170,6 +181,29 @@ impl Runtime {
             runtime: self.clone(),
         }
     }
+
+    fn register_on_document<E, F>(&self, document: DocumentId, parent: Option<NodeId>, handler: F)
+    where
+        F: FnMut(Context<E>) + Send + Sync + 'static,
+        E: Event,
+    {
+        let mut rt = self.inner.lock();
+
+        let entry = EventHandlerEntry {
+            handler: Arc::new(Mutex::new(EventHandlerPtr::new(handler))),
+            document,
+            event: TypeId::of::<E>(),
+        };
+
+        let id = EventHandlerId(rt.event_handlers.insert(entry));
+
+        let doc = rt.documents.get_mut(document.0).unwrap();
+        doc.event_handlers.insert::<E>(id);
+
+        if let Some(parent) = parent {
+            rt.event_handler_parents.entry(parent).or_default().push(id);
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -178,7 +212,44 @@ pub(crate) struct RuntimeInner {
     pub(crate) documents: Arena<Document>,
     pub(crate) nodes: Arena<Node>,
     hierarchy: NodeHierarchy,
+    event_handlers: Arena<EventHandlerEntry>,
+    event_handler_parents: HashMap<NodeId, Vec<EventHandlerId>>,
 }
+
+impl RuntimeInner {
+    pub(crate) fn get_event_handler<E>(&self, id: EventHandlerId) -> EventHandler<E>
+    where
+        E: Event,
+    {
+        let entry = self.event_handlers.get(id.0).unwrap();
+        assert_eq!(TypeId::of::<E>(), entry.event);
+
+        EventHandler {
+            ptr: entry.handler.clone(),
+            _marker: PhantomData,
+        }
+    }
+
+    fn unregister(&mut self, id: EventHandlerId) {
+        let entry = self.event_handlers.remove(id.0).unwrap();
+
+        self.documents
+            .get_mut(entry.document.0)
+            .unwrap()
+            .event_handlers
+            .remove(id);
+    }
+}
+
+#[derive(Clone, Debug)]
+struct EventHandlerEntry {
+    handler: Arc<Mutex<EventHandlerPtr>>,
+    document: DocumentId,
+    event: TypeId,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub(crate) struct EventHandlerId(arena::Key);
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct DocumentId(pub(crate) arena::Key);
@@ -191,27 +262,10 @@ pub struct Window {
 
 #[derive(Debug)]
 pub struct Document {
-    event_handlers: EventHandlers,
+    pub(crate) event_handlers: EventHandlers,
     pub(crate) layout: LayoutTree,
     pub(crate) layout_node_map: HashMap<NodeId, layout::Key>,
     pub(crate) layout_node_map2: HashMap<layout::Key, NodeId>,
-}
-
-impl Document {
-    pub fn register<E, F>(&mut self, handler: F)
-    where
-        F: FnMut(Context<E>) + Send + Sync + 'static,
-        E: Event,
-    {
-        self.event_handlers.register(handler);
-    }
-
-    pub(crate) fn get<E>(&self) -> Option<Vec<EventHandler<E>>>
-    where
-        E: Event,
-    {
-        self.event_handlers.get()
-    }
 }
 
 #[derive(Debug)]
@@ -230,27 +284,20 @@ impl Node {
         }
     }
 
-    pub fn register<E, F>(&mut self, handler: F)
-    where
-        F: FnMut(Context<E>) + Send + Sync + 'static,
-        E: Event,
-    {
-        self.event_handlers.register(handler);
-    }
+    // pub fn register<E, F>(&mut self, handler: F)
+    // where
+    //     F: FnMut(Context<E>) + Send + Sync + 'static,
+    //     E: Event,
+    // {
+    //     self.event_handlers.insert(handler);
+    // }
 
-    // pub fn send<E>(&mut self, event: E)
+    // pub(crate) fn get<E>(&self) -> Option<Vec<EventHandler<E>>>
     // where
     //     E: Event,
     // {
-    //     self.event_handlers.call(event);
+    //     self.event_handlers.get()
     // }
-
-    pub(crate) fn get<E>(&self) -> Option<Vec<EventHandler<E>>>
-    where
-        E: Event,
-    {
-        self.event_handlers.get()
-    }
 }
 
 struct Header {
@@ -343,6 +390,9 @@ impl Drop for EventHandlerPtr {
     }
 }
 
+unsafe impl Send for EventHandlerPtr {}
+unsafe impl Sync for EventHandlerPtr {}
+
 pub(crate) struct EventHandler<E> {
     ptr: Arc<Mutex<EventHandlerPtr>>,
     _marker: PhantomData<fn(E)>,
@@ -360,42 +410,32 @@ where
 }
 
 #[derive(Debug, Default)]
-struct EventHandlers {
-    // TypeId::of<E> -> Box<dyn FnMut(E)>
-    map: HashMap<TypeId, Vec<Arc<Mutex<EventHandlerPtr>>>>,
+pub(crate) struct EventHandlers {
+    map: HashMap<TypeId, Vec<EventHandlerId>>,
 }
 
 impl EventHandlers {
-    fn get<E>(&self) -> Option<Vec<EventHandler<E>>>
+    pub(crate) fn get<E>(&self) -> Option<&Vec<EventHandlerId>>
     where
         E: Event,
     {
-        Some(
-            self.map
-                .get(&TypeId::of::<E>())?
-                .iter()
-                .map(|ptr| EventHandler {
-                    ptr: ptr.clone(),
-                    _marker: PhantomData,
-                })
-                .collect(),
-        )
+        self.map.get(&TypeId::of::<E>())
     }
 
-    fn register<E, F>(&mut self, handler: F)
+    fn insert<E>(&mut self, id: EventHandlerId)
     where
-        F: FnMut(Context<E>) + Send + Sync + 'static,
         E: Event,
     {
-        self.map
-            .entry(TypeId::of::<E>())
-            .or_default()
-            .push(Arc::new(Mutex::new(EventHandlerPtr::new(handler))));
+        self.map.entry(TypeId::of::<E>()).or_default().push(id);
+    }
+
+    fn remove(&mut self, id: EventHandlerId) {
+        self.map.retain(|_, entries| {
+            entries.retain(|e| *e != id);
+            !entries.is_empty()
+        });
     }
 }
-
-unsafe impl Send for EventHandlers {}
-unsafe impl Sync for EventHandlers {}
 
 pub trait Event: Sized + Send + Sync + 'static {}
 
@@ -487,8 +527,15 @@ impl<'a> DocumentRef<'a> {
         F: FnMut(Context<E>) + Send + Sync + 'static,
         E: Event,
     {
-        let mut rt = self.rt.inner.lock();
-        rt.documents.get_mut(self.id.0).unwrap().register(handler);
+        self.rt.register_on_document(self.id, None, handler);
+    }
+
+    pub fn register_with_parent<E, F>(&self, parent: NodeId, handler: F)
+    where
+        F: FnMut(Context<E>) + Send + Sync + 'static,
+        E: Event,
+    {
+        self.rt.register_on_document(self.id, Some(parent), handler);
     }
 }
 

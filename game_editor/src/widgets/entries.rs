@@ -34,17 +34,15 @@ impl Widget for Entries {
             remove_entry: self.data.remove_entry,
         };
 
-        let root = Container::new().mount(parent);
-
-        // let root = ContextPanel::new()
-        //     .style(Style {
-        //         direction: Direction::Column,
-        //         growth: Growth::splat(1.0),
-        //         padding: Padding::splat(Size::Pixels(5)),
-        //         ..Default::default()
-        //     })
-        //     .spawn_menu(spawn_root_ctx_menu(&callbacks))
-        //     .mount(parent);
+        let root = ContextPanel::new()
+            .style(Style {
+                direction: Direction::Column,
+                growth: Growth::splat(1.0),
+                padding: Padding::splat(Size::Pixels(5)),
+                ..Default::default()
+            })
+            .spawn_menu(spawn_root_ctx_menu(&callbacks))
+            .mount(parent);
 
         let cell_style = Style {
             padding: Padding::splat(Size::Pixels(5)),
@@ -62,7 +60,17 @@ impl Widget for Entries {
             .data
             .entries
             .into_iter()
-            .map(|entry| entry.into_iter().map(|col| Text::new(col)).collect())
+            .enumerate()
+            .map(|(index, entry)| {
+                entry
+                    .into_iter()
+                    .map(|col| TableCell {
+                        callbacks: &callbacks,
+                        index,
+                        label: col,
+                    })
+                    .collect()
+            })
             .collect();
 
         Table { header, rows }.mount(&root);
@@ -151,4 +159,21 @@ fn spawn_ctx_menu(callbacks: &ContextCallbacks, index: usize) -> Callback<Contex
             Text::new("Delete").mount(&button);
         }
     })
+}
+
+#[derive(Clone, Debug)]
+struct TableCell<'a> {
+    callbacks: &'a ContextCallbacks,
+    index: usize,
+    label: String,
+}
+
+impl<'a> Widget for TableCell<'a> {
+    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+        let context_menu = ContextPanel::new()
+            .spawn_menu(spawn_ctx_menu(&self.callbacks, self.index))
+            .mount(parent);
+        Text::new(self.label).mount(&context_menu);
+        context_menu
+    }
 }

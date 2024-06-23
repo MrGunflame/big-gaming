@@ -1,4 +1,4 @@
-// mod create_module;
+mod create_module;
 mod error;
 pub mod main_window;
 pub mod modules;
@@ -20,7 +20,7 @@ use game_window::windows::WindowId;
 use modules::Modules;
 
 use crate::state::EditorState;
-// use crate::windows::create_module::CreateModule;
+use crate::windows::create_module::CreateModule;
 use crate::windows::error::Error;
 // use crate::windows::record::EditRecord;
 // use crate::windows::records::Records;
@@ -97,12 +97,13 @@ pub fn spawn_window(
         SpawnWindow::Error(msg) => {
             Error { message: msg }.mount(&ctx);
         }
+        SpawnWindow::CreateModule => {
+            CreateModule {
+                modules: state.modules,
+            }
+            .mount(&ctx);
+        }
         _ => todo!(),
-        // SpawnWindow::CreateModule => {
-        //     cx.append(CreateModule {
-        //         modules: state.modules,
-        //     });
-        // }
         // SpawnWindow::Records => {
         //     // cx.append(Records { state });
         // }

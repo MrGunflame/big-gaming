@@ -1,12 +1,13 @@
+use std::sync::Arc;
+
 use game_common::module::{Dependency, Module, ModuleId, ModuleIdExt, Version};
-use game_input::mouse::MouseButtonInput;
-use game_ui::events::Context;
-use game_ui::reactive::{ReadSignal, Scope};
+use game_ui::reactive::Context;
 use game_ui::style::{
     Background, BorderRadius, Bounds, Direction, Growth, Justify, Padding, Size, SizeVec2, Style,
 };
 use game_ui::widgets::{Button, Callback, Container, Input, Text, Widget};
 use image::Rgba;
+use parking_lot::Mutex;
 
 use crate::state::capabilities::Capabilities;
 use crate::state::module::{EditorModule, Modules};
@@ -18,11 +19,13 @@ pub struct CreateModule {
 }
 
 impl Widget for CreateModule {
-    fn build(self, cx: &Scope) -> Scope {
-        let (id, set_id) = cx.create_signal(ModuleId::random());
-        let (name, set_name) = cx.create_signal(String::new());
-        let (version, set_version) = cx.create_signal(Version);
-        let (dependencies, set_dependencies) = cx.create_signal(Vec::new());
+    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+        let fields = Arc::new(Mutex::new(Fields {
+            id: ModuleId::random(),
+            name: String::new(),
+            version: Version,
+            dependencies: Vec::new(),
+        }));
 
         let style = Style {
             justify: Justify::SpaceBetween,
@@ -32,21 +35,23 @@ impl Widget for CreateModule {
             ..Default::default()
         };
 
-        let root = cx.append(Container::new().style(style));
+        let root = Container::new().style(style).mount(parent);
 
-        let table = root.append(Container::new().style(Style {
-            direction: Direction::Column,
-            ..Default::default()
-        }));
+        let table = Container::new()
+            .style(Style {
+                direction: Direction::Column,
+                ..Default::default()
+            })
+            .mount(&root);
 
-        let key_col = table.append(Container::new());
-        let val_col = table.append(Container::new());
+        let key_col = Container::new().mount(&table);
+        let val_col = Container::new().mount(&table);
 
         for key in ["ID", "Name"] {
-            key_col.append(Text::new().text(key.to_owned()));
+            Text::new(key).mount(&key_col);
         }
 
-        val_col.append(Text::new().text(id.get_untracked().to_string()));
+        Text::new(fields.lock().id.to_string()).mount(&val_col);
 
         let style = Style {
             bounds: Bounds {
@@ -59,44 +64,42 @@ impl Widget for CreateModule {
             ..Default::default()
         };
 
-        val_col.append(
-            Input::new()
-                .style(style)
-                .on_change(move |s| set_name.update(|val| *val = s)),
-        );
+        Input::new()
+            .style(style)
+            .on_change({
+                let fields = fields.clone();
+                move |s| fields.lock().name = s
+            })
+            .mount(&val_col);
 
-        let bottom = root.append(Container::new().style(Style {
-            direction: Direction::Column,
-            justify: Justify::Center,
-            growth: Growth::x(1.0),
-            ..Default::default()
-        }));
+        let bottom = Container::new()
+            .style(Style {
+                direction: Direction::Column,
+                justify: Justify::Center,
+                growth: Growth::x(1.0),
+                ..Default::default()
+            })
+            .mount(&root);
 
-        let on_create = on_create(
-            self.modules,
-            Fields {
-                id,
-                name,
-                version,
-                dependencies,
-            },
-        );
+        let on_create = on_create(self.modules, fields);
 
-        let button = bottom.append(Button::new().on_click(on_create));
-        button.append(Text::new().text("OK".to_owned()));
+        let button = Button::new().on_click(on_create).mount(&bottom);
+        Text::new("Ok").mount(&button);
 
         root
     }
 }
 
-fn on_create(modules: Modules, fields: Fields) -> Callback<Context<MouseButtonInput>> {
-    Callback::from(move |ctx: Context<MouseButtonInput>| {
+fn on_create(modules: Modules, fields: Arc<Mutex<Fields>>) -> Callback<()> {
+    Callback::from(move |()| {
+        let fields = fields.lock();
+
         let module = EditorModule {
             module: Module {
-                id: fields.id.get_untracked(),
-                name: fields.name.get_untracked(),
-                version: fields.version.get_untracked(),
-                dependencies: fields.dependencies.get_untracked(),
+                id: fields.id,
+                name: fields.name.clone(),
+                version: fields.version,
+                dependencies: fields.dependencies.clone(),
             },
             path: None,
             capabilities: Capabilities::READ | Capabilities::WRITE,
@@ -104,14 +107,14 @@ fn on_create(modules: Modules, fields: Fields) -> Callback<Context<MouseButtonIn
 
         modules.insert(module);
 
-        ctx.window.close();
+        // ctx.window.close();
     })
 }
 
 #[derive(Debug)]
 struct Fields {
-    id: ReadSignal<ModuleId>,
-    name: ReadSignal<String>,
-    version: ReadSignal<Version>,
-    dependencies: ReadSignal<Vec<Dependency>>,
+    id: ModuleId,
+    name: String,
+    version: Version,
+    dependencies: Vec<Dependency>,
 }

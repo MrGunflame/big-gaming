@@ -66,7 +66,7 @@ impl Widget for Input {
             let is_selected = is_selected.clone();
             parent
                 .document()
-                .register(move |ctx: Context<KeyboardInput>| {
+                .register_with_parent(node_id, move |ctx: Context<KeyboardInput>| {
                     if !is_selected.load(Ordering::Acquire)
                         || !update_buffer(&mut buffer, &ctx.event)
                     {
@@ -86,7 +86,7 @@ impl Widget for Input {
 
         parent
             .document()
-            .register(move |ctx: Context<MouseButtonInput>| {
+            .register_with_parent(node_id, move |ctx: Context<MouseButtonInput>| {
                 if let Some(node) = ctx.layout(node_id) {
                     if node.contains(ctx.cursor().as_uvec2()) {
                         is_selected.store(true, Ordering::Release);
