@@ -29,7 +29,10 @@ where
             header.clone().mount(&column);
 
             for row in &self.rows {
-                row[column_index].clone().mount(&column);
+                match row.get(column_index) {
+                    Some(elem) => elem.clone().mount(&column),
+                    None => Container::new().mount(&column),
+                };
             }
 
             column = Container::new().mount(&table);

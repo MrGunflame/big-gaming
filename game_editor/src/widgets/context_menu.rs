@@ -65,6 +65,10 @@ impl Widget for ContextPanel {
                     // FIXME: Might race?
                     debug_assert!(context_menu.lock().is_none());
 
+                    if !ctx.event.state.is_pressed() || !ctx.event.button.is_right() {
+                        return;
+                    }
+
                     if ctx
                         .layout(wrapper.node().unwrap())
                         .unwrap()

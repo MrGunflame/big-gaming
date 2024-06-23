@@ -1,8 +1,10 @@
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use game_ui::reactive::Context;
 use game_ui::style::{Growth, Style};
 use game_ui::widgets::{Button, Callback, Container, Text, Widget};
+use parking_lot::Mutex;
 
 use crate::backend::{Task, WriteModule};
 use crate::state::EditorState;
@@ -26,32 +28,13 @@ impl Widget for Modules {
             })
             .mount(&root);
 
-        {
-            let mut entries = Vec::new();
-            for module in self.state.modules.iter() {
-                entries.push(vec![
-                    module.module.id.to_string(),
-                    module.module.name.clone(),
-                ]);
-            }
+        let mods_parent = Arc::new(Mutex::new(mods));
+        mount_module_table(&mods_parent, self.state.clone());
 
-            let data = EntriesData {
-                keys: vec!["ID".to_owned(), "Name".to_owned(), "Default".to_owned()],
-                entries,
-                add_entry: Some(on_create(self.state.clone())),
-                edit_entry: None,
-                remove_entry: None,
-            };
-
-            // match id {
-            //     Some(id) => {
-            //         mods.remove(id);
-            //     }
-            //     None => {}
-            // }
-
-            let cx = Entries { data }.mount(&mods);
-        }
+        let state = self.state.clone();
+        self.state.modules.set_on_change(Callback::from(move |()| {
+            mount_module_table(&mods_parent, state.clone());
+        }));
 
         {
             let button = Button::new()
@@ -101,4 +84,27 @@ fn on_save(state: EditorState) -> Callback<()> {
             }));
         }
     })
+}
+
+fn mount_module_table(parent: &Arc<Mutex<Context<()>>>, state: EditorState) {
+    let ctx = parent.lock();
+    ctx.clear_children();
+
+    let mut entries = Vec::new();
+    for module in state.modules.iter() {
+        entries.push(vec![
+            module.module.id.to_string(),
+            module.module.name.clone(),
+        ]);
+    }
+
+    let data = EntriesData {
+        keys: vec!["ID".to_owned(), "Name".to_owned(), "Default".to_owned()],
+        entries,
+        add_entry: Some(on_create(state.clone())),
+        edit_entry: None,
+        remove_entry: None,
+    };
+
+    Entries { data }.mount(&ctx);
 }
