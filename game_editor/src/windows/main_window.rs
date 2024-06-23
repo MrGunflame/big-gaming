@@ -1,9 +1,10 @@
-use game_ui::reactive::Scope;
+use game_ui::reactive::Context;
 use game_ui::style::{Background, BorderRadius, Bounds, Size, SizeVec2, Style};
 use game_ui::widgets::{Callback, Container, Widget};
 
 use crate::state::EditorState;
 use crate::widgets::header::{ActionButton, Header};
+// use crate::widgets::header::{ActionButton, Header};
 use crate::windows::SpawnWindow;
 
 pub struct MainWindow {
@@ -11,7 +12,7 @@ pub struct MainWindow {
 }
 
 impl Widget for MainWindow {
-    fn build(self, cx: &Scope) -> Scope {
+    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
         let buttons = vec![
             ActionButton {
                 label: "Modules".to_owned(),
@@ -45,20 +46,9 @@ impl Widget for MainWindow {
             },
         ];
 
-        cx.append(Header { buttons });
+        let root = Container::new().mount(parent);
+        Header { buttons }.mount(&root);
 
-        let style = Style {
-            background: Background::AQUA,
-            bounds: Bounds {
-                min: SizeVec2::splat(Size::Pixels(64)),
-                max: SizeVec2::splat(Size::Pixels(64)),
-            },
-            border_radius: BorderRadius::splat(Size::Pixels(16)),
-            ..Default::default()
-        };
-
-        cx.append(Container::new().style(style));
-
-        cx.clone()
+        root
     }
 }

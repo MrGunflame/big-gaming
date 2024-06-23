@@ -1,20 +1,20 @@
 //! Context-menu (right-click)
 
-use game_input::keyboard::KeyCode;
-use game_ui::events::{ElementEventHandlers, EventHandlers};
-use game_ui::reactive::{Node, Scope, WriteSignal};
+use std::sync::Arc;
 
-use game_ui::render::{Element, ElementBody};
+use game_input::mouse::MouseButtonInput;
+use game_ui::reactive::Context;
+
 use game_ui::style::{Position, Style};
-use game_ui::widgets::{Callback, Widget};
-use glam::UVec2;
+use game_ui::widgets::{Callback, Container, Widget};
+use parking_lot::Mutex;
 
 /// A transparent wrapper around a container that passes requests for context menus along.
 ///
 /// `spawn_menu` is called when a right-click is issued (when the context menu is requested).
 #[derive(Debug)]
 pub struct ContextPanel {
-    spawn_menu: Callback<(Scope, WriteSignal<State>)>,
+    spawn_menu: Callback<ContextMenuState>,
     style: Style,
 }
 
@@ -33,7 +33,7 @@ impl ContextPanel {
 
     pub fn spawn_menu<F>(mut self, f: F) -> Self
     where
-        F: Into<Callback<(Scope, WriteSignal<State>)>>,
+        F: Into<Callback<ContextMenuState>>,
     {
         self.spawn_menu = f.into();
         self
@@ -41,113 +41,73 @@ impl ContextPanel {
 }
 
 impl Widget for ContextPanel {
-    fn build(self, cx: &Scope) -> Scope {
-        let (state, set_state) = cx.create_signal(State {
-            is_active: false,
-            menu_cx: None,
-            position: UVec2::ZERO,
-        });
+    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+        let wrapper = Container::new().mount(parent);
 
-        let wrapper = cx.push(Node {
-            element: Element {
-                body: ElementBody::Container,
-                style: self.style,
-            },
-            events: ElementEventHandlers {
-                local: EventHandlers {
-                    mouse_button_input: Some(Box::new({
-                        let set_state = set_state.clone();
+        let context_menu = Arc::new(Mutex::new(None));
 
-                        move |ctx| {
-                            if ctx.event.state.is_pressed() && ctx.event.button.is_right() {
-                                set_state.update(|state| {
-                                    state.is_active = true;
-                                    state.position = ctx.cursor.position().as_uvec2();
-                                });
-                            }
+        {
+            let wrapper = wrapper.clone();
+            parent
+                .document()
+                .register(move |ctx: Context<MouseButtonInput>| {
+                    let cursor = ctx.cursor().as_uvec2();
+
+                    if let Some(node) = *context_menu.lock() {
+                        if ctx.layout(node).unwrap().contains(cursor) {
+                            return;
                         }
-                    })),
-                    ..Default::default()
-                },
-                ..Default::default()
-            },
-        });
 
-        let cx2 = cx.clone();
-        cx.create_effect(move || {
-            let set_state = set_state.clone();
-
-            state.with_mut(|state| match &state.menu_cx {
-                Some(cx) => {
-                    if !state.is_active {
-                        cx2.remove(cx.id().unwrap());
-                        state.menu_cx = None;
+                        ctx.runtime().remove(node);
+                        *context_menu.lock() = None;
                     }
-                }
-                None => {
-                    if state.is_active {
-                        let menu = cx2.push(Node {
-                            element: Element {
-                                body: ElementBody::Container,
-                                style: Style {
-                                    position: Position::Absolute(state.position),
-                                    ..Default::default()
-                                },
-                            },
-                            events: ElementEventHandlers {
-                                local: EventHandlers {
-                                    mouse_button_input: Some(Box::new({
-                                        let set_state = set_state.clone();
 
-                                        move |event| {
-                                            set_state.update(|state| state.is_active = true);
-                                        }
-                                    })),
-                                    ..Default::default()
-                                },
-                                global: EventHandlers {
-                                    mouse_button_input: Some(Box::new(move |ctx| {
-                                        //set_state.update(|state| state.is_active = false);
-                                    })),
-                                    keyboard_input: Some(Box::new({
-                                        let set_state = set_state.clone();
+                    // FIXME: Might race?
+                    debug_assert!(context_menu.lock().is_none());
 
-                                        move |ctx| {
-                                            if ctx.event.state.is_pressed()
-                                                && ctx.event.key_code == Some(KeyCode::Escape)
-                                            {
-                                                set_state.update(|state| state.is_active = false);
-                                            }
-                                        }
-                                    })),
-                                    ..Default::default()
-                                },
-                            },
+                    if ctx
+                        .layout(wrapper.node().unwrap())
+                        .unwrap()
+                        .contains(cursor)
+                    {
+                        let context_menu = context_menu.clone();
+                        let closer = Callback::from(move |()| {
+                            if let Some(node) = context_menu.lock().take() {
+                                ctx.runtime().remove(node);
+                            }
                         });
 
-                        state.menu_cx = Some(menu.clone());
-
-                        (self.spawn_menu)((menu, set_state));
+                        let context_menu = Container::new()
+                            .style(Style {
+                                position: Position::Absolute(cursor),
+                                ..Default::default()
+                            })
+                            .mount(&wrapper);
+                        self.spawn_menu.call(ContextMenuState {
+                            ctx: context_menu,
+                            closer: ContextMenuCloser { closer },
+                        });
                     }
-                }
-            });
-        });
+                });
+        }
 
         wrapper
     }
 }
 
-/// State of the context menu.
 #[derive(Clone, Debug)]
-pub struct State {
-    is_active: bool,
-    position: UVec2,
-    // Menu scope if displayed.
-    menu_cx: Option<Scope>,
+pub struct ContextMenuState {
+    pub ctx: Context<()>,
+    pub closer: ContextMenuCloser,
 }
 
-impl State {
-    pub fn close(&mut self) {
-        self.is_active = false;
+#[derive(Clone, Debug)]
+pub struct ContextMenuCloser {
+    closer: Callback<()>,
+}
+
+impl ContextMenuCloser {
+    pub fn close(&self) {
+        self.closer.call(());
     }
 }

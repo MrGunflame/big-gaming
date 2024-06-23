@@ -1,8 +1,6 @@
 use std::path::PathBuf;
 
-use game_input::mouse::MouseButtonInput;
-use game_ui::events::Context;
-use game_ui::reactive::Scope;
+use game_ui::reactive::Context;
 use game_ui::style::{Growth, Style};
 use game_ui::widgets::{Button, Callback, Container, Text, Widget};
 
@@ -18,86 +16,79 @@ pub struct Modules {
 }
 
 impl Widget for Modules {
-    fn build(self, cx: &Scope) -> Scope {
-        let root = cx.append(Container::new());
+    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+        let root = Container::new().mount(parent);
 
-        let mods = root.append(Container::new().style(Style {
-            growth: Growth::splat(1.0),
-            ..Default::default()
-        }));
+        let mods = Container::new()
+            .style(Style {
+                growth: Growth::splat(1.0),
+                ..Default::default()
+            })
+            .mount(&root);
 
-        let reader = self.state.modules.signal(|| {
-            let (_, writer) = cx.create_signal(());
-            writer
-        });
-
-        let mut id = None;
         {
-            let state = self.state.clone();
-            cx.create_effect(move || {
-                let _ = reader.get();
+            let mut entries = Vec::new();
+            for module in self.state.modules.iter() {
+                entries.push(vec![
+                    module.module.id.to_string(),
+                    module.module.name.clone(),
+                ]);
+            }
 
-                let mut entries = Vec::new();
-                for module in state.modules.iter() {
-                    entries.push(vec![
-                        module.module.id.to_string(),
-                        module.module.name.clone(),
-                    ]);
-                }
+            let data = EntriesData {
+                keys: vec!["ID".to_owned(), "Name".to_owned(), "Default".to_owned()],
+                entries,
+                add_entry: Some(on_create(self.state.clone())),
+                edit_entry: None,
+                remove_entry: None,
+            };
 
-                let data = EntriesData {
-                    keys: vec!["ID".to_owned(), "Name".to_owned(), "Default".to_owned()],
-                    entries,
-                    add_entry: Some(on_create(state.clone())),
-                    edit_entry: None,
-                    remove_entry: None,
-                };
+            // match id {
+            //     Some(id) => {
+            //         mods.remove(id);
+            //     }
+            //     None => {}
+            // }
 
-                match id {
-                    Some(id) => {
-                        mods.remove(id);
-                    }
-                    None => {}
-                }
-
-                let cx = mods.append(Entries { data });
-
-                id = Some(cx.id().unwrap());
-            });
+            let cx = Entries { data }.mount(&mods);
         }
 
         {
-            let button = root.append(Button::new().on_click(on_open(self.state.clone())));
-            button.append(Text::new().text("Open".to_owned()));
+            let button = Button::new()
+                .on_click(on_open(self.state.clone()))
+                .mount(&root);
+            Text::new("Open").mount(&button);
         }
 
         {
-            let button = root.append(Button::new().on_click(on_create(self.state.clone())));
-            button.append(Text::new().text("Create".to_owned()));
+            let button = Button::new()
+                .on_click(on_create(self.state.clone()))
+                .mount(&root);
+            Text::new("Create").mount(&button);
         }
 
         {
-            let button = root.append(Button::new().on_click(on_save(self.state)));
-            button.append(Text::new().text("Save".to_owned()));
+            let button = Button::new().on_click(on_save(self.state)).mount(&root);
+            Text::new("Save").mount(&button);
         }
 
         root
     }
 }
 
-fn on_open(state: EditorState) -> Callback<Context<MouseButtonInput>> {
+fn on_open(state: EditorState) -> Callback<()> {
     Callback::from(move |_| {
         let _ = state.spawn_windows.send(SpawnWindow::OpenModule);
     })
 }
 
-fn on_create(state: EditorState) -> Callback<Context<MouseButtonInput>> {
+fn on_create(state: EditorState) -> Callback<()> {
     Callback::from(move |_| {
         let _ = state.spawn_windows.send(SpawnWindow::CreateModule);
     })
 }
 
-fn on_save(state: EditorState) -> Callback<Context<MouseButtonInput>> {
+fn on_save(state: EditorState) -> Callback<()> {
     Callback::from(move |_| {
         for mut module in state.modules.iter() {
             if module.path.is_none() {

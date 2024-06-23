@@ -35,6 +35,14 @@ impl Runtime {
         }
     }
 
+    pub fn documents(&self, window: RenderTarget) -> Vec<DocumentId> {
+        let rt = self.inner.lock();
+        rt.windows
+            .get(&window)
+            .map(|w| w.documents.clone())
+            .unwrap_or(Vec::new())
+    }
+
     pub fn append(
         &self,
         document: DocumentId,
@@ -410,6 +418,10 @@ impl<E> Context<E> {
         }
     }
 
+    pub fn runtime(&self) -> &Runtime {
+        &self.runtime
+    }
+
     pub fn remove(&self, node: NodeId) {
         self.runtime.remove(node);
     }
@@ -452,6 +464,15 @@ impl<E> Context<E> {
                 y: layout.position.y + layout.height,
             },
         })
+    }
+
+    pub fn with_event<U>(self, event: U) -> Context<U> {
+        Context {
+            event,
+            node: self.node,
+            document: self.document,
+            runtime: self.runtime,
+        }
     }
 }
 

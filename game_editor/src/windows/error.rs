@@ -1,4 +1,4 @@
-use game_ui::reactive::Scope;
+use game_ui::reactive::Context;
 use game_ui::style::{Bounds, Direction, Padding, Size, SizeVec2, Style};
 use game_ui::widgets::{Container, Image, Text, Widget};
 
@@ -7,14 +7,14 @@ pub struct Error {
 }
 
 impl Widget for Error {
-    fn build(self, cx: &Scope) -> Scope {
+    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
         let style = Style {
             direction: Direction::Column,
             padding: Padding::splat(Size::Pixels(10)),
             ..Default::default()
         };
 
-        let root = cx.append(Container::new().style(style));
+        let root = Container::new().style(style).mount(parent);
 
         let img = image::io::Reader::open("/home/robert/Downloads/dialog-error.png")
             .unwrap()
@@ -29,8 +29,8 @@ impl Widget for Error {
             ..Default::default()
         };
 
-        root.append(Image::new().image(img.to_rgba8()).style(style));
-        root.append(Text::new().text(self.message));
+        Image::new().image(img.to_rgba8()).style(style).mount(&root);
+        Text::new(self.message).mount(&root);
 
         root
     }

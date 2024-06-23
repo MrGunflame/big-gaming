@@ -1,14 +1,19 @@
 use crate::reactive::Context;
 use crate::style::{Direction, Style};
 
-use super::{Container, Text, Widget};
+use super::{Container, Widget};
 
-pub struct Table {
-    pub header: Vec<String>,
-    pub rows: Vec<Vec<String>>,
+pub struct Table<H, D> {
+    pub header: Vec<H>,
+    pub rows: Vec<Vec<D>>,
 }
 
-impl Widget for Table {
+impl<H, D> Widget for Table<H, D>
+where
+    // TODO: Remove Clone bounds.
+    H: Widget + Clone,
+    D: Widget + Clone,
+{
     fn mount<T>(self, parent: &Context<T>) -> Context<()> {
         let table = Container::new()
             .style(Style {
@@ -21,10 +26,10 @@ impl Widget for Table {
         let mut column_index = 0;
         while column_index < self.header.len() {
             let header = &self.header[column_index];
-            Text::new(header).mount(&column);
+            header.clone().mount(&column);
 
             for row in &self.rows {
-                Text::new(&row[column_index]).mount(&column);
+                row[column_index].clone().mount(&column);
             }
 
             column = Container::new().mount(&table);

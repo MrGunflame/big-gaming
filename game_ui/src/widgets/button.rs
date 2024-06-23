@@ -26,6 +26,11 @@ impl Button {
         self.on_click = on_click.into();
         self
     }
+
+    pub fn style(mut self, style: Style) -> Self {
+        self.style = style;
+        self
+    }
 }
 
 impl Widget for Button {
