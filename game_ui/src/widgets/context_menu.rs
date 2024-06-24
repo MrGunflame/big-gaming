@@ -1,11 +1,11 @@
 //! Context-menu (right-click)
 
 use game_input::mouse::MouseButtonInput;
-use game_ui::reactive::{Context, NodeDestroyed, NodeId};
-
-use game_ui::style::{Position, Style};
-use game_ui::widgets::{Callback, Container, Widget};
 use parking_lot::Mutex;
+
+use crate::reactive::{Context, NodeDestroyed, NodeId};
+use crate::style::{Position, Style};
+use crate::widgets::{Callback, Container, Widget};
 
 /// A transparent wrapper around a container that passes requests for context menus along.
 ///
@@ -178,7 +178,7 @@ impl ContextMenuCloser {
 }
 
 #[derive(Debug, Default)]
-pub struct InternalContextMenuState {
+struct InternalContextMenuState {
     parents: Mutex<Vec<(Context<()>, Callback<ContextMenuState>)>>,
     active: Mutex<Option<NodeId>>,
 }

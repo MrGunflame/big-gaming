@@ -1,8 +1,8 @@
 use game_ui::reactive::Context;
 use game_ui::style::{Background, Direction, Growth, Padding, Size, Style};
-use game_ui::widgets::{Button, Callback, Container, Table, Text, Widget};
-
-use super::context_menu::{ContextMenuState, ContextPanel};
+use game_ui::widgets::{
+    Button, Callback, Container, ContextMenuState, ContextPanel, Table, Text, Widget,
+};
 
 #[derive(Debug)]
 pub struct EntriesData {
