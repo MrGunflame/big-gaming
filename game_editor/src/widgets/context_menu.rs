@@ -1,7 +1,7 @@
 //! Context-menu (right-click)
 
 use game_input::mouse::MouseButtonInput;
-use game_ui::reactive::{Context, NodeId};
+use game_ui::reactive::{Context, NodeDestroyed, NodeId};
 
 use game_ui::style::{Position, Style};
 use game_ui::widgets::{Callback, Container, Widget};
@@ -41,6 +41,32 @@ impl ContextPanel {
 impl Widget for ContextPanel {
     fn mount<T>(self, parent: &Context<T>) -> Context<()> {
         let wrapper = Container::new().mount(parent);
+
+        // Cleanup when the parent is removed.
+        parent.document().register_with_parent(
+            wrapper.node().unwrap(),
+            move |ctx: Context<NodeDestroyed>| {
+                let node = ctx.node().unwrap();
+                let state = ctx.document().get::<InternalContextMenuState>().unwrap();
+
+                // If the context menu is still open we should
+                // close it before we remove it.
+                let mut active = state.active.lock();
+                if *active == Some(node) {
+                    ctx.runtime().remove(node);
+                    *active = None;
+                }
+
+                let mut parents = state.parents.lock();
+                parents.retain(|(p_ctx, _)| p_ctx.node().unwrap() != node);
+
+                // We just destroyed the last context menu parent element.
+                // Remove the remaining state from the document.
+                if parents.is_empty() {
+                    ctx.document().remove::<InternalContextMenuState>();
+                }
+            },
+        );
 
         if let Some(state) = parent.document().get::<InternalContextMenuState>() {
             state

@@ -78,6 +78,10 @@ impl Runtime {
         document.layout_node_map.insert(id, node_key);
         document.layout_node_map2.insert(node_key, id);
 
+        if parent.is_none() {
+            document.root_nodes.push(id);
+        }
+
         Some(id)
     }
 
@@ -91,6 +95,7 @@ impl Runtime {
             layout_node_map2: HashMap::new(),
             event_handlers: EventHandlers::default(),
             type_map: HashMap::new(),
+            root_nodes: Vec::new(),
         }));
 
         window.documents.push(doc);
@@ -114,37 +119,77 @@ impl Runtime {
     }
 
     pub fn remove(&self, node: NodeId) {
-        let rt = &mut *self.inner.lock();
+        let mut node_destroyed_handlers = Vec::new();
 
-        let mut event_handlers_to_destroy = Vec::new();
-        let mut children = vec![node];
-        while let Some(node_id) = children.pop() {
-            if let Some(handlers) = rt.event_handler_parents.remove(&node_id) {
-                event_handlers_to_destroy.extend(handlers);
-            }
+        // The document of the destroyed nodes.
+        // Note that this is the same for all nodes that
+        // are destoryed.
+        let mut document = None;
 
-            let Some(node) = rt.nodes.remove(node_id.0) else {
-                continue;
-            };
+        {
+            let rt = &mut *self.inner.lock();
 
-            if let Some(parent) = rt.hierarchy.parents.remove(&node_id) {
-                if let Some(children) = rt.hierarchy.children.get_mut(&parent) {
-                    children.retain(|child| *child != node_id);
+            let mut event_handlers_to_destroy = Vec::new();
+            let mut children = vec![node];
+            while let Some(node_id) = children.pop() {
+                if let Some(handlers) = rt.event_handler_parents.remove(&node_id) {
+                    // If the node has a `NodeDestroyed` attached, we must call
+                    // it after destroying it.
+                    for handler in &handlers {
+                        let handler = rt.event_handlers.get(handler.0).unwrap();
+                        if handler.event == TypeId::of::<NodeDestroyed>() {
+                            node_destroyed_handlers.push((node_id, handler.handler.clone()));
+                        }
+                    }
+
+                    event_handlers_to_destroy.extend(handlers);
                 }
+
+                let Some(node) = rt.nodes.remove(node_id.0) else {
+                    continue;
+                };
+
+                document = node.document;
+
+                if let Some(parent) = rt.hierarchy.parents.remove(&node_id) {
+                    if let Some(children) = rt.hierarchy.children.get_mut(&parent) {
+                        children.retain(|child| *child != node_id);
+                    }
+                }
+
+                if let Some(c) = rt.hierarchy.children.remove(&node_id) {
+                    children.extend(c);
+                }
+
+                let doc = rt.documents.get_mut(node.document.unwrap().0).unwrap();
+                let key = doc.layout_node_map.remove(&node_id).unwrap();
+                doc.layout_node_map2.remove(&key).unwrap();
+                doc.layout.remove(key);
+
+                // Remove the node from the document root nodes if it is one.
+                doc.root_nodes.retain(|n| *n != node_id);
             }
 
-            if let Some(c) = rt.hierarchy.children.remove(&node_id) {
-                children.extend(c);
+            for handler in event_handlers_to_destroy {
+                rt.unregister(handler);
             }
-
-            let doc = rt.documents.get_mut(node.document.unwrap().0).unwrap();
-            let key = doc.layout_node_map.remove(&node_id).unwrap();
-            doc.layout_node_map2.remove(&key).unwrap();
-            doc.layout.remove(key);
         }
 
-        for handler in event_handlers_to_destroy {
-            rt.unregister(handler);
+        let Some(document) = document else {
+            return;
+        };
+
+        for (node, handler) in node_destroyed_handlers {
+            // SAFETY: We already checked that the handlers are
+            // for E: NodeDestroyed.
+            unsafe {
+                handler.lock().call(Context {
+                    event: NodeDestroyed,
+                    node: Some(node),
+                    document,
+                    runtime: self.clone(),
+                });
+            }
         }
     }
 
@@ -171,7 +216,12 @@ impl Runtime {
 
     pub(crate) fn destroy_window(&self, id: RenderTarget) {
         let mut rt = self.inner.lock();
-        rt.windows.remove(&id);
+        if let Some(window) = rt.windows.remove(&id) {
+            drop(rt);
+            for id in window.documents {
+                self.destroy_document(id);
+            }
+        }
     }
 
     pub fn root_context(&self, document: DocumentId) -> Context<()> {
@@ -188,6 +238,13 @@ impl Runtime {
         F: FnMut(Context<E>) + Send + Sync + 'static,
         E: Event,
     {
+        if TypeId::of::<E>() == TypeId::of::<NodeDestroyed>() {
+            assert!(
+                parent.is_some(),
+                "NodeDestroyed event handlers must be attached to a node"
+            );
+        }
+
         let mut rt = self.inner.lock();
 
         let entry = EventHandlerEntry {
@@ -204,6 +261,24 @@ impl Runtime {
         if let Some(parent) = parent {
             rt.event_handler_parents.entry(parent).or_default().push(id);
         }
+    }
+
+    fn destroy_document(&self, id: DocumentId) {
+        let rt = self.inner.lock();
+
+        let Some(document) = rt.documents.get(id.0) else {
+            return;
+        };
+
+        let nodes = document.root_nodes.clone();
+        drop(rt);
+
+        for node in nodes {
+            self.remove(node);
+        }
+
+        let mut rt = self.inner.lock();
+        rt.documents.remove(id.0);
     }
 }
 
@@ -268,6 +343,7 @@ pub struct Document {
     pub(crate) layout_node_map: HashMap<NodeId, layout::Key>,
     pub(crate) layout_node_map2: HashMap<layout::Key, NodeId>,
     pub(crate) type_map: HashMap<TypeId, Arc<dyn std::any::Any + Send + Sync + 'static>>,
+    pub(crate) root_nodes: Vec<NodeId>,
 }
 
 #[derive(Debug)]
@@ -440,6 +516,12 @@ impl EventHandlers {
 }
 
 pub trait Event: Sized + Send + Sync + 'static {}
+
+/// Event that is fired once the node has been destroyed.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct NodeDestroyed;
+
+impl Event for NodeDestroyed {}
 
 #[derive(Clone, Debug)]
 pub struct Context<E> {
