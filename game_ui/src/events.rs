@@ -6,7 +6,7 @@ use game_render::camera::RenderTarget;
 use game_window::cursor::Cursor;
 use game_window::events::CursorMoved;
 use game_window::windows::WindowId;
-use glam::{UVec2, Vec2};
+use glam::Vec2;
 
 use crate::reactive::{Context, Event, Runtime};
 use crate::render::Rect;

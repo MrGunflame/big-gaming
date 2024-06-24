@@ -15,7 +15,6 @@ use game_render::Renderer;
 use game_tracing::trace_span;
 use glam::UVec2;
 use parking_lot::RwLock;
-use wgpu::hal::auxil::db;
 
 use crate::layout::computed_style::ComputedStyle;
 use crate::layout::LayoutTree;

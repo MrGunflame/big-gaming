@@ -1,7 +1,6 @@
 //! UI related systems
 
-use std::collections::HashMap;
-use std::sync::{mpsc, Arc};
+use std::sync::Arc;
 
 pub mod events;
 pub mod layout;
@@ -11,16 +10,15 @@ pub mod render;
 pub mod style;
 pub mod widgets;
 
-use events::hit_test;
 use game_render::camera::RenderTarget;
 use game_render::Renderer;
 use game_tracing::trace_span;
 use game_window::cursor::Cursor;
 use game_window::events::WindowEvent;
 use glam::UVec2;
-use reactive::{DocumentId, Runtime};
+use reactive::Runtime;
 
-use render::{Rect, UiRenderer};
+use render::UiRenderer;
 
 pub struct UiState {
     renderer: UiRenderer,

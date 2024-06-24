@@ -5,8 +5,7 @@ use std::sync::Arc;
 use game_input::keyboard::{KeyCode, KeyboardInput};
 use game_input::mouse::MouseButtonInput;
 
-use crate::primitive::Primitive;
-use crate::reactive::{Context, Node};
+use crate::reactive::Context;
 use crate::style::{Bounds, Size, SizeVec2, Style};
 
 use super::{Callback, Container, Text, Widget};
@@ -163,10 +162,6 @@ struct Buffer {
     string: String,
     /// Position of the cursor.
     cursor: usize,
-    /// Whether the buffer was update by the user.
-    ///
-    /// This is important to break circular updates when the value changes via a read signal.
-    user_updated: bool,
 }
 
 impl Buffer {
@@ -177,11 +172,7 @@ impl Buffer {
             .map(|(i, c)| i + c.len_utf8())
             .unwrap_or(0);
 
-        Self {
-            string,
-            cursor,
-            user_updated: false,
-        }
+        Self { string, cursor }
     }
 
     fn push(&mut self, ch: char) {

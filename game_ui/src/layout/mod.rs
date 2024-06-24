@@ -12,22 +12,6 @@ use crate::render::text::Text;
 use crate::render::{DrawCommand, DrawElement, Rect};
 use crate::style::{Direction, Justify, Position, Style};
 
-// Provide custom saturaing methods
-// See https://github.com/bitshifter/glam-rs/issues/428
-trait VectorExt {
-    fn saturating_add(self, rhs: Self) -> Self;
-}
-
-impl VectorExt for UVec2 {
-    #[must_use]
-    fn saturating_add(self, rhs: Self) -> Self {
-        Self {
-            x: self.x.saturating_add(rhs.x),
-            y: self.y.saturating_add(rhs.y),
-        }
-    }
-}
-
 #[derive(Clone, Debug)]
 pub struct Element {
     pub body: ElementBody,
