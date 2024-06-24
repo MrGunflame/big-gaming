@@ -90,6 +90,7 @@ impl Runtime {
             layout_node_map: HashMap::new(),
             layout_node_map2: HashMap::new(),
             event_handlers: EventHandlers::default(),
+            type_map: HashMap::new(),
         }));
 
         window.documents.push(doc);
@@ -266,6 +267,7 @@ pub struct Document {
     pub(crate) layout: LayoutTree,
     pub(crate) layout_node_map: HashMap<NodeId, layout::Key>,
     pub(crate) layout_node_map2: HashMap<layout::Key, NodeId>,
+    pub(crate) type_map: HashMap<TypeId, Arc<dyn std::any::Any + Send + Sync + 'static>>,
 }
 
 #[derive(Debug)]
@@ -536,6 +538,37 @@ impl<'a> DocumentRef<'a> {
         E: Event,
     {
         self.rt.register_on_document(self.id, Some(parent), handler);
+    }
+
+    pub fn get<T>(&self) -> Option<Arc<T>>
+    where
+        T: Send + Sync + 'static,
+    {
+        let rt = self.rt.inner.lock();
+        let doc = rt.documents.get(self.id.0)?;
+        doc.type_map
+            .get(&TypeId::of::<T>())
+            .map(|v| v.clone().downcast().unwrap())
+    }
+
+    pub fn insert<T>(&self, value: T)
+    where
+        T: Send + Sync + 'static,
+    {
+        let mut rt = self.rt.inner.lock();
+        let doc = rt.documents.get_mut(self.id.0).unwrap();
+        doc.type_map.insert(TypeId::of::<T>(), Arc::new(value));
+    }
+
+    pub fn remove<T>(&self) -> Option<Arc<T>>
+    where
+        T: Send + Sync + 'static,
+    {
+        let mut rt = self.rt.inner.lock();
+        let doc = rt.documents.get_mut(self.id.0)?;
+        doc.type_map
+            .remove(&TypeId::of::<T>())
+            .map(|v| v.clone().downcast().unwrap())
     }
 }
 
