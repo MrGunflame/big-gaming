@@ -1,7 +1,7 @@
 use glam::{UVec2, Vec2};
 use image::{ImageBuffer, Rgba};
 
-use crate::reactive::Scope;
+use crate::reactive::Context;
 
 use super::{Image, Widget};
 
@@ -12,11 +12,9 @@ pub struct Plot {
 }
 
 impl Widget for Plot {
-    fn build(self, cx: &Scope) -> Scope {
+    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
         let img = render_graph_to_image(self.size, self.points);
-
-        let root = cx.append(Image::new().image(img));
-        root
+        Image::new().image(img).mount(parent)
     }
 }
 

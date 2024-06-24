@@ -3,7 +3,7 @@ use std::fmt::{self, Display, Formatter};
 use std::time::Duration;
 
 use game_core::counter::UpdateCounter;
-use game_ui::reactive::Scope;
+use game_ui::reactive::Context;
 use game_ui::widgets::{Container, Plot, Text, Widget};
 use glam::{UVec2, Vec2};
 
@@ -15,56 +15,64 @@ pub struct DebugUi {
 }
 
 impl Widget for DebugUi {
-    fn build(self, cx: &Scope) -> Scope {
-        let list = cx.append(Container::new());
+    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+        let list = Container::new().mount(parent);
 
-        list.append(Text::new().text(format!(
+        Text::new(format!(
             "UPS: {:.2} FPS: {:.2}",
             self.stats.ups.ups(),
             self.stats.fps.ups()
-        )));
-        list.append(Text::new().text(format!("Entities: {}", self.stats.entities)));
-        list.append(Text::new().text(format!(
+        ))
+        .mount(&list);
+        Text::new(format!("Entities: {}", self.stats.entities)).mount(&list);
+        Text::new(format!(
             "Unacked predicted inputs: {}",
             self.stats.net_input_buffer_len
-        )));
+        ))
+        .mount(&list);
         let ups = self.ups.stats();
-        list.append(Text::new().text(format!(
+        Text::new(format!(
             "Update time (min={} max={} mean={} stddev={})",
             DurationFormat(ups.min),
             DurationFormat(ups.max),
             DurationFormat(ups.mean),
             DurationFormat(ups.stddev)
-        )));
-        list.append(Plot {
+        ))
+        .mount(&list);
+        Plot {
             size: UVec2::new(256, 128),
             points: self.ups.points(),
-        });
+        }
+        .mount(&list);
         let fps = self.fps.stats();
-        list.append(Text::new().text(format!(
+        Text::new(format!(
             "Frame time (min={} max={} mean={} stddev={})",
             DurationFormat(fps.min),
             DurationFormat(fps.max),
             DurationFormat(fps.mean),
             DurationFormat(fps.stddev)
-        )));
-        list.append(Plot {
+        ))
+        .mount(&list);
+        Plot {
             size: UVec2::new(256, 128),
             points: self.fps.points(),
-        });
+        }
+        .mount(&list);
 
         let rtt = self.rtt.stats();
-        list.append(Text::new().text(format!(
+        Text::new(format!(
             "RTT (min={} max={} mean={} stddev={})",
             DurationFormat(rtt.min),
             DurationFormat(rtt.max),
             DurationFormat(rtt.mean),
             DurationFormat(rtt.stddev),
-        )));
-        list.append(Plot {
+        ))
+        .mount(&list);
+        Plot {
             size: UVec2::new(256, 128),
             points: self.rtt.points(),
-        });
+        }
+        .mount(&list);
 
         list
     }

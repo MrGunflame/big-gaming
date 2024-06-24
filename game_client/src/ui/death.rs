@@ -1,6 +1,6 @@
 use std::sync::mpsc;
 
-use game_ui::reactive::Scope;
+use game_ui::reactive::Context;
 use game_ui::style::{Growth, Style};
 use game_ui::widgets::{Button, Container, Text, Widget};
 use game_wasm::world::RecordReference;
@@ -12,17 +12,21 @@ pub struct DealthUi {
 }
 
 impl Widget for DealthUi {
-    fn build(self, cx: &Scope) -> Scope {
-        let root = cx.append(Container::new().style(Style {
-            growth: Growth::new(1.0, 1.0),
-            ..Default::default()
-        }));
+    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+        let root = Container::new()
+            .style(Style {
+                growth: Growth::new(1.0, 1.0),
+                ..Default::default()
+            })
+            .mount(parent);
 
-        root.append(Text::new().text("You are ded".to_owned()));
-        let respawn = root.append(Button::new().on_click(move |_ctx| {
-            self.tx.send(respawn_event()).unwrap();
-        }));
-        respawn.append(Text::new().text("Respawn".to_owned()));
+        Text::new("You are ded".to_owned()).mount(&root);
+        let respawn = Button::new()
+            .on_click(move |_ctx| {
+                self.tx.send(respawn_event()).unwrap();
+            })
+            .mount(&root);
+        Text::new("Respawn".to_owned()).mount(&respawn);
 
         root
     }

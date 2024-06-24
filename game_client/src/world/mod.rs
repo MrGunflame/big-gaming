@@ -20,7 +20,8 @@ use game_input::hotkeys::{HotkeyCode, Key};
 use game_input::keyboard::{KeyCode, KeyboardInput};
 use game_input::mouse::MouseMotion;
 use game_script::Executor;
-use game_ui::reactive::{Document, NodeId};
+use game_ui::reactive::{Document, DocumentId, NodeId, Runtime};
+use game_ui::widgets::Widget;
 use game_wasm::encoding::BinaryWriter;
 use game_window::cursor::Cursor;
 use game_window::events::WindowEvent;
@@ -113,7 +114,8 @@ impl GameWorldState {
         &mut self,
         time: &Time,
         world: &mut World,
-        ui_doc: &Document,
+        ui_rt: &Runtime,
+        ui_doc: DocumentId,
         fps_counter: UpdateCounter,
     ) -> Result<(), RemoteError> {
         self.interval.wait(time.last_update()).await;
@@ -135,11 +137,11 @@ impl GameWorldState {
             }
         }
 
-        let mut cx = ui_doc.root_scope();
+        let ctx = ui_rt.root_context(ui_doc);
 
         // Debug stats
         self.ui_elements.update_debug_state(
-            &mut cx,
+            &ctx,
             Some(Statistics {
                 ups: self.world.ups(),
                 fps: fps_counter,
@@ -153,10 +155,10 @@ impl GameWorldState {
         if let Ok(camera) = world.get_typed::<Camera>(self.host) {
             if let Ok(health) = world.get_typed::<Health>(camera.parent.into()) {
                 self.ui_elements
-                    .update_health(&mut cx, Some(health), &self.ui_events_tx);
+                    .update_health(&ctx, Some(health), &self.ui_events_tx);
             } else {
                 self.ui_elements
-                    .update_health(&mut cx, None, &self.ui_events_tx);
+                    .update_health(&ctx, None, &self.ui_events_tx);
             }
         }
 
@@ -180,13 +182,19 @@ impl GameWorldState {
         Ok(())
     }
 
-    pub fn handle_event(&mut self, event: WindowEvent, cursor: &Cursor, ui_doc: &Document) {
+    pub fn handle_event(
+        &mut self,
+        event: WindowEvent,
+        cursor: &Cursor,
+        ui_rt: &Runtime,
+        ui_doc: DocumentId,
+    ) {
         match event {
             WindowEvent::MouseMotion(event) => {
                 self.handle_mouse_motion(event);
             }
             WindowEvent::KeyboardInput(event) => {
-                self.handle_keyboard_input(event, cursor, ui_doc);
+                self.handle_keyboard_input(event, cursor, ui_rt, ui_doc);
             }
             WindowEvent::MouseButtonInput(event) => {
                 self.actions.send_mouse_event(event);
@@ -196,8 +204,8 @@ impl GameWorldState {
                     return;
                 }
 
-                let cx = ui_doc.root_scope();
-                self.main_menu = Some(cx.append(MainMenu {}).id().unwrap());
+                let ctx = ui_rt.root_context(ui_doc);
+                self.main_menu = Some(MainMenu {}.mount(&ctx).node().unwrap());
                 self.cursor_pinned.unpin(cursor);
             }
             _ => (),
@@ -247,18 +255,24 @@ impl GameWorldState {
         });
     }
 
-    fn handle_keyboard_input(&mut self, event: KeyboardInput, cursor: &Cursor, ui_doc: &Document) {
+    fn handle_keyboard_input(
+        &mut self,
+        event: KeyboardInput,
+        cursor: &Cursor,
+        ui_rt: &Runtime,
+        ui_doc: DocumentId,
+    ) {
         match event.key_code {
             Some(KeyCode::Escape) if event.state.is_pressed() => {
                 match self.main_menu {
                     Some(id) => {
-                        ui_doc.root_scope().remove(id);
+                        ui_rt.remove(id);
                         self.main_menu = None;
                         self.cursor_pinned.pin(cursor);
                     }
                     None => {
-                        let cx = ui_doc.root_scope();
-                        self.main_menu = Some(cx.append(MainMenu {}).id().unwrap());
+                        let ctx = ui_rt.root_context(ui_doc);
+                        self.main_menu = Some(MainMenu {}.mount(&ctx).node().unwrap());
                         self.cursor_pinned.unpin(cursor);
                     }
                 }
@@ -310,7 +324,7 @@ impl GameWorldState {
             }
             Some(KeyCode::I) if event.state.is_pressed() => match &mut self.inventory_proxy {
                 Some(pxy) => {
-                    ui_doc.root_scope().remove(pxy.id);
+                    ui_rt.remove(pxy.id);
                     self.inventory_proxy = None;
                     self.cursor_pinned.pin(cursor);
                 }
@@ -332,6 +346,7 @@ impl GameWorldState {
                     self.inventory_proxy = Some(InventoryProxy::new(
                         &inventory,
                         self.modules.clone(),
+                        ui_rt,
                         ui_doc,
                         self.ui_events_tx.clone(),
                     ));
