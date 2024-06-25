@@ -1,151 +1,544 @@
-mod effect;
-mod node;
-mod signal;
-
-use std::cell::RefCell;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::alloc::Layout;
+use std::any::TypeId;
+use std::collections::HashMap;
+use std::marker::PhantomData;
+use std::mem::{ManuallyDrop, MaybeUninit};
+use std::ptr::NonNull;
 use std::sync::Arc;
 
-use game_tracing::trace_span;
+use game_common::collections::arena::{self, Arena};
+use game_render::camera::RenderTarget;
+use game_window::cursor::Cursor;
+use glam::{UVec2, Vec2};
 use parking_lot::Mutex;
-use slotmap::{new_key_type, SlotMap};
 
-use crate::events::Events;
-use crate::layout::{Key, LayoutTree};
-use crate::style::Style;
-use crate::widgets::Widget;
-
-use self::effect::{Effect, EffectId};
-use self::signal::SignalId;
-
-pub use node::Node;
-pub use signal::{ReadSignal, WriteSignal};
-
-thread_local! {
-    static ACTIVE_EFFECT: RefCell<ActiveEffect> = RefCell::new(ActiveEffect {
-        first_run: false,
-        stack: Vec::new(),
-    });
-}
+use crate::layout::{self, LayoutTree};
+use crate::primitive::Primitive;
+use crate::render::Rect;
 
 #[derive(Clone, Debug)]
-struct ActiveEffect {
-    first_run: bool,
-    stack: Vec<SignalId>,
-}
-
-new_key_type! {
-    pub struct NodeId;
-}
-
-#[derive(Debug, Clone)]
-pub struct Scope {
-    document: Document,
-    // Ref to parent, or none if root.
-    id: Option<NodeId>,
-}
-
-impl Scope {
-    pub fn append<T>(&self, widget: T) -> Scope
-    where
-        T: Widget,
-    {
-        widget.build(self)
-    }
-
-    /// Returns the [`NodeId`] of the node this `Scope` refers to.
-    ///
-    /// Returns `None` if this `Scope` refers to the root of the [`Document`].
-    #[inline]
-    pub fn id(&self) -> Option<NodeId> {
-        self.id
-    }
-
-    pub fn push(&self, node: Node) -> Scope {
-        let mut doc = self.document.inner.lock();
-
-        let id = doc.nodes.push(self.id);
-        doc.events.push_back(Event::CreateNode(id, node));
-
-        Scope {
-            document: self.document.clone(),
-            id: Some(id),
-        }
-    }
-
-    pub fn remove(&self, id: NodeId) {
-        let mut doc = self.document.inner.lock();
-        doc.events.push_back(Event::RemoveNode(id));
-    }
-
-    /// Update a node in the tree.
-    ///
-    /// This has the same effect as removing the node and inserting a new one in its position,
-    /// except `update` retains all children. Does nothing if the node with the given `id` does
-    /// not exist.
-    pub fn update(&self, id: NodeId, node: Node) {
-        let mut doc = self.document.inner.lock();
-        doc.events.push_back(Event::UpdateNode(id, node));
-    }
-
-    pub fn set_style(&self, id: NodeId, style: Style) {
-        let mut doc = self.document.inner.lock();
-        doc.events.push_back(Event::UpdateStyle(id, style));
-    }
-}
-
-#[derive(Clone, Debug, Default)]
 pub struct Runtime {
-    inner: Arc<Mutex<RuntimeInner>>,
+    pub(crate) inner: Arc<Mutex<RuntimeInner>>,
+    pub(crate) cursor: Arc<Mutex<Option<Arc<Cursor>>>>,
 }
 
 impl Runtime {
-    pub fn new() -> Self {
-        Self::default()
-    }
-}
-
-#[derive(Debug, Default)]
-struct RuntimeInner {
-    effects: SlotMap<EffectId, Effect>,
-    next_signal_id: u64,
-
-    /// Effects scheduled for execution.
-    queue: HashSet<EffectId>,
-    /// What effects are subscribed to signals.
-    subscribers: HashMap<SignalId, Vec<EffectId>>,
-    subscribers_by_effect: HashMap<EffectId, Vec<SignalId>>,
-}
-
-// Note that `Document` has no `Default` impl to prevent accidental
-// creation on a new `Runtime` (which has a `Default` impl).
-#[derive(Clone, Debug)]
-pub struct Document {
-    runtime: Runtime,
-    inner: Arc<Mutex<DocumentInner>>,
-}
-
-#[derive(Debug, Default)]
-struct DocumentInner {
-    nodes: NodeHierarchy,
-    events: VecDeque<Event>,
-
-    effects: HashSet<EffectId>,
-    effects_by_node: HashMap<Option<NodeId>, Vec<EffectId>>,
-}
-
-impl Document {
-    pub fn new(runtime: Runtime) -> Self {
+    pub(crate) fn new() -> Self {
         Self {
-            runtime,
-            inner: Arc::default(),
+            inner: Arc::new(Mutex::new(RuntimeInner {
+                windows: HashMap::new(),
+                documents: Arena::new(),
+                nodes: Arena::new(),
+                hierarchy: NodeHierarchy::default(),
+                event_handlers: Arena::new(),
+                event_handler_parents: HashMap::new(),
+            })),
+            cursor: Arc::new(Mutex::new(None)),
         }
     }
 
-    pub fn root_scope(&self) -> Scope {
-        Scope {
-            document: self.clone(),
-            id: None,
+    pub fn documents(&self, window: RenderTarget) -> Vec<DocumentId> {
+        let rt = self.inner.lock();
+        rt.windows
+            .get(&window)
+            .map(|w| w.documents.clone())
+            .unwrap_or(Vec::new())
+    }
+
+    pub fn append(
+        &self,
+        document: DocumentId,
+        parent: Option<NodeId>,
+        mut node: Node,
+    ) -> Option<NodeId> {
+        let document_id = document;
+
+        let rt = &mut *self.inner.lock();
+        let document = rt.documents.get_mut(document.0)?;
+
+        let node_key = if let Some(parent) = parent {
+            rt.nodes.get(parent.0)?;
+
+            let parent_key = document.layout_node_map.get(&parent).unwrap();
+            document
+                .layout
+                .push(Some(*parent_key), node.primitive.clone().into())
+        } else {
+            document.layout.push(None, node.primitive.clone().into())
+        };
+
+        node.document = Some(document_id);
+        let id = NodeId(rt.nodes.insert(node));
+
+        if let Some(parent) = parent {
+            rt.hierarchy.children.entry(parent).or_default().push(id);
+            rt.hierarchy.parents.insert(id, parent);
+        }
+
+        document.layout_node_map.insert(id, node_key);
+        document.layout_node_map2.insert(node_key, id);
+
+        if parent.is_none() {
+            document.root_nodes.push(id);
+        }
+
+        Some(id)
+    }
+
+    pub fn create_document(&self, window: RenderTarget) -> Option<DocumentId> {
+        let rt = &mut *self.inner.lock();
+        let window = rt.windows.get_mut(&window)?;
+
+        let doc = DocumentId(rt.documents.insert(Document {
+            layout: LayoutTree::new(),
+            layout_node_map: HashMap::new(),
+            layout_node_map2: HashMap::new(),
+            event_handlers: EventHandlers::default(),
+            type_map: HashMap::new(),
+            root_nodes: Vec::new(),
+        }));
+
+        window.documents.push(doc);
+        Some(doc)
+    }
+
+    pub fn clear_children(&self, node: NodeId) {
+        let children = {
+            let rt = &mut *self.inner.lock();
+
+            let Some(children) = rt.hierarchy.children.get(&node) else {
+                return;
+            };
+
+            children.to_vec()
+        };
+
+        for child in children {
+            self.remove(child);
+        }
+    }
+
+    pub fn remove(&self, node: NodeId) {
+        let mut node_destroyed_handlers = Vec::new();
+
+        // The document of the destroyed nodes.
+        // Note that this is the same for all nodes that
+        // are destoryed.
+        let mut document = None;
+
+        {
+            let rt = &mut *self.inner.lock();
+
+            let mut event_handlers_to_destroy = Vec::new();
+            let mut children = vec![node];
+            while let Some(node_id) = children.pop() {
+                if let Some(handlers) = rt.event_handler_parents.remove(&node_id) {
+                    // If the node has a `NodeDestroyed` attached, we must call
+                    // it after destroying it.
+                    for handler in &handlers {
+                        let handler = rt.event_handlers.get(handler.0).unwrap();
+                        if handler.event == TypeId::of::<NodeDestroyed>() {
+                            node_destroyed_handlers.push((node_id, handler.handler.clone()));
+                        }
+                    }
+
+                    event_handlers_to_destroy.extend(handlers);
+                }
+
+                let Some(node) = rt.nodes.remove(node_id.0) else {
+                    continue;
+                };
+
+                document = node.document;
+
+                if let Some(parent) = rt.hierarchy.parents.remove(&node_id) {
+                    if let Some(children) = rt.hierarchy.children.get_mut(&parent) {
+                        children.retain(|child| *child != node_id);
+                    }
+                }
+
+                if let Some(c) = rt.hierarchy.children.remove(&node_id) {
+                    children.extend(c);
+                }
+
+                let doc = rt.documents.get_mut(node.document.unwrap().0).unwrap();
+                let key = doc.layout_node_map.remove(&node_id).unwrap();
+                doc.layout_node_map2.remove(&key).unwrap();
+                doc.layout.remove(key);
+
+                // Remove the node from the document root nodes if it is one.
+                doc.root_nodes.retain(|n| *n != node_id);
+            }
+
+            for handler in event_handlers_to_destroy {
+                rt.unregister(handler);
+            }
+        }
+
+        let Some(document) = document else {
+            return;
+        };
+
+        for (node, handler) in node_destroyed_handlers {
+            // SAFETY: We already checked that the handlers are
+            // for E: NodeDestroyed.
+            unsafe {
+                handler.lock().call(Context {
+                    event: NodeDestroyed,
+                    node: Some(node),
+                    document,
+                    runtime: self.clone(),
+                });
+            }
+        }
+    }
+
+    pub(crate) fn create_window(&self, id: RenderTarget, size: UVec2) {
+        let mut rt = self.inner.lock();
+        rt.windows.insert(
+            id,
+            Window {
+                documents: Vec::new(),
+                size,
+            },
+        );
+    }
+
+    pub(crate) fn resize_window(&self, id: RenderTarget, size: UVec2) {
+        let rt = &mut *self.inner.lock();
+        let window = rt.windows.get_mut(&id).unwrap();
+        window.size = size;
+
+        for doc in &window.documents {
+            rt.documents.get_mut(doc.0).unwrap().layout.resize(size);
+        }
+    }
+
+    pub(crate) fn destroy_window(&self, id: RenderTarget) {
+        let mut rt = self.inner.lock();
+        if let Some(window) = rt.windows.remove(&id) {
+            drop(rt);
+            for id in window.documents {
+                self.destroy_document(id);
+            }
+        }
+    }
+
+    pub fn root_context(&self, document: DocumentId) -> Context<()> {
+        Context {
+            event: (),
+            node: None,
+            document,
+            runtime: self.clone(),
+        }
+    }
+
+    fn register_on_document<E, F>(&self, document: DocumentId, parent: Option<NodeId>, handler: F)
+    where
+        F: FnMut(Context<E>) + Send + Sync + 'static,
+        E: Event,
+    {
+        if TypeId::of::<E>() == TypeId::of::<NodeDestroyed>() {
+            assert!(
+                parent.is_some(),
+                "NodeDestroyed event handlers must be attached to a node"
+            );
+        }
+
+        let mut rt = self.inner.lock();
+
+        let entry = EventHandlerEntry {
+            handler: Arc::new(Mutex::new(EventHandlerPtr::new(handler))),
+            document,
+            event: TypeId::of::<E>(),
+        };
+
+        let id = EventHandlerId(rt.event_handlers.insert(entry));
+
+        let doc = rt.documents.get_mut(document.0).unwrap();
+        doc.event_handlers.insert::<E>(id);
+
+        if let Some(parent) = parent {
+            rt.event_handler_parents.entry(parent).or_default().push(id);
+        }
+    }
+
+    fn destroy_document(&self, id: DocumentId) {
+        let rt = self.inner.lock();
+
+        let Some(document) = rt.documents.get(id.0) else {
+            return;
+        };
+
+        let nodes = document.root_nodes.clone();
+        drop(rt);
+
+        for node in nodes {
+            self.remove(node);
+        }
+
+        let mut rt = self.inner.lock();
+        rt.documents.remove(id.0);
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct RuntimeInner {
+    pub(crate) windows: HashMap<RenderTarget, Window>,
+    pub(crate) documents: Arena<Document>,
+    pub(crate) nodes: Arena<Node>,
+    hierarchy: NodeHierarchy,
+    event_handlers: Arena<EventHandlerEntry>,
+    event_handler_parents: HashMap<NodeId, Vec<EventHandlerId>>,
+}
+
+impl RuntimeInner {
+    pub(crate) fn get_event_handler<E>(&self, id: EventHandlerId) -> EventHandler<E>
+    where
+        E: Event,
+    {
+        let entry = self.event_handlers.get(id.0).unwrap();
+        assert_eq!(TypeId::of::<E>(), entry.event);
+
+        EventHandler {
+            ptr: entry.handler.clone(),
+            _marker: PhantomData,
+        }
+    }
+
+    fn unregister(&mut self, id: EventHandlerId) {
+        let entry = self.event_handlers.remove(id.0).unwrap();
+
+        self.documents
+            .get_mut(entry.document.0)
+            .unwrap()
+            .event_handlers
+            .remove(id);
+    }
+}
+
+#[derive(Clone, Debug)]
+struct EventHandlerEntry {
+    handler: Arc<Mutex<EventHandlerPtr>>,
+    document: DocumentId,
+    event: TypeId,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub(crate) struct EventHandlerId(arena::Key);
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct DocumentId(pub(crate) arena::Key);
+
+#[derive(Debug)]
+pub struct Window {
+    pub documents: Vec<DocumentId>,
+    size: UVec2,
+}
+
+#[derive(Debug)]
+pub struct Document {
+    pub(crate) event_handlers: EventHandlers,
+    pub(crate) layout: LayoutTree,
+    pub(crate) layout_node_map: HashMap<NodeId, layout::Key>,
+    pub(crate) layout_node_map2: HashMap<layout::Key, NodeId>,
+    pub(crate) type_map: HashMap<TypeId, Arc<dyn std::any::Any + Send + Sync + 'static>>,
+    pub(crate) root_nodes: Vec<NodeId>,
+}
+
+#[derive(Debug)]
+pub struct Node {
+    primitive: Primitive,
+    event_handlers: EventHandlers,
+    document: Option<DocumentId>,
+}
+
+impl Node {
+    pub fn new(primitive: Primitive) -> Self {
+        Self {
+            primitive,
+            event_handlers: EventHandlers::default(),
+            document: None,
+        }
+    }
+
+    // pub fn register<E, F>(&mut self, handler: F)
+    // where
+    //     F: FnMut(Context<E>) + Send + Sync + 'static,
+    //     E: Event,
+    // {
+    //     self.event_handlers.insert(handler);
+    // }
+
+    // pub(crate) fn get<E>(&self) -> Option<Vec<EventHandler<E>>>
+    // where
+    //     E: Event,
+    // {
+    //     self.event_handlers.get()
+    // }
+}
+
+struct Header {
+    call: unsafe fn(NonNull<()>, *const ()),
+    drop: unsafe fn(NonNull<()>),
+    layout: Layout,
+}
+
+#[repr(C)]
+struct RawEventHandler<E> {
+    header: Header,
+    handler: ManuallyDrop<Box<dyn FnMut(Context<E>) + Send + Sync + 'static>>,
+}
+
+impl<E> RawEventHandler<E> {
+    const LAYOUT: Layout = Layout::new::<Self>();
+
+    unsafe fn call(ptr: NonNull<()>, event: *const ()) {
+        unsafe {
+            let this = ptr.cast::<Self>().as_mut();
+            let event = event.cast::<Context<E>>().read();
+
+            (this.handler)(event);
+        }
+    }
+
+    unsafe fn drop(ptr: NonNull<()>) {
+        unsafe {
+            let this = ptr.cast::<Self>().as_mut();
+            ManuallyDrop::drop(&mut this.handler);
+        }
+    }
+}
+
+#[derive(Debug)]
+struct EventHandlerPtr {
+    ptr: NonNull<()>,
+}
+
+impl EventHandlerPtr {
+    fn new<E, F>(f: F) -> Self
+    where
+        F: FnMut(Context<E>) + Send + Sync + 'static,
+    {
+        let layout = RawEventHandler::<E>::LAYOUT;
+        let ptr = unsafe {
+            let ptr = std::alloc::alloc(layout);
+            if ptr.is_null() {
+                std::alloc::handle_alloc_error(layout);
+            }
+
+            ptr.cast::<RawEventHandler<E>>()
+                .write(RawEventHandler::<E> {
+                    header: Header {
+                        call: RawEventHandler::<E>::call,
+                        drop: RawEventHandler::<E>::drop,
+                        layout: RawEventHandler::<E>::LAYOUT,
+                    },
+                    handler: ManuallyDrop::new(Box::new(f)),
+                });
+
+            NonNull::new_unchecked(ptr).cast::<()>()
+        };
+
+        Self { ptr }
+    }
+
+    unsafe fn call<E>(&mut self, event: Context<E>)
+    where
+        E: Event,
+    {
+        let event = MaybeUninit::new(event);
+
+        unsafe {
+            let header = self.ptr.cast::<Header>().as_ref();
+            (header.call)(self.ptr, event.as_ptr().cast::<()>());
+        }
+    }
+}
+
+impl Drop for EventHandlerPtr {
+    fn drop(&mut self) {
+        unsafe {
+            let header = self.ptr.cast::<Header>().as_ref();
+            (header.drop)(self.ptr);
+
+            let layout = header.layout;
+            std::alloc::dealloc(self.ptr.as_ptr().cast::<u8>(), layout);
+        }
+    }
+}
+
+unsafe impl Send for EventHandlerPtr {}
+unsafe impl Sync for EventHandlerPtr {}
+
+pub(crate) struct EventHandler<E> {
+    ptr: Arc<Mutex<EventHandlerPtr>>,
+    _marker: PhantomData<fn(E)>,
+}
+
+impl<E> EventHandler<E>
+where
+    E: Event,
+{
+    pub fn call(&self, event: Context<E>) {
+        unsafe {
+            self.ptr.lock().call(event);
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+pub(crate) struct EventHandlers {
+    map: HashMap<TypeId, Vec<EventHandlerId>>,
+}
+
+impl EventHandlers {
+    pub(crate) fn get<E>(&self) -> Option<&Vec<EventHandlerId>>
+    where
+        E: Event,
+    {
+        self.map.get(&TypeId::of::<E>())
+    }
+
+    fn insert<E>(&mut self, id: EventHandlerId)
+    where
+        E: Event,
+    {
+        self.map.entry(TypeId::of::<E>()).or_default().push(id);
+    }
+
+    fn remove(&mut self, id: EventHandlerId) {
+        self.map.retain(|_, entries| {
+            entries.retain(|e| *e != id);
+            !entries.is_empty()
+        });
+    }
+}
+
+pub trait Event: Sized + Send + Sync + 'static {}
+
+/// Event that is fired once the node has been destroyed.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct NodeDestroyed;
+
+impl Event for NodeDestroyed {}
+
+#[derive(Clone, Debug)]
+pub struct Context<E> {
+    pub event: E,
+    pub(crate) node: Option<NodeId>,
+    pub(crate) document: DocumentId,
+    pub(crate) runtime: Runtime,
+}
+
+impl<E> Context<E> {
+    pub fn append(&self, node: Node) -> Context<()> {
+        let node = self.runtime.append(self.document, self.node, node).unwrap();
+        Context {
+            event: (),
+            node: Some(node),
+            document: self.document,
+            runtime: self.runtime.clone(),
         }
     }
 
@@ -153,330 +546,172 @@ impl Document {
         &self.runtime
     }
 
-    pub fn run_effects(&self) {
-        let _span = trace_span!("Document::run_effects").entered();
+    pub fn remove(&self, node: NodeId) {
+        self.runtime.remove(node);
+    }
 
-        let mut doc = self.inner.lock();
-
-        let mut rt = self.runtime.inner.lock();
-
-        let queue = rt.queue.clone();
-
-        for effect_id in queue {
-            if !doc.effects.contains(&effect_id) {
-                continue;
-            }
-
-            tracing::trace!("call Effect({:?})", effect_id);
-
-            if cfg!(debug_assertions) {
-                let effect = rt.effects.get(effect_id).unwrap();
-
-                tracing::trace!("Calling Effect {:?}", effect);
-            }
-
-            let mut effect = rt.effects.get_mut(effect_id).unwrap().clone();
-
-            // Drop the document so that effect callee has full access
-            // to the document.
-            drop(rt);
-            drop(doc);
-
-            if effect.first_run {
-                effect.first_run = false;
-
-                ACTIVE_EFFECT.with(|cell| {
-                    let mut data = cell.borrow_mut();
-                    data.first_run = true;
-                });
-
-                (effect.f.lock())();
-
-                let mut stack = ACTIVE_EFFECT.with(|cell| {
-                    let mut data = cell.borrow_mut();
-                    data.first_run = false;
-                    std::mem::take(&mut data.stack)
-                });
-                tracing::trace!("subscribing Effect({:?}) to signals {:?}", effect_id, stack);
-
-                // We only want to track each effect once.
-                stack.dedup();
-
-                rt = self.runtime.inner.lock();
-                for signal in stack {
-                    rt.subscribers.entry(signal).or_default().push(effect_id);
-                    rt.subscribers_by_effect
-                        .entry(effect_id)
-                        .or_default()
-                        .push(signal);
-                }
-            } else {
-                // `first_run` is set to `false` at the end of a first effect
-                // call.
-                if cfg!(debug_assertions) {
-                    ACTIVE_EFFECT.with(|cell| {
-                        let data = cell.borrow();
-                        assert!(!data.first_run);
-                    });
-                }
-
-                (effect.f.lock())();
-
-                rt = self.runtime.inner.lock();
-            }
-
-            doc = self.inner.lock();
-
-            rt.queue.remove(&effect_id);
+    pub fn clear_children(&self) {
+        if let Some(node) = self.node {
+            self.runtime.clear_children(node);
         }
     }
 
-    pub fn flush_node_queue(&self, tree: &mut LayoutTree, events: &mut Events) {
-        let _span = trace_span!("Document::flush_node_queue").entered();
+    pub fn document(&self) -> DocumentRef<'_> {
+        DocumentRef {
+            rt: &self.runtime,
+            id: self.document,
+        }
+    }
 
-        let mut doc = self.inner.lock();
+    pub fn cursor(&self) -> Vec2 {
+        match self.runtime.cursor.lock().as_ref() {
+            Some(cursor) => cursor.position(),
+            None => Vec2::ZERO,
+        }
+    }
+
+    pub fn node(&self) -> Option<NodeId> {
+        self.node
+    }
+
+    pub fn layout(&self, node: NodeId) -> Option<Rect> {
         let mut rt = self.runtime.inner.lock();
+        let doc = rt.documents.get_mut(self.document.0)?;
+        doc.layout.compute_layout();
 
-        while let Some(event) = doc.events.pop_front() {
-            match event {
-                Event::CreateNode(id, node) => {
-                    let parent = doc
-                        .nodes
-                        .parent(id)
-                        .and_then(|parent| doc.nodes.get(parent));
+        let key = doc.layout_node_map.get(&node)?;
+        let layout = doc.layout.layout(*key).unwrap();
+        Some(Rect {
+            min: layout.position,
+            max: UVec2 {
+                x: layout.position.x + layout.width,
+                y: layout.position.y + layout.height,
+            },
+        })
+    }
 
-                    let key = tree.push(parent, node.element);
-
-                    doc.nodes.set(id, key);
-                    events.insert(key, node.events);
-                }
-                Event::RemoveNode(id) => {
-                    // Reborrow fields so we can move it to closure partially.
-                    let doc = &mut *doc;
-                    let nodes = &mut doc.nodes;
-                    let effects_by_node = &mut doc.effects_by_node;
-                    let effects = &mut doc.effects;
-
-                    nodes.remove(id, |node_id, key| {
-                        if let Some(key) = key {
-                            tree.remove(key);
-                            events.remove(key);
-                        }
-
-                        if let Some(effect_ids) = effects_by_node.remove(&Some(node_id)) {
-                            for id in effect_ids {
-                                effects.remove(&id);
-                                rt.effects.remove(id);
-
-                                if let Some(signals) = rt.subscribers_by_effect.remove(&id) {
-                                    for signal in signals {
-                                        rt.subscribers.remove(&signal);
-                                    }
-                                }
-                            }
-                        }
-                    });
-                }
-                Event::UpdateNode(id, node) => {
-                    if let Some(key) = doc.nodes.get(id) {
-                        tree.replace(key, node.element);
-
-                        if let Some(e) = events.get_mut(key) {
-                            *e = node.events;
-                        }
-                    } else {
-                        tracing::trace!("node {:?} does not exist", id);
-                    }
-                }
-                Event::UpdateStyle(id, style) => {
-                    if let Some(key) = doc.nodes.get(id) {
-                        tree.get_mut(key).unwrap().style = style;
-                    } else {
-                        tracing::warn!("node {:?} does not exist", id);
-                    }
-                }
-            }
+    pub fn with_event<U>(self, event: U) -> Context<U> {
+        Context {
+            event,
+            node: self.node,
+            document: self.document,
+            runtime: self.runtime,
         }
     }
 }
 
-#[derive(Debug)]
-pub enum Event {
-    CreateNode(NodeId, Node),
-    UpdateNode(NodeId, Node),
-    RemoveNode(NodeId),
-    UpdateStyle(NodeId, Style),
+pub struct DocumentRef<'a> {
+    rt: &'a Runtime,
+    id: DocumentId,
 }
+
+impl<'a> DocumentRef<'a> {
+    pub fn register<E, F>(&self, handler: F)
+    where
+        F: FnMut(Context<E>) + Send + Sync + 'static,
+        E: Event,
+    {
+        self.rt.register_on_document(self.id, None, handler);
+    }
+
+    pub fn register_with_parent<E, F>(&self, parent: NodeId, handler: F)
+    where
+        F: FnMut(Context<E>) + Send + Sync + 'static,
+        E: Event,
+    {
+        self.rt.register_on_document(self.id, Some(parent), handler);
+    }
+
+    pub fn get<T>(&self) -> Option<Arc<T>>
+    where
+        T: Send + Sync + 'static,
+    {
+        let rt = self.rt.inner.lock();
+        let doc = rt.documents.get(self.id.0)?;
+        doc.type_map
+            .get(&TypeId::of::<T>())
+            .map(|v| v.clone().downcast().unwrap())
+    }
+
+    pub fn insert<T>(&self, value: T)
+    where
+        T: Send + Sync + 'static,
+    {
+        let mut rt = self.rt.inner.lock();
+        let doc = rt.documents.get_mut(self.id.0).unwrap();
+        doc.type_map.insert(TypeId::of::<T>(), Arc::new(value));
+    }
+
+    pub fn remove<T>(&self) -> Option<Arc<T>>
+    where
+        T: Send + Sync + 'static,
+    {
+        let mut rt = self.rt.inner.lock();
+        let doc = rt.documents.get_mut(self.id.0)?;
+        doc.type_map
+            .remove(&TypeId::of::<T>())
+            .map(|v| v.clone().downcast().unwrap())
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct NodeId(pub(crate) arena::Key);
 
 #[derive(Clone, Debug, Default)]
 struct NodeHierarchy {
-    nodes: SlotMap<NodeId, Option<Key>>,
     children: HashMap<NodeId, Vec<NodeId>>,
     parents: HashMap<NodeId, NodeId>,
 }
 
 impl NodeHierarchy {
-    pub fn len(&self) -> usize {
-        self.nodes.len()
-    }
+    // pub fn is_empty(&self) -> bool {
+    //     self.len() == 0
+    // }
 
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
+    // pub fn push(&mut self, parent: Option<NodeId>) -> NodeId {
+    //     let key = self.nodes.insert(None);
 
-    pub fn push(&mut self, parent: Option<NodeId>) -> NodeId {
-        let key = self.nodes.insert(None);
+    //     if let Some(parent) = parent {
+    //         debug_assert!(self.nodes.contains_key(parent));
 
-        if let Some(parent) = parent {
-            debug_assert!(self.nodes.contains_key(parent));
+    //         self.parents.insert(key, parent);
+    //         self.children.entry(parent).or_default().push(key);
+    //     }
 
-            self.parents.insert(key, parent);
-            self.children.entry(parent).or_default().push(key);
-        }
+    //     key
+    // }
 
-        key
-    }
+    // pub fn remove<F: FnMut(NodeId, Option<Key>)>(&mut self, key: NodeId, mut op: F) {
+    //     let mut queue: VecDeque<_> = [key].into();
 
-    pub fn remove<F: FnMut(NodeId, Option<Key>)>(&mut self, key: NodeId, mut op: F) {
-        let mut queue: VecDeque<_> = [key].into();
+    //     while let Some(key) = queue.pop_front() {
+    //         let k = self.nodes.remove(key).flatten();
 
-        while let Some(key) = queue.pop_front() {
-            let k = self.nodes.remove(key).flatten();
+    //         op(key, k);
 
-            op(key, k);
+    //         if let Some(parent) = self.parents.remove(&key) {
+    //             if let Some(children) = self.children.get_mut(&parent) {
+    //                 children.retain(|id| *id != key);
+    //             }
+    //         }
 
-            if let Some(parent) = self.parents.remove(&key) {
-                if let Some(children) = self.children.get_mut(&parent) {
-                    children.retain(|id| *id != key);
-                }
-            }
+    //         if let Some(children) = self.children.remove(&key) {
+    //             queue.extend(children);
+    //         }
+    //     }
+    // }
 
-            if let Some(children) = self.children.remove(&key) {
-                queue.extend(children);
-            }
-        }
-    }
+    // pub fn get(&self, key: NodeId) -> Option<Key> {
+    //     self.nodes.get(key).copied().flatten()
+    // }
 
-    pub fn get(&self, key: NodeId) -> Option<Key> {
-        self.nodes.get(key).copied().flatten()
-    }
+    // pub fn set(&mut self, id: NodeId, key: Key) {
+    //     if let Some(node) = self.nodes.get_mut(id) {
+    //         *node = Some(key);
+    //     }
+    // }
 
-    pub fn set(&mut self, id: NodeId, key: Key) {
-        if let Some(node) = self.nodes.get_mut(id) {
-            *node = Some(key);
-        }
-    }
-
-    pub fn parent(&self, key: NodeId) -> Option<NodeId> {
-        self.parents.get(&key).copied()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::events::{ElementEventHandlers, Events};
-    use crate::layout::LayoutTree;
-    use crate::reactive::Runtime;
-    use crate::render::{Element, ElementBody};
-    use crate::style::Style;
-
-    use super::{Document, Node};
-
-    pub(super) fn create_node() -> Node {
-        Node {
-            element: Element {
-                body: ElementBody::Container,
-                style: Style::default(),
-            },
-            events: ElementEventHandlers::default(),
-        }
-    }
-
-    #[test]
-    fn document_cleanup() {
-        let rt = Runtime::new();
-        let doc = Document::new(rt);
-        let cx = doc.root_scope();
-
-        let mut tree = LayoutTree::new();
-        let mut events = Events::new();
-
-        let id = cx.push(create_node()).id().unwrap();
-
-        doc.run_effects();
-        doc.flush_node_queue(&mut tree, &mut events);
-
-        cx.remove(id);
-
-        doc.run_effects();
-        doc.flush_node_queue(&mut tree, &mut events);
-
-        assert!(doc.inner.lock().nodes.is_empty());
-        assert!(tree.is_empty());
-        assert!(events.is_empty());
-    }
-
-    #[test]
-    fn document_cleanup_children() {
-        let rt = Runtime::new();
-        let doc = Document::new(rt);
-        let cx = doc.root_scope();
-
-        let mut tree = LayoutTree::new();
-        let mut events = Events::new();
-
-        let id = {
-            let cx = cx.push(create_node());
-            cx.push(create_node());
-            cx.push(create_node());
-            cx.id().unwrap()
-        };
-
-        doc.run_effects();
-        doc.flush_node_queue(&mut tree, &mut events);
-
-        cx.remove(id);
-
-        doc.run_effects();
-        doc.flush_node_queue(&mut tree, &mut events);
-
-        assert!(doc.inner.lock().nodes.is_empty());
-        assert!(tree.is_empty());
-        assert!(events.is_empty());
-    }
-
-    #[test]
-    fn document_remove_parent_children() {
-        let rt = Runtime::new();
-        let doc = Document::new(rt);
-        let cx = doc.root_scope();
-
-        let mut tree = LayoutTree::new();
-        let mut events = Events::new();
-
-        let parent = cx.push(create_node());
-        let children = parent.push(create_node());
-
-        doc.run_effects();
-        doc.flush_node_queue(&mut tree, &mut events);
-
-        cx.remove(parent.id().unwrap());
-        cx.remove(children.id().unwrap());
-    }
-
-    #[test]
-    fn document_insert_remove() {
-        let rt = Runtime::new();
-        let doc = Document::new(rt);
-        let cx = doc.root_scope();
-
-        let mut tree = LayoutTree::new();
-        let mut events = Events::new();
-
-        let node = cx.push(create_node());
-        node.remove(node.id().unwrap());
-
-        doc.run_effects();
-        doc.flush_node_queue(&mut tree, &mut events);
-    }
+    // pub fn parent(&self, key: NodeId) -> Option<NodeId> {
+    //     self.parents.get(&key).copied()
+    // }
 }

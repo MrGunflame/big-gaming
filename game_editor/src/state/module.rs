@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use game_common::module::{Module, ModuleId};
-use game_ui::reactive::{ReadSignal, WriteSignal};
+use game_ui::widgets::Callback;
 use parking_lot::{Mutex, RwLock};
 
 use super::capabilities::Capabilities;
@@ -13,14 +13,15 @@ use super::capabilities::Capabilities;
 #[derive(Clone, Debug, Default)]
 pub struct Modules {
     modules: Arc<RwLock<HashMap<ModuleId, EditorModule>>>,
-    signal: Arc<Mutex<Option<WriteSignal<()>>>>,
+    // FIXME: What about multiple listeners?
+    on_change: Arc<Mutex<Callback<()>>>,
 }
 
 impl Modules {
     pub fn new() -> Self {
         Self {
             modules: Arc::default(),
-            signal: Arc::new(Mutex::new(None)),
+            on_change: Arc::default(),
         }
     }
 
@@ -34,12 +35,12 @@ impl Modules {
     }
 
     pub fn insert(&self, module: EditorModule) {
-        let mut modules = self.modules.write();
-        modules.insert(module.module.id, module);
-
-        if let Some(signal) = &*self.signal.lock() {
-            signal.wake();
+        {
+            let mut modules = self.modules.write();
+            modules.insert(module.module.id, module);
         }
+
+        self.on_change.lock().clone().call(());
     }
 
     pub fn get(&self, id: ModuleId) -> Option<EditorModule> {
@@ -48,12 +49,12 @@ impl Modules {
     }
 
     pub fn remove(&self, id: ModuleId) {
-        let mut modules = self.modules.write();
-        modules.remove(&id);
-
-        if let Some(signal) = &*self.signal.lock() {
-            signal.wake();
+        {
+            let mut modules = self.modules.write();
+            modules.remove(&id);
         }
+
+        self.on_change.lock().clone().call(());
     }
 
     pub fn iter(&self) -> ModuleIter<'_> {
@@ -63,15 +64,8 @@ impl Modules {
         ModuleIter { inner: self, keys }
     }
 
-    pub fn signal(&self, insert: impl FnOnce() -> WriteSignal<()>) -> ReadSignal<()> {
-        let mut signal = self.signal.lock();
-        match &*signal {
-            Some(signal) => signal.subscribe(),
-            None => {
-                *signal = Some(insert());
-                signal.as_ref().unwrap().subscribe()
-            }
-        }
+    pub fn set_on_change(&self, cb: Callback<()>) {
+        *self.on_change.lock() = cb;
     }
 }
 

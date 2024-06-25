@@ -3,17 +3,21 @@ mod error;
 pub mod main_window;
 pub mod modules;
 mod open_module;
-// mod record;
+// // mod record;
 // mod records;
 mod world;
 
 use game_common::module::ModuleId;
 use game_common::world::World;
 use game_data::record::{Record, RecordKind};
+use game_render::camera::RenderTarget;
 use game_render::Renderer;
-use game_ui::reactive::{Document, Runtime};
+use game_ui::reactive::{Document, DocumentId, Runtime};
+use game_ui::widgets::Widget;
+use game_ui::UiState;
 use game_window::events::WindowEvent;
 use game_window::windows::WindowId;
+use modules::Modules;
 
 use crate::state::EditorState;
 use crate::windows::create_module::CreateModule;
@@ -22,23 +26,23 @@ use crate::windows::error::Error;
 // use crate::windows::records::Records;
 
 use self::main_window::MainWindow;
-use self::modules::Modules;
+// use self::modules::Modules;
 use self::open_module::OpenModule;
-// use self::record::CreateRecord;
+// // use self::record::CreateRecord;
 use self::world::WorldWindowState;
 
 pub enum Window {
-    View(Document, WorldWindowState),
-    Other(Document),
+    View(DocumentId, WorldWindowState),
+    Other(DocumentId),
 }
 
 impl Window {
-    pub fn doc(&self) -> Option<Document> {
-        match self {
-            Self::View(doc, _) => Some(doc.clone()),
-            Self::Other(doc) => Some(doc.clone()),
-        }
-    }
+    // pub fn doc(&self) -> Option<Document> {
+    //     match self {
+    //         Self::View(doc, _) => Some(doc.clone()),
+    //         Self::Other(doc) => Some(doc.clone()),
+    //     }
+    // }
 
     pub fn handle_event(
         &mut self,
@@ -65,56 +69,63 @@ pub fn spawn_window(
     world: &mut World,
     renderer: &mut Renderer,
     state: EditorState,
-    rt: Runtime,
+    ui_state: &UiState,
     event: SpawnWindow,
     window_id: WindowId,
     modules: game_core::modules::Modules,
 ) -> Window {
-    let document = Document::new(rt);
+    let rt = ui_state.runtime();
+    if rt.documents(RenderTarget::Window(window_id)).is_empty() {
+        rt.create_document(RenderTarget::Window(window_id));
+    }
+    let document = rt.documents(RenderTarget::Window(window_id))[0];
 
-    let cx = document.root_scope();
+    let ctx = rt.root_context(document);
     match event {
         SpawnWindow::MainWindow => {
-            cx.append(MainWindow { state });
+            MainWindow { state }.mount(&ctx);
         }
         SpawnWindow::Modules => {
-            cx.append(Modules { state });
+            Modules { state }.mount(&ctx);
         }
         SpawnWindow::OpenModule => {
-            cx.append(OpenModule {
+            OpenModule {
                 handle: state.handle,
-            });
-        }
-        SpawnWindow::CreateModule => {
-            cx.append(CreateModule {
-                modules: state.modules,
-            });
+            }
+            .mount(&ctx);
         }
         SpawnWindow::Error(msg) => {
-            cx.append(Error { message: msg });
+            Error { message: msg }.mount(&ctx);
+        }
+        SpawnWindow::CreateModule => {
+            CreateModule {
+                modules: state.modules,
+            }
+            .mount(&ctx);
         }
         SpawnWindow::Records => {
             // cx.append(Records { state });
         }
-        SpawnWindow::CreateRecord(kind) => {
-            // cx.append(CreateRecord {
-            //     kind,
-            //     records: state.records,
-            //     modules: state.modules,
-            // });
-        }
-        SpawnWindow::EditRecord(module_id, record) => {
-            // cx.append(EditRecord {
-            //     record,
-            //     module_id,
-            //     records: state.records,
-            //     modules: state.modules,
-            // });
-        }
         SpawnWindow::View => {
-            let window = world::WorldWindowState::new(&cx, window_id, world, modules);
+            let window = world::WorldWindowState::new(&ctx, window_id, world, modules);
             return Window::View(document, window);
         }
+        _ => todo!(),
+        // SpawnWindow::CreateRecord(kind) => {
+        //     // cx.append(CreateRecord {
+        //     //     kind,
+        //     //     records: state.records,
+        //     //     modules: state.modules,
+        //     // });
+        // }
+        // SpawnWindow::EditRecord(module_id, record) => {
+        //     // cx.append(EditRecord {
+        //     //     record,
+        //     //     module_id,
+        //     //     records: state.records,
+        //     //     modules: state.modules,
+        //     // });
+        // }
     }
 
     Window::Other(document)

@@ -1,49 +1,40 @@
 use std::ops::Deref;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
-use game_input::keyboard::KeyCode;
-use game_window::cursor::CursorIcon;
-use image::Rgba;
+use game_input::keyboard::{KeyCode, KeyboardInput};
+use game_input::mouse::MouseButtonInput;
 
-use crate::events::{ElementEventHandlers, EventHandlers};
-use crate::reactive::{Node, Scope};
-use crate::render::{Element, ElementBody};
-use crate::style::{Background, BorderRadius, Padding, Size, Style};
+use crate::reactive::Context;
+use crate::style::{Bounds, Size, SizeVec2, Style};
 
-use super::text::Text;
-use super::{Callback, ValueProvider, Widget};
+use super::{Callback, Container, Text, Widget};
 
 pub struct Input {
-    value: ValueProvider<String>,
-    style: Style,
-    on_change: Option<Callback<String>>,
+    pub value: String,
+    pub on_change: Callback<String>,
+    pub style: Style,
 }
 
 impl Input {
     pub fn new() -> Self {
-        let default_style = Style {
-            background: Background::Color(Rgba([0x2c, 0x2a, 0x35, 0xff])),
-            padding: Padding::splat(Size::Pixels(5)),
-            border_radius: BorderRadius::splat(Size::Pixels(2)),
-            ..Default::default()
-        };
-
         Self {
-            value: ValueProvider::Static(String::new()),
-            style: default_style,
-            on_change: None,
+            value: String::new(),
+            on_change: Callback::default(),
+            style: Style {
+                // Minimum size to prevent the input widget to
+                // completely disappear.
+                bounds: Bounds::from_min(SizeVec2::splat(Size::Pixels(10))),
+                ..Default::default()
+            },
         }
     }
 
     pub fn value<T>(mut self, value: T) -> Self
     where
-        T: Into<ValueProvider<String>>,
+        T: ToString,
     {
-        self.value = value.into();
-        self
-    }
-
-    pub fn style(mut self, style: Style) -> Self {
-        self.style = style;
+        self.value = value.to_string();
         self
     }
 
@@ -51,161 +42,117 @@ impl Input {
     where
         T: Into<Callback<String>>,
     {
-        self.on_change = Some(on_change.into());
+        self.on_change = on_change.into();
+        self
+    }
+
+    pub fn style(mut self, style: Style) -> Self {
+        self.style = style;
         self
     }
 }
 
-impl Default for Input {
-    fn default() -> Self {
-        Self::new()
+impl Widget for Input {
+    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+        let mut buffer = Buffer::new(self.value.clone());
+        let is_selected = Arc::new(AtomicBool::new(false));
+
+        let node_ctx = Container::new().style(self.style).mount(parent);
+        let node_id = node_ctx.node().unwrap();
+
+        {
+            let node_ctx = node_ctx.clone();
+            let is_selected = is_selected.clone();
+            parent
+                .document()
+                .register_with_parent(node_id, move |ctx: Context<KeyboardInput>| {
+                    if !is_selected.load(Ordering::Acquire)
+                        || !update_buffer(&mut buffer, &ctx.event)
+                    {
+                        return;
+                    }
+
+                    let mut string = buffer.string.clone();
+                    string.insert(buffer.cursor, '|');
+
+                    node_ctx.clear_children();
+                    let text = Text::new(string).size(32.0);
+                    text.mount(&node_ctx);
+
+                    self.on_change.call(buffer.string.clone());
+                });
+        }
+
+        parent
+            .document()
+            .register_with_parent(node_id, move |ctx: Context<MouseButtonInput>| {
+                if let Some(node) = ctx.layout(node_id) {
+                    if node.contains(ctx.cursor().as_uvec2()) {
+                        is_selected.store(true, Ordering::Release);
+                    } else {
+                        is_selected.store(false, Ordering::Release);
+                    }
+                }
+            });
+
+        let text = Text::new(self.value).size(32.0);
+        text.clone().mount(&node_ctx);
+
+        node_ctx
     }
 }
 
-impl Widget for Input {
-    fn build(self, cx: &Scope) -> Scope {
-        let (value, set_value) = cx.create_signal(self.value.get());
-        let (buffer, set_buffer) = cx.create_signal(Buffer::new(self.value.get()));
+fn update_buffer(buffer: &mut Buffer, event: &KeyboardInput) -> bool {
+    // Don't trigger when releasing the button.
+    if !event.state.is_pressed() {
+        return false;
+    }
 
-        match self.value {
-            ValueProvider::Static(_) => (),
-            ValueProvider::Reader(reader) => {
-                let set_buffer = set_buffer.clone();
-                cx.create_effect(move || {
-                    let value = reader.get();
+    match event.key_code {
+        Some(KeyCode::Left) => {
+            buffer.move_back();
+            return true;
+        }
+        Some(KeyCode::Right) => {
+            buffer.move_forward();
+            return true;
+        }
+        Some(KeyCode::Home) => {
+            buffer.move_to_start();
+            return true;
+        }
+        Some(KeyCode::End) => {
+            buffer.move_to_end();
+            return true;
+        }
+        _ => (),
+    }
 
-                    set_buffer.update(|buf| {
-                        buf.string = value;
-                        // We don't know if the new string has the same
-                        // length, so just reset the cursor to start.
-                        buf.move_to_start();
-                        buf.user_updated = false;
-                    })
-                });
+    match event.text.as_ref().map(|s| s.as_str()) {
+        Some("\r") => {
+            buffer.push('\n');
+            true
+        }
+        // Backspace
+        Some("\u{8}") => {
+            buffer.remove_prev();
+            true
+        }
+        // Delete
+        Some("\u{7F}") => {
+            buffer.remove_next();
+            true
+        }
+        Some(text) => {
+            for char in text.chars() {
+                if !char.is_control() {
+                    buffer.push(char);
+                }
             }
+
+            true
         }
-
-        let (focus, set_focus) = cx.create_signal(false);
-
-        let root = cx.push(Node {
-            element: Element {
-                body: ElementBody::Container,
-                style: self.style,
-            },
-            events: ElementEventHandlers {
-                global: EventHandlers {
-                    keyboard_input: Some(Box::new({
-                        let set_value = set_buffer.clone();
-                        let focus = focus.clone();
-
-                        move |ctx| {
-                            if !focus.get_untracked() {
-                                return;
-                            }
-
-                            if !ctx.event.state.is_pressed() {
-                                return;
-                            }
-
-                            match ctx.event.key_code {
-                                Some(KeyCode::Left) => {
-                                    set_value.update(|string| string.move_back());
-                                }
-                                Some(KeyCode::Right) => {
-                                    set_value.update(|string| string.move_forward());
-                                }
-                                Some(KeyCode::Home) => {
-                                    set_value.update(|string| string.move_to_start());
-                                }
-                                Some(KeyCode::End) => {
-                                    set_value.update(|string| string.move_to_end());
-                                }
-                                _ => (),
-                            }
-
-                            match ctx.event.text.as_ref().map(|s| s.as_str()) {
-                                // Return creates a newline.
-                                Some("\r") => {
-                                    set_buffer.update(|string| {
-                                        string.push('\n');
-                                        string.user_updated = true;
-                                    });
-                                }
-                                // Backspace
-                                Some("\u{8}") => set_buffer.update(|string| {
-                                    string.remove_prev();
-                                    string.user_updated = true;
-                                }),
-                                // Delete
-                                Some("\u{7F}") => set_buffer.update(|string| {
-                                    string.remove_next();
-                                    string.user_updated = true;
-                                }),
-                                Some(text) => {
-                                    for char in text.chars() {
-                                        if !char.is_control() {
-                                            set_buffer.update(|string| {
-                                                string.push(char);
-                                                string.user_updated = true;
-                                            });
-                                        }
-                                    }
-                                }
-                                None => (),
-                            }
-                        }
-                    })),
-                    mouse_button_input: Some(Box::new({
-                        let set_focus = set_focus.clone();
-
-                        // Whenever we receive a click we remove focus from the input
-                        // element. If the cursor clicks the input element the local
-                        // handlers catches this afterwards.
-                        // FIXME: This is exploiting the fact that global handlers are
-                        // called before local ones, which is currently unspecified.
-                        move |_ctx| {
-                            set_focus.set(false);
-                        }
-                    })),
-                    ..Default::default()
-                },
-                local: EventHandlers {
-                    cursor_entered: Some(Box::new(move |ctx| {
-                        ctx.window.set_cursor_icon(CursorIcon::Text);
-                    })),
-                    cursor_left: Some(Box::new(move |ctx| {
-                        ctx.window.set_cursor_icon(CursorIcon::Default);
-                    })),
-                    mouse_button_input: Some(Box::new(move |_ctx| {
-                        set_focus.set(true);
-                    })),
-                    ..Default::default()
-                },
-            },
-        });
-
-        {
-            let buffer = buffer.clone();
-            cx.create_effect(move || {
-                let buffer = buffer.get();
-                set_value.set(buffer.string.clone());
-
-                // Only update if the user has caused the change. This is
-                // important because we don't want to call `on_change` if
-                // the value changed via a `ReadSignal`.
-                if !buffer.user_updated {
-                    return;
-                }
-
-                if let Some(cb) = &self.on_change {
-                    (cb.0)(buffer.string);
-                }
-            });
-        }
-
-        root.append(Text::new().text(ValueProvider::Reader(value)));
-
-        root
+        _ => false,
     }
 }
 
@@ -215,10 +162,6 @@ struct Buffer {
     string: String,
     /// Position of the cursor.
     cursor: usize,
-    /// Whether the buffer was update by the user.
-    ///
-    /// This is important to break circular updates when the value changes via a read signal.
-    user_updated: bool,
 }
 
 impl Buffer {
@@ -229,11 +172,7 @@ impl Buffer {
             .map(|(i, c)| i + c.len_utf8())
             .unwrap_or(0);
 
-        Self {
-            string,
-            cursor,
-            user_updated: false,
-        }
+        Self { string, cursor }
     }
 
     fn push(&mut self, ch: char) {

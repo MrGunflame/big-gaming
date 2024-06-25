@@ -1,8 +1,7 @@
 use image::{ImageBuffer, Rgba};
 
-use crate::events::ElementEventHandlers;
-use crate::reactive::{Node, Scope};
-use crate::render::{self, Element, ElementBody};
+use crate::primitive::Primitive;
+use crate::reactive::{Context, Node};
 use crate::style::Style;
 
 use super::Widget;
@@ -38,13 +37,11 @@ impl Default for Image {
 }
 
 impl Widget for Image {
-    fn build(self, cx: &Scope) -> Scope {
-        cx.push(Node {
-            element: Element {
-                body: ElementBody::Image(render::Image { image: self.image }),
-                style: self.style,
-            },
-            events: ElementEventHandlers::default(),
-        })
+    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+        parent.append(Node::new(Primitive {
+            style: self.style,
+            image: Some(self.image),
+            text: None,
+        }))
     }
 }

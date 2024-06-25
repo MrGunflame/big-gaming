@@ -1,4 +1,4 @@
-use game_ui::reactive::Scope;
+use game_ui::reactive::Context;
 use game_ui::widgets::{Callback, Widget};
 
 use crate::backend::{Handle, Task};
@@ -9,10 +9,11 @@ pub struct OpenModule {
 }
 
 impl Widget for OpenModule {
-    fn build(self, cx: &Scope) -> Scope {
-        cx.append(Explorer {
+    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+        Explorer {
             on_open: on_open(self.handle),
-        })
+        }
+        .mount(parent)
     }
 }
 

@@ -6,7 +6,7 @@ pub mod main_menu;
 
 use std::sync::mpsc;
 
-use game_ui::reactive::{NodeId, Scope};
+use game_ui::reactive::{Context, NodeId};
 use game_ui::widgets::Widget;
 use game_wasm::world::RecordReference;
 
@@ -32,39 +32,39 @@ impl UiElements {
     /// Updates the health widget to the given value. Removes the widget if `None` is given.
     pub fn update_health(
         &mut self,
-        cx: &mut Scope,
+        ctx: &Context<()>,
         health: Option<Health>,
         tx: &mpsc::Sender<UiEvent>,
     ) {
         if let Some(id) = self.health {
-            cx.remove(id);
+            ctx.remove(id);
         }
 
         if let Some(health) = health {
-            let id = HealthUi { health }.build(cx).id().unwrap();
+            let id = HealthUi { health }.mount(ctx).node().unwrap();
             self.health = Some(id);
 
             if let Some(id) = self.death {
-                cx.remove(id);
+                ctx.remove(id);
             }
         } else {
             if self.death.is_none() {
-                let id = DealthUi { tx: tx.clone() }.build(cx).id().unwrap();
+                let id = DealthUi { tx: tx.clone() }.mount(ctx).node().unwrap();
                 self.death = Some(id);
             }
         }
     }
 
     /// Removes all widgets.
-    pub fn clear(&mut self, cx: &mut Scope) {
+    pub fn clear(&mut self, ctx: &Context<()>) {
         if let Some(id) = self.health {
-            cx.remove(id);
+            ctx.remove(id);
         }
     }
 
-    pub fn update_debug_state(&mut self, cx: &mut Scope, stats: Option<Statistics>) {
+    pub fn update_debug_state(&mut self, ctx: &Context<()>, stats: Option<Statistics>) {
         if let Some(id) = self.debug_stats {
-            cx.remove(id);
+            ctx.remove(id);
         }
 
         if let Some(stats) = stats {
@@ -78,8 +78,8 @@ impl UiElements {
                 fps: self.fps.clone(),
                 rtt: self.rtt.clone(),
             }
-            .build(cx)
-            .id()
+            .mount(ctx)
+            .node()
             .unwrap();
             self.debug_stats = Some(id);
         }

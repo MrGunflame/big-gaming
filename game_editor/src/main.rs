@@ -163,18 +163,11 @@ impl game_window::App for App {
                         &mut self.world,
                         &mut self.renderer,
                         self.state.clone(),
-                        self.ui_state.runtime.clone(),
+                        &self.ui_state,
                         spawn,
                         event.window,
                         self.modules.clone(),
                     );
-
-                    if let Some(doc) = window.doc() {
-                        *self
-                            .ui_state
-                            .get_mut(RenderTarget::Window(event.window))
-                            .unwrap() = doc;
-                    }
 
                     self.active_windows.insert(event.window, window);
                 }
@@ -285,8 +278,7 @@ impl game_window::App for App {
             }
         }
 
-        let mut cmds = Vec::new();
-        self.ui_state.update(&mut cmds);
+        self.ui_state.update();
 
         self.renderer.render(&self.pool);
     }

@@ -72,13 +72,9 @@ impl UiRenderer {
         let _span = trace_span!("UiRenderer::update").entered();
 
         for (id, tree) in self.targets.iter_mut() {
-            if !tree.is_changed() {
-                continue;
-            }
+            tree.compute_layout();
 
             let size = tree.size();
-
-            tree.compute_layout();
 
             let mut cmds = vec![];
             for (elem, layout) in tree.elements().zip(tree.layouts()) {
@@ -103,8 +99,6 @@ impl UiRenderer {
                     cmds.push(cmd);
                 }
             }
-
-            tree.unchanged();
 
             *self.elements.write().get_mut(id).unwrap() = cmds;
         }
@@ -142,5 +136,12 @@ impl Rect {
     #[inline]
     pub fn height(self) -> u32 {
         self.max.y - self.min.y
+    }
+
+    pub fn contains(self, point: UVec2) -> bool {
+        point.x >= self.min.x
+            && point.x <= self.max.x
+            && point.y >= self.min.y
+            && point.y <= self.max.y
     }
 }

@@ -1,339 +1,77 @@
-use std::collections::{HashMap, HashSet};
-use std::fmt::{self, Debug, Formatter};
-use std::ptr::NonNull;
-use std::sync::{mpsc, Arc};
+use std::sync::Arc;
 
 use game_input::keyboard::KeyboardInput;
 use game_input::mouse::{MouseButtonInput, MouseWheel};
 use game_render::camera::RenderTarget;
-use game_window::cursor::{Cursor, CursorIcon};
+use game_window::cursor::Cursor;
 use game_window::events::CursorMoved;
 use game_window::windows::WindowId;
-use glam::{UVec2, Vec2};
+use glam::Vec2;
 
-use crate::layout::{Key, LayoutTree};
+use crate::reactive::{Context, Event, Runtime};
 use crate::render::Rect;
 
-#[derive(Clone, Debug)]
-#[non_exhaustive]
-pub struct Context<T> {
-    pub cursor: Arc<Cursor>,
-    pub event: T,
-    pub window: WindowContext,
-}
+impl Event for KeyboardInput {}
+impl Event for MouseButtonInput {}
+impl Event for MouseWheel {}
+impl Event for CursorMoved {}
 
-impl<T> Context<T> {
-    fn with_event<U>(self, event: U) -> Context<U> {
-        Context {
-            cursor: self.cursor,
-            event,
-            window: self.window,
-        }
-    }
-}
+pub(crate) fn call_events<E>(window: WindowId, runtime: &Runtime, cursor: &Arc<Cursor>, event: E)
+where
+    E: Event + Clone,
+{
+    let mut handlers = Vec::new();
 
-#[derive(Clone, Debug)]
-pub struct WindowContext {
-    window: WindowId,
-    tx: mpsc::Sender<WindowCommand>,
-}
-
-impl WindowContext {
-    pub fn close(&self) {
-        let _ = self.tx.send(WindowCommand::Close(self.window));
-    }
-
-    pub fn set_title<T>(&self, title: T)
-    where
-        T: ToString,
+    // Collect all event handlers first, then release the mutex lock
+    // before calling them. Handlers may call runtime functions, which
+    // would deadlock if the still held the lock.
     {
-        let _ = self
-            .tx
-            .send(WindowCommand::SetTitle(self.window, title.to_string()));
-    }
+        let rt = &mut *runtime.inner.lock();
 
-    pub fn set_cursor_icon(&self, icon: CursorIcon) {
-        let _ = self
-            .tx
-            .send(WindowCommand::SetCursorIcon(self.window, icon));
-    }
-}
-
-#[derive(Clone, Debug)]
-pub enum WindowCommand {
-    Close(WindowId),
-    SetTitle(WindowId, String),
-    SetCursorIcon(WindowId, CursorIcon),
-}
-
-#[derive(Debug, Default)]
-pub struct ElementEventHandlers {
-    pub local: EventHandlers,
-    pub global: EventHandlers,
-}
-
-#[derive(Default)]
-pub struct EventHandlers {
-    pub cursor_moved: Option<Box<dyn Fn(Context<CursorMoved>) + Send + Sync + 'static>>,
-    pub cursor_left: Option<Box<dyn Fn(Context<()>) + Send + Sync + 'static>>,
-    pub cursor_entered: Option<Box<dyn Fn(Context<()>) + Send + Sync + 'static>>,
-    pub mouse_button_input: Option<Box<dyn Fn(Context<MouseButtonInput>) + Send + Sync + 'static>>,
-    pub mouse_wheel: Option<Box<dyn Fn(Context<MouseWheel>) + Send + Sync + 'static>>,
-    pub keyboard_input: Option<Box<dyn Fn(Context<KeyboardInput>) + Send + Sync + 'static>>,
-}
-
-impl Debug for EventHandlers {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        fn map_to_ptr<T: ?Sized>(e: &Option<Box<T>>) -> Option<NonNull<T>> {
-            e.as_ref().map(|e| e.as_ref().into())
-        }
-
-        f.debug_struct("EventHandlers")
-            .field("cursor_moved", &map_to_ptr(&self.cursor_moved))
-            .field("cursor_left", &map_to_ptr(&self.cursor_left))
-            .field("cursor_entered", &map_to_ptr(&self.cursor_entered))
-            .field("mouse_button_input", &map_to_ptr(&self.mouse_button_input))
-            .field("mouse_wheel", &map_to_ptr(&self.mouse_wheel))
-            .field("keyboard_input", &map_to_ptr(&self.keyboard_input))
-            .finish()
-    }
-}
-
-#[derive(Default)]
-pub struct Events {
-    events: HashMap<Key, ElementEventHandlers>,
-    positions: Vec<(Key, Rect)>,
-    hovered_elements: HashSet<Key>,
-}
-
-impl Events {
-    pub fn new() -> Self {
-        Self {
-            events: HashMap::new(),
-            positions: Vec::new(),
-            hovered_elements: HashSet::new(),
-        }
-    }
-
-    pub fn insert(&mut self, key: Key, handlers: ElementEventHandlers) {
-        self.events.insert(key, handlers);
-    }
-
-    pub fn remove(&mut self, key: Key) {
-        self.events.remove(&key);
-    }
-
-    pub fn get_mut(&mut self, key: Key) -> Option<&mut ElementEventHandlers> {
-        self.events.get_mut(&key)
-    }
-
-    pub fn len(&self) -> usize {
-        self.events.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-}
-
-pub fn update_events_from_layout_tree(tree: &mut LayoutTree, events: &mut Events) {
-    events.positions.clear();
-
-    for (key, layout) in tree.keys().zip(tree.layouts()) {
-        let position = Rect {
-            min: layout.position,
-            max: UVec2::new(
-                layout.position.x + layout.width,
-                layout.position.y + layout.height,
-            ),
+        let Some(window) = rt.windows.get(&RenderTarget::Window(window)) else {
+            return;
         };
 
-        events.positions.push((key, position));
-    }
-}
+        for doc_id in &window.documents {
+            let doc = rt.documents.get(doc_id.0).unwrap();
 
-pub(crate) fn dispatch_cursor_moved_events(
-    tx: &mpsc::Sender<WindowCommand>,
-    cursor: &Arc<Cursor>,
-    targets: &mut HashMap<RenderTarget, Events>,
-    event: CursorMoved,
-) {
-    let Some(window) = targets.get_mut(&RenderTarget::Window(event.window)) else {
-        return;
-    };
-
-    let mut hovered = window.hovered_elements.clone();
-    window.hovered_elements.clear();
-
-    for (key, rect) in &window.positions {
-        let Some(handlers) = window.events.get(key) else {
-            continue;
-        };
-
-        let ctx = Context {
-            cursor: cursor.clone(),
-            event,
-            window: WindowContext {
-                window: event.window,
-                tx: tx.clone(),
-            },
-        };
-
-        if let Some(f) = &handlers.global.cursor_moved {
-            f(ctx.clone());
-        }
-
-        if hit_test(*rect, event.position) {
-            if let Some(f) = &handlers.local.cursor_moved {
-                f(ctx.clone());
-            }
-
-            window.hovered_elements.insert(*key);
-            if !hovered.remove(key) {
-                if let Some(f) = &handlers.local.cursor_entered {
-                    f(ctx.clone().with_event(()));
+            if let Some(ids) = doc.event_handlers.get::<E>() {
+                for id in ids {
+                    let handler = rt.get_event_handler(*id);
+                    handlers.push((*doc_id, None, handler));
                 }
             }
+
+            // for (key, layout) in doc.layout.keys().zip(doc.layout.layouts()) {
+            //     let aabb = Rect {
+            //         min: layout.position,
+            //         max: UVec2 {
+            //             x: layout.position.x + layout.width,
+            //             y: layout.position.y + layout.height,
+            //         },
+            //     };
+
+            //     if !hit_test(aabb, cursor.position()) {
+            //         continue;
+            //     }
+
+            //     let node_id = *doc.layout_node_map2.get(&key).unwrap();
+            //     let node = rt.nodes.get_mut(node_id.0).unwrap();
+
+            //     if let Some(handler) = node.get() {
+            //         handlers.push((*doc_id, Some(node_id), handler));
+            //     }
+            // }
         }
     }
 
-    for key in hovered {
-        let Some(handlers) = window.events.get(&key) else {
-            continue;
-        };
-
-        let ctx = Context {
-            cursor: cursor.clone(),
-            event: (),
-            window: WindowContext {
-                window: event.window,
-                tx: tx.clone(),
-            },
-        };
-
-        if let Some(f) = &handlers.local.cursor_left {
-            f(ctx.clone());
-        }
-    }
-}
-
-pub(crate) fn dispatch_mouse_button_input_events(
-    tx: &mpsc::Sender<WindowCommand>,
-    cursor: &Arc<Cursor>,
-    targets: &HashMap<RenderTarget, Events>,
-    event: MouseButtonInput,
-) {
-    let Some(window) = cursor.window() else {
-        return;
-    };
-
-    let Some(window) = targets.get(&RenderTarget::Window(window)) else {
-        return;
-    };
-
-    for (key, rect) in &window.positions {
-        let Some(handlers) = window.events.get(key) else {
-            continue;
-        };
-
-        let ctx = Context {
-            cursor: cursor.clone(),
-            event,
-            window: WindowContext {
-                window: cursor.window().unwrap(),
-                tx: tx.clone(),
-            },
-        };
-
-        if let Some(f) = &handlers.global.mouse_button_input {
-            f(ctx.clone());
-        }
-
-        if hit_test(*rect, cursor.position()) {
-            if let Some(f) = &handlers.local.mouse_button_input {
-                f(ctx);
-            }
-        }
-    }
-}
-
-pub(crate) fn dispatch_mouse_wheel_events(
-    tx: &mpsc::Sender<WindowCommand>,
-    cursor: &Arc<Cursor>,
-    targets: &HashMap<RenderTarget, Events>,
-    event: MouseWheel,
-) {
-    let Some(window) = cursor.window() else {
-        return;
-    };
-
-    let Some(window) = targets.get(&RenderTarget::Window(window)) else {
-        return;
-    };
-
-    for (key, rect) in &window.positions {
-        let Some(handlers) = window.events.get(key) else {
-            continue;
-        };
-
-        let ctx = Context {
-            cursor: cursor.clone(),
-            event,
-            window: WindowContext {
-                window: cursor.window().unwrap(),
-                tx: tx.clone(),
-            },
-        };
-
-        if let Some(f) = &handlers.global.mouse_wheel {
-            f(ctx.clone());
-        }
-
-        if hit_test(*rect, cursor.position()) {
-            if let Some(f) = &handlers.local.mouse_wheel {
-                f(ctx);
-            }
-        }
-    }
-}
-
-pub(crate) fn dispatch_keyboard_input_events(
-    tx: &mpsc::Sender<WindowCommand>,
-    cursor: &Arc<Cursor>,
-    targets: &HashMap<RenderTarget, Events>,
-    event: KeyboardInput,
-) {
-    let Some(window) = cursor.window() else {
-        return;
-    };
-
-    let Some(window) = targets.get(&RenderTarget::Window(window)) else {
-        return;
-    };
-
-    for (key, rect) in &window.positions {
-        let Some(handlers) = window.events.get(key) else {
-            continue;
-        };
-
-        let ctx = Context {
-            cursor: cursor.clone(),
+    for (document, node, handler) in handlers {
+        handler.call(Context {
             event: event.clone(),
-            window: WindowContext {
-                window: cursor.window().unwrap(),
-                tx: tx.clone(),
-            },
-        };
-
-        if let Some(f) = &handlers.global.keyboard_input {
-            f(ctx.clone());
-        }
-
-        if hit_test(*rect, cursor.position()) {
-            if let Some(f) = &handlers.local.keyboard_input {
-                f(ctx);
-            }
-        }
+            node,
+            document,
+            runtime: runtime.clone(),
+        });
     }
 }
 

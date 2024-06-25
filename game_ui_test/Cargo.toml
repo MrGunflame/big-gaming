@@ -1,0 +1,21 @@
+[package]
+name = "game_ui_test"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+game_common = { version = "0.1.0", path = "../game_common" }
+game_ui = { version = "0.1.0", path = "../game_ui" }
+game_data = { version = "0.1.0", path = "../game_data" }
+game_window = { version = "0.1.0", path = "../game_window" }
+game_render = { version = "0.1.0", path = "../game_render" }
+game_input = { version = "0.1.0", path = "../game_input" }
+game_scene = { version = "0.1.0", path = "../game_scene" }
+game_tracing = { version = "0.1.0", path = "../game_tracing" }
+game_tasks = { version = "0.1.0", path = "../game_tasks" }
+game_core = { version = "0.1.0", path = "../game_core" }
+game_wasm = { version = "0.1.0", path = "../game_wasm" }
+game_gizmos = { version = "0.1.0", path = "../game_gizmos" }
+
+[lints]
+workspace = true

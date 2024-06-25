@@ -125,7 +125,12 @@ where
             match event {
                 Event::NewEvents(_start) => {}
                 Event::WindowEvent { window_id, event } => {
-                    let window = *map.windows.get(&window_id).unwrap();
+                    // It seems that it is possible to receive events for
+                    // windows after they just got destroyed.
+                    // They should always be ignored.
+                    let Some(window) = map.windows.get(&window_id).copied() else {
+                        return;
+                    };
 
                     match event {
                         WindowEvent::Resized(size) => {

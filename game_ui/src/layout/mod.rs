@@ -12,22 +12,6 @@ use crate::render::text::Text;
 use crate::render::{DrawCommand, DrawElement, Rect};
 use crate::style::{Direction, Justify, Position, Style};
 
-// Provide custom saturaing methods
-// See https://github.com/bitshifter/glam-rs/issues/428
-trait VectorExt {
-    fn saturating_add(self, rhs: Self) -> Self;
-}
-
-impl VectorExt for UVec2 {
-    #[must_use]
-    fn saturating_add(self, rhs: Self) -> Self {
-        Self {
-            x: self.x.saturating_add(rhs.x),
-            y: self.y.saturating_add(rhs.y),
-        }
-    }
-}
-
 #[derive(Clone, Debug)]
 pub struct Element {
     pub body: ElementBody,
@@ -195,15 +179,16 @@ impl LayoutTree {
         *self.elems.get_mut(&key).unwrap() = elem;
     }
 
-    pub fn unchanged(&mut self) {
-        self.changed = false;
-    }
-
     pub fn is_changed(&self) -> bool {
         self.changed
     }
 
     pub fn compute_layout(&mut self) {
+        if !self.changed {
+            return;
+        }
+        self.changed = false;
+
         self.computed_sizes();
 
         // Root behaves like an element with default styles,
@@ -465,12 +450,16 @@ impl LayoutTree {
                         }
 
                         let pad_zone = match elem.style.direction {
-                            Direction::Row => {
-                                content.height().saturating_sub(offset) / (num_children - 1)
-                            }
-                            Direction::Column => {
-                                content.width().saturating_sub(offset) / (num_children - 1)
-                            }
+                            Direction::Row => content
+                                .height()
+                                .saturating_sub(offset)
+                                .checked_div(num_children - 1)
+                                .unwrap_or(content.height().saturating_sub(offset)),
+                            Direction::Column => content
+                                .width()
+                                .saturating_sub(offset)
+                                .checked_div(num_children - 1)
+                                .unwrap_or(content.height().saturating_sub(offset)),
                         };
 
                         let mut next_position = content.min;

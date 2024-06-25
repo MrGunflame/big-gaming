@@ -5,21 +5,21 @@ use std::sync::Arc;
 use game_common::module::ModuleId;
 use game_common::record::{RecordId, RecordReference};
 use game_data::record::Record;
-use game_ui::reactive::{ReadSignal, WriteSignal};
+// use game_ui::reactive::{ReadSignal, WriteSignal};
 use parking_lot::{Mutex, RwLock};
 
 #[derive(Clone, Debug, Default)]
 pub struct Records {
     next_id: Arc<RwLock<HashMap<ModuleId, u32>>>,
     records: Arc<RwLock<HashMap<RecordReference, Record>>>,
-    signal: Arc<Mutex<Option<WriteSignal<()>>>>,
+    // signal: Arc<Mutex<Option<WriteSignal<()>>>>,
 }
 
 impl Records {
     pub fn new() -> Self {
         Self {
             records: Arc::default(),
-            signal: Arc::default(),
+            // signal: Arc::default(),
             next_id: Arc::default(),
         }
     }
@@ -58,9 +58,9 @@ impl Records {
             record,
         );
 
-        if let Some(signal) = &*self.signal.lock() {
-            signal.wake();
-        }
+        // if let Some(signal) = &*self.signal.lock() {
+        //     signal.wake();
+        // }
     }
 
     pub fn take_id(&self, module: ModuleId) -> RecordId {
@@ -81,9 +81,9 @@ impl Records {
             *rec = record;
         }
 
-        if let Some(signal) = &*self.signal.lock() {
-            signal.wake();
-        }
+        // if let Some(signal) = &*self.signal.lock() {
+        //     signal.wake();
+        // }
     }
 
     pub fn iter(&self) -> Iter<'_> {
@@ -94,24 +94,24 @@ impl Records {
         Iter { keys, inner: self }
     }
 
-    pub fn signal(&self, insert: impl FnOnce() -> WriteSignal<()>) -> ReadSignal<()> {
-        let mut signal = self.signal.lock();
-        match &*signal {
-            Some(signal) => signal.subscribe(),
-            None => {
-                *signal = Some(insert());
-                signal.as_ref().unwrap().subscribe()
-            }
-        }
-    }
+    // pub fn signal(&self, insert: impl FnOnce() -> WriteSignal<()>) -> ReadSignal<()> {
+    //     let mut signal = self.signal.lock();
+    //     match &*signal {
+    //         Some(signal) => signal.subscribe(),
+    //         None => {
+    //             *signal = Some(insert());
+    //             signal.as_ref().unwrap().subscribe()
+    //         }
+    //     }
+    // }
 
     pub fn remove(&self, module: ModuleId, id: RecordId) {
         let mut records = self.records.write();
         records.remove(&RecordReference { module, record: id });
 
-        if let Some(signal) = &*self.signal.lock() {
-            signal.wake();
-        }
+        // if let Some(signal) = &*self.signal.lock() {
+        //     signal.wake();
+        // }
     }
 }
 

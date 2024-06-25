@@ -4,9 +4,7 @@ use std::marker::PhantomData;
 use std::sync::{mpsc, Arc, Mutex};
 
 use game_core::modules::Modules;
-use game_input::mouse::MouseButtonInput;
-use game_ui::events::Context;
-use game_ui::reactive::{Document, NodeId, Scope};
+use game_ui::reactive::{Context, DocumentId, NodeId, Runtime};
 use game_ui::style::{Bounds, Direction, Growth, Justify, Position, Size, SizeVec2, Style};
 use game_ui::widgets::{Button, Container, Text, Widget};
 use game_wasm::inventory::{Inventory, InventorySlotId, ItemStack};
@@ -22,19 +20,21 @@ pub struct InventoryUi<'a> {
 }
 
 impl<'a> Widget for InventoryUi<'a> {
-    fn build(self, cx: &Scope) -> Scope {
-        let root = cx.append(Container::new().style(Style {
-            bounds: Bounds::from_min(SizeVec2::splat(Size::ZERO)),
-            growth: Growth::new(1.0, 1.0),
-            ..Default::default()
-        }));
+    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+        let root = Container::new()
+            .style(Style {
+                bounds: Bounds::from_min(SizeVec2::splat(Size::ZERO)),
+                growth: Growth::new(1.0, 1.0),
+                ..Default::default()
+            })
+            .mount(parent);
 
         InventoryBox {
             inventory: self.inventory,
             modules: self.modules,
             events: self.events,
         }
-        .build(&root);
+        .mount(&root);
 
         root
     }
@@ -47,19 +47,23 @@ struct InventoryBox<'a> {
 }
 
 impl<'a> Widget for InventoryBox<'a> {
-    fn build(self, cx: &Scope) -> Scope {
-        let align_y = cx.append(Container::new().style(Style {
-            justify: Justify::Center,
-            growth: Growth::new(1.0, 1.0),
-            ..Default::default()
-        }));
+    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+        let align_y = Container::new()
+            .style(Style {
+                justify: Justify::Center,
+                growth: Growth::new(1.0, 1.0),
+                ..Default::default()
+            })
+            .mount(parent);
 
-        let align_x = align_y.append(Container::new().style(Style {
-            justify: Justify::Center,
-            growth: Growth::new(1.0, 1.0),
-            direction: Direction::Column,
-            ..Default::default()
-        }));
+        let align_x = Container::new()
+            .style(Style {
+                justify: Justify::Center,
+                growth: Growth::new(1.0, 1.0),
+                direction: Direction::Column,
+                ..Default::default()
+            })
+            .mount(&align_y);
 
         let items = self.inventory.iter();
 
@@ -69,7 +73,7 @@ impl<'a> Widget for InventoryBox<'a> {
             events: self.events,
             _marker: PhantomData,
         }
-        .build(&align_x);
+        .mount(&align_x);
 
         align_y
     }
@@ -87,8 +91,8 @@ impl<'a, I> Widget for ItemList<'a, I>
 where
     I: Iterator<Item = (InventorySlotId, &'a ItemStack)>,
 {
-    fn build(self, cx: &Scope) -> Scope {
-        let root = cx.append(Container::new());
+    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+        let root = Container::new().mount(parent);
 
         let context_menu = Arc::new(Mutex::new(None));
 
@@ -99,8 +103,8 @@ where
 
             let root2 = root.clone();
             let context_menu = context_menu.clone();
-            let wrapper = root.append(Button::new().on_click(
-                move |ctx: Context<MouseButtonInput>| {
+            let wrapper = Button::new()
+                .on_click(move |()| {
                     let mut ctx_menu = context_menu.lock().unwrap();
                     let events = events.clone();
 
@@ -109,21 +113,21 @@ where
                     }
 
                     *ctx_menu = ContextMenu {
-                        position: ctx.cursor.position().as_uvec2(),
+                        position: root2.cursor().as_uvec2(),
                         id,
                         events,
                         is_equipped,
                     }
-                    .build(&root2)
-                    .id();
-                },
-            ));
+                    .mount(&root2)
+                    .node();
+                })
+                .mount(&root);
 
             let module = self.modules.get(stack.item.module).unwrap();
             let record = module.records.get(stack.item.record).unwrap();
 
             let label = format!("{} ({})", record.name, stack.quantity);
-            wrapper.append(Text::new().text(label));
+            Text::new(label).mount(&wrapper);
         }
 
         root
@@ -138,32 +142,40 @@ struct ContextMenu {
 }
 
 impl Widget for ContextMenu {
-    fn build(self, cx: &Scope) -> Scope {
-        let root = cx.append(Container::new().style(Style {
-            position: Position::Absolute(self.position),
-            ..Default::default()
-        }));
+    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+        let root = Container::new()
+            .style(Style {
+                position: Position::Absolute(self.position),
+                ..Default::default()
+            })
+            .mount(parent);
 
         if self.is_equipped {
             let events = self.events.clone();
-            let button = root.append(Button::new().on_click(move |_ctx| {
-                events.send(unequip_event(self.id)).unwrap();
-            }));
-            button.append(Text::new().text("Unequip".to_string()));
+            let button = Button::new()
+                .on_click(move |_ctx| {
+                    events.send(unequip_event(self.id)).unwrap();
+                })
+                .mount(&root);
+            Text::new("Unequip".to_string()).mount(&button);
         } else {
             let events = self.events.clone();
-            let button = root.append(Button::new().on_click(move |_ctx| {
-                events.send(equip_event(self.id)).unwrap();
-            }));
-            button.append(Text::new().text("Equip".to_string()));
+            let button = Button::new()
+                .on_click(move |_ctx| {
+                    events.send(equip_event(self.id)).unwrap();
+                })
+                .mount(&root);
+            Text::new("Equip".to_string()).mount(&button);
         }
 
         {
             let events = self.events.clone();
-            let button = root.append(Button::new().on_click(move |_ctx| {
-                events.send(drop_event(self.id)).unwrap();
-            }));
-            button.append(Text::new().text("Drop".to_string()));
+            let button = Button::new()
+                .on_click(move |_ctx| {
+                    events.send(drop_event(self.id)).unwrap();
+                })
+                .mount(&root);
+            Text::new("Drop".to_string()).mount(&button);
         }
 
         root
@@ -179,19 +191,21 @@ impl InventoryProxy {
     pub fn new(
         inventory: &Inventory,
         modules: Modules,
-        doc: &Document,
+        rt: &Runtime,
+        doc: DocumentId,
         tx: mpsc::Sender<UiEvent>,
     ) -> Self {
-        let cx = doc.root_scope();
+        let cx = rt.root_context(doc);
 
-        let root = cx.append(InventoryUi {
+        let root = InventoryUi {
             inventory,
             modules,
             events: tx,
-        });
+        }
+        .mount(&cx);
 
         Self {
-            id: root.id().unwrap(),
+            id: root.node().unwrap(),
         }
     }
 }

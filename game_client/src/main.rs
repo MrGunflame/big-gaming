@@ -10,7 +10,7 @@ mod utils;
 mod world;
 
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
 use std::time::Duration;
 
 use clap::Parser;
@@ -24,8 +24,7 @@ use game_render::camera::RenderTarget;
 use game_render::Renderer;
 use game_tasks::TaskPool;
 use game_tracing::trace_span;
-use game_ui::events::WindowCommand;
-use game_ui::reactive::Document;
+use game_ui::reactive::DocumentId;
 use game_ui::UiState;
 use game_window::cursor::Cursor;
 use game_window::events::WindowEvent;
@@ -96,31 +95,24 @@ fn main() {
     let events = spsc::Queue::new(8192);
     let (events_tx, events_rx) = events.split();
 
-    // Lazy initialize the main window document for the game thread. We cannot
-    // create the document before the main window is created, which does not
-    // happen until we give control of the main thread to the windowing loop.
-    let ui_doc = OnceLock::new();
-
     let pool = TaskPool::new(8);
     let world = Mutex::new(World::new());
     let fps_counter = Mutex::new(UpdateCounter::new());
     let shutdown = AtomicBool::new(false);
-    let window_commands = Mutex::new(Vec::new());
 
     let game_state = GameAppState {
         state,
         world: &world,
         time: Time::new(),
-        ui_doc: &ui_doc,
         events: events_rx,
         cursor: cursor.clone(),
         fps_counter: &fps_counter,
         shutdown: &shutdown,
         interval: Interval::new(Duration::from_secs(1) / 60),
         ui_state,
-        window_commands: &window_commands,
         pool: &pool,
         gizmos: &gizmos,
+        document_id: None,
     };
 
     let renderer_state = RendererAppState {
@@ -129,12 +121,9 @@ fn main() {
         world: &world,
         pool: &pool,
         window_id,
-        ui_doc: &ui_doc,
-        cursor,
         events: events_tx,
         fps_counter: &fps_counter,
         shutdown: &shutdown,
-        window_commands: &window_commands,
         gizmos: &gizmos,
     };
 
@@ -151,7 +140,6 @@ pub struct GameAppState<'a> {
     state: GameState,
     world: &'a Mutex<World>,
     time: Time,
-    ui_doc: &'a OnceLock<Document>,
     events: spsc::Receiver<WindowEvent>,
     cursor: Arc<Cursor>,
     fps_counter: &'a Mutex<UpdateCounter>,
@@ -159,8 +147,8 @@ pub struct GameAppState<'a> {
     interval: Interval,
     ui_state: UiState,
     gizmos: &'a Gizmos,
-    window_commands: &'a Mutex<Vec<WindowCommand>>,
     pool: &'a TaskPool,
+    document_id: Option<DocumentId>,
 }
 
 impl<'a> GameAppState<'a> {
@@ -188,13 +176,11 @@ impl<'a> GameAppState<'a> {
                 WindowEvent::WindowCreated(event) => {
                     self.ui_state
                         .create(RenderTarget::Window(event.window), UVec2::ZERO);
-
-                    let doc = self
+                    self.document_id = self
                         .ui_state
-                        .get_mut(RenderTarget::Window(event.window))
-                        .unwrap()
-                        .clone();
-                    let _ = self.ui_doc.set(doc);
+                        .runtime()
+                        .create_document(RenderTarget::Window(event.window));
+
                     continue;
                 }
                 WindowEvent::WindowResized(event) => {
@@ -211,10 +197,10 @@ impl<'a> GameAppState<'a> {
 
             self.ui_state.send_event(&self.cursor, event.clone());
 
-            if let Some(ui_doc) = self.ui_doc.get() {
+            if let Some(doc) = self.document_id {
                 match &mut self.state {
                     GameState::GameWorld(state) => {
-                        state.handle_event(event, &self.cursor, ui_doc);
+                        state.handle_event(event, &self.cursor, &self.ui_state.runtime(), doc);
                     }
                     _ => (),
                 }
@@ -223,7 +209,7 @@ impl<'a> GameAppState<'a> {
 
         let fps_counter = { self.fps_counter.lock().clone() };
 
-        if let Some(ui_doc) = self.ui_doc.get() {
+        if let Some(doc) = self.document_id {
             match &mut self.state {
                 GameState::Startup => {
                     self.state = GameState::MainMenu(MainMenuState::new(&mut world))
@@ -235,7 +221,8 @@ impl<'a> GameAppState<'a> {
                     match self.pool.block_on(state.update(
                         &self.time,
                         &mut world,
-                        ui_doc,
+                        &self.ui_state.runtime(),
+                        doc,
                         fps_counter,
                     )) {
                         Ok(()) => (),
@@ -248,7 +235,7 @@ impl<'a> GameAppState<'a> {
 
         *self.world.lock() = world;
 
-        self.ui_state.update(&mut self.window_commands.lock());
+        self.ui_state.update();
         self.gizmos.swap_buffers();
     }
 }
@@ -259,37 +246,15 @@ pub struct RendererAppState<'a> {
     world: &'a Mutex<World>,
     pool: &'a TaskPool,
     window_id: WindowId,
-    ui_doc: &'a OnceLock<Document>,
-    cursor: Arc<Cursor>,
     events: spsc::Sender<WindowEvent>,
     fps_counter: &'a Mutex<UpdateCounter>,
     shutdown: &'a AtomicBool,
-    window_commands: &'a Mutex<Vec<WindowCommand>>,
     gizmos: &'a Gizmos,
 }
 
 impl<'a> game_window::App for RendererAppState<'a> {
     fn update(&mut self, ctx: WindowManagerContext<'_>) {
         let _span = trace_span!("RendererAppState::update").entered();
-
-        let cmds = { std::mem::take(&mut *self.window_commands.lock()) };
-        for cmd in cmds {
-            match cmd {
-                WindowCommand::Close(id) => {
-                    ctx.windows.despawn(id);
-                }
-                WindowCommand::SetCursorIcon(id, icon) => {
-                    if let Some(state) = ctx.windows.state(id) {
-                        state.set_cursor_icon(icon);
-                    }
-                }
-                WindowCommand::SetTitle(id, title) => {
-                    if let Some(state) = ctx.windows.state(id) {
-                        state.set_title(&title);
-                    }
-                }
-            }
-        }
 
         // Wait until the last vsync is done before we start preparing the next
         // frame. This helps combat latency issues and will not cause stalls
