@@ -189,9 +189,19 @@ fn render_component(
                     _ => todo!(),
                 };
 
+                // FIXME: Hardcoded colors for translation/rotation fields
+                // for now.
+                let color = match field.name.as_str() {
+                    "x" | "X" => COLOR_X,
+                    "y" | "Y" => COLOR_Y,
+                    "z" | "Z" => COLOR_Z,
+                    "w" | "W" => COLOR_W,
+                    _ => COLOR_X,
+                };
+
                 let component = component.clone();
                 let writer = writer.clone();
-                display_value(ctx, COLOR_X, &field.name, value, move |mut value: i64| {
+                display_value(ctx, color, &field.name, value, move |mut value: i64| {
                     let mut bytes = component.as_bytes().to_vec();
                     let fields = component.fields().to_vec();
 

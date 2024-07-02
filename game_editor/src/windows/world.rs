@@ -374,12 +374,13 @@ impl WorldWindowState {
                     let cb = { self.state.lock().entities_changed.clone() };
                     cb.call(());
                 }
+                // Note that a component update event from the component panel
+                // does not update the component panel itself again because
+                // the change is already tracked by the component panel.
                 Event::UpdateComponent(id, component) => {
                     for entity in self.state.lock().entities.iter().filter(|e| e.is_selected) {
                         world.insert(entity.id, id, component.clone());
                     }
-
-                    self.update_components_panel = true;
                 }
             }
         }
