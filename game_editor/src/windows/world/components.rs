@@ -1,5 +1,5 @@
 use std::collections::VecDeque;
-use std::fmt::Display;
+use std::fmt::{self, Display, Formatter};
 use std::str::FromStr;
 use std::sync::{mpsc, Arc};
 
@@ -9,7 +9,7 @@ use game_core::modules::Modules;
 use game_data::record::RecordKind;
 use game_ui::reactive::Context;
 use game_ui::style::{Background, Bounds, Color, Direction, Growth, Size, SizeVec2, Style};
-use game_ui::widgets::{Button, Callback, Container, Input, Text, Widget};
+use game_ui::widgets::{Callback, Container, Input, Selection, Text, Widget};
 use game_wasm::world::RecordReference;
 use parking_lot::Mutex;
 
@@ -83,8 +83,28 @@ fn mount_component_panel(
         );
     }
 
-    let button = Button::new().mount(&root);
-    Text::new("Add Component").mount(&button);
+    let mut components = Vec::new();
+    for module in modules.iter() {
+        for record in module.records.iter() {
+            if record.kind != RecordKind::COMPONENT {
+                continue;
+            }
+
+            let descriptor = ComponentDescriptor::from_bytes(&record.data);
+            components.push((
+                RecordReference {
+                    module: module.id,
+                    record: record.id,
+                },
+                record.name.clone(),
+                descriptor,
+            ));
+        }
+    }
+
+    if state.entities.iter().any(|e| e.is_selected) {
+        mount_new_component_selector(&root, components, writer);
+    }
 }
 
 macro_rules! define_color {
@@ -169,6 +189,14 @@ fn render_component(
         queue.push_back((ctx.clone(), field));
     }
 
+    // If every input field gets a direct clone of the component
+    // at the time of creation of the panel they cannot track changes
+    // of other fields. The changes to fields would then overwrite
+    // each other.
+    // To prevent this we give every input field access to the same
+    // shared component instance.
+    let component = Arc::new(Mutex::new(component.clone()));
+
     while let Some((parent, field)) = queue.pop_front() {
         match &field.kind {
             FieldKind::Int(val) => {
@@ -176,17 +204,21 @@ fn render_component(
                 let bits = val.bits;
                 let is_signed = val.is_signed;
 
-                let bytes = &component.as_bytes()[offset..offset + field_len];
-                let value = match (bits, is_signed) {
-                    (8, false) => u8::from_le_bytes(bytes.try_into().unwrap()) as i64,
-                    (8, true) => i8::from_le_bytes(bytes.try_into().unwrap()) as i64,
-                    (16, false) => u16::from_le_bytes(bytes.try_into().unwrap()) as i64,
-                    (16, true) => u16::from_le_bytes(bytes.try_into().unwrap()) as i64,
-                    (32, false) => u32::from_le_bytes(bytes.try_into().unwrap()) as i64,
-                    (32, true) => i32::from_le_bytes(bytes.try_into().unwrap()) as i64,
-                    (64, false) => u64::from_le_bytes(bytes.try_into().unwrap()) as i64,
-                    (64, true) => i64::from_le_bytes(bytes.try_into().unwrap()),
-                    _ => todo!(),
+                let value = {
+                    let component = component.lock();
+                    let bytes = &component.as_bytes()[offset..offset + field_len];
+
+                    match (bits, is_signed) {
+                        (8, false) => u8::from_le_bytes(bytes.try_into().unwrap()) as i64,
+                        (8, true) => i8::from_le_bytes(bytes.try_into().unwrap()) as i64,
+                        (16, false) => u16::from_le_bytes(bytes.try_into().unwrap()) as i64,
+                        (16, true) => u16::from_le_bytes(bytes.try_into().unwrap()) as i64,
+                        (32, false) => u32::from_le_bytes(bytes.try_into().unwrap()) as i64,
+                        (32, true) => i32::from_le_bytes(bytes.try_into().unwrap()) as i64,
+                        (64, false) => u64::from_le_bytes(bytes.try_into().unwrap()) as i64,
+                        (64, true) => i64::from_le_bytes(bytes.try_into().unwrap()),
+                        _ => todo!(),
+                    }
                 };
 
                 // FIXME: Hardcoded colors for translation/rotation fields
@@ -202,6 +234,8 @@ fn render_component(
                 let component = component.clone();
                 let writer = writer.clone();
                 display_value(ctx, color, &field.name, value, move |mut value: i64| {
+                    let mut component = component.lock();
+
                     let mut bytes = component.as_bytes().to_vec();
                     let fields = component.fields().to_vec();
 
@@ -229,8 +263,10 @@ fn render_component(
                         _ => todo!(),
                     }
 
+                    *component = RawComponent::new(bytes, fields);
+
                     writer
-                        .send(Event::UpdateComponent(id, RawComponent::new(bytes, fields)))
+                        .send(Event::UpdateComponent(id, component.clone()))
                         .unwrap();
                 });
 
@@ -240,34 +276,49 @@ fn render_component(
                 let field_len = usize::from(val.bits) / 8;
                 let bits = val.bits;
 
-                let bytes = &component.as_bytes()[offset..offset + field_len];
-                let value = match bits {
-                    32 => f32::from_le_bytes(bytes.try_into().unwrap()) as f64,
-                    64 => f64::from_le_bytes(bytes.try_into().unwrap()),
-                    _ => todo!(),
+                let value = {
+                    let component = component.lock();
+                    let bytes = &component.as_bytes()[offset..offset + field_len];
+
+                    match bits {
+                        32 => f32::from_le_bytes(bytes.try_into().unwrap()) as f64,
+                        64 => f64::from_le_bytes(bytes.try_into().unwrap()),
+                        _ => todo!(),
+                    }
                 };
 
                 let component = component.clone();
                 let writer = writer.clone();
-                display_value(ctx, COLOR_X, &field.name, value, move |value: f64| {
-                    let mut bytes = component.as_bytes().to_vec();
-                    let fields = component.fields().to_vec();
+                display_value(
+                    ctx,
+                    COLOR_X,
+                    &field.name,
+                    FormatFloat(value),
+                    move |FormatFloat(value): FormatFloat| {
+                        let mut component = component.lock();
 
-                    match bits {
-                        32 => {
-                            bytes[offset..offset + field_len]
-                                .copy_from_slice(&(value as f32).to_le_bytes());
-                        }
-                        64 => {
-                            bytes[offset..offset + field_len].copy_from_slice(&value.to_le_bytes());
-                        }
-                        _ => todo!(),
-                    }
+                        let mut bytes = component.as_bytes().to_vec();
+                        let fields = component.fields().to_vec();
 
-                    writer
-                        .send(Event::UpdateComponent(id, RawComponent::new(bytes, fields)))
-                        .unwrap();
-                });
+                        match bits {
+                            32 => {
+                                bytes[offset..offset + field_len]
+                                    .copy_from_slice(&(value as f32).to_le_bytes());
+                            }
+                            64 => {
+                                bytes[offset..offset + field_len]
+                                    .copy_from_slice(&value.to_le_bytes());
+                            }
+                            _ => todo!(),
+                        }
+
+                        *component = RawComponent::new(bytes, fields);
+
+                        writer
+                            .send(Event::UpdateComponent(id, component.clone()))
+                            .unwrap();
+                    },
+                );
 
                 offset += field_len;
             }
@@ -279,6 +330,42 @@ fn render_component(
                     queue.push_front((root.clone(), field));
                 }
             }
+            FieldKind::String(_) => todo!(),
         }
     }
+}
+
+struct FormatFloat(f64);
+
+impl Display for FormatFloat {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{:.3}", self.0)
+    }
+}
+
+impl FromStr for FormatFloat {
+    type Err = <f64 as FromStr>::Err;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        f64::from_str(s).map(Self)
+    }
+}
+
+fn mount_new_component_selector(
+    cx: &Context<()>,
+    components: Vec<(RecordReference, String, ComponentDescriptor)>,
+    writer: &mpsc::Sender<Event>,
+) {
+    let options = components.iter().map(|(_, name, _)| name.clone()).collect();
+
+    let writer = writer.clone();
+    let on_change = Callback::from(move |index| {
+        let (id, _, descriptor): &(RecordReference, String, ComponentDescriptor) =
+            &components[index];
+        let component = descriptor.default_component();
+
+        writer.send(Event::UpdateComponent(*id, component)).unwrap();
+    });
+
+    Selection { options, on_change }.mount(cx);
 }

@@ -21,7 +21,6 @@ use game_render::Renderer;
 use game_ui::reactive::Context;
 use game_ui::style::{Direction, Justify, Style};
 use game_ui::widgets::{Callback, Container, Widget};
-use game_wasm::components::BufMut;
 use game_wasm::world::RecordReference;
 use game_window::events::WindowEvent;
 use game_window::windows::WindowId;
@@ -187,16 +186,21 @@ impl WorldWindowState {
                         camera.transform = camera.transform.looking_to(-Vec3::Y, Vec3::Z);
                     }
                     Some(KeyCode::Delete) => {
-                        let selected: Vec<_> = self
-                            .state
-                            .lock()
-                            .entities
-                            .iter()
-                            .filter_map(|entity| entity.is_selected.then_some(entity.id))
-                            .collect();
+                        let mut state = self.state.lock();
 
-                        for entity in selected {
+                        let mut delete_entities = Vec::new();
+                        state.entities.retain(|entity| {
+                            if entity.is_selected {
+                                delete_entities.push(entity.id);
+                                false
+                            } else {
+                                true
+                            }
+                        });
+
+                        for entity in delete_entities {
                             world.despawn(entity);
+                            self.update_components_panel = true;
                         }
                     }
                     _ => (),
@@ -335,6 +339,8 @@ impl WorldWindowState {
 
     pub fn update(&mut self, world: &mut World) {
         while let Ok(event) = self.events.try_recv() {
+            tracing::debug!("event from scene ui: {:?}", event);
+
             match event {
                 Event::Spawn => {
                     // Create new entities at the location the camera is looking at.

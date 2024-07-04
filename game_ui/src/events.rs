@@ -65,7 +65,9 @@ where
         }
     }
 
-    for (document, node, handler) in handlers {
+    // Handle events bottom-up; The children get to handle their events
+    // before the parents do.
+    for (document, node, handler) in handlers.into_iter().rev() {
         handler.call(Context {
             event: event.clone(),
             node,
