@@ -1,6 +1,10 @@
 use core::fmt::{self, Display, Formatter};
+use std::collections::VecDeque;
 
+use game_wasm::encoding::Primitive;
 use serde::{Deserialize, Serialize};
+
+use crate::components::components::RawComponent;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ComponentDescriptor {
@@ -13,7 +17,7 @@ impl ComponentDescriptor {
         let len = fields.len();
         for field in &fields {
             match &field.kind {
-                FieldKind::Int(_) | FieldKind::Float(_) => (),
+                FieldKind::Int(_) | FieldKind::Float(_) | FieldKind::String(_) => (),
                 FieldKind::Struct(indices) => {
                     for index in indices {
                         if usize::from(index.0) >= len {
@@ -57,6 +61,65 @@ impl ComponentDescriptor {
 
     pub fn from_bytes(bytes: &[u8]) -> Self {
         bincode::deserialize(bytes).unwrap()
+    }
+
+    /// Returns a new, default [`RawComponent`] for the `ComponentDescriptor`.
+    pub fn default_component(&self) -> RawComponent {
+        let mut bytes = Vec::new();
+        let mut fields = Vec::new();
+        let mut offset = 0;
+
+        let mut queue: VecDeque<FieldIndex> = VecDeque::new();
+        queue.extend(self.root.iter());
+
+        while let Some(index) = queue.pop_front() {
+            let field = &self.fields[usize::from(index.0)];
+
+            match &field.kind {
+                FieldKind::Int(field) => {
+                    let mut num_bytes = usize::from(field.bits) / 8;
+                    if field.bits % 8 != 0 {
+                        num_bytes += 1;
+                    }
+
+                    bytes.resize(bytes.len() + num_bytes, 0);
+                    fields.push(game_wasm::encoding::Field {
+                        primitive: Primitive::Bytes,
+                        offset,
+                    });
+                    offset += num_bytes;
+                }
+                FieldKind::Float(field) => match field.bits {
+                    32 => {
+                        bytes.extend(0f32.to_le_bytes());
+                        fields.push(game_wasm::encoding::Field {
+                            primitive: Primitive::Bytes,
+                            offset,
+                        });
+                        offset += 4;
+                    }
+                    64 => {
+                        bytes.extend(0f64.to_le_bytes());
+                        fields.push(game_wasm::encoding::Field {
+                            primitive: Primitive::Bytes,
+                            offset,
+                        });
+                        offset += 4;
+                    }
+                    _ => todo!(),
+                },
+                FieldKind::Struct(field) => {
+                    for index in field.iter().rev() {
+                        queue.push_front(*index);
+                    }
+                }
+                FieldKind::String(_) => {
+                    bytes.extend(0u64.to_le_bytes());
+                }
+            }
+        }
+
+        RawComponent::new(bytes, fields)
     }
 }
 
@@ -114,6 +177,7 @@ pub enum FieldKind {
     Int(IntegerField),
     Float(FloatField),
     Struct(Vec<FieldIndex>),
+    String(String),
 }
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize)]
