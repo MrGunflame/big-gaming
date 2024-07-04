@@ -102,7 +102,9 @@ fn mount_component_panel(
         }
     }
 
-    mount_new_component_selector(&root, components, writer);
+    if state.entities.iter().any(|e| e.is_selected) {
+        mount_new_component_selector(&root, components, writer);
+    }
 }
 
 macro_rules! define_color {
@@ -187,6 +189,14 @@ fn render_component(
         queue.push_back((ctx.clone(), field));
     }
 
+    // If every input field gets a direct clone of the component
+    // at the time of creation of the panel they cannot track changes
+    // of other fields. The changes to fields would then overwrite
+    // each other.
+    // To prevent this we give every input field access to the same
+    // shared component instance.
+    let component = Arc::new(Mutex::new(component.clone()));
+
     while let Some((parent, field)) = queue.pop_front() {
         match &field.kind {
             FieldKind::Int(val) => {
@@ -194,17 +204,21 @@ fn render_component(
                 let bits = val.bits;
                 let is_signed = val.is_signed;
 
-                let bytes = &component.as_bytes()[offset..offset + field_len];
-                let value = match (bits, is_signed) {
-                    (8, false) => u8::from_le_bytes(bytes.try_into().unwrap()) as i64,
-                    (8, true) => i8::from_le_bytes(bytes.try_into().unwrap()) as i64,
-                    (16, false) => u16::from_le_bytes(bytes.try_into().unwrap()) as i64,
-                    (16, true) => u16::from_le_bytes(bytes.try_into().unwrap()) as i64,
-                    (32, false) => u32::from_le_bytes(bytes.try_into().unwrap()) as i64,
-                    (32, true) => i32::from_le_bytes(bytes.try_into().unwrap()) as i64,
-                    (64, false) => u64::from_le_bytes(bytes.try_into().unwrap()) as i64,
-                    (64, true) => i64::from_le_bytes(bytes.try_into().unwrap()),
-                    _ => todo!(),
+                let value = {
+                    let component = component.lock();
+                    let bytes = &component.as_bytes()[offset..offset + field_len];
+
+                    match (bits, is_signed) {
+                        (8, false) => u8::from_le_bytes(bytes.try_into().unwrap()) as i64,
+                        (8, true) => i8::from_le_bytes(bytes.try_into().unwrap()) as i64,
+                        (16, false) => u16::from_le_bytes(bytes.try_into().unwrap()) as i64,
+                        (16, true) => u16::from_le_bytes(bytes.try_into().unwrap()) as i64,
+                        (32, false) => u32::from_le_bytes(bytes.try_into().unwrap()) as i64,
+                        (32, true) => i32::from_le_bytes(bytes.try_into().unwrap()) as i64,
+                        (64, false) => u64::from_le_bytes(bytes.try_into().unwrap()) as i64,
+                        (64, true) => i64::from_le_bytes(bytes.try_into().unwrap()),
+                        _ => todo!(),
+                    }
                 };
 
                 // FIXME: Hardcoded colors for translation/rotation fields
@@ -220,6 +234,8 @@ fn render_component(
                 let component = component.clone();
                 let writer = writer.clone();
                 display_value(ctx, color, &field.name, value, move |mut value: i64| {
+                    let mut component = component.lock();
+
                     let mut bytes = component.as_bytes().to_vec();
                     let fields = component.fields().to_vec();
 
@@ -247,8 +263,10 @@ fn render_component(
                         _ => todo!(),
                     }
 
+                    *component = RawComponent::new(bytes, fields);
+
                     writer
-                        .send(Event::UpdateComponent(id, RawComponent::new(bytes, fields)))
+                        .send(Event::UpdateComponent(id, component.clone()))
                         .unwrap();
                 });
 
@@ -258,11 +276,15 @@ fn render_component(
                 let field_len = usize::from(val.bits) / 8;
                 let bits = val.bits;
 
-                let bytes = &component.as_bytes()[offset..offset + field_len];
-                let value = match bits {
-                    32 => f32::from_le_bytes(bytes.try_into().unwrap()) as f64,
-                    64 => f64::from_le_bytes(bytes.try_into().unwrap()),
-                    _ => todo!(),
+                let value = {
+                    let component = component.lock();
+                    let bytes = &component.as_bytes()[offset..offset + field_len];
+
+                    match bits {
+                        32 => f32::from_le_bytes(bytes.try_into().unwrap()) as f64,
+                        64 => f64::from_le_bytes(bytes.try_into().unwrap()),
+                        _ => todo!(),
+                    }
                 };
 
                 let component = component.clone();
@@ -273,6 +295,8 @@ fn render_component(
                     &field.name,
                     FormatFloat(value),
                     move |FormatFloat(value): FormatFloat| {
+                        let mut component = component.lock();
+
                         let mut bytes = component.as_bytes().to_vec();
                         let fields = component.fields().to_vec();
 
@@ -288,8 +312,10 @@ fn render_component(
                             _ => todo!(),
                         }
 
+                        *component = RawComponent::new(bytes, fields);
+
                         writer
-                            .send(Event::UpdateComponent(id, RawComponent::new(bytes, fields)))
+                            .send(Event::UpdateComponent(id, component.clone()))
                             .unwrap();
                     },
                 );
@@ -304,6 +330,7 @@ fn render_component(
                     queue.push_front((root.clone(), field));
                 }
             }
+            FieldKind::String(_) => todo!(),
         }
     }
 }
@@ -333,7 +360,6 @@ fn mount_new_component_selector(
 
     let writer = writer.clone();
     let on_change = Callback::from(move |index| {
-        dbg!(&index);
         let (id, _, descriptor): &(RecordReference, String, ComponentDescriptor) =
             &components[index];
         let component = descriptor.default_component();
