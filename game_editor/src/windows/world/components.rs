@@ -1,5 +1,5 @@
 use std::collections::VecDeque;
-use std::fmt::Display;
+use std::fmt::{self, Display, Formatter};
 use std::str::FromStr;
 use std::sync::{mpsc, Arc};
 
@@ -9,7 +9,7 @@ use game_core::modules::Modules;
 use game_data::record::RecordKind;
 use game_ui::reactive::Context;
 use game_ui::style::{Background, Bounds, Color, Direction, Growth, Size, SizeVec2, Style};
-use game_ui::widgets::{Button, Callback, Container, Input, Text, Widget};
+use game_ui::widgets::{Callback, Container, Input, Selection, Text, Widget};
 use game_wasm::world::RecordReference;
 use parking_lot::Mutex;
 
@@ -83,8 +83,26 @@ fn mount_component_panel(
         );
     }
 
-    let button = Button::new().mount(&root);
-    Text::new("Add Component").mount(&button);
+    let mut components = Vec::new();
+    for module in modules.iter() {
+        for record in module.records.iter() {
+            if record.kind != RecordKind::COMPONENT {
+                continue;
+            }
+
+            let descriptor = ComponentDescriptor::from_bytes(&record.data);
+            components.push((
+                RecordReference {
+                    module: module.id,
+                    record: record.id,
+                },
+                record.name.clone(),
+                descriptor,
+            ));
+        }
+    }
+
+    mount_new_component_selector(&root, components, writer);
 }
 
 macro_rules! define_color {
@@ -249,25 +267,32 @@ fn render_component(
 
                 let component = component.clone();
                 let writer = writer.clone();
-                display_value(ctx, COLOR_X, &field.name, value, move |value: f64| {
-                    let mut bytes = component.as_bytes().to_vec();
-                    let fields = component.fields().to_vec();
+                display_value(
+                    ctx,
+                    COLOR_X,
+                    &field.name,
+                    FormatFloat(value),
+                    move |FormatFloat(value): FormatFloat| {
+                        let mut bytes = component.as_bytes().to_vec();
+                        let fields = component.fields().to_vec();
 
-                    match bits {
-                        32 => {
-                            bytes[offset..offset + field_len]
-                                .copy_from_slice(&(value as f32).to_le_bytes());
+                        match bits {
+                            32 => {
+                                bytes[offset..offset + field_len]
+                                    .copy_from_slice(&(value as f32).to_le_bytes());
+                            }
+                            64 => {
+                                bytes[offset..offset + field_len]
+                                    .copy_from_slice(&value.to_le_bytes());
+                            }
+                            _ => todo!(),
                         }
-                        64 => {
-                            bytes[offset..offset + field_len].copy_from_slice(&value.to_le_bytes());
-                        }
-                        _ => todo!(),
-                    }
 
-                    writer
-                        .send(Event::UpdateComponent(id, RawComponent::new(bytes, fields)))
-                        .unwrap();
-                });
+                        writer
+                            .send(Event::UpdateComponent(id, RawComponent::new(bytes, fields)))
+                            .unwrap();
+                    },
+                );
 
                 offset += field_len;
             }
@@ -281,4 +306,40 @@ fn render_component(
             }
         }
     }
+}
+
+struct FormatFloat(f64);
+
+impl Display for FormatFloat {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{:.3}", self.0)
+    }
+}
+
+impl FromStr for FormatFloat {
+    type Err = <f64 as FromStr>::Err;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        f64::from_str(s).map(Self)
+    }
+}
+
+fn mount_new_component_selector(
+    cx: &Context<()>,
+    components: Vec<(RecordReference, String, ComponentDescriptor)>,
+    writer: &mpsc::Sender<Event>,
+) {
+    let options = components.iter().map(|(_, name, _)| name.clone()).collect();
+
+    let writer = writer.clone();
+    let on_change = Callback::from(move |index| {
+        dbg!(&index);
+        let (id, _, descriptor): &(RecordReference, String, ComponentDescriptor) =
+            &components[index];
+        let component = descriptor.default_component();
+
+        writer.send(Event::UpdateComponent(*id, component)).unwrap();
+    });
+
+    Selection { options, on_change }.mount(cx);
 }
