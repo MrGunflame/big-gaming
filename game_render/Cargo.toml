@@ -30,3 +30,7 @@ slotmap = "1.0.6"
 mikktspace = "0.3.0"
 tokio = { version = "1.35.1", default-features = false, features = ["sync"] }
 thiserror = "1.0.59"
+
+# Used by wgpu.
+# Convert spans direclty to tracing, which we use for profiling.
+profiling = { version = "1.0.15", features = ["profile-with-tracing"] }

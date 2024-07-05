@@ -1,0 +1,46 @@
+name: Dependencies
+
+on:
+  push:
+    branches: [ "master" ]
+    paths:
+    - '**/Cargo.toml'
+    - 'deny.toml'
+  pull_request:
+    branches: [ "master" ]
+    paths:
+    - '**/Cargo.toml'
+    - 'deny.toml'
+
+jobs:
+#  check-advisories:
+#    runs-on: ubuntu-latest
+#    steps:
+#    - uses: actions/checkout@v4
+#    - run: rustup update stable --no-self-update && rustup default stable
+#    - run: cargo install cargo-deny
+#    - run: cargo deny check advisories
+
+  check-bans:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - run: rustup update stable --no-self-update && rustup default stable
+    - run: cargo install cargo-deny
+    - run: cargo deny check bans
+
+  check-licenses:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - run: rustup update stable --no-self-update && rustup default stable
+    - run: cargo install cargo-deny
+    - run: cargo deny check licenses
+
+  check-sources:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - run: rustup update stable --no-self-update && rustup default stable
+    - run: cargo install cargo-deny
+    - run: cargo deny check sources

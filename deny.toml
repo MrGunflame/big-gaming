@@ -1,11 +1,12 @@
+[graph]
+all-features = true
+
 [advisories]
-vulnerability = "warn"
-unmaintained = "warn"
-notice = "warn"
-unsound = "warn"
+version = 2
 
 [bans]
 multiple-versions = "warn"
+wildcards = "warn"
 deny = []
 skip = []
 
@@ -14,11 +15,54 @@ unknown-registry = "deny"
 unknown-git = "deny"
 
 [licenses]
-unlicensed = "deny"
-copyleft = "allow"
+version = 2
 confidence-threshold = 0.93
-allow = ["Apache-2.0", "MIT", "BSD-3-Clause", "BSD-2-Clause", "ISC", "CC0-1.0", "Zlib", "Apache-2.0 WITH LLVM-exception"]
+allow = [
+    "Apache-2.0",
+    "MIT",
+    "BSD-3-Clause",
+    "BSD-2-Clause",
+    "ISC",
+    "CC0-1.0",
+    "Zlib",
+    "Apache-2.0 WITH LLVM-exception",
+    "MPL-2.0",
+]
 
 exceptions = [
     { allow = ["Unicode-DFS-2016"], name = "unicode-ident" },
+
+    # Only for us.
+    { allow = ["GPL-3.0"], name = "game_ai" },
+    { allow = ["GPL-3.0"], name = "game_asset" },
+    { allow = ["GPL-3.0"], name = "game_audio" },
+    { allow = ["GPL-3.0"], name = "game_client" },
+    { allow = ["GPL-3.0"], name = "game_common" },
+    { allow = ["GPL-3.0"], name = "game_core" },
+    { allow = ["GPL-3.0"], name = "game_data" },
+    { allow = ["GPL-3.0"], name = "game_editor" },
+    { allow = ["GPL-3.0"], name = "game_gizmos" },
+    { allow = ["GPL-3.0"], name = "game_gltf" },
+    { allow = ["GPL-3.0"], name = "game_input" },
+    { allow = ["GPL-3.0"], name = "game_macros" },
+    { allow = ["GPL-3.0"], name = "game_model" },
+    { allow = ["GPL-3.0"], name = "game_net" },
+    { allow = ["GPL-3.0"], name = "game_physics" },
+    { allow = ["GPL-3.0"], name = "game_render" },
+    { allow = ["GPL-3.0"], name = "game_render_test" },
+    { allow = ["GPL-3.0"], name = "game_scene" },
+    { allow = ["GPL-3.0"], name = "game_script" },
+    { allow = ["GPL-3.0"], name = "game_server" },
+    { allow = ["GPL-3.0"], name = "game_tasks" },
+    { allow = ["GPL-3.0"], name = "game_tracing" },
+    { allow = ["GPL-3.0"], name = "game_ui" },
+    { allow = ["GPL-3.0"], name = "game_ui_test" },
+    { allow = ["GPL-3.0"], name = "game_wasm" },
+    { allow = ["GPL-3.0"], name = "game_window" },
+    { allow = ["GPL-3.0"], name = "game_worldgen" },
+    { allow = ["GPL-3.0"], name = "shared" },
+    { allow = ["GPL-3.0"], name = "builder" },
+    { allow = ["GPL-3.0"], name = "gltf2model" },
+    { allow = ["GPL-3.0"], name = "json2dat" },
+    { allow = ["GPL-3.0"], name = "make" },
 ]
