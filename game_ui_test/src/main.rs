@@ -15,6 +15,7 @@ use game_window::WindowManager;
 use tests::hello_world::hello_world;
 use tests::input::input;
 use tests::selection::selection;
+use tests::svg::svg;
 use tests::table::table;
 
 fn main() {
@@ -71,7 +72,8 @@ impl game_window::App for App {
                 let ctx = rt.root_context(doc);
 
                 // hello_world(ctx.clone());
-                selection(ctx);
+                // selection(ctx);
+                svg(ctx);
             }
             WindowEvent::WindowDestroyed(event) => {
                 todo!()
