@@ -1,4 +1,5 @@
 mod button;
+mod svg;
 // mod checkbox;
 mod container;
 mod image;
@@ -22,6 +23,7 @@ use parking_lot::Mutex;
 pub use context_menu::{ContextMenuCloser, ContextMenuState, ContextPanel};
 pub use plot::Plot;
 pub use selection::Selection;
+pub use svg::{Svg, SvgData, SvgError, SvgStyle};
 pub use table::Table;
 pub use text::Text;
 
