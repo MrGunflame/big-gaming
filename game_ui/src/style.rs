@@ -234,6 +234,25 @@ impl Background {
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Color(pub Rgba<u8>);
 
+impl Color {
+    pub const BLACK: Self = Self(Rgba([0x00, 0x00, 0x00, 0xFF]));
+    pub const SILVER: Self = Self(Rgba([0xC0, 0xC0, 0xC0, 0xFF]));
+    pub const GRAY: Self = Self(Rgba([0x80, 0x80, 0x80, 0xFF]));
+    pub const WHITE: Self = Self(Rgba([0xFF, 0xFF, 0xFF, 0xFF]));
+    pub const MAROON: Self = Self(Rgba([0x80, 0x00, 0x00, 0xFF]));
+    pub const RED: Self = Self(Rgba([0xFF, 0x00, 0x00, 0xFF]));
+    pub const PURPLE: Self = Self(Rgba([0x80, 0x00, 0x80, 0xFF]));
+    pub const FUCHSIA: Self = Self(Rgba([0xFF, 0x00, 0xFF, 0xFF]));
+    pub const GREEN: Self = Self(Rgba([0x00, 0x80, 0x00, 0xFF]));
+    pub const LIME: Self = Self(Rgba([0x00, 0xFF, 0x00, 0xFF]));
+    pub const OLIVE: Self = Self(Rgba([0x80, 0x80, 0x00, 0xFF]));
+    pub const YELLOW: Self = Self(Rgba([0xFF, 0xFF, 0x00, 0xFF]));
+    pub const NAVY: Self = Self(Rgba([0x00, 0x00, 0x80, 0xFF]));
+    pub const BLUE: Self = Self(Rgba([0x00, 0x00, 0xFF, 0xFF]));
+    pub const TEAL: Self = Self(Rgba([0x00, 0x80, 0x80, 0xFF]));
+    pub const AQUA: Self = Self(Rgba([0x00, 0xFF, 0xFF, 0xFF]));
+}
+
 impl Default for Color {
     fn default() -> Self {
         Self(Rgba([255, 255, 255, 255]))
