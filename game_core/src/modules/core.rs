@@ -1,10 +1,12 @@
 //! Builtin core module data
 
 use game_common::components::{
-    DirectionalLight, GlobalTransform, PointLight, SpotLight, Transform,
+    Collider, DirectionalLight, GlobalTransform, PointLight, RigidBody, SpotLight, Transform,
 };
 use game_common::record::ModuleId;
-use game_common::reflection::{ComponentDescriptor, Field, FieldIndex, FieldKind, FloatField};
+use game_common::reflection::{
+    ComponentDescriptor, EnumField, EnumFieldVariant, Field, FieldIndex, FieldKind, FloatField,
+};
 use game_data::record::{Record, RecordKind};
 use game_wasm::components::Component;
 
@@ -40,6 +42,8 @@ pub fn load_core() -> ModuleData {
         DirectionalLight,
         PointLight,
         SpotLight,
+        Collider,
+        RigidBody,
     }
 }
 
@@ -245,6 +249,178 @@ impl Descriptor for SpotLight {
             FieldIndex::from_raw(6),
             FieldIndex::from_raw(7),
             FieldIndex::from_raw(8),
+        ];
+
+        ComponentDescriptor::new(fields, root).unwrap()
+    }
+}
+
+impl Descriptor for Collider {
+    fn descriptor() -> ComponentDescriptor {
+        let fields = vec![
+            // Cuboid
+            Field {
+                name: "hx".to_owned(),
+                kind: FieldKind::Float(FloatField { bits: 32 }),
+            },
+            Field {
+                name: "hy".to_owned(),
+                kind: FieldKind::Float(FloatField { bits: 32 }),
+            },
+            Field {
+                name: "hz".to_owned(),
+                kind: FieldKind::Float(FloatField { bits: 32 }),
+            },
+            // Ball
+            Field {
+                name: "Radius".to_owned(),
+                kind: FieldKind::Float(FloatField { bits: 32 }),
+            },
+            // Capsule
+            Field {
+                name: "Axis".to_owned(),
+                kind: FieldKind::Enum(EnumField {
+                    tag_bits: 8,
+                    default_variant: 0,
+                    variants: vec![
+                        EnumFieldVariant {
+                            tag: 0,
+                            name: "X".to_owned(),
+                            fields: Vec::new(),
+                        },
+                        EnumFieldVariant {
+                            tag: 1,
+                            name: "Y".to_owned(),
+                            fields: Vec::new(),
+                        },
+                        EnumFieldVariant {
+                            tag: 2,
+                            name: "Z".to_owned(),
+                            fields: Vec::new(),
+                        },
+                    ],
+                }),
+            },
+            Field {
+                name: "Half height".to_owned(),
+                kind: FieldKind::Float(FloatField { bits: 32 }),
+            },
+            Field {
+                name: "Radius".to_owned(),
+                kind: FieldKind::Float(FloatField { bits: 32 }),
+            },
+            Field {
+                name: "Friction".to_owned(),
+                kind: FieldKind::Float(FloatField { bits: 32 }),
+            },
+            Field {
+                name: "Restitution".to_owned(),
+                kind: FieldKind::Float(FloatField { bits: 32 }),
+            },
+            Field {
+                name: "Shape".to_owned(),
+                kind: FieldKind::Enum(EnumField {
+                    tag_bits: 8,
+                    default_variant: 1,
+                    variants: vec![
+                        EnumFieldVariant {
+                            tag: 1,
+                            name: "Cuboid".to_owned(),
+                            fields: vec![
+                                FieldIndex::from_raw(0),
+                                FieldIndex::from_raw(1),
+                                FieldIndex::from_raw(2),
+                            ],
+                        },
+                        EnumFieldVariant {
+                            tag: 2,
+                            name: "Ball".to_owned(),
+                            fields: vec![FieldIndex::from_raw(3)],
+                        },
+                        EnumFieldVariant {
+                            tag: 3,
+                            name: "Capsulse".to_owned(),
+                            fields: vec![
+                                FieldIndex::from_raw(4),
+                                FieldIndex::from_raw(5),
+                                FieldIndex::from_raw(6),
+                            ],
+                        },
+                    ],
+                }),
+            },
+        ];
+        let root = vec![
+            FieldIndex::from_raw(7),
+            FieldIndex::from_raw(8),
+            FieldIndex::from_raw(9),
+        ];
+
+        ComponentDescriptor::new(fields, root).unwrap()
+    }
+}
+
+impl Descriptor for RigidBody {
+    fn descriptor() -> ComponentDescriptor {
+        let fields = vec![
+            // Vec3
+            Field {
+                name: "X".to_owned(),
+                kind: FieldKind::Float(FloatField { bits: 32 }),
+            },
+            Field {
+                name: "Y".to_owned(),
+                kind: FieldKind::Float(FloatField { bits: 32 }),
+            },
+            Field {
+                name: "Z".to_owned(),
+                kind: FieldKind::Float(FloatField { bits: 32 }),
+            },
+            Field {
+                name: "Kind".to_owned(),
+                kind: FieldKind::Enum(EnumField {
+                    tag_bits: 8,
+                    default_variant: 0,
+                    variants: vec![
+                        EnumFieldVariant {
+                            tag: 0,
+                            name: "Fixed".to_owned(),
+                            fields: Vec::new(),
+                        },
+                        EnumFieldVariant {
+                            tag: 1,
+                            name: "Dynamic".to_owned(),
+                            fields: Vec::new(),
+                        },
+                        EnumFieldVariant {
+                            tag: 2,
+                            name: "Kinematic".to_owned(),
+                            fields: Vec::new(),
+                        },
+                    ],
+                }),
+            },
+            Field {
+                name: "Linear Velocity".to_owned(),
+                kind: FieldKind::Struct(vec![
+                    FieldIndex::from_raw(0),
+                    FieldIndex::from_raw(1),
+                    FieldIndex::from_raw(2),
+                ]),
+            },
+            Field {
+                name: "Angular Velocity".to_owned(),
+                kind: FieldKind::Struct(vec![
+                    FieldIndex::from_raw(0),
+                    FieldIndex::from_raw(1),
+                    FieldIndex::from_raw(2),
+                ]),
+            },
+        ];
+        let root = vec![
+            FieldIndex::from_raw(3),
+            FieldIndex::from_raw(4),
+            FieldIndex::from_raw(5),
         ];
 
         ComponentDescriptor::new(fields, root).unwrap()
