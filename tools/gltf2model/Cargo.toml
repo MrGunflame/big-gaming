@@ -13,6 +13,6 @@ game_common = { version = "0.1.0", path = "../../game_common" }
 game_model = { version = "0.1.0", path = "../../game_model" }
 game_gltf = { version = "0.1.0", path = "../../game_gltf" }
 
-clap = { version = "4.3.21", features = ["derive"] }
-image = "0.24.7"
-bytemuck = "1.13.1"
+clap = { version = "4.5.8", features = ["derive"] }
+image = "0.25.1"
+bytemuck = "1.16.1"

@@ -16,22 +16,22 @@ physics = []
 workspace = true
 
 [dependencies]
-ahash = "0.8.3"
-bytes = "1.4.0"
-clap = { version = "4.1.6", features = ["derive"] }
-futures = "0.3.26"
+ahash = "0.8.11"
+bytes = "1.6.0"
+clap = { version = "4.5.8", features = ["derive"] }
+futures = "0.3.30"
 game_common = { version = "0.1.0", path = "../game_common" }
 game_core = { version = "0.1.0", path = "../game_core" }
 game_net = { version = "0.1.0", path = "../game_net" }
-parking_lot = "0.12.1"
+parking_lot = "0.12.3"
 
-tokio = { version = "1.25.0", features = ["rt", "rt-multi-thread", "net", "sync", "macros", "time"] }
-tracing = "0.1.37"
+tokio = { version = "1.38.0", features = ["rt", "rt-multi-thread", "net", "sync", "macros", "time"] }
+tracing = "0.1.40"
 game_physics = { version = "0.1.0", path = "../game_physics" }
 game_script = { version = "0.1.0", path = "../game_script" }
-toml = "0.7.3"
+toml = "0.8.14"
 serde = { version = "1.0.160", features = ["derive"] }
-glam = "0.24.0"
+glam = "0.28.0"
 game_data = { version = "0.1.0", path = "../game_data" }
 game_worldgen = { version = "0.1.0", path = "../game_worldgen" }
 game_tasks = { version = "0.1.0", path = "../game_tasks" }

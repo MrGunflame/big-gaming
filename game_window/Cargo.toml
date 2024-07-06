@@ -13,10 +13,10 @@ game_common = { version = "0.1.0", path = "../game_common" }
 game_input = { version = "0.1.0", path = "../game_input" }
 game_tracing = { version = "0.1.0", path = "../game_tracing" }
 
-glam = "0.24.0"
+glam = "0.28.0"
 # wgpu 0.18 still depends on raw-window-handle 0.5
 winit = { version = "0.29.4", features = ["rwh_05"] }
-tracing = "0.1.37"
+tracing = "0.1.40"
 raw-window-handle = "0.6.0"
-parking_lot = "0.12.1"
-slotmap = "1.0.6"
+parking_lot = "0.12.3"
+slotmap = "1.0.7"

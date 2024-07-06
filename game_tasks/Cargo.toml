@@ -9,12 +9,12 @@ license = "GPL-3.0-or-later"
 workspace = true
 
 [dependencies]
-crossbeam = "0.8.2"
-futures = "0.3.28"
-parking_lot = "0.12.1"
+crossbeam = "0.8.4"
+futures = "0.3.30"
+parking_lot = "0.12.3"
 
 [target.'cfg(loom)'.dependencies]
-loom = "0.7.0"
+loom = "0.7.2"
 
 [dev-dependencies]
 criterion = "0.5.1"

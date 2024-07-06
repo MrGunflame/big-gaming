@@ -11,4 +11,4 @@ workspace = true
 [dependencies]
 game_common = { version = "0.1.0", path = "../game_common" }
 
-glam = "0.24.0"
+glam = "0.28.0"

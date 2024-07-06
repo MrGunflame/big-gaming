@@ -18,16 +18,16 @@ game_window = { version = "0.1.0", path = "../game_window" }
 game_tracing = { version = "0.1.0", path = "../game_tracing" }
 game_common = { version = "0.1.0", path = "../game_common" }
 
-glam = "0.24.0"
-ab_glyph = "0.2.21"
-image = "0.24.6"
+glam = "0.28.0"
+ab_glyph = "0.2.28"
+image = "0.25.1"
 wgpu = "0.19.1"
-bytemuck = "1.13.1"
-parking_lot = "0.12.1"
-slotmap = "1.0.6"
-tracing = "0.1.37"
+bytemuck = "1.16.1"
+parking_lot = "0.12.3"
+slotmap = "1.0.7"
+tracing = "0.1.40"
 hex = "0.4.3"
-thiserror = "1.0.40"
+thiserror = "1.0.61"
 
 # SVG rendering
 usvg = "0.42.0"
@@ -35,7 +35,7 @@ resvg = "0.42.0"
 tiny-skia = "0.11.4"
 
 [dev-dependencies]
-criterion = "0.4"
+criterion = "0.5.1"
 
 [[test]]
 name = "layout_table"
