@@ -388,6 +388,12 @@ impl WorldWindowState {
                         world.insert(entity.id, id, component.clone());
                     }
                 }
+                Event::DeleteComponent(id) => {
+                    for entity in self.state.lock().entities.iter().filter(|e| e.is_selected) {
+                        world.remove(entity.id, id);
+                        self.update_components_panel = true;
+                    }
+                }
             }
         }
 
@@ -483,6 +489,7 @@ enum Event {
     SelectEntity(EntityId),
     /// Update component on selected entities.
     UpdateComponent(RecordReference, RawComponent),
+    DeleteComponent(RecordReference),
 }
 
 #[derive(Clone, Debug, Default)]
