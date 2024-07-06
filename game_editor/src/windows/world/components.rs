@@ -3,17 +3,33 @@ use std::fmt::{self, Display, Formatter};
 use std::str::FromStr;
 use std::sync::{mpsc, Arc};
 
+use chrono::format::Pad;
 use game_common::components::components::RawComponent;
 use game_common::reflection::{ComponentDescriptor, FieldKind};
 use game_core::modules::Modules;
 use game_data::record::RecordKind;
 use game_ui::reactive::Context;
-use game_ui::style::{Background, Bounds, Color, Direction, Growth, Size, SizeVec2, Style};
-use game_ui::widgets::{Callback, Container, Input, Selection, Text, Widget};
+use game_ui::style::{
+    Background, BorderRadius, Bounds, Color, Direction, Growth, Justify, Padding, Size, SizeVec2,
+    Style,
+};
+use game_ui::widgets::{Button, Callback, Container, Input, Selection, Svg, SvgData, Text, Widget};
 use game_wasm::world::RecordReference;
+use image::Rgba;
 use parking_lot::Mutex;
 
 use super::{Event, SceneState};
+
+const PANEL_COLOR: Color = Color(Rgba([0x16, 0x16, 0x16, 0xff]));
+const HEADER_COLOR: Color = Color(Rgba([0x4c, 0x54, 0x59, 0xff]));
+const INPUT_COLOR: Color = Color(Rgba([0x2d, 0x31, 0x33, 0xff]));
+
+const ICON_TRASH: &[u8] =
+    include_bytes!("../../../../assets/fonts/FontAwesome/svgs/regular/trash-can.svg");
+const ICON_ARROW_RIGHT: &[u8] =
+    include_bytes!("../../../../assets/fonts/FontAwesome/svgs/solid/angle-right.svg");
+const ICON_ARROW_DOWN: &[u8] =
+    include_bytes!("../../../../assets/fonts/FontAwesome/svgs/solid/angle-down.svg");
 
 #[derive(Clone, Debug)]
 pub struct ComponentsPanel {
@@ -25,7 +41,7 @@ pub struct ComponentsPanel {
 impl Widget for ComponentsPanel {
     fn mount<T>(self, parent: &Context<T>) -> Context<()> {
         let style = Style {
-            background: Background::GRAY,
+            background: Background::Color(PANEL_COLOR.0),
             growth: Growth::splat(1.0),
             bounds: Bounds::exact(SizeVec2 {
                 x: Size::Pixels(300),
@@ -73,14 +89,14 @@ fn mount_component_panel(
             continue;
         };
 
-        render_component(
-            &component_container,
+        ComponentWrapper {
             id,
-            name,
+            name: name.to_owned(),
+            writer: writer.clone(),
+            component: component.clone(),
             descriptor,
-            writer.clone(),
-            component,
-        );
+        }
+        .mount(&component_container);
     }
 
     let mut components = Vec::new();
@@ -135,6 +151,7 @@ where
     let root = Container::new()
         .style(Style {
             direction: Direction::Column,
+            padding: Padding::splat(Size::Pixels(5)),
             ..Default::default()
         })
         .mount(ctx);
@@ -142,7 +159,7 @@ where
     let color_box = Container::new()
         .style(Style {
             background: Background::Color(color.0),
-            growth: Growth::y(1.0),
+            // growth: Growth::y(1.0),
             ..Default::default()
         })
         .mount(&root);
@@ -150,6 +167,12 @@ where
 
     Input::new()
         .value(value.to_string())
+        .style(Style {
+            background: Background::Color(INPUT_COLOR.0),
+            padding: Padding::splat(Size::Pixels(1)),
+            border_radius: BorderRadius::splat(Size::Pixels(5)),
+            ..Default::default()
+        })
         .on_change(move |value: String| {
             if let Ok(value) = value.parse::<T>() {
                 on_change.call(value);
@@ -170,16 +193,90 @@ fn get_component_descriptor_and_name(
     }
 }
 
+struct ComponentWrapper {
+    id: RecordReference,
+    name: String,
+    descriptor: ComponentDescriptor,
+    writer: mpsc::Sender<Event>,
+    component: RawComponent,
+}
+
+impl Widget for ComponentWrapper {
+    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+        let root = Container::new().mount(parent);
+
+        let header = Container::new()
+            .style(Style {
+                direction: Direction::Column,
+                padding: Padding::splat(Size::Pixels(5)),
+                background: Background::Color(HEADER_COLOR.0),
+                ..Default::default()
+            })
+            .mount(&root);
+        let body = Container::new().mount(&root);
+
+        let mut is_active = false;
+        let collapse_button_id = Arc::new(Mutex::new(None));
+
+        let writer = self.writer.clone();
+        let collapse_button_id2 = collapse_button_id.clone();
+        let on_collapse = move |()| {
+            is_active ^= true;
+            body.clear_children();
+
+            let lock = collapse_button_id2.lock();
+            let collapse_button_id: &Context<()> = lock.as_ref().unwrap();
+            collapse_button_id.clear_children();
+
+            if is_active {
+                render_component(&body, self.id, &self.descriptor, &writer, &self.component);
+            }
+
+            let icon = if is_active {
+                ICON_ARROW_DOWN
+            } else {
+                ICON_ARROW_RIGHT
+            };
+
+            Svg::new(SvgData::from_bytes(icon).unwrap(), 32, 32).mount(&collapse_button_id);
+        };
+
+        let collapse_button = Button::new()
+            .style(Style {
+                padding: Padding::splat(Size::Pixels(3)),
+                ..Default::default()
+            })
+            .on_click(on_collapse)
+            .mount(&header);
+        Svg::new(SvgData::from_bytes(ICON_ARROW_RIGHT).unwrap(), 32, 32).mount(&collapse_button);
+        *collapse_button_id.lock() = Some(collapse_button);
+
+        Text::new(self.name).size(32.0).mount(&header);
+
+        let on_delete = move |()| {
+            self.writer.send(Event::DeleteComponent(self.id)).unwrap();
+        };
+
+        let delete_button = Button::new()
+            .style(Style {
+                padding: Padding::splat(Size::Pixels(3)),
+                ..Default::default()
+            })
+            .on_click(on_delete)
+            .mount(&header);
+        Svg::new(SvgData::from_bytes(ICON_TRASH).unwrap(), 32, 32).mount(&delete_button);
+
+        root
+    }
+}
+
 fn render_component(
     ctx: &Context<()>,
     id: RecordReference,
-    name: &str,
-    descriptor: ComponentDescriptor,
-    writer: mpsc::Sender<Event>,
+    descriptor: &ComponentDescriptor,
+    writer: &mpsc::Sender<Event>,
     component: &RawComponent,
 ) {
-    Text::new(name).mount(ctx);
-
     let mut offset = 0;
 
     let mut queue = VecDeque::new();
