@@ -1,4 +1,5 @@
 use std::borrow::Borrow;
+use std::cell::UnsafeCell;
 use std::hash::{Hash, Hasher};
 use std::ptr::NonNull;
 
@@ -78,7 +79,7 @@ impl<K, V> LruCache<K, V> {
         }
 
         let bucket = NonNull::new(Box::into_raw(Box::new(Bucket {
-            value,
+            value: UnsafeCell::new(value),
             key,
             pointers: UnsafeRefCell::new(Pointers {
                 prev: None,
@@ -115,14 +116,14 @@ impl<K, V> LruCache<K, V> {
         Q: Hash + Eq + ?Sized,
     {
         let key_ref: &KeyRef<Q> = KeyRef::from_ref(key);
-        let mut ptr = *self.map.get(key_ref)?;
+        let ptr = *self.map.get(key_ref)?;
 
         debug_assert!(self.head.is_some());
         debug_assert!(self.tail.is_some());
 
         // Promote the bucket by placing it at `self.head`.
         unsafe {
-            let bucket = ptr.as_mut();
+            let bucket = ptr.as_ref();
             let pointers = bucket.pointers.get();
 
             if cfg!(debug_assertions) {
@@ -147,7 +148,7 @@ impl<K, V> LruCache<K, V> {
             drop(pointers);
             self.insert_bucket(ptr);
 
-            Some(&mut bucket.value)
+            Some(&mut *bucket.value.get())
         }
     }
 
@@ -188,7 +189,7 @@ impl<K, V> LruCache<K, V> {
 
             self.tail = pointers.prev;
 
-            Some((boxed.key, boxed.value))
+            Some((boxed.key, boxed.value.into_inner()))
         }
     }
 }
@@ -303,7 +304,11 @@ where
 struct Bucket<K, V> {
     pointers: UnsafeRefCell<Pointers<K, V>>,
     key: K,
-    value: V,
+    // We need to wrap `value` in a `UnsafeCell` to allow borrowing it
+    // mutably without having to borrow the entire `Bucket`, which
+    // would cause UB since an immutable `KeyRef` to the `Bucket` may
+    // exist.
+    value: UnsafeCell<V>,
 }
 
 struct Pointers<K, V> {

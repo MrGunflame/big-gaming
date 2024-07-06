@@ -1,3 +1,6 @@
+use std::borrow::Borrow;
+use std::hash::{Hash, Hasher};
+use std::mem::ManuallyDrop;
 use std::sync::OnceLock;
 
 use ab_glyph::{point, Font, FontRef, Glyph, PxScale, ScaleFont};
@@ -15,8 +18,87 @@ const DEFAULT_FONT: &[u8] = include_bytes!("../../../assets/fonts/OpenSans/OpenS
 
 const TEXT_CACHE_CAP: usize = 1024;
 
-static TEXT_CACHE: OnceLock<Mutex<LruCache<String, ImageBuffer<Rgba<u8>, Vec<u8>>>>> =
+static TEXT_CACHE: OnceLock<Mutex<LruCache<OwnedKey, ImageBuffer<Rgba<u8>, Vec<u8>>>>> =
     OnceLock::new();
+
+struct OwnedKey {
+    // To implement Borrow<BorrowedKey> we decompose the string
+    // into their raw parts and store a static reference in `key`.
+    ptr: *mut u8,
+    len: usize,
+    cap: usize,
+    // Note that `key` MUST be dropped before the string buffer
+    // itself is dropped, hence it is `ManuallyDrop`.
+    key: ManuallyDrop<BorrowedKey<'static>>,
+}
+
+impl OwnedKey {
+    fn new(text: String, size: u32, max: UVec2) -> Self {
+        let ptr = text.as_ptr().cast_mut();
+        let len = text.len();
+        let cap = text.capacity();
+
+        let text = text.leak();
+
+        Self {
+            ptr,
+            len,
+            cap,
+            key: ManuallyDrop::new(BorrowedKey { text, size, max }),
+        }
+    }
+}
+
+impl Drop for OwnedKey {
+    fn drop(&mut self) {
+        // SAFETY: `ptr`, `len` and `cap` were previously created by decomposing
+        // a `String` into their raw parts.
+        // We drop `self.key` before dropped the string buffer, which guarantees
+        // that all references to the underlying buffer are dropped.
+        unsafe {
+            ManuallyDrop::drop(&mut self.key);
+            drop(String::from_raw_parts(self.ptr, self.len, self.cap));
+        }
+    }
+}
+
+impl<'a> Borrow<BorrowedKey<'a>> for OwnedKey {
+    #[inline]
+    fn borrow(&self) -> &BorrowedKey<'a> {
+        &self.key
+    }
+}
+
+impl PartialEq for OwnedKey {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.key == other.key
+    }
+}
+
+impl Eq for OwnedKey {}
+
+impl Hash for OwnedKey {
+    #[inline]
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.key.hash(state);
+    }
+}
+
+// SAFETY: It is safe to send string references across threads
+// and to drop the string on a different thread.
+unsafe impl Send for OwnedKey {}
+unsafe impl Sync for OwnedKey {}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+struct BorrowedKey<'a> {
+    text: &'a str,
+    size: u32,
+    max: UVec2,
+}
 
 #[derive(Clone, Debug)]
 pub struct Text {
@@ -50,11 +132,21 @@ impl DrawElement for Text {
     }
 }
 
-fn render_to_texture(text: &str, size: f32, max: UVec2) -> ImageBuffer<Rgba<u8>, Vec<u8>> {
+pub(crate) fn render_to_texture(
+    text: &str,
+    size: f32,
+    max: UVec2,
+) -> ImageBuffer<Rgba<u8>, Vec<u8>> {
+    let key = BorrowedKey {
+        text,
+        size: size.to_bits(),
+        max,
+    };
+
     if let Some(res) = TEXT_CACHE
         .get_or_init(|| Mutex::new(LruCache::new(TEXT_CACHE_CAP)))
         .lock()
-        .get(text)
+        .get(&key)
     {
         return res.clone();
     }
@@ -90,11 +182,10 @@ fn render_to_texture(text: &str, size: f32, max: UVec2) -> ImageBuffer<Rgba<u8>,
         }
     }
 
-    TEXT_CACHE
-        .get()
-        .unwrap()
-        .lock()
-        .insert(text.to_owned(), image.clone());
+    TEXT_CACHE.get().unwrap().lock().insert(
+        OwnedKey::new(text.to_owned(), size.to_bits(), max),
+        image.clone(),
+    );
     image
 }
 
@@ -155,9 +246,13 @@ fn layout_glyphs<SF: ScaleFont<F>, F: Font>(
 #[cfg(test)]
 mod tests {
     use ab_glyph::{Font, FontRef, PxScale};
+    use game_common::collections::lru::LruCache;
     use glam::UVec2;
+    use parking_lot::Mutex;
 
-    use super::{layout_glyphs, render_to_texture, DEFAULT_FONT};
+    use super::{
+        layout_glyphs, render_to_texture, BorrowedKey, DEFAULT_FONT, TEXT_CACHE, TEXT_CACHE_CAP,
+    };
 
     fn test_font() -> FontRef<'static> {
         FontRef::try_from_slice(DEFAULT_FONT).unwrap()
@@ -199,5 +294,34 @@ mod tests {
         let mut target = Vec::new();
 
         layout_glyphs(font, text, max_width, &mut target);
+    }
+
+    #[test]
+    fn text_cache_get() {
+        let text = "Hello World";
+        let size: f32 = 24.0;
+        let max = UVec2::splat(128);
+
+        let key = BorrowedKey {
+            text,
+            size: size.to_bits(),
+            max,
+        };
+
+        assert!(TEXT_CACHE
+            .get_or_init(|| Mutex::new(LruCache::new(TEXT_CACHE_CAP)))
+            .lock()
+            .get(&key)
+            .is_none());
+
+        // Call render twice, the second call will hit the cache.
+        render_to_texture(text, size, max);
+        render_to_texture(text, size, max);
+
+        assert!(TEXT_CACHE
+            .get_or_init(|| Mutex::new(LruCache::new(TEXT_CACHE_CAP)))
+            .lock()
+            .get(&key)
+            .is_some());
     }
 }
