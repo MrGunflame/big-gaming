@@ -36,7 +36,13 @@ pub(super) unsafe fn overlay(
     }
 }
 
-unsafe fn blend(a: [u8; 4], b: [u8; 4]) -> [u8; 4] {
+pub(super) unsafe fn blend(a: [u8; 4], b: [u8; 4]) -> [u8; 4] {
+    // Implementation based on alpha blending using premultiplied alpha:
+    // Let a be the alpha and C the color component.
+    // final_alpha = bg_a + fg_a - bg_a * fg_a
+    // out_C = ((fg_C * fg_a) + (bg_C * bg_a) * (1 - fg_a)) / final_alpha
+    // https://en.wikipedia.org/wiki/Alpha_compositing
+
     if b[3] == 0 {
         return a;
     }

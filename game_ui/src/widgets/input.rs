@@ -1,14 +1,25 @@
+use std::collections::HashMap;
 use std::ops::Deref;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::time::Duration;
 
 use game_input::keyboard::{KeyCode, KeyboardInput};
 use game_input::mouse::MouseButtonInput;
+use parking_lot::Mutex;
 
-use crate::reactive::Context;
+use crate::reactive::{Context, NodeDestroyed, NodeId};
 use crate::style::{Bounds, Size, SizeVec2, Style};
 
 use super::{Callback, Container, Text, Widget};
+
+// FIXME: Some platforms (e.g. Windows) have customizable blinking intervals
+// that we should conform to (e.g. GetCaretBlinkTime for Windows).
+const CARET_BLINK_INTERVAL: Duration = Duration::from_millis(500);
+
+/// State indicating whether the cursor blink thread is currently active.
+// If this is `true` but no `InputState` exists we should wait until
+// the thread was dropped before starting a new one.
+static THREAD_ACTIVE: AtomicBool = AtomicBool::new(false);
 
 pub struct Input {
     pub value: String,
@@ -54,51 +65,164 @@ impl Input {
 
 impl Widget for Input {
     fn mount<T>(self, parent: &Context<T>) -> Context<()> {
-        let mut buffer = Buffer::new(self.value.clone());
-        let is_selected = Arc::new(AtomicBool::new(false));
+        let wrapper = Container::new().style(self.style).mount(parent);
 
-        let node_ctx = Container::new().style(self.style).mount(parent);
-        let node_id = node_ctx.node().unwrap();
+        parent.document().register_with_parent(
+            wrapper.node().unwrap(),
+            move |ctx: Context<NodeDestroyed>| {
+                let node = ctx.node().unwrap();
+                let state = ctx.document().get::<InputState>().unwrap();
+                let mut active = state.active.lock();
+                let mut nodes = state.nodes.lock();
 
-        {
-            let node_ctx = node_ctx.clone();
-            let is_selected = is_selected.clone();
+                if *active == Some(node) {
+                    *active = None;
+                }
+
+                nodes.remove(&node);
+                if nodes.is_empty() {
+                    ctx.document().remove::<InputState>();
+                }
+            },
+        );
+
+        if let Some(state) = parent.document().get::<InputState>() {
+            state.nodes.lock().insert(
+                wrapper.node().unwrap(),
+                NodeState {
+                    ctx: wrapper.clone(),
+                    on_change: self.on_change,
+                    buffer: Buffer::new(self.value.clone()),
+                },
+            );
+        } else {
+            // Wait until the previous thread has dropped before spawning
+            // a new one.
+            // Running multiple threads can cause problems including
+            // unsynchronized cursor blinking or deadlocks.
+            while THREAD_ACTIVE.load(Ordering::SeqCst) {}
+
+            let mut state = InputState::default();
+            state.nodes.get_mut().insert(
+                wrapper.node().unwrap(),
+                NodeState {
+                    ctx: wrapper.clone(),
+                    on_change: self.on_change,
+                    buffer: Buffer::new(self.value.clone()),
+                },
+            );
+            parent.document().insert(state);
+
+            // FIXME: We should prefer a async task system for the UI
+            // for cases like these.
+            THREAD_ACTIVE.store(true, Ordering::SeqCst);
+            let ctx = wrapper.clone();
+            std::thread::spawn(move || {
+                let mut cursor_blink = false;
+                loop {
+                    std::thread::sleep(CARET_BLINK_INTERVAL);
+
+                    let Some(state) = ctx.document().get::<InputState>() else {
+                        break;
+                    };
+
+                    let nodes = state.nodes.lock();
+                    let active = state.active.lock();
+
+                    let Some(node) = *active else {
+                        continue;
+                    };
+
+                    let node = nodes.get(&node).unwrap();
+                    node.ctx.clear_children();
+                    Text::new(node.buffer.string.clone())
+                        .size(32.0)
+                        .caret(cursor_blink.then_some(node.buffer.cursor as u32))
+                        .mount(&node.ctx);
+                    cursor_blink ^= true;
+                }
+
+                THREAD_ACTIVE.store(false, Ordering::SeqCst);
+            });
+
             parent
                 .document()
-                .register_with_parent(node_id, move |ctx: Context<KeyboardInput>| {
-                    if !is_selected.load(Ordering::Acquire)
-                        || !update_buffer(&mut buffer, &ctx.event)
-                    {
+                .register(move |ctx: Context<MouseButtonInput>| {
+                    let state = ctx.document().get::<InputState>().unwrap();
+                    let nodes = state.nodes.lock();
+                    let mut active = state.active.lock();
+
+                    let prev_active = *active;
+
+                    let mut selected = false;
+                    for node in nodes.values() {
+                        let Some(layout) = ctx.layout(node.ctx.node().unwrap()) else {
+                            continue;
+                        };
+
+                        if layout.contains(ctx.cursor().as_uvec2()) {
+                            *active = Some(node.ctx.node().unwrap());
+                            selected = true;
+                            break;
+                        }
+                    }
+
+                    if !selected {
+                        *active = None
+                    }
+
+                    if let Some(prev_active) = prev_active {
+                        let node = nodes.get(&prev_active).unwrap();
+                        node.ctx.clear_children();
+                        Text::new(node.buffer.string.clone())
+                            .size(32.0)
+                            .caret(None)
+                            .mount(&node.ctx);
+                    }
+
+                    if let Some(active) = *active {
+                        let node = nodes.get(&active).unwrap();
+                        node.ctx.clear_children();
+                        Text::new(node.buffer.string.clone())
+                            .size(32.0)
+                            .caret(Some(node.buffer.cursor as u32))
+                            .mount(&node.ctx);
+                    }
+                });
+
+            parent
+                .document()
+                .register(move |ctx: Context<KeyboardInput>| {
+                    let state = ctx.document().get::<InputState>().unwrap();
+                    let mut nodes = state.nodes.lock();
+                    let active = state.active.lock();
+
+                    let Some(node) = &*active else {
+                        return;
+                    };
+
+                    let node = nodes.get_mut(node).unwrap();
+                    if !update_buffer(&mut node.buffer, &ctx.event) {
                         return;
                     }
 
-                    let mut string = buffer.string.clone();
-                    string.insert(buffer.cursor, '|');
+                    node.ctx.clear_children();
+                    Text::new(node.buffer.string.clone())
+                        .size(32.0)
+                        .caret(Some(node.buffer.cursor as u32))
+                        .mount(&node.ctx);
 
-                    node_ctx.clear_children();
-                    let text = Text::new(string).size(32.0);
-                    text.mount(&node_ctx);
-
-                    self.on_change.call(buffer.string.clone());
+                    let string = node.buffer.string.clone();
+                    let on_change = node.on_change.clone();
+                    drop(nodes);
+                    drop(active);
+                    on_change.call(string);
                 });
         }
 
-        parent
-            .document()
-            .register_with_parent(node_id, move |ctx: Context<MouseButtonInput>| {
-                if let Some(node) = ctx.layout(node_id) {
-                    if node.contains(ctx.cursor().as_uvec2()) {
-                        is_selected.store(true, Ordering::Release);
-                    } else {
-                        is_selected.store(false, Ordering::Release);
-                    }
-                }
-            });
+        Text::new(self.value).size(32.0).mount(&wrapper);
 
-        let text = Text::new(self.value).size(32.0);
-        text.clone().mount(&node_ctx);
-
-        node_ctx
+        wrapper
     }
 }
 
@@ -154,6 +278,19 @@ fn update_buffer(buffer: &mut Buffer, event: &KeyboardInput) -> bool {
         }
         _ => false,
     }
+}
+
+#[derive(Debug, Default)]
+struct InputState {
+    nodes: Mutex<HashMap<NodeId, NodeState>>,
+    active: Mutex<Option<NodeId>>,
+}
+
+#[derive(Debug)]
+struct NodeState {
+    ctx: Context<()>,
+    on_change: Callback<String>,
+    buffer: Buffer,
 }
 
 /// A UTF-8 string buffer.

@@ -8,6 +8,7 @@ use super::Widget;
 pub struct Text {
     pub text: String,
     pub size: f32,
+    caret: Option<u32>,
 }
 
 impl Text {
@@ -18,11 +19,17 @@ impl Text {
         Self {
             text: text.to_string(),
             size: 24.0,
+            caret: None,
         }
     }
 
     pub fn size(mut self, size: f32) -> Self {
         self.size = size;
+        self
+    }
+
+    pub(crate) fn caret(mut self, caret: Option<u32>) -> Self {
+        self.caret = caret;
         self
     }
 }
@@ -35,6 +42,7 @@ impl Widget for Text {
             text: Some(crate::render::Text {
                 text: self.text,
                 size: self.size,
+                caret: self.caret,
             }),
         }))
     }

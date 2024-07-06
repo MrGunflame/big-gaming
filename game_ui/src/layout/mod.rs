@@ -899,7 +899,7 @@ mod tests {
         let key = tree.push(None, root);
 
         let elem = Element {
-            body: ElementBody::Text(Text::new("test", 100.0)),
+            body: ElementBody::Text(Text::new("test", 100.0, None)),
             style: Style {
                 position: Position::Absolute(UVec2::splat(0)),
                 ..Default::default()
