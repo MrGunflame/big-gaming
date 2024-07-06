@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::ops::Deref;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
 
 use game_input::keyboard::{KeyCode, KeyboardInput};
 use game_input::mouse::MouseButtonInput;
@@ -11,6 +12,10 @@ use crate::reactive::{Context, NodeDestroyed, NodeId};
 use crate::style::{Bounds, Size, SizeVec2, Style};
 
 use super::{Callback, Container, Text, Widget};
+
+// FIXME: Some platforms (e.g. Windows) have customizable blinking intervals
+// that we should conform to (e.g. GetCaretBlinkTime for Windows).
+const CARET_BLINK_INTERVAL: Duration = Duration::from_millis(500);
 
 pub struct Input {
     pub value: String,
@@ -133,17 +138,17 @@ impl Widget for Input {
                         return;
                     }
 
-                    let mut string = node.buffer.string.clone();
-                    let string2 = node.buffer.string.clone();
-                    string.insert(node.buffer.cursor, '|');
-
                     node.ctx.clear_children();
-                    Text::new(string).size(32.0).mount(&node.ctx);
+                    Text::new(node.buffer.string.clone())
+                        .size(32.0)
+                        .caret(Some(node.buffer.cursor as u32))
+                        .mount(&node.ctx);
 
+                    let string = node.buffer.string.clone();
                     let on_change = node.on_change.clone();
                     drop(nodes);
                     drop(active);
-                    on_change.call(string2);
+                    on_change.call(string);
                 });
         }
 
