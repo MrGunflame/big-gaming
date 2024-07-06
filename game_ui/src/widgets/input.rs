@@ -1,7 +1,5 @@
 use std::collections::HashMap;
 use std::ops::Deref;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
 use std::time::Duration;
 
 use game_input::keyboard::{KeyCode, KeyboardInput};
@@ -110,6 +108,9 @@ impl Widget for Input {
                     let nodes = state.nodes.lock();
                     let mut active = state.active.lock();
 
+                    let prev_active = *active;
+
+                    let mut selected = false;
                     for node in nodes.values() {
                         let Some(layout) = ctx.layout(node.ctx.node().unwrap()) else {
                             continue;
@@ -117,8 +118,31 @@ impl Widget for Input {
 
                         if layout.contains(ctx.cursor().as_uvec2()) {
                             *active = Some(node.ctx.node().unwrap());
+                            selected = true;
                             break;
                         }
+                    }
+
+                    if !selected {
+                        *active = None
+                    }
+
+                    if let Some(prev_active) = prev_active {
+                        let node = nodes.get(&prev_active).unwrap();
+                        node.ctx.clear_children();
+                        Text::new(node.buffer.string.clone())
+                            .size(32.0)
+                            .caret(None)
+                            .mount(&node.ctx);
+                    }
+
+                    if let Some(active) = *active {
+                        let node = nodes.get(&active).unwrap();
+                        node.ctx.clear_children();
+                        Text::new(node.buffer.string.clone())
+                            .size(32.0)
+                            .caret(Some(node.buffer.cursor as u32))
+                            .mount(&node.ctx);
                     }
                 });
 

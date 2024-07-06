@@ -196,7 +196,6 @@ pub(crate) fn render_to_texture(
     // Render the caret.
     if let Some(caret) = caret {
         let caret = get_caret(scaled_font, &glyphs, caret as usize);
-        dbg!(caret);
 
         for x in caret.position.x as u32..caret.position.x as u32 + caret.width as u32 {
             for y in caret.position.y as u32..caret.position.y as u32 + caret.height as u32 {
