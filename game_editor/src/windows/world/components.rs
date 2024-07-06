@@ -10,7 +10,8 @@ use game_core::modules::Modules;
 use game_data::record::RecordKind;
 use game_ui::reactive::Context;
 use game_ui::style::{
-    Background, BorderRadius, Bounds, Color, Direction, Growth, Padding, Size, SizeVec2, Style,
+    Background, BorderRadius, Bounds, Color, Direction, Growth, Justify, Padding, Size, SizeVec2,
+    Style,
 };
 use game_ui::widgets::{Button, Callback, Container, Input, Selection, Svg, SvgData, Text, Widget};
 use game_wasm::world::RecordReference;
@@ -215,16 +216,29 @@ impl Widget for ComponentWrapper {
         let body = Container::new().mount(&root);
 
         let mut is_active = false;
-        let name = self.name;
+        let collapse_button_id = Arc::new(Mutex::new(None));
 
         let writer = self.writer.clone();
+        let collapse_button_id2 = collapse_button_id.clone();
         let on_collapse = move |()| {
             is_active ^= true;
             body.clear_children();
 
+            let lock = collapse_button_id2.lock();
+            let collapse_button_id: &Context<()> = lock.as_ref().unwrap();
+            collapse_button_id.clear_children();
+
             if is_active {
                 render_component(&body, self.id, &self.descriptor, &writer, &self.component);
             }
+
+            let icon = if is_active {
+                ICON_ARROW_DOWN
+            } else {
+                ICON_ARROW_RIGHT
+            };
+
+            Svg::new(SvgData::from_bytes(icon).unwrap(), 32, 32).mount(&collapse_button_id);
         };
 
         let collapse_button = Button::new()
@@ -235,8 +249,9 @@ impl Widget for ComponentWrapper {
             .on_click(on_collapse)
             .mount(&header);
         Svg::new(SvgData::from_bytes(ICON_ARROW_RIGHT).unwrap(), 32, 32).mount(&collapse_button);
+        *collapse_button_id.lock() = Some(collapse_button);
 
-        Text::new(name).mount(&header);
+        Text::new(self.name).size(32.0).mount(&header);
 
         let on_delete = move |()| {
             self.writer.send(Event::DeleteComponent(self.id)).unwrap();
