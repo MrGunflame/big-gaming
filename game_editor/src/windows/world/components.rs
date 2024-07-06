@@ -428,6 +428,7 @@ fn render_component(
                 }
             }
             FieldKind::String(_) => todo!(),
+            FieldKind::Enum(_) => todo!(),
         }
     }
 }

@@ -28,6 +28,31 @@ impl ComponentDescriptor {
                         }
                     }
                 }
+                FieldKind::Enum(enum_field) => {
+                    let mut default_variant_exists = false;
+
+                    for variant in &enum_field.variants {
+                        if variant.tag == enum_field.default_variant {
+                            default_variant_exists = true;
+                        }
+
+                        for index in &variant.fields {
+                            if usize::from(index.0) >= len {
+                                return Err(Error::InvalidFieldIndex {
+                                    index: *index,
+                                    field: field.name.clone(),
+                                });
+                            }
+                        }
+                    }
+
+                    if !default_variant_exists {
+                        return Err(Error::InvalidDefaultVariant {
+                            tag: enum_field.default_variant,
+                            field: field.name.clone(),
+                        });
+                    }
+                }
             }
         }
 
@@ -116,6 +141,17 @@ impl ComponentDescriptor {
                 FieldKind::String(_) => {
                     bytes.extend(0u64.to_le_bytes());
                 }
+                FieldKind::Enum(field) => {
+                    let variant = field
+                        .variants
+                        .iter()
+                        .find(|v| v.tag == field.default_variant)
+                        .unwrap();
+
+                    for index in variant.fields.iter().rev() {
+                        queue.push_front(*index);
+                    }
+                }
             }
         }
 
@@ -151,6 +187,7 @@ impl FieldIndex {
 pub enum Error {
     InvalidFieldIndex { index: FieldIndex, field: String },
     InvalidRootFieldIndex { index: FieldIndex },
+    InvalidDefaultVariant { tag: u64, field: String },
 }
 
 impl Display for Error {
@@ -161,6 +198,13 @@ impl Display for Error {
             }
             Self::InvalidRootFieldIndex { index } => {
                 write!(f, "invalid root field index {}", index.into_raw())
+            }
+            Self::InvalidDefaultVariant { tag, field } => {
+                write!(
+                    f,
+                    "default variant with tag {} does not exist at {}",
+                    tag, field
+                )
             }
         }
     }
@@ -177,6 +221,7 @@ pub enum FieldKind {
     Int(IntegerField),
     Float(FloatField),
     Struct(Vec<FieldIndex>),
+    Enum(EnumField),
     String(String),
 }
 
@@ -192,4 +237,18 @@ pub struct IntegerField {
 pub struct FloatField {
     /// 32 or 64
     pub bits: u8,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct EnumField {
+    pub tag_bits: u8,
+    pub default_variant: u64,
+    pub variants: Vec<EnumFieldVariant>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct EnumFieldVariant {
+    pub tag: u64,
+    pub name: String,
+    pub fields: Vec<FieldIndex>,
 }
