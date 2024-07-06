@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::ops::Deref;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use game_input::keyboard::{KeyCode, KeyboardInput};
@@ -14,6 +15,11 @@ use super::{Callback, Container, Text, Widget};
 // FIXME: Some platforms (e.g. Windows) have customizable blinking intervals
 // that we should conform to (e.g. GetCaretBlinkTime for Windows).
 const CARET_BLINK_INTERVAL: Duration = Duration::from_millis(500);
+
+/// State indicating whether the cursor blink thread is currently active.
+// If this is `true` but no `InputState` exists we should wait until
+// the thread was dropped before starting a new one.
+static THREAD_ACTIVE: AtomicBool = AtomicBool::new(false);
 
 pub struct Input {
     pub value: String,
@@ -90,6 +96,12 @@ impl Widget for Input {
                 },
             );
         } else {
+            // Wait until the previous thread has dropped before spawning
+            // a new one.
+            // Running multiple threads can cause problems including
+            // unsynchronized cursor blinking or deadlocks.
+            while THREAD_ACTIVE.load(Ordering::SeqCst) {}
+
             let mut state = InputState::default();
             state.nodes.get_mut().insert(
                 wrapper.node().unwrap(),
@@ -100,6 +112,38 @@ impl Widget for Input {
                 },
             );
             parent.document().insert(state);
+
+            // FIXME: We should prefer a async task system for the UI
+            // for cases like these.
+            THREAD_ACTIVE.store(true, Ordering::SeqCst);
+            let ctx = wrapper.clone();
+            std::thread::spawn(move || {
+                let mut cursor_blink = false;
+                loop {
+                    std::thread::sleep(CARET_BLINK_INTERVAL);
+
+                    let Some(state) = ctx.document().get::<InputState>() else {
+                        break;
+                    };
+
+                    let nodes = state.nodes.lock();
+                    let active = state.active.lock();
+
+                    let Some(node) = *active else {
+                        continue;
+                    };
+
+                    let node = nodes.get(&node).unwrap();
+                    node.ctx.clear_children();
+                    Text::new(node.buffer.string.clone())
+                        .size(32.0)
+                        .caret(cursor_blink.then_some(node.buffer.cursor as u32))
+                        .mount(&node.ctx);
+                    cursor_blink ^= true;
+                }
+
+                THREAD_ACTIVE.store(false, Ordering::SeqCst);
+            });
 
             parent
                 .document()
