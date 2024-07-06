@@ -1,11 +1,13 @@
+use std::collections::HashMap;
 use std::ops::Deref;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use game_input::keyboard::{KeyCode, KeyboardInput};
 use game_input::mouse::MouseButtonInput;
+use parking_lot::Mutex;
 
-use crate::reactive::Context;
+use crate::reactive::{Context, NodeDestroyed, NodeId};
 use crate::style::{Bounds, Size, SizeVec2, Style};
 
 use super::{Callback, Container, Text, Widget};
@@ -54,51 +56,100 @@ impl Input {
 
 impl Widget for Input {
     fn mount<T>(self, parent: &Context<T>) -> Context<()> {
-        let mut buffer = Buffer::new(self.value.clone());
-        let is_selected = Arc::new(AtomicBool::new(false));
+        let wrapper = Container::new().style(self.style).mount(parent);
 
-        let node_ctx = Container::new().style(self.style).mount(parent);
-        let node_id = node_ctx.node().unwrap();
+        parent.document().register_with_parent(
+            wrapper.node().unwrap(),
+            move |ctx: Context<NodeDestroyed>| {
+                let node = ctx.node().unwrap();
+                let state = ctx.document().get::<InputState>().unwrap();
+                let mut active = state.active.lock();
+                let mut nodes = state.nodes.lock();
 
-        {
-            let node_ctx = node_ctx.clone();
-            let is_selected = is_selected.clone();
+                if *active == Some(node) {
+                    *active = None;
+                }
+
+                nodes.remove(&node);
+                if nodes.is_empty() {
+                    ctx.document().remove::<InputState>();
+                }
+            },
+        );
+
+        if let Some(state) = parent.document().get::<InputState>() {
+            state.nodes.lock().insert(
+                wrapper.node().unwrap(),
+                NodeState {
+                    ctx: wrapper.clone(),
+                    on_change: self.on_change,
+                    buffer: Buffer::new(self.value.clone()),
+                },
+            );
+        } else {
+            let mut state = InputState::default();
+            state.nodes.get_mut().insert(
+                wrapper.node().unwrap(),
+                NodeState {
+                    ctx: wrapper.clone(),
+                    on_change: self.on_change,
+                    buffer: Buffer::new(self.value.clone()),
+                },
+            );
+            parent.document().insert(state);
+
             parent
                 .document()
-                .register_with_parent(node_id, move |ctx: Context<KeyboardInput>| {
-                    if !is_selected.load(Ordering::Acquire)
-                        || !update_buffer(&mut buffer, &ctx.event)
-                    {
+                .register(move |ctx: Context<MouseButtonInput>| {
+                    let state = ctx.document().get::<InputState>().unwrap();
+                    let nodes = state.nodes.lock();
+                    let mut active = state.active.lock();
+
+                    for node in nodes.values() {
+                        let Some(layout) = ctx.layout(node.ctx.node().unwrap()) else {
+                            continue;
+                        };
+
+                        if layout.contains(ctx.cursor().as_uvec2()) {
+                            *active = Some(node.ctx.node().unwrap());
+                            break;
+                        }
+                    }
+                });
+
+            parent
+                .document()
+                .register(move |ctx: Context<KeyboardInput>| {
+                    let state = ctx.document().get::<InputState>().unwrap();
+                    let mut nodes = state.nodes.lock();
+                    let active = state.active.lock();
+
+                    let Some(node) = &*active else {
+                        return;
+                    };
+
+                    let node = nodes.get_mut(node).unwrap();
+                    if !update_buffer(&mut node.buffer, &ctx.event) {
                         return;
                     }
 
-                    let mut string = buffer.string.clone();
-                    string.insert(buffer.cursor, '|');
+                    let mut string = node.buffer.string.clone();
+                    let string2 = node.buffer.string.clone();
+                    string.insert(node.buffer.cursor, '|');
 
-                    node_ctx.clear_children();
-                    let text = Text::new(string).size(32.0);
-                    text.mount(&node_ctx);
+                    node.ctx.clear_children();
+                    Text::new(string).size(32.0).mount(&node.ctx);
 
-                    self.on_change.call(buffer.string.clone());
+                    let on_change = node.on_change.clone();
+                    drop(nodes);
+                    drop(active);
+                    on_change.call(string2);
                 });
         }
 
-        parent
-            .document()
-            .register_with_parent(node_id, move |ctx: Context<MouseButtonInput>| {
-                if let Some(node) = ctx.layout(node_id) {
-                    if node.contains(ctx.cursor().as_uvec2()) {
-                        is_selected.store(true, Ordering::Release);
-                    } else {
-                        is_selected.store(false, Ordering::Release);
-                    }
-                }
-            });
+        Text::new(self.value).size(32.0).mount(&wrapper);
 
-        let text = Text::new(self.value).size(32.0);
-        text.clone().mount(&node_ctx);
-
-        node_ctx
+        wrapper
     }
 }
 
@@ -154,6 +205,19 @@ fn update_buffer(buffer: &mut Buffer, event: &KeyboardInput) -> bool {
         }
         _ => false,
     }
+}
+
+#[derive(Debug, Default)]
+struct InputState {
+    nodes: Mutex<HashMap<NodeId, NodeState>>,
+    active: Mutex<Option<NodeId>>,
+}
+
+#[derive(Debug)]
+struct NodeState {
+    ctx: Context<()>,
+    on_change: Callback<String>,
+    buffer: Buffer,
 }
 
 /// A UTF-8 string buffer.
