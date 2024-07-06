@@ -14,13 +14,13 @@ workspace = true
 [dependencies]
 game_common = { version = "0.1.0", path = "../game_common" }
 
-tracing = "0.1.37"
-glam = "0.23.0"
-cpal = "0.15.2"
-symphonia = "0.5.3"
-slotmap = "1.0.6"
-parking_lot = "0.12.1"
-thiserror = "1.0.48"
+tracing = "0.1.40"
+glam = "0.28.0"
+cpal = "0.15.3"
+symphonia = "0.5.4"
+slotmap = "1.0.7"
+parking_lot = "0.12.3"
+thiserror = "1.0.61"
 
 [[test]]
 name = "latency"

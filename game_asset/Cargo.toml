@@ -9,7 +9,7 @@ license = "GPL-3.0-or-later"
 workspace = true
 
 [dependencies]
-futures = "0.3.28"
-parking_lot = "0.12.1"
-slotmap = "1.0.6"
-tokio = { version = "1.28.1", features = ["full"] }
+futures = "0.3.30"
+parking_lot = "0.12.3"
+slotmap = "1.0.7"
+tokio = { version = "1.38.0", features = ["full"] }

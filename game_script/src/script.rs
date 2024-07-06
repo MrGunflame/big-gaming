@@ -96,7 +96,7 @@ where
     }
 
     for (a, b) in lhs.zip(rhs.iter()) {
-        if a != *b {
+        if !ValType::eq(&a, b) {
             return false;
         }
     }

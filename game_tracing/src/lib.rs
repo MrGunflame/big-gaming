@@ -7,7 +7,7 @@ pub use tracing;
 
 pub fn init() {
     tracing::subscriber::set_global_default(
-        tracing_subscriber::registry().with(tracing_tracy::TracyLayer::new()),
+        tracing_subscriber::registry().with(tracing_tracy::TracyLayer::default()),
     )
     .unwrap();
 }

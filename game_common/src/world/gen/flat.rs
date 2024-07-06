@@ -1,5 +1,4 @@
 use glam::UVec2;
-use noise::{NoiseFn, Simplex};
 
 use crate::record::RecordReference;
 use crate::world::entity::Terrain;
@@ -13,17 +12,15 @@ pub struct FlatGenerator;
 
 impl Generate for FlatGenerator {
     fn generate(&self, cell: &mut CellBuilder) {
-        let noise = Simplex::default();
+        // let mut map = Vec::default();
 
-        let mut map = Vec::default();
+        // for index in 0..(CELL_SIZE_UINT.x + 1) * (CELL_SIZE_UINT.z + 1) {
+        //     let x = (cell.id().min_x() as i32 + ((index % (CELL_SIZE_UINT.x + 1)) as i32)) as u32;
+        //     let z = (cell.id().min_z() as i32 + (index / (CELL_SIZE_UINT.z + 1)) as i32) as u32;
 
-        for index in 0..(CELL_SIZE_UINT.x + 1) * (CELL_SIZE_UINT.z + 1) {
-            let x = (cell.id().min_x() as i32 + ((index % (CELL_SIZE_UINT.x + 1)) as i32)) as u32;
-            let z = (cell.id().min_z() as i32 + (index / (CELL_SIZE_UINT.z + 1)) as i32) as u32;
-
-            let y = noise.get([x as f64 / 20.0, z as f64 / 20.0]);
-            map.push(y as f32 * 2.0);
-        }
+        //     // let y = noise.get([x as f64 / 20.0, z as f64 / 20.0]);
+        //     // map.push(y as f32 * 2.0);
+        // }
 
         // cell.spawn(TerrainMesh::new(
         //     cell.id,

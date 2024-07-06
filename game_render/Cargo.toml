@@ -18,18 +18,18 @@ game_asset = { version = "0.1.0", path = "../game_asset" }
 game_tracing = { version = "0.1.0", path = "../game_tracing" }
 game_tasks = { version = "0.1.0", path = "../game_tasks" }
 
-bytemuck = { version = "1.13.1", features = ["derive"] }
-futures-lite = "1.13.0"
-glam = { version = "0.24.0", features = ["bytemuck"] }
-tracing = { version = "0.1.37", features = ["log-always"] }
+bytemuck = { version = "1.16.1", features = ["derive"] }
+futures-lite = "2.3.0"
+glam = { version = "0.28.0", features = ["bytemuck"] }
+tracing = { version = "0.1.40", features = ["log-always"] }
 wgpu = "0.19.1"
-image = "0.24.6"
-parking_lot = "0.12.1"
-bitflags = { version = "2.3.3", features = ["bytemuck"] }
-slotmap = "1.0.6"
+image = "0.25.1"
+parking_lot = "0.12.3"
+bitflags = { version = "2.6.0", features = ["bytemuck"] }
+slotmap = "1.0.7"
 mikktspace = "0.3.0"
-tokio = { version = "1.35.1", default-features = false, features = ["sync"] }
-thiserror = "1.0.59"
+tokio = { version = "1.38.0", default-features = false, features = ["sync"] }
+thiserror = "1.0.61"
 
 # Used by wgpu.
 # Convert spans direclty to tracing, which we use for profiling.

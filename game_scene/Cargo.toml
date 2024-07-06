@@ -21,9 +21,9 @@ game_tracing = { version = "0.1.0", path = "../game_tracing" }
 game_tasks = { version = "0.1.0", path = "../game_tasks" }
 
 game_gltf = { version = "0.1.0", path = "../game_gltf", optional = true }
-tracing = "0.1.37"
-glam = "0.24.1"
-slotmap = "1.0.6"
-serde = { version = "1.0.193", features = ["derive"] }
-serde_json = "1.0.108"
-thiserror = "1.0.40"
+tracing = "0.1.40"
+glam = "0.28.0"
+slotmap = "1.0.7"
+serde = { version = "1.0.204", features = ["derive"] }
+serde_json = "1.0.120"
+thiserror = "1.0.61"

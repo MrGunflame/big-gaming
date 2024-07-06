@@ -12,6 +12,6 @@ workspace = true
 game_common = { version = "0.1.0", path = "../../game_common" }
 game_data = { version = "0.1.0", path = "../../game_data" }
 
-clap = { version = "4.3.17", features = ["derive"] }
-serde = { version = "1.0.174", features = ["derive"] }
-serde_json = "1.0.103"
+clap = { version = "4.5.8", features = ["derive"] }
+serde = { version = "1.0.204", features = ["derive"] }
+serde_json = "1.0.120"
