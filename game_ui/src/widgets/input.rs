@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use game_input::keyboard::{KeyCode, KeyboardInput};
 use game_input::mouse::MouseButtonInput;
+use glam::UVec2;
 use parking_lot::Mutex;
 
 use crate::reactive::{Context, NodeDestroyed, NodeId};
@@ -66,6 +67,11 @@ impl Input {
 impl Widget for Input {
     fn mount<T>(self, parent: &Context<T>) -> Context<()> {
         let wrapper = Container::new().style(self.style).mount(parent);
+        let text_node = Text::new(self.value.clone())
+            .size(32.0)
+            .mount(&wrapper)
+            .node()
+            .unwrap();
 
         parent.document().register_with_parent(
             wrapper.node().unwrap(),
@@ -80,9 +86,9 @@ impl Widget for Input {
                 }
 
                 nodes.remove(&node);
-                if nodes.is_empty() {
-                    ctx.document().remove::<InputState>();
-                }
+                // if nodes.is_empty() {
+                //     ctx.document().remove::<InputState>();
+                // }
             },
         );
 
@@ -92,7 +98,8 @@ impl Widget for Input {
                 NodeState {
                     ctx: wrapper.clone(),
                     on_change: self.on_change,
-                    buffer: Buffer::new(self.value.clone()),
+                    buffer: Buffer::new(self.value),
+                    text_node,
                 },
             );
         } else {
@@ -108,7 +115,8 @@ impl Widget for Input {
                 NodeState {
                     ctx: wrapper.clone(),
                     on_change: self.on_change,
-                    buffer: Buffer::new(self.value.clone()),
+                    buffer: Buffer::new(self.value),
+                    text_node,
                 },
             );
             parent.document().insert(state);
@@ -126,19 +134,20 @@ impl Widget for Input {
                         break;
                     };
 
-                    let nodes = state.nodes.lock();
+                    let mut nodes = state.nodes.lock();
                     let active = state.active.lock();
 
                     let Some(node) = *active else {
                         continue;
                     };
 
-                    let node = nodes.get(&node).unwrap();
+                    let node = nodes.get_mut(&node).unwrap();
                     node.ctx.clear_children();
-                    Text::new(node.buffer.string.clone())
+                    let text = Text::new(node.buffer.string.clone())
                         .size(32.0)
                         .caret(cursor_blink.then_some(node.buffer.cursor as u32))
                         .mount(&node.ctx);
+                    node.text_node = text.node().unwrap();
                     cursor_blink ^= true;
                 }
 
@@ -148,8 +157,11 @@ impl Widget for Input {
             parent
                 .document()
                 .register(move |ctx: Context<MouseButtonInput>| {
-                    let state = ctx.document().get::<InputState>().unwrap();
-                    let nodes = state.nodes.lock();
+                    let Some(state) = ctx.document().get::<InputState>() else {
+                        return;
+                    };
+
+                    let mut nodes = state.nodes.lock();
                     let mut active = state.active.lock();
 
                     let prev_active = *active;
@@ -172,28 +184,52 @@ impl Widget for Input {
                     }
 
                     if let Some(prev_active) = prev_active {
-                        let node = nodes.get(&prev_active).unwrap();
+                        let node = nodes.get_mut(&prev_active).unwrap();
                         node.ctx.clear_children();
-                        Text::new(node.buffer.string.clone())
+                        let text = Text::new(node.buffer.string.clone())
                             .size(32.0)
                             .caret(None)
                             .mount(&node.ctx);
+                        node.text_node = text.node().unwrap();
                     }
 
                     if let Some(active) = *active {
-                        let node = nodes.get(&active).unwrap();
+                        let node = nodes.get_mut(&active).unwrap();
+
+                        // Note that we must use the text node instead of the wrapper
+                        // container node as the container may have additional styling
+                        // (e.g. padding) that may change the layout and cause the position
+                        // to become inprecise.
+                        // The text node has no additional styling properties that may cause
+                        // the layout to shift.
+                        let layout = ctx.layout(node.text_node).unwrap();
+                        let position = ctx.cursor().as_uvec2() - layout.min;
+
+                        let cursor = crate::render::text::get_position_in_text(
+                            &node.buffer,
+                            32.0,
+                            UVec2::MAX,
+                            position,
+                        );
+                        node.buffer.cursor = cursor;
+
                         node.ctx.clear_children();
-                        Text::new(node.buffer.string.clone())
+
+                        let text = Text::new(node.buffer.string.clone())
                             .size(32.0)
                             .caret(Some(node.buffer.cursor as u32))
                             .mount(&node.ctx);
+                        node.text_node = text.node().unwrap();
                     }
                 });
 
             parent
                 .document()
                 .register(move |ctx: Context<KeyboardInput>| {
-                    let state = ctx.document().get::<InputState>().unwrap();
+                    let Some(state) = ctx.document().get::<InputState>() else {
+                        return;
+                    };
+
                     let mut nodes = state.nodes.lock();
                     let active = state.active.lock();
 
@@ -207,10 +243,11 @@ impl Widget for Input {
                     }
 
                     node.ctx.clear_children();
-                    Text::new(node.buffer.string.clone())
+                    let text = Text::new(node.buffer.string.clone())
                         .size(32.0)
                         .caret(Some(node.buffer.cursor as u32))
                         .mount(&node.ctx);
+                    node.text_node = text.node().unwrap();
 
                     let string = node.buffer.string.clone();
                     let on_change = node.on_change.clone();
@@ -219,8 +256,6 @@ impl Widget for Input {
                     on_change.call(string);
                 });
         }
-
-        Text::new(self.value).size(32.0).mount(&wrapper);
 
         wrapper
     }
@@ -289,6 +324,7 @@ struct InputState {
 #[derive(Debug)]
 struct NodeState {
     ctx: Context<()>,
+    text_node: NodeId,
     on_change: Callback<String>,
     buffer: Buffer,
 }

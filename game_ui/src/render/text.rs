@@ -310,6 +310,39 @@ fn layout_glyphs<SF: ScaleFont<F>, F: Font>(
     (num_lines, max_line_width)
 }
 
+pub(crate) fn get_position_in_text(text: &str, size: f32, max: UVec2, cursor: UVec2) -> usize {
+    let font = FontRef::try_from_slice(DEFAULT_FONT).unwrap();
+    let scaled_font = font.as_scaled(PxScale::from(size));
+
+    let mut glyphs = Vec::new();
+    layout_glyphs(scaled_font, text, 1000.0, &mut glyphs);
+
+    for (index, glyphs) in glyphs.windows(2).enumerate() {
+        let Some(a) = glyphs.get(0) else {
+            break;
+        };
+        let Some(b) = glyphs.get(1) else {
+            break;
+        };
+
+        let a_pos = UVec2::new(a.position.x as u32, a.position.y as u32);
+        let b_pos = UVec2::new(b.position.x as u32, b.position.y as u32);
+
+        if cursor.x < b_pos.x {
+            let middle = (b_pos - a_pos) / 2 + a_pos;
+
+            // TODO: Respect y axis.
+            if cursor.x < middle.x {
+                return index;
+            } else {
+                return index + 1;
+            }
+        }
+    }
+
+    glyphs.len()
+}
+
 #[cfg(test)]
 mod tests {
     use ab_glyph::{Font, FontRef, PxScale};
