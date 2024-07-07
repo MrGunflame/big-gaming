@@ -117,6 +117,13 @@ impl Parker {
     }
 }
 
+impl Default for Parker {
+    #[inline]
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::{Arc, Barrier};
