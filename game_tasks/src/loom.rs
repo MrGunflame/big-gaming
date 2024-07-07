@@ -4,7 +4,6 @@ pub mod sync {
         pub use core::sync::atomic::{AtomicUsize, Ordering};
     }
 
-    pub use alloc::sync::Arc;
     pub use std::sync::{Condvar, Mutex};
 }
 

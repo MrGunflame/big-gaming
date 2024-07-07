@@ -55,26 +55,26 @@ reexport_attribute_macro! {
 #[cfg(feature = "wasm")]
 #[proc_macro_attribute]
 pub fn guest_only(attr: TokenStream, input: TokenStream) -> TokenStream {
-    crate::wasm::guest_only::guest_only(attr, input)
+    wasm::guest_only::guest_only(attr, input)
 }
 
 #[proc_macro_derive(wasm__encode)]
 #[allow(non_snake_case)]
 #[cfg(feature = "wasm")]
 pub fn wasm__encode(input: TokenStream) -> TokenStream {
-    crate::wasm::component::encode(input)
+    wasm::component::encode(input)
 }
 
 #[proc_macro_derive(wasm__decode)]
 #[allow(non_snake_case)]
 #[cfg(feature = "wasm")]
 pub fn wasm__decode(input: TokenStream) -> TokenStream {
-    crate::wasm::component::decode(input)
+    wasm::component::decode(input)
 }
 
 #[proc_macro_derive(wasm__component)]
 #[allow(non_snake_case)]
 #[cfg(feature = "wasm")]
 pub fn wasm__component(input: TokenStream) -> TokenStream {
-    crate::wasm::component::component(input)
+    wasm::component::component(input)
 }

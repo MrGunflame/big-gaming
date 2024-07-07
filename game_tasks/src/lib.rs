@@ -37,6 +37,11 @@ struct Inner {
 }
 
 impl TaskPool {
+    /// Creates a new `TaskPool` backed by the given number of threads.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `threads` is `0`.
     pub fn new(threads: usize) -> Self {
         assert_ne!(threads, 0);
 
@@ -58,6 +63,7 @@ impl TaskPool {
         }
     }
 
+    /// Spawns a new future on the `TaskPool`.
     pub fn spawn<T, F>(&self, future: F) -> Task<T>
     where
         F: Future<Output = T> + Send + 'static,
@@ -66,6 +72,14 @@ impl TaskPool {
         unsafe { self.spawn_unchecked(future) }
     }
 
+    /// Spawns a new future on the `TaskPool` without checking if the future captures local
+    /// lifetimes.
+    ///
+    /// # Safety
+    ///
+    /// `spawn_unchecked` allows spawning of futures with arbitrary lifetimes. The caller must
+    /// guarantee that all lifetimes are valid until the future has finished executing, or was
+    /// cancelled.
     pub unsafe fn spawn_unchecked<'a, T, F>(&self, future: F) -> Task<T>
     where
         F: Future<Output = T> + Send + 'a,
@@ -84,6 +98,7 @@ impl TaskPool {
         }
     }
 
+    /// Spawns a future on the `TaskPool` and blocks until the future finishes execution.
     pub fn block_on<T, F>(&self, future: F) -> T
     where
         F: Future<Output = T>,
