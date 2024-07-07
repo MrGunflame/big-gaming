@@ -18,13 +18,14 @@ use glam::{Quat, Vec3};
 use handle::HandleMap;
 use nalgebra::{Const, Isometry, OPoint};
 use parking_lot::Mutex;
-use rapier3d::geometry::TriMesh;
+use rapier3d::geometry::{BroadPhaseMultiSap, TriMesh};
+use rapier3d::parry::query::ShapeCastOptions;
 use rapier3d::parry::shape::{Ball, Capsule, Cuboid};
 use rapier3d::prelude::{
-    BroadPhase, CCDSolver, Collider, ColliderBuilder, ColliderHandle, ColliderSet, CollisionEvent,
-    ContactPair, EventHandler, ImpulseJointSet, IntegrationParameters, IslandManager,
-    MultibodyJointSet, NarrowPhase, PhysicsPipeline, QueryFilter, QueryPipeline, Ray,
-    RigidBodyBuilder, RigidBodyHandle, RigidBodySet, RigidBodyType, Vector,
+    CCDSolver, Collider, ColliderBuilder, ColliderHandle, ColliderSet, CollisionEvent, ContactPair,
+    EventHandler, ImpulseJointSet, IntegrationParameters, IslandManager, MultibodyJointSet,
+    NarrowPhase, PhysicsPipeline, QueryFilter, QueryPipeline, Ray, RigidBodyBuilder,
+    RigidBodyHandle, RigidBodySet, RigidBodyType, Vector,
 };
 
 pub struct Pipeline {
@@ -33,7 +34,7 @@ pub struct Pipeline {
     gravity: Vector<f32>,
     integration_parameters: IntegrationParameters,
     islands: IslandManager,
-    broad_phase: BroadPhase,
+    broad_phase: BroadPhaseMultiSap,
     narrow_phase: NarrowPhase,
     bodies: RigidBodySet,
     colliders: ColliderSet,
@@ -66,7 +67,7 @@ impl Pipeline {
             gravity: Vector::new(0.0, -9.81, 0.0),
             integration_parameters,
             islands: IslandManager::new(),
-            broad_phase: BroadPhase::new(),
+            broad_phase: BroadPhaseMultiSap::new(),
             narrow_phase: NarrowPhase::new(),
             bodies: RigidBodySet::new(),
             colliders: ColliderSet::new(),
@@ -104,7 +105,7 @@ impl Pipeline {
             &self.event_handler,
         );
 
-        self.query_pipeline.update(&self.bodies, &self.colliders);
+        self.query_pipeline.update(&self.colliders);
 
         self.emit_events(events);
         self.write_back(world);
@@ -394,6 +395,13 @@ impl Pipeline {
         };
         let filter = QueryFilter::new().predicate(&pred);
 
+        let options = ShapeCastOptions {
+            max_time_of_impact: max_toi,
+            target_distance: 0.0,
+            stop_at_penetration: true,
+            compute_impact_geometry_on_penetration: false,
+        };
+
         match shape {
             ColliderShape::Cuboid(cuboid) => {
                 let half_extents = vector(Vec3::new(cuboid.hx, cuboid.hy, cuboid.hz));
@@ -405,13 +413,12 @@ impl Pipeline {
                     &shape_origin,
                     &shape_vel,
                     &shape,
-                    max_toi,
-                    true,
+                    options,
                     filter,
                 ) {
                     Some((handle, toi)) => {
                         let entity = self.collider_handles.get2(handle).unwrap();
-                        Some((entity, toi.toi))
+                        Some((entity, toi.time_of_impact))
                     }
                     None => None,
                 }
@@ -425,13 +432,12 @@ impl Pipeline {
                     &shape_origin,
                     &shape_vel,
                     &shape,
-                    max_toi,
-                    true,
+                    options,
                     filter,
                 ) {
                     Some((handle, toi)) => {
                         let entity = self.collider_handles.get2(handle).unwrap();
-                        Some((entity, toi.toi))
+                        Some((entity, toi.time_of_impact))
                     }
                     None => None,
                 }
@@ -449,13 +455,12 @@ impl Pipeline {
                     &shape_origin,
                     &shape_vel,
                     &shape,
-                    max_toi,
-                    true,
+                    options,
                     filter,
                 ) {
                     Some((handle, toi)) => {
                         let entity = self.collider_handles.get2(handle).unwrap();
-                        Some((entity, toi.toi))
+                        Some((entity, toi.time_of_impact))
                     }
                     None => None,
                 }
@@ -480,13 +485,12 @@ impl Pipeline {
                     &shape_origin,
                     &shape_vel,
                     &shape,
-                    max_toi,
-                    true,
+                    options,
                     filter,
                 ) {
                     Some((handle, toi)) => {
                         let entity = self.collider_handles.get2(handle).unwrap();
-                        Some((entity, toi.toi))
+                        Some((entity, toi.time_of_impact))
                     }
                     None => None,
                 }
