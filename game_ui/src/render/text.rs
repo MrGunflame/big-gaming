@@ -328,11 +328,19 @@ pub(crate) fn get_position_in_text(text: &str, size: f32, max: UVec2, cursor: UV
         let a_pos = UVec2::new(a.position.x as u32, a.position.y as u32);
         let b_pos = UVec2::new(b.position.x as u32, b.position.y as u32);
 
-        if cursor.x < b_pos.x {
-            let middle = (b_pos - a_pos) / 2 + a_pos;
+        let Some(outlined_a) = scaled_font.outline_glyph(a.clone()) else {
+            continue;
+        };
 
-            // TODO: Respect y axis.
-            if cursor.x < middle.x {
+        if cursor.x < b_pos.x {
+            let middle_x = (b_pos.x - a_pos.x) / 2 + a_pos.x;
+            let max_y = outlined_a.px_bounds().max.y as u32;
+
+            if cursor.y > max_y {
+                continue;
+            }
+
+            if cursor.x < middle_x {
                 return index;
             } else {
                 return index + 1;
