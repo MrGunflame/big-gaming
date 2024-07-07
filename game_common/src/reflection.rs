@@ -148,6 +148,14 @@ impl ComponentDescriptor {
                         .find(|v| v.tag == field.default_variant)
                         .unwrap();
 
+                    match field.tag_bits {
+                        8 => bytes.push(variant.tag as u8),
+                        16 => bytes.extend((variant.tag as u16).to_le_bytes()),
+                        32 => bytes.extend((variant.tag as u32).to_le_bytes()),
+                        64 => bytes.extend((variant.tag as u64).to_le_bytes()),
+                        _ => todo!(),
+                    }
+
                     for index in variant.fields.iter().rev() {
                         queue.push_front(*index);
                     }
@@ -244,6 +252,18 @@ pub struct EnumField {
     pub tag_bits: u8,
     pub default_variant: u64,
     pub variants: Vec<EnumFieldVariant>,
+}
+
+impl EnumField {
+    pub fn variant(&self, tag: u64) -> Option<&EnumFieldVariant> {
+        for variant in &self.variants {
+            if variant.tag == tag {
+                return Some(variant);
+            }
+        }
+
+        None
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

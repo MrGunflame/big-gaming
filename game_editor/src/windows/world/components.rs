@@ -3,19 +3,18 @@ use std::fmt::{self, Display, Formatter};
 use std::str::FromStr;
 use std::sync::{mpsc, Arc};
 
-use chrono::format::Pad;
 use game_common::components::components::RawComponent;
-use game_common::reflection::{ComponentDescriptor, FieldKind};
+use game_common::reflection::{ComponentDescriptor, EnumFieldVariant, Field, FieldKind};
 use game_core::modules::Modules;
 use game_data::record::RecordKind;
 use game_ui::reactive::Context;
 use game_ui::style::{
-    Background, BorderRadius, Bounds, Color, Direction, Growth, Justify, Padding, Size, SizeVec2,
-    Style,
+    Background, BorderRadius, Bounds, Color, Direction, Growth, Padding, Size, SizeVec2, Style,
 };
 use game_ui::widgets::{Button, Callback, Container, Input, Selection, Svg, SvgData, Text, Widget};
 use game_wasm::world::RecordReference;
 use image::Rgba;
+use indexmap::IndexMap;
 use parking_lot::Mutex;
 
 use super::{Event, SceneState};
@@ -277,14 +276,24 @@ fn render_component(
     writer: &mpsc::Sender<Event>,
     component: &RawComponent,
 ) {
-    let mut offset = 0;
-
     let mut queue = VecDeque::new();
 
     for index in descriptor.root() {
         let field = descriptor.get(*index).unwrap();
         queue.push_back((ctx.clone(), field));
     }
+
+    render_fields(id, descriptor, queue, writer, component);
+}
+
+fn render_fields<'a>(
+    id: RecordReference,
+    descriptor: &'a ComponentDescriptor,
+    mut queue: VecDeque<(Context<()>, &'a Field)>,
+    writer: &mpsc::Sender<Event>,
+    component: &RawComponent,
+) {
+    let mut offset = 0;
 
     // If every input field gets a direct clone of the component
     // at the time of creation of the panel they cannot track changes
@@ -330,7 +339,7 @@ fn render_component(
 
                 let component = component.clone();
                 let writer = writer.clone();
-                display_value(ctx, color, &field.name, value, move |mut value: i64| {
+                display_value(&parent, color, &field.name, value, move |mut value: i64| {
                     let mut component = component.lock();
 
                     let mut bytes = component.as_bytes().to_vec();
@@ -387,7 +396,7 @@ fn render_component(
                 let component = component.clone();
                 let writer = writer.clone();
                 display_value(
-                    ctx,
+                    &parent,
                     COLOR_X,
                     &field.name,
                     FormatFloat(value),
@@ -420,7 +429,8 @@ fn render_component(
                 offset += field_len;
             }
             FieldKind::Struct(val) => {
-                let root = Text::new(field.name.clone()).mount(&parent);
+                let root = Container::new().mount(&parent);
+                Text::new(field.name.clone()).mount(&parent);
 
                 for index in val.iter().rev() {
                     let field = descriptor.get(*index).unwrap();
@@ -428,8 +438,128 @@ fn render_component(
                 }
             }
             FieldKind::String(_) => todo!(),
-            FieldKind::Enum(_) => todo!(),
+            FieldKind::Enum(enum_field) => {
+                let mut active_variant = {
+                    let component = component.lock();
+
+                    let bytes =
+                        &component.as_bytes()[offset..offset + enum_field.tag_bits as usize / 8];
+
+                    match bytes.len() {
+                        1 => bytes[0] as u64,
+                        2 => u16::from_le_bytes(bytes.try_into().unwrap()) as u64,
+                        4 => u32::from_le_bytes(bytes.try_into().unwrap()) as u64,
+                        8 => u64::from_le_bytes(bytes.try_into().unwrap()),
+                        _ => todo!(),
+                    }
+                };
+
+                let options = enum_field.variants.iter().map(|v| v.name.clone()).collect();
+
+                let root = Container::new().mount(&parent);
+                Text::new(field.name.clone()).mount(&root);
+
+                let children_ctx = Arc::new(Mutex::new(None));
+
+                Selection {
+                    options,
+                    on_change: Callback::from({
+                        let children_ctx = children_ctx.clone();
+                        let descriptor = descriptor.clone();
+                        let writer = writer.clone();
+                        let component = component.clone();
+                        let enum_field = enum_field.clone();
+                        move |index| {
+                            let variant: &EnumFieldVariant = &enum_field.variants[index];
+
+                            if variant.tag == active_variant {
+                                return;
+                            }
+
+                            active_variant = variant.tag;
+
+                            let children_ctx = children_ctx.lock();
+                            let children_ctx: &Context<()> = children_ctx.as_ref().unwrap();
+                            children_ctx.clear_children();
+
+                            let mut queue = VecDeque::new();
+
+                            for index in enum_field
+                                .variant(active_variant)
+                                .unwrap()
+                                .fields
+                                .iter()
+                                .rev()
+                            {
+                                let field = descriptor.get(*index).unwrap();
+                                queue.push_front((children_ctx.clone(), field));
+                            }
+
+                            let component = component.lock().clone();
+                            render_fields(id, &descriptor, queue, &writer, &component);
+                        }
+                    }),
+                }
+                .mount(&root);
+
+                let children = Container::new().mount(&root);
+                *children_ctx.lock() = Some(children.clone());
+
+                for index in enum_field
+                    .variant(active_variant)
+                    .unwrap()
+                    .fields
+                    .iter()
+                    .rev()
+                {
+                    let field = descriptor.get(*index).unwrap();
+                    queue.push_front((children.clone(), field));
+                }
+
+                offset += enum_field.tag_bits as usize / 8;
+            }
         }
+    }
+}
+
+#[derive(Clone, Debug)]
+struct KeyValuePair<'a, T> {
+    key: &'a str,
+    value: T,
+    on_change: Callback<T>,
+}
+
+impl<'a, T> Widget for KeyValuePair<'a, T>
+where
+    T: ToString + FromStr + 'static,
+{
+    fn mount<U>(self, parent: &Context<U>) -> Context<()> {
+        let root = Container::new()
+            .style(Style {
+                direction: Direction::Column,
+                padding: Padding::splat(Size::Pixels(5)),
+                ..Default::default()
+            })
+            .mount(parent);
+
+        Text::new(self.key).mount(&root);
+
+        Input::new()
+            .value(self.value)
+            .style(Style {
+                background: Background::Color(INPUT_COLOR.0),
+                padding: Padding::splat(Size::Pixels(1)),
+                border_radius: BorderRadius::splat(Size::Pixels(5)),
+                ..Default::default()
+            })
+            .on_change(move |value: String| {
+                if let Ok(value) = value.parse::<T>() {
+                    self.on_change.call(value);
+                }
+            })
+            .mount(&root);
+
+        root
     }
 }
 
@@ -467,3 +597,36 @@ fn mount_new_component_selector(
 
     Selection { options, on_change }.mount(cx);
 }
+
+struct EditComponentStorage {
+    data: RawComponent,
+    offsets: IndexMap<ComponentOffsetKey, usize>,
+    next_offset: usize,
+    next_key: usize,
+}
+
+impl EditComponentStorage {
+    pub fn new(data: RawComponent) -> Self {
+        Self {
+            data,
+            offsets: IndexMap::new(),
+            next_offset: 0,
+            next_key: 0,
+        }
+    }
+
+    pub fn register(&mut self, size: usize) -> ComponentOffsetKey {
+        let key = ComponentOffsetKey(self.next_key);
+        self.next_key += 1;
+        self.offsets.insert(key, self.next_offset);
+        self.next_offset += size;
+        key
+    }
+
+    pub fn extend(&self) {}
+
+    pub fn get_mut(&mut self, key: ComponentOffsetKey) {}
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+struct ComponentOffsetKey(usize);
