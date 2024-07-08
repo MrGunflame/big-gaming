@@ -151,8 +151,15 @@ impl LayoutTree {
 
         self.changed = true;
 
-        self.layouts.get_mut(&key).unwrap().style =
-            ComputedStyle::new(elem.style.clone(), self.size);
+        let layout = self.layouts.get_mut(&key).unwrap();
+        layout.style = ComputedStyle::new(elem.style.clone(), self.size);
+        // Set the `has_changed` flag.
+        // This will cause the element to be completely rerendered
+        // even if no layout properties are changed.
+        // If this flag was not set, it would be possible that the new
+        // style would never applied when the layout doesn't change.
+        layout.has_changed = true;
+
         *self.elems.get_mut(&key).unwrap() = elem;
     }
 
@@ -180,9 +187,21 @@ impl LayoutTree {
             let layout = self.layouts.get_mut(key).unwrap();
 
             // Every elements gets `size_per_elem` or `max`, whichever is lower.
-            layout.position = next_position;
-            layout.width = u32::clamp(size_per_elem.x, bounds.min.x, bounds.max.x);
-            layout.height = u32::clamp(size_per_elem.y, bounds.min.y, bounds.max.y);
+            let position = next_position;
+            let width = u32::clamp(size_per_elem.x, bounds.min.x, bounds.max.x);
+            let height = u32::clamp(size_per_elem.y, bounds.min.y, bounds.max.y);
+
+            // Only if the layout has changed from the previous layout
+            // will we set the `has_changed` flag.
+            // This is useful as a hint to allow the renderer skip recreating
+            // elements that have not changed.
+            if layout.position != position || layout.width != width || layout.height != height {
+                layout.has_changed = true;
+            }
+
+            layout.position = position;
+            layout.width = width;
+            layout.height = height;
 
             next_position.y += layout.height;
 
@@ -543,9 +562,20 @@ impl LayoutTree {
         for (key, elem) in self.elems.iter() {
             let layout = self.layouts.get_mut(key).unwrap();
 
-            layout.style = ComputedStyle::new(elem.style.clone(), self.size);
+            let mut style = ComputedStyle::new(elem.style.clone(), self.size);
+            style.bounds = ComputedBounds::new(elem.style.bounds, self.size);
 
-            layout.style.bounds = ComputedBounds::new(elem.style.bounds, self.size);
+            // Only set the `has_changed` flag if the computed style has changed
+            // from the previous computed style.
+            // Note that comparing the underlying `style` of the `ComputedStyle`
+            // is not necessary since it never changes unless it was modified
+            // by an accessor method, in which case the `has_changed` flag is
+            // already set to `true`.
+            if !layout.style.equal_except_style(&style) {
+                layout.has_changed = true;
+            }
+
+            layout.style = style;
         }
     }
 
@@ -642,6 +672,15 @@ pub struct Layout {
     pub position: UVec2,
     pub width: u32,
     pub height: u32,
+
+    /// `true` if any property of the [`Primitive`] that this `Layout` is associated with has
+    /// changed.
+    ///
+    /// If `false` the renderer may decide to reuse the same render command as in the last frame.
+    ///
+    /// Note also that `has_changed` is allowed to be false-positive; It may be set to `true` even
+    /// if no property actually changed, but a `false` value always guarantees that the previous
+    /// properties are still valid.
     pub has_changed: bool,
 }
 
