@@ -2,6 +2,7 @@
 
 pub mod command;
 pub mod counter;
+pub mod debug;
 pub mod hierarchy;
 pub mod logger;
 pub mod modules;
