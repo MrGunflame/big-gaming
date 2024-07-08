@@ -89,9 +89,10 @@ impl UiState {
         for (doc, win) in docs {
             let doc = rt.documents.get_mut(doc.0).unwrap();
             doc.layout.compute_layout();
+            let nodes = doc.layout.collect_all();
 
             let tree = self.renderer.get_mut(*win).unwrap();
-            *tree = doc.layout.clone();
+            *tree = nodes;
         }
 
         self.renderer.update();

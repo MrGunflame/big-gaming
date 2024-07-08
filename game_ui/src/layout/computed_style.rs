@@ -30,9 +30,15 @@ impl ComputedStyle {
             style,
         }
     }
+
+    pub(super) fn equal_except_style(&self, other: &Self) -> bool {
+        self.bounds == other.bounds
+            && self.padding == other.padding
+            && self.border_radius == other.border_radius
+    }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct ComputedBounds {
     pub min: UVec2,
     pub max: UVec2,
@@ -67,7 +73,7 @@ impl Default for ComputedBounds {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Default)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 pub struct ComputedPadding {
     pub top: u32,
     pub bottom: u32,
@@ -75,7 +81,7 @@ pub struct ComputedPadding {
     pub right: u32,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Default)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 pub struct ComputedBorderRadius {
     pub top_left: u32,
     pub top_right: u32,

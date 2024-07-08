@@ -1,14 +1,10 @@
 use criterion::{black_box, criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion};
 
 use game_ui::layout::LayoutTree;
-use game_ui::render::{Element, ElementBody};
-use game_ui::style::Style;
+use game_ui::primitive::Primitive;
 
-fn create_element() -> Element {
-    Element {
-        body: ElementBody::Container,
-        style: Style::default(),
-    }
+fn create_element() -> Primitive {
+    Primitive::default()
 }
 
 fn build_layout_tree(children_per_elem: usize, depth: usize) -> LayoutTree {

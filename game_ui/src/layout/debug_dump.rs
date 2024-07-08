@@ -2,7 +2,7 @@
 
 use std::fmt::Write;
 
-use super::{ElementBody, Key, LayoutTree};
+use super::{Key, LayoutTree};
 
 const WHITESPACE_WIDTH: u32 = 4;
 
@@ -24,11 +24,11 @@ impl LayoutTree {
 
         let elem = self.elems.get(&key).unwrap();
         let layout = self.layouts.get(&key).unwrap();
-        match elem.body {
-            ElementBody::Container => buf.push_str("Container"),
-            ElementBody::Image(_) => buf.push_str("Image "),
-            ElementBody::Text(_) => buf.push_str("Text "),
-        }
+        // match elem.body {
+        //     ElementBody::Container => buf.push_str("Container"),
+        //     ElementBody::Image(_) => buf.push_str("Image "),
+        //     ElementBody::Text(_) => buf.push_str("Text "),
+        // }
 
         write!(
             buf,

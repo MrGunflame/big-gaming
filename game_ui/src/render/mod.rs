@@ -5,7 +5,7 @@ mod pipeline;
 pub mod remap;
 pub(crate) mod text;
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 
 use ::image::{ImageBuffer, Rgba};
@@ -17,16 +17,16 @@ use glam::UVec2;
 use parking_lot::RwLock;
 
 use crate::layout::computed_style::ComputedStyle;
-use crate::layout::LayoutTree;
+use crate::layout::{Key, Layout, LayoutTree};
+use crate::primitive::Primitive;
 
 pub use self::image::Image;
 use self::pipeline::UiPass;
 pub use self::text::Text;
-pub use crate::layout::{Element, ElementBody};
 
 pub struct UiRenderer {
-    targets: HashMap<RenderTarget, LayoutTree>,
-    elements: Arc<RwLock<HashMap<RenderTarget, Vec<DrawCommand>>>>,
+    targets: HashMap<RenderTarget, SurfaceState>,
+    elements: Arc<RwLock<HashMap<RenderTarget, SurfaceDrawCommands>>>,
 }
 
 impl UiRenderer {
@@ -44,15 +44,15 @@ impl UiRenderer {
     }
 
     pub fn insert(&mut self, target: RenderTarget, size: UVec2) {
-        self.targets.insert(target, LayoutTree::new());
+        self.targets.insert(target, SurfaceState::default());
         self.resize(target, size);
 
         let mut elems = self.elements.write();
-        elems.insert(target, vec![]);
+        elems.insert(target, SurfaceDrawCommands::new());
     }
 
-    pub fn get_mut(&mut self, target: RenderTarget) -> Option<&mut LayoutTree> {
-        self.targets.get_mut(&target)
+    pub fn get_mut(&mut self, target: RenderTarget) -> Option<&mut Vec<(Key, Layout, Primitive)>> {
+        self.targets.get_mut(&target).map(|v| &mut v.nodes)
     }
 
     pub fn remove(&mut self, target: RenderTarget) {
@@ -63,44 +63,54 @@ impl UiRenderer {
     }
 
     pub fn resize(&mut self, target: RenderTarget, size: UVec2) {
-        if let Some(tree) = self.targets.get_mut(&target) {
-            tree.resize(size);
+        if let Some(state) = self.targets.get_mut(&target) {
+            state.size = size;
         }
     }
 
     pub fn update(&mut self) {
         let _span = trace_span!("UiRenderer::update").entered();
 
-        for (id, tree) in self.targets.iter_mut() {
-            tree.compute_layout();
+        for (id, state) in self.targets.iter_mut() {
+            let mut surfaces = self.elements.write();
+            let cmds = surfaces.get_mut(id).unwrap();
 
-            let size = tree.size();
+            cmds.begin_tracking();
+            for (key, layout, elem) in &state.nodes {
+                if !layout.has_changed {
+                    cmds.track(*key);
+                    continue;
+                }
 
-            let mut cmds = vec![];
-            for (elem, layout) in tree.elements().zip(tree.layouts()) {
+                let mut should_render = true;
+
                 // Don't render elements with a zero size.
                 if layout.width == 0 || layout.height == 0 {
-                    continue;
+                    should_render = false;
                 }
 
                 // Don't render elements that start outside of the viewport.
-                if layout.position.x > size.x || layout.position.y > size.y {
-                    continue;
+                if layout.position.x > state.size.x || layout.position.y > state.size.y {
+                    should_render = false;
                 }
 
-                if let Some(cmd) = elem.draw(
-                    &layout.style,
-                    Rect {
-                        min: layout.position,
-                        max: layout.position + UVec2::new(layout.width, layout.height),
-                    },
-                    size,
-                ) {
-                    cmds.push(cmd);
-                }
+                let cmd = if should_render {
+                    elem.draw(
+                        &layout.style,
+                        Rect {
+                            min: layout.position,
+                            max: layout.position + UVec2::new(layout.width, layout.height),
+                        },
+                        state.size,
+                    )
+                } else {
+                    None
+                };
+
+                cmds.insert(*key, cmd);
             }
 
-            *self.elements.write().get_mut(id).unwrap() = cmds;
+            cmds.finish_tracking();
         }
     }
 }
@@ -144,4 +154,51 @@ impl Rect {
             && point.y >= self.min.y
             && point.y <= self.max.y
     }
+}
+
+#[derive(Clone, Debug)]
+struct SurfaceDrawCommands {
+    // Note: We use `None` to represent primitives that do
+    // not need to be rendered. We can still retain them
+    // over frames.
+    cmds: BTreeMap<Key, Option<DrawCommand>>,
+    tracked: HashSet<Key>,
+}
+
+impl SurfaceDrawCommands {
+    fn new() -> Self {
+        Self {
+            cmds: BTreeMap::new(),
+            tracked: HashSet::new(),
+        }
+    }
+
+    fn begin_tracking(&mut self) {
+        self.tracked.clear();
+    }
+
+    fn finish_tracking(&mut self) {
+        self.cmds.retain(|k, _| self.tracked.contains(k));
+    }
+
+    fn track(&mut self, key: Key) {
+        self.tracked.insert(key);
+    }
+
+    fn insert(&mut self, key: Key, cmd: Option<DrawCommand>) {
+        debug_assert!(!self.tracked.contains(&key));
+
+        self.cmds.insert(key, cmd);
+        self.tracked.insert(key);
+    }
+
+    fn commands(&self) -> impl Iterator<Item = &DrawCommand> + '_ {
+        self.cmds.values().filter_map(|v| v.as_ref())
+    }
+}
+
+#[derive(Clone, Debug, Default)]
+struct SurfaceState {
+    size: UVec2,
+    nodes: Vec<(Key, Layout, Primitive)>,
 }

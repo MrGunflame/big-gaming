@@ -126,7 +126,7 @@ pub fn apply_background(img: &mut ImageBuffer<Rgba<u8>, Vec<u8>>, style: &Comput
     }
 }
 
-fn apply_border_radius(
+pub fn apply_border_radius(
     img: &mut ImageBuffer<Rgba<u8>, Vec<u8>>,
     border_radius: ComputedBorderRadius,
 ) {

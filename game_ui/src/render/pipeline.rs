@@ -23,7 +23,7 @@ use wgpu::{
 };
 
 use super::remap::remap;
-use super::DrawCommand;
+use super::{DrawCommand, SurfaceDrawCommands};
 
 const UI_SHADER: &str = include_str!("../../shaders/ui.wgsl");
 
@@ -163,7 +163,7 @@ struct Vertex {
 #[derive(Debug)]
 pub struct UiPass {
     pipeline: Mutex<UiPipeline>,
-    elements: Arc<RwLock<HashMap<RenderTarget, Vec<DrawCommand>>>>,
+    elements: Arc<RwLock<HashMap<RenderTarget, SurfaceDrawCommands>>>,
     vertex_buffer: Mutex<Vec<u8>>,
     texture_buffer: Mutex<Vec<TextureView>>,
     instance_count: Mutex<u32>,
@@ -173,7 +173,7 @@ pub struct UiPass {
 impl UiPass {
     pub(super) fn new(
         device: &Device,
-        elems: Arc<RwLock<HashMap<RenderTarget, Vec<DrawCommand>>>>,
+        elems: Arc<RwLock<HashMap<RenderTarget, SurfaceDrawCommands>>>,
     ) -> Self {
         let index_buffer = device.create_buffer_init(&BufferInitDescriptor {
             label: None,
@@ -211,7 +211,7 @@ impl UiPass {
             return;
         };
 
-        for cmd in cmds {
+        for cmd in cmds.commands() {
             create_element(
                 cmd,
                 viewport_size,
