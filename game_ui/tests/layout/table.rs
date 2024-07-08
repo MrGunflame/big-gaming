@@ -1,5 +1,5 @@
 use game_ui::layout::LayoutTree;
-use game_ui::render::{Element, ElementBody};
+use game_ui::primitive::Primitive;
 use game_ui::style::{Bounds, Direction, Size, SizeVec2, Style};
 use glam::UVec2;
 
@@ -96,9 +96,6 @@ fn test_table() {
     }
 }
 
-fn create_node(style: Style) -> Element {
-    Element {
-        body: ElementBody::Container,
-        style,
-    }
+fn create_node(style: Style) -> Primitive {
+    Primitive::from_style(style)
 }

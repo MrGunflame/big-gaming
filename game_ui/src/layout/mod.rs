@@ -6,34 +6,9 @@ use std::collections::{BTreeMap, HashMap};
 use glam::UVec2;
 
 use self::computed_style::{ComputedBounds, ComputedStyle};
-use crate::render::container::Container;
-use crate::render::image::Image;
-use crate::render::text::Text;
-use crate::render::{DrawCommand, DrawElement, Rect};
-use crate::style::{Direction, Justify, Position, Style};
-
-#[derive(Clone, Debug)]
-pub struct Element {
-    pub body: ElementBody,
-    pub style: Style,
-}
-
-impl DrawElement for Element {
-    fn draw(&self, style: &ComputedStyle, layout: Rect, size: UVec2) -> Option<DrawCommand> {
-        match &self.body {
-            ElementBody::Container => Container.draw(style, layout, size),
-            ElementBody::Image(elem) => elem.draw(style, layout, size),
-            ElementBody::Text(elem) => elem.draw(style, layout, size),
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub enum ElementBody {
-    Container,
-    Image(Image),
-    Text(Text),
-}
+use crate::primitive::Primitive;
+use crate::render::Rect;
+use crate::style::{Direction, Justify, Position};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Key(u64);
@@ -44,7 +19,7 @@ pub struct LayoutTree {
     // Note that the order is important; we want to render elements
     // inserted after their parents to be render after the parent
     // was rendered.
-    elems: BTreeMap<Key, Element>,
+    elems: BTreeMap<Key, Primitive>,
     layouts: HashMap<Key, Layout>,
     size: UVec2,
     changed: bool,
@@ -93,12 +68,13 @@ impl LayoutTree {
     /// # Panics
     ///
     /// Panics if `index < parent_len`.
-    pub fn insert(&mut self, parent: Option<Key>, elem: Element, index: usize) -> Key {
+    pub fn insert(&mut self, parent: Option<Key>, elem: Primitive, index: usize) -> Key {
         let layout = Layout {
             position: UVec2::ZERO,
             height: 0,
             width: 0,
             style: ComputedStyle::new(elem.style.clone(), self.size),
+            has_changed: true,
         };
 
         let key = Key(self.next_id);
@@ -119,12 +95,13 @@ impl LayoutTree {
         key
     }
 
-    pub fn push(&mut self, parent: Option<Key>, elem: Element) -> Key {
+    pub fn push(&mut self, parent: Option<Key>, elem: Primitive) -> Key {
         let layout = Layout {
             position: UVec2::ZERO,
             height: 0,
             width: 0,
             style: ComputedStyle::new(elem.style.clone(), self.size),
+            has_changed: true,
         };
 
         let key = Key(self.next_id);
@@ -167,7 +144,7 @@ impl LayoutTree {
         }
     }
 
-    pub fn replace(&mut self, key: Key, elem: Element) {
+    pub fn replace(&mut self, key: Key, elem: Primitive) {
         if !self.elems.contains_key(&key) {
             return;
         }
@@ -219,68 +196,61 @@ impl LayoutTree {
         let elem = self.elems.get(&key).unwrap();
         let layout = self.layouts.get(&key).unwrap();
 
-        let mut bounds = match &elem.body {
-            ElementBody::Container => {
-                // Infer the bounds from the children elements.
-                if let Some(children) = self.children.get(&key) {
-                    let mut bounds = ComputedBounds::ZERO;
-                    for key in children {
-                        // Elements with absolute position are excluded.
-                        let child = self.elems.get(key).unwrap();
-                        if child.style.position.is_absolute() {
-                            continue;
-                        }
+        let mut bounds = if let Some(children) = self.children.get(&key) {
+            let mut bounds = elem.bounds(&layout.style);
+            for key in children {
+                // Elements with absolute position are excluded.
+                let child = self.elems.get(key).unwrap();
+                if child.style.position.is_absolute() {
+                    continue;
+                }
 
-                        let child_bounds = self.compute_bounds(*key);
+                let child_bounds = self.compute_bounds(*key);
 
-                        let min = child_bounds.min;
-                        let max = child_bounds.max;
+                let min = child_bounds.min;
+                let max = child_bounds.max;
 
-                        match elem.style.direction {
-                            Direction::Row => {
-                                bounds.min.y = bounds.min.y.saturating_add(min.y);
-                                bounds.min.x = u32::max(bounds.min.x, min.x);
+                match elem.style.direction {
+                    Direction::Row => {
+                        bounds.min.y = bounds.min.y.saturating_add(min.y);
+                        bounds.min.x = u32::max(bounds.min.x, min.x);
 
-                                bounds.max.y = bounds.max.y.saturating_add(max.y);
-                                bounds.max.x = u32::max(bounds.max.x, max.x);
-                            }
-                            Direction::Column => {
-                                bounds.min.y = u32::max(bounds.min.y, min.y);
-                                bounds.min.x = bounds.min.x.saturating_add(min.x);
-
-                                bounds.max.y = u32::max(bounds.max.y, max.y);
-                                bounds.max.x = bounds.max.x.saturating_add(max.x);
-                            }
-                        }
+                        bounds.max.y = bounds.max.y.saturating_add(max.y);
+                        bounds.max.x = u32::max(bounds.max.x, max.x);
                     }
+                    Direction::Column => {
+                        bounds.min.y = u32::max(bounds.min.y, min.y);
+                        bounds.min.x = bounds.min.x.saturating_add(min.x);
 
-                    if elem.style.growth.x.is_some() {
-                        bounds.max.x = u32::MAX;
+                        bounds.max.y = u32::max(bounds.max.y, max.y);
+                        bounds.max.x = bounds.max.x.saturating_add(max.x);
                     }
-
-                    if elem.style.growth.y.is_some() {
-                        bounds.max.y = u32::MAX;
-                    }
-
-                    bounds
-                } else {
-                    // If the container can grow, it may take any size.
-                    // If the can not grow, it will always have the size zero.
-                    let mut bounds = ComputedBounds::ZERO;
-
-                    if elem.style.growth.x.is_some() {
-                        bounds.max.x = u32::MAX;
-                    }
-
-                    if elem.style.growth.y.is_some() {
-                        bounds.max.y = u32::MAX;
-                    }
-
-                    bounds
                 }
             }
-            ElementBody::Image(el) => el.bounds(&layout.style),
-            ElementBody::Text(el) => el.bounds(&layout.style),
+
+            if elem.style.growth.x.is_some() {
+                bounds.max.x = u32::MAX;
+            }
+
+            if elem.style.growth.y.is_some() {
+                bounds.max.y = u32::MAX;
+            }
+
+            bounds
+        } else {
+            // If the container can grow, it may take any size.
+            // If the can not grow, it will always have the size zero.
+            let mut bounds = elem.bounds(&layout.style);
+
+            if elem.style.growth.x.is_some() {
+                bounds.max.x = u32::MAX;
+            }
+
+            if elem.style.growth.y.is_some() {
+                bounds.max.y = u32::MAX;
+            }
+
+            bounds
         };
 
         // Clamp the actual bounds between the wanted bounds.
@@ -596,7 +566,7 @@ impl LayoutTree {
         self.elems.keys().copied()
     }
 
-    pub fn get_mut(&mut self, key: Key) -> Option<&mut Element> {
+    pub fn get_mut(&mut self, key: Key) -> Option<&mut Primitive> {
         match self.elems.get_mut(&key) {
             Some(elem) => {
                 self.changed = true;
@@ -619,11 +589,11 @@ impl Default for LayoutTree {
 
 #[derive(Clone, Debug)]
 pub struct Elements<'a> {
-    iter: std::collections::btree_map::Iter<'a, Key, Element>,
+    iter: std::collections::btree_map::Iter<'a, Key, Primitive>,
 }
 
 impl<'a> Iterator for Elements<'a> {
-    type Item = &'a Element;
+    type Item = &'a Primitive;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.iter.next().map(|(_, v)| v)
@@ -643,7 +613,7 @@ impl<'a> ExactSizeIterator for Elements<'a> {
 #[derive(Clone, Debug)]
 pub struct Layouts<'a> {
     // Order is important.
-    keys: std::collections::btree_map::Iter<'a, Key, Element>,
+    keys: std::collections::btree_map::Iter<'a, Key, Primitive>,
     layouts: &'a HashMap<Key, Layout>,
 }
 
@@ -672,6 +642,7 @@ pub struct Layout {
     pub position: UVec2,
     pub width: u32,
     pub height: u32,
+    pub has_changed: bool,
 }
 
 fn size_per_element(space: UVec2, num_elems: u32, direction: Direction) -> UVec2 {
@@ -702,12 +673,13 @@ mod tests {
     use glam::UVec2;
     use image::ImageBuffer;
 
-    use crate::render::{Image, Text};
+    use crate::primitive::Primitive;
+    use crate::render::Text;
     use crate::style::{
         Bounds, Direction, Growth, Justify, Padding, Position, Size, SizeVec2, Style,
     };
 
-    use super::{size_per_element, ComputedBounds, Element, ElementBody, Key, LayoutTree};
+    use super::{size_per_element, ComputedBounds, Key, LayoutTree};
 
     #[test]
     fn size_per_element_row() {
@@ -740,11 +712,10 @@ mod tests {
 
         let style = Style::default();
 
-        let elem = Element {
+        let elem = Primitive {
             style: style.clone(),
-            body: ElementBody::Image(Image {
-                image: ImageBuffer::new(128, 128),
-            }),
+            image: Some(ImageBuffer::new(128, 128)),
+            text: None,
         };
 
         let key0 = tree.push(None, elem.clone());
@@ -769,13 +740,10 @@ mod tests {
         let mut tree = LayoutTree::new();
         tree.resize(UVec2::splat(1000));
 
-        let elem = Element {
-            body: ElementBody::Container,
-            style: Style {
-                growth: Growth::splat(1.0),
-                ..Default::default()
-            },
-        };
+        let elem = Primitive::from_style(Style {
+            growth: Growth::splat(1.0),
+            ..Default::default()
+        });
 
         let key = tree.push(None, elem);
         let bounds = tree.compute_bounds(key);
@@ -794,13 +762,10 @@ mod tests {
         let mut tree = LayoutTree::new();
         tree.resize(UVec2::splat(1000));
 
-        let elem = Element {
-            body: ElementBody::Container,
-            style: Style {
-                growth: Growth::NONE,
-                ..Default::default()
-            },
-        };
+        let elem = Primitive::from_style(Style {
+            growth: Growth::NONE,
+            ..Default::default()
+        });
 
         let key = tree.push(None, elem);
         let bounds = tree.compute_bounds(key);
@@ -824,17 +789,13 @@ mod tests {
             ..Default::default()
         };
 
-        let root = Element {
-            body: ElementBody::Container,
-            style: style.clone(),
-        };
+        let root = Primitive::from_style(style.clone());
         let key = tree.push(None, root);
 
-        let elem = Element {
-            body: ElementBody::Image(Image {
-                image: ImageBuffer::new(128, 128),
-            }),
+        let elem = Primitive {
             style: Style::default(),
+            image: Some(ImageBuffer::new(128, 128)),
+            text: None,
         };
         tree.push(Some(key), elem.clone());
 
@@ -859,17 +820,13 @@ mod tests {
             ..Default::default()
         };
 
-        let root = Element {
-            body: ElementBody::Container,
-            style: style.clone(),
-        };
+        let root = Primitive::from_style(style.clone());
         let key = tree.push(None, root);
 
-        let elem = Element {
-            body: ElementBody::Image(Image {
-                image: ImageBuffer::new(128, 128),
-            }),
+        let elem = Primitive {
             style: Style::default(),
+            image: Some(ImageBuffer::new(128, 128)),
+            text: None,
         };
         tree.push(Some(key), elem.clone());
 
@@ -889,21 +846,19 @@ mod tests {
         let mut tree = LayoutTree::new();
         tree.resize(UVec2::splat(1000));
 
-        let root = Element {
-            body: ElementBody::Container,
-            style: Style {
-                growth: Growth::NONE,
-                ..Default::default()
-            },
-        };
+        let root = Primitive::from_style(Style {
+            growth: Growth::NONE,
+            ..Default::default()
+        });
         let key = tree.push(None, root);
 
-        let elem = Element {
-            body: ElementBody::Text(Text::new("test", 100.0, None)),
+        let elem = Primitive {
             style: Style {
                 position: Position::Absolute(UVec2::splat(0)),
                 ..Default::default()
             },
+            image: None,
+            text: Some(Text::new("test", 100.0, None)),
         };
         tree.push(Some(key), elem.clone());
 
@@ -923,13 +878,10 @@ mod tests {
 
         let key = tree.push(
             None,
-            Element {
-                body: ElementBody::Container,
-                style: Style {
-                    bounds,
-                    ..Default::default()
-                },
-            },
+            Primitive::from_style(Style {
+                bounds,
+                ..Default::default()
+            }),
         );
 
         let bounds = tree.compute_bounds(key);
@@ -943,35 +895,23 @@ mod tests {
         let mut tree = LayoutTree::new();
         tree.resize(UVec2::splat(1000));
 
-        let root = tree.push(
-            None,
-            Element {
-                body: ElementBody::Container,
-                style: Style::default(),
-            },
-        );
+        let root = tree.push(None, Primitive::default());
 
         for _ in 0..10 {
             let wrapper = tree.push(
                 Some(root),
-                Element {
-                    body: ElementBody::Container,
-                    style: Style {
-                        direction: Direction::Column,
-                        ..Default::default()
-                    },
-                },
+                Primitive::from_style(Style {
+                    direction: Direction::Column,
+                    ..Default::default()
+                }),
             );
 
             tree.push(
                 Some(wrapper),
-                Element {
-                    body: ElementBody::Container,
-                    style: Style {
-                        bounds: Bounds::exact(SizeVec2::splat(Size::Pixels(15))),
-                        ..Default::default()
-                    },
-                },
+                Primitive::from_style(Style {
+                    bounds: Bounds::exact(SizeVec2::splat(Size::Pixels(15))),
+                    ..Default::default()
+                }),
             );
         }
 
@@ -988,14 +928,11 @@ mod tests {
 
         let root = tree.push(
             None,
-            Element {
-                body: ElementBody::Container,
-                style: Style {
-                    bounds: Bounds::exact(SizeVec2::splat(Size::Pixels(u32::MAX))),
-                    padding: Padding::splat(Size::Pixels(1)),
-                    ..Default::default()
-                },
-            },
+            Primitive::from_style(Style {
+                bounds: Bounds::exact(SizeVec2::splat(Size::Pixels(u32::MAX))),
+                padding: Padding::splat(Size::Pixels(1)),
+                ..Default::default()
+            }),
         );
 
         let bounds = tree.compute_bounds(root);
@@ -1016,13 +953,10 @@ mod tests {
 
         let key = tree.push(
             None,
-            Element {
-                body: ElementBody::Container,
-                style: Style {
-                    bounds,
-                    ..Default::default()
-                },
-            },
+            Primitive::from_style(Style {
+                bounds,
+                ..Default::default()
+            }),
         );
 
         tree.compute_layout();
@@ -1042,23 +976,14 @@ mod tests {
             max: SizeVec2::splat(Size::Pixels(10)),
         };
 
-        let root = tree.push(
-            None,
-            Element {
-                body: ElementBody::Container,
-                style: Style::default(),
-            },
-        );
+        let root = tree.push(None, Primitive::default());
 
         let key = tree.push(
             Some(root),
-            Element {
-                body: ElementBody::Container,
-                style: Style {
-                    bounds,
-                    ..Default::default()
-                },
-            },
+            Primitive::from_style(Style {
+                bounds,
+                ..Default::default()
+            }),
         );
 
         tree.compute_layout();
@@ -1079,32 +1004,26 @@ mod tests {
 
         let root = tree.push(
             None,
-            Element {
-                body: ElementBody::Container,
-                style: Style {
-                    // Claim entire viewport so we can actually test
-                    // child positions.
-                    bounds: Bounds {
-                        min: SizeVec2::splat(Size::Pixels(1000)),
-                        max: SizeVec2::splat(Size::Pixels(1000)),
-                    },
-                    direction,
-                    justify,
-                    ..Default::default()
+            Primitive::from_style(Style {
+                // Claim entire viewport so we can actually test
+                // child positions.
+                bounds: Bounds {
+                    min: SizeVec2::splat(Size::Pixels(1000)),
+                    max: SizeVec2::splat(Size::Pixels(1000)),
                 },
-            },
+                direction,
+                justify,
+                ..Default::default()
+            }),
         );
 
-        let elem = Element {
-            body: ElementBody::Container,
-            style: Style {
-                bounds: Bounds {
-                    min: SizeVec2::splat(Size::Pixels(size)),
-                    max: SizeVec2::splat(Size::Pixels(size)),
-                },
-                ..Default::default()
+        let elem = Primitive::from_style(Style {
+            bounds: Bounds {
+                min: SizeVec2::splat(Size::Pixels(size)),
+                max: SizeVec2::splat(Size::Pixels(size)),
             },
-        };
+            ..Default::default()
+        });
 
         let keys = (0..num_elems)
             .map(|_| tree.push(Some(root), elem.clone()))
@@ -1290,17 +1209,14 @@ mod tests {
 
         let key = tree.push(
             None,
-            Element {
-                body: ElementBody::Container,
-                style: Style {
-                    bounds: Bounds {
-                        min: SizeVec2::splat(Size::Pixels(10)),
-                        max: SizeVec2::splat(Size::Pixels(10)),
-                    },
-                    padding: Padding::splat(Size::Pixels(10)),
-                    ..Default::default()
+            Primitive::from_style(Style {
+                bounds: Bounds {
+                    min: SizeVec2::splat(Size::Pixels(10)),
+                    max: SizeVec2::splat(Size::Pixels(10)),
                 },
-            },
+                padding: Padding::splat(Size::Pixels(10)),
+                ..Default::default()
+            }),
         );
 
         tree.compute_layout();
@@ -1317,25 +1233,19 @@ mod tests {
 
         let root = tree.push(
             None,
-            Element {
-                body: ElementBody::Container,
-                style: Style {
-                    padding: Padding::splat(Size::Pixels(10)),
-                    ..Default::default()
-                },
-            },
+            Primitive::from_style(Style {
+                padding: Padding::splat(Size::Pixels(10)),
+                ..Default::default()
+            }),
         );
 
-        let elem = Element {
-            body: ElementBody::Container,
-            style: Style {
-                bounds: Bounds {
-                    min: SizeVec2::splat(Size::Pixels(10)),
-                    max: SizeVec2::splat(Size::Pixels(10)),
-                },
-                ..Default::default()
+        let elem = Primitive::from_style(Style {
+            bounds: Bounds {
+                min: SizeVec2::splat(Size::Pixels(10)),
+                max: SizeVec2::splat(Size::Pixels(10)),
             },
-        };
+            ..Default::default()
+        });
 
         let keys: Vec<_> = (0..3)
             .map(|_| tree.push(Some(root), elem.clone()))
@@ -1358,21 +1268,12 @@ mod tests {
         let mut tree = LayoutTree::new();
         tree.resize(UVec2::splat(1000));
 
-        let root = tree.push(
-            None,
-            Element {
-                body: ElementBody::Container,
-                style: Style::default(),
-            },
-        );
+        let root = tree.push(None, Primitive::default());
 
-        let elem = Element {
-            body: ElementBody::Container,
-            style: Style {
-                bounds: Bounds::exact(SizeVec2::splat(Size::Pixels(10))),
-                ..Default::default()
-            },
-        };
+        let elem = Primitive::from_style(Style {
+            bounds: Bounds::exact(SizeVec2::splat(Size::Pixels(10))),
+            ..Default::default()
+        });
 
         let mut keys: Vec<_> = (0..3)
             .map(|_| tree.push(Some(root), elem.clone()))
@@ -1380,14 +1281,11 @@ mod tests {
 
         tree.push(
             Some(root),
-            Element {
-                body: ElementBody::Container,
-                style: Style {
-                    bounds: Bounds::exact(SizeVec2::splat(Size::Pixels(10))),
-                    position: Position::Absolute(UVec2::splat(0)),
-                    ..Default::default()
-                },
-            },
+            Primitive::from_style(Style {
+                bounds: Bounds::exact(SizeVec2::splat(Size::Pixels(10))),
+                position: Position::Absolute(UVec2::splat(0)),
+                ..Default::default()
+            }),
         );
 
         keys.extend((0..3).map(|_| tree.push(Some(root), elem.clone())));
