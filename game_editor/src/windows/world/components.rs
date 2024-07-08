@@ -1,12 +1,14 @@
 use std::collections::VecDeque;
 use std::env::var;
 use std::fmt::{self, Display, Formatter};
+use std::io::Read;
 use std::str::FromStr;
 use std::sync::{mpsc, Arc};
 
 use ahash::HashMap;
 use game_common::components::components::RawComponent;
 use game_common::reflection::{ComponentDescriptor, EnumFieldVariant, Field, FieldKind};
+use game_common::utils::vec_ext::VecExt;
 use game_core::modules::Modules;
 use game_data::record::RecordKind;
 use game_ui::reactive::Context;
@@ -489,7 +491,14 @@ fn render_fields<'a>(
                                     _ => todo!(),
                                 }
 
+                                // `remove_children` will remove the enum body that is getting
+                                // removed. Now we need to generate a new default body for
+                                // the new variant and insert it after the tag.
                                 component.remove_children(tag_key);
+
+                                let enum_body =
+                                    descriptor.default_enum_body(&enum_field, active_variant);
+                                component.insert_after(tag_key, enum_body.as_bytes());
 
                                 writer
                                     .send(Event::UpdateComponent(id, component.data.clone()))
@@ -712,9 +721,15 @@ impl EditComponentStorage {
     fn remove_internal(&mut self, key: ComponentOffsetKey) {
         let entry = self.offsets.get(&key).cloned().unwrap();
 
+        let mut bytes = self.data.as_bytes().to_vec();
+
         let mut key_found = false;
         for (k, offset) in self.offsets.iter_mut() {
             if *k == key {
+                for _ in 0..entry.size {
+                    bytes.remove(offset.offset);
+                }
+
                 key_found = true;
                 continue;
             }
@@ -725,6 +740,8 @@ impl EditComponentStorage {
                 offset.offset -= entry.size;
             }
         }
+
+        self.data = RawComponent::new(bytes, self.data.fields());
 
         self.offsets.shift_remove(&key);
     }
@@ -754,6 +771,49 @@ impl EditComponentStorage {
         self.offsets.clear();
         self.children.clear();
     }
+
+    pub fn insert_after(&mut self, key: ComponentOffsetKey, data: &[u8]) {
+        let entry = self.offsets.get(&key).unwrap();
+        let offset = entry.offset + entry.size;
+
+        let mut bytes = self.data.as_bytes().to_vec();
+        bytes.extend_at(offset, data);
+
+        let mut key_found = false;
+        for (k, offset) in self.offsets.iter_mut() {
+            if *k == key {
+                key_found = true;
+                continue;
+            }
+
+            if key_found {
+                offset.offset += data.len();
+            }
+        }
+
+        self.data = RawComponent::new(bytes, self.data.fields());
+    }
+
+    // pub fn size_of_children(&self, key: ComponentOffsetKey) -> usize {
+    //     let mut size = 0;
+
+    //     let mut queue = Vec::new();
+
+    //     if let Some(children) = self.children.get(&key) {
+    //         queue.extend(children);
+    //     }
+
+    //     while let Some(key) = queue.pop() {
+    //         let entry = self.offsets.get(key).unwrap();
+    //         size += entry.size;
+
+    //         if let Some(children) = self.children.get(key) {
+    //             queue.extend(children);
+    //         }
+    //     }
+
+    //     size
+    // }
 }
 
 #[derive(Clone, Debug)]

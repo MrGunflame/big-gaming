@@ -90,12 +90,16 @@ impl ComponentDescriptor {
 
     /// Returns a new, default [`RawComponent`] for the `ComponentDescriptor`.
     pub fn default_component(&self) -> RawComponent {
+        self.default_with_root(&self.root)
+    }
+
+    pub fn default_with_root(&self, root: &[FieldIndex]) -> RawComponent {
         let mut bytes = Vec::new();
         let mut fields = Vec::new();
         let mut offset = 0;
 
         let mut queue: VecDeque<FieldIndex> = VecDeque::new();
-        queue.extend(self.root.iter());
+        queue.extend(root);
 
         while let Some(index) = queue.pop_front() {
             let field = &self.fields[usize::from(index.0)];
@@ -164,6 +168,11 @@ impl ComponentDescriptor {
         }
 
         RawComponent::new(bytes, fields)
+    }
+
+    pub fn default_enum_body(&self, field: &EnumField, tag: u64) -> RawComponent {
+        let variant = field.variant(tag).unwrap();
+        self.default_with_root(&variant.fields)
     }
 }
 
