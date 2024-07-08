@@ -90,12 +90,16 @@ impl ComponentDescriptor {
 
     /// Returns a new, default [`RawComponent`] for the `ComponentDescriptor`.
     pub fn default_component(&self) -> RawComponent {
+        self.default_with_root(&self.root)
+    }
+
+    pub fn default_with_root(&self, root: &[FieldIndex]) -> RawComponent {
         let mut bytes = Vec::new();
         let mut fields = Vec::new();
         let mut offset = 0;
 
         let mut queue: VecDeque<FieldIndex> = VecDeque::new();
-        queue.extend(self.root.iter());
+        queue.extend(root);
 
         while let Some(index) = queue.pop_front() {
             let field = &self.fields[usize::from(index.0)];
@@ -148,6 +152,14 @@ impl ComponentDescriptor {
                         .find(|v| v.tag == field.default_variant)
                         .unwrap();
 
+                    match field.tag_bits {
+                        8 => bytes.push(variant.tag as u8),
+                        16 => bytes.extend((variant.tag as u16).to_le_bytes()),
+                        32 => bytes.extend((variant.tag as u32).to_le_bytes()),
+                        64 => bytes.extend((variant.tag as u64).to_le_bytes()),
+                        _ => todo!(),
+                    }
+
                     for index in variant.fields.iter().rev() {
                         queue.push_front(*index);
                     }
@@ -156,6 +168,11 @@ impl ComponentDescriptor {
         }
 
         RawComponent::new(bytes, fields)
+    }
+
+    pub fn default_enum_body(&self, field: &EnumField, tag: u64) -> RawComponent {
+        let variant = field.variant(tag).unwrap();
+        self.default_with_root(&variant.fields)
     }
 }
 
@@ -244,6 +261,18 @@ pub struct EnumField {
     pub tag_bits: u8,
     pub default_variant: u64,
     pub variants: Vec<EnumFieldVariant>,
+}
+
+impl EnumField {
+    pub fn variant(&self, tag: u64) -> Option<&EnumFieldVariant> {
+        for variant in &self.variants {
+            if variant.tag == tag {
+                return Some(variant);
+            }
+        }
+
+        None
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

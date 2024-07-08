@@ -1,21 +1,24 @@
 use std::collections::VecDeque;
+use std::env::var;
 use std::fmt::{self, Display, Formatter};
+use std::io::Read;
 use std::str::FromStr;
 use std::sync::{mpsc, Arc};
 
-use chrono::format::Pad;
+use ahash::HashMap;
 use game_common::components::components::RawComponent;
-use game_common::reflection::{ComponentDescriptor, FieldKind};
+use game_common::reflection::{ComponentDescriptor, EnumFieldVariant, Field, FieldKind};
+use game_common::utils::vec_ext::VecExt;
 use game_core::modules::Modules;
 use game_data::record::RecordKind;
 use game_ui::reactive::Context;
 use game_ui::style::{
-    Background, BorderRadius, Bounds, Color, Direction, Growth, Justify, Padding, Size, SizeVec2,
-    Style,
+    Background, BorderRadius, Bounds, Color, Direction, Growth, Padding, Size, SizeVec2, Style,
 };
 use game_ui::widgets::{Button, Callback, Container, Input, Selection, Svg, SvgData, Text, Widget};
 use game_wasm::world::RecordReference;
 use image::Rgba;
+use indexmap::IndexMap;
 use parking_lot::Mutex;
 
 use super::{Event, SceneState};
@@ -220,6 +223,7 @@ impl Widget for ComponentWrapper {
 
         let writer = self.writer.clone();
         let collapse_button_id2 = collapse_button_id.clone();
+        let component = Arc::new(Mutex::new(EditComponentStorage::new(self.component)));
         let on_collapse = move |()| {
             is_active ^= true;
             body.clear_children();
@@ -229,7 +233,7 @@ impl Widget for ComponentWrapper {
             collapse_button_id.clear_children();
 
             if is_active {
-                render_component(&body, self.id, &self.descriptor, &writer, &self.component);
+                render_component(&body, self.id, &self.descriptor, &writer, &component);
             }
 
             let icon = if is_active {
@@ -275,47 +279,61 @@ fn render_component(
     id: RecordReference,
     descriptor: &ComponentDescriptor,
     writer: &mpsc::Sender<Event>,
-    component: &RawComponent,
+    component: &Arc<Mutex<EditComponentStorage>>,
 ) {
-    let mut offset = 0;
+    component.lock().clear();
 
     let mut queue = VecDeque::new();
 
     for index in descriptor.root() {
         let field = descriptor.get(*index).unwrap();
-        queue.push_back((ctx.clone(), field));
+        queue.push_back((ctx.clone(), field, None));
     }
 
+    render_fields(id, descriptor, queue, writer, component);
+}
+
+fn render_fields<'a>(
+    id: RecordReference,
+    descriptor: &'a ComponentDescriptor,
+    // parent, field, parent_key
+    mut queue: VecDeque<(Context<()>, &'a Field, Option<ComponentOffsetKey>)>,
+    writer: &mpsc::Sender<Event>,
     // If every input field gets a direct clone of the component
     // at the time of creation of the panel they cannot track changes
     // of other fields. The changes to fields would then overwrite
     // each other.
     // To prevent this we give every input field access to the same
     // shared component instance.
-    let component = Arc::new(Mutex::new(component.clone()));
-
-    while let Some((parent, field)) = queue.pop_front() {
+    component: &Arc<Mutex<EditComponentStorage>>,
+) {
+    while let Some((parent, field, parent_key)) = queue.pop_front() {
         match &field.kind {
             FieldKind::Int(val) => {
                 let field_len = usize::from(val.bits) / 8;
                 let bits = val.bits;
                 let is_signed = val.is_signed;
 
-                let value = {
-                    let component = component.lock();
-                    let bytes = &component.as_bytes()[offset..offset + field_len];
+                let (value, key) = {
+                    let mut component = component.lock();
 
-                    match (bits, is_signed) {
-                        (8, false) => u8::from_le_bytes(bytes.try_into().unwrap()) as i64,
-                        (8, true) => i8::from_le_bytes(bytes.try_into().unwrap()) as i64,
-                        (16, false) => u16::from_le_bytes(bytes.try_into().unwrap()) as i64,
-                        (16, true) => u16::from_le_bytes(bytes.try_into().unwrap()) as i64,
-                        (32, false) => u32::from_le_bytes(bytes.try_into().unwrap()) as i64,
-                        (32, true) => i32::from_le_bytes(bytes.try_into().unwrap()) as i64,
-                        (64, false) => u64::from_le_bytes(bytes.try_into().unwrap()) as i64,
-                        (64, true) => i64::from_le_bytes(bytes.try_into().unwrap()),
-                        _ => todo!(),
-                    }
+                    let key = component.register_after(parent_key, field_len);
+                    let bytes = component.get(key);
+
+                    (
+                        match (bits, is_signed) {
+                            (8, false) => u8::from_le_bytes(bytes.try_into().unwrap()) as i64,
+                            (8, true) => i8::from_le_bytes(bytes.try_into().unwrap()) as i64,
+                            (16, false) => u16::from_le_bytes(bytes.try_into().unwrap()) as i64,
+                            (16, true) => u16::from_le_bytes(bytes.try_into().unwrap()) as i64,
+                            (32, false) => u32::from_le_bytes(bytes.try_into().unwrap()) as i64,
+                            (32, true) => i32::from_le_bytes(bytes.try_into().unwrap()) as i64,
+                            (64, false) => u64::from_le_bytes(bytes.try_into().unwrap()) as i64,
+                            (64, true) => i64::from_le_bytes(bytes.try_into().unwrap()),
+                            _ => todo!(),
+                        },
+                        key,
+                    )
                 };
 
                 // FIXME: Hardcoded colors for translation/rotation fields
@@ -330,11 +348,8 @@ fn render_component(
 
                 let component = component.clone();
                 let writer = writer.clone();
-                display_value(ctx, color, &field.name, value, move |mut value: i64| {
+                display_value(&parent, color, &field.name, value, move |mut value: i64| {
                     let mut component = component.lock();
-
-                    let mut bytes = component.as_bytes().to_vec();
-                    let fields = component.fields().to_vec();
 
                     if !is_signed {
                         value = value.abs();
@@ -342,94 +357,233 @@ fn render_component(
 
                     match bits {
                         8 => {
-                            bytes[offset..offset + field_len]
-                                .copy_from_slice(&(value as u8).to_le_bytes());
+                            component.write(key, &(value as u8).to_le_bytes());
                         }
                         16 => {
-                            bytes[offset..offset + field_len]
-                                .copy_from_slice(&(value as u16).to_le_bytes());
+                            component.write(key, &(value as u16).to_le_bytes());
                         }
                         32 => {
-                            bytes[offset..offset + field_len]
-                                .copy_from_slice(&(value as u32).to_le_bytes());
+                            component.write(key, &(value as u32).to_le_bytes());
                         }
                         64 => {
-                            bytes[offset..offset + field_len]
-                                .copy_from_slice(&(value as u64).to_le_bytes());
+                            component.write(key, &(value as u64).to_le_bytes());
                         }
                         _ => todo!(),
                     }
 
-                    *component = RawComponent::new(bytes, fields);
-
                     writer
-                        .send(Event::UpdateComponent(id, component.clone()))
+                        .send(Event::UpdateComponent(id, component.data.clone()))
                         .unwrap();
                 });
-
-                offset += field_len;
             }
             FieldKind::Float(val) => {
                 let field_len = usize::from(val.bits) / 8;
                 let bits = val.bits;
 
-                let value = {
-                    let component = component.lock();
-                    let bytes = &component.as_bytes()[offset..offset + field_len];
+                let (value, key) = {
+                    let mut component = component.lock();
 
-                    match bits {
-                        32 => f32::from_le_bytes(bytes.try_into().unwrap()) as f64,
-                        64 => f64::from_le_bytes(bytes.try_into().unwrap()),
-                        _ => todo!(),
-                    }
+                    let key = component.register_after(parent_key, field_len);
+
+                    let bytes = component.get(key);
+
+                    (
+                        match bits {
+                            32 => f32::from_le_bytes(bytes.try_into().unwrap()) as f64,
+                            64 => f64::from_le_bytes(bytes.try_into().unwrap()),
+                            _ => todo!(),
+                        },
+                        key,
+                    )
                 };
 
                 let component = component.clone();
                 let writer = writer.clone();
                 display_value(
-                    ctx,
+                    &parent,
                     COLOR_X,
                     &field.name,
                     FormatFloat(value),
                     move |FormatFloat(value): FormatFloat| {
                         let mut component = component.lock();
 
-                        let mut bytes = component.as_bytes().to_vec();
-                        let fields = component.fields().to_vec();
-
                         match bits {
                             32 => {
-                                bytes[offset..offset + field_len]
-                                    .copy_from_slice(&(value as f32).to_le_bytes());
+                                component.write(key, &(value as f32).to_le_bytes());
                             }
                             64 => {
-                                bytes[offset..offset + field_len]
-                                    .copy_from_slice(&value.to_le_bytes());
+                                component.write(key, &(value as f64).to_le_bytes());
                             }
                             _ => todo!(),
                         }
 
-                        *component = RawComponent::new(bytes, fields);
-
                         writer
-                            .send(Event::UpdateComponent(id, component.clone()))
+                            .send(Event::UpdateComponent(id, component.data.clone()))
                             .unwrap();
                     },
                 );
-
-                offset += field_len;
             }
             FieldKind::Struct(val) => {
-                let root = Text::new(field.name.clone()).mount(&parent);
+                let root = Container::new().mount(&parent);
+                Text::new(field.name.clone()).mount(&parent);
 
                 for index in val.iter().rev() {
                     let field = descriptor.get(*index).unwrap();
-                    queue.push_front((root.clone(), field));
+                    queue.push_front((root.clone(), field, parent_key));
                 }
             }
             FieldKind::String(_) => todo!(),
-            FieldKind::Enum(_) => todo!(),
+            FieldKind::Enum(enum_field) => {
+                let (mut active_variant, tag_key) = {
+                    let mut component = component.lock();
+
+                    let tag_len = usize::from(enum_field.tag_bits) / 8;
+                    let key = component.register_after(parent_key, tag_len);
+
+                    let bytes = component.get(key);
+
+                    (
+                        match bytes.len() {
+                            1 => bytes[0] as u64,
+                            2 => u16::from_le_bytes(bytes.try_into().unwrap()) as u64,
+                            4 => u32::from_le_bytes(bytes.try_into().unwrap()) as u64,
+                            8 => u64::from_le_bytes(bytes.try_into().unwrap()),
+                            _ => todo!(),
+                        },
+                        key,
+                    )
+                };
+
+                let options = enum_field.variants.iter().map(|v| v.name.clone()).collect();
+
+                let root = Container::new().mount(&parent);
+                Text::new(field.name.clone()).mount(&root);
+
+                let children_ctx = Arc::new(Mutex::new(None));
+
+                Selection {
+                    options,
+                    on_change: Callback::from({
+                        let children_ctx = children_ctx.clone();
+                        let descriptor = descriptor.clone();
+                        let writer = writer.clone();
+                        let component = component.clone();
+                        let enum_field = enum_field.clone();
+                        move |index| {
+                            let variant: &EnumFieldVariant = &enum_field.variants[index];
+
+                            if variant.tag == active_variant {
+                                return;
+                            }
+
+                            active_variant = variant.tag;
+
+                            {
+                                let mut component = component.lock();
+                                match enum_field.tag_bits {
+                                    8 => component.write(tag_key, &[(variant.tag as u8)]),
+                                    16 => component
+                                        .write(tag_key, &(variant.tag as u16).to_le_bytes()),
+                                    32 => component
+                                        .write(tag_key, &(variant.tag as u32).to_le_bytes()),
+                                    64 => component
+                                        .write(tag_key, &(variant.tag as u64).to_le_bytes()),
+                                    _ => todo!(),
+                                }
+
+                                // `remove_children` will remove the enum body that is getting
+                                // removed. Now we need to generate a new default body for
+                                // the new variant and insert it after the tag.
+                                component.remove_children(tag_key);
+
+                                let enum_body =
+                                    descriptor.default_enum_body(&enum_field, active_variant);
+                                component.insert_after(tag_key, enum_body.as_bytes());
+
+                                writer
+                                    .send(Event::UpdateComponent(id, component.data.clone()))
+                                    .unwrap();
+                            }
+
+                            let children_ctx = children_ctx.lock();
+                            let children_ctx: &Context<()> = children_ctx.as_ref().unwrap();
+                            children_ctx.clear_children();
+
+                            let mut queue = VecDeque::new();
+
+                            for index in enum_field
+                                .variant(active_variant)
+                                .unwrap()
+                                .fields
+                                .iter()
+                                .rev()
+                            {
+                                let field = descriptor.get(*index).unwrap();
+                                queue.push_front((children_ctx.clone(), field, Some(tag_key)));
+                            }
+
+                            render_fields(id, &descriptor, queue, &writer, &component);
+                        }
+                    }),
+                }
+                .mount(&root);
+
+                let children = Container::new().mount(&root);
+                *children_ctx.lock() = Some(children.clone());
+
+                for index in enum_field
+                    .variant(active_variant)
+                    .unwrap()
+                    .fields
+                    .iter()
+                    .rev()
+                {
+                    let field = descriptor.get(*index).unwrap();
+                    queue.push_front((children.clone(), field, Some(tag_key)));
+                }
+            }
         }
+    }
+}
+
+#[derive(Clone, Debug)]
+struct KeyValuePair<'a, T> {
+    key: &'a str,
+    value: T,
+    on_change: Callback<T>,
+}
+
+impl<'a, T> Widget for KeyValuePair<'a, T>
+where
+    T: ToString + FromStr + 'static,
+{
+    fn mount<U>(self, parent: &Context<U>) -> Context<()> {
+        let root = Container::new()
+            .style(Style {
+                direction: Direction::Column,
+                padding: Padding::splat(Size::Pixels(5)),
+                ..Default::default()
+            })
+            .mount(parent);
+
+        Text::new(self.key).mount(&root);
+
+        Input::new()
+            .value(self.value)
+            .style(Style {
+                background: Background::Color(INPUT_COLOR.0),
+                padding: Padding::splat(Size::Pixels(1)),
+                border_radius: BorderRadius::splat(Size::Pixels(5)),
+                ..Default::default()
+            })
+            .on_change(move |value: String| {
+                if let Ok(value) = value.parse::<T>() {
+                    self.on_change.call(value);
+                }
+            })
+            .mount(&root);
+
+        root
     }
 }
 
@@ -467,3 +621,206 @@ fn mount_new_component_selector(
 
     Selection { options, on_change }.mount(cx);
 }
+
+#[derive(Clone, Debug)]
+struct EditComponentStorage {
+    data: RawComponent,
+    offsets: IndexMap<ComponentOffsetKey, EditComponentEntry>,
+    next_offset: usize,
+    next_key: usize,
+    children: HashMap<ComponentOffsetKey, Vec<ComponentOffsetKey>>,
+}
+
+impl EditComponentStorage {
+    pub fn new(data: RawComponent) -> Self {
+        Self {
+            data,
+            offsets: IndexMap::new(),
+            next_offset: 0,
+            next_key: 0,
+            children: HashMap::default(),
+        }
+    }
+
+    fn register_at_end(&mut self, size: usize) -> ComponentOffsetKey {
+        let key = ComponentOffsetKey(self.next_key);
+        self.next_key += 1;
+        self.offsets.insert(
+            key,
+            EditComponentEntry {
+                offset: self.next_offset,
+                size,
+            },
+        );
+        self.next_offset += size;
+        key
+    }
+
+    pub fn register_after(
+        &mut self,
+        after: Option<ComponentOffsetKey>,
+        size: usize,
+    ) -> ComponentOffsetKey {
+        let Some(after) = after else {
+            return self.register_at_end(size);
+        };
+
+        debug_assert!(self.offsets.contains_key(&after));
+
+        let mut after_key = after;
+        if let Some(children) = self.children.get(&after) {
+            if let Some(key) = children.last() {
+                after_key = *key;
+            }
+        }
+
+        let after_entry = self.offsets.get(&after_key).unwrap().clone();
+        let offset = after_entry.offset + after_entry.size;
+
+        let mut index = 0;
+        let mut after_found = false;
+        for (i, (k, entry)) in self.offsets.iter_mut().enumerate() {
+            if *k == after_key {
+                after_found = true;
+                index = i + 1;
+                continue;
+            }
+
+            if after_found {
+                entry.offset += size;
+            }
+        }
+
+        debug_assert!(self.offsets.is_empty() || index != 0);
+
+        let key = ComponentOffsetKey(self.next_key);
+        self.next_key += 1;
+
+        self.offsets
+            .shift_insert(index, key, EditComponentEntry { offset, size });
+        self.children.entry(after).or_default().push(key);
+        key
+    }
+
+    pub fn remove_children(&mut self, key: ComponentOffsetKey) {
+        let mut queue = vec![];
+
+        if let Some(children) = self.children.remove(&key) {
+            queue.extend(children);
+        }
+
+        while let Some(key) = queue.pop() {
+            self.remove_internal(key);
+
+            if let Some(children) = self.children.remove(&key) {
+                queue.extend(children);
+            }
+        }
+    }
+
+    fn remove_internal(&mut self, key: ComponentOffsetKey) {
+        let entry = self.offsets.get(&key).cloned().unwrap();
+
+        let mut bytes = self.data.as_bytes().to_vec();
+
+        let mut key_found = false;
+        for (k, offset) in self.offsets.iter_mut() {
+            if *k == key {
+                for _ in 0..entry.size {
+                    bytes.remove(offset.offset);
+                }
+
+                key_found = true;
+                continue;
+            }
+
+            // Move all entries back by the size of the removed
+            // entry.
+            if key_found {
+                offset.offset -= entry.size;
+            }
+        }
+
+        self.data = RawComponent::new(bytes, self.data.fields());
+
+        self.offsets.shift_remove(&key);
+    }
+
+    #[track_caller]
+    pub fn get(&self, key: ComponentOffsetKey) -> &[u8] {
+        let entry = self.offsets.get(&key).unwrap();
+        &self.data.as_bytes()[entry.offset..entry.offset + entry.size]
+    }
+
+    #[track_caller]
+    pub fn write(&mut self, key: ComponentOffsetKey, data: &[u8]) {
+        let entry = self.offsets.get(&key).unwrap();
+        assert!(entry.size == data.len());
+
+        let mut bytes = self.data.as_bytes().to_vec();
+        let fields = self.data.fields().to_vec();
+
+        bytes[entry.offset..entry.offset + entry.size].copy_from_slice(data);
+
+        self.data = RawComponent::new(bytes, fields);
+    }
+
+    pub fn clear(&mut self) {
+        self.next_key = 0;
+        self.next_offset = 0;
+        self.offsets.clear();
+        self.children.clear();
+    }
+
+    pub fn insert_after(&mut self, key: ComponentOffsetKey, data: &[u8]) {
+        let entry = self.offsets.get(&key).unwrap();
+        let offset = entry.offset + entry.size;
+
+        let mut bytes = self.data.as_bytes().to_vec();
+        bytes.extend_at(offset, data);
+
+        let mut key_found = false;
+        for (k, offset) in self.offsets.iter_mut() {
+            if *k == key {
+                key_found = true;
+                continue;
+            }
+
+            if key_found {
+                offset.offset += data.len();
+            }
+        }
+
+        self.data = RawComponent::new(bytes, self.data.fields());
+    }
+
+    // pub fn size_of_children(&self, key: ComponentOffsetKey) -> usize {
+    //     let mut size = 0;
+
+    //     let mut queue = Vec::new();
+
+    //     if let Some(children) = self.children.get(&key) {
+    //         queue.extend(children);
+    //     }
+
+    //     while let Some(key) = queue.pop() {
+    //         let entry = self.offsets.get(key).unwrap();
+    //         size += entry.size;
+
+    //         if let Some(children) = self.children.get(key) {
+    //             queue.extend(children);
+    //         }
+    //     }
+
+    //     size
+    // }
+}
+
+#[derive(Clone, Debug)]
+struct EditComponentEntry {
+    offset: usize,
+    size: usize,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+struct ComponentOffsetKey(usize);
