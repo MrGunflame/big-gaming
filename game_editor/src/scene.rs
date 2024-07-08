@@ -6,6 +6,7 @@ use game_common::components::{
 use game_common::components::{PrimaryCamera, Transform};
 use game_common::entity::EntityId;
 use game_common::world::{QueryWrapper, World};
+use game_core::debug::draw_collider_lines;
 use game_gizmos::Gizmos;
 use game_render::camera::{Camera, Projection, RenderTarget};
 use game_render::entities::{CameraId, DirectionalLightId, PointLightId, SpotLightId};
@@ -200,5 +201,7 @@ impl SceneEntities {
             renderer.entities.cameras.remove(id);
             self.primary_cameras.remove(&entity);
         }
+
+        draw_collider_lines(world, gizmos);
     }
 }

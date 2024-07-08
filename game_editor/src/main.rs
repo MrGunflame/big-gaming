@@ -279,6 +279,7 @@ impl game_window::App for App {
         }
 
         self.ui_state.update();
+        self.gizmos.swap_buffers();
 
         self.renderer.render(&self.pool);
     }
