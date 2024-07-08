@@ -609,6 +609,24 @@ impl LayoutTree {
     pub fn layout(&self, key: Key) -> Option<&Layout> {
         self.layouts.get(&key)
     }
+
+    /// Marks the [`Layout`] of all elements of not being changed.
+    fn mark_all_as_unchanged(&mut self) {
+        for layout in self.layouts.values_mut() {
+            layout.has_changed = false;
+        }
+    }
+
+    pub fn collect_all(&mut self) -> Vec<(Key, Layout, Primitive)> {
+        let vec = self
+            .keys()
+            .zip(self.layouts())
+            .zip(self.elements())
+            .map(|((key, layout), elements)| (key, layout.clone(), elements.clone()))
+            .collect();
+        self.mark_all_as_unchanged();
+        vec
+    }
 }
 
 impl Default for LayoutTree {
