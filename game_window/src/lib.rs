@@ -22,7 +22,6 @@ use winit::event::{DeviceEvent, ElementState, Event, MouseScrollDelta, WindowEve
 use winit::event_loop::{ControlFlow, EventLoop, EventLoopBuilder};
 use winit::keyboard::PhysicalKey;
 use winit::platform::scancode::PhysicalKeyExtScancode;
-use winit::platform::x11::EventLoopBuilderExtX11;
 use winit::window::{WindowBuilder, WindowId};
 
 const ENV_WINDOWING_BACKEND: &str = "WINDOW_BACKEND";
@@ -64,6 +63,7 @@ impl WindowManager {
             use winit::platform::wayland::EventLoopBuilderExtWayland;
             builder.with_wayland();
         } else {
+            use winit::platform::x11::EventLoopBuilderExtX11;
             builder.with_x11();
         }
 
