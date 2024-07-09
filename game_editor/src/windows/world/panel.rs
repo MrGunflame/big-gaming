@@ -1,13 +1,24 @@
 use std::sync::{mpsc, Arc};
 
+use chrono::naive;
 use game_common::collections::string::SmallStr;
 use game_common::entity::EntityId;
 use game_ui::reactive::Context;
-use game_ui::style::{Background, Bounds, Growth, Size, SizeVec2, Style};
-use game_ui::widgets::{Button, Callback, Container, Text, Widget};
+use game_ui::style::{
+    Background, Bounds, Color, Direction, Growth, Justify, Padding, Size, SizeVec2, Style,
+};
+use game_ui::widgets::{Button, Callback, Container, Svg, SvgData, SvgStyle, Text, Widget};
+use image::Rgba;
 use parking_lot::Mutex;
 
 use super::{Event, SceneState};
+
+const PANEL_COLOR: Color = Color(Rgba([0x16, 0x16, 0x16, 0xff]));
+const HEADER_COLOR: Color = Color(Rgba([0x4c, 0x54, 0x59, 0xff]));
+const INPUT_COLOR: Color = Color(Rgba([0x2d, 0x31, 0x33, 0xff]));
+const SELECTED_COLOR: Color = Color(Rgba([0x4c, 0x54, 0x59, 0xff]));
+
+const ICON_CUBE: &[u8] = include_bytes!("../../../../assets/fonts/FontAwesome/svgs/solid/cube.svg");
 
 pub struct Panel {
     pub state: Arc<Mutex<SceneState>>,
@@ -17,10 +28,10 @@ pub struct Panel {
 impl Widget for Panel {
     fn mount<T>(self, parent: &Context<T>) -> Context<()> {
         let style = Style {
-            background: Background::GRAY,
+            background: Background::Color(PANEL_COLOR.0),
             growth: Growth::splat(1.0),
             bounds: Bounds::exact(SizeVec2 {
-                x: Size::Pixels(300),
+                x: Size::Pixels(200),
                 y: Size::Pixels(2000),
             }),
             ..Default::default()
@@ -88,13 +99,16 @@ fn mount_entity_list(
     parent_ctx.clear_children();
     let state = state_mux.lock();
 
+    let data = SvgData::from_bytes(ICON_CUBE).unwrap();
+
     for (index, entity) in state.entities.iter().enumerate() {
         let style = Style {
             background: if entity.is_selected {
-                Background::YELLOW
+                Background::Color(SELECTED_COLOR.0)
             } else {
                 Background::None
             },
+            direction: Direction::Column,
             ..Default::default()
         };
 
@@ -108,6 +122,13 @@ fn mount_entity_list(
             .style(style)
             .on_click(on_click)
             .mount(&parent_ctx);
+
+        Svg::new(data.clone(), 16, 16)
+            .style(SvgStyle {
+                color: Some(Color::WHITE),
+            })
+            .mount(&button);
+
         Text::new(entity.name.clone()).mount(&button);
     }
 }
