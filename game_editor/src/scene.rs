@@ -19,13 +19,19 @@ use game_window::windows::WindowId;
 
 #[derive(Debug, Default)]
 pub struct SceneEntities {
-    mesh_instances: HashMap<EntityId, SceneId>,
+    mesh_instances: HashMap<EntityId, MeshInstanceState>,
     directional_lights: HashMap<EntityId, DirectionalLightId>,
     point_lights: HashMap<EntityId, PointLightId>,
     spot_lights: HashMap<EntityId, SpotLightId>,
     primary_cameras: HashMap<EntityId, CameraId>,
     graph: SceneGraph,
     spawner: SceneSpawner,
+}
+
+#[derive(Clone, Debug)]
+struct MeshInstanceState {
+    id: SceneId,
+    path: String,
 }
 
 impl SceneEntities {
@@ -53,12 +59,29 @@ impl SceneEntities {
             removed_mesh_instances.remove(&entity);
 
             match self.mesh_instances.get(&entity) {
-                Some(id) => {
-                    self.spawner.set_transform(renderer, transform, *id);
+                Some(state) if state.path == mesh_instance.path => {
+                    self.spawner.set_transform(renderer, transform, state.id);
+                }
+                Some(state) => {
+                    self.spawner.despawn(renderer, state.id);
+                    let id = self.spawner.spawn(&mesh_instance.path);
+                    self.mesh_instances.insert(
+                        entity,
+                        MeshInstanceState {
+                            id,
+                            path: mesh_instance.path.clone(),
+                        },
+                    );
                 }
                 None => {
-                    let id = self.spawner.spawn(mesh_instance.path);
-                    self.mesh_instances.insert(entity, id);
+                    let id = self.spawner.spawn(&mesh_instance.path);
+                    self.mesh_instances.insert(
+                        entity,
+                        MeshInstanceState {
+                            id,
+                            path: mesh_instance.path.clone(),
+                        },
+                    );
                 }
             }
         }
@@ -177,8 +200,8 @@ impl SceneEntities {
             }
         }
 
-        for (entity, id) in removed_mesh_instances {
-            self.spawner.despawn(renderer, id);
+        for (entity, state) in removed_mesh_instances {
+            self.spawner.despawn(renderer, state.id);
             self.mesh_instances.remove(&entity);
         }
 

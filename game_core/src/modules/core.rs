@@ -1,7 +1,8 @@
 //! Builtin core module data
 
 use game_common::components::{
-    Collider, DirectionalLight, GlobalTransform, PointLight, RigidBody, SpotLight, Transform,
+    Collider, DirectionalLight, GlobalTransform, MeshInstance, PointLight, RigidBody, SpotLight,
+    Transform,
 };
 use game_common::record::ModuleId;
 use game_common::reflection::{
@@ -44,6 +45,7 @@ pub fn load_core() -> ModuleData {
         SpotLight,
         Collider,
         RigidBody,
+        MeshInstance,
     }
 }
 
@@ -422,6 +424,18 @@ impl Descriptor for RigidBody {
             FieldIndex::from_raw(4),
             FieldIndex::from_raw(5),
         ];
+
+        ComponentDescriptor::new(fields, root).unwrap()
+    }
+}
+
+impl Descriptor for MeshInstance {
+    fn descriptor() -> ComponentDescriptor {
+        let fields = vec![Field {
+            name: "Path".to_owned(),
+            kind: FieldKind::String,
+        }];
+        let root = vec![FieldIndex::from_raw(0)];
 
         ComponentDescriptor::new(fields, root).unwrap()
     }

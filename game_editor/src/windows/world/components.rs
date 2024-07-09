@@ -432,7 +432,46 @@ fn render_fields<'a>(
                     queue.push_front((root.clone(), field, parent_key));
                 }
             }
-            FieldKind::String(_) => todo!(),
+            FieldKind::String => {
+                // Len of the string length prefix.
+                let tag_len = 8;
+
+                let (value, tag_key, val_key) = {
+                    let mut component = component.lock();
+
+                    let tag_key = component.register_after(parent_key, tag_len);
+                    let str_len =
+                        u64::from_le_bytes(component.get(tag_key).try_into().unwrap()) as usize;
+                    let val_key = component.register_after(parent_key, str_len);
+
+                    let value = component.get(val_key);
+
+                    (
+                        std::str::from_utf8(value).unwrap().to_owned(),
+                        tag_key,
+                        val_key,
+                    )
+                };
+
+                let component = component.clone();
+                let writer = writer.clone();
+                display_value(
+                    &parent,
+                    COLOR_X,
+                    &field.name,
+                    value,
+                    move |value: String| {
+                        let mut component = component.lock();
+
+                        component.write(tag_key, &(value.len() as u64).to_le_bytes());
+                        component.write_and_resize(val_key, value.as_bytes());
+
+                        writer
+                            .send(Event::UpdateComponent(id, component.data.clone()))
+                            .unwrap();
+                    },
+                )
+            }
             FieldKind::Enum(enum_field) => {
                 let (mut active_variant, tag_key) = {
                     let mut component = component.lock();
@@ -763,6 +802,38 @@ impl EditComponentStorage {
         bytes[entry.offset..entry.offset + entry.size].copy_from_slice(data);
 
         self.data = RawComponent::new(bytes, fields);
+    }
+
+    pub fn write_and_resize(&mut self, key: ComponentOffsetKey, data: &[u8]) {
+        let entry = self.offsets.get(&key).unwrap();
+
+        let mut bytes = self.data.as_bytes().to_vec();
+        let fields = self.data.fields().to_vec();
+
+        // Remove the existing entry and inser the new data
+        // at the same position.
+        bytes.drain(entry.offset..entry.offset + entry.size);
+        bytes.extend_at(entry.offset, data);
+
+        self.data = RawComponent::new(bytes, fields);
+
+        let len_diff = data.len() as isize - entry.size as isize;
+
+        let mut key_found = false;
+        for (k, offset) in self.offsets.iter_mut() {
+            if *k == key {
+                offset.size = data.len();
+                key_found = true;
+                continue;
+            }
+
+            if key_found {
+                // Note that this can't overflow as that would mean
+                // that the changed chunk overlaps with other chunks,
+                // which is not allowed.
+                offset.offset = offset.offset.checked_add_signed(len_diff).unwrap();
+            }
+        }
     }
 
     pub fn clear(&mut self) {
