@@ -1,4 +1,17 @@
+use std::fmt::{self, Display, Formatter};
+use std::str::FromStr;
+
 use winit::event_loop::EventLoop;
+
+pub(crate) const DEFAULT_BACKEND: Backend = Backend(
+    // Keep using X11 until the bug causing render blocking on
+    // multiple surfaces are fixed.
+    // https://github.com/MrGunflame/big-gaming/issues/220
+    #[cfg(target_family = "unix")]
+    Inner::X11,
+    #[cfg(target_family = "windows")]
+    Inner::Windows,
+);
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub(crate) struct Backend(Inner);
@@ -69,3 +82,30 @@ impl From<&EventLoop<()>> for Backend {
         Self(Inner::Unknown)
     }
 }
+
+impl FromStr for Backend {
+    type Err = InvalidBackend;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            #[cfg(target_family = "unix")]
+            "wayland" => Ok(Self(Inner::Wayland)),
+            #[cfg(target_family = "unix")]
+            "x11" => Ok(Self(Inner::X11)),
+            #[cfg(target_family = "windows")]
+            "windows" => Ok(Self(Inner::Windows)),
+            _ => Err(InvalidBackend),
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct InvalidBackend;
+
+impl Display for InvalidBackend {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str("invalid backend")
+    }
+}
+
+impl std::error::Error for InvalidBackend {}
