@@ -53,6 +53,7 @@ impl Encode for MeshInstance {
     where
         W: Writer,
     {
+        (self.path.len() as u64).encode(&mut writer);
         writer.write(Primitive::Bytes, self.path.as_bytes());
     }
 }
@@ -64,10 +65,11 @@ impl Decode for MeshInstance {
     where
         R: Reader,
     {
+        let len = u64::decode(&mut reader)?;
+
         let mut bytes = Vec::new();
-        while reader.chunk().len() > 0 {
-            bytes.push(reader.chunk()[0]);
-            reader.advance(1);
+        for _ in 0..len {
+            bytes.push(u8::decode(&mut reader)?)
         }
 
         String::from_utf8(bytes)
