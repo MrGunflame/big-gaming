@@ -17,7 +17,7 @@ impl ComponentDescriptor {
         let len = fields.len();
         for field in &fields {
             match &field.kind {
-                FieldKind::Int(_) | FieldKind::Float(_) | FieldKind::String(_) => (),
+                FieldKind::Int(_) | FieldKind::Float(_) | FieldKind::String => (),
                 FieldKind::Struct(indices) => {
                     for index in indices {
                         if usize::from(index.0) >= len {
@@ -142,7 +142,7 @@ impl ComponentDescriptor {
                         queue.push_front(*index);
                     }
                 }
-                FieldKind::String(_) => {
+                FieldKind::String => {
                     bytes.extend(0u64.to_le_bytes());
                 }
                 FieldKind::Enum(field) => {
@@ -239,7 +239,7 @@ pub enum FieldKind {
     Float(FloatField),
     Struct(Vec<FieldIndex>),
     Enum(EnumField),
-    String(String),
+    String,
 }
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize)]
