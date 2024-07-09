@@ -7,7 +7,7 @@ mod backend;
 use std::collections::{HashMap, VecDeque};
 use std::sync::{mpsc, Arc};
 
-use backend::Backend;
+use backend::{Backend, DEFAULT_BACKEND};
 use cursor::{Cursor, CursorGrabMode, WindowCompat};
 use events::{
     convert_key_code, CursorEntered, CursorLeft, CursorMoved, WindowCloseRequested, WindowCreated,
@@ -19,10 +19,13 @@ use game_input::ButtonState;
 use glam::Vec2;
 use windows::{UpdateEvent, WindowState, Windows};
 use winit::event::{DeviceEvent, ElementState, Event, MouseScrollDelta, WindowEvent};
-use winit::event_loop::{ControlFlow, EventLoop};
+use winit::event_loop::{ControlFlow, EventLoop, EventLoopBuilder};
 use winit::keyboard::PhysicalKey;
 use winit::platform::scancode::PhysicalKeyExtScancode;
+use winit::platform::x11::EventLoopBuilderExtX11;
 use winit::window::{WindowBuilder, WindowId};
+
+const ENV_WINDOWING_BACKEND: &str = "WINDOW_BACKEND";
 
 /// The entrypoint for interacting with the OS windowing system.
 #[derive(Debug)]
@@ -41,9 +44,32 @@ impl WindowManager {
     /// [`Windows::spawn`]: Windows::spawn
     /// [`WindowManager::run`]: WindowManager::run
     pub fn new() -> Self {
-        let event_loop = EventLoop::new().unwrap();
+        let backend = match std::env::var(ENV_WINDOWING_BACKEND) {
+            Ok(s) => match s.parse::<Backend>() {
+                Ok(backend) => backend,
+                Err(err) => {
+                    eprintln!(
+                        "invalid backend {:?} provided in {}: {}",
+                        s, ENV_WINDOWING_BACKEND, err
+                    );
+                    DEFAULT_BACKEND
+                }
+            },
+            Err(_) => DEFAULT_BACKEND,
+        };
+
+        let mut builder = EventLoopBuilder::new();
+        #[cfg(target_family = "unix")]
+        if backend.is_wayland() {
+            use winit::platform::wayland::EventLoopBuilderExtWayland;
+            builder.with_wayland();
+        } else {
+            builder.with_x11();
+        }
+
+        let event_loop = builder.build().unwrap();
         let (update_tx, update_rx) = mpsc::channel();
-        let windows = windows::Windows::new(update_tx.clone());
+        let windows = Windows::new(update_tx.clone());
         let cursor = Arc::new(Cursor::new(update_tx));
 
         Self {
