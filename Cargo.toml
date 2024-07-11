@@ -33,7 +33,7 @@ members = [
     "tools/json2dat",
     "tools/gltf2model",
     "tools/make",
-    "tools/builder",
+    "tools/builder", "game_scene2",
 ]
 
 resolver = "2"
@@ -44,7 +44,7 @@ unsafe_op_in_unsafe_fn = "forbid"
 ffi-unwind-calls = "forbid"
 missing-abi = "forbid"
 non-ascii-idents = "forbid"
-pointer_structural_match = "forbid"
+#pointer_structural_match = "forbid"
 
 # Correctness warnings
 elided-lifetimes-in-paths = "warn"
