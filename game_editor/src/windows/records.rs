@@ -1,28 +1,21 @@
-use game_common::module::ModuleId;
-use game_data::record::{Record, RecordBody, RecordKind};
-use game_input::mouse::MouseButtonInput;
-use game_ui::events::Context;
-use game_ui::reactive::{ReadSignal, Scope, WriteSignal};
-use game_ui::style::{Background, Direction, Growth, Style};
-use game_ui::widgets::{Button, Callback, Container, Text, Widget};
+use std::sync::Arc;
+
+use game_common::components::components::RawComponent;
+use game_common::reflection::editor::ComponentEditor;
+use game_common::reflection::{ComponentDescriptor, FieldIndex, FieldKind, RecordDescriptor};
+use game_data::record::RecordKind;
+use game_ui::reactive::Context;
+use game_ui::style::{Background, Direction, Style};
+use game_ui::widgets::{Button, Container, Text, Widget};
+use game_wasm::world::RecordReference;
 use image::Rgba;
+use parking_lot::Mutex;
 
 use crate::widgets::entries::*;
 
-use crate::state::{self, EditorState};
+use crate::state::EditorState;
 
-use super::SpawnWindow;
-
-const DEFAULT_CATEGORY: RecordKind = RecordKind::Item;
-
-const CATEGORIES: &[RecordKind] = &[
-    RecordKind::Item,
-    RecordKind::Action,
-    RecordKind::Component,
-    RecordKind::Object,
-];
-
-const SELECTED_COLOR: Background = Background::Color(Rgba([0x04, 0x7d, 0xd3, 0xFF]));
+// const SELECTED_COLOR: Background = Background::Color(Rgba([0x04, 0x7d, 0xd3, 0xFF]));
 
 const BACKGROUND_COLOR: [Background; 2] = [
     Background::Color(Rgba([0x50, 0x50, 0x50, 0xFF])),
@@ -34,200 +27,191 @@ pub struct Records {
 }
 
 impl Widget for Records {
-    fn build(self, cx: &Scope) -> Scope {
-        let (cat, set_cat) = cx.create_signal(DEFAULT_CATEGORY);
+    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+        let root = Container::new()
+            .style(Style {
+                direction: Direction::Column,
+                ..Default::default()
+            })
+            .mount(parent);
 
-        let root = cx.append(Container::new().style(Style {
-            direction: Direction::Column,
-            ..Default::default()
+        let state = Arc::new(Mutex::new(State {
+            selected: RecordKind::COMPONENT,
+            root: root.clone(),
+            record_list: None,
         }));
 
-        let categories = root.append(Container::new());
-        let main = root.append(Container::new());
-
-        let mut cats = vec![];
-
-        for (index, category) in CATEGORIES.iter().enumerate() {
-            let background = BACKGROUND_COLOR[index % 2].clone();
-
-            let style = Style {
-                background,
-                growth: Growth::x(1.0),
-                ..Default::default()
-            };
-
-            let button = categories.append(
-                Button::new()
-                    .style(style)
-                    .on_click(change_category(*category, set_cat.clone())),
-            );
-            button.append(Text::new().text(category_str(*category).to_owned()));
-
-            cats.push((*category, button.id().unwrap()));
+        SidePanel {
+            state: self.state.clone(),
+            ui_state: state.clone(),
         }
+        .mount(&root);
 
-        {
-            let cat = cat.clone();
-            let cx2 = cx.clone();
-            cx.create_effect(move || {
-                let cat = cat.get();
-
-                for (index, (category, id)) in cats.iter().enumerate() {
-                    let background = if *category == cat {
-                        SELECTED_COLOR.clone()
-                    } else {
-                        BACKGROUND_COLOR[index % 2].clone()
-                    };
-
-                    let style = Style {
-                        background,
-                        growth: Growth::x(1.0),
-                        ..Default::default()
-                    };
-
-                    cx2.set_style(*id, style);
-                }
-            });
+        let record_list = RecordList {
+            state: self.state,
+            selected: RecordKind::COMPONENT,
         }
-
-        let reader = self.state.records.signal(|| {
-            let (_, writer) = cx.create_signal(());
-            writer
-        });
-
-        let cat_sig = cat;
-        let mut rows = vec![];
-        let state = self.state.clone();
-        cx.create_effect(move || {
-            let _ = reader.get();
-
-            let cat = cat_sig.get();
-
-            for id in &rows {
-                main.remove(*id);
-            }
-            rows.clear();
-
-            let mut keys = vec!["ID".into(), "Name".into()];
-            match cat {
-                RecordKind::Item => {
-                    keys.push("Mass".into());
-                    keys.push("Value".into());
-                    keys.push("Components".into());
-                    keys.push("Actions".into());
-                }
-                RecordKind::Object => {
-                    keys.push("Components".into());
-                }
-                _ => (),
-            }
-
-            let mut entries = Vec::new();
-
-            let mut entry_records = Vec::new();
-
-            for (module_id, record) in state.records.iter() {
-                if record.body.kind() != cat {
-                    continue;
-                }
-
-                let mut row = Vec::new();
-
-                row.push(record.id.to_string());
-                row.push(record.name.clone());
-
-                match &record.body {
-                    RecordBody::Item(item) => {
-                        row.push(format!("{}g", item.mass.to_grams()));
-                        row.push(item.value.to_string());
-                        row.push(record.components.len().to_string());
-                        row.push(item.actions.len().to_string());
-                    }
-                    RecordBody::Action(action) => {}
-                    RecordBody::Component(component) => {}
-                    RecordBody::Object(object) => {
-                        row.push(object.components.len().to_string());
-                    }
-                    RecordBody::Race(race) => todo!(),
-                }
-
-                entries.push(row);
-
-                entry_records.push((module_id, record));
-            }
-
-            let entries = EntriesData {
-                keys,
-                entries,
-                add_entry: Some(add_record(state.clone(), cat_sig.clone())),
-                edit_entry: Some(edit_record(state.clone(), entry_records.clone())),
-                remove_entry: Some(remove_record(entry_records, state.records.clone())),
-            };
-
-            let button = main.append(Container::new().style(Style {
-                growth: Growth::splat(1.0),
-                ..Default::default()
-            }));
-            button.append(Entries { data: entries });
-
-            rows.push(button.id().unwrap());
-        });
+        .mount(&root);
+        state.lock().record_list = Some(record_list);
 
         root
     }
 }
 
-fn change_category(
-    category: RecordKind,
-    set_cat: WriteSignal<RecordKind>,
-) -> Box<dyn Fn(Context<MouseButtonInput>) + Send + Sync + 'static> {
-    Box::new(move |_| {
-        // To prevent unnecessary rerenders only update the category
-        // if it actually changed.
-        if set_cat.get() != category {
-            set_cat.update(|cat| *cat = category);
-        }
-    })
+struct SidePanel {
+    state: EditorState,
+    ui_state: Arc<Mutex<State>>,
 }
 
-fn category_str(kind: RecordKind) -> &'static str {
-    match kind {
-        RecordKind::Item => "Items",
-        RecordKind::Action => "Actions",
-        RecordKind::Component => "Components",
-        RecordKind::Object => "Objects",
-        RecordKind::Race => "Race",
+impl Widget for SidePanel {
+    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+        let root = Container::new().mount(parent);
+
+        let records: Vec<_> = self
+            .state
+            .records
+            .iter()
+            .filter(|(_, record)| record.kind == RecordKind::RECORD)
+            .map(|(module, record)| {
+                (
+                    RecordReference {
+                        module,
+                        record: record.id,
+                    },
+                    record.name.clone(),
+                )
+            })
+            .collect();
+
+        for (id, name) in records {
+            let button = Button::new()
+                .style(Style {
+                    ..Default::default()
+                })
+                .on_click({
+                    let ui_state = self.ui_state.clone();
+                    let state = self.state.clone();
+                    move |()| {
+                        let mut ui_state = ui_state.lock();
+                        ui_state.selected = RecordKind(id);
+
+                        if let Some(ctx) = ui_state.record_list.take() {
+                            ctx.remove(ctx.node().unwrap());
+                        }
+
+                        let record_list = RecordList {
+                            state: state.clone(),
+                            selected: ui_state.selected,
+                        }
+                        .mount(&ui_state.root);
+                        ui_state.record_list = Some(record_list);
+                    }
+                })
+                .mount(&root);
+            Text::new(name).mount(&button);
+        }
+
+        root
     }
 }
 
-fn add_record(
+struct RecordList {
     state: EditorState,
-    kind: ReadSignal<RecordKind>,
-) -> Callback<Context<MouseButtonInput>> {
-    Callback::from(move |_| {
-        let kind = kind.get_untracked();
-
-        state.spawn_windows.send(SpawnWindow::CreateRecord(kind));
-    })
+    selected: RecordKind,
 }
 
-fn edit_record(state: EditorState, entries: Vec<(ModuleId, Record)>) -> Callback<usize> {
-    Callback::from(move |index: usize| {
-        let (module_id, record) = entries[index].clone();
+impl Widget for RecordList {
+    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+        let root = Container::new().mount(parent);
 
-        state
-            .spawn_windows
-            .send(SpawnWindow::EditRecord(module_id, record));
-    })
+        let keys = vec!["ID".to_owned(), "Name".to_owned()];
+        let mut records = Vec::new();
+        let mut record_descriptor = None;
+        for (_, record) in self.state.records.iter() {
+            if record.kind == RecordKind::RECORD {
+                record_descriptor = Some(RecordDescriptor::from_bytes(&record.data));
+            }
+
+            if record.kind != self.selected {
+                continue;
+            }
+
+            records.push(record.clone());
+        }
+
+        let record_descriptor = record_descriptor.unwrap();
+        let mut component_descriptor = None;
+        for (module, record) in self.state.records.iter() {
+            if record.kind == RecordKind::COMPONENT
+                && module == record_descriptor.component.module
+                && record.id == record_descriptor.component.record
+            {
+                let descriptor = ComponentDescriptor::from_bytes(&record.data);
+                component_descriptor = Some(descriptor);
+                break;
+            }
+        }
+
+        let mut entries = Vec::new();
+        if let Some(component_descriptor) = component_descriptor {
+            for record in records {
+                let component = RawComponent::new(record.data, vec![]);
+                let editor = ComponentEditor::new(&component_descriptor, component);
+
+                let mut keys = vec![record.id.to_string(), record.name];
+                for field in &record_descriptor.keys {
+                    let key = format_component_field(&editor, *field).unwrap_or_default();
+                    keys.push(key);
+                }
+
+                entries.push(keys);
+            }
+        } else {
+            for record in records {
+                entries.push(vec![record.id.to_string(), record.name]);
+            }
+        }
+
+        let data = EntriesData {
+            keys,
+            entries,
+            add_entry: None,
+            edit_entry: None,
+            remove_entry: None,
+        };
+        Entries { data }.mount(&root);
+
+        root
+    }
 }
 
-fn remove_record(
-    entries: Vec<(ModuleId, Record)>,
-    records: state::record::Records,
-) -> Callback<usize> {
-    Callback::from(move |index: usize| {
-        let (module_id, record) = entries[index].clone();
+fn format_component_field(editor: &ComponentEditor<'_>, field: FieldIndex) -> Option<String> {
+    let data = editor.get(field)?;
+    let field = editor.descriptor().get(field)?;
 
-        records.remove(module_id, record.id);
-    })
+    match field.kind {
+        FieldKind::Int(field) => match (data.len(), field.is_signed) {
+            (1, false) => Some(data[0].to_string()),
+            (1, true) => Some((data[0] as i8).to_string()),
+            (2, false) => Some(u16::from_le_bytes(data.try_into().unwrap()).to_string()),
+            (2, true) => Some(i16::from_le_bytes(data.try_into().unwrap()).to_string()),
+            (4, false) => Some(u32::from_le_bytes(data.try_into().unwrap()).to_string()),
+            (4, true) => Some(i32::from_le_bytes(data.try_into().unwrap()).to_string()),
+            (8, false) => Some(u64::from_le_bytes(data.try_into().unwrap()).to_string()),
+            (8, true) => Some(i64::from_le_bytes(data.try_into().unwrap()).to_string()),
+            _ => todo!(),
+        },
+        FieldKind::Float(_) => match data.len() {
+            4 => Some(f32::from_le_bytes(data.try_into().unwrap()).to_string()),
+            8 => Some(f64::from_le_bytes(data.try_into().unwrap()).to_string()),
+            _ => todo!(),
+        },
+        _ => todo!(),
+    }
+}
+
+struct State {
+    selected: RecordKind,
+    record_list: Option<Context<()>>,
+    root: Context<()>,
 }

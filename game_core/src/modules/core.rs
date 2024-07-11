@@ -7,9 +7,12 @@ use game_common::components::{
 use game_common::record::ModuleId;
 use game_common::reflection::{
     ComponentDescriptor, EnumField, EnumFieldVariant, Field, FieldIndex, FieldKind, FloatField,
+    RecordDescriptor,
 };
 use game_data::record::{Record, RecordKind};
 use game_wasm::components::Component;
+use game_wasm::record::RecordId;
+use game_wasm::world::RecordReference;
 
 use super::records::Records;
 use super::ModuleData;
@@ -38,7 +41,7 @@ macro_rules! load_components {
 }
 
 pub fn load_core() -> ModuleData {
-    load_components! {
+    let mut data = load_components! {
         Transform,
         DirectionalLight,
         PointLight,
@@ -46,7 +49,10 @@ pub fn load_core() -> ModuleData {
         Collider,
         RigidBody,
         MeshInstance,
-    }
+    };
+
+    load_core_records(&mut data);
+    data
 }
 
 trait Descriptor {
@@ -438,5 +444,34 @@ impl Descriptor for MeshInstance {
         let root = vec![FieldIndex::from_raw(0)];
 
         ComponentDescriptor::new(fields, root).unwrap()
+    }
+}
+
+fn load_core_records(data: &mut ModuleData) {
+    for (id, name, descriptor) in [
+        (
+            RecordKind::COMPONENT.0.record,
+            "Component",
+            RecordDescriptor {
+                component: RecordReference::STUB,
+                keys: Vec::new(),
+            },
+        ),
+        (
+            RecordKind::RECORD.0.record,
+            "Record",
+            RecordDescriptor {
+                component: RecordReference::STUB,
+                keys: Vec::new(),
+            },
+        ),
+    ] {
+        data.records.insert(Record {
+            id,
+            kind: RecordKind::RECORD,
+            name: name.to_owned(),
+            description: String::new(),
+            data: descriptor.to_bytes(),
+        });
     }
 }
