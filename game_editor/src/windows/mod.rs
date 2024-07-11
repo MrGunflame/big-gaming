@@ -3,7 +3,7 @@ mod error;
 pub mod main_window;
 pub mod modules;
 mod open_module;
-// // mod record;
+mod record;
 mod records;
 mod world;
 
@@ -15,9 +15,11 @@ use game_render::Renderer;
 use game_ui::reactive::DocumentId;
 use game_ui::widgets::Widget;
 use game_ui::UiState;
+use game_wasm::world::RecordReference;
 use game_window::events::WindowEvent;
 use game_window::windows::WindowId;
 use modules::Modules;
+use record::EditRecord;
 use records::Records;
 
 use crate::state::EditorState;
@@ -107,22 +109,9 @@ pub fn spawn_window(
             let window = world::WorldWindowState::new(&ctx, window_id, world, modules);
             return Window::View(document, window);
         }
-        _ => todo!(),
-        // SpawnWindow::CreateRecord(kind) => {
-        //     // cx.append(CreateRecord {
-        //     //     kind,
-        //     //     records: state.records,
-        //     //     modules: state.modules,
-        //     // });
-        // }
-        // SpawnWindow::EditRecord(module_id, record) => {
-        //     // cx.append(EditRecord {
-        //     //     record,
-        //     //     module_id,
-        //     //     records: state.records,
-        //     //     modules: state.modules,
-        //     // });
-        // }
+        SpawnWindow::EditRecord(kind, id) => {
+            EditRecord { kind, id, state }.mount(&ctx);
+        }
     }
 
     Window::Other(document)
@@ -137,6 +126,5 @@ pub enum SpawnWindow {
     Records,
     View,
     Error(String),
-    CreateRecord(RecordKind),
-    EditRecord(ModuleId, Record),
+    EditRecord(RecordKind, Option<RecordReference>),
 }

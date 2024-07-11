@@ -3,10 +3,11 @@ use std::sync::Arc;
 use game_common::components::components::RawComponent;
 use game_common::reflection::editor::ComponentEditor;
 use game_common::reflection::{ComponentDescriptor, FieldIndex, FieldKind, RecordDescriptor};
-use game_data::record::RecordKind;
+use game_data::record::{Record, RecordKind};
 use game_ui::reactive::Context;
 use game_ui::style::{Background, Direction, Style};
-use game_ui::widgets::{Button, Container, Text, Widget};
+use game_ui::widgets::{Button, Callback, Container, Text, Widget};
+use game_wasm::record::ModuleId;
 use game_wasm::world::RecordReference;
 use image::Rgba;
 use parking_lot::Mutex;
@@ -14,6 +15,8 @@ use parking_lot::Mutex;
 use crate::widgets::entries::*;
 
 use crate::state::EditorState;
+
+use super::SpawnWindow;
 
 // const SELECTED_COLOR: Background = Background::Color(Rgba([0x04, 0x7d, 0xd3, 0xFF]));
 
@@ -127,7 +130,7 @@ impl Widget for RecordList {
         let keys = vec!["ID".to_owned(), "Name".to_owned()];
         let mut records = Vec::new();
         let mut record_descriptor = None;
-        for (_, record) in self.state.records.iter() {
+        for (module, record) in self.state.records.iter() {
             if record.kind == RecordKind::RECORD {
                 record_descriptor = Some(RecordDescriptor::from_bytes(&record.data));
             }
@@ -136,7 +139,7 @@ impl Widget for RecordList {
                 continue;
             }
 
-            records.push(record.clone());
+            records.push((module, record.clone()));
         }
 
         let record_descriptor = record_descriptor.unwrap();
@@ -154,11 +157,11 @@ impl Widget for RecordList {
 
         let mut entries = Vec::new();
         if let Some(component_descriptor) = component_descriptor {
-            for record in records {
-                let component = RawComponent::new(record.data, vec![]);
+            for (_, record) in &records {
+                let component = RawComponent::new(record.data.clone(), vec![]);
                 let editor = ComponentEditor::new(&component_descriptor, component);
 
-                let mut keys = vec![record.id.to_string(), record.name];
+                let mut keys = vec![record.id.to_string(), record.name.clone()];
                 for field in &record_descriptor.keys {
                     let key = format_component_field(&editor, *field).unwrap_or_default();
                     keys.push(key);
@@ -167,16 +170,42 @@ impl Widget for RecordList {
                 entries.push(keys);
             }
         } else {
-            for record in records {
-                entries.push(vec![record.id.to_string(), record.name]);
+            for (_, record) in &records {
+                entries.push(vec![record.id.to_string(), record.name.clone()]);
             }
         }
 
         let data = EntriesData {
             keys,
             entries,
-            add_entry: None,
-            edit_entry: None,
+            add_entry: Some(Callback::from({
+                let state = self.state.clone();
+
+                move |()| {
+                    state
+                        .spawn_windows
+                        .send(SpawnWindow::EditRecord(self.selected, None))
+                        .unwrap();
+                }
+            })),
+            edit_entry: Some(Callback::from({
+                let state = self.state.clone();
+
+                move |index| {
+                    let (module, record): &(ModuleId, Record) = &records[index];
+
+                    state
+                        .spawn_windows
+                        .send(SpawnWindow::EditRecord(
+                            self.selected,
+                            Some(RecordReference {
+                                module: *module,
+                                record: record.id,
+                            }),
+                        ))
+                        .unwrap();
+                }
+            })),
             remove_entry: None,
         };
         Entries { data }.mount(&root);
