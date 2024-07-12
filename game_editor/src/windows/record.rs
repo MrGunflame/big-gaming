@@ -1,480 +1,190 @@
-use std::path::PathBuf;
+use std::sync::Arc;
 
-use game_common::module::ModuleId;
-use game_common::record::RecordId;
-use game_common::reflection::ComponentDescriptor;
-use game_common::units::Mass;
-use game_data::components::actions::ActionRecord;
-use game_data::components::components::ComponentRecord;
-use game_data::components::item::ItemRecord;
-use game_data::components::objects::ObjectRecord;
-use game_data::record::{Record, RecordBody, RecordKind};
-use game_data::uri::Uri;
-use game_input::mouse::MouseButtonInput;
-use game_ui::events::Context;
-use game_ui::reactive::{ReadSignal, Scope};
-use game_ui::style::{Background, Bounds, Direction, Justify, Padding, Size, SizeVec2, Style};
-use game_ui::widgets::{Button, Container, Input, ParseInput, Selection, Text, Widget};
+use game_common::module::Module;
+use game_common::reflection::RecordDescriptor;
+use game_data::record::{Record, RecordKind};
+use game_ui::reactive::Context;
+use game_ui::widgets::{Button, Callback, Container, Input, Selection, Text, Widget};
+use game_wasm::record::{ModuleId, RecordId};
+use game_wasm::world::RecordReference;
+use parking_lot::Mutex;
 
-use crate::state::module::Modules;
-use crate::state::record::Records;
+use crate::state::EditorState;
 
+#[derive(Debug)]
 pub struct EditRecord {
-    pub record: Record,
-    pub records: Records,
-    pub modules: Modules,
-    pub module_id: ModuleId,
+    pub kind: RecordKind,
+    pub id: Option<RecordReference>,
+    pub state: EditorState,
 }
 
 impl Widget for EditRecord {
-    fn build(self, cx: &Scope) -> Scope {
-        let root = cx.append(Container::new().style(Style {
-            padding: Padding::splat(Size::Pixels(5)),
-            justify: Justify::SpaceBetween,
-            ..Default::default()
-        }));
+    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+        let root = Container::new().mount(parent);
 
-        let record_id = self.record.id;
-        let fields = render_record(
-            &root,
-            &self.modules,
-            self.record.kind(),
-            Some((self.module_id, self.record)),
-        );
-
-        let button = root.append(Button::new().on_click(create_record(
-            self.records,
-            fields,
-            Some(record_id),
-        )));
-        button.append(Text::new().text("Ok".to_owned()));
-
-        root
-    }
-}
-
-pub struct CreateRecord {
-    pub kind: RecordKind,
-    pub records: Records,
-    pub modules: Modules,
-}
-
-impl Widget for CreateRecord {
-    fn build(self, cx: &Scope) -> Scope {
-        let root = cx.append(Container::new().style(Style {
-            padding: Padding::splat(Size::Pixels(5)),
-            justify: Justify::SpaceBetween,
-            ..Default::default()
-        }));
-
-        let fields = render_record(&root, &self.modules, self.kind, None);
-
-        let button = root.append(Button::new().on_click(create_record(self.records, fields, None)));
-        button.append(Text::new().text("Ok".to_owned()));
-
-        root
-    }
-}
-
-fn render_record(
-    root: &Scope,
-    modules: &Modules,
-    kind: RecordKind,
-    record: Option<(ModuleId, Record)>,
-) -> Fields {
-    let (module_id, set_module_id) = {
-        let value = match &record {
-            Some((module_id, _)) => *module_id,
-            None => ModuleId::CORE,
+        let record = if let Some(id) = self.id {
+            self.state.records.get(id.module, id.record).unwrap()
+        } else {
+            Record {
+                id: RecordId(0),
+                kind: self.kind,
+                name: String::new(),
+                description: String::new(),
+                data: Vec::new(),
+            }
         };
 
-        root.create_signal(value)
-    };
+        let edit_state = Arc::new(Mutex::new(EditState {
+            id: self.id,
+            record,
+            module: None,
+        }));
 
-    let (name, set_name) = {
-        let value = match &record {
-            Some((_, record)) => record.name.clone(),
-            None => String::new(),
-        };
+        {
+            let modules: Vec<_> = self
+                .state
+                .modules
+                .iter()
+                .filter(|module| module.capabilities.write())
+                .map(|module| module.module)
+                .collect();
 
-        root.create_signal(value)
-    };
+            let options = modules.iter().map(|module| module.name.clone()).collect();
 
-    let metadata = root.append(Container::new().style(Style {
-        direction: Direction::Column,
-        ..Default::default()
-    }));
-
-    let name_col = metadata.append(Container::new());
-    let val_col = metadata.append(Container::new());
-
-    for text in ["Module", "ID", "Name"] {
-        name_col.append(Text::new().text(text.to_owned()));
-    }
-
-    let opts: Vec<ModuleId> = modules.iter().map(|m| m.module.id).collect();
-    let opts_string = modules
-        .iter()
-        .map(|m| format!("{} ({})", m.module.name, m.module.id))
-        .collect();
-
-    let on_change = move |index| {
-        let id = opts[index];
-
-        set_module_id.update(|val| *val = id);
-    };
-
-    val_col.append(Selection::new().options(opts_string).on_change(on_change));
-    val_col.append(Text::new().text("TODO".to_owned()));
-
-    let style = Style {
-        bounds: Bounds {
-            min: SizeVec2 {
-                x: Size::Pixels(100),
-                y: Size::Pixels(20),
-            },
-            ..Default::default()
-        },
-        background: Background::GRAY,
-        ..Default::default()
-    };
-
-    val_col.append(
-        Input::new()
-            .value(name.get_untracked())
-            .style(style)
-            .on_change(move |s| set_name.set(s)),
-    );
-
-    let body = match &record {
-        Some((_, record)) => match &record.body {
-            RecordBody::Item(item) => {
-                RecordBodyFields::Item(render_item(&root, Some(item.clone())))
+            Selection {
+                options,
+                on_change: Callback::from({
+                    let edit_state = edit_state.clone();
+                    move |index| {
+                        let module: &Module = &modules[index];
+                        let mut edit_state = edit_state.lock();
+                        edit_state.module = Some(module.id);
+                    }
+                }),
             }
-            RecordBody::Action(action) => RecordBodyFields::Action,
-            RecordBody::Component(component) => RecordBodyFields::Component,
-            RecordBody::Object(object) => {
-                RecordBodyFields::Object(render_object(&root, Some(object.clone())))
-            }
-            RecordBody::Race(race) => todo!(),
-        },
-        None => match kind {
-            RecordKind::Item => RecordBodyFields::Item(render_item(&root, None)),
-            RecordKind::Action => RecordBodyFields::Action,
-            RecordKind::Component => RecordBodyFields::Component,
-            RecordKind::Object => RecordBodyFields::Object(render_object(&root, None)),
-            RecordKind::Race => todo!(),
-        },
-    };
-
-    let scripts = render_script_section(&root);
-
-    Fields {
-        module_id,
-        name,
-        scripts,
-        body,
-    }
-}
-
-fn create_record(
-    records: Records,
-    fields: Fields,
-    // Record id if updating.
-    record_id: Option<RecordId>,
-) -> Box<dyn Fn(Context<MouseButtonInput>) + Send + Sync + 'static> {
-    Box::new(move |ctx| {
-        let module_id = fields.module_id.get_untracked();
-        let name = fields.name.get_untracked();
-
-        // Use `ModuleId::CORE` as a placeholder/`None` value.
-        if module_id == ModuleId::CORE {
-            return;
+            .mount(&root);
         }
 
-        ctx.window.close();
+        Input::new()
+            .on_change({
+                let edit_state = edit_state.clone();
+                move |value| {
+                    let mut edit_state = edit_state.lock();
+                    edit_state.record.name = value;
+                }
+            })
+            .mount(&root);
+        Input::new()
+            .on_change({
+                let edit_state = edit_state.clone();
+                move |value| {
+                    let mut edit_state = edit_state.lock();
+                    edit_state.record.description = value;
+                }
+            })
+            .mount(&root);
 
-        let scripts = fields
-            .scripts
-            .get_untracked()
-            .into_iter()
-            .map(|s| Uri::from(PathBuf::from(s)))
+        match self.kind {
+            RecordKind::COMPONENT => {
+                EditComponentRecord {}.mount(&root);
+            }
+            RecordKind::RECORD => {
+                let state = self.state.clone();
+                let edit_state = edit_state.clone();
+
+                EditRecordRecord { state, edit_state }.mount(&root);
+            }
+            _ => todo!(),
+        }
+
+        let button = Button::new()
+            .on_click(move |()| {
+                let mut edit_state = edit_state.lock();
+
+                let Some(module) = edit_state.module else {
+                    return;
+                };
+
+                // We should avoid records with an empty name.
+                if edit_state.record.name.is_empty() {
+                    return;
+                }
+
+                edit_state.record.id = if let Some(id) = edit_state.id {
+                    id.record
+                } else {
+                    self.state.records.take_id(module)
+                };
+
+                self.state.records.insert(module, edit_state.record.clone());
+            })
+            .mount(&root);
+        Text::new("OK").mount(&button);
+
+        root
+    }
+}
+
+#[derive(Debug)]
+struct EditComponentRecord {}
+
+impl Widget for EditComponentRecord {
+    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+        let root = Container::new().mount(parent);
+        Text::new("TODO").mount(&root);
+        root
+    }
+}
+
+#[derive(Debug)]
+struct EditRecordRecord {
+    state: EditorState,
+    edit_state: Arc<Mutex<EditState>>,
+}
+
+impl Widget for EditRecordRecord {
+    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+        let root = Container::new().mount(parent);
+
+        let components: Vec<_> = self
+            .state
+            .records
+            .iter()
+            .filter(|(_, record)| record.kind == RecordKind::COMPONENT)
             .collect();
 
-        let body = match &fields.body {
-            RecordBodyFields::Item(item) => {
-                let value = item.value.get_untracked();
-                let mass = item.mass.get_untracked();
-                let scene = item.scene.get_untracked();
-                let icon = item.icon.get_untracked();
+        let options = components
+            .iter()
+            .map(|(_, record)| record.name.clone())
+            .collect();
 
-                RecordBody::Item(ItemRecord {
-                    mass,
-                    value,
-                    scene: Uri::from(PathBuf::from(scene)),
-                    actions: Default::default(),
-                    icon: Uri::from(PathBuf::from(icon)),
-                })
-            }
-            RecordBodyFields::Action => RecordBody::Action(ActionRecord {
-                description: String::new(),
-            }),
-            RecordBodyFields::Component => RecordBody::Component(ComponentRecord {
-                description: String::new(),
-                descriptor: ComponentDescriptor::default(),
-            }),
-            RecordBodyFields::Object(object) => {
-                let model = object.model.get_untracked();
+        Selection {
+            options,
+            on_change: Callback::from(move |index| {
+                let (module, record): &(ModuleId, Record) = &components[index];
 
-                RecordBody::Object(ObjectRecord {
-                    uri: Uri::from(PathBuf::from(model)),
-                    components: Default::default(),
-                })
-            }
-        };
-
-        match record_id {
-            Some(id) => {
-                let record = Record {
-                    id,
-                    name,
-                    scripts,
-                    body,
-                    components: vec![],
+                let descriptor = RecordDescriptor {
+                    component: RecordReference {
+                        module: *module,
+                        record: record.id,
+                    },
+                    // TODO: Allow key customization.
+                    keys: Vec::new(),
                 };
 
-                records.update(module_id, record);
-            }
-            None => {
-                let id = records.take_id(module_id);
-
-                let record = Record {
-                    id,
-                    name,
-                    scripts,
-                    body,
-                    components: vec![],
-                };
-
-                records.insert(module_id, record);
-            }
+                let mut edit_state = self.edit_state.lock();
+                edit_state.record.data = descriptor.to_bytes();
+            }),
         }
-    })
-}
+        .mount(&root);
 
-struct Fields {
-    module_id: ReadSignal<ModuleId>,
-    name: ReadSignal<String>,
-    scripts: ReadSignal<Vec<String>>,
-    body: RecordBodyFields,
-}
-
-enum RecordBodyFields {
-    Item(ItemFields),
-    Action,
-    Component,
-    Object(ObjectFields),
-}
-
-struct ItemFields {
-    mass: ReadSignal<Mass>,
-    value: ReadSignal<u64>,
-    scene: ReadSignal<String>,
-    icon: ReadSignal<String>,
-}
-
-fn render_item(cx: &Scope, item: Option<ItemRecord>) -> ItemFields {
-    let (value, set_value) = {
-        let value = match &item {
-            Some(item) => item.value,
-            None => 0,
-        };
-
-        cx.create_signal(value)
-    };
-
-    let (mass, set_mass) = {
-        let value = match &item {
-            Some(item) => item.mass,
-            None => Mass::default(),
-        };
-
-        cx.create_signal(value)
-    };
-
-    let (scene, set_scene) = {
-        let value = match &item {
-            Some(item) => item.scene.as_ref().to_string_lossy().to_string(),
-            None => String::new(),
-        };
-
-        cx.create_signal(value)
-    };
-
-    let (icon, set_icon) = {
-        let value = match item {
-            Some(item) => item.icon.as_ref().to_string_lossy().to_string(),
-            None => String::new(),
-        };
-
-        cx.create_signal(value)
-    };
-
-    let item = cx.append(Container::new().style(Style {
-        direction: Direction::Column,
-        ..Default::default()
-    }));
-
-    let name_col = item.append(Container::new());
-    let val_col = item.append(Container::new());
-
-    let style = Style {
-        bounds: Bounds {
-            min: SizeVec2::splat(Size::Pixels(20)),
-            ..Default::default()
-        },
-        background: Background::GRAY,
-        ..Default::default()
-    };
-
-    // Value
-    name_col.append(Text::new().text("Value".to_owned()));
-    val_col.append(
-        ParseInput::new(value.get_untracked())
-            .style(style.clone())
-            .on_change(move |val| set_value.set(val)),
-    );
-
-    // Mass
-    name_col.append(Text::new().text("Mass".to_owned()));
-    val_col.append(
-        ParseInput::new(mass.get_untracked().to_grams())
-            .style(style.clone())
-            .on_change(move |val| set_mass.set(Mass::from_grams(val))),
-    );
-
-    // Model
-    name_col.append(Text::new().text("Model".to_owned()));
-    val_col.append(
-        ParseInput::new(scene.get_untracked())
-            .style(style.clone())
-            .on_change(move |val| set_scene.set(val)),
-    );
-
-    // Icon
-    name_col.append(Text::new().text("Icon".to_owned()));
-    val_col.append(
-        ParseInput::new(icon.get_untracked())
-            .style(style)
-            .on_change(move |val| set_icon.set(val)),
-    );
-
-    ItemFields {
-        mass,
-        value,
-        scene,
-        icon,
+        root
     }
 }
 
-struct ObjectFields {
-    model: ReadSignal<String>,
-}
-
-fn render_object(cx: &Scope, object: Option<ObjectRecord>) -> ObjectFields {
-    let (model, set_model) = {
-        let value = match object {
-            Some(object) => object.uri.as_ref().to_string_lossy().to_string(),
-            None => String::new(),
-        };
-
-        cx.create_signal(value)
-    };
-
-    let root = cx.append(Container::new().style(Style {
-        direction: Direction::Column,
-        ..Default::default()
-    }));
-
-    let name_col = root.append(Container::new());
-    let val_col = root.append(Container::new());
-
-    let style = Style {
-        bounds: Bounds {
-            min: SizeVec2::splat(Size::Pixels(20)),
-            ..Default::default()
-        },
-        background: Background::GRAY,
-        ..Default::default()
-    };
-
-    // Model
-    name_col.append(Text::new().text("Model".to_owned()));
-    val_col.append(
-        Input::new()
-            .value(model.get_untracked())
-            .style(style)
-            .on_change(move |val| set_model.set(val)),
-    );
-
-    ObjectFields { model }
-}
-
-fn render_script_section(cx: &Scope) -> ReadSignal<Vec<String>> {
-    let (scripts, set_scripts) = cx.create_signal(Vec::<String>::new());
-
-    let root = cx.append(Container::new());
-
-    let script_list = cx.append(Container::new());
-
-    {
-        let scripts = scripts.clone();
-        let mut id = None;
-        let cx2 = cx.clone();
-        cx.create_effect(move || {
-            if let Some(id) = id {
-                cx2.remove(id);
-            }
-
-            let root = cx2.append(Container::new());
-            id = root.id();
-
-            let scripts = scripts.get();
-
-            for script in scripts {
-                root.append(Text::new().text(script));
-            }
-        });
-    }
-
-    let (new_script, set_new_script) = cx.create_signal(String::new());
-
-    let on_click = move |_| {
-        set_scripts.update(|v| {
-            v.push(new_script.get_untracked());
-        });
-    };
-
-    let style = Style {
-        bounds: Bounds {
-            min: SizeVec2 {
-                x: Size::Pixels(100),
-                y: Size::Pixels(20),
-            },
-            ..Default::default()
-        },
-        background: Background::GRAY,
-        ..Default::default()
-    };
-
-    root.append(
-        Input::new()
-            .style(style)
-            .on_change(move |s| set_new_script.set(s)),
-    );
-
-    let button = root.append(Button::new().on_click(on_click));
-    button.append(Text::new().text("New Script".to_owned()));
-
-    scripts
+#[derive(Clone, Debug)]
+struct EditState {
+    module: Option<ModuleId>,
+    id: Option<RecordReference>,
+    record: Record,
 }

@@ -42,9 +42,17 @@ impl State {
 
         let (tx, rx) = mpsc::channel();
 
+        let records = Records::new();
+        let res = game_core::modules::load_modules();
+        for module in res.modules.iter() {
+            for record in module.records.iter() {
+                records.insert(module.id, record.clone());
+            }
+        }
+
         let state = EditorState {
             modules: Modules::default(),
-            records: Records::default(),
+            records,
             spawn_windows: tx,
             handle,
         };

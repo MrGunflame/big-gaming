@@ -1,7 +1,11 @@
+pub mod editor;
+
 use core::fmt::{self, Display, Formatter};
 use std::collections::VecDeque;
 
 use game_wasm::encoding::Primitive;
+use game_wasm::record::{ModuleId, RecordId};
+use game_wasm::world::RecordReference;
 use serde::{Deserialize, Serialize};
 
 use crate::components::components::RawComponent;
@@ -280,4 +284,40 @@ pub struct EnumFieldVariant {
     pub tag: u64,
     pub name: String,
     pub fields: Vec<FieldIndex>,
+}
+
+#[derive(Clone, Debug)]
+pub struct RecordDescriptor {
+    pub component: RecordReference,
+    pub keys: Vec<FieldIndex>,
+}
+
+impl RecordDescriptor {
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut buf = Vec::new();
+        buf.extend(self.component.module.into_bytes());
+        buf.extend(self.component.record.into_bytes());
+        for key in &self.keys {
+            buf.extend(key.0.to_le_bytes());
+        }
+
+        buf
+    }
+
+    pub fn from_bytes(bytes: &[u8]) -> Self {
+        let module_id = ModuleId::from_bytes(bytes[0..16].try_into().unwrap());
+        let record_id = RecordId::from_bytes(bytes[16..20].try_into().unwrap());
+        let mut keys = Vec::new();
+        for key in bytes[20..].chunks(2) {
+            keys.push(FieldIndex(u16::from_be_bytes(key.try_into().unwrap())));
+        }
+
+        Self {
+            component: RecordReference {
+                module: module_id,
+                record: record_id,
+            },
+            keys,
+        }
+    }
 }
