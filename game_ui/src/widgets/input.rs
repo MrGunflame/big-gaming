@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use game_input::keyboard::{KeyCode, KeyboardInput};
 use game_input::mouse::MouseButtonInput;
+use game_tracing::trace_span;
 use glam::UVec2;
 use parking_lot::Mutex;
 
@@ -66,6 +67,8 @@ impl Input {
 
 impl Widget for Input {
     fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+        let _span = trace_span!("Input::mount").entered();
+
         let wrapper = Container::new().style(self.style).mount(parent);
         let text_node = Text::new(self.value.clone())
             .size(32.0)
@@ -78,8 +81,8 @@ impl Widget for Input {
             move |ctx: Context<NodeDestroyed>| {
                 let node = ctx.node().unwrap();
                 let state = ctx.document().get::<InputState>().unwrap();
-                let mut active = state.active.lock();
-                let mut nodes = state.nodes.lock();
+                let mut active = state.active.try_lock().unwrap();
+                let mut nodes = state.nodes.try_lock().unwrap();
 
                 if *active == Some(node) {
                     *active = None;
@@ -93,7 +96,9 @@ impl Widget for Input {
         );
 
         if let Some(state) = parent.document().get::<InputState>() {
-            state.nodes.lock().insert(
+            tracing::debug!("reusing existing InputState");
+
+            state.nodes.try_lock().unwrap().insert(
                 wrapper.node().unwrap(),
                 NodeState {
                     ctx: wrapper.clone(),
@@ -103,11 +108,22 @@ impl Widget for Input {
                 },
             );
         } else {
+            tracing::debug!("creating new InputState");
+
             // Wait until the previous thread has dropped before spawning
             // a new one.
             // Running multiple threads can cause problems including
             // unsynchronized cursor blinking or deadlocks.
-            while THREAD_ACTIVE.load(Ordering::SeqCst) {}
+            {
+                // FIXME: Disabled for now. If more than one Document with
+                // an Input widget is created, this will deadlock.
+                // For now we just take the chance that we will spawn too
+                // many threads.
+                // This will be replaced with the async task system once
+                // implemented: https://github.com/MrGunflame/big-gaming/issues/286
+                // let _span = trace_span!("wait for thread idle").entered();
+                // while THREAD_ACTIVE.load(Ordering::SeqCst) {}
+            }
 
             let mut state = InputState::default();
             state.nodes.get_mut().insert(
@@ -134,8 +150,8 @@ impl Widget for Input {
                         break;
                     };
 
-                    let mut nodes = state.nodes.lock();
-                    let active = state.active.lock();
+                    let mut nodes = state.nodes.try_lock().unwrap();
+                    let active = state.active.try_lock().unwrap();
 
                     let Some(node) = *active else {
                         continue;
@@ -161,8 +177,8 @@ impl Widget for Input {
                         return;
                     };
 
-                    let mut nodes = state.nodes.lock();
-                    let mut active = state.active.lock();
+                    let mut nodes = state.nodes.try_lock().unwrap();
+                    let mut active = state.active.try_lock().unwrap();
 
                     let prev_active = *active;
 
@@ -230,8 +246,8 @@ impl Widget for Input {
                         return;
                     };
 
-                    let mut nodes = state.nodes.lock();
-                    let active = state.active.lock();
+                    let mut nodes = state.nodes.try_lock().unwrap();
+                    let active = state.active.try_lock().unwrap();
 
                     let Some(node) = &*active else {
                         return;

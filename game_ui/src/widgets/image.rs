@@ -1,3 +1,4 @@
+use game_tracing::trace_span;
 use image::{ImageBuffer, Rgba};
 
 use crate::primitive::Primitive;
@@ -38,6 +39,8 @@ impl Default for Image {
 
 impl Widget for Image {
     fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+        let _span = trace_span!("Image::mount").entered();
+
         parent.append(Node::new(Primitive {
             style: self.style,
             image: Some(self.image),

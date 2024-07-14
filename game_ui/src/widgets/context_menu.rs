@@ -51,13 +51,13 @@ impl Widget for ContextPanel {
 
                 // If the context menu is still open we should
                 // close it before we remove it.
-                let mut active = state.active.lock();
+                let mut active = state.active.try_lock().unwrap();
                 if *active == Some(node) {
                     ctx.runtime().remove(node);
                     *active = None;
                 }
 
-                let mut parents = state.parents.lock();
+                let mut parents = state.parents.try_lock().unwrap();
                 parents.retain(|(p_ctx, _)| p_ctx.node().unwrap() != node);
 
                 // We just destroyed the last context menu parent element.
@@ -71,13 +71,15 @@ impl Widget for ContextPanel {
         if let Some(state) = parent.document().get::<InternalContextMenuState>() {
             state
                 .parents
-                .lock()
+                .try_lock()
+                .unwrap()
                 .push((wrapper.clone(), self.spawn_menu));
         } else {
             let state = InternalContextMenuState::default();
             state
                 .parents
-                .lock()
+                .try_lock()
+                .unwrap()
                 .push((wrapper.clone(), self.spawn_menu));
             parent.document().insert(state);
 
@@ -98,7 +100,7 @@ impl Widget for ContextPanel {
                     // - If the context menu is open and a click originated outside the
                     // context menu close the context menu.
                     // - If no context menu is open do nothing.
-                    let mut active = state.active.lock();
+                    let mut active = state.active.try_lock().unwrap();
                     if let Some(node) = *active {
                         if ctx.layout(node).unwrap().contains(cursor) {
                             return;
@@ -112,7 +114,7 @@ impl Widget for ContextPanel {
                         return;
                     }
 
-                    let parents = state.parents.lock();
+                    let parents = state.parents.try_lock().unwrap();
                     for (node, cb) in parents.iter() {
                         let Some(layout) = ctx.layout(node.node().unwrap()) else {
                             continue;
@@ -128,7 +130,7 @@ impl Widget for ContextPanel {
                                     return;
                                 };
 
-                                if let Some(node) = state.active.lock().take() {
+                                if let Some(node) = state.active.try_lock().unwrap().take() {
                                     ctx2.runtime().remove(node);
                                 };
                             });

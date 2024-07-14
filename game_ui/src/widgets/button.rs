@@ -1,4 +1,5 @@
 use game_input::mouse::MouseButtonInput;
+use game_tracing::trace_span;
 
 use crate::reactive::Context;
 use crate::style::Style;
@@ -34,6 +35,8 @@ impl Button {
 
 impl Widget for Button {
     fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+        let _span = trace_span!("Button::mount").entered();
+
         let wrapper = Container::new().style(self.style).mount(parent);
 
         parent.document().register_with_parent(

@@ -17,6 +17,7 @@ pub use self::image::Image;
 pub use button::Button;
 // pub use checkbox::Checkbox;
 pub use container::Container;
+use game_tracing::trace_span;
 pub use input::Input;
 use parking_lot::Mutex;
 // pub use parse_input::ParseInput;
@@ -40,8 +41,10 @@ pub struct Callback<T>(Option<Arc<Mutex<dyn FnMut(T) + Send + Sync + 'static>>>)
 
 impl<T> Callback<T> {
     pub fn call(&self, value: T) {
+        let _span = trace_span!("Callback::call").entered();
+
         if let Some(f) = &self.0 {
-            (f.lock())(value);
+            (f.try_lock().unwrap())(value);
         }
     }
 }

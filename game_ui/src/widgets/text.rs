@@ -1,3 +1,5 @@
+use game_tracing::trace_span;
+
 use crate::primitive::Primitive;
 use crate::reactive::{Context, Node};
 use crate::style::Style;
@@ -36,6 +38,8 @@ impl Text {
 
 impl Widget for Text {
     fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+        let _span = trace_span!("Text::mount").entered();
+
         parent.append(Node::new(Primitive {
             style: Style::default(),
             image: None,

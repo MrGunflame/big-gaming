@@ -1,3 +1,5 @@
+use game_tracing::trace_span;
+
 use crate::reactive::Context;
 use crate::style::{Direction, Style};
 
@@ -14,6 +16,8 @@ where
     D: Widget,
 {
     fn mount<T>(mut self, parent: &Context<T>) -> Context<()> {
+        let _span = trace_span!("Table::mount").entered();
+
         let table = Container::new()
             .style(Style {
                 direction: Direction::Column,
