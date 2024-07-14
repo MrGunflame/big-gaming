@@ -19,7 +19,7 @@ use tests::svg::svg;
 use tests::table::table;
 
 fn main() {
-    game_tracing::init();
+    game_core::logger::init();
 
     let renderer = Renderer::new().unwrap();
     let ui_state = UiState::new(&renderer);
@@ -73,7 +73,9 @@ impl game_window::App for App {
 
                 // hello_world(ctx.clone());
                 // selection(ctx);
-                svg(ctx);
+                // svg(ctx);
+                // input(ctx);
+                table(ctx);
             }
             WindowEvent::WindowDestroyed(event) => {
                 todo!()

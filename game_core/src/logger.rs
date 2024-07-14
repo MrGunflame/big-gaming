@@ -11,9 +11,17 @@ use tracing::metadata::LevelFilter;
 use tracing::span::{Attributes, Record};
 use tracing::subscriber::set_global_default;
 use tracing::{Event, Id, Level, Metadata, Subscriber};
+use tracing_subscriber::layer::{Context, SubscriberExt};
+use tracing_subscriber::registry::LookupSpan;
+use tracing_subscriber::Layer;
 
 pub fn init() {
-    Logger::new().init();
+    set_global_default(
+        tracing_subscriber::registry()
+            .with(game_tracing::TracyLayer::default())
+            .with(Logger::new()),
+    )
+    .unwrap();
 }
 
 #[derive(Debug)]
@@ -46,10 +54,6 @@ impl Logger {
             is_tty,
             level,
         }
-    }
-
-    pub fn init(self) {
-        let _ = set_global_default(self);
     }
 }
 
@@ -91,6 +95,25 @@ impl Logger {
 impl Default for Logger {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl<S> Layer<S> for Logger
+where
+    S: Subscriber + for<'a> LookupSpan<'a>,
+{
+    // fn enabled(&self, metadata: &Metadata<'_>, _ctx: Context<'_, S>) -> bool {
+    // }
+
+    fn event_enabled(&self, event: &Event<'_>, _ctx: Context<'_, S>) -> bool {
+        *event.metadata().level() <= self.level
+    }
+
+    fn on_event(&self, event: &Event<'_>, _ctx: Context<'_, S>) {
+        let mut visitor = Visitor::new();
+        event.record(&mut visitor);
+
+        self.log(&event.metadata().into(), visitor);
     }
 }
 
