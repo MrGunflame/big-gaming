@@ -33,7 +33,8 @@ members = [
     "tools/json2dat",
     "tools/gltf2model",
     "tools/make",
-    "tools/builder", "game_scene2",
+    "tools/builder",
+    "game_prefab",
 ]
 
 resolver = "2"

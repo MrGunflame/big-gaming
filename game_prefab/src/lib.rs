@@ -7,6 +7,7 @@ use game_common::record::RecordReference;
 use game_common::world::World;
 use game_wasm::encoding::{decode_fields, encode_fields, BinaryWriter};
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 #[derive(Clone, Debug, Default)]
 pub struct Prefab {
@@ -86,13 +87,14 @@ impl Prefab {
         bincode::serialize(&self.entities).unwrap()
     }
 
-    pub fn from_bytes(bytes: Vec<u8>) -> Result<Self, Error> {
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, Error> {
         let entities = bincode::deserialize(&bytes).map_err(Error::Decode)?;
         Ok(Self { entities })
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum Error {
+    #[error(transparent)]
     Decode(bincode::Error),
 }

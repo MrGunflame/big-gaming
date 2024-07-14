@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use game_common::world::World;
-use game_scene2::Prefab;
+use game_prefab::Prefab;
 use game_ui::widgets::Callback;
 use parking_lot::Mutex;
 
