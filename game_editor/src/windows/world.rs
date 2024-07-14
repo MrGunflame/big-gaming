@@ -12,6 +12,7 @@ use game_common::components::{Color, PointLight, PrimaryCamera};
 use game_common::components::{MeshInstance, Transform};
 use game_common::entity::EntityId;
 use game_common::world::World;
+use game_core::logger::init;
 use game_core::modules::Modules;
 use game_input::keyboard::KeyCode;
 use game_input::mouse::{MouseButton, MouseMotion, MouseWheel};
@@ -56,6 +57,7 @@ impl WorldWindowState {
         world: &mut World,
         modules: Modules,
         on_world_change: Option<Callback<OnWorldChangeEvent>>,
+        initial_world: World,
     ) -> Self {
         let (writer, reader) = mpsc::channel();
 
@@ -68,40 +70,54 @@ impl WorldWindowState {
         );
         world.insert_typed(camera, PrimaryCamera);
 
-        let mut light = world.spawn();
-        world.insert_typed(light, Transform::from_translation(Vec3::new(0.0, 1.0, 0.0)));
-        world.insert_typed(
-            light,
-            PointLight {
-                color: Color::WHITE,
-                intensity: 100.0,
-                radius: 100.0,
-            },
-        );
+        for (index, id) in initial_world.entities().enumerate() {
+            let entity = world.spawn();
 
-        let mut obj = world.spawn();
-        world.insert_typed(obj, Transform::default());
-        world.insert_typed(
-            obj,
-            MeshInstance {
-                path: "../game_client/sponza.glb".into(),
-            },
-        );
+            for (id, component) in initial_world.components(id).iter() {
+                world.insert(entity, id, component.clone());
+            }
 
-        {
-            state.lock().entities = vec![
-                Entity {
-                    id: light,
-                    name: "Point Light".into(),
-                    is_selected: false,
-                },
-                Entity {
-                    id: obj,
-                    name: "Obj".into(),
-                    is_selected: false,
-                },
-            ];
+            state.lock().entities.push(Entity {
+                id: entity,
+                name: format!("<entity {}>", index).into(),
+                is_selected: false,
+            });
         }
+
+        // let mut light = world.spawn();
+        // world.insert_typed(light, Transform::from_translation(Vec3::new(0.0, 1.0, 0.0)));
+        // world.insert_typed(
+        //     light,
+        //     PointLight {
+        //         color: Color::WHITE,
+        //         intensity: 100.0,
+        //         radius: 100.0,
+        //     },
+        // );
+
+        // let mut obj = world.spawn();
+        // world.insert_typed(obj, Transform::default());
+        // world.insert_typed(
+        //     obj,
+        //     MeshInstance {
+        //         path: "../game_client/sponza.glb".into(),
+        //     },
+        // );
+
+        // {
+        //     state.lock().entities = vec![
+        //         Entity {
+        //             id: light,
+        //             name: "Point Light".into(),
+        //             is_selected: false,
+        //         },
+        //         Entity {
+        //             id: obj,
+        //             name: "Obj".into(),
+        //             is_selected: false,
+        //         },
+        //     ];
+        // }
         let cb = { state.lock().entities_changed.clone() };
         cb.call(());
 

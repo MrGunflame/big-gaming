@@ -114,19 +114,23 @@ pub fn spawn_window(
             Records { state }.mount(&ctx);
         }
         SpawnWindow::View => {
-            let window = WorldWindowState::new(&ctx, window_id, world, modules, None);
+            let window =
+                WorldWindowState::new(&ctx, window_id, world, modules, None, World::default());
             return Window::View(document, window);
         }
         SpawnWindow::EditRecord(kind, id) => {
             EditRecord { kind, id, state }.mount(&ctx);
         }
         SpawnWindow::EditPrefab(edit_state) => {
+            let prefab_world = edit_prefab::load_prefab(&edit_state);
+
             let window = WorldWindowState::new(
                 &ctx,
                 window_id,
                 world,
                 modules,
                 Some(edit_prefab::on_world_change_callback(edit_state)),
+                prefab_world,
             );
 
             return Window::View(document, window);
