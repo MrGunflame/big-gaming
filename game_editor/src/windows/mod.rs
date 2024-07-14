@@ -3,8 +3,8 @@ mod error;
 pub mod main_window;
 pub mod modules;
 mod open_module;
-// // mod record;
-// mod records;
+mod record;
+mod records;
 mod world;
 
 use game_common::module::ModuleId;
@@ -12,23 +12,22 @@ use game_common::world::World;
 use game_data::record::{Record, RecordKind};
 use game_render::camera::RenderTarget;
 use game_render::Renderer;
-use game_ui::reactive::{Document, DocumentId, Runtime};
+use game_ui::reactive::DocumentId;
 use game_ui::widgets::Widget;
 use game_ui::UiState;
+use game_wasm::world::RecordReference;
 use game_window::events::WindowEvent;
 use game_window::windows::WindowId;
 use modules::Modules;
+use record::EditRecord;
+use records::Records;
 
 use crate::state::EditorState;
 use crate::windows::create_module::CreateModule;
 use crate::windows::error::Error;
-// use crate::windows::record::EditRecord;
-// use crate::windows::records::Records;
 
 use self::main_window::MainWindow;
-// use self::modules::Modules;
 use self::open_module::OpenModule;
-// // use self::record::CreateRecord;
 use self::world::WorldWindowState;
 
 pub enum Window {
@@ -104,28 +103,15 @@ pub fn spawn_window(
             .mount(&ctx);
         }
         SpawnWindow::Records => {
-            // cx.append(Records { state });
+            Records { state }.mount(&ctx);
         }
         SpawnWindow::View => {
             let window = world::WorldWindowState::new(&ctx, window_id, world, modules);
             return Window::View(document, window);
         }
-        _ => todo!(),
-        // SpawnWindow::CreateRecord(kind) => {
-        //     // cx.append(CreateRecord {
-        //     //     kind,
-        //     //     records: state.records,
-        //     //     modules: state.modules,
-        //     // });
-        // }
-        // SpawnWindow::EditRecord(module_id, record) => {
-        //     // cx.append(EditRecord {
-        //     //     record,
-        //     //     module_id,
-        //     //     records: state.records,
-        //     //     modules: state.modules,
-        //     // });
-        // }
+        SpawnWindow::EditRecord(kind, id) => {
+            EditRecord { kind, id, state }.mount(&ctx);
+        }
     }
 
     Window::Other(document)
@@ -140,6 +126,5 @@ pub enum SpawnWindow {
     Records,
     View,
     Error(String),
-    CreateRecord(RecordKind),
-    EditRecord(ModuleId, Record),
+    EditRecord(RecordKind, Option<RecordReference>),
 }

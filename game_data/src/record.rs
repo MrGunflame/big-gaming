@@ -111,7 +111,12 @@ pub struct RecordKind(pub RecordReference);
 impl RecordKind {
     pub const COMPONENT: Self = Self(RecordReference {
         module: ModuleId::CORE,
-        record: RecordId(0x01),
+        record: RecordId(0x1001),
+    });
+
+    pub const RECORD: Self = Self(RecordReference {
+        module: ModuleId::CORE,
+        record: RecordId(0x1002),
     });
 }
 

@@ -65,7 +65,8 @@ impl Records {
 
     pub fn take_id(&self, module: ModuleId) -> RecordId {
         let mut next_id = self.next_id.write();
-        let val = next_id.entry(module).or_default();
+        // Start with ID 1, we reserve ID 0 for future use.
+        let val = next_id.entry(module).or_insert(1);
         assert_ne!(*val, u32::MAX);
         let id = RecordId(*val);
         *val += 1;

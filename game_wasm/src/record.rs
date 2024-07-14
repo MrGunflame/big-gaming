@@ -71,6 +71,14 @@ impl FromStr for RecordReference {
 pub struct RecordId(pub u32);
 
 impl RecordId {
+    pub const fn into_bytes(self) -> [u8; 4] {
+        self.0.to_le_bytes()
+    }
+
+    pub const fn from_bytes(bytes: [u8; 4]) -> Self {
+        Self(u32::from_le_bytes(bytes))
+    }
+
     pub const fn from_str_const(s: &str) -> Self {
         Self::from_str_const_with_offset(s, 0, s.len())
     }
