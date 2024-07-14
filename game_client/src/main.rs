@@ -46,7 +46,7 @@ struct Args {
 }
 
 fn main() {
-    game_tracing::init();
+    game_core::logger::init();
 
     let args = Args::parse();
 

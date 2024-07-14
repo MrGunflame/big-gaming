@@ -70,7 +70,7 @@ impl State {
 }
 
 fn main() {
-    game_tracing::init();
+    game_core::logger::init();
 
     let (backend, handle) = Backend::new();
 

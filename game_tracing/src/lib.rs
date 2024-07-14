@@ -5,12 +5,7 @@ pub mod world;
 #[doc(hidden)]
 pub use tracing;
 
-pub fn init() {
-    tracing::subscriber::set_global_default(
-        tracing_subscriber::registry().with(tracing_tracy::TracyLayer::default()),
-    )
-    .unwrap();
-}
+pub use tracing_tracy::TracyLayer;
 
 #[macro_export]
 macro_rules! trace_span {

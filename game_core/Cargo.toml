@@ -24,3 +24,5 @@ thiserror = "1.0.61"
 slotmap = "1.0.7"
 glam = "0.28.0"
 async-io = "2.3.3"
+
+tracing-subscriber = "0.3.18"
