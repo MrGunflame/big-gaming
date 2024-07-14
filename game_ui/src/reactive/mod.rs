@@ -8,6 +8,7 @@ use std::sync::Arc;
 
 use game_common::collections::arena::{self, Arena};
 use game_render::camera::RenderTarget;
+use game_tracing::trace_span;
 use game_window::cursor::Cursor;
 use glam::{UVec2, Vec2};
 use parking_lot::Mutex;
@@ -38,6 +39,8 @@ impl Runtime {
     }
 
     pub fn documents(&self, window: RenderTarget) -> Vec<DocumentId> {
+        let _span = trace_span!("Runtime::documents").entered();
+
         let rt = self.inner.lock();
         rt.windows
             .get(&window)
@@ -51,6 +54,8 @@ impl Runtime {
         parent: Option<NodeId>,
         mut node: Node,
     ) -> Option<NodeId> {
+        let _span = trace_span!("Runtime::append").entered();
+
         let document_id = document;
 
         let rt = &mut *self.inner.lock();
@@ -86,6 +91,8 @@ impl Runtime {
     }
 
     pub fn create_document(&self, window: RenderTarget) -> Option<DocumentId> {
+        let _span = trace_span!("Runtime::create_document").entered();
+
         let rt = &mut *self.inner.lock();
         let window = rt.windows.get_mut(&window)?;
 
@@ -103,6 +110,8 @@ impl Runtime {
     }
 
     pub fn clear_children(&self, node: NodeId) {
+        let _span = trace_span!("Runtime::clear_children").entered();
+
         let children = {
             let rt = &mut *self.inner.lock();
 
@@ -119,6 +128,8 @@ impl Runtime {
     }
 
     pub fn remove(&self, node: NodeId) {
+        let _span = trace_span!("Runtime::remove").entered();
+
         let mut node_destroyed_handlers = Vec::new();
 
         // The document of the destroyed nodes.
@@ -194,6 +205,8 @@ impl Runtime {
     }
 
     pub(crate) fn create_window(&self, id: RenderTarget, size: UVec2) {
+        let _span = trace_span!("Runtime::create_window").entered();
+
         let mut rt = self.inner.lock();
         rt.windows.insert(
             id,
@@ -205,6 +218,8 @@ impl Runtime {
     }
 
     pub(crate) fn resize_window(&self, id: RenderTarget, size: UVec2) {
+        let _span = trace_span!("Runtime::resize_window").entered();
+
         let rt = &mut *self.inner.lock();
         let window = rt.windows.get_mut(&id).unwrap();
         window.size = size;
@@ -215,6 +230,8 @@ impl Runtime {
     }
 
     pub(crate) fn destroy_window(&self, id: RenderTarget) {
+        let _span = trace_span!("Runtime::destroy_window").entered();
+
         let mut rt = self.inner.lock();
         if let Some(window) = rt.windows.remove(&id) {
             drop(rt);
@@ -238,6 +255,8 @@ impl Runtime {
         F: FnMut(Context<E>) + Send + Sync + 'static,
         E: Event,
     {
+        let _span = trace_span!("Runtime::register_on_document").entered();
+
         if TypeId::of::<E>() == TypeId::of::<NodeDestroyed>() {
             assert!(
                 parent.is_some(),
@@ -264,6 +283,8 @@ impl Runtime {
     }
 
     fn destroy_document(&self, id: DocumentId) {
+        let _span = trace_span!("Runtime::destroy_document").entered();
+
         let rt = self.inner.lock();
 
         let Some(document) = rt.documents.get(id.0) else {
@@ -481,6 +502,8 @@ where
     E: Event,
 {
     pub fn call(&self, event: Context<E>) {
+        let _span = trace_span!("EventHandler::call").entered();
+
         unsafe {
             self.ptr.lock().call(event);
         }
@@ -575,6 +598,8 @@ impl<E> Context<E> {
     }
 
     pub fn layout(&self, node: NodeId) -> Option<Rect> {
+        let _span = trace_span!("Context::layout").entered();
+
         let mut rt = self.runtime.inner.lock();
         let doc = rt.documents.get_mut(self.document.0)?;
         doc.layout.compute_layout();
@@ -626,6 +651,8 @@ impl<'a> DocumentRef<'a> {
     where
         T: Send + Sync + 'static,
     {
+        let _span = trace_span!("DocumentRef::get").entered();
+
         let rt = self.rt.inner.lock();
         let doc = rt.documents.get(self.id.0)?;
         doc.type_map
@@ -637,6 +664,8 @@ impl<'a> DocumentRef<'a> {
     where
         T: Send + Sync + 'static,
     {
+        let _span = trace_span!("DocumentRef::insert").entered();
+
         let mut rt = self.rt.inner.lock();
         let doc = rt.documents.get_mut(self.id.0).unwrap();
         doc.type_map.insert(TypeId::of::<T>(), Arc::new(value));
@@ -646,6 +675,8 @@ impl<'a> DocumentRef<'a> {
     where
         T: Send + Sync + 'static,
     {
+        let _span = trace_span!("DocumentRef::remove").entered();
+
         let mut rt = self.rt.inner.lock();
         let doc = rt.documents.get_mut(self.id.0)?;
         doc.type_map

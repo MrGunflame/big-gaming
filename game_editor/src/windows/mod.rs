@@ -1,4 +1,5 @@
 mod create_module;
+mod edit_prefab;
 mod error;
 pub mod main_window;
 pub mod modules;
@@ -7,11 +8,13 @@ mod record;
 mod records;
 mod world;
 
-use game_common::module::ModuleId;
+use std::sync::Arc;
+
 use game_common::world::World;
-use game_data::record::{Record, RecordKind};
+use game_data::record::RecordKind;
 use game_render::camera::RenderTarget;
 use game_render::Renderer;
+use game_tracing::trace_span;
 use game_ui::reactive::DocumentId;
 use game_ui::widgets::Widget;
 use game_ui::UiState;
@@ -19,7 +22,8 @@ use game_wasm::world::RecordReference;
 use game_window::events::WindowEvent;
 use game_window::windows::WindowId;
 use modules::Modules;
-use record::EditRecord;
+use parking_lot::Mutex;
+use record::{EditRecord, EditState};
 use records::Records;
 
 use crate::state::EditorState;
@@ -50,6 +54,8 @@ impl Window {
         event: WindowEvent,
         id: WindowId,
     ) {
+        let _span = trace_span!("Window::handle_event").entered();
+
         match self {
             Self::View(_, window) => window.handle_event(world, event, id, renderer),
             _ => (),
@@ -57,6 +63,8 @@ impl Window {
     }
 
     pub fn update(&mut self, world: &mut World, renderer: &mut Renderer) {
+        let _span = trace_span!("Window::update").entered();
+
         match self {
             Self::View(_, w) => w.update(world),
             _ => (),
@@ -106,11 +114,26 @@ pub fn spawn_window(
             Records { state }.mount(&ctx);
         }
         SpawnWindow::View => {
-            let window = world::WorldWindowState::new(&ctx, window_id, world, modules);
+            let window =
+                WorldWindowState::new(&ctx, window_id, world, modules, None, World::default());
             return Window::View(document, window);
         }
         SpawnWindow::EditRecord(kind, id) => {
             EditRecord { kind, id, state }.mount(&ctx);
+        }
+        SpawnWindow::EditPrefab(edit_state) => {
+            let prefab_world = edit_prefab::load_prefab(&edit_state);
+
+            let window = WorldWindowState::new(
+                &ctx,
+                window_id,
+                world,
+                modules,
+                Some(edit_prefab::on_world_change_callback(edit_state)),
+                prefab_world,
+            );
+
+            return Window::View(document, window);
         }
     }
 
@@ -127,4 +150,5 @@ pub enum SpawnWindow {
     View,
     Error(String),
     EditRecord(RecordKind, Option<RecordReference>),
+    EditPrefab(Arc<Mutex<EditState>>),
 }

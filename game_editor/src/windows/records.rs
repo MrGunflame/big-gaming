@@ -55,7 +55,7 @@ impl Widget for Records {
             selected: RecordKind::COMPONENT,
         }
         .mount(&root);
-        state.lock().record_list = Some(record_list);
+        state.try_lock().unwrap().record_list = Some(record_list);
 
         root
     }
@@ -95,7 +95,7 @@ impl Widget for SidePanel {
                     let ui_state = self.ui_state.clone();
                     let state = self.state.clone();
                     move |()| {
-                        let mut ui_state = ui_state.lock();
+                        let mut ui_state = ui_state.try_lock().unwrap();
                         ui_state.selected = RecordKind(id);
 
                         if let Some(ctx) = ui_state.record_list.take() {

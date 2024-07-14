@@ -118,6 +118,11 @@ impl RecordKind {
         module: ModuleId::CORE,
         record: RecordId(0x1002),
     });
+
+    pub const PREFAB: Self = Self(RecordReference {
+        module: ModuleId::CORE,
+        record: RecordId(0x1003),
+    });
 }
 
 #[derive(Debug, Error)]

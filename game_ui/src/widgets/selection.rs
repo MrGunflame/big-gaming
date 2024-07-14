@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use game_input::mouse::MouseButtonInput;
+use game_tracing::trace_span;
 use glam::UVec2;
 use parking_lot::Mutex;
 
@@ -16,6 +17,8 @@ pub struct Selection {
 
 impl Widget for Selection {
     fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+        let _span = trace_span!("Selection::mount").entered();
+
         let wrapper = Container::new().mount(parent);
 
         // I heared you like mutexes.
@@ -46,7 +49,7 @@ impl Widget for Selection {
                     let input_wrapper = input_wrapper.clone();
 
                     move |value| {
-                        *filter.lock() = value;
+                        *filter.try_lock().unwrap() = value;
 
                         mount_selector(
                             &options_wrapper,
@@ -60,9 +63,9 @@ impl Widget for Selection {
                         );
                     }
                 })
-                .mount(&input_wrapper.lock());
+                .mount(&input_wrapper.try_lock().unwrap());
 
-            *input.lock() = Some(input_ctx);
+            *input.try_lock().unwrap() = Some(input_ctx);
         }
 
         {
@@ -98,11 +101,11 @@ fn mount_selector(
     on_change: &Callback<usize>,
     check_position: bool,
 ) {
-    let mut options_wrapper = options_wrapper_mux.lock();
-    let wrapper = wrapper_mux.lock();
+    let mut options_wrapper = options_wrapper_mux.try_lock().unwrap();
+    let wrapper = wrapper_mux.try_lock().unwrap();
 
     let input_id = {
-        let Some(input_ctx) = &*input.lock() else {
+        let Some(input_ctx) = &*input.try_lock().unwrap() else {
             return;
         };
         input_ctx.node().unwrap()
@@ -120,7 +123,7 @@ fn mount_selector(
         ..Default::default()
     };
     *options_wrapper = Container::new().style(style).mount(&wrapper);
-    let filter_string = filter.lock().to_lowercase();
+    let filter_string = filter.try_lock().unwrap().to_lowercase();
     for (index, option) in options.iter().enumerate() {
         if !option.to_lowercase().contains(&filter_string) {
             continue;
@@ -136,7 +139,7 @@ fn mount_selector(
         let options = options.clone();
         let button = Button::new()
             .on_click(move |()| {
-                input_wrapper.lock().clear_children();
+                input_wrapper.try_lock().unwrap().clear_children();
                 let filter = filter.clone();
                 on_change.call(index);
                 let option2 = option2.clone();
@@ -153,7 +156,7 @@ fn mount_selector(
                         let options = options.clone();
 
                         move |value| {
-                            *filter.lock() = value;
+                            *filter.try_lock().unwrap() = value;
 
                             mount_selector(
                                 &options_wrapper_mux,
@@ -167,8 +170,8 @@ fn mount_selector(
                             )
                         }
                     })
-                    .mount(&input_wrapper.lock());
-                *input.lock() = Some(c);
+                    .mount(&input_wrapper.try_lock().unwrap());
+                *input.try_lock().unwrap() = Some(c);
             })
             .mount(&options_wrapper);
 

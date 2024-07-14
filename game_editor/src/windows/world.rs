@@ -12,6 +12,7 @@ use game_common::components::{Color, PointLight, PrimaryCamera};
 use game_common::components::{MeshInstance, Transform};
 use game_common::entity::EntityId;
 use game_common::world::World;
+use game_core::logger::init;
 use game_core::modules::Modules;
 use game_input::keyboard::KeyCode;
 use game_input::mouse::{MouseButton, MouseMotion, MouseWheel};
@@ -44,6 +45,9 @@ pub struct WorldWindowState {
     edit_op: EditOperation,
     events: mpsc::Receiver<Event>,
     update_components_panel: bool,
+    // Whether on_world_change should be called in the next frame.
+    entites_changed: bool,
+    on_world_change: Option<Callback<OnWorldChangeEvent>>,
 }
 
 impl WorldWindowState {
@@ -52,6 +56,8 @@ impl WorldWindowState {
         window_id: WindowId,
         world: &mut World,
         modules: Modules,
+        on_world_change: Option<Callback<OnWorldChangeEvent>>,
+        initial_world: World,
     ) -> Self {
         let (writer, reader) = mpsc::channel();
 
@@ -64,40 +70,54 @@ impl WorldWindowState {
         );
         world.insert_typed(camera, PrimaryCamera);
 
-        let mut light = world.spawn();
-        world.insert_typed(light, Transform::from_translation(Vec3::new(0.0, 1.0, 0.0)));
-        world.insert_typed(
-            light,
-            PointLight {
-                color: Color::WHITE,
-                intensity: 100.0,
-                radius: 100.0,
-            },
-        );
+        for (index, id) in initial_world.entities().enumerate() {
+            let entity = world.spawn();
 
-        let mut obj = world.spawn();
-        world.insert_typed(obj, Transform::default());
-        world.insert_typed(
-            obj,
-            MeshInstance {
-                path: "../game_client/sponza.glb".into(),
-            },
-        );
+            for (id, component) in initial_world.components(id).iter() {
+                world.insert(entity, id, component.clone());
+            }
 
-        {
-            state.lock().entities = vec![
-                Entity {
-                    id: light,
-                    name: "Point Light".into(),
-                    is_selected: false,
-                },
-                Entity {
-                    id: obj,
-                    name: "Obj".into(),
-                    is_selected: false,
-                },
-            ];
+            state.lock().entities.push(Entity {
+                id: entity,
+                name: format!("<entity {}>", index).into(),
+                is_selected: false,
+            });
         }
+
+        // let mut light = world.spawn();
+        // world.insert_typed(light, Transform::from_translation(Vec3::new(0.0, 1.0, 0.0)));
+        // world.insert_typed(
+        //     light,
+        //     PointLight {
+        //         color: Color::WHITE,
+        //         intensity: 100.0,
+        //         radius: 100.0,
+        //     },
+        // );
+
+        // let mut obj = world.spawn();
+        // world.insert_typed(obj, Transform::default());
+        // world.insert_typed(
+        //     obj,
+        //     MeshInstance {
+        //         path: "../game_client/sponza.glb".into(),
+        //     },
+        // );
+
+        // {
+        //     state.lock().entities = vec![
+        //         Entity {
+        //             id: light,
+        //             name: "Point Light".into(),
+        //             is_selected: false,
+        //         },
+        //         Entity {
+        //             id: obj,
+        //             name: "Obj".into(),
+        //             is_selected: false,
+        //         },
+        //     ];
+        // }
         let cb = { state.lock().entities_changed.clone() };
         cb.call(());
 
@@ -109,6 +129,8 @@ impl WorldWindowState {
             state,
             events: reader,
             update_components_panel: false,
+            on_world_change,
+            entites_changed: false,
         }
     }
 
@@ -335,11 +357,20 @@ impl WorldWindowState {
     fn confirm_edit_op(&mut self, renderer: &mut Renderer) {
         self.edit_op.set_mode(EditMode::None);
         self.edit_op.confirm();
+
+        self.entites_changed = true;
     }
 
     pub fn update(&mut self, world: &mut World) {
         while let Ok(event) = self.events.try_recv() {
             tracing::debug!("event from scene ui: {:?}", event);
+
+            if matches!(
+                &event,
+                Event::Spawn | Event::UpdateComponent(_, _) | Event::DeleteComponent(_)
+            ) {
+                self.entites_changed = true;
+            }
 
             match event {
                 Event::Spawn => {
@@ -428,6 +459,21 @@ impl WorldWindowState {
             cb.call(());
 
             self.update_components_panel = false;
+        }
+
+        if self.entites_changed {
+            if let Some(cb) = &self.on_world_change {
+                tracing::trace!("entities changed");
+
+                let state = self.state.lock();
+
+                cb.call(OnWorldChangeEvent {
+                    world: world.clone(),
+                    entities: state.entities.iter().map(|e| e.id).collect(),
+                });
+            }
+
+            self.entites_changed = false;
         }
     }
 }
@@ -563,4 +609,10 @@ impl Mode {
     const NONE: Self = Self::from_bits_truncate(0b00);
     const ROTATE: Self = Self::from_bits_truncate(0b01);
     const TRANSLATE: Self = Self::from_bits_truncate(0b11);
+}
+
+#[derive(Clone, Debug)]
+pub struct OnWorldChangeEvent {
+    pub world: World,
+    pub entities: Vec<EntityId>,
 }

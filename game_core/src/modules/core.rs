@@ -465,6 +465,14 @@ fn load_core_records(data: &mut ModuleData) {
                 keys: Vec::new(),
             },
         ),
+        (
+            RecordKind::PREFAB.0.record,
+            "Prefab",
+            RecordDescriptor {
+                component: RecordReference::STUB,
+                keys: Vec::new(),
+            },
+        ),
     ] {
         data.records.insert(Record {
             id,

@@ -76,7 +76,7 @@ impl UiState {
     }
 
     pub fn update(&mut self) {
-        let _span = trace_span!("UiState::update");
+        let _span = trace_span!("UiState::update").entered();
 
         let rt = &mut *self.runtime.inner.lock();
         let mut docs = Vec::new();

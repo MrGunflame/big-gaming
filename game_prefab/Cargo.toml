@@ -1,0 +1,17 @@
+[package]
+name = "game_prefab"
+version = "0.1.0"
+edition = "2021"
+authors = ["MrGunflame <git@robbsrv.de>"]
+license = "GPL-3.0-or-later"
+
+[dependencies]
+game_common = { version = "0.1.0", path = "../game_common" }
+game_wasm = { version = "0.1.0", path = "../game_wasm" }
+
+serde = { version = "1.0.204", features = ["derive"] }
+bincode = "1.3.3"
+thiserror = "1.0.61"
+
+[lints]
+workspace = true
