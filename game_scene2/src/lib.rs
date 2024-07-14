@@ -8,8 +8,8 @@ use game_common::world::World;
 use game_wasm::encoding::{decode_fields, encode_fields, BinaryWriter};
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
-pub struct SceneFile {
+#[derive(Clone, Debug, Default)]
+pub struct Prefab {
     // EntityId => [RecordReference => RawComponent]
     entities: HashMap<u64, HashMap<String, EncodedComponent>>,
 }
@@ -20,16 +20,16 @@ struct EncodedComponent {
     fields: Vec<u8>,
 }
 
-impl SceneFile {
+impl Prefab {
     pub fn new() -> Self {
         Self {
             entities: HashMap::new(),
         }
     }
 
-    pub fn add(&mut self, id: EntityId, entity: &World) {
+    pub fn add(&mut self, id: EntityId, world: &World) {
         let mut components = HashMap::new();
-        for (id, component) in entity.components(id).iter() {
+        for (id, component) in world.components(id).iter() {
             components.insert(
                 id.to_string(),
                 EncodedComponent {
@@ -81,4 +81,18 @@ impl SceneFile {
             }
         }
     }
+
+    pub fn to_bytes(&self) -> Vec<u8> {
+        bincode::serialize(&self.entities).unwrap()
+    }
+
+    pub fn from_bytes(bytes: Vec<u8>) -> Result<Self, Error> {
+        let entities = bincode::deserialize(&bytes).map_err(Error::Decode)?;
+        Ok(Self { entities })
+    }
+}
+
+#[derive(Debug)]
+pub enum Error {
+    Decode(bincode::Error),
 }

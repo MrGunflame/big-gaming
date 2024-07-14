@@ -44,6 +44,9 @@ pub struct WorldWindowState {
     edit_op: EditOperation,
     events: mpsc::Receiver<Event>,
     update_components_panel: bool,
+    // Whether on_world_change should be called in the next frame.
+    entites_changed: bool,
+    on_world_change: Option<Callback<OnWorldChangeEvent>>,
 }
 
 impl WorldWindowState {
@@ -52,6 +55,7 @@ impl WorldWindowState {
         window_id: WindowId,
         world: &mut World,
         modules: Modules,
+        on_world_change: Option<Callback<OnWorldChangeEvent>>,
     ) -> Self {
         let (writer, reader) = mpsc::channel();
 
@@ -109,6 +113,8 @@ impl WorldWindowState {
             state,
             events: reader,
             update_components_panel: false,
+            on_world_change,
+            entites_changed: false,
         }
     }
 
@@ -335,11 +341,20 @@ impl WorldWindowState {
     fn confirm_edit_op(&mut self, renderer: &mut Renderer) {
         self.edit_op.set_mode(EditMode::None);
         self.edit_op.confirm();
+
+        self.entites_changed = true;
     }
 
     pub fn update(&mut self, world: &mut World) {
         while let Ok(event) = self.events.try_recv() {
             tracing::debug!("event from scene ui: {:?}", event);
+
+            if matches!(
+                &event,
+                Event::Spawn | Event::UpdateComponent(_, _) | Event::DeleteComponent(_)
+            ) {
+                self.entites_changed = true;
+            }
 
             match event {
                 Event::Spawn => {
@@ -428,6 +443,21 @@ impl WorldWindowState {
             cb.call(());
 
             self.update_components_panel = false;
+        }
+
+        if self.entites_changed {
+            if let Some(cb) = &self.on_world_change {
+                tracing::trace!("entities changed");
+
+                let state = self.state.lock();
+
+                cb.call(OnWorldChangeEvent {
+                    world: world.clone(),
+                    entities: state.entities.iter().map(|e| e.id).collect(),
+                });
+            }
+
+            self.entites_changed = false;
         }
     }
 }
@@ -563,4 +593,10 @@ impl Mode {
     const NONE: Self = Self::from_bits_truncate(0b00);
     const ROTATE: Self = Self::from_bits_truncate(0b01);
     const TRANSLATE: Self = Self::from_bits_truncate(0b11);
+}
+
+#[derive(Clone, Debug)]
+pub struct OnWorldChangeEvent {
+    pub world: World,
+    pub entities: Vec<EntityId>,
 }

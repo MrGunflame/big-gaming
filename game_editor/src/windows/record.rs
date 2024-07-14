@@ -11,6 +11,8 @@ use parking_lot::Mutex;
 
 use crate::state::EditorState;
 
+use super::SpawnWindow;
+
 #[derive(Debug)]
 pub struct EditRecord {
     pub kind: RecordKind,
@@ -57,7 +59,7 @@ impl Widget for EditRecord {
                     let edit_state = edit_state.clone();
                     move |index| {
                         let module: &Module = &modules[index];
-                        let mut edit_state = edit_state.lock();
+                        let mut edit_state = edit_state.try_lock().unwrap();
                         edit_state.module = Some(module.id);
                     }
                 }),
@@ -69,7 +71,7 @@ impl Widget for EditRecord {
             .on_change({
                 let edit_state = edit_state.clone();
                 move |value| {
-                    let mut edit_state = edit_state.lock();
+                    let mut edit_state = edit_state.try_lock().unwrap();
                     edit_state.record.name = value;
                 }
             })
@@ -94,6 +96,16 @@ impl Widget for EditRecord {
 
                 EditRecordRecord { state, edit_state }.mount(&root);
             }
+            RecordKind::PREFAB => {
+                let state = self.state.clone();
+                let edit_state = edit_state.clone();
+
+                EditPrefabRecord {
+                    edit_state: edit_state,
+                    state,
+                }
+                .mount(&root);
+            }
             _ => todo!(),
         }
 
@@ -116,6 +128,7 @@ impl Widget for EditRecord {
                     self.state.records.take_id(module)
                 };
 
+                tracing::debug!("create record with id {}", edit_state.record.id);
                 self.state.records.insert(module, edit_state.record.clone());
             })
             .mount(&root);
@@ -183,8 +196,33 @@ impl Widget for EditRecordRecord {
 }
 
 #[derive(Clone, Debug)]
-struct EditState {
-    module: Option<ModuleId>,
-    id: Option<RecordReference>,
-    record: Record,
+pub(super) struct EditState {
+    pub module: Option<ModuleId>,
+    pub id: Option<RecordReference>,
+    pub record: Record,
+}
+
+#[derive(Clone, Debug)]
+struct EditPrefabRecord {
+    state: EditorState,
+    edit_state: Arc<Mutex<EditState>>,
+}
+
+impl Widget for EditPrefabRecord {
+    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+        let root = Container::new().mount(parent);
+
+        let button = Button::new()
+            .on_click(move |()| {
+                let edit_state = self.edit_state.clone();
+                self.state
+                    .spawn_windows
+                    .send(SpawnWindow::EditPrefab(edit_state))
+                    .unwrap();
+            })
+            .mount(&root);
+        Text::new("Edit in 3D").mount(&button);
+
+        root
+    }
 }
