@@ -212,6 +212,11 @@ impl<T> Arena<T> {
         self.free_head = None;
     }
 
+    /// Returns an `Iterator` over all keys in the `Arena`.
+    pub fn keys(&self) -> Keys<'_, T> {
+        Keys { iter: self.iter() }
+    }
+
     pub fn values(&self) -> Values<'_, T> {
         Values { iter: self.iter() }
     }
@@ -385,6 +390,36 @@ impl<'a, T> ExactSizeIterator for IterMut<'a, T> {
 
 impl<'a, T> FusedIterator for IterMut<'a, T> {}
 
+/// An `Iterator` over the keys in a [`Arena`].
+///
+/// Returned by [`keys`].
+///
+/// `keys`: Arena::keys
+#[derive(Clone, Debug)]
+pub struct Keys<'a, T> {
+    iter: Iter<'a, T>,
+}
+
+impl<'a, T> Iterator for Keys<'a, T> {
+    type Item = Key;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next().map(|(k, _)| k)
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.iter.size_hint()
+    }
+}
+
+impl<'a, T> ExactSizeIterator for Keys<'a, T> {
+    fn len(&self) -> usize {
+        self.iter.len()
+    }
+}
+
+impl<'a, T> FusedIterator for Keys<'a, T> {}
+
 #[derive(Clone, Debug)]
 pub struct Values<'a, T> {
     iter: Iter<'a, T>,
@@ -437,5 +472,12 @@ mod tests {
         }
 
         assert_eq!(arena.len(), 0);
+    }
+
+    #[test]
+    fn arena_keys() {
+        let mut arena = Arena::new();
+        let keys = (0..16).map(|index| arena.insert(index)).collect::<Vec<_>>();
+        assert_eq!(arena.keys().collect::<Vec<_>>(), keys);
     }
 }
