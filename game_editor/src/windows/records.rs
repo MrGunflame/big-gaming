@@ -190,6 +190,7 @@ impl Widget for RecordList {
             })),
             edit_entry: Some(Callback::from({
                 let state = self.state.clone();
+                let records = records.clone();
 
                 move |index| {
                     let (module, record): &(ModuleId, Record) = &records[index];
@@ -206,7 +207,15 @@ impl Widget for RecordList {
                         .unwrap();
                 }
             })),
-            remove_entry: None,
+            remove_entry: Some(Callback::from({
+                let state = self.state.clone();
+
+                move |index| {
+                    let (module, record): &(ModuleId, Record) = &records[index];
+
+                    state.records.remove(*module, record.id);
+                }
+            })),
         };
         Entries { data }.mount(&root);
 

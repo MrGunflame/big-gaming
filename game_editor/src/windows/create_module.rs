@@ -20,12 +20,41 @@ pub struct CreateModule {
 
 impl Widget for CreateModule {
     fn mount<T>(self, parent: &Context<T>) -> Context<()> {
-        let fields = Arc::new(Mutex::new(Fields {
-            id: ModuleId::random(),
-            name: String::new(),
-            version: Version,
-            dependencies: Vec::new(),
-        }));
+        EditModule {
+            modules: self.modules,
+            id: None,
+        }
+        .mount(parent)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct EditModule {
+    pub modules: Modules,
+    pub id: Option<ModuleId>,
+}
+
+impl Widget for EditModule {
+    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+        let fields = if let Some(id) = self.id {
+            let module = self.modules.get(id).unwrap();
+
+            Fields {
+                id: module.module.id,
+                name: module.module.name,
+                version: module.module.version,
+                dependencies: module.module.dependencies,
+            }
+        } else {
+            Fields {
+                id: ModuleId::random(),
+                name: String::new(),
+                version: Version,
+                dependencies: Vec::new(),
+            }
+        };
+
+        let fields = Arc::new(Mutex::new(fields));
 
         let style = Style {
             justify: Justify::SpaceBetween,
@@ -70,6 +99,7 @@ impl Widget for CreateModule {
                 let fields = fields.clone();
                 move |s| fields.lock().name = s
             })
+            .value(fields.lock().name.clone())
             .mount(&val_col);
 
         let bottom = Container::new()
@@ -111,7 +141,7 @@ fn on_create(modules: Modules, fields: Arc<Mutex<Fields>>) -> Callback<()> {
     })
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct Fields {
     id: ModuleId,
     name: String,
