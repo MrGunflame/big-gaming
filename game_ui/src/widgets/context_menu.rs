@@ -14,6 +14,7 @@ use crate::widgets::{Callback, Container, Widget};
 pub struct ContextPanel {
     spawn_menu: Callback<ContextMenuState>,
     style: Style,
+    priority: u32,
 }
 
 impl ContextPanel {
@@ -21,6 +22,7 @@ impl ContextPanel {
         Self {
             spawn_menu: Callback::from(|_| {}),
             style: Style::default(),
+            priority: 0,
         }
     }
 
@@ -34,6 +36,19 @@ impl ContextPanel {
         F: Into<Callback<ContextMenuState>>,
     {
         self.spawn_menu = f.into();
+        self
+    }
+
+    /// Sets the priority of this `ContextPanel`.
+    ///
+    /// If multiple `ContextPanel`s are clicked at the same time the panel with the highest
+    /// priority is chosen. If the priority is equal for all panels any panel may be chosen.
+    ///
+    /// Defaults to `0`.
+    #[inline]
+    #[must_use]
+    pub fn priority(mut self, priority: u32) -> Self {
+        self.priority = priority;
         self
     }
 }
@@ -58,7 +73,8 @@ impl Widget for ContextPanel {
                 }
 
                 let mut parents = state.parents.try_lock().unwrap();
-                parents.retain(|(p_ctx, _)| p_ctx.node().unwrap() != node);
+                parents.retain(|item| item.node.node().unwrap() != node);
+                parents.sort_by(|a, b| a.priority.cmp(&b.priority).reverse());
 
                 // We just destroyed the last context menu parent element.
                 // Remove the remaining state from the document.
@@ -69,18 +85,24 @@ impl Widget for ContextPanel {
         );
 
         if let Some(state) = parent.document().get::<InternalContextMenuState>() {
-            state
-                .parents
-                .try_lock()
-                .unwrap()
-                .push((wrapper.clone(), self.spawn_menu));
+            let mut parents = state.parents.try_lock().unwrap();
+            parents.push(ContextMenuItem {
+                node: wrapper.clone(),
+                callback: self.spawn_menu,
+                priority: self.priority,
+            });
+            parents.sort_by(|a, b| a.priority.cmp(&b.priority).reverse());
         } else {
             let state = InternalContextMenuState::default();
-            state
-                .parents
-                .try_lock()
-                .unwrap()
-                .push((wrapper.clone(), self.spawn_menu));
+            let mut parents = state.parents.try_lock().unwrap();
+            parents.push(ContextMenuItem {
+                node: wrapper.clone(),
+                callback: self.spawn_menu,
+                priority: self.priority,
+            });
+            parents.sort_by(|a, b| a.priority.cmp(&b.priority).reverse());
+            drop(parents);
+
             parent.document().insert(state);
 
             parent
@@ -115,13 +137,13 @@ impl Widget for ContextPanel {
                     }
 
                     let parents = state.parents.try_lock().unwrap();
-                    for (node, cb) in parents.iter() {
-                        let Some(layout) = ctx.layout(node.node().unwrap()) else {
+                    for item in parents.iter() {
+                        let Some(layout) = ctx.layout(item.node.node().unwrap()) else {
                             continue;
                         };
 
                         if layout.contains(cursor) {
-                            *active = Some(node.node().unwrap());
+                            *active = Some(item.node.node().unwrap());
 
                             let ctx2 = ctx.clone();
                             let closer = Callback::from(move |()| {
@@ -140,10 +162,10 @@ impl Widget for ContextPanel {
                                     position: Position::Absolute(cursor),
                                     ..Default::default()
                                 })
-                                .mount(node);
+                                .mount(&item.node);
 
                             *active = Some(menu_ctx.node().unwrap());
-                            let cb = cb.clone();
+                            let cb = item.callback.clone();
                             drop(parents);
                             drop(active);
 
@@ -181,6 +203,13 @@ impl ContextMenuCloser {
 
 #[derive(Debug, Default)]
 struct InternalContextMenuState {
-    parents: Mutex<Vec<(Context<()>, Callback<ContextMenuState>)>>,
+    parents: Mutex<Vec<ContextMenuItem>>,
     active: Mutex<Option<NodeId>>,
+}
+
+#[derive(Debug)]
+struct ContextMenuItem {
+    node: Context<()>,
+    callback: Callback<ContextMenuState>,
+    priority: u32,
 }
