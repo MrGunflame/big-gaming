@@ -3,7 +3,6 @@ use core::str::FromStr;
 
 use alloc::vec::Vec;
 use bytemuck::{Pod, Zeroable};
-use hex::FromHexError;
 
 use crate::encoding::{Decode, Encode};
 use crate::raw::record::{record_data_copy, record_data_len};
@@ -128,33 +127,25 @@ impl FromStr for RecordId {
     type Err = ParseRecordIdError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let bytes = hex::decode(s).map_err(ParseRecordIdError::InvalidHex)?;
-
-        if bytes.is_empty() || bytes.len() > 4 {
-            return Err(ParseRecordIdError::Length(bytes.len()));
+        if s.is_empty() || s.len() > 8 {
+            return Err(ParseRecordIdError::Length(s.len()));
         }
 
         let mut bits = 0;
-        match bytes.len() {
-            1 => {
-                bits += bytes[0] as u32;
-            }
-            2 => {
-                bits += (bytes[0] as u32) << 8;
-                bits += bytes[1] as u32;
-            }
-            3 => {
-                bits += (bytes[0] as u32) << 16;
-                bits += (bytes[1] as u32) << 8;
-                bits += bytes[2] as u32;
-            }
-            4 => {
-                bits += (bytes[0] as u32) << 24;
-                bits += (bytes[1] as u32) << 16;
-                bits += (bytes[2] as u32) << 8;
-                bits += bytes[3] as u32;
-            }
-            _ => unreachable!(),
+        for (index, &byte) in s.as_bytes().iter().enumerate() {
+            let nibble = match byte {
+                b'0'..=b'9' => byte - b'0',
+                b'a'..=b'f' => 10 + byte - b'a',
+                b'A'..=b'F' => 10 + byte - b'A',
+                _ => {
+                    return Err(ParseRecordIdError::InvalidChar {
+                        char: byte as char,
+                        index,
+                    })
+                }
+            };
+
+            bits = (bits << 4) + u32::from(nibble);
         }
 
         Ok(Self(bits))
@@ -164,14 +155,16 @@ impl FromStr for RecordId {
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum ParseRecordIdError {
     Length(usize),
-    InvalidHex(FromHexError),
+    InvalidChar { char: char, index: usize },
 }
 
 impl Display for ParseRecordIdError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::Length(len) => write!(f, "invalid string length: {}, expected 4", len),
-            Self::InvalidHex(err) => write!(f, "invalid hex: {}", err),
+            Self::InvalidChar { char, index } => {
+                write!(f, "invalid hex char at {}: {}", index, char)
+            }
         }
     }
 }
@@ -390,6 +383,13 @@ mod tests {
 
         let string = id.to_string();
         assert_eq!(string.parse::<ModuleId>(), Ok(id));
+    }
+
+    #[test]
+    fn parse_record_id_half() {
+        let input = "1";
+        let output = RecordId(1);
+        assert_eq!(input.parse::<RecordId>().unwrap(), output);
     }
 
     #[test]
