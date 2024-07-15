@@ -10,6 +10,7 @@ mod world;
 
 use std::sync::Arc;
 
+use create_module::EditModule;
 use game_common::world::World;
 use game_data::record::RecordKind;
 use game_render::camera::RenderTarget;
@@ -18,6 +19,7 @@ use game_tracing::trace_span;
 use game_ui::reactive::DocumentId;
 use game_ui::widgets::Widget;
 use game_ui::UiState;
+use game_wasm::record::ModuleId;
 use game_wasm::world::RecordReference;
 use game_window::events::WindowEvent;
 use game_window::windows::WindowId;
@@ -110,6 +112,13 @@ pub fn spawn_window(
             }
             .mount(&ctx);
         }
+        SpawnWindow::EditModule(id) => {
+            EditModule {
+                modules: state.modules,
+                id: Some(id),
+            }
+            .mount(&ctx);
+        }
         SpawnWindow::Records => {
             Records { state }.mount(&ctx);
         }
@@ -145,6 +154,7 @@ pub enum SpawnWindow {
     MainWindow,
     Modules,
     CreateModule,
+    EditModule(ModuleId),
     OpenModule,
     Records,
     View,

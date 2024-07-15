@@ -4,6 +4,9 @@ use game_ui::widgets::{
     Button, Callback, Container, ContextMenuState, ContextPanel, Table, Text, Widget,
 };
 
+const ROOT_CTX_PRIORITY: u32 = 0;
+const CELL_CTX_PRIORITY: u32 = 1;
+
 #[derive(Debug)]
 pub struct EntriesData {
     pub keys: Vec<String>,
@@ -42,12 +45,8 @@ impl Widget for Entries {
                 ..Default::default()
             })
             .spawn_menu(spawn_root_ctx_menu(&callbacks))
+            .priority(ROOT_CTX_PRIORITY)
             .mount(parent);
-
-        let cell_style = Style {
-            padding: Padding::splat(Size::Pixels(5)),
-            ..Default::default()
-        };
 
         let header = self
             .data
@@ -172,6 +171,7 @@ impl<'a> Widget for TableCell<'a> {
     fn mount<T>(self, parent: &Context<T>) -> Context<()> {
         let context_menu = ContextPanel::new()
             .spawn_menu(spawn_ctx_menu(&self.callbacks, self.index))
+            .priority(CELL_CTX_PRIORITY)
             .mount(parent);
         Text::new(self.label).mount(&context_menu);
         context_menu
