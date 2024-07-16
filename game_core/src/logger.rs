@@ -102,14 +102,11 @@ impl<S> Layer<S> for Logger
 where
     S: Subscriber + for<'a> LookupSpan<'a>,
 {
-    // fn enabled(&self, metadata: &Metadata<'_>, _ctx: Context<'_, S>) -> bool {
-    // }
-
-    fn event_enabled(&self, event: &Event<'_>, _ctx: Context<'_, S>) -> bool {
-        *event.metadata().level() <= self.level
-    }
-
     fn on_event(&self, event: &Event<'_>, _ctx: Context<'_, S>) {
+        if *event.metadata().level() > self.level {
+            return;
+        }
+
         let mut visitor = Visitor::new();
         event.record(&mut visitor);
 
