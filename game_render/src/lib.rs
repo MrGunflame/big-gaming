@@ -16,9 +16,12 @@ pub mod texture;
 
 mod debug;
 mod depth_stencil;
+mod fps_limiter;
 mod pipelined_rendering;
 mod post_process;
 mod state;
+
+pub use fps_limiter::FpsLimit;
 
 use std::collections::{HashMap, VecDeque};
 use std::future::Future;
@@ -294,6 +297,10 @@ impl Renderer {
             }
         }
     }
+
+    pub fn set_fps_limit(&mut self, limit: FpsLimit) {
+        self.jobs.push_back(Job::SetFpsLimit(limit));
+    }
 }
 
 #[derive(Debug)]
@@ -306,6 +313,7 @@ enum SurfaceEvent {
 #[derive(Debug)]
 enum Job {
     TextureToBuffer(RenderImageId, tokio::sync::oneshot::Sender<Vec<u8>>),
+    SetFpsLimit(FpsLimit),
 }
 
 pub struct ReadTexture {

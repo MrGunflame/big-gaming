@@ -15,6 +15,7 @@ use wgpu::{
 };
 
 use crate::camera::RenderTarget;
+use crate::fps_limiter::{FpsLimit, FpsLimiter};
 use crate::graph::{RenderContext, RenderGraph};
 use crate::mipmap::MipMapGenerator;
 use crate::surface::RenderSurfaces;
@@ -37,6 +38,7 @@ pub struct SharedState {
     /// Unparker for the calling thread.
     main_unparker: Arc<Parker>,
     pub jobs: UnsafeRefCell<VecDeque<Job>>,
+    fps_limiter: UnsafeRefCell<FpsLimiter>,
 }
 
 pub struct Pipeline {
@@ -67,6 +69,7 @@ impl Pipeline {
             main_unparker,
             render_textures: UnsafeRefCell::new(HashMap::new()),
             jobs: UnsafeRefCell::new(VecDeque::new()),
+            fps_limiter: UnsafeRefCell::new(FpsLimiter::new(FpsLimit::UNLIMITED)),
         });
 
         let render_unparker = start_render_thread(shared.clone());
@@ -136,6 +139,7 @@ unsafe fn execute_render(shared: &SharedState) {
     let surfaces = unsafe { shared.surfaces.get() };
     let graph = unsafe { shared.graph.get() };
     let mut mipmap = unsafe { shared.mipmap_generator.get_mut() };
+    let mut fps_limiter = unsafe { shared.fps_limiter.get_mut() };
 
     let mut encoder = shared
         .device
@@ -220,6 +224,9 @@ unsafe fn execute_render(shared: &SharedState) {
     let mut jobs = unsafe { shared.jobs.get_mut() };
     for job in jobs.drain(..) {
         match job {
+            Job::SetFpsLimit(limit) => {
+                *fps_limiter = FpsLimiter::new(limit);
+            }
             Job::TextureToBuffer(id, tx) => {
                 let texture = render_textures.get(&id).unwrap();
 
@@ -268,6 +275,8 @@ unsafe fn execute_render(shared: &SharedState) {
     }
 
     shared.queue.submit(std::iter::once(encoder.finish()));
+
+    fps_limiter.block_until_ready();
 
     for output in outputs {
         output.present();
