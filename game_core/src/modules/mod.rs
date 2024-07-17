@@ -405,31 +405,31 @@ mod tests {
         let dep1 = DataBuffer::new(Module {
             id: ModuleId::random(),
             name: String::from("Dependency 1"),
-            version: Version,
+            version: Version::PLACEHOLDER,
             dependencies: vec![],
         });
 
         let dep2 = DataBuffer::new(Module {
             id: ModuleId::random(),
             name: String::from("Dependency 2"),
-            version: Version,
+            version: Version::PLACEHOLDER,
             dependencies: vec![],
         });
 
         let module = DataBuffer::new(Module {
             id: ModuleId::random(),
             name: String::from("module"),
-            version: Version,
+            version: Version::PLACEHOLDER,
             dependencies: vec![
                 Dependency {
                     id: dep1.header.module.id,
                     name: Some(dep1.header.module.name.clone()),
-                    version: dep1.header.module.version,
+                    version: dep1.header.module.version.clone(),
                 },
                 Dependency {
                     id: dep2.header.module.id,
                     name: Some(dep2.header.module.name.clone()),
-                    version: dep2.header.module.version,
+                    version: dep2.header.module.version.clone(),
                 },
             ],
         });
@@ -453,29 +453,29 @@ mod tests {
         let dep1 = DataBuffer::new(Module {
             id: ModuleId::random(),
             name: String::from("Dependency 1"),
-            version: Version,
+            version: Version::PLACEHOLDER,
             dependencies: vec![],
         });
 
         let dep2 = DataBuffer::new(Module {
             id: ModuleId::random(),
             name: String::from("Dependency 2"),
-            version: Version,
+            version: Version::PLACEHOLDER,
             dependencies: vec![Dependency {
                 id: dep1.header.module.id,
                 name: Some(dep1.header.module.name.clone()),
-                version: dep1.header.module.version,
+                version: dep1.header.module.version.clone(),
             }],
         });
 
         let module = DataBuffer::new(Module {
             id: ModuleId::random(),
             name: String::from("module"),
-            version: Version,
+            version: Version::PLACEHOLDER,
             dependencies: vec![Dependency {
                 id: dep2.header.module.id,
                 name: Some(dep2.header.module.name.clone()),
-                version: dep2.header.module.version,
+                version: dep2.header.module.version.clone(),
             }],
         });
 
@@ -498,14 +498,14 @@ mod tests {
         let module1 = DataBuffer::new(Module {
             id,
             name: String::from("module1"),
-            version: Version,
+            version: Version::PLACEHOLDER,
             dependencies: vec![],
         });
 
         let module2 = DataBuffer::new(Module {
             id,
             name: String::from("module2"),
-            version: Version,
+            version: Version::PLACEHOLDER,
             dependencies: vec![],
         });
 
