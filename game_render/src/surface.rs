@@ -154,7 +154,10 @@ fn get_surface_present_mode(modes: &[PresentMode]) -> Option<PresentMode> {
     // TODO: FIFO is always supported, but
     // support other (better) modes is beneficial.
     for mode in modes {
-        if *mode == PresentMode::Fifo {
+        // FIFO currently does not work on Wayland, so this is stuck
+        // on immediate until https://github.com/MrGunflame/big-gaming/issues/220
+        // is resolved.
+        if *mode == PresentMode::Immediate {
             return Some(*mode);
         }
     }
