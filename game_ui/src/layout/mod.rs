@@ -61,6 +61,10 @@ impl LayoutTree {
     pub fn resize(&mut self, size: UVec2) {
         self.size = size;
         self.changed = true;
+
+        for layout in self.layouts.values_mut() {
+            layout.has_changed = true;
+        }
     }
 
     /// Inserts a new [`Element`] at the given `index`.
