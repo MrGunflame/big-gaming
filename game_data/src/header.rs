@@ -1,7 +1,8 @@
 use bytes::{Buf, BufMut};
-use game_common::module::{Dependency, Module, ModuleId, Version};
+use game_common::module::{Dependency, Module, ModuleId, PreRelease, Version};
 use thiserror::Error;
 
+use crate::varint::VarU64;
 use crate::{Decode, Encode, EofError};
 
 pub const MAGIC: [u8; 4] = [0, 0, 0, 0];
@@ -90,6 +91,8 @@ pub enum ModuleError {
     Id(<ModuleId as Decode>::Error),
     #[error("failed to decode name: {0}")]
     Name(<String as Decode>::Error),
+    #[error("failed to decode version: {0}")]
+    Version(<Version as Decode>::Error),
     #[error("failed to decode dependencies: {0}")]
     Dependencies(<Vec<Dependency> as Decode>::Error),
 }
@@ -101,7 +104,7 @@ impl Encode for Module {
     {
         self.id.encode(&mut buf);
         self.name.encode(&mut buf);
-        // self.version
+        self.version.encode(&mut buf);
         self.dependencies.encode(&mut buf);
     }
 }
@@ -115,12 +118,13 @@ impl Decode for Module {
     {
         let id = ModuleId::decode(&mut buf).map_err(ModuleError::Id)?;
         let name = String::decode(&mut buf).map_err(ModuleError::Name)?;
+        let version = Version::decode(&mut buf).map_err(ModuleError::Version)?;
         let dependencies = Vec::decode(&mut buf).map_err(ModuleError::Dependencies)?;
 
         Ok(Self {
             id,
             name,
-            version: Version,
+            version,
             dependencies,
         })
     }
@@ -160,7 +164,53 @@ impl Decode for Dependency {
         Ok(Self {
             id,
             name: Some(name),
-            version: Version,
+            // TODO: Provide a dependency requirement here.
+            version: Version::new(0, 0, 0),
+        })
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Error)]
+pub enum VersionError {
+    #[error("bad major: {0}")]
+    Major(<VarU64 as Decode>::Error),
+    #[error("bad minor: {0}")]
+    Minor(<VarU64 as Decode>::Error),
+    #[error("bad patch: {0}")]
+    Patch(<VarU64 as Decode>::Error),
+    #[error("bad pre-release: {0}")]
+    PreRelease(<String as Decode>::Error),
+}
+
+impl Encode for Version {
+    fn encode<B>(&self, mut buf: B)
+    where
+        B: BufMut,
+    {
+        VarU64(self.major).encode(&mut buf);
+        VarU64(self.minor).encode(&mut buf);
+        VarU64(self.patch).encode(&mut buf);
+        self.pre_release.as_str().encode(&mut buf);
+    }
+}
+
+impl Decode for Version {
+    type Error = VersionError;
+
+    fn decode<B>(mut buf: B) -> Result<Self, Self::Error>
+    where
+        B: Buf,
+    {
+        let VarU64(major) = VarU64::decode(&mut buf).map_err(VersionError::Major)?;
+        let VarU64(minor) = VarU64::decode(&mut buf).map_err(VersionError::Minor)?;
+        let VarU64(patch) = VarU64::decode(&mut buf).map_err(VersionError::Patch)?;
+        let pre_release = String::decode(&mut buf).map_err(VersionError::PreRelease)?;
+
+        Ok(Self {
+            major,
+            minor,
+            patch,
+            pre_release: PreRelease::new(&pre_release),
         })
     }
 }
@@ -176,11 +226,11 @@ mod tests {
         let module = Module {
             id: ModuleId::CORE,
             name: String::from("test"),
-            version: Version,
+            version: Version::new(1, 0, 0),
             dependencies: vec![Dependency {
                 id: ModuleId::CORE,
                 name: Some(String::from("dep")),
-                version: Version,
+                version: Version::new(0, 0, 0),
             }],
         };
 

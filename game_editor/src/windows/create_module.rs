@@ -14,6 +14,9 @@ use crate::state::module::{EditorModule, Modules};
 
 const BACKGROUND_COLOR: Background = Background::Color(Rgba([0x35, 0x35, 0x35, 0xFF]));
 
+/// The `Version` that newly created modules start with by default.
+const DEFAULT_VERSION: Version = Version::new(0, 1, 0);
+
 pub struct CreateModule {
     pub modules: Modules,
 }
@@ -49,7 +52,7 @@ impl Widget for EditModule {
             Fields {
                 id: ModuleId::random(),
                 name: String::new(),
-                version: Version,
+                version: DEFAULT_VERSION,
                 dependencies: Vec::new(),
             }
         };
@@ -128,7 +131,7 @@ fn on_create(modules: Modules, fields: Arc<Mutex<Fields>>) -> Callback<()> {
             module: Module {
                 id: fields.id,
                 name: fields.name.clone(),
-                version: fields.version,
+                version: fields.version.clone(),
                 dependencies: fields.dependencies.clone(),
             },
             path: None,
