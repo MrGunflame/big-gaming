@@ -109,17 +109,27 @@ impl FrametimeGraph {
         for sample in &self.samples {
             min = Duration::min(min, *sample);
             max = Duration::max(max, *sample);
-            sum += *sample;
+            sum = sum.saturating_add(*sample);
         }
 
-        let mean = sum / self.samples.len() as u32;
+        let mean = sum
+            .checked_div(self.samples.len() as u32)
+            .unwrap_or_default();
 
-        let mut values = 0;
+        let mut values: u64 = 0;
         for sample in &self.samples {
-            values += (sample.as_nanos().saturating_sub(mean.as_nanos())).pow(2) as u64;
+            values = values.saturating_add(
+                (sample.as_nanos().saturating_sub(mean.as_nanos()))
+                    .saturating_pow(2)
+                    .try_into()
+                    .unwrap_or(u64::MAX),
+            );
         }
-        let stddev =
-            Duration::from_nanos(f64::sqrt((values / self.samples.len() as u64) as f64) as u64);
+        let stddev = Duration::from_nanos(f64::sqrt(
+            (values
+                .checked_div(self.samples.len() as u64)
+                .unwrap_or_default()) as f64,
+        ) as u64);
 
         GraphStats {
             min,
