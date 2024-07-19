@@ -27,7 +27,7 @@ pub fn load_prefab(edit_state: &Arc<Mutex<EditState>>) -> World {
     let prefab = match Prefab::from_bytes(&edit_state.record.data) {
         Ok(prefab) => prefab,
         Err(err) => {
-            tracing::warn!("invalid prefab data: {}", err);
+            tracing::warn!("invalid prefab data: {:?}", err);
             return World::default();
         }
     };

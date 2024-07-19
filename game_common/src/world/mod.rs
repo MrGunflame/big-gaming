@@ -39,6 +39,7 @@ use ahash::{HashMap, HashSet};
 pub use cell::{CellId, CELL_SIZE, CELL_SIZE_UINT};
 use game_wasm::components::Component;
 use game_wasm::encoding::{BinaryReader, BinaryWriter, Decode};
+use game_wasm::hierarchy::Children;
 
 use crate::components::components::{Components, RawComponent};
 use crate::entity::EntityId;
@@ -117,8 +118,22 @@ impl World {
     }
 
     pub fn despawn(&mut self, id: EntityId) {
-        self.entities.remove(&id);
-        self.components.remove(&id);
+        self.despawn_recursive(id);
+    }
+
+    fn despawn_recursive(&mut self, id: EntityId) {
+        let mut despawn_queue = vec![id];
+
+        while let Some(entity) = despawn_queue.pop() {
+            if let Ok(children) = self.get_typed::<Children>(entity) {
+                for c in children.get() {
+                    despawn_queue.push(EntityId::from_raw(c.into_raw()));
+                }
+            }
+
+            self.entities.remove(&entity);
+            self.components.remove(&entity);
+        }
     }
 
     pub fn insert(&mut self, id: EntityId, component_id: RecordReference, component: RawComponent) {

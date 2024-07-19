@@ -18,6 +18,10 @@ impl Children {
         }
     }
 
+    pub fn len(&self) -> usize {
+        self.entities.len()
+    }
+
     pub fn insert(&mut self, entity: EntityId) {
         if !self.entities.contains(&entity) {
             self.entities.push(entity);
