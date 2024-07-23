@@ -17,6 +17,7 @@ workspace = true
 game_macros = { version = "0.1.0", path = "../game_macros", features = ["net"] }
 game_common = { version = "0.1.0", path = "../game_common" }
 game_wasm = { version = "0.1.0", path = "../game_wasm" }
+game_tracing = { version = "0.1.0", path = "../game_tracing" }
 
 bytes = "1.6.0"
 thiserror = "1.0.61"

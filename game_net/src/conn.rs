@@ -12,6 +12,7 @@ use std::time::{Duration, Instant};
 use futures::future::FusedFuture;
 use futures::{Sink, SinkExt, Stream, StreamExt};
 use game_common::world::control_frame::ControlFrame;
+use game_tracing::trace_span;
 use parking_lot::Mutex;
 use thiserror::Error;
 use tokio::sync::mpsc;
@@ -166,6 +167,8 @@ where
     }
 
     fn poll_read(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Error<S::Error>>> {
+        let _span = trace_span!("Connection::poll_read").entered();
+
         // Flush the send buffer before reading any packets.
         if !self.packet_queue.is_empty() {
             self.init_write()?;
@@ -283,6 +286,8 @@ where
     }
 
     fn poll_write(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), S::Error>> {
+        let _span = trace_span!("Connection::poll_write").entered();
+
         self.stream.poll_ready_unpin(cx)
     }
 
@@ -603,7 +608,10 @@ where
         _header: Header,
         body: AckAck,
     ) -> Poll<Result<(), Error<S::Error>>> {
+        tracing::trace!("got ACKACK for {:?}", body.ack_sequence);
+
         if let Some(ts) = self.ack_time_list.remove(body.ack_sequence) {
+            tracing::trace!("RTT is {}us", ts.elapsed().as_micros());
             self.rtt.lock().update(ts.elapsed().as_micros() as u32);
         }
 
@@ -696,7 +704,8 @@ where
                     }),
                 };
 
-                self.ack_time_list.insert(sequence);
+                tracing::trace!("send ACK for {:?}", ack_sequence);
+                self.ack_time_list.insert(ack_sequence);
 
                 self.packet_queue.push_back(packet);
                 return Poll::Ready(Ok(()));
@@ -792,6 +801,8 @@ where
     type Output = Result<(), Error<S::Error>>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let _span = trace_span!("Connection::poll").entered();
+
         loop {
             if self.is_writing {
                 match self.poll_write(cx) {
