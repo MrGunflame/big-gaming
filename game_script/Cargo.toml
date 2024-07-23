@@ -13,6 +13,7 @@ bytemuck = "1.16.1"
 game_common = { version = "0.1.0", path = "../game_common" }
 game_wasm = { version = "0.1.0", path = "../game_wasm", features = ["raw"] }
 game_data = { version = "0.1.0", path = "../game_data" }
+game_prefab = { version = "0.1.0", path = "../game_prefab" }
 glam = "0.28.0"
 thiserror = "1.0.61"
 tracing = "0.1.40"

@@ -56,3 +56,6 @@ pub struct Query {
     pub components_ptr: *const RecordReference,
     pub components_len: usize,
 }
+
+#[guest_only]
+pub fn prefab_spawn(id: *const RecordReference, out: *mut u64) -> u32;

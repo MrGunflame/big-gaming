@@ -35,6 +35,7 @@ pub mod log;
 pub mod math;
 pub mod physics;
 pub mod player;
+pub mod prefab;
 pub mod process;
 pub mod record;
 pub mod system;

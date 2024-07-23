@@ -1,12 +1,13 @@
 use game_common::components::components::RawComponent;
 use game_common::entity::EntityId;
 use game_common::record::RecordReference;
+use game_prefab::{Prefab, Spawner};
 use game_tracing::trace_span;
 use game_wasm::encoding::{decode_fields, encode_fields, Field};
-use game_wasm::raw::RESULT_OK;
+use game_wasm::raw::{RESULT_NO_RECORD, RESULT_OK};
 use wasmtime::{Caller, Result};
 
-use crate::instance::State;
+use crate::instance::{RunState, State};
 
 use super::CallerExt;
 
@@ -173,5 +174,51 @@ pub fn world_entity_component_remove(
     {
         Ok(()) => Ok(RESULT_OK),
         Err(err) => Ok(err.to_u32()),
+    }
+}
+
+pub fn prefab_spawn(mut caller: Caller<'_, State>, id: u32, out: u32) -> Result<u32> {
+    let _span = trace_span!("prefab_spawn").entered();
+
+    let id: RecordReference = caller.read(id)?;
+    let data = caller.data_mut().as_run_mut()?;
+
+    let Some(record) = data.records().get(id) else {
+        return Ok(RESULT_NO_RECORD);
+    };
+
+    // FIXME: We shouldn't have to decode here. The record should
+    // be decoded when the module is loaded, then we can instantiate
+    // it without having it fail here.
+    let prefab = match Prefab::from_bytes(&record.data) {
+        Ok(prefab) => prefab,
+        Err(err) => {
+            tracing::error!("failed to decode prefab record: {}", err);
+            return Ok(RESULT_NO_RECORD);
+        }
+    };
+
+    let root = prefab.instantiate(PrefabSpawner { state: data });
+    caller.write(out, &root)?;
+
+    Ok(RESULT_OK)
+}
+
+struct PrefabSpawner<'a> {
+    state: &'a mut RunState,
+}
+
+impl<'a> Spawner for PrefabSpawner<'a> {
+    fn spawn(&mut self) -> EntityId {
+        self.state.spawn()
+    }
+
+    fn insert(&mut self, entity: EntityId, component_id: RecordReference, component: RawComponent) {
+        // `insert_component` returns an error if the `entity` does not exist,
+        // but `Prefab::instantiate` guarantees to always spawn the entity
+        // before inserting components, making this error unreachable.
+        self.state
+            .insert_component(entity, component_id, component)
+            .unwrap();
     }
 }

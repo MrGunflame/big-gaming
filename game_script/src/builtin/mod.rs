@@ -59,6 +59,7 @@ pub fn register_host_fns(store: &mut Linker<State>) {
         host_buffer_get,
         record_data_len,
         record_data_copy,
+        prefab_spawn,
     }
 }
 

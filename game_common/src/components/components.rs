@@ -150,6 +150,12 @@ impl RawComponent {
     }
 }
 
+impl Default for RawComponent {
+    fn default() -> Self {
+        Self::new(Vec::new(), Vec::new())
+    }
+}
+
 pub struct Iter<'a> {
     inner: std::collections::hash_map::Iter<'a, RecordReference, RawComponent>,
 }
