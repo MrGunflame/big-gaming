@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use game_common::components::actions::ActionId;
 use game_common::components::Transform;
@@ -7,7 +7,7 @@ use game_common::events::{ActionEvent, Event, EventQueue};
 use game_common::net::ServerEntity;
 use game_common::world::control_frame::ControlFrame;
 use game_common::world::hierarchy::update_global_transform;
-use game_core::counter::UpdateCounter;
+use game_core::counter::{Interval, UpdateCounter};
 use game_core::modules::Modules;
 use game_net::message::{DataMessageBody, EntityAction};
 use game_net::peer_error;
@@ -27,6 +27,8 @@ use super::RemoteError;
 // to fall even further behind and never return.
 const MAX_UPDATES_PER_FRAME: u32 = 10;
 
+const DRIFT_RESYNC_DURATION: Duration = Duration::from_secs(1);
+
 #[derive(Debug)]
 pub struct GameWorld {
     conn: ServerConnection,
@@ -42,6 +44,9 @@ pub struct GameWorld {
     newest_state: WorldState,
     /// The newest state from the server with locally predicted inputs applied.
     predicted_state: WorldState,
+
+    interval: Interval,
+    server_tick_rate: ServerTickRate,
 }
 
 impl GameWorld {
@@ -61,6 +66,8 @@ impl GameWorld {
             executor,
             event_queue: EventQueue::new(),
             predicted_state: WorldState::new(),
+            interval: Interval::new(Duration::from_secs(1) / config.timestep),
+            server_tick_rate: ServerTickRate::new(config.timestep),
         }
     }
 
@@ -68,7 +75,7 @@ impl GameWorld {
         self.conn.rtt()
     }
 
-    pub fn update(
+    pub async fn update(
         &mut self,
         modules: &Modules,
         cmd_buffer: &mut CommandBuffer,
@@ -77,9 +84,35 @@ impl GameWorld {
             return Err(RemoteError::Disconnected);
         }
 
+        let now = Instant::now();
+        self.interval.wait(now).await;
+
         let _span = trace_span!("GameWorld::update").entered();
 
         self.conn.update();
+        self.server_tick_rate.update(now, self.conn.latest_cf);
+
+        // The drift value is the relative distance between our control frame and the server's
+        // control frame. Since the server only sends periodic ACKs we need to account for RTT
+        // when computing the server's control frame.
+        // Drift is positive if we are ahead of the server and negative if we are behind.
+        let server_cf = self.server_tick_rate.predict_frame(now, self.rtt());
+        let drift = i32::from(self.game_tick.current_control_frame.0) - i32::from(server_cf.0);
+
+        // To keep the client in sync with the server we need to dynamically adjust
+        // our timestep to slow down/speed up as the server does.
+        // To reach the exact control frame of the server we compute an additional
+        // time compensation value that allows us the catch up to the server.
+        let compensation = compute_compensation(&self.server_tick_rate, drift);
+        if drift.is_positive() {
+            let server_timestep = self.server_tick_rate.frame_time;
+            let timestep = server_timestep + compensation;
+            self.interval.set_timestep(timestep);
+        } else {
+            let server_timestep = self.server_tick_rate.frame_time;
+            let timestep = server_timestep - compensation;
+            self.interval.set_timestep(timestep);
+        }
 
         self.game_tick.current_control_frame += 1;
         self.game_tick.counter.update();
@@ -105,6 +138,7 @@ impl GameWorld {
         }
 
         self.next_frame_counter.update();
+        self.conn.set_cf(self.game_tick.current_control_frame);
 
         Ok(())
     }
@@ -326,4 +360,77 @@ pub struct Action {
     pub entity: EntityId,
     pub action: ActionId,
     pub data: Vec<u8>,
+}
+
+#[derive(Clone, Debug)]
+struct ServerTickRate {
+    last_update: Instant,
+    last_cf: ControlFrame,
+    frame_time: Duration,
+}
+
+impl ServerTickRate {
+    fn new(timestep: u32) -> Self {
+        Self {
+            last_update: Instant::now(),
+            last_cf: ControlFrame(0),
+            frame_time: Duration::from_secs(1) / timestep,
+        }
+    }
+
+    fn update(&mut self, now: Instant, cf: ControlFrame) {
+        if cf == self.last_cf {
+            return;
+        }
+
+        let delta_cf = cf - self.last_cf;
+        let delta = now - self.last_update;
+
+        self.last_update = now;
+        self.last_cf = cf;
+
+        let Some(elapsed_per_cf) = delta.checked_div(u32::from(delta_cf.0)) else {
+            return;
+        };
+
+        self.frame_time = self.frame_time.mul_f32(0.8) + elapsed_per_cf.mul_f32(0.2);
+    }
+
+    fn predict_frame(&self, now: Instant, rtt: Duration) -> ControlFrame {
+        let mut delta = (now - self.last_update) + rtt / 2;
+        let mut cf = self.last_cf;
+        while let Some(ts) = delta.checked_sub(self.frame_time) {
+            delta = ts;
+            cf += 1;
+        }
+        cf
+    }
+}
+
+/// Computes the timestep compensation for the given `drift` value.
+///
+/// The returned `Duration` should be added to the per-frame timestep to compensate for the given
+/// `drift` within [`DRIFT_RESYNC_DURATION`].
+fn compute_compensation(server_tick_rate: &ServerTickRate, drift: i32) -> Duration {
+    let catchup_time = server_tick_rate.frame_time * drift.unsigned_abs();
+    let ups =
+        (DRIFT_RESYNC_DURATION.as_secs_f64() / server_tick_rate.frame_time.as_secs_f64()) as u32;
+    catchup_time.checked_div(ups).unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+
+    use std::time::Duration;
+
+    use super::{compute_compensation, ServerTickRate};
+
+    #[test]
+    fn test_compute_compensation() {
+        let tick_rate = ServerTickRate::new(50);
+        let drift = 5;
+
+        let output = compute_compensation(&tick_rate, drift);
+        assert_eq!(output, Duration::from_millis(2));
+    }
 }

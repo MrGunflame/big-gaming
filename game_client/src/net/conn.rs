@@ -16,6 +16,7 @@ pub struct ServerConnection {
     pub(crate) input_buffer: InputBuffer,
     buffer: VecDeque<DataMessage>,
     next_message_id: u32,
+    pub(crate) latest_cf: ControlFrame,
 }
 
 impl ServerConnection {
@@ -26,6 +27,7 @@ impl ServerConnection {
             input_buffer: InputBuffer::new(),
             backlog: MessageBacklog::new(8192),
             next_message_id: 0,
+            latest_cf: ControlFrame(0),
         }
     }
 
@@ -52,6 +54,10 @@ impl ServerConnection {
 
     pub fn rtt(&self) -> Duration {
         self.handle.rtt()
+    }
+
+    pub fn set_cf(&self, cf: ControlFrame) {
+        self.handle.set_cf(cf);
     }
 
     pub fn shutdown(&mut self) {
@@ -92,6 +98,10 @@ impl ServerConnection {
                 Message::Control(ControlMessage::Disconnected) => {
                     self.shutdown();
                     return;
+                }
+                Message::Control(ControlMessage::Ack(cf)) => {
+                    self.latest_cf = cf;
+                    continue;
                 }
                 Message::Control(ControlMessage::Acknowledge(id, cf)) => {
                     self.input_buffer.remove(cf, id);

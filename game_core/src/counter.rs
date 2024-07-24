@@ -60,6 +60,16 @@ impl Interval {
         }
     }
 
+    /// Updates the timestep value without resetting the update timestamp.
+    pub fn set_timestep(&mut self, timestep: Duration) {
+        self.timestep = timestep;
+    }
+
+    /// Returns the timestep value used to create this `Interval`.
+    pub fn timestep(&self) -> Duration {
+        self.timestep
+    }
+
     pub fn is_ready(&mut self, now: Instant) -> bool {
         let elapsed = now - self.last_update;
 

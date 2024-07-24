@@ -112,16 +112,13 @@ impl GameWorldState {
 
     pub async fn update(
         &mut self,
-        time: &Time,
         world: &mut World,
         ui_rt: &Runtime,
         ui_doc: DocumentId,
         fps_counter: UpdateCounter,
     ) -> Result<(), RemoteError> {
-        self.interval.wait(time.last_update()).await;
-
         let mut buf = CommandBuffer::new();
-        self.world.update(&self.modules, &mut buf)?;
+        self.world.update(&self.modules, &mut buf).await?;
 
         *world = self.world.state().world.clone();
 

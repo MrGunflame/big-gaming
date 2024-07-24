@@ -123,6 +123,8 @@ impl ServerState {
 
         let mut ups = UpdateCounter::new();
         loop {
+            let _span = trace_span!("update").entered();
+
             let now = Instant::now();
             interval.wait(now).await;
 
