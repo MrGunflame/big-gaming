@@ -2,6 +2,7 @@ use slotmap::SlotMap;
 
 use crate::backend::Backend;
 use crate::channel::Sender;
+use crate::resampler;
 use crate::sound::{Destination, Frame, PlayingSound, SoundId};
 use crate::sound_data::{Settings, SoundData};
 use crate::spatial::{Emitter, EmitterId, Listener, ListenerId};
@@ -47,7 +48,11 @@ where
         }
     }
 
-    pub fn play(&mut self, data: SoundData, settings: Settings) -> SoundId {
+    pub fn play(&mut self, mut data: SoundData, settings: Settings) -> SoundId {
+        if data.sample_rate != self.sample_rate {
+            data = resampler::resample(data, self.sample_rate);
+        }
+
         let key = self.sounds.insert(PlayingSound {
             data,
             cursor: 0,
