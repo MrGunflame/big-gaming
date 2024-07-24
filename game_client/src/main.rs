@@ -21,7 +21,7 @@ use game_core::counter::{Interval, UpdateCounter};
 use game_core::time::Time;
 use game_gizmos::Gizmos;
 use game_render::camera::RenderTarget;
-use game_render::Renderer;
+use game_render::{FpsLimit, Renderer};
 use game_tasks::TaskPool;
 use game_tracing::trace_span;
 use game_ui::reactive::DocumentId;
@@ -82,13 +82,17 @@ fn main() {
         ));
     }
 
-    let renderer = match Renderer::new() {
+    let mut renderer = match Renderer::new() {
         Ok(renderer) => renderer,
         Err(err) => {
             tracing::error!("cannot create renderer: {}", err);
             return;
         }
     };
+
+    if let Some(fps_limit) = config.graphics.fps_limit {
+        renderer.set_fps_limit(FpsLimit::limited(fps_limit));
+    }
 
     let ui_state = UiState::new(&renderer);
     let gizmos = Gizmos::new(&renderer);
