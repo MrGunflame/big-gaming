@@ -573,6 +573,17 @@ impl<E> Context<E> {
         self.runtime.remove(node);
     }
 
+    /// Removes the node references by this `Context`.
+    ///
+    /// Note that some operations that implicitly use the node of this `Context` may fail after
+    /// calling `remove_self`. Reuse of the `Context` should be avoided after calling `remove_self`.
+    /// This function takes `self` by value for this reason.
+    pub fn remove_self(self) {
+        if let Some(node) = self.node {
+            self.remove(node);
+        }
+    }
+
     pub fn clear_children(&self) {
         if let Some(node) = self.node {
             self.runtime.clear_children(node);
