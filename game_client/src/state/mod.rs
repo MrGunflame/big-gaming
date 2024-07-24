@@ -1,38 +1,70 @@
-use std::sync::mpsc;
+use std::sync::{mpsc, Arc};
 
 use game_common::world::World;
 use game_core::counter::UpdateCounter;
+use game_core::modules::Modules;
 use game_core::time::Time;
+use game_script::Executor;
 use game_tracing::trace_span;
 use game_ui::reactive::{Context, DocumentId, Runtime};
 use game_ui::widgets::Widget;
 use game_window::cursor::Cursor;
 use game_window::events::WindowEvent;
 
+use crate::config::Config;
+use crate::input::Inputs;
 use crate::ui::title_menu::{MenuEvent, MultiPlayerMenu, TitleMenu};
-use crate::world::GameWorldState;
+use crate::world::{GameWorldState, RemoteError};
 
 use self::main_menu::MainMenuState;
 
 pub mod main_menu;
 
+#[derive(Debug)]
 pub struct GameState {
     inner: GameStateInner,
     tx: mpsc::Sender<MenuEvent>,
     rx: mpsc::Receiver<MenuEvent>,
     root_ctx: Option<Context<()>>,
+
+    config: Config,
+    modules: Modules,
+    inputs: Inputs,
+    executor: Executor,
+    cursor: Arc<Cursor>,
 }
 
 impl GameState {
-    pub fn new(inner: GameStateInner) -> Self {
+    pub fn new(
+        config: Config,
+        modules: Modules,
+        inputs: Inputs,
+        executor: Executor,
+        cursor: Arc<Cursor>,
+    ) -> Self {
         let (tx, rx) = mpsc::channel();
 
         Self {
-            inner,
+            inner: GameStateInner::Startup,
             tx,
             rx,
             root_ctx: None,
+            config,
+            modules,
+            inputs,
+            executor,
+            cursor,
         }
+    }
+
+    pub fn connect(&mut self, addr: String) {
+        self.inner = GameStateInner::GameWorld(GameWorldState::new(
+            &self.config,
+            addr,
+            self.modules.clone(),
+            &self.cursor,
+            self.inputs.clone(),
+        ));
     }
 
     pub async fn update(
@@ -48,7 +80,11 @@ impl GameState {
         while let Ok(event) = self.rx.try_recv() {
             match event {
                 MenuEvent::Connect(addr) => {
-                    todo!()
+                    if let Some(ctx) = self.root_ctx.take() {
+                        ctx.remove_self();
+                    }
+
+                    self.connect(addr);
                 }
                 MenuEvent::Exit => return Err(UpdateError::Exit),
                 MenuEvent::SpawnMainMenu => {
@@ -93,8 +129,14 @@ impl GameState {
                 );
             }
             GameStateInner::GameWorld(state) => {
-                if let Err(err) = state.update(world, ui_rt, doc, fps_counter).await {
-                    panic!("{:?}", err);
+                match state
+                    .update(world, ui_rt, doc, fps_counter, &mut self.executor)
+                    .await
+                {
+                    Ok(()) => {}
+                    Err(RemoteError::Disconnected) => {
+                        self.inner = GameStateInner::Startup;
+                    }
                 }
             }
             GameStateInner::MainMenu(state) => {
@@ -123,7 +165,7 @@ impl GameState {
 }
 
 #[derive(Debug, Default)]
-pub enum GameStateInner {
+enum GameStateInner {
     /// Initial game startup phase.
     #[default]
     Startup,

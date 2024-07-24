@@ -37,7 +37,6 @@ pub struct GameWorld {
     /// Server to local entity mapping.
     server_entities: Entities,
     physics_pipeline: game_physics::Pipeline,
-    executor: Executor,
     event_queue: EventQueue,
 
     /// Newest fresh state from the server.
@@ -50,7 +49,7 @@ pub struct GameWorld {
 }
 
 impl GameWorld {
-    pub fn new(conn: ServerConnection, executor: Executor, config: &Config) -> Self {
+    pub fn new(conn: ServerConnection, config: &Config) -> Self {
         let render_delay = ControlFrame(config.network.interpolation_frames);
 
         Self {
@@ -63,7 +62,6 @@ impl GameWorld {
             server_entities: Entities::default(),
             next_frame_counter: NextFrameCounter::new(render_delay),
             physics_pipeline: game_physics::Pipeline::new(),
-            executor,
             event_queue: EventQueue::new(),
             predicted_state: WorldState::new(),
             interval: Interval::new(Duration::from_secs(1) / config.timestep),
@@ -78,6 +76,7 @@ impl GameWorld {
     pub async fn update(
         &mut self,
         modules: &Modules,
+        executor: &mut Executor,
         cmd_buffer: &mut CommandBuffer,
     ) -> Result<(), RemoteError> {
         if !self.conn.is_connected() {
@@ -129,7 +128,7 @@ impl GameWorld {
             run_scripts(
                 &mut self.predicted_state,
                 &self.physics_pipeline,
-                &mut self.executor,
+                executor,
                 &mut self.event_queue,
                 &modules,
             );

@@ -34,8 +34,7 @@ use glam::UVec2;
 use input::Inputs;
 use parking_lot::Mutex;
 use scene::SceneEntities;
-use state::{GameState, GameStateInner, UpdateError};
-use world::GameWorldState;
+use state::{GameState, UpdateError};
 
 #[derive(Clone, Debug, Default, Parser)]
 #[command(author, version, about, long_about = None)]
@@ -64,21 +63,20 @@ fn main() {
     let mut wm = WindowManager::new();
     let window_id = wm.windows_mut().spawn(WindowBuilder::new());
 
-    let mut state = GameState::new(GameStateInner::Startup);
-
     let cursor = wm.cursor().clone();
 
     let inputs = Inputs::from_file("inputs");
 
+    let mut state = GameState::new(
+        config.clone(),
+        res.modules,
+        inputs,
+        res.executor,
+        cursor.clone(),
+    );
+
     if let Some(addr) = args.connect {
-        state = GameState::new(GameStateInner::GameWorld(GameWorldState::new(
-            &config,
-            addr,
-            res.modules,
-            &cursor,
-            res.executor,
-            inputs,
-        )));
+        state.connect(addr);
     }
 
     let mut renderer = match Renderer::new() {

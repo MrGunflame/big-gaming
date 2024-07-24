@@ -75,7 +75,6 @@ impl GameWorldState {
         addr: impl ToSocketAddrs,
         modules: Modules,
         cursor: &Cursor,
-        executor: Executor,
         inputs: Inputs,
     ) -> Self {
         let mut cursor_pinned = CursorPinState::new();
@@ -91,7 +90,7 @@ impl GameWorldState {
         let (ui_events_tx, ui_events_rx) = mpsc::channel();
 
         let mut this = Self {
-            world: GameWorld::new(conn, executor, config),
+            world: GameWorld::new(conn, config),
             camera_controller: CameraController::new(),
             primary_camera: None,
             modules,
@@ -116,9 +115,10 @@ impl GameWorldState {
         ui_rt: &Runtime,
         ui_doc: DocumentId,
         fps_counter: UpdateCounter,
+        executor: &mut Executor,
     ) -> Result<(), RemoteError> {
         let mut buf = CommandBuffer::new();
-        self.world.update(&self.modules, &mut buf).await?;
+        self.world.update(&self.modules, executor, &mut buf).await?;
 
         *world = self.world.state().world.clone();
 
