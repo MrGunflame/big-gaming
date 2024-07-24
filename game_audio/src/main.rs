@@ -12,10 +12,11 @@ fn main() {
     let mut manager = AudioManager::new(DefaultBackend::new());
 
     let mut data = SoundData::from_file("./x.ogg");
+    data.volume = Volume(1.0);
 
     let track = manager.add_track(Track {
         target: TrackId::Main,
-        volume: Volume(2.0),
+        volume: Volume(1.0),
     });
 
     let listener = Listener {
@@ -31,10 +32,16 @@ fn main() {
     let listener_id = manager.add_listener(listener);
     let emitter_id = manager.add_emitter(emitter);
 
+    // manager.play(
+    //     data.clone(),
+    //     Settings {
+    //         destination: emitter_id.into(),
+    //     },
+    // );
     manager.play(
         data.clone(),
         Settings {
-            destination: emitter_id.into(),
+            destination: track.into(),
         },
     );
 
@@ -47,7 +54,7 @@ fn main() {
         manager.update();
 
         let delta = now.elapsed().as_secs_f32();
-        rotation = Quat::from_axis_angle(Vec3::Y, 10.0 * delta) * rotation;
+        // rotation = Quat::from_axis_angle(Vec3::Y, 10.0 * delta) * rotation;
 
         let emitter = manager.get_emitter_mut(emitter_id).unwrap();
         emitter.translation = listener.translation + rotation * Vec3::new(0.0, 0.0, distance);
