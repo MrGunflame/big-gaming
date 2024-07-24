@@ -21,6 +21,14 @@ pub enum Message {
 pub enum ControlMessage {
     Connected(),
     Disconnected,
+    /// The peer has sent an ACK with the given [`ControlFrame`].
+    ///
+    /// This means that the peer has completed the given frame and is now working on the next
+    /// frame.
+    ///
+    /// Note that this is a separate message from `Acknowledge` since ACKs should continue being
+    /// received even if no messages are sent to the peer.
+    Ack(ControlFrame),
     /// The message was acknowledged by the peer in the given [`ControlFrame`].
     ///
     /// This means that the message was processed at [`ControlFrame`].

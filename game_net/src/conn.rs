@@ -227,6 +227,9 @@ where
                         packets_written = true;
                     }
                 }
+                Message::Control(ControlMessage::Ack(cf)) => {
+                    self.last_cf = cf - self.start_control_frame;
+                }
                 Message::Data(msg) => {
                     let id = msg.id;
                     let cf = msg.control_frame - self.start_control_frame;
@@ -576,6 +579,10 @@ where
         // Convert back to local control frame.
         let control_frame = header.control_frame + self.start_control_frame;
 
+        tracing::debug!("got ACK for {:?}", control_frame);
+        self.writer
+            .try_send(Message::Control(ControlMessage::Ack(control_frame)))
+            .unwrap();
         if let Some(id) = self.message_out.remove(&sequence) {
             self.writer
                 .try_send(Message::Control(ControlMessage::Acknowledge(
@@ -886,6 +893,13 @@ impl ConnectionHandle {
     pub fn acknowledge(&self, id: MessageId, cf: ControlFrame) {
         self.chan_out
             .try_send(Message::Control(ControlMessage::Acknowledge(id, cf)))
+            .unwrap();
+    }
+
+    /// Sets the last finished [`ControlFrame`] to the value.
+    pub fn set_cf(&self, cf: ControlFrame) {
+        self.chan_out
+            .try_send(Message::Control(ControlMessage::Ack(cf)))
             .unwrap();
     }
 

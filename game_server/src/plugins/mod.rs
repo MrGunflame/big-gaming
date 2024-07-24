@@ -180,6 +180,7 @@ fn flush_command_queue(srv_state: &mut ServerState) {
                     .event_queue
                     .push(Event::PlayerDisconnect(PlayerDisconnect { player }));
             }
+            Message::Control(ControlMessage::Ack(_)) => {}
             Message::Control(ControlMessage::Acknowledge(_, _)) => {}
             Message::Data(msg) => {
                 conn.push_message_in_frame(msg.id);
@@ -328,4 +329,6 @@ fn update_client(conn: &Connection, world: &WorldState, level: &Level, cf: Contr
             body,
         });
     }
+
+    conn.handle().set_cf(cf);
 }

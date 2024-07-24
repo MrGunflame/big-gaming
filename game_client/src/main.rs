@@ -219,7 +219,6 @@ impl<'a> GameAppState<'a> {
                 }
                 GameState::GameWorld(state) => {
                     match self.pool.block_on(state.update(
-                        &self.time,
                         &mut world,
                         &self.ui_state.runtime(),
                         doc,
