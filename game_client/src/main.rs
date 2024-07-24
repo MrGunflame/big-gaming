@@ -34,9 +34,7 @@ use glam::UVec2;
 use input::Inputs;
 use parking_lot::Mutex;
 use scene::SceneEntities;
-use state::main_menu::MainMenuState;
-use state::GameState;
-use world::GameWorldState;
+use state::{GameState, UpdateError};
 
 #[derive(Clone, Debug, Default, Parser)]
 #[command(author, version, about, long_about = None)]
@@ -65,21 +63,20 @@ fn main() {
     let mut wm = WindowManager::new();
     let window_id = wm.windows_mut().spawn(WindowBuilder::new());
 
-    let mut state = GameState::Startup;
-
     let cursor = wm.cursor().clone();
 
     let inputs = Inputs::from_file("inputs");
 
+    let mut state = GameState::new(
+        config.clone(),
+        res.modules,
+        inputs,
+        res.executor,
+        cursor.clone(),
+    );
+
     if let Some(addr) = args.connect {
-        state = GameState::GameWorld(GameWorldState::new(
-            &config,
-            addr,
-            res.modules,
-            &cursor,
-            res.executor,
-            inputs,
-        ));
+        state.connect(addr);
     }
 
     let mut renderer = match Renderer::new() {
@@ -202,37 +199,26 @@ impl<'a> GameAppState<'a> {
             self.ui_state.send_event(&self.cursor, event.clone());
 
             if let Some(doc) = self.document_id {
-                match &mut self.state {
-                    GameState::GameWorld(state) => {
-                        state.handle_event(event, &self.cursor, &self.ui_state.runtime(), doc);
-                    }
-                    _ => (),
-                }
+                self.state
+                    .handle_event(event, &self.cursor, &self.ui_state.runtime(), doc);
             }
         }
 
         let fps_counter = { self.fps_counter.lock().clone() };
 
         if let Some(doc) = self.document_id {
-            match &mut self.state {
-                GameState::Startup => {
-                    self.state = GameState::MainMenu(MainMenuState::new(&mut world))
+            match self.pool.block_on(self.state.update(
+                &mut world,
+                &self.ui_state.runtime(),
+                doc,
+                fps_counter,
+                &mut self.time,
+            )) {
+                Ok(()) => (),
+                Err(UpdateError::Exit) => {
+                    // TODO: Clean shutdown
+                    std::process::exit(0);
                 }
-                GameState::MainMenu(state) => {
-                    state.update(&mut self.time, &mut world);
-                }
-                GameState::GameWorld(state) => {
-                    match self.pool.block_on(state.update(
-                        &mut world,
-                        &self.ui_state.runtime(),
-                        doc,
-                        fps_counter,
-                    )) {
-                        Ok(()) => (),
-                        Err(err) => panic!("disconnected"),
-                    }
-                }
-                _ => todo!(),
             }
         }
 
