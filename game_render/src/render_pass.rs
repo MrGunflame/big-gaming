@@ -19,6 +19,7 @@ use crate::entities::{CameraId, ObjectId};
 use crate::forward::ForwardPipeline;
 use crate::graph::{Node, RenderContext};
 use crate::light::pipeline::{DirectionalLightUniform, PointLightUniform, SpotLightUniform};
+use crate::options::{MainPassOptions, MainPassOptionsEncoded};
 use crate::post_process::PostProcessPipeline;
 use crate::state::RenderState;
 
@@ -75,6 +76,7 @@ pub(crate) struct RenderPass {
     pub forward: Arc<ForwardPipeline>,
     pub post_process: PostProcessPipeline,
     pub depth_stencils: Mutex<HashMap<RenderTarget, DepthData>>,
+    pub options: Arc<Mutex<MainPassOptions>>,
 }
 
 impl Node for RenderPass {
@@ -123,6 +125,13 @@ impl RenderPass {
         let device = ctx.device;
         let pipeline = &self.forward;
         let depth_stencils = self.depth_stencils.lock();
+        let options = self.options.lock();
+
+        let options_buffer = device.create_buffer_init(&BufferInitDescriptor {
+            label: None,
+            contents: bytemuck::bytes_of(&MainPassOptionsEncoded::new(&options)),
+            usage: BufferUsages::UNIFORM,
+        });
 
         let bind_groups = state
             .objects
@@ -141,6 +150,10 @@ impl RenderPass {
                         BindGroupEntry {
                             binding: 1,
                             resource: transform.as_entire_binding(),
+                        },
+                        BindGroupEntry {
+                            binding: 2,
+                            resource: options_buffer.as_entire_binding(),
                         },
                     ],
                 })

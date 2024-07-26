@@ -10,6 +10,22 @@ struct MaterialConstants {
 @group(0) @binding(0)
 var<uniform> camera: Camera;
 
+// FIXME: Options almost never change. Instead of doing dynamic matching
+// in the shader we should just recompile the shader with only the paths
+// defined in the options.
+// This requires a shader pre-processor which we currently do not have.
+@group(0) @binding(2)
+var<uniform> options: Options;
+
+struct Options {
+    shading_mode: u32,
+}
+
+const SHADING_MODE_FULL: u32 = 0u;
+const SHADING_MODE_ALBEDO: u32 = 1u;
+const SHADING_MODE_NORMAL: u32 = 2u;
+const SHADING_MODE_TANGENT: u32 = 3u;
+
 struct Camera {
     position: vec3<f32>,
     view_proj: mat4x4<f32>,
@@ -45,6 +61,14 @@ struct FragInput {
 @fragment
 fn fs_main(in: FragInput) -> @location(0) vec4<f32> {
     var color = constants.base_color * textureSample(base_color_texture, linear_sampler, in.uv);
+
+    if options.shading_mode == SHADING_MODE_ALBEDO {
+        return vec4<f32>(get_albedo(in), 1.0);
+    } else if options.shading_mode == SHADING_MODE_NORMAL {
+        return vec4<f32>(get_normal(in), 1.0);
+    } else if options.shading_mode == SHADING_MODE_TANGENT {
+        return vec4<f32>(in.world_tangent.xyz, 1.0);
+    }
 
     var luminance: vec3<f32> = vec3(0.0, 0.0, 0.0);
 

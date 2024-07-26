@@ -13,6 +13,7 @@ use backend::{Backend, Handle, Response};
 use game_common::world::World;
 use game_gizmos::Gizmos;
 use game_render::camera::RenderTarget;
+use game_render::options::MainPassOptions;
 use game_render::Renderer;
 use game_tasks::TaskPool;
 use game_ui::UiState;
@@ -39,6 +40,9 @@ struct State {
 impl State {
     fn new(handle: Handle) -> (Self, mpsc::Receiver<SpawnWindow>) {
         let mut render_state = Renderer::new().unwrap();
+        render_state.set_options(MainPassOptions {
+            shading: game_render::options::ShadingMode::Albedo,
+        });
 
         let (tx, rx) = mpsc::channel();
 
