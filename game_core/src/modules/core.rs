@@ -473,6 +473,14 @@ fn load_core_records(data: &mut ModuleData) {
                 keys: Vec::new(),
             },
         ),
+        (
+            RecordKind::SCRIPT.0.record,
+            "Script",
+            RecordDescriptor {
+                component: RecordReference::STUB,
+                keys: Vec::new(),
+            },
+        ),
     ] {
         data.records.insert(Record {
             id,

@@ -106,6 +106,11 @@ impl Widget for EditRecord {
                 }
                 .mount(&root);
             }
+            RecordKind::SCRIPT => {
+                let edit_state = edit_state.clone();
+
+                EditScript { edit_state }.mount(&root);
+            }
             _ => todo!(),
         }
 
@@ -222,6 +227,25 @@ impl Widget for EditPrefabRecord {
             })
             .mount(&root);
         Text::new("Edit in 3D").mount(&button);
+
+        root
+    }
+}
+
+#[derive(Clone, Debug)]
+struct EditScript {
+    edit_state: Arc<Mutex<EditState>>,
+}
+
+impl Widget for EditScript {
+    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+        let root = Container::new().mount(parent);
+
+        Input::new()
+            .on_change(move |path: String| {
+                self.edit_state.lock().record.data = path.into();
+            })
+            .mount(&root);
 
         root
     }

@@ -1,4 +1,5 @@
 use game_common::module::{Dependency, Module, Version};
+use game_common::record::RecordId;
 use game_data::record::{Record, RecordKind};
 use game_data::{DataBuffer, Encode};
 
@@ -30,8 +31,18 @@ pub fn encode(root: Root) -> Vec<u8> {
         });
     }
 
+    let mut next_script_record_id = 0xffff;
+
     for script in root.scripts {
-        buffer.scripts.push(script);
+        buffer.records.push(Record {
+            id: RecordId(next_script_record_id),
+            kind: RecordKind::SCRIPT,
+            name: String::new(),
+            description: String::new(),
+            data: script.into(),
+        });
+
+        next_script_record_id += 1;
     }
 
     let mut buf = Vec::new();
