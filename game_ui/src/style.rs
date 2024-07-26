@@ -15,6 +15,7 @@ pub struct Style {
     pub justify: Justify,
     pub padding: Padding,
     pub border_radius: BorderRadius,
+    pub border: Border,
 }
 
 /// Flow direction
@@ -88,6 +89,13 @@ impl Size {
             Self::ViewportWidth(factor) => viewport.x * factor.ceil() as u32,
             Self::ViewportHeight(factor) => viewport.y * factor.ceil() as u32,
         }
+    }
+
+    pub fn is_zero(self) -> bool {
+        matches!(
+            self,
+            Self::Pixels(0) | Self::ViewportWidth(0.0) | Self::ViewportHeight(0.0)
+        )
     }
 }
 
@@ -316,6 +324,38 @@ impl Padding {
 impl Default for Padding {
     fn default() -> Self {
         Self::NONE
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub struct Border {
+    pub top: Size,
+    pub bottom: Size,
+    pub left: Size,
+    pub right: Size,
+    pub color: Color,
+}
+
+impl Default for Border {
+    fn default() -> Self {
+        Self::splat(Size::Pixels(0), Color::BLACK)
+    }
+}
+
+impl Border {
+    /// Creates a new `Border` with all sides set to the given values.
+    pub const fn splat(size: Size, color: Color) -> Self {
+        Self {
+            top: size,
+            bottom: size,
+            left: size,
+            right: size,
+            color,
+        }
+    }
+
+    pub fn is_zero(&self) -> bool {
+        self.top.is_zero() && self.bottom.is_zero() && self.left.is_zero() && self.right.is_zero()
     }
 }
 

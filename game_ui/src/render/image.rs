@@ -1,15 +1,13 @@
 mod overlay;
 
-use game_common::components::Color;
 use game_tracing::trace_span;
 use glam::UVec2;
 use image::imageops::FilterType;
-use image::{ImageBuffer, Rgba};
+use image::{ImageBuffer, Pixel, Rgba};
 
 use self::overlay::overlay_unchecked;
 
-use super::debug::{debug_border, debug_padding, is_debug_render_enabled};
-use super::{DrawCommand, DrawElement, Rect};
+use super::debug::is_debug_render_enabled;
 use crate::layout::computed_style::{ComputedBorderRadius, ComputedBounds, ComputedStyle};
 use crate::style::Background;
 
@@ -32,23 +30,79 @@ impl Image {
     }
 }
 
-impl DrawElement for Image {
-    fn draw(&self, style: &ComputedStyle, position: Rect, size: UVec2) -> Option<DrawCommand> {
-        let mut img = self.image.clone();
-        apply_background(&mut img, style);
+pub fn apply_border(img: &mut ImageBuffer<Rgba<u8>, Vec<u8>>, style: &ComputedStyle) {
+    let _span = trace_span!("image::apply_border").entered();
 
-        apply_border_radius(&mut img, style.border_radius);
+    if style.border.top == 0
+        && style.border.bottom == 0
+        && style.border.left == 0
+        && style.border.right == 0
+    {
+        return;
+    }
 
-        if is_debug_render_enabled() {
-            debug_border(&mut img);
-            debug_padding(&mut img, style.padding);
+    let pixel = style.style.border.color.0;
+
+    // If the border on any side is greater than the image on that side, the
+    // result is equivalent to applying the border to all pixels in the image.
+    if style.border.top >= img.height()
+        || style.border.bottom >= img.height()
+        || style.border.left >= img.width()
+        || style.border.right >= img.width()
+    {
+        for px in img.pixels_mut() {
+            px.blend(&pixel);
         }
 
-        Some(DrawCommand {
-            position,
-            color: Color::from_rgba(style.style.color.to_f32()),
-            image: img,
-        })
+        return;
+    }
+
+    // Note that for transparent border values to function correctly we must
+    // not blend a pixel at any position twice.
+    // This means that for every side of the border we must skip pixels already
+    // accessed by a previous border segment.
+
+    // Top
+    let top_start = 0;
+    let top_end = u32::min(style.border.top, img.height());
+    for y in top_start..top_end {
+        for x in 0..img.width() {
+            img.get_pixel_mut(x, y).blend(&pixel);
+        }
+    }
+
+    // Bottom
+    // Note: The above check validates that this subtraction can never underflow.
+    let bottom_start = u32::max(img.height() - style.border.bottom, top_end);
+    let bottom_end = img.height();
+    for y in bottom_start..bottom_end {
+        for x in 0..img.width() {
+            img.get_pixel_mut(x, y).blend(&pixel);
+        }
+    }
+
+    // To prevent accessing a pixel from the top or bottom borders we
+    // limit ourselves to the area that is not covered by those borders.
+    let y_start = top_end;
+    let y_end = bottom_start;
+
+    // Left
+    let left_start = 0;
+    let left_end = u32::min(style.border.left, img.width());
+    for x in left_start..left_end {
+        for y in y_start..y_end {
+            img.get_pixel_mut(x, y).blend(&pixel);
+        }
+    }
+
+    // Right
+    // Note: The above check validates that this subtraction can never underflow.
+    let right_start = u32::max(img.width() - style.border.right, left_end);
+    let right_end = img.width();
+    for x in right_start..right_end {
+        for y in y_start..y_end {
+            img.get_pixel_mut(x, y).blend(&pixel);
+        }
     }
 }
 
@@ -228,9 +282,9 @@ mod tests {
     use image::{GenericImageView, ImageBuffer, Pixel, Rgba};
 
     use crate::layout::computed_style::{ComputedBorderRadius, ComputedStyle};
-    use crate::style::{Background, Padding, Size, Style};
+    use crate::style::{Background, Border, Color, Padding, Size, Style};
 
-    use super::{apply_background, apply_border_radius};
+    use super::{apply_background, apply_border, apply_border_radius};
 
     /// Asserts that image `a` contains image `b`, starting at position `(x, y)`.
     #[track_caller]
@@ -449,5 +503,19 @@ mod tests {
         };
 
         apply_border_radius(&mut image, border_radius);
+    }
+
+    #[test]
+    fn border_out_of_bounds() {
+        let mut image = ImageBuffer::from_pixel(10, 10, Color::WHITE.0);
+        let style = ComputedStyle::new(
+            Style {
+                border: Border::splat(Size::Pixels(100), Color::BLACK),
+                ..Default::default()
+            },
+            UVec2::ZERO,
+        );
+
+        apply_border(&mut image, &style);
     }
 }
