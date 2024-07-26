@@ -11,21 +11,17 @@ mod selection;
 mod table;
 mod text;
 
-// pub mod value_slider;
-
 pub use self::image::Image;
 pub use button::Button;
-// pub use checkbox::Checkbox;
 pub use container::Container;
+pub use context_menu::{ContextMenuCloser, ContextMenuState, ContextPanel};
 use game_tracing::trace_span;
 pub use input::Input;
 use parking_lot::Mutex;
-// pub use parse_input::ParseInput;
-pub use context_menu::{ContextMenuCloser, ContextMenuState, ContextPanel};
 pub use plot::Plot;
 pub use selection::Selection;
 pub use svg::{Svg, SvgData, SvgError, SvgStyle};
-pub use table::Table;
+pub use table::{Table, TableStyle};
 pub use text::Text;
 
 use std::fmt::{self, Debug, Formatter};

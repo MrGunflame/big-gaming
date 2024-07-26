@@ -1,7 +1,7 @@
 use game_ui::reactive::Context;
-use game_ui::style::{Background, Direction, Growth, Padding, Size, Style};
+use game_ui::style::{Background, Border, Color, Direction, Growth, Padding, Size, Style};
 use game_ui::widgets::{
-    Button, Callback, Container, ContextMenuState, ContextPanel, Table, Text, Widget,
+    Button, Callback, Container, ContextMenuState, ContextPanel, Table, TableStyle, Text, Widget,
 };
 
 const ROOT_CTX_PRIORITY: u32 = 0;
@@ -72,7 +72,11 @@ impl Widget for Entries {
             })
             .collect();
 
-        Table { header, rows }.mount(&root);
+        Table::new(header, rows)
+            .style(TableStyle {
+                cell_border: Border::splat(Size::Pixels(1), Color::WHITE),
+            })
+            .mount(&root);
 
         root
     }
@@ -172,6 +176,11 @@ impl<'a> Widget for TableCell<'a> {
         let context_menu = ContextPanel::new()
             .spawn_menu(spawn_ctx_menu(&self.callbacks, self.index))
             .priority(CELL_CTX_PRIORITY)
+            .style(Style {
+                growth: Growth::x(1.0),
+                padding: Padding::splat(Size::Pixels(1)),
+                ..Default::default()
+            })
             .mount(parent);
         Text::new(self.label).mount(&context_menu);
         context_menu

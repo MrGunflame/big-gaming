@@ -14,7 +14,7 @@ use game_common::world::World;
 use game_gizmos::Gizmos;
 use game_render::camera::RenderTarget;
 use game_render::options::MainPassOptions;
-use game_render::Renderer;
+use game_render::{FpsLimit, Renderer};
 use game_tasks::TaskPool;
 use game_ui::UiState;
 use game_window::cursor::Cursor;
@@ -43,6 +43,7 @@ impl State {
         render_state.set_options(MainPassOptions {
             shading: game_render::options::ShadingMode::Albedo,
         });
+        render_state.set_fps_limit(FpsLimit::limited(60.try_into().unwrap()));
 
         let (tx, rx) = mpsc::channel();
 
