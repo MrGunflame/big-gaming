@@ -8,6 +8,7 @@ pub mod light;
 pub mod mesh;
 pub mod metrics;
 pub mod mipmap;
+pub mod options;
 pub mod pbr;
 pub mod render_pass;
 pub mod shape;
@@ -22,6 +23,7 @@ mod post_process;
 mod state;
 
 pub use fps_limiter::FpsLimit;
+use options::MainPassOptions;
 
 use std::collections::{HashMap, VecDeque};
 use std::future::Future;
@@ -78,6 +80,8 @@ pub struct Renderer {
     image_loader: ImageLoader,
     pub render_textures: RenderTextures,
     jobs: VecDeque<Job>,
+
+    options: Arc<Mutex<MainPassOptions>>,
 }
 
 impl Renderer {
@@ -127,6 +131,7 @@ impl Renderer {
         let state = Arc::new(Mutex::new(RenderState::new(&device, &forward, &images)));
 
         let pipeline = Pipeline::new(instance, adapter, device, queue);
+        let options = Arc::new(Mutex::new(MainPassOptions::default()));
 
         {
             let mut graph = unsafe { pipeline.shared.graph.get_mut() };
@@ -135,6 +140,7 @@ impl Renderer {
                 forward: forward.clone(),
                 post_process,
                 depth_stencils: Mutex::new(HashMap::new()),
+                options: options.clone(),
             });
         }
 
@@ -149,6 +155,7 @@ impl Renderer {
             image_loader: ImageLoader::default(),
             render_textures: RenderTextures::new(),
             jobs: VecDeque::new(),
+            options,
         })
     }
 
@@ -300,6 +307,10 @@ impl Renderer {
 
     pub fn set_fps_limit(&mut self, limit: FpsLimit) {
         self.jobs.push_back(Job::SetFpsLimit(limit));
+    }
+
+    pub fn set_options(&mut self, options: MainPassOptions) {
+        *self.options.lock() = options;
     }
 }
 

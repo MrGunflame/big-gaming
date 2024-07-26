@@ -14,6 +14,7 @@ use create_module::EditModule;
 use game_common::world::World;
 use game_data::record::RecordKind;
 use game_render::camera::RenderTarget;
+use game_render::options::MainPassOptions;
 use game_render::Renderer;
 use game_tracing::trace_span;
 use game_ui::reactive::DocumentId;
@@ -67,8 +68,13 @@ impl Window {
     pub fn update(&mut self, world: &mut World, renderer: &mut Renderer) {
         let _span = trace_span!("Window::update").entered();
 
+        let mut options = MainPassOptions::default();
+
         match self {
-            Self::View(_, w) => w.update(world),
+            Self::View(_, w) => {
+                w.update(world, &mut options);
+                renderer.set_options(options);
+            }
             _ => (),
         }
     }

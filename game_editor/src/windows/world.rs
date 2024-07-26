@@ -2,6 +2,7 @@ mod components;
 mod edit;
 mod node;
 mod panel;
+mod properties;
 
 use std::sync::{mpsc, Arc};
 
@@ -18,6 +19,7 @@ use game_input::keyboard::KeyCode;
 use game_input::mouse::{MouseButton, MouseMotion, MouseWheel};
 use game_input::ButtonState;
 use game_render::camera::{Camera, Projection, RenderTarget};
+use game_render::options::{MainPassOptions, ShadingMode};
 use game_render::Renderer;
 use game_ui::reactive::Context;
 use game_ui::style::{Direction, Justify, Style};
@@ -27,6 +29,7 @@ use game_window::events::WindowEvent;
 use game_window::windows::WindowId;
 use glam::{Quat, Vec2, Vec3};
 use parking_lot::Mutex;
+use properties::Properties;
 
 use self::components::ComponentsPanel;
 use self::edit::{EditMode, EditOperation};
@@ -48,6 +51,7 @@ pub struct WorldWindowState {
     // Whether on_world_change should be called in the next frame.
     entites_changed: bool,
     on_world_change: Option<Callback<OnWorldChangeEvent>>,
+    rendering_properties: RenderingProperties,
 }
 
 impl WorldWindowState {
@@ -131,6 +135,7 @@ impl WorldWindowState {
             update_components_panel: false,
             on_world_change,
             entites_changed: false,
+            rendering_properties: RenderingProperties::default(),
         }
     }
 
@@ -361,7 +366,7 @@ impl WorldWindowState {
         self.entites_changed = true;
     }
 
-    pub fn update(&mut self, world: &mut World) {
+    pub fn update(&mut self, world: &mut World, options: &mut MainPassOptions) {
         while let Ok(event) = self.events.try_recv() {
             tracing::debug!("event from scene ui: {:?}", event);
 
@@ -425,6 +430,9 @@ impl WorldWindowState {
                         self.update_components_panel = true;
                     }
                 }
+                Event::SetShadingMode(mode) => {
+                    self.rendering_properties.shading = mode;
+                }
             }
         }
 
@@ -475,6 +483,8 @@ impl WorldWindowState {
 
             self.entites_changed = false;
         }
+
+        options.shading = self.rendering_properties.shading;
     }
 }
 
@@ -513,6 +523,11 @@ fn build_ui(
         components_changed: Callback::default(),
     }));
 
+    Properties {
+        writer: writer.clone(),
+    }
+    .mount(&root);
+
     Panel {
         state: state.clone(),
         writer: writer.clone(),
@@ -536,6 +551,7 @@ enum Event {
     /// Update component on selected entities.
     UpdateComponent(RecordReference, RawComponent),
     DeleteComponent(RecordReference),
+    SetShadingMode(ShadingMode),
 }
 
 #[derive(Clone, Debug, Default)]
@@ -615,4 +631,9 @@ impl Mode {
 pub struct OnWorldChangeEvent {
     pub world: World,
     pub entities: Vec<EntityId>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct RenderingProperties {
+    pub shading: ShadingMode,
 }
