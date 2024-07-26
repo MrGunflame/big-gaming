@@ -122,10 +122,6 @@ pub struct DrawCommand {
     pub image: ImageBuffer<Rgba<u8>, Vec<u8>>,
 }
 
-pub(crate) trait DrawElement {
-    fn draw(&self, style: &ComputedStyle, layout: Rect, size: UVec2) -> Option<DrawCommand>;
-}
-
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct Rect {
     pub min: UVec2,

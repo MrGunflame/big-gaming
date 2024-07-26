@@ -4,7 +4,7 @@ use image::{ImageBuffer, Rgba};
 
 use crate::layout::computed_style::{ComputedBounds, ComputedStyle};
 use crate::render::debug::{debug_border, debug_padding, is_debug_render_enabled};
-use crate::render::image::{apply_background, apply_border_radius};
+use crate::render::image::{apply_background, apply_border, apply_border_radius};
 use crate::render::text::render_to_texture;
 use crate::render::{DrawCommand, Rect, Text};
 use crate::style::Style;
@@ -73,7 +73,10 @@ impl Primitive {
                 let width = u32::min(layout.max.x - layout.min.x, size.x);
                 let height = u32::min(layout.max.y - layout.min.y, size.y);
 
-                if !style.style.background.is_none() || is_debug_render_enabled() {
+                if !style.style.background.is_none()
+                    || !style.style.border.is_zero()
+                    || is_debug_render_enabled()
+                {
                     // `Image` will already render a debugging border around
                     // the container.
                     ImageBuffer::new(width, height)
@@ -84,6 +87,7 @@ impl Primitive {
             (Some(_), Some(_)) => todo!(),
         };
 
+        apply_border(&mut img, style);
         apply_background(&mut img, style);
         apply_border_radius(&mut img, style.border_radius);
 

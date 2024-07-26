@@ -11,7 +11,6 @@ use image::{ImageBuffer, Rgba, RgbaImage};
 use parking_lot::Mutex;
 
 use super::image::Image;
-use super::{DrawCommand, DrawElement};
 use crate::layout::computed_style::{ComputedBounds, ComputedStyle};
 
 const DEFAULT_FONT: &[u8] = include_bytes!("../../../assets/fonts/OpenSans/OpenSans-Regular.ttf");
@@ -129,14 +128,6 @@ impl Text {
     pub(crate) fn bounds(&self, style: &ComputedStyle) -> ComputedBounds {
         let image = render_to_texture(&self.text, self.size, UVec2::splat(0), self.caret);
         Image { image }.bounds(style)
-    }
-}
-
-impl DrawElement for Text {
-    fn draw(&self, style: &ComputedStyle, layout: super::Rect, size: UVec2) -> Option<DrawCommand> {
-        let image = render_to_texture(&self.text, self.size, layout.max - layout.min, self.caret);
-
-        Image { image }.draw(style, layout, size)
     }
 }
 
