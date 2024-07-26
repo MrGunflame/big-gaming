@@ -144,7 +144,16 @@ pub fn load_modules() -> LoadResult {
 }
 
 fn load_module(data: DataBuffer, modules: &mut Modules, executor: &mut Executor) {
-    for script in &data.scripts {
+    for script in data
+        .records
+        .iter()
+        .filter(|r| r.kind == RecordKind::SCRIPT)
+        .map(|r| &r.data)
+    {
+        let Ok(script) = std::str::from_utf8(&script) else {
+            continue;
+        };
+
         let buf = match (|| {
             let mut file = File::open(&script)?;
 

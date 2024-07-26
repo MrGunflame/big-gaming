@@ -42,8 +42,6 @@ pub enum Error {
     Record(#[from] RecordError),
     #[error(transparent)]
     Header(#[from] HeaderError),
-    #[error(transparent)]
-    Scripts(#[from] StringError),
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Error)]
@@ -302,7 +300,6 @@ where
 pub struct DataBuffer {
     pub header: Header,
     pub records: Vec<Record>,
-    pub scripts: Vec<String>,
 }
 
 impl DataBuffer {
@@ -310,7 +307,6 @@ impl DataBuffer {
         Self {
             header: Header { version: 0, module },
             records: Vec::new(),
-            scripts: Vec::new(),
         }
     }
 }
@@ -325,11 +321,6 @@ impl Encode for DataBuffer {
         (self.records.len() as u32).encode(&mut buf);
         for item in &self.records {
             item.encode(&mut buf);
-        }
-
-        (self.scripts.len() as u32).encode(&mut buf);
-        for script in &self.scripts {
-            script.encode(&mut buf);
         }
     }
 }
@@ -350,18 +341,7 @@ impl Decode for DataBuffer {
             records.push(record);
         }
 
-        let num_scripts = u32::decode(&mut buf)?;
-        let mut scripts = Vec::new();
-        for _ in 0..num_scripts {
-            let script = String::decode(&mut buf)?;
-            scripts.push(script);
-        }
-
-        Ok(Self {
-            header,
-            records,
-            scripts,
-        })
+        Ok(Self { header, records })
     }
 }
 

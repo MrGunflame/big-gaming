@@ -4,6 +4,13 @@ use clap::{Parser, Subcommand};
 
 const BUILD_OUTPUT: &str = "build";
 
+const FLAGS: &[&str] = &[
+    // Disable loading of Vulkan validation layers.
+    "render_debug_layers_disable",
+    // Disable the debug render mode for UI primitives.
+    "ui_debug_render_disable",
+];
+
 #[derive(Debug, Parser)]
 struct Args {
     #[command(subcommand)]
@@ -68,8 +75,7 @@ fn project_root_path() -> PathBuf {
 fn build_cargo(path: impl AsRef<Path>) {
     println!("building {}", path.as_ref().to_string_lossy());
 
-    let rustflags =
-    "--cfg=tokio_unstable\x1f--cfg=render_debug_layers_disable\x1f--cfg=ui_debug_render_disable";
+    let rustflags = format!("--cfg={}", FLAGS.join("\x1f"));
 
     let args = [
         "+nightly",

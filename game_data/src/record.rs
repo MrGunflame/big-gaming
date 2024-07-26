@@ -123,6 +123,11 @@ impl RecordKind {
         module: ModuleId::CORE,
         record: RecordId(0x1003),
     });
+
+    pub const SCRIPT: Self = Self(RecordReference {
+        module: ModuleId::CORE,
+        record: RecordId(0x1004),
+    });
 }
 
 #[derive(Debug, Error)]
