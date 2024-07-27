@@ -314,14 +314,14 @@ fn mount_explorer_table(table_parent: &Arc<Mutex<Context<()>>>, state_mux: &Arc<
         })
         .mount(&table_parent.lock());
 
-    Table {
-        header: vec![
+    Table::new(
+        vec![
             Text::new("Name"),
             Text::new("Date Modified"),
             Text::new("Size"),
         ],
         rows,
-    }
+    )
     .mount(&table);
 }
 

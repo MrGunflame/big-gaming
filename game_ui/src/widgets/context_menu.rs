@@ -55,7 +55,7 @@ impl ContextPanel {
 
 impl Widget for ContextPanel {
     fn mount<T>(self, parent: &Context<T>) -> Context<()> {
-        let wrapper = Container::new().mount(parent);
+        let wrapper = Container::new().style(self.style).mount(parent);
 
         // Cleanup when the parent is removed.
         parent.document().register_with_parent(

@@ -238,8 +238,10 @@ impl WorldWindowState {
                 {
                     match event.key_code {
                         Some(KeyCode::Escape) => {
-                            self.cancel_edit_op(world);
-                            self.edit_op.set_mode(EditMode::None);
+                            if self.edit_op.mode() != EditMode::None {
+                                self.cancel_edit_op(world);
+                                self.edit_op.set_mode(EditMode::None);
+                            }
                         }
                         Some(KeyCode::G) => {
                             self.edit_op.set_mode(EditMode::Translate(None));
