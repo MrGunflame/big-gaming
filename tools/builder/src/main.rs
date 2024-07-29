@@ -75,7 +75,11 @@ fn project_root_path() -> PathBuf {
 fn build_cargo(path: impl AsRef<Path>) {
     println!("building {}", path.as_ref().to_string_lossy());
 
-    let rustflags = format!("--cfg={}", FLAGS.join("\x1f"));
+    let rustflags = FLAGS
+        .iter()
+        .map(|flag| format!("--cfg={}", flag))
+        .collect::<Vec<_>>()
+        .join("\x1f");
 
     let args = [
         "+nightly",
@@ -95,7 +99,11 @@ fn build_cargo(path: impl AsRef<Path>) {
         .unwrap();
 
     let status = cmd.wait().unwrap();
-    assert!(status.success());
+
+    if !status.success() {
+        println!("build failed");
+        std::process::exit(1);
+    }
 }
 
 fn move_artifact(root: &Path, name: &str, dst: &Path) {
