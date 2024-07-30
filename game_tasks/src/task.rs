@@ -416,7 +416,7 @@ impl<T> Task<T> {
         let mut state = unsafe { header.as_ref().state.load(Ordering::Acquire) };
         let header = unsafe { header.as_ref() };
 
-        match state & STATE_MASK {
+        match state & (STATE_DONE | STATE_CLOSED) {
             // The future is done and we can read the final output value.
             STATE_DONE => {
                 loop {
@@ -522,7 +522,7 @@ impl<T> Task<T> {
         }
     }
 
-    /// Cancelles the `Task` and returns a future that completes once the `Task` has been
+    /// Cancells the `Task` and returns a future that completes once the `Task` has been
     /// cancelled.
     ///
     /// If the returned future is dropped the task is detached and cancelled in the background.
@@ -531,6 +531,12 @@ impl<T> Task<T> {
         Cancel { task: self }
     }
 
+    /// Cancells the `Task` without waiting for the task be cancelled.
+    ///
+    /// If the future just completed the value is returned. Otherwise the `Task` is detached and
+    /// cancelled in the background.
+    ///
+    /// This function is a more efficient version of `self.cancel().now_or_never()`.
     pub fn cancel_now(mut self) -> Option<T> {
         self.set_cancelled();
         let output = self.get_output();
