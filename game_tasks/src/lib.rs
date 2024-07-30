@@ -221,9 +221,10 @@ mod tests {
     use std::pin::Pin;
     use std::task::{Context, Poll};
 
+    use criterion::async_executor::AsyncExecutor;
     use futures::future::poll_fn;
 
-    use crate::{noop_waker, TaskPool};
+    use crate::{noop_waker, Task, TaskPool};
 
     #[test]
     fn schedule_basic() {
@@ -340,5 +341,47 @@ mod tests {
         });
 
         assert_eq!(futures::executor::block_on(task), 2);
+    }
+
+    #[test]
+    fn task_cancel() {
+        let executor = TaskPool::new(1);
+        let task = executor.spawn(poll_fn(|cx| {
+            cx.waker().wake_by_ref();
+            Poll::<()>::Pending
+        }));
+
+        let mut future = task.cancel();
+        let waker = noop_waker();
+        let mut cx = Context::from_waker(&waker);
+
+        while Pin::new(&mut future).poll(&mut cx).is_pending() {}
+    }
+
+    #[test]
+    fn task_future_wake_on_ready() {
+        let executor = TaskPool::new(1);
+        let mut task = executor.spawn(poll_fn(|cx| {
+            cx.waker().wake_by_ref();
+            Poll::Ready(())
+        }));
+
+        let waker = noop_waker();
+        let mut cx = Context::from_waker(&waker);
+        while Pin::new(&mut task).poll(&mut cx).is_pending() {}
+    }
+
+    #[test]
+    fn task_wake_twice() {
+        let executor = TaskPool::new(1);
+        let mut task = executor.spawn(poll_fn(|cx| {
+            cx.waker().wake_by_ref();
+            // cx.waker().wake_by_ref();
+            Poll::Ready(())
+        }));
+
+        let waker = noop_waker();
+        let mut cx = Context::from_waker(&waker);
+        while Pin::new(&mut task).poll(&mut cx).is_pending() {}
     }
 }
