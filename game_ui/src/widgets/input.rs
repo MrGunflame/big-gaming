@@ -1,15 +1,16 @@
 use std::collections::HashMap;
 use std::ops::Deref;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
+use async_io::Timer;
+use futures::StreamExt;
 use game_input::keyboard::{KeyCode, KeyboardInput};
 use game_input::mouse::MouseButtonInput;
 use game_tracing::trace_span;
 use glam::UVec2;
 use parking_lot::Mutex;
 
-use crate::reactive::{Context, NodeDestroyed, NodeId};
+use crate::reactive::{Context, NodeDestroyed, NodeId, TaskHandle};
 use crate::style::{Bounds, Size, SizeVec2, Style};
 
 use super::{Callback, Container, Text, Widget};
@@ -17,11 +18,6 @@ use super::{Callback, Container, Text, Widget};
 // FIXME: Some platforms (e.g. Windows) have customizable blinking intervals
 // that we should conform to (e.g. GetCaretBlinkTime for Windows).
 const CARET_BLINK_INTERVAL: Duration = Duration::from_millis(500);
-
-/// State indicating whether the cursor blink thread is currently active.
-// If this is `true` but no `InputState` exists we should wait until
-// the thread was dropped before starting a new one.
-static THREAD_ACTIVE: AtomicBool = AtomicBool::new(false);
 
 pub struct Input {
     pub value: String,
@@ -81,8 +77,8 @@ impl Widget for Input {
             move |ctx: Context<NodeDestroyed>| {
                 let node = ctx.node().unwrap();
                 let state = ctx.document().get::<InputState>().unwrap();
-                let mut active = state.active.try_lock().unwrap();
-                let mut nodes = state.nodes.try_lock().unwrap();
+                let mut active = state.active.lock();
+                let mut nodes = state.nodes.lock();
 
                 if *active == Some(node) {
                     *active = None;
@@ -98,7 +94,7 @@ impl Widget for Input {
         if let Some(state) = parent.document().get::<InputState>() {
             tracing::debug!("reusing existing InputState");
 
-            state.nodes.try_lock().unwrap().insert(
+            state.nodes.lock().insert(
                 wrapper.node().unwrap(),
                 NodeState {
                     ctx: wrapper.clone(),
@@ -110,23 +106,8 @@ impl Widget for Input {
         } else {
             tracing::debug!("creating new InputState");
 
-            // Wait until the previous thread has dropped before spawning
-            // a new one.
-            // Running multiple threads can cause problems including
-            // unsynchronized cursor blinking or deadlocks.
-            {
-                // FIXME: Disabled for now. If more than one Document with
-                // an Input widget is created, this will deadlock.
-                // For now we just take the chance that we will spawn too
-                // many threads.
-                // This will be replaced with the async task system once
-                // implemented: https://github.com/MrGunflame/big-gaming/issues/286
-                // let _span = trace_span!("wait for thread idle").entered();
-                // while THREAD_ACTIVE.load(Ordering::SeqCst) {}
-            }
-
-            let mut state = InputState::default();
-            state.nodes.get_mut().insert(
+            let mut nodes = HashMap::new();
+            nodes.insert(
                 wrapper.node().unwrap(),
                 NodeState {
                     ctx: wrapper.clone(),
@@ -135,23 +116,20 @@ impl Widget for Input {
                     text_node,
                 },
             );
-            parent.document().insert(state);
 
-            // FIXME: We should prefer a async task system for the UI
-            // for cases like these.
-            THREAD_ACTIVE.store(true, Ordering::SeqCst);
             let ctx = wrapper.clone();
-            std::thread::spawn(move || {
+            let handle = parent.runtime().spawn_task(async move {
+                let mut timer = Timer::interval(CARET_BLINK_INTERVAL);
                 let mut cursor_blink = false;
                 loop {
-                    std::thread::sleep(CARET_BLINK_INTERVAL);
+                    timer.next().await;
 
                     let Some(state) = ctx.document().get::<InputState>() else {
                         break;
                     };
 
-                    let mut nodes = state.nodes.try_lock().unwrap();
-                    let active = state.active.try_lock().unwrap();
+                    let mut nodes = state.nodes.lock();
+                    let active = state.active.lock();
 
                     let Some(node) = *active else {
                         continue;
@@ -166,8 +144,6 @@ impl Widget for Input {
                     node.text_node = text.node().unwrap();
                     cursor_blink ^= true;
                 }
-
-                THREAD_ACTIVE.store(false, Ordering::SeqCst);
             });
 
             parent
@@ -177,8 +153,8 @@ impl Widget for Input {
                         return;
                     };
 
-                    let mut nodes = state.nodes.try_lock().unwrap();
-                    let mut active = state.active.try_lock().unwrap();
+                    let mut nodes = state.nodes.lock();
+                    let mut active = state.active.lock();
 
                     let prev_active = *active;
 
@@ -239,6 +215,12 @@ impl Widget for Input {
                     }
                 });
 
+            parent.document().insert(InputState {
+                nodes: Mutex::new(nodes),
+                active: Mutex::new(None),
+                _caret_blink_task: handle,
+            });
+
             parent
                 .document()
                 .register(move |ctx: Context<KeyboardInput>| {
@@ -246,8 +228,8 @@ impl Widget for Input {
                         return;
                     };
 
-                    let mut nodes = state.nodes.try_lock().unwrap();
-                    let active = state.active.try_lock().unwrap();
+                    let mut nodes = state.nodes.lock();
+                    let active = state.active.lock();
 
                     let Some(node) = &*active else {
                         return;
@@ -331,10 +313,15 @@ fn update_buffer(buffer: &mut Buffer, event: &KeyboardInput) -> bool {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 struct InputState {
     nodes: Mutex<HashMap<NodeId, NodeState>>,
     active: Mutex<Option<NodeId>>,
+    /// The handle to the task handling periodic caret blinking.
+    ///
+    /// We keep a handle to the task so that it gets dropped together with all other state when the
+    /// last `Input` element in a document gets destroyed.
+    _caret_blink_task: TaskHandle<()>,
 }
 
 #[derive(Debug)]

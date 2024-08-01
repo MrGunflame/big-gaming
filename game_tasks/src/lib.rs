@@ -67,7 +67,7 @@ impl TaskPool {
     pub fn spawn<T, F>(&self, future: F) -> Task<T>
     where
         F: Future<Output = T> + Send + 'static,
-        T: Send,
+        T: Send + 'static,
     {
         unsafe { self.spawn_unchecked(future) }
     }
@@ -83,7 +83,7 @@ impl TaskPool {
     pub unsafe fn spawn_unchecked<'a, T, F>(&self, future: F) -> Task<T>
     where
         F: Future<Output = T> + Send + 'a,
-        T: Send,
+        T: Send + 'a,
     {
         let task = Task::alloc_new(future, self.inner.clone());
         unsafe {
