@@ -16,14 +16,38 @@ use futures::task::AtomicWaker;
 use crate::linked_list::{Link, Pointers};
 use crate::{noop_waker, Inner};
 
-pub const REF_COUNT: usize = 0b0001_0000;
-pub const REF_COUNT_MASK: usize = usize::MAX & !0b1111;
+pub const REF_COUNT: usize = 0b0010_0000;
+pub const REF_COUNT_MASK: usize = usize::MAX & !STATE_MASK;
 
+/// Set when the task is currently queued up for execution.
+///
+/// Note that this flag is **not** mutually exclusive with [`STATE_RUNNING`]. It is possible for a
+/// task to be rescheduled while it is being ran.
 pub const STATE_QUEUED: usize = 0b0001;
+
+/// Set when the task is currently running.
+///
+/// Note that this flag is **not** mutually exclusive with [`STATE_QUEUED`]. It is possible for a
+/// task to be rescheduled while it is being ran.
 pub const STATE_RUNNING: usize = 0b0010;
-pub const STATE_DONE: usize = 0b0011;
-pub const STATE_CLOSED: usize = 0b0100;
-pub const STATE_MASK: usize = STATE_QUEUED | STATE_RUNNING | STATE_DONE | STATE_CLOSED;
+
+/// Set when the task has finished and the output value exists.
+///
+/// This flag is mututally exclusive with [`STATE_CLOSED`].
+pub const STATE_DONE: usize = 0b0100;
+
+/// Set in any of the following cases:
+/// - The task has finished and the output value has been read.
+/// - The task has been cancelled.
+///
+/// This flag is mutually exclusive with [`STATE_DONE`].
+pub const STATE_CLOSED: usize = 0b1000;
+
+/// Set if the task should be cancelled.
+pub const STATE_CANCEL: usize = 0b0001_0000;
+
+pub const STATE_MASK: usize =
+    STATE_QUEUED | STATE_RUNNING | STATE_DONE | STATE_CLOSED | STATE_CANCEL;
 
 /// The initial state of a [`RawTask`].
 ///
@@ -76,19 +100,28 @@ where
     const LAYOUT: Layout = Layout::new::<Self>();
 
     unsafe fn drop(ptr: NonNull<()>) {
+        // The caller guarantees that this function is only called when
+        // a single pointer to this task is left. We can therfore borrow
+        // mutably.
         let this = unsafe { ptr.cast::<Self>().as_mut() };
 
         unsafe {
             ManuallyDrop::drop(&mut this.waker);
         }
 
-        match *this.header.state.get_mut() & STATE_MASK {
-            STATE_QUEUED | STATE_RUNNING => unsafe {
-                ManuallyDrop::drop(&mut this.stage.get_mut().future);
-            },
+        match *this.header.state.get_mut() & (STATE_DONE | STATE_CLOSED) {
+            // The `DONE` flag indicates that future has completed and been dropped.
+            // The output value has not been consumed.
+            // We must drop the output value in this case.
             STATE_DONE => unsafe { ManuallyDrop::drop(&mut this.stage.get_mut().output) },
+            // The `CLOSED` flag indicates that the future has been dropped.
+            // The output value has either never been written or has already been consumed.
+            // We must not drop anything in this case.
             STATE_CLOSED => (),
-            _ => unreachable!(),
+            // If neither the `DONE` nor `CLOSED` flags are set, the future has not been
+            // dropped.
+            // We must drop the future in this case.
+            _ => unsafe { ManuallyDrop::drop(&mut this.stage.get_mut().future) },
         }
 
         // Drop the Header last.
@@ -106,9 +139,69 @@ where
 
         let future = unsafe { &mut stage.future };
 
+        // Unset the `QUEUED` flag and set the `RUNNING` flag.
+        // This must happen before we start polling the future.
+        let mut state = header.state.load(Ordering::Acquire);
+        loop {
+            debug_assert!(state & STATE_QUEUED != 0);
+            debug_assert!(state & STATE_RUNNING == 0);
+            let new_state = state & !STATE_QUEUED | STATE_RUNNING;
+
+            match header.state.compare_exchange_weak(
+                state,
+                new_state,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            ) {
+                Ok(_) => break,
+                Err(s) => state = s,
+            }
+        }
+
         let mut cx = Context::from_waker(unsafe { &*waker });
         let pin: Pin<&mut F> = unsafe { Pin::new_unchecked(future) };
-        match F::poll(pin, &mut cx) {
+        let res = F::poll(pin, &mut cx);
+
+        // Unset the `RUNNING` flag after polling the task.
+        // Note that we are reusing the state loaded before
+        // polling the task. If the state is outdated the CAS
+        // will update it.
+        loop {
+            let new_state = state & !STATE_RUNNING;
+            match header.state.compare_exchange_weak(
+                state,
+                new_state,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            ) {
+                Ok(_) => break,
+                Err(s) => state = s,
+            }
+        }
+
+        match res {
+            Poll::Pending if state & STATE_CANCEL != 0 => {
+                unsafe {
+                    ManuallyDrop::drop(future);
+                }
+
+                loop {
+                    let new_state = state | STATE_CLOSED;
+                    match header.state.compare_exchange_weak(
+                        state,
+                        new_state,
+                        Ordering::AcqRel,
+                        Ordering::Acquire,
+                    ) {
+                        Ok(_) => break,
+                        Err(s) => state = s,
+                    }
+                }
+
+                task_waker.wake();
+
+                Poll::Ready(())
+            }
             Poll::Pending => Poll::Pending,
             Poll::Ready(val) => {
                 unsafe {
@@ -122,23 +215,17 @@ where
                 // before calling the waker.
                 // As soon as the `DONE` bit is set another thread is allowed to
                 // read the output value.
-                loop {
-                    let old_state = header.state.load(Ordering::Acquire);
-                    let mut new_state = old_state;
-                    new_state &= !(STATE_QUEUED | STATE_RUNNING);
-                    new_state |= STATE_DONE;
 
-                    if header
-                        .state
-                        .compare_exchange_weak(
-                            old_state,
-                            new_state,
-                            Ordering::SeqCst,
-                            Ordering::SeqCst,
-                        )
-                        .is_ok()
-                    {
-                        break;
+                loop {
+                    let new_state = state | STATE_DONE;
+                    match header.state.compare_exchange_weak(
+                        state,
+                        new_state,
+                        Ordering::AcqRel,
+                        Ordering::Acquire,
+                    ) {
+                        Ok(_) => break,
+                        Err(s) => state = s,
                     }
                 }
 
@@ -167,7 +254,7 @@ impl RawTaskPtr {
     }
 
     pub(crate) fn waker(self) -> *const AtomicWaker {
-        let offset = std::mem::size_of::<Header>();
+        let offset = size_of::<Header>();
         unsafe { self.ptr.as_ptr().cast::<u8>().add(offset) as *const AtomicWaker }
     }
 
@@ -229,9 +316,28 @@ impl RawTaskPtr {
     }
 
     pub(crate) unsafe fn schedule(self) {
-        unsafe {
-            self.header().as_ref().executor.queue.push(self);
+        let header = unsafe { self.header().as_ref() };
+
+        let mut state = header.state.load(Ordering::Acquire);
+        loop {
+            if state & (STATE_QUEUED | STATE_DONE | STATE_CANCEL) != 0 {
+                return;
+            }
+
+            let new_state = state | STATE_QUEUED;
+
+            match header.state.compare_exchange_weak(
+                state,
+                new_state,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            ) {
+                Ok(_) => break,
+                Err(s) => state = s,
+            }
         }
+
+        header.executor.queue.push(self);
     }
 
     /// Reads the final output value.
@@ -299,7 +405,7 @@ impl<T> Task<T> {
         }
     }
 
-    fn poll_inner(&mut self, cx: &mut Context<'_>) -> Poll<T> {
+    fn poll_inner(&mut self, cx: &mut Context<'_>) -> Poll<Option<T>> {
         let header = self.ptr.header();
         let waker = unsafe { &*self.ptr.waker() };
         // The waker might be different that on the last
@@ -307,50 +413,35 @@ impl<T> Task<T> {
         // `will_wake`.
         waker.register(cx.waker());
 
-        let state = unsafe { header.as_ref().state.load(Ordering::Acquire) };
+        let mut state = unsafe { header.as_ref().state.load(Ordering::Acquire) };
         let header = unsafe { header.as_ref() };
 
-        match state & STATE_MASK {
-            STATE_QUEUED | STATE_RUNNING => Poll::Pending,
+        match state & (STATE_DONE | STATE_CLOSED) {
             // The future is done and we can read the final output value.
             STATE_DONE => {
                 loop {
-                    let old_state = header.state.load(Ordering::Acquire);
-                    let mut new_state = old_state;
-                    new_state &= !STATE_DONE;
-                    new_state |= STATE_CLOSED;
+                    // It is not possible for another thread to "steal" the `DONE` value
+                    // since there exists only one `Task` handle.
+                    debug_assert!(state & STATE_DONE != 0);
+                    debug_assert!(state & STATE_CLOSED == 0);
+                    let new_state = state & !STATE_DONE | STATE_CLOSED;
 
-                    // Advance the state from `STATE_DONE` to `STATE_CLOSED`.
-                    // Only if the operation succeeds are we allowed to take
-                    // the output value.
                     match header.state.compare_exchange_weak(
-                        old_state,
+                        state,
                         new_state,
-                        Ordering::SeqCst,
-                        Ordering::SeqCst,
+                        Ordering::AcqRel,
+                        Ordering::Acquire,
                     ) {
                         Ok(_) => break,
-                        Err(state) => {
-                            // We are the only `Task` handle that is allowed to
-                            // read the output value.
-                            debug_assert_ne!(state & STATE_DONE, 0);
-                        }
+                        Err(s) => state = s,
                     }
                 }
 
                 let output: T = unsafe { self.ptr.read_output() };
-                Poll::Ready(output)
+                Poll::Ready(Some(output))
             }
-            STATE_CLOSED => {
-                #[inline(never)]
-                #[cold]
-                fn panic_value_consumed() -> ! {
-                    panic!("`Task` was polled after the future completed");
-                }
-
-                panic_value_consumed();
-            }
-            _ => unreachable!(),
+            STATE_CLOSED => Poll::Ready(None),
+            _ => Poll::Pending,
         }
     }
 
@@ -359,7 +450,7 @@ impl<T> Task<T> {
         let mut cx = Context::from_waker(&waker);
         match self.poll_inner(&mut cx) {
             Poll::Pending => None,
-            Poll::Ready(val) => Some(val),
+            Poll::Ready(val) => val,
         }
     }
 
@@ -391,6 +482,67 @@ impl<T> Task<T> {
             self.ptr.decrement_ref_count();
         }
     }
+
+    /// Sets this `Task` as being cancelled.
+    ///
+    /// This should only be called once in the lifetime of the `Task`.
+    fn set_cancelled(&self) {
+        let header = unsafe { self.ptr.header().as_ref() };
+
+        let mut state = header.state.load(Ordering::Acquire);
+        loop {
+            debug_assert!(state & STATE_CLOSED == 0);
+
+            // We can't cancel the task if it is already complete.
+            if state & (STATE_DONE | STATE_CLOSED) != 0 {
+                break;
+            }
+
+            let new_state = if state & (STATE_QUEUED | STATE_RUNNING) == 0 {
+                state | STATE_QUEUED | STATE_CANCEL
+            } else {
+                state | STATE_CANCEL
+            };
+
+            match header.state.compare_exchange_weak(
+                state,
+                new_state,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            ) {
+                Ok(_) => {
+                    if state & (STATE_QUEUED | STATE_RUNNING) == 0 {
+                        header.executor.queue.push(self.ptr.clone());
+                    }
+
+                    break;
+                }
+                Err(s) => state = s,
+            }
+        }
+    }
+
+    /// Cancells the `Task` and returns a future that completes once the `Task` has been
+    /// cancelled.
+    ///
+    /// If the returned future is dropped the task is detached and cancelled in the background.
+    pub fn cancel(self) -> Cancel<T> {
+        self.set_cancelled();
+        Cancel { task: self }
+    }
+
+    /// Cancells the `Task` without waiting for the task be cancelled.
+    ///
+    /// If the future just completed the value is returned. Otherwise the `Task` is detached and
+    /// cancelled in the background.
+    ///
+    /// This function is a more efficient version of `self.cancel().now_or_never()`.
+    pub fn cancel_now(mut self) -> Option<T> {
+        self.set_cancelled();
+        let output = self.get_output();
+        self.deatch();
+        output
+    }
 }
 
 impl<T> Unpin for Task<T> {}
@@ -400,7 +552,14 @@ impl<T> Future for Task<T> {
 
     #[inline]
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        #[inline(never)]
+        #[cold]
+        fn panic_value_consumed() -> ! {
+            panic!("`Task` was polled after the future completed");
+        }
+
         self.poll_inner(cx)
+            .map(|v| v.unwrap_or_else(|| panic_value_consumed()))
     }
 }
 
@@ -441,4 +600,18 @@ union Stage<T, F> {
     output: ManuallyDrop<T>,
     /// The non-terminated future.
     future: ManuallyDrop<F>,
+}
+
+#[derive(Debug)]
+pub struct Cancel<T> {
+    // Detached on drop.
+    task: Task<T>,
+}
+
+impl<T> Future for Cancel<T> {
+    type Output = Option<T>;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        self.task.poll_inner(cx)
+    }
 }
