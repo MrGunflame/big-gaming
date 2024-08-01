@@ -217,8 +217,16 @@ impl<T> Arena<T> {
         Keys { iter: self.iter() }
     }
 
+    /// Returns an `Iterator` visiting all values in unspecified order.
     pub fn values(&self) -> Values<'_, T> {
         Values { iter: self.iter() }
+    }
+
+    /// Returns an `Iterator` visiting all values mutably in unspecified order.
+    pub fn values_mut(&mut self) -> ValuesMut<'_, T> {
+        ValuesMut {
+            iter: self.iter_mut(),
+        }
     }
 }
 
@@ -444,6 +452,31 @@ impl<'a, T> ExactSizeIterator for Values<'a, T> {
 }
 
 impl<'a, T> FusedIterator for Values<'a, T> {}
+
+#[derive(Debug)]
+pub struct ValuesMut<'a, T> {
+    iter: IterMut<'a, T>,
+}
+
+impl<'a, T> Iterator for ValuesMut<'a, T> {
+    type Item = &'a mut T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next().map(|(_, v)| v)
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.iter.size_hint()
+    }
+}
+
+impl<'a, T> ExactSizeIterator for ValuesMut<'a, T> {
+    fn len(&self) -> usize {
+        self.iter.len()
+    }
+}
+
+impl<'a, T> FusedIterator for ValuesMut<'a, T> {}
 
 #[cfg(test)]
 mod tests {
