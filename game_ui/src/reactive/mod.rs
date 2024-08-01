@@ -1,6 +1,7 @@
 use std::alloc::Layout;
 use std::any::TypeId;
 use std::collections::HashMap;
+use std::future::Future;
 use std::marker::PhantomData;
 use std::mem::{ManuallyDrop, MaybeUninit};
 use std::ptr::NonNull;
@@ -8,6 +9,7 @@ use std::sync::Arc;
 
 use game_common::collections::arena::{self, Arena};
 use game_render::camera::RenderTarget;
+use game_tasks::TaskPool;
 use game_tracing::trace_span;
 use game_window::cursor::Cursor;
 use glam::{UVec2, Vec2};
@@ -21,6 +23,9 @@ use crate::render::Rect;
 pub struct Runtime {
     pub(crate) inner: Arc<Mutex<RuntimeInner>>,
     pub(crate) cursor: Arc<Mutex<Option<Arc<Cursor>>>>,
+    // FIXME: We probably want to share the same task pool
+    // instead of having a separate one just for UI.
+    pool: Arc<TaskPool>,
 }
 
 impl Runtime {
@@ -35,6 +40,7 @@ impl Runtime {
                 event_handler_parents: HashMap::new(),
             })),
             cursor: Arc::new(Mutex::new(None)),
+            pool: Arc::new(TaskPool::new(1)),
         }
     }
 
@@ -248,6 +254,15 @@ impl Runtime {
             document,
             runtime: self.clone(),
         }
+    }
+
+    pub fn spawn_task<F>(&self, future: F) -> TaskHandle<F::Output>
+    where
+        F: Future + Send + 'static,
+        F::Output: Send + 'static,
+    {
+        let handle = self.pool.spawn(future);
+        TaskHandle(ManuallyDrop::new(handle))
     }
 
     fn register_on_document<E, F>(&self, document: DocumentId, parent: Option<NodeId>, handler: F)
@@ -756,4 +771,15 @@ impl NodeHierarchy {
     // pub fn parent(&self, key: NodeId) -> Option<NodeId> {
     //     self.parents.get(&key).copied()
     // }
+}
+
+#[derive(Debug)]
+pub struct TaskHandle<T>(ManuallyDrop<game_tasks::Task<T>>);
+
+impl<T> Drop for TaskHandle<T> {
+    fn drop(&mut self) {
+        unsafe {
+            ManuallyDrop::drop(&mut self.0);
+        }
+    }
 }
