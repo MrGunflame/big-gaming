@@ -588,6 +588,14 @@ impl<T> Debug for Task<T> {
     }
 }
 
+// Because `Task<T>` allows extraction `T` from another thread,
+// `T` must be `Send`.
+unsafe impl<T> Send for Task<T> where T: Send {}
+
+// Because `&Task<T>` never has any access to the `T` value,
+// `Task<T>` is always `Sync`, regardless of `T`.
+unsafe impl<T> Sync for Task<T> {}
+
 unsafe fn dealloc_task(ptr: NonNull<()>) {
     let layout = unsafe { (*(ptr.as_ptr() as *const Header)).vtable.layout };
 
