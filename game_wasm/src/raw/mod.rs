@@ -1,5 +1,4 @@
 pub mod components;
-pub mod inventory;
 pub mod physics;
 pub mod process;
 pub mod record;
