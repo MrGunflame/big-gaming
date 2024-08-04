@@ -2,7 +2,6 @@ extern crate alloc;
 
 pub mod park;
 
-mod linked_list;
 mod loom;
 mod task;
 mod waker;

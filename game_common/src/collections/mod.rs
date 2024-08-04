@@ -1,4 +1,5 @@
 pub mod arena;
+pub mod linked_list;
 pub mod lru;
 pub mod sparse_set;
 pub mod string;
