@@ -13,7 +13,7 @@ use std::ptr::NonNull;
 /// - It is well-aligned
 /// - It can be dereferenceable
 /// - It points to an initialized `Self` value
-pub(crate) unsafe trait Link {
+pub unsafe trait Link {
     /// Returns the intrusive `Pointers` of the element.
     ///
     /// The [`Pointers`] returned by this function are valid for the same lifetime as `ptr`.
@@ -27,7 +27,7 @@ pub(crate) unsafe trait Link {
 
 #[derive(Debug)]
 #[repr(transparent)]
-pub(crate) struct Pointers<T>
+pub struct Pointers<T>
 where
     T: ?Sized,
 {
@@ -65,7 +65,7 @@ where
 
 /// An instrusive linked.
 #[derive(Debug)]
-pub(crate) struct LinkedList<T> {
+pub struct LinkedList<T> {
     head: Option<NonNull<T>>,
     tail: Option<NonNull<T>>,
     _marker: PhantomData<*const T>,
@@ -155,10 +155,15 @@ where
         }
     }
 
-    /// Returns the pointer to the head element of the `LinkedList`.
+    /// Returns the pointer to the first element of the `LinkedList`.
     #[inline]
-    pub fn head(&self) -> Option<NonNull<T>> {
+    pub fn front(&self) -> Option<NonNull<T>> {
         self.head
+    }
+
+    /// Returns the pointer to the last element of the `LinkedList`.
+    pub fn back(&self) -> Option<NonNull<T>> {
+        self.tail
     }
 }
 
