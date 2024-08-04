@@ -13,7 +13,6 @@ use std::task::{Context, Poll, Waker};
 use futures::future::FusedFuture;
 use futures::task::AtomicWaker;
 
-use crate::linked_list::{Link, Pointers};
 use crate::{noop_waker, Inner};
 
 pub const REF_COUNT: usize = 0b0010_0000;
@@ -51,9 +50,8 @@ pub const STATE_MASK: usize =
 
 /// The initial state of a [`RawTask`].
 ///
-/// In the initial state the task is `QUEUED` and two handles to it exist (one from the executor)
-/// and one from the task handle.
-const INITIAL_STATE: usize = STATE_QUEUED | (REF_COUNT * 2);
+/// In the initial state the task is `QUEUED` and one handle exists.
+const INITIAL_STATE: usize = STATE_QUEUED | REF_COUNT;
 
 #[derive(Debug)]
 struct Vtable {
@@ -65,23 +63,9 @@ struct Vtable {
 #[derive(Debug)]
 #[repr(C)]
 pub(crate) struct Header {
-    /// The pointers to adjacent task `Header`s.
-    // `Header` is `#[repr(C)]` and `Pointers` is at the top of the struct
-    // which means we can safely cast any `*const Header` to
-    // `*const Pointers`.
-    pointers: Pointers<Header>,
     state: AtomicUsize,
     vtable: &'static Vtable,
     executor: Arc<Inner>,
-}
-
-unsafe impl Link for Header {
-    #[inline]
-    unsafe fn pointers(ptr: NonNull<Self>) -> NonNull<Pointers<Self>> {
-        // The `Pointers` for the `Header` struct are located at the top.
-        // See `Header::points` for more details.
-        ptr.cast()
-    }
 }
 
 // Casting `RawTask` to `Header` requires the header to be at
@@ -238,22 +222,22 @@ where
 }
 
 /// An opaque pointer to a typed [`RawTask`].
-#[derive(Copy, Clone, Debug)]
+#[derive(Debug)]
 #[repr(transparent)]
 pub(crate) struct RawTaskPtr {
     ptr: NonNull<()>,
 }
 
 impl RawTaskPtr {
-    pub(crate) fn header(self) -> NonNull<Header> {
+    pub(crate) fn header(&self) -> NonNull<Header> {
         self.ptr.cast()
     }
 
-    pub(crate) fn as_ptr(self) -> NonNull<()> {
+    pub(crate) fn as_ptr(&self) -> NonNull<()> {
         self.ptr
     }
 
-    pub(crate) fn waker(self) -> *const AtomicWaker {
+    pub(crate) fn waker(&self) -> *const AtomicWaker {
         let offset = size_of::<Header>();
         unsafe { self.ptr.as_ptr().cast::<u8>().add(offset) as *const AtomicWaker }
     }
@@ -264,7 +248,7 @@ impl RawTaskPtr {
         }
     }
 
-    pub unsafe fn increment_ref_count(self) {
+    pub unsafe fn increment_ref_count(&self) {
         let header = unsafe { self.header().as_ref() };
 
         let old_rc = header.state.fetch_add(REF_COUNT, Ordering::Relaxed);
@@ -276,7 +260,7 @@ impl RawTaskPtr {
 
     /// Decrements the ref count. If the last ref count is dropped the task deallocated and this
     /// `RawTaskPtr` becomes dangling.
-    pub unsafe fn decrement_ref_count(self) {
+    pub unsafe fn decrement_ref_count(&self) {
         let header = unsafe { self.header().as_ref() };
 
         // We need to synchronize with the other thread if we are going
@@ -308,15 +292,23 @@ impl RawTaskPtr {
     ///
     /// The task must not be done or dropped yet.
     #[inline]
-    pub(crate) unsafe fn poll(self, waker: *const Waker) -> Poll<()> {
+    pub(crate) unsafe fn poll(&self, waker: *const Waker) -> Poll<()> {
         unsafe {
             let poll_fn = self.header().as_ref().vtable.poll;
             poll_fn(self.ptr, waker)
         }
     }
 
-    pub(crate) unsafe fn schedule(self) {
+    pub(crate) unsafe fn schedule(&self) {
         let header = unsafe { self.header().as_ref() };
+
+        // If the shutdown flag is set the executor will no longer
+        // poll the future and we do not schedule the task.
+        // We must not push the task into the executor queue to
+        // prevent a reference cycle.
+        if header.executor.shutdown.load(Ordering::Acquire) {
+            return;
+        }
 
         let mut state = header.state.load(Ordering::Acquire);
         loop {
@@ -337,7 +329,7 @@ impl RawTaskPtr {
             }
         }
 
-        header.executor.queue.push(self);
+        header.executor.queue.push(self.clone());
     }
 
     /// Reads the final output value.
@@ -351,7 +343,7 @@ impl RawTaskPtr {
     ///
     /// [`poll`]: Self::poll
     #[inline]
-    unsafe fn read_output<T>(self) -> T {
+    unsafe fn read_output<T>(&self) -> T {
         unsafe {
             // We don't care about the future type but when this function is called
             // the future is already dropped. The dropped future and the output value
@@ -359,6 +351,23 @@ impl RawTaskPtr {
             // is possible.
             let task = self.ptr.cast::<RawTask<T, ()>>().as_ref();
             ManuallyDrop::take(&mut (*task.stage.get()).output)
+        }
+    }
+}
+
+impl Clone for RawTaskPtr {
+    fn clone(&self) -> Self {
+        unsafe {
+            self.increment_ref_count();
+        }
+        Self { ptr: self.ptr }
+    }
+}
+
+impl Drop for RawTaskPtr {
+    fn drop(&mut self) {
+        unsafe {
+            self.decrement_ref_count();
         }
     }
 }
@@ -389,7 +398,6 @@ impl<T> Task<T> {
                     drop: RawTask::<T, F>::drop,
                     layout: RawTask::<T, F>::LAYOUT,
                 },
-                pointers: Pointers::new(),
                 executor,
             },
             waker: ManuallyDrop::new(AtomicWaker::new()),
@@ -478,9 +486,9 @@ impl<T> Task<T> {
     unsafe fn detach_inner(&self) {
         // SAFETY: We own one of the reference counts and the caller guarantees
         // that this function is only called once.
-        unsafe {
-            self.ptr.decrement_ref_count();
-        }
+        // unsafe {
+        //     self.ptr.decrement_ref_count();
+        // }
     }
 
     /// Sets this `Task` as being cancelled.

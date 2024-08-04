@@ -9,16 +9,15 @@ mod waker;
 
 use std::future::Future;
 use std::marker::PhantomData;
+use std::mem::ManuallyDrop;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::task::{Poll, RawWaker, RawWakerVTable, Waker};
 use std::thread::JoinHandle;
 
 use crossbeam::deque::{Injector, Steal};
-use linked_list::LinkedList;
 use park::Parker;
-use parking_lot::Mutex;
-use task::{Header, RawTaskPtr};
+use task::RawTaskPtr;
 
 pub use task::Task;
 use waker::waker_create;
@@ -26,14 +25,16 @@ use waker::waker_create;
 #[derive(Debug)]
 pub struct TaskPool {
     inner: Arc<Inner>,
-    threads: Option<Vec<JoinHandle<()>>>,
+    threads: ManuallyDrop<Vec<JoinHandle<()>>>,
 }
 
 #[derive(Debug)]
 struct Inner {
     queue: InjectorQueue,
+    /// Flag that is set to `true` if the executor no longer polls tasks.
+    ///
+    /// Once this flag is set no new tasks should be added to the `queue`.
     shutdown: AtomicBool,
-    tasks: Mutex<LinkedList<Header>>,
 }
 
 impl TaskPool {
@@ -48,7 +49,6 @@ impl TaskPool {
         let inner = Arc::new(Inner {
             queue: InjectorQueue::new(),
             shutdown: AtomicBool::new(false),
-            tasks: Mutex::new(LinkedList::new()),
         });
 
         let mut vec = Vec::new();
@@ -59,7 +59,7 @@ impl TaskPool {
 
         Self {
             inner,
-            threads: Some(vec),
+            threads: ManuallyDrop::new(vec),
         }
     }
 
@@ -86,11 +86,11 @@ impl TaskPool {
         T: Send + 'a,
     {
         let task = Task::alloc_new(future, self.inner.clone());
-        unsafe {
-            self.inner.tasks.lock().push_back(task.header());
-        }
+        // unsafe {
+        //     self.inner.tasks.lock().push_back(task.header());
+        // }
 
-        self.inner.queue.push(task);
+        self.inner.queue.push(task.clone());
 
         Task {
             ptr: task,
@@ -105,39 +105,27 @@ impl TaskPool {
     {
         futures::executor::block_on(future)
     }
-
-    /// Drops all tasks.
-    fn drop_tasks(&mut self) {
-        let mut tasks = self.inner.tasks.lock();
-
-        while let Some(ptr) = tasks.head() {
-            unsafe {
-                tasks.remove(ptr);
-
-                // At this point it is possible that an `Task` handle still exists
-                // for this task. We cannot directly delete the task object from
-                // here. Instead we decrement the reference count which will cause
-                // the object to be deleted once the `Task` handle is dropped.
-                let task = RawTaskPtr::from_ptr(ptr.cast().as_ptr());
-                task.decrement_ref_count();
-            }
-        }
-    }
 }
 
 impl Drop for TaskPool {
     fn drop(&mut self) {
+        // Mark the executor as shutdown.
+        // This must happen BEFORE we start draining tasks to prevent
+        // queueing of new tasks after we have drained the queue.
         self.inner.shutdown.store(true, Ordering::Release);
-        for _ in 0..self.threads.as_ref().unwrap().len() {
+
+        for _ in 0..self.threads.len() {
             self.inner.queue.parker.unpark();
         }
 
-        for handle in self.threads.take().unwrap() {
+        for handle in unsafe { ManuallyDrop::take(&mut self.threads) } {
             handle.join().unwrap();
         }
 
-        // All running tasks are now complete.
-        self.drop_tasks();
+        // Drop all task handles that are still in the queue.
+        // Since the `shutdown` flag is set no new tasks will be added
+        // to the queue.
+        while self.inner.queue.pop().is_some() {}
     }
 }
 
@@ -155,22 +143,12 @@ fn spawn_worker_thread(inner: Arc<Inner>) -> JoinHandle<()> {
             continue;
         };
 
-        let waker = unsafe { Waker::from_raw(waker_create(task)) };
+        let waker = unsafe { Waker::from_raw(waker_create(task.clone())) };
         match unsafe { task.poll(&waker) } {
             Poll::Pending => {}
             Poll::Ready(()) => {
                 // The `poll` function handles advancing the internal state
                 // when the future yields `Ready`.
-
-                unsafe {
-                    // Drop the lock as soon as possible. The task may need to be
-                    // deallocated, which is an expensive operation.
-                    let mut tasks = inner.tasks.lock();
-                    tasks.remove(task.header());
-                    drop(tasks);
-
-                    task.decrement_ref_count();
-                }
             }
         }
     })
@@ -221,10 +199,9 @@ mod tests {
     use std::pin::Pin;
     use std::task::{Context, Poll};
 
-    use criterion::async_executor::AsyncExecutor;
     use futures::future::poll_fn;
 
-    use crate::{noop_waker, Task, TaskPool};
+    use crate::{noop_waker, TaskPool};
 
     #[test]
     fn schedule_basic() {
@@ -347,7 +324,7 @@ mod tests {
     fn task_cancel() {
         let executor = TaskPool::new(1);
         let task = executor.spawn(poll_fn(|cx| {
-            // cx.waker().wake_by_ref();
+            cx.waker().wake_by_ref();
             Poll::<()>::Pending
         }));
 
@@ -358,30 +335,30 @@ mod tests {
         while Pin::new(&mut future).poll(&mut cx).is_pending() {}
     }
 
-    // #[test]
-    // fn task_future_wake_on_ready() {
-    //     let executor = TaskPool::new(1);
-    //     let mut task = executor.spawn(poll_fn(|cx| {
-    //         cx.waker().wake_by_ref();
-    //         Poll::Ready(())
-    //     }));
+    #[test]
+    fn task_future_wake_on_ready() {
+        let executor = TaskPool::new(1);
+        let mut task = executor.spawn(poll_fn(|cx| {
+            cx.waker().wake_by_ref();
+            Poll::Ready(())
+        }));
 
-    //     let waker = noop_waker();
-    //     let mut cx = Context::from_waker(&waker);
-    //     while Pin::new(&mut task).poll(&mut cx).is_pending() {}
-    // }
+        let waker = noop_waker();
+        let mut cx = Context::from_waker(&waker);
+        while Pin::new(&mut task).poll(&mut cx).is_pending() {}
+    }
 
-    // #[test]
-    // fn task_wake_twice() {
-    //     let executor = TaskPool::new(1);
-    //     let mut task = executor.spawn(poll_fn(|cx| {
-    //         cx.waker().wake_by_ref();
-    //         // cx.waker().wake_by_ref();
-    //         Poll::Ready(())
-    //     }));
+    #[test]
+    fn task_wake_twice() {
+        let executor = TaskPool::new(1);
+        let mut task = executor.spawn(poll_fn(|cx| {
+            cx.waker().wake_by_ref();
+            cx.waker().wake_by_ref();
+            Poll::Ready(())
+        }));
 
-    //     let waker = noop_waker();
-    //     let mut cx = Context::from_waker(&waker);
-    //     while Pin::new(&mut task).poll(&mut cx).is_pending() {}
-    // }
+        let waker = noop_waker();
+        let mut cx = Context::from_waker(&waker);
+        while Pin::new(&mut task).poll(&mut cx).is_pending() {}
+    }
 }
