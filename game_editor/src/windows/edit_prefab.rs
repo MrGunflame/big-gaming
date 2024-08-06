@@ -4,6 +4,7 @@ use game_common::components::components::Components;
 use game_common::world::World;
 use game_core::modules::Modules;
 use game_prefab::Prefab;
+use game_tracing::trace_span;
 use game_ui::reactive::Context;
 use game_ui::style::{Direction, Justify, Style};
 use game_ui::widgets::{Callback, Container, Widget};
@@ -14,20 +15,11 @@ use super::record::EditState;
 use super::world::components::ComponentsPanel;
 use super::world::panel::Panel;
 use super::world::properties::Properties;
-use super::world::{Event, OnWorldChangeEvent, SceneState, WorldWindowState};
+use super::world::{Event, OnWorldChangeEvent, SceneState, WorldEvent, WorldWindowState};
 use super::WindowTrait;
 
 pub fn on_world_change_callback(edit_state: Arc<Mutex<EditState>>) -> Callback<OnWorldChangeEvent> {
-    Callback::from(move |event: OnWorldChangeEvent| {
-        let mut prefab = Prefab::new();
-
-        for entity in event.entities {
-            prefab.add(entity, &event.world);
-        }
-
-        let bytes = prefab.to_bytes();
-        edit_state.lock().record.data = bytes;
-    })
+    Callback::from(move |event: OnWorldChangeEvent| {})
 }
 
 pub fn load_prefab(edit_state: &Arc<Mutex<EditState>>) -> World {
@@ -50,6 +42,7 @@ pub struct EditPrefabWindow {
     state: WorldWindowState,
     rx: mpsc::Receiver<Event>,
     ui_state: Arc<Mutex<SceneState>>,
+    edit_state: Arc<Mutex<EditState>>,
 }
 
 impl EditPrefabWindow {
@@ -64,7 +57,6 @@ impl EditPrefabWindow {
                 state.insert_component_on_entity(id, component_id, component.clone());
             }
         }
-        // handle.spawn(world);
 
         let (tx, rx) = mpsc::channel();
 
@@ -81,7 +73,21 @@ impl EditPrefabWindow {
             state,
             rx,
             ui_state,
+            edit_state,
         }
+    }
+
+    fn sync_edit_state(&self) {
+        let _span = trace_span!("EditPrefabWindow::sync_edit_state").entered();
+
+        let mut prefab = Prefab::new();
+
+        for entity in self.state.world().entities() {
+            prefab.add(entity, &self.state.world());
+        }
+
+        let bytes = prefab.to_bytes();
+        self.edit_state.lock().record.data = bytes;
     }
 }
 
@@ -103,29 +109,47 @@ impl WindowTrait for EditPrefabWindow {
     ) {
         let mut update_entities_panel = false;
         let mut update_components_panel = false;
+        let mut update_entities = false;
 
         while let Ok(event) = self.rx.try_recv() {
             match event {
                 Event::Spawn => {
                     self.state.spawn();
                     update_entities_panel = true;
+                    update_entities = true;
                 }
                 Event::SelectEntity(entity) => {
                     self.state.toggle_selection(entity);
                     update_entities_panel = true;
                     update_components_panel = true;
+                    update_entities = true;
                 }
                 Event::UpdateComponent(id, component) => {
                     self.state.insert_component(id, component);
+                    update_entities = true;
                 }
                 Event::DeleteComponent(id) => {
                     self.state.remove_component(id);
                     update_components_panel = true;
+                    update_entities = true;
                 }
                 Event::SetShadingMode(mode) => {
                     self.state.set_shading_mode(mode);
+                    update_entities = true;
                 }
             }
+        }
+
+        while let Some(event) = self.state.pop_event() {
+            match event {
+                WorldEvent::UpdateTransform(_entity, _transform) => {
+                    update_entities = true;
+                }
+            }
+        }
+
+        if update_entities {
+            self.sync_edit_state();
         }
 
         if update_entities_panel {
@@ -160,8 +184,6 @@ impl WindowTrait for EditPrefabWindow {
 
                     components
                 };
-
-                dbg!(&components);
 
                 self.ui_state.lock().components = components;
             }

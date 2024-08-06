@@ -5,37 +5,28 @@ pub mod panel;
 pub mod properties;
 
 use std::collections::VecDeque;
-use std::sync::{mpsc, Arc};
 
-use ahash::HashMap;
 use bitflags::bitflags;
-use game_common::collections::string::SmallStr;
+use edit::Axis;
 use game_common::components::components::{Components, RawComponent};
-use game_common::components::{Color, PointLight, PrimaryCamera};
-use game_common::components::{MeshInstance, Transform};
+use game_common::components::PrimaryCamera;
+use game_common::components::Transform;
 use game_common::entity::EntityId;
 use game_common::world::World;
-use game_core::logger::init;
-use game_core::modules::Modules;
 use game_input::keyboard::KeyCode;
 use game_input::mouse::{MouseButton, MouseMotion, MouseWheel};
 use game_input::ButtonState;
 use game_render::camera::{Camera, Projection, RenderTarget};
 use game_render::options::{MainPassOptions, ShadingMode};
 use game_render::Renderer;
-use game_ui::reactive::Context;
-use game_ui::style::{Direction, Justify, Style};
-use game_ui::widgets::{Callback, Container, Widget};
+use game_ui::widgets::Callback;
 use game_wasm::world::RecordReference;
 use game_window::events::WindowEvent;
 use game_window::windows::WindowId;
 use glam::{Quat, Vec2, Vec3};
-use parking_lot::{Mutex, RwLock};
-use properties::Properties;
 
-use self::components::ComponentsPanel;
 use self::edit::{EditMode, EditOperation};
-use self::panel::{Entity, Panel};
+use self::panel::Entity;
 
 const ZOOM_DISTANCE_MIN: f32 = 0.2;
 const ZOOM_DISTANCE_MAX: f32 = 100.0;
@@ -43,8 +34,7 @@ const ZOOM_FACTOR: f32 = 0.15 / 120.0 * 120.0;
 
 #[derive(Clone, Debug)]
 pub enum WorldEvent {
-    Create(EntityId),
-    Delete(EntityId),
+    UpdateTransform(EntityId, Transform),
 }
 
 #[derive(Debug, Default)]
@@ -60,10 +50,9 @@ pub struct WorldWindowState {
     // state: Arc<Mutex<SceneState>>,
     edit_op: EditOperation,
     update_components_panel: bool,
-    // Whether on_world_change should be called in the next frame.
-    entites_changed: bool,
     rendering_properties: RenderingProperties,
     state: WorldState,
+    events: VecDeque<WorldEvent>,
 }
 
 impl WorldWindowState {
@@ -73,9 +62,9 @@ impl WorldWindowState {
             cursor: Vec2::ZERO,
             edit_op: EditOperation::new(),
             update_components_panel: false,
-            entites_changed: false,
             rendering_properties: RenderingProperties::default(),
             state: WorldState::default(),
+            events: VecDeque::new(),
         }
     }
 
@@ -235,7 +224,7 @@ impl WorldWindowState {
                     if self.edit_op.mode() == EditMode::None {
                         // self.update_selection(renderer, scenes, window);
                     } else {
-                        self.confirm_edit_op(renderer);
+                        self.confirm_edit_op();
                     }
                 }
                 MouseButton::Right => {
@@ -288,11 +277,12 @@ impl WorldWindowState {
         self.update_components_panel = true;
     }
 
-    fn confirm_edit_op(&mut self, renderer: &mut Renderer) {
+    fn confirm_edit_op(&mut self) {
         self.edit_op.set_mode(EditMode::None);
-        self.edit_op.confirm();
-
-        self.entites_changed = true;
+        for (entity, transform) in self.edit_op.confirm() {
+            self.events
+                .push_back(WorldEvent::UpdateTransform(entity, transform));
+        }
     }
 
     pub fn update(&mut self, world: &mut World, options: &mut MainPassOptions) {
@@ -461,13 +451,14 @@ impl WorldWindowState {
     pub fn components(&self, entity: EntityId) -> Components {
         self.state.world.components(entity).clone()
     }
-}
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-enum Axis {
-    X,
-    Y,
-    Z,
+    pub fn pop_event(&mut self) -> Option<WorldEvent> {
+        self.events.pop_front()
+    }
+
+    pub fn world(&self) -> &World {
+        &self.state.world
+    }
 }
 
 #[derive(Debug, Default)]
