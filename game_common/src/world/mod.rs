@@ -31,14 +31,15 @@ pub mod terrain;
 pub mod time;
 pub mod world;
 
+use std::collections::VecDeque;
 use std::fmt::{self, Debug, Formatter};
 use std::marker::PhantomData;
 use std::ops::{Deref, DerefMut};
 
-use ahash::{HashMap, HashSet};
+use ahash::{HashMap, HashMapExt, HashSet, HashSetExt};
 pub use cell::{CellId, CELL_SIZE, CELL_SIZE_UINT};
 use game_wasm::components::Component;
-use game_wasm::encoding::{BinaryReader, BinaryWriter, Decode};
+use game_wasm::encoding::{decode_fields, BinaryReader, BinaryWriter, Decode};
 use game_wasm::hierarchy::Children;
 
 use crate::components::components::{Components, RawComponent};
@@ -212,6 +213,105 @@ impl World {
     pub fn clear(&mut self) {
         self.entities.clear();
         self.components.clear();
+    }
+
+    pub fn append(&mut self, other: World) -> EntityId {
+        let mut entities = HashMap::new();
+
+        let root_entities = other.find_root_entities();
+        let mut spawn_queue = VecDeque::new();
+        spawn_queue.extend(&root_entities);
+
+        let mut entity_keys = HashMap::new();
+
+        while let Some(entity) = spawn_queue.pop_front() {
+            let id = self.spawn();
+            entity_keys.insert(entity, id);
+            spawn_queue.extend(other.children(entity));
+        }
+
+        for (entity, components) in other.components {
+            let entity_id = *entity_keys.get(&entity).unwrap();
+            entities.insert(entity, entity_id);
+
+            for (id, component) in components.iter() {
+                if id == Children::ID {
+                    let reader = BinaryReader::new(
+                        component.as_bytes().to_vec(),
+                        component.fields().to_vec().into(),
+                    );
+                    let children = Children::decode(reader).unwrap();
+
+                    let mut new_children = Children::new();
+                    for id in children.get() {
+                        let child = *entity_keys.get(&id).unwrap();
+                        new_children.insert(child.into());
+                    }
+
+                    let (fields, bytes) = BinaryWriter::new().encoded(&new_children);
+                    let component = RawComponent::new(bytes, fields);
+                    self.insert(entity_id, id, component);
+                    continue;
+                }
+
+                self.insert(entity_id, id, component.clone());
+            }
+        }
+
+        let root = self.spawn();
+        let mut children = Children::new();
+        for entity in root_entities {
+            let id = *entity_keys.get(&entity).unwrap();
+            children.insert(id.into());
+        }
+        let (fields, bytes) = BinaryWriter::new().encoded(&children);
+        let component = RawComponent::new(bytes, fields);
+        self.insert(root, Children::ID, component);
+
+        root
+    }
+
+    fn children(&self, parent: EntityId) -> Vec<EntityId> {
+        let components = self.components.get(&parent).unwrap();
+
+        let Some(component) = components.get(Children::ID) else {
+            return Vec::new();
+        };
+
+        let fields = component.fields();
+        let reader = BinaryReader::new(component.as_bytes().to_vec(), fields.to_vec().into());
+        let children = Children::decode(reader).unwrap();
+
+        children.get().iter().map(|v| *v).collect()
+    }
+
+    fn find_root_entities(&self) -> Vec<EntityId> {
+        // Non-root entities are all entities that have a `Children` component
+        // pointing at them.
+        let mut non_root_entities = HashSet::new();
+
+        for (_, components) in &self.components {
+            let Some(component) = components.get(Children::ID) else {
+                continue;
+            };
+
+            let fields = component.fields();
+            let reader = BinaryReader::new(component.as_bytes().to_vec(), fields.to_vec().into());
+            let children = Children::decode(reader).unwrap();
+
+            for id in children.get() {
+                non_root_entities.insert(*id);
+            }
+        }
+
+        let mut root = Vec::with_capacity(self.entities.len() - non_root_entities.len());
+        for entity in self.entities() {
+            if !non_root_entities.contains(&entity) {
+                root.push(entity);
+            }
+        }
+
+        root
     }
 }
 

@@ -208,7 +208,6 @@ impl game_window::App for App {
                 if let Some(window_id) = self.cursor.window() {
                     if let Some(window) = self.active_windows.get_mut(&window_id) {
                         window.handle_event(
-                            &mut self.world,
                             &mut self.renderer,
                             WindowEvent::MouseMotion(event),
                             window_id,
@@ -220,7 +219,6 @@ impl game_window::App for App {
                 if let Some(window_id) = self.cursor.window() {
                     if let Some(window) = self.active_windows.get_mut(&window_id) {
                         window.handle_event(
-                            &mut self.world,
                             &mut self.renderer,
                             WindowEvent::KeyboardInput(event),
                             window_id,
@@ -232,7 +230,6 @@ impl game_window::App for App {
                 if let Some(window_id) = self.cursor.window() {
                     if let Some(window) = self.active_windows.get_mut(&window_id) {
                         window.handle_event(
-                            &mut self.world,
                             &mut self.renderer,
                             WindowEvent::MouseWheel(event),
                             window_id,
@@ -244,7 +241,6 @@ impl game_window::App for App {
                 if let Some(window_id) = self.cursor.window() {
                     if let Some(window) = self.active_windows.get_mut(&window_id) {
                         window.handle_event(
-                            &mut self.world,
                             &mut self.renderer,
                             WindowEvent::MouseButtonInput(event),
                             window_id,
@@ -256,7 +252,6 @@ impl game_window::App for App {
                 if let Some(window_id) = self.cursor.window() {
                     if let Some(window) = self.active_windows.get_mut(&window_id) {
                         window.handle_event(
-                            &mut self.world,
                             &mut self.renderer,
                             WindowEvent::CursorMoved(event),
                             window_id,
@@ -280,15 +275,15 @@ impl game_window::App for App {
         for (id, window) in self.active_windows.iter_mut() {
             window.update(&mut self.world, &mut self.renderer);
 
-            if matches!(window, crate::windows::Window::View(_, _)) {
-                self.scene.update(
-                    &self.world,
-                    &self.pool,
-                    &mut self.renderer,
-                    *id,
-                    &self.gizmos,
-                );
-            }
+            // if matches!(window, crate::windows::Window::View(_, _)) {
+            self.scene.update(
+                &self.world,
+                &self.pool,
+                &mut self.renderer,
+                *id,
+                &self.gizmos,
+            );
+            // }
         }
 
         self.ui_state.update();

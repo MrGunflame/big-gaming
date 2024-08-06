@@ -7,8 +7,8 @@ use game_ui::widgets::{Button, Container, Text, Widget};
 use super::Event;
 
 #[derive(Clone, Debug)]
-pub(super) struct Properties {
-    pub(super) writer: mpsc::Sender<Event>,
+pub struct Properties {
+    pub writer: mpsc::Sender<Event>,
 }
 
 impl Widget for Properties {
