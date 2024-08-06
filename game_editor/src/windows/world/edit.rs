@@ -6,8 +6,6 @@ use game_common::entity::EntityId;
 use game_common::math::Ray;
 use glam::{Quat, Vec2, Vec3};
 
-use super::Axis;
-
 #[derive(Clone, Debug, Default)]
 pub struct EditOperation {
     /// The cursor translation when the edit started.
@@ -151,9 +149,9 @@ impl EditOperation {
         self.nodes.iter().map(|node| (node.id, node.current))
     }
 
-    pub fn confirm(&mut self) {
-        self.nodes.clear();
+    pub fn confirm(&mut self) -> impl Iterator<Item = (EntityId, Transform)> + '_ {
         self.mode = EditMode::None;
+        self.nodes.drain(..).map(|node| (node.id, node.current))
     }
 
     pub fn reset(&mut self) -> impl Iterator<Item = (EntityId, Transform)> + '_ {
@@ -174,6 +172,13 @@ pub enum EditMode {
     Translate(Option<Axis>),
     Rotate(Option<Axis>),
     Scale(Option<Axis>),
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum Axis {
+    X,
+    Y,
+    Z,
 }
 
 /// A node being edited.

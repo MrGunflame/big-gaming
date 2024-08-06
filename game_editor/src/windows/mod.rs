@@ -11,6 +11,7 @@ mod world;
 use std::sync::Arc;
 
 use create_module::EditModule;
+use edit_prefab::EditPrefabWindow;
 use game_common::world::World;
 use game_data::record::RecordKind;
 use game_render::camera::RenderTarget;
@@ -37,45 +38,38 @@ use self::main_window::MainWindow;
 use self::open_module::OpenModule;
 use self::world::WorldWindowState;
 
-pub enum Window {
-    View(DocumentId, WorldWindowState),
-    Other(DocumentId),
+trait WindowTrait {
+    fn handle_event(&mut self, renderer: &mut Renderer, event: WindowEvent, window_id: WindowId);
+
+    fn update(&mut self, world: &mut World, renderer: &mut Renderer, options: &mut MainPassOptions);
+}
+
+pub struct Window {
+    document: DocumentId,
+    inner: Option<Box<dyn WindowTrait>>,
 }
 
 impl Window {
-    // pub fn doc(&self) -> Option<Document> {
-    //     match self {
-    //         Self::View(doc, _) => Some(doc.clone()),
-    //         Self::Other(doc) => Some(doc.clone()),
-    //     }
-    // }
-
     pub fn handle_event(
         &mut self,
-        world: &mut World,
         renderer: &mut Renderer,
         event: WindowEvent,
-        id: WindowId,
+        window_id: WindowId,
     ) {
         let _span = trace_span!("Window::handle_event").entered();
 
-        match self {
-            Self::View(_, window) => window.handle_event(world, event, id, renderer),
-            _ => (),
+        if let Some(inner) = &mut self.inner {
+            inner.handle_event(renderer, event, window_id);
         }
     }
 
     pub fn update(&mut self, world: &mut World, renderer: &mut Renderer) {
         let _span = trace_span!("Window::update").entered();
 
-        let mut options = MainPassOptions::default();
-
-        match self {
-            Self::View(_, w) => {
-                w.update(world, &mut options);
-                renderer.set_options(options);
-            }
-            _ => (),
+        if let Some(inner) = &mut self.inner {
+            let mut options = MainPassOptions::default();
+            inner.update(world, renderer, &mut options);
+            renderer.set_options(options);
         }
     }
 }
@@ -129,30 +123,27 @@ pub fn spawn_window(
             Records { state }.mount(&ctx);
         }
         SpawnWindow::View => {
-            let window =
-                WorldWindowState::new(&ctx, window_id, world, modules, None, World::default());
-            return Window::View(document, window);
+            // let (window, _) = WorldWindowState::new(modules);
+            // return Window::View(document, window);
+            todo!()
         }
         SpawnWindow::EditRecord(kind, id) => {
             EditRecord { kind, id, state }.mount(&ctx);
         }
         SpawnWindow::EditPrefab(edit_state) => {
-            let prefab_world = edit_prefab::load_prefab(&edit_state);
+            let inner = EditPrefabWindow::new(&ctx, edit_state, modules);
 
-            let window = WorldWindowState::new(
-                &ctx,
-                window_id,
-                world,
-                modules,
-                Some(edit_prefab::on_world_change_callback(edit_state)),
-                prefab_world,
-            );
-
-            return Window::View(document, window);
+            return Window {
+                document,
+                inner: Some(Box::new(inner)),
+            };
         }
     }
 
-    Window::Other(document)
+    Window {
+        document,
+        inner: None,
+    }
 }
 
 #[derive(Clone, Debug)]
