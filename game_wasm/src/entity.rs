@@ -22,9 +22,8 @@ impl EntityId {
         self.0
     }
 
-    #[inline]
-    pub(crate) fn as_raw(&self) -> &u64 {
-        &self.0
+    pub const fn dangling() -> Self {
+        Self(0)
     }
 }
 
