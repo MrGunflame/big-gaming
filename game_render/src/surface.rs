@@ -66,7 +66,19 @@ pub struct SurfaceData {
     /// A handle to the window underlying the `surface`.
     ///
     /// NOTE: The surface MUST be dropped before the handle to the window is dropped.
-    _window: WindowState,
+    window: WindowState,
+}
+
+impl SurfaceData {
+    /// Returns a handle to the window of the surface.
+    // Note: It is important that the `self.window` value that never changes
+    // after the `SurfaceData` is created.
+    // To prevent acidental moving out of `self.window` we only return a reference
+    // to the `WindowState` and keep the field itself as private.
+    #[inline]
+    pub fn window(&self) -> &WindowState {
+        &self.window
+    }
 }
 
 fn create_surface(
@@ -126,7 +138,7 @@ fn create_surface(
     Ok(SurfaceData {
         surface,
         config,
-        _window: window,
+        window,
     })
 }
 

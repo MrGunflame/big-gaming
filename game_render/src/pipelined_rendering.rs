@@ -177,7 +177,7 @@ unsafe fn execute_render(shared: &SharedState) {
             node.render(&mut ctx);
         }
 
-        outputs.push(output);
+        outputs.push((surface, output));
     }
 
     let mut render_textures = unsafe { shared.render_textures.get_mut() };
@@ -278,7 +278,8 @@ unsafe fn execute_render(shared: &SharedState) {
 
     fps_limiter.block_until_ready();
 
-    for output in outputs {
+    for (surface, output) in outputs {
+        surface.window().pre_present_notify();
         output.present();
     }
 

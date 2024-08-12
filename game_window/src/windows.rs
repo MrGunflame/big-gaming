@@ -189,6 +189,10 @@ impl WindowState {
     pub fn set_cursor_icon(&self, icon: CursorIcon) {
         self.inner.set_cursor_icon(icon)
     }
+
+    pub fn pre_present_notify(&self) {
+        self.inner.pre_present_notify();
+    }
 }
 
 impl HasDisplayHandle for WindowState {
