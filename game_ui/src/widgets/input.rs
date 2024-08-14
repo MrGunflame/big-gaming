@@ -195,7 +195,12 @@ impl Widget for Input {
                         // The text node has no additional styling properties that may cause
                         // the layout to shift.
                         let layout = ctx.layout(node.text_node).unwrap();
-                        let position = ctx.cursor().as_uvec2() - layout.min;
+
+                        // We detect whether an input is active based on the outer container.
+                        // This statement therefore underflow if the user clicked on the
+                        // padding area.
+                        // FIXME: We treat that case as zero, but is this desired?
+                        let position = ctx.cursor().as_uvec2().saturating_sub(layout.min);
 
                         let cursor = crate::render::text::get_position_in_text(
                             &node.buffer,
