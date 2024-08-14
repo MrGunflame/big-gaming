@@ -1,9 +1,6 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 
 use game_wasm::components::builtin::{GlobalTransform, Transform};
-use game_wasm::hierarchy::Children;
-
-use crate::entity::EntityId;
 
 use super::World;
 
@@ -15,20 +12,22 @@ pub fn update_global_transform(world: &mut World) {
         transforms.insert(entity, transform);
     }
 
-    for (entity, children) in world.query::<Children>() {
-        for child in children.get() {
-            parents.insert(EntityId::from_raw(child.into_raw()), entity);
-        }
-    }
+    let mut queued: VecDeque<_> = world.find_root_entities().into();
 
-    while !parents.is_empty() {
-        for (child, parent) in parents.clone().iter() {
-            if let Some(transform) = transforms.get(parent) {
-                let local_transform = transforms.get(child).unwrap();
-                parents.remove(child);
-
-                transforms.insert(*child, transform.mul_transform(*local_transform));
+    while let Some(entity) = queued.pop_front() {
+        match parents.get(&entity) {
+            Some(parent) => {
+                let parent_transform = transforms.get(&parent).unwrap();
+                let children_transform = *transforms.get(&entity).unwrap();
+                let transform = parent_transform.mul_transform(children_transform);
+                transforms.insert(entity, transform);
             }
+            None => (),
+        };
+
+        for child in world.children(entity) {
+            parents.insert(child, entity);
+            queued.push_back(child);
         }
     }
 

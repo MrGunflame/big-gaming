@@ -38,6 +38,7 @@ use std::ops::{Deref, DerefMut};
 
 use ahash::{HashMap, HashMapExt, HashSet, HashSetExt};
 pub use cell::{CellId, CELL_SIZE, CELL_SIZE_UINT};
+use game_wasm::components::builtin::Transform;
 use game_wasm::components::Component;
 use game_wasm::encoding::{decode_fields, BinaryReader, BinaryWriter, Decode};
 use game_wasm::hierarchy::Children;
@@ -423,5 +424,29 @@ where
                 return Some((*entity, query));
             };
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use game_wasm::components::builtin::Transform;
+    use game_wasm::hierarchy::Children;
+
+    use super::World;
+
+    #[test]
+    fn world_append() {
+        let mut lhs = World::new();
+        let mut rhs = World::new();
+        let entity = rhs.spawn();
+        rhs.insert_typed(entity, Transform::default());
+
+        let id = lhs.append(rhs);
+        let children = lhs.get_typed::<Children>(id).unwrap();
+        assert_eq!(children.len(), 1);
+        assert_eq!(
+            lhs.get_typed::<Transform>(children.get()[0]).unwrap(),
+            Transform::default()
+        );
     }
 }

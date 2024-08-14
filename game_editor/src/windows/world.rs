@@ -9,9 +9,10 @@ use std::collections::VecDeque;
 use bitflags::bitflags;
 use edit::Axis;
 use game_common::components::components::{Components, RawComponent};
-use game_common::components::PrimaryCamera;
 use game_common::components::Transform;
+use game_common::components::{GlobalTransform, PrimaryCamera};
 use game_common::entity::EntityId;
+use game_common::world::hierarchy::update_global_transform;
 use game_common::world::World;
 use game_input::keyboard::KeyCode;
 use game_input::mouse::{MouseButton, MouseMotion, MouseWheel};
@@ -49,7 +50,6 @@ pub struct WorldWindowState {
     cursor: Vec2,
     // state: Arc<Mutex<SceneState>>,
     edit_op: EditOperation,
-    update_components_panel: bool,
     rendering_properties: RenderingProperties,
     state: WorldState,
     events: VecDeque<WorldEvent>,
@@ -61,7 +61,6 @@ impl WorldWindowState {
             camera_controller: CameraController::default(),
             cursor: Vec2::ZERO,
             edit_op: EditOperation::new(),
-            update_components_panel: false,
             rendering_properties: RenderingProperties::default(),
             state: WorldState::default(),
             events: VecDeque::new(),
@@ -147,7 +146,6 @@ impl WorldWindowState {
 
                         for entity in delete_entities {
                             self.state.world.despawn(entity);
-                            self.update_components_panel = true;
                         }
                     }
                     _ => (),
@@ -263,8 +261,7 @@ impl WorldWindowState {
         for (entity, transform) in self.edit_op.update(ray, camera_rotation) {
             self.state.world.insert_typed(entity, transform);
         }
-
-        self.update_components_panel = true;
+        update_global_transform(&mut self.state.world);
     }
 
     fn cancel_edit_op(&mut self) {
@@ -273,12 +270,10 @@ impl WorldWindowState {
         for (entity, transform) in self.edit_op.reset() {
             self.state.world.insert_typed(entity, transform);
         }
-
-        self.update_components_panel = true;
+        update_global_transform(&mut self.state.world);
     }
 
     fn confirm_edit_op(&mut self) {
-        self.edit_op.set_mode(EditMode::None);
         for (entity, transform) in self.edit_op.confirm() {
             self.events
                 .push_back(WorldEvent::UpdateTransform(entity, transform));
@@ -290,6 +285,7 @@ impl WorldWindowState {
             *world = self.state.world.clone();
             let camera = world.spawn();
             world.insert_typed(camera, self.camera_controller.transform);
+            world.insert_typed(camera, GlobalTransform(self.camera_controller.transform));
             world.insert_typed(camera, PrimaryCamera);
         }
 
@@ -439,6 +435,17 @@ impl WorldWindowState {
 
     pub fn spawn(&mut self) -> EntityId {
         let id = self.state.world.spawn();
+        self.state.world.insert_typed(id, Transform::default());
+        self.state.entities.push(Entity {
+            id,
+            name: "entity".into(),
+            is_selected: false,
+        });
+        id
+    }
+
+    pub fn spawn_world(&mut self, world: World) -> EntityId {
+        let id = self.state.world.append(world);
         self.state.world.insert_typed(id, Transform::default());
         self.state.entities.push(Entity {
             id,

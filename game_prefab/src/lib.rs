@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 
 use game_common::components::components::RawComponent;
-use game_common::components::{BinaryReader, Children, Component, Decode};
+use game_common::components::{BinaryReader, Children, Component, Decode, Transform};
 use game_common::entity::EntityId;
 use game_common::record::RecordReference;
 use game_common::world::World;
@@ -105,6 +105,9 @@ impl Prefab {
         let (fields, bytes) = BinaryWriter::new().encoded(&children);
         let component = RawComponent::new(bytes, fields);
         world.insert(root, Children::ID, component);
+
+        let (fields, bytes) = BinaryWriter::new().encoded(&Transform::default());
+        world.insert(root, Transform::ID, RawComponent::new(bytes, fields));
 
         root
     }
