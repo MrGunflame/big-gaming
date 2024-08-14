@@ -12,6 +12,7 @@ use game_common::components::components::{Components, RawComponent};
 use game_common::components::PrimaryCamera;
 use game_common::components::Transform;
 use game_common::entity::EntityId;
+use game_common::world::world::EntitiesIter;
 use game_common::world::World;
 use game_input::keyboard::KeyCode;
 use game_input::mouse::{MouseButton, MouseMotion, MouseWheel};
@@ -439,6 +440,17 @@ impl WorldWindowState {
 
     pub fn spawn(&mut self) -> EntityId {
         let id = self.state.world.spawn();
+        self.state.world.insert_typed(id, Transform::default());
+        self.state.entities.push(Entity {
+            id,
+            name: "entity".into(),
+            is_selected: false,
+        });
+        id
+    }
+
+    pub fn spawn_world(&mut self, world: World) -> EntityId {
+        let id = self.state.world.append(world);
         self.state.world.insert_typed(id, Transform::default());
         self.state.entities.push(Entity {
             id,

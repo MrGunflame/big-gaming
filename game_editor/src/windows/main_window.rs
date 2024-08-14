@@ -40,7 +40,7 @@ impl Widget for MainWindow {
                     let state = self.state.clone();
 
                     Callback::from(move |_| {
-                        let _ = state.spawn_windows.send(SpawnWindow::View);
+                        let _ = state.spawn_windows.send(SpawnWindow::EditWorld);
                     })
                 },
             },

@@ -1,5 +1,6 @@
 mod create_module;
 mod edit_prefab;
+mod edit_world;
 mod error;
 pub mod main_window;
 pub mod modules;
@@ -12,6 +13,7 @@ use std::sync::Arc;
 
 use create_module::EditModule;
 use edit_prefab::EditPrefabWindow;
+use edit_world::EditWorldWindow;
 use game_common::world::World;
 use game_data::record::RecordKind;
 use game_render::camera::RenderTarget;
@@ -36,7 +38,6 @@ use crate::windows::error::Error;
 
 use self::main_window::MainWindow;
 use self::open_module::OpenModule;
-use self::world::WorldWindowState;
 
 trait WindowTrait {
     fn handle_event(&mut self, renderer: &mut Renderer, event: WindowEvent, window_id: WindowId);
@@ -122,10 +123,13 @@ pub fn spawn_window(
         SpawnWindow::Records => {
             Records { state }.mount(&ctx);
         }
-        SpawnWindow::View => {
-            // let (window, _) = WorldWindowState::new(modules);
-            // return Window::View(document, window);
-            todo!()
+        SpawnWindow::EditWorld => {
+            let inner = EditWorldWindow::new(&ctx, state);
+
+            return Window {
+                document,
+                inner: Some(Box::new(inner)),
+            };
         }
         SpawnWindow::EditRecord(kind, id) => {
             EditRecord { kind, id, state }.mount(&ctx);
@@ -154,7 +158,7 @@ pub enum SpawnWindow {
     EditModule(ModuleId),
     OpenModule,
     Records,
-    View,
+    EditWorld,
     Error(String),
     EditRecord(RecordKind, Option<RecordReference>),
     EditPrefab(Arc<Mutex<EditState>>),
