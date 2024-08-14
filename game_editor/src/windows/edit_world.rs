@@ -1,7 +1,6 @@
 use std::sync::{mpsc, Arc};
 
 use game_common::world::World;
-use game_core::modules::Modules;
 use game_data::record::RecordKind;
 use game_prefab::Prefab;
 use game_render::options::MainPassOptions;
@@ -93,6 +92,7 @@ impl WindowTrait for EditWorldWindow {
             let mut world = World::new();
             prefab.instantiate(&mut world);
             self.state.spawn_world(world);
+            update_entities_panel = true;
         }
 
         while let Some(event) = self.state.pop_event() {

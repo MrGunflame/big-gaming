@@ -778,8 +778,7 @@ pub struct TaskHandle<T>(ManuallyDrop<game_tasks::Task<T>>);
 
 impl<T> Drop for TaskHandle<T> {
     fn drop(&mut self) {
-        unsafe {
-            ManuallyDrop::drop(&mut self.0);
-        }
+        let task = unsafe { ManuallyDrop::take(&mut self.0) };
+        task.cancel_now();
     }
 }
