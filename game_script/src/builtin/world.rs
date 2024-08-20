@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use game_common::components::components::RawComponent;
 use game_common::entity::EntityId;
 use game_common::record::RecordReference;
@@ -221,4 +223,13 @@ impl<'a> Spawner for PrefabSpawner<'a> {
             .insert_component(entity, component_id, component)
             .unwrap();
     }
+}
+
+pub fn create_resource(mut caller: Caller<'_, State>, ptr: u32, len: u32) -> Result<u64> {
+    let _span = trace_span!("create_resource").entered();
+
+    let data = Arc::from(caller.read_memory(ptr, len)?.to_vec());
+    let state = caller.data_mut().as_run_mut()?;
+    let id = state.insert_resource(data);
+    Ok(id.to_bits())
 }

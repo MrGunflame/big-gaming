@@ -400,3 +400,38 @@ pub fn encode_fields(fields: &[Field]) -> Vec<u8> {
     }
     fields_encoded
 }
+
+impl<T> Encode for Vec<T>
+where
+    T: Encode,
+{
+    fn encode<W>(&self, mut writer: W)
+    where
+        W: Writer,
+    {
+        (self.len() as u64).encode(&mut writer);
+        for elem in self {
+            elem.encode(&mut writer);
+        }
+    }
+}
+
+impl<T> Decode for Vec<T>
+where
+    T: Decode,
+    DecodeError: From<T::Error>,
+{
+    type Error = DecodeError;
+
+    fn decode<R>(mut reader: R) -> Result<Self, Self::Error>
+    where
+        R: Reader,
+    {
+        let len = u64::decode(&mut reader)?;
+        let mut elems = Vec::with_capacity(len as usize);
+        for _ in 0..len {
+            elems.push(T::decode(&mut reader)?);
+        }
+        Ok(elems)
+    }
+}

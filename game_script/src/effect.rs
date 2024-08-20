@@ -1,7 +1,10 @@
+use std::sync::Arc;
+
 use game_common::components::components::RawComponent;
 use game_common::entity::EntityId;
 use game_common::record::RecordReference;
 use game_wasm::player::PlayerId;
+use game_wasm::resource::ResourceId;
 
 #[derive(Clone, Debug, Default)]
 pub struct Effects {
@@ -29,6 +32,7 @@ pub enum Effect {
     EntityComponentInsert(EntityComponentInsert),
     EntityComponentRemove(EntityComponentRemove),
     PlayerSetActive(PlayerSetActive),
+    CreateResource(CreateResource),
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -48,4 +52,10 @@ pub struct EntityComponentInsert {
 pub struct EntityComponentRemove {
     pub entity: EntityId,
     pub component_id: RecordReference,
+}
+
+#[derive(Clone, Debug)]
+pub struct CreateResource {
+    pub id: ResourceId,
+    pub data: Arc<[u8]>,
 }

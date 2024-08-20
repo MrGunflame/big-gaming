@@ -33,11 +33,13 @@ pub mod hierarchy;
 pub mod inventory;
 pub mod log;
 pub mod math;
+pub mod mesh;
 pub mod physics;
 pub mod player;
 pub mod prefab;
 pub mod process;
 pub mod record;
+pub mod resource;
 pub mod system;
 pub mod world;
 

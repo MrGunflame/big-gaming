@@ -35,13 +35,14 @@ use std::collections::VecDeque;
 use std::fmt::{self, Debug, Formatter};
 use std::marker::PhantomData;
 use std::ops::{Deref, DerefMut};
+use std::sync::Arc;
 
 use ahash::{HashMap, HashMapExt, HashSet, HashSetExt};
 pub use cell::{CellId, CELL_SIZE, CELL_SIZE_UINT};
-use game_wasm::components::builtin::Transform;
 use game_wasm::components::Component;
-use game_wasm::encoding::{decode_fields, BinaryReader, BinaryWriter, Decode};
+use game_wasm::encoding::{BinaryReader, BinaryWriter, Decode};
 use game_wasm::hierarchy::Children;
+use game_wasm::resource::ResourceId;
 
 use crate::components::components::{Components, RawComponent};
 use crate::entity::EntityId;
@@ -88,8 +89,10 @@ where
 #[derive(Clone, Debug, Default)]
 pub struct World {
     entities: HashSet<EntityId>,
-    next_id: u64,
+    next_entity_id: u64,
     components: HashMap<EntityId, Components>,
+    resources: HashMap<ResourceId, Arc<[u8]>>,
+    next_resource_id: u64,
 }
 
 impl World {
@@ -97,7 +100,9 @@ impl World {
         Self {
             entities: HashSet::default(),
             components: HashMap::default(),
-            next_id: 0,
+            next_entity_id: 0,
+            resources: HashMap::new(),
+            next_resource_id: 0,
         }
     }
 
@@ -106,8 +111,8 @@ impl World {
     }
 
     pub fn spawn(&mut self) -> EntityId {
-        let id = EntityId::from_raw(self.next_id);
-        self.next_id += 1;
+        let id = EntityId::from_raw(self.next_entity_id);
+        self.next_entity_id += 1;
 
         self.entities.insert(id);
         self.components.insert(id, Components::default());
@@ -313,6 +318,28 @@ impl World {
         }
 
         root
+    }
+
+    pub fn get_resource(&self, id: ResourceId) -> Option<&[u8]> {
+        match self.resources.get(&id) {
+            Some(v) => Some(&v),
+            None => None,
+        }
+    }
+
+    pub fn insert_resource_with_id(&mut self, data: Arc<[u8]>, id: ResourceId) {
+        self.resources.insert(id, data);
+    }
+
+    pub fn insert_resource(&mut self, data: Arc<[u8]>) -> ResourceId {
+        let id = ResourceId::from_bits(self.next_resource_id);
+        self.resources.insert(id, data);
+        self.next_resource_id += 1;
+        id
+    }
+
+    pub fn remove_resource(&mut self, id: ResourceId) {
+        self.resources.remove(&id);
     }
 }
 

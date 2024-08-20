@@ -58,3 +58,9 @@ pub struct Query {
 
 #[guest_only]
 pub fn prefab_spawn(id: *const RecordReference, out: *mut u64) -> u32;
+
+#[guest_only]
+pub fn create_resource(ptr: *const u8, len: usize) -> u64;
+
+#[guest_only]
+pub fn bind_resource(id: u64);
