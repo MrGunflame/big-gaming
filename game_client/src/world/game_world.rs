@@ -105,11 +105,11 @@ impl GameWorld {
         let compensation = compute_compensation(&self.server_tick_rate, drift);
         if drift.is_positive() {
             let server_timestep = self.server_tick_rate.frame_time;
-            let timestep = server_timestep + compensation;
+            let timestep = server_timestep.saturating_add(compensation);
             self.interval.set_timestep(timestep);
         } else {
             let server_timestep = self.server_tick_rate.frame_time;
-            let timestep = server_timestep - compensation;
+            let timestep = server_timestep.saturating_sub(compensation);
             self.interval.set_timestep(timestep);
         }
 
