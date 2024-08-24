@@ -34,7 +34,6 @@ pub mod hierarchy;
 pub mod inventory;
 pub mod log;
 pub mod math;
-pub mod mesh;
 pub mod physics;
 pub mod player;
 pub mod prefab;
