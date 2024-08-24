@@ -264,7 +264,9 @@ pub fn resource_destroy_runtime(mut caller: Caller<'_, State>, id: u64) -> Resul
 }
 
 /// ```no_run
+/// # extern "C" {
 /// fn resource_len_runtime(id: u64, out: *mut usize) -> u32;
+/// # }
 /// ```
 pub fn resource_len_runtime(mut caller: Caller<'_, State>, id: u64, out: u32) -> Result<u32> {
     let _span = trace_span!("resource_len_runtime").entered();
@@ -280,7 +282,9 @@ pub fn resource_len_runtime(mut caller: Caller<'_, State>, id: u64, out: u32) ->
 }
 
 /// ```no_run
+/// # extern "C" {
 /// fn resource_get_runtime(id: u64, ptr: *mut u8) -> u32;
+/// # }
 /// ```
 pub fn resource_get_runtime(mut caller: Caller<'_, State>, id: u64, ptr: u32) -> Result<u32> {
     let _span = trace_span!("resource_get_runtime").entered();
