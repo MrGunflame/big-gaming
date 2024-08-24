@@ -9,7 +9,7 @@ use game_common::world::World;
 use game_tracing::trace_span;
 use game_wasm::player::PlayerId;
 use game_wasm::raw::{RESULT_NO_COMPONENT, RESULT_NO_ENTITY, RESULT_NO_INVENTORY_SLOT};
-use game_wasm::resource::ResourceId;
+use game_wasm::resource::RuntimeResourceId;
 use wasmtime::{Engine, Instance, Linker, Module, Store};
 
 use crate::builtin::register_host_fns;
@@ -340,7 +340,7 @@ impl RunState {
         unsafe { &*self.host_buffer_pool }.get(index)
     }
 
-    pub fn insert_resource(&mut self, data: Arc<[u8]>) -> ResourceId {
+    pub fn insert_resource(&mut self, data: Arc<[u8]>) -> RuntimeResourceId {
         let id = self.allocate_temporary_resource_id();
         self.effects().push(Effect::CreateResource(CreateResource {
             id,
@@ -367,10 +367,10 @@ impl RunState {
         EntityId::from_raw(bits)
     }
 
-    fn allocate_temporary_resource_id(&mut self) -> ResourceId {
+    fn allocate_temporary_resource_id(&mut self) -> RuntimeResourceId {
         let bits = self.next_resource_id | (1 << 63);
         self.next_resource_id += 1;
-        ResourceId::from_bits(bits)
+        RuntimeResourceId::from_bits(bits)
     }
 }
 

@@ -42,7 +42,7 @@ pub use cell::{CellId, CELL_SIZE, CELL_SIZE_UINT};
 use game_wasm::components::Component;
 use game_wasm::encoding::{BinaryReader, BinaryWriter, Decode};
 use game_wasm::hierarchy::Children;
-use game_wasm::resource::ResourceId;
+use game_wasm::resource::RuntimeResourceId;
 
 use crate::components::components::{Components, RawComponent};
 use crate::entity::EntityId;
@@ -91,7 +91,7 @@ pub struct World {
     entities: HashSet<EntityId>,
     next_entity_id: u64,
     components: HashMap<EntityId, Components>,
-    resources: HashMap<ResourceId, Arc<[u8]>>,
+    resources: HashMap<RuntimeResourceId, Arc<[u8]>>,
     next_resource_id: u64,
 }
 
@@ -320,26 +320,30 @@ impl World {
         root
     }
 
-    pub fn get_resource(&self, id: ResourceId) -> Option<&[u8]> {
+    pub fn get_resource(&self, id: RuntimeResourceId) -> Option<&[u8]> {
         match self.resources.get(&id) {
             Some(v) => Some(&v),
             None => None,
         }
     }
 
-    pub fn insert_resource_with_id(&mut self, data: Arc<[u8]>, id: ResourceId) {
+    pub fn insert_resource_with_id(&mut self, data: Arc<[u8]>, id: RuntimeResourceId) {
         self.resources.insert(id, data);
     }
 
-    pub fn insert_resource(&mut self, data: Arc<[u8]>) -> ResourceId {
-        let id = ResourceId::from_bits(self.next_resource_id);
+    pub fn insert_resource(&mut self, data: Arc<[u8]>) -> RuntimeResourceId {
+        let id = RuntimeResourceId::from_bits(self.next_resource_id);
         self.resources.insert(id, data);
         self.next_resource_id += 1;
         id
     }
 
-    pub fn remove_resource(&mut self, id: ResourceId) {
+    pub fn remove_resource(&mut self, id: RuntimeResourceId) {
         self.resources.remove(&id);
+    }
+
+    pub fn iter_resources(&self) -> impl Iterator<Item = (RuntimeResourceId, &Arc<[u8]>)> {
+        self.resources.iter().map(|(k, v)| (*k, v))
     }
 }
 

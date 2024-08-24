@@ -38,6 +38,19 @@ impl RecordReference {
         let record = RecordId::from_str_const_with_offset(s, index + 1, s.len());
         Self { module, record }
     }
+
+    pub fn into_bytes(self) -> [u8; 20] {
+        let mut bytes = [0; 20];
+        bytes[0..16].copy_from_slice(&self.module.into_bytes());
+        bytes[16..20].copy_from_slice(&self.record.into_bytes());
+        bytes
+    }
+
+    pub fn from_bytes(bytes: [u8; 20]) -> Self {
+        let module = ModuleId::from_bytes(bytes[0..16].try_into().unwrap());
+        let record = RecordId::from_bytes(bytes[16..20].try_into().unwrap());
+        Self { module, record }
+    }
 }
 
 impl Display for RecordReference {

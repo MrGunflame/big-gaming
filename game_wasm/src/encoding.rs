@@ -12,6 +12,7 @@ pub enum Primitive {
     Bytes,
     EntityId,
     PlayerId,
+    RuntimeResourceId,
 }
 
 impl Primitive {
@@ -20,6 +21,7 @@ impl Primitive {
             0 => Some(Self::Bytes),
             1 => Some(Self::EntityId),
             2 => Some(Self::PlayerId),
+            3 => Some(Self::RuntimeResourceId),
             _ => None,
         }
     }
@@ -29,6 +31,7 @@ impl Primitive {
             Self::Bytes => 0,
             Self::EntityId => 1,
             Self::PlayerId => 2,
+            Self::RuntimeResourceId => 3,
         }
     }
 }

@@ -233,6 +233,8 @@ fn flush_command_queue(srv_state: &mut ServerState) {
                     DataMessageBody::EntityComponentRemove(_) => (),
                     DataMessageBody::EntityComponentUpdate(_) => (),
                     DataMessageBody::SpawnHost(_) => (),
+                    DataMessageBody::ResourceCreate(_) => (),
+                    DataMessageBody::ResourceDestroy(_) => (),
                 }
             }
         }

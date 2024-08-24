@@ -13,6 +13,7 @@ use game_net::message::{DataMessageBody, EntityAction};
 use game_net::peer_error;
 use game_script::Executor;
 use game_tracing::trace_span;
+use game_wasm::resource::RuntimeResourceId;
 
 use crate::config::Config;
 use crate::net::world::{Command, CommandBuffer};
@@ -235,6 +236,16 @@ impl GameWorld {
                     DataMessageBody::EntityAction(msg) => todo!(),
                     DataMessageBody::EntityTranslate(_) | DataMessageBody::EntityRotate(_) => {
                         todo!()
+                    }
+                    DataMessageBody::ResourceCreate(msg) => {
+                        let id = RuntimeResourceId::from_bits(msg.id.0);
+                        self.newest_state
+                            .world
+                            .insert_resource_with_id(msg.data.into(), id);
+                    }
+                    DataMessageBody::ResourceDestroy(msg) => {
+                        let id = RuntimeResourceId::from_bits(msg.id.0);
+                        self.newest_state.world.remove_resource(id);
                     }
                 }
             }

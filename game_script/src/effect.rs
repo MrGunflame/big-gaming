@@ -4,7 +4,7 @@ use game_common::components::components::RawComponent;
 use game_common::entity::EntityId;
 use game_common::record::RecordReference;
 use game_wasm::player::PlayerId;
-use game_wasm::resource::ResourceId;
+use game_wasm::resource::RuntimeResourceId;
 
 #[derive(Clone, Debug, Default)]
 pub struct Effects {
@@ -56,6 +56,6 @@ pub struct EntityComponentRemove {
 
 #[derive(Clone, Debug)]
 pub struct CreateResource {
-    pub id: ResourceId,
+    pub id: RuntimeResourceId,
     pub data: Arc<[u8]>,
 }
