@@ -735,17 +735,17 @@ pub enum Frame {
 }
 
 impl Frame {
-    pub fn id(&self) -> ServerEntity {
+    pub fn id(&self) -> Option<ServerEntity> {
         match self {
-            Self::EntityDestroy(frame) => frame.entity,
-            Self::EntityTranslate(frame) => frame.entity,
-            Self::EntityRotate(frame) => frame.entity,
-            Self::EntityAction(frame) => frame.entity,
-            Self::EntityComponentAdd(frame) => frame.entity,
-            Self::EntityComponentRemove(frame) => frame.entity,
-            Self::EntityComponentUpdate(frame) => frame.entity,
-            Self::SpawnHost(frame) => frame.entity,
-            Self::ResourceCreate(_) | Self::ResourceDestroy(_) => todo!(),
+            Self::EntityDestroy(frame) => Some(frame.entity),
+            Self::EntityTranslate(frame) => Some(frame.entity),
+            Self::EntityRotate(frame) => Some(frame.entity),
+            Self::EntityAction(frame) => Some(frame.entity),
+            Self::EntityComponentAdd(frame) => Some(frame.entity),
+            Self::EntityComponentRemove(frame) => Some(frame.entity),
+            Self::EntityComponentUpdate(frame) => Some(frame.entity),
+            Self::SpawnHost(frame) => Some(frame.entity),
+            Self::ResourceCreate(_) | Self::ResourceDestroy(_) => None,
         }
     }
 }

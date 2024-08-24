@@ -1,5 +1,18 @@
-use crate::encoding::{Decode, DecodeError, Encode, Primitive, Reader, Writer};
+use alloc::collections::VecDeque;
+use core::mem::MaybeUninit;
+
+use alloc::vec::Vec;
+
+use crate::encoding::{
+    BinaryReader, BinaryWriter, Decode, DecodeError, Encode, Primitive, Reader, Writer,
+};
+use crate::raw::{
+    resource_create_runtime, resource_get_runtime, resource_len_runtime, RESULT_NO_ENTITY,
+    RESULT_OK,
+};
+use crate::record::Record;
 use crate::world::RecordReference;
+use crate::Error;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum ResourceId {
@@ -54,6 +67,20 @@ impl Decode for ResourceId {
                 bytes,
             ))))
         }
+    }
+}
+
+impl From<RecordResourceId> for ResourceId {
+    #[inline]
+    fn from(value: RecordResourceId) -> Self {
+        Self::Record(value)
+    }
+}
+
+impl From<RuntimeResourceId> for ResourceId {
+    #[inline]
+    fn from(value: RuntimeResourceId) -> Self {
+        Self::Runtime(value)
     }
 }
 
@@ -113,4 +140,58 @@ impl Decode for RecordResourceId {
     {
         RecordReference::decode(reader).map(Self)
     }
+}
+
+pub fn create_resource<T>(resource: &T) -> RuntimeResourceId
+where
+    T: Encode,
+{
+    let (fields, bytes) = BinaryWriter::new().encoded(resource);
+
+    let mut id = MaybeUninit::uninit();
+    match unsafe { resource_create_runtime(bytes.as_ptr(), bytes.len(), id.as_mut_ptr()) } {
+        RESULT_OK => (),
+        _ => unreachable!(),
+    }
+
+    let id = unsafe { id.assume_init() };
+    RuntimeResourceId::from_bits(id)
+}
+
+pub fn get_resource<T>(id: ResourceId) -> Result<T, Error>
+where
+    T: Decode,
+{
+    let bytes = match id {
+        ResourceId::Record(id) => {
+            let record = Record::get(id.0)?;
+            record.into_bytes()
+        }
+        ResourceId::Runtime(id) => unsafe {
+            let mut len = MaybeUninit::uninit();
+            match resource_len_runtime(id.to_bits(), len.as_mut_ptr()) {
+                RESULT_OK => (),
+                RESULT_NO_ENTITY => {
+                    return Err(Error(crate::ErrorImpl::NoResource(ResourceId::Runtime(id))))
+                }
+                _ => unreachable!(),
+            }
+
+            let len = len.assume_init();
+            let mut bytes = Vec::with_capacity(len);
+
+            match resource_get_runtime(id.to_bits(), bytes.as_mut_ptr()) {
+                RESULT_OK => (),
+                _ => unreachable!(),
+            }
+
+            bytes.set_len(len);
+            bytes
+        },
+    };
+
+    crate::error!("{:?}", &bytes);
+
+    let reader = BinaryReader::new(bytes, VecDeque::default());
+    T::decode(reader).map_err(|_| Error(crate::ErrorImpl::ComponentDecode))
 }

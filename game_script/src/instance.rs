@@ -15,7 +15,8 @@ use wasmtime::{Engine, Instance, Linker, Module, Store};
 use crate::builtin::register_host_fns;
 use crate::dependency::{Dependencies, Dependency};
 use crate::effect::{
-    CreateResource, Effect, Effects, EntityComponentInsert, EntityComponentRemove, PlayerSetActive,
+    CreateResource, DestroyResource, Effect, Effects, EntityComponentInsert, EntityComponentRemove,
+    PlayerSetActive,
 };
 use crate::events::{DispatchEvent, OnInit, WasmFnTrampoline};
 use crate::{Entry, Handle, Pointer, RecordProvider, System, WorldProvider};
@@ -348,6 +349,21 @@ impl RunState {
         }));
         self.new_world.insert_resource_with_id(data, id);
         id
+    }
+
+    pub fn destroy_resource(&mut self, id: RuntimeResourceId) -> bool {
+        if self.new_world.get_resource(id).is_none() {
+            return false;
+        }
+
+        self.new_world.remove_resource(id);
+        self.effects()
+            .push(Effect::DestroyResource(DestroyResource { id }));
+        true
+    }
+
+    pub fn get_resource_runtime(&mut self, id: RuntimeResourceId) -> Option<&[u8]> {
+        self.new_world.get_resource(id)
     }
 
     /// Allocate a temporary [`EntityId`].

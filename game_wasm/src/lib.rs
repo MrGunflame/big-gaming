@@ -5,6 +5,7 @@ use core::ffi::c_void;
 use core::fmt::{self, Display, Formatter};
 
 use entity::EntityId;
+use resource::ResourceId;
 use world::RecordReference;
 
 extern crate alloc;
@@ -62,6 +63,7 @@ pub(crate) enum ErrorImpl {
     NoComponent(RecordReference),
     ComponentDecode,
     NoRecord(RecordReference),
+    NoResource(ResourceId),
 }
 
 impl ErrorImpl {
@@ -78,6 +80,7 @@ impl Display for ErrorImpl {
             Self::NoComponent(id) => write!(f, "no component: {:?}", id),
             Self::ComponentDecode => write!(f, "component decode failed"),
             Self::NoRecord(id) => write!(f, "no record: {:?}", id),
+            Self::NoResource(id) => write!(f, "no resource: {:?}", id),
         }
     }
 }

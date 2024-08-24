@@ -60,7 +60,10 @@ pub fn register_host_fns(store: &mut Linker<State>) {
         record_data_len,
         record_data_copy,
         prefab_spawn,
-        create_resource,
+        resource_create_runtime,
+        resource_destroy_runtime,
+        resource_get_runtime,
+        resource_len_runtime,
     }
 }
 

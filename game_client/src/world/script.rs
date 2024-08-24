@@ -68,6 +68,13 @@ pub fn run_scripts(
                 let real_id = world.world.insert_resource(effect.data);
                 resource_id_remap.insert(temp_id, real_id);
             }
+            Effect::DestroyResource(effect) => {
+                let id = resource_id_remap
+                    .get(&effect.id)
+                    .copied()
+                    .unwrap_or(effect.id);
+                world.world.remove_resource(id);
+            }
         }
     }
 }

@@ -33,6 +33,7 @@ pub enum Effect {
     EntityComponentRemove(EntityComponentRemove),
     PlayerSetActive(PlayerSetActive),
     CreateResource(CreateResource),
+    DestroyResource(DestroyResource),
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -58,4 +59,9 @@ pub struct EntityComponentRemove {
 pub struct CreateResource {
     pub id: RuntimeResourceId,
     pub data: Arc<[u8]>,
+}
+
+#[derive(Clone, Debug)]
+pub struct DestroyResource {
+    pub id: RuntimeResourceId,
 }

@@ -351,6 +351,10 @@ impl Record {
     pub fn data(&self) -> &[u8] {
         &self.data
     }
+
+    pub(crate) fn into_bytes(self) -> Vec<u8> {
+        self.data
+    }
 }
 
 fn get_record_data_safe(id: RecordReference) -> Result<Vec<u8>, Error> {
