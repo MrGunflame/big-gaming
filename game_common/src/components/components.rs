@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use ahash::HashMap;
 use game_wasm::encoding::{BinaryReader, Field, Primitive};
+use game_wasm::resource::RuntimeResourceId;
 use thiserror::Error;
 
 use crate::entity::EntityId;
@@ -136,6 +137,7 @@ impl RawComponent {
                     slice.copy_from_slice(&src);
                 }
                 Primitive::PlayerId => return Err(RemapError::Player),
+                Primitive::RuntimeResourceId => (),
                 Primitive::Bytes => (),
             }
         }
@@ -185,6 +187,8 @@ pub enum RemapError {
     Eof,
     #[error("contains invalid entity reference")]
     InvalidEntity,
+    #[error("contains invalid runtime resource id")]
+    InvalidRuntimeResource,
     #[error("player reference not allowed")]
     Player,
 }

@@ -1,6 +1,6 @@
 use game_common::components::actions::ActionId;
 use game_common::components::components::RawComponent;
-use game_common::net::ServerEntity;
+use game_common::net::{ServerEntity, ServerResource};
 use game_common::record::RecordReference;
 use game_common::world::control_frame::ControlFrame;
 use game_common::world::entity::EntityBody;
@@ -52,6 +52,8 @@ pub enum DataMessageBody {
     EntityComponentRemove(EntityComponentRemove),
     EntityComponentUpdate(EntityComponentUpdate),
     SpawnHost(SpawnHost),
+    ResourceCreate(ResourceCreate),
+    ResourceDestroy(ResourceDestroy),
 }
 
 #[derive(Clone, Debug)]
@@ -111,6 +113,17 @@ pub struct EntityComponentUpdate {
     pub component: RawComponent,
 }
 
+#[derive(Clone, Debug)]
+pub struct ResourceCreate {
+    pub id: ServerResource,
+    pub data: Vec<u8>,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct ResourceDestroy {
+    pub id: ServerResource,
+}
+
 impl DataMessageBody {
     pub(crate) fn into_frame(self) -> Frame {
         match self {
@@ -155,6 +168,13 @@ impl DataMessageBody {
                     component: msg.component,
                 })
             }
+            DataMessageBody::ResourceCreate(msg) => Frame::ResourceCreate(proto::ResourceCreate {
+                id: msg.id,
+                data: msg.data,
+            }),
+            DataMessageBody::ResourceDestroy(msg) => {
+                Frame::ResourceDestroy(proto::ResourceDestroy { id: msg.id })
+            }
         }
     }
 
@@ -196,6 +216,13 @@ impl DataMessageBody {
                     component_id: frame.component_id,
                     component: frame.component,
                 })
+            }
+            Frame::ResourceCreate(frame) => Self::ResourceCreate(ResourceCreate {
+                id: frame.id,
+                data: frame.data,
+            }),
+            Frame::ResourceDestroy(frame) => {
+                Self::ResourceDestroy(ResourceDestroy { id: frame.id })
             }
         }
     }

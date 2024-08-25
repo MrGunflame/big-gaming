@@ -12,6 +12,7 @@ pub enum Primitive {
     Bytes,
     EntityId,
     PlayerId,
+    RuntimeResourceId,
 }
 
 impl Primitive {
@@ -20,6 +21,7 @@ impl Primitive {
             0 => Some(Self::Bytes),
             1 => Some(Self::EntityId),
             2 => Some(Self::PlayerId),
+            3 => Some(Self::RuntimeResourceId),
             _ => None,
         }
     }
@@ -29,6 +31,7 @@ impl Primitive {
             Self::Bytes => 0,
             Self::EntityId => 1,
             Self::PlayerId => 2,
+            Self::RuntimeResourceId => 3,
         }
     }
 }
@@ -399,4 +402,39 @@ pub fn encode_fields(fields: &[Field]) -> Vec<u8> {
         fields_encoded.extend((field.offset as u32).to_le_bytes());
     }
     fields_encoded
+}
+
+impl<T> Encode for Vec<T>
+where
+    T: Encode,
+{
+    fn encode<W>(&self, mut writer: W)
+    where
+        W: Writer,
+    {
+        (self.len() as u64).encode(&mut writer);
+        for elem in self {
+            elem.encode(&mut writer);
+        }
+    }
+}
+
+impl<T> Decode for Vec<T>
+where
+    T: Decode,
+    DecodeError: From<T::Error>,
+{
+    type Error = DecodeError;
+
+    fn decode<R>(mut reader: R) -> Result<Self, Self::Error>
+    where
+        R: Reader,
+    {
+        let len = u64::decode(&mut reader)?;
+        let mut elems = Vec::with_capacity(len as usize);
+        for _ in 0..len {
+            elems.push(T::decode(&mut reader)?);
+        }
+        Ok(elems)
+    }
 }

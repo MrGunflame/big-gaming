@@ -51,7 +51,7 @@ pub use game_macros::{net__decode as Decode, net__encode as Encode};
 use std::convert::Infallible;
 
 use bytes::{Buf, BufMut};
-use game_common::net::ServerEntity;
+use game_common::net::{ServerEntity, ServerResource};
 use glam::{Quat, UVec2, Vec3};
 use thiserror::Error;
 
@@ -730,19 +730,22 @@ pub enum Frame {
     EntityComponentRemove(ComponentRemove),
     EntityComponentUpdate(ComponentUpdate),
     SpawnHost(SpawnHost),
+    ResourceCreate(ResourceCreate),
+    ResourceDestroy(ResourceDestroy),
 }
 
 impl Frame {
-    pub fn id(&self) -> ServerEntity {
+    pub fn id(&self) -> Option<ServerEntity> {
         match self {
-            Self::EntityDestroy(frame) => frame.entity,
-            Self::EntityTranslate(frame) => frame.entity,
-            Self::EntityRotate(frame) => frame.entity,
-            Self::EntityAction(frame) => frame.entity,
-            Self::EntityComponentAdd(frame) => frame.entity,
-            Self::EntityComponentRemove(frame) => frame.entity,
-            Self::EntityComponentUpdate(frame) => frame.entity,
-            Self::SpawnHost(frame) => frame.entity,
+            Self::EntityDestroy(frame) => Some(frame.entity),
+            Self::EntityTranslate(frame) => Some(frame.entity),
+            Self::EntityRotate(frame) => Some(frame.entity),
+            Self::EntityAction(frame) => Some(frame.entity),
+            Self::EntityComponentAdd(frame) => Some(frame.entity),
+            Self::EntityComponentRemove(frame) => Some(frame.entity),
+            Self::EntityComponentUpdate(frame) => Some(frame.entity),
+            Self::SpawnHost(frame) => Some(frame.entity),
+            Self::ResourceCreate(_) | Self::ResourceDestroy(_) => None,
         }
     }
 }
@@ -785,6 +788,14 @@ impl Encode for Frame {
             }
             Self::SpawnHost(frame) => {
                 FrameType::SPAWN_HOST.encode(&mut buf)?;
+                frame.encode(buf)
+            }
+            Self::ResourceCreate(frame) => {
+                FrameType::RESOURCE_CREATE.encode(&mut buf)?;
+                frame.encode(buf)
+            }
+            Self::ResourceDestroy(frame) => {
+                FrameType::RESOURCE_DESTROY.encode(&mut buf)?;
                 frame.encode(buf)
             }
         }
@@ -832,6 +843,14 @@ impl Decode for Frame {
             FrameType::SPAWN_HOST => {
                 let frame = SpawnHost::decode(buf)?;
                 Ok(Self::SpawnHost(frame))
+            }
+            FrameType::RESOURCE_CREATE => {
+                let frame = ResourceCreate::decode(buf)?;
+                Ok(Self::ResourceCreate(frame))
+            }
+            FrameType::RESOURCE_DESTROY => {
+                let frame = ResourceDestroy::decode(buf)?;
+                Ok(Self::ResourceDestroy(frame))
             }
             _ => unreachable!(),
         }
@@ -1021,6 +1040,8 @@ impl FrameType {
     pub const ENTITY_COMPONENT_ADD: Self = Self(0x50);
     pub const ENTITY_COMPONENT_REMOVE: Self = Self(0x51);
     pub const ENTITY_COMPONENT_UPDATE: Self = Self(0x52);
+    pub const RESOURCE_CREATE: Self = Self(0x53);
+    pub const RESOURCE_DESTROY: Self = Self(0x54);
 }
 
 impl TryFrom<u16> for FrameType {
@@ -1040,6 +1061,8 @@ impl TryFrom<u16> for FrameType {
             Self::PLAYER_JOIN => Ok(Self::PLAYER_JOIN),
             Self::PLAYER_LEAVE => Ok(Self::PLAYER_LEAVE),
             Self::PLAYER_MOVE => Ok(Self::PLAYER_MOVE),
+            Self::RESOURCE_CREATE => Ok(Self::RESOURCE_CREATE),
+            Self::RESOURCE_DESTROY => Ok(Self::RESOURCE_DESTROY),
             _ => Err(InvalidFrameType(value)),
         }
     }
@@ -1189,6 +1212,94 @@ impl Decode for SequenceRange {
                 end: Sequence::from_bits(end),
             })
         }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct ResourceCreate {
+    pub id: ServerResource,
+    pub data: Vec<u8>,
+}
+
+impl Encode for ResourceCreate {
+    type Error = Infallible;
+
+    fn encode<B>(&self, mut buf: B) -> Result<(), Self::Error>
+    where
+        B: BufMut,
+    {
+        self.id.encode(&mut buf)?;
+        VarInt(self.data.len() as u64).encode(&mut buf)?;
+        buf.put_slice(&self.data);
+        Ok(())
+    }
+}
+
+impl Decode for ResourceCreate {
+    type Error = Error;
+
+    fn decode<B>(mut buf: B) -> Result<Self, Self::Error>
+    where
+        B: Buf,
+    {
+        let id = ServerResource::decode(&mut buf)?;
+        let len = VarInt::<u64>::decode(&mut buf)?;
+        let mut data = Vec::new();
+        for _ in 0..len.0 {
+            data.push(u8::decode(&mut buf)?);
+        }
+        Ok(Self { id, data })
+    }
+}
+
+impl Encode for ServerResource {
+    type Error = <u64 as Encode>::Error;
+
+    fn encode<B>(&self, buf: B) -> Result<(), Self::Error>
+    where
+        B: BufMut,
+    {
+        self.0.encode(buf)
+    }
+}
+
+impl Decode for ServerResource {
+    type Error = <u64 as Decode>::Error;
+
+    fn decode<B>(buf: B) -> Result<Self, Self::Error>
+    where
+        B: Buf,
+    {
+        u64::decode(buf).map(Self)
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct ResourceDestroy {
+    pub id: ServerResource,
+}
+
+impl Encode for ResourceDestroy {
+    type Error = Infallible;
+
+    fn encode<B>(&self, buf: B) -> Result<(), Self::Error>
+    where
+        B: BufMut,
+    {
+        self.id.encode(buf)?;
+        Ok(())
+    }
+}
+
+impl Decode for ResourceDestroy {
+    type Error = Error;
+
+    fn decode<B>(buf: B) -> Result<Self, Self::Error>
+    where
+        B: Buf,
+    {
+        let id = ServerResource::decode(buf)?;
+        Ok(Self { id })
     }
 }
 

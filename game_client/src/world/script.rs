@@ -27,6 +27,7 @@ pub fn run_scripts(
     // FIXME: We should use a linear IDs here so we can avoid
     // the need for hasing and just use array indexing.
     let mut entity_id_remap = HashMap::default();
+    let mut resource_id_remap = HashMap::default();
 
     for effect in effects.into_iter() {
         match effect {
@@ -60,6 +61,20 @@ pub fn run_scripts(
                 world.world.remove(entity, effect.component_id);
             }
             Effect::PlayerSetActive(_) => (),
+            Effect::CreateResource(effect) => {
+                debug_assert!(resource_id_remap.get(&effect.id).is_none());
+
+                let temp_id = effect.id;
+                let real_id = world.world.insert_resource(effect.data);
+                resource_id_remap.insert(temp_id, real_id);
+            }
+            Effect::DestroyResource(effect) => {
+                let id = resource_id_remap
+                    .get(&effect.id)
+                    .copied()
+                    .unwrap_or(effect.id);
+                world.world.remove_resource(id);
+            }
         }
     }
 }

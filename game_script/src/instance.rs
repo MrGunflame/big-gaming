@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::fmt::{self, Debug, Formatter};
+use std::sync::Arc;
 
 use game_common::components::components::RawComponent;
 use game_common::entity::EntityId;
@@ -8,12 +9,14 @@ use game_common::world::World;
 use game_tracing::trace_span;
 use game_wasm::player::PlayerId;
 use game_wasm::raw::{RESULT_NO_COMPONENT, RESULT_NO_ENTITY, RESULT_NO_INVENTORY_SLOT};
+use game_wasm::resource::RuntimeResourceId;
 use wasmtime::{Engine, Instance, Linker, Module, Store};
 
 use crate::builtin::register_host_fns;
 use crate::dependency::{Dependencies, Dependency};
 use crate::effect::{
-    Effect, Effects, EntityComponentInsert, EntityComponentRemove, PlayerSetActive,
+    CreateResource, DestroyResource, Effect, Effects, EntityComponentInsert, EntityComponentRemove,
+    PlayerSetActive,
 };
 use crate::events::{DispatchEvent, OnInit, WasmFnTrampoline};
 use crate::{Entry, Handle, Pointer, RecordProvider, System, WorldProvider};
@@ -168,6 +171,7 @@ pub(crate) struct RunState {
     pub events: Vec<DispatchEvent>,
     pub host_buffers: Vec<usize>,
     host_buffer_pool: *const HostBufferPool,
+    next_resource_id: u64,
 }
 
 // Make `RunState` `Send` + `Sync` to make `Executor` recursively `Send` + `Sync`.
@@ -198,6 +202,7 @@ impl RunState {
             events: Vec::new(),
             host_buffers,
             host_buffer_pool,
+            next_resource_id: 0,
         }
     }
 }
@@ -336,6 +341,31 @@ impl RunState {
         unsafe { &*self.host_buffer_pool }.get(index)
     }
 
+    pub fn insert_resource(&mut self, data: Arc<[u8]>) -> RuntimeResourceId {
+        let id = self.allocate_temporary_resource_id();
+        self.effects().push(Effect::CreateResource(CreateResource {
+            id,
+            data: data.clone(),
+        }));
+        self.new_world.insert_resource_with_id(data, id);
+        id
+    }
+
+    pub fn destroy_resource(&mut self, id: RuntimeResourceId) -> bool {
+        if self.new_world.get_resource(id).is_none() {
+            return false;
+        }
+
+        self.new_world.remove_resource(id);
+        self.effects()
+            .push(Effect::DestroyResource(DestroyResource { id }));
+        true
+    }
+
+    pub fn get_resource_runtime(&mut self, id: RuntimeResourceId) -> Option<&[u8]> {
+        self.new_world.get_resource(id)
+    }
+
     /// Allocate a temporary [`EntityId`].
     // If a script spawns a new entity we need to acquire a temporary id, until
     // the game commits the effect. The id is only valid for this script local
@@ -351,6 +381,12 @@ impl RunState {
         let bits = self.next_entity_id | (1 << 63);
         self.next_entity_id += 1;
         EntityId::from_raw(bits)
+    }
+
+    fn allocate_temporary_resource_id(&mut self) -> RuntimeResourceId {
+        let bits = self.next_resource_id | (1 << 63);
+        self.next_resource_id += 1;
+        RuntimeResourceId::from_bits(bits)
     }
 }
 

@@ -90,7 +90,7 @@ impl FrameBuffer {
                     // If the peer already received the `EntityCreate` frame
                     // the `EntityDestroy` frame needs to be retained, but all
                     // other frames effecting the entity may be removed.
-                    let rm = self.retain_range(0..index, |f| f.id() != id);
+                    let rm = self.retain_range(0..index, |f| f.id().unwrap() != id);
                     index -= rm.len();
                     removed.extend(rm);
 

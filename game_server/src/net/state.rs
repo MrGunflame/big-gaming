@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use ahash::HashMap;
 use game_common::components::components::{Components, RawComponent};
 use game_common::components::PlayerId;
@@ -6,6 +8,7 @@ use game_common::record::RecordReference;
 use game_common::world::cell::square;
 use game_common::world::control_frame::ControlFrame;
 use game_common::world::CellId;
+use game_wasm::resource::RuntimeResourceId;
 
 use super::entities::Entities;
 
@@ -20,6 +23,7 @@ pub struct ConnectionState {
     pub client_cf: ControlFrame,
 
     pub known_entities: KnownEntities,
+    pub known_resources: HashMap<RuntimeResourceId, Arc<[u8]>>,
 
     /// Constant interpolation buffer/delay of the peer.
     pub peer_delay: ControlFrame,
@@ -37,6 +41,7 @@ impl ConnectionState {
             known_entities: KnownEntities::new(),
             peer_delay: ControlFrame(0),
             entities: Entities::new(),
+            known_resources: HashMap::default(),
         }
     }
 }

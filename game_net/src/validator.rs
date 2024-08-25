@@ -22,8 +22,12 @@ impl DebugValidator {
     }
 
     pub fn push(&mut self, header: Header, frame: &Frame) {
+        let Some(entity) = frame.id() else {
+            return;
+        };
+
         let entry = self.cfs.entry(header.control_frame).or_default();
-        let entry = entry.entities.entry(frame.id()).or_default();
+        let entry = entry.entities.entry(entity).or_default();
 
         match frame {
             Frame::EntityTranslate(frame) => match &mut entry.translation {

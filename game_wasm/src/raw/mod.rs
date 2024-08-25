@@ -58,3 +58,15 @@ pub struct Query {
 
 #[guest_only]
 pub fn prefab_spawn(id: *const RecordReference, out: *mut u64) -> u32;
+
+#[guest_only]
+pub fn resource_create_runtime(ptr: *const u8, len: usize, out: *mut u64) -> u32;
+
+#[guest_only]
+pub fn resource_destroy_runtime(id: u64) -> u32;
+
+#[guest_only]
+pub fn resource_len_runtime(id: u64, out: *mut usize) -> u32;
+
+#[guest_only]
+pub fn resource_get_runtime(id: u64, ptr: *mut u8) -> u32;

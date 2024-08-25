@@ -1,10 +1,13 @@
+use std::sync::Arc;
+
 use game_common::components::components::RawComponent;
 use game_common::entity::EntityId;
 use game_common::record::RecordReference;
 use game_prefab::{Prefab, Spawner};
 use game_tracing::trace_span;
 use game_wasm::encoding::{decode_fields, encode_fields, Field};
-use game_wasm::raw::{RESULT_NO_RECORD, RESULT_OK};
+use game_wasm::raw::{RESULT_NO_ENTITY, RESULT_NO_RECORD, RESULT_OK};
+use game_wasm::resource::RuntimeResourceId;
 use wasmtime::{Caller, Result};
 
 use crate::instance::{RunState, State};
@@ -221,4 +224,77 @@ impl<'a> Spawner for PrefabSpawner<'a> {
             .insert_component(entity, component_id, component)
             .unwrap();
     }
+}
+
+/// ```no_run
+/// # extern "C" {
+/// fn resource_create_runtime(ptr: *const u8, len: usize, out: *mut u64) -> u32;
+/// # }
+/// ```
+///
+pub fn resource_create_runtime(
+    mut caller: Caller<'_, State>,
+    ptr: u32,
+    len: u32,
+    out: u32,
+) -> Result<u32> {
+    let _span = trace_span!("resource_create_runtime").entered();
+
+    let data = Arc::from(caller.read_memory(ptr, len)?.to_vec());
+    let state = caller.data_mut().as_run_mut()?;
+    let id = state.insert_resource(data);
+    caller.write(out, &id.to_bits())?;
+    Ok(RESULT_OK)
+}
+
+/// ```no_run
+/// # extern "C" {
+/// fn resource_destroy_runtime(id: u64) -> u32;
+/// # }
+/// ```
+pub fn resource_destroy_runtime(mut caller: Caller<'_, State>, id: u64) -> Result<u32> {
+    let _span = trace_span!("resource_destroy_runtime").entered();
+
+    let state = caller.data_mut().as_run_mut()?;
+    if state.destroy_resource(RuntimeResourceId::from_bits(id)) {
+        Ok(RESULT_OK)
+    } else {
+        Ok(RESULT_NO_ENTITY)
+    }
+}
+
+/// ```no_run
+/// # extern "C" {
+/// fn resource_len_runtime(id: u64, out: *mut usize) -> u32;
+/// # }
+/// ```
+pub fn resource_len_runtime(mut caller: Caller<'_, State>, id: u64, out: u32) -> Result<u32> {
+    let _span = trace_span!("resource_len_runtime").entered();
+
+    let state = caller.data_mut().as_run_mut()?;
+    let Some(data) = state.get_resource_runtime(RuntimeResourceId::from_bits(id)) else {
+        return Ok(RESULT_NO_ENTITY);
+    };
+
+    let len = data.len() as u32;
+    caller.write(out, &len)?;
+    Ok(RESULT_OK)
+}
+
+/// ```no_run
+/// # extern "C" {
+/// fn resource_get_runtime(id: u64, ptr: *mut u8) -> u32;
+/// # }
+/// ```
+pub fn resource_get_runtime(mut caller: Caller<'_, State>, id: u64, ptr: u32) -> Result<u32> {
+    let _span = trace_span!("resource_get_runtime").entered();
+
+    let state = caller.data_mut().as_run_mut()?;
+    let Some(data) = state.get_resource_runtime(RuntimeResourceId::from_bits(id)) else {
+        return Ok(RESULT_NO_ENTITY);
+    };
+
+    let data = data.to_vec();
+    caller.write_memory(ptr, &data)?;
+    Ok(RESULT_OK)
 }

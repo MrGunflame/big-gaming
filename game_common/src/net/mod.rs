@@ -2,4 +2,4 @@
 
 mod entity;
 
-pub use entity::ServerEntity;
+pub use entity::{ServerEntity, ServerResource};

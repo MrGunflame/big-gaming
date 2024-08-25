@@ -1,11 +1,14 @@
-use ahash::HashSet;
+use std::sync::Arc;
+
+use ahash::{HashMap, HashSet};
 use game_common::components::components::Components;
 use game_common::entity::EntityId;
-use game_common::net::ServerEntity;
+use game_common::net::{ServerEntity, ServerResource};
 use game_net::message::{
     DataMessageBody, EntityComponentAdd, EntityComponentRemove, EntityComponentUpdate,
-    EntityDestroy,
+    EntityDestroy, ResourceCreate, ResourceDestroy,
 };
+use game_wasm::resource::RuntimeResourceId;
 use tracing::trace_span;
 
 use crate::world::state::WorldState;
@@ -21,6 +24,8 @@ pub fn sync_player(world: &WorldState, state: &mut ConnectionState) -> Vec<DataM
     let _span = trace_span!("sync_player").entered();
 
     let mut events = Vec::new();
+
+    events.extend(sync_resources(world, &mut state.known_resources));
 
     // Entities that were known to the client in the previous tick.
     let mut prev_entities: HashSet<_> = state.known_entities.components.keys().copied().collect();
@@ -139,6 +144,40 @@ fn sync_components(
             true
         }
     });
+
+    events
+}
+
+fn sync_resources(
+    world: &WorldState,
+    known_resources: &mut HashMap<RuntimeResourceId, Arc<[u8]>>,
+) -> Vec<DataMessageBody> {
+    let _span = trace_span!("sync_resources").entered();
+
+    let mut events = Vec::new();
+
+    let mut prev_resources: HashSet<_> = known_resources.keys().copied().collect();
+
+    for (id, data) in world.world.iter_resources() {
+        prev_resources.remove(&id);
+
+        if let Some(known_data) = known_resources.get(&id) {
+            if known_data == data {
+                continue;
+            }
+        }
+
+        events.push(DataMessageBody::ResourceCreate(ResourceCreate {
+            id: ServerResource(id.to_bits()),
+            data: data.to_vec(),
+        }));
+    }
+
+    for id in prev_resources {
+        events.push(DataMessageBody::ResourceDestroy(ResourceDestroy {
+            id: ServerResource(id.to_bits()),
+        }));
+    }
 
     events
 }
