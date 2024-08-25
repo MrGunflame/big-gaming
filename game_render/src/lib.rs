@@ -48,7 +48,6 @@ use pipelined_rendering::{Pipeline, RenderImageGpu};
 use post_process::PostProcessPipeline;
 use render_pass::RenderPass;
 use state::RenderState;
-use texture::image::ImageLoader;
 use texture::{Images, RenderImageId, RenderTextureEvent, RenderTextures};
 use thiserror::Error;
 use tokio::sync::oneshot;
@@ -77,7 +76,6 @@ pub struct Renderer {
     pub meshes: Meshes,
     pub materials: Materials,
 
-    image_loader: ImageLoader,
     pub render_textures: RenderTextures,
     jobs: VecDeque<Job>,
 
@@ -152,7 +150,6 @@ impl Renderer {
             backlog: VecDeque::new(),
             pipeline,
             state,
-            image_loader: ImageLoader::default(),
             render_textures: RenderTextures::new(),
             jobs: VecDeque::new(),
             options,
@@ -215,8 +212,6 @@ impl Renderer {
 
     pub fn render(&mut self, pool: &TaskPool) {
         let _span = trace_span!("Renderer::render").entered();
-
-        self.image_loader.update(&mut self.images, pool);
 
         self.pipeline.wait_idle();
 

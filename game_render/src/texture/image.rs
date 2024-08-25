@@ -1,13 +1,9 @@
 use std::collections::VecDeque;
-use std::io::Read;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use game_tasks::TaskPool;
-use game_tracing::trace_span;
 use glam::UVec2;
 
-use parking_lot::Mutex;
 use slotmap::{DefaultKey, SlotMap};
 pub use wgpu::TextureFormat;
 
@@ -133,14 +129,12 @@ enum Entry {
 #[derive(Debug, Default)]
 pub struct Images {
     images: SlotMap<DefaultKey, Entry>,
-    load_queue: VecDeque<(DefaultKey, LoadImage, TextureFormat)>,
 }
 
 impl Images {
     pub fn new() -> Self {
         Self {
             images: SlotMap::new(),
-            load_queue: VecDeque::new(),
         }
     }
 
@@ -157,69 +151,6 @@ impl Images {
         match self.images.get(id.0)? {
             Entry::Image(img) => Some(img),
             Entry::Loading => None,
-        }
-    }
-
-    pub fn load<S>(&mut self, source: S) -> ImageId
-    where
-        S: Into<LoadImage>,
-    {
-        self.load_with_format(source, TextureFormat::Rgba8UnormSrgb)
-    }
-
-    pub fn load_with_format<S>(&mut self, source: S, format: TextureFormat) -> ImageId
-    where
-        S: Into<LoadImage>,
-    {
-        let key = self.images.insert(Entry::Loading);
-
-        self.load_queue.push_back((key, source.into(), format));
-        ImageId(key)
-    }
-}
-
-#[derive(Debug, Default)]
-pub struct ImageLoader {
-    queue: Arc<Mutex<VecDeque<(DefaultKey, Image)>>>,
-}
-
-impl ImageLoader {
-    pub fn update(&mut self, images: &mut Images, pool: &TaskPool) {
-        while let Some((key, source, format)) = images.load_queue.pop_front() {
-            let queue = self.queue.clone();
-            pool.spawn(async move {
-                let _span = trace_span!("load_images").entered();
-
-                let buf = match source {
-                    LoadImage::Buffer(buf) => buf,
-                    LoadImage::File(path) => {
-                        let mut file = std::fs::File::open(path).unwrap();
-
-                        let mut buf = Vec::new();
-                        file.read_to_end(&mut buf).unwrap();
-                        buf
-                    }
-                };
-
-                let img = image::load_from_memory(&buf).unwrap().to_rgba8();
-
-                queue.lock().push_back((
-                    key,
-                    Image::new(
-                        UVec2 {
-                            x: img.width(),
-                            y: img.height(),
-                        },
-                        format,
-                        img.into_raw(),
-                    ),
-                ));
-            });
-        }
-
-        let mut queue = self.queue.lock();
-        while let Some((key, img)) = queue.pop_front() {
-            *images.images.get_mut(key).unwrap() = Entry::Image(img);
         }
     }
 }
