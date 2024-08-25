@@ -2,8 +2,8 @@ use wgpu::{
     AddressMode, BindGroupLayout, BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindingType,
     BlendState, BufferBindingType, ColorTargetState, ColorWrites, CompareFunction, DepthBiasState,
     DepthStencilState, Device, FilterMode, FragmentState, FrontFace, MultisampleState,
-    PipelineLayoutDescriptor, PolygonMode, PrimitiveState, PrimitiveTopology, RenderPipeline,
-    RenderPipelineDescriptor, Sampler, SamplerBindingType, SamplerDescriptor,
+    PipelineLayoutDescriptor, PolygonMode, PrimitiveState, PrimitiveTopology, PushConstantRange,
+    RenderPipeline, RenderPipelineDescriptor, Sampler, SamplerBindingType, SamplerDescriptor,
     ShaderModuleDescriptor, ShaderSource, ShaderStages, StencilState, TextureFormat,
     TextureSampleType, TextureViewDimension, VertexState,
 };
@@ -29,32 +29,10 @@ impl ForwardPipeline {
         let vs_bind_group_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
             label: Some("vs_bind_group_layout"),
             entries: &[
-                // CAMERA
-                BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: ShaderStages::VERTEX | ShaderStages::FRAGMENT,
-                    ty: BindingType::Buffer {
-                        ty: BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                },
                 // MODEL
                 BindGroupLayoutEntry {
-                    binding: 1,
+                    binding: 0,
                     visibility: ShaderStages::VERTEX,
-                    ty: BindingType::Buffer {
-                        ty: BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                },
-                // OPTIONS
-                BindGroupLayoutEntry {
-                    binding: 2,
-                    visibility: ShaderStages::FRAGMENT,
                     ty: BindingType::Buffer {
                         ty: BufferBindingType::Uniform,
                         has_dynamic_offset: false,
@@ -235,7 +213,10 @@ impl ForwardPipeline {
                 &material_bind_group_layout,
                 &lights_bind_group_layout,
             ],
-            push_constant_ranges: &[],
+            push_constant_ranges: &[PushConstantRange {
+                stages: ShaderStages::VERTEX | ShaderStages::FRAGMENT,
+                range: 0..128,
+            }],
         });
 
         let pipeline = device.create_render_pipeline(&RenderPipelineDescriptor {

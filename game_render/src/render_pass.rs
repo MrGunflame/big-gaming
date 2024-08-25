@@ -8,12 +8,12 @@ use wgpu::util::{BufferInitDescriptor, DeviceExt};
 use wgpu::{
     BindGroup, BindGroupDescriptor, BindGroupEntry, Buffer, BufferUsages, Color, Device, Extent3d,
     LoadOp, Operations, RenderPassColorAttachment, RenderPassDepthStencilAttachment,
-    RenderPassDescriptor, StoreOp, TextureDescriptor, TextureDimension, TextureFormat,
-    TextureUsages, TextureViewDescriptor,
+    RenderPassDescriptor, ShaderStages, StoreOp, TextureDescriptor, TextureDimension,
+    TextureFormat, TextureUsages, TextureViewDescriptor,
 };
 
 use crate::buffer::{DynamicBuffer, IndexBuffer};
-use crate::camera::{CameraBuffer, RenderTarget};
+use crate::camera::{CameraBuffer, CameraUniform, RenderTarget};
 use crate::depth_stencil::DepthData;
 use crate::entities::{CameraId, ObjectId};
 use crate::forward::ForwardPipeline;
@@ -127,39 +127,6 @@ impl RenderPass {
         let depth_stencils = self.depth_stencils.lock();
         let options = self.options.lock();
 
-        let options_buffer = device.create_buffer_init(&BufferInitDescriptor {
-            label: None,
-            contents: bytemuck::bytes_of(&MainPassOptionsEncoded::new(&options)),
-            usage: BufferUsages::UNIFORM,
-        });
-
-        let bind_groups = state
-            .objects
-            .keys()
-            .map(|&id| {
-                let transform = state.object_buffers.get(&id).unwrap();
-
-                device.create_bind_group(&BindGroupDescriptor {
-                    label: Some("vs_bind_group"),
-                    layout: &pipeline.vs_bind_group_layout,
-                    entries: &[
-                        BindGroupEntry {
-                            binding: 0,
-                            resource: camera.buffer.as_entire_binding(),
-                        },
-                        BindGroupEntry {
-                            binding: 1,
-                            resource: transform.as_entire_binding(),
-                        },
-                        BindGroupEntry {
-                            binding: 2,
-                            resource: options_buffer.as_entire_binding(),
-                        },
-                    ],
-                })
-            })
-            .collect::<Vec<_>>();
-
         let light_bind_group = device.create_bind_group(&BindGroupDescriptor {
             label: Some("light_bind_group"),
             layout: &pipeline.lights_bind_group_layout,
@@ -220,10 +187,23 @@ impl RenderPass {
             occlusion_query_set: None,
         });
 
-        render_pass.set_pipeline(&pipeline.pipeline);
+        let mut push_constants = [0; 84];
+        push_constants[0..80].copy_from_slice(bytemuck::bytes_of(&CameraUniform::new(
+            camera.transform,
+            camera.projection,
+        )));
+        push_constants[80..84]
+            .copy_from_slice(bytemuck::bytes_of(&MainPassOptionsEncoded::new(&options)));
 
-        for (index, obj) in state.objects.values().enumerate() {
-            let vs_bind_group = &bind_groups[index];
+        render_pass.set_pipeline(&pipeline.pipeline);
+        render_pass.set_push_constants(
+            ShaderStages::VERTEX | ShaderStages::FRAGMENT,
+            0,
+            &push_constants,
+        );
+
+        for (id, obj) in state.objects.iter() {
+            let vs_bind_group = state.object_buffers.get(id).unwrap();
             let (mesh_bg, idx_buf) = state.meshes.get(&obj.mesh).unwrap();
             let mat_bg = state.materials.get(&obj.material).unwrap();
 
