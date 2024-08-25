@@ -6,7 +6,7 @@ mod spawner;
 
 pub mod scene;
 
-pub use crate::spawner::{SceneId, SceneSpawner};
+pub use crate::spawner::{InstanceId, SceneId, SceneSpawner};
 
 #[cfg(feature = "gltf")]
 mod gltf;
@@ -49,6 +49,10 @@ where
     let mut buf = Vec::new();
     file.read_to_end(&mut buf).map_err(LoadError::Io)?;
 
+    load_from_bytes(&buf)
+}
+
+fn load_from_bytes(buf: &[u8]) -> Result<Scene, LoadError> {
     match detect_format(&buf) {
         #[cfg(feature = "gltf")]
         Some(SceneFormat::Gltf) => {

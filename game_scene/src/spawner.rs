@@ -1,5 +1,5 @@
-use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::collections::{HashMap, VecDeque};
+use std::io::Read;
 
 use game_common::collections::arena::{self, Arena};
 use game_common::components::Transform;
@@ -7,7 +7,7 @@ use game_render::Renderer;
 use game_tasks::{Task, TaskPool};
 use game_tracing::trace_span;
 
-use crate::load_scene;
+use crate::load_from_bytes;
 use crate::scene::Scene;
 use crate::scene2::{SceneResources, SpawnedScene};
 
@@ -17,137 +17,179 @@ pub struct SceneId(arena::Key);
 #[derive(Debug, Default)]
 pub struct SceneSpawner {
     instances: Arena<Instance>,
-    queued_instances: Vec<SceneId>,
-    scenes: HashMap<PathBuf, SceneData>,
+    scenes: Arena<SceneData>,
+    events: VecDeque<Event>,
+    tasks: HashMap<SceneId, SceneLoadState>,
 }
 
 impl SceneSpawner {
-    pub fn spawn<S>(&mut self, source: S) -> SceneId
-    where
-        S: AsRef<Path>,
-    {
-        let id = SceneId(self.instances.insert(Instance {
-            path: source.as_ref().to_owned(),
+    pub fn insert(&mut self, data: &[u8]) -> SceneId {
+        let _span = trace_span!("SceneSpawner::insert").entered();
+
+        let id = SceneId(self.scenes.insert(SceneData::Queued));
+        self.events.push_back(Event::SpawnScene(data.to_vec(), id));
+        id
+    }
+
+    // TODO: Remove this
+    pub fn insert_from_file(&mut self, path: &str) -> SceneId {
+        match std::fs::read(path) {
+            Ok(buf) => self.insert(&buf),
+            Err(err) => {
+                tracing::error!("loading from file failed: {:?}", err);
+                SceneId(self.scenes.insert(SceneData::Failed))
+            }
+        }
+    }
+
+    pub fn remove(&mut self, id: SceneId) {
+        let _span = trace_span!("SceneSpawner::remove").entered();
+
+        if self.scenes.contains_key(id.0) {
+            self.events.push_back(Event::DestroyScene(id));
+        }
+    }
+
+    pub fn spawn(&mut self, scene: SceneId) -> InstanceId {
+        let _span = trace_span!("SceneSpawner::spawn").entered();
+        let id = InstanceId(self.instances.insert(Instance {
+            scene,
             state: InstanceState::Loading,
         }));
-        self.queued_instances.push(id);
-
-        let scene = self
-            .scenes
-            .entry(source.as_ref().to_owned())
-            .or_insert_with(|| SceneData {
-                count: 0,
-                state: SceneDataState::Queued,
-            });
-        scene.count += 1;
-
+        self.events.push_back(Event::SpawnInstance(id, scene));
         id
+    }
+
+    pub fn despawn(&mut self, id: InstanceId) {
+        let _span = trace_span!("SceneSpawner::despawn").entered();
+
+        if self.instances.contains_key(id.0) {
+            self.events.push_back(Event::DestroyInstance(id));
+        }
+    }
+
+    pub fn scene_of_instance(&self, instance: InstanceId) -> SceneId {
+        self.instances.get(instance.0).unwrap().scene
     }
 
     pub fn update(&mut self, pool: &TaskPool, renderer: &mut Renderer) {
         let _span = trace_span!("SceneSpaner::update").entered();
 
-        self.queued_instances.retain(|id| {
-            let Some(instance) = self.instances.get_mut(id.0) else {
-                // Instance does not exist if it was already despawned.
-                return false;
-            };
-            let scene = self.scenes.get_mut(&instance.path).unwrap();
-
-            match &mut scene.state {
-                SceneDataState::Loaded(scene, res) => {
-                    let spawned_scene = scene.instantiate(res, renderer);
-                    instance.state = InstanceState::Spawned(spawned_scene);
-
-                    false
-                }
-                SceneDataState::Loading(task) => {
-                    // FIXME: We're actually checking for every instance, which means
-                    // it is possible for the same task handle to be checked polled
-                    // multiple times without effect.
-                    if let Some(output) = task.get_output() {
-                        match output {
-                            Some(mut output) => {
-                                let res = output.setup_materials(renderer);
-
-                                // Instantiate the instance has caused the initial load of the
-                                // asset. This allows us to skip delaying the creation of the
-                                // instance until the next update.
-                                let spawned_scene = output.instantiate(&res, renderer);
-                                instance.state = InstanceState::Spawned(spawned_scene);
-
-                                scene.state = SceneDataState::Loaded(output, res);
-                            }
-                            None => scene.state = SceneDataState::LoadingFailed,
-                        }
-
-                        false
-                    } else {
-                        true
-                    }
-                }
-                SceneDataState::LoadingFailed => false,
-                SceneDataState::Queued => {
-                    let path = instance.path.clone();
+        while let Some(event) = self.events.pop_front() {
+            match event {
+                Event::SpawnScene(data, scene) => {
                     let task = pool.spawn(async move {
-                        match load_scene(&path) {
+                        match load_from_bytes(&data) {
                             Ok(scene) => Some(scene),
                             Err(err) => {
-                                tracing::error!("failed to load scene from {:?}: {}", path, err);
+                                tracing::error!("failed to load scene: {:?}", err);
                                 None
                             }
                         }
                     });
-                    scene.state = SceneDataState::Loading(task);
 
-                    true
+                    self.tasks.insert(
+                        scene,
+                        SceneLoadState {
+                            task,
+                            deferred_instances: Vec::new(),
+                        },
+                    );
                 }
-            }
-        });
-    }
+                Event::SpawnInstance(instance, scene) => {
+                    match self.scenes.get(scene.0).unwrap() {
+                        SceneData::Loaded(scene, resources) => {
+                            let state = scene.instantiate(resources, renderer);
+                            self.instances.get_mut(instance.0).unwrap().state =
+                                InstanceState::Spawned(state);
+                        }
+                        SceneData::Queued => {
+                            // Defer instace creation until the scene is loaded.
+                            self.tasks
+                                .get_mut(&scene)
+                                .unwrap()
+                                .deferred_instances
+                                .push(instance);
+                        }
+                        // Skip instance creation if the scene is invalid.
+                        // In this case all operations on the instance are
+                        // just nops.
+                        SceneData::Failed => {}
+                    }
+                }
+                Event::DestroyScene(scene) => {
+                    // The scene must not have any instances refering to it.
+                    if cfg!(debug_assertions) {
+                        for instance in self.instances.values() {
+                            assert_ne!(instance.scene, scene);
+                        }
+                    }
 
-    pub fn despawn(&mut self, renderer: &mut Renderer, id: SceneId) {
-        tracing::trace!("despawn scene {:?}", id);
+                    self.scenes.remove(scene.0);
+                    self.tasks.remove(&scene);
+                }
+                Event::DestroyInstance(instance) => {
+                    let Some(instance) = self.instances.remove(instance.0) else {
+                        continue;
+                    };
 
-        if let Some(instance) = self.instances.remove(id.0) {
-            if let InstanceState::Spawned(spawned_scene) = instance.state {
-                spawned_scene.despawn(renderer);
-            }
+                    if let InstanceState::Spawned(state) = instance.state {
+                        state.despawn(renderer);
+                    }
+                }
+                Event::SetTransform(instance, transform) => {
+                    let instance = self.instances.get_mut(instance.0).unwrap();
+                    match &mut instance.state {
+                        InstanceState::Loading => {
+                            // What to do if scene is not yet loaded?
+                        }
+                        InstanceState::Spawned(state) => {
+                            state.set_transform(transform);
+                            state.compute_transform();
 
-            if let Some(scene) = self.scenes.get_mut(&instance.path) {
-                scene.count -= 1;
+                            for (key, id) in &state.entities {
+                                let global_transform = *state.global_transform.get(key).unwrap();
 
-                if scene.count == 0 {
-                    self.scenes.remove(&instance.path);
+                                let mut object = renderer.entities.objects.get_mut(*id).unwrap();
+                                object.transform = global_transform;
+                            }
+                        }
+                    }
                 }
             }
         }
+
+        self.tasks
+            .retain(|scene, state| match state.task.get_output() {
+                Some(Some(mut output)) => {
+                    let res = output.setup_materials(renderer);
+                    *self.scenes.get_mut(scene.0).unwrap() = SceneData::Loaded(output, res);
+
+                    for instance in state.deferred_instances.drain(..) {
+                        self.events
+                            .push_back(Event::SpawnInstance(instance, *scene));
+                    }
+
+                    false
+                }
+                Some(None) => {
+                    *self.scenes.get_mut(scene.0).unwrap() = SceneData::Failed;
+                    false
+                }
+                None => true,
+            });
     }
 
-    pub fn set_transform(&mut self, renderer: &mut Renderer, transform: Transform, id: SceneId) {
-        let instance = self.instances.get_mut(id.0).unwrap();
-        match &mut instance.state {
-            InstanceState::Loading => {
-                // What to do if scene is not yet loaded?
-            }
-            InstanceState::Spawned(scene) => {
-                scene.set_transform(transform);
-                scene.compute_transform();
-
-                for (key, id) in &scene.entities {
-                    let global_transform = *scene.global_transform.get(key).unwrap();
-
-                    let mut object = renderer.entities.objects.get_mut(*id).unwrap();
-                    object.transform = global_transform;
-                }
-            }
-        }
+    pub fn set_transform(&mut self, instance: InstanceId, transform: Transform) {
+        debug_assert!(self.instances.contains_key(instance.0));
+        self.events
+            .push_back(Event::SetTransform(instance, transform));
     }
 }
 
 #[derive(Debug)]
 struct Instance {
-    path: PathBuf,
+    scene: SceneId,
     state: InstanceState,
 }
 
@@ -158,16 +200,26 @@ enum InstanceState {
 }
 
 #[derive(Debug)]
-struct SceneData {
-    /// Number of instances referencing the scene data.
-    count: usize,
-    state: SceneDataState,
+enum SceneData {
+    Loaded(Scene, SceneResources),
+    Queued,
+    Failed,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct InstanceId(arena::Key);
+
+#[derive(Clone, Debug)]
+enum Event {
+    SpawnScene(Vec<u8>, SceneId),
+    SpawnInstance(InstanceId, SceneId),
+    DestroyScene(SceneId),
+    DestroyInstance(InstanceId),
+    SetTransform(InstanceId, Transform),
 }
 
 #[derive(Debug)]
-enum SceneDataState {
-    Loaded(Scene, SceneResources),
-    Loading(Task<Option<Scene>>),
-    LoadingFailed,
-    Queued,
+struct SceneLoadState {
+    task: Task<Option<Scene>>,
+    deferred_instances: Vec<InstanceId>,
 }
