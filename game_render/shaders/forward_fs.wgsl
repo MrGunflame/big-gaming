@@ -7,15 +7,16 @@ struct MaterialConstants {
     reflectance: f32,
 }
 
-@group(0) @binding(0)
-var<uniform> camera: Camera;
+var<push_constant> push_constants: PushConstants;
 
-// FIXME: Options almost never change. Instead of doing dynamic matching
-// in the shader we should just recompile the shader with only the paths
-// defined in the options.
-// This requires a shader pre-processor which we currently do not have.
-@group(0) @binding(2)
-var<uniform> options: Options;
+struct PushConstants {
+    camera: Camera,
+    // FIXME: Options almost never change. Instead of doing dynamic matching
+    // in the shader we should just recompile the shader with only the paths
+    // defined in the options.
+    // This requires a shader pre-processor which we currently do not have.
+    options: Options,
+}
 
 struct Options {
     shading_mode: u32,
@@ -62,11 +63,11 @@ struct FragInput {
 fn fs_main(in: FragInput) -> @location(0) vec4<f32> {
     var color = constants.base_color * textureSample(base_color_texture, linear_sampler, in.uv);
 
-    if options.shading_mode == SHADING_MODE_ALBEDO {
+    if push_constants.options.shading_mode == SHADING_MODE_ALBEDO {
         return vec4<f32>(get_albedo(in), 1.0);
-    } else if options.shading_mode == SHADING_MODE_NORMAL {
+    } else if push_constants.options.shading_mode == SHADING_MODE_NORMAL {
         return vec4<f32>(get_normal(in), 1.0);
-    } else if options.shading_mode == SHADING_MODE_TANGENT {
+    } else if push_constants.options.shading_mode == SHADING_MODE_TANGENT {
         return vec4<f32>(in.world_tangent.xyz, 1.0);
     }
 
@@ -96,7 +97,7 @@ fn compute_directional_light(in: FragInput, light: DirectionalLight) -> vec3<f32
 
     let diffuse = max(dot(normal, light_dir), 0.0);
 
-    let view_dir = normalize(camera.position - in.world_position);
+    let view_dir = normalize(push_constants.camera.position - in.world_position);
     let half_dir = normalize(view_dir + light_dir);
 
     let specular = pow(max(dot(normal, half_dir), 0.0), 32.0);
@@ -131,7 +132,7 @@ fn compute_point_light(in: FragInput, light: PointLight) -> vec3<f32> {
 
     let diffuse = max(dot(normal, light_dir), 0.0);
 
-    let view_dir = normalize(camera.position - in.world_position);
+    let view_dir = normalize(push_constants.camera.position - in.world_position);
     let half_dir = normalize(view_dir + light_dir);
     let specular = pow(max(dot(normal, half_dir), 0.0), 32.0);
 
@@ -162,7 +163,7 @@ fn compute_spot_light(in: FragInput, light: SpotLight) -> vec3<f32> {
 
     var diffuse = max(dot(normal, light_dir), 0.0);
 
-    let view_dir = normalize(camera.position - in.world_position);
+    let view_dir = normalize(push_constants.camera.position - in.world_position);
     let half_dir = normalize(view_dir + light_dir);
     var specular = pow(max(dot(normal, half_dir), 0.0), 32.0);
 
@@ -268,7 +269,7 @@ fn get_distance_attenuation(distance_square: f32, inv_range_squared: f32) -> f32
 // https://google.github.io/filament/Filament.html
 
 fn surface_shading(in: FragInput, light: Light) -> vec3<f32> {
-    let view_dir = normalize(camera.position - in.world_position);
+    let view_dir = normalize(push_constants.camera.position - in.world_position);
     let half_dir = normalize(view_dir + light.direction);
 
     let normal = get_normal(in);

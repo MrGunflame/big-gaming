@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 
+use game_common::components::Transform;
 use game_tracing::trace_span;
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
-use wgpu::{BindGroup, Buffer, BufferUsages, Device, Queue};
+use wgpu::{BindGroup, BindGroupDescriptor, BindGroupEntry, Buffer, BufferUsages, Device, Queue};
 
 use crate::buffer::{DynamicBuffer, IndexBuffer};
 use crate::camera::{Camera, CameraBuffer};
@@ -25,7 +26,7 @@ pub(crate) struct RenderState {
     pub camera_buffers: HashMap<CameraId, CameraBuffer>,
     pub objects: HashMap<ObjectId, Object>,
     /// object transform buffers
-    pub object_buffers: HashMap<ObjectId, Buffer>,
+    pub object_buffers: HashMap<ObjectId, BindGroup>,
 
     pub directional_lights: HashMap<DirectionalLightId, DirectionalLight>,
     pub point_lights: HashMap<PointLightId, PointLight>,
@@ -221,7 +222,16 @@ impl RenderState {
                 }
                 Event::CreateObject(id, object) => {
                     let buffer = update_transform_buffer(object.transform, device);
-                    self.object_buffers.insert(id, buffer);
+                    let bg = device.create_bind_group(&BindGroupDescriptor {
+                        label: None,
+                        layout: &pipeline.vs_bind_group_layout,
+                        entries: &[BindGroupEntry {
+                            binding: 0,
+                            resource: buffer.as_entire_binding(),
+                        }],
+                    });
+
+                    self.object_buffers.insert(id, bg);
                 }
                 Event::DestroyObject(id) => {
                     self.objects.remove(&id);

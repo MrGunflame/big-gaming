@@ -1,3 +1,12 @@
+struct PushConstants {
+    camera: Camera,
+    options: Options,
+}
+
+struct Options {
+    shading_mode: u32,
+}
+
 struct Camera {
     position: vec3<f32>,
     view_proj: mat4x4<f32>,
@@ -8,9 +17,9 @@ struct Model {
     normal: mat3x3<f32>,
 }
 
+var<push_constant> push_constants: PushConstants;
+
 @group(0) @binding(0)
-var<uniform> camera: Camera;
-@group(0) @binding(1)
 var<uniform> model: Model;
 
 // Note that the storage buffers are dense, hence they are
@@ -45,7 +54,7 @@ fn vs_main(in: VertexInput) -> VertexOutput {
     let uv = fetch_uv(in.vertex_index);
     let tangent = fetch_tangent(in.vertex_index);
 
-    out.clip_position = camera.view_proj * model.transform * vec4<f32>(position, 1.0);
+    out.clip_position = push_constants.camera.view_proj * model.transform * vec4<f32>(position, 1.0);
     out.uv = uv;
 
     out.world_position = (model.transform * vec4<f32>(position, 1.0)).xyz;

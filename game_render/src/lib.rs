@@ -107,10 +107,12 @@ impl Renderer {
 
         let features = Features::TEXTURE_BINDING_ARRAY
             | Features::SAMPLED_TEXTURE_AND_STORAGE_BUFFER_ARRAY_NON_UNIFORM_INDEXING
-            | Features::PARTIALLY_BOUND_BINDING_ARRAY;
+            | Features::PARTIALLY_BOUND_BINDING_ARRAY
+            | Features::PUSH_CONSTANTS;
 
         let mut limits = Limits::default();
         limits.max_sampled_textures_per_shader_stage = 2048;
+        limits.max_push_constant_size = 128;
 
         let (device, queue) = futures_lite::future::block_on(adapter.request_device(
             &DeviceDescriptor {
