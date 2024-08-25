@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::Read;
+use std::path::PathBuf;
 
 use game_common::module::ModuleId;
 use game_common::record::{RecordId, RecordReference};
@@ -80,7 +81,15 @@ pub struct LoadResult {
     pub executor: Executor,
 }
 
-pub fn load_modules() -> LoadResult {
+#[derive(Debug, Error)]
+pub enum LoadError {
+    #[error("failed to load modules from `{0:?}`: {1}")]
+    BadDirectory(PathBuf, std::io::Error),
+}
+
+pub fn load_modules() -> Result<LoadResult, LoadError> {
+    let path = "./mods";
+
     let mut modules = Modules::new();
     let mut executor = Executor::new();
 
@@ -95,8 +104,7 @@ pub fn load_modules() -> LoadResult {
         let mut dir = match tokio::fs::read_dir("./mods").await {
             Ok(dir) => dir,
             Err(err) => {
-                tracing::error!("failed to load modules found ./mods: {}", err);
-                std::process::exit(1);
+                return Err(LoadError::BadDirectory(path.into(), err));
             }
         };
 
@@ -128,7 +136,9 @@ pub fn load_modules() -> LoadResult {
                 Err(Error::Delayed) => (),
             }
         }
-    });
+
+        Ok(())
+    })?;
 
     for data in loader.clear() {
         tracing::error!(
@@ -140,7 +150,7 @@ pub fn load_modules() -> LoadResult {
 
     tracing::info!("loaded {} modules", modules.len());
 
-    LoadResult { modules, executor }
+    Ok(LoadResult { modules, executor })
 }
 
 fn load_module(data: DataBuffer, modules: &mut Modules, executor: &mut Executor) {

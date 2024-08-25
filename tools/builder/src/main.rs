@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 
@@ -23,7 +24,7 @@ enum Command {
     Clean,
 }
 
-fn main() {
+fn main() -> ExitCode {
     let args = Args::parse();
 
     let root = project_root_path();
@@ -32,11 +33,15 @@ fn main() {
     match args.cmd {
         Command::Build => {
             let client = root.join("game_client");
-            build_cargo(client);
+            if build_cargo(client).is_err() {
+                return ExitCode::FAILURE;
+            }
             move_artifact(&root, "game_client", &build_path);
 
             let server = root.join("game_server");
-            build_cargo(server);
+            if build_cargo(server).is_err() {
+                return ExitCode::FAILURE;
+            }
             move_artifact(&root, "game_server", &build_path);
         }
         Command::Clean => {
@@ -52,6 +57,8 @@ fn main() {
             std::fs::remove_dir_all(build_path).unwrap();
         }
     }
+
+    ExitCode::SUCCESS
 }
 
 fn project_root_path() -> PathBuf {
@@ -72,7 +79,7 @@ fn project_root_path() -> PathBuf {
     panic!("failed to find root");
 }
 
-fn build_cargo(path: impl AsRef<Path>) {
+fn build_cargo(path: impl AsRef<Path>) -> Result<(), ()> {
     println!("building {}", path.as_ref().to_string_lossy());
 
     let rustflags = FLAGS
@@ -102,7 +109,9 @@ fn build_cargo(path: impl AsRef<Path>) {
 
     if !status.success() {
         println!("build failed");
-        std::process::exit(1);
+        Err(())
+    } else {
+        Ok(())
     }
 }
 

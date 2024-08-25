@@ -55,6 +55,7 @@ impl SceneSpawner {
         let id = InstanceId(self.instances.insert(Instance {
             scene,
             state: InstanceState::Loading,
+            transform: Transform::default(),
         }));
         self.events.push_back(Event::SpawnInstance(id, scene));
         id
@@ -139,6 +140,13 @@ impl SceneSpawner {
                 }
                 Event::SetTransform(instance, transform) => {
                     let instance = self.instances.get_mut(instance.0).unwrap();
+                    // Updating the transform of objects can be expensive.
+                    // Avoid unless the transform value actually changed.
+                    if instance.transform == transform {
+                        continue;
+                    }
+
+                    instance.transform = transform;
                     match &mut instance.state {
                         InstanceState::Loading => {
                             // What to do if scene is not yet loaded?
@@ -191,6 +199,7 @@ impl SceneSpawner {
 struct Instance {
     scene: SceneId,
     state: InstanceState,
+    transform: Transform,
 }
 
 #[derive(Debug)]

@@ -67,7 +67,7 @@ missing-docs = "allow"
 unreachable-pub = "allow"
 
 [workspace.lints.clippy]
-disallowed_script_idents = "forbid"
+disallowed_script_idents = "deny"
 
 # Correctness warnings
 borrow_as_ptr = "warn"
@@ -126,6 +126,12 @@ use_debug = "allow"
 missing_panics_doc = "allow"
 missing_errors_doc = "warn"
 missing_safety_doc = "warn"
+
+# Avoid calls to `std::process::exit`.
+# `exit` can cause problems and may trigger UB together with
+# the renderer and vulkan validation layers.
+# Instead all exists should propagate up and return from `main`.
+exit = "deny"
 
 [profile.dev]
 opt-level = 0

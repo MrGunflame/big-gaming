@@ -311,6 +311,12 @@ impl Renderer {
     }
 }
 
+impl Drop for Renderer {
+    fn drop(&mut self) {
+        self.pipeline.shutdown();
+    }
+}
+
 #[derive(Debug)]
 enum SurfaceEvent {
     Create(WindowId, WindowState),

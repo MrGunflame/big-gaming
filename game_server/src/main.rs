@@ -32,7 +32,7 @@ fn main() -> ExitCode {
         }
     };
 
-    let res = modules::load_modules();
+    let res = modules::load_modules().unwrap();
 
     let generator = load_world();
 
@@ -101,7 +101,7 @@ macro_rules! fatal {
     ($($arg:tt)*) => {{
         tracing::error!($($arg)*);
         tracing::error!("encountered fatal error, exiting");
-        std::process::exit(1);
+        return ExitCode::FAILURE;
     }};
 }
 

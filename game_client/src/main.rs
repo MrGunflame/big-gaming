@@ -9,6 +9,7 @@ mod ui;
 mod utils;
 mod world;
 
+use std::process::ExitCode;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -43,7 +44,7 @@ struct Args {
     connect: Option<String>,
 }
 
-fn main() {
+fn main() -> ExitCode {
     game_core::logger::init();
 
     let args = Args::parse();
@@ -54,11 +55,11 @@ fn main() {
         Ok(config) => config,
         Err(err) => {
             tracing::error!("failed to load config file from {:?}: {}", config_path, err);
-            return;
+            return ExitCode::FAILURE;
         }
     };
 
-    let res = game_core::modules::load_modules();
+    let res = game_core::modules::load_modules().unwrap();
 
     let mut wm = WindowManager::new();
     let window_id = wm.windows_mut().spawn(WindowBuilder::new());
@@ -83,7 +84,7 @@ fn main() {
         Ok(renderer) => renderer,
         Err(err) => {
             tracing::error!("cannot create renderer: {}", err);
-            return;
+            return ExitCode::FAILURE;
         }
     };
 
@@ -135,6 +136,8 @@ fn main() {
 
         wm.run(renderer_state);
     });
+
+    ExitCode::SUCCESS
 }
 
 pub struct GameAppState<'a> {
@@ -154,7 +157,7 @@ pub struct GameAppState<'a> {
 
 impl<'a> GameAppState<'a> {
     pub fn run(mut self) {
-        while !self.shutdown.load(Ordering::Relaxed) {
+        while !self.shutdown.load(Ordering::Acquire) {
             self.time.update();
 
             self.update();
@@ -216,8 +219,8 @@ impl<'a> GameAppState<'a> {
             )) {
                 Ok(()) => (),
                 Err(UpdateError::Exit) => {
-                    // TODO: Clean shutdown
-                    std::process::exit(0);
+                    self.shutdown.store(true, Ordering::Release);
+                    return;
                 }
             }
         }
@@ -242,8 +245,13 @@ pub struct RendererAppState<'a> {
 }
 
 impl<'a> game_window::App for RendererAppState<'a> {
-    fn update(&mut self, ctx: WindowManagerContext<'_>) {
+    fn update(&mut self, mut ctx: WindowManagerContext<'_>) {
         let _span = trace_span!("RendererAppState::update").entered();
+
+        if self.shutdown.load(Ordering::Acquire) {
+            ctx.exit();
+            return;
+        }
 
         // Wait until the last vsync is done before we start preparing the next
         // frame. This helps combat latency issues and will not cause stalls
@@ -287,7 +295,7 @@ impl<'a> game_window::App for RendererAppState<'a> {
 
                 self.renderer.destroy(event.window);
 
-                self.shutdown.store(true, Ordering::Relaxed);
+                self.shutdown.store(true, Ordering::Release);
                 ctx.exit();
             }
             WindowEvent::WindowCloseRequested(event) => {
