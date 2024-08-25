@@ -1,9 +1,9 @@
 use ahash::HashMap;
+use game_common::components::PrimaryCamera;
 use game_common::components::{
     DirectionalLight as DirectionalLightComponent, GlobalTransform, MeshInstance,
     PointLight as PointLightComponent, SpotLight as SpotLightComponent,
 };
-use game_common::components::{PrimaryCamera, Transform};
 use game_common::entity::EntityId;
 use game_common::world::{QueryWrapper, World};
 use game_core::debug::draw_collider_lines;
@@ -12,26 +12,20 @@ use game_render::camera::{Camera, Projection, RenderTarget};
 use game_render::entities::{CameraId, DirectionalLightId, PointLightId, SpotLightId};
 use game_render::light::{DirectionalLight, PointLight, SpotLight};
 use game_render::Renderer;
-use game_scene::scene2::SceneGraph;
-use game_scene::{SceneId, SceneSpawner};
+use game_scene::{InstanceId, SceneId, SceneSpawner};
 use game_tasks::TaskPool;
 use game_window::windows::WindowId;
 
 #[derive(Debug, Default)]
 pub struct SceneEntities {
-    mesh_instances: HashMap<EntityId, MeshInstanceState>,
+    path_to_scene: HashMap<String, SceneState>,
+    scene_to_path: HashMap<SceneId, String>,
+    mesh_instances: HashMap<EntityId, InstanceId>,
     directional_lights: HashMap<EntityId, DirectionalLightId>,
     point_lights: HashMap<EntityId, PointLightId>,
     spot_lights: HashMap<EntityId, SpotLightId>,
     primary_cameras: HashMap<EntityId, CameraId>,
-    graph: SceneGraph,
     spawner: SceneSpawner,
-}
-
-#[derive(Clone, Debug)]
-struct MeshInstanceState {
-    id: SceneId,
-    path: String,
 }
 
 impl SceneEntities {
@@ -43,10 +37,6 @@ impl SceneEntities {
         window: WindowId,
         gizmos: &Gizmos,
     ) {
-        self.spawner.update(pool, renderer);
-        self.graph.compute_transform();
-        self.graph.clear_trackers();
-
         let mut removed_mesh_instances = self.mesh_instances.clone();
         let mut removed_dir_lights = self.directional_lights.clone();
         let mut removed_point_lights = self.point_lights.clone();
@@ -59,30 +49,30 @@ impl SceneEntities {
             removed_mesh_instances.remove(&entity);
 
             match self.mesh_instances.get(&entity) {
-                Some(state) if state.path == mesh_instance.path => {
-                    self.spawner.set_transform(renderer, transform, state.id);
+                Some(id) => {
+                    self.spawner.set_transform(*id, transform);
                 }
-                Some(state) => {
-                    self.spawner.despawn(renderer, state.id);
-                    let id = self.spawner.spawn(&mesh_instance.path);
-                    self.mesh_instances.insert(
-                        entity,
-                        MeshInstanceState {
-                            id,
-                            path: mesh_instance.path.clone(),
-                        },
-                    );
-                }
-                None => {
-                    let id = self.spawner.spawn(&mesh_instance.path);
-                    self.mesh_instances.insert(
-                        entity,
-                        MeshInstanceState {
-                            id,
-                            path: mesh_instance.path.clone(),
-                        },
-                    );
-                }
+                None => match self.path_to_scene.get_mut(&mesh_instance.path) {
+                    Some(state) => {
+                        state.instances += 1;
+                        let instance = self.spawner.spawn(state.id);
+                        self.mesh_instances.insert(entity, instance);
+                    }
+                    None => {
+                        let scene = self.spawner.insert_from_file(&mesh_instance.path);
+                        let instance = self.spawner.spawn(scene);
+                        self.path_to_scene.insert(
+                            mesh_instance.path.clone(),
+                            SceneState {
+                                id: scene,
+                                instances: 1,
+                                path: mesh_instance.path.clone(),
+                            },
+                        );
+                        self.scene_to_path.insert(scene, mesh_instance.path);
+                        self.mesh_instances.insert(entity, instance);
+                    }
+                },
             }
         }
 
@@ -169,7 +159,7 @@ impl SceneEntities {
             }
         }
 
-        for (entity, QueryWrapper((GlobalTransform(transform), camera))) in
+        for (entity, QueryWrapper((GlobalTransform(transform), PrimaryCamera))) in
             world.query::<QueryWrapper<(GlobalTransform, PrimaryCamera)>>()
         {
             removed_primary_cameras.remove(&entity);
@@ -181,6 +171,8 @@ impl SceneEntities {
                     gizmos.update_camera(*camera);
                 }
                 None => {
+                    // Surface might not yet be ready, defer creation until
+                    // next frame.
                     let Some(size) = renderer.get_surface_size(window) else {
                         continue;
                     };
@@ -200,9 +192,21 @@ impl SceneEntities {
             }
         }
 
-        for (entity, state) in removed_mesh_instances {
-            self.spawner.despawn(renderer, state.id);
+        for (entity, id) in removed_mesh_instances {
+            let scene = self.spawner.scene_of_instance(id);
+
+            self.spawner.despawn(id);
             self.mesh_instances.remove(&entity);
+
+            let path = self.scene_to_path.get(&scene).unwrap();
+            let scene = self.path_to_scene.get_mut(path).unwrap();
+            scene.instances -= 1;
+            if scene.instances == 0 {
+                self.spawner.remove(scene.id);
+                self.scene_to_path.remove(&scene.id);
+                let path = scene.path.clone();
+                self.path_to_scene.remove(&path);
+            }
         }
 
         for (entity, id) in removed_dir_lights {
@@ -225,6 +229,15 @@ impl SceneEntities {
             self.primary_cameras.remove(&entity);
         }
 
+        self.spawner.update(pool, renderer);
+
         draw_collider_lines(world, gizmos);
     }
+}
+
+#[derive(Clone, Debug)]
+struct SceneState {
+    id: SceneId,
+    instances: u64,
+    path: String,
 }
