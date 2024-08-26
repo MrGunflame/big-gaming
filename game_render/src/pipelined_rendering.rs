@@ -1,6 +1,6 @@
 use std::collections::{HashMap, VecDeque};
 use std::marker::PhantomData;
-use std::sync::atomic::{AtomicU8, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::Arc;
 
 use game_common::cell::UnsafeRefCell;
@@ -24,6 +24,7 @@ use crate::Job;
 
 const PIPELINE_STATE_RENDERING: u8 = 1;
 const PIPELINE_STATE_IDLE: u8 = 2;
+const PIPELINE_STATE_EXIT: u8 = 3;
 
 pub struct SharedState {
     pub instance: Instance,
@@ -39,6 +40,7 @@ pub struct SharedState {
     main_unparker: Arc<Parker>,
     pub jobs: UnsafeRefCell<VecDeque<Job>>,
     fps_limiter: UnsafeRefCell<FpsLimiter>,
+    shutdown: AtomicBool,
 }
 
 pub struct Pipeline {
@@ -70,6 +72,7 @@ impl Pipeline {
             render_textures: UnsafeRefCell::new(HashMap::new()),
             jobs: UnsafeRefCell::new(VecDeque::new()),
             fps_limiter: UnsafeRefCell::new(FpsLimiter::new(FpsLimit::UNLIMITED)),
+            shutdown: AtomicBool::new(false),
         });
 
         let render_unparker = start_render_thread(shared.clone());
@@ -106,28 +109,40 @@ impl Pipeline {
 
         self.render_unparker.unpark();
     }
+
+    pub fn shutdown(&mut self) {
+        self.shared.shutdown.store(true, Ordering::Release);
+        self.render_unparker.unpark();
+    }
 }
 
 fn start_render_thread(shared: Arc<SharedState>) -> Arc<Parker> {
     let parker = Arc::new(Parker::new());
     let unparker = parker.clone();
 
-    std::thread::spawn(move || loop {
-        // FIXME: If it is guaranteed that the parker will never yield
-        // before being signaled, there is not need to watch for the atomic
-        // to change.
-        while shared.state.load(Ordering::Acquire) != PIPELINE_STATE_RENDERING {
-            parker.park();
-        }
+    std::thread::spawn(move || {
+        let _span = trace_span!("render_thread").entered();
+        loop {
+            if shared.shutdown.load(Ordering::Acquire) {
+                return;
+            }
 
-        // SAFETY: The pipeline is in rendering state, the render thread
-        // has full access to the state.
-        unsafe {
-            execute_render(&shared);
-        }
+            // FIXME: If it is guaranteed that the parker will never yield
+            // before being signaled, there is not need to watch for the atomic
+            // to change.
+            while shared.state.load(Ordering::Acquire) != PIPELINE_STATE_RENDERING {
+                parker.park();
+            }
 
-        shared.state.store(PIPELINE_STATE_IDLE, Ordering::Relaxed);
-        shared.main_unparker.unpark();
+            // SAFETY: The pipeline is in rendering state, the render thread
+            // has full access to the state.
+            unsafe {
+                execute_render(&shared);
+            }
+
+            shared.state.store(PIPELINE_STATE_IDLE, Ordering::Relaxed);
+            shared.main_unparker.unpark();
+        }
     });
 
     unparker

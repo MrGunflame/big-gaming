@@ -16,6 +16,7 @@ use events::{
 use game_input::keyboard::{KeyboardInput, ScanCode};
 use game_input::mouse::{MouseButton, MouseButtonInput, MouseMotion, MouseScrollUnit, MouseWheel};
 use game_input::ButtonState;
+use game_tracing::trace_span;
 use glam::Vec2;
 use windows::{UpdateEvent, WindowState, Windows};
 use winit::event::{DeviceEvent, ElementState, Event, MouseScrollDelta, WindowEvent};
@@ -106,6 +107,7 @@ impl WindowManager {
     where
         T: App,
     {
+        let _span = trace_span!("WindowManager::run").entered();
         main_loop(self.state, self.windows, app);
     }
 }
@@ -517,10 +519,23 @@ where
             }
 
             if exit {
+                while let Some((window, _)) = windows.remove_any() {
+                    let event = events::WindowEvent::WindowDestroyed(WindowDestroyed { window });
+                    app.handle_event(
+                        WindowManagerContext {
+                            windows: &mut windows,
+                            exit: &mut exit,
+                        },
+                        event,
+                    );
+                }
+
                 event_loop.exit();
             }
         })
         .unwrap();
+
+    tracing::info!("window manager exit");
 }
 
 #[derive(Clone, Debug, Default)]

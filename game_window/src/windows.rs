@@ -67,6 +67,12 @@ impl Windows {
     pub(crate) fn get_mut(&mut self, id: WindowId) -> Option<&mut Window> {
         self.windows.get_mut(id.0)
     }
+
+    pub(crate) fn remove_any(&mut self) -> Option<(WindowId, Window)> {
+        let id = self.windows.keys().next()?;
+        let window = self.windows.remove(id).unwrap();
+        Some((WindowId(id), window))
+    }
 }
 
 #[derive(Clone, Debug)]
