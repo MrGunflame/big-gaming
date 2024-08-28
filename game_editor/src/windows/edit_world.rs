@@ -33,11 +33,68 @@ pub struct EditWorldWindow {
     new_prefab_rx: mpsc::Receiver<RecordReference>,
     editor_state: EditorState,
     prefabs: HashMap<EntityId, PrefabState>,
+    update_entities_panel: bool,
 }
 
 impl EditWorldWindow {
     pub fn new(ctx: &Context<()>, editor_state: EditorState) -> Self {
-        let state = WorldWindowState::new();
+        let mut state = WorldWindowState::new();
+        let mut prefabs = HashMap::default();
+        let mut update_entities_panel = false;
+        for (module, record) in editor_state.records.iter() {
+            if record.kind != RecordKind::WORLD_GEN {
+                continue;
+            }
+
+            let record = match WorldgenState::from_bytes(&record.data) {
+                Ok(record) => record,
+                Err(err) => {
+                    tracing::error!(
+                        "failed to decode worldgen state from record {}:{:?}: {:?}",
+                        module,
+                        record.id,
+                        err
+                    );
+                    continue;
+                }
+            };
+
+            let is_writable = editor_state
+                .modules
+                .get(module)
+                .unwrap()
+                .capabilities
+                .write();
+
+            for entity in record.all() {
+                let Some(record) = editor_state
+                    .records
+                    .get(entity.prefab.module, entity.prefab.record)
+                else {
+                    continue;
+                };
+
+                let prefab = Prefab::from_bytes(&record.data).unwrap();
+                let mut world = World::new();
+                let root_entity = prefab.instantiate(&mut world);
+                world.insert_typed(root_entity, entity.transform);
+                let entity_id = state.spawn_world(world);
+
+                if is_writable {
+                    prefabs.insert(
+                        entity_id,
+                        PrefabState {
+                            id: entity.prefab,
+                            transform: entity.transform,
+                        },
+                    );
+                    update_entities_panel = true;
+                }
+            }
+        }
+
+        dbg!(&prefabs);
+
         let ui_state: Arc<parking_lot::lock_api::Mutex<parking_lot::RawMutex, SceneState>> =
             Arc::default();
 
@@ -58,7 +115,8 @@ impl EditWorldWindow {
             editor_state,
             rx,
             new_prefab_rx,
-            prefabs: HashMap::default(),
+            prefabs,
+            update_entities_panel,
         }
     }
 
@@ -124,7 +182,6 @@ impl WindowTrait for EditWorldWindow {
         renderer: &mut Renderer,
         options: &mut MainPassOptions,
     ) {
-        let mut update_entities_panel = false;
         let mut do_sync = false;
 
         while let Ok(event) = self.rx.try_recv() {
@@ -132,7 +189,7 @@ impl WindowTrait for EditWorldWindow {
                 Event::Spawn => {}
                 Event::SelectEntity(entity) => {
                     self.state.toggle_selection(entity);
-                    update_entities_panel = true;
+                    self.update_entities_panel = true;
                 }
                 Event::UpdateComponent(id, component) => {}
                 Event::DeleteComponent(id) => {}
@@ -151,7 +208,7 @@ impl WindowTrait for EditWorldWindow {
             let mut world = World::new();
             prefab.instantiate(&mut world);
             let entity = self.state.spawn_world(world);
-            update_entities_panel = true;
+            self.update_entities_panel = true;
 
             self.prefabs.insert(
                 entity,
@@ -178,7 +235,8 @@ impl WindowTrait for EditWorldWindow {
             self.sync_world_state();
         }
 
-        if update_entities_panel {
+        if self.update_entities_panel {
+            self.update_entities_panel = false;
             {
                 let entities = self.state.entities();
                 self.ui_state.lock().entities = entities;

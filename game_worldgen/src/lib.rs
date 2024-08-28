@@ -98,6 +98,10 @@ impl WorldgenState {
         }
     }
 
+    pub fn all(&self) -> impl Iterator<Item = &'_ Entity> + '_ {
+        self.entities.iter()
+    }
+
     pub fn extend(&mut self, other: Self) {
         self.entities.extend(other.entities);
     }
