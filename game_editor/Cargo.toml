@@ -22,6 +22,7 @@ game_core = { version = "0.1.0", path = "../game_core" }
 game_wasm = { version = "0.1.0", path = "../game_wasm" }
 game_gizmos = { version = "0.1.0", path = "../game_gizmos" }
 game_prefab = { version = "0.1.0", path = "../game_prefab" }
+game_worldgen = { version = "0.1.0", path = "../game_worldgen" }
 
 parking_lot = "0.12.3"
 tokio = { version = "1.38.0", features = ["full"] }

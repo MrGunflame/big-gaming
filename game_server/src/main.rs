@@ -1,17 +1,14 @@
-use std::fs::File;
-use std::io::{stdin, Read};
+use std::io::stdin;
 use std::process::ExitCode;
 
 use clap::Parser;
 
-use game_common::world::gen::Generator;
 use game_core::command::{tokenize, ParseError};
 use game_core::modules;
 use game_server::command::Command;
 use game_server::config::Config;
 use game_server::server::Server;
 use game_server::ServerState;
-use game_worldgen::gen::StaticGenerator;
 use tokio::runtime::Builder;
 use tokio::sync::{mpsc, oneshot};
 
@@ -34,17 +31,9 @@ fn main() -> ExitCode {
 
     let res = modules::load_modules().unwrap();
 
-    let generator = load_world();
-
     let (cmd_tx, cmd_rx) = mpsc::channel(8);
 
-    let server_state = ServerState::new(
-        cmd_rx,
-        Generator::from(generator),
-        res.modules,
-        config,
-        res.executor,
-    );
+    let server_state = ServerState::new(cmd_rx, res.modules, config, res.executor);
 
     std::thread::spawn(move || {
         let stdin = stdin();
@@ -103,13 +92,4 @@ macro_rules! fatal {
         tracing::error!("encountered fatal error, exiting");
         return ExitCode::FAILURE;
     }};
-}
-
-fn load_world() -> StaticGenerator {
-    let mut file = File::open("./world.json").unwrap();
-
-    let mut buf = Vec::new();
-    file.read_to_end(&mut buf).unwrap();
-
-    game_worldgen::from_slice(&buf).unwrap()
 }

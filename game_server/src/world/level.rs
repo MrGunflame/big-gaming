@@ -3,9 +3,10 @@ use game_common::components::{Decode, Transform};
 use game_common::entity::EntityId;
 use game_common::events::{CellLoad, Event};
 use game_common::world::cell::square;
-use game_common::world::gen::{CellBuilder, Generator};
 use game_common::world::CellId;
+use game_prefab::Prefab;
 use game_wasm::components::Component;
+use game_worldgen::WorldgenState;
 
 use crate::ServerState;
 
@@ -34,17 +35,26 @@ pub fn update_level_cells(state: &mut ServerState) {
         }
 
         if !state.level.loaded.contains(cell) {
-            let mut builder = CellBuilder::new(*cell);
-            state.level.generator.generate(&mut builder);
+            tracing::info!("generating cell {:?}", cell);
 
-            for builder in builder.into_entities() {
-                let id = state.world.spawn();
-                for (component_id, component) in builder.components.iter() {
-                    state
-                        .world
-                        .world
-                        .insert(id, component_id, component.clone());
-                }
+            for entity in state.level.generator.load(*cell) {
+                let Some(module) = state.modules.get(entity.prefab.module) else {
+                    continue;
+                };
+
+                let Some(record) = module.records.get(entity.prefab.record) else {
+                    continue;
+                };
+
+                let prefab = match Prefab::from_bytes(&record.data) {
+                    Ok(prefab) => prefab,
+                    Err(err) => {
+                        tracing::error!("failed to decode prefab record: {}", err);
+                        continue;
+                    }
+                };
+
+                prefab.instantiate(&mut state.world.world);
             }
 
             state.level.loaded.insert(*cell);
@@ -88,11 +98,11 @@ pub fn update_level_cells(state: &mut ServerState) {
 pub struct Level {
     loaded: HashSet<CellId>,
     streamers: HashMap<EntityId, Streamer>,
-    generator: Generator,
+    generator: WorldgenState,
 }
 
 impl Level {
-    pub fn new(generator: Generator) -> Self {
+    pub fn new(generator: WorldgenState) -> Self {
         Self {
             loaded: HashSet::default(),
             streamers: HashMap::default(),

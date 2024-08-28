@@ -481,6 +481,22 @@ fn load_core_records(data: &mut ModuleData) {
                 keys: Vec::new(),
             },
         ),
+        (
+            RecordKind::RESOURCE.0.record,
+            "Resource",
+            RecordDescriptor {
+                component: RecordReference::STUB,
+                keys: Vec::new(),
+            },
+        ),
+        (
+            RecordKind::WORLD_GEN.0.record,
+            "World Gen",
+            RecordDescriptor {
+                component: RecordReference::STUB,
+                keys: Vec::new(),
+            },
+        ),
     ] {
         data.records.insert(Record {
             id,
