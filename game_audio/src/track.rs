@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use game_common::collections::arena::Key;
+
 use crate::effects::Volume;
 use crate::sound::Frame;
 
@@ -7,7 +9,7 @@ use crate::sound::Frame;
 pub enum TrackId {
     #[default]
     Main,
-    Track(slotmap::DefaultKey),
+    Track(Key),
 }
 
 #[derive(Clone, Debug)]

@@ -1,5 +1,5 @@
+use game_common::collections::arena::Key;
 use glam::{Quat, Vec3};
-use slotmap::DefaultKey;
 
 use crate::sound::Frame;
 use crate::track::TrackId;
@@ -29,10 +29,10 @@ pub struct Emitter {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct EmitterId(pub(crate) DefaultKey);
+pub struct EmitterId(pub(crate) Key);
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct ListenerId(pub(crate) DefaultKey);
+pub struct ListenerId(pub(crate) Key);
 
 pub(crate) fn process(listener: &Listener, emitter: &Emitter, frame: Frame) -> Frame {
     let mut output = frame.to_mono();

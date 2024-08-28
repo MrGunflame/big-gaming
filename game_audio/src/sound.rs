@@ -1,5 +1,7 @@
 use std::ops::{Add, AddAssign, Mul, MulAssign};
 
+use game_common::collections::arena::Key;
+
 use crate::effects::Volume;
 use crate::sound_data::SoundData;
 use crate::spatial::EmitterId;
@@ -64,7 +66,7 @@ impl MulAssign<Volume> for Frame {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct SoundId(pub(crate) slotmap::DefaultKey);
+pub struct SoundId(pub(crate) Key);
 
 #[derive(Debug)]
 pub(crate) struct PlayingSound {
