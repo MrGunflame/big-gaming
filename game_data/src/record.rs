@@ -128,6 +128,16 @@ impl RecordKind {
         module: ModuleId::CORE,
         record: RecordId(0x1004),
     });
+
+    pub const RESOURCE: Self = Self(RecordReference {
+        module: ModuleId::CORE,
+        record: RecordId(0x1005),
+    });
+
+    pub const WORLD_GEN: Self = Self(RecordReference {
+        module: ModuleId::CORE,
+        record: RecordId(0x1006),
+    });
 }
 
 #[derive(Debug, Error)]

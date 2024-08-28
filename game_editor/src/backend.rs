@@ -65,7 +65,7 @@ async fn load_module(path: PathBuf) -> TaskResult<(EditorModule, Records)> {
         EditorModule {
             module: data.header.module,
             path: Some(path),
-            capabilities: Capabilities::NONE,
+            capabilities: Capabilities::READ | Capabilities::WRITE,
         },
         records,
     ))

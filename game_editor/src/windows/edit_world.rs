@@ -1,15 +1,21 @@
 use std::sync::{mpsc, Arc};
 
+use ahash::HashMap;
+use game_common::components::Transform;
 use game_common::world::World;
-use game_data::record::RecordKind;
+use game_data::record::{Record, RecordKind};
 use game_prefab::Prefab;
 use game_render::options::MainPassOptions;
 use game_render::Renderer;
+use game_tracing::trace_span;
 use game_ui::reactive::Context;
 use game_ui::widgets::{Button, Container, Text, Widget};
+use game_wasm::entity::EntityId;
+use game_wasm::record::RecordId;
 use game_wasm::world::RecordReference;
 use game_window::events::WindowEvent;
 use game_window::windows::WindowId;
+use game_worldgen::{Entity, WorldgenState};
 use parking_lot::Mutex;
 
 use crate::state::EditorState;
@@ -26,6 +32,7 @@ pub struct EditWorldWindow {
     rx: mpsc::Receiver<Event>,
     new_prefab_rx: mpsc::Receiver<RecordReference>,
     editor_state: EditorState,
+    prefabs: HashMap<EntityId, PrefabState>,
 }
 
 impl EditWorldWindow {
@@ -51,7 +58,58 @@ impl EditWorldWindow {
             editor_state,
             rx,
             new_prefab_rx,
+            prefabs: HashMap::default(),
         }
+    }
+
+    fn sync_world_state(&self) {
+        let _span = trace_span!("EditWorldState::sync_world_state").entered();
+
+        let mut state = WorldgenState::new();
+        for prefab in self.prefabs.values() {
+            state.insert(Entity {
+                prefab: prefab.id,
+                transform: prefab.transform,
+            });
+        }
+
+        // Select a module that is opened as writable.
+        // If no module is writable we cannot save the new state.
+        // FIXME: What to do if multiple modules are writable?
+        let mut module_id = None;
+        for module in self.editor_state.modules.iter() {
+            if module.capabilities.write() {
+                module_id = Some(module.module.id);
+            }
+        }
+
+        let Some(module) = module_id else {
+            return;
+        };
+
+        let mut new_record = Record {
+            id: RecordId(0),
+            kind: RecordKind::WORLD_GEN,
+            name: "world_gen".to_owned(),
+            description: String::new(),
+            data: state.to_bytes(),
+        };
+
+        // If there already exists a `WORLD_GEN` record in the module, update
+        // that record.
+        for (module_id, record) in self.editor_state.records.iter() {
+            if module_id != module {
+                continue;
+            }
+
+            if record.kind == RecordKind::WORLD_GEN {
+                new_record.id = record.id;
+                self.editor_state.records.update(module, new_record);
+                return;
+            }
+        }
+
+        self.editor_state.records.insert(module, new_record);
     }
 }
 
@@ -67,6 +125,7 @@ impl WindowTrait for EditWorldWindow {
         options: &mut MainPassOptions,
     ) {
         let mut update_entities_panel = false;
+        let mut do_sync = false;
 
         while let Ok(event) = self.rx.try_recv() {
             match event {
@@ -91,14 +150,32 @@ impl WindowTrait for EditWorldWindow {
             let prefab = Prefab::from_bytes(&record.data).unwrap();
             let mut world = World::new();
             prefab.instantiate(&mut world);
-            self.state.spawn_world(world);
+            let entity = self.state.spawn_world(world);
             update_entities_panel = true;
+
+            self.prefabs.insert(
+                entity,
+                PrefabState {
+                    id,
+                    transform: Transform::default(),
+                },
+            );
+            do_sync = true;
         }
 
         while let Some(event) = self.state.pop_event() {
             match event {
-                WorldEvent::UpdateTransform(entity, transform) => {}
+                WorldEvent::UpdateTransform(entity, transform) => {
+                    if let Some(state) = self.prefabs.get_mut(&entity) {
+                        state.transform = transform;
+                        do_sync = true;
+                    }
+                }
             }
+        }
+
+        if do_sync {
+            self.sync_world_state();
         }
 
         if update_entities_panel {
@@ -174,4 +251,10 @@ impl Widget for PrefabList {
 
         root
     }
+}
+
+#[derive(Clone, Debug)]
+struct PrefabState {
+    id: RecordReference,
+    transform: Transform,
 }
