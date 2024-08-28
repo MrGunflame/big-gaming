@@ -44,7 +44,7 @@ impl WorldgenState {
     pub fn from_bytes(mut bytes: &[u8]) -> Result<Self, Error> {
         let mut entities = Vec::new();
 
-        while bytes.is_empty() {
+        while !bytes.is_empty() {
             let Some(prefab) = bytes.get(0..20) else {
                 return Err(Error {});
             };
