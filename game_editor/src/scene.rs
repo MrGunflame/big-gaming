@@ -43,38 +43,38 @@ impl SceneEntities {
         let mut removed_spot_lights = self.spot_lights.clone();
         let mut removed_primary_cameras = self.primary_cameras.clone();
 
-        for (entity, QueryWrapper((GlobalTransform(transform), mesh_instance))) in
-            world.query::<QueryWrapper<(GlobalTransform, MeshInstance)>>()
-        {
-            removed_mesh_instances.remove(&entity);
+        // for (entity, QueryWrapper((GlobalTransform(transform), mesh_instance))) in
+        //     world.query::<QueryWrapper<(GlobalTransform, MeshInstance)>>()
+        // {
+        //     removed_mesh_instances.remove(&entity);
 
-            match self.mesh_instances.get(&entity) {
-                Some(id) => {
-                    self.spawner.set_transform(*id, transform);
-                }
-                None => match self.path_to_scene.get_mut(&mesh_instance.path) {
-                    Some(state) => {
-                        state.instances += 1;
-                        let instance = self.spawner.spawn(state.id);
-                        self.mesh_instances.insert(entity, instance);
-                    }
-                    None => {
-                        let scene = self.spawner.insert_from_file(&mesh_instance.path);
-                        let instance = self.spawner.spawn(scene);
-                        self.path_to_scene.insert(
-                            mesh_instance.path.clone(),
-                            SceneState {
-                                id: scene,
-                                instances: 1,
-                                path: mesh_instance.path.clone(),
-                            },
-                        );
-                        self.scene_to_path.insert(scene, mesh_instance.path);
-                        self.mesh_instances.insert(entity, instance);
-                    }
-                },
-            }
-        }
+        //     match self.mesh_instances.get(&entity) {
+        //         Some(id) => {
+        //             self.spawner.set_transform(*id, transform);
+        //         }
+        //         None => match self.path_to_scene.get_mut(&mesh_instance.path) {
+        //             Some(state) => {
+        //                 state.instances += 1;
+        //                 let instance = self.spawner.spawn(state.id);
+        //                 self.mesh_instances.insert(entity, instance);
+        //             }
+        //             None => {
+        //                 let scene = self.spawner.insert_from_file(&mesh_instance.path);
+        //                 let instance = self.spawner.spawn(scene);
+        //                 self.path_to_scene.insert(
+        //                     mesh_instance.path.clone(),
+        //                     SceneState {
+        //                         id: scene,
+        //                         instances: 1,
+        //                         path: mesh_instance.path.clone(),
+        //                     },
+        //                 );
+        //                 self.scene_to_path.insert(scene, mesh_instance.path);
+        //                 self.mesh_instances.insert(entity, instance);
+        //             }
+        //         },
+        //     }
+        // }
 
         for (entity, QueryWrapper((GlobalTransform(transform), light))) in
             world.query::<QueryWrapper<(GlobalTransform, DirectionalLightComponent)>>()

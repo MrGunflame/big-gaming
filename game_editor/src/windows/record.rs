@@ -10,6 +10,7 @@ use game_wasm::world::RecordReference;
 use parking_lot::Mutex;
 
 use crate::state::EditorState;
+use crate::widgets::explorer::Entry;
 
 use super::SpawnWindow;
 
@@ -110,6 +111,15 @@ impl Widget for EditRecord {
                 let edit_state = edit_state.clone();
 
                 EditScript { edit_state }.mount(&root);
+            }
+            RecordKind::RESOURCE => {
+                let edit_state = edit_state.clone();
+
+                EditResource {
+                    edit_state,
+                    state: self.state.clone(),
+                }
+                .mount(&root);
             }
             _ => todo!(),
         }
@@ -246,6 +256,45 @@ impl Widget for EditScript {
                 self.edit_state.lock().record.data = path.into();
             })
             .mount(&root);
+
+        root
+    }
+}
+
+struct EditResource {
+    edit_state: Arc<Mutex<EditState>>,
+    state: EditorState,
+}
+
+impl Widget for EditResource {
+    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+        let root = Container::new().mount(parent);
+
+        let button = Button::new()
+            .on_click(move |_| {
+                let edit_state = self.edit_state.clone();
+                let on_open = Callback::from(move |entries: Vec<Entry>| {
+                    let Some(entry) = entries.get(0) else {
+                        return;
+                    };
+
+                    match std::fs::read(&entry.path) {
+                        Ok(data) => {
+                            edit_state.lock().record.data = data;
+                        }
+                        Err(err) => {
+                            tracing::error!("failed to load record from file: {}", err);
+                        }
+                    }
+                });
+
+                self.state
+                    .spawn_windows
+                    .send(SpawnWindow::Explorer(on_open))
+                    .unwrap();
+            })
+            .mount(&root);
+        Text::new("Open File").mount(&button);
 
         root
     }

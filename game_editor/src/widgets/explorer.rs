@@ -28,6 +28,17 @@ pub struct Explorer {
     pub on_open: Callback<Vec<Entry>>,
 }
 
+impl Explorer {
+    pub fn new<F>(on_open: F) -> Self
+    where
+        F: Into<Callback<Vec<Entry>>>,
+    {
+        Self {
+            on_open: on_open.into(),
+        }
+    }
+}
+
 impl Widget for Explorer {
     fn mount<T>(self, parent: &Context<T>) -> Context<()> {
         let root = Container::new()
