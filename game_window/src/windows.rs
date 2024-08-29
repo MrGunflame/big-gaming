@@ -1,11 +1,11 @@
 use std::borrow::Cow;
 use std::sync::{mpsc, Arc};
 
+use game_common::collections::arena::{Arena, Key};
 use glam::{UVec2, Vec2};
 use raw_window_handle::{
     DisplayHandle, HandleError, HasDisplayHandle, HasWindowHandle, WindowHandle,
 };
-use slotmap::{DefaultKey, SlotMap};
 use winit::dpi::{LogicalPosition, Position};
 use winit::error::ExternalError;
 
@@ -15,21 +15,21 @@ use crate::Backend;
 const DEFAULT_TITLE: &str = "DEFAULT_TITLE";
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct WindowId(pub(crate) DefaultKey);
+pub struct WindowId(pub(crate) Key);
 
 // We don't provide a `Clone` impl to prevent accidently
 // cloning and leaking the window state, which would cause
 // a deadlock.
 #[derive(Debug)]
 pub struct Windows {
-    pub(crate) windows: SlotMap<DefaultKey, Window>,
+    pub(crate) windows: Arena<Window>,
     tx: mpsc::Sender<UpdateEvent>,
 }
 
 impl Windows {
     pub(crate) fn new(tx: mpsc::Sender<UpdateEvent>) -> Self {
         Self {
-            windows: SlotMap::new(),
+            windows: Arena::new(),
             tx,
         }
     }

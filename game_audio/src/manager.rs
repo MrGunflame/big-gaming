@@ -1,4 +1,4 @@
-use slotmap::SlotMap;
+use game_common::collections::arena::Arena;
 
 use crate::backend::Backend;
 use crate::channel::Sender;
@@ -15,13 +15,13 @@ where
 {
     backend: B,
     tx: Sender,
-    sounds: SlotMap<slotmap::DefaultKey, PlayingSound>,
-    tracks: SlotMap<slotmap::DefaultKey, ActiveTrack>,
+    sounds: Arena<PlayingSound>,
+    tracks: Arena<ActiveTrack>,
     sample_rate: u32,
     buffer_size: u32,
     track_graph: TrackGraph,
-    listeners: SlotMap<slotmap::DefaultKey, Listener>,
-    emitters: SlotMap<slotmap::DefaultKey, Emitter>,
+    listeners: Arena<Listener>,
+    emitters: Arena<Emitter>,
 }
 
 impl<B> AudioManager<B>
@@ -38,13 +38,13 @@ where
         Self {
             backend,
             tx,
-            sounds: SlotMap::new(),
+            sounds: Arena::new(),
             sample_rate: sample_rate as u32,
             buffer_size: buffer_size as u32,
-            tracks: SlotMap::new(),
+            tracks: Arena::new(),
             track_graph: TrackGraph::new(std::iter::empty()),
-            listeners: SlotMap::new(),
-            emitters: SlotMap::new(),
+            listeners: Arena::new(),
+            emitters: Arena::new(),
         }
     }
 
