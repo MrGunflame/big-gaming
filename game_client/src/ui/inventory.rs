@@ -1,17 +1,22 @@
 //! Freeform inventory item list
 
-use std::marker::PhantomData;
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::mpsc;
 
 use game_core::modules::Modules;
 use game_ui::reactive::{Context, DocumentId, NodeId, Runtime};
-use game_ui::style::{Bounds, Direction, Growth, Justify, Position, Size, SizeVec2, Style};
-use game_ui::widgets::{Button, Container, Text, Widget};
+use game_ui::style::{Bounds, Direction, Growth, Justify, Size, SizeVec2, Style};
+use game_ui::widgets::{Button, Callback, Container, ContextMenuState, ContextPanel, Text, Widget};
 use game_wasm::inventory::{Inventory, InventorySlotId, ItemStack};
 use game_wasm::world::RecordReference;
-use glam::UVec2;
 
 use super::UiEvent;
+
+const EVENT_EQUIP: RecordReference =
+    RecordReference::from_str_const("c626b9b0ab1940aba6932ea7726d0175:17");
+const EVENT_UNEQUIP: RecordReference =
+    RecordReference::from_str_const("c626b9b0ab1940aba6932ea7726d0175:18");
+const EVENT_DROP: RecordReference =
+    RecordReference::from_str_const("c626b9b0ab1940aba6932ea7726d0175:19");
 
 pub struct InventoryUi<'a> {
     inventory: &'a Inventory,
@@ -71,7 +76,6 @@ impl<'a> Widget for InventoryBox<'a> {
             items,
             modules: self.modules,
             events: self.events,
-            _marker: PhantomData,
         }
         .mount(&align_x);
 
@@ -79,52 +83,34 @@ impl<'a> Widget for InventoryBox<'a> {
     }
 }
 
-struct ItemList<'a, I> {
+struct ItemList<I> {
     items: I,
     modules: Modules,
     events: mpsc::Sender<UiEvent>,
-    // FIXME: Can we get rid of this marker?
-    _marker: PhantomData<&'a ()>,
 }
 
-impl<'a, I> Widget for ItemList<'a, I>
+impl<'a, I> Widget for ItemList<I>
 where
     I: Iterator<Item = (InventorySlotId, &'a ItemStack)>,
 {
     fn mount<T>(self, parent: &Context<T>) -> Context<()> {
         let root = Container::new().mount(parent);
 
-        let context_menu = Arc::new(Mutex::new(None));
-
         for (id, stack) in self.items {
-            let is_equipped = stack.equipped;
+            let Some(module) = self.modules.get(stack.item.module) else {
+                continue;
+            };
+            let Some(record) = module.records.get(stack.item.record) else {
+                continue;
+            };
 
-            let events = self.events.clone();
-
-            let root2 = root.clone();
-            let context_menu = context_menu.clone();
-            let wrapper = Button::new()
-                .on_click(move |()| {
-                    let mut ctx_menu = context_menu.lock().unwrap();
-                    let events = events.clone();
-
-                    if let Some(id) = &*ctx_menu {
-                        root2.remove(*id);
-                    }
-
-                    *ctx_menu = ContextMenu {
-                        position: root2.cursor().as_uvec2(),
-                        id,
-                        events,
-                        is_equipped,
-                    }
-                    .mount(&root2)
-                    .node();
-                })
+            let wrapper = ContextPanel::new()
+                .spawn_menu(spawn_context_menu(StackState {
+                    id,
+                    is_equipped: stack.equipped,
+                    events: self.events.clone(),
+                }))
                 .mount(&root);
-
-            let module = self.modules.get(stack.item.module).unwrap();
-            let record = module.records.get(stack.item.record).unwrap();
 
             let label = format!("{} ({})", record.name, stack.quantity);
             Text::new(label).mount(&wrapper);
@@ -134,52 +120,43 @@ where
     }
 }
 
-struct ContextMenu {
-    position: UVec2,
+#[derive(Clone, Debug)]
+struct StackState {
     id: InventorySlotId,
     events: mpsc::Sender<UiEvent>,
     is_equipped: bool,
 }
 
-impl Widget for ContextMenu {
-    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
-        let root = Container::new()
-            .style(Style {
-                position: Position::Absolute(self.position),
-                ..Default::default()
-            })
-            .mount(parent);
+fn spawn_context_menu(stack: StackState) -> Callback<ContextMenuState> {
+    Callback::from(move |state: ContextMenuState| {
+        let root = state.ctx;
 
-        if self.is_equipped {
-            let events = self.events.clone();
+        if stack.is_equipped {
+            let events = stack.events.clone();
             let button = Button::new()
-                .on_click(move |_ctx| {
-                    events.send(unequip_event(self.id)).unwrap();
+                .on_click(move |_| {
+                    events.send(unequip_event(stack.id)).unwrap();
                 })
                 .mount(&root);
-            Text::new("Unequip".to_string()).mount(&button);
+            Text::new("Unequip").mount(&button);
         } else {
-            let events = self.events.clone();
+            let events = stack.events.clone();
             let button = Button::new()
-                .on_click(move |_ctx| {
-                    events.send(equip_event(self.id)).unwrap();
+                .on_click(move |_| {
+                    events.send(equip_event(stack.id)).unwrap();
                 })
                 .mount(&root);
-            Text::new("Equip".to_string()).mount(&button);
+            Text::new("Equip").mount(&button);
         }
 
-        {
-            let events = self.events.clone();
-            let button = Button::new()
-                .on_click(move |_ctx| {
-                    events.send(drop_event(self.id)).unwrap();
-                })
-                .mount(&root);
-            Text::new("Drop".to_string()).mount(&button);
-        }
-
-        root
-    }
+        let events = stack.events.clone();
+        let button = Button::new()
+            .on_click(move |_| {
+                events.send(drop_event(stack.id)).unwrap();
+            })
+            .mount(&root);
+        Text::new("Drop").mount(&button);
+    })
 }
 
 #[derive(Debug)]
@@ -211,31 +188,31 @@ impl InventoryProxy {
 }
 
 fn equip_event(slot: InventorySlotId) -> UiEvent {
-    const ID: RecordReference =
-        RecordReference::from_str_const("c626b9b0ab1940aba6932ea7726d0175:17");
-
     let mut data = Vec::new();
     data.extend(slot.into_raw().to_le_bytes());
 
-    UiEvent { id: ID, data }
+    UiEvent {
+        id: EVENT_EQUIP,
+        data,
+    }
 }
 
 fn unequip_event(slot: InventorySlotId) -> UiEvent {
-    const ID: RecordReference =
-        RecordReference::from_str_const("c626b9b0ab1940aba6932ea7726d0175:18");
-
     let mut data = Vec::new();
     data.extend(slot.into_raw().to_le_bytes());
 
-    UiEvent { id: ID, data }
+    UiEvent {
+        id: EVENT_UNEQUIP,
+        data,
+    }
 }
 
 fn drop_event(slot: InventorySlotId) -> UiEvent {
-    const ID: RecordReference =
-        RecordReference::from_str_const("c626b9b0ab1940aba6932ea7726d0175:19");
-
     let mut data = Vec::new();
     data.extend(slot.into_raw().to_le_bytes());
 
-    UiEvent { id: ID, data }
+    UiEvent {
+        id: EVENT_DROP,
+        data,
+    }
 }
