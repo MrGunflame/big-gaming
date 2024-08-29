@@ -22,14 +22,11 @@ impl MainMenuState {
         );
         world.insert_typed(camera, PrimaryCamera);
 
+        // let res = world.insert_resource(include_bytes!("../../sponza.glb").to_vec().into());
+
         let obj = world.spawn();
         world.insert_typed(obj, GlobalTransform::default());
-        world.insert_typed(
-            obj,
-            MeshInstance {
-                path: "sponza.glb".into(),
-            },
-        );
+        // world.insert_typed(obj, MeshInstance { model: res.into() });
 
         let light = world.spawn();
         world.insert_typed(

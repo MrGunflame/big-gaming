@@ -1,13 +1,13 @@
 mod transform;
 
-use alloc::string::String;
 use alloc::vec::Vec;
 use bytemuck::{Pod, Zeroable};
 use glam::Vec3;
 
 use super::Component;
-use crate::encoding::{Decode, DecodeError, Encode, Primitive, Reader, Writer};
+use crate::encoding::{Decode, DecodeError, Encode, Reader, Writer};
 use crate::record::{ModuleId, RecordId, RecordReference};
+use crate::resource::ResourceId;
 
 pub use transform::Transform;
 
@@ -43,39 +43,9 @@ define_id! {
     CHILDREN => 10,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Encode, Decode)]
 pub struct MeshInstance {
-    pub path: String,
-}
-
-impl Encode for MeshInstance {
-    fn encode<W>(&self, mut writer: W)
-    where
-        W: Writer,
-    {
-        (self.path.len() as u64).encode(&mut writer);
-        writer.write(Primitive::Bytes, self.path.as_bytes());
-    }
-}
-
-impl Decode for MeshInstance {
-    type Error = DecodeError;
-
-    fn decode<R>(mut reader: R) -> Result<Self, Self::Error>
-    where
-        R: Reader,
-    {
-        let len = u64::decode(&mut reader)?;
-
-        let mut bytes = Vec::new();
-        for _ in 0..len {
-            bytes.push(u8::decode(&mut reader)?)
-        }
-
-        String::from_utf8(bytes)
-            .map_err(|_| DecodeError::InvalidString)
-            .map(|path| Self { path })
-    }
+    pub model: ResourceId,
 }
 
 impl Component for MeshInstance {

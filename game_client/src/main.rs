@@ -19,6 +19,7 @@ use config::Config;
 use game_common::sync::spsc;
 use game_common::world::World;
 use game_core::counter::{Interval, UpdateCounter};
+use game_core::modules::Modules;
 use game_core::time::Time;
 use game_gizmos::Gizmos;
 use game_render::camera::RenderTarget;
@@ -70,7 +71,7 @@ fn main() -> ExitCode {
 
     let mut state = GameState::new(
         config.clone(),
-        res.modules,
+        res.modules.clone(),
         inputs,
         res.executor,
         cursor.clone(),
@@ -127,6 +128,7 @@ fn main() -> ExitCode {
         fps_counter: &fps_counter,
         shutdown: &shutdown,
         gizmos: &gizmos,
+        modules: &res.modules,
     };
 
     std::thread::scope(|scope| {
@@ -242,6 +244,7 @@ pub struct RendererAppState<'a> {
     fps_counter: &'a Mutex<UpdateCounter>,
     shutdown: &'a AtomicBool,
     gizmos: &'a Gizmos,
+    modules: &'a Modules,
 }
 
 impl<'a> game_window::App for RendererAppState<'a> {
@@ -261,6 +264,7 @@ impl<'a> game_window::App for RendererAppState<'a> {
         let world = { self.world.lock().clone() };
 
         self.entities.update(
+            &self.modules,
             &world,
             &self.pool,
             &mut self.renderer,
