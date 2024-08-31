@@ -224,6 +224,12 @@ impl Widget for Input {
                 nodes: Mutex::new(nodes),
                 active: Mutex::new(None),
                 _caret_blink_task: handle,
+                key_states: Mutex::new(KeyStates {
+                    lshift: false,
+                    rshift: false,
+                    lctrl: false,
+                    rctrl: false,
+                }),
             });
 
             parent
@@ -233,6 +239,22 @@ impl Widget for Input {
                         return;
                     };
 
+                    match ctx.event.key_code {
+                        Some(KeyCode::LShift) => {
+                            state.key_states.lock().lshift = ctx.event.state.is_pressed();
+                        }
+                        Some(KeyCode::RShift) => {
+                            state.key_states.lock().rshift = ctx.event.state.is_pressed();
+                        }
+                        Some(KeyCode::LControl) => {
+                            state.key_states.lock().lctrl = ctx.event.state.is_pressed();
+                        }
+                        Some(KeyCode::RControl) => {
+                            state.key_states.lock().rctrl = ctx.event.state.is_pressed();
+                        }
+                        _ => (),
+                    }
+
                     let mut nodes = state.nodes.lock();
                     let active = state.active.lock();
 
@@ -241,7 +263,8 @@ impl Widget for Input {
                     };
 
                     let node = nodes.get_mut(node).unwrap();
-                    if !update_buffer(&mut node.buffer, &ctx.event) {
+                    let key_states = state.key_states.lock();
+                    if !update_buffer(&mut node.buffer, &key_states, &ctx.event) {
                         return;
                     }
 
@@ -264,7 +287,7 @@ impl Widget for Input {
     }
 }
 
-fn update_buffer(buffer: &mut Buffer, event: &KeyboardInput) -> bool {
+fn update_buffer(buffer: &mut Buffer, key_states: &KeyStates, event: &KeyboardInput) -> bool {
     // Don't trigger when releasing the button.
     if !event.state.is_pressed() {
         return false;
@@ -272,11 +295,19 @@ fn update_buffer(buffer: &mut Buffer, event: &KeyboardInput) -> bool {
 
     match event.key_code {
         Some(KeyCode::Left) => {
-            buffer.move_back();
+            if key_states.is_control_pressed() {
+                buffer.move_back_word();
+            } else {
+                buffer.move_back();
+            }
             return true;
         }
         Some(KeyCode::Right) => {
-            buffer.move_forward();
+            if key_states.is_control_pressed() {
+                buffer.move_forward_word();
+            } else {
+                buffer.move_forward();
+            }
             return true;
         }
         Some(KeyCode::Home) => {
@@ -327,6 +358,27 @@ struct InputState {
     /// We keep a handle to the task so that it gets dropped together with all other state when the
     /// last `Input` element in a document gets destroyed.
     _caret_blink_task: TaskHandle<()>,
+    key_states: Mutex<KeyStates>,
+}
+
+#[derive(Copy, Clone, Debug)]
+struct KeyStates {
+    lshift: bool,
+    rshift: bool,
+    lctrl: bool,
+    rctrl: bool,
+}
+
+impl KeyStates {
+    /// Returns `true` if any `Shift` key is pressed.
+    fn is_shift_pressed(&self) -> bool {
+        self.lshift || self.rshift
+    }
+
+    /// Returns `true` if any `Control` key is pressed.
+    fn is_control_pressed(&self) -> bool {
+        self.lctrl || self.rctrl
+    }
 }
 
 #[derive(Debug)]
@@ -407,6 +459,40 @@ impl Buffer {
 
     fn move_to_end(&mut self) {
         self.cursor = self.string.len();
+    }
+
+    fn move_forward_word(&mut self) {
+        if let Some(s) = self.string.get(self.cursor..) {
+            let mut leading_punctuation = true;
+            for ch in s.chars() {
+                if ch.is_ascii_punctuation() || ch.is_whitespace() {
+                    if !leading_punctuation {
+                        break;
+                    }
+                } else {
+                    leading_punctuation = false;
+                }
+
+                self.cursor += ch.len_utf8();
+            }
+        }
+    }
+
+    fn move_back_word(&mut self) {
+        if let Some(s) = self.string.get(..self.cursor) {
+            let mut trailing_punctuation = true;
+            for ch in s.chars().rev() {
+                if ch.is_ascii_punctuation() || ch.is_whitespace() {
+                    if !trailing_punctuation {
+                        break;
+                    }
+                } else {
+                    trailing_punctuation = false;
+                }
+
+                self.cursor -= ch.len_utf8();
+            }
+        }
     }
 }
 
@@ -514,5 +600,47 @@ mod tests {
         buffer.move_back();
 
         assert_eq!(buffer.cursor, 0);
+    }
+
+    #[test]
+    fn buffer_move_forward_word() {
+        let string = String::from("Hello World");
+
+        let mut buffer = Buffer::new(string);
+        buffer.cursor = 0;
+        buffer.move_forward_word();
+
+        assert_eq!(buffer.cursor, 5);
+    }
+
+    #[test]
+    fn buffer_move_forward_leading_whitespace() {
+        let string = String::from("  Hello World");
+
+        let mut buffer = Buffer::new(string);
+        buffer.cursor = 0;
+        buffer.move_forward_word();
+
+        assert_eq!(buffer.cursor, 7);
+    }
+
+    #[test]
+    fn buffer_move_back_word() {
+        let string = String::from("Hello World");
+
+        let mut buffer = Buffer::new(string);
+        buffer.move_back_word();
+
+        assert_eq!(buffer.cursor, 6);
+    }
+
+    #[test]
+    fn buffer_move_back_trailing_whitespace() {
+        let string = String::from("Hello World  ");
+
+        let mut buffer = Buffer::new(string);
+        buffer.move_back_word();
+
+        assert_eq!(buffer.cursor, 6);
     }
 }
