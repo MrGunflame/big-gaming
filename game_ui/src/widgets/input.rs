@@ -309,7 +309,11 @@ fn update_buffer(
         return false;
     }
 
-    let cursor_start = buffer.cursor;
+    let cursor_start = if let Some(range) = &selection_range {
+        range.start
+    } else {
+        buffer.cursor
+    };
 
     let is_move_op = match event.key_code {
         Some(KeyCode::Left) => {
@@ -350,23 +354,31 @@ fn update_buffer(
         }
 
         return true;
-    } else {
-        *selection_range = None;
     }
 
-    match event.text.as_ref().map(|s| s.as_str()) {
+    let is_edited = match event.text.as_ref().map(|s| s.as_str()) {
         Some("\r") => {
             buffer.push('\n');
             true
         }
         // Backspace
         Some("\u{8}") => {
-            buffer.remove_prev();
+            if let Some(range) = selection_range {
+                buffer.remove_range(range.clone());
+            } else {
+                buffer.remove_prev();
+            }
+
             true
         }
         // Delete
         Some("\u{7F}") => {
-            buffer.remove_next();
+            if let Some(range) = selection_range {
+                buffer.remove_range(range.clone());
+            } else {
+                buffer.remove_next();
+            }
+
             true
         }
         Some(text) => {
@@ -379,7 +391,10 @@ fn update_buffer(
             true
         }
         _ => false,
-    }
+    };
+
+    *selection_range = None;
+    is_edited
 }
 
 #[derive(Debug)]
@@ -467,6 +482,18 @@ impl Buffer {
         }
     }
 
+    fn remove_range(&mut self, range: Range<usize>) {
+        if range.end > self.string.len() {
+            return;
+        }
+
+        if self.cursor > range.start {
+            self.cursor -= range.len();
+        }
+
+        self.string.replace_range(range, "");
+    }
+
     fn remove_prev(&mut self) {
         let s = &self.string[..self.cursor];
 
@@ -545,6 +572,8 @@ impl Deref for Buffer {
 
 #[cfg(test)]
 mod tests {
+    use tracing::Instrument;
+
     use super::Buffer;
 
     #[test]
@@ -681,5 +710,16 @@ mod tests {
         buffer.move_back_word();
 
         assert_eq!(buffer.cursor, 6);
+    }
+
+    #[test]
+    fn buffer_remove_range() {
+        let string = String::from("Hello World");
+
+        let mut buffer = Buffer::new(string);
+        buffer.remove_range(1..7);
+
+        assert_eq!(buffer.string, "Horld");
+        assert_eq!(buffer.cursor, 5);
     }
 }

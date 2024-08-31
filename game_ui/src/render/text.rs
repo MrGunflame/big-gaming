@@ -1,4 +1,5 @@
 use std::borrow::Borrow;
+use std::fmt::{self, Debug, Formatter};
 use std::hash::{Hash, Hasher};
 use std::mem::ManuallyDrop;
 use std::ops::Range;
@@ -74,6 +75,12 @@ impl Drop for OwnedKey {
             ManuallyDrop::drop(&mut self.key);
             drop(String::from_raw_parts(self.ptr, self.len, self.cap));
         }
+    }
+}
+
+impl Debug for OwnedKey {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        Debug::fmt(&self.key, f)
     }
 }
 
@@ -391,6 +398,7 @@ mod tests {
     use game_common::collections::lru::LruCache;
     use glam::UVec2;
     use parking_lot::Mutex;
+    use wgpu::hal::auxil::db;
 
     use crate::style::Color;
 
@@ -462,8 +470,8 @@ mod tests {
             .is_none());
 
         // Call render twice, the second call will hit the cache.
-        render_to_texture(text, size, max, None, None, Color::BLACK);
-        render_to_texture(text, size, max, None, None, Color::BLACK);
+        render_to_texture(text, size, max, None, None, Color::default());
+        render_to_texture(text, size, max, None, None, Color::default());
 
         assert!(TEXT_CACHE
             .get_or_init(|| Mutex::new(LruCache::new(TEXT_CACHE_CAP)))
