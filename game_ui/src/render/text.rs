@@ -1,17 +1,19 @@
 use std::borrow::Borrow;
 use std::hash::{Hash, Hasher};
 use std::mem::ManuallyDrop;
+use std::ops::Range;
 use std::sync::OnceLock;
 
 use ab_glyph::{point, Font, FontRef, Glyph, Point, PxScale, ScaleFont};
 use game_common::collections::lru::LruCache;
 use game_tracing::trace_span;
 use glam::UVec2;
-use image::{ImageBuffer, Rgba, RgbaImage};
+use image::{ImageBuffer, Pixel, Rgba, RgbaImage};
 use parking_lot::Mutex;
 
 use super::image::Image;
 use crate::layout::computed_style::{ComputedBounds, ComputedStyle};
+use crate::style::Color;
 
 const DEFAULT_FONT: &[u8] = include_bytes!("../../../assets/fonts/OpenSans/OpenSans-Regular.ttf");
 
@@ -32,7 +34,14 @@ struct OwnedKey {
 }
 
 impl OwnedKey {
-    fn new(text: String, size: u32, max: UVec2, caret: Option<u32>) -> Self {
+    fn new(
+        text: String,
+        size: u32,
+        max: UVec2,
+        caret: Option<u32>,
+        selection_range: Option<Range<usize>>,
+        selection_color: Color,
+    ) -> Self {
         let ptr = text.as_ptr().cast_mut();
         let len = text.len();
         let cap = text.capacity();
@@ -48,6 +57,8 @@ impl OwnedKey {
                 size,
                 max,
                 caret,
+                selection_range,
+                selection_color,
             }),
         }
     }
@@ -97,12 +108,14 @@ impl Hash for OwnedKey {
 unsafe impl Send for OwnedKey {}
 unsafe impl Sync for OwnedKey {}
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 struct BorrowedKey<'a> {
     text: &'a str,
     size: u32,
     max: UVec2,
     caret: Option<u32>,
+    selection_range: Option<Range<usize>>,
+    selection_color: Color,
 }
 
 #[derive(Clone, Debug)]
@@ -110,6 +123,8 @@ pub struct Text {
     pub text: String,
     pub size: f32,
     pub caret: Option<u32>,
+    pub selection_range: Option<Range<usize>>,
+    pub selection_color: Color,
 }
 
 impl Text {
@@ -122,11 +137,20 @@ impl Text {
             text: text.to_string(),
             size,
             caret,
+            selection_range: None,
+            selection_color: Color::BLACK,
         }
     }
 
     pub(crate) fn bounds(&self, style: &ComputedStyle) -> ComputedBounds {
-        let image = render_to_texture(&self.text, self.size, UVec2::splat(0), self.caret);
+        let image = render_to_texture(
+            &self.text,
+            self.size,
+            UVec2::splat(0),
+            self.caret,
+            self.selection_range.clone(),
+            self.selection_color,
+        );
         Image { image }.bounds(style)
     }
 }
@@ -137,12 +161,16 @@ pub(crate) fn render_to_texture(
     max: UVec2,
     // Position of the caret where 0 is before the first character.
     caret: Option<u32>,
+    selection_range: Option<Range<usize>>,
+    selection_color: Color,
 ) -> ImageBuffer<Rgba<u8>, Vec<u8>> {
     let key = BorrowedKey {
         text,
         size: size.to_bits(),
         max,
         caret,
+        selection_range: selection_range.clone(),
+        selection_color,
     };
 
     if let Some(res) = TEXT_CACHE
@@ -168,18 +196,26 @@ pub(crate) fn render_to_texture(
 
     let mut image = RgbaImage::new(max_width.ceil() as u32 + 1, num_lines * height);
 
-    for glyph in &glyphs {
+    for (index, glyph) in glyphs.iter().enumerate() {
         if let Some(outlined_glyph) = scaled_font.outline_glyph(glyph.clone()) {
             let bounds = outlined_glyph.px_bounds();
+
+            if let Some(selection_range) = &selection_range {
+                if selection_range.contains(&index) {
+                    for x in bounds.min.x.floor() as u32..bounds.max.x.ceil() as u32 {
+                        for y in bounds.min.y.floor() as u32..bounds.max.y.ceil() as u32 {
+                            image.put_pixel(x, y, selection_color.0);
+                        }
+                    }
+                }
+            }
 
             outlined_glyph.draw(|x, y, cov| {
                 let pixel = (cov * 255.0) as u8;
 
-                image.put_pixel(
-                    bounds.min.x as u32 + x,
-                    bounds.min.y as u32 + y,
-                    Rgba([pixel, pixel, pixel, pixel]),
-                );
+                image
+                    .get_pixel_mut(bounds.min.x as u32 + x, bounds.min.y as u32 + y)
+                    .blend(&Rgba([pixel, pixel, pixel, pixel]));
             });
         }
     }
@@ -198,7 +234,14 @@ pub(crate) fn render_to_texture(
     }
 
     TEXT_CACHE.get().unwrap().lock().insert(
-        OwnedKey::new(text.to_owned(), size.to_bits(), max, caret),
+        OwnedKey::new(
+            text.to_owned(),
+            size.to_bits(),
+            max,
+            caret,
+            selection_range,
+            selection_color,
+        ),
         image.clone(),
     );
     image
@@ -349,6 +392,8 @@ mod tests {
     use glam::UVec2;
     use parking_lot::Mutex;
 
+    use crate::style::Color;
+
     use super::{
         layout_glyphs, render_to_texture, BorrowedKey, DEFAULT_FONT, TEXT_CACHE, TEXT_CACHE_CAP,
     };
@@ -363,7 +408,7 @@ mod tests {
         let size = 100.0;
         let max = UVec2::splat(0);
 
-        render_to_texture(text, size, max, None);
+        render_to_texture(text, size, max, None, None, Color::default());
     }
 
     #[test]
@@ -372,7 +417,7 @@ mod tests {
         let size = 100.0;
         let max = UVec2::splat(0);
 
-        render_to_texture(text, size, max, None);
+        render_to_texture(text, size, max, None, None, Color::default());
     }
 
     #[test]
@@ -381,7 +426,7 @@ mod tests {
         let size = 10.0;
         let max = UVec2::splat(0);
 
-        render_to_texture(&text, size, max, None);
+        render_to_texture(&text, size, max, None, None, Color::default());
     }
 
     #[test]
@@ -406,6 +451,8 @@ mod tests {
             size: size.to_bits(),
             max,
             caret: None,
+            selection_range: None,
+            selection_color: Color::default(),
         };
 
         assert!(TEXT_CACHE
@@ -415,8 +462,8 @@ mod tests {
             .is_none());
 
         // Call render twice, the second call will hit the cache.
-        render_to_texture(text, size, max, None);
-        render_to_texture(text, size, max, None);
+        render_to_texture(text, size, max, None, None, Color::BLACK);
+        render_to_texture(text, size, max, None, None, Color::BLACK);
 
         assert!(TEXT_CACHE
             .get_or_init(|| Mutex::new(LruCache::new(TEXT_CACHE_CAP)))

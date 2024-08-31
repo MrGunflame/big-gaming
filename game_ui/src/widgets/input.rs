@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::ops::Deref;
+use std::ops::{Deref, Range};
 use std::time::Duration;
 
 use async_io::Timer;
@@ -11,13 +11,15 @@ use glam::UVec2;
 use parking_lot::Mutex;
 
 use crate::reactive::{Context, NodeDestroyed, NodeId, TaskHandle};
-use crate::style::{Bounds, Size, SizeVec2, Style};
+use crate::style::{Bounds, Color, Size, SizeVec2, Style};
 
 use super::{Callback, Container, Text, Widget};
 
 // FIXME: Some platforms (e.g. Windows) have customizable blinking intervals
 // that we should conform to (e.g. GetCaretBlinkTime for Windows).
 const CARET_BLINK_INTERVAL: Duration = Duration::from_millis(500);
+
+const SELECTION_COLOR: Color = Color::AQUA;
 
 pub struct Input {
     pub value: String,
@@ -80,14 +82,11 @@ impl Widget for Input {
                 let mut active = state.active.lock();
                 let mut nodes = state.nodes.lock();
 
-                if *active == Some(node) {
+                if active.as_ref().is_some_and(|active| active.node == node) {
                     *active = None;
                 }
 
                 nodes.remove(&node);
-                // if nodes.is_empty() {
-                //     ctx.document().remove::<InputState>();
-                // }
             },
         );
 
@@ -131,15 +130,17 @@ impl Widget for Input {
                     let mut nodes = state.nodes.lock();
                     let active = state.active.lock();
 
-                    let Some(node) = *active else {
+                    let Some(active) = &*active else {
                         continue;
                     };
 
-                    let node = nodes.get_mut(&node).unwrap();
+                    let node = nodes.get_mut(&active.node).unwrap();
                     node.ctx.clear_children();
                     let text = Text::new(node.buffer.string.clone())
                         .size(32.0)
                         .caret(cursor_blink.then_some(node.buffer.cursor as u32))
+                        .selection_range(active.selected.clone())
+                        .selection_color(SELECTION_COLOR)
                         .mount(&node.ctx);
                     node.text_node = text.node().unwrap();
                     cursor_blink ^= true;
@@ -156,7 +157,7 @@ impl Widget for Input {
                     let mut nodes = state.nodes.lock();
                     let mut active = state.active.lock();
 
-                    let prev_active = *active;
+                    let prev_active = active.clone();
 
                     let mut selected = false;
                     for node in nodes.values() {
@@ -165,7 +166,10 @@ impl Widget for Input {
                         };
 
                         if layout.contains(ctx.cursor().as_uvec2()) {
-                            *active = Some(node.ctx.node().unwrap());
+                            *active = Some(ActiveNode {
+                                node: node.ctx.node().unwrap(),
+                                selected: None,
+                            });
                             selected = true;
                             break;
                         }
@@ -176,7 +180,7 @@ impl Widget for Input {
                     }
 
                     if let Some(prev_active) = prev_active {
-                        let node = nodes.get_mut(&prev_active).unwrap();
+                        let node = nodes.get_mut(&prev_active.node).unwrap();
                         node.ctx.clear_children();
                         let text = Text::new(node.buffer.string.clone())
                             .size(32.0)
@@ -185,8 +189,8 @@ impl Widget for Input {
                         node.text_node = text.node().unwrap();
                     }
 
-                    if let Some(active) = *active {
-                        let node = nodes.get_mut(&active).unwrap();
+                    if let Some(active) = active.clone() {
+                        let node = nodes.get_mut(&active.node).unwrap();
 
                         // Note that we must use the text node instead of the wrapper
                         // container node as the container may have additional styling
@@ -256,15 +260,20 @@ impl Widget for Input {
                     }
 
                     let mut nodes = state.nodes.lock();
-                    let active = state.active.lock();
+                    let mut active = state.active.lock();
 
-                    let Some(node) = &*active else {
+                    let Some(active_node) = &mut *active else {
                         return;
                     };
 
-                    let node = nodes.get_mut(node).unwrap();
+                    let node = nodes.get_mut(&active_node.node).unwrap();
                     let key_states = state.key_states.lock();
-                    if !update_buffer(&mut node.buffer, &key_states, &ctx.event) {
+                    if !update_buffer(
+                        &mut node.buffer,
+                        &key_states,
+                        &mut active_node.selected,
+                        &ctx.event,
+                    ) {
                         return;
                     }
 
@@ -272,6 +281,8 @@ impl Widget for Input {
                     let text = Text::new(node.buffer.string.clone())
                         .size(32.0)
                         .caret(Some(node.buffer.cursor as u32))
+                        .selection_range(active_node.selected.clone())
+                        .selection_color(SELECTION_COLOR)
                         .mount(&node.ctx);
                     node.text_node = text.node().unwrap();
 
@@ -287,20 +298,27 @@ impl Widget for Input {
     }
 }
 
-fn update_buffer(buffer: &mut Buffer, key_states: &KeyStates, event: &KeyboardInput) -> bool {
+fn update_buffer(
+    buffer: &mut Buffer,
+    key_states: &KeyStates,
+    selection_range: &mut Option<Range<usize>>,
+    event: &KeyboardInput,
+) -> bool {
     // Don't trigger when releasing the button.
     if !event.state.is_pressed() {
         return false;
     }
 
-    match event.key_code {
+    let cursor_start = buffer.cursor;
+
+    let is_move_op = match event.key_code {
         Some(KeyCode::Left) => {
             if key_states.is_control_pressed() {
                 buffer.move_back_word();
             } else {
                 buffer.move_back();
             }
-            return true;
+            true
         }
         Some(KeyCode::Right) => {
             if key_states.is_control_pressed() {
@@ -308,17 +326,32 @@ fn update_buffer(buffer: &mut Buffer, key_states: &KeyStates, event: &KeyboardIn
             } else {
                 buffer.move_forward();
             }
-            return true;
+            true
         }
         Some(KeyCode::Home) => {
             buffer.move_to_start();
-            return true;
+            true
         }
         Some(KeyCode::End) => {
             buffer.move_to_end();
-            return true;
+            true
         }
-        _ => (),
+        _ => false,
+    };
+
+    if is_move_op {
+        if key_states.is_shift_pressed() {
+            let cursor_end = buffer.cursor;
+            if cursor_start <= cursor_end {
+                *selection_range = Some(cursor_start..cursor_end);
+            } else {
+                *selection_range = Some(cursor_end..cursor_start);
+            }
+        }
+
+        return true;
+    } else {
+        *selection_range = None;
     }
 
     match event.text.as_ref().map(|s| s.as_str()) {
@@ -352,13 +385,19 @@ fn update_buffer(buffer: &mut Buffer, key_states: &KeyStates, event: &KeyboardIn
 #[derive(Debug)]
 struct InputState {
     nodes: Mutex<HashMap<NodeId, NodeState>>,
-    active: Mutex<Option<NodeId>>,
+    active: Mutex<Option<ActiveNode>>,
     /// The handle to the task handling periodic caret blinking.
     ///
     /// We keep a handle to the task so that it gets dropped together with all other state when the
     /// last `Input` element in a document gets destroyed.
     _caret_blink_task: TaskHandle<()>,
     key_states: Mutex<KeyStates>,
+}
+
+#[derive(Clone, Debug)]
+struct ActiveNode {
+    node: NodeId,
+    selected: Option<Range<usize>>,
 }
 
 #[derive(Copy, Clone, Debug)]
