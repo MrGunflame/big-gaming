@@ -8,6 +8,7 @@ use game_input::keyboard::{KeyCode, KeyboardInput};
 use game_input::mouse::MouseButtonInput;
 use game_tracing::trace_span;
 use glam::UVec2;
+use image::Rgba;
 use parking_lot::Mutex;
 
 use crate::reactive::{Context, NodeDestroyed, NodeId, TaskHandle};
@@ -19,7 +20,7 @@ use super::{Callback, Container, Text, Widget};
 // that we should conform to (e.g. GetCaretBlinkTime for Windows).
 const CARET_BLINK_INTERVAL: Duration = Duration::from_millis(500);
 
-const SELECTION_COLOR: Color = Color::AQUA;
+const SELECTION_COLOR: Color = Color(Rgba([0x1e, 0x90, 0xff, 0xff]));
 
 pub struct Input {
     pub value: String,
@@ -139,7 +140,7 @@ impl Widget for Input {
                     let text = Text::new(node.buffer.string.clone())
                         .size(32.0)
                         .caret(cursor_blink.then_some(node.buffer.cursor as u32))
-                        .selection_range(active.selected.clone())
+                        .selection_range(active.selection.map(|s| s.range()))
                         .selection_color(SELECTION_COLOR)
                         .mount(&node.ctx);
                     node.text_node = text.node().unwrap();
@@ -168,7 +169,7 @@ impl Widget for Input {
                         if layout.contains(ctx.cursor().as_uvec2()) {
                             *active = Some(ActiveNode {
                                 node: node.ctx.node().unwrap(),
-                                selected: None,
+                                selection: None,
                             });
                             selected = true;
                             break;
@@ -271,7 +272,7 @@ impl Widget for Input {
                     if !update_buffer(
                         &mut node.buffer,
                         &key_states,
-                        &mut active_node.selected,
+                        &mut active_node.selection,
                         &ctx.event,
                     ) {
                         return;
@@ -281,7 +282,7 @@ impl Widget for Input {
                     let text = Text::new(node.buffer.string.clone())
                         .size(32.0)
                         .caret(Some(node.buffer.cursor as u32))
-                        .selection_range(active_node.selected.clone())
+                        .selection_range(active_node.selection.map(|s| s.range()))
                         .selection_color(SELECTION_COLOR)
                         .mount(&node.ctx);
                     node.text_node = text.node().unwrap();
@@ -301,7 +302,7 @@ impl Widget for Input {
 fn update_buffer(
     buffer: &mut Buffer,
     key_states: &KeyStates,
-    selection_range: &mut Option<Range<usize>>,
+    selection: &mut Option<Selection>,
     event: &KeyboardInput,
 ) -> bool {
     // Don't trigger when releasing the button.
@@ -309,11 +310,7 @@ fn update_buffer(
         return false;
     }
 
-    let cursor_start = if let Some(range) = &selection_range {
-        range.start
-    } else {
-        buffer.cursor
-    };
+    let cursor_start = buffer.cursor;
 
     let is_move_op = match event.key_code {
         Some(KeyCode::Left) => {
@@ -345,12 +342,17 @@ fn update_buffer(
 
     if is_move_op {
         if key_states.is_shift_pressed() {
-            let cursor_end = buffer.cursor;
-            if cursor_start <= cursor_end {
-                *selection_range = Some(cursor_start..cursor_end);
-            } else {
-                *selection_range = Some(cursor_end..cursor_start);
+            match selection {
+                Some(selection) => selection.end = buffer.cursor,
+                None => {
+                    *selection = Some(Selection {
+                        start: cursor_start,
+                        end: buffer.cursor,
+                    })
+                }
             }
+        } else {
+            *selection = None;
         }
 
         return true;
@@ -363,8 +365,8 @@ fn update_buffer(
         }
         // Backspace
         Some("\u{8}") => {
-            if let Some(range) = selection_range {
-                buffer.remove_range(range.clone());
+            if let Some(selection) = selection {
+                buffer.remove_range(selection.range());
             } else {
                 buffer.remove_prev();
             }
@@ -373,8 +375,8 @@ fn update_buffer(
         }
         // Delete
         Some("\u{7F}") => {
-            if let Some(range) = selection_range {
-                buffer.remove_range(range.clone());
+            if let Some(selection) = selection {
+                buffer.remove_range(selection.range());
             } else {
                 buffer.remove_next();
             }
@@ -393,7 +395,7 @@ fn update_buffer(
         _ => false,
     };
 
-    *selection_range = None;
+    *selection = None;
     is_edited
 }
 
@@ -412,7 +414,21 @@ struct InputState {
 #[derive(Clone, Debug)]
 struct ActiveNode {
     node: NodeId,
-    selected: Option<Range<usize>>,
+    selection: Option<Selection>,
+}
+
+#[derive(Copy, Clone, Debug)]
+struct Selection {
+    start: usize,
+    end: usize,
+}
+
+impl Selection {
+    fn range(&self) -> Range<usize> {
+        let start = usize::min(self.start, self.end);
+        let end = usize::max(self.start, self.end);
+        start..end
+    }
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -572,8 +588,6 @@ impl Deref for Buffer {
 
 #[cfg(test)]
 mod tests {
-    use tracing::Instrument;
-
     use super::Buffer;
 
     #[test]
