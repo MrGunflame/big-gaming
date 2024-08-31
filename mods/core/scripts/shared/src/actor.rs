@@ -6,14 +6,14 @@ use game_wasm::world::Entity;
 pub struct Actor {}
 
 pub struct SpawnActor {
-    pub mesh: MeshInstance,
+    // pub mesh: MeshInstance,
     pub collider: Collider,
     pub mesh_offset: Transform,
 }
 
 pub fn spawn_actor(actor: SpawnActor) -> Entity {
     let mesh = Entity::spawn();
-    mesh.insert(actor.mesh);
+    // mesh.insert(actor.mesh);
     mesh.insert(actor.mesh_offset);
 
     let entity = Entity::spawn();

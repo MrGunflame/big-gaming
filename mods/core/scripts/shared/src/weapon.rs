@@ -13,6 +13,7 @@ use game_wasm::hierarchy::Children;
 use game_wasm::inventory::Inventory;
 use game_wasm::math::{Quat, Ray, Vec3};
 use game_wasm::physics::{cast_ray, QueryFilter};
+use game_wasm::resource::ResourceId;
 use game_wasm::world::{Entity, RecordReference};
 
 use crate::components::{
@@ -20,7 +21,7 @@ use crate::components::{
 };
 use crate::inventory::{ItemEquip, ItemUnequip};
 use crate::player::TransformChanged;
-use crate::{Ammo, Camera, GunProperties, LookingDirection, ProjectileProperties};
+use crate::{assets, Ammo, Camera, GunProperties, LookingDirection, ProjectileProperties};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Encode, Decode)]
 pub struct WeaponAttack;
@@ -128,7 +129,7 @@ fn build_projectile(
         speed: 1.0,
     });
     entity.insert(MeshInstance {
-        path: "assets/bullet.glb".to_string(),
+        model: ResourceId::from(assets::RESOURCE_BULLET),
     });
 }
 
@@ -177,7 +178,7 @@ pub fn gun_equip(_: EntityId, event: GunEquip) {
     let entity = Entity::spawn();
     entity.insert(Transform::default());
     entity.insert(MeshInstance {
-        path: "assets/pistol.glb".to_owned(),
+        model: ResourceId::from(assets::RESOURCE_PISTOL),
     });
 
     let owner = Entity::new(event.0.entity);

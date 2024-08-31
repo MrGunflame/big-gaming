@@ -11,6 +11,7 @@ use game_wasm::entity::EntityId;
 use game_wasm::events::{Event, PlayerConnect};
 use game_wasm::inventory::{Inventory, ItemStack};
 use game_wasm::math::{Quat, Vec3};
+use game_wasm::resource::{create_resource, ResourceId};
 use game_wasm::world::{Entity, RecordReference};
 
 use crate::actor::{spawn_actor, SpawnActor};
@@ -19,15 +20,15 @@ use crate::components::{
     TRANSFORM_CHANGED,
 };
 use crate::{
-    Camera, CharacterController, Equippable, GunProperties, Health, Humanoid, LookingDirection,
-    MovementSpeed, PlayerCamera, Projectile, SpawnPoint,
+    assets, Camera, CharacterController, Equippable, GunProperties, Health, Humanoid,
+    LookingDirection, MovementSpeed, PlayerCamera, Projectile, SpawnPoint,
 };
 
 pub fn spawn_player(_: EntityId, event: PlayerConnect) {
     let entity = spawn_actor(SpawnActor {
-        mesh: MeshInstance {
-            path: "assets/person2.glb".to_owned(),
-        },
+        // mesh: MeshInstance {
+        //     path: "assets/person2.glb".to_owned(),
+        // },
         collider: Collider {
             friction: 1.0,
             restitution: 1.0,
@@ -136,7 +137,7 @@ pub fn spawn_player(_: EntityId, event: PlayerConnect) {
     let pawn = Entity::spawn();
     pawn.insert(Transform::from_translation(Vec3::splat(10.0)));
     pawn.insert(MeshInstance {
-        path: "assets/person2.glb".to_owned(),
+        model: ResourceId::from(assets::RESOURCE_PERSON),
     });
     pawn.insert(RigidBody {
         kind: RigidBodyKind::Kinematic,

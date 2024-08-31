@@ -84,6 +84,12 @@ impl From<RuntimeResourceId> for ResourceId {
     }
 }
 
+impl From<RecordReference> for ResourceId {
+    fn from(value: RecordReference) -> Self {
+        Self::Record(RecordResourceId(value))
+    }
+}
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct RuntimeResourceId(u64);
 

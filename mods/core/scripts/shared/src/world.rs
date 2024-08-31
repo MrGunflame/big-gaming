@@ -1,11 +1,13 @@
-use alloc::borrow::ToOwned;
 use game_wasm::components::builtin::{
     Collider, ColliderShape, Cuboid, MeshInstance, RigidBody, RigidBodyKind, Transform,
 };
 use game_wasm::entity::EntityId;
 use game_wasm::events::CellLoad;
 use game_wasm::math::Vec3;
+use game_wasm::resource::ResourceId;
 use game_wasm::world::Entity;
+
+use crate::assets;
 
 pub fn cell_load(_: EntityId, event: CellLoad) {
     let min = event.cell.min();
@@ -32,6 +34,6 @@ pub fn cell_load(_: EntityId, event: CellLoad) {
         }),
     });
     entity.insert(MeshInstance {
-        path: "assets/floor.glb".to_owned(),
+        model: ResourceId::from(assets::RESOURCE_FLOOR),
     });
 }
