@@ -3,6 +3,7 @@
 extern crate alloc;
 
 mod actor;
+mod assets;
 mod controller;
 mod health;
 mod inventory;
@@ -39,6 +40,7 @@ pub use game_wasm::math::Vec3;
 use components::MOVEMENT_SPEED;
 use game_wasm::entity::EntityId;
 use game_wasm::math::Quat;
+use game_wasm::resource::ResourceId;
 use game_wasm::system::register_action_handler;
 use game_wasm::system::register_event_handler;
 use game_wasm::system::register_system;
@@ -271,7 +273,7 @@ fn spawn_player(transform: Transform) -> Entity {
     let entity = Entity::spawn();
     entity.insert(transform);
     entity.insert(MeshInstance {
-        path: "assets/human.glb".to_owned(),
+        model: ResourceId::from(assets::RESOURCE_PERSON),
     });
     entity.insert(RigidBody {
         kind: RigidBodyKind::Fixed,

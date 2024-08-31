@@ -16,6 +16,7 @@ use game_ui::style::{
     Background, BorderRadius, Bounds, Color, Direction, Growth, Padding, Size, SizeVec2, Style,
 };
 use game_ui::widgets::{Button, Callback, Container, Input, Selection, Svg, SvgData, Text, Widget};
+use game_wasm::resource::ResourceId;
 use game_wasm::world::RecordReference;
 use image::Rgba;
 use indexmap::IndexMap;
@@ -431,6 +432,39 @@ fn render_fields<'a>(
                     let field = descriptor.get(*index).unwrap();
                     queue.push_front((root.clone(), field, parent_key));
                 }
+            }
+            FieldKind::ResourceId => {
+                let field_len = 20;
+
+                let (value, key) = {
+                    let mut component = component.lock();
+
+                    let key = component.register_after(parent_key, field_len);
+
+                    let bytes = component.get(key);
+
+                    (
+                        RecordReference::from_bytes(bytes.try_into().unwrap_or_default()),
+                        key,
+                    )
+                };
+
+                let component = component.clone();
+                let writer = writer.clone();
+                display_value(
+                    &parent,
+                    COLOR_X,
+                    &field.name,
+                    value,
+                    move |value: RecordReference| {
+                        let mut component = component.lock();
+
+                        component.write(key, &value.into_bytes());
+                        writer
+                            .send(Event::UpdateComponent(id, component.data.clone()))
+                            .unwrap();
+                    },
+                );
             }
             FieldKind::String => {
                 // Len of the string length prefix.

@@ -24,6 +24,7 @@ impl RecordReference {
         record: RecordId(0),
     };
 
+    #[track_caller]
     pub const fn from_str_const(s: &str) -> Self {
         let mut index = 0;
         while index < s.len() {
@@ -221,6 +222,7 @@ impl ModuleId {
     }
 
     /// start inclusive, end exclusive
+    #[track_caller]
     const fn from_str_const_with_offset(s: &str, start: usize, end: usize) -> Self {
         let mut bytes = [0; 16];
 

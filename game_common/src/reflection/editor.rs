@@ -66,6 +66,7 @@ impl<'a> ComponentEditor<'a> {
                 }
                 FieldKind::Enum(_) => todo!(),
                 FieldKind::String => todo!(),
+                FieldKind::ResourceId => todo!(),
             }
         }
 

@@ -1,7 +1,7 @@
 use std::sync::{mpsc, Arc};
 
 use ahash::HashMap;
-use game_common::components::Transform;
+use game_common::components::{GlobalTransform, Transform};
 use game_common::world::World;
 use game_data::record::{Record, RecordKind};
 use game_prefab::Prefab;
@@ -92,8 +92,6 @@ impl EditWorldWindow {
                 }
             }
         }
-
-        dbg!(&prefabs);
 
         let ui_state: Arc<parking_lot::lock_api::Mutex<parking_lot::RawMutex, SceneState>> =
             Arc::default();

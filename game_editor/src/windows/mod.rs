@@ -21,7 +21,7 @@ use game_render::options::MainPassOptions;
 use game_render::Renderer;
 use game_tracing::trace_span;
 use game_ui::reactive::DocumentId;
-use game_ui::widgets::Widget;
+use game_ui::widgets::{Callback, Widget};
 use game_ui::UiState;
 use game_wasm::record::ModuleId;
 use game_wasm::world::RecordReference;
@@ -33,6 +33,7 @@ use record::{EditRecord, EditState};
 use records::Records;
 
 use crate::state::EditorState;
+use crate::widgets::explorer::{Entry, Explorer};
 use crate::windows::create_module::CreateModule;
 use crate::windows::error::Error;
 
@@ -142,6 +143,9 @@ pub fn spawn_window(
                 inner: Some(Box::new(inner)),
             };
         }
+        SpawnWindow::Explorer(on_open) => {
+            Explorer::new(on_open).mount(&ctx);
+        }
     }
 
     Window {
@@ -162,4 +166,5 @@ pub enum SpawnWindow {
     Error(String),
     EditRecord(RecordKind, Option<RecordReference>),
     EditPrefab(Arc<Mutex<EditState>>),
+    Explorer(Callback<Vec<Entry>>),
 }

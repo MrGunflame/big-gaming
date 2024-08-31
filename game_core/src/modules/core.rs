@@ -438,8 +438,8 @@ impl Descriptor for RigidBody {
 impl Descriptor for MeshInstance {
     fn descriptor() -> ComponentDescriptor {
         let fields = vec![Field {
-            name: "Path".to_owned(),
-            kind: FieldKind::String,
+            name: "Model".to_owned(),
+            kind: FieldKind::ResourceId,
         }];
         let root = vec![FieldIndex::from_raw(0)];
 
