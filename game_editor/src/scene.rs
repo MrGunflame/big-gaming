@@ -7,6 +7,7 @@ use game_common::components::{
 use game_common::entity::EntityId;
 use game_common::world::{QueryWrapper, World};
 use game_core::debug::draw_collider_lines;
+use game_core::modules::Modules;
 use game_gizmos::Gizmos;
 use game_render::camera::{Camera, Projection, RenderTarget};
 use game_render::entities::{CameraId, DirectionalLightId, PointLightId, SpotLightId};
@@ -14,13 +15,16 @@ use game_render::light::{DirectionalLight, PointLight, SpotLight};
 use game_render::Renderer;
 use game_scene::{InstanceId, SceneId, SceneSpawner};
 use game_tasks::TaskPool;
+use game_wasm::resource::ResourceId;
 use game_window::windows::WindowId;
+
+use crate::state::record::Records;
 
 #[derive(Debug, Default)]
 pub struct SceneEntities {
-    path_to_scene: HashMap<String, SceneState>,
-    scene_to_path: HashMap<SceneId, String>,
-    mesh_instances: HashMap<EntityId, InstanceId>,
+    resource_to_scene: HashMap<ResourceId, SceneState>,
+    scene_to_resource: HashMap<SceneId, ResourceId>,
+    mesh_instances: HashMap<EntityId, Option<InstanceId>>,
     directional_lights: HashMap<EntityId, DirectionalLightId>,
     point_lights: HashMap<EntityId, PointLightId>,
     spot_lights: HashMap<EntityId, SpotLightId>,
@@ -31,6 +35,7 @@ pub struct SceneEntities {
 impl SceneEntities {
     pub fn update(
         &mut self,
+        records: &Records,
         world: &World,
         pool: &TaskPool,
         renderer: &mut Renderer,
@@ -43,38 +48,49 @@ impl SceneEntities {
         let mut removed_spot_lights = self.spot_lights.clone();
         let mut removed_primary_cameras = self.primary_cameras.clone();
 
-        // for (entity, QueryWrapper((GlobalTransform(transform), mesh_instance))) in
-        //     world.query::<QueryWrapper<(GlobalTransform, MeshInstance)>>()
-        // {
-        //     removed_mesh_instances.remove(&entity);
+        for (entity, QueryWrapper((GlobalTransform(transform), mesh_instance))) in
+            world.query::<QueryWrapper<(GlobalTransform, MeshInstance)>>()
+        {
+            removed_mesh_instances.remove(&entity);
 
-        //     match self.mesh_instances.get(&entity) {
-        //         Some(id) => {
-        //             self.spawner.set_transform(*id, transform);
-        //         }
-        //         None => match self.path_to_scene.get_mut(&mesh_instance.path) {
-        //             Some(state) => {
-        //                 state.instances += 1;
-        //                 let instance = self.spawner.spawn(state.id);
-        //                 self.mesh_instances.insert(entity, instance);
-        //             }
-        //             None => {
-        //                 let scene = self.spawner.insert_from_file(&mesh_instance.path);
-        //                 let instance = self.spawner.spawn(scene);
-        //                 self.path_to_scene.insert(
-        //                     mesh_instance.path.clone(),
-        //                     SceneState {
-        //                         id: scene,
-        //                         instances: 1,
-        //                         path: mesh_instance.path.clone(),
-        //                     },
-        //                 );
-        //                 self.scene_to_path.insert(scene, mesh_instance.path);
-        //                 self.mesh_instances.insert(entity, instance);
-        //             }
-        //         },
-        //     }
-        // }
+            match self.mesh_instances.get(&entity) {
+                Some(id) => {
+                    if let Some(id) = id {
+                        self.spawner.set_transform(*id, transform);
+                    }
+                }
+                None => match self.resource_to_scene.get_mut(&mesh_instance.model) {
+                    Some(state) => {
+                        state.instances += 1;
+                        let instance = self.spawner.spawn(state.id);
+                        self.mesh_instances.insert(entity, Some(instance));
+                    }
+                    None => {
+                        let instance = match load_resource(mesh_instance.model, records, world) {
+                            Some(data) => {
+                                let scene = self.spawner.insert(&data);
+                                let instance = self.spawner.spawn(scene);
+
+                                self.resource_to_scene.insert(
+                                    mesh_instance.model,
+                                    SceneState {
+                                        id: scene,
+                                        instances: 1,
+                                        resource: mesh_instance.model,
+                                    },
+                                );
+                                self.scene_to_resource.insert(scene, mesh_instance.model);
+
+                                Some(instance)
+                            }
+                            None => None,
+                        };
+
+                        self.mesh_instances.insert(entity, instance);
+                    }
+                },
+            }
+        }
 
         for (entity, QueryWrapper((GlobalTransform(transform), light))) in
             world.query::<QueryWrapper<(GlobalTransform, DirectionalLightComponent)>>()
@@ -193,19 +209,24 @@ impl SceneEntities {
         }
 
         for (entity, id) in removed_mesh_instances {
+            self.mesh_instances.remove(&entity);
+
+            let Some(id) = id else {
+                continue;
+            };
+
             let scene = self.spawner.scene_of_instance(id);
 
             self.spawner.despawn(id);
-            self.mesh_instances.remove(&entity);
 
-            let path = self.scene_to_path.get(&scene).unwrap();
-            let scene = self.path_to_scene.get_mut(path).unwrap();
+            let path = self.scene_to_resource.get(&scene).unwrap();
+            let scene = self.resource_to_scene.get_mut(path).unwrap();
             scene.instances -= 1;
             if scene.instances == 0 {
                 self.spawner.remove(scene.id);
-                self.scene_to_path.remove(&scene.id);
-                let path = scene.path.clone();
-                self.path_to_scene.remove(&path);
+                self.scene_to_resource.remove(&scene.id);
+                let res = scene.resource;
+                self.resource_to_scene.remove(&res);
             }
         }
 
@@ -237,7 +258,18 @@ impl SceneEntities {
 
 #[derive(Clone, Debug)]
 struct SceneState {
+    /// `None` if the scene refers to an invalid resource.
     id: SceneId,
     instances: u64,
-    path: String,
+    resource: ResourceId,
+}
+
+fn load_resource<'a>(id: ResourceId, records: &'a Records, world: &'a World) -> Option<Vec<u8>> {
+    match id {
+        ResourceId::Record(id) => {
+            let record = records.get(id.0.module, id.0.record)?;
+            Some(record.data)
+        }
+        ResourceId::Runtime(id) => world.get_resource(id).map(|v| v.to_vec()),
+    }
 }

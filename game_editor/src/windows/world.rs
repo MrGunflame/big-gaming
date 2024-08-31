@@ -441,6 +441,7 @@ impl WorldWindowState {
             name: "entity".into(),
             is_selected: false,
         });
+        update_global_transform(&mut self.state.world);
         id
     }
 
@@ -452,6 +453,7 @@ impl WorldWindowState {
             name: "entity".into(),
             is_selected: false,
         });
+        update_global_transform(&mut self.state.world);
         id
     }
 

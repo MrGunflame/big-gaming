@@ -277,6 +277,7 @@ impl game_window::App for App {
 
             // if matches!(window, crate::windows::Window::View(_, _)) {
             self.scene.update(
+                &self.state.records,
                 &self.world,
                 &self.pool,
                 &mut self.renderer,
