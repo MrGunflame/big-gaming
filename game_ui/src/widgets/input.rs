@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::ops::Deref;
+use std::ops::{Deref, Range};
 use std::time::Duration;
 
 use async_io::Timer;
@@ -8,16 +8,19 @@ use game_input::keyboard::{KeyCode, KeyboardInput};
 use game_input::mouse::MouseButtonInput;
 use game_tracing::trace_span;
 use glam::UVec2;
+use image::Rgba;
 use parking_lot::Mutex;
 
 use crate::reactive::{Context, NodeDestroyed, NodeId, TaskHandle};
-use crate::style::{Bounds, Size, SizeVec2, Style};
+use crate::style::{Bounds, Color, Size, SizeVec2, Style};
 
 use super::{Callback, Container, Text, Widget};
 
 // FIXME: Some platforms (e.g. Windows) have customizable blinking intervals
 // that we should conform to (e.g. GetCaretBlinkTime for Windows).
 const CARET_BLINK_INTERVAL: Duration = Duration::from_millis(500);
+
+const SELECTION_COLOR: Color = Color(Rgba([0x1e, 0x90, 0xff, 0xff]));
 
 pub struct Input {
     pub value: String,
@@ -80,14 +83,11 @@ impl Widget for Input {
                 let mut active = state.active.lock();
                 let mut nodes = state.nodes.lock();
 
-                if *active == Some(node) {
+                if active.as_ref().is_some_and(|active| active.node == node) {
                     *active = None;
                 }
 
                 nodes.remove(&node);
-                // if nodes.is_empty() {
-                //     ctx.document().remove::<InputState>();
-                // }
             },
         );
 
@@ -131,15 +131,17 @@ impl Widget for Input {
                     let mut nodes = state.nodes.lock();
                     let active = state.active.lock();
 
-                    let Some(node) = *active else {
+                    let Some(active) = &*active else {
                         continue;
                     };
 
-                    let node = nodes.get_mut(&node).unwrap();
+                    let node = nodes.get_mut(&active.node).unwrap();
                     node.ctx.clear_children();
                     let text = Text::new(node.buffer.string.clone())
                         .size(32.0)
                         .caret(cursor_blink.then_some(node.buffer.cursor as u32))
+                        .selection_range(active.selection.map(|s| s.range()))
+                        .selection_color(SELECTION_COLOR)
                         .mount(&node.ctx);
                     node.text_node = text.node().unwrap();
                     cursor_blink ^= true;
@@ -156,7 +158,7 @@ impl Widget for Input {
                     let mut nodes = state.nodes.lock();
                     let mut active = state.active.lock();
 
-                    let prev_active = *active;
+                    let prev_active = active.clone();
 
                     let mut selected = false;
                     for node in nodes.values() {
@@ -165,7 +167,10 @@ impl Widget for Input {
                         };
 
                         if layout.contains(ctx.cursor().as_uvec2()) {
-                            *active = Some(node.ctx.node().unwrap());
+                            *active = Some(ActiveNode {
+                                node: node.ctx.node().unwrap(),
+                                selection: None,
+                            });
                             selected = true;
                             break;
                         }
@@ -176,7 +181,7 @@ impl Widget for Input {
                     }
 
                     if let Some(prev_active) = prev_active {
-                        let node = nodes.get_mut(&prev_active).unwrap();
+                        let node = nodes.get_mut(&prev_active.node).unwrap();
                         node.ctx.clear_children();
                         let text = Text::new(node.buffer.string.clone())
                             .size(32.0)
@@ -185,8 +190,8 @@ impl Widget for Input {
                         node.text_node = text.node().unwrap();
                     }
 
-                    if let Some(active) = *active {
-                        let node = nodes.get_mut(&active).unwrap();
+                    if let Some(active) = active.clone() {
+                        let node = nodes.get_mut(&active.node).unwrap();
 
                         // Note that we must use the text node instead of the wrapper
                         // container node as the container may have additional styling
@@ -224,6 +229,12 @@ impl Widget for Input {
                 nodes: Mutex::new(nodes),
                 active: Mutex::new(None),
                 _caret_blink_task: handle,
+                key_states: Mutex::new(KeyStates {
+                    lshift: false,
+                    rshift: false,
+                    lctrl: false,
+                    rctrl: false,
+                }),
             });
 
             parent
@@ -233,15 +244,37 @@ impl Widget for Input {
                         return;
                     };
 
-                    let mut nodes = state.nodes.lock();
-                    let active = state.active.lock();
+                    match ctx.event.key_code {
+                        Some(KeyCode::LShift) => {
+                            state.key_states.lock().lshift = ctx.event.state.is_pressed();
+                        }
+                        Some(KeyCode::RShift) => {
+                            state.key_states.lock().rshift = ctx.event.state.is_pressed();
+                        }
+                        Some(KeyCode::LControl) => {
+                            state.key_states.lock().lctrl = ctx.event.state.is_pressed();
+                        }
+                        Some(KeyCode::RControl) => {
+                            state.key_states.lock().rctrl = ctx.event.state.is_pressed();
+                        }
+                        _ => (),
+                    }
 
-                    let Some(node) = &*active else {
+                    let mut nodes = state.nodes.lock();
+                    let mut active = state.active.lock();
+
+                    let Some(active_node) = &mut *active else {
                         return;
                     };
 
-                    let node = nodes.get_mut(node).unwrap();
-                    if !update_buffer(&mut node.buffer, &ctx.event) {
+                    let node = nodes.get_mut(&active_node.node).unwrap();
+                    let key_states = state.key_states.lock();
+                    if !update_buffer(
+                        &mut node.buffer,
+                        &key_states,
+                        &mut active_node.selection,
+                        &ctx.event,
+                    ) {
                         return;
                     }
 
@@ -249,6 +282,8 @@ impl Widget for Input {
                     let text = Text::new(node.buffer.string.clone())
                         .size(32.0)
                         .caret(Some(node.buffer.cursor as u32))
+                        .selection_range(active_node.selection.map(|s| s.range()))
+                        .selection_color(SELECTION_COLOR)
                         .mount(&node.ctx);
                     node.text_node = text.node().unwrap();
 
@@ -264,45 +299,88 @@ impl Widget for Input {
     }
 }
 
-fn update_buffer(buffer: &mut Buffer, event: &KeyboardInput) -> bool {
+fn update_buffer(
+    buffer: &mut Buffer,
+    key_states: &KeyStates,
+    selection: &mut Option<Selection>,
+    event: &KeyboardInput,
+) -> bool {
     // Don't trigger when releasing the button.
     if !event.state.is_pressed() {
         return false;
     }
 
-    match event.key_code {
+    let cursor_start = buffer.cursor;
+
+    let is_move_op = match event.key_code {
         Some(KeyCode::Left) => {
-            buffer.move_back();
-            return true;
+            if key_states.is_control_pressed() {
+                buffer.move_back_word();
+            } else {
+                buffer.move_back();
+            }
+            true
         }
         Some(KeyCode::Right) => {
-            buffer.move_forward();
-            return true;
+            if key_states.is_control_pressed() {
+                buffer.move_forward_word();
+            } else {
+                buffer.move_forward();
+            }
+            true
         }
         Some(KeyCode::Home) => {
             buffer.move_to_start();
-            return true;
+            true
         }
         Some(KeyCode::End) => {
             buffer.move_to_end();
-            return true;
+            true
         }
-        _ => (),
+        _ => false,
+    };
+
+    if is_move_op {
+        if key_states.is_shift_pressed() {
+            match selection {
+                Some(selection) => selection.end = buffer.cursor,
+                None => {
+                    *selection = Some(Selection {
+                        start: cursor_start,
+                        end: buffer.cursor,
+                    })
+                }
+            }
+        } else {
+            *selection = None;
+        }
+
+        return true;
     }
 
-    match event.text.as_ref().map(|s| s.as_str()) {
+    let is_edited = match event.text.as_ref().map(|s| s.as_str()) {
         Some("\r") => {
             buffer.push('\n');
             true
         }
         // Backspace
         Some("\u{8}") => {
-            buffer.remove_prev();
+            if let Some(selection) = selection {
+                buffer.remove_range(selection.range());
+            } else {
+                buffer.remove_prev();
+            }
+
             true
         }
         // Delete
         Some("\u{7F}") => {
-            buffer.remove_next();
+            if let Some(selection) = selection {
+                buffer.remove_range(selection.range());
+            } else {
+                buffer.remove_next();
+            }
+
             true
         }
         Some(text) => {
@@ -315,18 +393,62 @@ fn update_buffer(buffer: &mut Buffer, event: &KeyboardInput) -> bool {
             true
         }
         _ => false,
-    }
+    };
+
+    *selection = None;
+    is_edited
 }
 
 #[derive(Debug)]
 struct InputState {
     nodes: Mutex<HashMap<NodeId, NodeState>>,
-    active: Mutex<Option<NodeId>>,
+    active: Mutex<Option<ActiveNode>>,
     /// The handle to the task handling periodic caret blinking.
     ///
     /// We keep a handle to the task so that it gets dropped together with all other state when the
     /// last `Input` element in a document gets destroyed.
     _caret_blink_task: TaskHandle<()>,
+    key_states: Mutex<KeyStates>,
+}
+
+#[derive(Clone, Debug)]
+struct ActiveNode {
+    node: NodeId,
+    selection: Option<Selection>,
+}
+
+#[derive(Copy, Clone, Debug)]
+struct Selection {
+    start: usize,
+    end: usize,
+}
+
+impl Selection {
+    fn range(&self) -> Range<usize> {
+        let start = usize::min(self.start, self.end);
+        let end = usize::max(self.start, self.end);
+        start..end
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+struct KeyStates {
+    lshift: bool,
+    rshift: bool,
+    lctrl: bool,
+    rctrl: bool,
+}
+
+impl KeyStates {
+    /// Returns `true` if any `Shift` key is pressed.
+    fn is_shift_pressed(&self) -> bool {
+        self.lshift || self.rshift
+    }
+
+    /// Returns `true` if any `Control` key is pressed.
+    fn is_control_pressed(&self) -> bool {
+        self.lctrl || self.rctrl
+    }
 }
 
 #[derive(Debug)]
@@ -376,6 +498,18 @@ impl Buffer {
         }
     }
 
+    fn remove_range(&mut self, range: Range<usize>) {
+        if range.end > self.string.len() {
+            return;
+        }
+
+        if self.cursor > range.start {
+            self.cursor -= range.len();
+        }
+
+        self.string.replace_range(range, "");
+    }
+
     fn remove_prev(&mut self) {
         let s = &self.string[..self.cursor];
 
@@ -407,6 +541,40 @@ impl Buffer {
 
     fn move_to_end(&mut self) {
         self.cursor = self.string.len();
+    }
+
+    fn move_forward_word(&mut self) {
+        if let Some(s) = self.string.get(self.cursor..) {
+            let mut leading_punctuation = true;
+            for ch in s.chars() {
+                if ch.is_ascii_punctuation() || ch.is_whitespace() {
+                    if !leading_punctuation {
+                        break;
+                    }
+                } else {
+                    leading_punctuation = false;
+                }
+
+                self.cursor += ch.len_utf8();
+            }
+        }
+    }
+
+    fn move_back_word(&mut self) {
+        if let Some(s) = self.string.get(..self.cursor) {
+            let mut trailing_punctuation = true;
+            for ch in s.chars().rev() {
+                if ch.is_ascii_punctuation() || ch.is_whitespace() {
+                    if !trailing_punctuation {
+                        break;
+                    }
+                } else {
+                    trailing_punctuation = false;
+                }
+
+                self.cursor -= ch.len_utf8();
+            }
+        }
     }
 }
 
@@ -514,5 +682,58 @@ mod tests {
         buffer.move_back();
 
         assert_eq!(buffer.cursor, 0);
+    }
+
+    #[test]
+    fn buffer_move_forward_word() {
+        let string = String::from("Hello World");
+
+        let mut buffer = Buffer::new(string);
+        buffer.cursor = 0;
+        buffer.move_forward_word();
+
+        assert_eq!(buffer.cursor, 5);
+    }
+
+    #[test]
+    fn buffer_move_forward_leading_whitespace() {
+        let string = String::from("  Hello World");
+
+        let mut buffer = Buffer::new(string);
+        buffer.cursor = 0;
+        buffer.move_forward_word();
+
+        assert_eq!(buffer.cursor, 7);
+    }
+
+    #[test]
+    fn buffer_move_back_word() {
+        let string = String::from("Hello World");
+
+        let mut buffer = Buffer::new(string);
+        buffer.move_back_word();
+
+        assert_eq!(buffer.cursor, 6);
+    }
+
+    #[test]
+    fn buffer_move_back_trailing_whitespace() {
+        let string = String::from("Hello World  ");
+
+        let mut buffer = Buffer::new(string);
+        buffer.move_back_word();
+
+        assert_eq!(buffer.cursor, 6);
+    }
+
+    #[test]
+    fn buffer_remove_range() {
+        let string = String::from("Hello World");
+
+        let mut buffer = Buffer::new(string);
+        buffer.remove_range(1..7);
+
+        assert_eq!(buffer.string, "Horld");
+        assert_eq!(buffer.cursor, 5);
     }
 }

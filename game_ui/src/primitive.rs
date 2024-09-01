@@ -42,11 +42,13 @@ impl Primitive {
         }
 
         if let Some(text) = &self.text {
-            let img = crate::render::text::render_to_texture(
+            let img = render_to_texture(
                 &text.text,
                 text.size,
                 UVec2::ZERO,
                 text.caret,
+                text.selection_range.clone(),
+                text.selection_color,
             );
 
             size = size.saturating_add(UVec2::new(img.width(), img.height()));
@@ -65,7 +67,14 @@ impl Primitive {
         size: UVec2,
     ) -> Option<DrawCommand> {
         let mut img = match (&self.text, &self.image) {
-            (Some(text), None) => render_to_texture(&text.text, text.size, UVec2::ZERO, text.caret),
+            (Some(text), None) => render_to_texture(
+                &text.text,
+                text.size,
+                UVec2::ZERO,
+                text.caret,
+                text.selection_range.clone(),
+                text.selection_color,
+            ),
             (None, Some(image)) => image.clone(),
             (None, None) => {
                 // Truncate the container at the viewport size. This prevents rendering
