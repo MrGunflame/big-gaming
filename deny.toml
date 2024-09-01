@@ -27,6 +27,7 @@ allow = [
     "Zlib",
     "Apache-2.0 WITH LLVM-exception",
     "MPL-2.0",
+    "BSL-1.0",
 ]
 
 exceptions = [
