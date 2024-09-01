@@ -326,7 +326,13 @@ fn update_buffer(
 
             return false;
         }
-        Some(KeyCode::V) if key_states.is_control_pressed() => {}
+        Some(KeyCode::V) if key_states.is_control_pressed() => {
+            if let Some(text) = runtime.clipboard_get() {
+                buffer.insert(&text);
+            }
+
+            return true;
+        }
         _ => (),
     }
 
@@ -501,6 +507,11 @@ impl Buffer {
     fn push(&mut self, ch: char) {
         self.string.insert(self.cursor, ch);
         self.cursor += ch.len_utf8();
+    }
+
+    fn insert(&mut self, string: &str) {
+        self.string.insert_str(self.cursor, string);
+        self.cursor += string.len();
     }
 
     fn remove_next(&mut self) {
