@@ -11,7 +11,7 @@ use glam::UVec2;
 use image::Rgba;
 use parking_lot::Mutex;
 
-use crate::reactive::{Context, NodeDestroyed, NodeId, TaskHandle};
+use crate::reactive::{Context, NodeDestroyed, NodeId, Runtime, TaskHandle};
 use crate::style::{Bounds, Color, Size, SizeVec2, Style};
 
 use super::{Callback, Container, Text, Widget};
@@ -247,15 +247,19 @@ impl Widget for Input {
                     match ctx.event.key_code {
                         Some(KeyCode::LShift) => {
                             state.key_states.lock().lshift = ctx.event.state.is_pressed();
+                            return;
                         }
                         Some(KeyCode::RShift) => {
                             state.key_states.lock().rshift = ctx.event.state.is_pressed();
+                            return;
                         }
                         Some(KeyCode::LControl) => {
                             state.key_states.lock().lctrl = ctx.event.state.is_pressed();
+                            return;
                         }
                         Some(KeyCode::RControl) => {
                             state.key_states.lock().rctrl = ctx.event.state.is_pressed();
+                            return;
                         }
                         _ => (),
                     }
@@ -270,6 +274,7 @@ impl Widget for Input {
                     let node = nodes.get_mut(&active_node.node).unwrap();
                     let key_states = state.key_states.lock();
                     if !update_buffer(
+                        &ctx.runtime,
                         &mut node.buffer,
                         &key_states,
                         &mut active_node.selection,
@@ -300,6 +305,7 @@ impl Widget for Input {
 }
 
 fn update_buffer(
+    runtime: &Runtime,
     buffer: &mut Buffer,
     key_states: &KeyStates,
     selection: &mut Option<Selection>,
@@ -308,6 +314,20 @@ fn update_buffer(
     // Don't trigger when releasing the button.
     if !event.state.is_pressed() {
         return false;
+    }
+
+    match event.key_code {
+        Some(KeyCode::C) if key_states.is_control_pressed() => {
+            if let Some(selection) = selection {
+                if let Some(text) = buffer.string.get(selection.range()) {
+                    runtime.clipboard_set(text);
+                }
+            }
+
+            return false;
+        }
+        Some(KeyCode::V) if key_states.is_control_pressed() => {}
+        _ => (),
     }
 
     let cursor_start = buffer.cursor;

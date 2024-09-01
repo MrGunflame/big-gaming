@@ -15,6 +15,7 @@ use game_window::cursor::Cursor;
 use glam::{UVec2, Vec2};
 use parking_lot::Mutex;
 
+use crate::clipboard::Clipboard;
 use crate::layout::{self, LayoutTree};
 use crate::primitive::Primitive;
 use crate::render::Rect;
@@ -26,6 +27,7 @@ pub struct Runtime {
     // FIXME: We probably want to share the same task pool
     // instead of having a separate one just for UI.
     pool: Arc<TaskPool>,
+    clipboard: Arc<Mutex<Clipboard>>,
 }
 
 impl Runtime {
@@ -41,6 +43,7 @@ impl Runtime {
             })),
             cursor: Arc::new(Mutex::new(None)),
             pool: Arc::new(TaskPool::new(1)),
+            clipboard: Arc::new(Mutex::new(Clipboard::new())),
         }
     }
 
@@ -263,6 +266,14 @@ impl Runtime {
     {
         let handle = self.pool.spawn(future);
         TaskHandle(ManuallyDrop::new(handle))
+    }
+
+    pub(crate) fn clipboard_get(&self) -> Option<String> {
+        self.clipboard.lock().get()
+    }
+
+    pub(crate) fn clipboard_set(&self, value: &str) {
+        self.clipboard.lock().set(value);
     }
 
     fn register_on_document<E, F>(&self, document: DocumentId, parent: Option<NodeId>, handler: F)
