@@ -62,6 +62,7 @@ impl Widget for Explorer {
             })
             .mount(&root);
 
+        let header = Container::new().mount(&main);
         let upper = Container::new().mount(&main);
         let bottom = Container::new()
             .style(Style {
@@ -77,7 +78,7 @@ impl Widget for Explorer {
             table_parent: table_parent.clone(),
             state: state.clone(),
         }
-        .mount(&upper);
+        .mount(&header);
 
         mount_explorer_table(&table_parent, &state);
 
@@ -221,14 +222,33 @@ impl Widget for Topbar {
         }
 
         let path_box = Container::new().mount(&root);
-
-        Input::new()
-            .value(self.state.lock().path.to_string_lossy())
-            .on_change(move |value| {})
-            .mount(&path_box);
+        mount_path_input(&path_box, &self.state);
 
         root
     }
+}
+
+fn mount_path_input(parent_ctx: &Context<()>, state: &Arc<Mutex<State>>) {
+    Input::new()
+        .value(state.lock().path.to_string_lossy())
+        .on_change({
+            let parent_ctx = parent_ctx.clone();
+            let state = state.clone();
+
+            move |value: String| {
+                if let Some(path) = value.strip_suffix("\n") {
+                    {
+                        let mut state = state.lock();
+                        state.path = path.into();
+                        state.should_scan = true;
+                    }
+
+                    parent_ctx.clear_children();
+                    mount_path_input(&parent_ctx, &state);
+                }
+            }
+        })
+        .mount(parent_ctx);
 }
 
 fn directory_up(
@@ -243,6 +263,8 @@ fn directory_up(
             if !state.path.pop() {
                 return;
             }
+
+            state.should_scan = true;
         }
 
         mount_explorer_table(&table_parent, &state_mux);
@@ -306,7 +328,11 @@ fn mount_explorer_table(table_parent: &Arc<Mutex<Context<()>>>, state_mux: &Arc<
             [
                 entry.name.to_string_lossy().to_string(),
                 format_time(entry.modified),
-                file_size(entry.len),
+                if entry.kind == EntryKind::File {
+                    file_size(entry.len)
+                } else {
+                    String::new()
+                },
             ]
             .into_iter()
             .map(|label| LabelButton {
@@ -336,6 +362,7 @@ fn mount_explorer_table(table_parent: &Arc<Mutex<Context<()>>>, state_mux: &Arc<
     .mount(&table);
 }
 
+#[derive(Debug)]
 struct State {
     path: PathBuf,
     entries: Vec<Entry>,
