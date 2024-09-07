@@ -13,7 +13,7 @@ use wgpu::{
 };
 
 use crate::buffer::{DynamicBuffer, IndexBuffer};
-use crate::camera::{CameraBuffer, CameraUniform, RenderTarget};
+use crate::camera::{Camera, CameraUniform, RenderTarget};
 use crate::depth_stencil::DepthData;
 use crate::entities::{CameraId, ObjectId};
 use crate::forward::ForwardPipeline;
@@ -31,7 +31,7 @@ pub struct GpuObject {
 }
 
 pub struct GpuState {
-    pub cameras: HashMap<CameraId, CameraBuffer>,
+    pub cameras: HashMap<CameraId, Camera>,
     pub objects: HashMap<ObjectId, GpuObject>,
     pub directional_lights: Buffer,
     pub point_lights: Buffer,
@@ -85,7 +85,7 @@ impl Node for RenderPass {
 
         state.update_buffers(ctx.device, ctx.queue, &self.forward, ctx.mipmap);
 
-        for cam in state.camera_buffers.values() {
+        for cam in state.cameras.values() {
             if cam.target == ctx.render_target {
                 self.update_depth_stencil(ctx.render_target, ctx.size, ctx.device);
 
@@ -117,7 +117,7 @@ impl RenderPass {
     fn render_camera_target(
         &self,
         state: &RenderState,
-        camera: &CameraBuffer,
+        camera: &Camera,
         ctx: &mut RenderContext<'_>,
     ) {
         let _span = trace_span!("ForwardPass::render_camera_target").entered();
