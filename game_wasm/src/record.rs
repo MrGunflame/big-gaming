@@ -1,4 +1,4 @@
-use core::fmt::{self, Display, Formatter, LowerHex};
+use core::fmt::{self, Debug, Display, Formatter, LowerHex};
 use core::str::FromStr;
 
 use alloc::vec::Vec;
@@ -11,7 +11,7 @@ use crate::{unreachable_unchecked, Error, ErrorImpl};
 
 const HEX_CHARS: &[u8; 16] = b"0123456789abcdef";
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Zeroable, Pod, Encode, Decode)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash, Zeroable, Pod, Encode, Decode)]
 #[repr(C)]
 pub struct RecordReference {
     pub module: ModuleId,
@@ -60,6 +60,12 @@ impl Display for RecordReference {
     }
 }
 
+impl Debug for RecordReference {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        Display::fmt(self, f)
+    }
+}
+
 impl FromStr for RecordReference {
     type Err = ParseRecordReferenceError;
 
@@ -79,7 +85,7 @@ impl FromStr for RecordReference {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Zeroable, Pod, Encode, Decode)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash, Zeroable, Pod, Encode, Decode)]
 #[repr(transparent)]
 pub struct RecordId(pub u32);
 
@@ -134,6 +140,12 @@ impl RecordId {
 impl Display for RecordId {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         LowerHex::fmt(&self.0, f)
+    }
+}
+
+impl Debug for RecordId {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        Display::fmt(self, f)
     }
 }
 
@@ -200,7 +212,7 @@ impl Display for ParseRecordReferenceError {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Zeroable, Pod, Encode, Decode)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash, Zeroable, Pod, Encode, Decode)]
 #[repr(transparent)]
 pub struct ModuleId([u8; 16]);
 
@@ -328,6 +340,12 @@ impl Display for ModuleId {
         }
 
         Ok(())
+    }
+}
+
+impl Debug for ModuleId {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        Display::fmt(self, f)
     }
 }
 
