@@ -1,5 +1,6 @@
 use game_wasm::components::builtin::{
-    Collider, ColliderShape, Cuboid, MeshInstance, RigidBody, RigidBodyKind, Transform,
+    Collider, ColliderShape, Color, Cuboid, DirectionalLight, MeshInstance, RigidBody,
+    RigidBodyKind, Transform,
 };
 use game_wasm::entity::EntityId;
 use game_wasm::events::CellLoad;
@@ -35,5 +36,12 @@ pub fn cell_load(_: EntityId, event: CellLoad) {
     });
     entity.insert(MeshInstance {
         model: ResourceId::from(assets::RESOURCE_FLOOR),
+    });
+
+    let sun = Entity::spawn();
+    sun.insert(Transform::from_translation(min).looking_at(Vec3::ZERO, Vec3::Y));
+    sun.insert(DirectionalLight {
+        color: Color::WHITE,
+        illuminance: 100_000.0,
     });
 }

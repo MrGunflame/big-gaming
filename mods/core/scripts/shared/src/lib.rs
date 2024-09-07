@@ -2,6 +2,9 @@
 
 extern crate alloc;
 
+#[cfg(test)]
+extern crate std;
+
 mod actor;
 mod assets;
 mod controller;
@@ -11,6 +14,7 @@ mod movement;
 mod player;
 mod projectile;
 mod weapon;
+mod weather;
 mod world;
 
 use core::f32::consts::PI;
@@ -265,6 +269,8 @@ pub mod components {
         EVENT_GUN_EQUIP => 0x01,
         EVENT_GUN_UNEQUIP => 0x02,
         TRANSFORM_CHANGED => 0x03,
+
+        SKY_LIGHT => 0x24,
 
     }
 }
