@@ -1,9 +1,6 @@
 //! Post processing pipeline
 
-use std::collections::HashMap;
-
 use game_tracing::trace_span;
-use parking_lot::Mutex;
 use wgpu::{
     AddressMode, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
     BindGroupLayoutEntry, BindingResource, BindingType, Color, ColorTargetState, ColorWrites,
@@ -15,15 +12,15 @@ use wgpu::{
     TextureView, TextureViewDimension, VertexState,
 };
 
+use crate::pipeline_cache::{PipelineBuilder, PipelineCache};
+
 const SHADER: &str = include_str!("../shaders/post_process.wgsl");
 
 #[derive(Debug)]
 pub struct PostProcessPipeline {
     sampler: Sampler,
     bind_group_layout: BindGroupLayout,
-    pipeline_layout: PipelineLayout,
-    pipelines: Mutex<HashMap<TextureFormat, RenderPipeline>>,
-    shader: ShaderModule,
+    pipelines: PipelineCache<PostProcessPipelineBuilder>,
 }
 
 impl PostProcessPipeline {
@@ -71,12 +68,15 @@ impl PostProcessPipeline {
             ..Default::default()
         });
 
+        let pipelines = PipelineCache::new(PostProcessPipelineBuilder {
+            pipeline_layout,
+            shader,
+        });
+
         Self {
             bind_group_layout,
             sampler,
-            pipeline_layout,
-            shader,
-            pipelines: Mutex::new(HashMap::new()),
+            pipelines,
         }
     }
 
@@ -90,14 +90,7 @@ impl PostProcessPipeline {
     ) {
         let _span = trace_span!("PostProcessPass::render").entered();
 
-        let mut pls = self.pipelines.lock();
-        let pipeline = match pls.get(&format) {
-            Some(pl) => pl,
-            None => {
-                self.build_pipeline(&mut pls, device, format);
-                pls.get(&format).unwrap()
-            }
-        };
+        let pipeline = self.pipelines.get(device, format);
 
         let bind_group = device.create_bind_group(&BindGroupDescriptor {
             label: Some("post_process_render_pass"),
@@ -129,18 +122,23 @@ impl PostProcessPipeline {
             timestamp_writes: None,
         });
 
-        render_pass.set_pipeline(pipeline);
+        render_pass.set_pipeline(&pipeline);
         render_pass.set_bind_group(0, &bind_group, &[]);
         render_pass.draw(0..3, 0..1);
     }
+}
 
-    fn build_pipeline(
-        &self,
-        pipelines: &mut HashMap<TextureFormat, RenderPipeline>,
-        device: &Device,
-        format: TextureFormat,
-    ) {
-        let pipeline = device.create_render_pipeline(&RenderPipelineDescriptor {
+#[derive(Debug)]
+struct PostProcessPipelineBuilder {
+    pipeline_layout: PipelineLayout,
+    shader: ShaderModule,
+}
+
+impl PipelineBuilder for PostProcessPipelineBuilder {
+    fn build(&self, device: &Device, format: TextureFormat) -> RenderPipeline {
+        let _span = trace_span!("PostProcessPipelineBuilder::build").entered();
+
+        device.create_render_pipeline(&RenderPipelineDescriptor {
             label: None,
             layout: Some(&self.pipeline_layout),
             vertex: VertexState {
@@ -169,8 +167,6 @@ impl PostProcessPipeline {
             depth_stencil: None,
             multisample: MultisampleState::default(),
             multiview: None,
-        });
-
-        pipelines.insert(format, pipeline);
+        })
     }
 }
