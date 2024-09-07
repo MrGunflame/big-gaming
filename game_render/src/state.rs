@@ -1,12 +1,11 @@
 use std::collections::HashMap;
 
-use game_common::components::Transform;
 use game_tracing::trace_span;
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
 use wgpu::{BindGroup, BindGroupDescriptor, BindGroupEntry, Buffer, BufferUsages, Device, Queue};
 
 use crate::buffer::{DynamicBuffer, IndexBuffer};
-use crate::camera::{Camera, CameraBuffer};
+use crate::camera::Camera;
 use crate::entities::{CameraId, DirectionalLightId, Object, ObjectId, PointLightId, SpotLightId};
 use crate::forward::ForwardPipeline;
 use crate::light::pipeline::{
@@ -23,7 +22,6 @@ use crate::texture::{Image, ImageId, Images};
 
 pub(crate) struct RenderState {
     pub cameras: HashMap<CameraId, Camera>,
-    pub camera_buffers: HashMap<CameraId, CameraBuffer>,
     pub objects: HashMap<ObjectId, Object>,
     /// object transform buffers
     pub object_buffers: HashMap<ObjectId, BindGroup>,
@@ -90,7 +88,6 @@ impl RenderState {
             materials_queued: HashMap::new(),
             images: imgs,
             meshes_queued: HashMap::new(),
-            camera_buffers: HashMap::new(),
             object_buffers: HashMap::new(),
             directional_lights: HashMap::new(),
             point_lights: HashMap::new(),
@@ -206,19 +203,9 @@ impl RenderState {
 
         for event in self.events.drain(..) {
             match event {
-                Event::CreateCamera(id, camera) => {
-                    let buffer = CameraBuffer::new(
-                        camera.transform,
-                        camera.projection,
-                        device,
-                        camera.target,
-                    );
-
-                    self.camera_buffers.insert(id, buffer);
-                }
+                Event::CreateCamera(_id, _camera) => (),
                 Event::DestroyCamera(id) => {
                     self.cameras.remove(&id);
-                    self.camera_buffers.remove(&id);
                 }
                 Event::CreateObject(id, object) => {
                     let buffer = update_transform_buffer(object.transform, device);

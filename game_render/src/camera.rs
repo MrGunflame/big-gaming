@@ -3,11 +3,8 @@ use std::f32::consts::PI;
 use bytemuck::{Pod, Zeroable};
 use game_common::components::Transform;
 use game_common::math::Ray;
-use game_tracing::trace_span;
 use game_window::windows::WindowId;
 use glam::{Mat4, UVec2, Vec2, Vec3};
-use wgpu::util::{BufferInitDescriptor, DeviceExt};
-use wgpu::{Buffer, BufferUsages, Device};
 
 use crate::texture::RenderImageId;
 
@@ -86,38 +83,6 @@ pub const OPENGL_TO_WGPU: Mat4 = Mat4::from_cols_array_2d(&[
     [0.0, 0.0, 0.5, 0.0],
     [0.0, 0.0, 0.5, 1.0],
 ]);
-
-#[derive(Debug)]
-pub struct CameraBuffer {
-    pub transform: Transform,
-    pub projection: Projection,
-    pub buffer: Buffer,
-    pub target: RenderTarget,
-}
-
-impl CameraBuffer {
-    pub fn new(
-        transform: Transform,
-        projection: Projection,
-        device: &Device,
-        target: RenderTarget,
-    ) -> Self {
-        let _span = trace_span!("CameraBuffer::new").entered();
-
-        let buffer = device.create_buffer_init(&BufferInitDescriptor {
-            label: Some("camera_transform_buffer"),
-            contents: bytemuck::cast_slice(&[CameraUniform::new(transform, projection)]),
-            usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
-        });
-
-        Self {
-            transform,
-            projection,
-            buffer,
-            target,
-        }
-    }
-}
 
 #[derive(Copy, Clone, Debug, Zeroable, Pod)]
 #[repr(C)]
