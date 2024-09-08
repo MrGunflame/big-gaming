@@ -9,6 +9,7 @@ use game_wasm::resource::ResourceId;
 use game_wasm::world::Entity;
 
 use crate::assets;
+use crate::weather::{sun_rotation, DateTime};
 
 pub fn cell_load(_: EntityId, event: CellLoad) {
     let min = event.cell.min();
@@ -39,7 +40,11 @@ pub fn cell_load(_: EntityId, event: CellLoad) {
     });
 
     let sun = Entity::spawn();
-    sun.insert(Transform::from_translation(min).looking_at(Vec3::ZERO, Vec3::Y));
+    sun.insert(Transform {
+        translation: min,
+        rotation: sun_rotation(DateTime::from_secs(60 * 60 * 12)),
+        ..Default::default()
+    });
     sun.insert(DirectionalLight {
         color: Color::WHITE,
         illuminance: 100_000.0,
