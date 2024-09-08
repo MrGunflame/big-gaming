@@ -1,5 +1,6 @@
 use game_wasm::components::builtin::{
-    Collider, ColliderShape, Cuboid, MeshInstance, RigidBody, RigidBodyKind, Transform,
+    Collider, ColliderShape, Color, Cuboid, DirectionalLight, MeshInstance, RigidBody,
+    RigidBodyKind, Transform,
 };
 use game_wasm::entity::EntityId;
 use game_wasm::events::CellLoad;
@@ -8,6 +9,7 @@ use game_wasm::resource::ResourceId;
 use game_wasm::world::Entity;
 
 use crate::assets;
+use crate::weather::{sun_rotation, DateTime};
 
 pub fn cell_load(_: EntityId, event: CellLoad) {
     let min = event.cell.min();
@@ -35,5 +37,16 @@ pub fn cell_load(_: EntityId, event: CellLoad) {
     });
     entity.insert(MeshInstance {
         model: ResourceId::from(assets::RESOURCE_FLOOR),
+    });
+
+    let sun = Entity::spawn();
+    sun.insert(Transform {
+        translation: min,
+        rotation: sun_rotation(DateTime::from_secs(60 * 60 * 12)),
+        ..Default::default()
+    });
+    sun.insert(DirectionalLight {
+        color: Color::WHITE,
+        illuminance: 100_000.0,
     });
 }

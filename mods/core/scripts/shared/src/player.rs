@@ -26,9 +26,9 @@ use crate::{
 
 pub fn spawn_player(_: EntityId, event: PlayerConnect) {
     let entity = spawn_actor(SpawnActor {
-        // mesh: MeshInstance {
-        //     path: "assets/person2.glb".to_owned(),
-        // },
+        mesh: MeshInstance {
+            model: assets::RESOURCE_PERSON.into(),
+        },
         collider: Collider {
             friction: 1.0,
             restitution: 1.0,
@@ -121,19 +121,6 @@ pub fn spawn_player(_: EntityId, event: PlayerConnect) {
 
     event.player.set_active(camera.id());
 
-    let dir_light = Entity::spawn();
-    dir_light.insert(
-        Transform {
-            translation: Vec3::splat(100.0),
-            ..Default::default()
-        }
-        .looking_at(Vec3::splat(0.0), Vec3::Y),
-    );
-    dir_light.insert(DirectionalLight {
-        color: Color::WHITE,
-        illuminance: 100_000.0,
-    });
-
     let pawn = Entity::spawn();
     pawn.insert(Transform::from_translation(Vec3::splat(10.0)));
     pawn.insert(MeshInstance {
@@ -157,26 +144,6 @@ pub fn spawn_player(_: EntityId, event: PlayerConnect) {
     pawn.insert(Health {
         value: 100,
         max: 100,
-    });
-
-    let floor = Entity::spawn();
-    floor.insert(Transform::from_translation(Vec3::splat(0.0)));
-    floor.insert(RigidBody {
-        kind: RigidBodyKind::Fixed,
-        linvel: Vec3::ZERO,
-        angvel: Vec3::ZERO,
-    });
-    floor.insert(Collider {
-        friction: 1.0,
-        restitution: 1.0,
-        shape: ColliderShape::TriMesh(TriMesh::new(
-            vec![
-                Vec3::new(0.0, 0.0, 0.0),
-                Vec3::new(0.0, 1.0, 0.0),
-                Vec3::new(1.0, 0.0, 0.0),
-            ],
-            vec![0, 1, 2],
-        )),
     });
 }
 
