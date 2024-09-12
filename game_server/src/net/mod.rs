@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use ahash::{HashMap, HashSet};
 use game_common::components::components::Components;
+use game_common::components::Global;
 use game_common::entity::EntityId;
 use game_common::net::{ServerEntity, ServerResource};
 use game_net::message::{
@@ -58,6 +59,30 @@ pub fn sync_player(world: &WorldState, state: &mut ConnectionState) -> Vec<DataM
                 &state.entities,
             ));
         }
+    }
+
+    // Synchronize all entities with the `Global` component.
+    for entity in world.world.entities() {
+        let Ok(Global) = world.world.get_typed::<Global>(entity) else {
+            continue;
+        };
+
+        prev_entities.remove(&entity);
+
+        if state.entities.get(entity).is_none() {
+            state.entities.insert(entity);
+            state.known_entities.spawn(entity);
+        }
+
+        let entity_id = state.entities.get(entity).unwrap();
+        let server_state = world.world.components(entity);
+        let client_state = state.known_entities.components.get_mut(&entity).unwrap();
+        events.extend(sync_components(
+            entity_id,
+            client_state,
+            server_state,
+            &state.entities,
+        ));
     }
 
     for entity in prev_entities {

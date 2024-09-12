@@ -26,6 +26,7 @@ macro_rules! define_id {
 define_id! {
     TRANSFORM => 1,
     GLOBAL_TRANSFORM => 11,
+    GLOBAL => 12,
 
     // Rendering
     MESH_INSTANCE => 2,
@@ -390,4 +391,11 @@ impl Decode for TriMesh {
 
         Ok(Self::new(vertices, indices))
     }
+}
+
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash, Encode, Decode)]
+pub struct Global;
+
+impl Component for Global {
+    const ID: RecordReference = GLOBAL;
 }
