@@ -1,17 +1,23 @@
 use std::borrow::Borrow;
 use std::cell::UnsafeCell;
 use std::hash::{Hash, Hasher};
+use std::hint::unreachable_unchecked;
+use std::marker::PhantomData;
+use std::num::NonZeroUsize;
 use std::ptr::NonNull;
 
-use ahash::{HashMap, HashMapExt};
+use ahash::{HashMap, HashMapExt, RandomState};
+use hashbrown::HashTable;
 
 use crate::cell::UnsafeRefCell;
+
+use super::arena::Key;
 
 /// A least-recently-used cache.
 ///
 /// `LruCache` is fixed-size cache that drops the least recently used entries when its capacity is
 /// reached.
-#[derive(Debug)]
+// #[derive(Debug)]
 pub struct LruCache<K, V> {
     /// Map of key-value pairs.
     ///
@@ -19,26 +25,43 @@ pub struct LruCache<K, V> {
     /// the key `K` within the heap-allocated [`Bucket`].
     ///
     /// Therefore we MUST NOT drop the associated [`Bucket`] before removing the pair from the map.
+    entries: Box<[Entry<K, V>]>,
+    free_head: Option<usize>,
     // TODO: We can maybe make this more performant by reducing it to
     // just two allocated objects. A array stores all the buckets inline and
     // the hashmap collects pointers/indices into the array.
-    map: HashMap<KeyPtr<K>, NonNull<Bucket<K, V>>>,
+    map: HashTable<usize>,
     /// Pointer to the most recently used entry.
     ///
     /// This is where new entries will be inserted and accessed entries will be promoted to.
-    head: Option<NonNull<Bucket<K, V>>>,
+    head: Option<usize>,
     /// Pointer to the least recently used entry.
     ///
     /// This is where entries will be evicted from the cache if the capacity is reached.
-    tail: Option<NonNull<Bucket<K, V>>>,
+    tail: Option<usize>,
+    hash_builder: RandomState,
 }
 
 impl<K, V> LruCache<K, V> {
     pub fn new(capacity: usize) -> Self {
+        let mut entries = Vec::with_capacity(capacity);
+        for index in 0..capacity {
+            let index = if index < capacity {
+                Some(index + 1)
+            } else {
+                None
+            };
+
+            entries.push(Entry::Free(index));
+        }
+
         Self {
-            map: HashMap::with_capacity(capacity),
+            entries: entries.into_boxed_slice(),
+            free_head: Some(0),
+            map: HashTable::with_capacity(capacity),
             head: None,
             tail: None,
+            hash_builder: RandomState::new(),
         }
     }
 
@@ -78,20 +101,38 @@ impl<K, V> LruCache<K, V> {
             self.pop();
         }
 
-        let bucket = NonNull::new(Box::into_raw(Box::new(Bucket {
+        let hash = self.hash_builder.hash_one(&key);
+
+        let bucket = Bucket {
             value: UnsafeCell::new(value),
             key,
             pointers: UnsafeRefCell::new(Pointers {
                 prev: None,
-                next: None,
+                next: self.head,
             }),
-        })))
-        .unwrap();
+        };
 
-        self.insert_bucket(bucket);
+        let index = self.alloc(bucket);
 
-        self.map
-            .insert(KeyPtr::from_bucket(bucket.as_ptr().cast_const()), bucket);
+        match self.head {
+            Some(head) => unsafe {
+                let head = self.entries.get_unchecked_mut(head);
+                head.as_bucket_unchecked_mut().pointers.get_mut_safe().prev = Some(index);
+            },
+            None => self.tail = Some(index),
+        }
+        self.head = Some(index);
+
+        // match self.map.find_entry(hash, |(v, _)| v == &key) {
+        //     Ok(occupied) => {
+        //         todo!()
+        //     }
+        //     Err(vacant) => {}
+        // }
+        self.map.insert_unique(hash, index, |index| {
+            let bucket = unsafe { self.entries.get_unchecked(*index).as_bucket_unchecked() };
+            self.hash_builder.hash_one(&bucket.key)
+        });
     }
 
     /// Returns a reference to a value in the `LruCache`.
@@ -115,20 +156,33 @@ impl<K, V> LruCache<K, V> {
         K: Borrow<Q> + Hash + Eq,
         Q: Hash + Eq + ?Sized,
     {
-        let key_ref: &KeyRef<Q> = KeyRef::from_ref(key);
-        let ptr = *self.map.get(key_ref)?;
+        let hash = self.hash_builder.hash_one(key);
+        let &index = self.map.find(hash, |index| unsafe {
+            self.entries
+                .get_unchecked(*index)
+                .as_bucket_unchecked()
+                .key
+                .borrow()
+                == key
+        })?;
+
+        // let key_ref: &KeyRef<Q> = KeyRef::from_ref(key);
+        // let key = *self.map.get(key_ref)?;
 
         debug_assert!(self.head.is_some());
         debug_assert!(self.tail.is_some());
 
         // Promote the bucket by placing it at `self.head`.
         unsafe {
-            let bucket = ptr.as_ref();
-            let pointers = bucket.pointers.get();
+            let bucket = self
+                .entries
+                .get_unchecked_mut(index)
+                .as_bucket_unchecked_mut();
+            let pointers = bucket.pointers.get_mut_safe().clone();
 
             if cfg!(debug_assertions) {
                 if let (Some(next), Some(prev)) = (pointers.next, pointers.prev) {
-                    assert_ne!(ptr, next);
+                    assert_ne!(index, next);
                     assert_ne!(next, prev);
                 }
             }
@@ -136,35 +190,72 @@ impl<K, V> LruCache<K, V> {
             // Remove the entry from the linked list.
 
             match pointers.next {
-                Some(next) => next.as_ref().pointers.get_mut().prev = pointers.prev,
+                Some(next) => {
+                    let next = self
+                        .entries
+                        .get_unchecked_mut(next)
+                        .as_bucket_unchecked_mut();
+                    next.pointers.get_mut_safe().prev = pointers.prev;
+                }
                 None => self.tail = pointers.prev,
             }
 
             match pointers.prev {
-                Some(prev) => prev.as_ref().pointers.get_mut().next = pointers.next,
+                Some(prev) => {
+                    let prev = self
+                        .entries
+                        .get_unchecked_mut(prev)
+                        .as_bucket_unchecked_mut();
+                    prev.pointers.get_mut_safe().next = pointers.next;
+                }
                 None => self.head = pointers.next,
             }
 
-            drop(pointers);
-            self.insert_bucket(ptr);
+            // self.insert_bucket(bucket);
+            match self.head {
+                Some(head) => {
+                    self.entries
+                        .get_unchecked_mut(head)
+                        .as_bucket_unchecked_mut()
+                        .pointers
+                        .get_mut_safe()
+                        .prev = Some(index)
+                }
+                None => self.tail = Some(index),
+            }
 
-            Some(&mut *bucket.value.get())
+            self.head = Some(index);
+
+            let bucket = self
+                .entries
+                .get_unchecked_mut(index)
+                .as_bucket_unchecked_mut();
+            Some(bucket.value.get_mut())
+
+            // Some(&mut *bucket.value.get())
         }
     }
 
-    fn insert_bucket(&mut self, bucket: NonNull<Bucket<K, V>>) {
-        unsafe {
-            bucket.as_ref().pointers.get_mut().prev = None;
-            bucket.as_ref().pointers.get_mut().next = self.head;
-        }
+    // fn insert_bucket(&mut self, mut bucket: Bucket<K, V>) -> Key {
+    //     bucket.pointers.get_mut_safe().prev = None;
+    //     bucket.pointers.get_mut_safe().next = self.head;
 
-        match self.head {
-            Some(head) => unsafe { head.as_ref().pointers.get_mut().prev = Some(bucket) },
-            None => self.tail = Some(bucket),
-        }
+    //     let key = self.entries.insert(bucket);
 
-        self.head = Some(bucket);
-    }
+    //     match self.head {
+    //         Some(head) => unsafe {
+    //             self.entries
+    //                 .get_unchecked_mut(head)
+    //                 .pointers
+    //                 .get_mut_safe()
+    //                 .prev = Some(key)
+    //         },
+    //         None => self.tail = Some(key),
+    //     }
+
+    //     self.head = Some(key);
+    //     key
+    // }
 
     /// Removes the least recently used entry from the `LruCache`.
     pub fn pop(&mut self) -> Option<(K, V)>
@@ -173,34 +264,91 @@ impl<K, V> LruCache<K, V> {
     {
         let tail = self.tail?;
 
-        let res = self
-            .map
-            .remove(&KeyPtr::from_bucket(tail.as_ptr().cast_const()));
-        debug_assert_eq!(res, Some(tail));
+        let bucket = unsafe { self.entries.get_unchecked(tail).as_bucket_unchecked() };
+
+        let hash = self.hash_builder.hash_one(&bucket.key);
+        match self.map.find_entry(hash, |index| unsafe {
+            self.entries.get_unchecked(*index).as_bucket_unchecked().key == bucket.key
+        }) {
+            Ok(entry) => {
+                debug_assert_eq!(*entry.get(), tail);
+                entry.remove();
+            }
+            Err(_) => unsafe { unreachable_unchecked() },
+        }
+
+        // let res = self
+        //     .map
+        //     .remove(&KeyPtr::from_bucket(tail.as_ptr().cast_const()));
+        // debug_assert_eq!(res, Some(tail));
 
         unsafe {
-            let boxed = Box::from_raw(tail.as_ptr());
-            let pointers = boxed.pointers.get_mut();
+            // let boxed = Box::from_raw(tail.as_ptr());
+            // let pointers = boxed.pointers.get_mut();
+            let pointers = bucket.pointers.get().clone();
 
             match pointers.prev {
-                Some(prev) => prev.as_ref().pointers.get_mut().next = None,
+                Some(prev) => {
+                    let prev = self
+                        .entries
+                        .get_unchecked_mut(prev)
+                        .as_bucket_unchecked_mut();
+                    prev.pointers.get_mut_safe().next = None
+                }
                 None => self.head = None,
             }
 
             self.tail = pointers.prev;
 
-            Some((boxed.key, boxed.value.into_inner()))
+            // let bucket = self.entries.remove(tail).unwrap();
+            let bucket = self.dealloc(tail);
+
+            // Some((boxed.key, boxed.value.into_inner()))
+            Some((bucket.key, bucket.value.into_inner()))
+        }
+    }
+
+    fn alloc(&mut self, bucket: Bucket<K, V>) -> usize {
+        match self.free_head {
+            Some(index) => unsafe {
+                let slot = self.entries.get_unchecked_mut(index);
+
+                let next_free = match slot {
+                    Entry::Bucket(_) => unreachable_unchecked(),
+                    Entry::Free(next_free) => *next_free,
+                };
+
+                self.free_head = next_free;
+                *slot = Entry::Bucket(bucket);
+                index
+            },
+            None => todo!(),
+        }
+    }
+
+    unsafe fn dealloc(&mut self, index: usize) -> Bucket<K, V> {
+        unsafe {
+            let slot = self.entries.get_unchecked_mut(index);
+
+            let new = Entry::Free(self.free_head);
+
+            self.free_head = Some(index);
+
+            match core::mem::replace(slot, new) {
+                Entry::Bucket(bucket) => bucket,
+                Entry::Free(_) => unreachable_unchecked(),
+            }
         }
     }
 }
 
 impl<K, V> Drop for LruCache<K, V> {
     fn drop(&mut self) {
-        for (_, bucket) in self.map.drain() {
-            unsafe {
-                drop(Box::from_raw(bucket.as_ptr()));
-            }
-        }
+        // for (_, bucket) in self.map.drain() {
+        //     unsafe {
+        //         drop(Box::from_raw(bucket.as_ptr()));
+        //     }
+        // }
     }
 }
 
@@ -302,7 +450,7 @@ where
 }
 
 struct Bucket<K, V> {
-    pointers: UnsafeRefCell<Pointers<K, V>>,
+    pointers: UnsafeRefCell<Pointers>,
     key: K,
     // We need to wrap `value` in a `UnsafeCell` to allow borrowing it
     // mutably without having to borrow the entire `Bucket`, which
@@ -311,9 +459,31 @@ struct Bucket<K, V> {
     value: UnsafeCell<V>,
 }
 
-struct Pointers<K, V> {
-    prev: Option<NonNull<Bucket<K, V>>>,
-    next: Option<NonNull<Bucket<K, V>>>,
+#[derive(Clone, Debug)]
+struct Pointers {
+    prev: Option<usize>,
+    next: Option<usize>,
+}
+
+enum Entry<K, V> {
+    Bucket(Bucket<K, V>),
+    Free(Option<usize>),
+}
+
+impl<K, V> Entry<K, V> {
+    unsafe fn as_bucket_unchecked(&self) -> &Bucket<K, V> {
+        match self {
+            Self::Bucket(bucket) => bucket,
+            Self::Free(_) => unsafe { unreachable_unchecked() },
+        }
+    }
+
+    unsafe fn as_bucket_unchecked_mut(&mut self) -> &mut Bucket<K, V> {
+        match self {
+            Self::Bucket(bucket) => bucket,
+            Self::Free(_) => unsafe { unreachable_unchecked() },
+        }
+    }
 }
 
 #[cfg(test)]
