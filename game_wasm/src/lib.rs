@@ -65,13 +65,6 @@ pub(crate) enum ErrorImpl {
     NoResource(ResourceId),
 }
 
-impl ErrorImpl {
-    #[inline]
-    pub(crate) const fn into_error(self) -> Error {
-        Error(self)
-    }
-}
-
 impl Display for ErrorImpl {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {

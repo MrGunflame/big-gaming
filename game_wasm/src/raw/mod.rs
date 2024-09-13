@@ -13,7 +13,6 @@ use crate::record::RecordReference;
 pub const RESULT_OK: u32 = 0;
 pub const RESULT_NO_ENTITY: u32 = 1;
 pub const RESULT_NO_COMPONENT: u32 = 2;
-pub const RESULT_NO_INVENTORY_SLOT: u32 = 3;
 pub const RESULT_NO_RECORD: u32 = 1;
 
 #[guest_only]

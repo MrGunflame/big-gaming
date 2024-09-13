@@ -36,15 +36,26 @@ impl Primitive {
     }
 }
 
+/// A type that can be encoded into an arbitrary bytestream.
 pub trait Encode {
+    /// Encodes this value into the given [`Writer`].
     fn encode<W>(&self, writer: W)
     where
         W: Writer;
 }
 
+/// A type that can be decoded from an arbitrary bytestream.
 pub trait Decode: Sized {
+    /// An error that can occur while decoding this value.
     type Error: core::fmt::Debug;
 
+    /// Decodes this value from the given [`Reader`].
+    ///
+    /// # Errors
+    ///
+    /// Returns an `Error` if decoding fails for any reason:
+    /// - The reader has no more bytes, but the value was not fully decoded.
+    /// - The reader contained bytes invalid for this value.
     fn decode<R>(reader: R) -> Result<Self, Self::Error>
     where
         R: Reader;
@@ -95,7 +106,7 @@ where
 
     #[inline]
     fn peek(&self) -> Option<Primitive> {
-        R::peek(&self)
+        R::peek(self)
     }
 
     #[inline]
@@ -131,6 +142,12 @@ impl Writer for BinaryWriter {
         let offset = self.buffer.len();
         self.primitives.push(Field { primitive, offset });
         self.buffer.extend(data);
+    }
+}
+
+impl Default for BinaryWriter {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -270,7 +287,7 @@ impl Decode for u8 {
         //     return Err(DecodeError);
         // }
 
-        if let Some(byte) = reader.chunk().get(0).copied() {
+        if let Some(byte) = reader.chunk().first().copied() {
             reader.advance(1);
             Ok(byte)
         } else {

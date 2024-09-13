@@ -5,6 +5,15 @@ use crate::raw::{prefab_spawn, RESULT_NO_RECORD, RESULT_OK};
 use crate::record::RecordReference;
 use crate::{unreachable_unchecked, Error, ErrorImpl};
 
+/// Spawns a new prefab with the given `id`.
+///
+/// Returns the [`EntityId`] of the spawned prefab. You should attach the [`EntityId`] as a
+/// children of another entity.
+///
+/// # Errors
+///
+/// Returns an [`Error`] if spawning the prefab fails because `id` does not refer to a valid
+/// prefab.
 pub fn spawn_prefab(id: RecordReference) -> Result<EntityId, Error> {
     let mut out = MaybeUninit::<u64>::uninit();
 

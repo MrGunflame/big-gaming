@@ -4,7 +4,6 @@ pub use bytes::{Buf, BufMut};
 pub use game_macros::wasm__component as Component;
 
 use core::iter::FusedIterator;
-use core::mem::{self};
 use core::ptr::NonNull;
 
 use alloc::vec::Vec;
@@ -16,7 +15,7 @@ use crate::encoding::{
 use crate::world::RecordReference;
 use crate::{Error, ErrorImpl};
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Components {
     // FIXME: We don't have access to HashMap in no_std.
     components: Vec<(RecordReference, RawComponent)>,
@@ -64,10 +63,7 @@ impl Components {
             .find(|(id, _)| *id == T::ID)
             .ok_or(Error(ErrorImpl::NoComponent(T::ID)))?;
 
-        let reader = BinaryReader::new(
-            component.bytes.clone().into(),
-            component.fields.clone().into(),
-        );
+        let reader = BinaryReader::new(component.bytes.clone(), component.fields.clone().into());
         T::decode(reader).map_err(|_| Error(ErrorImpl::ComponentDecode))
     }
 
@@ -187,7 +183,7 @@ impl Decode for Components {
                 });
             }
 
-            let mut component_reader = BinaryReader::new(bytes.into(), fields.into());
+            let mut component_reader = BinaryReader::new(bytes, fields.into());
             let component = RawComponent::decode(&mut component_reader)?;
             components.components.push((id, component));
         }
@@ -202,7 +198,7 @@ impl Decode for Components {
 /// [`read_unaligned`].
 ///
 /// [`read_unaligned`]: ptr::read_unaligned
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct RawComponent {
     bytes: Vec<u8>,
     fields: Vec<Field>,
@@ -255,7 +251,7 @@ impl RawComponent {
     where
         T: AnyBitPattern,
     {
-        assert!(self.len() >= mem::size_of::<T>());
+        assert!(self.len() >= size_of::<T>());
 
         // SAFETY: We have validated that the buffer is big enough for `T`.
         unsafe { self.read_unchecked() }
@@ -267,13 +263,13 @@ impl RawComponent {
     ///
     /// # Safety
     ///
-    /// The buffer must have at least `mem::size_of::<T>` bytes.
+    /// The buffer must have at least `size_of::<T>` bytes.
     #[inline]
     pub unsafe fn read_unchecked<T>(&self) -> T
     where
         T: AnyBitPattern,
     {
-        debug_assert!(self.bytes.len() >= mem::size_of::<T>());
+        debug_assert!(self.bytes.len() >= size_of::<T>());
 
         // SAFETY: `T` implements `AnyBitPattern`, which means any
         // read possible value is inhabitet.
@@ -332,7 +328,7 @@ impl RawComponent {
             return f(val);
         }
 
-        assert!(self.bytes.len() >= mem::size_of::<T>());
+        assert!(self.bytes.len() >= size_of::<T>());
 
         // If the buffer is already correctly aligned for `T` we can just
         // cast the pointer into `self.bytes` to `T`.
@@ -342,7 +338,7 @@ impl RawComponent {
 
         let ptr = self.bytes.as_mut_ptr();
 
-        if ptr.align_offset(mem::align_of::<T>()) == 0 {
+        if ptr.align_offset(align_of::<T>()) == 0 {
             let value = unsafe { &mut *(ptr as *mut T) };
             f(value)
         } else {
@@ -401,7 +397,7 @@ trait IsZst {
 }
 
 impl<T> IsZst for T {
-    const IS_ZST: bool = mem::size_of::<Self>() == 0;
+    const IS_ZST: bool = size_of::<Self>() == 0;
 }
 
 pub trait Component: Encode + Decode {
@@ -446,13 +442,7 @@ mod tests {
             bytes: vec![0],
             fields: Vec::new(),
         };
-        assert!(
-            component
-                .bytes
-                .as_ptr()
-                .align_offset(mem::align_of::<Target>())
-                == 0
-        );
+        assert!(component.bytes.as_ptr().align_offset(align_of::<Target>()) == 0);
 
         component.update::<Target, _, _>(|val| {
             *val = Target(1);
@@ -470,7 +460,7 @@ mod tests {
         // If the buffer is aligned, manually "unalign" it by moving the pointer 1 byte
         // forward.
         let mut buf = vec![0; 64];
-        let is_aligned = buf.as_ptr().align_offset(mem::align_of::<Target>()) == 0;
+        let is_aligned = buf.as_ptr().align_offset(align_of::<Target>()) == 0;
         if is_aligned {
             // TODO: Can use `Vec::into_raw_parts` once stable.
             let ptr = buf.as_mut_ptr();
@@ -486,13 +476,7 @@ mod tests {
             bytes: buf,
             fields: Vec::new(),
         };
-        assert!(
-            component
-                .bytes
-                .as_ptr()
-                .align_offset(mem::align_of::<Target>())
-                != 0
-        );
+        assert!(component.bytes.as_ptr().align_offset(align_of::<Target>()) != 0);
 
         component.update::<Target, _, _>(|val| {
             *val = Target([1; 32]);
