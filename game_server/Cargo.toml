@@ -24,6 +24,7 @@ game_common = { version = "0.1.0", path = "../game_common" }
 game_core = { version = "0.1.0", path = "../game_core" }
 game_net = { version = "0.1.0", path = "../game_net" }
 parking_lot = "0.12.3"
+thiserror = "1.0.61"
 
 tokio = { version = "1.38.0", features = ["rt", "rt-multi-thread", "net", "sync", "macros", "time"] }
 tracing = "0.1.40"

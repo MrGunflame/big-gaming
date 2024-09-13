@@ -1,4 +1,5 @@
-use std::io::stdin;
+use std::io::{stdin, ErrorKind};
+use std::path::PathBuf;
 use std::process::ExitCode;
 
 use clap::Parser;
@@ -6,27 +7,56 @@ use clap::Parser;
 use game_core::command::{tokenize, ParseError};
 use game_core::modules;
 use game_server::command::Command;
-use game_server::config::Config;
+use game_server::config::{Config, LoadConfigError};
 use game_server::server::Server;
 use game_server::ServerState;
 use tokio::runtime::Builder;
 use tokio::sync::{mpsc, oneshot};
 
 #[derive(Debug, Parser)]
-#[command(author, version, about, long_about = None)]
-struct Args {}
+#[command(author, version, author, about, long_about = None)]
+struct Args {
+    /// Set the path to the config file.
+    #[arg(short, long, value_name = "FILE", default_value = "config.toml")]
+    config: PathBuf,
+    /// Create a new config file. Ignored if config file already exists
+    #[arg(long)]
+    create_config: bool,
+}
 
 fn main() -> ExitCode {
     game_core::logger::init();
 
-    let mut config_path = std::env::current_dir().unwrap();
-    config_path.push("config.toml");
+    let args = Args::parse();
 
-    let config = match Config::from_file(&config_path) {
+    let config = match Config::from_file(&args.config) {
         Ok(config) => config,
-        Err(err) => {
-            fatal!("failed to load config file from {:?}: {}", config_path, err);
-        }
+        Err(err) => match err {
+            LoadConfigError::Io(err) if err.kind() == ErrorKind::NotFound && args.create_config => {
+                tracing::info!(
+                    "creating new config file at {}",
+                    args.config.to_string_lossy()
+                );
+
+                match Config::create_default_config(&args.config) {
+                    Ok(config) => config,
+                    Err(err) => {
+                        fatal!(
+                            "failed to create config file at {}: {}",
+                            args.config.to_string_lossy(),
+                            err,
+                        );
+                    }
+                }
+            }
+            _ => {
+                fatal!(
+                    "failed to load config file from {}: {}",
+                    args.config.to_string_lossy(),
+                    err,
+                );
+            }
+        },
     };
 
     let res = modules::load_modules().unwrap();
