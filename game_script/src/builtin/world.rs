@@ -105,7 +105,7 @@ pub fn world_entity_component_get(
     // Note that a null pointer indicates that the guest does not request that
     // information and we should skip writing to it.
     if data_out != 0 {
-        caller.write_memory(data_out, &component.as_bytes())?;
+        caller.write_memory(data_out, component.as_bytes())?;
     }
 
     if fields_out != 0 {

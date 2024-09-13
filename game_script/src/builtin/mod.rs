@@ -10,8 +10,6 @@ mod record;
 mod system;
 mod world;
 
-use std::mem;
-
 use bytemuck::{AnyBitPattern, NoUninit};
 use thiserror::Error;
 use wasmtime::{Caller, Linker};
@@ -92,7 +90,7 @@ trait CallerExt {
     where
         T: Copy + AnyBitPattern,
     {
-        let len = mem::size_of::<T>();
+        let len = size_of::<T>();
         let bytes = self.read_memory(ptr, len as u32)?;
         Ok(bytemuck::pod_read_unaligned(bytes))
     }
@@ -108,7 +106,7 @@ trait CallerExt {
     where
         T: Copy + AnyBitPattern,
     {
-        let bytes = self.read_memory(ptr, len.wrapping_mul(mem::size_of::<T>() as u32))?;
+        let bytes = self.read_memory(ptr, len.wrapping_mul(size_of::<T>() as u32))?;
         Ok(bytemuck::cast_slice(bytes))
     }
 }
