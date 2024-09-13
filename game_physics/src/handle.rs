@@ -42,12 +42,6 @@ where
         Some(handle)
     }
 
-    pub fn remove2(&mut self, handle: T) -> Option<EntityId> {
-        let id = self.rev.remove(&handle)?;
-        self.handles.remove(&id);
-        Some(id)
-    }
-
     pub fn iter(&self) -> impl Iterator<Item = (EntityId, T)> + '_ {
         self.handles.iter().map(|(a, b)| (*a, *b))
     }
