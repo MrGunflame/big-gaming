@@ -5,7 +5,8 @@ use std::process::ExitCode;
 use clap::Parser;
 
 use game_core::command::{tokenize, ParseError};
-use game_core::modules;
+use game_core::modules::{self, load_scripts};
+use game_script::Executor;
 use game_server::command::Command;
 use game_server::config::{Config, LoadConfigError};
 use game_server::server::Server;
@@ -22,6 +23,9 @@ struct Args {
     /// Create a new config file. Ignored if config file already exists
     #[arg(long)]
     create_config: bool,
+    /// Path to the directory containing module archives.
+    #[arg(short, long, value_name = "DIR", default_value = "mods")]
+    mods: PathBuf,
 }
 
 fn main() -> ExitCode {
@@ -59,11 +63,23 @@ fn main() -> ExitCode {
         },
     };
 
-    let res = modules::load_modules().unwrap();
+    let modules = match modules::load_modules(&args.mods) {
+        Ok(res) => res,
+        Err(err) => {
+            fatal!(
+                "failed to load mods from {}: {}",
+                args.mods.to_string_lossy(),
+                err,
+            );
+        }
+    };
+
+    let mut executor = Executor::new();
+    load_scripts(&mut executor, &modules);
 
     let (cmd_tx, cmd_rx) = mpsc::channel(8);
 
-    let server_state = ServerState::new(cmd_rx, res.modules, config, res.executor);
+    let server_state = ServerState::new(cmd_rx, modules, config, executor);
 
     std::thread::spawn(move || {
         let stdin = stdin();

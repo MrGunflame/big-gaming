@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::Read;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use game_common::module::ModuleId;
 use game_common::record::{RecordId, RecordReference};
@@ -70,6 +70,35 @@ impl RecordProvider for Modules {
     }
 }
 
+pub fn load_scripts(executor: &mut Executor, modules: &Modules) {
+    for module in modules.iter() {
+        for record in module.records.iter() {
+            if record.kind != RecordKind::SCRIPT {
+                continue;
+            }
+
+            let script = std::str::from_utf8(&record.data).unwrap();
+
+            let mut file = File::open(&script).unwrap();
+            let mut buf = Vec::new();
+            file.read_to_end(&mut buf).unwrap();
+
+            let handle = match executor.load(&buf) {
+                Ok(handle) => handle,
+                Err(err) => {
+                    tracing::error!(
+                        "failed to load script from local path {:?}: {}",
+                        script,
+                        err,
+                    );
+
+                    continue;
+                }
+            };
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct ModuleData {
     pub id: ModuleId,
@@ -87,11 +116,15 @@ pub enum LoadError {
     BadDirectory(PathBuf, std::io::Error),
 }
 
-pub fn load_modules() -> Result<LoadResult, LoadError> {
-    let path = "./mods";
+pub fn load_modules<P>(path: P) -> Result<Modules, LoadError>
+where
+    P: AsRef<Path>,
+{
+    load_modules_inner(path.as_ref())
+}
 
+fn load_modules_inner(path: &Path) -> Result<Modules, LoadError> {
     let mut modules = Modules::new();
-    let mut executor = Executor::new();
 
     // Load the builtin core module.
     modules.insert(load_core());
@@ -101,7 +134,7 @@ pub fn load_modules() -> Result<LoadResult, LoadError> {
     let mut loader = ModuleLoader::new();
 
     rt.block_on(async {
-        let mut dir = match tokio::fs::read_dir("./mods").await {
+        let mut dir = match tokio::fs::read_dir(path).await {
             Ok(dir) => dir,
             Err(err) => {
                 return Err(LoadError::BadDirectory(path.into(), err));
@@ -126,7 +159,7 @@ pub fn load_modules() -> Result<LoadResult, LoadError> {
             match loader.load(data) {
                 Ok(mods) => {
                     for data in mods {
-                        load_module(data, &mut modules, &mut executor);
+                        load_module(data, &mut modules);
                     }
                 }
                 Err(Error::Duplicate(id)) => {
@@ -150,53 +183,10 @@ pub fn load_modules() -> Result<LoadResult, LoadError> {
 
     tracing::info!("loaded {} modules", modules.len());
 
-    Ok(LoadResult { modules, executor })
+    Ok(modules)
 }
 
-fn load_module(data: DataBuffer, modules: &mut Modules, executor: &mut Executor) {
-    for script in data
-        .records
-        .iter()
-        .filter(|r| r.kind == RecordKind::SCRIPT)
-        .map(|r| &r.data)
-    {
-        let Ok(script) = std::str::from_utf8(&script) else {
-            continue;
-        };
-
-        let buf = match (|| {
-            let mut file = File::open(&script)?;
-
-            let mut buf = Vec::new();
-            file.read_to_end(&mut buf)?;
-            Result::<_, std::io::Error>::Ok(buf)
-        })() {
-            Ok(buf) => buf,
-            Err(err) => {
-                tracing::error!(
-                    "failed to load script from local path {:?}: {}",
-                    script,
-                    err,
-                );
-
-                continue;
-            }
-        };
-
-        let handle = match executor.load(&buf) {
-            Ok(script) => script,
-            Err(err) => {
-                tracing::error!(
-                    "failed to load script from local path {:?}: {}",
-                    script,
-                    err,
-                );
-
-                continue;
-            }
-        };
-    }
-
+fn load_module(data: DataBuffer, modules: &mut Modules) {
     let mut records = Records::new();
     for record in &data.records {
         // In case a linked asset is not present we still want to load
@@ -236,36 +226,6 @@ pub enum ValidationErrorKind {
         found: RecordKind,
         expected: RecordKind,
     },
-}
-
-/// Fetch a record from either the module itself, or any dependant modules.
-fn fetch_record<'a>(
-    modules: &'a Modules,
-    module: &'a DataBuffer,
-    id: RecordReference,
-) -> Result<&'a Record, ValidationErrorKind> {
-    if let Some(module) = modules.get(id.module) {
-        if let Some(rec) = module.records.get(id.record) {
-            return Ok(rec);
-        } else {
-            // Module loaded, but doesn't contain record.
-            return Err(ValidationErrorKind::UnknownRecord {
-                module: id.module,
-                id: id.record,
-            });
-        }
-    }
-
-    if module.header.module.id != id.module {
-        return Err(ValidationErrorKind::UnknownDependency(id.module));
-    }
-
-    module.records.iter().find(|rec| rec.id == id.record).ok_or(
-        ValidationErrorKind::UnknownRecord {
-            module: id.module,
-            id: id.record,
-        },
-    )
 }
 
 /// Temporary store used while loading modules.

@@ -9,6 +9,7 @@ mod ui;
 mod utils;
 mod world;
 
+use std::path::PathBuf;
 use std::process::ExitCode;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -19,11 +20,12 @@ use config::Config;
 use game_common::sync::spsc;
 use game_common::world::World;
 use game_core::counter::{Interval, UpdateCounter};
-use game_core::modules::Modules;
+use game_core::modules::{load_scripts, Modules};
 use game_core::time::Time;
 use game_gizmos::Gizmos;
 use game_render::camera::RenderTarget;
 use game_render::{FpsLimit, Renderer};
+use game_script::Executor;
 use game_tasks::TaskPool;
 use game_tracing::trace_span;
 use game_ui::reactive::DocumentId;
@@ -43,6 +45,9 @@ use state::{GameState, UpdateError};
 struct Args {
     #[arg(short, long)]
     connect: Option<String>,
+    /// Path to the directory containing module archives.
+    #[arg(short, long, value_name = "DIR", default_value = "mods")]
+    mods: PathBuf,
 }
 
 fn main() -> ExitCode {
@@ -60,7 +65,10 @@ fn main() -> ExitCode {
         }
     };
 
-    let res = game_core::modules::load_modules().unwrap();
+    let modules = game_core::modules::load_modules(&args.mods).unwrap();
+
+    let mut executor = Executor::new();
+    load_scripts(&mut executor, &modules);
 
     let mut wm = WindowManager::new();
     let window_id = wm.windows_mut().spawn(WindowBuilder::new());
@@ -71,9 +79,9 @@ fn main() -> ExitCode {
 
     let mut state = GameState::new(
         config.clone(),
-        res.modules.clone(),
+        modules.clone(),
         inputs,
-        res.executor,
+        executor,
         cursor.clone(),
     );
 
@@ -128,7 +136,7 @@ fn main() -> ExitCode {
         fps_counter: &fps_counter,
         shutdown: &shutdown,
         gizmos: &gizmos,
-        modules: &res.modules,
+        modules: &modules,
     };
 
     std::thread::scope(|scope| {
