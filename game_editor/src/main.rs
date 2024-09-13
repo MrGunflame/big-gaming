@@ -48,8 +48,8 @@ impl State {
         let (tx, rx) = mpsc::channel();
 
         let records = Records::new();
-        let res = game_core::modules::load_modules().unwrap();
-        for module in res.modules.iter() {
+        let modules = game_core::modules::load_modules("mods").unwrap();
+        for module in modules.iter() {
             for record in module.records.iter() {
                 records.insert(module.id, record.clone());
             }
@@ -87,7 +87,7 @@ fn main() {
         rt.block_on(backend.run(&mut editor_state));
     });
 
-    let res = game_core::modules::load_modules().unwrap();
+    let modules = game_core::modules::load_modules("mods").unwrap();
 
     state
         .state
@@ -109,7 +109,7 @@ fn main() {
         pool: TaskPool::new(8),
         gizmos,
         world: World::new(),
-        modules: res.modules,
+        modules,
     };
 
     state.window_manager.run(app);
