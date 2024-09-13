@@ -31,6 +31,11 @@ pub struct CpalBackend {
 }
 
 impl CpalBackend {
+    /// Returns a new `CpalBackend`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an [`Error`] if connecting to the OS audio subsystem fails.
     pub fn new() -> Result<Self, Error> {
         let sample_rate = SampleRate(48_000);
         let channels = 2;

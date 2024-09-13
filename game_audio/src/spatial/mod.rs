@@ -43,8 +43,8 @@ pub(crate) fn process(listener: &Listener, emitter: &Emitter, frame: Frame) -> F
     debug_assert_ne!(left_pos, right_pos);
 
     let distance = f32::max(1.0, (emitter.translation - listener.translation).length());
-    output.left = output.left / distance;
-    output.right = output.right / distance;
+    output.left /= distance;
+    output.right /= distance;
 
     let emitter_left_dir = (emitter.translation - left_pos).normalize_or_zero();
     let emitter_right_dir = (emitter.translation - right_pos).normalize_or_zero();

@@ -13,7 +13,7 @@ pub struct AudioManager<B>
 where
     B: Backend,
 {
-    backend: B,
+    _backend: B,
     tx: Sender,
     sounds: Arena<PlayingSound>,
     tracks: Arena<ActiveTrack>,
@@ -36,7 +36,7 @@ where
         backend.create_output_stream(rx);
 
         Self {
-            backend,
+            _backend: backend,
             tx,
             sounds: Arena::new(),
             sample_rate: sample_rate as u32,

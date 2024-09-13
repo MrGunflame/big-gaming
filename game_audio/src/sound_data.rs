@@ -73,18 +73,18 @@ impl SoundData {
     }
 }
 
-fn copy_frames_from_buffer_ref(src: &AudioBufferRef) -> Vec<Frame> {
+fn copy_frames_from_buffer_ref(src: &AudioBufferRef<'_>) -> Vec<Frame> {
     match src {
-        AudioBufferRef::U8(buf) => copy_frames_from_buffer(&buf),
-        AudioBufferRef::U16(buf) => copy_frames_from_buffer(&buf),
-        AudioBufferRef::U24(buf) => copy_frames_from_buffer(&buf),
-        AudioBufferRef::U32(buf) => copy_frames_from_buffer(&buf),
-        AudioBufferRef::S8(buf) => copy_frames_from_buffer(&buf),
-        AudioBufferRef::S16(buf) => copy_frames_from_buffer(&buf),
-        AudioBufferRef::S24(buf) => copy_frames_from_buffer(&buf),
-        AudioBufferRef::S32(buf) => copy_frames_from_buffer(&buf),
-        AudioBufferRef::F32(buf) => copy_frames_from_buffer(&buf),
-        AudioBufferRef::F64(buf) => copy_frames_from_buffer(&buf),
+        AudioBufferRef::U8(buf) => copy_frames_from_buffer(buf),
+        AudioBufferRef::U16(buf) => copy_frames_from_buffer(buf),
+        AudioBufferRef::U24(buf) => copy_frames_from_buffer(buf),
+        AudioBufferRef::U32(buf) => copy_frames_from_buffer(buf),
+        AudioBufferRef::S8(buf) => copy_frames_from_buffer(buf),
+        AudioBufferRef::S16(buf) => copy_frames_from_buffer(buf),
+        AudioBufferRef::S24(buf) => copy_frames_from_buffer(buf),
+        AudioBufferRef::S32(buf) => copy_frames_from_buffer(buf),
+        AudioBufferRef::F32(buf) => copy_frames_from_buffer(buf),
+        AudioBufferRef::F64(buf) => copy_frames_from_buffer(buf),
     }
 }
 
