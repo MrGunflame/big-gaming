@@ -3,9 +3,9 @@ use proc_macro::TokenStream;
 #[cfg(feature = "net")]
 mod net;
 
-mod wasm;
-
+mod crash_handler;
 mod proto;
+mod wasm;
 
 macro_rules! reexport_attribute_macro {
     ($($ident:ident => $dst:path),*$(,)?) => {
@@ -77,4 +77,9 @@ pub fn wasm__decode(input: TokenStream) -> TokenStream {
 #[cfg(feature = "wasm")]
 pub fn wasm__component(input: TokenStream) -> TokenStream {
     wasm::component::component(input)
+}
+
+#[proc_macro_attribute]
+pub fn crash_handler_main(attr: TokenStream, input: TokenStream) -> TokenStream {
+    crash_handler::crash_handler_main(attr, input)
 }

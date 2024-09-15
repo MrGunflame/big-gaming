@@ -24,6 +24,7 @@ game_physics = { version = "0.1.0", path = "../game_physics" }
 game_ui = { version = "0.1.0", path = "../game_ui" }
 game_wasm = { version = "0.1.0", path = "../game_wasm" }
 game_gizmos = { version = "0.1.0", path = "../game_gizmos" }
+game_crash_handler = { version = "0.1.0", path = "../game_crash_handler" }
 
 ahash = "0.8.11"
 serde = { version = "1.0.204", features = ["derive"] }
