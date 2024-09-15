@@ -69,3 +69,6 @@ pub fn resource_len_runtime(id: u64, out: *mut usize) -> u32;
 
 #[guest_only]
 pub fn resource_get_runtime(id: u64, ptr: *mut u8) -> u32;
+
+#[guest_only]
+pub fn resource_update_runtime(id: u64, ptr: *const u8, len: usize) -> u32;

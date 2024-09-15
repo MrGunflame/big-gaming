@@ -75,6 +75,13 @@ pub fn run_scripts(
                     .unwrap_or(effect.id);
                 world.world.remove_resource(id);
             }
+            Effect::UpdateResource(effect) => {
+                let id = resource_id_remap
+                    .get(&effect.id)
+                    .copied()
+                    .unwrap_or(effect.id);
+                world.world.insert_resource_with_id(effect.data, id);
+            }
         }
     }
 }

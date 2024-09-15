@@ -7,8 +7,8 @@ use crate::encoding::{
     BinaryReader, BinaryWriter, Decode, DecodeError, Encode, Primitive, Reader, Writer,
 };
 use crate::raw::{
-    resource_create_runtime, resource_get_runtime, resource_len_runtime, RESULT_NO_ENTITY,
-    RESULT_OK,
+    resource_create_runtime, resource_get_runtime, resource_len_runtime, resource_update_runtime,
+    RESULT_NO_ENTITY, RESULT_OK,
 };
 use crate::record::Record;
 use crate::world::RecordReference;
@@ -208,4 +208,16 @@ where
 
     let reader = BinaryReader::new(bytes, VecDeque::default());
     T::decode(reader).map_err(|_| Error(crate::ErrorImpl::ComponentDecode))
+}
+
+pub fn update_resource<T>(id: RuntimeResourceId, resource: &T) -> Result<(), Error>
+where
+    T: Encode,
+{
+    let (fields, bytes) = BinaryWriter::new().encoded(resource);
+    match unsafe { resource_update_runtime(id.to_bits(), bytes.as_ptr(), bytes.len()) } {
+        RESULT_OK => Ok(()),
+        RESULT_NO_ENTITY => Err(Error(crate::ErrorImpl::NoResource(id.into()))),
+        _ => unreachable!(),
+    }
 }

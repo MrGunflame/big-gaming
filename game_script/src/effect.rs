@@ -34,6 +34,7 @@ pub enum Effect {
     PlayerSetActive(PlayerSetActive),
     CreateResource(CreateResource),
     DestroyResource(DestroyResource),
+    UpdateResource(UpdateResource),
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -64,4 +65,10 @@ pub struct CreateResource {
 #[derive(Clone, Debug)]
 pub struct DestroyResource {
     pub id: RuntimeResourceId,
+}
+
+#[derive(Clone, Debug)]
+pub struct UpdateResource {
+    pub id: RuntimeResourceId,
+    pub data: Arc<[u8]>,
 }
