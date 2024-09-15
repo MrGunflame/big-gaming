@@ -38,3 +38,4 @@ game_worldgen = { version = "0.1.0", path = "../game_worldgen" }
 game_tasks = { version = "0.1.0", path = "../game_tasks" }
 game_wasm = { version = "0.1.0", path = "../game_wasm" }
 game_prefab = { version = "0.1.0", path = "../game_prefab" }
+game_crash_handler = { version = "0.1.0", path = "../game_crash_handler" }

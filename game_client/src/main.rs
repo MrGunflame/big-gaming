@@ -22,6 +22,7 @@ use game_common::world::World;
 use game_core::counter::{Interval, UpdateCounter};
 use game_core::modules::{load_scripts, Modules};
 use game_core::time::Time;
+use game_crash_handler::main;
 use game_gizmos::Gizmos;
 use game_render::camera::RenderTarget;
 use game_render::{FpsLimit, Renderer};
@@ -48,8 +49,16 @@ struct Args {
     /// Path to the directory containing module archives.
     #[arg(short, long, value_name = "DIR", default_value = "mods")]
     mods: PathBuf,
+    /// Disable the crash handler shim.
+    // Note: This flag is handled by the crash handler shim
+    // and should not be used by us.
+    // It only exists so that the flag is included in the help
+    // message.
+    #[arg(long = "no-crash-handler")]
+    _no_crash_handler: bool,
 }
 
+#[main]
 fn main() -> ExitCode {
     game_core::logger::init();
 
