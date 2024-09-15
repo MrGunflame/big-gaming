@@ -28,6 +28,12 @@ impl DefaultBackend {
     }
 }
 
+impl Default for DefaultBackend {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Backend for DefaultBackend {
     fn create_output_stream(&mut self, rx: Receiver) {
         match self {

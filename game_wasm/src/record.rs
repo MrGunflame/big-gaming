@@ -178,7 +178,7 @@ impl FromStr for RecordId {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum ParseRecordIdError {
     Length(usize),
     InvalidChar { char: char, index: usize },

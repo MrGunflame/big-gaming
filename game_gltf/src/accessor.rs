@@ -123,10 +123,7 @@ where
     T: Item,
 {
     fn from_slice(buf: &[u8]) -> Self {
-        [
-            T::from_slice(buf),
-            T::from_slice(&buf[std::mem::size_of::<T>()..]),
-        ]
+        [T::from_slice(buf), T::from_slice(&buf[size_of::<T>()..])]
     }
 
     fn is_valid(self, min: Option<Self>, max: Option<Self>) -> bool {
@@ -170,8 +167,8 @@ where
     fn from_slice(buf: &[u8]) -> Self {
         [
             T::from_slice(buf),
-            T::from_slice(&buf[std::mem::size_of::<T>()..]),
-            T::from_slice(&buf[2 * std::mem::size_of::<T>()..]),
+            T::from_slice(&buf[size_of::<T>()..]),
+            T::from_slice(&buf[2 * size_of::<T>()..]),
         ]
     }
 
@@ -216,9 +213,9 @@ where
     fn from_slice(buf: &[u8]) -> Self {
         [
             T::from_slice(buf),
-            T::from_slice(&buf[std::mem::size_of::<T>()..]),
-            T::from_slice(&buf[2 * std::mem::size_of::<T>()..]),
-            T::from_slice(&buf[3 * std::mem::size_of::<T>()..]),
+            T::from_slice(&buf[size_of::<T>()..]),
+            T::from_slice(&buf[2 * size_of::<T>()..]),
+            T::from_slice(&buf[3 * size_of::<T>()..]),
         ]
     }
 
@@ -271,7 +268,7 @@ where
 {
     pub(crate) fn new(
         semantic: &'static str,
-        accessor: &Accessor,
+        accessor: &Accessor<'_>,
         data: &'a GltfStagingData,
     ) -> Result<Self, EofError> {
         let view = accessor.view().unwrap();
@@ -281,10 +278,10 @@ where
             .buffer(buffer.source(), view.offset(), view.length())
             .unwrap();
 
-        let stride = view.stride().unwrap_or(std::mem::size_of::<T>());
+        let stride = view.stride().unwrap_or(size_of::<T>());
 
         let start = accessor.offset();
-        let end = start + stride * (accessor.count() - 1) + std::mem::size_of::<T>();
+        let end = start + stride * (accessor.count() - 1) + size_of::<T>();
 
         let Some(slice) = buffer.get(start..end) else {
             let bytes_required = end - start;
@@ -314,8 +311,8 @@ where
     fn next(&mut self) -> Option<Self::Item> {
         let stride = if self.buffer.len() >= self.stride {
             self.stride
-        } else if self.buffer.len() >= std::mem::size_of::<T>() {
-            std::mem::size_of::<T>()
+        } else if self.buffer.len() >= size_of::<T>() {
+            size_of::<T>()
         } else {
             return None;
         };

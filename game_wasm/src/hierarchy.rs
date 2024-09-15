@@ -22,6 +22,10 @@ impl Children {
         self.entities.len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     pub fn insert(&mut self, entity: EntityId) {
         if !self.entities.contains(&entity) {
             self.entities.push(entity);

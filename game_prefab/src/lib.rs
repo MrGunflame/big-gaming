@@ -83,7 +83,7 @@ impl Prefab {
                     for id in children.get() {
                         let id = id.into_raw();
                         let child = *entity_keys.get(&id).unwrap();
-                        new_children.insert(child.into());
+                        new_children.insert(child);
                     }
 
                     let (fields, bytes) = BinaryWriter::new().encoded(&new_children);
@@ -100,7 +100,7 @@ impl Prefab {
         let mut children = Children::new();
         for entity in root_entities {
             let id = *entity_keys.get(&entity).unwrap();
-            children.insert(id.into());
+            children.insert(id);
         }
         let (fields, bytes) = BinaryWriter::new().encoded(&children);
         let component = RawComponent::new(bytes, fields);
@@ -131,7 +131,7 @@ impl Prefab {
         // pointing at them.
         let mut non_root_entities = HashSet::new();
 
-        for (_, components) in &self.entities {
+        for components in self.entities.values() {
             let Some(component) = components.get(&Children::ID.to_string()) else {
                 continue;
             };
@@ -155,12 +155,18 @@ impl Prefab {
         root
     }
 
+    /// Serializes the `Prefab` into bytes.
     pub fn to_bytes(&self) -> Vec<u8> {
         bincode::serialize(&self.entities).unwrap()
     }
 
+    /// Deserializes the `Prefab` from the given `bytes`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an [`Error`] if `bytes` does not contain a valid `Prefab`.
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, Error> {
-        let entities = bincode::deserialize(&bytes).map_err(Error::Decode)?;
+        let entities = bincode::deserialize(bytes).map_err(Error::Decode)?;
         Ok(Self { entities })
     }
 }

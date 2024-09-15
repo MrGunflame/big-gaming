@@ -148,6 +148,7 @@ impl Decode for RecordResourceId {
     }
 }
 
+/// Creates a new runtime resource.
 pub fn create_resource<T>(resource: &T) -> RuntimeResourceId
 where
     T: Encode,
@@ -164,6 +165,13 @@ where
     RuntimeResourceId::from_bits(id)
 }
 
+/// Returns the resource with the given `id`.
+///
+/// # Errors
+///
+/// Returns an [`Error`] in the following cases:
+/// - The resource with the given `id` does not exist.
+/// - Decoding of the resource into `T` has failed.
 pub fn get_resource<T>(id: ResourceId) -> Result<T, Error>
 where
     T: Decode,

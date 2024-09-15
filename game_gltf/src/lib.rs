@@ -89,10 +89,17 @@ pub struct GltfDecoder {
 }
 
 impl GltfDecoder {
-    pub fn new(slice: &[u8]) -> Result<Self, Error> {
+    /// Returns a new `GltfDecoder` from the given `bytes`.
+    ///
+    /// The `bytes` may either contain the binary glTF format or the glTF JSON format.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if `bytes` does not contain valid glTF data.
+    pub fn new(bytes: &[u8]) -> Result<Self, Error> {
         let _span = trace_span!("GltfDecoder::new").entered();
 
-        let gltf = Gltf::from_slice(slice)?;
+        let gltf = Gltf::from_slice(bytes)?;
 
         let mut buffers = HashMap::new();
         let mut external_sources = HashSet::new();
@@ -138,11 +145,7 @@ impl GltfDecoder {
     }
 
     pub fn pop_source(&mut self) -> Option<String> {
-        if let Some(source) = self.external_sources.iter().nth(0).cloned() {
-            Some(source)
-        } else {
-            None
-        }
+        self.external_sources.iter().nth(0).cloned()
     }
 
     pub fn push_source(&mut self, uri: String, buf: Vec<u8>) {
@@ -152,6 +155,12 @@ impl GltfDecoder {
         self.buffers.insert(uri, buf);
     }
 
+    /// Loads glTF data from a file and fetch all its resources.
+    ///
+    /// # Errors
+    ///
+    /// Returns an [`Error`] if the file contains invalid glTF data or refers to resources that
+    /// cannot be loaded.
     pub fn from_file<P>(path: P) -> Result<Self, Error>
     where
         P: AsRef<Path>,
@@ -165,7 +174,7 @@ impl GltfDecoder {
 
         for uri in decoder.external_sources.iter() {
             let mut path = Uri::from(path.as_ref());
-            path.push(&uri);
+            path.push(uri);
 
             let mut file = File::open(path.as_path())?;
 
@@ -178,6 +187,12 @@ impl GltfDecoder {
         Ok(decoder)
     }
 
+    /// Finishes the `GltfDecoder` returning the decoded [`GltfData`].
+    ///
+    /// # Errors
+    ///
+    /// Returns an [`Error`] if the `GltfDecoder` loaded invalid glTF data or any resources are
+    /// missing or invalid.
     pub fn finish(self) -> Result<GltfData, Error> {
         let _span = trace_span!("GltfDecoder::finish").entered();
 
@@ -269,11 +284,18 @@ pub struct GltfData {
 }
 
 impl GltfData {
+    /// Returns the default scene.
     pub fn default_scene(&self) -> Option<&GltfScene> {
         self.default_scene
             .map(|index| self.scenes.get(index).unwrap())
     }
 
+    /// Loads a glTF document from a single file.
+    ///
+    /// # Errors
+    ///
+    /// Returns an [`Error`] if the file does not exist, it contains invalid glTF data or if it
+    /// refers to external resources.
     pub fn from_file<P>(path: P) -> Result<Self, Error>
     where
         P: AsRef<Path>,
@@ -479,7 +501,7 @@ impl GltfStagingData {
         Ok(index)
     }
 
-    fn buffer(&self, source: Source, offset: usize, length: usize) -> Result<&[u8], Error> {
+    fn buffer(&self, source: Source<'_>, offset: usize, length: usize) -> Result<&[u8], Error> {
         let buf = match source {
             Source::Bin => {
                 let buf = self.buffers.get("").unwrap();
@@ -500,7 +522,11 @@ impl GltfStagingData {
         }
     }
 
-    fn load_positions(&self, accessor: &Accessor, positions: &mut Vec<Vec3>) -> Result<(), Error> {
+    fn load_positions(
+        &self,
+        accessor: &Accessor<'_>,
+        positions: &mut Vec<Vec3>,
+    ) -> Result<(), Error> {
         let data_type = accessor.data_type();
         if data_type != DataType::F32 {
             return Err(Error::InvalidDataType(data_type));
@@ -517,7 +543,7 @@ impl GltfStagingData {
         Ok(())
     }
 
-    fn load_normals(&self, accessor: &Accessor, normals: &mut Vec<Vec3>) -> Result<(), Error> {
+    fn load_normals(&self, accessor: &Accessor<'_>, normals: &mut Vec<Vec3>) -> Result<(), Error> {
         let data_type = accessor.data_type();
         if data_type != DataType::F32 {
             return Err(Error::InvalidDataType(data_type));
@@ -534,7 +560,11 @@ impl GltfStagingData {
         Ok(())
     }
 
-    fn load_tangents(&self, accessor: &Accessor, tangents: &mut Vec<Vec4>) -> Result<(), Error> {
+    fn load_tangents(
+        &self,
+        accessor: &Accessor<'_>,
+        tangents: &mut Vec<Vec4>,
+    ) -> Result<(), Error> {
         let data_type = accessor.data_type();
         if data_type != DataType::F32 {
             return Err(Error::InvalidDataType(data_type));
@@ -546,12 +576,12 @@ impl GltfStagingData {
         }
 
         let reader: ItemReader<'_, Tangents> = ItemReader::new("TANGENTS", accessor, self)?;
-        tangents.extend(reader.map(|arr| Vec4::from_array(arr)));
+        tangents.extend(reader.map(Vec4::from_array));
 
         Ok(())
     }
 
-    fn load_uvs(&self, accessor: &Accessor, uvs: &mut Vec<Vec2>) -> Result<(), Error> {
+    fn load_uvs(&self, accessor: &Accessor<'_>, uvs: &mut Vec<Vec2>) -> Result<(), Error> {
         let data_type = accessor.data_type();
         if data_type != DataType::F32 {
             return Err(Error::InvalidDataType(data_type));
@@ -568,7 +598,7 @@ impl GltfStagingData {
         Ok(())
     }
 
-    fn load_indices(&self, accessor: &Accessor, indices: &mut Vec<u32>) -> Result<(), Error> {
+    fn load_indices(&self, accessor: &Accessor<'_>, indices: &mut Vec<u32>) -> Result<(), Error> {
         let data_type = accessor.data_type();
 
         let dimensions = accessor.dimensions();
@@ -719,14 +749,14 @@ impl GltfStagingData {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Error)]
+#[derive(Clone, Debug, PartialEq, Eq, Error)]
 pub enum InvalidAccessorValue {
     #[error("invalid dimensions: {0}, expected {1:?}")]
     InvalidDimensions(u64, Dimensions),
     #[error("invalid scalar: {0}")]
     InvalidScalar(#[from] InvalidScalar),
     #[error("no value: {0}")]
-    NoArray(serde_json::Value),
+    NoArray(Value),
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -744,7 +774,7 @@ impl AccessorValue {
     fn load(
         dimensions: Dimensions,
         data_type: DataType,
-        value: serde_json::Value,
+        value: Value,
     ) -> Result<Self, InvalidAccessorValue> {
         match dimensions {
             Dimensions::Scalar => {
@@ -873,26 +903,26 @@ impl From<f32> for ScalarValue {
 }
 
 impl ScalarValue {
-    fn load(data_type: DataType, value: serde_json::Value) -> Result<Self, InvalidScalar> {
+    fn load(data_type: DataType, value: Value) -> Result<Self, InvalidScalar> {
         match value {
             Value::Number(number) => match data_type {
-                DataType::U8 => match number.as_u64().map(|val| val.try_into().ok()).flatten() {
+                DataType::U8 => match number.as_u64().and_then(|val| val.try_into().ok()) {
                     Some(val) => Ok(Self::U8(val)),
                     None => Err(InvalidScalar::InvalidU8(number)),
                 },
-                DataType::U16 => match number.as_u64().map(|val| val.try_into().ok()).flatten() {
+                DataType::U16 => match number.as_u64().and_then(|val| val.try_into().ok()) {
                     Some(val) => Ok(Self::U16(val)),
                     None => Err(InvalidScalar::InvalidU16(number)),
                 },
-                DataType::U32 => match number.as_u64().map(|val| val.try_into().ok()).flatten() {
+                DataType::U32 => match number.as_u64().and_then(|val| val.try_into().ok()) {
                     Some(val) => Ok(Self::U32(val)),
                     None => Err(InvalidScalar::InvalidU32(number)),
                 },
-                DataType::I8 => match number.as_i64().map(|val| val.try_into().ok()).flatten() {
+                DataType::I8 => match number.as_i64().and_then(|val| val.try_into().ok()) {
                     Some(val) => Ok(Self::I8(val)),
                     None => Err(InvalidScalar::InvalidI8(number)),
                 },
-                DataType::I16 => match number.as_i64().map(|val| val.try_into().ok()).flatten() {
+                DataType::I16 => match number.as_i64().and_then(|val| val.try_into().ok()) {
                     Some(val) => Ok(Self::I16(val)),
                     None => Err(InvalidScalar::InvalidI16(number)),
                 },
@@ -906,7 +936,7 @@ impl ScalarValue {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Error)]
+#[derive(Clone, Debug, PartialEq, Eq, Error)]
 pub enum InvalidScalar {
     #[error("not a scalar value: {0}")]
     NoScalar(Value),

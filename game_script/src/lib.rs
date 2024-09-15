@@ -3,7 +3,6 @@
 use std::collections::{HashMap, VecDeque};
 use std::fmt::{self, Debug, Formatter};
 
-use dependency::Dependencies;
 use effect::Effects;
 use events::DispatchEvent;
 use game_common::entity::EntityId;
@@ -22,7 +21,6 @@ use wasmtime::{Config, Engine, OptLevel, WasmBacktraceDetails};
 pub mod effect;
 
 mod builtin;
-mod dependency;
 mod events;
 mod instance;
 mod script;
@@ -59,6 +57,14 @@ impl Executor {
         }
     }
 
+    /// Loads a script.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`ScriptLoadError`] in the following cases:
+    /// - `bytes` contains invalid WebAssembly bytecode.
+    /// - The script imports or exports unknown symbols.
+    /// - Script initialization fails.
     pub fn load(&mut self, bytes: &[u8]) -> Result<Handle, ScriptLoadError> {
         let script = Script::new(bytes, &self.engine)?;
 
@@ -174,7 +180,6 @@ impl Executor {
             }
         }
 
-        let mut dependencies = Dependencies::default();
         let mut effects = Effects::default();
 
         // Reuse the same world so that dependant scripts don't overwrite
@@ -185,7 +190,6 @@ impl Executor {
             ctx.world as *const dyn WorldProvider,
             ctx.physics,
             &mut effects,
-            &mut dependencies,
             ctx.records as *const dyn RecordProvider,
             ctx.world.world().clone(),
             vec![],

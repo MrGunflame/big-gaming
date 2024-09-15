@@ -282,11 +282,8 @@ fn expand_generic_idents(generics: &Generics) -> TokenStream2 {
 
 fn add_trait_bound(generics: &mut Generics, bound: TraitBound) {
     for param in &mut generics.params {
-        match param {
-            GenericParam::Type(param) => {
-                param.bounds.push(TypeParamBound::Trait(bound.clone()));
-            }
-            _ => (),
+        if let GenericParam::Type(param) = param {
+            param.bounds.push(TypeParamBound::Trait(bound.clone()));
         }
     }
 }

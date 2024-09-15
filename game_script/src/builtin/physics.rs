@@ -135,9 +135,7 @@ pub fn physics_cast_shape(
                 .collect();
             let indices: Vec<u32> = caller
                 .read_slice(shape.indices_ptr, shape.indices_len)?
-                .iter()
-                .copied()
-                .collect();
+                .to_vec();
 
             assert_caller_precondition!(stringify!(physics_cast_shape), indices.len() % 3 == 0);
 
@@ -196,7 +194,7 @@ fn read_query_filter(caller: &mut Caller<'_, State>, ptr: u32) -> wasmtime::Resu
 
     let mut exclude_entities = Vec::new();
     for index in 0..filter.exclude_entities_len {
-        let ptr = filter.exclude_entities_ptr + (index * std::mem::size_of::<EntityId>() as u32);
+        let ptr = filter.exclude_entities_ptr + (index * size_of::<EntityId>() as u32);
 
         let entity = caller.read::<EntityId>(ptr)?;
         exclude_entities.push(entity);

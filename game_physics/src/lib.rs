@@ -19,6 +19,7 @@ use handle::HandleMap;
 use nalgebra::{Const, Isometry, OPoint};
 use parking_lot::Mutex;
 use rapier3d::geometry::{BroadPhaseMultiSap, TriMesh};
+use rapier3d::math::Real;
 use rapier3d::parry::query::ShapeCastOptions;
 use rapier3d::parry::shape::{Ball, Capsule, Cuboid};
 use rapier3d::prelude::{
@@ -326,10 +327,10 @@ impl Pipeline {
         // entity.
         match self.body_handles.get(entity) {
             Some(handle) => Some(handle),
-            None => match self.body_parents.get(&entity) {
-                Some(parent) => Some(self.body_handles.get(*parent).unwrap()),
-                None => None,
-            },
+            None => self
+                .body_parents
+                .get(&entity)
+                .map(|parent| self.body_handles.get(*parent).unwrap()),
         }
     }
 
@@ -344,13 +345,9 @@ impl Pipeline {
             dir: vector(ray.direction),
         };
 
-        let pred = |handle, collider: &Collider| {
+        let pred = |handle, _collider: &Collider| {
             let entity = self.collider_handles.get2(handle).unwrap();
-            if filter.exclude_entities.contains(&entity) {
-                false
-            } else {
-                true
-            }
+            !filter.exclude_entities.contains(&entity)
         };
         let filter = QueryFilter::new().predicate(&pred);
 
@@ -385,13 +382,9 @@ impl Pipeline {
         };
         let shape_vel = vector(direction);
 
-        let pred = |handle, collider: &Collider| {
+        let pred = |handle, _collider: &Collider| {
             let entity = self.collider_handles.get2(handle).unwrap();
-            if filter.exclude_entities.contains(&entity) {
-                false
-            } else {
-                true
-            }
+            !filter.exclude_entities.contains(&entity)
         };
         let filter = QueryFilter::new().predicate(&pred);
 
@@ -499,6 +492,12 @@ impl Pipeline {
     }
 }
 
+impl Default for Pipeline {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[derive(Debug)]
 pub struct CollisionHandler {
     events: Mutex<Vec<Collision>>,
@@ -509,6 +508,12 @@ impl CollisionHandler {
         Self {
             events: Mutex::new(Vec::with_capacity(16)),
         }
+    }
+}
+
+impl Default for CollisionHandler {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -534,11 +539,11 @@ impl EventHandler for CollisionHandler {
 
     fn handle_contact_force_event(
         &self,
-        _dt: rapier3d::prelude::Real,
+        _dt: Real,
         _bodies: &RigidBodySet,
         _colliders: &ColliderSet,
-        _contact_pair: &rapier3d::prelude::ContactPair,
-        _total_force_magnitude: rapier3d::prelude::Real,
+        _contact_pair: &ContactPair,
+        _total_force_magnitude: Real,
     ) {
     }
 }
@@ -546,18 +551,6 @@ impl EventHandler for CollisionHandler {
 #[derive(Copy, Clone, Debug)]
 pub struct Collision {
     handles: [ColliderHandle; 2],
-}
-
-fn extract_actor_rotation(input: Quat) -> Quat {
-    let mut direction = input * -Vec3::Z;
-    direction.y = direction.y.clamp(-1.0, 1.0);
-    let angle = if direction.x.is_sign_negative() {
-        -direction.y.asin()
-    } else {
-        direction.y.asin()
-    };
-
-    Quat::from_axis_angle(Vec3::Y, angle)
 }
 
 impl Debug for Pipeline {

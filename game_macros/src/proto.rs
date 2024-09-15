@@ -16,7 +16,7 @@ pub fn encode(input: TokenStream) -> TokenStream {
         Data::Union(_) => unimplemented!(),
     };
 
-    let ident = input.ident.clone();
+    let ident = input.ident;
 
     let size_impl = expand_size_impl(&fields);
     let encode_impl = expand_encode_impl(&fields);

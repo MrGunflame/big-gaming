@@ -8,12 +8,11 @@ use game_common::record::RecordReference;
 use game_common::world::World;
 use game_tracing::trace_span;
 use game_wasm::player::PlayerId;
-use game_wasm::raw::{RESULT_NO_COMPONENT, RESULT_NO_ENTITY, RESULT_NO_INVENTORY_SLOT};
+use game_wasm::raw::{RESULT_NO_COMPONENT, RESULT_NO_ENTITY};
 use game_wasm::resource::RuntimeResourceId;
 use wasmtime::{Engine, Instance, Linker, Module, Store};
 
 use crate::builtin::register_host_fns;
-use crate::dependency::{Dependencies, Dependency};
 use crate::effect::{
     CreateResource, DestroyResource, Effect, Effects, EntityComponentInsert, EntityComponentRemove,
     PlayerSetActive,
@@ -67,7 +66,7 @@ impl InstancePool {
         Ok(state)
     }
 
-    pub fn get<'a>(&'a mut self, state: State, handle: Handle) -> &mut Runnable {
+    pub fn get(&mut self, state: State, handle: Handle) -> &mut Runnable {
         let runnable = self.instances.get_mut(&handle).unwrap();
         *runnable.store.data_mut() = state;
         runnable
@@ -165,7 +164,6 @@ pub(crate) struct RunState {
     pub records: *const dyn RecordProvider,
     pub physics_pipeline: *const game_physics::Pipeline,
     effects: *mut Effects,
-    dependencies: *mut Dependencies,
     next_entity_id: u64,
     pub new_world: World,
     pub events: Vec<DispatchEvent>,
@@ -185,7 +183,6 @@ impl RunState {
         world: *const dyn WorldProvider,
         physics_pipeline: *const game_physics::Pipeline,
         effects: *mut Effects,
-        dependencies: *mut Dependencies,
         records: *const dyn RecordProvider,
         new_world: World,
         host_buffers: Vec<usize>,
@@ -196,7 +193,6 @@ impl RunState {
             physics_pipeline,
             effects,
             next_entity_id: 0,
-            dependencies,
             records,
             new_world,
             events: Vec::new(),
@@ -214,7 +210,6 @@ pub struct ErrorCode(u32);
 
 impl ErrorCode {
     pub const NO_ENTITY: Self = Self(RESULT_NO_ENTITY);
-    pub const NO_INVENTORY_SLOT: Self = Self(RESULT_NO_INVENTORY_SLOT);
     pub const NO_COMPONENT: Self = Self(RESULT_NO_COMPONENT);
 }
 
@@ -235,10 +230,6 @@ impl RunState {
 
     fn effects(&mut self) -> &mut Effects {
         unsafe { &mut *self.effects }
-    }
-
-    fn dependencies(&mut self) -> &mut Dependencies {
-        unsafe { &mut *self.dependencies }
     }
 
     pub fn physics_pipeline(&self) -> &game_physics::Pipeline {
@@ -272,8 +263,6 @@ impl RunState {
             return Err(ErrorCode::NO_COMPONENT);
         };
 
-        unsafe { &mut *self.dependencies }
-            .push(Dependency::EntityComponent(entity_id, component_id));
         Ok(component)
     }
 

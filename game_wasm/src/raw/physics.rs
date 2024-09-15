@@ -1,4 +1,4 @@
-use bytemuck::{AnyBitPattern, Pod, Zeroable};
+use bytemuck::{Pod, Zeroable};
 use game_macros::guest_only;
 
 use crate::entity::EntityId;

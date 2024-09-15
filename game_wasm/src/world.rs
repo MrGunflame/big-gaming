@@ -22,6 +22,7 @@ impl Entity {
         Self(id)
     }
 
+    /// Spawns a new `Entity`.
     pub fn spawn() -> Self {
         let mut entity_id = MaybeUninit::uninit();
         match unsafe { world_entity_spawn(entity_id.as_mut_ptr()) } {
@@ -32,6 +33,13 @@ impl Entity {
         Self(EntityId::from_raw(unsafe { entity_id.assume_init() }))
     }
 
+    /// Returns the component `T` of the current `Entity`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an [`Error`] in the following cases:
+    /// - The `Entity` does not have the component `T`.
+    /// - Decoding of the component `T` failed.
     pub fn get<T>(&self) -> Result<T, Error>
     where
         T: Component,
@@ -84,6 +92,7 @@ impl Entity {
         }
     }
 
+    /// Inserts a component into the `Entity`.
     pub fn insert<T>(&self, component: T)
     where
         T: Component,
@@ -111,6 +120,7 @@ impl Entity {
         }
     }
 
+    /// Removes the component from the `Entity`.
     pub fn remove<T>(&self)
     where
         T: Component,
@@ -130,6 +140,7 @@ impl Entity {
         }
     }
 
+    /// Despawns the `Entity`.
     pub fn despawn(self) {
         let entity_id = self.0.into_raw();
         match unsafe { world_entity_despawn(entity_id) } {
