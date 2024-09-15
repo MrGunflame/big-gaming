@@ -12,7 +12,7 @@ def main():
     build_dir = root + "/build"
     scripts_dir = build_dir + "/scripts"
 
-    create_mod_data(root, build_dir + "/core.mod")
+    #create_mod_data(root, build_dir + "/core.mod")
 
     for path in [build_dir, scripts_dir]:
         if not os.path.isdir(path):
@@ -45,7 +45,6 @@ def compile_script(path):
 
     args = [
         "cargo",
-        "+nightly",
         "build",
         "--target=wasm32-unknown-unknown",
     ]
