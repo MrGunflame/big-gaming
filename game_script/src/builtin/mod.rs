@@ -62,6 +62,7 @@ pub fn register_host_fns(store: &mut Linker<State>) {
         resource_destroy_runtime,
         resource_get_runtime,
         resource_len_runtime,
+        resource_update_runtime,
     }
 }
 

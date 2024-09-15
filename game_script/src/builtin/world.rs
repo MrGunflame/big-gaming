@@ -298,3 +298,26 @@ pub fn resource_get_runtime(mut caller: Caller<'_, State>, id: u64, ptr: u32) ->
     caller.write_memory(ptr, &data)?;
     Ok(RESULT_OK)
 }
+
+/// ```no_run
+/// # extern "C" {
+/// fn resource_update_runtime(id: u64, ptr: *mut u8, len: usize) -> u32;
+/// # }
+pub fn resource_update_runtime(
+    mut caller: Caller<'_, State>,
+    id: u64,
+    ptr: u32,
+    len: u32,
+) -> Result<u32> {
+    let _span = trace_span!("resource_update_runtime").entered();
+
+    let id = RuntimeResourceId::from_bits(id);
+    let data = Arc::from(caller.read_memory(ptr, len)?.to_vec());
+
+    let state = caller.data_mut().as_run_mut()?;
+    if !state.update_resource(id, data) {
+        return Ok(RESULT_NO_ENTITY);
+    } else {
+        Ok(RESULT_OK)
+    }
+}

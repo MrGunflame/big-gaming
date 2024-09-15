@@ -15,7 +15,7 @@ use wasmtime::{Engine, Instance, Linker, Module, Store};
 use crate::builtin::register_host_fns;
 use crate::effect::{
     CreateResource, DestroyResource, Effect, Effects, EntityComponentInsert, EntityComponentRemove,
-    PlayerSetActive,
+    PlayerSetActive, UpdateResource,
 };
 use crate::events::{DispatchEvent, OnInit, WasmFnTrampoline};
 use crate::{Entry, Handle, Pointer, RecordProvider, System, WorldProvider};
@@ -338,6 +338,17 @@ impl RunState {
         }));
         self.new_world.insert_resource_with_id(data, id);
         id
+    }
+
+    pub fn update_resource(&mut self, id: RuntimeResourceId, data: Arc<[u8]>) -> bool {
+        if self.new_world.get_resource(id).is_none() {
+            return false;
+        }
+
+        self.new_world.insert_resource_with_id(data.clone(), id);
+        self.effects()
+            .push(Effect::UpdateResource(UpdateResource { id, data }));
+        true
     }
 
     pub fn destroy_resource(&mut self, id: RuntimeResourceId) -> bool {

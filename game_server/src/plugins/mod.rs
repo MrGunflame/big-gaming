@@ -134,6 +134,13 @@ fn apply_effects(effects: Effects, world: &mut WorldState, level: &mut Level) {
                     .unwrap_or(effect.id);
                 world.world.remove_resource(id);
             }
+            Effect::UpdateResource(effect) => {
+                let id = resource_id_remap
+                    .get(&effect.id)
+                    .copied()
+                    .unwrap_or(effect.id);
+                world.world.insert_resource_with_id(effect.data, id);
+            }
         }
     }
 }
