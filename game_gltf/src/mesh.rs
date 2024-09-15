@@ -27,12 +27,12 @@ pub(crate) fn validate_mesh(mesh: &Mesh) {
         match indices {
             Indices::U16(indices) => {
                 for index in indices {
-                    mesh.positions()[index as usize];
+                    assert!(mesh.positions().len() > index as usize);
                 }
             }
             Indices::U32(indices) => {
                 for index in indices {
-                    mesh.positions()[index as usize];
+                    assert!(mesh.positions().len() > index as usize);
                 }
             }
         }
