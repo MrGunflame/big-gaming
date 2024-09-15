@@ -1,5 +1,7 @@
+use core::sync::atomic::{AtomicBool, Ordering};
+
 use game_wasm::components::builtin::{
-    Collider, ColliderShape, Color, Cuboid, DirectionalLight, MeshInstance, RigidBody,
+    Collider, ColliderShape, Color, Cuboid, DirectionalLight, Global, MeshInstance, RigidBody,
     RigidBodyKind, Transform,
 };
 use game_wasm::entity::EntityId;
@@ -39,6 +41,16 @@ pub fn cell_load(_: EntityId, event: CellLoad) {
         model: ResourceId::from(assets::RESOURCE_FLOOR),
     });
 
+    if let Ok(false) =
+        WEATHER_INIT.compare_exchange(false, true, Ordering::Relaxed, Ordering::Relaxed)
+    {
+        init_weather(min);
+    }
+}
+
+static WEATHER_INIT: AtomicBool = AtomicBool::new(false);
+
+fn init_weather(min: Vec3) {
     let sun = Entity::spawn();
     sun.insert(Transform {
         translation: min,
@@ -49,4 +61,5 @@ pub fn cell_load(_: EntityId, event: CellLoad) {
         color: Color::WHITE,
         illuminance: 100_000.0,
     });
+    sun.insert(Global);
 }
