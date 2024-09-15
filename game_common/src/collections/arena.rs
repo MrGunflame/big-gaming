@@ -111,6 +111,8 @@ impl<T> Arena<T> {
                     generation: entry.generation,
                 });
 
+                self.free_head = Some(key.index as usize);
+
                 let value = std::mem::replace(slot, new);
                 Some(match value {
                     Entry::Occupied(e) => e.value,
