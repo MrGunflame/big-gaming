@@ -155,7 +155,7 @@ impl Node for GizmoPass {
     fn render(&self, ctx: &mut RenderContext<'_>) {
         let _span = trace_span!("GizmoPass::render").entered();
 
-        let Some(camera) = self.camera.lock().clone() else {
+        let Some(camera) = *self.camera.lock() else {
             return;
         };
 
@@ -214,7 +214,7 @@ impl Node for GizmoPass {
         let render_pipeline = match pipelines.get(&ctx.format) {
             Some(pl) => pl,
             None => {
-                let pl = self.pipeline.build_pipeline(ctx.format, &ctx.device);
+                let pl = self.pipeline.build_pipeline(ctx.format, ctx.device);
                 pipelines.insert(ctx.format, pl);
                 pipelines.get(&ctx.format).unwrap()
             }
@@ -235,7 +235,7 @@ impl Node for GizmoPass {
             timestamp_writes: None,
         });
 
-        render_pass.set_pipeline(&render_pipeline);
+        render_pass.set_pipeline(render_pipeline);
 
         render_pass.set_bind_group(0, &bg, &[]);
         render_pass.draw_indirect(&indirect_buffer, 0);
