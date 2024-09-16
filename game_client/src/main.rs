@@ -9,6 +9,7 @@ mod ui;
 mod utils;
 mod world;
 
+use std::io::ErrorKind;
 use std::path::PathBuf;
 use std::process::ExitCode;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -16,7 +17,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use clap::Parser;
-use config::Config;
+use config::{Config, ConfigError};
 use game_common::sync::spsc;
 use game_common::world::World;
 use game_core::counter::{Interval, UpdateCounter};
@@ -44,7 +45,14 @@ use state::{GameState, UpdateError};
 #[derive(Clone, Debug, Default, Parser)]
 #[command(author, version, about, long_about = None)]
 struct Args {
-    #[arg(short, long)]
+    /// Path to the config file.
+    #[arg(short, long, value_name = "FILE", default_value = "config.toml")]
+    config: PathBuf,
+    /// Create a new config file. Ignored if config file already exists.
+    #[arg(long)]
+    create_config: bool,
+    /// Connect to the server with the address after startup.
+    #[arg(long)]
     connect: Option<String>,
     /// Path to the directory containing module archives.
     #[arg(short, long, value_name = "DIR", default_value = "mods")]
@@ -64,14 +72,36 @@ fn main() -> ExitCode {
 
     let args = Args::parse();
 
-    let mut config_path = std::env::current_dir().unwrap();
-    config_path.push("config.toml");
-    let config = match Config::from_file(&config_path) {
+    let config = match Config::from_file(&args.config) {
         Ok(config) => config,
-        Err(err) => {
-            tracing::error!("failed to load config file from {:?}: {}", config_path, err);
-            return ExitCode::FAILURE;
-        }
+        Err(err) => match err {
+            ConfigError::Io(err) if err.kind() == ErrorKind::NotFound && args.create_config => {
+                tracing::info!(
+                    "creating new config file at {}",
+                    args.config.to_string_lossy(),
+                );
+
+                match Config::create_default_config(&args.config) {
+                    Ok(config) => config,
+                    Err(err) => {
+                        tracing::error!(
+                            "failed to create config file at {}: {}",
+                            args.config.to_string_lossy(),
+                            err,
+                        );
+                        return ExitCode::FAILURE;
+                    }
+                }
+            }
+            _ => {
+                tracing::error!(
+                    "failed to load config file from {}: {}",
+                    args.config.to_string_lossy(),
+                    err,
+                );
+                return ExitCode::FAILURE;
+            }
+        },
     };
 
     let modules = game_core::modules::load_modules(&args.mods).unwrap();
@@ -106,7 +136,7 @@ fn main() -> ExitCode {
         }
     };
 
-    if let Some(fps_limit) = config.graphics.fps_limit {
+    if let Some(fps_limit) = config.graphics.fps_limit() {
         renderer.set_fps_limit(FpsLimit::limited(fps_limit));
     }
 
