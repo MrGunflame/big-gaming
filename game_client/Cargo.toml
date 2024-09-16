@@ -35,6 +35,7 @@ glam = "0.28.0"
 toml = "0.8.14"
 thiserror = "1.0.61"
 parking_lot = "0.12.3"
+toml_edit = "0.22.20"
 
 [features]
 default = []
