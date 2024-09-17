@@ -294,7 +294,7 @@ pub fn resource_get_runtime(mut caller: Caller<'_, State>, id: u64, ptr: u32) ->
         return Ok(RESULT_NO_ENTITY);
     };
 
-    memory.write_memory(ptr, &data)?;
+    memory.write_memory(ptr, data)?;
     Ok(RESULT_OK)
 }
 
@@ -315,7 +315,7 @@ pub fn resource_update_runtime(
 
     let state = caller.data_mut().as_run_mut()?;
     if !state.update_resource(id, data) {
-        return Ok(RESULT_NO_ENTITY);
+        Ok(RESULT_NO_ENTITY)
     } else {
         Ok(RESULT_OK)
     }
