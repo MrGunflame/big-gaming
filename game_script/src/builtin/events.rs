@@ -5,7 +5,7 @@ use wasmtime::{Caller, Result};
 use crate::events::DispatchEvent;
 use crate::instance::State;
 
-use super::CallerExt;
+use super::AsMemory;
 
 pub fn event_dispatch(
     mut caller: Caller<'_, State>,

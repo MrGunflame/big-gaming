@@ -5,7 +5,7 @@ use wasmtime::{Caller, Result};
 
 use crate::instance::State;
 
-use super::CallerExt;
+use super::AsMemory;
 
 pub(super) fn player_lookup(
     mut caller: Caller<'_, State>,

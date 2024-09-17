@@ -82,7 +82,27 @@ pub enum Error {
     BadPointer,
 }
 
-trait CallerExt {
+trait CallerExt<T> {
+    /// Splits the `Caller` into the memory of the guest and the data carried by the caller.
+    ///
+    /// # Errors
+    ///
+    /// Returns an `Error` if the guest does not expose a memory.
+    fn split(&mut self) -> wasmtime::Result<(GuestMemory<'_>, &mut T)>;
+}
+
+impl<'a, T> CallerExt<T> for Caller<'a, T> {
+    fn split(&mut self) -> wasmtime::Result<(GuestMemory<'_>, &mut T)> {
+        let memory = self
+            .get_export("memory")
+            .and_then(|m| m.into_memory())
+            .ok_or_else(|| wasmtime::Error::new(Error::NoMemory))?;
+        let (memory, data) = memory.data_and_store_mut(self);
+        Ok((GuestMemory { memory }, data))
+    }
+}
+
+trait AsMemory {
     fn read_memory(&mut self, ptr: u32, len: u32) -> wasmtime::Result<&[u8]>;
 
     fn write_memory(&mut self, ptr: u32, buf: &[u8]) -> wasmtime::Result<()>;
@@ -112,7 +132,7 @@ trait CallerExt {
     }
 }
 
-impl<'a, S> CallerExt for Caller<'a, S> {
+impl<'a, S> AsMemory for Caller<'a, S> {
     fn read_memory(&mut self, ptr: u32, len: u32) -> wasmtime::Result<&[u8]> {
         let memory = self
             .get_export("memory")
@@ -135,6 +155,33 @@ impl<'a, S> CallerExt for Caller<'a, S> {
 
         let bytes = memory
             .data_mut(self)
+            .get_mut(ptr as usize..ptr as usize + buf.len())
+            .ok_or_else(|| wasmtime::Error::new(Error::BadPointer))?;
+
+        bytes.copy_from_slice(buf);
+        Ok(())
+    }
+}
+
+/// A view into the memory of the guest.
+#[derive(Debug)]
+pub struct GuestMemory<'a> {
+    memory: &'a mut [u8],
+}
+
+impl<'a> AsMemory for GuestMemory<'a> {
+    fn read_memory(&mut self, ptr: u32, len: u32) -> wasmtime::Result<&[u8]> {
+        let bytes = self
+            .memory
+            .get(ptr as usize..ptr as usize + len as usize)
+            .ok_or_else(|| wasmtime::Error::new(Error::BadPointer))?;
+
+        Ok(bytes)
+    }
+
+    fn write_memory(&mut self, ptr: u32, buf: &[u8]) -> wasmtime::Result<()> {
+        let bytes = self
+            .memory
             .get_mut(ptr as usize..ptr as usize + buf.len())
             .ok_or_else(|| wasmtime::Error::new(Error::BadPointer))?;
 

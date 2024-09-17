@@ -10,9 +10,10 @@ use game_wasm::raw::{RESULT_NO_ENTITY, RESULT_NO_RECORD, RESULT_OK};
 use game_wasm::resource::RuntimeResourceId;
 use wasmtime::{Caller, Result};
 
+use crate::builtin::CallerExt;
 use crate::instance::{RunState, State};
 
-use super::CallerExt;
+use super::AsMemory;
 
 pub fn world_entity_spawn(mut caller: Caller<'_, State>, out: u32) -> Result<u32> {
     let _span = trace_span!("world_entity_spawn").entered();
@@ -89,29 +90,26 @@ pub fn world_entity_component_get(
         fields_out,
     );
 
-    let entity_id = EntityId::from_raw(entity_id);
-    let component_id: RecordReference = caller.read(component_id)?;
+    let (mut memory, data) = caller.split()?;
 
-    let component = match caller
-        .data_mut()
-        .as_run_mut()?
-        .get_component(entity_id, component_id)
-    {
-        // FIXME: We shouldn't have to clone here.
-        Ok(component) => component.clone(),
+    let entity_id = EntityId::from_raw(entity_id);
+    let component_id: RecordReference = memory.read(component_id)?;
+
+    let component = match data.as_run_mut()?.get_component(entity_id, component_id) {
+        Ok(component) => component,
         Err(err) => return Ok(err.to_u32()),
     };
 
     // Note that a null pointer indicates that the guest does not request that
     // information and we should skip writing to it.
     if data_out != 0 {
-        caller.write_memory(data_out, component.as_bytes())?;
+        memory.write_memory(data_out, component.as_bytes())?;
     }
 
     if fields_out != 0 {
         let fields = component.fields();
         let fields = encode_fields(fields);
-        caller.write_memory(fields_out, &fields)?;
+        memory.write_memory(fields_out, &fields)?;
     }
 
     Ok(RESULT_OK)
@@ -289,13 +287,14 @@ pub fn resource_len_runtime(mut caller: Caller<'_, State>, id: u64, out: u32) ->
 pub fn resource_get_runtime(mut caller: Caller<'_, State>, id: u64, ptr: u32) -> Result<u32> {
     let _span = trace_span!("resource_get_runtime").entered();
 
-    let state = caller.data_mut().as_run_mut()?;
+    let (mut memory, data) = caller.split()?;
+
+    let state = data.as_run_mut()?;
     let Some(data) = state.get_resource_runtime(RuntimeResourceId::from_bits(id)) else {
         return Ok(RESULT_NO_ENTITY);
     };
 
-    let data = data.to_vec();
-    caller.write_memory(ptr, &data)?;
+    memory.write_memory(ptr, &data)?;
     Ok(RESULT_OK)
 }
 

@@ -1,11 +1,14 @@
+use game_tracing::trace_span;
 use wasmtime::{Caller, Error};
 
 use crate::instance::State;
 
-use super::CallerExt;
+use super::{AsMemory, CallerExt};
 
 pub(super) fn host_buffer_len(caller: Caller<'_, State>, key: u32) -> wasmtime::Result<u32> {
-    match &caller.data().as_run()?.get_host_buffer(key) {
+    let _span = trace_span!("host_buffer_len").entered();
+
+    match caller.data().as_run()?.get_host_buffer(key) {
         Some(data) => Ok(data.len() as u32),
         None => Err(Error::msg("host buffer not loaded")),
     }
@@ -16,14 +19,12 @@ pub(super) fn host_buffer_get(
     key: u32,
     ptr: u32,
 ) -> wasmtime::Result<()> {
-    // FIXME: We don't have to clone buffer here.
-    match caller
-        .data()
-        .as_run()?
-        .get_host_buffer(key)
-        .map(|s| s.to_vec())
-    {
-        Some(data) => caller.write_memory(ptr, &data),
+    let _span = trace_span!("host_buffer_get").entered();
+
+    let (mut memory, data) = caller.split()?;
+
+    match data.as_run()?.get_host_buffer(key) {
+        Some(data) => memory.write_memory(ptr, &data),
         None => Err(Error::msg("host buffer not loaded")),
     }
 }
