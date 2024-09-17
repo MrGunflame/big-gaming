@@ -379,13 +379,15 @@ impl RunState {
 
         // For now we just use the top bit as a temporary sign.
         let bits = self.next_entity_id | (1 << 63);
-        self.next_entity_id += 1;
+        // If this overflows we have created more than 2**63 entities.
+        // This basically means we're fucked.
+        self.next_entity_id = self.next_entity_id.checked_add(1).unwrap();
         EntityId::from_raw(bits)
     }
 
     fn allocate_temporary_resource_id(&mut self) -> RuntimeResourceId {
         let bits = self.next_resource_id | (1 << 63);
-        self.next_resource_id += 1;
+        self.next_resource_id = self.next_resource_id.checked_add(1).unwrap();
         RuntimeResourceId::from_bits(bits)
     }
 }

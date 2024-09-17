@@ -10,7 +10,7 @@ mod record;
 mod system;
 mod world;
 
-use bytemuck::{AnyBitPattern, NoUninit};
+use bytemuck::{AnyBitPattern, NoUninit, Pod, Zeroable};
 use thiserror::Error;
 use wasmtime::{Caller, Linker};
 
@@ -103,19 +103,47 @@ impl<'a, T> CallerExt<T> for Caller<'a, T> {
 }
 
 trait AsMemory {
+    /// Reads `len` bytes of guest memory starting at `ptr`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an [`Error`] if the read is outside the bounds of the memory.
+    ///
+    /// [`Error`]: wasmtime::Error
     fn read_memory(&mut self, ptr: u32, len: u32) -> wasmtime::Result<&[u8]>;
 
+    /// Writes `buf` into guest memory starting at `ptr`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an [`Error`] if the write exceeds the bounds of the memory.
+    ///
+    /// [`Error`]: wasmtime::Error
     fn write_memory(&mut self, ptr: u32, buf: &[u8]) -> wasmtime::Result<()>;
 
+    /// Read a `T` from the given `ptr`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an [`Error`] if the memory is too short to read `T` starting from `ptr`.
+    ///
+    /// [`Error`]: wasmtime::Error
     fn read<T>(&mut self, ptr: u32) -> wasmtime::Result<T>
     where
-        T: Copy + AnyBitPattern,
+        T: AnyBitPattern,
     {
-        let len = size_of::<T>();
-        let bytes = self.read_memory(ptr, len as u32)?;
+        let len = Usize::size_of::<T>();
+        let bytes = self.read_memory(ptr, len.0)?;
         Ok(bytemuck::pod_read_unaligned(bytes))
     }
 
+    /// Write a `T` to the given `ptr`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an [`Error`] if the memory is too short to write `T` starting at `ptr`.
+    ///
+    /// [`Error`]: wasmtime::Error
     fn write<T>(&mut self, ptr: u32, value: &T) -> wasmtime::Result<()>
     where
         T: Copy + NoUninit,
@@ -123,17 +151,27 @@ trait AsMemory {
         self.write_memory(ptr, bytemuck::bytes_of(value))
     }
 
+    /// Read a slice of `len` `T`s from the given `ptr`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an [`Error`] if the memory is too short to read `len` `T`s starting from `ptr`.
+    ///
+    /// [`Error`]: wasmtime::Error
     fn read_slice<T>(&mut self, ptr: u32, len: u32) -> wasmtime::Result<&[T]>
     where
         T: Copy + AnyBitPattern,
     {
-        let bytes = self.read_memory(ptr, len.wrapping_mul(size_of::<T>() as u32))?;
+        let bytes = self.read_memory(ptr, len.wrapping_mul(Usize::size_of::<T>().0))?;
         Ok(bytemuck::cast_slice(bytes))
     }
 }
 
 impl<'a, S> AsMemory for Caller<'a, S> {
     fn read_memory(&mut self, ptr: u32, len: u32) -> wasmtime::Result<&[u8]> {
+        let start = Usize(ptr).to_usize();
+        let end = start.wrapping_add(Usize(len).to_usize());
+
         let memory = self
             .get_export("memory")
             .and_then(|m| m.into_memory())
@@ -141,13 +179,16 @@ impl<'a, S> AsMemory for Caller<'a, S> {
 
         let bytes = memory
             .data(self)
-            .get(ptr as usize..ptr as usize + len as usize)
+            .get(start..end)
             .ok_or_else(|| wasmtime::Error::new(Error::BadPointer))?;
 
         Ok(bytes)
     }
 
     fn write_memory(&mut self, ptr: u32, buf: &[u8]) -> wasmtime::Result<()> {
+        let start = Usize(ptr).to_usize();
+        let end = start.wrapping_add(buf.len());
+
         let memory = self
             .get_export("memory")
             .and_then(|m| m.into_memory())
@@ -155,7 +196,7 @@ impl<'a, S> AsMemory for Caller<'a, S> {
 
         let bytes = memory
             .data_mut(self)
-            .get_mut(ptr as usize..ptr as usize + buf.len())
+            .get_mut(start..end)
             .ok_or_else(|| wasmtime::Error::new(Error::BadPointer))?;
 
         bytes.copy_from_slice(buf);
@@ -171,18 +212,24 @@ pub struct GuestMemory<'a> {
 
 impl<'a> AsMemory for GuestMemory<'a> {
     fn read_memory(&mut self, ptr: u32, len: u32) -> wasmtime::Result<&[u8]> {
+        let start = Usize(ptr).to_usize();
+        let end = start.wrapping_add(Usize(len).to_usize());
+
         let bytes = self
             .memory
-            .get(ptr as usize..ptr as usize + len as usize)
+            .get(start..end)
             .ok_or_else(|| wasmtime::Error::new(Error::BadPointer))?;
 
         Ok(bytes)
     }
 
     fn write_memory(&mut self, ptr: u32, buf: &[u8]) -> wasmtime::Result<()> {
+        let start = Usize(ptr).to_usize();
+        let end = start.wrapping_add(buf.len());
+
         let bytes = self
             .memory
-            .get_mut(ptr as usize..ptr as usize + buf.len())
+            .get_mut(start..end)
             .ok_or_else(|| wasmtime::Error::new(Error::BadPointer))?;
 
         bytes.copy_from_slice(buf);
@@ -236,3 +283,32 @@ macro_rules! assert_caller_precondition {
 }
 
 pub(crate) use {assert_caller_precondition, log_fn_invocation};
+
+/// A `usize`-sized type for the guest.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Zeroable, Pod)]
+#[repr(transparent)]
+struct Usize(u32);
+
+impl Usize {
+    const MAX_USIZE: usize = u32::MAX as usize;
+
+    #[allow(clippy::cast_possible_truncation)]
+    fn new_unchecked(value: usize) -> Self {
+        Self(value as u32)
+    }
+
+    #[inline]
+    #[allow(clippy::cast_possible_truncation)]
+    fn to_usize(self) -> usize {
+        const _: () = assert!(usize::BITS >= u32::BITS);
+        // This cast will always suceed if the above assertions
+        // is true.
+        self.0 as usize
+    }
+
+    #[allow(clippy::cast_possible_truncation)]
+    const fn size_of<T>() -> Self {
+        const { assert!(size_of::<T>() <= Self::MAX_USIZE) }
+        Self(size_of::<T>() as u32)
+    }
+}
