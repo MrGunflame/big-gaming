@@ -10,7 +10,7 @@ use game_wasm::raw::physics::{
 use glam::{Quat, Vec3};
 use wasmtime::Caller;
 
-use crate::builtin::{assert_caller_precondition, log_fn_invocation, CallerExt};
+use crate::builtin::{assert_caller_precondition, log_fn_invocation, AsMemory};
 use crate::instance::State;
 
 pub fn physics_cast_ray(

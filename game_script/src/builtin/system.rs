@@ -6,7 +6,7 @@ use wasmtime::{Caller, Result};
 use crate::instance::State;
 use crate::{Entry, Pointer, System, SystemQuery};
 
-use super::CallerExt;
+use super::AsMemory;
 
 pub fn register_system(mut caller: Caller<'_, State>, params: u32, fn_ptr: u32) -> Result<()> {
     let _span = trace_span!("register_system").entered();
