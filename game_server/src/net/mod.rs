@@ -1,17 +1,16 @@
-use std::sync::Arc;
-
-use ahash::{HashMap, HashSet};
-use game_common::components::components::Components;
-use game_common::components::Global;
+use ahash::HashSet;
+use game_common::components::components::RawComponent;
+use game_common::components::{Global, GlobalTransform};
 use game_common::entity::EntityId;
-use game_common::net::{ServerEntity, ServerResource};
+use game_common::net::ServerResource;
+use game_common::world::{CellId, World};
 use game_net::message::{
-    DataMessageBody, EntityComponentAdd, EntityComponentRemove, EntityComponentUpdate,
-    EntityDestroy, ResourceCreate, ResourceDestroy,
+    DataMessageBody, EntityComponentAdd, EntityComponentRemove, EntityDestroy, ResourceCreate,
+    ResourceDestroy,
 };
-use game_wasm::resource::RuntimeResourceId;
 use tracing::trace_span;
 
+use crate::plugins::TickEvent;
 use crate::world::state::WorldState;
 
 use self::entities::Entities;
@@ -21,188 +20,220 @@ pub mod entities;
 pub mod state;
 
 /// Synchronize a player to the current `world`.
-pub fn sync_player(world: &WorldState, state: &mut ConnectionState) -> Vec<DataMessageBody> {
+pub(crate) fn sync_player(
+    world: &WorldState,
+    state: &mut ConnectionState,
+    tick_events: &[TickEvent],
+    new_cell: CellId,
+    streamer_distance: u32,
+) -> Vec<DataMessageBody> {
     let _span = trace_span!("sync_player").entered();
 
     let mut events = Vec::new();
 
-    events.extend(sync_resources(world, &mut state.known_resources));
+    if state.cells.origin() != new_cell {
+        tracing::info!("Moving host from {:?} to {:?}", state.cells, new_cell);
 
-    // Entities that were known to the client in the previous tick.
-    let mut prev_entities: HashSet<_> = state.known_entities.components.keys().copied().collect();
+        let old_cells: HashSet<_> = state.cells.cells().into_iter().copied().collect();
+        state.cells.set(new_cell, streamer_distance);
+        let new_cells: HashSet<_> = state.cells.cells().into_iter().copied().collect();
 
-    for cell_id in state.cells.iter() {
-        let cell = world.cell(cell_id);
+        // Despawn all entities in cells that are streamed out.
+        for cell in old_cells.difference(&new_cells) {
+            for entity in world.cell(*cell).entities() {
+                // `Global` entities are always replicated to the client.
+                // We must retain them even if their cell is streamed out.
+                if let Ok(Global) = world.world.get_typed(entity) {
+                    continue;
+                }
 
-        for entity in cell.entities() {
-            prev_entities.remove(&entity);
+                let Some(server_entity) = state.entities.remove(entity) else {
+                    continue;
+                };
 
-            if state.entities.get(entity).is_none() {
-                state.entities.insert(entity);
-                state.known_entities.spawn(entity);
+                events.push(DataMessageBody::EntityDestroy(EntityDestroy {
+                    entity: server_entity,
+                }));
+            }
+        }
+
+        // Spawn in all entities in cells that are streamed in.
+        for cell in new_cells.difference(&old_cells) {
+            for entity in world.cell(*cell).entities() {
+                // Entities referencing this entity may have already caused it
+                // to be spawned.
+                let server_entity = match state.entities.get(entity) {
+                    Some(server_entity) => server_entity,
+                    None => state.entities.insert(entity),
+                };
+
+                for (id, component) in world.world.components(entity).iter() {
+                    let Some(component) = remap_component(&mut state.entities, component.clone())
+                    else {
+                        continue;
+                    };
+
+                    events.push(DataMessageBody::EntityComponentAdd(EntityComponentAdd {
+                        entity: server_entity,
+                        component_id: id,
+                        component,
+                    }));
+                }
             }
         }
     }
 
-    for cell_id in state.cells.iter() {
-        let cell = world.cell(cell_id);
+    for event in tick_events {
+        match event {
+            TickEvent::EntitySpawn(entity) => {
+                let mut should_spawn = false;
 
-        for entity in cell.entities() {
-            let entity_id = state.entities.get(entity).unwrap();
+                if let Ok(Global) = world.world.get_typed(*entity) {
+                    should_spawn = true;
+                }
 
-            let server_state = world.world.components(entity);
-            let client_state = state.known_entities.components.get_mut(&entity).unwrap();
-            events.extend(sync_components(
-                entity_id,
-                client_state,
-                server_state,
-                &state.entities,
-            ));
+                if let Ok(GlobalTransform(transform)) = world.world.get_typed(*entity) {
+                    should_spawn |= state.cells.contains(CellId::from(transform.translation));
+                }
+
+                // If the client moved in this frame and the entity was spawned
+                // into a cell that was just streamed in the entity was already
+                // spawned. Don't spawn it twice.
+                if should_spawn && !state.entities.contains(*entity) {
+                    state.entities.insert(*entity);
+                }
+            }
+            TickEvent::EntityDespawn(entity) => {
+                let Some(server_entity) = state.entities.remove(*entity) else {
+                    continue;
+                };
+
+                events.push(DataMessageBody::EntityDestroy(EntityDestroy {
+                    entity: server_entity,
+                }));
+            }
+            TickEvent::EntityComponentInsert(entity, id) => {
+                let Some(server_entity) = state.entities.get(*entity) else {
+                    continue;
+                };
+
+                let Some(component) = world.world.get(*entity, *id) else {
+                    continue;
+                };
+
+                let Some(component) = remap_component(&mut state.entities, component.clone())
+                else {
+                    continue;
+                };
+
+                events.push(DataMessageBody::EntityComponentAdd(EntityComponentAdd {
+                    entity: server_entity,
+                    component_id: *id,
+                    component,
+                }));
+            }
+            TickEvent::EntityComponentRemove(entity, id) => {
+                let Some(server_entity) = state.entities.get(*entity) else {
+                    continue;
+                };
+
+                events.push(DataMessageBody::EntityComponentRemove(
+                    EntityComponentRemove {
+                        entity: server_entity,
+                        component: *id,
+                    },
+                ));
+            }
+            TickEvent::ResourceCreate(id) | TickEvent::ResourceUpdate(id) => {
+                let Some(data) = world.world.get_resource(*id) else {
+                    continue;
+                };
+
+                events.push(DataMessageBody::ResourceCreate(ResourceCreate {
+                    id: ServerResource(id.to_bits()),
+                    data: data.to_vec(),
+                }));
+            }
+            TickEvent::ResourceDestroy(id) => {
+                events.push(DataMessageBody::ResourceDestroy(ResourceDestroy {
+                    id: ServerResource(id.to_bits()),
+                }));
+            }
         }
-    }
-
-    // Synchronize all entities with the `Global` component.
-    for entity in world.world.entities() {
-        let Ok(Global) = world.world.get_typed::<Global>(entity) else {
-            continue;
-        };
-
-        prev_entities.remove(&entity);
-
-        if state.entities.get(entity).is_none() {
-            state.entities.insert(entity);
-            state.known_entities.spawn(entity);
-        }
-
-        let entity_id = state.entities.get(entity).unwrap();
-        let server_state = world.world.components(entity);
-        let client_state = state.known_entities.components.get_mut(&entity).unwrap();
-        events.extend(sync_components(
-            entity_id,
-            client_state,
-            server_state,
-            &state.entities,
-        ));
-    }
-
-    for entity in prev_entities {
-        state.known_entities.despawn(entity);
-        let server_entity = state.entities.remove(entity).unwrap();
-
-        events.push(DataMessageBody::EntityDestroy(EntityDestroy {
-            entity: server_entity,
-        }));
     }
 
     events
 }
 
-/// Synchronize the current server components into the client components for the given entity.
-fn sync_components(
-    entity: ServerEntity,
-    client_state: &mut Components,
-    server_state: &Components,
-    entities: &Entities,
-) -> Vec<DataMessageBody> {
-    let mut events = Vec::new();
+pub fn full_update(state: &mut ConnectionState, world: &World) -> Vec<DataMessageBody> {
+    let _span = trace_span!("full_update").entered();
 
-    for (id, component) in server_state.iter() {
-        // FIXME: It is possible for a component to refer to an entity that is
-        // loaded but outside the loaded area around the client, i.e. it is not
-        // actually synchronized to the client. We just ignore the entity for
-        // now.
-        let Ok(component) = component
-            .clone()
-            .remap(|id| entities.get(id).map(|id| EntityId::from_raw(id.0)))
-        else {
-            continue;
-        };
-
-        // Component does not exist on client.
-        if client_state.get(id).is_none() {
-            client_state.insert(id, component.clone());
-
-            events.push(DataMessageBody::EntityComponentAdd(EntityComponentAdd {
-                entity,
-                component_id: id,
-                component,
-            }));
-
-            continue;
-        }
-
-        // Component exists on server and client.
-        let server_component = component;
-        let client_component = client_state.get(id).unwrap();
-
-        if &server_component != client_component {
-            client_state.insert(id, server_component.clone());
-
-            events.push(DataMessageBody::EntityComponentUpdate(
-                EntityComponentUpdate {
-                    entity,
-                    component_id: id,
-                    component: server_component,
-                },
-            ));
-        }
-    }
-
-    for (id, _) in client_state.clone().iter() {
-        if server_state.get(id).is_none() {
-            client_state.remove(id);
-        }
-    }
-
-    // Component exists on client but not on server.
-    client_state.retain(|id, _| {
-        if server_state.get(id).is_none() {
-            events.push(DataMessageBody::EntityComponentRemove(
-                EntityComponentRemove {
-                    entity,
-                    component: id,
-                },
-            ));
-
-            false
-        } else {
-            true
-        }
-    });
-
-    events
-}
-
-fn sync_resources(
-    world: &WorldState,
-    known_resources: &mut HashMap<RuntimeResourceId, Arc<[u8]>>,
-) -> Vec<DataMessageBody> {
-    let _span = trace_span!("sync_resources").entered();
+    state.entities.clear();
+    // state.known_entities.clear();
+    // state.known_resources.clear();
 
     let mut events = Vec::new();
 
-    let mut prev_resources: HashSet<_> = known_resources.keys().copied().collect();
-
-    for (id, data) in world.world.iter_resources() {
-        prev_resources.remove(&id);
-
-        if let Some(known_data) = known_resources.get(&id) {
-            if known_data == data {
-                continue;
-            }
-        }
-
+    for (id, data) in world.iter_resources() {
         events.push(DataMessageBody::ResourceCreate(ResourceCreate {
             id: ServerResource(id.to_bits()),
             data: data.to_vec(),
         }));
     }
 
-    for id in prev_resources {
-        events.push(DataMessageBody::ResourceDestroy(ResourceDestroy {
-            id: ServerResource(id.to_bits()),
-        }));
+    for entity in world.entities() {
+        let mut should_sync = false;
+
+        if let Ok(Global) = world.get_typed(entity) {
+            should_sync = true;
+        }
+
+        if let Ok(GlobalTransform(transform)) = world.get_typed(entity) {
+            should_sync |= state.cells.contains(CellId::from(transform.translation));
+        }
+
+        if !should_sync {
+            continue;
+        }
+
+        // Entities referencing this entity may have already caused it
+        // to be spawned.
+        let server_entity = match state.entities.get(entity) {
+            Some(server_entity) => server_entity,
+            None => state.entities.insert(entity),
+        };
+
+        for (id, component) in world.components(entity).iter() {
+            let Some(component) = remap_component(&mut state.entities, component.clone()) else {
+                continue;
+            };
+
+            events.push(DataMessageBody::EntityComponentAdd(EntityComponentAdd {
+                entity: server_entity,
+                component_id: id,
+                component,
+            }));
+        }
     }
 
     events
+}
+
+fn remap_component(entities: &mut Entities, component: RawComponent) -> Option<RawComponent> {
+    component
+        .remap(|entity| {
+            let server_entity = match entities.get(entity) {
+                Some(server_entity) => server_entity,
+                // FIXME: This will "spawn" the entity for the client, causing the
+                // current component to stay valid.
+                // However this does not fully synchronize the spawned entity if it
+                // is outside the streaming area of the client.
+                // This may cause surprising state desynchronizations with the client,
+                // with "half synchronized" entities.
+                None => entities.insert(entity),
+            };
+
+            Some(EntityId::from_raw(server_entity.0))
+        })
+        .ok()
 }

@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use ahash::HashMap;
 use game_common::components::components::{Components, RawComponent};
 use game_common::components::PlayerId;
@@ -8,7 +6,6 @@ use game_common::record::RecordReference;
 use game_common::world::cell::square;
 use game_common::world::control_frame::ControlFrame;
 use game_common::world::CellId;
-use game_wasm::resource::RuntimeResourceId;
 
 use super::entities::Entities;
 
@@ -22,9 +19,8 @@ pub struct ConnectionState {
     /// The snapshot index that the client's view is located at (currently modified).
     pub client_cf: ControlFrame,
 
-    pub known_entities: KnownEntities,
-    pub known_resources: HashMap<RuntimeResourceId, Arc<[u8]>>,
-
+    // pub known_entities: KnownEntities,
+    // pub known_resources: HashMap<RuntimeResourceId, Arc<[u8]>>,
     /// Constant interpolation buffer/delay of the peer.
     pub peer_delay: ControlFrame,
 
@@ -38,10 +34,10 @@ impl ConnectionState {
             cells: Cells::new(CellId::new(0.0, 0.0, 0.0)),
             host: HostState::default(),
             client_cf: ControlFrame(0),
-            known_entities: KnownEntities::new(),
+            // known_entities: KnownEntities::new(),
             peer_delay: ControlFrame(0),
             entities: Entities::new(),
-            known_resources: HashMap::default(),
+            // known_resources: HashMap::default(),
         }
     }
 }
@@ -55,7 +51,7 @@ pub struct Cells {
 
 impl Cells {
     pub fn new(origin: CellId) -> Self {
-        let cells = square(origin, 1);
+        let cells = square(origin, 0);
 
         Self { origin, cells }
     }

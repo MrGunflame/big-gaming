@@ -1,10 +1,12 @@
 use std::collections::{HashMap, VecDeque};
 
 use game_wasm::components::builtin::{GlobalTransform, Transform};
+use game_wasm::entity::EntityId;
 
 use super::World;
 
-pub fn update_global_transform(world: &mut World) {
+/// Returns a list of entities with updated transform.
+pub fn update_global_transform(world: &mut World) -> Vec<EntityId> {
     let mut transforms = HashMap::new();
     let mut parents = HashMap::new();
 
@@ -31,9 +33,19 @@ pub fn update_global_transform(world: &mut World) {
         }
     }
 
+    let mut updated_entities = Vec::new();
     for (entity, transform) in transforms {
+        if let Ok(GlobalTransform(old_transform)) = world.get_typed(entity) {
+            if old_transform == transform {
+                continue;
+            }
+        }
+
+        updated_entities.push(entity);
         world.insert_typed(entity, GlobalTransform(transform));
     }
+
+    updated_entities
 }
 
 #[cfg(test)]
