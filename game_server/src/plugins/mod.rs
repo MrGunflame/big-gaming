@@ -17,6 +17,7 @@ use game_script::effect::{Effect, Effects};
 use game_script::{Context, WorldProvider};
 use glam::Vec3;
 
+use crate::config::Config;
 use crate::conn::{Connection, Connections};
 use crate::net::state::Cells;
 use crate::world::level::{Level, Streamer};
@@ -28,7 +29,13 @@ pub fn tick(state: &mut ServerState) {
     update_client_heads(state);
     flush_command_queue(state);
 
-    crate::world::level::update_level_cells(state);
+    for event in crate::world::level::update_level_cells(
+        &mut state.level,
+        &mut state.world.world,
+        &state.modules,
+    ) {
+        state.event_queue.push(event);
+    }
 
     let effects = state.script_executor.update(Context {
         world: &state.world,
@@ -36,7 +43,12 @@ pub fn tick(state: &mut ServerState) {
         events: &mut state.event_queue,
         records: &state.modules,
     });
-    apply_effects(effects, &mut state.world, &mut state.level);
+    apply_effects(
+        effects,
+        &mut state.world,
+        &mut state.level,
+        &state.state.config,
+    );
 
     update_global_transform(&mut state.world.world);
 
@@ -49,7 +61,7 @@ pub fn tick(state: &mut ServerState) {
     update_snapshots(&state.state.conns, &state.world, &state.level, cf);
 }
 
-fn apply_effects(effects: Effects, world: &mut WorldState, level: &mut Level) {
+fn apply_effects(effects: Effects, world: &mut WorldState, level: &mut Level, config: &Config) {
     // Since the script executing uses its own temporary ID namespace
     // for newly created IDs we must remap all IDs into "real" IDs.
     // A temporary ID must **never** overlap with an existing ID.
@@ -117,7 +129,12 @@ fn apply_effects(effects: Effects, world: &mut WorldState, level: &mut Level) {
                     level.destroy_streamer(old_entity);
                 }
 
-                level.create_streamer(entity, Streamer { distance: 2 });
+                level.create_streamer(
+                    entity,
+                    Streamer {
+                        distance: config.player_streaming_source_distance,
+                    },
+                );
             }
             Effect::CreateResource(effect) => {
                 debug_assert!(resource_id_remap.get(&effect.id).is_none());
