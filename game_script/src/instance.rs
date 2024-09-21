@@ -276,6 +276,15 @@ impl RunState {
             return Err(ErrorCode::NO_ENTITY);
         }
 
+        if let Some(old_component) = self.new_world.get(entity_id, id) {
+            // No need to actually do anything if the component didn't change.
+            // This allows us to not trigger an `Effect` for this update, allowing
+            // downstream code to be more efficient.
+            if *old_component == component {
+                return Ok(());
+            }
+        }
+
         self.effects()
             .push(Effect::EntityComponentInsert(EntityComponentInsert {
                 entity: entity_id,

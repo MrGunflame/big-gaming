@@ -1,14 +1,8 @@
-use std::sync::Arc;
-
-use ahash::HashMap;
-use game_common::components::components::{Components, RawComponent};
 use game_common::components::PlayerId;
 use game_common::entity::EntityId;
-use game_common::record::RecordReference;
 use game_common::world::cell::square;
 use game_common::world::control_frame::ControlFrame;
 use game_common::world::CellId;
-use game_wasm::resource::RuntimeResourceId;
 
 use super::entities::Entities;
 
@@ -21,9 +15,6 @@ pub struct ConnectionState {
     pub host: HostState,
     /// The snapshot index that the client's view is located at (currently modified).
     pub client_cf: ControlFrame,
-
-    pub known_entities: KnownEntities,
-    pub known_resources: HashMap<RuntimeResourceId, Arc<[u8]>>,
 
     /// Constant interpolation buffer/delay of the peer.
     pub peer_delay: ControlFrame,
@@ -38,10 +29,8 @@ impl ConnectionState {
             cells: Cells::new(CellId::new(0.0, 0.0, 0.0)),
             host: HostState::default(),
             client_cf: ControlFrame(0),
-            known_entities: KnownEntities::new(),
             peer_delay: ControlFrame(0),
             entities: Entities::new(),
-            known_resources: HashMap::default(),
         }
     }
 }
@@ -55,7 +44,7 @@ pub struct Cells {
 
 impl Cells {
     pub fn new(origin: CellId) -> Self {
-        let cells = square(origin, 1);
+        let cells = square(origin, 0);
 
         Self { origin, cells }
     }
@@ -80,60 +69,6 @@ impl Cells {
 
     pub fn iter(&self) -> impl Iterator<Item = CellId> + '_ {
         self.cells().iter().copied()
-    }
-}
-
-/// Entities that client is aware of.
-#[derive(Clone, Debug, Default)]
-pub struct KnownEntities {
-    pub components: HashMap<EntityId, Components>,
-}
-
-impl KnownEntities {
-    pub fn new() -> Self {
-        Self {
-            components: HashMap::default(),
-        }
-    }
-
-    pub fn insert(
-        &mut self,
-        entity: EntityId,
-        component_id: RecordReference,
-        component: RawComponent,
-    ) {
-        self.components
-            .get_mut(&entity)
-            .unwrap()
-            .insert(component_id, component);
-    }
-
-    pub fn spawn(&mut self, entity: EntityId) {
-        self.components.insert(entity, Components::default());
-    }
-
-    pub fn remove(&mut self, entity: EntityId, component_id: RecordReference) {
-        self.components
-            .remove(&entity)
-            .unwrap()
-            .remove(component_id);
-    }
-
-    pub fn despawn(&mut self, entity: EntityId) {
-        self.components.remove(&entity);
-    }
-
-    pub fn contains(&self, id: EntityId) -> bool {
-        self.components.contains_key(&id)
-    }
-
-    pub fn clear(&mut self) {
-        self.components.clear();
-    }
-
-    pub fn get(&self, entity: EntityId, component_id: RecordReference) -> Option<&RawComponent> {
-        let components = self.components.get(&entity)?;
-        components.get(component_id)
     }
 }
 

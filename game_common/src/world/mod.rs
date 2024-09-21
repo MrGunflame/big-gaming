@@ -125,20 +125,27 @@ impl World {
     }
 
     pub fn despawn(&mut self, id: EntityId) {
-        self.despawn_recursive(id);
+        self.despawn_recursive(id, |_| ());
     }
 
-    fn despawn_recursive(&mut self, id: EntityId) {
+    /// Despawns the entity with the given `id` and calls the callback for every despawned entity.
+    pub fn despawn_recursive<F>(&mut self, id: EntityId, mut f: F)
+    where
+        F: FnMut(EntityId),
+    {
         let mut despawn_queue = vec![id];
 
         while let Some(entity) = despawn_queue.pop() {
             if let Ok(children) = self.get_typed::<Children>(entity) {
                 for c in children.get() {
-                    despawn_queue.push(EntityId::from_raw(c.into_raw()));
+                    despawn_queue.push(*c);
                 }
             }
 
-            self.entities.remove(&entity);
+            if self.entities.remove(&entity) {
+                f(entity);
+            }
+
             self.components.remove(&entity);
         }
     }

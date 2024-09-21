@@ -39,6 +39,8 @@ pub struct Executor {
 
 impl Executor {
     pub fn new() -> Self {
+        let _span = trace_span!("Executor::new").entered();
+
         let mut config = Config::new();
         config.wasm_backtrace(true);
         config.wasm_backtrace_details(WasmBacktraceDetails::Enable);
@@ -66,6 +68,8 @@ impl Executor {
     /// - The script imports or exports unknown symbols.
     /// - Script initialization fails.
     pub fn load(&mut self, bytes: &[u8]) -> Result<Handle, ScriptLoadError> {
+        let _span = trace_span!("Executor::load").entered();
+
         let script = Script::new(bytes, &self.engine)?;
 
         let index = self.scripts.len();

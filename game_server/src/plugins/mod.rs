@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 
 use ahash::HashMap;
 use game_common::components::actions::ActionId;
-use game_common::components::{PlayerId, Transform};
+use game_common::components::{GlobalTransform, PlayerId, Transform};
 use game_common::entity::EntityId;
 use game_common::events::{ActionEvent, Event, EventQueue, PlayerConnect, PlayerDisconnect};
 use game_common::world::control_frame::ControlFrame;
@@ -15,10 +15,15 @@ use game_net::message::{
 use game_net::peer_error;
 use game_script::effect::{Effect, Effects};
 use game_script::{Context, WorldProvider};
+use game_wasm::components::Component;
+use game_wasm::resource::RuntimeResourceId;
+use game_wasm::world::RecordReference;
 use glam::Vec3;
+use tracing::trace_span;
 
 use crate::config::Config;
 use crate::conn::{Connection, Connections};
+use crate::net::full_update;
 use crate::net::state::Cells;
 use crate::world::level::{Level, Streamer};
 use crate::world::state::WorldState;
@@ -43,25 +48,49 @@ pub fn tick(state: &mut ServerState) {
         events: &mut state.event_queue,
         records: &state.modules,
     });
-    apply_effects(
+
+    let mut events = apply_effects(
         effects,
         &mut state.world,
         &mut state.level,
         &state.state.config,
     );
 
-    update_global_transform(&mut state.world.world);
+    for entity in update_global_transform(&mut state.world.world) {
+        events.push(TickEvent::EntityComponentInsert(entity, Transform::ID));
+        events.push(TickEvent::EntityComponentInsert(
+            entity,
+            GlobalTransform::ID,
+        ));
+    }
 
     if cfg!(feature = "physics") {
-        step_physics(state);
+        for entity in step_physics(state) {
+            events.push(TickEvent::EntityComponentInsert(entity, Transform::ID));
+            events.push(TickEvent::EntityComponentInsert(
+                entity,
+                GlobalTransform::ID,
+            ));
+        }
     }
+
+    // Filter our any duplicate events once.
+    // This means every client update will do less work.
+    dedup_tick_events(&mut events);
 
     // Push snapshots last always
     let cf = state.state.control_frame.get();
-    update_snapshots(&state.state.conns, &state.world, &state.level, cf);
+    update_snapshots(&state.state.conns, &state.world, &state.level, cf, &events);
 }
 
-fn apply_effects(effects: Effects, world: &mut WorldState, level: &mut Level, config: &Config) {
+fn apply_effects(
+    effects: Effects,
+    world: &mut WorldState,
+    level: &mut Level,
+    config: &Config,
+) -> Vec<TickEvent> {
+    let mut events = Vec::new();
+
     // Since the script executing uses its own temporary ID namespace
     // for newly created IDs we must remap all IDs into "real" IDs.
     // A temporary ID must **never** overlap with an existing ID.
@@ -79,10 +108,14 @@ fn apply_effects(effects: Effects, world: &mut WorldState, level: &mut Level, co
                 let temp_id = id;
                 let real_id = world.spawn();
                 entity_id_remap.insert(temp_id, real_id);
+
+                events.push(TickEvent::EntitySpawn(real_id));
             }
             Effect::EntityDespawn(id) => {
                 let id = entity_id_remap.get(&id).copied().unwrap_or(id);
-                let entity = world.remove(id);
+                world.world.despawn_recursive(id, |entity| {
+                    events.push(TickEvent::EntityDespawn(entity));
+                });
             }
             Effect::EntityComponentInsert(effect) => {
                 let entity = entity_id_remap
@@ -110,6 +143,11 @@ fn apply_effects(effects: Effects, world: &mut WorldState, level: &mut Level, co
                 };
 
                 world.world.insert(entity, effect.component_id, component);
+
+                events.push(TickEvent::EntityComponentInsert(
+                    entity,
+                    effect.component_id,
+                ));
             }
             Effect::EntityComponentRemove(effect) => {
                 let entity = entity_id_remap
@@ -118,6 +156,11 @@ fn apply_effects(effects: Effects, world: &mut WorldState, level: &mut Level, co
                     .unwrap_or(effect.entity);
 
                 world.world.remove(entity, effect.component_id);
+
+                events.push(TickEvent::EntityComponentRemove(
+                    entity,
+                    effect.component_id,
+                ));
             }
             Effect::PlayerSetActive(effect) => {
                 let entity = entity_id_remap
@@ -143,6 +186,8 @@ fn apply_effects(effects: Effects, world: &mut WorldState, level: &mut Level, co
                 let temp_id = effect.id;
                 let real_id = world.world.insert_resource(effect.data);
                 resource_id_remap.insert(temp_id, real_id);
+
+                events.push(TickEvent::ResourceCreate(real_id));
             }
             Effect::DestroyResource(effect) => {
                 let id = resource_id_remap
@@ -150,6 +195,8 @@ fn apply_effects(effects: Effects, world: &mut WorldState, level: &mut Level, co
                     .copied()
                     .unwrap_or(effect.id);
                 world.world.remove_resource(id);
+
+                events.push(TickEvent::ResourceDestroy(id));
             }
             Effect::UpdateResource(effect) => {
                 let id = resource_id_remap
@@ -157,15 +204,19 @@ fn apply_effects(effects: Effects, world: &mut WorldState, level: &mut Level, co
                     .copied()
                     .unwrap_or(effect.id);
                 world.world.insert_resource_with_id(effect.data, id);
+
+                events.push(TickEvent::ResourceUpdate(id));
             }
         }
     }
+
+    events
 }
 
-fn step_physics(state: &mut ServerState) {
+fn step_physics(state: &mut ServerState) -> Vec<EntityId> {
     state
         .pipeline
-        .step(&mut state.world.world, &mut state.event_queue);
+        .step(&mut state.world.world, &mut state.event_queue)
 }
 
 fn update_client_heads(state: &mut ServerState) {
@@ -300,13 +351,20 @@ fn update_snapshots(
     world: &WorldState,
     level: &Level,
     cf: ControlFrame,
+    events: &[TickEvent],
 ) {
     for conn in connections.iter() {
-        update_client(&conn, world, level, cf);
+        update_client(&conn, world, level, cf, events);
     }
 }
 
-fn update_client(conn: &Connection, world: &WorldState, level: &Level, cf: ControlFrame) {
+fn update_client(
+    conn: &Connection,
+    world: &WorldState,
+    level: &Level,
+    cf: ControlFrame,
+    tick_events: &[TickEvent],
+) {
     let mut state = conn.state().write();
 
     let Some(player_id) = state.host.player else {
@@ -329,25 +387,20 @@ fn update_client(conn: &Connection, world: &WorldState, level: &Level, cf: Contr
 
     // If the client requested a full update we must send him the entire
     // state in the current frame.
-    if state.full_update {
-        // We send a full update to the client by "forgetting" all of our
-        // state of the client.
-        // TODO: We can make this more efficient, because we only have to
-        // spawn new entities and don't need to update/despawn any entities.
-        state.entities.clear();
-        state.known_entities.clear();
+    let mut events = if state.full_update {
         active_entity_changed = true;
 
-        state.full_update = false;
-    }
-
-    if state.cells.origin() != cell_id {
-        tracing::info!("Moving host from {:?} to {:?}", state.cells, cell_id);
-
+        // We need to set the distance before the first sync to initialize
+        // it to the correct value.
+        // There is no harm in doing this multiple times thought, in case
+        // a client requests a full update.
         state.cells.set(cell_id, streamer.distance);
-    }
 
-    let mut events = crate::net::sync_player(world, &mut state);
+        state.full_update = false;
+        full_update(&mut state, &world.world)
+    } else {
+        crate::net::sync_player(world, &mut state, tick_events, cell_id, streamer.distance)
+    };
 
     if active_entity_changed {
         state.host.entity = Some(host_id);
@@ -373,4 +426,44 @@ fn update_client(conn: &Connection, world: &WorldState, level: &Level, cf: Contr
     }
 
     conn.handle().set_cf(cf);
+}
+
+#[derive(Copy, Clone, Debug)]
+pub(crate) enum TickEvent {
+    EntitySpawn(EntityId),
+    EntityDespawn(EntityId),
+    EntityComponentInsert(EntityId, RecordReference),
+    EntityComponentRemove(EntityId, RecordReference),
+    ResourceCreate(RuntimeResourceId),
+    ResourceDestroy(RuntimeResourceId),
+    ResourceUpdate(RuntimeResourceId),
+}
+
+fn dedup_tick_events(events: &mut Vec<TickEvent>) {
+    let _span = trace_span!("dedup_tick_events").entered();
+
+    events.dedup_by(|a, b| match (a, b) {
+        (TickEvent::EntitySpawn(a), TickEvent::EntitySpawn(b)) => {
+            // A entity spawn event must never happen twice for the same entity.
+            debug_assert_ne!(*a, *b);
+            false
+        }
+        (TickEvent::EntityDespawn(a), TickEvent::EntityDespawn(b)) => *a == *b,
+        (
+            TickEvent::EntityComponentInsert(a_entity, a_id),
+            TickEvent::EntityComponentInsert(b_entity, b_id),
+        ) => *a_id == *b_id && *a_entity == *b_entity,
+        (
+            TickEvent::EntityComponentRemove(a_entity, a_id),
+            TickEvent::EntityComponentRemove(b_entity, b_id),
+        ) => *a_id == *b_id && *a_entity == *b_entity,
+        (TickEvent::ResourceCreate(a), TickEvent::ResourceCreate(b)) => {
+            // A resource create event must never happen twice for the same resource.
+            debug_assert_ne!(*a, *b);
+            false
+        }
+        (TickEvent::ResourceDestroy(a), TickEvent::ResourceDestroy(b)) => *a == *b,
+        (TickEvent::ResourceUpdate(a), TickEvent::ResourceUpdate(b)) => *a == *b,
+        _ => false,
+    });
 }

@@ -84,7 +84,8 @@ impl Pipeline {
         }
     }
 
-    pub fn step(&mut self, world: &mut World, events: &mut EventQueue) {
+    /// Returns entities with updated transform.
+    pub fn step(&mut self, world: &mut World, events: &mut EventQueue) -> Vec<EntityId> {
         let _span = trace_span!("Pipeline::step").entered();
 
         self.update_rigid_bodies(world);
@@ -109,7 +110,7 @@ impl Pipeline {
         self.query_pipeline.update(&self.colliders);
 
         self.emit_events(events);
-        self.write_back(world);
+        self.write_back(world)
     }
 
     fn update_rigid_bodies(&mut self, world: &World) {
@@ -294,15 +295,26 @@ impl Pipeline {
         }
     }
 
-    fn write_back(&mut self, world: &mut World) {
+    fn write_back(&mut self, world: &mut World) -> Vec<EntityId> {
+        let mut updated_entities = Vec::new();
+
         for (handle, body) in self.bodies.iter() {
             let entity = self.body_handles.get2(handle).unwrap();
 
             let mut transform = world.get_typed::<Transform>(entity).unwrap();
-            transform.translation = vec3(*body.translation());
-            transform.rotation = quat(*body.rotation());
+            let translation = vec3(*body.translation());
+            let rotation = quat(*body.rotation());
+
+            if transform.translation != translation || transform.rotation != rotation {
+                updated_entities.push(entity);
+            }
+
+            transform.translation = translation;
+            transform.rotation = rotation;
             world.insert_typed(entity, transform);
         }
+
+        updated_entities
     }
 
     fn emit_events(&mut self, queue: &mut EventQueue) {

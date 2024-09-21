@@ -18,6 +18,13 @@ impl Entities {
         }
     }
 
+    pub fn contains<E>(&self, entity: E) -> bool
+    where
+        E: ServerEntityTranslation,
+    {
+        entity.get(self).is_some()
+    }
+
     pub fn remove<E>(&mut self, entity: E) -> Option<E::Target>
     where
         E: ServerEntityTranslation,
