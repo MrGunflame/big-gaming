@@ -5,13 +5,18 @@ edition = "2021"
 authors = ["MrGunflame <git@robbsrv.de>"]
 license = "GPL-3.0-or-later"
 
+[features]
+default = ["tracy"]
+serde = []
+tracy = ["game_core/tracy"]
+
 [lints]
 workspace = true
 
 [dependencies]
 game_common = { version = "0.1.0", path = "../game_common" }
 game_core = { version = "0.1.0", path = "../game_core" }
-game_net = { version = "0.1.0", path = "../game_net" }
+game_net = { version = "0.1.0", path = "../game_net", features = ["log-peer-errors"] }
 game_render = { version = "0.1.0", path = "../game_render" }
 game_window = { version = "0.1.0", path = "../game_window" }
 game_scene = { version = "0.1.0", path = "../game_scene" }
@@ -36,8 +41,3 @@ toml = "0.8.14"
 thiserror = "1.0.61"
 parking_lot = "0.12.3"
 toml_edit = "0.22.20"
-
-[features]
-default = []
-
-serde = []

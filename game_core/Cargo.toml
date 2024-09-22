@@ -5,6 +5,10 @@ edition = "2021"
 authors = ["MrGunflame <git@robbsrv.de>"]
 license = "GPL-3.0-or-later"
 
+[features]
+default = []
+tracy = ["game_tracing/tracy"]
+
 [lints]
 workspace = true
 
