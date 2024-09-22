@@ -40,6 +40,8 @@ pub(crate) fn sync_player(
 
         // Despawn all entities in cells that are streamed out.
         for cell in old_cells.difference(&new_cells) {
+            tracing::trace!("streaming out cell {:?}", cell);
+
             for entity in world.cell(*cell).entities() {
                 // `Global` entities are always replicated to the client.
                 // We must retain them even if their cell is streamed out.
@@ -59,6 +61,8 @@ pub(crate) fn sync_player(
 
         // Spawn in all entities in cells that are streamed in.
         for cell in new_cells.difference(&old_cells) {
+            tracing::trace!("streaming in cell {:?}", cell);
+
             for entity in world.cell(*cell).entities() {
                 // Entities referencing this entity may have already caused it
                 // to be spawned.
@@ -86,15 +90,27 @@ pub(crate) fn sync_player(
     for event in tick_events {
         match event {
             TickEvent::EntitySpawn(entity) => {
-                let mut should_spawn = false;
+                let is_global = if let Ok(Global) = world.world.get_typed(*entity) {
+                    true
+                } else {
+                    false
+                };
 
-                if let Ok(Global) = world.world.get_typed(*entity) {
-                    should_spawn = true;
-                }
+                let is_in_cell =
+                    if let Ok(GlobalTransform(transform)) = world.world.get_typed(*entity) {
+                        tracing::trace!("{:?}", CellId::from(transform.translation));
+                        state.cells.contains(CellId::from(transform.translation))
+                    } else {
+                        false
+                    };
 
-                if let Ok(GlobalTransform(transform)) = world.world.get_typed(*entity) {
-                    should_spawn |= state.cells.contains(CellId::from(transform.translation));
-                }
+                let should_spawn = is_global || is_in_cell;
+                tracing::trace!(
+                    "EntitySpawn (is_global={}, is_in_cell={}, should_spawn={})",
+                    is_global,
+                    is_in_cell,
+                    should_spawn,
+                );
 
                 // If the client moved in this frame and the entity was spawned
                 // into a cell that was just streamed in the entity was already

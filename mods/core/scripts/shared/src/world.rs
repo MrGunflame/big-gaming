@@ -21,8 +21,11 @@ pub fn cell_load(_: EntityId, event: CellLoad) {
         return;
     }
 
+    let mut translation = min + (max - min) * 0.5;
+    translation.y = min.y;
+
     let entity = Entity::spawn();
-    entity.insert(Transform::from_translation(min));
+    entity.insert(Transform::from_translation(translation));
     entity.insert(RigidBody {
         kind: RigidBodyKind::Fixed,
         linvel: Vec3::ZERO,
@@ -32,9 +35,9 @@ pub fn cell_load(_: EntityId, event: CellLoad) {
         friction: 1.0,
         restitution: 1.0,
         shape: ColliderShape::Cuboid(Cuboid {
-            hx: max.x - min.x,
+            hx: (max.x - min.x) / 2.0,
             hy: 0.1,
-            hz: max.z - min.z,
+            hz: (max.z - min.z) / 2.0,
         }),
     });
     entity.insert(MeshInstance {

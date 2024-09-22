@@ -9,6 +9,7 @@ use game_data::loader::FileLoader;
 use game_data::record::{Record, RecordKind};
 use game_data::DataBuffer;
 use game_script::{Executor, RecordProvider};
+use game_tracing::trace_span;
 use thiserror::Error;
 use tokio::runtime::Runtime;
 
@@ -124,6 +125,8 @@ where
 }
 
 fn load_modules_inner(path: &Path) -> Result<Modules, LoadError> {
+    let _span = trace_span!("load_modules").entered();
+
     let mut modules = Modules::new();
 
     // Load the builtin core module.

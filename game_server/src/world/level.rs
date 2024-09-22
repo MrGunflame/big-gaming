@@ -124,6 +124,12 @@ impl Level {
             return;
         }
 
+        if cfg!(debug_assertions) {
+            for cell in &self.unload_in_next_tick {
+                assert!(!self.loaded.contains(cell));
+            }
+        }
+
         let mut despawn_queue = Vec::new();
         for entity in world.entities() {
             // Entities with a `Global` component are always loaded.
@@ -141,6 +147,7 @@ impl Level {
             }
         }
 
+        tracing::debug!("unloading {} entities", despawn_queue.len());
         for entity in despawn_queue {
             world.despawn(entity);
         }

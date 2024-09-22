@@ -189,6 +189,20 @@ fn process_commands(state: &mut ServerState) {
                     tx.send(resp).unwrap();
                 }
             }
+            Command::Game(GameCommand::List) => {
+                let resp = format!(
+                    "[{}]",
+                    state
+                        .world
+                        .world
+                        .entities()
+                        .map(|e| e.into_raw().to_string())
+                        .collect::<Vec<_>>()
+                        .join(",")
+                );
+
+                tx.send(resp).unwrap();
+            }
             Command::Empty => {}
         }
     }

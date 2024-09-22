@@ -1,6 +1,7 @@
 use std::time::{Duration, Instant};
 
 use async_io::Timer;
+use game_tracing::trace_span;
 
 /// Updates per second.
 #[derive(Clone, Debug)]
@@ -83,6 +84,8 @@ impl Interval {
 
     /// Sleep until the next tick.
     pub async fn wait(&mut self, now: Instant) {
+        let _span = trace_span!("Interval::wait").entered();
+
         // The timer may already be delayed which means we need
         // to yield immediately.
         let elapsed = now - self.last_update;
@@ -97,19 +100,8 @@ impl Interval {
         // Linux timers are accurate enough (~50us) that we don't really have to
         // bother with it.
         let duration = self.timestep - elapsed;
-        async_io::Timer::after(duration).await;
-        self.last_update += self.timestep;
-    }
-
-    pub fn wait_sync(&mut self, now: Instant) {
-        let elapsed = now - self.last_update;
-        if elapsed >= self.timestep {
-            self.last_update += self.timestep;
-            return;
-        }
-
-        let duration = self.timestep - elapsed;
-        std::thread::sleep(duration);
+        tracing::trace!("Interval::wait({:?})", duration);
+        Timer::after(duration).await;
         self.last_update += self.timestep;
     }
 }
