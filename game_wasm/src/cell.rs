@@ -1,3 +1,4 @@
+use core::f32;
 use core::fmt::{self, Debug, Formatter};
 
 use glam::{IVec3, UVec3, Vec3, Vec3A};
@@ -32,23 +33,33 @@ impl CellId {
     /// Creates a new `CellId` from the given coordinates.
     #[inline]
     pub fn new(x: f32, y: f32, z: f32) -> Self {
-        // This is the same as (x / CELL_SIZE.x) as i32 - (x.to_bits() >> 31) as i32,
-        // but results in the same assembly.
-
         let x = if x.is_sign_negative() {
-            (x / CELL_SIZE.x) as i32 - 1
+            // Because `0.0..64.0` is `0`, `-64.0..0.0` must be `-1`.
+            if x % CELL_SIZE.x == 0.0 {
+                (x / CELL_SIZE.x) as i32
+            } else {
+                (x / CELL_SIZE.x) as i32 - 1
+            }
         } else {
             (x / CELL_SIZE.x) as i32
         };
 
         let y = if y.is_sign_negative() {
-            (y / CELL_SIZE.y) as i32 - 1
+            if y % CELL_SIZE.y == 0.0 {
+                (y / CELL_SIZE.y) as i32
+            } else {
+                (y / CELL_SIZE.y) as i32 - 1
+            }
         } else {
             (y / CELL_SIZE.y) as i32
         };
 
         let z = if z.is_sign_negative() {
-            (z / CELL_SIZE.z) as i32 - 1
+            if z % CELL_SIZE.z == 0.0 {
+                (z / CELL_SIZE.z) as i32
+            } else {
+                (z / CELL_SIZE.z) as i32 - 1
+            }
         } else {
             (z / CELL_SIZE.z) as i32
         };
@@ -187,5 +198,103 @@ impl Decode for CellId {
         let y = u32::decode(&mut reader)?;
         let z = u32::decode(&mut reader)?;
         Ok(Self::from_parts(x, y, z))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use glam::{IVec3, Vec3};
+
+    use super::{CellId, CELL_SIZE};
+
+    #[test]
+    fn cell_size_min() {
+        // This is the smallest possible CELL_SIZE that is acceptable.
+        // Smaller sizes will break several implementations and tests.
+        assert!(CELL_SIZE.x >= 3.0);
+        assert!(CELL_SIZE.y >= 3.0);
+        assert!(CELL_SIZE.z >= 3.0);
+    }
+
+    #[test]
+    fn cell_id_negative() {
+        let id = CellId::new(-64.0, -128.0, -64.01);
+
+        assert_eq!(id, CellId::from_i32(IVec3::new(-1, -2, -2)));
+    }
+
+    #[test]
+    fn cell_to_i32_zero() {
+        let id = CellId::new(0.0, 0.0, 0.0);
+
+        let vec = id.to_i32();
+
+        assert_eq!(vec.x, 0);
+        assert_eq!(vec.y, 0);
+        assert_eq!(vec.z, 0);
+    }
+
+    #[test]
+    fn cell_to_i32_positive() {
+        let id = CellId::new(CELL_SIZE.x * 3.0, 0.0, 0.0);
+
+        let vec = id.to_i32();
+
+        assert_eq!(vec.x, 3);
+        assert_eq!(vec.y, 0);
+        assert_eq!(vec.z, 0);
+    }
+
+    #[test]
+    fn cell_to_i32_negative() {
+        let id = CellId::new(CELL_SIZE.x * -3.0, 0.0, 0.0);
+
+        let vec = id.to_i32();
+
+        assert_eq!(vec.x, -3);
+        assert_eq!(vec.y, 0);
+        assert_eq!(vec.z, 0);
+    }
+
+    #[test]
+    fn from_i32_zero() {
+        let vec = IVec3::new(0, 0, 0);
+        let id = CellId::new(0.0, 0.0, 0.0);
+
+        assert_eq!(CellId::from_i32(vec), id);
+    }
+
+    #[test]
+    fn from_i32_positive() {
+        let vec = IVec3::new(1, 2, 3);
+        let id = CellId::new(CELL_SIZE.x * 1.0, CELL_SIZE.y * 2.0, CELL_SIZE.z * 3.0);
+
+        assert_eq!(CellId::from_i32(vec), id);
+    }
+
+    #[test]
+    fn from_i32_negative() {
+        let vec = IVec3::new(-2, -1, -0);
+        let id = CellId::new(CELL_SIZE.x * -2.0, CELL_SIZE.y * -1.0, 0.0);
+
+        assert_eq!(CellId::from_i32(vec), id);
+    }
+
+    #[test]
+    fn cell_id_min_zero() {
+        let id = CellId::new(0.0, 0.0, 0.0);
+        assert_eq!(id.min(), Vec3::new(0.0, 0.0, 0.0));
+    }
+
+    #[test]
+    fn cell_id_min_positive() {
+        let id = CellId::new(32.0, 64.0, 127.0);
+        assert_eq!(id.min(), Vec3::new(0.0, 64.0, 64.0));
+    }
+
+    #[test]
+    fn cell_id_min_negative() {
+        let id = CellId::new(0.0, -32.0, -64.0);
+        assert_eq!(id.min(), Vec3::new(0.0, -64.0, -64.0));
     }
 }

@@ -42,6 +42,7 @@ impl ServerCommand {
 #[derive(Clone, Debug)]
 pub enum GameCommand {
     Get(EntityId),
+    List,
 }
 
 impl GameCommand {
@@ -63,6 +64,7 @@ impl GameCommand {
 
                 Ok(Self::Get(EntityId::from_raw(*id as u64)))
             }
+            Some((&Token::Ident("list"), _)) => Ok(Self::List),
             _ => Err(ParseError::Empty),
         }
     }

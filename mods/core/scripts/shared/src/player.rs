@@ -42,7 +42,7 @@ pub fn spawn_player(_: EntityId, event: PlayerConnect) {
     });
 
     entity.insert(Transform {
-        translation: Vec3::new(0.0, 10.0, 0.0),
+        translation: Vec3::new(1.0, 10.0, 1.0),
         ..Default::default()
     });
     entity.insert(MovementSpeed(1.0));
