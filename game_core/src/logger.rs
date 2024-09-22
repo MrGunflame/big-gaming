@@ -16,12 +16,12 @@ use tracing_subscriber::registry::LookupSpan;
 use tracing_subscriber::Layer;
 
 pub fn init() {
-    set_global_default(
-        tracing_subscriber::registry()
-            .with(game_tracing::TracyLayer::default())
-            .with(Logger::new()),
-    )
-    .unwrap();
+    let layer = tracing_subscriber::registry();
+    #[cfg(feature = "tracy")]
+    let layer = layer.with(game_tracing::TracyLayer::default());
+    let layer = layer.with(Logger::new());
+
+    set_global_default(layer).unwrap();
 }
 
 #[derive(Debug)]

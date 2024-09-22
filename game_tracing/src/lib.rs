@@ -1,10 +1,9 @@
-use tracing_subscriber::layer::SubscriberExt;
-
 pub mod world;
 
 #[doc(hidden)]
 pub use tracing;
 
+#[cfg(feature = "tracy")]
 pub use tracing_tracy::TracyLayer;
 
 #[macro_export]
