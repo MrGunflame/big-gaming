@@ -7,8 +7,7 @@ use game_core::time::Time;
 use game_render::camera::RenderTarget;
 use game_script::Executor;
 use game_tracing::trace_span;
-use game_ui::reactive::{Context, DocumentId, Runtime};
-use game_ui::widgets::Widget;
+use game_ui::reactive::Runtime;
 use game_window::cursor::Cursor;
 use game_window::events::WindowEvent;
 
@@ -27,7 +26,6 @@ pub struct GameState {
     inner: GameStateInner,
     tx: mpsc::Sender<MenuEvent>,
     rx: mpsc::Receiver<MenuEvent>,
-    root_ctx: Option<Context<()>>,
 
     ui_ctx: Option<UiRootContext>,
 
@@ -52,7 +50,6 @@ impl GameState {
             inner: GameStateInner::Startup,
             tx,
             rx,
-            root_ctx: None,
             config,
             modules,
             inputs,
@@ -94,20 +91,14 @@ impl GameState {
                 MenuEvent::Exit => return Err(UpdateError::Exit),
                 MenuEvent::SpawnMainMenu => {
                     ui_ctx.clear();
-                    ui_ctx.append(|ctx| {
-                        TitleMenu {
-                            events: self.tx.clone(),
-                        }
-                        .mount(&ctx);
+                    ui_ctx.append(TitleMenu {
+                        events: self.tx.clone(),
                     });
                 }
                 MenuEvent::SpawnMultiPlayerMenu => {
                     ui_ctx.clear();
-                    ui_ctx.append(|ctx| {
-                        MultiPlayerMenu {
-                            events: self.tx.clone(),
-                        }
-                        .mount(&ctx);
+                    ui_ctx.append(MultiPlayerMenu {
+                        events: self.tx.clone(),
                     });
                 }
             }
@@ -117,11 +108,8 @@ impl GameState {
             GameStateInner::Startup => {
                 self.inner = GameStateInner::MainMenu(MainMenuState::new(world));
 
-                ui_ctx.append(|ctx| {
-                    TitleMenu {
-                        events: self.tx.clone(),
-                    }
-                    .mount(&ctx);
+                ui_ctx.append(TitleMenu {
+                    events: self.tx.clone(),
                 });
             }
             GameStateInner::GameWorld(state) => {

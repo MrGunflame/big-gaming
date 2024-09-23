@@ -20,7 +20,6 @@ use game_input::keyboard::{KeyCode, KeyboardInput};
 use game_input::mouse::MouseMotion;
 use game_script::Executor;
 use game_ui::reactive::NodeId;
-use game_ui::widgets::Widget;
 use game_wasm::encoding::BinaryWriter;
 use game_window::cursor::Cursor;
 use game_window::events::WindowEvent;
@@ -196,10 +195,8 @@ impl GameWorldState {
                     return;
                 }
 
-                ui_ctx.append(|ctx| {
-                    self.main_menu = Some(MainMenu {}.mount(&ctx).node().unwrap());
-                    self.cursor_pinned.unpin(cursor);
-                });
+                self.main_menu = Some(ui_ctx.append(MainMenu {}).node().unwrap());
+                self.cursor_pinned.unpin(cursor);
             }
             _ => (),
         }
@@ -263,10 +260,8 @@ impl GameWorldState {
                         self.cursor_pinned.pin(cursor);
                     }
                     None => {
-                        ui_ctx.append(|ctx| {
-                            self.main_menu = Some(MainMenu {}.mount(&ctx).node().unwrap());
-                            self.cursor_pinned.unpin(cursor);
-                        });
+                        self.main_menu = Some(ui_ctx.append(MainMenu {}).node().unwrap());
+                        self.cursor_pinned.unpin(cursor);
                     }
                 }
 

@@ -34,15 +34,14 @@ impl UiRootContext {
     }
 
     /// Spawns a new widget.
-    pub fn append<F, U>(&mut self, f: F) -> U
+    pub fn append<T>(&mut self, widget: T) -> Context<()>
     where
-        F: FnOnce(&Context<()>) -> U,
+        T: Widget,
     {
-        dbg!(self.widgets.len());
-        let ctx = self.runtime.root_context(self.document);
-        let res = f(&ctx);
-        self.widgets.push(ctx);
-        res
+        let root = self.runtime.root_context(self.document);
+        let ctx = widget.mount(&root);
+        self.widgets.push(ctx.clone());
+        ctx
     }
 
     pub fn remove(&mut self, id: NodeId) {
@@ -57,7 +56,6 @@ impl UiRootContext {
 
     /// Destroyes all widgets spawned.
     pub fn clear(&mut self) {
-        dbg!(&self.widgets.len());
         for ctx in self.widgets.drain(..) {
             ctx.remove_self();
         }
@@ -88,21 +86,19 @@ impl UiElements {
             root.remove(id);
         }
 
-        root.append(|ctx| {
-            if let Some(health) = health {
-                let id = HealthUi { health }.mount(ctx).node().unwrap();
-                self.health = Some(id);
+        if let Some(health) = health {
+            let id = root.append(HealthUi { health }).node().unwrap();
+            self.health = Some(id);
 
-                if let Some(id) = self.death {
-                    ctx.remove(id);
-                }
-            } else {
-                if self.death.is_none() {
-                    let id = DealthUi { tx: tx.clone() }.mount(ctx).node().unwrap();
-                    self.death = Some(id);
-                }
+            if let Some(id) = self.death {
+                root.remove(id);
             }
-        });
+        } else {
+            if self.death.is_none() {
+                let id = root.append(DealthUi { tx: tx.clone() }).node().unwrap();
+                self.death = Some(id);
+            }
+        }
     }
 
     /// Removes all widgets.
@@ -122,19 +118,17 @@ impl UiElements {
             self.fps.push(stats.fps.last_frametime());
             self.rtt.push(stats.rtt);
 
-            root.append(|ctx| {
-                let id = DebugUi {
+            let id = root
+                .append(DebugUi {
                     stats,
                     ups: self.ups.clone(),
                     fps: self.fps.clone(),
                     rtt: self.rtt.clone(),
-                }
-                .mount(ctx)
+                })
                 .node()
                 .unwrap();
 
-                self.debug_stats = Some(id);
-            });
+            self.debug_stats = Some(id);
         }
     }
 }

@@ -171,13 +171,10 @@ impl InventoryProxy {
         ui_ctx: &mut UiRootContext,
         tx: mpsc::Sender<UiEvent>,
     ) -> Self {
-        let root = ui_ctx.append(|ctx| {
-            InventoryUi {
-                inventory,
-                modules,
-                events: tx,
-            }
-            .mount(&ctx)
+        let root = ui_ctx.append(InventoryUi {
+            inventory,
+            modules,
+            events: tx,
         });
 
         Self {
