@@ -1,3 +1,5 @@
+use std::iter::FusedIterator;
+
 use glam::IVec3;
 
 use super::entity::Entity;
@@ -80,27 +82,86 @@ impl Cell {
     }
 }
 
-/// Returns all cells around center.
-pub fn square(center: CellId, distance: u32) -> Vec<CellId> {
-    debug_assert!(distance as i32 >= 0);
+/// An `Iterator` yielding the cells in the cube around a center cell.
+///
+/// A distance value of `n` will yield all [`CellId`]s in the range of `center - n..=center + n` in
+/// every direction. The `center` [`CellId`] is always returned (with a distance of `0`).
+///
+/// # Example
+///
+/// A distance value of 2 will yield these [`CellId`]s with these cells (in all 3 Axes):
+///
+/// ```text
+/// +---+---+---+---+---+
+/// | 2 | 2 | 2 | 2 | 2 |
+/// +---+---+---+---+---+
+/// | 2 | 1 | 1 | 1 | 2 |
+/// +---+---+---+---+---+
+/// | 2 | 1 | 0 | 1 | 2 |
+/// +---+---+---+---+---+
+/// | 2 | 1 | 1 | 1 | 2 |
+/// +---+---+---+---+---+
+/// | 2 | 2 | 2 | 2 | 2 |
+/// +---+---+---+---+---+
+/// ```
+#[derive(Clone, Debug)]
+pub struct CubeIter {
+    center: CellId,
+    distance: u32,
+    index: u32,
+}
 
-    let distance = distance as i32;
-    let mut cells = vec![];
+impl CubeIter {
+    /// Creates a new `CubeIter` yielding all [`CellId`]s around `center` with a distance of
+    /// `distance`.
+    ///
+    /// Refer to [`Self`] for more details.
+    pub fn new(center: CellId, distance: u32) -> Self {
+        debug_assert!(distance as i32 >= 0);
 
-    let center = center.to_i32();
-    for x in center.x - distance..=center.x + distance {
-        for y in center.y - distance..=center.y + distance {
-            for z in center.z - distance..=center.z + distance {
-                cells.push(CellId::from_i32(IVec3::new(x, y, z)));
-            }
+        Self {
+            center,
+            distance,
+            index: 0,
         }
     }
-
-    let num_cells_expected = (distance * 2 + 1).pow(3);
-    debug_assert_eq!(cells.len(), usize::try_from(num_cells_expected).unwrap());
-
-    cells
 }
+
+impl Iterator for CubeIter {
+    type Item = CellId;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let len_axis = self.distance * 2 + 1;
+        if self.index as usize >= self.len() {
+            return None;
+        }
+
+        let x = self.index % len_axis;
+        let y = self.index / len_axis % len_axis;
+        let z = self.index / len_axis / len_axis;
+
+        // Map `0..len` to `center - distance..=center + distance`.
+        let center = self.center.to_i32();
+        let x = (center.x - self.distance as i32) + x as i32;
+        let y = (center.y - self.distance as i32) + y as i32;
+        let z = (center.z - self.distance as i32) + z as i32;
+
+        self.index += 1;
+        Some(CellId::from_i32(IVec3::new(x, y, z)))
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.len(), Some(self.len()))
+    }
+}
+
+impl ExactSizeIterator for CubeIter {
+    fn len(&self) -> usize {
+        (self.distance * 2 + 1).pow(3) as usize
+    }
+}
+
+impl FusedIterator for CubeIter {}
 
 #[cfg(test)]
 mod tests {
@@ -108,34 +169,34 @@ mod tests {
 
     use glam::IVec3;
 
-    use super::{square, CellId};
+    use super::{CellId, CubeIter};
 
     #[test]
-    fn cell_id_square_0() {
+    fn cell_id_cube_0() {
         let center = CellId::from_i32(IVec3::new(0, 0, 0));
         let distance = 0;
 
-        let res = square(center, distance);
-        match_cells_exact(&res, &[center]);
+        let res = CubeIter::new(center, distance);
+        match_cells_exact(res, &[center]);
     }
 
     #[test]
-    fn cell_id_square_0_non_zero() {
+    fn cell_id_cube_0_non_zero() {
         let center = CellId::from_i32(IVec3::new(1, 2, 3));
         let distance = 0;
 
-        let res = square(center, distance);
-        match_cells_exact(&res, &[center]);
+        let res = CubeIter::new(center, distance);
+        match_cells_exact(res, &[center]);
     }
 
     #[test]
-    fn cell_id_square_1() {
+    fn cell_id_cube_1() {
         let center = CellId::from_i32(IVec3::new(0, 0, 0));
         let distance = 1;
 
-        let res = square(center, distance);
+        let res = CubeIter::new(center, distance);
         match_cells_exact(
-            &res,
+            res,
             &[
                 center,
                 CellId::from_i32(IVec3::new(0, 0, 1)),
@@ -169,8 +230,11 @@ mod tests {
     }
 
     #[track_caller]
-    fn match_cells_exact(lhs: &[CellId], rhs: &[CellId]) {
-        let mut lhs: HashSet<_> = lhs.iter().copied().collect();
+    fn match_cells_exact<L>(lhs: L, rhs: &[CellId])
+    where
+        L: Iterator<Item = CellId>,
+    {
+        let mut lhs: HashSet<_> = lhs.collect();
 
         for id in rhs {
             if !lhs.remove(&id) {

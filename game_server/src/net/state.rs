@@ -1,6 +1,6 @@
 use game_common::components::PlayerId;
 use game_common::entity::EntityId;
-use game_common::world::cell::square;
+use game_common::world::cell::CubeIter;
 use game_common::world::control_frame::ControlFrame;
 use game_common::world::CellId;
 
@@ -44,7 +44,7 @@ pub struct Cells {
 
 impl Cells {
     pub fn new(origin: CellId) -> Self {
-        let cells = square(origin, 0);
+        let cells = CubeIter::new(origin, 0).collect();
 
         Self { origin, cells }
     }
@@ -60,7 +60,8 @@ impl Cells {
     pub fn set(&mut self, origin: CellId, distance: u32) {
         self.origin = origin;
 
-        self.cells = square(origin, distance);
+        self.cells.clear();
+        self.cells.extend(CubeIter::new(origin, distance));
     }
 
     pub fn cells(&self) -> &[CellId] {
