@@ -3,13 +3,13 @@
 use std::sync::mpsc;
 
 use game_core::modules::Modules;
-use game_ui::reactive::{Context, DocumentId, NodeId, Runtime};
+use game_ui::reactive::{Context, NodeId};
 use game_ui::style::{Bounds, Direction, Growth, Justify, Size, SizeVec2, Style};
 use game_ui::widgets::{Button, Callback, Container, ContextMenuState, ContextPanel, Text, Widget};
 use game_wasm::inventory::{Inventory, InventorySlotId, ItemStack};
 use game_wasm::world::RecordReference;
 
-use super::UiEvent;
+use super::{UiEvent, UiRootContext};
 
 const EVENT_EQUIP: RecordReference =
     RecordReference::from_str_const("c626b9b0ab1940aba6932ea7726d0175:17");
@@ -168,18 +168,14 @@ impl InventoryProxy {
     pub fn new(
         inventory: &Inventory,
         modules: Modules,
-        rt: &Runtime,
-        doc: DocumentId,
+        ui_ctx: &mut UiRootContext,
         tx: mpsc::Sender<UiEvent>,
     ) -> Self {
-        let cx = rt.root_context(doc);
-
-        let root = InventoryUi {
+        let root = ui_ctx.append(InventoryUi {
             inventory,
             modules,
             events: tx,
-        }
-        .mount(&cx);
+        });
 
         Self {
             id: root.node().unwrap(),

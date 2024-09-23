@@ -4,16 +4,17 @@ use game_common::world::World;
 use game_core::counter::UpdateCounter;
 use game_core::modules::Modules;
 use game_core::time::Time;
+use game_render::camera::RenderTarget;
 use game_script::Executor;
 use game_tracing::trace_span;
-use game_ui::reactive::{Context, DocumentId, Runtime};
-use game_ui::widgets::Widget;
+use game_ui::reactive::Runtime;
 use game_window::cursor::Cursor;
 use game_window::events::WindowEvent;
 
 use crate::config::Config;
 use crate::input::Inputs;
 use crate::ui::title_menu::{MenuEvent, MultiPlayerMenu, TitleMenu};
+use crate::ui::UiRootContext;
 use crate::world::{GameWorldState, RemoteError};
 
 use self::main_menu::MainMenuState;
@@ -25,7 +26,8 @@ pub struct GameState {
     inner: GameStateInner,
     tx: mpsc::Sender<MenuEvent>,
     rx: mpsc::Receiver<MenuEvent>,
-    root_ctx: Option<Context<()>>,
+
+    ui_ctx: Option<UiRootContext>,
 
     config: Config,
     modules: Modules,
@@ -48,12 +50,12 @@ impl GameState {
             inner: GameStateInner::Startup,
             tx,
             rx,
-            root_ctx: None,
             config,
             modules,
             inputs,
             executor,
             cursor,
+            ui_ctx: None,
         }
     }
 
@@ -70,48 +72,34 @@ impl GameState {
     pub async fn update(
         &mut self,
         world: &mut World,
-        ui_rt: &Runtime,
-        doc: DocumentId,
         fps_counter: UpdateCounter,
         time: &mut Time,
     ) -> Result<(), UpdateError> {
         let _span = trace_span!("GameState::update").entered();
 
+        let Some(ui_ctx) = &mut self.ui_ctx else {
+            return Ok(());
+        };
+
         while let Ok(event) = self.rx.try_recv() {
             match event {
                 MenuEvent::Connect(addr) => {
-                    if let Some(ctx) = self.root_ctx.take() {
-                        ctx.remove_self();
-                    }
-
+                    ui_ctx.clear();
                     self.connect(addr);
+                    return Ok(());
                 }
                 MenuEvent::Exit => return Err(UpdateError::Exit),
                 MenuEvent::SpawnMainMenu => {
-                    if let Some(ctx) = self.root_ctx.take() {
-                        ctx.remove_self();
-                    }
-
-                    let ctx = ui_rt.root_context(doc);
-                    self.root_ctx = Some(
-                        TitleMenu {
-                            events: self.tx.clone(),
-                        }
-                        .mount(&ctx),
-                    );
+                    ui_ctx.clear();
+                    ui_ctx.append(TitleMenu {
+                        events: self.tx.clone(),
+                    });
                 }
                 MenuEvent::SpawnMultiPlayerMenu => {
-                    if let Some(ctx) = self.root_ctx.take() {
-                        ctx.remove_self();
-                    }
-
-                    let ctx = ui_rt.root_context(doc);
-                    self.root_ctx = Some(
-                        MultiPlayerMenu {
-                            events: self.tx.clone(),
-                        }
-                        .mount(&ctx),
-                    );
+                    ui_ctx.clear();
+                    ui_ctx.append(MultiPlayerMenu {
+                        events: self.tx.clone(),
+                    });
                 }
             }
         }
@@ -120,17 +108,13 @@ impl GameState {
             GameStateInner::Startup => {
                 self.inner = GameStateInner::MainMenu(MainMenuState::new(world));
 
-                let ctx = ui_rt.root_context(doc);
-                self.root_ctx = Some(
-                    TitleMenu {
-                        events: self.tx.clone(),
-                    }
-                    .mount(&ctx),
-                );
+                ui_ctx.append(TitleMenu {
+                    events: self.tx.clone(),
+                });
             }
             GameStateInner::GameWorld(state) => {
                 match state
-                    .update(world, ui_rt, doc, fps_counter, &mut self.executor)
+                    .update(world, ui_ctx, fps_counter, &mut self.executor)
                     .await
                 {
                     Ok(()) => {}
@@ -148,16 +132,24 @@ impl GameState {
         Ok(())
     }
 
-    pub fn handle_event(
-        &mut self,
-        event: WindowEvent,
-        cursor: &Cursor,
-        ui_rt: &Runtime,
-        doc: DocumentId,
-    ) {
+    pub fn handle_event(&mut self, event: WindowEvent, cursor: &Cursor, ui_rt: &Runtime) {
+        match event {
+            WindowEvent::WindowCreated(event) => {
+                let document = ui_rt
+                    .create_document(RenderTarget::Window(event.window))
+                    .unwrap();
+                self.ui_ctx = Some(UiRootContext::new(document, ui_rt.clone()));
+            }
+            _ => (),
+        }
+
         match &mut self.inner {
             GameStateInner::GameWorld(state) => {
-                state.handle_event(event, cursor, ui_rt, doc);
+                let Some(ui_ctx) = &mut self.ui_ctx else {
+                    return;
+                };
+
+                state.handle_event(event, cursor, ui_ctx);
             }
             _ => (),
         }
