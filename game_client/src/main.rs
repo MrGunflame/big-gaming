@@ -30,7 +30,6 @@ use game_render::{FpsLimit, Renderer};
 use game_script::Executor;
 use game_tasks::TaskPool;
 use game_tracing::trace_span;
-use game_ui::reactive::DocumentId;
 use game_ui::UiState;
 use game_window::cursor::Cursor;
 use game_window::events::WindowEvent;
@@ -162,7 +161,6 @@ fn main() -> ExitCode {
         ui_state,
         pool: &pool,
         gizmos: &gizmos,
-        document_id: None,
     };
 
     let renderer_state = RendererAppState {
@@ -201,7 +199,6 @@ pub struct GameAppState<'a> {
     ui_state: UiState,
     gizmos: &'a Gizmos,
     pool: &'a TaskPool,
-    document_id: Option<DocumentId>,
 }
 
 impl<'a> GameAppState<'a> {
@@ -229,48 +226,33 @@ impl<'a> GameAppState<'a> {
                 WindowEvent::WindowCreated(event) => {
                     self.ui_state
                         .create(RenderTarget::Window(event.window), UVec2::ZERO);
-                    self.document_id = self
-                        .ui_state
-                        .runtime()
-                        .create_document(RenderTarget::Window(event.window));
-
-                    continue;
                 }
                 WindowEvent::WindowResized(event) => {
                     self.ui_state
                         .resize(RenderTarget::Window(event.window), event.size());
-                    continue;
                 }
                 WindowEvent::WindowDestroyed(event) => {
                     self.ui_state.destroy(RenderTarget::Window(event.window));
-                    continue;
                 }
                 _ => (),
             }
 
             self.ui_state.send_event(&self.cursor, event.clone());
 
-            if let Some(doc) = self.document_id {
-                self.state
-                    .handle_event(event, &self.cursor, &self.ui_state.runtime(), doc);
-            }
+            self.state
+                .handle_event(event, &self.cursor, &self.ui_state.runtime());
         }
 
         let fps_counter = { self.fps_counter.lock().clone() };
 
-        if let Some(doc) = self.document_id {
-            match self.pool.block_on(self.state.update(
-                &mut world,
-                &self.ui_state.runtime(),
-                doc,
-                fps_counter,
-                &mut self.time,
-            )) {
-                Ok(()) => (),
-                Err(UpdateError::Exit) => {
-                    self.shutdown.store(true, Ordering::Release);
-                    return;
-                }
+        match self
+            .pool
+            .block_on(self.state.update(&mut world, fps_counter, &mut self.time))
+        {
+            Ok(()) => (),
+            Err(UpdateError::Exit) => {
+                self.shutdown.store(true, Ordering::Release);
+                return;
             }
         }
 
