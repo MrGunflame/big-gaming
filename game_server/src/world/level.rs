@@ -2,7 +2,7 @@ use ahash::{HashMap, HashSet, HashSetExt};
 use game_common::components::{Global, Transform};
 use game_common::entity::EntityId;
 use game_common::events::{CellLoad, CellUnload, Event};
-use game_common::world::cell::square;
+use game_common::world::cell::CubeIter;
 use game_common::world::{CellId, World};
 use game_core::modules::Modules;
 use game_prefab::Prefab;
@@ -25,7 +25,7 @@ pub fn update_level_cells(level: &mut Level, world: &mut World, modules: &Module
 
         let cell = CellId::from(transform.translation);
 
-        let area = square(cell, streamer.distance);
+        let area = CubeIter::new(cell, streamer.distance);
         cells.extend(area);
     }
 
@@ -161,7 +161,7 @@ mod tests {
     use ahash::{HashSet, HashSetExt};
     use game_common::components::Transform;
     use game_common::events::Event;
-    use game_common::world::cell::square;
+    use game_common::world::cell::CubeIter;
     use game_common::world::{CellId, World};
     use game_core::modules::Modules;
     use game_worldgen::WorldgenState;
@@ -184,7 +184,7 @@ mod tests {
         world.insert_typed(player, transform);
         level.create_streamer(player, Streamer { distance: 1 });
 
-        let loaded_cells = square(CellId::from(transform.translation), 1)
+        let loaded_cells = CubeIter::new(CellId::from(transform.translation), 1)
             .into_iter()
             .collect();
         let events = update_level_cells(&mut level, &mut world, &modules);
@@ -196,7 +196,7 @@ mod tests {
         transform.translation -= Vec3::new(1.0, 0.0, 0.0);
         world.insert_typed(player, transform);
 
-        let loaded_cells_2: HashSet<_> = square(CellId::from(transform.translation), 1)
+        let loaded_cells_2: HashSet<_> = CubeIter::new(CellId::from(transform.translation), 1)
             .into_iter()
             .collect();
         let new_loaded_cells: HashSet<_> =
