@@ -17,7 +17,20 @@ game_prefab = { version = "0.1.0", path = "../game_prefab" }
 glam = "0.28.0"
 thiserror = "1.0.61"
 tracing = "0.1.40"
-wasmtime = { version = "22.0.0", features = ["wmemcheck"] }
 game_physics = { version = "0.1.0", path = "../game_physics" }
-slotmap = "1.0.7"
 game_tracing = { version = "0.1.0", path = "../game_tracing" }
+
+[dependencies.wasmtime]
+version = "22.0.0"
+default-features = false
+features = [
+    "runtime",
+    "cranelift",
+    "wat",
+    "parallel-compilation",
+    "pooling-allocator",
+    "demangle",
+    "coredump",
+    "addr2line",
+    "debug-builtins",
+]
