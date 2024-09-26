@@ -13,7 +13,7 @@ use game_window::events::WindowEvent;
 
 use crate::config::Config;
 use crate::input::Inputs;
-use crate::ui::title_menu::{MenuEvent, MultiPlayerMenu, TitleMenu};
+use crate::ui::title_menu::{MenuEvent, TitleMenu};
 use crate::ui::UiRootContext;
 use crate::world::{GameWorldState, RemoteError};
 
@@ -89,18 +89,6 @@ impl GameState {
                     return Ok(());
                 }
                 MenuEvent::Exit => return Err(UpdateError::Exit),
-                MenuEvent::SpawnMainMenu => {
-                    ui_ctx.clear();
-                    ui_ctx.append(TitleMenu {
-                        events: self.tx.clone(),
-                    });
-                }
-                MenuEvent::SpawnMultiPlayerMenu => {
-                    ui_ctx.clear();
-                    ui_ctx.append(MultiPlayerMenu {
-                        events: self.tx.clone(),
-                    });
-                }
             }
         }
 
