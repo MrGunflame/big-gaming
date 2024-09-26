@@ -2,10 +2,11 @@ use std::collections::VecDeque;
 use std::fmt::{self, Display, Formatter};
 use std::time::Duration;
 
+use game_common::components::{RigidBody, Transform};
 use game_core::counter::UpdateCounter;
 use game_ui::reactive::Context;
 use game_ui::widgets::{Container, Plot, Text, Widget};
-use glam::{UVec2, Vec2};
+use glam::{UVec2, Vec2, Vec3};
 
 pub struct DebugUi {
     pub stats: Statistics,
@@ -74,6 +75,39 @@ impl Widget for DebugUi {
         }
         .mount(&list);
 
+        if let Some(transform) = self.stats.player_info.transform {
+            Text::new(format!(
+                "Translation: X={:.2} Y={:.2} Z={:.2}",
+                transform.translation.x, transform.translation.y, transform.translation.z
+            ))
+            .mount(&list);
+            let direction = transform.rotation * -Vec3::Z;
+            Text::new(format!(
+                "Rotation: X={:.2} Y={:.2} Z={:.2} W={:.2} (facing X={:.2} Y={:.2} Z={:.2})",
+                transform.rotation.x,
+                transform.rotation.y,
+                transform.rotation.z,
+                transform.rotation.w,
+                direction.x,
+                direction.y,
+                direction.z,
+            ))
+            .mount(&list);
+        }
+
+        if let Some(rigid_body) = self.stats.player_info.rigid_body {
+            Text::new(format!(
+                "Linear: x={:.2} Y={:.2} Z={:.2}",
+                rigid_body.linvel.x, rigid_body.linvel.y, rigid_body.linvel.z,
+            ))
+            .mount(&list);
+            Text::new(format!(
+                "Angular: x={:.2} Y={:.2} Z={:.2}",
+                rigid_body.angvel.x, rigid_body.angvel.y, rigid_body.angvel.z,
+            ))
+            .mount(&list);
+        }
+
         list
     }
 }
@@ -85,6 +119,7 @@ pub struct Statistics {
     pub entities: u64,
     pub net_input_buffer_len: u64,
     pub rtt: Duration,
+    pub player_info: PlayerInfo,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -171,4 +206,10 @@ impl Display for DurationFormat {
 
         write!(f, "{}.{}ms", millis, micros)
     }
+}
+
+#[derive(Clone, Debug, Default)]
+pub(crate) struct PlayerInfo {
+    pub transform: Option<Transform>,
+    pub rigid_body: Option<RigidBody>,
 }

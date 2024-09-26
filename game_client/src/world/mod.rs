@@ -10,7 +10,7 @@ use std::sync::mpsc;
 use std::time::Duration;
 
 use game_common::components::actions::ActionId;
-use game_common::components::{GlobalTransform, PrimaryCamera, Transform};
+use game_common::components::{GlobalTransform, PrimaryCamera, RigidBody, Transform};
 use game_common::entity::EntityId;
 use game_common::world::World;
 use game_core::counter::{Interval, UpdateCounter};
@@ -32,7 +32,7 @@ use crate::config::Config;
 use crate::input::{InputKey, Inputs};
 use crate::net::world::{Command, CommandBuffer};
 use crate::net::{connect_udp, ServerConnection};
-use crate::ui::debug::Statistics;
+use crate::ui::debug::{PlayerInfo, Statistics};
 use crate::ui::inventory::InventoryProxy;
 use crate::ui::main_menu::MainMenu;
 use crate::ui::{UiElements, UiEvent, UiRootContext};
@@ -131,6 +131,26 @@ impl GameWorldState {
             }
         }
 
+        let mut player_info = PlayerInfo::default();
+        if let Ok(camera) = world.get_typed::<Camera>(self.host) {
+            // Health
+            if let Ok(health) = world.get_typed::<Health>(camera.parent) {
+                self.ui_elements
+                    .update_health(ui_ctx, Some(health), &self.ui_events_tx);
+            } else {
+                self.ui_elements
+                    .update_health(ui_ctx, None, &self.ui_events_tx);
+            }
+
+            if let Ok(transform) = world.get_typed::<Transform>(camera.parent) {
+                player_info.transform = Some(transform);
+            }
+
+            if let Ok(rigid_body) = world.get_typed::<RigidBody>(camera.parent) {
+                player_info.rigid_body = Some(rigid_body);
+            }
+        }
+
         // Debug stats
         self.ui_elements.update_debug_state(
             ui_ctx,
@@ -140,19 +160,9 @@ impl GameWorldState {
                 entities: world.len() as u64,
                 net_input_buffer_len: self.world.input_buffer_len() as u64,
                 rtt: self.world.rtt(),
+                player_info,
             }),
         );
-
-        // Health
-        if let Ok(camera) = world.get_typed::<Camera>(self.host) {
-            if let Ok(health) = world.get_typed::<Health>(camera.parent.into()) {
-                self.ui_elements
-                    .update_health(ui_ctx, Some(health), &self.ui_events_tx);
-            } else {
-                self.ui_elements
-                    .update_health(ui_ctx, None, &self.ui_events_tx);
-            }
-        }
 
         self.dispatch_actions();
 
