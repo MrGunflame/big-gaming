@@ -5,7 +5,7 @@ use game_wasm::math::Real;
 use game_wasm::math::Vec3;
 use game_wasm::physics::{cast_shape, QueryFilter};
 
-const OFFSET: f32 = 0.1;
+pub const OFFSET: f32 = 0.1;
 
 pub fn move_shape(
     entity: EntityId,
@@ -83,11 +83,17 @@ fn apply_gravity(
     linvel: &mut Vec3,
     shape: &ColliderShape,
 ) {
-    let gravity = Vec3::new(0.0, -1.0, 0.0);
     let v0 = linvel.y;
+    let altitude = transform.translation.y;
 
-    let max_toi = v0 * DT + 0.5 * G * DT * DT;
-    let max_distance = max_toi.abs();
+    let new_altitude = v0 * DT + altitude + 0.5 * G * DT * DT;
+
+    //let max_toi = v0 * DT + 0.5 * G * DT * DT;
+    //let max_distance = max_toi.abs();
+
+    let delta = new_altitude - altitude;
+    let direction = Vec3::Y * delta.signum();
+    let max_toi = delta.abs();
 
     let filter = QueryFilter {
         exclude_entities: &[entity],
@@ -96,24 +102,25 @@ fn apply_gravity(
     let (distance, hit) = match cast_shape(
         transform.translation,
         transform.rotation,
-        gravity,
+        direction,
         shape,
         // Note that `cast_shape` uses `gravity * max_toi` as the final max toi,
         // but `gravity` is already negative and `max_toi` must not be negative
         // for the shape cast to return useful results.
         // This also means that the returned `toi` and hit must be negated.
-        max_toi.abs() + OFFSET,
+        max_toi + OFFSET,
         filter,
     ) {
         Some(hit) => {
-            let allowed_distance = f32::max(hit.toi.abs() - OFFSET, 0.0);
+            debug_assert!(hit.toi.is_sign_positive());
+            let allowed_distance = f32::max(hit.toi - OFFSET, 0.0);
 
             (allowed_distance, true)
         }
-        None => (max_distance, false),
+        None => (max_toi, false),
     };
 
-    transform.translation.y -= distance;
+    transform.translation.y += distance * delta.signum();
     if hit {
         linvel.y = 0.0;
     } else {
