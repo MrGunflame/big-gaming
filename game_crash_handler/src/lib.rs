@@ -3,11 +3,14 @@ mod signal;
 
 use std::env::current_exe;
 use std::ffi::OsString;
-use std::io::{self, stdin, IsTerminal};
-use std::process::{Command, ExitCode, Stdio, Termination};
+use std::fs::File;
+use std::io::{self, stdin, IsTerminal, Write};
+use std::process::{ExitCode, Stdio, Termination};
 
 const FORK_FLAG: &str = "__GAME_HANDLER_FORKED";
 
+use futures::io::BufReader;
+use futures::{pin_mut, select_biased, AsyncBufReadExt, FutureExt, StreamExt};
 /// Wraps the function in the crash handling harness and exports it as the `main` function.
 pub use game_macros::crash_handler_main as main;
 
@@ -81,25 +84,52 @@ where
 }
 
 fn fork_main(args: Vec<OsString>) -> Result<Status, io::Error> {
-    let program = current_exe()?;
-    let mut child = Command::new(program)
-        .env(FORK_FLAG, "")
-        .env("RUST_BACKTRACE", "full")
-        .args(args)
-        .stdin(Stdio::inherit())
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
-        .spawn()?;
+    async_io::block_on(async move {
+        let program = current_exe()?;
+        let mut child = async_process::Command::new(program)
+            .env(FORK_FLAG, "")
+            .env("RUST_BACKTRACE", "full")
+            .args(args)
+            .stdin(Stdio::inherit())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()?;
 
-    let status = child.wait()?;
+        let (Some(stdout), Some(stderr)) = (child.stdout.take(), child.stderr.take()) else {
+            panic!("stdout or stderr not attached to child");
+        };
 
-    match status.code() {
-        Some(0) => Ok(Status::Sucess),
-        Some(1) => Ok(Status::Failure),
-        // Is `None` if the process was terminated by a signal.
-        // This is probably a `SIGSEGV` or similar.
-        Some(_) | None => Ok(Status::Crash),
-    }
+        let mut stdout = BufReader::new(stdout).lines();
+        let mut stderr = BufReader::new(stderr).lines();
+        let status_fut = child.status().fuse();
+        pin_mut!(status_fut);
+
+        let mut file = File::create("game.log")?;
+
+        loop {
+            let line = select_biased! {
+                line = stdout.next().fuse() => line,
+                line = stderr.next().fuse() => line,
+                status = status_fut => {
+                    return match status?.code() {
+                        Some(0) => Ok(Status::Sucess),
+                        Some(1) => Ok(Status::Failure),
+                        // Is `None` if the process was terminated by a signal.
+                        // This is probably a `SIGSEGV` or similar.
+                        Some(_) | None => Ok(Status::Crash),
+                    };
+                },
+            };
+
+            let Some(Ok(mut line)) = line else {
+                continue;
+            };
+            line.push('\n');
+
+            print!("{}", line);
+            file.write(line.as_bytes())?;
+        }
+    })
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]

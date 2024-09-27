@@ -7,6 +7,9 @@ license = "GPL-3.0-or-later"
 
 [dependencies]
 game_macros = { version = "0.1.0", path = "../game_macros" }
+async-process = "2.3.0"
+async-io = "2.3.4"
+futures = "0.3.30"
 
 [target.'cfg(unix)'.dependencies]
 nix = { version = "0.29.0", features = ["signal"] }
