@@ -13,7 +13,7 @@ use std::io::ErrorKind;
 use std::path::PathBuf;
 use std::process::ExitCode;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{mpsc, Arc};
 use std::time::Duration;
 
 use clap::Parser;
@@ -115,13 +115,8 @@ fn main() -> ExitCode {
 
     let inputs = Inputs::from_file("inputs");
 
-    let mut state = GameState::new(
-        config.clone(),
-        modules.clone(),
-        inputs,
-        executor,
-        cursor.clone(),
-    );
+    let mut state = GameState::new(config.clone(), cursor.clone());
+    state.init(modules.clone(), inputs, executor);
 
     if let Some(addr) = args.connect {
         state.connect(addr);
