@@ -30,20 +30,11 @@ pub struct GameState {
     ui_ctx: Option<UiRootContext>,
 
     config: Config,
-    modules: Modules,
-    inputs: Inputs,
-    executor: Executor,
     cursor: Arc<Cursor>,
 }
 
 impl GameState {
-    pub fn new(
-        config: Config,
-        modules: Modules,
-        inputs: Inputs,
-        executor: Executor,
-        cursor: Arc<Cursor>,
-    ) -> Self {
+    pub fn new(config: Config, cursor: Arc<Cursor>) -> Self {
         let (tx, rx) = mpsc::channel();
 
         Self {
@@ -51,22 +42,30 @@ impl GameState {
             tx,
             rx,
             config,
-            modules,
-            inputs,
-            executor,
             cursor,
             ui_ctx: None,
         }
     }
 
+    pub fn init(&mut self, modules: Modules, inputs: Inputs, executor: Executor) {
+        self.inner = GameStateInner::Init(InitState {
+            modules,
+            inputs,
+            executor,
+            inner: InitStateInner::Startup,
+        });
+    }
+
     pub fn connect(&mut self, addr: String) {
-        self.inner = GameStateInner::GameWorld(GameWorldState::new(
-            &self.config,
-            addr,
-            self.modules.clone(),
-            &self.cursor,
-            self.inputs.clone(),
-        ));
+        if let GameStateInner::Init(state) = &mut self.inner {
+            state.inner = InitStateInner::GameWorld(GameWorldState::new(
+                &self.config,
+                addr,
+                state.modules.clone(),
+                &self.cursor,
+                state.inputs.clone(),
+            ));
+        }
     }
 
     pub async fn update(
@@ -93,28 +92,31 @@ impl GameState {
         }
 
         match &mut self.inner {
-            GameStateInner::Startup => {
-                self.inner = GameStateInner::MainMenu(MainMenuState::new(world));
+            GameStateInner::Startup => {}
+            GameStateInner::Init(init_state) => match &mut init_state.inner {
+                InitStateInner::Startup => {
+                    init_state.inner = InitStateInner::MainMenu(MainMenuState::new(world));
 
-                ui_ctx.append(TitleMenu {
-                    events: self.tx.clone(),
-                });
-            }
-            GameStateInner::GameWorld(state) => {
-                match state
-                    .update(world, ui_ctx, fps_counter, &mut self.executor)
-                    .await
-                {
-                    Ok(()) => {}
-                    Err(RemoteError::Disconnected) => {
-                        self.inner = GameStateInner::Startup;
+                    ui_ctx.append(TitleMenu {
+                        events: self.tx.clone(),
+                    });
+                }
+                InitStateInner::GameWorld(state) => {
+                    match state
+                        .update(world, ui_ctx, fps_counter, &mut init_state.executor)
+                        .await
+                    {
+                        Ok(()) => {}
+                        Err(RemoteError::Disconnected) => {
+                            init_state.inner = InitStateInner::Startup;
+                        }
                     }
                 }
-            }
-            GameStateInner::MainMenu(state) => {
-                state.update(time, world);
-            }
-            _ => (),
+                InitStateInner::MainMenu(state) => {
+                    state.update(time, world);
+                }
+                _ => (),
+            },
         }
 
         Ok(())
@@ -132,13 +134,16 @@ impl GameState {
         }
 
         match &mut self.inner {
-            GameStateInner::GameWorld(state) => {
-                let Some(ui_ctx) = &mut self.ui_ctx else {
-                    return;
-                };
+            GameStateInner::Init(state) => match &mut state.inner {
+                InitStateInner::GameWorld(state) => {
+                    let Some(ui_ctx) = &mut self.ui_ctx else {
+                        return;
+                    };
 
-                state.handle_event(event, cursor, ui_ctx);
-            }
+                    state.handle_event(event, cursor, ui_ctx);
+                }
+                _ => (),
+            },
             _ => (),
         }
     }
@@ -148,6 +153,20 @@ impl GameState {
 enum GameStateInner {
     /// Initial game startup phase.
     #[default]
+    Startup,
+    Init(InitState),
+}
+
+#[derive(Debug)]
+struct InitState {
+    modules: Modules,
+    inputs: Inputs,
+    executor: Executor,
+    inner: InitStateInner,
+}
+
+#[derive(Debug)]
+enum InitStateInner {
     Startup,
     MainMenu(MainMenuState),
     /// Connecting to server
