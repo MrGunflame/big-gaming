@@ -17,7 +17,11 @@ where
 {
     let (tx, rx) = mpsc::channel();
 
-    let addr = addr.to_socket_addrs().unwrap().next().unwrap();
+    let addr = addr
+        .to_socket_addrs()
+        .map_err(ConnectionError::BadSocketAddr)?
+        .next()
+        .ok_or(ConnectionError::EmptyDns)?;
 
     std::thread::spawn(move || {
         let rt = Builder::new_current_thread().enable_all().build().unwrap();

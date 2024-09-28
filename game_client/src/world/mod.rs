@@ -31,7 +31,7 @@ use crate::config::Config;
 // use crate::entities::terrain::spawn_terrain;
 use crate::input::{InputKey, Inputs};
 use crate::net::world::{Command, CommandBuffer};
-use crate::net::{connect_udp, ServerConnection};
+use crate::net::{connect_udp, ConnectionError, ServerConnection};
 use crate::ui::debug::{PlayerInfo, Statistics};
 use crate::ui::inventory::InventoryProxy;
 use crate::ui::main_menu::MainMenu;
@@ -42,9 +42,10 @@ use self::camera::{CameraController, CameraMode, DetachedState};
 use self::game_world::{Action, GameWorld};
 use self::movement::update_rotation;
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub enum RemoteError {
     Disconnected,
+    Error(ConnectionError),
 }
 
 #[derive(Debug)]
@@ -74,18 +75,18 @@ impl GameWorldState {
         modules: Modules,
         cursor: &Cursor,
         inputs: Inputs,
-    ) -> Self {
-        let mut cursor_pinned = CursorPinState::new();
-        if cursor.window().is_some() {
-            cursor_pinned.pin(cursor);
-        }
-
-        let handle = connect_udp(addr).unwrap();
+    ) -> Result<Self, RemoteError> {
+        let handle = connect_udp(addr).map_err(RemoteError::Error)?;
         let conn = ServerConnection::new(handle);
 
         let interval = Interval::new(Duration::from_secs(1) / config.timestep);
 
         let (ui_events_tx, ui_events_rx) = mpsc::channel();
+
+        let mut cursor_pinned = CursorPinState::new();
+        if cursor.window().is_some() {
+            cursor_pinned.pin(cursor);
+        }
 
         let mut this = Self {
             world: GameWorld::new(conn, config),
@@ -104,7 +105,7 @@ impl GameWorldState {
             ui_events_tx,
         };
         this.register_actions();
-        this
+        Ok(this)
     }
 
     pub async fn update(
